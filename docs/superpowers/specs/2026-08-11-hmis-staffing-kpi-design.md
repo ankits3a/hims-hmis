@@ -1,6 +1,6 @@
 # HMIS Staffing & KPI Book — Design Spec (Series S10)
 
-- **Date:** 2026-08-11 (v1.1 — stress-pass-6 corrections folded)
+- **Date:** 2026-08-11 (v1.2 — stress-pass-7 corrections folded; see parent §11.19-D)
 - **Status:** Approved in brainstorming session; pending owner's independent stress rounds
 - **Parent spec:** `2026-08-10-hmis-architecture-design.md` (v4.3) — all station/flow references point there; "Fig-1/Fig-2" references mean the parent spec's §11.1 (OPD) and §11.2 (IPD) flow designs as drawn in the Flow Atlas
 - **Scope:** Workforce positioning across three operating models, **39 full-depth role cards**, role-bundling + segregation-of-duties matrices, **18 workforce mechanisms**, and the KPI/KRA/OKR framework. Headcounts are **planning bands** — day-one (≈100 OPD, small IPD) → 610-bed target — firmed at each phase's commissioning.
@@ -351,6 +351,12 @@ Never the same person: requester/approver of any approval-engine item · cashier
 16. **Succession chains (v1.1):** every single-incumbent 24×7 post (duty manager, radiologist, blood-bank officer) carries a published succession chain; the duty-manager night succession is explicit — the downtime/disaster authority can never be an empty chair
 17. **Labor statutes in roster validation (v1.1):** women's night-shift provisions (transport/consent per state rules), Maternity Benefit Act + creche obligations, CLRA registration for outsourced pools, PSARA-licensed security vendor, POSH ICC channel live from day one
 18. **Duplicate-UHID gaming check (v1.1):** false-attach detection — demographic-mismatch audit sampling + photo prompt at attach — pairs the registration KPI (the one identity error that emits no anomalous event)
+19. **Owner succession & governance role (v1.2, parent §11.19-D fixes 10/12):** the owner joins the succession-chain rule — two-key emergency governance path (duty manager + medical superintendent), declared-incapacity deputy pair with time-boxed evented authority, sealed technical-continuity kit with annual stranger drill. The owner is no longer the only unmitigated single-incumbent post.
+20. **DPO & grievance ownership (v1.2):** the quality manager (card 37) dual-hats as DPDP Data Protection Officer day one (dedicated DPO at scale); grievance-officer duty assigned; DPIA participation is a card-37 KRA line.
+21. **Documentation-time budgets (v1.2):** every role card's mandatory interaction load is summed per shift; a workflow-definition change adding a mandatory step must fit the role's budget or displace an existing step — enforced at definition-change time (Class-A/B review input).
+22. **Patient-navigation duty (v1.2):** front-office roles carry low-literacy/unaccompanied-patient navigation duty day one; a dedicated navigator post joins the roster at scale.
+23. **Count randomization & dyad analytics (v1.2):** cycle-count assignments randomize among eligible non-custodian counters; blind recounts periodic; Fraud Sentinel models standing two-person pairings (approver/requester, witness pairs, counter/custodian) — recurring dyads with anomalous outcomes are a report class.
+24. **Doctor adoption program (v1.2, parent fix 35):** dictation-to-draft path and scribe option from day one; designed off-site access for countersigns/approvals; per-doctor live accrual dashboard from week one — adoption carrots ship with the sticks.
 
 ## 13. Spec self-review note
 
