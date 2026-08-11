@@ -212,7 +212,7 @@ Department heads and AI agents may **draft** workflow-definition changes; **acti
 
 The catalog grows in design sessions S4–S8; grammar and envelope are the stable contract.
 
-## 11. Journey & Flow Designs (design series S2–S6)
+## 11. Journey & Flow Designs (design series S2–S7)
 
 Journeys designed desk-by-desk with the owner (S2 in the visual companion — screens preserved under `.superpowers/brainstorm/`; S3 in terminal). Every branch ends in a terminal state — the "no dangling paths" rule was checked per map. The owner will run further stress-test rounds over all of §11 before implementation planning.
 
@@ -353,6 +353,20 @@ Order → schedule (walk-in X-ray vs slotted CT/MRI/USG) → **prep instructions
 
 **S6 events:** roster.synced · handover.completed · oncall.assigned · credential.expiring · credential.blocked — catalog ~178.
 
+### 11.13 Communication matrix (S7)
+
+**Channels:** in-app workspace · live WebSocket screens · WhatsApp · SMS · IVR · PBX voice · print. Fallback ladder and per-patient language preference locked in §11.5.
+
+**Governance:** all templates in a **central versioned registry** (WhatsApp Business approval status tracked per template) · **DPDP split: transactional messages flow always; promotional strictly opt-in**, captured at registration, revocable · **quiet hours 9 p.m.–8 a.m.** for non-urgent patient messages (urgent recalls ignore quiet hours by design).
+
+**Patient/attendant matrix:** welcome + UHID → token + live queue link → queue-called ping → visit summary + review reminder → report-ready PDFs → admission info → daily running bill → top-up requests → payer-switch counseling summary → discharge summary + med schedule → follow-up/vaccination/session reminders → recalls → post-discharge feedback.
+
+**Staff matrix (role-routed, on-duty resolved):** approval requests · active-alert SLA breaches · **critical values with acknowledgment timers** · danger vitals · task dispatch/escalation · handover flags · credential expiry · stock/oxygen/utility alerts · downtime & disaster broadcasts (WhatsApp + PBX). **Anti-alarm-fatigue rule: only the active-alert list interrupts; the rest batches into shift digests.**
+
+**Owner matrix:** real-time always — primary down, disaster declared, break-glass used, credit-stop override, refund/write-off above threshold · **daily 8 a.m. WhatsApp digest** (revenue close, OPD count, occupancy, orphan summary, variance flags, breach counts) · weekly — leakage triangle, vendor scorecards, payout summary, quality indicators.
+
+**Escalation mechanics (uniform):** role ladders resolved to on-duty holders; **5-minute acknowledgment timer on critical clinical alerts** before auto-climb; de-duplicated threads; every rung evented. S7 added **zero new mechanisms** — assembly over the existing event/notification fabric.
+
 ## 12. Failover, Backups, Data Portability
 
 - **Two servers, scripted promotion.** Primary runs the full stack; standby receives every transaction via streaming replication (near-zero RPO). Failover = one scripted command; target RTO under 15 minutes; deliberately manual-trigger with a printed runbook. Monitoring alerts the owner via WhatsApp/SMS. The downtime protocol (§11.4 map 1) covers the promotion window operationally.
@@ -406,7 +420,7 @@ First jobs already identified in the designs: discharge-summary drafting (T2, §
 
 ## 17. Rollout Roadmap
 
-**Gate (2026-08-11): the 9-session design series must complete before Phase 1 implementation planning begins.** Status: S1 fabric ✅ · S2 patient journeys ✅ (incl. 13 exception maps + 2 stress-test passes) · S3 clinical ordering ✅ (§11.6–11.9; owner stress-test pending) · S4 materials/supply ✅ (§11.10) · S5 money flows ✅ (§11.11) · S6 people/tasks ✅ (§11.12) · S5 money flows · S6 people/tasks · S7 communication matrix · S8 agent roster · S9 stress tests + coverage matrix. The owner will additionally run 2nd/3rd stress-test rounds over all locked decisions before any implementation plan is written.
+**Gate (2026-08-11): the 9-session design series must complete before Phase 1 implementation planning begins.** Status: S1 fabric ✅ · S2 patient journeys ✅ (incl. 13 exception maps + 2 stress-test passes) · S3 clinical ordering ✅ (§11.6–11.9; owner stress-test pending) · S4 materials/supply ✅ (§11.10) · S5 money flows ✅ (§11.11) · S6 people/tasks ✅ (§11.12) · S7 communication matrix ✅ (§11.13) · S5 money flows · S6 people/tasks · S7 communication matrix · S8 agent roster · S9 stress tests + coverage matrix. The owner will additionally run 2nd/3rd stress-test rounds over all locked decisions before any implementation plan is written.
 
 1. **Foundation + Registration/OPD/Billing (expanded scope §7–§11)** — go-live on current 100-OPD workload; WhatsApp/SMS confirmations included.
    *Fast follows:* queue/token displays with audio calling; desk-to-desk patient handoff.
