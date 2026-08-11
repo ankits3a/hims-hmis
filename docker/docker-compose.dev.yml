@@ -1,0 +1,13 @@
+services:
+  db:
+    image: postgres:16
+    ports: ["127.0.0.1:5433:5432"]
+    environment:
+      POSTGRES_USER: hmis
+      POSTGRES_PASSWORD: hmis
+      POSTGRES_DB: hmis_dev
+    volumes:
+      - ./initdb:/docker-entrypoint-initdb.d
+      - hmis_pgdata:/var/lib/postgresql/data
+volumes:
+  hmis_pgdata:
