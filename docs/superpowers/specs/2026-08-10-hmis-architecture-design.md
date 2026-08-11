@@ -420,6 +420,22 @@ Order → schedule (walk-in X-ray vs slotted CT/MRI/USG) → **prep instructions
 
 **S9/ICU events:** alarm.escalated · data_gap.flagged · crashcart.opened · crashcart.replenished · mtp.activated · transport.bundle_completed · titration.adjusted · briefing.recorded · icu.readmission_flagged — catalog ~201.
 
+### 11.16 OT suite deep-dive (S9 pressure test #2)
+
+**Physical model: 9 theatres operational day one** (10th commissions later), with pre-op holding, PACU, sterile store, and CSSD linkage.
+
+**The OT list is the coordination artifact:** surgeon submits → OT in-charge sequences → anesthesia reviews → **published previous evening**. The list synchronizes wards (prep + per-patient NPO timing), **CSSD (sets prepared against tomorrow's list)**, blood bank (reserves), stores (implants), dietary, housekeeping. Late/emergency inserts → re-sequencing event + auto-notifications to affected surgeons and wards.
+
+**Patient's OT day:** ward pre-op checklist (incl. **two-staff sealed valuables custody**, returned by signature) → porter → **pre-op holding station: identity + site + consent re-verified on arrival**, anesthesia final review → WHO checklist states (§11.9) → PACU → structured handover out. Family: **token-coded waiting-area status display** + surgery-completed WhatsApp ping.
+
+**Theatre systems:** **OT environment is a telemetry domain** — temperature, humidity, positive differential pressure, air changes; sensors on the utility pattern (manual log tasks until installed); **out-of-range = theatre blocked on the board**; fumigation/validation cycles + **microbiological surveillance on schedule — failure blocks the theatre until re-validated**; gas panels and UPS/isolation power on the same alarm pattern. **Procurement data-export mandate extends to anesthesia workstations**; interfaced machines pre-fill the anesthesia record (anesthetist validates — ICU legal-record split).
+
+**Money & leakage:** per-procedure consumable kits **reconciled used-vs-returned per case** (leakage triangle at case granularity) · **loaner implants 3-way matched per case** (vendor challan / usage / invoice) · cancelled-case opened-kit → return-or-charge decision, evented · OT narcotics per-case kits with witnessed partial-ampoule wastage · fees from actual timestamps · turnover time per theatre + first-case on-time as auto-KPIs.
+
+**OT scenarios (locked):** frozen-section stat loop (specimen → pathologist → operating surgeon, minutes-scale TAT SLA) · **loaner sets: CSSD-sterilized with BI before use, no exceptions**; vendor rep presence logged · IUSS logged and minimized (tracked indicator) · **time-out halt = near-miss register entry** (a catch is a success) · retained-foreign-body never-event path (incident + disclosure + reoperation, counts linked) · unplanned return-to-OT flag (quality) · **case-overrun cascade**: re-sequencing + ward notifications + NPO-extension alerts with anesthesia re-review · power/AHU failure: complete open case on bridge power, hold the rest, theatre blocked pending checks · intra-op death: MLC check, theatre held for review in MLC cases · SSI surveillance register linked per case · night emergency activation via roster-resolved on-call OT team.
+
+**OT events:** ot_list.published · ot_list.resequenced · valuables.sealed · valuables.returned · frozen_section.resulted · loaner_set.received · loaner_set.returned · vendor_rep.logged · iuss.performed · theatre.blocked · theatre.cleared · surveillance.recorded · timeout.halted · return_to_ot.flagged · npo.extended — catalog ~216.
+
 ## 12. Failover, Backups, Data Portability
 
 - **Two servers, scripted promotion.** Primary runs the full stack; standby receives every transaction via streaming replication (near-zero RPO). Failover = one scripted command; target RTO under 15 minutes; deliberately manual-trigger with a printed runbook. Monitoring alerts the owner via WhatsApp/SMS. The downtime protocol (§11.4 map 1) covers the promotion window operationally.
@@ -445,6 +461,7 @@ Order → schedule (walk-in X-ray vs slotted CT/MRI/USG) → **prep instructions
 | Oxygen tank/pipeline level sensors + gateway | | ₹50–80k |
 | ICU floor (45 beds, phased): per-hall vendor CMS w/ HL7 export | Buy bundled with monitors — mandate data export in purchase specs | Priced with monitor procurement |
 | ICU integration: hall feeds → MQTT gateway + station terminals | | ₹1.5–2.5L |
+| OT environment sensors ×9 theatres (temp/humidity/differential pressure) + gateway | | ₹1.5–2.5L |
 
 **Flag:** hospital-wide LAN for a 610-bed building (cabling, switches, APs, terminals, tablets) is a separate fit-out project, typically ₹15–40L. This software rides on it but does not include it.
 
