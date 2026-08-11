@@ -28,6 +28,7 @@ A new Indian hospital is replacing crk-hmis (a fork of `hmislk/hmis` — a Java 
 - The core — all administrative, clinical-record, and financial workflow — is one TypeScript application over one PostgreSQL database. ACID transactions guarantee financial and narcotics audit integrity; modules share data instantly without network calls.
 - Edge services exist only where a protocol or data-physics boundary forces them: lab analyzers (serial/USB/ASTM), ICU telemetry (per-second streams that must not load the transactional DB), and DICOM imaging (bulk storage). Each edge service can crash without taking the hospital down, and the core can restart without losing edge data (edges buffer locally).
 - **Rule for all future work: a new module goes in the monolith by default; it becomes a service only if hardware or data physics demands it.** No message broker, no service mesh, no per-module databases in the core.
+- **One codebase, several processes (v4.3):** "monolith" means one deployable codebase and one database — not one OS process. The core runs as separate processes from the same build (API · WebSocket hub · outbox/job worker · PDF renderer), so a rendering storm can't stall the API. Coordination stays in Postgres (pg-boss, outbox) — still no broker. Analytics, agents, and reports read from the standby replica (hot-standby reads), protecting the primary's <300 ms budgets.
 
 **Rejected alternatives:**
 - *Assembled open-source suite (OpenMRS + OpenELIS + Odoo + dcm4chee, Bahmni-style):* fastest to feature parity, but repeats crk-hmis's disease — multiple heavyweight stacks, fragile inter-system sync, and a UX that can only be skinned, not owned. Worst fit for a solo maintainer whose #1 priority is UX.
@@ -210,7 +211,7 @@ Department heads and AI agents may **draft** workflow-definition changes; **acti
 
 **S3 additions (clinical ordering):** sample.dispatched · sample.external_resulted · qc.passed · qc.failed · report.amended · study.scheduled · study.acquired · form_f.recorded · result.acknowledged · medication.administered · medication.missed · medication.refused · medication.reconciled · pac.cleared · consent.recorded · ot.signin_completed · ot.timeout_completed · ot.signout_completed · count.mismatch_flagged · implant.recorded · specimen.dispatched · ot.cancelled_onday · recovery.scored — catalog now ~150 events.
 
-The catalog grows in design sessions S4–S8; grammar and envelope are the stable contract.
+The catalog grows in design sessions S4–S8; grammar and envelope are the stable contract. **Reconciliation note (v4.3):** the canonical catalog includes every per-section addition through stress pass 6 *plus* the S10 workforce events (roster.published/.blocked, sod.violation_blocked, exit.completed, bench.gap_flagged, activity_attendance.mismatch, attribution.disputed/.resolved, overload.flagged, temp_role.granted/.expired, emergency_elevation.used) — reconciled count **~285**; per-section running counts earlier in §11 are historical snapshots.
 
 ## 11. Journey & Flow Designs (design series S2–S7)
 
@@ -510,9 +511,61 @@ Order → schedule (walk-in X-ray vs slotted CT/MRI/USG) → **prep instructions
 
 Every department × the patterns it runs on × where designed — the "nothing off the fabric" proof: front office (P1/P6/P7 — §11.1, §7) · OPD (P1/P2/P6/P7 — §11.1, §11.6–11.8) · ER (P1/P2/P5 + codes — §11.3, §11.14) · IPD wards (P1/P2/P3/P5 — §11.2, §11.18) · ICU (P1–P3/P5 + telemetry — §11.15) · OT (P1–P3/P5 — §11.9, §11.16) · maternity/NICU (P1/P2 + pairing — §11.4, §11.17) · day-care (§11.4) · lab (P2/P3 — §11.6) · radiology (P2 + PCPNDT — §11.7) · blood bank (P2/P3 — §11.4 map 10) · pharmacy (P3/P4/P6 — §11.8, §11.10) · stores/procurement (P3/P4 — §11.10) · CSSD, laundry, kitchen, housekeeping, transport, biomedical, security, mortuary (P3/P5 — §11.10, §11.12, §11.14) · MRD (registers/retention/DPDP — §11.14) · billing/TPA (P6 — §7, §11.11) · admin/quality (approvals, digests, self-feeding registers) · ambulance (P5 — module spec) · HR/accounts (bought, §9). **Thin spots are all explicitly deferred with hooks in the catalog** (kitchen production, physio protocols, ambulance dispatch, organ donation, camps, teleconsult).
 
+### 11.19-C Stress pass 6 — 48-agent adversarial swarm fixes (all folded, v4.3)
+
+Eight attack lenses × skeptical verification against spec text; 39 findings survived, zero refuted. Every fix below is design law; where a fix amends an earlier section, this list is authoritative.
+
+**Legal/statutory (amends §7, §11.14, §19):**
+1. **Referral payee classes (critical):** referrer master splits into (a) in-house fee-splits + corporate tie-ups — full payout machinery; (b) non-RMP agents/promoters — lawful marketing spend; (c) **external registered medical practitioners — attribution captured, payout eligibility structurally OFF**; the Payouts pack refuses to batch class-(c) without a documented legal-counsel decision on file (IMC Professional Conduct Regs cl. 6.4 — cut practice). Hard pre-go-live gate in §19.
+2. **Cash-law layer (critical):** per-payer-per-episode cash aggregation (deposit + interims + settlement counted together) with warning-then-hard-block at the configured **Section 269ST** threshold; PAN/Form-60 capture above the configured line; UPI/NEFT counseling prompts on large settlements; **₹10k/vendor/day cash cap** on petty/emergency purchases with auto-split to bank transfer (Section 40A(3)). Golden-suite cases added; exact thresholds = CA-confirmed configuration.
+3. **Regulated-price layer (major):** item master gains MRP + DPCO/NPPA notified-ceiling attributes with effective dates (updates via master-data change control); charge rule for drugs/devices = **min(tariff, MRP, notified ceiling)** with hard block above ceiling; batch-MRP captured at GRN; NPPA revision watch on the compliance calendar. Consignment scan-on-use obeys the same rule.
+4. **DPDP breach notification:** cyber-incident protocol adds Data Protection Board + affected-patient notification alongside CERT-In.
+5. **Statutory-secrecy data class:** HIV Act 2017, MTP, and PCPNDT records form a **sealed event class** — restricted beyond normal RBAC, access itself evented; registers keep statutory custody rules.
+6. **PCPNDT scope widened:** Form-F gate applies to **any ultrasound on a woman of reproductive age** and to portable machines, regardless of ordering department.
+
+**Clinical safety (amends §11.9, §11.8, §11.17, §11.6):**
+7. **Emergency OT gate profile:** life-critical gates stay (identity, emergency two-doctor consent); remaining gates auto-waive with loud logging — the crash case is never blocked by an elective checklist.
+8. **Allergy re-screen sweep:** `allergy.recorded` triggers re-screening of active orders, pending dispenses, and queued eMAR doses; hits flag prescriber + pharmacist + nurse.
+9. **Neonatal resuscitation code:** NRP code class, roster-resolved neonatal responder role, resuscitaire equipment-check chain per shift.
+10. **QC lockout release valve:** pathologist may issue a documented emergency override — results flagged QC-suspect on the report face — plus reroute-to-backup/POCT path; overrides are events with mandatory next-day review.
+11. **Escalation dead-end fallback:** every ladder terminates at duty manager + owner SMS if role resolution returns nobody; the roster feed itself heartbeats.
+
+**Money/fraud (amends §7, §11.10, §11.11, S10):**
+12. **Anti-structuring aggregation:** approval thresholds evaluate cumulative same-patient/same-payee/same-day amounts, not single transactions.
+13. **Device-billing reconciliation generalized** from ICU devices to every powered modality (CT/X-ray/USG, analyzers, dialysis, endoscopy) — usage events vs billed studies, both directions.
+14. **Follow-up window extensions:** capped per doctor per period, each extension evented, pattern report to management (fee-diversion door closed).
+15. **Downtime cash SoD:** downtime receipts must be reconciled at recovery by a second person — never solely by the declaring duty manager.
+16. **Non-custodian counts:** ward/sub-store cycle counts performed by stores/pharmacy staff, never the custodian in-charge; SoD pair added.
+17. **Attribution verification gate:** commission accrual eligibility requires referrer verification (patient-confirmed or prescription-evidenced); unverified attributions are captured but ineligible.
+18. **Duplicate-UHID gaming check:** false-attach detection (demographic-mismatch audit sampling, photo-prompt on attach) pairs the registration KPI.
+19. **Pharmacy retail flow:** walk-in shop sale designed — POS flow with Schedule-H/H1 prescription gate, anonymous-or-linked customer, GST invoice, retail stock location in the store network.
+20. **Read-model honesty clause:** billing-from-events cannot see care delivered without an event; mitigations — round-checklist audits + notes-vs-orders cross-check agent (T0) — and the residual limit is stated, not hidden.
+
+**Workforce/S10 (amends S10 — see S10 v1.1):**
+21. Roster system-of-record moves to HMIS (HR keeps payroll); publication gates enforceable.
+22. Succession chains for single-incumbent 24×7 posts; duty-manager night succession explicit.
+23. Witness eligibility defined for all two-person verifies (licensed nurse on floor, cross-ward allowed, logged remote-video witness as last resort); roster validation guarantees a witness exists.
+24. Labor statutes added: women's night-shift provisions, Maternity Benefit/creche, CLRA for outsourced pools, PSARA-licensed security vendor, POSH ICC channel.
+25. Five new role cards (vitals-desk assistant, phlebotomist, quality manager/NABH, infection-control nurse, medical superintendent) — the quality/governance spine staffed from day one.
+26. Day-one headcount bands corrected to the cards' honest sum (~70–100 under A2).
+
+**Agentic layer (amends §16):**
+27. Agents are **operating-mode aware** — disaster/surge/downtime context gates their triggers.
+28. **Backfill semantics:** backfill-flagged events never trigger agent actions, only reports; agents pause during downtime recovery.
+29. **Agent liveness:** every agent heartbeats like an interface; a deterministic (non-AI) watchdog monitors the monitoring agents.
+30. Rate-limit shedding raises an alert — never silent drops during legitimate storms.
+31. **Two-key rule:** Workflow-Tuner changes to clinical-safety definitions require owner + medical-director approval.
+
+**Scale/DR (amends §2, §12, §13):**
+32. Process-split architecture (§2, v4.3 note) · 33. Replica reads for analytics/agents (§2/§12) · 34. Semi-sync replication + fencing + gate revalidation (§12) · 35. Floor-scoped degradation with staleness banners (§12) · 36. PACS backup physics recomputed: tiered imaging retention, incremental object-storage offsite for images, staggered backup windows (procurement note in §13).
+
+**Consistency repairs:** 37. Event-catalog arithmetic reconciled (see §10.6 note) and S10 mechanism events merged · 38. S10 dangling figure references repaired · 39. This list cross-referenced from every amended section's context.
+
+**Pass-6 events:** payout.class_blocked · cash_limit.warned · cash_limit.blocked · ceiling.price_applied · allergy.rescreen_flagged · code.activated (type: nrp) · qc.override_recorded · retail_sale.recorded · attribution.unverified_flagged · agent.heartbeat_missed · mode.context_applied · care_audit.mismatch — full reconciled catalog **~285 events** (S10 workforce events now merged into §10.6's canonical set).
+
 ## 12. Failover, Backups, Data Portability
 
-- **Two servers, scripted promotion.** Primary runs the full stack; standby receives every transaction via streaming replication (near-zero RPO). Failover = one scripted command; target RTO under 15 minutes; deliberately manual-trigger with a printed runbook. Monitoring alerts the owner via WhatsApp/SMS. The downtime protocol (§11.4 map 1) covers the promotion window operationally.
+- **Two servers, scripted promotion.** Primary runs the full stack; standby receives every transaction via **semi-synchronous replication (v4.3)** — an acknowledged write exists on both servers, so failover can no longer lose the acked tail that hard-stop safety gates depend on. Failover = one scripted command; target RTO under 15 minutes; deliberately manual-trigger with a printed runbook. **Fencing (v4.3):** promotion revokes the old primary's outbound rights — a demoted/partitioned node's gateway and agent consumers stop (fencing token checked by outbox consumers), so a zombie node can't keep messaging patients. **Post-failover safety-gate revalidation:** in-flight hard-stop verifications (counts, cross-matches, pair-scans) re-verify against physical scans before resuming. Monitoring alerts the owner via WhatsApp/SMS. The downtime protocol (§11.4 map 1) covers the promotion window; **floor-scoped degradation (v4.3):** a single floor losing network triggers that floor's downtime kit and staleness banners on its screens — never a hospital-wide declaration.
 - **Backups assume the server room burns down — or is ransomed.** pgBackRest continuous WAL archiving + nightly fulls to a NAS outside the server room; **weekly encrypted offsite copy on immutable/air-gapped media** (a permanently-connected replica can be encrypted along with the primary — the offline copy is the ransomware answer). **Automated weekly restore drill.** Orthanc image store syncs nightly to the NAS. Cyber-incident protocol incl. CERT-In 6-hour reporting: §11.14.
 - **Portability:** Postgres open format; FHIR-shaped documents; DICOM portable by definition; one-click per-module CSV/JSON export. No lock-in, including to this software.
 
@@ -575,7 +628,7 @@ The vision (§1) lands here: agents form the hospital's operational intelligence
 
 ## 17. Rollout Roadmap
 
-**Gate: the 9-session design series is COMPLETE (2026-08-11).** S1 fabric ✅ · S2 patient journeys ✅ (13 exception maps + stress passes 1–2) · S3 clinical ordering ✅ (§11.6–11.9) · S4 materials/supply ✅ (§11.10) · S5 money flows ✅ (§11.11) · S6 people/tasks ✅ (§11.12) · S7 communication matrix ✅ (§11.13) · S8 agent roster ✅ (§16; stress pass 3 §11.14) · S9 ✅ — floor pressure-tests (ICU §11.15, OT §11.16, maternity §11.17), whole-hospital sweep + ward-room model (§11.18), coverage matrix (§11.19). Extended: building reconciliation + service lines ✅ (§11.19-A) · final sweep ✅ (§11.19-B) · **S10 staffing & KPI book ✅** (separate spec, 2026-08-11). ~265-event catalog. **Remaining before implementation planning: the owner's independent stress-test rounds over the written specs, and approval of the Flow Atlas visualization.**
+**Gate: the 9-session design series is COMPLETE (2026-08-11).** S1 fabric ✅ · S2 patient journeys ✅ (13 exception maps + stress passes 1–2) · S3 clinical ordering ✅ (§11.6–11.9) · S4 materials/supply ✅ (§11.10) · S5 money flows ✅ (§11.11) · S6 people/tasks ✅ (§11.12) · S7 communication matrix ✅ (§11.13) · S8 agent roster ✅ (§16; stress pass 3 §11.14) · S9 ✅ — floor pressure-tests (ICU §11.15, OT §11.16, maternity §11.17), whole-hospital sweep + ward-room model (§11.18), coverage matrix (§11.19). Extended: building reconciliation + service lines ✅ (§11.19-A) · final sweep ✅ (§11.19-B) · **S10 staffing & KPI book ✅** (separate spec, 2026-08-11) · **stress pass 6 — 48-agent adversarial swarm, 39 verified fixes folded ✅** (§11.19-C). ~285-event reconciled catalog. **Remaining before implementation planning: the owner's independent stress-test rounds over the written specs, and approval of the Flow Atlas visualization.**
 
 1. **Foundation + Registration/OPD/Billing (expanded scope §7–§11)** — go-live on current 100-OPD workload; WhatsApp/SMS confirmations included.
    *Fast follows:* queue/token displays with audio calling; desk-to-desk patient handoff.
@@ -611,3 +664,6 @@ The vision (§1) lands here: agents form the hospital's operational intelligence
 - Blood bank module detail (digitizing the existing licensed operation — at IPD-cluster spec time).
 - LINAC/R&V/TPS vendor selection (data-export mandate applies; drives the RT integration spec) and AERB licensing timeline.
 - Service-line module sequencing (per floor commissioning dates, §17 step 8).
+- **HARD PRE-GO-LIVE GATE: legal-counsel review of referral-payout classes** (external-RMP payouts stay structurally OFF until a documented decision is on file — §11.19-C fix 1).
+- **CA confirmation of cash-law thresholds** (269ST episode aggregation, 40A(3) vendor/day cap — configuration values, §11.19-C fix 2).
+- NPPA/DPCO ceiling-list maintenance procedure (gazette-revision watch — §11.19-C fix 3).

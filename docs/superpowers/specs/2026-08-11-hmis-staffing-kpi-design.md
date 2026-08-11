@@ -1,9 +1,9 @@
 # HMIS Staffing & KPI Book — Design Spec (Series S10)
 
-- **Date:** 2026-08-11
+- **Date:** 2026-08-11 (v1.1 — stress-pass-6 corrections folded)
 - **Status:** Approved in brainstorming session; pending owner's independent stress rounds
-- **Parent spec:** `2026-08-10-hmis-architecture-design.md` (v4.2) — all station/flow references point there
-- **Scope:** Workforce positioning across three operating models, 34 full-depth role cards, role-bundling + segregation-of-duties matrices, 14 workforce mechanisms, and the KPI/KRA/OKR framework. Headcounts are **planning bands** — day-one (≈100 OPD, small IPD) → 610-bed target — firmed at each phase's commissioning.
+- **Parent spec:** `2026-08-10-hmis-architecture-design.md` (v4.3) — all station/flow references point there; "Fig-1/Fig-2" references mean the parent spec's §11.1 (OPD) and §11.2 (IPD) flow designs as drawn in the Flow Atlas
+- **Scope:** Workforce positioning across three operating models, **39 full-depth role cards**, role-bundling + segregation-of-duties matrices, **18 workforce mechanisms**, and the KPI/KRA/OKR framework. Headcounts are **planning bands** — day-one (≈100 OPD, small IPD) → 610-bed target — firmed at each phase's commissioning.
 
 ## 1. The three operating models
 
@@ -13,7 +13,7 @@ The flows are fixed (parent spec §11); the models change who executes each step
 - **A2 — AI-assisted (day-one operating model).** Same humans, same stations; the 15 agents (parent §16) absorb the second job. Clinical headcount unchanged (care- and NABH-ratio-bound); the coordination/MIS layer thins; every role gets faster and less error-prone.
 - **A3 — Agentic operations (earned target).** T4 agents own operational stations end-to-end; kiosks/self-service absorb routine volume; several desks become exception-handler posts. Humans concentrate on care, judgment, counseling, and exception queues. **Nurses and doctors do not reduce across models — the delta is entirely coordination, admin, and back-office.**
 
-**Whole-hospital planning bands (610-bed):** A1 ≈ 2.2–2.5 staff/bed (≈1,350–1,500) · A2 ≈ 1.9–2.2 (≈1,150–1,350) · A3 ≈ 1.6–1.9 (≈1,000–1,150). Day-one totals: A1 ≈ 55–65 · A2 ≈ 45–55.
+**Whole-hospital planning bands (610-bed):** A1 ≈ 2.2–2.5 staff/bed (≈1,350–1,500) · A2 ≈ 1.9–2.2 (≈1,150–1,350) · A3 ≈ 1.6–1.9 (≈1,000–1,150). **Day-one totals (v1.1 — corrected to the honest sum of the role cards' day-one columns): A1 ≈ 85–115 · A2 ≈ 70–100.** The original 45–55 claim contradicted the cards and is withdrawn; day-one still assumes several floors (ICU halls, most OTs, service lines) not yet commissioned — bands firm up against the commissioning schedule.
 
 ## 2. KPI / KRA / OKR framework
 
@@ -284,13 +284,52 @@ Card format: **Role** · reports to · stations → **A1 / A2 / A3** → **KPI**
 
 *(Pool-role note: porters/GDA ride the P5 pooled-queue mechanics under the duty manager/housekeeping structure — day-one pool 3–4 → 60–80 at scale.)*
 
+## 9A. Governance & flow-gate roles (5 cards added in stress pass 6 → 39 total)
+
+**35. Vitals-Desk Assistant** · Front-office supervisor / nursing · §11.1 mandatory vitals station
+- A1: manual BP/weight noted on slips · A2: connected devices push into the encounter; danger flags fire · A3: self-service kiosks for basics, assistant handles assisted patients + quality
+- KPI: throughput/load · vitals completeness (all fields) · danger-flag latency · device-calibration task compliance
+- KRA: no patient reaches a doctor without complete, current vitals
+- OKR: *no blank charts* — completeness >99% · flag latency <60 s
+- HC: 1–2 → 8–12
+
+**36. Phlebotomist** · Lab manager · §11.6 collection stations + ward rounds
+- A1: handwritten tube labels (the classic wrong-blood-in-tube source) · A2: chair-side barcode labels + right-patient scan; rejection loop feedback by collector · A3: routing/rounds optimized by agent; hands unchanged
+- KPI: collection-attributable rejection rate (<1%) · draws/session (load-shown) · ward-round on-time rate
+- KRA: right patient, right tube, right label — first time
+- OKR: *clean draws* — attributable rejects <1% · zero unlabeled-at-chair events
+- HC: 1–2 → 12–16
+
+**37. Quality Manager (NABH coordinator)** · Owner/medical superintendent · quality pack, §11.14 registers, audit calendar
+- A1: binder-driven NABH prep, data begged from departments · A2: self-feeding registers + indicator dashboards; runs audit calendar, incident RCAs, committee cadence · A3: agents draft RCA timelines from event trails; QM leads judgment + culture
+- KPI: indicator-report timeliness (auto, should be ~100%) · incident-closure TAT · audit-schedule adherence · NABH objective-element readiness %
+- KRA: the hospital is permanently inspection-ready because the data never stops being true
+- OKR: *always audit-ready* — incident RCAs closed <14 days · readiness >90%
+- HC: 1 → 3–4 (with MRD/quality cell)
+
+**38. Infection Control Nurse** · Quality manager / medical superintendent · HAI surveillance, isolation flows, BMW chain, exposure protocol
+- A1: paper surveillance nobody trusts · A2: HAI indicators self-feed (§11.4 map 9, SSI register); isolation compliance audits; PEP clock owner (§11.14); BMW segregation audits · A3: agent-flagged infection clusters (T0) for her investigation
+- KPI: surveillance completeness · bundle-compliance audit rate · PEP first-dose-in-window 100% · BMW segregation audit findings
+- KRA: infections found, traced, and prevented — provably
+- OKR: *closed-loop infection control* — cluster investigations started <24 h · PEP window 100%
+- HC: 1 → 3–4
+
+**39. Medical Superintendent** · Owner · medical governance: credentialing/privileging decisions, attribution disputes, mortality/tumor-board committees, two-key clinical-definition approvals (§16), MLC oversight
+- A1: authority by memo and meeting · A2: worklist of governance decisions — privileging approvals, disputed attributions, committee actions, workflow-definition co-signs — all evented · A3: agent-briefed committees (draft case summaries), decisions remain human
+- KPI: privileging-decision TAT · committee cadence adherence · dispute-resolution TAT · co-sign turnaround on clinical definitions
+- KRA: clinical authority is exercised, recorded, and never a bottleneck
+- OKR: *governance that keeps pace* — privileging TAT <7 days · zero overdue committee cycles
+- HC: 1 → 2–3 (MS + deputy)
+
 ## 10. Role-bundling matrix (skeleton shifts)
 
 Night/weekend collapse rules — **may bundle**: duty manager ← front-office supervisor + billing supervisor (dispute/override authority) · admission clerk ← registration clerk · MRD ← front office (release requests queue to day) · purchase ← (nothing; sleeps) · dietician/physio ← on-call. **Must stay distinct (SoD or safety):** cashier vs any approver of refunds/discounts · storekeeper vs stock counter · narcotic issuer vs witness · ICU nurse vs ward nurse assignments (competency-gated) · scrub vs circulating during counts · Code Blue roles per roster. Roster publication validates bundles against this matrix.
 
 ## 11. Segregation-of-duties hard pairs (RBAC-enforced)
 
-Never the same person: requester/approver of any approval-engine item · cashier / refund-void approver · PO approver / GRN receiver · stock custodian / cycle counter · narcotics issuer / witness · payout preparer / payout approver · workflow-definition drafter / activator (owner activates) · quality auditor / audited-station holder for that audit. `sod.violation_blocked` fires on any attempt; the bundling matrix inherits these.
+Never the same person: requester/approver of any approval-engine item · cashier / refund-void approver · PO approver / GRN receiver · stock custodian / cycle counter (**incl. ward sub-stores: counts by stores/pharmacy staff, never the custodian in-charge — v1.1**) · narcotics issuer / witness · payout preparer / payout approver · workflow-definition drafter / activator (owner activates) · quality auditor / audited-station holder for that audit · **downtime declarer / downtime-cash reconciler (v1.1)**. `sod.violation_blocked` fires on any attempt; the bundling matrix inherits these.
+
+**Witness eligibility (v1.1):** any two-person verify (narcotics, high-alert meds, transfusion, EBM, counts) accepts any licensed nurse on the floor, cross-ward pulls allowed; last resort = logged remote-video witness. Roster validation guarantees at least one eligible witness per floor per shift — a shift without a witness doesn't publish.
 
 ## 12. Workforce mechanisms (from the staffing stress test — all locked)
 
@@ -308,6 +347,10 @@ Never the same person: requester/approver of any approval-engine item · cashier
 12. KPI fairness: load-context on every rate KPI (structural, in every report)
 13. Overload detection (`overload.flagged`) — protects people and protects the KPIs from masking understaffing
 14. New-joiner ramp: restore-drill training environment, buddy tasks, probation dashboards
+15. **Roster system-of-record = HMIS (v1.1):** HR keeps payroll/attendance; rosters are authored, validated, and published in the HMIS — publication gates (coverage, SoD, witness, statutes) are therefore enforceable, resolving the ownership contradiction
+16. **Succession chains (v1.1):** every single-incumbent 24×7 post (duty manager, radiologist, blood-bank officer) carries a published succession chain; the duty-manager night succession is explicit — the downtime/disaster authority can never be an empty chair
+17. **Labor statutes in roster validation (v1.1):** women's night-shift provisions (transport/consent per state rules), Maternity Benefit Act + creche obligations, CLRA registration for outsourced pools, PSARA-licensed security vendor, POSH ICC channel live from day one
+18. **Duplicate-UHID gaming check (v1.1):** false-attach detection — demographic-mismatch audit sampling + photo prompt at attach — pairs the registration KPI (the one identity error that emits no anomalous event)
 
 ## 13. Spec self-review note
 
