@@ -1,0 +1,11 @@
+{
+  "name": "hmis",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "typecheck": "pnpm -r exec tsc --noEmit",
+    "test": "pnpm -r test",
+    "verify": "pnpm typecheck && pnpm test"
+  },
+  "packageManager": "pnpm@10.0.0"
+}
