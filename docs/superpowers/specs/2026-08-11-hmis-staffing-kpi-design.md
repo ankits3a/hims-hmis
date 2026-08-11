@@ -1,6 +1,6 @@
 # HMIS Staffing & KPI Book — Design Spec (Series S10)
 
-- **Date:** 2026-08-11 (v1.2 — stress-pass-7 corrections folded; see parent §11.19-D)
+- **Date:** 2026-08-11 (v1.3 — stress-pass-8 corrections folded; see parent §11.19-E. Swarm phase closed per parent §11.20.)
 - **Status:** Approved in brainstorming session; pending owner's independent stress rounds
 - **Parent spec:** `2026-08-10-hmis-architecture-design.md` (v4.3) — all station/flow references point there; "Fig-1/Fig-2" references mean the parent spec's §11.1 (OPD) and §11.2 (IPD) flow designs as drawn in the Flow Atlas
 - **Scope:** Workforce positioning across three operating models, **39 full-depth role cards**, role-bundling + segregation-of-duties matrices, **18 workforce mechanisms**, and the KPI/KRA/OKR framework. Headcounts are **planning bands** — day-one (≈100 OPD, small IPD) → 610-bed target — firmed at each phase's commissioning.
@@ -357,6 +357,11 @@ Never the same person: requester/approver of any approval-engine item · cashier
 22. **Patient-navigation duty (v1.2):** front-office roles carry low-literacy/unaccompanied-patient navigation duty day one; a dedicated navigator post joins the roster at scale.
 23. **Count randomization & dyad analytics (v1.2):** cycle-count assignments randomize among eligible non-custodian counters; blind recounts periodic; Fraud Sentinel models standing two-person pairings (approver/requester, witness pairs, counter/custodian) — recurring dyads with anomalous outcomes are a report class.
 24. **Doctor adoption program (v1.2, parent fix 35):** dictation-to-draft path and scribe option from day one; designed off-site access for countersigns/approvals; per-doctor live accrual dashboard from week one — adoption carrots ship with the sticks.
+25. **Chaperone roster gate (v1.3, parent E-3):** shifts running chaperone-required stations must roster an eligible female staff member in reach; chaperone identity is a documentation gate on intimate examinations — witness-style last-resort rules apply.
+26. **Authority naming unified (v1.3, parent E-6):** the clinical-definition second key is the Medical Superintendent (card 39) everywhere; the MS joins the succession-chain rule with deputy coverage.
+27. **Anomaly-report reviewers (v1.3, parent E-18):** every fraud/anomaly report class names a reviewer role with a disposition workflow and closure SLA — billing supervisor (money classes), matron (nursing/scan classes), MS (clinical classes), owner (governance classes). Reviewer duties are KRA lines on those cards.
+28. **CLRA & vendor custody (v1.3, parent E-2/E-34):** card 34 (security supervisor) gains server-room/NAS physical custody + CCTV scope and vendor-escort duty; outsourced-pool CLRA attendance/wage evidence is owned via the HR-evidence bridge.
+29. **Ramp-mode staffing (v1.3, parent E-10/E-11):** the commissioning period runs the transition-operations boundary map — legacy IPD/pharmacy/lab/blood-bank staff continue current processes until each area's absorption date; role-card KPIs activate per area only at absorption.
 
 ## 13. Spec self-review note
 
