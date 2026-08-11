@@ -395,6 +395,31 @@ Order → schedule (walk-in X-ray vs slotted CT/MRI/USG) → **prep instructions
 
 **Pass-3 events:** code.activated · grievance.raised · grievance.resolved · patient.missing_flagged · refusal.recorded · dnr.recorded · exposure.reported · body.released · surge.activated · surge.ended · dsr.requested · dsr.fulfilled · legal_hold.applied · security_incident.declared — catalog ~192.
 
+### 11.15 ICU floor deep-dive (S9 pressure test)
+
+**Physical model:** one ICU floor → **3 halls × 15 beds (45 beds)**, a nursing station per hall, every hall isolation-capable, some beds with glass isolation cabins. Halls commission progressively with the build-out; a hall is a unit on the bed board.
+
+**Telemetry pipeline:** bedside devices → vendor **central monitoring station per hall (buy with the monitors)** → one HL7 feed per hall → MQTT → TimescaleDB (edge, §3). **Procurement mandate: no monitor or ventilator purchase without documented HL7/serial data-export capability.** Per-hall dashboard: 15 live bed tiles (numerics every 1–2 s via WebSocket, trends from TimescaleDB, alarm banners, plus drips/vent settings/tasks context); floor-level 45-bed intensivist overview; intensivist phone view (RBAC'd). Waveforms stay on the vendor CMS. Alarm routing is hall-scoped, escalating bed-nurse → hall station → floor intensivist → duty manager; only critical classes escalate through the notification fabric; **alarm silencing is logged** (fatigue audit).
+
+**Record split:** raw telemetry is supporting data (full resolution ~90 days, then downsampled — configurable); the **nurse-validated hourly chart is the legal record** — auto-captured vitals pre-fill, the nurse validates.
+
+**Device-telemetry reconciliation (leakage lock):** daily cross-check of billed device-days vs observed telemetry — **billed-without-telemetry = orphan flag; telemetry-without-billing = leakage flag.**
+
+**Isolation grains:** cabin bed (tagged, preferred by assignment rule) → **hall cohort mode** (outbreak: whole hall flips, surge-mode mechanics) → floor lockdown. All bed-board states, all evented.
+
+**Department interlocks (existing fabric):** pharmacy crash-cart par + seal-check tasks · **POCT ABG analyzers interfaced with QC lockout like any analyzer** · portable X-ray as mobile modality · structured OT→ICU and ICU→ward handover checklists · enteral feeds as diet orders, feed pumps as device-days · terminal cleaning as verified task · backup ventilator as tracked asset · daily deposit recalc at ICU burn rate · **TPA enhancement reminder when ICU burn approaches the sanctioned limit.**
+
+**ICU scenarios (locked):**
+- **Code Blue** — one-touch anywhere: roster-resolved resus team (seed composition: duty doctor + ICU nurse + anesthetist on-call) → crash cart opened (seal event) → **timed code sheet** → outcome → replenish task + register + debrief
+- **Massive Transfusion Protocol** — activation → blood bank MTP release rules incl. documented emergency O-neg uncrossmatched issue → cooler tracking → per-unit reconciliation
+- **Ventilated transport bundle** (CT/OT): checklist (portable monitor, oxygen calculation, drugs, escort) + tracked transport task with receiving-end confirmation
+- **Monitoring continuity:** disconnection/probe-off beyond threshold on an occupied bed → `data_gap.flagged`
+- **Titration orders:** range orders ("titrate to MAP > 65"); every nurse adjustment logs via eMAR
+- **Family briefing rhythm:** daily intensivist briefing, logged as counseling record
+- **48-hour ICU readmission flag** after step-down → quality register
+
+**S9/ICU events:** alarm.escalated · data_gap.flagged · crashcart.opened · crashcart.replenished · mtp.activated · transport.bundle_completed · titration.adjusted · briefing.recorded · icu.readmission_flagged — catalog ~201.
+
 ## 12. Failover, Backups, Data Portability
 
 - **Two servers, scripted promotion.** Primary runs the full stack; standby receives every transaction via streaming replication (near-zero RPO). Failover = one scripted command; target RTO under 15 minutes; deliberately manual-trigger with a printed runbook. Monitoring alerts the owner via WhatsApp/SMS. The downtime protocol (§11.4 map 1) covers the promotion window operationally.
@@ -418,6 +443,8 @@ Order → schedule (walk-in X-ray vs slotted CT/MRI/USG) → **prep instructions
 | PACS storage expansion, MQTT broker box, switches | | ₹2–3L |
 | Wristband printers (per ward station) | | ₹25–40k each |
 | Oxygen tank/pipeline level sensors + gateway | | ₹50–80k |
+| ICU floor (45 beds, phased): per-hall vendor CMS w/ HL7 export | Buy bundled with monitors — mandate data export in purchase specs | Priced with monitor procurement |
+| ICU integration: hall feeds → MQTT gateway + station terminals | | ₹1.5–2.5L |
 
 **Flag:** hospital-wide LAN for a 610-bed building (cabling, switches, APs, terminals, tablets) is a separate fit-out project, typically ₹15–40L. This software rides on it but does not include it.
 
