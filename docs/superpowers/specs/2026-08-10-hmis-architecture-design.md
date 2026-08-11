@@ -452,6 +452,30 @@ Order → schedule (walk-in X-ray vs slotted CT/MRI/USG) → **prep instructions
 
 **Maternity events:** pregnancy.risk_flagged · labor.triaged · partograph.action_crossed · ctg.abnormal_flagged · lscs.decided · delivery.recorded · apgar.recorded · termination.recorded · pocso.intimated · ebm.verified — catalog ~226.
 
+### 11.18 Ward-room model + final whole-hospital sweep (S9)
+
+**Ward-room model:** generalized hierarchy **floor → ward/hall → room → bed** (ICU halls and OT theatres are instances). Bed classes (general / twin-sharing / private / deluxe / ICU / NICU) carry: tariff (locked §7), attendant policy (private: attendant stays; general: pass-hours only), pass counts (§11.2), nursing-ratio indicator, AC/non-AC attributes. **Gender-segregation assignment rule for shared and general wards** (hard constraint on the bed board); pediatric wards use a parent-stay pass variant; nurse-call buttons are bought hardware landing as tasks in the ward's pooled queue.
+
+**Final sweep — ten whole-hospital locks (agentic-readiness):**
+1. **Time truth:** NTP discipline across servers/edges/devices; clock-drift monitoring as utility telemetry.
+2. **Interface heartbeats:** every interface (analyzers, CMS feeds, CTG, PACS) heartbeats; silence = `interface.down` alert — no agent flies blind believing it can see.
+3. **Master-data change control:** item/service/doctor/payer masters get workflow-definition governance — draft → owner approval → evented.
+4. **Printed-document authenticity:** the QR on every report/certificate resolves to a verification view proving the document genuine and unaltered.
+5. **Late-entry rule:** late documentation allowed, dual-stamped (`occurred_at` claimed vs `recorded_at`) and flagged; true backdating structurally impossible.
+6. **No shared accounts, ever** + fast PIN/badge user-switching on shared ward terminals.
+7. **Training environment = weekly restore-drill environment** (real-shaped data, zero production pollution).
+8. **Notifiable-disease reporting (statutory):** IDSP/IHIP diagnoses auto-flag the register and create the government-reporting task with deadline.
+9. **Dispensed-batch patient recall:** batch recall (§11.10) gains a patient-contact arm — dispense records → contact list → Recall Agent campaign.
+10. **Event-log engineering:** monthly partitioning + retention-aligned archival (legal holds override); idempotency keys on edge-submitted events.
+
+**Department residuals (module-spec noted):** histopath sub-tracking (grossing→blocks→slides) · dietary tray-tag verification against diet orders · blood-bank donor camps · **out of HMIS scope by decision:** canteen, parking, staff housing (Tally-side).
+
+**Sweep events:** interface.down · interface.restored · clock.drift_flagged · masterdata.changed · document.verified · late_entry.flagged · notifiable.reported — **catalog ~232.**
+
+### 11.19 S9 coverage matrix (series-closing check)
+
+Every department × the patterns it runs on × where designed — the "nothing off the fabric" proof: front office (P1/P6/P7 — §11.1, §7) · OPD (P1/P2/P6/P7 — §11.1, §11.6–11.8) · ER (P1/P2/P5 + codes — §11.3, §11.14) · IPD wards (P1/P2/P3/P5 — §11.2, §11.18) · ICU (P1–P3/P5 + telemetry — §11.15) · OT (P1–P3/P5 — §11.9, §11.16) · maternity/NICU (P1/P2 + pairing — §11.4, §11.17) · day-care (§11.4) · lab (P2/P3 — §11.6) · radiology (P2 + PCPNDT — §11.7) · blood bank (P2/P3 — §11.4 map 10) · pharmacy (P3/P4/P6 — §11.8, §11.10) · stores/procurement (P3/P4 — §11.10) · CSSD, laundry, kitchen, housekeeping, transport, biomedical, security, mortuary (P3/P5 — §11.10, §11.12, §11.14) · MRD (registers/retention/DPDP — §11.14) · billing/TPA (P6 — §7, §11.11) · admin/quality (approvals, digests, self-feeding registers) · ambulance (P5 — module spec) · HR/accounts (bought, §9). **Thin spots are all explicitly deferred with hooks in the catalog** (kitchen production, physio protocols, ambulance dispatch, organ donation, camps, teleconsult).
+
 ## 12. Failover, Backups, Data Portability
 
 - **Two servers, scripted promotion.** Primary runs the full stack; standby receives every transaction via streaming replication (near-zero RPO). Failover = one scripted command; target RTO under 15 minutes; deliberately manual-trigger with a printed runbook. Monitoring alerts the owner via WhatsApp/SMS. The downtime protocol (§11.4 map 1) covers the promotion window operationally.
@@ -517,7 +541,7 @@ The vision (§1) lands here: agents form the hospital's operational intelligence
 
 ## 17. Rollout Roadmap
 
-**Gate (2026-08-11): the 9-session design series must complete before Phase 1 implementation planning begins.** Status: S1 fabric ✅ · S2 patient journeys ✅ (13 exception maps + stress passes 1–2) · S3 clinical ordering ✅ (§11.6–11.9) · S4 materials/supply ✅ (§11.10) · S5 money flows ✅ (§11.11) · S6 people/tasks ✅ (§11.12) · S7 communication matrix ✅ (§11.13) · S8 agent roster ✅ (§16; stress pass 3 in §11.14) · S9 coverage matrix — pending. The owner will additionally run their own stress-test rounds over all locked decisions before any implementation plan is written.
+**Gate: the 9-session design series is COMPLETE (2026-08-11).** S1 fabric ✅ · S2 patient journeys ✅ (13 exception maps + stress passes 1–2) · S3 clinical ordering ✅ (§11.6–11.9) · S4 materials/supply ✅ (§11.10) · S5 money flows ✅ (§11.11) · S6 people/tasks ✅ (§11.12) · S7 communication matrix ✅ (§11.13) · S8 agent roster ✅ (§16; stress pass 3 §11.14) · S9 ✅ — floor pressure-tests (ICU §11.15, OT §11.16, maternity §11.17), whole-hospital sweep + ward-room model (§11.18), coverage matrix (§11.19). ~232-event catalog. **Remaining before implementation planning: the owner's independent stress-test rounds over the written spec, and approval of the Flow Atlas visualization.**
 
 1. **Foundation + Registration/OPD/Billing (expanded scope §7–§11)** — go-live on current 100-OPD workload; WhatsApp/SMS confirmations included.
    *Fast follows:* queue/token displays with audio calling; desk-to-desk patient handoff.
