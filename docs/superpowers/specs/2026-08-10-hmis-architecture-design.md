@@ -422,7 +422,7 @@ Order → schedule (walk-in X-ray vs slotted CT/MRI/USG) → **prep instructions
 
 ### 11.16 OT suite deep-dive (S9 pressure test #2)
 
-**Physical model: 9 theatres operational day one** (10th commissions later), with pre-op holding, PACU, sterile store, and CSSD linkage.
+**Physical model: 9 theatres operational day one** (10th commissions later) — **6 elective theatres in the main suite (OT-list governed) + 3 emergency theatres inside the ED, 24×7, in permanent emergency-insert mode** — with pre-op holding, PACU, sterile store, and CSSD linkage. Crash LSCS routes to the nearest ready emergency theatre (facility check: labor-room→ED-OT distance vs the 30-min decision-to-delivery target, §11.17).
 
 **The OT list is the coordination artifact:** surgeon submits → OT in-charge sequences → anesthesia reviews → **published previous evening**. The list synchronizes wards (prep + per-patient NPO timing), **CSSD (sets prepared against tomorrow's list)**, blood bank (reserves), stores (implants), dietary, housekeeping. Late/emergency inserts → re-sequencing event + auto-notifications to affected surgeons and wards.
 
@@ -435,6 +435,22 @@ Order → schedule (walk-in X-ray vs slotted CT/MRI/USG) → **prep instructions
 **OT scenarios (locked):** frozen-section stat loop (specimen → pathologist → operating surgeon, minutes-scale TAT SLA) · **loaner sets: CSSD-sterilized with BI before use, no exceptions**; vendor rep presence logged · IUSS logged and minimized (tracked indicator) · **time-out halt = near-miss register entry** (a catch is a success) · retained-foreign-body never-event path (incident + disclosure + reoperation, counts linked) · unplanned return-to-OT flag (quality) · **case-overrun cascade**: re-sequencing + ward notifications + NPO-extension alerts with anesthesia re-review · power/AHU failure: complete open case on bridge power, hold the rest, theatre blocked pending checks · intra-op death: MLC check, theatre held for review in MLC cases · SSI surveillance register linked per case · night emergency activation via roster-resolved on-call OT team.
 
 **OT events:** ot_list.published · ot_list.resequenced · valuables.sealed · valuables.returned · frozen_section.resulted · loaner_set.received · loaner_set.returned · vendor_rep.logged · iuss.performed · theatre.blocked · theatre.cleared · surveillance.recorded · timeout.halted · return_to_ot.flagged · npo.extended — catalog ~216.
+
+### 11.17 Maternity floor deep-dive (S9 pressure test #3)
+
+**Antenatal thread:** ANC visits build a **longitudinal pregnancy record** (EDD, gravida/para, risk factors, serology, Form-F-gated scans); **high-risk flags follow the patient everywhere**; planned LSCS books into the OT list; ANC packages ride the bundle machinery; **missed high-risk ANC visit = clinical recall alert**. At delivery admission the thread is the intake context.
+
+**Labor triage & labor ward:** obstetric triage (admit / observe / home / emergency) · **pregnancy in a minor forces POCSO intimation** (register + police record, MLC mechanics) · **the partograph is a decision-forcing workflow** — action line crossed → documented augment-or-LSCS decision · **CTG machines are telemetry** (data-export mandate; abnormal traces alert) · **emergency LSCS runs a decision-to-delivery clock: `lscs.decided` → incision, 30-minute target, auto-derived KPI**, routed to the nearest ready ED emergency theatre.
+
+**Codes:** obstetric rapid response (PPH → links into the Massive Transfusion Protocol; eclampsia; cord prolapse → crash LSCS) · **infant abduction code** — nursery lockdown, gate seal, band-check on every exit with an infant; layered on nursery access control and pair-band mismatch alarms.
+
+**Registers:** delivery register · partograph record · APGAR 1/5 min · placenta disposal (BMW) · stillbirth vs live-birth (locked) · POCSO intimation register · **MTP-Act register — `termination.recorded`** (its own consent rules, gestation limits, reporting; the `mtp.activated` name stays with massive transfusion — collision caught at design time).
+
+**Postnatal & NICU (15 beds):** mother+baby **dyad worklists** (rooming-in), postnatal danger-sign monitoring on the vitals fabric, pair-scan discharge · NICU = ICU-hall variant (same telemetry, dashboards, own admission, inherited payer) · **EBM barcoded to the baby, scanned before every feed** — wrong-milk is the NICU's transfusion error · kangaroo care + prematurity screening schedules as tasks · parent lounge passes.
+
+**Money:** delivery packages with consent-before-overrun · newborn charges per §11.4 map 2 · **JSY/JSSK scheme payer tags day one**, scheme detail at TPA phase.
+
+**Maternity events:** pregnancy.risk_flagged · labor.triaged · partograph.action_crossed · ctg.abnormal_flagged · lscs.decided · delivery.recorded · apgar.recorded · termination.recorded · pocso.intimated · ebm.verified — catalog ~226.
 
 ## 12. Failover, Backups, Data Portability
 
