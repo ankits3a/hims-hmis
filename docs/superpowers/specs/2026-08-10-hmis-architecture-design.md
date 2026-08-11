@@ -212,7 +212,7 @@ Department heads and AI agents may **draft** workflow-definition changes; **acti
 
 The catalog grows in design sessions S4–S8; grammar and envelope are the stable contract.
 
-## 11. Journey & Flow Designs (design series S2–S3)
+## 11. Journey & Flow Designs (design series S2–S4)
 
 Journeys designed desk-by-desk with the owner (S2 in the visual companion — screens preserved under `.superpowers/brainstorm/`; S3 in terminal). Every branch ends in a terminal state — the "no dangling paths" rule was checked per map. The owner will run further stress-test rounds over all of §11 before implementation planning.
 
@@ -303,6 +303,26 @@ Order → schedule (walk-in X-ray vs slotted CT/MRI/USG) → **prep instructions
 
 **Exceptions:** on-day cancellation (unfit, NPO violated, no ICU bed, pre-empted) → reason-coded event + reschedule priority + billing reversal · implant unavailable → postpone decision, evented · lost specimen = grave incident (the chain exists to make it near-impossible) · anesthesia complication → ICU + incident.
 
+### 11.10 Materials & supply chain (S4)
+
+**Store network:** every stock-holding location is a stock location — central stores (pharmacy bulk, general, surgical/OT, stationery) → sub-stores (wards, ER, OT, ICU, CSSD sterile store). Batch + expiry at every location; **UOM conversions (box→strip→tablet) defined once in the item master, never per transaction.**
+
+**Request-to-issue:** par-level replenishment — the system **drafts indents itself** from par-minus-on-hand (T4 agent candidate; drafting, never approving); urgent requests same flow with urgency flag → value/category approval rules → **FEFO-enforced picking** (picker is told the batch) → issue scan → **receiving scan at the sub-store** (two-sided confirmation; discrepancies surface same-hour) → consumption terminates on patient bill or named cost center (§10.1) → returns evented and credited.
+
+**Counts, variance, expiry:** perpetual inventory + rolling cycle counts as recurring verified tasks · **leakage triangle report: issued vs billed vs counted per item per location** — variances approval-gated and registered; per-location patterns → anomaly report (AI T0) · expiry ladder: `batch.expiring` at 90/60/30 days → return-to-supplier window → expired-on-shelf = variance + **witnessed destruction with certificate** (BMW-compliant); write-offs are evented losses, never quiet ones.
+
+**Oxygen & gases:** **cylinders serialized** — full → issued → in-use → empty → at-vendor-refill (vendor rotation tracked; that's where cylinders vanish) · LMO/pipeline telemetry with day-one alerts (§11.5) · manifold consumption → cost center; ventilator hours → patient device-days.
+
+**Linen & laundry:** par stock per ward by category; **bundle counts** at dirty pickup and clean delivery (per-piece tagging deferred); infected linen separate stream (§11.4 map 9); monthly loss variance per ward.
+
+**CSSD:** set-based barcode tracking — dirty → decontamination → checklist assembly → sterilization batch → sterile store → issue. **Every load carries a biological-indicator result; BI fails = every set in that load auto-recalled** (batch traceability makes recall one query).
+
+**Procure-to-pay:** aggregated indents → PO against rate contracts + approved vendor lists (**three quotes above ₹50k**, configurable, via approvals engine) → **GRN with QC at the gate** — quantity + minimum residual shelf-life (short-expiry rejected at receiving, default < 6 months / 75% rule) → **3-way match (PO/GRN/invoice)** before posting → Tally export. Vendor scorecards (fill rate, TAT, rejection rate) derive automatically.
+
+**Exceptions:** stock-out → substitute + **emergency local purchase** (₹15k default float per store, approval-gated, retro-GRN'd — an escape valve, not a procurement bypass) · **batch recall = one-action freeze at every location** → documented return/destruction · donation stock evented in without payables · rate-contract expiry → renegotiation task · pilferage patterns → anomaly report.
+
+**S4 events:** indent.drafted · stock.counted · stock.variance_flagged · batch.recalled · batch.destroyed · cylinder.status_changed · cssd.load_sterilized · cssd.bi_failed · cssd.set_recalled · grn.rejected · invoice.matched · local_purchase.recorded — catalog ~162.
+
 ## 12. Failover, Backups, Data Portability
 
 - **Two servers, scripted promotion.** Primary runs the full stack; standby receives every transaction via streaming replication (near-zero RPO). Failover = one scripted command; target RTO under 15 minutes; deliberately manual-trigger with a printed runbook. Monitoring alerts the owner via WhatsApp/SMS. The downtime protocol (§11.4 map 1) covers the promotion window operationally.
@@ -356,7 +376,7 @@ First jobs already identified in the designs: discharge-summary drafting (T2, §
 
 ## 17. Rollout Roadmap
 
-**Gate (2026-08-11): the 9-session design series must complete before Phase 1 implementation planning begins.** Status: S1 fabric ✅ · S2 patient journeys ✅ (incl. 13 exception maps + 2 stress-test passes) · S3 clinical ordering ✅ (§11.6–11.9; owner stress-test pending) · S4 materials/supply · S5 money flows · S6 people/tasks · S7 communication matrix · S8 agent roster · S9 stress tests + coverage matrix. The owner will additionally run 2nd/3rd stress-test rounds over all locked decisions before any implementation plan is written.
+**Gate (2026-08-11): the 9-session design series must complete before Phase 1 implementation planning begins.** Status: S1 fabric ✅ · S2 patient journeys ✅ (incl. 13 exception maps + 2 stress-test passes) · S3 clinical ordering ✅ (§11.6–11.9; owner stress-test pending) · S4 materials/supply ✅ (§11.10) · S5 money flows · S6 people/tasks · S7 communication matrix · S8 agent roster · S9 stress tests + coverage matrix. The owner will additionally run 2nd/3rd stress-test rounds over all locked decisions before any implementation plan is written.
 
 1. **Foundation + Registration/OPD/Billing (expanded scope §7–§11)** — go-live on current 100-OPD workload; WhatsApp/SMS confirmations included.
    *Fast follows:* queue/token displays with audio calling; desk-to-desk patient handoff.
