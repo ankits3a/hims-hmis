@@ -472,6 +472,26 @@ Order → schedule (walk-in X-ray vs slotted CT/MRI/USG) → **prep instructions
 
 **Sweep events:** interface.down · interface.restored · clock.drift_flagged · masterdata.changed · document.verified · late_entry.flagged · notifiable.reported — **catalog ~232.**
 
+### 11.19-A Building reconciliation & service lines (owner's real floor list, 2026-08-11)
+
+**Actual floors:** reception · emergency (incl. 3 ED theatres, emergency radiology, **trauma**) · OPD · diagnostics & imaging · blood bank · central lab · physiotherapy · OT floor · mother & child · **cancer (incl. radiation oncology — LINAC + brachytherapy)** · heart floor + **cath lab** · dialysis · endoscopy · ICU floor · private ward · general ward · canteen (out of scope) · pharmacy shop · waste sorter/storage · laundry & linen · medical gas control room · material department. All map onto the pattern fabric; service-line mechanisms locked below.
+
+**Cath lab (OT-variant):** **consignment inventory** — vendor-owned stents/balloons; scan-on-use creates charge + patient sticker + vendor liability in one event · **door-to-balloon STEMI clock**: `stemi.diagnosed` → `balloon.inflated`, 90-minute target, auto-derived · radiation-dose log per procedure · cath reports to PACS.
+
+**Cancer floor:** **chemo regimen engine** — protocols in cycles, BSA dosing from captured height/weight, **pre-chemo lab hard gate** (counts below threshold block administration) · **tumor board** as a documented multi-doctor decision workflow · palliative narcotics on NDPS machinery. **Radiation oncology — architecture decision: buy the LINAC vendor's record-and-verify (R&V) + treatment-planning ecosystem; the HMIS orchestrates around it** — referral → planning handoff → fraction events back → per-fraction/package billing → clinical summary (same buy-and-integrate philosophy as Orthanc; the data-export mandate governs LINAC vendor selection). HMIS keeps the **AERB compliance registers**: brachy source movement, staff TLD badge reads, **machine QA with QA-fail = machine blocked** (QC-lockout class); RSO and medical physicist join the credential registry. Missed-fraction = clinical recall alert; cumulative dose ledger per treatment site.
+
+**Dialysis floor:** **RO water quality as utility telemetry** + conductivity/endotoxin testing register · **seropositive machine segregation** (HBV/HCV dedicated machines — hard assignment rule on the session board) · session machinery per §11.4 map 11.
+
+**Endoscopy:** **scope reprocessing traceability** — disinfection cycles with dwell times logged, **scope-to-patient linkage per procedure** (infection trace = one query).
+
+**Trauma:** **tiered trauma-team activation** (code class, roster-resolved) · self-feeding **trauma registry** · MLC-heavy paths per §11.3/§11.14.
+
+**Waste (BMW chain):** segregation at source → **weigh + barcode manifest per bag category** → signed vendor handoff → data auto-fills statutory BMW annual returns.
+
+**Physiotherapy:** therapy plans as session bundles, therapist worklists — existing machinery, explicit matrix line.
+
+**Service-line events:** consignment.deployed · stemi.diagnosed · balloon.inflated · regimen.cycle_started · chemo.gate_blocked · tumor_board.decided · water_quality.recorded · scope.reprocessed · trauma.activated · bmw.manifest_recorded · fraction.delivered · rt_qa.recorded · source.movement_recorded — **catalog ~245.**
+
 ### 11.19 S9 coverage matrix (series-closing check)
 
 Every department × the patterns it runs on × where designed — the "nothing off the fabric" proof: front office (P1/P6/P7 — §11.1, §7) · OPD (P1/P2/P6/P7 — §11.1, §11.6–11.8) · ER (P1/P2/P5 + codes — §11.3, §11.14) · IPD wards (P1/P2/P3/P5 — §11.2, §11.18) · ICU (P1–P3/P5 + telemetry — §11.15) · OT (P1–P3/P5 — §11.9, §11.16) · maternity/NICU (P1/P2 + pairing — §11.4, §11.17) · day-care (§11.4) · lab (P2/P3 — §11.6) · radiology (P2 + PCPNDT — §11.7) · blood bank (P2/P3 — §11.4 map 10) · pharmacy (P3/P4/P6 — §11.8, §11.10) · stores/procurement (P3/P4 — §11.10) · CSSD, laundry, kitchen, housekeeping, transport, biomedical, security, mortuary (P3/P5 — §11.10, §11.12, §11.14) · MRD (registers/retention/DPDP — §11.14) · billing/TPA (P6 — §7, §11.11) · admin/quality (approvals, digests, self-feeding registers) · ambulance (P5 — module spec) · HR/accounts (bought, §9). **Thin spots are all explicitly deferred with hooks in the catalog** (kitchen production, physio protocols, ambulance dispatch, organ donation, camps, teleconsult).
@@ -552,8 +572,9 @@ The vision (§1) lands here: agents form the hospital's operational intelligence
 5. **PACS / radiology.**
 6. **TPA / PMJAY / claims desk** (+ NHCX when approvals land).
 7. **ICU telemetry** (+ utility/oxygen sensor telemetry).
-8. **Full CRM / engagement** (campaigns, camps, feedback/grievance, IVR, teleconsult).
-9. **ABDM wiring as approvals land; agentic layer deepens throughout (§16 tiers).**
+8. **Service-line modules** — cath lab, oncology (incl. RT vendor-system integration), dialysis, endoscopy, trauma registry, physiotherapy: sequenced by each floor's commissioning date (mechanisms locked in §11.19-A; per-module specs at commissioning).
+9. **Full CRM / engagement** (campaigns, camps, feedback/grievance, IVR, teleconsult).
+10. **ABDM wiring as approvals land; agentic layer deepens throughout (§16 tiers).**
 
 ## 18. Testing Strategy
 
@@ -574,3 +595,5 @@ The vision (§1) lands here: agents form the hospital's operational intelligence
 - Exact membership tier pricing/benefits; deposit schedules; SLA thresholds; follow-up windows — all business configuration, not code.
 - IP-PBX vendor/model; oxygen sensor vendor.
 - Blood bank module detail (digitizing the existing licensed operation — at IPD-cluster spec time).
+- LINAC/R&V/TPS vendor selection (data-export mandate applies; drives the RT integration spec) and AERB licensing timeline.
+- Service-line module sequencing (per floor commissioning dates, §17 step 8).
