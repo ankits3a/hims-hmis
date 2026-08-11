@@ -132,13 +132,15 @@ Proven by fixture: sibling internals **blocked**, sibling `index` **allowed**, `
 
 **5.2 — Drizzle array parameters don't bind as arrays.** In `runDispatchCycle`, `sql\`name = any(${names})\`` expands a JS array into a parenthesised comma-list (built for `IN`), producing *malformed array literal* / *cannot cast type record to text[]*. Shipped fix: `sql.param(names)` with the `::text[]` cast, forcing a genuine single-parameter bind. **Any future plan that writes a raw `= any(...)` predicate must use `sql.param()`.**
 
-**Planning lesson:** both defects were in code the plan presented as exact-and-final. Future plans should mark any hand-written matcher pattern or raw-SQL parameter binding as *verify-by-execution*, since neither fails at typecheck.
+**5.3 — The CI workflow could never start.** The plan's `pnpm/action-setup@v4` step passed `with: { version: 10 }` while the root `package.json` pins `"packageManager": "pnpm@10.0.0"`; the action hard-errors on a duplicate version spec (`ERR_PNPM_BAD_PM_VERSION` family) and the job died at 35s before installing anything. Fixed by dropping the `version` input and letting the action read the `packageManager` pin — commit `88b5e65`, gated separately. First green run: **31537097234** (`pnpm install --frozen-lockfile` + `pnpm verify` both executed and passed, 12/12 steps).
+
+**Planning lesson:** all three defects were in code the plan presented as exact-and-final, and **none** of them fail at typecheck — a dead lint matcher, a mis-bound SQL parameter, and a CI config conflict all look correct on the page. Future plans should mark hand-written matcher patterns, raw-SQL parameter bindings, and third-party CI action inputs as *verify-by-execution*, and no plan's CI task should be considered done until a run is observed green.
 
 ---
 
 ## 6. Open items carried forward
 
-1. **The CI commit `07547af` is not on GitHub.** GitHub refuses `.github/workflows/*` from a deploy key. Requires a credential with `workflow` scope (`gh auth refresh -h github.com -s workflow`, then push). **CI has therefore never actually run** — its first green run is still unproven. Resolve before treating CI as a real gate.
+1. ~~CI commit not pushed / never run~~ — **RESOLVED.** GitHub refuses `.github/workflows/*` pushed with a deploy key, so that file must always be pushed from a machine whose credentials carry the `workflow` scope (the owner's `gh` token was refreshed with `gh auth refresh -h github.com -s workflow`). **Standing rule for every future plan: the server checkout cannot push workflow files — route those through the local machine.** CI now runs on every push and is green (`31537097234`).
 2. `pnpm lint` emits **2 warnings** (unused `eslint-disable no-console` directives in `db-check.ts` / `migrate.ts`, inherited from the plan's verbatim code). 0 errors; harmless; clean up when convenient.
 3. `runDispatchCycle` has **no scheduler** until Plan 11. Any plan needing live event fan-out before then must schedule it explicitly.
 4. `ModuleRegistry` is not in Nest DI, and no module manifest exists yet — Plan 02's permission registry is its first consumer (`allPermissions()`).
