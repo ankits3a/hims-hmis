@@ -196,7 +196,7 @@ Department heads and AI agents may **draft** workflow-definition changes; **acti
 - **Envelope:** `event_id` (ULID) · `name` · `version` · `occurred_at` / `recorded_at` (distinct — downtime backfill depends on it) · `actor` (user | agent | system) · `patient_id?` · `encounter_id?` · `correlation_id` (workflow instance) · `causation_id` · `module` · typed `payload` · `site_id`.
 - Append-only; written in the same transaction as the state change. Additive payload fields keep v1; breaking changes mint v2 alongside.
 
-### 10.6 Event catalog (v2 — ~125 events)
+### 10.6 Event catalog (v3 — ~150 events)
 
 **P1 Patient journey:** patient.registered · patient.updated · patient.merged · patient.unmerged · abha.linked · appointment.booked · appointment.rescheduled · appointment.cancelled · appointment.no_show · visit.opened · patient.checked_in · vitals.recorded · vitals.danger_flagged · consultation.started · consultation.completed · prescription.issued · visit.transferred · referral.issued · admission.requested · bed.waitlisted · bed.assigned · bed.class_changed · class.protection_expired · patient.admitted · patient.transferred · patient.discharged · patient.deceased · readmission.flagged · allergy.recorded · patient.recall_initiated · doctor.changed · doctor_leave.scheduled
 **ER:** er.arrived · er.triaged · er.retriaged · er.disposition_decided · ambulance.prearrival_notified · brought_dead.recorded · mlc.registered · disaster.declared · disaster.ended
@@ -208,11 +208,13 @@ Department heads and AI agents may **draft** workflow-definition changes; **acti
 **P6 Charge-to-cash:** charge.posted · invoice.issued · payment.received · payment.refunded · credit_note.issued · discount.applied · coupon.redeemed · membership.sold · membership.benefit_consumed · cashier_session.opened · cashier_session.closed · cash_variance.recorded · commission.accrued · commission.reversed · package.applied · package.allowance_consumed · package.overrun_projected · preauth.denied · payer.switched
 **P7 + kernel:** notification.sent · notification.delivered · notification.failed · reminder.due · sla.breached · escalation.triggered · approval.requested · approval.granted · approval.rejected · break_glass.used · workflow.definition.updated · downtime.declared · downtime.ended · isolation.flagged · incident.reported · document.release_logged · pass.issued · pass.scanned · pass.revoked
 
-The catalog grows in design sessions S3–S8; grammar and envelope are the stable contract.
+**S3 additions (clinical ordering):** sample.dispatched · sample.external_resulted · qc.passed · qc.failed · report.amended · study.scheduled · study.acquired · form_f.recorded · result.acknowledged · medication.administered · medication.missed · medication.refused · medication.reconciled · pac.cleared · consent.recorded · ot.signin_completed · ot.timeout_completed · ot.signout_completed · count.mismatch_flagged · implant.recorded · specimen.dispatched · ot.cancelled_onday · recovery.scored — catalog now ~150 events.
 
-## 11. Patient Journey Designs (design series S2)
+The catalog grows in design sessions S4–S8; grammar and envelope are the stable contract.
 
-Journeys designed desk-by-desk with the owner in the visual companion (screens preserved under `.superpowers/brainstorm/`). Every branch ends in a terminal state — the "no dangling paths" rule was checked per map.
+## 11. Journey & Flow Designs (design series S2–S3)
+
+Journeys designed desk-by-desk with the owner (S2 in the visual companion — screens preserved under `.superpowers/brainstorm/`; S3 in terminal). Every branch ends in a terminal state — the "no dangling paths" rule was checked per map. The owner will run further stress-test rounds over all of §11 before implementation planning.
 
 ### 11.1 OPD journey
 
@@ -271,6 +273,36 @@ Tariff lock at admission (§7) · allergy capture + prescribing hard-warning (§
 
 **Noted for later module specs:** teleconsult flow (CRM) · camp bulk-intake with attribution (CRM) · corporate credit billing cycle (TPA/corporate phase) · restraint/suicide-watch orders (nursing) · one-tap evacuation manifest (bed board) · BMW/pest-control recurring compliance tasks (quality pack).
 
+### 11.6 Lab order-to-result (S3)
+
+One pipeline for all order sources — OPD, ward/ICU, ER stat (priority-flagged, tighter TAT), and **walk-in outside-prescription orders** (outside doctor's referral attribution feeds the commission ledger automatically). Flow: order → billing branch (OPD/walk-in prepay · IPD posts to bed · ER accrues) → collection (OPD phlebotomy queue with **barcode tube labels printed at the chair** + right-patient scan before draw; ward rounds + stat tasks) → transport → **accessioning scan starts the TAT clock** → analysis → verification → publish (doctor screen + WhatsApp PDF in patient's language + print counter; same-day OPD results trigger the §11.1 priority re-entry loop).
+
+**Locked rules:** **QC lockout** — an analyzer with failed daily controls has its results blocked until QC passes · **auto-verification** of normal-range results from interfaced analyzers; pathologist signs abnormal/critical/edited/manual · **critical values:** on-ward alert requires documented acknowledgment with read-back; departed patients get the §11.5 mandatory contact protocol · sample rejection → free re-collection (§11.5) · **send-outs are first-class** (dispatch manifest, chain tracking, result ingestion, separate TAT; partner selection deferred to lab-module spec) · **reflex testing** auto-adds confirmatory tests per rule with billing consent shown at order time · analyzer reruns free, evented for QC trends · **amended reports are versioned, never overwritten**, amendment reason logged.
+
+### 11.7 Imaging order-to-result (S3)
+
+Order → schedule (walk-in X-ray vs slotted CT/MRI/USG) → **prep instructions auto-WhatsApp** → check-in → safety gates → acquisition to PACS → radiologist worklist → report drafted (AI-draft T2 candidate) → signed → publish with the same critical-findings protocol as lab.
+
+**Hard gates:** contrast consent + creatinine check before contrast CT (reaction kit checks as recurring tasks) · pregnancy check before X-ray/CT on women of reproductive age · **PCPNDT compliance is structural: Form F is a gate on every obstetric USG order** (hospital runs in-house OB USG), feeding the PCPNDT register; sex-determination lockouts on report templates.
+
+**Exceptions:** patient unfit → reason-coded reschedule · contrast reaction → ADR + incident machinery · **teleradiology designed-in but dormant** (on-site radiologist 24×7 for now; overflow/night remote signing activates when needed) · modality down → offline on schedule board + auto-rebooking cascade (same mechanics as doctor leave).
+
+### 11.8 Medications end-to-end (S3)
+
+**Prescribing:** formulary-first; pharmacy may substitute generics unless the doctor marks "no substitution." Safety checks severity-tiered: allergy and contraindicated interactions = **hard stop**; moderate interactions/duplicate therapy = warning; **pediatric dose-range flags use the weight captured at the vitals desk**. Restricted antimicrobials require approval from a designated senior-physician role (AMS, NABH).
+
+**Controlled & high-alert:** NDPS/Schedule X — double-lock, witnessed dispensing, second factor (§14), running ampoule balance, witnessed wastage; Schedule H1 register writes itself from dispense events. High-alert meds (insulin, heparin, concentrated KCl, chemo) take **two-nurse verification at administration**; chemo adds pharmacist compounding verification on the day-care path.
+
+**IPD cycle:** drug order → per-patient indent or ward stock → **eMAR auto-generates dose tasks** → wristband scan per dose → given/missed/refused each evented with reason. **Medication reconciliation** at admission, transfer, and discharge (discharge WhatsApp med schedule derives from it). Patient's-own-meds path: pharmacist verifies, doctor approves, eMAR-administered unbilled. **Returns:** sealed + receipt within 7 days = full credit; never narcotics or cold-chain.
+
+### 11.9 Procedures & OT (S3)
+
+**Minor OPD procedures:** order → bill → procedure-room task → note + consumables charge; consent for anything invasive.
+
+**Major surgery:** booking request (surgeon, procedure, duration, implant needs, **blood reserve** — cross-match hold with the in-house blood bank, **auto-released after 48 h unused**, post-op ICU/bed need) → per-theatre scheduling board (elective slots, emergency pre-empt per §11.3, **first-case on-time tracked** — the corporate OT KPI) → **hard pre-op gates:** PAC clearance with ASA grade · surgery + anesthesia + high-risk consents · site marking · NPO status · blood confirmed · ICU bed confirmed if planned; any gate open = no wheel-in → **WHO Surgical Safety Checklist as workflow states:** Sign-in → Time-out → Sign-out; **instrument/sponge count mismatch = hard stop: X-ray before closure + automatic incident** → intra-op record (personnel; wheel-in/induction/incision/closure/wheel-out timestamps — utilization derives free; **implants scanned by batch/serial** for traceability + charge; OT-store consumables scanned out; **specimen auto-creates the histopath order**) → PACU recovery scoring to threshold → shift out → turnover: cleaning task + CSSD set cycle (barcode-tracked sets; full CSSD module later, events defined now).
+
+**Exceptions:** on-day cancellation (unfit, NPO violated, no ICU bed, pre-empted) → reason-coded event + reschedule priority + billing reversal · implant unavailable → postpone decision, evented · lost specimen = grave incident (the chain exists to make it near-impossible) · anesthesia complication → ICU + incident.
+
 ## 12. Failover, Backups, Data Portability
 
 - **Two servers, scripted promotion.** Primary runs the full stack; standby receives every transaction via streaming replication (near-zero RPO). Failover = one scripted command; target RTO under 15 minutes; deliberately manual-trigger with a printed runbook. Monitoring alerts the owner via WhatsApp/SMS. The downtime protocol (§11.4 map 1) covers the promotion window operationally.
@@ -324,7 +356,7 @@ First jobs already identified in the designs: discharge-summary drafting (T2, §
 
 ## 17. Rollout Roadmap
 
-**Gate (2026-08-11): the 9-session design series must complete before Phase 1 implementation planning begins.** Status: S1 fabric ✅ · S2 patient journeys ✅ (incl. 13 exception maps + 2 stress-test passes) · S3 clinical ordering · S4 materials/supply · S5 money flows · S6 people/tasks · S7 communication matrix · S8 agent roster · S9 stress tests + coverage matrix. The owner will additionally run 2nd/3rd stress-test rounds over all locked decisions before any implementation plan is written.
+**Gate (2026-08-11): the 9-session design series must complete before Phase 1 implementation planning begins.** Status: S1 fabric ✅ · S2 patient journeys ✅ (incl. 13 exception maps + 2 stress-test passes) · S3 clinical ordering ✅ (§11.6–11.9; owner stress-test pending) · S4 materials/supply · S5 money flows · S6 people/tasks · S7 communication matrix · S8 agent roster · S9 stress tests + coverage matrix. The owner will additionally run 2nd/3rd stress-test rounds over all locked decisions before any implementation plan is written.
 
 1. **Foundation + Registration/OPD/Billing (expanded scope §7–§11)** — go-live on current 100-OPD workload; WhatsApp/SMS confirmations included.
    *Fast follows:* queue/token displays with audio calling; desk-to-desk patient handoff.
