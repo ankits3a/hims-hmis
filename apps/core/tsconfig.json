@@ -1,1 +1,5 @@
-{ "extends": "../../tsconfig.base.json", "include": ["src", "test", "drizzle.config.ts"] }
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "experimentalDecorators": true, "emitDecoratorMetadata": true, "esModuleInterop": true },
+  "include": ["src", "test", "drizzle.config.ts"]
+}
