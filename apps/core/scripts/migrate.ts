@@ -6,7 +6,6 @@ async function main(): Promise<void> {
   const { db, pool } = createDb(url);
   await migrate(db, { migrationsFolder: "./drizzle" });
   await pool.end();
-  // eslint-disable-next-line no-console
   console.log("migrations applied");
 }
 main().catch((e) => { console.error(e); process.exit(1); });
