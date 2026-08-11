@@ -212,7 +212,7 @@ Department heads and AI agents may **draft** workflow-definition changes; **acti
 
 The catalog grows in design sessions S4–S8; grammar and envelope are the stable contract.
 
-## 11. Journey & Flow Designs (design series S2–S5)
+## 11. Journey & Flow Designs (design series S2–S6)
 
 Journeys designed desk-by-desk with the owner (S2 in the visual companion — screens preserved under `.superpowers/brainstorm/`; S3 in terminal). Every branch ends in a terminal state — the "no dangling paths" rule was checked per map. The owner will run further stress-test rounds over all of §11 before implementation planning.
 
@@ -337,6 +337,22 @@ Order → schedule (walk-in X-ray vs slotted CT/MRI/USG) → **prep instructions
 
 **S5 events:** charge.orphan_flagged · credit.limit_breached · credit.stopped · writeoff.recorded · statement.issued · statement.disputed · payout.batch_created · payout.executed · tds.certificate_issued · tariff.revision_applied · pettycash.reconciled — catalog ~173.
 
+### 11.12 People & tasks (S6)
+
+**Rosters:** the HR/biometric system (bought, §9) owns attendance and payroll; the HMIS consumes the **live on-duty picture** — who holds which role, where, right now. Queue assignment, task dispatch, and escalation all route through it; **escalation ladders resolve to the on-duty holder of a role, never a named person.** Doctor on-call schedules per specialty drive ER admission routing (**round-robin within the day's roster**).
+
+**Shift handover as a workflow state:** nursing handover is a **per-patient checklist gate** at shift change — outgoing flags, incoming acknowledges; unacknowledged handovers escalate.
+
+**Credentials & privileging (NABH):** registry of registration numbers, specialties, and per-procedure privileges with validity dates. **Expired credential or missing privilege = hard block on assignments and OT bookings** (no override below management); expiry warnings at 60/30 days.
+
+**Nursing worklists:** one merged, time-ordered queue per nurse — eMAR doses + vitals schedules + care-plan tasks + handover flags + new orders; everything acknowledged and timed. Nurse-patient ratio per shift visible as an indicator.
+
+**Support services:** **pooled queues with claim discipline** (housekeeping, porter/transport, maintenance, security) — any on-duty member claims, then SLA + escalation bind to them. Maintenance tickets carry priority classes (**critical care equipment: 30-minute response SLA**); AMC schedules auto-generate preventive tasks; verification on critical tasks.
+
+**Exceptions:** uncovered shift → department head + duty manager with the gap visible · mid-shift departure → open tasks auto-return to pool, handover force-escalates · credential lapse mid-employment → block + notify ladder · equipment-down blocking a booked OT slot → §11.9 cancellation cascade.
+
+**S6 events:** roster.synced · handover.completed · oncall.assigned · credential.expiring · credential.blocked — catalog ~178.
+
 ## 12. Failover, Backups, Data Portability
 
 - **Two servers, scripted promotion.** Primary runs the full stack; standby receives every transaction via streaming replication (near-zero RPO). Failover = one scripted command; target RTO under 15 minutes; deliberately manual-trigger with a printed runbook. Monitoring alerts the owner via WhatsApp/SMS. The downtime protocol (§11.4 map 1) covers the promotion window operationally.
@@ -390,7 +406,7 @@ First jobs already identified in the designs: discharge-summary drafting (T2, §
 
 ## 17. Rollout Roadmap
 
-**Gate (2026-08-11): the 9-session design series must complete before Phase 1 implementation planning begins.** Status: S1 fabric ✅ · S2 patient journeys ✅ (incl. 13 exception maps + 2 stress-test passes) · S3 clinical ordering ✅ (§11.6–11.9; owner stress-test pending) · S4 materials/supply ✅ (§11.10) · S5 money flows ✅ (§11.11) · S5 money flows · S6 people/tasks · S7 communication matrix · S8 agent roster · S9 stress tests + coverage matrix. The owner will additionally run 2nd/3rd stress-test rounds over all locked decisions before any implementation plan is written.
+**Gate (2026-08-11): the 9-session design series must complete before Phase 1 implementation planning begins.** Status: S1 fabric ✅ · S2 patient journeys ✅ (incl. 13 exception maps + 2 stress-test passes) · S3 clinical ordering ✅ (§11.6–11.9; owner stress-test pending) · S4 materials/supply ✅ (§11.10) · S5 money flows ✅ (§11.11) · S6 people/tasks ✅ (§11.12) · S5 money flows · S6 people/tasks · S7 communication matrix · S8 agent roster · S9 stress tests + coverage matrix. The owner will additionally run 2nd/3rd stress-test rounds over all locked decisions before any implementation plan is written.
 
 1. **Foundation + Registration/OPD/Billing (expanded scope §7–§11)** — go-live on current 100-OPD workload; WhatsApp/SMS confirmations included.
    *Fast follows:* queue/token displays with audio calling; desk-to-desk patient handoff.
