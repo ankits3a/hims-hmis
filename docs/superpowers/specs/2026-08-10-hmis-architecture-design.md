@@ -367,10 +367,38 @@ Order → schedule (walk-in X-ray vs slotted CT/MRI/USG) → **prep instructions
 
 **Escalation mechanics (uniform):** role ladders resolved to on-duty holders; **5-minute acknowledgment timer on critical clinical alerts** before auto-climb; de-duplicated threads; every rung evented. S7 added **zero new mechanisms** — assembly over the existing event/notification fabric.
 
+### 11.14 Codes, compliance & edge scenarios (stress-test pass 3)
+
+**Code system** (generalizes the disaster switch; all drilled quarterly): **Code Violet** — violence against staff: one-touch from any screen → security converge + police task + lockdown flag + management alert + incident and staff-support follow-up · fire code with one-tap evacuation manifest per ward · **Code Yellow** — vulnerable patient missing (dementia/psychiatric elopement ≠ abscond): search-grid tasks, gate alerts with photo, police escalation at threshold.
+
+**Live grievance workflow:** any staff raises → management task with TAT → documented resolution → attendant-acknowledged closure; complaint register self-feeds (NABH). Media/police inquiries: **single-spokesperson rule**, same release discipline as MLC documents.
+
+**Treatment refusal & DNR:** per-intervention refusal documented (counseling + signature) while staying admitted; DNR consultant-confirmed and flagged on chart + eMAR.
+
+**Staff occupational exposure:** needle-stick → **PEP protocol task with first-dose clock** → source serology (consent rules) → staff health record + follow-up schedule → incident register.
+
+**Body release double-verify:** body tag + gate pass + receiver ID scanned to match before release (same discipline as mother-baby pairing); evented with receiver identity.
+
+**Long-stay patients:** 30-day auto-flag → periodic clinical + financial review tasks (deposit cycles, re-auth), bed-utilization visibility.
+
+**Management-override admissions:** possible, but **evented with the authorizer's name and surfaced in the weekly digest** — no silent queue jumps.
+
+**Seasonal surge mode:** department-level surge flag → extra-bed/floor-conversion authorization, tightened par levels, staffing alerts; same switch mechanics as disaster, gentler relaxations.
+
+**Insurance identity fraud:** photo verification at cashless intake; mismatch → payer-switch machinery + incident + insurer notification.
+
+**DPDP data-principal rights:** verified request → register with statutory TAT → export via §12 portability / correction via amend flows / **erasure bounded by medical-record retention law** (OPD ~5y, IPD ~10y, MLC indefinite; response documents why clinical records survive) · **legal-hold flags** freeze records against any purge.
+
+**Cyber incident:** security-incident declaration → isolate + restore from backups + **CERT-In report within 6 hours (statutory)**; care continuity via the downtime protocol; **weekly offsite backup must be immutable/air-gapped** (§12).
+
+**Deferred with registers noted:** organ-donation/brain-death committee protocol · visitor-injury goodwill path · ambulance dispatch detail.
+
+**Pass-3 events:** code.activated · grievance.raised · grievance.resolved · patient.missing_flagged · refusal.recorded · dnr.recorded · exposure.reported · body.released · surge.activated · surge.ended · dsr.requested · dsr.fulfilled · legal_hold.applied · security_incident.declared — catalog ~192.
+
 ## 12. Failover, Backups, Data Portability
 
 - **Two servers, scripted promotion.** Primary runs the full stack; standby receives every transaction via streaming replication (near-zero RPO). Failover = one scripted command; target RTO under 15 minutes; deliberately manual-trigger with a printed runbook. Monitoring alerts the owner via WhatsApp/SMS. The downtime protocol (§11.4 map 1) covers the promotion window operationally.
-- **Backups assume the server room burns down.** pgBackRest continuous WAL archiving + nightly fulls to a NAS outside the server room; weekly encrypted offsite copy. **Automated weekly restore drill.** Orthanc image store syncs nightly to the NAS.
+- **Backups assume the server room burns down — or is ransomed.** pgBackRest continuous WAL archiving + nightly fulls to a NAS outside the server room; **weekly encrypted offsite copy on immutable/air-gapped media** (a permanently-connected replica can be encrypted along with the primary — the offline copy is the ransomware answer). **Automated weekly restore drill.** Orthanc image store syncs nightly to the NAS. Cyber-incident protocol incl. CERT-In 6-hour reporting: §11.14.
 - **Portability:** Postgres open format; FHIR-shaped documents; DICOM portable by definition; one-click per-module CSV/JSON export. No lock-in, including to this software.
 
 ## 13. Hardware Plan (rough 2026 INR)
@@ -414,13 +442,22 @@ Order → schedule (walk-in X-ray vs slotted CT/MRI/USG) → **prep instructions
 
 The vision (§1) lands here: agents form the hospital's operational intelligence, standing on the deterministic substrate — they consume the event stream and act through the same permission-enforced APIs and workflow definitions as humans, never the database.
 
-**Autonomy tiers govern every agent:** T0 observe/report → T1 remind/nudge → T2 draft for human sign-off → T3 act behind approval gate → T4 autonomous. Operational domains may climb to T4 (reorder triggers, schedule optimization, bed-turnover dispatch). **Clinical actions cap at T2–T3 permanently — agents draft, doctors decide.**
+**Autonomy tiers govern every agent:** T0 observe/report → T1 remind/nudge → T2 draft for human sign-off → T3 act behind approval gate → T4 autonomous. Operational domains may climb to T4. **Clinical actions cap at T2–T3 permanently — agents draft, doctors decide.**
 
-First jobs already identified in the designs: discharge-summary drafting (T2, §11.2) · SLA-breach chasing and escalation (T1) · cashier-variance and billing-anomaly reports (T0, §7) · no-show and recall chasing via WhatsApp (T1, §11.5) · reorder triggers (T4, P3). Models can change or fail with zero risk to clinical operations.
+**The roster (design series S8):**
+- **T0:** Leakage Auditor (triangle, orphan offenders, variance patterns) · Fraud Sentinel (duplicate refunds, discount abuse, ghost patients, self-referral gaming) · Digest Writer (owner's 8 a.m. digest + weekly rollups) · Ops Copilot (operational Q&A chatbot with the asker's own permissions)
+- **T1:** SLA Chaser (active-alert breaches → on-duty nudges + ladders) · Recall & Follow-up Agent (no-shows, missed sessions, review dates, vaccinations, re-collections, critical-result contact orchestration) · Expiry Watchman (batches, credentials, rate contracts, AMC)
+- **T2:** Discharge Summary Drafter (§11.2) · Radiology Report Drafter (PACS phase) · Claims Drafter (TPA phase) · **Workflow Tuner** — drafts workflow-definition changes from observed baselines; activation only by the owner per §10.4 (the fabric self-improves under governance)
+- **T3:** Payout Batcher (statements → dispute window → NEFT batch behind approval) · Coverage Resolver (roster-gap fixes, duty manager approves)
+- **T4:** Replenishment Agent (par-level indent drafting; POs above threshold still approved) · Turnover Dispatcher (bed-turnover dispatch and re-dispatch)
+
+**Uniform guardrails:** first-class actor identity with own RBAC (§14) · API-only, never the database · **fail-open** — an agent erroring or offline never blocks a human flow; every agent task has a manual path · **per-agent kill switch**, instant, itself evented · tier promotions require owner approval.
+
+**Phased rollout — agents ship with the modules that feed them:** Phase 1: Digest Writer, SLA Chaser, Leakage Auditor, Fraud Sentinel, Recall (OPD scope), Ops Copilot · Pharmacy: Replenishment, Expiry Watchman · Payouts pack: Payout Batcher · IPD: Discharge Drafter, Turnover Dispatcher, Coverage Resolver · PACS: Radiology Drafter · TPA: Claims Drafter · Workflow Tuner: after 90 days of live baselines. Models can change or fail with zero risk to clinical operations.
 
 ## 17. Rollout Roadmap
 
-**Gate (2026-08-11): the 9-session design series must complete before Phase 1 implementation planning begins.** Status: S1 fabric ✅ · S2 patient journeys ✅ (incl. 13 exception maps + 2 stress-test passes) · S3 clinical ordering ✅ (§11.6–11.9; owner stress-test pending) · S4 materials/supply ✅ (§11.10) · S5 money flows ✅ (§11.11) · S6 people/tasks ✅ (§11.12) · S7 communication matrix ✅ (§11.13) · S5 money flows · S6 people/tasks · S7 communication matrix · S8 agent roster · S9 stress tests + coverage matrix. The owner will additionally run 2nd/3rd stress-test rounds over all locked decisions before any implementation plan is written.
+**Gate (2026-08-11): the 9-session design series must complete before Phase 1 implementation planning begins.** Status: S1 fabric ✅ · S2 patient journeys ✅ (13 exception maps + stress passes 1–2) · S3 clinical ordering ✅ (§11.6–11.9) · S4 materials/supply ✅ (§11.10) · S5 money flows ✅ (§11.11) · S6 people/tasks ✅ (§11.12) · S7 communication matrix ✅ (§11.13) · S8 agent roster ✅ (§16; stress pass 3 in §11.14) · S9 coverage matrix — pending. The owner will additionally run their own stress-test rounds over all locked decisions before any implementation plan is written.
 
 1. **Foundation + Registration/OPD/Billing (expanded scope §7–§11)** — go-live on current 100-OPD workload; WhatsApp/SMS confirmations included.
    *Fast follows:* queue/token displays with audio calling; desk-to-desk patient handoff.
