@@ -1,5 +1,15 @@
 # Phase 1 / Plan 01 — Foundation Kernel Implementation Plan
 
+> ## ⚠️ EXECUTED 2026-08-12 — THREE CODE BLOCKS IN THIS PLAN ARE DEFECTIVE
+>
+> This plan shipped (10/10 tasks gated). **Read `reports/plan-01-gate-report.md` before copying any code from this file** — it is authoritative where the two disagree. Do not reuse these three patterns as written:
+>
+> 1. **Task 8's eslint `no-restricted-imports` patterns are dead.** The extglob form `"../*/!(index)"` matches nothing in ESLint 9 (it matches via the `ignore` package, gitignore semantics — no extglob support), so the module-isolation rule silently enforced nothing. See gate report §5.1 for the shipped gitignore-syntax replacement.
+> 2. **Task 9's `sql\`name = any(${names})\`` does not bind an array.** Drizzle expands a JS array into a parenthesised comma-list; use `sql.param(names)` with a `::text[]` cast. See §5.2.
+> 3. **Task 10's CI step cannot start.** `pnpm/action-setup@v4` given `with: { version: 10 }` conflicts with `packageManager` in package.json and hard-errors; drop the input. See §5.3.
+>
+> None of the three fail at typecheck — they look correct on the page. Treat matcher patterns, raw-SQL parameter binding, and third-party CI action inputs as *verify-by-execution* in every future plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Stand up the HMIS monorepo with its load-bearing kernel: PostgreSQL + Drizzle migrations, the append-only transactional-outbox event log, the module framework with manifests and enforced isolation, and an outbox dispatcher — all under CI.

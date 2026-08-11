@@ -10,6 +10,32 @@
 
 ---
 
+## Standing execution rules (learned in Plan 01 — copy into every pipeline)
+
+**Where the build lives.** The **server checkout `/opt/hmis` on `root@62.238.106.231` is canonical for code**; the Windows repo `C:\Users\ankit\hmis` is canonical for docs/plans. Both push to the same private GitHub repo, so **always `git pull` before writing** in either, and rebase the server (`git pull --rebase origin main`) if a docs commit landed while a pipeline was running.
+
+**Two hard environment facts:**
+- **The server's deploy key cannot push `.github/workflows/*`** — GitHub refuses it. Any plan touching CI must make that edit in the local repo and push from there (the owner's `gh` token carries the `workflow` scope).
+- The server is **shared with an unrelated InsForge stack** (`/opt/InsForge`, `insforge-*` containers, ports 5430/5432/7130/7133). It is not part of this architecture and is off-limits to every agent.
+
+**Brief boilerplate every task needs** (Plan 01's pipelines carry the exact wording): `/opt/hmis` is the only writable path on the server, *including no writes to `/tmp`* · no docker container may be created except the `hmis` compose project · never read, stat or reference `/opt/InsForge` — not even read-only · **the owner may be working on the same host from the same IP and key, so never infer from logs or timestamps who did what, and report only what you yourself did** · guard any `apt` with `NEEDRESTART_MODE=l` so it cannot bounce the shared docker daemon.
+
+**Acceptance-criteria discipline (the expensive lesson).** Every criterion must be **attributable to the task itself**. A criterion asserting the state of anything the task does not control — a co-tenant stack's health, another actor's files — cannot be satisfied by correct work, and the retry ladder will burn three attempts and halt the chain. Plan 01's first pipeline died exactly this way.
+
+**Verify-by-execution.** Three defects in Plan 01's "exact" code passed typecheck and failed only at runtime: a lint matcher that matched nothing, a SQL array parameter that didn't bind, a CI action input that hard-errored. **Hand-written matcher patterns, raw-SQL parameter binding, and third-party CI action inputs must be proven by running them** — and a CI task is not done until a run is observed green.
+
+**Pipeline shape that worked:** ≤6 tasks per Workflow, strictly sequential waves when tasks share files, sonnet coders with an Opus gate per task, retry → escalate to heavy-coder. Expect ~700k–1M subagent tokens and 60–90 min per 5-task pipeline. Tell each brief which *existing deviations not to "fix"* — gates otherwise fail work for touching them, and coders otherwise revert them.
+
+## Open architectural decisions (not yet resolved — resolve before go-live)
+
+**Event-log partitioning vs. global idempotency (spec §11.18 sweep #10).** The spec requires monthly partitioning + retention-aligned archival on `events`. Plan 01 shipped a **plain, unpartitioned table** — correct for now, but the conversion gets dramatically more expensive once the table holds production volume, so this should be settled early rather than at go-live. The tension: Postgres requires every UNIQUE/PK on a partitioned table to **include the partition key**, so partitioning by `recorded_at` would reduce `idempotency_key` from globally unique to unique-per-partition — which breaks edge-resubmission idempotency across a partition boundary (an original and its retry carry different `recorded_at`). Options: **(a) recommended** — keep `events` partitioned and move the uniqueness into a small non-partitioned `event_idempotency(key PK, event_id, seq)` side table written in the same transaction, preserving both properties; (b) accept per-partition uniqueness (weakens a safety guarantee); (c) skip partitioning, keep only retention/archival. **Owner decision needed**; cheapest to execute while the table is empty. Suggested home: a short dedicated plan before Plan 11, or folded into Plan 11.
+
+**Deployment topology (Plan 11).** `62.238.106.231` is currently build host, InsForge co-tenant, and prospective deploy target simultaneously. Spec §12 wants primary and standby in **different fire zones**. Needs a real decision, not a default.
+
+**Config & secrets ownership (Plan 02).** Connection strings are currently hardcoded fallbacks in five places (`client.ts`, `drizzle.config.ts`, `migrate.ts`, the health e2e test, the test helper). Plan 02 is the first plan holding real secrets (TOTP seeds, session keys, password hashes) — it should introduce the config loader and retire those fallbacks, rather than letting the pattern spread further.
+
+---
+
 ## Plan 02 — Auth, RBAC & Actor Fabric
 
 - **Spec anchors:** §14 (permissions action+scope, 2FA, break-glass, confidential/VIP), §16 (agents as first-class actors), §11.19-C fix 6 + S10 §11 (no shared accounts, PIN/badge fast-switch, SoD pairs), §11.19-D-27 (signature-class 2FA), §11.19-E-4 (sealed-class treating-team carve-out — model the access rule now, sealed data arrives with clinical records).
