@@ -212,7 +212,7 @@ Department heads and AI agents may **draft** workflow-definition changes; **acti
 
 The catalog grows in design sessions S4–S8; grammar and envelope are the stable contract.
 
-## 11. Journey & Flow Designs (design series S2–S4)
+## 11. Journey & Flow Designs (design series S2–S5)
 
 Journeys designed desk-by-desk with the owner (S2 in the visual companion — screens preserved under `.superpowers/brainstorm/`; S3 in terminal). Every branch ends in a terminal state — the "no dangling paths" rule was checked per map. The owner will run further stress-test rounds over all of §11 before implementation planning.
 
@@ -323,6 +323,20 @@ Order → schedule (walk-in X-ray vs slotted CT/MRI/USG) → **prep instructions
 
 **S4 events:** indent.drafted · stock.counted · stock.variance_flagged · batch.recalled · batch.destroyed · cylinder.status_changed · cssd.load_sterilized · cssd.bi_failed · cssd.set_recalled · grn.rejected · invoice.matched · local_purchase.recorded — catalog ~162.
 
+### 11.11 Money flows (S5)
+
+**Unifying rule: billing is a read model of care events.** Nothing is remembered onto a bill — every charge posts from an event: eMAR administration → drug charge · completed nursing-procedure task → procedure charge · **recorded IPD round visit → doctor visit fee auto-posts** · OT timestamps → theatre charges by actual duration · device start/stop → device-days · issue scans → consumables. The inverse is the audit: the **daily orphan report** — chargeable events with no corresponding charge — turns missed revenue into a queue someone clears.
+
+**Credit control:** limits per corporate/TPA · aging buckets · dunning ladder — monthly consolidated invoice → reminders at 15/30 days → escalation call task at 45 → **credit-stop at 60** (new admissions from that payer need management override) · bad-debt write-offs only through the approvals ladder, always attributed.
+
+**Financial rhythm:** daily — revenue close (day book by cashier × tender × department), bank/UPI reconciliation, orphan report · monthly — GSTR-1 export, **department P&L derived from the event stream**, **Tally sync verification** (posted vs exported — books can never quietly diverge) · payout cycle — statement → **7-day line-item dispute window against the event trail** → approval → NEFT bulk file → TDS certificates → **refund clawbacks net against the next statement automatically**.
+
+**Small but real:** petty-cash imprest per department with reconciliation tasks (S4 store floats ride this) · **charity cost center**: monthly budget cap, owner approves above cap, every concession attributed · **tariff revision workflow**: draft → **impact simulation** (yesterday's invoices re-priced under the draft, revenue delta visible) → owner approval → effective date; admitted patients stay tariff-locked (§7).
+
+**Fraud watchlist (AI T0 — reports, not actions):** duplicate refunds to one instrument · discount-pattern abuse per user · ghost patients (registrations without clinical events) · self-referral gaming in the commission ledger · cashier variance trends · chronic orphan-report offenders by department.
+
+**S5 events:** charge.orphan_flagged · credit.limit_breached · credit.stopped · writeoff.recorded · statement.issued · statement.disputed · payout.batch_created · payout.executed · tds.certificate_issued · tariff.revision_applied · pettycash.reconciled — catalog ~173.
+
 ## 12. Failover, Backups, Data Portability
 
 - **Two servers, scripted promotion.** Primary runs the full stack; standby receives every transaction via streaming replication (near-zero RPO). Failover = one scripted command; target RTO under 15 minutes; deliberately manual-trigger with a printed runbook. Monitoring alerts the owner via WhatsApp/SMS. The downtime protocol (§11.4 map 1) covers the promotion window operationally.
@@ -376,7 +390,7 @@ First jobs already identified in the designs: discharge-summary drafting (T2, §
 
 ## 17. Rollout Roadmap
 
-**Gate (2026-08-11): the 9-session design series must complete before Phase 1 implementation planning begins.** Status: S1 fabric ✅ · S2 patient journeys ✅ (incl. 13 exception maps + 2 stress-test passes) · S3 clinical ordering ✅ (§11.6–11.9; owner stress-test pending) · S4 materials/supply ✅ (§11.10) · S5 money flows · S6 people/tasks · S7 communication matrix · S8 agent roster · S9 stress tests + coverage matrix. The owner will additionally run 2nd/3rd stress-test rounds over all locked decisions before any implementation plan is written.
+**Gate (2026-08-11): the 9-session design series must complete before Phase 1 implementation planning begins.** Status: S1 fabric ✅ · S2 patient journeys ✅ (incl. 13 exception maps + 2 stress-test passes) · S3 clinical ordering ✅ (§11.6–11.9; owner stress-test pending) · S4 materials/supply ✅ (§11.10) · S5 money flows ✅ (§11.11) · S5 money flows · S6 people/tasks · S7 communication matrix · S8 agent roster · S9 stress tests + coverage matrix. The owner will additionally run 2nd/3rd stress-test rounds over all locked decisions before any implementation plan is written.
 
 1. **Foundation + Registration/OPD/Billing (expanded scope §7–§11)** — go-live on current 100-OPD workload; WhatsApp/SMS confirmations included.
    *Fast follows:* queue/token displays with audio calling; desk-to-desk patient handoff.
