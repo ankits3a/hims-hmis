@@ -29,6 +29,13 @@
       "when": 1786523696212,
       "tag": "0003_absent_freak",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786553279132,
+      "tag": "0004_white_hydra",
+      "breakpoints": true
     }
   ]
 }
