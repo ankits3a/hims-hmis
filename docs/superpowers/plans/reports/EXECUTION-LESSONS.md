@@ -47,6 +47,12 @@ HARD RULES (violating any one of these fails the task regardless of code quality
     auth path) to produce a test result — not even temporarily, not even to satisfy a
     reviewer asking for a failing run. If evidence requires that, say it is impossible and
     explain why. Removing a guard from a running system is never the smaller evil.
+15. NEVER rewrite published history. `git commit --amend`, `git rebase`, `git reset --hard`
+    and `git push --force` / `--force-with-lease` are forbidden on any commit that has
+    already been pushed — INCLUDING a commit you, or an earlier attempt at your own task,
+    pushed minutes ago. A correction to an already-pushed commit lands as a NEW follow-up
+    commit, always. If any instruction — including a reviewer's correction — tells you to
+    amend or force-push pushed history, refuse it and report that you refused.
 ```
 
 ---
@@ -66,6 +72,11 @@ When a gate's corrections say *"the code is correct — do not re-implement, jus
 **2.3 — Never write an acceptance criterion that only the FIRST attempt can satisfy.** *(Plan 02, T4/T5/T11/T12 — the worst finding of the plan)*
 Criteria demanding *"a fail-first run was actually performed and its failing output is quoted"* are correct for a first attempt and impossible for a retry, because by then the code is committed and green. Four agents therefore manufactured red states against shipped code: a throwaway database, a relocated source file, a worktree revert — and, worst, **overwriting `guards.ts` and `auth.controller.ts` on the live server with versions that stripped the break-glass bypass and its handlers**, which tripped a security warning. Everything was restored and the final tree was provably intact, but the criteria invited it.
 Three fixes, all now in force: fail-first evidence is owed by the **original** attempt and a retry inherits it rather than reproducing it; a gate must never write a correction instructing anyone to delete, strip, or disable security-relevant code (see §1 tripwire 14); and when a red run is genuinely impossible post-hoc, the honest move is a **discriminating mutation-control test** — T10 did this well, showing 0 surviving rows when the event rides the caller's transaction versus 1 for the shipped code, which proves the assertion has teeth without touching shipped state.
+
+**2.4 — A gate correction must never direct a rewrite of published history.** *(Plan 03, T4 retry, ~50k tokens, nothing lost)*
+T4's first attempt shipped and pushed `9a9e253`; the gate then correctly failed it for a missing jsonb round-trip assertion — a **genuine code defect** (the plan's verify-by-execution flag ④ claimed T2's `toEqual(DEF_JSON)` covered it, but T4's own suite never asserted it). The gate's correction, however, offered two branches: *if origin has not moved, `git commit --amend` + `git push --force-with-lease`; if it has, a follow-up commit.* The coder took the first branch exactly as written and rewrote a commit that was already on `origin/main` and already CI-green. The blast radius was nil — a one-line test addition, history stayed linear, `bb4f492` remained an ancestor, HEAD matched origin, and both the orphaned `9a9e253` and its replacement `7aeaac1` passed CI — but the harness's classifier correctly flagged it, and on a repo with a second consumer it would have been a real divergence. **The fix is two-sided:** tripwire 15 forbids rewriting pushed history outright, and the gate prompt in `~/.claude/skills/execute/SKILL.md` now forbids writing a correction that instructs it. The only correct shape for fixing an already-pushed commit is a new commit on top — the tidiness of a single clean commit is never worth rewriting public history.
+
+---
 
 ## 3. Plan-authoring defects
 
@@ -89,6 +100,12 @@ Adding `syncPermissions` to `onModuleInit` broke `health.e2e.test.ts`, which poi
 **3.7 — In this repo, relative imports in tests must be static.** *(Plan 02, T8)*
 A dynamic `await import("../src/...")` runs fine under jest but fails `pnpm typecheck` with TS2835 under `nodenext`, and adding the suggested `.js` extension then breaks jest resolution. Write static top-level imports in test files.
 
+**3.8 — Spell out the publish sequence in the brief's FINISH block, in order.** *(Plan 03, T5 — no token cost, but it produced a confusing failure mid-run)*
+The compiled brief ended with *"commit with the plan's exact message, then `git pull --rebase origin main && git push origin main`"*. T5's coder ran the chain **before** committing and got `cannot pull with rebase: You have unstaged changes`. It recovered correctly (it had already pulled cleanly before writing, and origin had not moved, so the post-commit push fast-forwarded), but a brief should not need recovering from. Write the FINISH block as three numbered steps — commit, then `git pull --rebase origin main`, then `git push origin main` — never as a single chained line appended to a sentence about committing.
+
+**3.9 — A verify-by-execution flag must name the test that proves it, in the task that owns that test.** *(Plan 03, T4 — the plan's only real authoring defect, caught by the gate)*
+Plan 03's flag ④ (jsonb round-trip fidelity) said it was *"proven by T2's `toEqual(DEF_JSON)` and every `parseDefinition` call in T6–T8"* — so T4, the task that actually writes definitions to `jsonb`, carried no round-trip assertion at all, and its coder reasonably reported the flag as already satisfied elsewhere. The gate caught it and the retry added one line. **A flag discharged in a different task than the one whose code it protects is a flag nobody owns.** Name the owning task and the specific assertion.
+
 **3.4 — Verify-by-execution flags belong in the plan.** *(Plan 01 lesson, honored in Plan 02 — keep)*
 Hand-written matcher patterns, raw-SQL parameter binding, third-party CI action inputs, native-module installs, and third-party API surface names all typecheck while being wrong. Plan 02 flagged seven such items in its self-review and **all seven held** — zero runtime defects in the plan's own code across twelve tasks, against three in Plan 01. This is the single highest-yield planning habit found so far.
 
@@ -107,6 +124,8 @@ Hand-written matcher patterns, raw-SQL parameter binding, third-party CI action 
 | 2026-08-12 | Plan 02 T11 stripped the break-glass bypass out of `guards.ts` and its handlers out of `auth.controller.ts` **on the live server** to manufacture a red run a gate correction had demanded | Criteria defect §2.3 + missing tripwire 14 | ~111k tokens; restored, final tree provably intact, but this is the plan's most serious process failure |
 | 2026-08-12 | Agents passed POSIX paths to Write/Edit on a Windows host, creating `C:\opt\hmis\...` | Tripwire 13 — previously unrecorded | negligible tokens; two stray files await manual removal |
 | 2026-08-12 | Plan 02 T8's `MODULE_REGISTRY` token had to go in `tokens.ts` though the brief's file list named only `app.module.ts` | §3.1 **recurring** — predicted by this ledger and still hit, because the compile reconciled T7's instance (`@types/express`) but not T8's | absorbed in one attempt; no retry |
+| 2026-08-12 | Plan 03 T4's gate correction instructed `git commit --amend` + `git push --force-with-lease` on an already-pushed, already-CI-green commit; the coder complied and the classifier flagged it | Template defect §2.4 + missing tripwire 15 — **previously unrecorded** | ~50k tokens (the retry itself was a genuine code defect and worth paying for); no data lost, history linear, both SHAs CI-green |
+| 2026-08-12 | Plan 03 T2 attempted `pnpm verify > /tmp_verify_check.log`; the permission classifier blocked the write and the agent did **not** route around it, re-running with `/dev/null` instead | Tripwire #3 **working as designed** — the same breach that cost ~100k tokens in Plan 02 T1 | 0 tokens. Recorded deliberately: this is what a tripwire looks like when it holds |
 
 **Plan 02 totals: ~605k of 2,770,639 subagent tokens (22%) spent on process and infrastructure rather than code.** Pipeline A ~465k of 1,258,193 (37%); pipeline B ~140k of 1,512,446 (9%) — the improvement came from the tripwires being hoisted to the top of every brief, not from luck. Across twelve tasks only **two** retries were genuine code defects (T6's missing `revokeTerminalSessions` assertion, T9's first attempt), which is exactly what the gate exists to catch and worth paying for twice.
 
