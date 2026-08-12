@@ -18,6 +18,9 @@ export async function migrateInstance(
   actor: Actor,
   input: { instanceId: string; stateMapping: Record<string, string>; reason: string },
 ): Promise<{ toDefinitionId: string; toVersion: number; state: string }> {
+  if (!input.reason || input.reason.trim() === "") {
+    throw new WorkflowError("reason_required", "migrateInstance requires a non-empty reason");
+  }
   return withTx(db, async (tx) => {
     const rows = await tx.select().from(workflowInstances).where(eq(workflowInstances.id, input.instanceId));
     const instance = rows[0];
@@ -99,6 +102,9 @@ export async function abortInstance(
   actor: Actor,
   input: { instanceId: string; reason: string },
 ): Promise<void> {
+  if (!input.reason || input.reason.trim() === "") {
+    throw new WorkflowError("reason_required", "abortInstance requires a non-empty reason");
+  }
   await withTx(db, async (tx) => {
     const rows = await tx.select().from(workflowInstances).where(eq(workflowInstances.id, input.instanceId));
     const instance = rows[0];

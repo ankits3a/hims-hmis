@@ -1,7 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { migrateInstance, abortInstance } from "./remediation";
-import { startInstance } from "./instances";
+import { startInstance, WorkflowError } from "./instances";
 import { createDraft, activateDefinition } from "./definitions";
 import { createUser } from "../auth/identity";
 import { seedSodPairs } from "../auth/sod";
@@ -135,5 +135,65 @@ describe("workflow remediation", () => {
     await expect(
       abortInstance(db, remediator, { instanceId, reason: "twice" }),
     ).rejects.toMatchObject({ code: "instance_not_active" });
+  });
+
+  it("exactly one of two concurrent migrations of the same instance applies (single-winner)", async () => {
+    const instanceId = await startOnV1();
+    await activateV2();
+    const attempt = (): Promise<{ toDefinitionId: string; toVersion: number; state: string }> =>
+      migrateInstance(db, remediator, { instanceId, stateMapping: { open: "received" }, reason: "race" });
+    const results = await Promise.allSettled([attempt(), attempt()]);
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    // The loser fails as stale_transition (raced the conditional UPDATE) or
+    // already_on_active_version (its read of getActiveDefinition ran after the winner
+    // committed, so instance.definitionId already equals the target) — both are
+    // WorkflowError, and the assertion below proves only ONE move applied either way.
+    expect(rejected[0]!.reason).toBeInstanceOf(WorkflowError);
+    expect(["stale_transition", "already_on_active_version"]).toContain((rejected[0]!.reason as WorkflowError).code);
+    const migrated = await db.select().from(events).where(
+      and(eq(events.name, "instance.migrated"), eq(events.correlationId, instanceId)),
+    );
+    expect(migrated).toHaveLength(1);
+  });
+
+  it("exactly one of two concurrent aborts of the same instance applies (single-winner)", async () => {
+    const instanceId = await startOnV1();
+    const attempt = (): Promise<void> =>
+      abortInstance(db, remediator, { instanceId, reason: "race" });
+    const results = await Promise.allSettled([attempt(), attempt()]);
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]!.reason).toBeInstanceOf(WorkflowError);
+    expect((rejected[0]!.reason as WorkflowError).code).toBe("instance_not_active");
+    const aborted = await db.select().from(events).where(
+      and(eq(events.name, "instance.aborted"), eq(events.correlationId, instanceId)),
+    );
+    expect(aborted).toHaveLength(1);
+  });
+
+  it("refuses migrateInstance when the reason is missing or whitespace-only", async () => {
+    const instanceId = await startOnV1();
+    await activateV2();
+    const input: { instanceId: string; stateMapping: Record<string, string>; reason: string } = {
+      instanceId, stateMapping: { open: "received" }, reason: "",
+    };
+    await expect(migrateInstance(db, remediator, input)).rejects.toMatchObject({ code: "reason_required" });
+    await expect(
+      migrateInstance(db, remediator, { ...input, reason: "   " }),
+    ).rejects.toMatchObject({ code: "reason_required" });
+  });
+
+  it("refuses abortInstance when the reason is missing or whitespace-only", async () => {
+    const instanceId = await startOnV1();
+    const input: { instanceId: string; reason: string } = { instanceId, reason: "" };
+    await expect(abortInstance(db, remediator, input)).rejects.toMatchObject({ code: "reason_required" });
+    await expect(
+      abortInstance(db, remediator, { ...input, reason: "   " }),
+    ).rejects.toMatchObject({ code: "reason_required" });
   });
 });

@@ -21,7 +21,8 @@ export class WorkflowError extends Error {
       | "already_on_active_version"
       | "mapping_incomplete"
       | "mapping_unknown_state"
-      | "stale_transition",
+      | "stale_transition"
+      | "reason_required",
     message?: string,
   ) {
     super(message ?? `workflow engine refused: ${code}`);
