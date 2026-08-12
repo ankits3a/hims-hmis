@@ -12,6 +12,8 @@
 
 ## Standing execution rules (learned in Plan 01 — copy into every pipeline)
 
+> **The tripwire list now lives in [`reports/EXECUTION-LESSONS.md`](reports/EXECUTION-LESSONS.md) — the pipeline's own defect ledger.** Read that file before compiling any pipeline and paste its **§1 Tripwires block verbatim at the top of every task brief**. It is authoritative for host and process rules and carries what each past failure cost; this section keeps the *why* behind them. Plan 02's pipeline A spent ~465k of 1.26M subagent tokens (37%) on failures that the ledger now prevents.
+
 **Where the build lives.** The **server checkout `/opt/hmis` on `root@62.238.106.231` is canonical for code**; the Windows repo `C:\Users\ankit\hmis` is canonical for docs/plans. Both push to the same private GitHub repo, so **always `git pull` before writing** in either, and rebase the server (`git pull --rebase origin main`) if a docs commit landed while a pipeline was running.
 
 **Two hard environment facts:**
