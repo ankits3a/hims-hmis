@@ -2,12 +2,13 @@ import { Test } from "@nestjs/testing";
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
+import { requireEnv } from "../src/kernel/config";
 
 describe("GET /health", () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    process.env.DATABASE_URL = process.env.TEST_DATABASE_URL ?? "postgres://hmis:hmis@localhost:5433/hmis_test";
+    process.env.DATABASE_URL = requireEnv("TEST_DATABASE_URL");
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     await app.init();

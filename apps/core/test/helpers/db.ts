@@ -2,6 +2,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { sql } from "drizzle-orm";
 import { Pool } from "pg";
 import { createDb, Db } from "../../src/kernel/db/client";
+import { requireEnv } from "../../src/kernel/config";
 
 const DUPLICATE_DATABASE = "42P04";
 
@@ -28,7 +29,7 @@ async function ensureWorkerDatabaseExists(maintenanceUrl: string, workerDbName: 
 }
 
 export async function setupTestDb(): Promise<{ db: Db; pool: Pool; teardown(): Promise<void> }> {
-  const baseUrl = process.env.TEST_DATABASE_URL ?? "postgres://hmis:hmis@localhost:5433/hmis_test";
+  const baseUrl = requireEnv("TEST_DATABASE_URL");
   const workerId = process.env.JEST_WORKER_ID ?? "1";
 
   const parsed = new URL(baseUrl);

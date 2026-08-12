@@ -1,8 +1,8 @@
 import { Client } from "pg";
+import { requireEnv } from "../src/kernel/config";
 
 async function main(): Promise<void> {
-  const url = process.env.DATABASE_URL ?? "postgres://hmis:hmis@localhost:5433/hmis_dev";
-  const client = new Client({ connectionString: url });
+  const client = new Client({ connectionString: requireEnv("DATABASE_URL") });
   await client.connect();
   const res = await client.query("select version()");
   console.log(res.rows[0].version);
