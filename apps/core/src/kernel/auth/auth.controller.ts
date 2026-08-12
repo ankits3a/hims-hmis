@@ -1,5 +1,5 @@
 import {
-  BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Inject, Post, Req,
+  BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Inject, Param, Post, Req,
   UnauthorizedException,
 } from "@nestjs/common";
 import { z } from "zod";
@@ -7,7 +7,8 @@ import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../tokens";
 import { loginWithPassword, revokeSession, switchWithBadge, switchWithPin } from "./sessions";
 import { confirmTotp, enrollTotp, recordSecondFactor, verifyTotpCode } from "./totp";
-import { CurrentActor, Public, AuthedRequest } from "./decorators";
+import { useBreakGlass, pendingReviews, recordReview } from "./break-glass";
+import { CurrentActor, Public, RequirePermission, AuthedRequest } from "./decorators";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 
@@ -102,5 +103,36 @@ export class AuthController {
       throw new ForbiddenException("invalid code");
     }
     await recordSecondFactor(this.db, req.hmisSession.sessionId);
+  }
+
+  @RequirePermission("auth.break_glass.use", "hospital")
+  @Post("break-glass")
+  async breakGlass(
+    @CurrentActor() actor: Actor,
+    @Body() body: unknown,
+  ): Promise<{ grantId: string; expiresAt: string }> {
+    const parsed = z.object({ patientId: z.string().min(1).optional(), reason: z.string().min(3) }).safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    const { grantId, expiresAt } = await useBreakGlass(this.db, this.cfg, actor, parsed.data);
+    return { grantId, expiresAt: expiresAt.toISOString() };
+  }
+
+  @RequirePermission("auth.break_glass.review", "hospital")
+  @Get("break-glass/pending")
+  async breakGlassPending(): Promise<{ items: Awaited<ReturnType<typeof pendingReviews>> }> {
+    return { items: await pendingReviews(this.db) };
+  }
+
+  @RequirePermission("auth.break_glass.review", "hospital")
+  @Post("break-glass/:id/review")
+  @HttpCode(204)
+  async breakGlassReview(
+    @CurrentActor() actor: Actor,
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ): Promise<void> {
+    const parsed = z.object({ note: z.string().min(1) }).safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    await recordReview(this.db, id, actor, parsed.data.note);
   }
 }

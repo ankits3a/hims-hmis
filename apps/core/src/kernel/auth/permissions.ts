@@ -104,7 +104,7 @@ export async function hasPermission(
   });
 }
 
-function pickScopeValue(req: AuthedRequest, key: string): string | undefined {
+export function requestParam(req: AuthedRequest, key: string): string | undefined {
   const fromParams = (req.params as Record<string, string | undefined> | undefined)?.[key];
   if (typeof fromParams === "string") return fromParams;
   const fromQuery = (req.query as Record<string, unknown> | undefined)?.[key];
@@ -115,5 +115,5 @@ function pickScopeValue(req: AuthedRequest, key: string): string | undefined {
 }
 
 export function scopeCtxFromRequest(req: AuthedRequest): ScopeCtx {
-  return { departmentId: pickScopeValue(req, "departmentId"), floorId: pickScopeValue(req, "floorId") };
+  return { departmentId: requestParam(req, "departmentId"), floorId: requestParam(req, "floorId") };
 }

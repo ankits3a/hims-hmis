@@ -6,8 +6,9 @@ import { CONFIG, DB } from "../tokens";
 import { findLiveSession } from "./sessions";
 import { findAgentByKey } from "./agents";
 import { IS_PUBLIC, PERMISSION_KEY, AuthedRequest, PermissionRequirement } from "./decorators";
-import { hasPermission, scopeCtxFromRequest } from "./permissions";
+import { hasPermission, requestParam, scopeCtxFromRequest } from "./permissions";
 import { recordSecondFactor, secondFactorFresh, verifyTotpCode } from "./totp";
+import { hasActiveBreakGlass } from "./break-glass";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 
@@ -75,7 +76,12 @@ export class PermissionGuard implements CanActivate {
     const allowed = await hasPermission(
       this.db, actor.id, requirement.permission, requirement.scope, scopeCtxFromRequest(req),
     );
-    if (!allowed) throw new ForbiddenException(`missing permission ${requirement.permission}`);
+    if (!allowed) {
+      const bypass =
+        requirement.breakGlassBypass === true &&
+        (await hasActiveBreakGlass(this.db, actor.id, requestParam(req, "patientId")));
+      if (!bypass) throw new ForbiddenException(`missing permission ${requirement.permission}`);
+    }
 
     if (requirement.secondFactor) {
       const session = req.hmisSession;
