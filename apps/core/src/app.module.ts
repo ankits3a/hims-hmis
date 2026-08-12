@@ -4,6 +4,7 @@ import { createDb, Db } from "./kernel/db/client";
 import { loadConfig, AppConfig } from "./kernel/config";
 import { DB, DB_POOL, CONFIG } from "./kernel/tokens";
 import { HealthController } from "./health/health.controller";
+import { AuthModule } from "./kernel/auth/auth.module";
 
 export { DB, DB_POOL, CONFIG } from "./kernel/tokens";
 
@@ -12,6 +13,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
 
 @Global()
 @Module({
+  imports: [AuthModule],
   controllers: [HealthController],
   providers: [
     { provide: CONFIG, useFactory: (): AppConfig => loadConfig() },
