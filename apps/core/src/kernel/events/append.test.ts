@@ -10,6 +10,10 @@ const input = (over: Partial<Parameters<typeof appendEvent>[1]> = {}) => ({
   payload: { visitId: "v1" }, siteId: "main", ...over,
 });
 
+const idempotencyRows = async (db: Db) => (await db.execute(
+  sql`select event_id as "eventId", seq::int as seq from event_idempotency order by seq`,
+)).rows as { eventId: string; seq: number }[];
+
 describe("appendEvent", () => {
   let db: Db; let teardown: () => Promise<void>;
   beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
@@ -40,5 +44,34 @@ describe("appendEvent", () => {
     expect(b.eventId).toBe(a.eventId);
     const [{ count }] = (await db.execute(sql`select count(*)::int as count from events`)).rows as [{ count: number }];
     expect(count).toBe(1);
+  });
+
+  it("records the claimed key in event_idempotency", async () => {
+    const { eventId, seq } = await withTx(db, (tx) => appendEvent(tx, input({ idempotencyKey: "k1" })));
+    expect(await idempotencyRows(db)).toEqual([{ eventId, seq }]);
+  });
+
+  it("keeps one event and one claim when the same key repeats", async () => {
+    const a = await withTx(db, (tx) => appendEvent(tx, input({ idempotencyKey: "k1" })));
+    const b = await withTx(db, (tx) => appendEvent(tx, input({ idempotencyKey: "k1" })));
+    expect(b).toEqual(a);
+    expect(await db.select().from(events)).toHaveLength(1);
+    expect(await idempotencyRows(db)).toEqual([{ eventId: a.eventId, seq: a.seq }]);
+  });
+
+  it("claims nothing when no idempotency key is given", async () => {
+    await withTx(db, (tx) => appendEvent(tx, input()));
+    expect(await db.select().from(events)).toHaveLength(1);
+    expect(await idempotencyRows(db)).toEqual([]);
+  });
+
+  it("claims one row per distinct idempotency key", async () => {
+    const a = await withTx(db, (tx) => appendEvent(tx, input({ idempotencyKey: "k1" })));
+    const b = await withTx(db, (tx) => appendEvent(tx, input({ idempotencyKey: "k2" })));
+    expect(await db.select().from(events)).toHaveLength(2);
+    expect(await idempotencyRows(db)).toEqual([
+      { eventId: a.eventId, seq: a.seq },
+      { eventId: b.eventId, seq: b.seq },
+    ]);
   });
 });

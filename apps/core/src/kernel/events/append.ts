@@ -1,6 +1,6 @@
 import { newEventId, EventInput } from "@hmis/contracts";
-import { sql } from "drizzle-orm";
-import { events } from "../db/schema";
+import { eq } from "drizzle-orm";
+import { events, eventIdempotency } from "../db/schema";
 import type { Tx } from "../db/client";
 
 export async function appendEvent(
@@ -8,6 +8,25 @@ export async function appendEvent(
   input: EventInput,
 ): Promise<{ eventId: string; seq: number }> {
   const eventId = newEventId();
+
+  // Claim the key first: on conflict the append becomes a no-op read, so no already-inserted
+  // event row has to be undone with a savepoint inside the caller's transaction.
+  if (input.idempotencyKey !== undefined) {
+    const claimed = await tx
+      .insert(eventIdempotency)
+      .values({ idempotencyKey: input.idempotencyKey, eventId })
+      .onConflictDoNothing({ target: eventIdempotency.idempotencyKey })
+      .returning({ eventId: eventIdempotency.eventId });
+
+    if (claimed.length === 0) {
+      const existing = await tx
+        .select({ eventId: eventIdempotency.eventId, seq: eventIdempotency.seq })
+        .from(eventIdempotency)
+        .where(eq(eventIdempotency.idempotencyKey, input.idempotencyKey));
+      return { eventId: existing[0]!.eventId, seq: existing[0]!.seq! };
+    }
+  }
+
   const inserted = await tx
     .insert(events)
     .values({
@@ -26,13 +45,14 @@ export async function appendEvent(
       siteId: input.siteId,
       idempotencyKey: input.idempotencyKey,
     })
-    .onConflictDoNothing({ target: events.idempotencyKey })
     .returning({ eventId: events.eventId, seq: events.seq });
 
-  if (inserted.length > 0) return inserted[0]!;
+  if (input.idempotencyKey !== undefined) {
+    await tx
+      .update(eventIdempotency)
+      .set({ seq: inserted[0]!.seq })
+      .where(eq(eventIdempotency.idempotencyKey, input.idempotencyKey));
+  }
 
-  const existing = (await tx.execute(
-    sql`select event_id as "eventId", seq from events where idempotency_key = ${input.idempotencyKey}`,
-  )).rows as [{ eventId: string; seq: number }];
-  return existing[0]!;
+  return inserted[0]!;
 }

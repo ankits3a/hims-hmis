@@ -1,5 +1,6 @@
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import { events } from "./events";
+import { eventIdempotency } from "./eventIdempotency";
 import type { Db } from "../client";
 import type { Pool } from "pg";
 
@@ -27,12 +28,18 @@ describe("events table", () => {
     expect(rows[0]!.recordedAt).toBeInstanceOf(Date);
   });
 
-  it("enforces idempotency_key uniqueness", async () => {
+  it("enforces idempotency_key uniqueness in event_idempotency, not in events", async () => {
     const base = {
       name: "sample.collected", occurredAt: new Date(), actorType: "user", actorId: "u1",
       module: "lab", payload: {}, idempotencyKey: "edge-1",
     };
     await db.insert(events).values({ ...base, eventId: "01A" });
-    await expect(db.insert(events).values({ ...base, eventId: "01B" })).rejects.toThrow();
+    await db.insert(events).values({ ...base, eventId: "01B" });
+    expect(await db.select().from(events)).toHaveLength(2);
+
+    await db.insert(eventIdempotency).values({ idempotencyKey: "edge-1", eventId: "01A" });
+    await expect(
+      db.insert(eventIdempotency).values({ idempotencyKey: "edge-1", eventId: "01B" }),
+    ).rejects.toThrow();
   });
 });

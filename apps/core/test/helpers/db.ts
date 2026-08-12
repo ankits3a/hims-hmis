@@ -50,4 +50,5 @@ export async function setupTestDb(): Promise<{ db: Db; pool: Pool; teardown(): P
 export async function truncateAll(db: Db): Promise<void> {
   await db.execute(sql`truncate table events restart identity`);
   await db.execute(sql`truncate table event_cursors`);
+  await db.execute(sql`truncate table event_idempotency`);
 }

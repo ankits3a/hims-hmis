@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, jsonb, bigserial, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, jsonb, bigserial, index } from "drizzle-orm/pg-core";
 
 export const events = pgTable(
   "events",
@@ -21,7 +21,8 @@ export const events = pgTable(
     idempotencyKey: text("idempotency_key"),
   },
   (t) => [
-    uniqueIndex("events_idempotency_key_ux").on(t.idempotencyKey),
+    // Plain, not unique: uniqueness lives in event_idempotency so it survives partitioning.
+    index("events_idempotency_key_idx").on(t.idempotencyKey),
     index("events_name_idx").on(t.name),
     index("events_patient_idx").on(t.patientId),
     index("events_correlation_idx").on(t.correlationId),

@@ -15,6 +15,13 @@
       "when": 1786481179272,
       "tag": "0001_huge_wrecker",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786510310088,
+      "tag": "0002_brainy_the_hood",
+      "breakpoints": true
     }
   ]
 }
