@@ -22,6 +22,13 @@
       "when": 1786510310088,
       "tag": "0002_brainy_the_hood",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786523696212,
+      "tag": "0003_absent_freak",
+      "breakpoints": true
     }
   ]
 }

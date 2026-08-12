@@ -52,4 +52,8 @@ export async function truncateAll(db: Db): Promise<void> {
   await db.execute(sql`truncate table events restart identity`);
   await db.execute(sql`truncate table event_cursors`);
   await db.execute(sql`truncate table event_idempotency`);
+  await db.execute(
+    sql`truncate table break_glass_grants, temp_role_grants, user_totp, auth_sessions,
+        role_assignments, role_permissions, agents, sod_pairs, permissions, roles, users`,
+  );
 }
