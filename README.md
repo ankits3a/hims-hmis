@@ -9,3 +9,9 @@ Agentic hospital operating system. Specs: `docs/superpowers/specs/`.
 
 ## Verify (what CI runs)
 `pnpm verify`  — typecheck + lint + tests (needs the compose DB up)
+
+## Auth bootstrap
+1. Copy `apps/core/.env.example` → `apps/core/.env` and fill it (`openssl rand -hex 32` for `SECRET_KEY`); `chmod 600`.
+2. `pnpm --filter @hmis/core db:migrate`
+3. `pnpm --filter @hmis/core seed:admin` (reads `ADMIN_*` from the env)
+4. Agents: `pnpm --filter @hmis/core agent:create` (reads `AGENT_NAME`; prints the API key once)

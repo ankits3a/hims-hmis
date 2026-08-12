@@ -8,6 +8,7 @@ import { CONFIG, DB } from "../tokens";
 import { loginWithPassword, revokeSession, switchWithBadge, switchWithPin } from "./sessions";
 import { confirmTotp, enrollTotp, recordSecondFactor, verifyTotpCode } from "./totp";
 import { useBreakGlass, pendingReviews, recordReview } from "./break-glass";
+import { grantTempRole, emergencyElevate } from "./temp-roles";
 import { CurrentActor, Public, RequirePermission, AuthedRequest } from "./decorators";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
@@ -134,5 +135,28 @@ export class AuthController {
     const parsed = z.object({ note: z.string().min(1) }).safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
     await recordReview(this.db, id, actor, parsed.data.note);
+  }
+
+  @RequirePermission("auth.temp_role.grant", "hospital")
+  @Post("temp-roles")
+  async tempRole(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ grantId: string; expiresAt: string }> {
+    const parsed = z.object({
+      userId: z.string().min(1), roleKey: z.string().min(1),
+      reason: z.string().min(3), ttlMinutes: z.number().int().positive(),
+    }).safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    const { grantId, expiresAt } = await grantTempRole(this.db, this.cfg, actor, parsed.data);
+    return { grantId, expiresAt: expiresAt.toISOString() };
+  }
+
+  @Post("emergency-elevation")
+  async emergencyElevation(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ grantId: string; expiresAt: string }> {
+    const parsed = z.object({
+      roleKey: z.string().min(1), reason: z.string().min(3), ttlMinutes: z.number().int().positive(),
+    }).safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    if (actor.type !== "user") throw new ForbiddenException("emergency elevation is for human users");
+    const { grantId, expiresAt } = await emergencyElevate(this.db, this.cfg, actor, parsed.data);
+    return { grantId, expiresAt: expiresAt.toISOString() };
   }
 }
