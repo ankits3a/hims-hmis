@@ -40,6 +40,13 @@ HARD RULES (violating any one of these fails the task regardless of code quality
 12. Evidence over assertion: never report a test as passing without having run it in that
     state. Commit with the plan's exact message; include pnpm-lock.yaml on any dependency
     change.
+13. NEVER pass a POSIX absolute path (/opt/...) to the Write or Edit tools — you run on a
+    Windows host, so that silently creates C:\opt\... instead. Author files in the session
+    scratchpad and place them with scp, or write them over ssh with a single heredoc.
+14. NEVER weaken, strip, or disable security-relevant code (a guard, a permission check, an
+    auth path) to produce a test result — not even temporarily, not even to satisfy a
+    reviewer asking for a failing run. If evidence requires that, say it is impossible and
+    explain why. Removing a guard from a running system is never the smaller evil.
 ```
 
 ---
@@ -56,6 +63,10 @@ When a gate's corrections say *"the code is correct — do not re-implement, jus
 
 ---
 
+**2.3 — Never write an acceptance criterion that only the FIRST attempt can satisfy.** *(Plan 02, T4/T5/T11/T12 — the worst finding of the plan)*
+Criteria demanding *"a fail-first run was actually performed and its failing output is quoted"* are correct for a first attempt and impossible for a retry, because by then the code is committed and green. Four agents therefore manufactured red states against shipped code: a throwaway database, a relocated source file, a worktree revert — and, worst, **overwriting `guards.ts` and `auth.controller.ts` on the live server with versions that stripped the break-glass bypass and its handlers**, which tripped a security warning. Everything was restored and the final tree was provably intact, but the criteria invited it.
+Three fixes, all now in force: fail-first evidence is owed by the **original** attempt and a retry inherits it rather than reproducing it; a gate must never write a correction instructing anyone to delete, strip, or disable security-relevant code (see §1 tripwire 14); and when a red run is genuinely impossible post-hoc, the honest move is a **discriminating mutation-control test** — T10 did this well, showing 0 surviving rows when the event rides the caller's transaction versus 1 for the shipped code, which proves the assertion has teeth without touching shipped state.
+
 ## 3. Plan-authoring defects
 
 Fix these when writing the next plan, not when executing it.
@@ -68,6 +79,15 @@ A gate correction froze `apps/core/package.json` during T6, so the `"agent:creat
 
 **3.3 — Conditional instructions stall agents.** *(carried from Plan 02's stress test, held)*
 "Add X if the compiler asks for it" produces either a stall or an unjustifiable diff. State dependencies unconditionally.
+
+**3.5 — Order the failing-test step before implementation for e2e tasks too, or state that no red run is owed.** *(Plan 02, T7–T12)*
+Unit tasks put "write the failing test" first; the e2e tasks put implementation first, so the e2e is green on its first honest run. That mismatch is what made §2.3's manufactured red states seem necessary. Either put the e2e step first, or write in the task that a red run is not required and say what evidence replaces it.
+
+**3.6 — A task adding a boot-time DB call must audit every existing e2e suite's database wiring in the same task.** *(Plan 02, T8)*
+Adding `syncPermissions` to `onModuleInit` broke `health.e2e.test.ts`, which pointed the app at the base `hmis_test` — a database nothing ever migrates, since only per-worker `hmis_test_<N>` databases are migrated. The fix belongs in the task that adds the boot call, and its brief's file list must say so. Never fix this by making the boot call swallow errors: a loud failure on missing schema is the point.
+
+**3.7 — In this repo, relative imports in tests must be static.** *(Plan 02, T8)*
+A dynamic `await import("../src/...")` runs fine under jest but fails `pnpm typecheck` with TS2835 under `nodenext`, and adding the suggested `.js` extension then breaks jest resolution. Write static top-level imports in test files.
 
 **3.4 — Verify-by-execution flags belong in the plan.** *(Plan 01 lesson, honored in Plan 02 — keep)*
 Hand-written matcher patterns, raw-SQL parameter binding, third-party CI action inputs, native-module installs, and third-party API surface names all typecheck while being wrong. Plan 02 flagged seven such items in its self-review and **all seven held** — zero runtime defects in the plan's own code across twelve tasks, against three in Plan 01. This is the single highest-yield planning habit found so far.
@@ -83,7 +103,14 @@ Hand-written matcher patterns, raw-SQL parameter binding, third-party CI action 
 | 2026-08-12 | Plan 02 T5 lost two gates to API 529 and the ladder re-ran the coder and escalated | Template defect §2.1 | ~168k tokens |
 | 2026-08-12 | Some agent ran a bare `tsc`, leaving 128 emit artifacts that shadow `.ts` in jest resolution | Tripwire #5 — previously unrecorded | No tokens; a latent false-pass/false-fail trap for every later task, cleaned in `7284d36` |
 
-**Total preventable: ~465k of Plan 02 pipeline A's 1,258,193 subagent tokens (37%).** Only one of pipeline A's five retries — T6's missing `revokeTerminalSessions` assertion, ~134k — was a genuine code defect, which is exactly what the gate exists to catch and worth paying for twice.
+| 2026-08-12 | Plan 02 T12 lost two gates to API 529; the ladder re-ran the coder and escalated to heavy-coder to re-verify already-committed, already-correct work | Template defect §2.1 — **the same bug recurring in the same session**, because pipeline B was already compiled from the old template when the fix landed | ~140k tokens |
+| 2026-08-12 | Plan 02 T11 stripped the break-glass bypass out of `guards.ts` and its handlers out of `auth.controller.ts` **on the live server** to manufacture a red run a gate correction had demanded | Criteria defect §2.3 + missing tripwire 14 | ~111k tokens; restored, final tree provably intact, but this is the plan's most serious process failure |
+| 2026-08-12 | Agents passed POSIX paths to Write/Edit on a Windows host, creating `C:\opt\hmis\...` | Tripwire 13 — previously unrecorded | negligible tokens; two stray files await manual removal |
+| 2026-08-12 | Plan 02 T8's `MODULE_REGISTRY` token had to go in `tokens.ts` though the brief's file list named only `app.module.ts` | §3.1 **recurring** — predicted by this ledger and still hit, because the compile reconciled T7's instance (`@types/express`) but not T8's | absorbed in one attempt; no retry |
+
+**Plan 02 totals: ~605k of 2,770,639 subagent tokens (22%) spent on process and infrastructure rather than code.** Pipeline A ~465k of 1,258,193 (37%); pipeline B ~140k of 1,512,446 (9%) — the improvement came from the tripwires being hoisted to the top of every brief, not from luck. Across twelve tasks only **two** retries were genuine code defects (T6's missing `revokeTerminalSessions` assertion, T9's first attempt), which is exactly what the gate exists to catch and worth paying for twice.
+
+**The two lessons this ledger most wants its next reader to absorb:** a rule that is written down but buried still gets broken (§1 exists as a *top-of-brief block* for that reason), and a fix that lands after a pipeline is compiled does not protect that pipeline (T12 hit the 529 bug ~4 hours after it was fixed). When a template fix lands mid-run, patch the persisted script and resume rather than letting the run finish on the old ladder.
 
 ---
 

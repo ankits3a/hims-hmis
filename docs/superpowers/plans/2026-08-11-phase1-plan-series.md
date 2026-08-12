@@ -43,6 +43,8 @@
 
 ## Plan 02 — Auth, RBAC & Actor Fabric
 
+**STATUS: written, executed and SHIPPED 2026-08-12.** Plan `2026-08-12-phase1-02-auth-rbac-actor-fabric.md`; **12/12 tasks gate-passed**; gate report `reports/plan-02-gate-report.md` is the ground truth for shipped interfaces. `pnpm verify` green at `d90fd50` (24 suites / 85 tests), CI green. Plan 03 may now be written.
+
 - **Spec anchors:** §14 (permissions action+scope, 2FA, break-glass, confidential/VIP), §16 (agents as first-class actors), §11.19-C fix 6 + S10 §11 (no shared accounts, PIN/badge fast-switch, SoD pairs), §11.19-D-27 (signature-class 2FA), §11.19-E-4 (sealed-class treating-team carve-out — model the access rule now, sealed data arrives with clinical records).
 - **Scope:** users, roles, permissions (`action` + `scope`: own-department/floor/hospital), role assignments per department/floor; login sessions + shared-terminal fast user-switching (PIN/badge switch = identity change, not shared session); TOTP second factor for signature-class and money-class permission checks; break-glass grant (instant, loud event, review-queue record); **SoD hard-pair enforcement** (`sod.violation_blocked`) as a kernel check consulted by the approvals engine and any two-person flow; agent actor type with own credentials + per-agent kill-switch flag; emergency role elevation (S10 mechanism 6).
 - **Produces (later plans consume):** Nest guard `@RequirePermission("billing.refund.approve", "department")`; `CurrentActor` decorator returning contracts `Actor`; `assertNotSodPair(actorId, otherActorId, pairKey)`; tables `users`, `roles`, `permissions`, `role_assignments`, `break_glass_grants`; events `break_glass.used`, `sod.violation_blocked`, `emergency_elevation.used`, `temp_role.granted/.expired`.
