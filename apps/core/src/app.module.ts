@@ -6,9 +6,11 @@ import { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "./kernel/tokens";
 import { ModuleRegistry } from "./kernel/modules/loader";
 import { authManifest } from "./kernel/auth/manifest";
 import { workflowManifest } from "./kernel/workflow/manifest";
+import { approvalsManifest } from "./kernel/approvals/manifest";
 import { HealthController } from "./health/health.controller";
 import { AuthModule } from "./kernel/auth/auth.module";
 import { WorkflowModule } from "./kernel/workflow/workflow.module";
+import { ApprovalsModule } from "./kernel/approvals/approvals.module";
 
 export { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "./kernel/tokens";
 
@@ -17,7 +19,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
 
 @Global()
 @Module({
-  imports: [AuthModule, WorkflowModule],
+  imports: [AuthModule, WorkflowModule, ApprovalsModule],
   controllers: [HealthController],
   providers: [
     { provide: CONFIG, useFactory: (): AppConfig => loadConfig() },
@@ -34,6 +36,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         const registry = new ModuleRegistry();
         registry.install(authManifest);
         registry.install(workflowManifest);
+        registry.install(approvalsManifest);
         // Later plans install their module manifests here.
         return registry;
       },
