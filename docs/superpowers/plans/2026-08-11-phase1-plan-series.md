@@ -28,7 +28,13 @@
 
 ## Open architectural decisions (not yet resolved — resolve before go-live)
 
-**Event-log partitioning vs. global idempotency (spec §11.18 sweep #10).** The spec requires monthly partitioning + retention-aligned archival on `events`. Plan 01 shipped a **plain, unpartitioned table** — correct for now, but the conversion gets dramatically more expensive once the table holds production volume, so this should be settled early rather than at go-live. The tension: Postgres requires every UNIQUE/PK on a partitioned table to **include the partition key**, so partitioning by `recorded_at` would reduce `idempotency_key` from globally unique to unique-per-partition — which breaks edge-resubmission idempotency across a partition boundary (an original and its retry carry different `recorded_at`). Options: **(a) recommended** — keep `events` partitioned and move the uniqueness into a small non-partitioned `event_idempotency(key PK, event_id, seq)` side table written in the same transaction, preserving both properties; (b) accept per-partition uniqueness (weakens a safety guarantee); (c) skip partitioning, keep only retention/archival. **Owner decision needed**; cheapest to execute while the table is empty. Suggested home: a short dedicated plan before Plan 11, or folded into Plan 11.
+**Event-log partitioning (spec §11.18 sweep #10) — half resolved.** The idempotency half is **DONE**: the owner chose the side-table option on 2026-08-12, and `event_idempotency` now holds the global uniqueness (commit `3660ffa`, gate report §3). `events` therefore has **no unique constraint that a partition key would fight** — the blocker is gone, and it was executed while the table had zero rows.
+
+**Still open: the partition key itself.** `events` is still a plain table. Before choosing, weigh the one real tension:
+- **Partition by `recorded_at` (monthly)** — what retention and archival actually need (drop/archive by month, legal holds override). But the outbox dispatcher reads `where seq > cursor order by seq`, which **cannot prune on `recorded_at`**, so every cycle probes every partition; after a few years that is dozens of index probes per cycle, forever.
+- **Partition by `seq` (ranges)** — prunes the dispatcher's query perfectly, but doesn't map to calendar months, so time-based retention needs a `seq`→time lookup.
+- Hybrid worth costing: partition by `recorded_at`, and give the dispatcher a `recorded_at` floor derived from its cursor so partition pruning applies to it too.
+Decide before go-live; cost still rises with row count. Suggested home: a short dedicated plan, or folded into Plan 11.
 
 **Deployment topology (Plan 11).** `62.238.106.231` is currently build host, InsForge co-tenant, and prospective deploy target simultaneously. Spec §12 wants primary and standby in **different fire zones**. Needs a real decision, not a default.
 

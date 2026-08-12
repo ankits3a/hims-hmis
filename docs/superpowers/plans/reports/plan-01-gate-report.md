@@ -38,7 +38,9 @@
 | T9 Outbox dispatcher + cursors | pass | 1 | `2d85732` |
 | T10 CI workflow + README | pass | 1 | `07547af` |
 
-**Test inventory:** `pnpm verify` = typecheck → lint → test, **exit 0**. **18 tests**: `@hmis/contracts` 5 (2 suites), `@hmis/core` 13 (5 suites). Verified independently by the main session after each pipeline, not only by the agents.
+**Test inventory:** `pnpm verify` = typecheck → lint → test, **exit 0**, lint reporting **zero problems**. **22 tests**: `@hmis/contracts` 5 (2 suites), `@hmis/core` 17 (5 suites), running **in parallel** on per-worker databases. Verified independently by the main session after each pipeline, not only by the agents.
+
+**Post-plan work folded in (same session, each separately gated):** `88b5e65` CI fix · `1f92110` lint warnings cleared · `3944469` per-worker test databases · `3660ffa` idempotency side table.
 
 **Retry causes** (none were code-quality failures): T1#1 and T4#1 breached shared-host rules (a read-only `stat` of `/opt/InsForge`; a `/tmp` write). T5#2/#3 and T6#2 were process disputes over producing fail-first evidence for files already correct and committed. A prior run (`wf_f14fbdd4-f2a`) was halted entirely by a **bad acceptance criterion of mine** — it asserted the co-tenant InsForge stack was healthy, an externally-mutable condition the task could not control. Lesson folded in: **every criterion must be attributable to the task itself.**
 
@@ -75,6 +77,10 @@ withTx<T>(db: Db, fn: (tx: Tx) => Promise<T>): Promise<T>
 appendEvent(tx: Tx, input: EventInput): Promise<{ eventId: string; seq: number }>
 ```
 Writes on the caller's transaction (rollback-proven by test). On `idempotency_key` conflict: no second insert, returns the existing row's ids.
+
+**Idempotency side table** (added 2026-08-12, commit `3660ffa`, owner-approved) — `event_idempotency`: `idempotency_key` text **PK** · `event_id` text not null · `seq` bigint (nullable *by design*, always populated before the transaction commits) · `recorded_at` timestamptz default now. `events.idempotency_key` **keeps its column but its index is now plain, not unique** — global uniqueness lives in this non-partitioned side table so it survives any future partitioning of `events` (see §6.5).
+`appendEvent`'s algorithm is now **side-table-first**: claim the key with `ON CONFLICT DO NOTHING … RETURNING`; if the claim returns nothing the key is taken, so read back `event_id`/`seq` and insert **no** event row; otherwise insert the event and backfill the claim's `seq`. Ordering matters — it makes the duplicate case a no-op without a SAVEPOINT inside the caller's transaction. No nested transaction; every statement on the passed `tx`.
+**Latent bug fixed in passing:** the old duplicate path returned `seq` as a **string** (pg returns bigint as text through raw `execute`) while the declared type says `number` — verified by the gate against the live database. Both paths now return a real `number`, pinned by test. Anything that consumed `appendEvent`'s `seq` was at risk of a silent `"1" !== 1` comparison.
 
 **Module framework** (`apps/core/src/kernel/modules/`)
 ```ts
