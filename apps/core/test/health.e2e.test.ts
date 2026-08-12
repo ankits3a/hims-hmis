@@ -3,18 +3,28 @@ import { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import type { Pool } from "pg";
 import { AppModule, DB_POOL } from "../src/app.module";
+import { setupTestDb } from "./helpers/db";
 import { requireEnv } from "../src/kernel/config";
 
 describe("GET /health", () => {
   let app: INestApplication;
+  let teardown: () => Promise<void>;
 
   beforeAll(async () => {
-    process.env.DATABASE_URL = requireEnv("TEST_DATABASE_URL");
+    // AuthModule.onModuleInit mirrors the registry into `permissions` at boot, so the
+    // app needs a migrated database: use this worker's migrated DB, as the other e2es do.
+    ({ teardown } = await setupTestDb());
+    const workerUrl = new URL(requireEnv("TEST_DATABASE_URL"));
+    workerUrl.pathname = `${workerUrl.pathname}_${process.env.JEST_WORKER_ID ?? "1"}`;
+    process.env.DATABASE_URL = workerUrl.toString();
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     await app.init();
   });
-  afterAll(async () => { try { await app.close(); } catch { /* already closed by the pool test */ } });
+  afterAll(async () => {
+    try { await app.close(); } catch { /* already closed by the pool test */ }
+    await teardown();
+  });
 
   it("reports ok with db connectivity", async () => {
     const res = await request(app.getHttpServer()).get("/health").expect(200);

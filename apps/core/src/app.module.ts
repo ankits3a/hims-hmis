@@ -2,11 +2,13 @@ import { Module, Global, Inject, OnModuleDestroy } from "@nestjs/common";
 import type { Pool } from "pg";
 import { createDb, Db } from "./kernel/db/client";
 import { loadConfig, AppConfig } from "./kernel/config";
-import { DB, DB_POOL, CONFIG } from "./kernel/tokens";
+import { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "./kernel/tokens";
+import { ModuleRegistry } from "./kernel/modules/loader";
+import { authManifest } from "./kernel/auth/manifest";
 import { HealthController } from "./health/health.controller";
 import { AuthModule } from "./kernel/auth/auth.module";
 
-export { DB, DB_POOL, CONFIG } from "./kernel/tokens";
+export { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "./kernel/tokens";
 
 type DbBundle = { db: Db; pool: Pool };
 const DB_BUNDLE = Symbol("DB_BUNDLE");
@@ -24,8 +26,17 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
     },
     { provide: DB, useFactory: (b: DbBundle): Db => b.db, inject: [DB_BUNDLE] },
     { provide: DB_POOL, useFactory: (b: DbBundle): Pool => b.pool, inject: [DB_BUNDLE] },
+    {
+      provide: MODULE_REGISTRY,
+      useFactory: (): ModuleRegistry => {
+        const registry = new ModuleRegistry();
+        registry.install(authManifest);
+        // Later plans install their module manifests here.
+        return registry;
+      },
+    },
   ],
-  exports: [DB, DB_POOL, CONFIG],
+  exports: [DB, DB_POOL, CONFIG, MODULE_REGISTRY],
 })
 export class AppModule implements OnModuleDestroy {
   private poolClosed = false;

@@ -5,7 +5,8 @@ import { Reflector } from "@nestjs/core";
 import { DB } from "../tokens";
 import { findLiveSession } from "./sessions";
 import { findAgentByKey } from "./agents";
-import { IS_PUBLIC, AuthedRequest } from "./decorators";
+import { IS_PUBLIC, PERMISSION_KEY, AuthedRequest, PermissionRequirement } from "./decorators";
+import { hasPermission, scopeCtxFromRequest } from "./permissions";
 import type { Db } from "../db/client";
 
 @Injectable()
@@ -40,6 +41,38 @@ export class AuthGuard implements CanActivate {
     if (!session) throw new UnauthorizedException();
     req.hmisActor = { type: "user", id: session.userId };
     req.hmisSession = session;
+    return true;
+  }
+}
+
+@Injectable()
+export class PermissionGuard implements CanActivate {
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    private readonly reflector: Reflector,
+  ) {}
+
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
+    const requirement = this.reflector.getAllAndOverride<PermissionRequirement | undefined>(
+      PERMISSION_KEY,
+      [ctx.getHandler(), ctx.getClass()],
+    );
+    if (!requirement) return true;
+
+    const req = ctx.switchToHttp().getRequest<AuthedRequest>();
+    const actor = req.hmisActor;
+    if (!actor) throw new UnauthorizedException();
+
+    if (actor.type !== "user") {
+      // Deliberate Plan-02 seam: agent permission grants arrive with the agent runtime
+      // (Plan 12, additive agent_permissions table). Until then agents hold no permissions.
+      throw new ForbiddenException("agents hold no permissions yet");
+    }
+
+    const allowed = await hasPermission(
+      this.db, actor.id, requirement.permission, requirement.scope, scopeCtxFromRequest(req),
+    );
+    if (!allowed) throw new ForbiddenException(`missing permission ${requirement.permission}`);
     return true;
   }
 }

@@ -4,3 +4,4 @@
 export const DB = Symbol("DB");
 export const DB_POOL = Symbol("DB_POOL");
 export const CONFIG = Symbol("CONFIG");
+export const MODULE_REGISTRY = Symbol("MODULE_REGISTRY");
