@@ -52,7 +52,7 @@
 
 ## Plan 03 — Workflow Engine
 
-**STATUS: WRITTEN 2026-08-12 — `2026-08-12-phase1-03-workflow-engine.md` (10 tasks, two pipelines: A = T1–T5, B = T6–T10); pending owner approval in-conversation, then /execute.**
+**STATUS: written, executed and SHIPPED 2026-08-12.** Plan `2026-08-12-phase1-03-workflow-engine.md`; **10/10 tasks gate-passed** across two pipelines (A = T1–T5, B = T6–T10); gate report [`reports/plan-03-gate-report.md`](reports/plan-03-gate-report.md) is the ground truth for shipped interfaces. `pnpm verify` green at `6a9d75c` (35 suites / 152 tests), CI green on all twelve pushed commits. Migration `0004_white_hydra.sql`. Only two retries in ten tasks, both genuine code defects. Plan 04 may now be written.
 
 **SLA-timer scheduling RESOLVED 2026-08-12 (owner chose option (b) in-conversation):** timers are DB rows plus an **unscheduled, idempotent, concurrency-safe `runDueTimers(db)`** — Plan 11 registers it as a pg-boss cron in the worker process, alongside `runDispatchCycle` and `sweepExpiredTempRoles` (the two existing precedents). Rationale: nothing production-real can breach before go-live (flows are data authored Plans 07+), the v4.3 process split puts jobs in a worker process that only exists in Plan 11, and DB rows already satisfy the survive-restart trap; pg-boss is only the ticker and correctness never depends on it. The scope line below is amended accordingly.
 
