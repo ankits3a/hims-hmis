@@ -356,7 +356,9 @@ describe("GET /health", () => {
   it("closes the pg pool when the app closes", async () => {
     const pool = app.get<Pool>(DB_POOL);
     await app.close();
-    expect(pool.ended).toBe(true);
+    // pg rejects any use after end() with exactly this error — proves end() ran.
+    // (Do NOT assert on pool.ended: the runtime property exists but is absent from @types/pg.)
+    await expect(pool.query("select 1")).rejects.toThrow(/after calling end/i);
   });
 });
 ```
@@ -408,10 +410,16 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
   exports: [DB, DB_POOL, CONFIG],
 })
 export class AppModule implements OnModuleDestroy {
+  private poolClosed = false;
+
   constructor(@Inject(DB_POOL) private readonly pool: Pool) {}
 
   async onModuleDestroy(): Promise<void> {
-    if (!this.pool.ended) await this.pool.end();
+    // Own flag, not pg's pool.ended: that runtime property is missing from @types/pg
+    // (typecheck failure), and a double app.close() must stay safe.
+    if (this.poolClosed) return;
+    this.poolClosed = true;
+    await this.pool.end();
   }
 }
 ```
@@ -522,7 +530,7 @@ describe("kernel crypto", () => {
     const sealed = sealSecret(key, "secret");
     expect(() => openSecret(otherKey, sealed)).toThrow();
     const parts = sealed.split(".");
-    parts[3] = parts[3]!.slice(0, -2) + "AA";
+    parts[3] = (parts[3]![0] === "A" ? "B" : "A") + parts[3]!.slice(1); // deterministic one-char tamper
     expect(() => openSecret(key, parts.join("."))).toThrow();
   });
 
@@ -1703,7 +1711,7 @@ In `apps/core/src/app.module.ts`, add `AuthModule` to a new `imports: [AuthModul
 
 In `apps/core/src/health/health.controller.ts`, add `@Public()` above `@Controller("health")`'s `@Get()` method and `import { Public } from "../kernel/auth/decorators";` — health must stay probe-able without credentials.
 
-Add `"express"` types if the compiler asks: devDependency `"@types/express": "^5.0.0"` (Nest ^11 ships express 5).
+Add devDependency `"@types/express": "^5.0.0"` to `apps/core/package.json` — not optional: `decorators.ts` imports the `Request` type (Nest ^11 rides express 5).
 
 - [ ] **Step 4: Run to verify pass**
 
@@ -2314,6 +2322,10 @@ import { authSessions, userTotp } from "../db/schema";
 import { openSecret, sealSecret } from "../crypto";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
+
+// Accept the adjacent time-step: tolerates real-world clock skew on ward devices and
+// removes the 30-second-window-boundary flake from every TOTP test.
+authenticator.options = { window: 1 };
 
 export async function enrollTotp(
   db: Db,
