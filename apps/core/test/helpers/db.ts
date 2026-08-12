@@ -52,8 +52,9 @@ export async function truncateAll(db: Db): Promise<void> {
   await db.execute(sql`truncate table events restart identity`);
   await db.execute(sql`truncate table event_cursors`);
   await db.execute(sql`truncate table event_idempotency`);
+  await db.execute(sql`truncate table approvals, approval_types`);
   await db.execute(
-    sql`truncate table workflow_timers, workflow_transitions, workflow_instances,
+    sql`truncate table approvals, workflow_timers, workflow_transitions, workflow_instances,
         workflow_definition_approvals, workflow_definitions`,
   );
   await db.execute(

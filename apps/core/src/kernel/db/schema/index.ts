@@ -3,3 +3,4 @@ export * from "./eventCursors";
 export * from "./eventIdempotency";
 export * from "./auth";
 export * from "./workflow";
+export * from "./approvals";
