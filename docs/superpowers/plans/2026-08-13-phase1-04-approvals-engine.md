@@ -1141,6 +1141,7 @@ git commit -m "feat(approvals): type registry + C-12 cumulative same-day aggrega
   3. E-15 act-first: `actFirst: true` needs `type.actFirstAllowed` (`act_first_not_allowed`) AND a non-empty trimmed `requestNote` (`note_required`) — runtime checks.
   4. Money: `amountPaise` must be a positive integer (`invalid_amount`) and needs `patientId` or `payeeId` for C-12 aggregation (`amount_needs_target`).
   5. The active definition is read for the pending state's `sla.minutes` (event payload `slaMinutes`, E-18); a definition without it is `definition_mismatch` (defense in depth — T3's registry already refuses such definitions).
+  5b. **Drift guard (stress-test finding):** the type's `approverRole` must still be allowed on both `pending→granted` and `pending→rejected` of the **currently active** definition, else `definition_mismatch`. `approval_types` is insert-only and T3 validated against the version active at registration — if a later version activates with a different approver role, a new request would otherwise snapshot a role the pinned instance refuses at decision time, stranding the item in a worklist its viewers cannot decide. Fail loud at request time instead. In-flight items are safe either way: their instances pin the version they started on and their rows snapshot the matching role.
   6. C-12 snapshots computed **before** the insert and stored **including this request's amount**: `cumulativePatientPaise` when `patientId` present, `cumulativePayeePaise` when `payeeId` present — visible to the approver in the worklist and in the event payload.
   7. `startInstance` pins the instance (state `pending`, SLA timer scheduled by Plan 03 — no timer code here); the `approvals` row inserts with `approverRole`/`urgencyClass` snapshots from the type; `approval.requested` appends on the same tx with `correlationId` = instance id.
 
@@ -1315,6 +1316,25 @@ describe("requestApproval", () => {
     expect(evts[0]!.payload).toMatchObject({ actedFirst: true, urgencyClass: "emergency" });
   });
 
+  it("fails loud when a later definition version drops the type's approver role (drift guard)", async () => {
+    // v2 changes the approver role; the type row (insert-only) still names billing_head.
+    // A new request must refuse with definition_mismatch rather than snapshot a role the
+    // pinned instance would deny at decision time.
+    const defV2 = approvalFlowDefinition({
+      typeKey: "discount_override", title: "Discount Override v2",
+      approverRole: "finance_director", closureSlaMinutes: 45,
+    });
+    const { definitionId } = await createDraft(db, DRAFTER, defV2);
+    await activateDefinition(db, activator, definitionId); // retires v1
+    await expect(
+      withTx(db, (tx) =>
+        requestApproval(tx, requester, {
+          typeKey: "discount_override", subject: { type: "invoice", id: "inv1" },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "definition_mismatch" });
+  });
+
   it("validates money inputs (positive integer paise; needs a C-12 target)", async () => {
     await expect(
       withTx(db, (tx) =>
@@ -1438,6 +1458,19 @@ export async function requestApproval(
     // Defense in depth: T3's registry refuses such definitions at registration time.
     throw new ApprovalError("definition_mismatch", `definition ${type.defKey} carries no SLA on "pending"`);
   }
+  // Drift guard: approval_types is insert-only and was validated against the version active
+  // at REGISTRATION. If a later version changed the approver role, fail loud here — a new
+  // request must not snapshot a role the pinned instance will refuse at decision time.
+  // (In-flight items are unaffected: version pin + row snapshot stay consistent.)
+  for (const to of ["granted", "rejected"] as const) {
+    const t = active.parsed.transitions.find((x) => x.from === "pending" && x.to === to);
+    if (!t || !t.roles.includes(type.approverRole)) {
+      throw new ApprovalError(
+        "definition_mismatch",
+        `type ${type.typeKey} names approver role "${type.approverRole}" but the active definition does not allow it on pending→${to}`,
+      );
+    }
+  }
 
   // C-12 snapshots — today's cumulative INCLUDING this request (IST calendar day,
   // pending+granted). Report-only: thresholds are the consumer plans' CA-configured data.
@@ -1515,7 +1548,7 @@ export async function requestApproval(
 - [ ] **Step 4: Run to verify pass, then the full suite**
 
 Run: `pnpm --filter @hmis/core test -- --testPathPattern "approvals/requests"`
-Expected: PASS (6 tests).
+Expected: PASS (7 tests).
 
 Run: `pnpm verify`
 Expected: PASS.
@@ -1945,6 +1978,9 @@ describe("approver worklist", () => {
     await grantTempRole(db, cfg, activator, {
       userId: billingHead.id, roleKey: "duty_doctor", reason: "cover", ttlMinutes: 30,
     });
+    // temp_role_grants.role_key is FK'd to roles (Plan 02 schema) — the role must exist
+    // before the direct expired-grant insert below.
+    await createRole(db, "expired_role", "Expired Role");
     await db.insert(tempRoleGrants).values({
       id: "01HGRANTLAPSED00000000000A", userId: billingHead.id, roleKey: "expired_role",
       grantedBy: activator.id, kind: "granted", reason: "lapsed",
@@ -2952,7 +2988,7 @@ git commit -m "feat(approvals): full-lifecycle e2e — SLA breach to escalation,
 
 ## Self-Review Notes
 
-- **Spec coverage (this plan's slice):** §8 request → approver role → approve/reject with note → event ✓ (T4 request + T5 decisions + T2 events; the mandatory note is runtime-enforced) · §8 approvers act only inside the HMIS, WhatsApp/SMS notify only ✓ (in-app routes T7; notification delivery is Plan 10's gateway consuming these events — none is sent here) · §8 day-one consumers are discount overrides and refunds ✓ (both are registered TYPES + fixtures here; their real wiring lands with billing, Plan 08, per the roadmap) · C-12 anti-structuring cumulative same-patient/same-payee/same-day ✓ (T3 helper + T4 snapshots; owner decisions: IST calendar day, pending+granted counted, rejected excluded, report-only until CA-configured thresholds arrive in Plans 06/08) · E-15 urgency classes ✓ (T2/T3: routine|urgent|emergency fixed per type; owner decision), interrupting channel ✓ as payload data for Plan 10 (events only until then, roadmap-stated), act-first-review-after ✓ (T3 per-type capability + T4 request path + T8 end-to-end with after-the-fact rejection) · E-18 every request type names reviewer role + closure SLA ✓ (T3 registry refuses definitions without them; T1 builder emits them), overdue escalation ✓ (builder sets `alerting: "active"`; T8 proves the ladder fires through Plan 03's sweep) · roadmap Produces line ✓ — `requestApproval` (requester made explicit: SoD needs the requester's identity — deviation noted), `approval.requested/.granted/.rejected`, table `approvals` (plus `approval_types`, needed for E-18/E-15), `cumulativeAmount` (Tx-first object signature carrying the same payeeOrPatientId/type/window information — deviation noted) · roadmap trap requester≠approver via Plan 02 `assertNotSodPair` ✓ (T5, exact seeded key `requester_approver`, `Actor`-object signature) · roadmap trap E-5 not conflated ✓ (no emergency bypass of the SoD pair exists anywhere in this plan; stated in T5) · timeout escalation via Plan 03 ladders ✓ (owner decision Q1a: instance-backed; zero timer code — T8's capstone proves it). Deliberately out of scope: blocking thresholds (Plans 06/08), notification delivery (Plan 10), the two Plan 03 seams — definition activation through approvals (§10.4) and approval-gated remediation — deferred to **Plan 08** (owner decision Q2, recorded in the roadmap), consumer wiring (Plan 08), agent requesters/deciders (Plan 12 seam, runtime-refused), roster-resolved escalation (Plan 11-adjacent, inherited from Plan 03).
+- **Spec coverage (this plan's slice):** §8 request → approver role → approve/reject with note → event ✓ (T4 request + T5 decisions + T2 events; the mandatory note is runtime-enforced) · §8 approvers act only inside the HMIS, WhatsApp/SMS notify only ✓ (in-app routes T7; notification delivery is Plan 10's gateway consuming these events — none is sent here) · §8 day-one consumers are discount overrides and refunds ✓ (both are registered TYPES + fixtures here; their real wiring lands with billing, Plan 08, per the roadmap) · C-12 anti-structuring cumulative same-patient/same-payee/same-day ✓ (T3 helper + T4 snapshots; owner decisions: IST calendar day, pending+granted counted, rejected excluded, report-only until CA-configured thresholds arrive in Plans 06/08) · E-15 urgency classes ✓ (T2/T3: routine|urgent|emergency fixed per type; owner decision), interrupting channel ✓ as payload data for Plan 10 (events only until then, roadmap-stated), act-first-review-after ✓ (T3 per-type capability + T4 request path + T8 end-to-end with after-the-fact rejection) · E-18 every request type names reviewer role + closure SLA ✓ (T3 registry refuses definitions without them; T1 builder emits them; T4's request-time drift guard keeps the type↔definition binding honest across version bumps — stress-test addition 2026-08-13), overdue escalation ✓ (builder sets `alerting: "active"`; T8 proves the ladder fires through Plan 03's sweep) · roadmap Produces line ✓ — `requestApproval` (requester made explicit: SoD needs the requester's identity — deviation noted), `approval.requested/.granted/.rejected`, table `approvals` (plus `approval_types`, needed for E-18/E-15), `cumulativeAmount` (Tx-first object signature carrying the same payeeOrPatientId/type/window information — deviation noted) · roadmap trap requester≠approver via Plan 02 `assertNotSodPair` ✓ (T5, exact seeded key `requester_approver`, `Actor`-object signature) · roadmap trap E-5 not conflated ✓ (no emergency bypass of the SoD pair exists anywhere in this plan; stated in T5) · timeout escalation via Plan 03 ladders ✓ (owner decision Q1a: instance-backed; zero timer code — T8's capstone proves it). Deliberately out of scope: blocking thresholds (Plans 06/08), notification delivery (Plan 10), the two Plan 03 seams — definition activation through approvals (§10.4) and approval-gated remediation — deferred to **Plan 08** (owner decision Q2, recorded in the roadmap), consumer wiring (Plan 08), agent requesters/deciders (Plan 12 seam, runtime-refused), roster-resolved escalation (Plan 11-adjacent, inherited from Plan 03).
 - **Catalog discipline:** exactly three names minted — `approval.requested`, `approval.granted`, `approval.rejected` — all present in §10.6 (P7+kernel). `module: "approvals"`, `correlationId` = backing instance id on every emission. `sla.breached`/`escalation.triggered` for approval flows are emitted by Plan 03's shipped code under `module: "workflow"` — not re-minted. Type registration and instance starts emit nothing (no catalog names exist; `workflow.definition.updated` already covers the definition lifecycle).
 - **Type consistency:** `ApprovalError` defined once in T3, reused by T4/T5/T6, mapped once in T7's `toHttp` (the Plan 03 `WorkflowError` convention) · `UrgencyClass` defined in T3, consumed by T4/T5/T6/T7; the two zod `urgency` enums (T2 events, T7 controller) carry the same three literals · `approvalFlowDefinition` (T1) output feeds T3's registry validation, T4's `slaMinutes` extraction, and both e2e fixtures — every fixture passes through `defineWorkflow` by construction · `requestApproval`/`listApprovals`/`getApproval`/decision signatures written in T4/T5/T6 are called verbatim in T7's controller and T8's e2e · consumed Plan 01–03 signatures verified against gate reports and the shipped `sod.ts` (scouted this session): `appendEvent(tx, def.make({ actor, payload, correlationId?, patientId?, encounterId? }))`, `newId()`, `startInstance(tx, defKey, subject)`, `transition(tx, instanceId, to, actor, { note })`, `getActiveDefinition(tx, defKey)`, `createDraft(db, actor, defJson)`, `activateDefinition(db, actor, definitionId)`, `runDueTimers(db, now?)`, `assertNotSodPair(db, pairKey, actorA, actorB)` with `Actor` objects and seeded key `requester_approver`, `setupTestDb`/`truncateAll` frozen (truncate list extended by one statement only, placed before the workflow group for FK order).
 - **Placeholders:** none — every step carries runnable code or exact commands.
