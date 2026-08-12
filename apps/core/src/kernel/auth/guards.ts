@@ -2,11 +2,13 @@ import {
   CanActivate, ExecutionContext, ForbiddenException, Inject, Injectable, UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import { DB } from "../tokens";
+import { CONFIG, DB } from "../tokens";
 import { findLiveSession } from "./sessions";
 import { findAgentByKey } from "./agents";
 import { IS_PUBLIC, PERMISSION_KEY, AuthedRequest, PermissionRequirement } from "./decorators";
 import { hasPermission, scopeCtxFromRequest } from "./permissions";
+import { recordSecondFactor, secondFactorFresh, verifyTotpCode } from "./totp";
+import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 
 @Injectable()
@@ -49,6 +51,7 @@ export class AuthGuard implements CanActivate {
 export class PermissionGuard implements CanActivate {
   constructor(
     @Inject(DB) private readonly db: Db,
+    @Inject(CONFIG) private readonly cfg: AppConfig,
     private readonly reflector: Reflector,
   ) {}
 
@@ -73,6 +76,17 @@ export class PermissionGuard implements CanActivate {
       this.db, actor.id, requirement.permission, requirement.scope, scopeCtxFromRequest(req),
     );
     if (!allowed) throw new ForbiddenException(`missing permission ${requirement.permission}`);
+
+    if (requirement.secondFactor) {
+      const session = req.hmisSession;
+      if (!session) throw new ForbiddenException("second factor requires a user session");
+      if (!secondFactorFresh(session, this.cfg.secondFactorWindowMinutes)) {
+        const code = req.headers["x-totp-code"];
+        const ok = typeof code === "string" && (await verifyTotpCode(this.db, this.cfg, actor.id, code));
+        if (!ok) throw new ForbiddenException("second_factor_required");
+        await recordSecondFactor(this.db, session.sessionId);
+      }
+    }
     return true;
   }
 }

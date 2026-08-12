@@ -1,10 +1,12 @@
 import {
-  BadRequestException, Body, Controller, Get, HttpCode, Inject, Post, Req, UnauthorizedException,
+  BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Inject, Post, Req,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../tokens";
 import { loginWithPassword, revokeSession, switchWithBadge, switchWithPin } from "./sessions";
+import { confirmTotp, enrollTotp, recordSecondFactor, verifyTotpCode } from "./totp";
 import { CurrentActor, Public, AuthedRequest } from "./decorators";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
@@ -70,5 +72,35 @@ export class AuthController {
   @Get("me")
   me(@CurrentActor() actor: Actor): { actor: Actor } {
     return { actor };
+  }
+
+  @Post("totp/enroll")
+  async totpEnroll(@CurrentActor() actor: Actor): Promise<{ otpauthUrl: string }> {
+    if (actor.type !== "user") throw new ForbiddenException();
+    const { otpauthUrl } = await enrollTotp(this.db, this.cfg, actor.id);
+    return { otpauthUrl };
+  }
+
+  @Post("totp/confirm")
+  @HttpCode(204)
+  async totpConfirm(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<void> {
+    const parsed = z.object({ code: z.string().min(6) }).safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    if (actor.type !== "user" || !(await confirmTotp(this.db, this.cfg, actor.id, parsed.data.code))) {
+      throw new ForbiddenException("invalid code");
+    }
+  }
+
+  @Post("totp/verify")
+  @HttpCode(204)
+  async totpVerify(@Req() req: AuthedRequest, @Body() body: unknown): Promise<void> {
+    const parsed = z.object({ code: z.string().min(6) }).safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    const actor = req.hmisActor;
+    if (!actor || actor.type !== "user" || !req.hmisSession) throw new ForbiddenException();
+    if (!(await verifyTotpCode(this.db, this.cfg, actor.id, parsed.data.code))) {
+      throw new ForbiddenException("invalid code");
+    }
+    await recordSecondFactor(this.db, req.hmisSession.sessionId);
   }
 }
