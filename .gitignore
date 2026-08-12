@@ -3,3 +3,26 @@ node_modules/
 dist/
 .env
 coverage/
+
+# TypeScript emit. The .ts files are the source of truth; a stray `tsc` (without
+# --noEmit) must never leave .js beside them: jest resolves .js before .ts in
+# moduleFileExtensions and would silently load stale compiled output.
+apps/core/src/**/*.js
+apps/core/src/**/*.d.ts
+apps/core/src/**/*.js.map
+apps/core/test/**/*.js
+apps/core/test/**/*.d.ts
+apps/core/test/**/*.js.map
+apps/core/scripts/**/*.js
+apps/core/scripts/**/*.d.ts
+apps/core/scripts/**/*.js.map
+apps/core/drizzle.config.js
+apps/core/drizzle.config.d.ts
+apps/core/drizzle.config.js.map
+packages/*/src/**/*.js
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.js.map
+packages/*/test/**/*.js
+packages/*/test/**/*.d.ts
+packages/*/test/**/*.js.map
+*.tsbuildinfo
