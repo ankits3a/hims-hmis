@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { createUser, setPin, rotateBadge } from "./identity";
 import {
-  createSession, findLiveSession, revokeSession, revokeUserSessions,
+  createSession, findLiveSession, revokeSession, revokeUserSessions, revokeTerminalSessions,
   loginWithPassword, switchWithPin, switchWithBadge,
 } from "./sessions";
 import { loadConfig } from "../config";
@@ -50,6 +50,12 @@ describe("sessions", () => {
     expect(await revokeUserSessions(db, userId)).toBe(2);
     expect(await findLiveSession(db, a.token)).toBeNull();
     expect(await findLiveSession(db, b.token)).toBeNull();
+
+    const c = await createSession(db, cfg, userId, "counter-9");
+    const d = await createSession(db, cfg, userId, "counter-9");
+    expect(await revokeTerminalSessions(db, "counter-9")).toBe(2);
+    expect(await findLiveSession(db, c.token)).toBeNull();
+    expect(await findLiveSession(db, d.token)).toBeNull();
   });
 
   it("loginWithPassword returns a token only on valid credentials", async () => {
@@ -76,8 +82,10 @@ describe("sessions", () => {
     const u1 = await mkUser("first");
     await mkUser("second");
     const badge = await rotateBadge(db, cfg, u1);
+    const outgoing = await loginWithPassword(db, cfg, { username: "second", password: "s3cret-pass", terminalId: "ward-3" });
     const s = await switchWithBadge(db, cfg, { badgeToken: badge.badgeToken, terminalId: "ward-3" });
     expect((await findLiveSession(db, s!.token))!.userId).toBe(u1);
+    expect(await findLiveSession(db, outgoing!.token)).toBeNull(); // outgoing user is gone
     expect(await switchWithBadge(db, cfg, { badgeToken: "b1.fake.1.sig", terminalId: "ward-3" })).toBeNull();
   });
 });
