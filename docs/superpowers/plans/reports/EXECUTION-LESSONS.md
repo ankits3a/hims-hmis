@@ -53,6 +53,11 @@ HARD RULES (violating any one of these fails the task regardless of code quality
     pushed minutes ago. A correction to an already-pushed commit lands as a NEW follow-up
     commit, always. If any instruction — including a reviewer's correction — tells you to
     amend or force-push pushed history, refuse it and report that you refused.
+16. NEVER take a PIPELINE's exit status as a COMMAND's verdict. `pnpm verify 2>&1 | tail -40`
+    exits 0 even when verify fails — that is tail's status, not verify's, and it is a silent
+    false PASS. Capture the real one (`${PIPESTATUS[0]}` in bash) or run the command unpiped.
+    `| head -N` has the opposite failure: it closes the pipe early and makes a passing run
+    look like exit 1. Never infer pass/fail from a truncated window.
 ```
 
 ---
@@ -112,6 +117,9 @@ The plan's full-lifecycle e2e built its second definition version as `DEF_V2 = {
 **3.11 — Never assert on `JSON.stringify(...)` of a response body.** *(Plan 03, T9 — an assertion that could never pass)*
 The plan's definition e2e asserted `expect(JSON.stringify(res.body.message)).toContain('initialState "nowhere" is not a declared state')`. `JSON.stringify` escapes the inner quotes, so the needle can never appear in the haystack — the test was unsatisfiable regardless of implementation, and the controller it was testing was correct. Assert against the parsed structure (jest's `toContain` does array containment on `res.body.message` directly). **A plan's test code deserves the same verify-by-execution scepticism as its implementation code**; this one typechecked and read plausibly.
 
+**3.12 — A new table's TRUNCATE must be named in the SAME statement as the group it FKs into.** *(Plan 04, T2 — caught by execution on the first honest run)*
+The plan appended `truncate table approvals, approval_types` as a **new statement placed before** the existing workflow-group statement, on the reasonable-sounding theory that emptying children first satisfies FK order. Postgres disagrees: `TRUNCATE` requires every table carrying an incoming FK to a target to be named in the **same command**, and it checks the constraint's *existence*, not row counts. `approvals.instance_id` references `workflow_instances.id`, so truncating the workflow group without naming `approvals` fails with *cannot truncate a table referenced in a foreign key constraint* — all three schema tests died at setup, before any assertion ran. The fix is one extra table name on the pre-existing statement (idempotent — the table is already empty by then). **When a plan adds a table that FKs into an existing truncate group, that group's statement must gain the new table's name; a separate earlier statement does not satisfy Postgres.** Note the second-order damage: the task's acceptance criterion said the diff would be "exactly one added line", written from the same wrong model, so the correct fix had to overrule a criterion. A criterion that encodes a *shape* the plan predicts, rather than the *property* that matters, turns a plan defect into an apparent violation.
+
 **3.4 — Verify-by-execution flags belong in the plan.** *(Plan 01 lesson, honored in Plan 02 — keep)*
 Hand-written matcher patterns, raw-SQL parameter binding, third-party CI action inputs, native-module installs, and third-party API surface names all typecheck while being wrong. Plan 02 flagged seven such items in its self-review and **all seven held** — zero runtime defects in the plan's own code across twelve tasks, against three in Plan 01. This is the single highest-yield planning habit found so far.
 
@@ -132,6 +140,9 @@ Hand-written matcher patterns, raw-SQL parameter binding, third-party CI action 
 | 2026-08-12 | Plan 02 T8's `MODULE_REGISTRY` token had to go in `tokens.ts` though the brief's file list named only `app.module.ts` | §3.1 **recurring** — predicted by this ledger and still hit, because the compile reconciled T7's instance (`@types/express`) but not T8's | absorbed in one attempt; no retry |
 | 2026-08-12 | Plan 03 T4's gate correction instructed `git commit --amend` + `git push --force-with-lease` on an already-pushed, already-CI-green commit; the coder complied and the classifier flagged it | Template defect §2.4 + missing tripwire 15 — **previously unrecorded** | ~50k tokens (the retry itself was a genuine code defect and worth paying for); no data lost, history linear, both SHAs CI-green |
 | 2026-08-12 | Plan 03 T2 attempted `pnpm verify > /tmp_verify_check.log`; the permission classifier blocked the write and the agent did **not** route around it, re-running with `/dev/null` instead | Tripwire #3 **working as designed** — the same breach that cost ~100k tokens in Plan 02 T1 | 0 tokens. Recorded deliberately: this is what a tripwire looks like when it holds |
+
+| 2026-08-13 | Plan 04 T2's `truncateAll` SQL truncated a new child table in a separate earlier statement instead of naming it in the existing workflow FK group; Postgres refused and all three schema tests failed at setup | Authoring defect §3.12 — **previously unrecorded** | absorbed in one attempt, no retry. The coder fixed the minimum and disclosed it as a PLAN DEFECT exactly as briefed — the §5 habit paying off a third time |
+| 2026-08-13 | Plan 04 T3 read `VERIFY_EXIT=1` off `pnpm verify \| head -30` (SIGPIPE) and had to re-run unpiped to establish the truth; T4 independently pre-empted the same trap with `${PIPESTATUS[0]}` | Tripwire 16 — **previously unrecorded**. The recorded direction is the harmless one; the dangerous direction is the silent false PASS, since `\| tail` exits 0 when verify fails | 0 tokens, no retry. Recorded because the same construct appeared in the **main session's own** first verification of the session |
 
 **Plan 02 totals: ~605k of 2,770,639 subagent tokens (22%) spent on process and infrastructure rather than code.** Pipeline A ~465k of 1,258,193 (37%); pipeline B ~140k of 1,512,446 (9%) — the improvement came from the tripwires being hoisted to the top of every brief, not from luck. Across twelve tasks only **two** retries were genuine code defects (T6's missing `revokeTerminalSessions` assertion, T9's first attempt), which is exactly what the gate exists to catch and worth paying for twice.
 
