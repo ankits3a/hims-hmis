@@ -4,6 +4,7 @@ import { DB, MODULE_REGISTRY } from "../tokens";
 import { AuthController } from "./auth.controller";
 import { AuthGuard, PermissionGuard } from "./guards";
 import { syncPermissions } from "./permissions";
+import { seedSodPairs } from "./sod";
 import type { ModuleRegistry } from "../modules/loader";
 import type { Db } from "../db/client";
 
@@ -22,5 +23,6 @@ export class AuthModule implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await syncPermissions(this.db, this.registry);
+    await seedSodPairs(this.db);
   }
 }
