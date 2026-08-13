@@ -37,6 +37,7 @@ describe("patients lifecycle e2e (registration → merge → unmerge → sweep)"
   registry.install(patientsManifest);
   const cfg = loadConfig({ DATABASE_URL: "postgres://unused", SECRET_KEY: process.env.SECRET_KEY! });
 
+  let clerkId: string;
   let clerkToken: string;
   let mrdToken: string;
 
@@ -90,6 +91,7 @@ describe("patients lifecycle e2e (registration → merge → unmerge → sweep)"
     const mrd = await mk("mrd");
     const drafter = await mk("drafter");
     const activator = await mk("activator");
+    clerkId = clerk.id;
     clerkToken = clerk.token;
     mrdToken = mrd.token;
 
@@ -186,9 +188,18 @@ describe("patients lifecycle e2e (registration → merge → unmerge → sweep)"
     expect(worklist.body.items).toHaveLength(1);
     expect(worklist.body.items[0]).toMatchObject({ id: mergeApprovalId, typeKey: MERGE_TYPE, urgencyClass: "routine" });
 
-    await request(app.getHttpServer())
+    // The clerk deliberately held zero approvals permissions through legs 1-3 — that is what
+    // proves the merge-request service call carries no route guard. For this assertion only,
+    // grant approvals.requests.decide so the clerk clears @RequirePermission on the approve
+    // route and the refusal below is produced by the SoD check (assertNotSodPair) itself,
+    // not by the route guard. There is no permission cache — hasPermission queries the DB
+    // per request (kernel/auth/permissions.ts) — so the grant applies immediately.
+    await assignRole(db, { userId: clerkId, roleKey: "approvals_decider", scopeType: "hospital" });
+
+    const selfApproval = await request(app.getHttpServer())
       .post(`/approvals/${mergeApprovalId}/approve`).set(...auth(clerkToken))
-      .send({ note: "self-approval attempt" }).expect(403); // requester === approver, refused
+      .send({ note: "self-approval attempt" }).expect(403); // requester === approver — refused by the SoD check
+    expect(selfApproval.body.message).toContain("requester_approver");
 
     await request(app.getHttpServer())
       .post(`/approvals/${mergeApprovalId}/approve`).set(...auth(mrdToken))
@@ -278,5 +289,6 @@ describe("patients lifecycle e2e (registration → merge → unmerge → sweep)"
     expect(await countByName("approval.requested")).toBe(2); // merge + unmerge
     expect(await countByName("approval.granted")).toBe(1); // the merge approval
     expect(await countByName("approval.rejected")).toBe(1); // the after-the-fact unmerge review
+    expect(await countByName("sod.violation_blocked")).toBe(1); // the leg-4 clerk self-approval attempt
   });
 });
