@@ -4206,6 +4206,7 @@ This file exists before `App.tsx` — after Step 2's install, `pnpm --filter @hm
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.0",
+    "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
@@ -4264,7 +4265,7 @@ export default defineConfig({
     "skipLibCheck": true,
     "noEmit": true,
     "resolveJsonModule": true,
-    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"],
+    "types": ["node", "vite/client", "vitest/globals", "@testing-library/jest-dom"],
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src", "vite.config.ts"]
@@ -4433,6 +4434,8 @@ git commit -m "feat(web): apps/web scaffold — Vite+React+Tailwind4+Vitest ridi
 
 **Interfaces (consumed by every screen task):**
 - `api<T>(method, path, body?): Promise<T>` — same-origin fetch, bearer header from the token store, JSON both ways, throws `ApiError { status, body }`; **401 clears the token** so the router guard bounces to `/login`.
+  - **The error envelope's `message` is NOT always a string** (verified against the shipped controllers). There is no global exception filter, so Nest's default envelope applies: `{ statusCode, message, error }` — and on any zod validation failure the controllers throw `BadRequestException(result.error.issues)`, which makes `message` an **array of zod issue objects**. Every screen that surfaces a server error must render `string | ZodIssue[]`, not assume a string; `String(message)` on the array path yields `[object Object]`. Keeping the raw body on `ApiError` is deliberate for exactly this reason.
+  - **No CORS is configured on the backend, and none is needed**: dev goes through `vite.config.ts`'s `server.proxy` (so the browser sees same-origin) and production is Caddy serving the SPA and the API from one origin (Plan 11). Every path in this app is therefore relative — never an absolute `http://localhost:3000` URL. Do not add CORS handling client-side and do not ask for it server-side.
 - `setToken/getToken` — localStorage (`hmis.token`) + module state. LAN SPA; XSS-hardening beyond React's defaults is accepted Phase-1 posture, noted for the security review.
 - `AuthProvider` / `useAuth()` → `{ actor, ready, login(username, password), logout() }` — `login` posts `/auth/login`, stores the token, loads `/auth/me`.
 - `i18n` — i18next with `en` + `hi` JSON namespaces, default `en`, persisted (`hmis.lang`); **every user-facing string in every screen goes through `t()`** (§15) — the locale files below carry the full key set for T12–T16, so later tasks add keys, never restructure.
@@ -4926,6 +4929,9 @@ git commit -m "feat(web): app shell — api client, auth, hi/en i18n, code-based
 - Create (via CLI): `apps/web/src/components/ui/*` (button, card, input, label, select, dialog, badge, table, tabs, textarea, checkbox, alert), `apps/web/src/lib/utils.ts`
 - Create: `apps/web/src/components/form-kit.tsx`, `apps/web/src/components/form-kit.test.tsx`
 - Modify: `apps/web/package.json` + `pnpm-lock.yaml` (**the shadcn CLI adds Radix/cva/clsx/tailwind-merge/lucide-react dependencies and runs the install itself** — declared here so the diff surprises nobody, §3.1)
+- Modify: `apps/web/src/styles.css` (theme variables — see the note below; named here so the diff surprises nobody, §3.1)
+
+**`components.json` is hand-written here, which means `shadcn init` never runs — and `init` has a SECOND effect this task must own.** Besides writing `components.json`, `init` appends the style's theme block to the CSS entry: under `"cssVariables": true` with the `new-york` style, generated components reference custom properties (`bg-background`, `text-foreground`, `border-border`, `ring-ring`, …) that T11's `styles.css` does not define. Tailwind silently drops utilities it has no definition for, so **the suite would still pass while every component rendered unstyled** — a §3.14-shaped failure at the CSS layer. After the `add` command completes, inspect `src/styles.css`: if the CLI did not add the theme variables itself, add the `new-york`/`neutral` theme block (light and dark) from the registry output and say in your report that you did, and why. Do NOT invent a palette — take it from the CLI or the registry. If the CLI errors (registry offline, version drift), STOP and report — do not hand-write substitutes.
 
 **shadcn is CLI-generated, not hand-transcribed** (spec §5 pins it; the registry owns the component bytes). Acceptance is therefore **behavioral, not byte-wise**: the named files exist, `pnpm verify` is green repo-wide, and the form-kit tests pass against the generated `cn()` util. Generated component bytes are registry-determined — record the CLI's output in the report; do NOT edit generated files except where lint genuinely fails (T11 already relaxed `no-empty-object-type` for `components/ui/**`; any further lint conflict is a plan defect to report, not to hand-patch).
 
@@ -5182,7 +5188,7 @@ git commit -m "feat(web): shadcn/ui components via CLI + keyboard-first form kit
 - [ ] **Step 1: Failing tests first** (three files; all fail at unresolved imports):
   - `registration-desk.test.tsx`: (a) typing `98765` fires the search call and renders the stubbed result row; (b) clicking the row opens the attach dialog showing the photo img (stubbed base64) and both buttons; (c) "No — register new" switches to the form with phone prefilled; (d) in the form, `ageYears: 10` reveals the guardian section and blocks submit without it (zod error `register.guardianRequired`); (e) a valid submit posts `/patients` and shows the card view (stubbed `/qr` response rendered).
   - `qr-card.test.tsx`: renders the UHID text and an `svg` element; the print button calls a `window.print` spy.
-  - `photo-capture.test.tsx`: with `navigator.mediaDevices` undefined (jsdom), the fallback file input renders; selecting a file (stubbed `createImageBitmap` + canvas `toBlob`) calls `onCapture` with a Blob.
+  - `photo-capture.test.tsx`: with `navigator.mediaDevices` undefined (jsdom), the fallback file input renders; selecting a file calls `onCapture` with a Blob. **jsdom implements NO canvas at all unless the optional native `canvas` package is installed (it is not, deliberately — it is a heavy native build and pnpm's `ignoredBuilds` would block it anyway), so this test must stub THREE things, not two:** `createImageBitmap`, `HTMLCanvasElement.prototype.toBlob`, and — the one an earlier draft missed — **`HTMLCanvasElement.prototype.getContext`**, which jsdom returns `null` from. `fileToCappedJpeg` does `canvas.getContext("2d")!.drawImage(...)`, so an unstubbed `getContext` makes that non-null assertion dereference null and the test dies with a TypeError before ever reaching `toBlob`. Stub it to return an object with a no-op `drawImage`. Any other test that renders `PhotoCapture` and selects a file needs the same three stubs.
 
 - [ ] **Step 2: Implementation** — complete files.
 
