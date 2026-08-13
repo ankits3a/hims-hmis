@@ -1,4 +1,4 @@
-import { and, desc, eq, lte, sql } from "drizzle-orm";
+import { and, desc, eq, lte, ne, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { tariffItems, tariffVersions } from "../../kernel/db/schema";
@@ -181,14 +181,19 @@ export async function activateVersion(
   }
 
   return withTx(db, async (tx) => {
-    // Serializes against any OTHER version's concurrent activation so the monotonicity
-    // re-check below sees a consistent activated set (D5).
+    // Locks the row actually being activated so a concurrent activateVersion on the SAME
+    // version blocks here until the winner commits (this is what serializes the race — a
+    // lock on the (possibly still-empty) activated set locks nothing when no version has
+    // activated yet). Kept alongside the activated-set lock, which still serializes against
+    // any OTHER version's concurrent activation so the monotonicity re-check below sees a
+    // consistent activated set (D5).
+    await tx.execute(sql`select id from tariff_versions where id = ${versionId} for update`);
     await tx.execute(sql`select id from tariff_versions where status = 'activated' for update`);
 
     const activated = await tx
       .select({ effectiveFrom: tariffVersions.effectiveFrom })
       .from(tariffVersions)
-      .where(eq(tariffVersions.status, "activated"));
+      .where(and(eq(tariffVersions.status, "activated"), ne(tariffVersions.id, versionId)));
     const notMonotone = activated.some((r) => r.effectiveFrom !== null && r.effectiveFrom >= effectiveFrom);
     if (notMonotone) {
       throw new TariffError(
