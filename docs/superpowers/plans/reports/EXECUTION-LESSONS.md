@@ -58,6 +58,17 @@ HARD RULES (violating any one of these fails the task regardless of code quality
     false PASS. Capture the real one (`${PIPESTATUS[0]}` in bash) or run the command unpiped.
     `| head -N` has the opposite failure: it closes the pipe early and makes a passing run
     look like exit 1. Never infer pass/fail from a truncated window.
+17. NEVER take a WRAPPER's exit status as the COMMAND's verdict. Appending `; echo "exit: $?"`
+    makes the shell exit 0 because the *echo* succeeded — your harness then reports PASS for a
+    command that died. Read the echoed VALUE, or a captured exit file. This is tripwire 16 one
+    level out, and it fails in the dangerous direction: silently green.
+18. Run any LONG remote command (`pnpm verify`, `pnpm install`, a seeded perf suite) DETACHED
+    on the server with its own exit code written to a file — never held open on a foreground
+    SSH channel, which exits 255 on a dropped link and destroys the evidence mid-run:
+      ssh root@62.238.106.231 'cd /opt/hmis && setsid nohup sh -c "pnpm verify \
+        > /opt/hmis/.verify.log 2>&1; echo \$? > /opt/hmis/.verify.exit" >/dev/null 2>&1 &'
+    then poll `.verify.exit` for the real status. Delete both scratch files before committing
+    (tripwire 4) and confirm `git status` is clean.
 ```
 
 ---
@@ -149,6 +160,7 @@ Hand-written matcher patterns, raw-SQL parameter binding, third-party CI action 
 
 | 2026-08-13 | Plan 04 T5's race test enumerated 2 of the 3 loser codes Plan 03's shipped arbiter can produce; the assertion passed 1 run in 5 and no implementation could have fixed it | Authoring defect §3.13 — **previously unrecorded**; §3.11 one level deeper (flaky, not impossible) | absorbed in one attempt, no retry. Found because the coder ran it 5 times instead of once |
 | 2026-08-13 | Plan 04 T5's `decide()` used `Promise<{ status: typeof verdict }>`, which resolves to the parameter's declared union and does not narrow per call site — TS2322 on both exported wrappers | Authoring defect: the plan's TypeScript typechecked in the author's head, not in the compiler | absorbed in one attempt, no retry (2-line generic fix) |
+| 2026-08-13 | Plan 05's baseline verify was run on a foreground SSH channel; the link reset at ~10 min (exit 255) with `apps/core` five suites in, and the harness reported **exit 0** because the trailing `; echo "EXIT: $?"` wrapper had succeeded. Caught only by reading the echoed value | Tripwires 17 + 18 — **previously unrecorded**, and hit by the MAIN SESSION, exactly where tripwire 16 was found in Plan 04 | 0 agent tokens (pre-compile), ~10 min wall clock re-run detached. Recorded because the reported-PASS direction is the silent one: a dropped verify would have certified a baseline nobody measured |
 
 **Plan 04 totals: 17 agents, 1,278,905 subagent tokens (pipeline A 607,273 / pipeline B 627,309 / signature scout 44,323), ~1h47m of pipeline wall clock across eight tasks.** Zero infrastructure failures. Zero retries — **8/8 first-attempt gate passes, the first plan in the series with no retry of any kind.** The plan's ~1.3M calibration was accurate to within 2%.
 
