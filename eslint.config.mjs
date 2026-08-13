@@ -1,4 +1,5 @@
 import tseslint from "typescript-eslint";
+import reactHooks from "eslint-plugin-react-hooks";
 
 export default tseslint.config(
   { ignores: ["**/dist/**", "**/drizzle/**", "**/node_modules/**"] },
@@ -40,6 +41,24 @@ export default tseslint.config(
     files: ["**/*.test.ts"],
     rules: {
       "@typescript-eslint/no-unused-vars": "off",
+    },
+  },
+  {
+    // apps/web (Plan 05): the hooks rules catch the one class of silent UI bug lint can
+    // catch. Plugin registered manually — no preset dependency on the plugin's config names.
+    files: ["apps/web/src/**/*.{ts,tsx}"],
+    plugins: { "react-hooks": reactHooks },
+    rules: {
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
+    },
+  },
+  {
+    // shadcn CLI output (Plan 05 T13) uses `interface X extends Y {}` idioms; generated
+    // code is registry-owned — relax, don't rewrite (the deviations-not-to-fix principle).
+    files: ["apps/web/src/components/ui/**"],
+    rules: {
+      "@typescript-eslint/no-empty-object-type": "off",
     },
   },
 );

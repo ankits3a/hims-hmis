@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+/* Print is a first-class surface (§15): screen chrome vanishes, print-only blocks appear. */
+@media print {
+  .no-print { display: none !important; }
+}
+@media screen {
+  .print-only { display: none !important; }
+}
