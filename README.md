@@ -40,3 +40,24 @@ routine|urgent|emergency are fixed per type; act-first-review-after needs the ty
 opt-in plus a justification note. Routes: POST /approvals/types · POST /approvals ·
 GET /approvals (role-scoped worklist) · GET /approvals/:id · POST /approvals/:id/approve ·
 POST /approvals/:id/reject.
+
+## Patients module (Plan 05)
+
+The first domain module: `apps/core/src/modules/patients/` owns the patient master (spec §6).
+Other modules reference `patient_id` and import ONLY from `modules/patients/index` (or consume
+events) — the module-isolation lint rule enforces it. UHID = `<PREFIX>-<8 digits>-<Verhoeff>`;
+phone-first search carries a CI-enforced <300 ms budget (`test/perf-patient-search.test.ts`).
+Merge/unmerge are approval-gated through the approvals engine (types `patient_merge`,
+`patient_unmerge` — act-first enabled). Guardian majority is read-time-enforced;
+`sweepGuardianMajority` is the FOURTH unscheduled sweep (pg-boss cron in Plan 11, with
+`runDispatchCycle`, `sweepExpiredTempRoles`, `runDueTimers`).
+
+### Go-live runbook (owner steps, once per environment)
+1. Choose the UHID prefix (Class A decision — printed on every card):
+   `UHID_PREFIX=<PREFIX> pnpm --filter @hmis/core seed:registration`
+2. Register the merge approval types as data (no code): build each definition with
+   `approvalFlowDefinition({ typeKey: "patient_merge" | "patient_unmerge", approverRole: <role>, ... })`,
+   draft + activate through `/workflow/definitions` (drafter ≠ activator), then `POST /approvals/types`
+   (`patient_unmerge` with `urgencyClass: "urgent", actFirstAllowed: true`).
+3. Grant `patients.*` permissions to the registration-desk role; `patients.confidential.read`
+   and `patients.merge` only to the roles the owner designates.
