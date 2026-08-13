@@ -8,6 +8,7 @@ import { KeyboardProvider, ShortcutLegend } from "./lib/keyboard";
 import { switchLanguage } from "./lib/i18n";
 import i18next from "./lib/i18n";
 import { LoginScreen } from "./screens/login";
+import { RegistrationDesk } from "./screens/registration-desk";
 
 function ComingSoon({ name }: { name: string }): React.ReactElement {
   return <div className="p-8 text-neutral-500">{name} — T14–T16</div>;
@@ -74,7 +75,7 @@ const indexRoute = createRoute({
 const registrationRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/registration",
-  component: () => <ComingSoon name="Registration" />, // T14 replaces
+  component: RegistrationDesk,
 });
 
 const patientRoute = createRoute({

@@ -136,3 +136,10 @@
 @media screen {
   .print-only { display: none !important; }
 }
+
+/* Print isolation: only the patient card reaches the paper (85.6 x 54 mm credit-card stock). */
+@media print {
+  body * { visibility: hidden; }
+  .qr-card, .qr-card * { visibility: visible; }
+  .qr-card { position: fixed; left: 0; top: 0; width: 85.6mm; height: 54mm; border: none; }
+}
