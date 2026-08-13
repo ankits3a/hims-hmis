@@ -25,3 +25,18 @@ as a pg-boss cron (owner decision 2026-08-12), same as `runDispatchCycle` and
 `sweepExpiredTempRoles`. Authoring flows: POST /workflow/definitions with
 `{ key, title, changeClass, initialState, states, transitions }` — every branch must reach
 a terminal state or the draft is rejected with the full problem list.
+
+## Approvals engine
+One generic mechanism (spec §8): request → approver role → approve/reject with a mandatory
+note → event. Every request type is registered configuration backed by a workflow definition
+(`approval_<typeKey>`, built by `approvalFlowDefinition`, activated through the workflow
+engine's own draft→activate governance), so closure SLAs and escalation ladders run on the
+workflow engine's DB-row timers — `runDueTimers()` remains UNSCHEDULED until Plan 11's
+pg-boss cron. Requester≠approver is enforced through the seeded `requester_approver` SoD
+pair; decisions are single-winner instance transitions. C-12 cumulative same-patient/
+same-payee/same-IST-day totals are snapshotted on every money request (report-only —
+thresholds arrive with CA configuration in Plans 06/08). Urgency classes
+routine|urgent|emergency are fixed per type; act-first-review-after needs the type's
+opt-in plus a justification note. Routes: POST /approvals/types · POST /approvals ·
+GET /approvals (role-scoped worklist) · GET /approvals/:id · POST /approvals/:id/approve ·
+POST /approvals/:id/reject.
