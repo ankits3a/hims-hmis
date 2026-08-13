@@ -2563,6 +2563,9 @@ git commit -m "feat(patients): guardians — authority scope, sensitive-context 
 **Files:**
 - Create: `apps/core/src/modules/patients/qr.ts`
 - Create: `apps/core/src/modules/patients/qr.test.ts`
+- Modify: `apps/core/test/perf-patient-search.test.ts` (**exactly ONE line deleted** — carried-forward cleanup, rationale below)
+
+**Carried-forward cleanup** (EXECUTION-LESSONS §3.2's mechanism — named explicitly here so the gate reads it as in-scope rather than scope creep): pipeline A's T4 typed this plan's `// eslint-disable-next-line no-console` verbatim above the search-timings log. The root `eslint.config.mjs` never enables `no-console` (confirmed against shipped source — only `no-restricted-imports` and a test-file `no-unused-vars` relaxation are configured beyond `tseslint.configs.recommended`), so ESLint 9 reports it as an **unused disable directive**: `pnpm lint` emits `✖ 1 problem (0 errors, 1 warning)`. Verify still exits 0, which is precisely why it will rot there and mask the next real warning. Delete that one comment line — nothing else in that file, and do not touch the `console.log` it sat above. Recorded as EXECUTION-LESSONS §3.15.
 
 **Interfaces:**
 - Consumes: `hmacSign`, `hmacVerify` (`kernel/crypto` — **this plan creates no crypto**, roadmap-stated), `AppConfig` (`cfg.secretKey` — **no new env var**), `hasPermission`, tables, events (T3), `PatientError`, `appendEvent`, `withTx`.
@@ -2694,6 +2697,14 @@ describe("signed QR (D-23)", () => {
   it("reissue refuses unknown/frozen patients and non-user actors", async () => {
     await expect(reissueQrCard(db, cfg, clerk, "01NOSUCH00000000000000000")).rejects.toMatchObject({
       code: "patient_not_found",
+    });
+    // A merged (frozen) row must answer patient_not_active, NOT patient_not_found. Without
+    // this case an implementation that collapses both branches into one code passes the test
+    // while being wrong — EXECUTION-LESSONS §3.14: pick the fixture that separates them.
+    const frozen = await newPatient();
+    await db.update(patients).set({ status: "merged" }).where(eq(patients.id, frozen.id));
+    await expect(reissueQrCard(db, cfg, clerk, frozen.id)).rejects.toMatchObject({
+      code: "patient_not_active",
     });
     const p = await newPatient();
     await expect(reissueQrCard(db, cfg, { type: "agent", id: "a" }, p.id)).rejects.toMatchObject({
@@ -2969,6 +2980,13 @@ describe("merge & unmerge (§11.5 — approval-gated, splittable)", () => {
     await expect(
       withTx(db, (tx) => createMergeRequest(tx, clerk, { winnerId, loserId: winnerId, note: "x" })),
     ).rejects.toMatchObject({ code: "merge_same_patient" });
+    // The unknown-patient branch this test's NAME promises (§3.14: a name that promises what
+    // no assertion proves is the same defect class as a fixture that separates nothing).
+    await expect(
+      withTx(db, (tx) =>
+        createMergeRequest(tx, clerk, { winnerId, loserId: "01NOSUCH00000000000000000", note: "x" }),
+      ),
+    ).rejects.toMatchObject({ code: "patient_not_found" });
     await expect(
       withTx(db, (tx) => createMergeRequest(tx, clerk, { winnerId, loserId, note: "  " })),
     ).rejects.toMatchObject({ code: "reason_required" });
@@ -3317,7 +3335,7 @@ export async function executeUnmerge(db: Db, actor: Actor, mergeRequestId: strin
 
 - [ ] **Step 3: Run the tests, then full verify + commit**
 
-Run: `pnpm --filter @hmis/core test -- merge` → PASS (7 tests). Then `pnpm verify` (unpiped) → exit 0.
+Run: `pnpm --filter @hmis/core test -- merge` → PASS (**6 tests** — the suite has six `it` blocks; an earlier draft of this line said 7, which no correct implementation could satisfy). Then `pnpm verify` (unpiped) → exit 0.
 
 ```bash
 git add apps/core
