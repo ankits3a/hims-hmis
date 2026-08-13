@@ -65,4 +65,8 @@ export async function truncateAll(db: Db): Promise<void> {
     sql`truncate table patient_merge_requests, patient_guardians, patient_allergies,
         patient_photos, patients, registration_config`,
   );
+  await db.execute(
+    sql`truncate table tariff_items, regulated_prices, adjustment_rules, gst_config, gst_settings,
+        tariff_versions, services`,
+  );
 }

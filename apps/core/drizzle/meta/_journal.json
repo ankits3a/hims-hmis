@@ -50,6 +50,13 @@
       "when": 1786617176828,
       "tag": "0006_faithful_ultron",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786655750409,
+      "tag": "0007_happy_tag",
+      "breakpoints": true
     }
   ]
 }
