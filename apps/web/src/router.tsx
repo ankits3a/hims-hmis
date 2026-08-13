@@ -9,6 +9,7 @@ import { switchLanguage } from "./lib/i18n";
 import i18next from "./lib/i18n";
 import { LoginScreen } from "./screens/login";
 import { RegistrationDesk } from "./screens/registration-desk";
+import { PatientDetail } from "./screens/patient-detail";
 
 function ComingSoon({ name }: { name: string }): React.ReactElement {
   return <div className="p-8 text-neutral-500">{name} — T14–T16</div>;
@@ -81,7 +82,7 @@ const registrationRoute = createRoute({
 const patientRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/patients/$patientId",
-  component: () => <ComingSoon name="Patient" />, // T15 replaces
+  component: PatientDetail,
 });
 
 const mergeRoute = createRoute({
