@@ -61,3 +61,15 @@ Merge/unmerge are approval-gated through the approvals engine (types `patient_me
    (`patient_unmerge` with `urgencyClass: "urgent", actFirstAllowed: true`).
 3. Grant `patients.*` permissions to the registration-desk role; `patients.confidential.read`
    and `patients.merge` only to the roles the owner designates.
+
+## Web app (Plan 05)
+
+`apps/web` — React 19 + Vite 7 SPA (Tailwind 4, shadcn/ui, TanStack Router/Query, RHF+zod,
+i18next hi/en, Vitest). Rides root `pnpm verify` (typecheck via `pnpm -r exec tsc --noEmit`,
+tests via `pnpm -r test`, lint via root `eslint .`) — CI needed NO change. Dev:
+`pnpm --filter @hmis/web dev` (proxies /auth,/patients,/approvals,/workflow to :3000).
+Build: `pnpm --filter @hmis/web build` → `apps/web/dist` (served by Caddy in Plan 11).
+Screens: registration desk (search-first, C-18 photo confirm, printed QR card), patient
+detail, merge review (approval-gated), approvals inbox (generic — serves every engine type).
+Keyboard: `/` search · F2 new patient · Alt+M merge · Alt+A approvals · Enter advances ·
+Alt+S submits. UI language ≠ patient message language (the latter is a patient field).

@@ -10,10 +10,8 @@ import i18next from "./lib/i18n";
 import { LoginScreen } from "./screens/login";
 import { RegistrationDesk } from "./screens/registration-desk";
 import { PatientDetail } from "./screens/patient-detail";
-
-function ComingSoon({ name }: { name: string }): React.ReactElement {
-  return <div className="p-8 text-neutral-500">{name} — T14–T16</div>;
-}
+import { MergeReview } from "./screens/merge-review";
+import { ApprovalsInbox } from "./screens/approvals-inbox";
 
 function Shell(): React.ReactElement {
   const { t } = useTranslation();
@@ -88,13 +86,13 @@ const patientRoute = createRoute({
 const mergeRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/merge",
-  component: () => <ComingSoon name="Merge" />, // T16 replaces
+  component: MergeReview,
 });
 
 const approvalsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/approvals",
-  component: () => <ComingSoon name="Approvals" />, // T16 replaces
+  component: ApprovalsInbox,
 });
 
 export const router = createRouter({
