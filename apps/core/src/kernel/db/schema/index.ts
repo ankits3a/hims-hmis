@@ -4,3 +4,4 @@ export * from "./eventIdempotency";
 export * from "./auth";
 export * from "./workflow";
 export * from "./approvals";
+export * from "./patients";

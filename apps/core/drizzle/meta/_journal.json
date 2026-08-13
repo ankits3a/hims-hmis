@@ -43,6 +43,13 @@
       "when": 1786573515012,
       "tag": "0005_lame_makkari",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786617176828,
+      "tag": "0006_faithful_ultron",
+      "breakpoints": true
     }
   ]
 }
