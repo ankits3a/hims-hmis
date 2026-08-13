@@ -24,6 +24,8 @@ it("Enter advances focus to the next field instead of submitting (keyboard-first
   const user = userEvent.setup();
   const onSubmit = vi.fn();
   render(<Harness onSubmit={onSubmit} />);
+  await user.type(screen.getByLabelText("Field B"), "world");
+  await user.click(screen.getByLabelText("Field A"));
   await user.keyboard("hello{Enter}");
   expect(screen.getByLabelText("Field B")).toHaveFocus();
   expect(onSubmit).not.toHaveBeenCalled();
