@@ -69,7 +69,6 @@ describe("patient search performance budget (CI-gated — owner decision Q7)", (
       times.push(performance.now() - t0);
       expect(hits.length).toBeGreaterThan(0);
     }
-    // eslint-disable-next-line no-console
     console.log(`search timings ms: ${times.map((t) => t.toFixed(1)).join(", ")} (median ${median(times).toFixed(1)})`);
     expect(median(times)).toBeLessThan(SEARCH_BUDGET_MS);
   });
