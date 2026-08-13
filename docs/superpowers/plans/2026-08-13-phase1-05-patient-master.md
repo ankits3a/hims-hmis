@@ -756,7 +756,10 @@ async function main(): Promise<void> {
     await pool.end();
   }
 }
-void main();
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+}); // the shipped seed-admin.ts convention: a failed seed exits non-zero, loudly
 ```
 
 In `apps/core/package.json`, add to `"scripts"` (after `"agent:create"`):
@@ -2580,6 +2583,7 @@ import { loadConfig } from "../../kernel/config";
 import { events, patients, registrationConfig } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { registerPatient } from "./registration";
+import type { RegisterPatientInput } from "./registration";
 import { QR_PREFIX, buildQrPayload, reissueQrCard, verifyQrScan } from "./qr";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -2600,7 +2604,9 @@ describe("signed QR (D-23)", () => {
     await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "t" });
   });
 
-  async function newPatient(extra: Record<string, unknown> = {}): Promise<{ id: string; uhid: string; qrVersion: number }> {
+  // Partial<RegisterPatientInput>, NOT Record<string, unknown>: an unknown-valued index
+  // signature is not assignable to the typed optional fields (TS2322 — the §5.2 class).
+  async function newPatient(extra: Partial<RegisterPatientInput> = {}): Promise<{ id: string; uhid: string; qrVersion: number }> {
     const { patient } = await withTx(db, (tx) =>
       registerPatient(tx, clerk, { name: "Asha Devi", sex: "female", phone: "9876543210", ...extra }),
     );
@@ -4073,7 +4079,7 @@ git commit -m "feat(patients): module surface — 21 routes, index interface, Ap
 
 - [ ] **Step 1: Write the lifecycle e2e**
 
-`apps/core/test/patients-lifecycle.e2e.test.ts` — same bootstrap as `patients.e2e.test.ts` (per-worker DATABASE_URL, `{ bodyParser: false }` + `configureApp`), with FOUR users: `clerk` (role `reg_desk`: all five `patients.*` permissions **plus** `approvals.requests.create`), `mrd` (role `mrd_head` + a role holding `approvals.requests.read` + `approvals.requests.decide`), `drafter`/`activator` (role `wf_admin` with `workflow.definitions.*`; activator also `approvals.types.manage`). `beforeEach` seeds SoD pairs, syncs permissions, seeds `registration_config`, and registers both approval types over HTTP: draft each `approvalFlowDefinition(...)` via `POST /workflow/definitions` (drafter), activate via `POST /workflow/definitions/:id/activate` (activator — Class C needs no approvals; drafter≠activator satisfies the SoD pair), then `POST /approvals/types` (activator). One `it` block, sequential legs:
+`apps/core/test/patients-lifecycle.e2e.test.ts` — same bootstrap as `patients.e2e.test.ts` (per-worker DATABASE_URL, `{ bodyParser: false }` + `configureApp`), with FOUR users: `clerk` (role `reg_desk`: all five `patients.*` permissions — NO approvals permission is needed: `createMergeRequest` calls the `requestApproval` SERVICE on its own transaction, and service calls carry no route guard), `mrd` (role `mrd_head` + a role holding `approvals.requests.read` + `approvals.requests.decide`), `drafter`/`activator` (role `wf_admin` with `workflow.definitions.*`; activator also `approvals.types.manage`). `beforeEach` seeds SoD pairs, syncs permissions, seeds `registration_config`, and registers both approval types over HTTP: draft each `approvalFlowDefinition(...)` via `POST /workflow/definitions` (drafter), activate via `POST /workflow/definitions/:id/activate` (activator — Class C needs no approvals; drafter≠activator satisfies the SoD pair), then `POST /approvals/types` (activator). One `it` block, sequential legs:
 
 1. **Register the duplicate pair:** clerk registers "Asha Devi" (phone `9876543210`, `language: "hi"`) and "Asha Debi" (same phone) → both UHIDs match `/^HMS-\d{8}-\d$/`; search `98765` returns both — the C-18 desk moment.
 2. **Photo lands on the loser** (300 kB base64), search shows `hasPhoto: true` — the attach prompt's raw material.
@@ -4933,8 +4939,9 @@ git commit -m "feat(web): app shell — api client, auth, hi/en i18n, code-based
 
 ```bash
 cd /opt/hmis/apps/web
-pnpm dlx shadcn@3 add button card input label select dialog badge table tabs textarea checkbox alert
+pnpm dlx shadcn@3 add --yes button card input label select dialog badge table tabs textarea checkbox alert
 ```
+(`--yes` skips confirmation prompts — agents cannot answer an interactive CLI.)
 Expected: files under `src/components/ui/`, `src/lib/utils.ts` created; `package.json` gains the Radix + utility deps; the CLI runs `pnpm install` (lockfile updates). If the CLI errors (registry offline, version drift), STOP and report — do not hand-write substitutes.
 
 - [ ] **Step 2: Failing form-kit test, then the kit**
