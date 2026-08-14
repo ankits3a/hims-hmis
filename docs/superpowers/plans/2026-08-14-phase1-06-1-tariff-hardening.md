@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**STATUS: WRITTEN 2026-08-14, awaiting owner approval. PLANNING ONLY — no execution has occurred.**
+**STATUS: EXECUTED and SHIPPED 2026-08-14 — 7/7 tasks gate-passed, `cf2deb0` → `cab41c3`, `apps/core` 68 suites / 383 tests, CI green on all seven commits. Outcomes, deviations and lessons: [`reports/plan-06-1-gate-report.md`](reports/plan-06-1-gate-report.md).** Two per-file test counts in this document are errata corrected during execution: `contest.test` was 10 entering T4 (not 15) and ends at 14 (not 19); `tariff.e2e` was 6 entering T7 (not 7) and ends at 8 (not 9). Every workspace total in the ladder below is correct and was verified at all seven rungs.
 
 **Goal:** Close the four CRITICAL and the actionable MODERATE/MINOR findings of the 2026-08-14 post-ship adversarial stress test over the shipped tariff module (`reports/plan-06-stress-test-findings.md`) — before Plan 07 or 08 is authored against this surface. Two of the criticals bill or record wrong money today (C1 concurrent cross-version activation, C2 nondeterministic NPPA ceiling); two leave correct code deletable without a red test (C3 both-bounds clamp, C4 SoD submitter clause).
 
