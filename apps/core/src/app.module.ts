@@ -8,6 +8,7 @@ import { authManifest } from "./kernel/auth/manifest";
 import { workflowManifest } from "./kernel/workflow/manifest";
 import { approvalsManifest } from "./kernel/approvals/manifest";
 import { patientsManifest, PatientsModule } from "./modules/patients"; // ← added (imports the module's index — spec §4)
+import { tariffManifest, TariffModule } from "./modules/tariff";
 import { HealthController } from "./health/health.controller";
 import { AuthModule } from "./kernel/auth/auth.module";
 import { WorkflowModule } from "./kernel/workflow/workflow.module";
@@ -20,7 +21,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
 
 @Global()
 @Module({
-  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule], // ← PatientsModule added
+  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule], // ← PatientsModule added
   controllers: [HealthController],
   providers: [
     { provide: CONFIG, useFactory: (): AppConfig => loadConfig() },
@@ -39,6 +40,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         registry.install(workflowManifest);
         registry.install(approvalsManifest);
         registry.install(patientsManifest); // ← added; syncPermissions mirrors it at boot — no new boot-time DB call
+        registry.install(tariffManifest);
         // Later plans install their module manifests here.
         return registry;
       },
