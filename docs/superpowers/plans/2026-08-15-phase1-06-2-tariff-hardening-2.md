@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**STATUS: WRITTEN 2026-08-15 — awaiting owner approval AND the §"Owner decision required" ruling. Do not compile a pipeline before both.**
+**STATUS: WRITTEN 2026-08-15 — awaiting owner approval of the plan. The §"Owner decision required" A1 ruling is MADE: Option B (database-side `seq` column), owner in-conversation 2026-08-15. T1 stands as written; do not compile a pipeline before plan approval.**
 
 **Goal:** Close the 2 CRITICAL and 4 MODERATE findings — and the cheap MINORs — of the 2026-08-15 post-ship audit of Plan 06.1 (`reports/plan-06-1-audit-findings.md`), before Plan 07 mints ids for encounters/appointments/queues and before Plan 08 bills against this surface. The two criticals: (A1) `newId()` is non-monotonic `ulid()`, so every shipped "last-inserted-wins" ordering is a coin flip within a millisecond — 6 of 200 same-date gazette corrections billed the superseded DPCO ceiling; (A2) the activation race test cannot distinguish a working serializer from none — migration 0008's index enforces everything the test observes.
 
