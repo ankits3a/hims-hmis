@@ -73,3 +73,46 @@ Screens: registration desk (search-first, C-18 photo confirm, printed QR card), 
 detail, merge review (approval-gated), approvals inbox (generic — serves every engine type).
 Keyboard: `/` search · F2 new patient · Alt+M merge · Alt+A approvals · Enter advances ·
 Alt+S submits. UI language ≠ patient message language (the latter is a patient field).
+
+## Tariff module (Plan 06)
+
+The second domain module: `apps/core/src/modules/tariff/` owns the service master, versioned
+tariffs with the tariff-lock rule, the best-single-benefit adjustment contest, GST computation
+with the exemption-boundary logic, and the tariff-revision workflow (spec §7, C-3, D-3, D-8,
+§11.11). Other modules import ONLY from `modules/tariff/index` (or consume the
+`tariff.revision_applied` / `config.validated` events) — the module-isolation lint rule enforces
+it, and `test/tariff-lifecycle.e2e.test.ts` is the executable proof: it drives a full
+draft → submit → approve → activate → reprice cycle importing every tariff symbol from the
+index alone, never an internal file.
+
+`priceInvoiceLines` and `simulateRevision` are PURE and SYNCHRONOUS: `money.ts`, `types.ts`,
+`contest.ts`, `gst.ts`, `pricing.ts`, `simulation.ts` contain no `await`, no import from any
+`kernel/` path, no `new Date(`, no `Math.random` — CI greps those exact strings against those
+exact files. Everything impure (resolving the active tariff version, loading
+services/GST/rules/regulated-prices from the database) lives in `context.ts`'s
+`loadPricingContext`, so the golden suite (`golden/fixtures/*.json` + `golden.test.ts`) stays
+hermetic — no database, no clock, no randomness — and every fixture's `workings` field is
+hand-derived from the spec, never produced by running the engine (the §3.14 defense against an
+assertion that passes for the wrong reason). Plan 08 (billing counter) imports
+`priceInvoiceLines` + `loadPricingContext` from this index and issues immutable invoices from
+`PricedLine[]`; Plan 09 (memberships/coupons) registers two more `AdjustmentSource`s against the
+`AdjustmentSource` interface fixed here and adds its own fixtures to THIS harness (same fixture
+schema, same `golden.test.ts` count-bump protocol).
+
+### Go-live runbook (owner steps, once per environment)
+1. Register the `tariff_revision` approval type as data (no code): build the definition with
+   `approvalFlowDefinition({ typeKey: "tariff_revision", approverRole: "owner", ... })`, draft +
+   activate through `/workflow/definitions` (drafter ≠ activator), then `POST /approvals/types`.
+   The §10.4 Class-A two-key upgrade (owner + Medical Superintendent) is a workflow-definition
+   **data** change at that point, not a code change — v1 registers a single approver role
+   because the shipped flow builder supports exactly one.
+2. `pnpm --filter @hmis/core seed:tariff` (dev-placeholder GST categories/settings/D-8 caps),
+   then load the hospital's real tariffs and regulated prices through the `/tariff/services` and
+   `/tariff/versions` API.
+3. CA sign-off (§19): review every `gst_config`/`gst_settings` row against real practice —
+   including **G13's assumption that the room-rent ₹5,000/day threshold compares the
+   post-discount charged value**, not the pre-discount tariff — then set `caSigned: true` via
+   `PUT /tariff/gst/settings`.
+4. `pnpm --filter @hmis/core validate:tariff` must print `ok=true` before the first live invoice
+   (D-17) — the golden suite plus this script's printed report is the config-validation
+   evidence.
