@@ -10,8 +10,23 @@ import type { GstCategoryConfig, GstSettings, InvoiceLineInput, PricedLine, Pric
 const dir = join(__dirname, "golden", "fixtures");
 const files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
 
-test("the fixture set is complete (an empty dir must never pass vacuously)", () => {
-  expect(files.length).toBe(13); // g01–g13 (T6's 12 price/price_error fixtures + g12's simulate fixture from T7); Plans 08/09 bump again as they add cases
+test("the fixture set is complete and NAMED — a renamed or duplicated fixture cannot pass, an empty dir never passes vacuously", () => {
+  expect(files).toEqual([
+    "g01-baseline-exempt.json",
+    "g02-perhead-vs-split.json",
+    "g03-halfup-direction.json",
+    "g04-room-rent-boundary.json",
+    "g05-regulated-min.json",
+    "g06-regulated-missing.json",
+    "g07-contest-three-way.json",
+    "g08-contest-tie.json",
+    "g09-manual-over-cap.json",
+    "g10-flat-approval-flag.json",
+    "g11-composite-supply.json",
+    "g12-impact-simulation.json",
+    "g13-room-rent-postdiscount-ca.json",
+    "g14-regulated-both-bounds.json",
+  ]);
 });
 
 for (const file of files) {

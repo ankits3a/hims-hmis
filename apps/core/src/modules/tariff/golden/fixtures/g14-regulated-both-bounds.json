@@ -1,9 +1,9 @@
 {
   "kind": "price",
-  "name": "manual over cap: rejected and RECORDED at the asked amount, never clamped",
+  "name": "C-3 both bounds bind: mrp < ceiling < tariff — the min is the MRP, never the ceiling",
   "specRefs": [
-    "§7",
-    "D-8"
+    "C-3",
+    "§7"
   ],
   "config": {
     "asOf": "2026-09-01T00:00:00.000Z",
@@ -22,7 +22,8 @@
         "svc-drug-a": 12000,
         "svc-drug-b": 9000,
         "svc-drug-c": 7000,
-        "svc-drug-d": 5000
+        "svc-drug-d": 5000,
+        "svc-drug-e": 20000
       }
     },
     "services": [
@@ -121,6 +122,14 @@
         "category": "pharmacy",
         "regulated": true,
         "active": true
+      },
+      {
+        "id": "svc-drug-e",
+        "code": "DRUG-E",
+        "name": "Drug E",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
       }
     ],
     "regulatedPrices": {
@@ -135,6 +144,10 @@
       "svc-drug-c": {
         "mrpPaise": 10000,
         "ceilingPaise": 8000
+      },
+      "svc-drug-e": {
+        "mrpPaise": 10000,
+        "ceilingPaise": 15000
       }
     },
     "gstCategories": [
@@ -228,55 +241,40 @@
   "lines": [
     {
       "lineId": "L1",
-      "serviceId": "svc-cons",
-      "qty": 1,
-      "manualDiscount": {
-        "discountCategory": "negotiated_corporate",
-        "kind": "flat_paise",
-        "value": 60000,
-        "reason": "asked too much"
-      }
+      "serviceId": "svc-drug-e",
+      "qty": 1
     }
   ],
   "expected": [
     {
-      "workings": "svc-cons: gross = unit 50000 x qty 1 = 50000; ask = flat_paise 60000 (WHOLE-LINE, owner decision 3), which is ABOVE gross — that is what makes this fixture discriminating; cap negotiated_corporate maxBps 2000, exact rational compare on the ASK: 60000*10000 = 600000000 > 2000*50000 = 100000000 -> rejected over_cap, and the candidate is still RECORDED carrying the ASKED 60000 with detail \"60000p exceeds 2000bps of 50000p\"; no candidate with rejected null -> winner null, discount 0, taxableBase 50000; consultation exempt (would-be rate 1800) -> heads 0/0; net 50000. MUTANT WALK (discrimination audit): a clamping impl records min(60000, gross 50000) = 50000 -> killed — 50000 lands in amountPaise AND in the detail (\"50000p exceeds 2000bps of 50000p\"), so the full deep-equal fails on both fields. That is the exact mutant the pre-rewrite g09 (percent_bps 2500 -> ask 12500, below gross) could not see.",
+      "workings": "svc-drug-e: unit = min(tariff 20000, mrp 10000, ceiling 15000) = 10000 -> clamp \"mrp\" — BOTH bounds strictly below tariff (the first such triple anywhere), and mrp < ceiling; gross = 10000 x qty 1 = 10000; no candidates (no manualDiscount; both standing rules carry a requiredTag and tags is empty) -> winner null, discount 0, taxableBase 10000; pharmacy 1200bps: head = divHalfUp(10000*1200, 20000) = divHalfUp(12000000, 20000) = 600 (exact 600.0); net = 10000 + 600 + 600 = 11200. MUTANT WALK (discrimination audit): the stress test's EXECUTED survivor, the b.value<tariffPaise impl, picks ceiling 15000 -> net 16800 -> killed — it walks mrp 10000 < 20000 -> unit 10000/\"mrp\", then ceiling 15000 < 20000 is ALSO true -> unit 15000/\"ceiling\", head = divHalfUp(15000*1200, 20000) = 900, net 15000+900+900 = 16800: unitPaise, regulatedClamp.boundApplied, cgstPaise, sgstPaise and netPaise all differ and the deep-equal catches it. The bounds-push-order swap stays observationally identical here and everywhere except an exact mrp == ceiling tie, whose label D2 does not specify — deliberately not pinned.",
       "line": {
         "lineId": "L1",
-        "serviceId": "svc-cons",
-        "serviceName": "General consultation",
-        "category": "consultation",
+        "serviceId": "svc-drug-e",
+        "serviceName": "Drug E",
+        "category": "pharmacy",
         "qty": 1,
-        "unitPaise": 50000,
-        "grossPaise": 50000,
-        "regulatedClamp": null,
-        "candidates": [
-          {
-            "sourceKey": "manual",
-            "ruleKey": null,
-            "kind": "flat_paise",
-            "discountCategory": "negotiated_corporate",
-            "amountPaise": 60000,
-            "reason": "asked too much",
-            "requiresApproval": false,
-            "rejected": {
-              "code": "over_cap",
-              "detail": "60000p exceeds 2000bps of 50000p"
-            }
-          }
-        ],
+        "unitPaise": 10000,
+        "grossPaise": 10000,
+        "regulatedClamp": {
+          "boundApplied": "mrp",
+          "tariffPaise": 20000,
+          "mrpPaise": 10000,
+          "ceilingPaise": 15000
+        },
+        "candidates": [],
         "winner": null,
         "discountPaise": 0,
-        "taxableBasePaise": 50000,
+        "taxableBasePaise": 10000,
         "gst": {
-          "sacCode": "999312",
-          "rateBps": 1800,
-          "exempt": true,
-          "exemptReason": "category_exempt",
-          "cgstPaise": 0,
-          "sgstPaise": 0
+          "sacCode": "3004",
+          "rateBps": 1200,
+          "exempt": false,
+          "exemptReason": null,
+          "cgstPaise": 600,
+          "sgstPaise": 600
         },
-        "netPaise": 50000
+        "netPaise": 11200
       }
     }
   ]
