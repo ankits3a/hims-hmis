@@ -129,7 +129,6 @@ export async function validateTariffConfig(
     }
   }
 
-  const manualCaps: ManualCaps = {};
   const ruleRows = await listAdjustmentRules(db);
   for (const row of ruleRows) {
     if (row.sourceKey === "rule") {
@@ -141,20 +140,47 @@ export async function validateTariffConfig(
       const parsed = manualCapParamsSchema.safeParse(row.params);
       if (!parsed.success) {
         errors.push({ code: "invalid_rule_params", detail: `rule "${row.ruleKey}": ${parsed.error.message}` });
-      } else {
-        manualCaps[parsed.data.discountCategory] = {
-          maxBps: parsed.data.maxBps,
-          approvalAboveBps: parsed.data.approvalAboveBps,
-        };
       }
     } else {
       errors.push({ code: "invalid_rule_params", detail: `rule "${row.ruleKey}" has unknown sourceKey "${row.sourceKey}"` });
     }
   }
+
+  // The caps the ENGINE will actually see at `at` — loadRuleConfig, the same function
+  // loadPricingContext uses (active + validity window). Building this map from the raw table let
+  // the gate print ok=true while every charity waiver died unknown_category at the counter (M1).
+  let engineCaps: ManualCaps = {};
+  try {
+    engineCaps = (await loadRuleConfig(db, at)).manualCaps;
+  } catch {
+    // A corrupt params row makes loadRuleConfig throw BY DESIGN (billing-time behaviour). The
+    // loop above has already recorded it as invalid_rule_params; with no loadable caps, every
+    // category below correctly reports manual_caps_missing. This function still never throws.
+  }
   for (const cat of DISCOUNT_CATEGORIES) {
-    if (!manualCaps[cat]) {
-      errors.push({ code: "manual_caps_missing", detail: `no manual discount cap configured for category "${cat}"` });
+    if (!engineCaps[cat]) {
+      errors.push({ code: "manual_caps_missing", detail: `no ACTIVE manual discount cap effective at ${at.toISOString()} for category "${cat}"` });
     }
+  }
+
+  // Duplicates: two active in-window manual rows for one category resolve deterministically at
+  // the counter (newest wins — loadRuleConfig's id ordering), but a duplicate is a config smell
+  // the gate must SURFACE, not silently resolve (M4).
+  const seenCapRule = new Map<string, string>();
+  for (const row of ruleRows) {
+    if (row.sourceKey !== "manual" || !row.active) continue;
+    if (row.validFrom !== null && row.validFrom > at) continue;
+    if (row.validTo !== null && row.validTo < at) continue;
+    const parsed = manualCapParamsSchema.safeParse(row.params);
+    if (!parsed.success) continue;
+    const prior = seenCapRule.get(parsed.data.discountCategory);
+    if (prior !== undefined) {
+      errors.push({
+        code: "duplicate_manual_cap",
+        detail: `category "${parsed.data.discountCategory}" has more than one active cap row effective at ${at.toISOString()} ("${prior}", "${row.ruleKey}") — the newest wins at the counter; retire the others`,
+      });
+    }
+    seenCapRule.set(parsed.data.discountCategory, row.ruleKey);
   }
 
   let caSigned = false;

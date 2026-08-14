@@ -80,6 +80,67 @@ describe("context (D5 lock, D7 config gate): loadPricingContext + validateTariff
     return draft;
   }
 
+  // Reproduces the four-breaks test's seeding block verbatim: two services (one regulated + its
+  // price row), both GST categories, settings, R-EMP10, all four caps, then activateFullVersion
+  // at 2026-02-01. The existing four-breaks test keeps its own inline copy, untouched.
+  async function seedFullValidConfig(): Promise<void> {
+    const svcCons = await withTx(db, (tx) =>
+      createService(tx, drafter, { code: "SVC-CONS", name: "Consultation", category: "consultation" }),
+    );
+    const svcDrug = await withTx(db, (tx) =>
+      createService(tx, drafter, { code: "SVC-DRUG", name: "Drug A", category: "pharmacy", regulated: true }),
+    );
+    await withTx(db, (tx) =>
+      appendRegulatedPrice(tx, drafter, {
+        serviceId: svcDrug.serviceId, mrpPaise: 10000, ceilingPaise: 15000, effectiveFrom: new Date("2026-01-01T00:00:00Z"),
+      }),
+    );
+    await withTx(db, (tx) =>
+      upsertGstCategory(tx, drafter, {
+        category: "consultation", sacCode: "999312", exempt: true, rateBps: 1800, specialRule: null, thresholdPaise: null,
+      }),
+    );
+    await withTx(db, (tx) =>
+      upsertGstCategory(tx, drafter, {
+        category: "pharmacy", sacCode: "3004", exempt: false, rateBps: 1200, specialRule: null, thresholdPaise: null,
+      }),
+    );
+    await withTx(db, (tx) => upsertGstSettings(tx, drafter, { compositeHealthcareExempt: true, caSigned: false }));
+    await withTx(db, (tx) =>
+      upsertAdjustmentRule(tx, drafter, {
+        ruleKey: "R-EMP10",
+        sourceKey: "rule",
+        title: "Employee discount",
+        params: { kind: "percent_bps", value: 1000, discountCategory: "employee", requiredTag: "employee" },
+      }),
+    );
+    const caps: [string, "charity" | "scheme" | "negotiated_corporate" | "employee", number, number | null][] = [
+      ["CAP-CHARITY", "charity", 2500, 1000],
+      ["CAP-EMPLOYEE", "employee", 1000, null],
+      ["CAP-SCHEME", "scheme", 1500, 1000],
+      ["CAP-CORP", "negotiated_corporate", 2000, 1500],
+    ];
+    for (const [ruleKey, category, maxBps, approvalAboveBps] of caps) {
+      await withTx(db, (tx) =>
+        upsertAdjustmentRule(tx, drafter, {
+          ruleKey,
+          sourceKey: "manual",
+          title: ruleKey,
+          params: { discountCategory: category, maxBps, approvalAboveBps },
+        }),
+      );
+    }
+
+    const effectiveFrom = new Date("2026-02-01T00:00:00Z");
+    await activateFullVersion(
+      [
+        [svcCons.serviceId, 50000],
+        [svcDrug.serviceId, 12000],
+      ],
+      effectiveFrom,
+    );
+  }
+
   test("full load happy path: every field of the loaded context deep-equals the expectation", async () => {
     const svc1 = await withTx(db, (tx) =>
       createService(tx, drafter, { code: "SVC-CONS", name: "Consultation", category: "consultation" }),
@@ -313,7 +374,7 @@ describe("context (D5 lock, D7 config gate): loadPricingContext + validateTariff
     await withTx(db, (tx) => createService(tx, drafter, { code: "SVC-UNPRICED", name: "Unpriced", category: "consultation" }));
     const break1 = await validateTariffConfig(db, at);
     expect(break1.ok).toBe(false);
-    expect(break1.errors.some((e) => e.code === "tariff_item_missing")).toBe(true);
+    expect(break1.errors.some((e) => e.code === "tariff_item_missing" && e.detail.startsWith('active service "SVC-UNPRICED"'))).toBe(true);
 
     // Break 2: an active service whose category has no gst_config row.
     await withTx(db, (tx) => createService(tx, drafter, { code: "SVC-NOCONFIG", name: "No GST Config", category: "device" }));
@@ -339,5 +400,50 @@ describe("context (D5 lock, D7 config gate): loadPricingContext + validateTariff
     expect(break4.errors.some((e) => e.code === "tariff_item_missing")).toBe(true);
     expect(break4.errors.some((e) => e.code === "gst_config_missing")).toBe(true);
     expect(break4.errors.some((e) => e.code === "regulated_price_missing")).toBe(true);
+  });
+
+  test("the gate reads the ENGINE's caps: a deactivated or expired cap row flips ok to false", async () => {
+    await seedFullValidConfig();
+    const at = new Date("2026-03-01T00:00:00Z");
+    expect((await validateTariffConfig(db, at)).ok).toBe(true);
+
+    // Deactivate the charity cap THROUGH THE SHIPPED API — the exact stress-test scenario: the old
+    // raw-table gate still saw this row and printed ok=true while the engine dropped it and every
+    // charity waiver died unknown_category with the patient billed full price (M1).
+    await withTx(db, (tx) =>
+      upsertAdjustmentRule(tx, drafter, {
+        ruleKey: "CAP-CHARITY", sourceKey: "manual", title: "CAP-CHARITY",
+        params: { discountCategory: "charity", maxBps: 2500, approvalAboveBps: 1000 }, active: false,
+      }),
+    );
+    const deactivated = await validateTariffConfig(db, at);
+    expect(deactivated.ok).toBe(false);
+    expect(deactivated.errors.some((e) => e.code === "manual_caps_missing" && e.detail.includes('"charity"'))).toBe(true);
+
+    // Re-activate with a validity window that already CLOSED — the hole that opens by itself as
+    // time passes (validTo elapses; nobody touched anything).
+    await withTx(db, (tx) =>
+      upsertAdjustmentRule(tx, drafter, {
+        ruleKey: "CAP-CHARITY", sourceKey: "manual", title: "CAP-CHARITY",
+        params: { discountCategory: "charity", maxBps: 2500, approvalAboveBps: 1000 },
+        validTo: new Date("2026-01-31T00:00:00Z"), active: true,
+      }),
+    );
+    const expired = await validateTariffConfig(db, at);
+    expect(expired.ok).toBe(false);
+    expect(expired.errors.some((e) => e.code === "manual_caps_missing" && e.detail.includes('"charity"'))).toBe(true);
+  });
+
+  test("a second active cap row for one category is REPORTED as duplicate_manual_cap, not silently resolved", async () => {
+    await seedFullValidConfig();
+    await withTx(db, (tx) =>
+      upsertAdjustmentRule(tx, drafter, {
+        ruleKey: "CAP-CHARITY-2025", sourceKey: "manual", title: "Charity cap FY25",
+        params: { discountCategory: "charity", maxBps: 500, approvalAboveBps: null },
+      }),
+    );
+    const report = await validateTariffConfig(db, new Date("2026-03-01T00:00:00Z"));
+    expect(report.ok).toBe(false);
+    expect(report.errors.some((e) => e.code === "duplicate_manual_cap" && e.detail.includes('"charity"'))).toBe(true);
   });
 });

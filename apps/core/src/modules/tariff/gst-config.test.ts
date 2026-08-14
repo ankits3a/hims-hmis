@@ -89,4 +89,20 @@ describe("GST config (D-3): gst-config.ts", () => {
     const rows = await db.select().from(gstSettings);
     expect(rows[0]?.updatedBy).toBe("ca-signer");
   });
+
+  test("upserting an existing category UPDATES in place — the CA raising a rate must never hit a raw 23505", async () => {
+    await withTx(db, (tx) =>
+      upsertGstCategory(tx, actor, { category: "pharmacy", sacCode: "3004", exempt: false, rateBps: 1200, specialRule: null, thresholdPaise: null }),
+    );
+    const signer = { type: "user", id: "ca-signer" } as const;
+    await withTx(db, (tx) =>
+      upsertGstCategory(tx, signer, { category: "pharmacy", sacCode: "3004", exempt: false, rateBps: 1800, specialRule: null, thresholdPaise: null }),
+    );
+    // The M7 mutant (plain .insert()) throws 23505 on the second call — killed. gstSettings'
+    // upsert is already exercised twice by the shipped settings round-trip test; this closes the
+    // same gap for categories.
+    const rows = await listGstCategories(db);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.rateBps).toBe(1800);
+  });
 });
