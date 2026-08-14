@@ -95,8 +95,10 @@ export async function appendRegulatedPrice(
   return { id };
 }
 
-/** One select ordered by effectiveFrom desc, reduced to the first (= latest) row per service
- * among rows with effectiveFrom <= at (boundary: equal is included, D5/services.test.ts). */
+/** One select ordered by (effectiveFrom desc, id desc), reduced to the first (= latest) row per
+ * service among rows with effectiveFrom <= at (boundary: equal is included, D5/services.test.ts).
+ * ids are ULIDs, so descending id = last-inserted-wins among rows sharing a gazette date — the
+ * append-only correction path resolves to the correction, deterministically (stress-test C2). */
 export async function resolveRegulatedPrices(
   db: Db,
   at: Date,
@@ -105,7 +107,7 @@ export async function resolveRegulatedPrices(
     .select()
     .from(regulatedPrices)
     .where(lte(regulatedPrices.effectiveFrom, at))
-    .orderBy(desc(regulatedPrices.effectiveFrom));
+    .orderBy(desc(regulatedPrices.effectiveFrom), desc(regulatedPrices.id));
 
   const result: Record<string, { mrpPaise: number | null; ceilingPaise: number | null }> = {};
   for (const row of rows) {
@@ -113,4 +115,17 @@ export async function resolveRegulatedPrices(
     result[row.serviceId] = { mrpPaise: row.mrpPaise, ceilingPaise: row.ceilingPaise };
   }
   return result;
+}
+
+export type RegulatedPriceRow = typeof regulatedPrices.$inferSelect;
+
+/** Full row history for ONE service, newest first; same-date rows resolve last-inserted-first
+ * (ULID ids) — the same total order resolveRegulatedPrices uses (C2). The accessor the gate
+ * report §5.2 carried forward: the controller's list route sits behind it now. */
+export async function listRegulatedPrices(db: Db, serviceId: string): Promise<RegulatedPriceRow[]> {
+  return db
+    .select()
+    .from(regulatedPrices)
+    .where(eq(regulatedPrices.serviceId, serviceId))
+    .orderBy(desc(regulatedPrices.effectiveFrom), desc(regulatedPrices.id));
 }

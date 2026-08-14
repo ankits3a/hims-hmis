@@ -3,17 +3,15 @@ import {
   NotFoundException, Param, Patch, Post, Put,
 } from "@nestjs/common";
 import { z } from "zod";
-import { desc, eq } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { ApprovalError } from "../../kernel/approvals/types";
 import { WorkflowError } from "../../kernel/workflow/instances";
 import { withTx } from "../../kernel/db/client";
-import { regulatedPrices } from "../../kernel/db/schema";
 import { TariffError } from "./errors";
 import { DISCOUNT_CATEGORIES } from "./types";
-import { appendRegulatedPrice, createService, listServices, updateService } from "./services";
+import { appendRegulatedPrice, createService, listRegulatedPrices, listServices, updateService } from "./services";
 import {
   activateVersion, createDraftVersion, getVersion, listVersions, setTariffItem, submitVersion,
 } from "./versions";
@@ -195,12 +193,7 @@ export class TariffController {
   @RequirePermission("tariff.read", "hospital")
   @Get("services/:id/regulated-prices")
   async listRegulatedPricesRoute(@Param("id") id: string): Promise<{ items: unknown[] }> {
-    const items = await this.db
-      .select()
-      .from(regulatedPrices)
-      .where(eq(regulatedPrices.serviceId, id))
-      .orderBy(desc(regulatedPrices.effectiveFrom));
-    return { items };
+    return { items: await listRegulatedPrices(this.db, id) };
   }
 
   // ——— versions ———

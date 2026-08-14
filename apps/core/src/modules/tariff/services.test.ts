@@ -1,7 +1,7 @@
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import {
-  appendRegulatedPrice, createService, listServices, resolveRegulatedPrices, updateService,
+  appendRegulatedPrice, createService, listRegulatedPrices, listServices, resolveRegulatedPrices, updateService,
 } from "./services";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -103,5 +103,46 @@ describe("service master + regulated prices", () => {
 
     const map = await resolveRegulatedPrices(db, new Date("2026-06-01T00:00:00Z"));
     expect(Object.keys(map)).toEqual([regulatedId]);
+  });
+
+  test("a same-date gazette CORRECTION wins: resolution is last-inserted, never heap order", async () => {
+    const { serviceId } = await withTx(db, (tx) =>
+      createService(tx, actor, { code: "SVC-7", name: "Drug D", category: "pharmacy", regulated: true }),
+    );
+    const gazetteDate = new Date("2026-04-01T00:00:00Z");
+    await withTx(db, (tx) =>
+      appendRegulatedPrice(tx, actor, { serviceId, mrpPaise: 10000, ceilingPaise: 8000, effectiveFrom: gazetteDate, gazetteRef: "GZ-1" }),
+    );
+    // The correction path C2 is about: same gazette date, corrected ceiling, appended as a new row
+    // (the table is append-only by design — an UPDATE is forbidden by the change-control trail).
+    await withTx(db, (tx) =>
+      appendRegulatedPrice(tx, actor, { serviceId, mrpPaise: 10000, ceilingPaise: 6000, effectiveFrom: gazetteDate, gazetteRef: "GZ-1-corr" }),
+    );
+    const map = await resolveRegulatedPrices(db, new Date("2026-05-01T00:00:00Z"));
+    expect(map[serviceId]).toEqual({ mrpPaise: 10000, ceilingPaise: 6000 });
+  });
+
+  test("listRegulatedPrices: one service's full history, newest first, same-date correction before its original", async () => {
+    const { serviceId: a } = await withTx(db, (tx) =>
+      createService(tx, actor, { code: "SVC-8", name: "Drug E", category: "pharmacy", regulated: true }),
+    );
+    const { serviceId: b } = await withTx(db, (tx) =>
+      createService(tx, actor, { code: "SVC-9", name: "Drug F", category: "pharmacy", regulated: true }),
+    );
+    const r1 = await withTx(db, (tx) =>
+      appendRegulatedPrice(tx, actor, { serviceId: a, mrpPaise: 10000, effectiveFrom: new Date("2026-01-01T00:00:00Z") }),
+    );
+    const r2 = await withTx(db, (tx) =>
+      appendRegulatedPrice(tx, actor, { serviceId: a, mrpPaise: 9000, effectiveFrom: new Date("2026-04-01T00:00:00Z") }),
+    );
+    const r3 = await withTx(db, (tx) =>
+      appendRegulatedPrice(tx, actor, { serviceId: a, mrpPaise: 8500, effectiveFrom: new Date("2026-04-01T00:00:00Z") }),
+    );
+    await withTx(db, (tx) =>
+      appendRegulatedPrice(tx, actor, { serviceId: b, mrpPaise: 7000, effectiveFrom: new Date("2026-01-01T00:00:00Z") }),
+    );
+    const history = await listRegulatedPrices(db, a);
+    // Scoped to one service; newest gazette date first; within the same date, last-inserted first.
+    expect(history.map((r) => r.id)).toEqual([r3.id, r2.id, r1.id]);
   });
 });
