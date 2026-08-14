@@ -33,10 +33,10 @@ test("bigint paise columns round-trip as JS numbers (never strings, never floats
 
 test("unique constraints hold: service code, version number, one price per (version, service)", async () => {
   const { serviceId, versionId } = await seedMinimal();
-  await expect(db.insert(services).values({ id: "s2", code: "SVC-1", name: "Dup", category: "pharmacy", createdBy: "t", updatedBy: "t" })).rejects.toThrow();
-  await expect(db.insert(tariffVersions).values({ id: "v2", versionNo: 1, createdBy: "t" })).rejects.toThrow();
+  await expect(db.insert(services).values({ id: "s2", code: "SVC-1", name: "Dup", category: "pharmacy", createdBy: "t", updatedBy: "t" })).rejects.toMatchObject({ code: "23505" });
+  await expect(db.insert(tariffVersions).values({ id: "v2", versionNo: 1, createdBy: "t" })).rejects.toMatchObject({ code: "23505" });
   await db.insert(tariffItems).values({ id: "i1", versionId, serviceId, pricePaise: 100, updatedBy: "t" });
-  await expect(db.insert(tariffItems).values({ id: "i2", versionId, serviceId, pricePaise: 200, updatedBy: "t" })).rejects.toThrow();
+  await expect(db.insert(tariffItems).values({ id: "i2", versionId, serviceId, pricePaise: 200, updatedBy: "t" })).rejects.toMatchObject({ code: "23505" });
 });
 
 test("truncateAll empties every tariff table in one statement (FK group proof — §3.12)", async () => {
@@ -55,4 +55,17 @@ test("truncateAll empties every tariff table in one statement (FK group proof �
   expect((await db.select().from(adjustmentRules)).length).toBe(0);
   expect((await db.select().from(gstConfig)).length).toBe(0);
   expect((await db.select().from(gstSettings)).length).toBe(0);
+});
+
+test("partial unique index: two ACTIVATED versions cannot share an effective_from; other statuses can", async () => {
+  const d = new Date("2026-02-01T00:00:00Z");
+  await db.insert(tariffVersions).values({ id: "va", versionNo: 11, status: "activated", effectiveFrom: d, createdBy: "t" });
+  // Same instant under a NON-activated status inserts fine — the WHERE clause is live, not decorative.
+  await db.insert(tariffVersions).values({ id: "vs", versionNo: 12, status: "submitted", effectiveFrom: d, createdBy: "t" });
+  // A second ACTIVATED row at the same instant violates the invariant at the database layer.
+  await expect(
+    db.insert(tariffVersions).values({ id: "vb", versionNo: 13, status: "activated", effectiveFrom: d, createdBy: "t" }),
+  ).rejects.toMatchObject({ code: "23505" });
+  // A different instant is fine.
+  await db.insert(tariffVersions).values({ id: "vc", versionNo: 14, status: "activated", effectiveFrom: new Date("2026-03-01T00:00:00Z"), createdBy: "t" });
 });

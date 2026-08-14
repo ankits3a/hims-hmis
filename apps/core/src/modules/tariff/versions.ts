@@ -181,14 +181,18 @@ export async function activateVersion(
   }
 
   return withTx(db, async (tx) => {
-    // Locks the row actually being activated so a concurrent activateVersion on the SAME
-    // version blocks here until the winner commits (this is what serializes the race — a
-    // lock on the (possibly still-empty) activated set locks nothing when no version has
-    // activated yet). Kept alongside the activated-set lock, which still serializes against
-    // any OTHER version's concurrent activation so the monotonicity re-check below sees a
-    // consistent activated set (D5).
-    await tx.execute(sql`select id from tariff_versions where id = ${versionId} for update`);
-    await tx.execute(sql`select id from tariff_versions where status = 'activated' for update`);
+    // Serializes ANY two concurrent activations — same version or different versions. The
+    // predicate always covers the version being activated (it stays 'submitted' until the
+    // winner's conditional UPDATE flips it, and 'activated' keeps it in the set afterwards), so
+    // two concurrent activators always contend on at least their two target rows, and ORDER BY id
+    // makes every session acquire row locks in the same order — no deadlock. The previous shape
+    // (target-row lock + a lock on the already-activated set) did NOT serialize two DIFFERENT
+    // versions: with nothing yet activated the set lock matched zero rows and locked nothing
+    // (stress-test C1, reproduced 2026-08-14). Do NOT reintroduce a separate target-row lock
+    // ahead of this one — row-then-set acquisition order deadlocks (Postgres 40P01).
+    await tx.execute(
+      sql`select id from tariff_versions where status in ('submitted', 'activated') order by id for update`,
+    );
 
     const activated = await tx
       .select({ effectiveFrom: tariffVersions.effectiveFrom })

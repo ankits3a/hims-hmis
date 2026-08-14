@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "tariff_versions_activated_effective_ux" ON "tariff_versions" USING btree ("effective_from") WHERE "tariff_versions"."status" = 'activated';

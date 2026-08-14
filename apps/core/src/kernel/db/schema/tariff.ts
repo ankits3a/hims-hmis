@@ -1,6 +1,7 @@
 import {
   bigint, boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 /**
  * Plan 06 — tariff/pricing master data (spec §7, C-3, D-3, D-8, §11.11).
@@ -43,7 +44,17 @@ export const tariffVersions = pgTable(
     activatedBy: text("activated_by"),
     activatedAt: timestamp("activated_at", { withTimezone: true }),
   },
-  (t) => [uniqueIndex("tariff_versions_no_ux").on(t.versionNo), index("tariff_versions_status_idx").on(t.status)],
+  (t) => [
+    uniqueIndex("tariff_versions_no_ux").on(t.versionNo),
+    index("tariff_versions_status_idx").on(t.status),
+    // D5's strict monotonicity means two ACTIVATED versions can never share an effective date.
+    // This partial unique index IS that invariant at the database layer — the structural
+    // backstop behind the activation serializer (the workflow_definitions_one_active_ux /
+    // patient_merge_requests_pending_loser_ux precedent).
+    uniqueIndex("tariff_versions_activated_effective_ux")
+      .on(t.effectiveFrom)
+      .where(sql`${t.status} = 'activated'`),
+  ],
 );
 
 export const tariffItems = pgTable(

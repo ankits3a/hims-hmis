@@ -275,4 +275,41 @@ describe("tariff versions — draft/submit/activate via approvals, tariff-lock (
     const eventRows = await db.select().from(events).where(eq(events.name, "tariff.revision_applied"));
     expect(eventRows.length).toBe(1);
   });
+
+  it("cross-version race at an EQUAL effectiveFrom: one winner, loser is effective_from_not_monotone, monotone set holds", async () => {
+    const v1 = await mkDraft([[s1, 10000]]);
+    const v2 = await mkDraft([[s2, 20000]]);
+    const sub1 = await withTx(db, (tx) => submitVersion(tx, drafter, v1.versionId));
+    const sub2 = await withTx(db, (tx) => submitVersion(tx, drafter, v2.versionId));
+    await approveRequest(db, owner, { approvalId: sub1.approvalId, note: "approved" });
+    await approveRequest(db, owner, { approvalId: sub2.approvalId, note: "approved" });
+
+    // §3.21 trace discipline: the serializer's predicate (status in submitted/activated) matches
+    // BOTH target rows in this starting state — a lock that locks something. The loser waits on
+    // the ordered set lock, then re-reads the activated set and finds the winner's row at the
+    // SAME date, never strictly greater — so its code is deterministic on EVERY interleaving.
+    const effectiveFrom = new Date("2026-02-01T00:00:00Z");
+    const results = await Promise.allSettled([
+      activateVersion(db, activator, v1.versionId, effectiveFrom),
+      activateVersion(db, activator, v2.versionId, effectiveFrom),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const loser = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+    expect(fulfilled.length).toBe(1);
+    expect(loser).toBeDefined();
+    expect(loser!.reason.code).toBe("effective_from_not_monotone");
+
+    // Invariants — asserted on every path, no early bail (§3.13 lesson).
+    const activatedRows = await db.select().from(tariffVersions).where(eq(tariffVersions.status, "activated"));
+    expect(activatedRows.length).toBe(1);
+    const eventRows = await db.select().from(events).where(eq(events.name, "tariff.revision_applied"));
+    expect(eventRows.length).toBe(1);
+
+    // The loser is untouched — still submitted — and re-activates cleanly at a LATER date.
+    const loserId = activatedRows[0]!.id === v1.versionId ? v2.versionId : v1.versionId;
+    expect((await getVersion(db, loserId))!.version.status).toBe("submitted");
+    const retry = await activateVersion(db, activator, loserId, new Date("2026-03-01T00:00:00Z"));
+    expect(retry.effectiveFrom).toEqual(new Date("2026-03-01T00:00:00Z"));
+  });
 });
