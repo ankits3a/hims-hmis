@@ -31,6 +31,9 @@ export const fixtureSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("price_error"), name: z.string(), specRefs: z.array(z.string()).min(1),
     config: configSchema, lines: z.array(lineInput).min(1),
     expected: z.object({ workings, errorCode: z.string() }) }),
+  z.object({ kind: z.literal("simulate"), name: z.string(), specRefs: z.array(z.string()).min(1),
+    config: configSchema, draftConfig: configSchema, lines: z.array(lineInput).min(1),
+    expected: z.object({ workings, report: z.unknown() }) }), // report deep-equals the full ImpactReport
 ]);
 export type GoldenFixture = z.infer<typeof fixtureSchema>;
 

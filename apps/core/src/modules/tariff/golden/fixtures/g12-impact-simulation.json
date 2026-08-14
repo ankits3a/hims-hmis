@@ -1,0 +1,126 @@
+{
+  "kind": "simulate",
+  "name": "simulateRevision diffs current vs draft pricing — one price up, one price down, tax moves opposite net",
+  "specRefs": [
+    "D6",
+    "§11.11"
+  ],
+  "config": {
+    "asOf": "2026-09-01T00:00:00.000Z",
+    "tariff": { "versionId": "v1", "versionNo": 1, "items": {
+      "svc-cons": 50000, "svc-proc": 33335, "svc-room-gen": 480000, "svc-room-dlx": 600000,
+      "svc-room-eq": 500000, "svc-room-semi": 550000, "svc-tab": 18875, "svc-dev": 33333,
+      "svc-drug-a": 12000, "svc-drug-b": 9000, "svc-drug-c": 7000, "svc-drug-d": 5000 } },
+    "services": [
+      { "id": "svc-cons", "code": "CONS-GEN", "name": "General consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-proc", "code": "PROC-MIN", "name": "Minor procedure", "category": "procedure", "regulated": false, "active": true },
+      { "id": "svc-room-gen", "code": "ROOM-GEN", "name": "General ward bed per day", "category": "room_rent", "regulated": false, "active": true },
+      { "id": "svc-room-dlx", "code": "ROOM-DLX", "name": "Deluxe room per day", "category": "room_rent", "regulated": false, "active": true },
+      { "id": "svc-room-eq", "code": "ROOM-EQ", "name": "Semi-private room per day", "category": "room_rent", "regulated": false, "active": true },
+      { "id": "svc-room-semi", "code": "ROOM-SEMI", "name": "Private room per day", "category": "room_rent", "regulated": false, "active": true },
+      { "id": "svc-tab", "code": "PHARM-TAB", "name": "Paracetamol 500 strip", "category": "pharmacy", "regulated": false, "active": true },
+      { "id": "svc-dev", "code": "DEV-ORTHO", "name": "Orthopedic device", "category": "device", "regulated": false, "active": true },
+      { "id": "svc-drug-a", "code": "DRUG-A", "name": "Drug A", "category": "pharmacy", "regulated": true, "active": true },
+      { "id": "svc-drug-b", "code": "DRUG-B", "name": "Drug B", "category": "pharmacy", "regulated": true, "active": true },
+      { "id": "svc-drug-c", "code": "DRUG-C", "name": "Drug C", "category": "pharmacy", "regulated": true, "active": true },
+      { "id": "svc-drug-d", "code": "DRUG-D", "name": "Drug D", "category": "pharmacy", "regulated": true, "active": true }
+    ],
+    "regulatedPrices": {
+      "svc-drug-a": { "mrpPaise": 10000, "ceilingPaise": 15000 },
+      "svc-drug-b": { "mrpPaise": 10000, "ceilingPaise": 8000 },
+      "svc-drug-c": { "mrpPaise": 10000, "ceilingPaise": 8000 }
+    },
+    "gstCategories": [
+      { "category": "consultation", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "procedure", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "room_rent", "sacCode": "999311", "exempt": false, "rateBps": 500, "specialRule": "room_rent_daily_threshold", "thresholdPaise": 500000 },
+      { "category": "pharmacy", "sacCode": "3004", "exempt": false, "rateBps": 1200, "specialRule": null, "thresholdPaise": null },
+      { "category": "device", "sacCode": "9021", "exempt": false, "rateBps": 500, "specialRule": null, "thresholdPaise": null }
+    ],
+    "gstSettings": { "compositeHealthcareExempt": true, "caSigned": false },
+    "rules": [
+      { "ruleKey": "R-CAMP5", "title": "Camp 2026 procedure scheme", "kind": "percent_bps", "value": 500, "discountCategory": "scheme", "requiredTag": "camp2026", "serviceCategory": "procedure", "serviceId": null },
+      { "ruleKey": "R-EMP10", "title": "Employee discount", "kind": "percent_bps", "value": 1000, "discountCategory": "employee", "requiredTag": "employee", "serviceCategory": null, "serviceId": null }
+    ],
+    "manualCaps": {
+      "charity": { "maxBps": 2500, "approvalAboveBps": 1000 },
+      "employee": { "maxBps": 1000, "approvalAboveBps": null },
+      "scheme": { "maxBps": 1500, "approvalAboveBps": 1000 },
+      "negotiated_corporate": { "maxBps": 2000, "approvalAboveBps": 1500 }
+    },
+    "tags": []
+  },
+  "draftConfig": {
+    "asOf": "2026-09-01T00:00:00.000Z",
+    "tariff": { "versionId": "v2", "versionNo": 2, "items": {
+      "svc-cons": 60000, "svc-proc": 33335, "svc-room-gen": 480000, "svc-room-dlx": 600000,
+      "svc-room-eq": 500000, "svc-room-semi": 550000, "svc-tab": 18875, "svc-dev": 30000,
+      "svc-drug-a": 12000, "svc-drug-b": 9000, "svc-drug-c": 7000, "svc-drug-d": 5000 } },
+    "services": [
+      { "id": "svc-cons", "code": "CONS-GEN", "name": "General consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-proc", "code": "PROC-MIN", "name": "Minor procedure", "category": "procedure", "regulated": false, "active": true },
+      { "id": "svc-room-gen", "code": "ROOM-GEN", "name": "General ward bed per day", "category": "room_rent", "regulated": false, "active": true },
+      { "id": "svc-room-dlx", "code": "ROOM-DLX", "name": "Deluxe room per day", "category": "room_rent", "regulated": false, "active": true },
+      { "id": "svc-room-eq", "code": "ROOM-EQ", "name": "Semi-private room per day", "category": "room_rent", "regulated": false, "active": true },
+      { "id": "svc-room-semi", "code": "ROOM-SEMI", "name": "Private room per day", "category": "room_rent", "regulated": false, "active": true },
+      { "id": "svc-tab", "code": "PHARM-TAB", "name": "Paracetamol 500 strip", "category": "pharmacy", "regulated": false, "active": true },
+      { "id": "svc-dev", "code": "DEV-ORTHO", "name": "Orthopedic device", "category": "device", "regulated": false, "active": true },
+      { "id": "svc-drug-a", "code": "DRUG-A", "name": "Drug A", "category": "pharmacy", "regulated": true, "active": true },
+      { "id": "svc-drug-b", "code": "DRUG-B", "name": "Drug B", "category": "pharmacy", "regulated": true, "active": true },
+      { "id": "svc-drug-c", "code": "DRUG-C", "name": "Drug C", "category": "pharmacy", "regulated": true, "active": true },
+      { "id": "svc-drug-d", "code": "DRUG-D", "name": "Drug D", "category": "pharmacy", "regulated": true, "active": true }
+    ],
+    "regulatedPrices": {
+      "svc-drug-a": { "mrpPaise": 10000, "ceilingPaise": 15000 },
+      "svc-drug-b": { "mrpPaise": 10000, "ceilingPaise": 8000 },
+      "svc-drug-c": { "mrpPaise": 10000, "ceilingPaise": 8000 }
+    },
+    "gstCategories": [
+      { "category": "consultation", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "procedure", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "room_rent", "sacCode": "999311", "exempt": false, "rateBps": 500, "specialRule": "room_rent_daily_threshold", "thresholdPaise": 500000 },
+      { "category": "pharmacy", "sacCode": "3004", "exempt": false, "rateBps": 1200, "specialRule": null, "thresholdPaise": null },
+      { "category": "device", "sacCode": "9021", "exempt": false, "rateBps": 500, "specialRule": null, "thresholdPaise": null }
+    ],
+    "gstSettings": { "compositeHealthcareExempt": true, "caSigned": false },
+    "rules": [
+      { "ruleKey": "R-CAMP5", "title": "Camp 2026 procedure scheme", "kind": "percent_bps", "value": 500, "discountCategory": "scheme", "requiredTag": "camp2026", "serviceCategory": "procedure", "serviceId": null },
+      { "ruleKey": "R-EMP10", "title": "Employee discount", "kind": "percent_bps", "value": 1000, "discountCategory": "employee", "requiredTag": "employee", "serviceCategory": null, "serviceId": null }
+    ],
+    "manualCaps": {
+      "charity": { "maxBps": 2500, "approvalAboveBps": 1000 },
+      "employee": { "maxBps": 1000, "approvalAboveBps": null },
+      "scheme": { "maxBps": 1500, "approvalAboveBps": 1000 },
+      "negotiated_corporate": { "maxBps": 2000, "approvalAboveBps": 1500 }
+    },
+    "tags": []
+  },
+  "lines": [
+    { "lineId": "L1", "serviceId": "svc-cons", "qty": 1 },
+    { "lineId": "L2", "serviceId": "svc-tab", "qty": 1 },
+    { "lineId": "L3", "serviceId": "svc-dev", "qty": 1 }
+  ],
+  "expected": {
+    "workings": "current: cons unit 50000 x1 = gross 50000, exempt -> net 50000, tax 0; tab unit 18875 x1 = gross 18875, pharmacy 1200bps head = divHalfUp(18875*1200,20000) = 1133, net 18875+1133+1133 = 21141, tax 2266 (G03); dev unit 33333 x1 = gross 33333, device 500bps head = divHalfUp(33333*500,20000) = 833, net 33333+833+833 = 34999, tax 1666 (G02) -> current totals: net 50000+21141+34999 = 106140, tax 0+2266+1666 = 3932. draft: cons unit 60000 x1 = gross 60000, exempt -> net 60000, tax 0; tab unchanged at 18875 -> net 21141, tax 2266; dev unit 30000 x1 = gross 30000, head = divHalfUp(30000*500,20000) = divHalfUp(15000000,20000) = 750, net 30000+750+750 = 31500, tax 1500 -> draft totals: net 60000+21141+31500 = 112641, tax 0+2266+1500 = 3766. deltas: net 112641-106140 = +6501, tax 3766-3932 = -166; per line: cons +10000 (60000-50000), tab 0 (21141-21141), dev -3499 (31500-34999, a revision can cut a price); byService sorted ascending by serviceId (svc-cons, svc-dev, svc-tab): svc-cons {50000,60000,+10000}, svc-dev {34999,31500,-3499}, svc-tab {21141,21141,0}.",
+    "report": {
+      "lines": [
+        { "lineId": "L1", "serviceId": "svc-cons", "currentNetPaise": 50000, "draftNetPaise": 60000, "deltaPaise": 10000 },
+        { "lineId": "L2", "serviceId": "svc-tab", "currentNetPaise": 21141, "draftNetPaise": 21141, "deltaPaise": 0 },
+        { "lineId": "L3", "serviceId": "svc-dev", "currentNetPaise": 34999, "draftNetPaise": 31500, "deltaPaise": -3499 }
+      ],
+      "totals": {
+        "currentNetPaise": 106140,
+        "draftNetPaise": 112641,
+        "deltaPaise": 6501,
+        "currentTaxPaise": 3932,
+        "draftTaxPaise": 3766,
+        "taxDeltaPaise": -166
+      },
+      "byService": [
+        { "serviceId": "svc-cons", "currentNetPaise": 50000, "draftNetPaise": 60000, "deltaPaise": 10000 },
+        { "serviceId": "svc-dev", "currentNetPaise": 34999, "draftNetPaise": 31500, "deltaPaise": -3499 },
+        { "serviceId": "svc-tab", "currentNetPaise": 21141, "draftNetPaise": 21141, "deltaPaise": 0 }
+      ]
+    }
+  }
+}

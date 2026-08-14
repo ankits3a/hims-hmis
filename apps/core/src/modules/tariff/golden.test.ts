@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fixtureSchema, contextFromFixture } from "./fixture-schema";
 import { priceInvoiceLines } from "./pricing";
+import { simulateRevision } from "./simulation";
 import { TariffError } from "./errors";
 import { taxHead } from "./money";
 import type { GstCategoryConfig, GstSettings, InvoiceLineInput, PricedLine, PricedLineGst } from "./types";
@@ -10,7 +11,7 @@ const dir = join(__dirname, "golden", "fixtures");
 const files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
 
 test("the fixture set is complete (an empty dir must never pass vacuously)", () => {
-  expect(files.length).toBe(12); // T7 bumps to 13 (g12); Plans 08/09 bump again as they add cases
+  expect(files.length).toBe(13); // g01–g13 (T6's 12 price/price_error fixtures + g12's simulate fixture from T7); Plans 08/09 bump again as they add cases
 });
 
 for (const file of files) {
@@ -23,6 +24,11 @@ for (const file of files) {
         expect(e).toBeInstanceOf(TariffError);
         expect((e as TariffError).code).toBe(fixture.expected.errorCode);
       }
+      return;
+    }
+    if (fixture.kind === "simulate") {
+      const draftCtx = contextFromFixture(fixture.draftConfig);
+      expect(simulateRevision(ctx, draftCtx, fixture.lines)).toEqual(fixture.expected.report);
       return;
     }
     const priced = priceInvoiceLines(ctx, fixture.lines);
