@@ -208,6 +208,62 @@ describe("tariff e2e", () => {
     await request(app.getHttpServer())
       .post("/tariff/services").set(...auth(readerToken))
       .send({ code: "X", name: "X", category: "consultation" }).expect(403);
+
+    // THE OPENING: the simulate route now runs on tariff.read (owner decision — a read-only
+    // user must be able to run a pricing impact simulation). loadPricingContext needs an
+    // ACTIVATED baseline to resolve "current" pricing (context.ts: version_not_active), so —
+    // same shape as the "simulate over HTTP" test — the drafter/admin stand up an activated
+    // baseline first, then a second priced draft, before the reader calls simulate.
+    const svc = await request(app.getHttpServer())
+      .post("/tariff/services").set(...auth(adminToken))
+      .send({ code: "CONS-1", name: "Consultation", category: "consultation" }).expect(201);
+    const consId = svc.body.serviceId as string;
+
+    const baseline = await request(app.getHttpServer())
+      .post("/tariff/versions").set(...auth(drafterToken)).send({}).expect(201);
+    const baselineId = baseline.body.versionId as string;
+    await request(app.getHttpServer())
+      .put(`/tariff/versions/${baselineId}/items/${consId}`).set(...auth(drafterToken))
+      .send({ pricePaise: 50000 }).expect(200);
+    const baseSubmit = await request(app.getHttpServer())
+      .post(`/tariff/versions/${baselineId}/submit`).set(...auth(drafterToken)).send({}).expect(200);
+    await approveRequest(db, ownerActor, { approvalId: baseSubmit.body.approvalId as string, note: "approved" });
+    await request(app.getHttpServer())
+      .post(`/tariff/versions/${baselineId}/activate`).set(...auth(adminToken))
+      .send({ effectiveFrom: "2026-01-01T00:00:00.000Z" }).expect(200);
+
+    const draft = await request(app.getHttpServer())
+      .post("/tariff/versions").set(...auth(drafterToken)).send({}).expect(201);
+    const versionId = draft.body.versionId as string;
+    await request(app.getHttpServer())
+      .put(`/tariff/versions/${versionId}/items/${consId}`).set(...auth(drafterToken))
+      .send({ pricePaise: 60000 }).expect(200);
+
+    const sim = await request(app.getHttpServer())
+      .post(`/tariff/versions/${versionId}/simulate`).set(...auth(readerToken))
+      .send({ lines: [{ lineId: "L1", serviceId: consId, qty: 1 }] }).expect(200);
+    // A well-formed ImpactReport: { lines, totals, byService } — not just a 200, an actual body.
+    expect(sim.body).toEqual(expect.objectContaining({
+      lines: expect.any(Array),
+      totals: expect.objectContaining({
+        currentNetPaise: expect.any(Number),
+        draftNetPaise: expect.any(Number),
+        deltaPaise: expect.any(Number),
+      }),
+      byService: expect.any(Array),
+    }));
+
+    // THE WALLS THAT MUST STILL HOLD: tariff.read is not a blanket grant. The same reader is
+    // still refused on a tariff.services.manage route (asserted above) and on a
+    // tariff.config.manage route, and simulate is still 401 with no token at all — proving the
+    // 200 above is attributable to the specific permission move, not to an over-granted fixture
+    // (§3.14b: two mechanisms must not produce the same observable).
+    await request(app.getHttpServer())
+      .put("/tariff/gst/settings").set(...auth(readerToken))
+      .send({ caSigned: true }).expect(403);
+    await request(app.getHttpServer())
+      .post(`/tariff/versions/${versionId}/simulate`)
+      .send({ lines: [{ lineId: "L1", serviceId: consId, qty: 1 }] }).expect(401);
   });
 
   it("validation walls: qty, pricePaise, and effectiveFrom are checked before any domain logic runs", async () => {

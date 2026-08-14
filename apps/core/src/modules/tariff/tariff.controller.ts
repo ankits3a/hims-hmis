@@ -278,7 +278,7 @@ export class TariffController {
     }
   }
 
-  @RequirePermission("tariff.versions.draft", "hospital")
+  @RequirePermission("tariff.read", "hospital")
   @Post("versions/:id/simulate")
   @HttpCode(200) // an action, not a creation
   async simulateRoute(@Param("id") id: string, @Body() body: unknown): Promise<unknown> {
