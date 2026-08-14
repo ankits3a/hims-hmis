@@ -1,0 +1,294 @@
+{
+  "kind": "price",
+  "name": "half-up rounding direction, and tax on the LINE total rather than per unit",
+  "specRefs": [
+    "D1",
+    "§7"
+  ],
+  "config": {
+    "asOf": "2026-09-01T00:00:00.000Z",
+    "tariff": {
+      "versionId": "v1",
+      "versionNo": 1,
+      "items": {
+        "svc-cons": 50000,
+        "svc-proc": 33335,
+        "svc-room-gen": 480000,
+        "svc-room-dlx": 600000,
+        "svc-room-eq": 500000,
+        "svc-room-semi": 550000,
+        "svc-tab": 18875,
+        "svc-dev": 33333,
+        "svc-drug-a": 12000,
+        "svc-drug-b": 9000,
+        "svc-drug-c": 7000,
+        "svc-drug-d": 5000
+      }
+    },
+    "services": [
+      {
+        "id": "svc-cons",
+        "code": "CONS-GEN",
+        "name": "General consultation",
+        "category": "consultation",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-proc",
+        "code": "PROC-MIN",
+        "name": "Minor procedure",
+        "category": "procedure",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-room-gen",
+        "code": "ROOM-GEN",
+        "name": "General ward bed per day",
+        "category": "room_rent",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-room-dlx",
+        "code": "ROOM-DLX",
+        "name": "Deluxe room per day",
+        "category": "room_rent",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-room-eq",
+        "code": "ROOM-EQ",
+        "name": "Semi-private room per day",
+        "category": "room_rent",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-room-semi",
+        "code": "ROOM-SEMI",
+        "name": "Private room per day",
+        "category": "room_rent",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-tab",
+        "code": "PHARM-TAB",
+        "name": "Paracetamol 500 strip",
+        "category": "pharmacy",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-dev",
+        "code": "DEV-ORTHO",
+        "name": "Orthopedic device",
+        "category": "device",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-drug-a",
+        "code": "DRUG-A",
+        "name": "Drug A",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
+      },
+      {
+        "id": "svc-drug-b",
+        "code": "DRUG-B",
+        "name": "Drug B",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
+      },
+      {
+        "id": "svc-drug-c",
+        "code": "DRUG-C",
+        "name": "Drug C",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
+      },
+      {
+        "id": "svc-drug-d",
+        "code": "DRUG-D",
+        "name": "Drug D",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
+      }
+    ],
+    "regulatedPrices": {
+      "svc-drug-a": {
+        "mrpPaise": 10000,
+        "ceilingPaise": 15000
+      },
+      "svc-drug-b": {
+        "mrpPaise": 10000,
+        "ceilingPaise": 8000
+      },
+      "svc-drug-c": {
+        "mrpPaise": 10000,
+        "ceilingPaise": 8000
+      }
+    },
+    "gstCategories": [
+      {
+        "category": "consultation",
+        "sacCode": "999312",
+        "exempt": true,
+        "rateBps": 1800,
+        "specialRule": null,
+        "thresholdPaise": null
+      },
+      {
+        "category": "procedure",
+        "sacCode": "999312",
+        "exempt": true,
+        "rateBps": 1800,
+        "specialRule": null,
+        "thresholdPaise": null
+      },
+      {
+        "category": "room_rent",
+        "sacCode": "999311",
+        "exempt": false,
+        "rateBps": 500,
+        "specialRule": "room_rent_daily_threshold",
+        "thresholdPaise": 500000
+      },
+      {
+        "category": "pharmacy",
+        "sacCode": "3004",
+        "exempt": false,
+        "rateBps": 1200,
+        "specialRule": null,
+        "thresholdPaise": null
+      },
+      {
+        "category": "device",
+        "sacCode": "9021",
+        "exempt": false,
+        "rateBps": 500,
+        "specialRule": null,
+        "thresholdPaise": null
+      }
+    ],
+    "gstSettings": {
+      "compositeHealthcareExempt": true,
+      "caSigned": false
+    },
+    "rules": [
+      {
+        "ruleKey": "R-CAMP5",
+        "title": "Camp 2026 procedure scheme",
+        "kind": "percent_bps",
+        "value": 500,
+        "discountCategory": "scheme",
+        "requiredTag": "camp2026",
+        "serviceCategory": "procedure",
+        "serviceId": null
+      },
+      {
+        "ruleKey": "R-EMP10",
+        "title": "Employee discount",
+        "kind": "percent_bps",
+        "value": 1000,
+        "discountCategory": "employee",
+        "requiredTag": "employee",
+        "serviceCategory": null,
+        "serviceId": null
+      }
+    ],
+    "manualCaps": {
+      "charity": {
+        "maxBps": 2500,
+        "approvalAboveBps": 1000
+      },
+      "employee": {
+        "maxBps": 1000,
+        "approvalAboveBps": null
+      },
+      "scheme": {
+        "maxBps": 1500,
+        "approvalAboveBps": 1000
+      },
+      "negotiated_corporate": {
+        "maxBps": 2000,
+        "approvalAboveBps": 1500
+      }
+    },
+    "tags": []
+  },
+  "lines": [
+    {
+      "lineId": "L1",
+      "serviceId": "svc-tab",
+      "qty": 1
+    },
+    {
+      "lineId": "L2",
+      "serviceId": "svc-tab",
+      "qty": 3
+    }
+  ],
+  "expected": [
+    {
+      "workings": "svc-tab x1: unit 18875 x 1 = gross 18875, no discount -> taxableBase 18875; pharmacy 1200bps head = divHalfUp(18875*1200, 20000) = divHalfUp(22650000, 20000) = 1133 (exact 1132.5, halves go UP; truncation gives 1132 and banker's-to-even gives 1132, both -> net 21139); net 18875+1133+1133 = 21141",
+      "line": {
+        "lineId": "L1",
+        "serviceId": "svc-tab",
+        "serviceName": "Paracetamol 500 strip",
+        "category": "pharmacy",
+        "qty": 1,
+        "unitPaise": 18875,
+        "grossPaise": 18875,
+        "regulatedClamp": null,
+        "candidates": [],
+        "winner": null,
+        "discountPaise": 0,
+        "taxableBasePaise": 18875,
+        "gst": {
+          "sacCode": "3004",
+          "rateBps": 1200,
+          "exempt": false,
+          "exemptReason": null,
+          "cgstPaise": 1133,
+          "sgstPaise": 1133
+        },
+        "netPaise": 21141
+      }
+    },
+    {
+      "workings": "svc-tab x3: unit 18875 x 3 = gross 56625, no discount -> taxableBase 56625; head = divHalfUp(56625*1200, 20000) = divHalfUp(67950000, 20000) = 3398 (exact 3397.5); 3398 != 3 x 1133 = 3399, so taxing per unit and multiplying is pinned out; net 56625+3398+3398 = 63421",
+      "line": {
+        "lineId": "L2",
+        "serviceId": "svc-tab",
+        "serviceName": "Paracetamol 500 strip",
+        "category": "pharmacy",
+        "qty": 3,
+        "unitPaise": 18875,
+        "grossPaise": 56625,
+        "regulatedClamp": null,
+        "candidates": [],
+        "winner": null,
+        "discountPaise": 0,
+        "taxableBasePaise": 56625,
+        "gst": {
+          "sacCode": "3004",
+          "rateBps": 1200,
+          "exempt": false,
+          "exemptReason": null,
+          "cgstPaise": 3398,
+          "sgstPaise": 3398
+        },
+        "netPaise": 63421
+      }
+    }
+  ]
+}

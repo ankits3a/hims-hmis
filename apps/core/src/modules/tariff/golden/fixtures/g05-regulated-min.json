@@ -1,0 +1,335 @@
+{
+  "kind": "price",
+  "name": "C-3 min(tariff, MRP, ceiling): each bound wins once, each min distinct",
+  "specRefs": [
+    "C-3",
+    "§7"
+  ],
+  "config": {
+    "asOf": "2026-09-01T00:00:00.000Z",
+    "tariff": {
+      "versionId": "v1",
+      "versionNo": 1,
+      "items": {
+        "svc-cons": 50000,
+        "svc-proc": 33335,
+        "svc-room-gen": 480000,
+        "svc-room-dlx": 600000,
+        "svc-room-eq": 500000,
+        "svc-room-semi": 550000,
+        "svc-tab": 18875,
+        "svc-dev": 33333,
+        "svc-drug-a": 12000,
+        "svc-drug-b": 9000,
+        "svc-drug-c": 7000,
+        "svc-drug-d": 5000
+      }
+    },
+    "services": [
+      {
+        "id": "svc-cons",
+        "code": "CONS-GEN",
+        "name": "General consultation",
+        "category": "consultation",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-proc",
+        "code": "PROC-MIN",
+        "name": "Minor procedure",
+        "category": "procedure",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-room-gen",
+        "code": "ROOM-GEN",
+        "name": "General ward bed per day",
+        "category": "room_rent",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-room-dlx",
+        "code": "ROOM-DLX",
+        "name": "Deluxe room per day",
+        "category": "room_rent",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-room-eq",
+        "code": "ROOM-EQ",
+        "name": "Semi-private room per day",
+        "category": "room_rent",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-room-semi",
+        "code": "ROOM-SEMI",
+        "name": "Private room per day",
+        "category": "room_rent",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-tab",
+        "code": "PHARM-TAB",
+        "name": "Paracetamol 500 strip",
+        "category": "pharmacy",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-dev",
+        "code": "DEV-ORTHO",
+        "name": "Orthopedic device",
+        "category": "device",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-drug-a",
+        "code": "DRUG-A",
+        "name": "Drug A",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
+      },
+      {
+        "id": "svc-drug-b",
+        "code": "DRUG-B",
+        "name": "Drug B",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
+      },
+      {
+        "id": "svc-drug-c",
+        "code": "DRUG-C",
+        "name": "Drug C",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
+      },
+      {
+        "id": "svc-drug-d",
+        "code": "DRUG-D",
+        "name": "Drug D",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
+      }
+    ],
+    "regulatedPrices": {
+      "svc-drug-a": {
+        "mrpPaise": 10000,
+        "ceilingPaise": 15000
+      },
+      "svc-drug-b": {
+        "mrpPaise": 10000,
+        "ceilingPaise": 8000
+      },
+      "svc-drug-c": {
+        "mrpPaise": 10000,
+        "ceilingPaise": 8000
+      }
+    },
+    "gstCategories": [
+      {
+        "category": "consultation",
+        "sacCode": "999312",
+        "exempt": true,
+        "rateBps": 1800,
+        "specialRule": null,
+        "thresholdPaise": null
+      },
+      {
+        "category": "procedure",
+        "sacCode": "999312",
+        "exempt": true,
+        "rateBps": 1800,
+        "specialRule": null,
+        "thresholdPaise": null
+      },
+      {
+        "category": "room_rent",
+        "sacCode": "999311",
+        "exempt": false,
+        "rateBps": 500,
+        "specialRule": "room_rent_daily_threshold",
+        "thresholdPaise": 500000
+      },
+      {
+        "category": "pharmacy",
+        "sacCode": "3004",
+        "exempt": false,
+        "rateBps": 1200,
+        "specialRule": null,
+        "thresholdPaise": null
+      },
+      {
+        "category": "device",
+        "sacCode": "9021",
+        "exempt": false,
+        "rateBps": 500,
+        "specialRule": null,
+        "thresholdPaise": null
+      }
+    ],
+    "gstSettings": {
+      "compositeHealthcareExempt": true,
+      "caSigned": false
+    },
+    "rules": [
+      {
+        "ruleKey": "R-CAMP5",
+        "title": "Camp 2026 procedure scheme",
+        "kind": "percent_bps",
+        "value": 500,
+        "discountCategory": "scheme",
+        "requiredTag": "camp2026",
+        "serviceCategory": "procedure",
+        "serviceId": null
+      },
+      {
+        "ruleKey": "R-EMP10",
+        "title": "Employee discount",
+        "kind": "percent_bps",
+        "value": 1000,
+        "discountCategory": "employee",
+        "requiredTag": "employee",
+        "serviceCategory": null,
+        "serviceId": null
+      }
+    ],
+    "manualCaps": {
+      "charity": {
+        "maxBps": 2500,
+        "approvalAboveBps": 1000
+      },
+      "employee": {
+        "maxBps": 1000,
+        "approvalAboveBps": null
+      },
+      "scheme": {
+        "maxBps": 1500,
+        "approvalAboveBps": 1000
+      },
+      "negotiated_corporate": {
+        "maxBps": 2000,
+        "approvalAboveBps": 1500
+      }
+    },
+    "tags": []
+  },
+  "lines": [
+    {
+      "lineId": "L1",
+      "serviceId": "svc-drug-a",
+      "qty": 1
+    },
+    {
+      "lineId": "L2",
+      "serviceId": "svc-drug-b",
+      "qty": 1
+    },
+    {
+      "lineId": "L3",
+      "serviceId": "svc-drug-c",
+      "qty": 1
+    }
+  ],
+  "expected": [
+    {
+      "workings": "drug-a: min(tariff 12000, mrp 10000, ceiling 15000) = 10000 -> clamp mrp; pharmacy 12%: head = divHalfUp(10000*1200, 20000) = 600; net 10000+600+600 = 11200",
+      "line": {
+        "lineId": "L1",
+        "serviceId": "svc-drug-a",
+        "serviceName": "Drug A",
+        "category": "pharmacy",
+        "qty": 1,
+        "unitPaise": 10000,
+        "grossPaise": 10000,
+        "regulatedClamp": {
+          "boundApplied": "mrp",
+          "tariffPaise": 12000,
+          "mrpPaise": 10000,
+          "ceilingPaise": 15000
+        },
+        "candidates": [],
+        "winner": null,
+        "discountPaise": 0,
+        "taxableBasePaise": 10000,
+        "gst": {
+          "sacCode": "3004",
+          "rateBps": 1200,
+          "exempt": false,
+          "exemptReason": null,
+          "cgstPaise": 600,
+          "sgstPaise": 600
+        },
+        "netPaise": 11200
+      }
+    },
+    {
+      "workings": "drug-b: min(9000, 10000, 8000) = 8000 -> clamp ceiling (NPPA hard block); head = divHalfUp(8000*1200, 20000) = 480; net 8960",
+      "line": {
+        "lineId": "L2",
+        "serviceId": "svc-drug-b",
+        "serviceName": "Drug B",
+        "category": "pharmacy",
+        "qty": 1,
+        "unitPaise": 8000,
+        "grossPaise": 8000,
+        "regulatedClamp": {
+          "boundApplied": "ceiling",
+          "tariffPaise": 9000,
+          "mrpPaise": 10000,
+          "ceilingPaise": 8000
+        },
+        "candidates": [],
+        "winner": null,
+        "discountPaise": 0,
+        "taxableBasePaise": 8000,
+        "gst": {
+          "sacCode": "3004",
+          "rateBps": 1200,
+          "exempt": false,
+          "exemptReason": null,
+          "cgstPaise": 480,
+          "sgstPaise": 480
+        },
+        "netPaise": 8960
+      }
+    },
+    {
+      "workings": "drug-c: min(7000, 10000, 8000) = 7000 -> tariff wins, NO clamp recorded; head = divHalfUp(7000*1200, 20000) = 420; net 7840",
+      "line": {
+        "lineId": "L3",
+        "serviceId": "svc-drug-c",
+        "serviceName": "Drug C",
+        "category": "pharmacy",
+        "qty": 1,
+        "unitPaise": 7000,
+        "grossPaise": 7000,
+        "regulatedClamp": null,
+        "candidates": [],
+        "winner": null,
+        "discountPaise": 0,
+        "taxableBasePaise": 7000,
+        "gst": {
+          "sacCode": "3004",
+          "rateBps": 1200,
+          "exempt": false,
+          "exemptReason": null,
+          "cgstPaise": 420,
+          "sgstPaise": 420
+        },
+        "netPaise": 7840
+      }
+    }
+  ]
+}

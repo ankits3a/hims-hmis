@@ -1,0 +1,291 @@
+{
+  "kind": "price",
+  "name": "room-rent threshold is measured on the POST-DISCOUNT charged value (CA-flagged reading)",
+  "specRefs": [
+    "D-3",
+    "§19",
+    "D4.3"
+  ],
+  "caFlag": "Threshold compared against POST-DISCOUNT charged value (₹4,950 < ₹5,000 ⇒ exempt). CONFIRM WITH CA at the §19 gate; if the pre-discount reading is ruled, gst.ts's comparison moves to grossPaise and this fixture's expectation changes to net 519750.",
+  "config": {
+    "asOf": "2026-09-01T00:00:00.000Z",
+    "tariff": {
+      "versionId": "v1",
+      "versionNo": 1,
+      "items": {
+        "svc-cons": 50000,
+        "svc-proc": 33335,
+        "svc-room-gen": 480000,
+        "svc-room-dlx": 600000,
+        "svc-room-eq": 500000,
+        "svc-room-semi": 550000,
+        "svc-tab": 18875,
+        "svc-dev": 33333,
+        "svc-drug-a": 12000,
+        "svc-drug-b": 9000,
+        "svc-drug-c": 7000,
+        "svc-drug-d": 5000
+      }
+    },
+    "services": [
+      {
+        "id": "svc-cons",
+        "code": "CONS-GEN",
+        "name": "General consultation",
+        "category": "consultation",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-proc",
+        "code": "PROC-MIN",
+        "name": "Minor procedure",
+        "category": "procedure",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-room-gen",
+        "code": "ROOM-GEN",
+        "name": "General ward bed per day",
+        "category": "room_rent",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-room-dlx",
+        "code": "ROOM-DLX",
+        "name": "Deluxe room per day",
+        "category": "room_rent",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-room-eq",
+        "code": "ROOM-EQ",
+        "name": "Semi-private room per day",
+        "category": "room_rent",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-room-semi",
+        "code": "ROOM-SEMI",
+        "name": "Private room per day",
+        "category": "room_rent",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-tab",
+        "code": "PHARM-TAB",
+        "name": "Paracetamol 500 strip",
+        "category": "pharmacy",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-dev",
+        "code": "DEV-ORTHO",
+        "name": "Orthopedic device",
+        "category": "device",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-drug-a",
+        "code": "DRUG-A",
+        "name": "Drug A",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
+      },
+      {
+        "id": "svc-drug-b",
+        "code": "DRUG-B",
+        "name": "Drug B",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
+      },
+      {
+        "id": "svc-drug-c",
+        "code": "DRUG-C",
+        "name": "Drug C",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
+      },
+      {
+        "id": "svc-drug-d",
+        "code": "DRUG-D",
+        "name": "Drug D",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
+      }
+    ],
+    "regulatedPrices": {
+      "svc-drug-a": {
+        "mrpPaise": 10000,
+        "ceilingPaise": 15000
+      },
+      "svc-drug-b": {
+        "mrpPaise": 10000,
+        "ceilingPaise": 8000
+      },
+      "svc-drug-c": {
+        "mrpPaise": 10000,
+        "ceilingPaise": 8000
+      }
+    },
+    "gstCategories": [
+      {
+        "category": "consultation",
+        "sacCode": "999312",
+        "exempt": true,
+        "rateBps": 1800,
+        "specialRule": null,
+        "thresholdPaise": null
+      },
+      {
+        "category": "procedure",
+        "sacCode": "999312",
+        "exempt": true,
+        "rateBps": 1800,
+        "specialRule": null,
+        "thresholdPaise": null
+      },
+      {
+        "category": "room_rent",
+        "sacCode": "999311",
+        "exempt": false,
+        "rateBps": 500,
+        "specialRule": "room_rent_daily_threshold",
+        "thresholdPaise": 500000
+      },
+      {
+        "category": "pharmacy",
+        "sacCode": "3004",
+        "exempt": false,
+        "rateBps": 1200,
+        "specialRule": null,
+        "thresholdPaise": null
+      },
+      {
+        "category": "device",
+        "sacCode": "9021",
+        "exempt": false,
+        "rateBps": 500,
+        "specialRule": null,
+        "thresholdPaise": null
+      }
+    ],
+    "gstSettings": {
+      "compositeHealthcareExempt": true,
+      "caSigned": false
+    },
+    "rules": [
+      {
+        "ruleKey": "R-CAMP5",
+        "title": "Camp 2026 procedure scheme",
+        "kind": "percent_bps",
+        "value": 500,
+        "discountCategory": "scheme",
+        "requiredTag": "camp2026",
+        "serviceCategory": "procedure",
+        "serviceId": null
+      },
+      {
+        "ruleKey": "R-EMP10",
+        "title": "Employee discount",
+        "kind": "percent_bps",
+        "value": 1000,
+        "discountCategory": "employee",
+        "requiredTag": "employee",
+        "serviceCategory": null,
+        "serviceId": null
+      }
+    ],
+    "manualCaps": {
+      "charity": {
+        "maxBps": 2500,
+        "approvalAboveBps": 1000
+      },
+      "employee": {
+        "maxBps": 1000,
+        "approvalAboveBps": null
+      },
+      "scheme": {
+        "maxBps": 1500,
+        "approvalAboveBps": 1000
+      },
+      "negotiated_corporate": {
+        "maxBps": 2000,
+        "approvalAboveBps": 1500
+      }
+    },
+    "tags": []
+  },
+  "lines": [
+    {
+      "lineId": "L1",
+      "serviceId": "svc-room-semi",
+      "qty": 1,
+      "manualDiscount": {
+        "discountCategory": "charity",
+        "kind": "percent_bps",
+        "value": 1000,
+        "reason": "concession"
+      }
+    }
+  ],
+  "expected": [
+    {
+      "workings": "svc-room-semi x1 day: gross 550000; manual charity 1000bps = divHalfUp(550000*1000, 10000) = divHalfUp(550000000, 10000) = 55000 (cap charity 2500bps: 55000*10000 = 550000000 <= 2500*550000 = 1375000000 ok; approvalAbove 1000bps: 550000000 > 1000*550000 = 550000000 is false -> requiresApproval false); taxableBase 550000-55000 = 495000; room-rent threshold on the POST-DISCOUNT value: 495000 > 500000*1 is FALSE -> exempt room_rent_at_or_below_threshold, heads 0/0; net 495000. The pre-discount reading compares gross 550000 > 500000 -> taxable, heads divHalfUp(495000*500, 20000) = 12375 each -> net 495000+12375+12375 = 519750; the two readings differ by 24750",
+      "line": {
+        "lineId": "L1",
+        "serviceId": "svc-room-semi",
+        "serviceName": "Private room per day",
+        "category": "room_rent",
+        "qty": 1,
+        "unitPaise": 550000,
+        "grossPaise": 550000,
+        "regulatedClamp": null,
+        "candidates": [
+          {
+            "sourceKey": "manual",
+            "ruleKey": null,
+            "kind": "percent_bps",
+            "discountCategory": "charity",
+            "amountPaise": 55000,
+            "reason": "concession",
+            "requiresApproval": false,
+            "rejected": null
+          }
+        ],
+        "winner": {
+          "sourceKey": "manual",
+          "ruleKey": null,
+          "kind": "percent_bps",
+          "discountCategory": "charity",
+          "amountPaise": 55000,
+          "reason": "concession",
+          "requiresApproval": false,
+          "rejected": null
+        },
+        "discountPaise": 55000,
+        "taxableBasePaise": 495000,
+        "gst": {
+          "sacCode": "999311",
+          "rateBps": 500,
+          "exempt": true,
+          "exemptReason": "room_rent_at_or_below_threshold",
+          "cgstPaise": 0,
+          "sgstPaise": 0
+        },
+        "netPaise": 495000
+      }
+    }
+  ]
+}

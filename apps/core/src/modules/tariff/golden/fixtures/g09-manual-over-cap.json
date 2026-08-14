@@ -1,0 +1,284 @@
+{
+  "kind": "price",
+  "name": "an over-cap manual discount is rejected and RECORDED with the asked amount, never clamped",
+  "specRefs": [
+    "§7",
+    "D-8",
+    "D3"
+  ],
+  "config": {
+    "asOf": "2026-09-01T00:00:00.000Z",
+    "tariff": {
+      "versionId": "v1",
+      "versionNo": 1,
+      "items": {
+        "svc-cons": 50000,
+        "svc-proc": 33335,
+        "svc-room-gen": 480000,
+        "svc-room-dlx": 600000,
+        "svc-room-eq": 500000,
+        "svc-room-semi": 550000,
+        "svc-tab": 18875,
+        "svc-dev": 33333,
+        "svc-drug-a": 12000,
+        "svc-drug-b": 9000,
+        "svc-drug-c": 7000,
+        "svc-drug-d": 5000
+      }
+    },
+    "services": [
+      {
+        "id": "svc-cons",
+        "code": "CONS-GEN",
+        "name": "General consultation",
+        "category": "consultation",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-proc",
+        "code": "PROC-MIN",
+        "name": "Minor procedure",
+        "category": "procedure",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-room-gen",
+        "code": "ROOM-GEN",
+        "name": "General ward bed per day",
+        "category": "room_rent",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-room-dlx",
+        "code": "ROOM-DLX",
+        "name": "Deluxe room per day",
+        "category": "room_rent",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-room-eq",
+        "code": "ROOM-EQ",
+        "name": "Semi-private room per day",
+        "category": "room_rent",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-room-semi",
+        "code": "ROOM-SEMI",
+        "name": "Private room per day",
+        "category": "room_rent",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-tab",
+        "code": "PHARM-TAB",
+        "name": "Paracetamol 500 strip",
+        "category": "pharmacy",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-dev",
+        "code": "DEV-ORTHO",
+        "name": "Orthopedic device",
+        "category": "device",
+        "regulated": false,
+        "active": true
+      },
+      {
+        "id": "svc-drug-a",
+        "code": "DRUG-A",
+        "name": "Drug A",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
+      },
+      {
+        "id": "svc-drug-b",
+        "code": "DRUG-B",
+        "name": "Drug B",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
+      },
+      {
+        "id": "svc-drug-c",
+        "code": "DRUG-C",
+        "name": "Drug C",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
+      },
+      {
+        "id": "svc-drug-d",
+        "code": "DRUG-D",
+        "name": "Drug D",
+        "category": "pharmacy",
+        "regulated": true,
+        "active": true
+      }
+    ],
+    "regulatedPrices": {
+      "svc-drug-a": {
+        "mrpPaise": 10000,
+        "ceilingPaise": 15000
+      },
+      "svc-drug-b": {
+        "mrpPaise": 10000,
+        "ceilingPaise": 8000
+      },
+      "svc-drug-c": {
+        "mrpPaise": 10000,
+        "ceilingPaise": 8000
+      }
+    },
+    "gstCategories": [
+      {
+        "category": "consultation",
+        "sacCode": "999312",
+        "exempt": true,
+        "rateBps": 1800,
+        "specialRule": null,
+        "thresholdPaise": null
+      },
+      {
+        "category": "procedure",
+        "sacCode": "999312",
+        "exempt": true,
+        "rateBps": 1800,
+        "specialRule": null,
+        "thresholdPaise": null
+      },
+      {
+        "category": "room_rent",
+        "sacCode": "999311",
+        "exempt": false,
+        "rateBps": 500,
+        "specialRule": "room_rent_daily_threshold",
+        "thresholdPaise": 500000
+      },
+      {
+        "category": "pharmacy",
+        "sacCode": "3004",
+        "exempt": false,
+        "rateBps": 1200,
+        "specialRule": null,
+        "thresholdPaise": null
+      },
+      {
+        "category": "device",
+        "sacCode": "9021",
+        "exempt": false,
+        "rateBps": 500,
+        "specialRule": null,
+        "thresholdPaise": null
+      }
+    ],
+    "gstSettings": {
+      "compositeHealthcareExempt": true,
+      "caSigned": false
+    },
+    "rules": [
+      {
+        "ruleKey": "R-CAMP5",
+        "title": "Camp 2026 procedure scheme",
+        "kind": "percent_bps",
+        "value": 500,
+        "discountCategory": "scheme",
+        "requiredTag": "camp2026",
+        "serviceCategory": "procedure",
+        "serviceId": null
+      },
+      {
+        "ruleKey": "R-EMP10",
+        "title": "Employee discount",
+        "kind": "percent_bps",
+        "value": 1000,
+        "discountCategory": "employee",
+        "requiredTag": "employee",
+        "serviceCategory": null,
+        "serviceId": null
+      }
+    ],
+    "manualCaps": {
+      "charity": {
+        "maxBps": 2500,
+        "approvalAboveBps": 1000
+      },
+      "employee": {
+        "maxBps": 1000,
+        "approvalAboveBps": null
+      },
+      "scheme": {
+        "maxBps": 1500,
+        "approvalAboveBps": 1000
+      },
+      "negotiated_corporate": {
+        "maxBps": 2000,
+        "approvalAboveBps": 1500
+      }
+    },
+    "tags": []
+  },
+  "lines": [
+    {
+      "lineId": "L1",
+      "serviceId": "svc-cons",
+      "qty": 1,
+      "manualDiscount": {
+        "discountCategory": "negotiated_corporate",
+        "kind": "percent_bps",
+        "value": 2500,
+        "reason": "asked too much"
+      }
+    }
+  ],
+  "expected": [
+    {
+      "workings": "svc-cons: gross 50000; asked = divHalfUp(50000*2500, 10000) = divHalfUp(125000000, 10000) = 12500; cap negotiated_corporate maxBps 2000, exact rational compare: 12500*10000 = 125000000 > 2000*50000 = 100000000 -> rejected over_cap, and the candidate is still recorded carrying the ASKED 12500 (clamp-to-cap would give discount 10000 and net 40000; a silent drop would give candidates []); no candidate with rejected null -> winner null, discount 0, taxableBase 50000; consultation exempt -> net 50000",
+      "line": {
+        "lineId": "L1",
+        "serviceId": "svc-cons",
+        "serviceName": "General consultation",
+        "category": "consultation",
+        "qty": 1,
+        "unitPaise": 50000,
+        "grossPaise": 50000,
+        "regulatedClamp": null,
+        "candidates": [
+          {
+            "sourceKey": "manual",
+            "ruleKey": null,
+            "kind": "percent_bps",
+            "discountCategory": "negotiated_corporate",
+            "amountPaise": 12500,
+            "reason": "asked too much",
+            "requiresApproval": false,
+            "rejected": {
+              "code": "over_cap",
+              "detail": "12500p exceeds 2000bps of 50000p"
+            }
+          }
+        ],
+        "winner": null,
+        "discountPaise": 0,
+        "taxableBasePaise": 50000,
+        "gst": {
+          "sacCode": "999312",
+          "rateBps": 1800,
+          "exempt": true,
+          "exemptReason": "category_exempt",
+          "cgstPaise": 0,
+          "sgstPaise": 0
+        },
+        "netPaise": 50000
+      }
+    }
+  ]
+}
