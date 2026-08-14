@@ -312,4 +312,44 @@ describe("tariff versions — draft/submit/activate via approvals, tariff-lock (
     const retry = await activateVersion(db, activator, loserId, new Date("2026-03-01T00:00:00Z"));
     expect(retry.effectiveFrom).toEqual(new Date("2026-03-01T00:00:00Z"));
   });
+
+  it("SoD blocks the SUBMITTER, not only the drafter: drafter != submitter, submitter refused, third actor succeeds", async () => {
+    const submitterUser = await createUser(db, { username: "submitter", fullName: "Submitter", password: "p1234567" });
+    const submitter: Actor = { type: "user", id: submitterUser.id };
+
+    const draft = await mkDraft([[s1, 10000]]); // created by `drafter`
+    const submitted = await withTx(db, (tx) => submitVersion(tx, submitter, draft.versionId));
+    await approveRequest(db, owner, { approvalId: submitted.approvalId, note: "approved" });
+
+    // Every prior SoD test had createdBy === submittedBy, so the submitter disjunct was deletable
+    // with the suite green (stress-test C4). Here they differ: refusing the SUBMITTER exercises
+    // exactly `actor.id === version.submittedBy`, and the third actor's immediate success proves
+    // the refusal was SoD — not approval state, not version state (§3.14b ordering discipline).
+    await expect(activateVersion(db, submitter, draft.versionId, new Date("2026-02-01T00:00:00Z"))).rejects.toMatchObject({
+      code: "sod_drafter_activator",
+    });
+    const result = await activateVersion(db, activator, draft.versionId, new Date("2026-02-01T00:00:00Z"));
+    expect(result.versionNo).toBe(1);
+  });
+
+  it("an approval for a DIFFERENT subject cannot activate this version: approval_subject_mismatch", async () => {
+    const vA = await mkDraft([[s1, 10000]]);
+    const vB = await mkDraft([[s2, 20000]]);
+    await withTx(db, (tx) => submitVersion(tx, drafter, vA.versionId));
+    const subB = await withTx(db, (tx) => submitVersion(tx, drafter, vB.versionId));
+    await approveRequest(db, owner, { approvalId: subB.approvalId, note: "approved B" });
+
+    // No application path can produce this state (submitVersion always binds the approval it just
+    // created), so the test reaches for a raw column write — simulating exactly the future admin
+    // tool / data-fix bug M10 is about.
+    await db.update(tariffVersions).set({ approvalId: subB.approvalId }).where(eq(tariffVersions.id, vA.versionId));
+
+    await expect(activateVersion(db, activator, vA.versionId, new Date("2026-02-01T00:00:00Z"))).rejects.toMatchObject({
+      code: "approval_subject_mismatch",
+    });
+    // vA untouched and still submitted; B's approval still activates B itself.
+    expect((await getVersion(db, vA.versionId))!.version.status).toBe("submitted");
+    const ok = await activateVersion(db, activator, vB.versionId, new Date("2026-02-01T00:00:00Z"));
+    expect(ok.versionNo).toBe(2);
+  });
 });

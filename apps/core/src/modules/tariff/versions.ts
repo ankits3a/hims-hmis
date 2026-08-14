@@ -172,6 +172,17 @@ export async function activateVersion(
     throw new TariffError("approval_rejected", `approval for version ${versionId} was rejected`);
   }
 
+  // The approval must be FOR THIS VERSION. submitVersion is today the only writer of approval_id
+  // and always binds the approval it just created — but that invariant had zero structural
+  // defense against a future admin tool or data fix (stress-test M10). approval_id is plain text
+  // with no FK by design, so the binding is asserted here, at the only consumption site.
+  if (approval.subjectType !== "tariff_version" || approval.subjectId !== versionId) {
+    throw new TariffError(
+      "approval_subject_mismatch",
+      `approval ${version.approvalId} is for ${approval.subjectType} ${approval.subjectId}, not tariff_version ${versionId}`,
+    );
+  }
+
   // Direct SoD check (D5) — the activator must be neither the drafter nor the submitter.
   if (actor.id === version.createdBy || actor.id === version.submittedBy) {
     throw new TariffError(
