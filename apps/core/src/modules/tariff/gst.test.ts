@@ -82,3 +82,14 @@ test("a half-paise head rounds UP — banker's and truncation both say 1132", ()
   expect(computeGst({ cfg: PHARMACY, settings: SETTINGS, line: line(), taxableBasePaise: 18875, qty: 1 }))
     .toEqual({ sacCode: "3004", rateBps: 1200, exempt: false, exemptReason: null, cgstPaise: 1133, sgstPaise: 1133 });
 });
+
+test("composite supply outranks category exemption — the D4 decision ORDER is observable in exemptReason", () => {
+  // Both branch orders give zero heads; ONLY exemptReason separates them, and exemptReason is the
+  // audit trail. Swapping gst.ts's first two branches reports "category_exempt" here — killed
+  // (findings §12.5; the §3.14 class: never let two mechanisms share one observable).
+  const gst = computeGst({
+    cfg: CONSULTATION, settings: SETTINGS,
+    line: line({ supplyContext: "composite_healthcare" }), taxableBasePaise: 50000, qty: 1,
+  });
+  expect(gst).toEqual({ sacCode: "999312", rateBps: 1800, exempt: true, exemptReason: "composite_healthcare", cgstPaise: 0, sgstPaise: 0 });
+});

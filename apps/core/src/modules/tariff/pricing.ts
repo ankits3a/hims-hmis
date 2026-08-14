@@ -24,6 +24,12 @@ function priceLine(ctx: PricingContext, line: InvoiceLineInput): PricedLine {
   if (svc.regulated) {
     const rp = ctx.regulatedPrices[line.serviceId];
     if (!rp) throw new TariffError("regulated_price_missing", `line ${line.lineId}: ${line.serviceId} is regulated but has no effective MRP/ceiling row`);
+    // Defense in depth: appendRegulatedPrice refuses a row with neither bound, but a row that
+    // arrives around the API (bulk load, data fix) must not silently no-op the C-3 hard block.
+    // Both comparisons are `=== null` — a legal bound of 0 paise must survive.
+    if (rp.mrpPaise === null && rp.ceilingPaise === null) {
+      throw new TariffError("regulated_price_missing", `line ${line.lineId}: ${line.serviceId} has a regulated_prices row with no MRP and no ceiling`);
+    }
     const bounds: { boundApplied: "mrp" | "ceiling"; value: number }[] = [];
     if (rp.mrpPaise !== null) bounds.push({ boundApplied: "mrp", value: rp.mrpPaise });
     if (rp.ceilingPaise !== null) bounds.push({ boundApplied: "ceiling", value: rp.ceilingPaise });
@@ -40,6 +46,10 @@ function priceLine(ctx: PricingContext, line: InvoiceLineInput): PricedLine {
   const { candidates, winner } = runContest(ctx, line, grossPaise);
   const discountPaise = winner?.amountPaise ?? 0;
   const taxableBasePaise = grossPaise - discountPaise;
+  // Engine-side belt on D2's "candidates are pre-capped at gross": ctx.sources is an open plugin
+  // array (Plan 09 registers more) — a source proposing an over-gross winner must fail LOUDLY
+  // here, never flow a negative or fractional base into GST (M3).
+  assertPaise(taxableBasePaise, "taxable base");
 
   const cfg = ctx.gst.categories[svc.category];
   if (!cfg) throw new TariffError("gst_config_missing", `no gst_config row for category "${svc.category}"`);

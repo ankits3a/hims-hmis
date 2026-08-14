@@ -1,4 +1,4 @@
-import { percentAmount } from "./money";
+import { assertPaise, percentAmount } from "./money";
 import type { AdjustmentCandidate, AdjustmentSource, InvoiceLineInput, PricingContext } from "./types";
 
 export const standingRuleSource: AdjustmentSource = {
@@ -27,6 +27,10 @@ export const manualDiscountSource: AdjustmentSource = {
   propose(ctx, line, grossPaise) {
     const md = line.manualDiscount;
     if (!md) return [];
+    // The one money input that arrives from a CALLER rather than from zod-parsed config: guard it
+    // here so a programmatic caller (Plan 08) can never float a fractional paise into the contest
+    // (M3). Integer guard holds for both kinds — bps values are integers too.
+    assertPaise(md.value, "manual discount value");
     const raw = md.kind === "percent_bps" ? percentAmount(grossPaise, md.value) : md.value;
     const amount = Math.min(raw, grossPaise);
     const base: AdjustmentCandidate = {
@@ -34,10 +38,15 @@ export const manualDiscountSource: AdjustmentSource = {
       amountPaise: amount, reason: md.reason, requiresApproval: false, rejected: null,
     };
     const caps = ctx.manualCaps[md.discountCategory];
-    if (!caps) return [{ ...base, rejected: { code: "unknown_category", detail: `no cap configured for "${md.discountCategory}"` } }];
-    // Governance checks are EXACT RATIONAL comparisons — never rounded (D1).
-    if (amount * 10000 > caps.maxBps * grossPaise) {
-      return [{ ...base, rejected: { code: "over_cap", detail: `${amount}p exceeds ${caps.maxBps}bps of ${grossPaise}p` } }];
+    // Rejected candidates record the amount that was ASKED — the D-8 audit record (types.ts
+    // contract; M2). Never the gross-clamped amount.
+    if (!caps) return [{ ...base, amountPaise: raw, rejected: { code: "unknown_category", detail: `no cap configured for "${md.discountCategory}"` } }];
+    // Governance checks are EXACT RATIONAL comparisons — never rounded (D1). The cap compares the
+    // ASK: at a 100% cap an over-gross ask must reject as over_cap, never be silently clamped to
+    // gross and accepted (D3: "recorded as rejected, never silently clamped"). For every
+    // maxBps < 10000 this is provably identical to the old clamped-operand check.
+    if (raw * 10000 > caps.maxBps * grossPaise) {
+      return [{ ...base, amountPaise: raw, rejected: { code: "over_cap", detail: `${raw}p exceeds ${caps.maxBps}bps of ${grossPaise}p` } }];
     }
     const requiresApproval = caps.approvalAboveBps !== null && amount * 10000 > caps.approvalAboveBps * grossPaise;
     return [{ ...base, requiresApproval }];

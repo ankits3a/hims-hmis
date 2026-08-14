@@ -1,6 +1,8 @@
 import { manualDiscountSource, runContest, standingRuleSource } from "./contest";
+import { TariffError } from "./errors";
 import type {
   AdjustmentRuleConfig,
+  AdjustmentSource,
   GstCategoryConfig,
   InvoiceLineInput,
   ManualCaps,
@@ -188,4 +190,62 @@ test("when every candidate is rejected the winner is null and the rejects are st
   expect(candidates).toHaveLength(1);
   expect(candidates[0]?.rejected?.code).toBe("over_cap");
   expect(candidates[0]?.amountPaise).toBe(12500);
+});
+
+test("an over-GROSS flat ask is recorded at the ASKED amount — 60000, never the 50000 clamp", () => {
+  const line: InvoiceLineInput = {
+    ...CONS_LINE,
+    manualDiscount: { discountCategory: "negotiated_corporate", kind: "flat_paise", value: 60000, reason: "asked too much" },
+  };
+  const out = manualDiscountSource.propose(makeCtx(), line, 50000);
+  expect(out).toHaveLength(1);
+  // A clamp-then-record implementation reports Math.min(60000, 50000) = 50000 on BOTH fields —
+  // killed twice over. 60000×10000 = 600,000,000 > 2000×50000 = 100,000,000 → over_cap.
+  expect(out[0]?.amountPaise).toBe(60000);
+  expect(out[0]?.rejected).toEqual({ code: "over_cap", detail: "60000p exceeds 2000bps of 50000p" });
+});
+
+test("a fractional manual discount value is refused as invalid_paise before any arithmetic", () => {
+  const line: InvoiceLineInput = {
+    ...CONS_LINE,
+    manualDiscount: { discountCategory: "charity", kind: "flat_paise", value: 1250.5, reason: "typo" },
+  };
+  // The HTTP DTO already refuses non-integers; this guards the direct programmatic caller —
+  // Plan 08 — where 1250.5 previously flowed to a fractional netPaise on a bigint column (M3).
+  expect(() => manualDiscountSource.propose(makeCtx(), line, 50000)).toThrow(TariffError);
+  try {
+    manualDiscountSource.propose(makeCtx(), line, 50000);
+  } catch (e) {
+    expect((e as TariffError).code).toBe("invalid_paise");
+  }
+});
+
+test("the intra-source ruleKey tie-break is real: an UNSORTED source's equal candidates break to the earlier key", () => {
+  const stub: AdjustmentSource = {
+    key: "stub",
+    propose: () => [
+      { sourceKey: "stub", ruleKey: "R-ZZZ", kind: "flat_paise", discountCategory: "scheme", amountPaise: 5000, reason: "zz", requiresApproval: false, rejected: null },
+      { sourceKey: "stub", ruleKey: null, kind: "flat_paise", discountCategory: "scheme", amountPaise: 5000, reason: "anon", requiresApproval: false, rejected: null },
+      { sourceKey: "stub", ruleKey: "R-AAA", kind: "flat_paise", discountCategory: "scheme", amountPaise: 5000, reason: "aa", requiresApproval: false, rejected: null },
+    ],
+  };
+  // standingRuleSource pre-sorts its own output, so only a deliberately unsorted source reaches
+  // runContest's nulls-last + ruleKey comparison at all (M6). Deleting that block leaves a stable
+  // sort in input order → R-ZZZ wins → killed.
+  const { winner } = runContest(makeCtx({ sources: [stub] }), CONS_LINE, 50000);
+  expect(winner?.ruleKey).toBe("R-AAA");
+});
+
+test("a zero-computed benefit is recorded but can never win", () => {
+  const tiny: AdjustmentRuleConfig = {
+    ruleKey: "R-1BPS", title: "One bps", kind: "percent_bps", value: 1,
+    discountCategory: "scheme", requiredTag: null, serviceCategory: null, serviceId: null,
+  };
+  // pct(4, 1) = divHalfUp(4, 10000) = floor((8 + 10000) / 20000) = 0. Dropping the
+  // `amountPaise > 0` filter puts a zero-benefit discount line on an invoice (winner non-null) — killed.
+  const ctx = makeCtx({ rules: [tiny], tariff: { versionId: "v1", versionNo: 1, items: { "svc-cons": 4 } } });
+  const { candidates, winner } = runContest(ctx, CONS_LINE, 4);
+  expect(candidates).toHaveLength(1);
+  expect(candidates[0]?.amountPaise).toBe(0);
+  expect(winner).toBeNull();
 });

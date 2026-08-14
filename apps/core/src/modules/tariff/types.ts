@@ -13,6 +13,7 @@ export type AdjustmentRuleConfig = {
   serviceCategory: string | null; serviceId: string | null;
 };
 export type ManualCaps = Partial<Record<DiscountCategory, { maxBps: number; approvalAboveBps: number | null }>>;
+// flat_paise is a WHOLE-LINE amount, never per-unit (owner decision 2026-08-14). How a flat discount pro-rates on a partial refund is the billing layer's rule to state (Plan 08).
 export type ManualDiscountInput = { discountCategory: DiscountCategory; kind: "percent_bps" | "flat_paise"; value: number; reason: string };
 
 export type InvoiceLineInput = {

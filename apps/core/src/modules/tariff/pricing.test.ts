@@ -3,6 +3,7 @@ import { TariffError } from "./errors";
 import { priceInvoiceLines } from "./pricing";
 import type {
   AdjustmentRuleConfig,
+  AdjustmentSource,
   GstCategoryConfig,
   InvoiceLineInput,
   ManualCaps,
@@ -162,16 +163,60 @@ test("the contest winner flows into the taxable base (nonzero discount)", () => 
   expect(priced?.netPaise).toBe(30001); // procedure is category-exempt
 });
 
-test("priceInvoiceLines is synchronous and deterministic — same frozen ctx, deeply equal output", () => {
-  const ctx = Object.freeze(makeCtx({ rules: [R_EMP10], tags: ["employee"] }));
-  const lines: InvoiceLineInput[] = [
+test("priceInvoiceLines is synchronous, deterministic, and mutates NOTHING it is handed", () => {
+  function deepFreeze<T>(value: T): T {
+    if (value && typeof value === "object") {
+      for (const key of Object.keys(value as object)) deepFreeze((value as Record<string, unknown>)[key]);
+      Object.freeze(value);
+    }
+    return value;
+  }
+  const ctx = deepFreeze(makeCtx({ rules: [R_EMP10], tags: ["employee"] }));
+  const lines = deepFreeze<InvoiceLineInput[]>([
     { lineId: "L1", serviceId: "svc-proc", qty: 1 },
     { lineId: "L2", serviceId: "svc-drug-b", qty: 2 },
-  ];
+  ]);
+  const snapshot = JSON.parse(JSON.stringify({ ctx, lines })) as unknown;
   const first = priceInvoiceLines(ctx, lines);
   expect(Array.isArray(first)).toBe(true); // an array, not a Promise
   expect(first).not.toBeInstanceOf(Promise);
   const second = priceInvoiceLines(ctx, lines);
   expect(second).toEqual(first);
   expect(second).not.toBe(first);
+  // Frozen objects throw on mutation under "use strict" (all ts-jest code is strict); the JSON
+  // snapshot is the belt in case any layer silently ignores the freeze. (deepFreeze also freezes
+  // the module-level SERVICES/CATEGORIES/CAPS fixtures — harmless: no test mutates them, and an
+  // ENGINE that tried is exactly what this test exists to catch.)
+  expect(JSON.parse(JSON.stringify({ ctx, lines }))).toEqual(snapshot);
+});
+
+test("a regulated row with BOTH bounds null is refused — the C-3 hard block must never silently no-op", () => {
+  const ctx = makeCtx({
+    regulatedPrices: {
+      "svc-drug-a": { mrpPaise: 10000, ceilingPaise: 15000 },
+      "svc-drug-b": { mrpPaise: 10000, ceilingPaise: 8000 },
+      "svc-drug-c": { mrpPaise: 10000, ceilingPaise: 8000 },
+      "svc-drug-d": { mrpPaise: null, ceilingPaise: null },
+    },
+  });
+  // The write path refuses this shape (regulated_bounds_missing), but a bulk-loaded or hand-fixed
+  // row must not price at bare tariff with regulatedClamp: null. Shipped code returns netPaise
+  // 5600 here (tariff 5000 + 2×300) with no clamp and no error — killed by expecting the throw.
+  expect(thrownCode(() => priceInvoiceLines(ctx, [{ lineId: "L1", serviceId: "svc-drug-d", qty: 1 }])))
+    .toBe("regulated_price_missing");
+});
+
+test("an over-gross winner from a rogue source fails LOUDLY at the taxable base, never a negative net", () => {
+  const rogue: AdjustmentSource = {
+    key: "rogue",
+    propose: () => [{
+      sourceKey: "rogue", ruleKey: null, kind: "flat_paise", discountCategory: null,
+      amountPaise: 60000, reason: "violates the D2 pre-cap contract on purpose",
+      requiresApproval: false, rejected: null,
+    }],
+  };
+  // ctx.sources is an OPEN plugin array (Plan 09 registers two more). Shipped code returns
+  // netPaise -10000 here; the belt turns that into a thrown invalid_paise (M3 belt).
+  expect(thrownCode(() => priceInvoiceLines(makeCtx({ sources: [rogue] }), [{ lineId: "L1", serviceId: "svc-cons", qty: 1 }])))
+    .toBe("invalid_paise");
 });
