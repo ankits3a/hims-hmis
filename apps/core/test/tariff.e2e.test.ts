@@ -275,9 +275,15 @@ describe("tariff e2e", () => {
       .post(`/tariff/versions/${versionId}/simulate`).set(...auth(drafterToken))
       .send({ lines: [{ lineId: "L1", serviceId: "whatever", qty: 1.5 }] }).expect(400);
 
-    await request(app.getHttpServer())
+    const bad = await request(app.getHttpServer())
       .put(`/tariff/versions/${versionId}/items/whatever`).set(...auth(drafterToken))
       .send({ pricePaise: -1 }).expect(400);
+    // Two mechanisms answer 400 on this route — the zod DTO and the domain's invalid_paise. The
+    // zod ISSUE SHAPE in the body proves the DTO refused it before any domain code ran (§3.14b);
+    // the domain path would carry the string "invalid_paise: …" instead.
+    expect(bad.body.message).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "too_small", path: ["pricePaise"] })]),
+    );
 
     await request(app.getHttpServer())
       .post(`/tariff/versions/${versionId}/activate`).set(...auth(adminToken))
@@ -345,5 +351,80 @@ describe("tariff e2e", () => {
       .post(`/tariff/versions/${versionId}/activate`).set(...auth(adminToken))
       .send({ effectiveFrom: "2026-01-01T00:00:00.000Z" }).expect(200);
     expect(activated.body.versionNo).toBe(1);
+  });
+
+  it("config routes over HTTP: rules and GST config round-trip, updates visible on re-read", async () => {
+    // POST /tariff/rules creates…
+    const created = await request(app.getHttpServer())
+      .post("/tariff/rules").set(...auth(adminToken))
+      .send({ ruleKey: "CAP-CHARITY", sourceKey: "manual", title: "Charity cap",
+              params: { discountCategory: "charity", maxBps: 2500, approvalAboveBps: 1000 } }).expect(201);
+    expect(typeof created.body.id).toBe("string");
+
+    const listed = await request(app.getHttpServer()).get("/tariff/rules").set(...auth(readerToken)).expect(200);
+    expect(listed.body.items).toHaveLength(1);
+    expect(listed.body.items[0].ruleKey).toBe("CAP-CHARITY");
+
+    // …and UPDATES through the same route (shipped upsert semantics; the M7 branch over HTTP).
+    await request(app.getHttpServer())
+      .post("/tariff/rules").set(...auth(adminToken))
+      .send({ ruleKey: "CAP-CHARITY", sourceKey: "manual", title: "Charity cap v2",
+              params: { discountCategory: "charity", maxBps: 3000, approvalAboveBps: 1000 } }).expect(201);
+    const relisted = await request(app.getHttpServer()).get("/tariff/rules").set(...auth(readerToken)).expect(200);
+    expect(relisted.body.items).toHaveLength(1);
+    expect(relisted.body.items[0].title).toBe("Charity cap v2");
+    expect(relisted.body.items[0].params).toEqual({ discountCategory: "charity", maxBps: 3000, approvalAboveBps: 1000 });
+
+    // GET /tariff/gst returns both halves (beforeEach seeded consultation + pharmacy + settings).
+    const gst0 = await request(app.getHttpServer()).get("/tariff/gst").set(...auth(readerToken)).expect(200);
+    expect(gst0.body.settings).toEqual({ compositeHealthcareExempt: true, caSigned: false });
+    expect(gst0.body.categories.find((c: { category: string }) => c.category === "consultation").rateBps).toBe(1800);
+
+    // PUT /tariff/gst/config/:category updates in place; PUT /tariff/gst/settings SUCCESS path
+    // (previously only its 403 was asserted). specialRule/thresholdPaise are nullable-but-required
+    // in the DTO — sent explicitly as null.
+    await request(app.getHttpServer())
+      .put("/tariff/gst/config/consultation").set(...auth(adminToken))
+      .send({ sacCode: "999312", exempt: true, rateBps: 2000, specialRule: null, thresholdPaise: null }).expect(200);
+    await request(app.getHttpServer())
+      .put("/tariff/gst/settings").set(...auth(adminToken))
+      .send({ caSigned: true }).expect(200);
+
+    const gst1 = await request(app.getHttpServer()).get("/tariff/gst").set(...auth(readerToken)).expect(200);
+    expect(gst1.body.categories.find((c: { category: string }) => c.category === "consultation").rateBps).toBe(2000);
+    expect(gst1.body.settings.caSigned).toBe(true);
+  });
+
+  it("service and gazette routes over HTTP: patch visible, regulated rows append and list newest-first", async () => {
+    const svc = await request(app.getHttpServer())
+      .post("/tariff/services").set(...auth(adminToken))
+      .send({ code: "DRUG-1", name: "Drug One", category: "pharmacy", regulated: true }).expect(201);
+    const drugId = svc.body.serviceId as string;
+
+    await request(app.getHttpServer())
+      .patch(`/tariff/services/${drugId}`).set(...auth(adminToken))
+      .send({ name: "Drug One (renamed)" }).expect(200);
+    const services = await request(app.getHttpServer()).get("/tariff/services").set(...auth(readerToken)).expect(200);
+    expect(services.body.items.find((s: { id: string }) => s.id === drugId).name).toBe("Drug One (renamed)");
+
+    // Gazette ingestion — the ONLY door C-3 data enters through, never before called by a test —
+    // plus the same-date correction path, listed newest-first (T3's deterministic order, over HTTP).
+    const r1 = await request(app.getHttpServer())
+      .post(`/tariff/services/${drugId}/regulated-prices`).set(...auth(adminToken))
+      .send({ mrpPaise: 10000, ceilingPaise: 8000, effectiveFrom: "2026-04-01T00:00:00.000Z", gazetteRef: "GZ-1" }).expect(201);
+    const r2 = await request(app.getHttpServer())
+      .post(`/tariff/services/${drugId}/regulated-prices`).set(...auth(adminToken))
+      .send({ mrpPaise: 10000, ceilingPaise: 6000, effectiveFrom: "2026-04-01T00:00:00.000Z", gazetteRef: "GZ-1-corr" }).expect(201);
+
+    const history = await request(app.getHttpServer())
+      .get(`/tariff/services/${drugId}/regulated-prices`).set(...auth(readerToken)).expect(200);
+    expect(history.body.items).toHaveLength(2);
+    expect(history.body.items.map((r: { id: string }) => r.id)).toEqual([r2.body.id, r1.body.id]);
+    expect(history.body.items[0].ceilingPaise).toBe(6000);
+
+    // GET /tariff/versions lists what exists.
+    const v = await request(app.getHttpServer()).post("/tariff/versions").set(...auth(drafterToken)).send({}).expect(201);
+    const versions = await request(app.getHttpServer()).get("/tariff/versions").set(...auth(readerToken)).expect(200);
+    expect(versions.body.items.map((x: { id: string }) => x.id)).toContain(v.body.versionId);
   });
 });
