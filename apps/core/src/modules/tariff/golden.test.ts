@@ -29,6 +29,22 @@ test("the fixture set is complete and NAMED — a renamed or duplicated fixture 
   ]);
 });
 
+test("the fixtures directory contains NOTHING but the manifest — a .JSON straggler or stray file cannot hide", () => {
+  // `files` filters .endsWith(".json") (case-sensitive), so a g99-rogue.JSON in the shipped
+  // directory would be invisible to every fixture test while shipping in the tree (audit m10).
+  expect([...readdirSync(dir)].sort()).toEqual(files);
+});
+
+test("no fixture is vacuous: every fixture prices at least one line", () => {
+  for (const file of files) {
+    const fixture = fixtureSchema.parse(JSON.parse(readFileSync(join(dir, file), "utf8")));
+    // A fixture gutted to lines: [] passes the per-fixture deep-equal loop vacuously (audit m10);
+    // the manifest pins names, this pins that each name still tests something.
+    expect(fixture.lines.length).toBeGreaterThan(0);
+    if (fixture.kind === "price") expect(fixture.expected.length).toBe(fixture.lines.length);
+  }
+});
+
 for (const file of files) {
   const fixture = fixtureSchema.parse(JSON.parse(readFileSync(join(dir, file), "utf8")));
   test(`golden ${file}: ${fixture.name}`, () => {

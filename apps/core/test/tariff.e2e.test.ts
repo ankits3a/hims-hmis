@@ -422,6 +422,24 @@ describe("tariff e2e", () => {
     expect(history.body.items.map((r: { id: string }) => r.id)).toEqual([r2.body.id, r1.body.id]);
     expect(history.body.items[0].ceilingPaise).toBe(6000);
 
+    // Scope (audit B3): a SECOND service with its own gazette row is what makes "scoped" and
+    // "unscoped" observably different over HTTP — with one service they are identical (§3.14).
+    const svc2 = await request(app.getHttpServer())
+      .post("/tariff/services").set(...auth(adminToken))
+      .send({ code: "DRUG-2", name: "Drug Two", category: "pharmacy", regulated: true }).expect(201);
+    const drug2Id = svc2.body.serviceId as string;
+    const r3 = await request(app.getHttpServer())
+      .post(`/tariff/services/${drug2Id}/regulated-prices`).set(...auth(adminToken))
+      .send({ mrpPaise: 7000, effectiveFrom: "2026-04-01T00:00:00.000Z", gazetteRef: "GZ-2" }).expect(201);
+
+    const historyA = await request(app.getHttpServer())
+      .get(`/tariff/services/${drugId}/regulated-prices`).set(...auth(readerToken)).expect(200);
+    expect(historyA.body.items).toHaveLength(2); // drug2's row is NOT here — the :id is live
+    expect(historyA.body.items.map((r: { id: string }) => r.id)).toEqual([r2.body.id, r1.body.id]);
+    const historyB = await request(app.getHttpServer())
+      .get(`/tariff/services/${drug2Id}/regulated-prices`).set(...auth(readerToken)).expect(200);
+    expect(historyB.body.items.map((r: { id: string }) => r.id)).toEqual([r3.body.id]);
+
     // GET /tariff/versions lists what exists.
     const v = await request(app.getHttpServer()).post("/tariff/versions").set(...auth(drafterToken)).send({}).expect(201);
     const versions = await request(app.getHttpServer()).get("/tariff/versions").set(...auth(readerToken)).expect(200);
