@@ -95,10 +95,11 @@ export async function appendRegulatedPrice(
   return { id };
 }
 
-/** One select ordered by (effectiveFrom desc, id desc), reduced to the first (= latest) row per
+/** One select ordered by (effectiveFrom desc, seq desc), reduced to the first (= latest) row per
  * service among rows with effectiveFrom <= at (boundary: equal is included, D5/services.test.ts).
- * ids are ULIDs, so descending id = last-inserted-wins among rows sharing a gazette date — the
- * append-only correction path resolves to the correction, deterministically (stress-test C2). */
+ * Same-date rows resolve by `seq` — the database-side insertion order (audit A1); ids are NOT
+ * insertion-ordered (ulid() is non-monotonic), so the append-only correction path resolves to the
+ * correction deterministically only because seq, not id, breaks the tie (stress-test C2). */
 export async function resolveRegulatedPrices(
   db: Db,
   at: Date,
@@ -107,7 +108,7 @@ export async function resolveRegulatedPrices(
     .select()
     .from(regulatedPrices)
     .where(lte(regulatedPrices.effectiveFrom, at))
-    .orderBy(desc(regulatedPrices.effectiveFrom), desc(regulatedPrices.id));
+    .orderBy(desc(regulatedPrices.effectiveFrom), desc(regulatedPrices.seq));
 
   const result: Record<string, { mrpPaise: number | null; ceilingPaise: number | null }> = {};
   for (const row of rows) {
@@ -119,13 +120,14 @@ export async function resolveRegulatedPrices(
 
 export type RegulatedPriceRow = typeof regulatedPrices.$inferSelect;
 
-/** Full row history for ONE service, newest first; same-date rows resolve last-inserted-first
- * (ULID ids) — the same total order resolveRegulatedPrices uses (C2). The accessor the gate
- * report §5.2 carried forward: the controller's list route sits behind it now. */
+/** Full row history for ONE service, newest first; same-date rows resolve last-inserted-first by
+ * `seq`, the database-side insertion order (audit A1 — ids are NOT insertion-ordered) — the same
+ * total order resolveRegulatedPrices uses (C2). The accessor the gate report §5.2 carried
+ * forward: the controller's list route sits behind it now. */
 export async function listRegulatedPrices(db: Db, serviceId: string): Promise<RegulatedPriceRow[]> {
   return db
     .select()
     .from(regulatedPrices)
     .where(eq(regulatedPrices.serviceId, serviceId))
-    .orderBy(desc(regulatedPrices.effectiveFrom), desc(regulatedPrices.id));
+    .orderBy(desc(regulatedPrices.effectiveFrom), desc(regulatedPrices.seq));
 }

@@ -111,8 +111,9 @@ export async function listAdjustmentRules(db: Db, opts?: { sourceKey?: string })
 /**
  * Active rows valid at `at` (boundary: equal is included, the D5 resolution convention),
  * params parsed under their source's schema. "rule" rows become AdjustmentRuleConfig entries;
- * "manual" rows key ManualCaps by their params' discountCategory. Ordered by id ASC (ULIDs =
- * creation order) so the last-write-wins cap assignment below is deterministic — among duplicate
+ * "manual" rows key ManualCaps by their params' discountCategory. Ordered by `seq` ASC — the
+ * database-side insertion order (audit A1; ids are NOT insertion-ordered, ulid() is
+ * non-monotonic) so the last-write-wins cap assignment below is deterministic — among duplicate
  * active manual rows for one category the NEWEST row wins, the same last-inserted-wins convention
  * as resolveRegulatedPrices (C2/M4); validateTariffConfig separately surfaces duplicates as
  * duplicate_manual_cap.
@@ -125,7 +126,7 @@ export async function loadRuleConfig(
     .select()
     .from(adjustmentRules)
     .where(eq(adjustmentRules.active, true))
-    .orderBy(asc(adjustmentRules.id));
+    .orderBy(asc(adjustmentRules.seq));
   const rules: AdjustmentRuleConfig[] = [];
   const manualCaps: ManualCaps = {};
   for (const row of rows) {

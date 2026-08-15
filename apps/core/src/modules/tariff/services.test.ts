@@ -1,5 +1,7 @@
+import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
+import { regulatedPrices } from "../../kernel/db/schema";
 import {
   appendRegulatedPrice, createService, listRegulatedPrices, listServices, resolveRegulatedPrices, updateService,
 } from "./services";
@@ -141,8 +143,43 @@ describe("service master + regulated prices", () => {
     await withTx(db, (tx) =>
       appendRegulatedPrice(tx, actor, { serviceId: b, mrpPaise: 7000, effectiveFrom: new Date("2026-01-01T00:00:00Z") }),
     );
+    // Heap agitation (audit B2): an UPDATE relocates r2's live tuple to the end of the heap, so
+    // physical order ≠ insertion order and "fresh-table heap luck" cannot save an implementation
+    // that dropped the tie-break.
+    await db.update(regulatedPrices).set({ gazetteRef: "agitated" }).where(eq(regulatedPrices.id, r2.id));
     const history = await listRegulatedPrices(db, a);
     // Scoped to one service; newest gazette date first; within the same date, last-inserted first.
     expect(history.map((r) => r.id)).toEqual([r3.id, r2.id, r1.id]);
+  });
+
+  test("bulk same-date corrigenda: the correction wins for EVERY service, even when minted in the same millisecond", async () => {
+    // The A1 reproduction as a test: gazette row then same-date corrigendum, back to back inside
+    // ONE transaction — the bulk-import shape (audit A1: 6/200 resolved to the superseded row).
+    const N = 60;
+    const gazetteDate = new Date("2026-06-01T00:00:00Z");
+    const serviceIds = await withTx(db, async (tx) => {
+      const ids: string[] = [];
+      for (let i = 0; i < N; i++) {
+        const { serviceId } = await createService(tx, actor, {
+          code: `BULK-${i}`, name: `Bulk drug ${i}`, category: "pharmacy", regulated: true,
+        });
+        ids.push(serviceId);
+      }
+      for (const serviceId of ids) {
+        await appendRegulatedPrice(tx, actor, { serviceId, ceilingPaise: 99900, effectiveFrom: gazetteDate, gazetteRef: "GZ-BULK" });
+        await appendRegulatedPrice(tx, actor, { serviceId, ceilingPaise: 45000, effectiveFrom: gazetteDate, gazetteRef: "GZ-BULK-corr" });
+      }
+      return ids;
+    });
+
+    const map = await resolveRegulatedPrices(db, new Date("2026-07-01T00:00:00Z"));
+    for (const serviceId of serviceIds) {
+      expect(map[serviceId]).toEqual({ mrpPaise: null, ceilingPaise: 45000 });
+    }
+    // Structural pin: inside one transaction, seq allocation order IS insertion order.
+    const history = await listRegulatedPrices(db, serviceIds[0]!);
+    expect(history).toHaveLength(2);
+    expect(history[0]!.ceilingPaise).toBe(45000);
+    expect(history[0]!.seq).toBeGreaterThan(history[1]!.seq);
   });
 });

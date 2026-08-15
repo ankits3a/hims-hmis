@@ -1,5 +1,5 @@
 import {
-  bigint, boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex,
+  bigint, bigserial, boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -76,6 +76,11 @@ export const regulatedPrices = pgTable(
   "regulated_prices",
   {
     id: text("id").primaryKey(),
+    // Same-date/last-write-wins resolution orders by INSERTION, and ULID ids cannot carry that
+    // order (same-millisecond ids sort by randomness — audit A1, ledger §3.26). The database
+    // allocates this monotone sequence instead (events.seq precedent); it survives the Plan 11
+    // process split, which per-process monotonicFactory() would not.
+    seq: bigserial("seq", { mode: "number" }),
     serviceId: text("service_id").notNull().references(() => services.id),
     mrpPaise: bigint("mrp_paise", { mode: "number" }),
     ceilingPaise: bigint("ceiling_paise", { mode: "number" }), // DPCO/NPPA notified ceiling
@@ -91,6 +96,11 @@ export const adjustmentRules = pgTable(
   "adjustment_rules",
   {
     id: text("id").primaryKey(),
+    // Same-date/last-write-wins resolution orders by INSERTION, and ULID ids cannot carry that
+    // order (same-millisecond ids sort by randomness — audit A1, ledger §3.26). The database
+    // allocates this monotone sequence instead (events.seq precedent); it survives the Plan 11
+    // process split, which per-process monotonicFactory() would not.
+    seq: bigserial("seq", { mode: "number" }),
     ruleKey: text("rule_key").notNull(),
     sourceKey: text("source_key").notNull(), // 'rule' (standing rules) | 'manual' (D-8 cap rows); Plan 09 adds 'coupon','membership'
     title: text("title").notNull(),
