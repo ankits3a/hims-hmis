@@ -11,7 +11,8 @@
     "agent:create": "tsx scripts/create-agent.ts",
     "seed:registration": "tsx scripts/seed-registration.ts",
     "seed:tariff": "tsx scripts/seed-tariff.ts",
-    "validate:tariff": "tsx scripts/validate-tariff-config.ts"
+    "validate:tariff": "tsx scripts/validate-tariff-config.ts",
+    "seed:opd": "tsx scripts/seed-opd.ts"
   },
   "dependencies": {
     "@hmis/contracts": "workspace:*",

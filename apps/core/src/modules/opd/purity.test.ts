@@ -6,7 +6,7 @@ import { join } from "node:path";
  * process access — so every one of them is a total function of its arguments and its tests need no database.
  * T6 adds vitals-rules.ts and T7 adds fhir.ts to this list.
  */
-const PURE_FILES = ["time.ts", "slots.ts", "visit-type.ts", "queue-engine.ts"];
+const PURE_FILES = ["time.ts", "slots.ts", "visit-type.ts", "queue-engine.ts", "vitals-rules.ts"];
 const FORBIDDEN = ['from "../../kernel', "await ", "new Date()", "Math.random", "process."];
 
 describe("opd pure cores", () => {
