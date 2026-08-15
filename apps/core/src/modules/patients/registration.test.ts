@@ -6,7 +6,7 @@ import { createUser } from "../../kernel/auth/identity";
 import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { patientsManifest } from "./manifest";
-import { getPatient, registerPatient, resolvePatientId, updatePatient } from "./registration";
+import { getPatient, getPatientSummaries, listMergedLoserIds, registerPatient, resolvePatientId, updatePatient } from "./registration";
 import { isValidUhid } from "./uhid";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -162,5 +162,60 @@ describe("registration service", () => {
     expect((await getPatient(db, { type: "user", id: holder.id }, patient.id))!.patient.id).toBe(patient.id);
     expect((await getPatient(db, { type: "system", id: "sys" }, patient.id))!.patient.id).toBe(patient.id);
     expect(await getPatient(db, { type: "agent", id: "agent-1" }, patient.id)).toBeNull();
+  });
+});
+
+describe("Plan 07 read helpers: summaries + merged losers", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, teardown } = await setupTestDb());
+  });
+  afterAll(async () => teardown());
+  beforeEach(async () => {
+    await truncateAll(db);
+    await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "test" });
+  });
+
+  const baseInput = { name: "Asha Devi", sex: "female" as const, phone: "9876543210" };
+
+  it("getPatientSummaries: a confidential row returns alias + restricted for a clerk without the permission, the name with it; uhid/sex/dob always", async () => {
+    const { patient: plain } = await withTx(db, (tx) => registerPatient(tx, clerk, { ...baseInput }));
+    const { patient: vip } = await withTx(db, (tx) => registerPatient(tx, clerk, { ...baseInput, name: "VIP Person", phone: "9876500001", isConfidential: true, alias: "Patient A", ageYears: 40 }));
+    const before = await getPatientSummaries(db, clerk, [vip.id, plain.id]);
+    expect(before.find((s) => s.id === vip.id)).toEqual({ requestedId: vip.id, id: vip.id, uhid: vip.uhid, name: null, alias: "Patient A", restricted: true, sex: "female", dob: vip.dob });
+    expect(before.find((s) => s.id === plain.id)).toMatchObject({ name: "Asha Devi", alias: null, restricted: false });
+    // grant the permission → the name appears (patientsManifest + registry are already imported by this file)
+    const registry = new ModuleRegistry(); registry.install(patientsManifest);
+    await syncPermissions(db, registry);
+    await createRole(db, "vip_reader", "VIP reader");
+    await grantPermissionToRole(db, registry, "vip_reader", "patients.confidential.read");
+    const { id: readerId } = await createUser(db, { username: "reader", fullName: "reader", password: "p1234567" });
+    await assignRole(db, { userId: readerId, roleKey: "vip_reader", scopeType: "hospital" });
+    const after = await getPatientSummaries(db, { type: "user", id: readerId }, [vip.id]);
+    expect(after[0]).toMatchObject({ name: "VIP Person", alias: null, restricted: false });
+    // system actors always see; agents never do
+    expect((await getPatientSummaries(db, { type: "system", id: "s" }, [vip.id]))[0]!.restricted).toBe(false);
+    expect((await getPatientSummaries(db, { type: "agent", id: "a" }, [vip.id]))[0]!.restricted).toBe(true);
+  });
+
+  it("getPatientSummaries resolves a merged loser id to the winner (requestedId kept); listMergedLoserIds walks a two-hop chain", async () => {
+    const { patient: w } = await withTx(db, (tx) => registerPatient(tx, clerk, { ...baseInput, phone: "9876500002" }));
+    const { patient: l1 } = await withTx(db, (tx) => registerPatient(tx, clerk, { ...baseInput, phone: "9876500003" }));
+    const { patient: l0 } = await withTx(db, (tx) => registerPatient(tx, clerk, { ...baseInput, phone: "9876500004" }));
+    // The storage shape a merge produces (merge.ts executeMerge) — written directly: this is a read-helper test.
+    await db.update(patients).set({ status: "merged", mergedIntoPatientId: w.id }).where(eq(patients.id, l1.id));
+    await db.update(patients).set({ status: "merged", mergedIntoPatientId: l1.id }).where(eq(patients.id, l0.id));
+    const s = await getPatientSummaries(db, clerk, [l0.id]);
+    expect(s).toEqual([expect.objectContaining({ requestedId: l0.id, id: w.id, uhid: w.uhid })]);
+    expect((await listMergedLoserIds(db, w.id)).sort()).toEqual([l0.id, l1.id].sort());
+    expect(await listMergedLoserIds(db, l0.id)).toEqual([]);
+  });
+
+  it("getPatientSummaries dedupes ids and skips unknown ones", async () => {
+    const { patient } = await withTx(db, (tx) => registerPatient(tx, clerk, { ...baseInput }));
+    const s = await getPatientSummaries(db, clerk, [patient.id, patient.id, "01NOSUCH00000000000000000"]);
+    expect(s).toHaveLength(1);
   });
 });

@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
@@ -300,4 +300,60 @@ export async function getPatient(
 export async function resolvePatientId(db: Db, patientId: string): Promise<string | null> {
   const resolved = await followMergeChain(db, patientId);
   return resolved ? resolved.row.id : null;
+}
+
+/**
+ * Plan 07 bulk display summaries for queue/desk surfaces. Each requested id is resolved through the merge chain
+ * (requestedId is echoed so callers can re-key). Confidential rows return alias + restricted:true — never the name —
+ * unless the caller may see them (the verifyQrScan precedent); uhid/sex/dob are returned regardless because the staff
+ * physically serving the patient need them (§14 privacy surface; D-37: nothing prioritises on any of this).
+ */
+export type PatientSummary = {
+  requestedId: string; id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean; sex: string; dob: Date | null;
+};
+
+export async function getPatientSummaries(db: Db, actor: Actor, patientIds: string[]): Promise<PatientSummary[]> {
+  const unique = [...new Set(patientIds)];
+  if (unique.length === 0) return [];
+  // ONE query for the common case; only rows that are themselves merged losers walk the chain (rare).
+  const rows = await db.select().from(patients).where(inArray(patients.id, unique));
+  const byId = new Map(rows.map((r) => [r.id, r] as const));
+  const out: PatientSummary[] = [];
+  let canSee: boolean | null = null; // resolved at most once per call
+  for (const requestedId of unique) {
+    let row = byId.get(requestedId);
+    if (row !== undefined && row.status === "merged") row = (await followMergeChain(db, requestedId))?.row;
+    if (row === undefined) continue;
+    let restricted = false;
+    if (row.isConfidential && actor.type !== "system") {
+      if (canSee === null) {
+        canSee = actor.type === "user" ? await hasPermission(db, actor.id, "patients.confidential.read", "hospital") : false;
+      }
+      restricted = !canSee;
+    }
+    out.push({
+      requestedId, id: row.id, uhid: row.uhid,
+      name: restricted ? null : row.name, alias: restricted ? row.alias : null, restricted, sex: row.sex, dob: row.dob,
+    });
+  }
+  return out;
+}
+
+/**
+ * Every patient id whose merge chain ends at winnerId, excluding the winner (depth-capped at 5 hops like followMergeChain).
+ * Consumers that keep their own patient_id (Plan 07 encounters) assemble a merged patient's full history with it —
+ * merge never rewrites other modules' rows (§6).
+ */
+export async function listMergedLoserIds(db: Db, winnerId: string): Promise<string[]> {
+  const found: string[] = [];
+  let frontier = [winnerId];
+  for (let hop = 0; hop < 5 && frontier.length > 0; hop++) {
+    const rows = await db
+      .select({ id: patients.id })
+      .from(patients)
+      .where(and(eq(patients.status, "merged"), inArray(patients.mergedIntoPatientId, frontier)));
+    frontier = rows.map((r) => r.id).filter((id) => !found.includes(id));
+    found.push(...frontier);
+  }
+  return found;
 }

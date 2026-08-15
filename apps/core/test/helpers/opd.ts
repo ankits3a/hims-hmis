@@ -2,12 +2,15 @@ import { eq } from "drizzle-orm";
 import { createUser } from "../../src/kernel/auth/identity";
 import { createSession } from "../../src/kernel/auth/sessions";
 import { assignRole } from "../../src/kernel/auth/permissions";
-import { registrationConfig, roles, opdConfig, opdDepartments, opdDoctors, opdDoctorSchedules, opdRooms } from "../../src/kernel/db/schema";
+import { seedSodPairs } from "../../src/kernel/auth/sod";
+import { activateDefinition, approveDefinition, createDraft } from "../../src/kernel/workflow/definitions";
+import { registrationConfig, roles, sodPairs, opdConfig, opdDepartments, opdDoctors, opdDoctorSchedules, opdRooms } from "../../src/kernel/db/schema";
 import { withTx } from "../../src/kernel/db/client";
 import { loadConfig } from "../../src/kernel/config";
 import { newId } from "@hmis/contracts";
 import { registerPatient } from "../../src/modules/patients";
 import { DEFAULT_DANGER_RANGES, DEFAULT_FOLLOW_UP_EXTENSION_DAYS, DEFAULT_LETTERHEAD } from "../../src/modules/opd/config";
+import { OPD_VISIT_DEFINITION_JSON } from "../../src/modules/opd/workflow-def";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../src/kernel/db/client";
 import type { RegisterPatientInput } from "../../src/modules/patients";
@@ -43,6 +46,23 @@ export async function mkUser(db: Db, username: string, roleKeys: string[]): Prom
   }
   const { token } = await createSession(db, testCfg, id);
   return { id, token, actor: { type: "user", id } };
+}
+
+/** The four users a Class-A activation needs; named so a suite can grant them extra roles if it must. */
+export const OPD_DEF_USERS = ["opd_def_drafter", "opd_def_owner", "opd_def_ms", "opd_def_activator"] as const;
+
+/** Class A activation exactly as the go-live runbook does it: drafter, owner + MS approvals, a distinct activator. Idempotent per suite: call once per beforeEach after truncateAll. */
+export async function activateOpdVisitDefinition(db: Db): Promise<{ definitionId: string }> {
+  if ((await db.select({ k: sodPairs.pairKey }).from(sodPairs)).length === 0) await seedSodPairs(db);
+  const drafter = await mkUser(db, OPD_DEF_USERS[0], []);
+  const owner = await mkUser(db, OPD_DEF_USERS[1], ["owner"]);
+  const ms = await mkUser(db, OPD_DEF_USERS[2], ["medical_superintendent"]);
+  const activator = await mkUser(db, OPD_DEF_USERS[3], []);
+  const { definitionId } = await createDraft(db, drafter.actor, OPD_VISIT_DEFINITION_JSON);
+  await approveDefinition(db, owner.actor, { definitionId, roleKey: "owner", note: "go-live activation" });
+  await approveDefinition(db, ms.actor, { definitionId, roleKey: "medical_superintendent", note: "go-live activation" });
+  await activateDefinition(db, activator.actor, definitionId);
+  return { definitionId };
 }
 
 export async function seedOpdMasters(db: Db): Promise<{ deptId: string; dept2Id: string; roomId: string; room2Id: string }> {
