@@ -140,10 +140,13 @@ export async function submitVersion(
 
 /**
  * Check-on-execute (merge.ts:85-102 pattern): the approvals row is read at execution time,
- * never consumed as an event (no scheduled dispatch cycle until Plan 11). Gate order, exactly
- * D5: not_submitted -> approval_not_granted/approval_rejected -> sod_drafter_activator, THEN
- * inside withTx: serialize against other activations, re-check monotonicity, single-winner
- * conditional UPDATE, then tariff.revision_applied.
+ * never consumed as an event (no scheduled dispatch cycle until Plan 11). Gate order (B1
+ * hardening, this plan): not_submitted -> approval_not_granted (unchanged position — a null
+ * guard for everything below, it writes nothing) -> approval_subject_mismatch ->
+ * sod_drafter_activator -> approval_rejected (the belt UPDATE, moved below both guards so a
+ * mis-bound approval or an SoD-excluded actor can never drive it), THEN inside withTx: serialize
+ * against other activations, re-check monotonicity, single-winner conditional UPDATE, then
+ * tariff.revision_applied.
  */
 export async function activateVersion(
   db: Db,
@@ -162,20 +165,13 @@ export async function activateVersion(
   if (!approval || approval.status === "pending") {
     throw new TariffError("approval_not_granted", `approval for version ${versionId} has not been granted yet`);
   }
-  if (approval.status === "rejected") {
-    // Belt update: marks the version terminal so a repeat attempt lands on not_submitted, not
-    // a second approval_rejected — the same single-winner conditional-UPDATE grammar as below.
-    await db
-      .update(tariffVersions)
-      .set({ status: "rejected" })
-      .where(and(eq(tariffVersions.id, versionId), eq(tariffVersions.status, "submitted")));
-    throw new TariffError("approval_rejected", `approval for version ${versionId} was rejected`);
-  }
 
   // The approval must be FOR THIS VERSION. submitVersion is today the only writer of approval_id
   // and always binds the approval it just created — but that invariant had zero structural
   // defense against a future admin tool or data fix (stress-test M10). approval_id is plain text
-  // with no FK by design, so the binding is asserted here, at the only consumption site.
+  // with no FK by design, so the binding is asserted here, at the only consumption site. Checked
+  // BEFORE any consequence of the approval's status is applied — a mis-bound approval can never
+  // write to a version it was not raised for (audit B1; ledger §3.27).
   if (approval.subjectType !== "tariff_version" || approval.subjectId !== versionId) {
     throw new TariffError(
       "approval_subject_mismatch",
@@ -183,12 +179,25 @@ export async function activateVersion(
     );
   }
 
-  // Direct SoD check (D5) — the activator must be neither the drafter nor the submitter.
+  // Direct SoD check (D5) — the activator must be neither the drafter nor the submitter. Sits
+  // BEFORE the rejected-approval belt so the SoD-excluded actor cannot trigger that write.
   if (actor.id === version.createdBy || actor.id === version.submittedBy) {
     throw new TariffError(
       "sod_drafter_activator",
       `activator must not be the drafter or submitter of version ${versionId}`,
     );
+  }
+
+  if (approval.status === "rejected") {
+    // Belt update: marks the version terminal so a repeat attempt lands on not_submitted, not
+    // a second approval_rejected — the same single-winner conditional-UPDATE grammar as below.
+    // Below the subject and SoD guards (audit B1): it may only fire for the version this
+    // approval was raised for, at the hand of an actor entitled to activate it.
+    await db
+      .update(tariffVersions)
+      .set({ status: "rejected" })
+      .where(and(eq(tariffVersions.id, versionId), eq(tariffVersions.status, "submitted")));
+    throw new TariffError("approval_rejected", `approval for version ${versionId} was rejected`);
   }
 
   return withTx(db, async (tx) => {

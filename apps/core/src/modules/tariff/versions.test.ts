@@ -8,6 +8,7 @@ import { seedSodPairs } from "../../kernel/auth/sod";
 import { approvalFlowDefinition } from "../../kernel/approvals/flow";
 import { registerApprovalType } from "../../kernel/approvals/types";
 import { approveRequest, rejectRequest } from "../../kernel/approvals/decisions";
+import { requestApproval } from "../../kernel/approvals/requests";
 import { createDraft, activateDefinition } from "../../kernel/workflow/definitions";
 import { createService } from "./services";
 import {
@@ -351,5 +352,59 @@ describe("tariff versions — draft/submit/activate via approvals, tariff-lock (
     expect((await getVersion(db, vA.versionId))!.version.status).toBe("submitted");
     const ok = await activateVersion(db, activator, vB.versionId, new Date("2026-02-01T00:00:00Z"));
     expect(ok.versionNo).toBe(2);
+  });
+
+  it("a REJECTED approval mis-bound to a different version cannot reject it: the subject guard fires first and vA stays submitted", async () => {
+    const vA = await mkDraft([[s1, 10000]]);
+    const vB = await mkDraft([[s2, 20000]]);
+    await withTx(db, (tx) => submitVersion(tx, drafter, vA.versionId));
+    const subB = await withTx(db, (tx) => submitVersion(tx, drafter, vB.versionId));
+    await rejectRequest(db, owner, { approvalId: subB.approvalId, note: "not this cycle" });
+
+    // The M10 raw-column-write scenario again, with the approval REJECTED this time — audit B1's
+    // reproduction: shipped code wrote healthy vA to terminal 'rejected' (no un-reject path
+    // exists) before ever checking whose approval it was holding.
+    await db.update(tariffVersions).set({ approvalId: subB.approvalId }).where(eq(tariffVersions.id, vA.versionId));
+
+    await expect(activateVersion(db, activator, vA.versionId, new Date("2026-02-01T00:00:00Z"))).rejects.toMatchObject({
+      code: "approval_subject_mismatch",
+    });
+    expect((await getVersion(db, vA.versionId))!.version.status).toBe("submitted");
+  });
+
+  it("the drafter cannot trigger the rejected-approval belt: SoD fires first and the version stays submitted", async () => {
+    const draft = await mkDraft([[s1, 10000]]);
+    const submitted = await withTx(db, (tx) => submitVersion(tx, drafter, draft.versionId));
+    await rejectRequest(db, owner, { approvalId: submitted.approvalId, note: "not this cycle" });
+
+    // Audit B1's second half: the belt is a state-changing write, and the actor SoD exists to
+    // exclude could perform it. Post-fix the drafter is turned away BEFORE the belt; the shipped
+    // pending/rejected test (versions.test.ts:122) keeps pinning that a legitimate activator
+    // still gets approval_rejected AND the belt still marks the version.
+    await expect(activateVersion(db, drafter, draft.versionId, new Date("2026-02-01T00:00:00Z"))).rejects.toMatchObject({
+      code: "sod_drafter_activator",
+    });
+    expect((await getVersion(db, draft.versionId))!.version.status).toBe("submitted");
+  });
+
+  it("an approval whose subjectTYPE differs cannot activate, even with a matching subjectId", async () => {
+    const vA = await mkDraft([[s1, 10000]]);
+    await withTx(db, (tx) => submitVersion(tx, drafter, vA.versionId));
+    // requestApproval writes subject verbatim (06.1 scout fact) — mint a granted approval of the
+    // same type key whose subject.type is wrong but whose subject.id MATCHES vA, so only the
+    // subjectType half of the guard can refuse it (audit m7: that half was deletable).
+    const rogue = await withTx(db, (tx) =>
+      requestApproval(tx, drafter, {
+        typeKey: TARIFF_REVISION_APPROVAL_TYPE,
+        subject: { type: "workflow_definition", id: vA.versionId },
+      }),
+    );
+    await approveRequest(db, owner, { approvalId: rogue.approvalId, note: "approved rogue" });
+    await db.update(tariffVersions).set({ approvalId: rogue.approvalId }).where(eq(tariffVersions.id, vA.versionId));
+
+    await expect(activateVersion(db, activator, vA.versionId, new Date("2026-02-01T00:00:00Z"))).rejects.toMatchObject({
+      code: "approval_subject_mismatch",
+    });
+    expect((await getVersion(db, vA.versionId))!.version.status).toBe("submitted");
   });
 });
