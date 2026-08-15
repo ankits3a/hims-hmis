@@ -44,7 +44,10 @@ export const manualDiscountSource: AdjustmentSource = {
     // Governance checks are EXACT RATIONAL comparisons — never rounded (D1). The cap compares the
     // ASK: at a 100% cap an over-gross ask must reject as over_cap, never be silently clamped to
     // gross and accepted (D3: "recorded as rejected, never silently clamped"). For every
-    // maxBps < 10000 this is provably identical to the old clamped-operand check.
+    // maxBps < 10000 AND grossPaise > 0 this is provably identical to the old clamped-operand
+    // check; at grossPaise === 0 any positive ask is over_cap by policy (audit m1, owner-ratified
+    // 2026-08-15 — the record keeps the ask), and at maxBps = 10000 the raw operand is the one
+    // that refuses an over-gross ask (audit B4).
     if (raw * 10000 > caps.maxBps * grossPaise) {
       return [{ ...base, amountPaise: raw, rejected: { code: "over_cap", detail: `${raw}p exceeds ${caps.maxBps}bps of ${grossPaise}p` } }];
     }

@@ -249,3 +249,35 @@ test("a zero-computed benefit is recorded but can never win", () => {
   expect(candidates[0]?.amountPaise).toBe(0);
   expect(winner).toBeNull();
 });
+
+test("at a 100% cap the ASK is still what is judged: an over-gross ask is over_cap, never clamped-and-accepted", () => {
+  // maxBps: 10000 is legal (manualCapParamsSchema .max(10000)) and is the ONE cap value where the
+  // raw-operand and clamped-operand checks disagree (audit B4).
+  const caps: ManualCaps = { ...CAPS, negotiated_corporate: { maxBps: 10000, approvalAboveBps: 1000 } };
+  const line: InvoiceLineInput = {
+    ...CONS_LINE,
+    manualDiscount: { discountCategory: "negotiated_corporate", kind: "flat_paise", value: 60000, reason: "asked too much" },
+  };
+  const out = manualDiscountSource.propose(makeCtx({ manualCaps: caps }), line, 50000);
+  expect(out).toHaveLength(1);
+  // 60000×10000 = 600,000,000 > 10000×50000 = 500,000,000 → over_cap at the ASKED amount. The
+  // clamped-operand implementation computes min(60000, 50000) = 50000, finds 500M > 500M false,
+  // and ACCEPTS a silent whole-line wipeout (requiresApproval true) — the exact D3 violation.
+  expect(out[0]?.amountPaise).toBe(60000);
+  expect(out[0]?.rejected).toEqual({ code: "over_cap", detail: "60000p exceeds 10000bps of 50000p" });
+});
+
+test("a positive ask on a ZERO-GROSS line records over_cap — and keeps the asked amount in the audit record", () => {
+  const line: InvoiceLineInput = {
+    ...CONS_LINE,
+    manualDiscount: { discountCategory: "negotiated_corporate", kind: "flat_paise", value: 5000, reason: "camp waiver" },
+  };
+  // gross 0: 5000×10000 = 50,000,000 > 2000×0 = 0 → over_cap, detail "5000p exceeds 2000bps of 0p".
+  // Owner-ratified policy (audit m1, 2026-08-15): any positive ask exceeds every cap of a
+  // zero-gross line, and over_cap keeps the ASK in the D-8 record; the pre-06.1 clamped path
+  // recorded an accepted 0 and LOST the ask. No money moves either way.
+  const out = manualDiscountSource.propose(makeCtx(), line, 0);
+  expect(out).toHaveLength(1);
+  expect(out[0]?.amountPaise).toBe(5000);
+  expect(out[0]?.rejected).toEqual({ code: "over_cap", detail: "5000p exceeds 2000bps of 0p" });
+});

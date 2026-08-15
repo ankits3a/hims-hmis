@@ -220,3 +220,21 @@ test("an over-gross winner from a rogue source fails LOUDLY at the taxable base,
   expect(thrownCode(() => priceInvoiceLines(makeCtx({ sources: [rogue] }), [{ lineId: "L1", serviceId: "svc-cons", qty: 1 }])))
     .toBe("invalid_paise");
 });
+
+test("a regulated row with UNDEFINED bounds (a hand-built ctx) is refused exactly like a null-bounds row", () => {
+  const ctx = makeCtx({
+    regulatedPrices: {
+      "svc-drug-a": { mrpPaise: 10000, ceilingPaise: 15000 },
+      "svc-drug-b": { mrpPaise: 10000, ceilingPaise: 8000 },
+      "svc-drug-c": { mrpPaise: 10000, ceilingPaise: 8000 },
+      "svc-drug-d": { mrpPaise: undefined, ceilingPaise: undefined } as unknown as { mrpPaise: number | null; ceilingPaise: number | null },
+    },
+  });
+  // TypeScript forbids this shape today; Plan 08 is the first consumer that could hand-build a
+  // context (audit m5). Shipped `=== null` lets undefined/undefined skip the guard AND every
+  // bound (`undefined !== null` pushes a bound whose `undefined < unit` never binds) — pricing
+  // at bare tariff 5000 + 2×300 GST = net 5600 with regulatedClamp null. `== null` refuses it;
+  // a legal 0-paise bound still survives (0 == null is false).
+  expect(thrownCode(() => priceInvoiceLines(ctx, [{ lineId: "L1", serviceId: "svc-drug-d", qty: 1 }])))
+    .toBe("regulated_price_missing");
+});

@@ -26,8 +26,9 @@ function priceLine(ctx: PricingContext, line: InvoiceLineInput): PricedLine {
     if (!rp) throw new TariffError("regulated_price_missing", `line ${line.lineId}: ${line.serviceId} is regulated but has no effective MRP/ceiling row`);
     // Defense in depth: appendRegulatedPrice refuses a row with neither bound, but a row that
     // arrives around the API (bulk load, data fix) must not silently no-op the C-3 hard block.
-    // Both comparisons are `=== null` — a legal bound of 0 paise must survive.
-    if (rp.mrpPaise === null && rp.ceilingPaise === null) {
+    // Both comparisons are '== null' — undefined from a hand-built context is refused too (audit
+    // m5), while a legal bound of 0 paise still survives (0 == null is false).
+    if (rp.mrpPaise == null && rp.ceilingPaise == null) {
       throw new TariffError("regulated_price_missing", `line ${line.lineId}: ${line.serviceId} has a regulated_prices row with no MRP and no ceiling`);
     }
     const bounds: { boundApplied: "mrp" | "ceiling"; value: number }[] = [];
