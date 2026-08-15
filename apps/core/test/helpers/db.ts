@@ -62,8 +62,10 @@ export async function truncateAll(db: Db): Promise<void> {
         role_assignments, role_permissions, agents, sod_pairs, permissions, roles, users`,
   );
   await db.execute(
-    sql`truncate table patient_merge_requests, patient_guardians, patient_allergies,
-        patient_photos, patients, registration_config`,
+    sql`truncate table opd_prescriptions, opd_vitals, opd_queue_entries, opd_encounters, opd_appointments,
+        opd_queue_sessions, opd_doctor_leaves, opd_doctor_schedules, opd_doctors, opd_rooms, opd_departments,
+        opd_config, patient_merge_requests, patient_guardians, patient_allergies, patient_photos, patients,
+        registration_config`,
   );
   await db.execute(
     sql`truncate table tariff_items, regulated_prices, adjustment_rules, gst_config, gst_settings,
