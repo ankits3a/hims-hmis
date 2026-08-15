@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { TariffError } from "./errors";
 import { manualDiscountSource, standingRuleSource } from "./contest";
 import { priceInvoiceLines } from "./pricing";
@@ -149,17 +150,30 @@ export async function validateTariffConfig(
   // The caps the ENGINE will actually see at `at` — loadRuleConfig, the same function
   // loadPricingContext uses (active + validity window). Building this map from the raw table let
   // the gate print ok=true while every charity waiver died unknown_category at the counter (M1).
-  let engineCaps: ManualCaps = {};
+  let engineCaps: ManualCaps | null = null;
   try {
     engineCaps = (await loadRuleConfig(db, at)).manualCaps;
-  } catch {
-    // A corrupt params row makes loadRuleConfig throw BY DESIGN (billing-time behaviour). The
-    // loop above has already recorded it as invalid_rule_params; with no loadable caps, every
-    // category below correctly reports manual_caps_missing. This function still never throws.
+  } catch (e) {
+    if (e instanceof z.ZodError) {
+      // Corrupt params throw BY DESIGN (billing-time behaviour). The loop above has already
+      // recorded invalid_rule_params; with no loadable caps, every category below correctly
+      // reports manual_caps_missing — the shipped Break-4 behaviour, unchanged.
+      engineCaps = {};
+    } else {
+      // A non-config failure (connection reset, tx abort, a genuine bug) is NOT a caps problem —
+      // reporting it as four manual_caps_missing sent the operator hunting config that was fine
+      // (audit m3). Same convention as the smoke block's context_load_failed below. Never throws.
+      errors.push({
+        code: "rule_config_load_failed",
+        detail: `loadRuleConfig failed: ${e instanceof Error ? e.message : String(e)}`,
+      });
+    }
   }
-  for (const cat of DISCOUNT_CATEGORIES) {
-    if (!engineCaps[cat]) {
-      errors.push({ code: "manual_caps_missing", detail: `no ACTIVE manual discount cap effective at ${at.toISOString()} for category "${cat}"` });
+  if (engineCaps !== null) {
+    for (const cat of DISCOUNT_CATEGORIES) {
+      if (!engineCaps[cat]) {
+        errors.push({ code: "manual_caps_missing", detail: `no ACTIVE manual discount cap effective at ${at.toISOString()} for category "${cat}"` });
+      }
     }
   }
 

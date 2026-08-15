@@ -15,6 +15,7 @@ import {
 } from "./versions";
 import { upsertGstCategory, upsertGstSettings } from "./gst-config";
 import { upsertAdjustmentRule } from "./rules";
+import * as rulesModule from "./rules";
 import { manualDiscountSource, standingRuleSource } from "./contest";
 import { loadPricingContext, validateTariffConfig } from "./context";
 import type { Actor } from "@hmis/contracts";
@@ -445,5 +446,41 @@ describe("context (D5 lock, D7 config gate): loadPricingContext + validateTariff
     const report = await validateTariffConfig(db, new Date("2026-03-01T00:00:00Z"));
     expect(report.ok).toBe(false);
     expect(report.errors.some((e) => e.code === "duplicate_manual_cap" && e.detail.includes('"charity"'))).toBe(true);
+  });
+
+  test("a NON-config loadRuleConfig failure is reported as rule_config_load_failed, never as missing caps", async () => {
+    await seedFullValidConfig();
+    // One rejection, consumed by validateTariffConfig's own direct call (its FIRST loadRuleConfig
+    // call — the smoke block's loadPricingContext call comes later and gets the real function).
+    const spy = jest.spyOn(rulesModule, "loadRuleConfig").mockRejectedValueOnce(new Error("connection reset by peer"));
+    try {
+      const report = await validateTariffConfig(db, new Date("2026-03-01T00:00:00Z"));
+      // Shipped code swallowed this and printed FOUR manual_caps_missing entries (audit m3) —
+      // a false diagnosis; all four caps are seeded and fine.
+      expect(report.ok).toBe(false);
+      expect(report.errors.some((e) => e.code === "rule_config_load_failed" && e.detail.includes("connection reset"))).toBe(true);
+      expect(report.errors.filter((e) => e.code === "manual_caps_missing")).toHaveLength(0);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("a retired, expired, or not-yet-valid second cap row is NOT reported as a duplicate", async () => {
+    await seedFullValidConfig();
+    const mk = (ruleKey: string, extra: { active?: boolean; validFrom?: Date; validTo?: Date }) =>
+      withTx(db, (tx) =>
+        upsertAdjustmentRule(tx, drafter, {
+          ruleKey, sourceKey: "manual", title: ruleKey,
+          params: { discountCategory: "charity", maxBps: 500, approvalAboveBps: null }, ...extra,
+        }),
+      );
+    await mk("CAP-CHARITY-RETIRED", { active: false });
+    await mk("CAP-CHARITY-FY25", { validTo: new Date("2026-01-31T00:00:00Z") });
+    await mk("CAP-CHARITY-FY27", { validFrom: new Date("2027-04-01T00:00:00Z") });
+    const report = await validateTariffConfig(db, new Date("2026-03-01T00:00:00Z"));
+    // Deleting any one of the loop's three window filters (audit m6) turns the matching row
+    // above into a phantom "live duplicate" of the seeded CAP-CHARITY.
+    expect(report.errors.filter((e) => e.code === "duplicate_manual_cap")).toHaveLength(0);
+    expect(report.ok).toBe(true);
   });
 });
