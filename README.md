@@ -191,7 +191,7 @@ pg-boss crons: `runDispatchCycle`, `sweepExpiredTempRoles`, `runDueTimers`, `swe
 
 **Perf budgets** are CI-enforced in `test/perf-opd-queue.test.ts` (300 doctor-days × 60 entries,
 200k completed historical encounters): `listQueue` < 100 ms, `openVisit` including the visit-type
-anchor < 100 ms, `boardSnapshot` over 300 sessions < 300 ms, and `EXPLAIN (FORMAT JSON)` proves no
+anchor < 100 ms, `boardSnapshot` over 300 sessions < 500 ms, and `EXPLAIN (FORMAT JSON)` proves no
 `Seq Scan` on `opd_queue_entries` or `opd_encounters`.
 
 **Permissions (14) and the recommended grants.** Route access is permission-gated; the encounter's
