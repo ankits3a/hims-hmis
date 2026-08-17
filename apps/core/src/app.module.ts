@@ -13,6 +13,7 @@ import { HealthController } from "./health/health.controller";
 import { AuthModule } from "./kernel/auth/auth.module";
 import { WorkflowModule } from "./kernel/workflow/workflow.module";
 import { ApprovalsModule } from "./kernel/approvals/approvals.module";
+import { RealtimeModule } from "./kernel/realtime/realtime.module";
 
 export { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "./kernel/tokens";
 
@@ -21,7 +22,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
 
 @Global()
 @Module({
-  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule], // ← PatientsModule added
+  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule], // ← PatientsModule added
   controllers: [HealthController],
   providers: [
     { provide: CONFIG, useFactory: (): AppConfig => loadConfig() },
