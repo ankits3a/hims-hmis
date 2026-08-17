@@ -9,6 +9,8 @@ export { getPatient, registerPatient, resolvePatientId, updatePatient } from "./
 export type { GuardianInput, PatientPatch, PatientRow, RegisterPatientInput } from "./registration";
 export { getPatientSummaries, listMergedLoserIds } from "./registration"; // Plan 07 read helpers
 export type { PatientSummary } from "./registration";
+export { listAllergies } from "./allergies";
+export type { AllergyRow } from "./allergies";
 export { searchPatients } from "./search";
 export type { PatientSearchResult } from "./search";
 export { NO_AUTHORITY, effectiveGuardianAuthority, sweepGuardianMajority } from "./guardians";
