@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { opdConfig } from "../../kernel/db/schema";
 import { OpdError } from "./errors";
+import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
 export const VITAL_KEYS = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC"] as const;
@@ -106,4 +107,41 @@ export async function loadOpdConfig(db: Db | Tx): Promise<OpdConfig> {
     dangerRanges: ranges.data,
     letterhead: letterhead.data,
   };
+}
+
+export type OpdConfigPatch = Partial<Pick<OpdConfig,
+  "slotMinutes" | "followUpDefaultDays" | "followUpExtensionDays" | "extensionCapPerDoctorPerMonth"
+  | "maxSkipsBeforeLeft" | "perkEveryNth" | "dangerRanges" | "letterhead">>;
+
+/** Every patchable column, checked with the SAME schemas loadOpdConfig reads through — a bad shape never lands. */
+const configPatchSchema = z
+  .object({
+    slotMinutes: z.number().int().positive(),
+    followUpDefaultDays: z.number().int().positive(),
+    followUpExtensionDays: extensionDaysSchema,
+    extensionCapPerDoctorPerMonth: z.number().int().positive(),
+    maxSkipsBeforeLeft: z.number().int().positive(),
+    perkEveryNth: z.number().int().positive().nullable(),
+    dangerRanges: dangerRangesSchema,
+    letterhead: letterheadSchema,
+  })
+  .partial();
+
+/**
+ * The admin screen's config write (PUT /opd/config). Validation happens BEFORE the row is touched, so an
+ * invalid danger_ranges is refused with invalid_config (the zod issues in `detail`) and the stored row is
+ * unchanged — the no-fallbacks rule read from the other side. The UPDATE is conditional on the one audited
+ * row: zero rows means the seed never ran, which is opd_not_configured, never a silent no-op.
+ */
+export async function updateOpdConfig(tx: Tx, actor: Actor, patch: OpdConfigPatch, now: Date = new Date()): Promise<OpdConfig> {
+  if (actor.type !== "user") throw new OpdError("user_actor_required", "only a user actor may change the OPD config");
+  const checked = configPatchSchema.safeParse(patch);
+  if (!checked.success) throw new OpdError("invalid_config", "invalid opd_config patch", checked.error.issues);
+  const rows = await tx
+    .update(opdConfig)
+    .set({ ...checked.data, updatedBy: actor.id, updatedAt: now })
+    .where(eq(opdConfig.id, "main"))
+    .returning({ id: opdConfig.id });
+  if (rows.length === 0) throw new OpdError("opd_not_configured", "opd_config row 'main' is missing — run seed:opd");
+  return loadOpdConfig(tx);
 }
