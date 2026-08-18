@@ -12,6 +12,7 @@ import { RegistrationDesk } from "./screens/registration-desk";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
 import { ApprovalsInbox } from "./screens/approvals-inbox";
+import { OpdAdmin } from "./screens/opd-admin";
 
 function Shell(): React.ReactElement {
   const { t } = useTranslation();
@@ -26,6 +27,7 @@ function Shell(): React.ReactElement {
             <a href="/registration" className="hover:underline">{t("nav.registration")}</a>
             <a href="/merge" className="hover:underline">{t("nav.merge")}</a>
             <a href="/approvals" className="hover:underline">{t("nav.approvals")}</a>
+            <a href="/opd/admin" className="hover:underline">{t("nav.opdAdmin")}</a>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <button type="button" onClick={() => switchLanguage(i18next.language === "hi" ? "en" : "hi")}>
@@ -95,10 +97,16 @@ const approvalsRoute = createRoute({
   component: ApprovalsInbox,
 });
 
+const opdAdminRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/opd/admin",
+  component: OpdAdmin,
+});
+
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
-    authedRoute.addChildren([indexRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute]),
+    authedRoute.addChildren([indexRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute]),
   ]),
 });
 

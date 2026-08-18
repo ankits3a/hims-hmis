@@ -17,6 +17,8 @@ export default defineConfig({
       "/approvals": "http://localhost:3000",
       "/workflow": "http://localhost:3000",
       "/health": "http://localhost:3000",
+      "/opd": "http://localhost:3000",
+      "/ws": { target: "ws://localhost:3000", ws: true },
     },
   },
   test: {
