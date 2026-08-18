@@ -1,0 +1,12 @@
+{
+  "kind": "credit",
+  "name": "b06 — the fully worked partial refund: three steps of 3360 on a 10080 line",
+  "specRefs": ["D4", "K9"],
+  "workings": "The stored line: qty 3, gross 10000, discount 1000, taxableBase 9000 at 1200 bps. taxHead(9000, 1200) = divHalfUp(10,800,000, 20,000): the quotient 10,800,000 / 20,000 is 540 EXACTLY, so each head is 540 and netPaise = 9000 + 540 + 540 = 10080. (Caution from self-review item 21: the half-up formula's intermediate floor((21,600,000 + 20,000) / 40,000) = floor(540.5) shows a midpoint that is the formula's OFFSET, not a rounding case — derive from the quotient, then apply the formula.) Refunding one unit at a time: step 1 takes divHalfUp(10000, 3) = floor((20,000 + 3) / 6) = 3333 gross, divHalfUp(1000, 3) = floor((2,000 + 3) / 6) = 333 discount, divHalfUp(9000, 3) = 3000 base, divHalfUp(540, 3) = 180 per head, net 3000 + 180 + 180 = 3360. Step 2 is cumulative: divHalfUp(20,000, 3) = floor((40,000 + 3) / 6) = 6667 less 3333 = 3334 gross; divHalfUp(2,000, 3) = floor((4,000 + 3) / 6) = 667 less 333 = 334 discount; 6000 - 3000 = 3000 base; 360 - 180 = 180 per head; net 3360. Step 3 takes the remainder: 10000 - 6667 = 3333 gross, 1000 - 667 = 333 discount, 9000 - 6000 = 3000 base, 540 - 360 = 180 per head, net 3360. The line exhausts exactly: 3 x 3360 = 10080.",
+  "line": { "grossPaise": 10000, "discountPaise": 1000, "taxableBasePaise": 9000, "cgstPaise": 540, "sgstPaise": 540, "qty": 3 },
+  "steps": [
+    { "prevQty": 0, "addQty": 1, "expected": { "grossPaise": 3333, "discountPaise": 333, "taxableBasePaise": 3000, "cgstPaise": 180, "sgstPaise": 180, "netPaise": 3360 } },
+    { "prevQty": 1, "addQty": 1, "expected": { "grossPaise": 3334, "discountPaise": 334, "taxableBasePaise": 3000, "cgstPaise": 180, "sgstPaise": 180, "netPaise": 3360 } },
+    { "prevQty": 2, "addQty": 1, "expected": { "grossPaise": 3333, "discountPaise": 333, "taxableBasePaise": 3000, "cgstPaise": 180, "sgstPaise": 180, "netPaise": 3360 } }
+  ]
+}

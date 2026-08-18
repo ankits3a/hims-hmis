@@ -1,0 +1,41 @@
+{
+  "kind": "totals",
+  "name": "b01 — invoice heads are the SUM of the line heads (§15.1)",
+  "specRefs": ["§15.1", "D3", "K5"],
+  "workings": "Three pharmacy lines, each taxableBase 18875 at 1200 bps. Per line taxHead(18875, 1200) = divHalfUp(22,650,000, 20,000) = floor((45,300,000 + 20,000) / 40,000) = floor(1133.0) = 1133, so cgst = sgst = 1133 and netPaise = 18875 + 1133 + 1133 = 21141. Invoice: gross = taxableBase = 3 x 18875 = 56625; cgst = sgst = 3 x 1133 = 3399. An invoice-level recompute would post taxHead(56625, 1200) = floor((135,900,000 + 20,000) / 40,000) = floor(3398.0) = 3398 — one paise short (mutant M-B01). rawTotal = 3 x 21141 = 63423; roundTotalToRupee(63423) = divHalfUp(63423, 100) x 100 = floor((126,846 + 100) / 200) x 100 = floor(634.73) x 100 = 63400, rounding 63400 - 63423 = -23.",
+  "lines": [
+    {
+      "lineId": "L1", "serviceId": "svc-tab", "serviceName": "Paracetamol 500 strip", "category": "pharmacy",
+      "qty": 1, "unitPaise": 18875, "grossPaise": 18875,
+      "regulatedClamp": null, "candidates": [], "winner": null,
+      "discountPaise": 0, "taxableBasePaise": 18875,
+      "gst": { "sacCode": "3004", "rateBps": 1200, "exempt": false, "exemptReason": null, "cgstPaise": 1133, "sgstPaise": 1133 },
+      "netPaise": 21141
+    },
+    {
+      "lineId": "L2", "serviceId": "svc-tab", "serviceName": "Paracetamol 500 strip", "category": "pharmacy",
+      "qty": 1, "unitPaise": 18875, "grossPaise": 18875,
+      "regulatedClamp": null, "candidates": [], "winner": null,
+      "discountPaise": 0, "taxableBasePaise": 18875,
+      "gst": { "sacCode": "3004", "rateBps": 1200, "exempt": false, "exemptReason": null, "cgstPaise": 1133, "sgstPaise": 1133 },
+      "netPaise": 21141
+    },
+    {
+      "lineId": "L3", "serviceId": "svc-tab", "serviceName": "Paracetamol 500 strip", "category": "pharmacy",
+      "qty": 1, "unitPaise": 18875, "grossPaise": 18875,
+      "regulatedClamp": null, "candidates": [], "winner": null,
+      "discountPaise": 0, "taxableBasePaise": 18875,
+      "gst": { "sacCode": "3004", "rateBps": 1200, "exempt": false, "exemptReason": null, "cgstPaise": 1133, "sgstPaise": 1133 },
+      "netPaise": 21141
+    }
+  ],
+  "expected": {
+    "grossPaise": 56625, "discountPaise": 0, "taxableBasePaise": 56625,
+    "cgstPaise": 3399, "sgstPaise": 3399,
+    "taxableTurnoverPaise": 56625, "exemptTurnoverPaise": 0,
+    "taxSummary": [
+      { "sacCode": "3004", "rateBps": 1200, "exempt": false, "taxableBasePaise": 56625, "cgstPaise": 3399, "sgstPaise": 3399 }
+    ],
+    "rawTotalPaise": 63423, "netPayablePaise": 63400, "roundingPaise": -23
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "kind": "totals",
+  "name": "b03 — §170 rupee rounding applied once, on the raw total",
+  "specRefs": ["§170", "D3", "K7"],
+  "workings": "Two exempt consultation lines with netPaise 5651 and 5582 — a pair chosen BECAUSE it discriminates. rawTotal = 5651 + 5582 = 11233; roundTotalToRupee(11233) = divHalfUp(11233, 100) x 100 = floor((22,466 + 100) / 200) x 100 = floor(112.83) x 100 = 11200, rounding 11200 - 11233 = -33. Rounding each line first would give roundTotalToRupee(5651) = floor((11,302 + 100) / 200) x 100 = floor(57.01) x 100 = 5700 and roundTotalToRupee(5582) = floor((11,164 + 100) / 200) x 100 = floor(56.32) x 100 = 5600, summing to 11300 (mutant M-B03). The plan's first candidate pair 5617 / 5616 rounds to 5600 + 5600 = 11200 under BOTH implementations and proves nothing — self-review item 3; do not simplify this pair back.",
+  "lines": [
+    {
+      "lineId": "L1", "serviceId": "svc-cons", "serviceName": "General consultation", "category": "consultation",
+      "qty": 1, "unitPaise": 5651, "grossPaise": 5651,
+      "regulatedClamp": null, "candidates": [], "winner": null,
+      "discountPaise": 0, "taxableBasePaise": 5651,
+      "gst": { "sacCode": "999312", "rateBps": 1800, "exempt": true, "exemptReason": "category_exempt", "cgstPaise": 0, "sgstPaise": 0 },
+      "netPaise": 5651
+    },
+    {
+      "lineId": "L2", "serviceId": "svc-cons", "serviceName": "General consultation", "category": "consultation",
+      "qty": 1, "unitPaise": 5582, "grossPaise": 5582,
+      "regulatedClamp": null, "candidates": [], "winner": null,
+      "discountPaise": 0, "taxableBasePaise": 5582,
+      "gst": { "sacCode": "999312", "rateBps": 1800, "exempt": true, "exemptReason": "category_exempt", "cgstPaise": 0, "sgstPaise": 0 },
+      "netPaise": 5582
+    }
+  ],
+  "expected": {
+    "grossPaise": 11233, "discountPaise": 0, "taxableBasePaise": 11233,
+    "cgstPaise": 0, "sgstPaise": 0,
+    "taxableTurnoverPaise": 0, "exemptTurnoverPaise": 11233,
+    "taxSummary": [
+      { "sacCode": "999312", "rateBps": 1800, "exempt": true, "taxableBasePaise": 11233, "cgstPaise": 0, "sgstPaise": 0 }
+    ],
+    "rawTotalPaise": 11233, "netPayablePaise": 11200, "roundingPaise": -33
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "kind": "totals",
+  "name": "b10 — a rupee-exact invoice rounds to itself",
+  "specRefs": ["§170", "D3"],
+  "workings": "One pharmacy line, base 5000 at 1200 bps. taxHead(5000, 1200) = divHalfUp(6,000,000, 20,000) = floor((12,000,000 + 20,000) / 40,000) = floor(300.5) = 300 per head, netPaise = 5000 + 300 + 300 = 5600 — already a whole rupee. roundTotalToRupee(5600) = divHalfUp(5600, 100) x 100 = floor((11,200 + 100) / 200) x 100 = floor(56.5) x 100 = 5600, so roundingPaise is 0 and netPayable equals rawTotal. The §170 line on the printed invoice reads zero; an implementation that always nudged the total would show it.",
+  "lines": [
+    {
+      "lineId": "L1", "serviceId": "svc-tab", "serviceName": "Paracetamol 500 strip", "category": "pharmacy",
+      "qty": 1, "unitPaise": 5000, "grossPaise": 5000,
+      "regulatedClamp": null, "candidates": [], "winner": null,
+      "discountPaise": 0, "taxableBasePaise": 5000,
+      "gst": { "sacCode": "3004", "rateBps": 1200, "exempt": false, "exemptReason": null, "cgstPaise": 300, "sgstPaise": 300 },
+      "netPaise": 5600
+    }
+  ],
+  "expected": {
+    "grossPaise": 5000, "discountPaise": 0, "taxableBasePaise": 5000,
+    "cgstPaise": 300, "sgstPaise": 300,
+    "taxableTurnoverPaise": 5000, "exemptTurnoverPaise": 0,
+    "taxSummary": [
+      { "sacCode": "3004", "rateBps": 1200, "exempt": false, "taxableBasePaise": 5000, "cgstPaise": 300, "sgstPaise": 300 }
+    ],
+    "rawTotalPaise": 5600, "netPayablePaise": 5600, "roundingPaise": 0
+  }
+}

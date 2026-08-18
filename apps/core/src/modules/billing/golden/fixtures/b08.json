@@ -1,0 +1,43 @@
+{
+  "kind": "totals",
+  "name": "b08 — zero-discount identity: rawTotal is Σ line netPaise",
+  "specRefs": ["D3"],
+  "workings": "Three undiscounted lines: pharmacy base 18875 at 1200 bps (heads 1133, net 21141), device base 33333 at 500 bps (heads 833, net 34999), exempt consultation base 50000 (no heads, net 50000). With no discount anywhere, taxableBase equals gross: 18875 + 33333 + 50000 = 102208; cgst = sgst = 1133 + 833 + 0 = 1966. rawTotal = 21141 + 34999 + 50000 = 106140, which is also 102208 + 1966 + 1966 — the identity this fixture pins. taxableTurnover = 18875 + 33333 = 52208, exemptTurnover = 50000. Three GSTR-1 rows in first-appearance order. roundTotalToRupee(106140) = floor((212,280 + 100) / 200) x 100 = floor(1061.9) x 100 = 106100, rounding -40.",
+  "lines": [
+    {
+      "lineId": "L1", "serviceId": "svc-tab", "serviceName": "Paracetamol 500 strip", "category": "pharmacy",
+      "qty": 1, "unitPaise": 18875, "grossPaise": 18875,
+      "regulatedClamp": null, "candidates": [], "winner": null,
+      "discountPaise": 0, "taxableBasePaise": 18875,
+      "gst": { "sacCode": "3004", "rateBps": 1200, "exempt": false, "exemptReason": null, "cgstPaise": 1133, "sgstPaise": 1133 },
+      "netPaise": 21141
+    },
+    {
+      "lineId": "L2", "serviceId": "svc-dev", "serviceName": "Orthopedic device", "category": "device",
+      "qty": 1, "unitPaise": 33333, "grossPaise": 33333,
+      "regulatedClamp": null, "candidates": [], "winner": null,
+      "discountPaise": 0, "taxableBasePaise": 33333,
+      "gst": { "sacCode": "9021", "rateBps": 500, "exempt": false, "exemptReason": null, "cgstPaise": 833, "sgstPaise": 833 },
+      "netPaise": 34999
+    },
+    {
+      "lineId": "L3", "serviceId": "svc-cons", "serviceName": "General consultation", "category": "consultation",
+      "qty": 1, "unitPaise": 50000, "grossPaise": 50000,
+      "regulatedClamp": null, "candidates": [], "winner": null,
+      "discountPaise": 0, "taxableBasePaise": 50000,
+      "gst": { "sacCode": "999312", "rateBps": 1800, "exempt": true, "exemptReason": "category_exempt", "cgstPaise": 0, "sgstPaise": 0 },
+      "netPaise": 50000
+    }
+  ],
+  "expected": {
+    "grossPaise": 102208, "discountPaise": 0, "taxableBasePaise": 102208,
+    "cgstPaise": 1966, "sgstPaise": 1966,
+    "taxableTurnoverPaise": 52208, "exemptTurnoverPaise": 50000,
+    "taxSummary": [
+      { "sacCode": "3004", "rateBps": 1200, "exempt": false, "taxableBasePaise": 18875, "cgstPaise": 1133, "sgstPaise": 1133 },
+      { "sacCode": "9021", "rateBps": 500, "exempt": false, "taxableBasePaise": 33333, "cgstPaise": 833, "sgstPaise": 833 },
+      { "sacCode": "999312", "rateBps": 1800, "exempt": true, "taxableBasePaise": 50000, "cgstPaise": 0, "sgstPaise": 0 }
+    ],
+    "rawTotalPaise": 106140, "netPayablePaise": 106100, "roundingPaise": -40
+  }
+}

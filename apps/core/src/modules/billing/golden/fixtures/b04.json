@@ -1,0 +1,12 @@
+{
+  "kind": "settlement",
+  "name": "b04 — settlement state is derived: unpaid, partial, settled, over-collected",
+  "specRefs": ["D1"],
+  "workings": "outstanding = netPayable - credited - allocated, floored at zero; settled when outstanding reaches zero. On a netPayable of 10000: nothing received is unpaid with 10000 outstanding; 4000 allocated is partial with 10000 - 4000 = 6000 outstanding; 2000 credited plus 8000 allocated covers 10000 exactly and is settled; 11000 allocated over-collects by 1000 and is settled with outstanding floored at 0, never negative — the surplus lives on the receipt as change due or a banked advance (D2), not as a negative invoice.",
+  "cases": [
+    { "netPayablePaise": 10000, "creditedPaise": 0, "allocatedPaise": 0, "expected": { "state": "unpaid", "outstandingPaise": 10000 } },
+    { "netPayablePaise": 10000, "creditedPaise": 0, "allocatedPaise": 4000, "expected": { "state": "partial", "outstandingPaise": 6000 } },
+    { "netPayablePaise": 10000, "creditedPaise": 2000, "allocatedPaise": 8000, "expected": { "state": "settled", "outstandingPaise": 0 } },
+    { "netPayablePaise": 10000, "creditedPaise": 0, "allocatedPaise": 11000, "expected": { "state": "settled", "outstandingPaise": 0 } }
+  ]
+}
