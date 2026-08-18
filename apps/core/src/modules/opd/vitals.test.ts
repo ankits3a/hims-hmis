@@ -8,6 +8,13 @@ import type { Db } from "../../kernel/db/client";
 
 /** Monday 2026-08-17, 09:30 IST — the encounters.test.ts anchor. */
 const MON = new Date("2026-08-17T04:00:00.000Z");
+/**
+ * Fixed DOBs, never `ageYears` (prescriptions.test.ts precedent): registration derives an estimated dob from the
+ * REAL wall clock, so an age asserted against the pinned MON drops by one the day the anniversary passes.
+ * At MON these are exactly 30 (adult band) and 3 (child_1_5 band) whatever day the suite runs.
+ */
+const DOB_ADULT = new Date(Date.UTC(1996, 0, 15));
+const DOB_CHILD = new Date(Date.UTC(2023, 0, 15));
 const adultOk = { heightCm: 165, weightKg: 60, sbp: 120, dbp: 80, pulse: 72, spo2: 98, tempC: 37.0 };
 
 describe("opd vitals (recording, danger flags, the registered→waiting move)", () => {
@@ -31,8 +38,8 @@ describe("opd vitals (recording, danger flags, the registered→waiting move)", 
     dra = await mkDoctor(db, { username: "dra", departmentId: deptId, roomId });
     clerk = await mkUser(db, "clerk", ["front_office"]);
     vd = await mkUser(db, "vd", ["vitals_desk"]);
-    patient = await mkPatient(db, clerk.actor);
-    childPatient = await mkPatient(db, clerk.actor, { ageYears: 3, guardian: { name: "G", relationship: "mother" } });
+    patient = await mkPatient(db, clerk.actor, { ageYears: undefined, dob: DOB_ADULT });
+    childPatient = await mkPatient(db, clerk.actor, { ageYears: undefined, dob: DOB_CHILD, guardian: { name: "G", relationship: "mother" } });
   });
 
   it("normal recording moves registered → waiting", async () => {

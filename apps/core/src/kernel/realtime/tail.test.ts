@@ -162,6 +162,67 @@ describe("EventTail", () => {
     expect(seenB).toEqual([appended.eventId]);
   });
 
+  it("a tick that races shutdown raises no unhandled rejection — and a genuine failure is still loud", async () => {
+    // The rejection is captured at its SOURCE (`escaped` below), never left to jest's incidental attribution to
+    // whichever suite the worker picks up next. A process listener is kept as belt-and-braces only: jest-environment-node
+    // hands the test a sandboxed `process`, and node emits "unhandledRejection" on the real one, so this listener is inert
+    // here (probed: 0 deliveries after 210 ms) — it must never be the load-bearing assertion.
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => { unhandled.push(reason); };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      // This test's own pool, so ending it disturbs nothing else in the suite.
+      const url = new URL(requireEnv("TEST_DATABASE_URL"));
+      url.pathname = `${url.pathname}_${process.env.JEST_WORKER_ID ?? "1"}`;
+      const { db: dbC, pool: poolC } = createDb(url.toString());
+
+      // Nest's shutdown interleaving, driven by hand instead of waited for: a scheduled tick is PAST its first query
+      // when RealtimeModule's onModuleDestroy stops the tail and AppModule's onModuleDestroy ends the pool underneath it.
+      let tickIsPastItsFirstQuery!: () => void;
+      let shutdownIsDone!: () => void;
+      const inFlight = new Promise<void>((res) => { tickIsPastItsFirstQuery = res; });
+      const shutdown = new Promise<void>((res) => { shutdownIsDone = res; });
+      let queries = 0;
+      const escaped: unknown[] = []; // every rejection the tail's own fire-and-forget tick would have leaked, caught here
+      const gated = {
+        execute: async (q: Parameters<Db["execute"]>[0]) => {
+          queries += 1;
+          const nth = queries;
+          const res = await dbC.execute(q).catch((err: unknown) => { escaped.push(err); throw err; });
+          if (nth === 2) { tickIsPastItsFirstQuery(); await shutdown; } // 1 = start()'s floor read, 2 = the tick's maxSeq()
+          return res;
+        },
+      } as unknown as Db;
+
+      const tail = new EventTail(gated, () => ["queue.called"], { intervalMs: 5, lookback: 500, batch: 1000 });
+      tails.push(tail);
+      await tail.start();
+
+      await inFlight;
+      tail.stop();       // RealtimeModule.onModuleDestroy — the interval is cleared, the in-flight tick is not awaited
+      await poolC.end(); // AppModule.onModuleDestroy — the pool the tick's NEXT query would acquire from
+      shutdownIsDone();
+      await new Promise((res) => setTimeout(res, 50)); // let the tick finish and node emit any rejection nobody owns
+
+      expect(escaped).toEqual([]);   // pre-fix: [Error: Cannot use a pool after calling end on the pool] — nobody owned it
+      expect(queries).toBe(2);       // the second query is never issued once stop() has run
+      expect(unhandled).toEqual([]); // inert here (see above), kept so a stricter environment would still catch a leak
+
+      // The other half: a tick's failure that is NOT shutdown stays loud — poll() propagates it, unswallowed (§3.6).
+      const boom = new Error('relation "events" does not exist');
+      let broken = 0;
+      const brokenDb = {
+        execute: async () => { broken += 1; if (broken === 1) return { rows: [{ m: 0 }] }; throw boom; },
+      } as unknown as Db;
+      const loud = new EventTail(brokenDb, () => ["queue.called"], { intervalMs: 60_000, lookback: 500, batch: 1000 });
+      tails.push(loud);
+      await loud.start();
+      await expect(loud.poll()).rejects.toBe(boom);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   it("a throwing listener does not stop delivery, and off() unsubscribes", async () => {
     const tail = mkTail(db, ["queue.called"]);
     const good: number[] = [];
