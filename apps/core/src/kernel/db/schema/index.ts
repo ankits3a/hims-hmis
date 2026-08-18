@@ -7,3 +7,4 @@ export * from "./approvals";
 export * from "./patients";
 export * from "./tariff";
 export * from "./opd";
+export * from "./billing";
