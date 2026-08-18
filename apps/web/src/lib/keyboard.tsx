@@ -10,6 +10,15 @@ function isTypingTarget(el: EventTarget | null): boolean {
 export function KeyboardProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const navigate = useNavigate();
   useEffect(() => {
+    /**
+     * `/opd/vitals` and `/opd/consult` are registered by later tasks, but their shortcuts live here
+     * (this is the only task that owns keyboard.tsx). The router's generated path union therefore
+     * does not know them yet, so those two — and only those two — are navigated as plain strings.
+     * The navigation itself is correct at runtime; it is the compile-time union that is behind.
+     */
+    const goUnregistered = (to: string): void => {
+      void navigate({ to } as unknown as Parameters<typeof navigate>[0]);
+    };
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === "/" && !isTypingTarget(e.target)) {
         e.preventDefault();
@@ -23,6 +32,18 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }): R
       } else if (e.altKey && (e.key === "a" || e.key === "A")) {
         e.preventDefault();
         void navigate({ to: "/approvals" });
+      } else if (e.altKey && (e.key === "d" || e.key === "D")) {
+        e.preventDefault();
+        void navigate({ to: "/opd/desk" });
+      } else if (e.altKey && (e.key === "v" || e.key === "V")) {
+        e.preventDefault();
+        goUnregistered("/opd/vitals");
+      } else if (e.altKey && (e.key === "c" || e.key === "C")) {
+        e.preventDefault();
+        goUnregistered("/opd/consult");
+      } else if (e.altKey && (e.key === "p" || e.key === "P")) {
+        e.preventDefault();
+        void navigate({ to: "/opd/appointments" });
       }
     };
     window.addEventListener("keydown", onKey);
@@ -39,6 +60,10 @@ export function ShortcutLegend(): React.ReactElement {
       <span>{t("shortcuts.new")}</span>
       <span>{t("shortcuts.merge")}</span>
       <span>{t("shortcuts.approvals")}</span>
+      <span>{t("shortcuts.opdDesk")}</span>
+      <span>{t("shortcuts.opdVitals")}</span>
+      <span>{t("shortcuts.opdConsult")}</span>
+      <span>{t("shortcuts.opdAppointments")}</span>
     </footer>
   );
 }
