@@ -12,7 +12,9 @@
     "seed:registration": "tsx scripts/seed-registration.ts",
     "seed:tariff": "tsx scripts/seed-tariff.ts",
     "validate:tariff": "tsx scripts/validate-tariff-config.ts",
-    "seed:opd": "tsx scripts/seed-opd.ts"
+    "seed:opd": "tsx scripts/seed-opd.ts",
+    "seed:billing": "tsx scripts/seed-billing.ts",
+    "validate:billing": "tsx scripts/validate-billing-config.ts"
   },
   "dependencies": {
     "@hmis/contracts": "workspace:*",
