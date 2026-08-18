@@ -1,3 +1,4 @@
+import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { billingConfig, roles } from "../../src/kernel/db/schema";
 import { createUser } from "../../src/kernel/auth/identity";
@@ -16,7 +17,9 @@ import {
 } from "../../src/modules/tariff";
 import { registerBillingApprovalTypes } from "../../src/modules/billing/approval-types";
 import { openSession } from "../../src/modules/billing/sessions";
+import { issueInvoice, previewInvoice } from "../../src/modules/billing/invoices";
 import type { Db } from "../../src/kernel/db/client";
+import type { IssueInvoiceResult } from "../../src/modules/billing/invoices";
 
 export const testCfg = loadConfig({ DATABASE_URL: "postgres://unused", SECRET_KEY: process.env.SECRET_KEY! });
 
@@ -171,4 +174,27 @@ export async function mkCashier(db: Db, username: string): Promise<{ id: string;
 export async function openSessionFor(db: Db, cashier: { id: string }, floatPaise: number): Promise<{ id: string }> {
   const { id } = await openSession(db, { type: "user", id: cashier.id }, floatPaise);
   return { id };
+}
+
+/**
+ * A fully settled invoice for one service, paid in EXACT cash - the fixture T6-T8 start from.
+ * The cashier must ALREADY hold an open session (`openSessionFor`): a receipt is drawer-bound
+ * (D9), and opening one inside a fixture would hide the very requirement T5 asserts. The line is
+ * priced through `previewInvoice` first so the tender matches `netPayable` exactly and nothing is
+ * left unallocated.
+ */
+export async function issuePaidInvoice(
+  db: Db,
+  cashier: { id: string; actor: Actor },
+  input: { patientId: string; serviceId: string; qty?: number; encounterId?: string },
+): Promise<IssueInvoiceResult> {
+  const lines = [{ lineId: newId(), serviceId: input.serviceId, qty: input.qty ?? 1 }];
+  const preview = await previewInvoice(db, { encounterId: input.encounterId, lines });
+  return issueInvoice(db, cashier.actor, {
+    draftId: newId(),
+    patientId: input.patientId,
+    encounterId: input.encounterId,
+    lines,
+    receipt: { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] },
+  });
 }
