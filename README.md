@@ -270,3 +270,41 @@ every 15 s, so a dropped socket or a missed frame costs seconds of freshness, ne
 (cursor over `events.seq` with a look-back window for out-of-order commits and a bounded dedupe
 set), never an in-memory emitter — so an event appended by ANY process reaches EVERY process's
 sockets, and the gateway needs no sticky sessions and no broker.
+
+## Web app: OPD screens (Plan 07)
+
+Six screens ride the `apps/web` scaffold from Plan 05 (React 19, Tailwind 4, shadcn/ui, TanStack
+Router/Query, i18next hi/en, Vitest). The Shell's OPD nav links render for EVERYONE — the client
+holds no permission model of its own; the server's 403 on the underlying route is what actually
+decides who may use a screen.
+
+| Route | Screen | Expected role(s) |
+|---|---|---|
+| `/opd/appointments` | Appointments — slot grid, booking, day list, reschedule/cancel, needs-rebooking, check-in with the printed token slip | `front_office`, `front_office_supervisor` (read-only for `doctor`, `opd_admin`) |
+| `/opd/desk` | OPD desk — walk-in visit opening, today's arrivals check-in, live queue overview, abandon, the supervisor's E2 transfer | `front_office`, `front_office_supervisor` |
+| `/opd/vitals` | Vitals desk — worklist, band-aware capture, danger flags, quick allergy | `vitals_desk`, `doctor` |
+| `/opd/consult` | Consultation — live queue with call/skip/start, patient panel, note + Rx editor, completion, printed e-Rx | `doctor` |
+| `/opd/display[?rooms=<roomIds>]` | Token display board — waiting-room TV board with bilingual speech calling | `display` (a kiosk account holding only `opd.display.read`) |
+| `/opd/admin` | OPD masters — departments, rooms, doctors, weekly schedules, leaves | `opd_admin` |
+
+See the OPD module's permission table above for the exact grant per route.
+
+**Shortcuts.** Global (bound once in `keyboard.tsx`, mounted in the authed Shell): `/` search ·
+F2 new patient · Alt+M merge · Alt+A approvals · Alt+P appointments · Alt+D OPD desk · Alt+V
+vitals · Alt+C consultation. The consultation screen additionally binds its OWN screen-local
+shortcuts (a `useEffect` keydown handler private to that screen, not `keyboard.tsx`): Alt+N call
+next · Alt+K skip · Alt+S start / issue (context-dependent) · Alt+Enter complete.
+
+**The display board's Start button.** `/opd/display` (optionally `?rooms=<comma-separated room
+ids>`, no filter ⇒ every session of the day) boots into a gate showing only a Start button — no
+`WebSocket` connects and no board data is fetched until it is clicked. Browsers refuse speech
+synthesis (and may refuse socket-driven audio) without a prior user gesture, so Start supplies
+that gesture: afterwards the board's `GET /opd/queues/board` fires, the socket subscribes to
+`display:<roomId>` for each room in scope, and a `queue.called` frame speaks the token twice —
+Hindi first (`hi-IN`), then English (`en-IN`) — while patching that room's NOW SERVING
+immediately, ahead of the next poll. The board shows token, room and doctor ONLY — never a
+patient name or UHID (§14); go-live runbook step 6 above covers deploying it to the counter TV.
+
+**Realtime pushes are hints.** Every OPD screen — the display board included — BOTH subscribes to
+its realtime topics AND polls its read model every 15 s (`refetchInterval: 15_000`); a missed or
+delayed WebSocket frame costs a screen seconds of staleness, never correctness.

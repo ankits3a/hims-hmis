@@ -17,6 +17,7 @@ import { OpdAppointments } from "./screens/opd-appointments";
 import { OpdDesk } from "./screens/opd-desk";
 import { OpdVitals } from "./screens/opd-vitals";
 import { OpdConsult } from "./screens/opd-consult";
+import { OpdDisplay } from "./screens/opd-display";
 
 function Shell(): React.ReactElement {
   const { t } = useTranslation();
@@ -36,6 +37,7 @@ function Shell(): React.ReactElement {
             <a href="/opd/desk" className="hover:underline">{t("nav.opdDesk")}</a>
             <a href="/opd/vitals" className="hover:underline">{t("nav.opdVitals")}</a>
             <a href="/opd/consult" className="hover:underline">{t("nav.opdConsult")}</a>
+            <a href="/opd/display" className="hover:underline">{t("nav.opdDisplay")}</a>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <button type="button" onClick={() => switchLanguage(i18next.language === "hi" ? "en" : "hi")}>
@@ -135,12 +137,22 @@ const opdConsultRoute = createRoute({
   component: OpdConsult,
 });
 
+const opdDisplayRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/opd/display",
+  // The optional comma-separated room filter (flag ⑯); no `rooms` ⇒ every session of the day.
+  validateSearch: (search: Record<string, unknown>): { rooms?: string } => ({
+    rooms: typeof search.rooms === "string" ? search.rooms : undefined,
+  }),
+  component: OpdDisplay,
+});
+
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
     authedRoute.addChildren([
       indexRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
-      opdDeskRoute, opdVitalsRoute, opdConsultRoute,
+      opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute,
     ]),
   ]),
 });
