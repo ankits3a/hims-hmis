@@ -93,7 +93,7 @@ function encounter(overrides: Record<string, unknown>): Record<string, unknown> 
   };
 }
 
-const ENC_ADULT = encounter({});
+const ENC_ADULT = encounter({ dangerFlagged: true });
 const ENC_CHILD = encounter({
   id: "enc-2", patientId: "p-child", departmentId: "dep-2", doctorId: "doc-2", dangerFlagged: true,
   openedAt: "2026-08-18T04:10:00.000Z",
@@ -337,7 +337,7 @@ describe("OpdVitals", () => {
       "GET /patients/p-adult2": { status: 200, body: patientDetail("HMS0000000040", "Suresh Yadav", "1985-02-02", "male") },
       "GET /patients/p-adult2/allergies": { status: 200, body: { items: [] } },
       [`POST /opd/visits/${ENC_ADULT.id as string}/vitals`]: {
-        status: 200, // Nest's real 201 — the harness never branches on the exact 2xx code
+        status: 201,
         body: {
           vitals: { id: "vit-1" }, flags: [{ vital: "sbp", value: 190, bound: "max", limit: 180 }],
           encounter: { ...ENC_ADULT, status: "waiting" },
