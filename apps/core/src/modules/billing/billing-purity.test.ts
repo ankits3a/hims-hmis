@@ -9,7 +9,7 @@ import { join, relative } from "node:path";
  *     no zod coercion. Every division goes through the tariff engine's `divHalfUp`.
  * T4 adds "cash-math.ts" to PURE_FILES — one line.
  */
-const PURE_FILES = ["totals.ts", "credit-share.ts", "settlement.ts", "time.ts"];
+const PURE_FILES = ["totals.ts", "credit-share.ts", "settlement.ts", "time.ts", "cash-math.ts"];
 const IMPURE_TOKENS = ['from "../../kernel', "await ", "new Date()", "Math.random"];
 // Assembled from fragments so that this sweep covers its OWN file too: a literal token here would
 // make the test the only violation it can ever find.

@@ -1,6 +1,5 @@
-import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
-import { billingConfig, cashierSessions, roles } from "../../src/kernel/db/schema";
+import { billingConfig, roles } from "../../src/kernel/db/schema";
 import { createUser } from "../../src/kernel/auth/identity";
 import { createSession } from "../../src/kernel/auth/sessions";
 import { assignRole } from "../../src/kernel/auth/permissions";
@@ -16,6 +15,7 @@ import {
   TARIFF_REVISION_APPROVAL_TYPE, upsertAdjustmentRule, upsertGstCategory, upsertGstSettings,
 } from "../../src/modules/tariff";
 import { registerBillingApprovalTypes } from "../../src/modules/billing/approval-types";
+import { openSession } from "../../src/modules/billing/sessions";
 import type { Db } from "../../src/kernel/db/client";
 
 export const testCfg = loadConfig({ DATABASE_URL: "postgres://unused", SECRET_KEY: process.env.SECRET_KEY! });
@@ -164,19 +164,11 @@ export async function mkCashier(db: Db, username: string): Promise<{ id: string;
 }
 
 /**
- * DISCLOSED SHAPING (T3): T4 has not shipped `openSession` yet, so this inserts the
- * `cashier_sessions` row DIRECTLY against T1's schema, bypassing the real writer entirely. T4
- * REPLACES this function body with the real `openSession` call; the signature stays the same so
- * T4's callers (this file's own future growth, T5-T8's fixtures) need no changes.
+ * REAL as of T4 (this function no longer shapes the row directly — it calls the shipped
+ * `openSession`, the ACTING cashier's own open session, D9). The signature is unchanged from
+ * T3's placeholder, so every caller (T5-T8's fixtures) needs no changes.
  */
 export async function openSessionFor(db: Db, cashier: { id: string }, floatPaise: number): Promise<{ id: string }> {
-  const id = newId();
-  await db.insert(cashierSessions).values({
-    id,
-    cashierUserId: cashier.id,
-    status: "open",
-    openedAt: new Date(),
-    openingFloatPaise: floatPaise,
-  });
+  const { id } = await openSession(db, { type: "user", id: cashier.id }, floatPaise);
   return { id };
 }
