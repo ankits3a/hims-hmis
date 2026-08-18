@@ -20,8 +20,14 @@ import { Button } from "@/components/ui/button";
  * board query and the realtime subscription, does not exist in the tree before that (never merely
  * "disabled"), so no `WebSocket` can open early — K52's mutant collapses exactly this split.
  *
- * Bilingual by design (§15): every `queue.called` frame speaks the token twice, Hindi first
- * (`hi-IN`), then English (`en-IN`) — K51.
+ * Bilingual by design (§15 Hindi/English day one) — and this applies to BOTH channels the board
+ * uses, not just the one: every `queue.called` frame is SPOKEN twice, Hindi first (`hi-IN`), then
+ * English (`en-IN`) — K51. Independently, every on-screen LABEL (the header title, the NOW SERVING
+ * caption, the Next caption, and the Start button) is WRITTEN in both languages at once, via
+ * `i18n.getFixedT("hi")` / `getFixedT("en")` rather than the ambient `t()` — a waiting-room TV has
+ * no per-viewer language setting, so it cannot render "whichever language i18next happens to be
+ * in" the way a staff screen can. Data fields (room code, doctor name, department name, token
+ * numbers) are NOT translated — they come straight off the wire, not out of a locale file.
  */
 const POLL_MS = 15_000;
 
@@ -47,7 +53,12 @@ function speak(token: number, room: string, t: (key: string, opts?: Record<strin
 }
 
 function BoardCard({ item }: { item: WireBoardItem }): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // Fixed-language lookups (see the file docstring) — the caption strings are shown in BOTH
+  // languages regardless of the app's current locale; `item.status` below stays on the ambient
+  // `t()` because a session-status word is not one of the four labels this screen must pair.
+  const tHi = i18n.getFixedT("hi");
+  const tEn = i18n.getFixedT("en");
   return (
     <div
       data-testid={`board-card-${item.sessionId}`}
@@ -60,13 +71,15 @@ function BoardCard({ item }: { item: WireBoardItem }): React.ReactElement {
       <div className="text-2xl">{item.doctorName}</div>
       <div className="text-lg text-neutral-400">{item.departmentName}</div>
       <div className="mt-6 text-center">
-        <div className="text-lg tracking-widest text-neutral-400 uppercase">{t("opdDisplay.nowServing")}</div>
+        <div className="text-lg tracking-widest text-neutral-400 uppercase">
+          {tHi("opdDisplay.nowServing")} / {tEn("opdDisplay.nowServing")}
+        </div>
         <div data-testid={`now-serving-${item.sessionId}`} className="text-8xl leading-none font-black">
           {item.nowServing ?? "—"}
         </div>
       </div>
       <div className="text-center text-xl text-neutral-400">
-        {t("opdDisplay.next")}: {item.next.length > 0 ? item.next.join(", ") : "—"}
+        {tHi("opdDisplay.next")} / {tEn("opdDisplay.next")}: {item.next.length > 0 ? item.next.join(", ") : "—"}
       </div>
     </div>
   );
@@ -125,7 +138,9 @@ function DisplayBoard({ rooms }: { rooms: string[] }): React.ReactElement {
 }
 
 export function OpdDisplay(): React.ReactElement {
-  const { t } = useTranslation();
+  const { i18n } = useTranslation();
+  const tHi = i18n.getFixedT("hi");
+  const tEn = i18n.getFixedT("en");
   // `strict: false` reads the search of whatever route is active without a compile-time circular
   // import back to router.tsx (which itself imports this component) — cast to the shape this
   // screen's own `validateSearch` produces, mirroring the cast already used by opd-api.ts.
@@ -136,14 +151,16 @@ export function OpdDisplay(): React.ReactElement {
   return (
     <div className="flex min-h-screen flex-col bg-neutral-950 text-white">
       <div className="no-print flex items-center justify-between border-b border-neutral-800 px-6 py-3 text-lg">
-        <span className="font-semibold">{t("opdDisplay.title")}</span>
+        <span className="font-semibold">
+          {tHi("opdDisplay.title")} / {tEn("opdDisplay.title")}
+        </span>
       </div>
       {started ? (
         <DisplayBoard rooms={rooms} />
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-8">
           <Button type="button" size="lg" className="px-12 py-8 text-3xl" onClick={() => setStarted(true)}>
-            {t("opdDisplay.start")}
+            {tHi("opdDisplay.start")} / {tEn("opdDisplay.start")}
           </Button>
         </div>
       )}

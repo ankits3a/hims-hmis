@@ -130,8 +130,10 @@ describe("OpdDisplay", () => {
 
     renderWithProviders(<OpdDisplay />);
 
-    // before Start: the gate only, no board read, no socket.
-    const startButton = screen.getByRole("button", { name: "Start" });
+    // before Start: the gate only, no board read, no socket. The button now carries BOTH
+    // languages ("शुरू करें / Start" — the bilingual-label correction), so the accessible name is
+    // no longer the exact string "Start"; match it as a substring instead.
+    const startButton = screen.getByRole("button", { name: /Start/ });
     expect(callsTo("GET", "/opd/queues/board")).toHaveLength(0);
     expect(FakeWebSocket.instances).toHaveLength(0);
 
@@ -179,7 +181,7 @@ describe("OpdDisplay", () => {
     const user = userEvent.setup();
 
     renderWithProviders(<OpdDisplay />);
-    await user.click(screen.getByRole("button", { name: "Start" }));
+    await user.click(screen.getByRole("button", { name: /Start/ }));
     await screen.findByTestId("board-card-sess-1");
 
     const ws = FakeWebSocket.instances[0]!;
@@ -243,7 +245,7 @@ describe("OpdDisplay", () => {
     await flush();
     // `userEvent` needs real timers for its internal delays (the opd-desk precedent) — `fireEvent`
     // dispatches the click synchronously and plays cleanly with fake timers.
-    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    fireEvent.click(screen.getByRole("button", { name: /Start/ }));
     await flush();
     await flush();
 
@@ -268,7 +270,7 @@ describe("OpdDisplay", () => {
     const user = userEvent.setup();
 
     renderWithProviders(<OpdDisplay />);
-    await user.click(screen.getByRole("button", { name: "Start" }));
+    await user.click(screen.getByRole("button", { name: /Start/ }));
     await screen.findByTestId("board-card-sess-1");
 
     // The fixture DOES carry a name and a UHID (ITEM_A above) — the board must not render them.
