@@ -143,3 +143,10 @@
   .qr-card, .qr-card * { visibility: visible; }
   .qr-card { position: fixed; left: 0; top: 0; width: 85.6mm; height: 54mm; border: none; }
 }
+
+/* Plan 07: printable documents (token slip, e-Rx). Only the .print-doc reaches the paper; A5 portrait default. */
+@media print {
+  .print-doc, .print-doc * { visibility: visible; }
+  .print-doc { position: fixed; left: 0; top: 0; width: 148mm; min-height: 100mm; padding: 8mm; border: none; background: white; }
+  @page { size: A5 portrait; margin: 6mm; }
+}
