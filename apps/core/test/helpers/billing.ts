@@ -214,6 +214,29 @@ export async function issuePaidInvoice(
 }
 
 /**
+ * A fully settled invoice for one service, paid by a NON-CASH tender (upi/card) carrying the
+ * given settlement reference -- the T9 recon fixture. Otherwise identical to `issuePaidInvoice`:
+ * the line is priced through `previewInvoice` first so the tender matches `netPayable` exactly,
+ * which is what lets `expectedNetPaise` (stamped by `insertReceiptWithTenders`, invoices.ts, at
+ * CAPTURE) land on a hand-derivable number for the recon suite.
+ */
+export async function issuePaidInvoiceByTender(
+  db: Db,
+  cashier: { id: string; actor: Actor },
+  input: { patientId: string; serviceId: string; mode: "upi" | "card"; refText: string; qty?: number; encounterId?: string },
+): Promise<IssueInvoiceResult> {
+  const lines = [{ lineId: newId(), serviceId: input.serviceId, qty: input.qty ?? 1 }];
+  const preview = await previewInvoice(db, { encounterId: input.encounterId, lines });
+  return issueInvoice(db, cashier.actor, {
+    draftId: newId(),
+    patientId: input.patientId,
+    encounterId: input.encounterId,
+    lines,
+    receipt: { tenders: [{ mode: input.mode, amountPaise: preview.totals.netPayablePaise, refText: input.refText }] },
+  });
+}
+
+/**
  * Grants `billing.credit.extend` to a role through the kernel's own registry-checked path (never a
  * raw role_permissions insert). T11's manifest is what declares the permission in production, so a
  * one-permission registry stands in for it until then. Every dues fixture needs it: an invoice can
