@@ -700,3 +700,69 @@ Per tripwire 21, "Kills" are HAND-DERIVED PREDICTIONS until the named mutant is 
 - **Deviations-not-to-fix in every brief:** gate reports 01–07 §4/§5 (the `code: message` prefix on patients/tariff bodies · the open error-code sets · tariff m2/m4/m9 deferrals · `workflow.controller.ts:142`'s bare-`at` ordering — STILL not this plan's, billing touches no workflow read surface · `qr.test.ts`'s flake · the OPD realtime carry-forwards §10.4–10.7 · `registerPatient`'s wall-clock `dob` — routed to a patients-module owner, NOT absorbed here) · `fmtIst`/`useDebounced` copies in frozen OPD screens (residue recorded in T13).
 - **Go-live items this plan creates (for the gate report's carried-forward list):** `seed:billing` per environment · CA review of every `billing_config` threshold against its statutory anchor + `caSigned` flip + `validate:billing` ok=true before the first live invoice (D-17) · the five approval types registered (or seed-confirmed) + `billing_manager`/`cashier` role grants · counter hardware check: wedge scanners against the picker lane at UAT · the FY-rollover check in the first April week · `runDailyClose` joins Plan 11's pg-boss list as the SIXTH unscheduled sweep · Plan 09 consumes `payment.received`/`payment.refunded` for the accrual ledger · Plan 10 subscribes to `cash_threshold.*`/`variance.flagged`/`day.closed` for owner notifications (the legacy daily-collection message lands there) · IPD phase consumes the advance instrument for deposits and the OPD→IPD carry-forward allocation.
 - **Events note:** exactly the 20 D-Events names, all `module: "billing"`; the dispatcher stays unscheduled until Plan 11; no billing realtime topics this plan (screens poll — a deliberate scope line).
+
+---
+
+## Pipeline Notes v2 — supersedes the tier map and review shape above (2026-08-19)
+
+Adopted after the method review. Read [`../../EXECUTE-METHOD.md`](../../EXECUTE-METHOD.md)
+and [`../../AGENT-RULES.md`](../../AGENT-RULES.md) before compiling B or C. The design, the
+Assertion Book, the Files lists and the frozen paths above are **unchanged**; what changes is
+how much verification each task gets, which model does it, and who reviews it.
+
+**Two independent dials, not one.**
+
+- **Risk tier** decides VERIFICATION DEPTH — mutants, fail-first, per-task gate.
+- **Model** decides by the KIND OF JUDGEMENT the task needs (§2.30): opus wherever correctness
+  rests on proving an assertion has teeth — fixture design, mutants, races, absence assertions.
+
+| task | tier | model | required-DIED mutants | why |
+|---|---|---|---|---|
+| T7 credit notes | **CRITICAL** | **opus** ↑ | M-C1/C2/C3 | cumulative partial-refund arithmetic; B-06's numbers land as rows |
+| T8 refund vouchers | **CRITICAL** | **opus** ↑ | M-R1/R2/R3 | structural refund ≤ received, advance race, guard flags |
+| T9 recon | **CRITICAL** | sonnet | M-N1/N2 | numeric compare is fully specified; mutants + gate still owed |
+| T10 gate + daily close | **CRITICAL** | opus | M-G1/G2/G3 | the plan's only shipped-code edit; report-layer recompute |
+| T11 module surface | **ROUTINE** | opus | none (K36 declared) | 31 routes and wiring; no new money maths |
+| T12 lifecycle e2e + docs | **ROUTINE** | sonnet | none | extends shipped surface; owes no red |
+| T13 counter + components | **CRITICAL** | opus | W-1…W-4 | wedge lane, polling teeth, paise-safe input, print |
+| T14 dues & advances | **CRITICAL** | **opus** ↑ | W-5/W-6 | partial-amount body is a discrimination assertion — Plan 07 lost T14 to exactly this |
+| T15 session + absorbed | **CRITICAL** | opus | W-7/W-8/W-9 | W-8/W-9 ARE Plan 07's surviving mutants; pure discrimination work |
+| T16 back office | **CRITICAL** | opus | W-10/W-11 | K46's deliberately-inconsistent fixture (§3.14 class) |
+
+↑ = upgraded from the original tier map, per §2.30.
+
+**Honest note on how much this saves here.** Ten of the twelve remaining tasks carry
+required-DIED mutants in the plan's own Assertion Book, so **Plan 08 is genuinely mostly
+CRITICAL** — it is a money module, and the tiering dial barely moves. Only T11 and T12 drop to
+ROUTINE. The savings on THIS plan come almost entirely from the other three levers (the local
+mirror, the review split, the restricted tool set), not from cutting verification. The earlier
+"~40%" estimate assumed a more routine workload; **for Plan 08 the honest figure is ~25–35%**,
+and the tiering dial will pay properly on plans with more ordinary work in them.
+
+**Review shape for B and C (§2.31).**
+
+- **Mechanical check on every task**, run by the main session, ~5k: detached `pnpm verify` with
+  the exit VALUE read from a file · `git show --stat` against the Files list · frozen-path grep
+  · CI green by SHA · clean tree.
+- **Full per-task gate on CRITICAL tasks only** (8 of the 10 remaining).
+- **One discovery reviewer per pipeline**, opus, reading all of that pipeline's commits
+  together — the cross-task findings (a defect shipped dormant and armed later, a convention
+  nothing tests) that a per-task gate structurally cannot see.
+
+**Compile changes.**
+
+- Briefs POINT at `AGENT-RULES.md`; nothing inlines the rules block any more.
+- Every brief carries the task's **risk tier** explicitly.
+- **No per-task test-count targets.** The rule is: workspace total must not decrease, no test
+  deleted, quote the runner's summary for the suites you added (AGENT-RULES §4). The ladder
+  above stays as a sanity reference, not as an acceptance criterion.
+- Pipeline agents get a **restricted tool set** — no MCP roster (§2.29).
+- The baseline block carries its measurement timestamp and the instruction to re-confirm
+  (§2.21).
+- Pre-flight unchanged: module-parse probe + dry run, each with a negative control observed to
+  fail; `node --check` is a smoke test only (§2.22).
+
+**Carried forward into B:** the 19-item list in
+[`reports/plan-08-pipeline-A-notes.md`](reports/plan-08-pipeline-A-notes.md) §4 — in
+particular the `ZodError`/`BillingError` seam at T11, `advanceOf`'s zero floor for T8, and that
+`b09` already exists as K35's discriminating fixture for T10.

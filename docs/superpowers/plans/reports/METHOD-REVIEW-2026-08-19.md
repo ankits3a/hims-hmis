@@ -290,3 +290,26 @@ written or git-operated there.
 
 Combined estimate: **2.45M → ~1.3–1.5M per 6-task pipeline**, with CRITICAL-path verification
 untouched. Sonnet stays. Ultracode stays off. claude-mem stays out of the agents.
+
+---
+
+## 13. Correction to §7 and §12 — the tiering dial barely moves on Plan 08
+
+Applying the tiers to Plan 08's remaining twelve tasks exposed an over-claim in this document.
+**Ten of the twelve carry required-DIED mutants in the plan's own Assertion Book** — only T11
+(module surface, K36 declared) and T12 (lifecycle e2e, owes no red) drop to ROUTINE. Plan 08 is
+a money module, and its verification depth is mostly *earned*.
+
+So for Plan 08 specifically the savings come almost entirely from the three levers that are
+independent of tiering — the local mirror, the review split, and the restricted tool set — not
+from cutting verification:
+
+| pipeline | old | v2 estimate | saving |
+|---|---|---|---|
+| B (T7–T12, 4 CRITICAL + 2 ROUTINE) | ~2.45M | ~1.65M | ~33% |
+| C (T13–T16, 4 CRITICAL) | ~1.6M | ~1.3M | ~18% |
+
+**Honest figure for Plan 08: ~25–35%, not the ~40% claimed in §7 and §12.** The tiering dial
+will pay properly on a plan with more ordinary work in it; here it moves two tasks. Recorded
+rather than quietly re-estimated, because a projection nobody rechecks is how the original
+budget drifted.
