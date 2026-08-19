@@ -1,6 +1,6 @@
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
-import { billingConfig, roles } from "../../src/kernel/db/schema";
+import { billingConfig, invoiceLines, invoices, roles } from "../../src/kernel/db/schema";
 import { createUser } from "../../src/kernel/auth/identity";
 import { createSession } from "../../src/kernel/auth/sessions";
 import { assignRole, grantPermissionToRole, syncPermissions } from "../../src/kernel/auth/permissions";
@@ -13,10 +13,13 @@ import { loadConfig } from "../../src/kernel/config";
 import { withTx } from "../../src/kernel/db/client";
 import { ModuleRegistry } from "../../src/kernel/modules/loader";
 import {
-  activateVersion, createDraftVersion, createService, setTariffItem, submitVersion,
+  activateVersion, createDraftVersion, createService, roundTotalToRupee, setTariffItem, submitVersion,
   TARIFF_REVISION_APPROVAL_TYPE, upsertAdjustmentRule, upsertGstCategory, upsertGstSettings,
 } from "../../src/modules/tariff";
 import { registerBillingApprovalTypes } from "../../src/modules/billing/approval-types";
+import { loadBillingConfig } from "../../src/modules/billing/config";
+import { nextDocNo } from "../../src/modules/billing/series";
+import { istDay } from "../../src/modules/billing/time";
 import { openSession } from "../../src/modules/billing/sessions";
 import { CREDIT_EXTEND_PERMISSION, issueInvoice, previewInvoice } from "../../src/modules/billing/invoices";
 import type { Db } from "../../src/kernel/db/client";
@@ -235,4 +238,115 @@ export async function issueDuesInvoice(
     receipt: receiptPaise > 0 ? { tenders: [{ mode: "cash", amountPaise: receiptPaise }] } : undefined,
     credit: { reason: "fixture: the patient settles at the dues counter" },
   });
+}
+
+/** One invoice line, SHAPED — every money field supplied rather than priced. See `shapeInvoiceWithLine`. */
+export type ShapedInvoiceLine = {
+  serviceId: string;
+  serviceName?: string;
+  category?: string;
+  sacCode?: string;
+  rateBps?: number;
+  exempt?: boolean;
+  qty: number;
+  unitPaise: number;
+  grossPaise: number;
+  discountPaise: number;
+  taxableBasePaise: number;
+  cgstPaise: number;
+  sgstPaise: number;
+};
+
+/**
+ * An invoice and ONE line inserted directly against T1's schema, carrying money values chosen by
+ * the caller instead of produced by the pricing engine.
+ *
+ * DISCLOSED SHAPING, and why it is unavoidable: the engine computes `grossPaise = unitPaise x qty`
+ * (modules/tariff/pricing.ts), so no priced line can ever carry the Fixture Book's B-06 line —
+ * gross 10000 at qty 3 — because 10000 is not divisible by 3. B-06 is the plan's fully worked
+ * cumulative partial refund and T7's tests must land its numbers as ROWS, so the stored line is
+ * shaped here. That is also the strongest possible fixture for D4's actual rule: a credit note
+ * derives its shares from the STORED line and never re-prices, so a line the engine could not have
+ * produced is exactly what proves nothing is being re-derived. Every other billing fixture keeps
+ * going through `issueInvoice`; the T4 precedent (tests shaping rows against T1's schema) is the
+ * house convention this follows.
+ *
+ * `unitPaise` is stored as given and is NOT reconciled with `grossPaise` — for B-06 they cannot
+ * agree, and that disagreement is the whole point above.
+ */
+export async function shapeInvoiceWithLine(
+  db: Db,
+  input: { patientId: string; tariffVersionId: string; issuedBy?: string; at: Date; line: ShapedInvoiceLine },
+): Promise<{
+  invoiceId: string; invoiceNo: string; lineId: string;
+  lineNetPaise: number; rawTotalPaise: number; netPayablePaise: number; roundingPaise: number;
+}> {
+  const cfg = await loadBillingConfig(db);
+  const { line } = input;
+  const lineNetPaise = line.taxableBasePaise + line.cgstPaise + line.sgstPaise;
+  const { roundedPaise, roundingPaise } = roundTotalToRupee(lineNetPaise);
+  const invoiceId = newId();
+  const lineId = newId();
+
+  const invoiceNo = await withTx(db, async (tx) => {
+    const allocated = await nextDocNo(tx, cfg, "invoice", input.at);
+    await tx.insert(invoices).values({
+      id: invoiceId,
+      invoiceNo: allocated,
+      patientId: input.patientId,
+      encounterId: null,
+      tariffVersionId: input.tariffVersionId,
+      intendedPayer: "self",
+      buyerGstin: null,
+      buyerLegalName: null,
+      grossPaise: line.grossPaise,
+      discountPaise: line.discountPaise,
+      taxableBasePaise: line.taxableBasePaise,
+      cgstPaise: line.cgstPaise,
+      sgstPaise: line.sgstPaise,
+      rawTotalPaise: lineNetPaise,
+      roundingPaise,
+      netPayablePaise: roundedPaise,
+      creditExtended: false,
+      creditReason: null,
+      creditApprovalId: null,
+      issuedBy: input.issuedBy ?? "shaped",
+      issuedAt: input.at,
+      serviceDay: istDay(input.at),
+    });
+    await tx.insert(invoiceLines).values({
+      id: lineId,
+      invoiceId,
+      lineNo: 1,
+      serviceId: line.serviceId,
+      serviceName: line.serviceName ?? "Shaped service",
+      category: line.category ?? "pharmacy",
+      qty: line.qty,
+      unitPaise: line.unitPaise,
+      grossPaise: line.grossPaise,
+      regulatedClamp: null,
+      candidates: [],
+      winner: null,
+      discountPaise: line.discountPaise,
+      taxableBasePaise: line.taxableBasePaise,
+      sacCode: line.sacCode ?? "3004",
+      rateBps: line.rateBps ?? 1200,
+      exempt: line.exempt ?? false,
+      exemptReason: null,
+      cgstPaise: line.cgstPaise,
+      sgstPaise: line.sgstPaise,
+      netPaise: lineNetPaise,
+    });
+    return allocated;
+  });
+
+  return {
+    invoiceId,
+    invoiceNo,
+    lineId,
+    lineNetPaise,
+    rawTotalPaise: lineNetPaise,
+    netPayablePaise: roundedPaise,
+    roundingPaise,
+  };
 }
