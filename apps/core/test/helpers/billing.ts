@@ -3,7 +3,7 @@ import type { Actor } from "@hmis/contracts";
 import { billingConfig, roles } from "../../src/kernel/db/schema";
 import { createUser } from "../../src/kernel/auth/identity";
 import { createSession } from "../../src/kernel/auth/sessions";
-import { assignRole } from "../../src/kernel/auth/permissions";
+import { assignRole, grantPermissionToRole, syncPermissions } from "../../src/kernel/auth/permissions";
 import { seedSodPairs } from "../../src/kernel/auth/sod";
 import { approveRequest } from "../../src/kernel/approvals/decisions";
 import { registerApprovalType } from "../../src/kernel/approvals/types";
@@ -11,13 +11,14 @@ import { approvalFlowDefinition } from "../../src/kernel/approvals/flow";
 import { activateDefinition, createDraft } from "../../src/kernel/workflow/definitions";
 import { loadConfig } from "../../src/kernel/config";
 import { withTx } from "../../src/kernel/db/client";
+import { ModuleRegistry } from "../../src/kernel/modules/loader";
 import {
   activateVersion, createDraftVersion, createService, setTariffItem, submitVersion,
   TARIFF_REVISION_APPROVAL_TYPE, upsertAdjustmentRule, upsertGstCategory, upsertGstSettings,
 } from "../../src/modules/tariff";
 import { registerBillingApprovalTypes } from "../../src/modules/billing/approval-types";
 import { openSession } from "../../src/modules/billing/sessions";
-import { issueInvoice, previewInvoice } from "../../src/modules/billing/invoices";
+import { CREDIT_EXTEND_PERMISSION, issueInvoice, previewInvoice } from "../../src/modules/billing/invoices";
 import type { Db } from "../../src/kernel/db/client";
 import type { IssueInvoiceResult } from "../../src/modules/billing/invoices";
 
@@ -196,5 +197,42 @@ export async function issuePaidInvoice(
     encounterId: input.encounterId,
     lines,
     receipt: { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] },
+  });
+}
+
+/**
+ * Grants `billing.credit.extend` to a role through the kernel's own registry-checked path (never a
+ * raw role_permissions insert). T11's manifest is what declares the permission in production, so a
+ * one-permission registry stands in for it until then. Every dues fixture needs it: an invoice can
+ * only be left unsettled through D2's credit lane.
+ */
+export async function grantCreditExtend(db: Db, roleKey = "cashier"): Promise<void> {
+  const registry = new ModuleRegistry();
+  registry.install({
+    key: "billing", title: "Billing", menu: [], permissions: [CREDIT_EXTEND_PERMISSION], subscriptions: [],
+  });
+  await syncPermissions(db, registry);
+  await grantPermissionToRole(db, registry, roleKey, CREDIT_EXTEND_PERMISSION);
+}
+
+/**
+ * An invoice left carrying DUES - the fixture T6's ledger tests start from. The cashier must
+ * already hold `billing.credit.extend` (`grantCreditExtend`), and an open session too whenever a
+ * part payment is taken: an unsettled invoice can ONLY be persisted through D2's credit lane, so
+ * the dues this ledger clears are always credit-extended dues.
+ */
+export async function issueDuesInvoice(
+  db: Db,
+  cashier: { id: string; actor: Actor },
+  input: { patientId: string; serviceId: string; qty?: number; receiptPaise?: number; encounterId?: string },
+): Promise<IssueInvoiceResult> {
+  const receiptPaise = input.receiptPaise ?? 0;
+  return issueInvoice(db, cashier.actor, {
+    draftId: newId(),
+    patientId: input.patientId,
+    encounterId: input.encounterId,
+    lines: [{ lineId: newId(), serviceId: input.serviceId, qty: input.qty ?? 1 }],
+    receipt: receiptPaise > 0 ? { tenders: [{ mode: "cash", amountPaise: receiptPaise }] } : undefined,
+    credit: { reason: "fixture: the patient settles at the dues counter" },
   });
 }
