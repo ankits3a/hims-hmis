@@ -185,7 +185,7 @@ describe("the daily close: claim, day book, orphan scan and GSTR-1 (D9, §11.11)
     const advancer = await mkTestPatient("Day Book Advancer");
     const voided = await mkTestPatient("Day Book Voided");
 
-    await issuePaidInvoice(db, cashier, { patientId: payer, serviceId: base.genericServiceId }); // cash 56000
+    await issuePaidInvoice(db, cashier, { patientId: payer, serviceId: base.genericServiceId }, NOW); // cash 56000
     await recordReceipt(db, cashier.actor, {
       patientId: advancer,
       tenders: [
@@ -214,7 +214,7 @@ describe("the daily close: claim, day book, orphan scan and GSTR-1 (D9, §11.11)
     const manager = await mkBillingManager(db, "close_manager");
     const patientId = await mkTestPatient("Refunded Patient");
 
-    const invoice = await issuePaidInvoice(db, cashier, { patientId, serviceId: base.genericServiceId });
+    const invoice = await issuePaidInvoice(db, cashier, { patientId, serviceId: base.genericServiceId }, NOW);
     const line = (await getInvoice(db, invoice.invoiceId))!.lines[0]!;
     const creditNote = await issueCreditNote(db, cashier.actor, {
       kind: "refund", invoiceId: invoice.invoiceId, reason: "goods returned unused",

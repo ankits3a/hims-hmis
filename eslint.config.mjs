@@ -2,7 +2,12 @@ import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/drizzle/**", "**/node_modules/**"] },
+  // `docs/**` is documentation and pipeline tooling, not application source. The pipeline
+  // compilers/pre-flights under docs/superpowers/pipelines are plain CommonJS `.js` scripts run
+  // by `node` directly (the repo root package.json declares no `"type": "module"`), so the
+  // TypeScript-oriented recommended rules flag `require()` in files where `import` would not even
+  // execute. Ignore the tree rather than rewrite the tooling into a module system it does not use.
+  { ignores: ["**/dist/**", "**/drizzle/**", "**/node_modules/**", "docs/**"] },
   ...tseslint.configs.recommended,
   {
     files: ["apps/core/src/modules/**/*.ts"],

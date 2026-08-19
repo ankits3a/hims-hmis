@@ -201,16 +201,17 @@ export async function issuePaidInvoice(
   db: Db,
   cashier: { id: string; actor: Actor },
   input: { patientId: string; serviceId: string; qty?: number; encounterId?: string },
+  now: Date = new Date(),
 ): Promise<IssueInvoiceResult> {
   const lines = [{ lineId: newId(), serviceId: input.serviceId, qty: input.qty ?? 1 }];
-  const preview = await previewInvoice(db, { encounterId: input.encounterId, lines });
+  const preview = await previewInvoice(db, { encounterId: input.encounterId, lines }, now);
   return issueInvoice(db, cashier.actor, {
     draftId: newId(),
     patientId: input.patientId,
     encounterId: input.encounterId,
     lines,
     receipt: { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] },
-  });
+  }, now);
 }
 
 /**
@@ -224,16 +225,17 @@ export async function issuePaidInvoiceByTender(
   db: Db,
   cashier: { id: string; actor: Actor },
   input: { patientId: string; serviceId: string; mode: "upi" | "card"; refText: string; qty?: number; encounterId?: string },
+  now: Date = new Date(),
 ): Promise<IssueInvoiceResult> {
   const lines = [{ lineId: newId(), serviceId: input.serviceId, qty: input.qty ?? 1 }];
-  const preview = await previewInvoice(db, { encounterId: input.encounterId, lines });
+  const preview = await previewInvoice(db, { encounterId: input.encounterId, lines }, now);
   return issueInvoice(db, cashier.actor, {
     draftId: newId(),
     patientId: input.patientId,
     encounterId: input.encounterId,
     lines,
     receipt: { tenders: [{ mode: input.mode, amountPaise: preview.totals.netPayablePaise, refText: input.refText }] },
-  });
+  }, now);
 }
 
 /**
