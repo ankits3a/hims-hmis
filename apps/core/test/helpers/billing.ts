@@ -171,6 +171,16 @@ export async function mkCashier(db: Db, username: string): Promise<{ id: string;
 }
 
 /**
+ * A user holding `billing_manager` — the approver role on ALL FIVE billing approval types
+ * (approval-types.ts). Every module lane that is approval-gated needs one, and it must be a
+ * DIFFERENT user from the requester: the kernel's seeded `requester_approver` SoD pair refuses a
+ * self-decision, which is the structural half of the variance (D9) and refund (D6) guards.
+ */
+export async function mkBillingManager(db: Db, username: string): Promise<{ id: string; token: string; actor: Actor }> {
+  return mkUser(db, username, ["billing_manager"]);
+}
+
+/**
  * REAL as of T4 (this function no longer shapes the row directly — it calls the shipped
  * `openSession`, the ACTING cashier's own open session, D9). The signature is unchanged from
  * T3's placeholder, so every caller (T5-T8's fixtures) needs no changes.
