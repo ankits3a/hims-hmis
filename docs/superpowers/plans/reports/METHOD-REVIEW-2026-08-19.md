@@ -185,3 +185,108 @@ tasks land near **2.6M** instead of ~4.4M.
 The honest risk: a task mis-labelled ROUTINE ships a weaker test. The mitigation is that the
 label is set by the plan author before any code exists, and the per-pipeline discovery
 reviewer reads every commit regardless of label.
+
+---
+
+# Addendum — three owner questions, measured
+
+## 8. Is sonnet's work rejected often enough to drop it? **No.**
+
+Per-task tier and attempt counts, from each plan's own gate-report table:
+
+| plan | sonnet tasks | sonnet retried | opus tasks | opus retried |
+|---|---|---|---|---|
+| 05 | 9 | 2 (T10, T13) | 7 | 1 (**T6, three attempts**) |
+| 06 | 8 | 1 (T4) | 2 | 0 |
+| 06.1 | 5 | 0 | 2 | 0 |
+| 06.2 | 4 | 0 | 2 | 1 (T2) |
+| 07 | 6 | 2 (T14, T16) | 11 | 1 (T10) |
+| 08 A | 2 | 0 | 4 | 0 |
+| **total** | **34** | **5 → 15%** | **28** | **3 → 11%** |
+
+Sonnet is rejected **15%** of the time against opus's **11%** — four points apart, not "most of
+the time". The single worst task in the whole series (Plan 05 T6, three attempts) was **opus**.
+And sonnet tasks cost less: Plan 06.1/06.2 per-task totals run 165k–266k on sonnet against
+181k–368k on opus. Including retry risk, sonnet is still the cheaper expected cost.
+
+**But the rejections are not randomly distributed.** All five sonnet rejections were the same
+kind of failure: *the test did not discriminate*. Plan 05 T13 (§3.14c — implicit form submit
+produced the observable), Plan 07 T14 (§3.32 — the harness flattened the status code, and
+§3.33 — a vacuous absence assertion), Plan 07 T16 (fixture discipline). None was "sonnet wrote
+bad code"; every one was "sonnet did not see that the assertion had no teeth".
+
+**Ruling: keep sonnet, and route by the KIND of judgement a task needs rather than by size.**
+Opus for anything whose correctness rests on proving a test discriminates — fixture design,
+mutants, races, absence assertions. Sonnet for everything else, including most implementation.
+Plan 07 violated this by putting T14 and T16 (both fixture-discrimination tasks) on sonnet, and
+paid for both.
+
+## 9. Are agents using claude-mem to save tokens? **No — and it is costing us.**
+
+Measured across all 12 pipeline agents in Plan 08 pipeline A: **zero MCP tool calls of any
+kind.** Not one `mcp__plugin_claude-mem_*` call, not one call to any other MCP server.
+
+What every agent *does* carry: two attachment records totalling ~44 KB (~11k tokens) listing
+**248 distinct MCP tool names** across claude-mem, n8n, hetzner, github, composio and
+claude-in-chrome. Twelve agents × ~11k ≈ **132k tokens per pipeline (~5.4%) of roster nobody
+reads.**
+
+**And making agents use claude-mem would not help.** It stores main-session narrative
+observations ("Plan 06 post-ship audit: 4 critical findings"). A coder implementing T5 gains
+nothing from that; it would add search round-trips to fetch context the brief already contains.
+Memory earns its keep for the main session across sessions, not for an agent inside one task.
+
+**Ruling: strip the MCP roster from pipeline agents** (a restricted-tool agent type), and do not
+wire claude-mem into them. Free 132k per pipeline.
+
+## 10. Would `/ultracode` help? **No — keep it off for compile and execute.**
+
+Ultracode's contract is explicit: when it is on, author and run a workflow for *every*
+substantive task by default, and **"token cost is not a constraint"**, leaning toward
+orchestrating with workflows and adversarially verifying. That is a maximise-thoroughness mode.
+
+We already run a bespoke sequential pipeline with an adversarial reviewer. Ultracode would layer
+workflow orchestration on top of workflow orchestration and remove the cost ceiling — the exact
+opposite of this review's goal.
+
+The one place it could earn its keep is a **one-off pre-plan audit**, and even there the targeted
+~50k spike in §5.1 is cheaper and better aimed. **Ruling: keep it disabled.**
+
+## 11. The finding that outranks all three: the SSH tax
+
+Coders are 67% of the pipeline. Measured across the three largest coder agents (318 Bash calls):
+
+| category | calls |
+|---|---|
+| **SSH round-trips that are neither test nor git** | **234** |
+| jest / test runs | 39 |
+| git | 37 |
+| pnpm verify | 8 |
+
+Of those 234, the identifiable ones are **65 grep, 48 file read, 13 list/count** — about **42
+pure code-navigation round-trips per agent**, median command length 122 characters. Native
+`Read`/`Grep`/`Edit` were used **30 times total across the same three agents**.
+
+The cause is structural, not agent behaviour: the build host is remote and tripwires 2 and 13
+forbid the local checkout and POSIX paths in `Write`/`Edit`, so *every* file read, grep and
+write becomes a one-command-at-a-time SSH call whose command and full output land in context.
+We are paying a remote round-trip to read a file the agent could have read natively.
+
+**Fix, and it is the single biggest lever in this review:** have each task open by copying the
+repo to a local scratch mirror in ONE operation, then use native `Read`/`Grep` for all
+navigation, and SSH only for **writes, migrations, tests and git**. One round trip replaces
+~42. Tripwire 2 stays intact — the mirror is scratch, not the owner's checkout, and nothing is
+written or git-operated there.
+
+## 12. Revised expectation
+
+| lever | saving per 6-task pipeline |
+|---|---|
+| local-mirror navigation instead of SSH round-trips (§11) | ~15–25% of coder cost |
+| gate split: mechanical check + one discovery reviewer per pipeline (§5.3) | ~0.55M |
+| mutants only on CRITICAL tasks (§5.2) | ~0.15M |
+| strip the unused MCP roster (§9) | ~0.13M |
+| drop per-task count reconciliation (§5.4) | small, plus fewer gate findings spent on it |
+
+Combined estimate: **2.45M → ~1.3–1.5M per 6-task pipeline**, with CRITICAL-path verification
+untouched. Sonnet stays. Ultracode stays off. claude-mem stays out of the agents.
