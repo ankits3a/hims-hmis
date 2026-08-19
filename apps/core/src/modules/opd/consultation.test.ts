@@ -2,10 +2,11 @@ import { and, eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { events, opdConfig, opdQueueEntries, workflowInstances } from "../../kernel/db/schema";
-import { completeConsultation, saveConsultNote, startConsultation } from "./consultation";
+import { completeConsultation, registerConsultStartGuard, saveConsultNote, startConsultation } from "./consultation";
 import { getEncounter, openVisit, reEnterVisit, transferQueue } from "./encounters";
 import { callNext } from "./queue";
 import { recordVitals } from "./vitals";
+import type { ConsultStartGuard } from "./consultation";
 import type { EncounterRow } from "./encounters";
 import type { Db } from "../../kernel/db/client";
 
@@ -231,6 +232,88 @@ describe("opd consultation (start / note / complete, the follow-up window and th
     const r = await startConsultation(db, drb.actor, opened.encounter.id, MON);
     expect(r.encounter.status).toBe("in_consultation");
     expect(r.queueEntry.sessionId).toBe(out.toSessionId);
+  });
+
+  // ---------------------------------------------------------------------------------------------
+  // Plan 08 D8 — the pay-before-consult hook. OPD owns the registry and the thrown error; a guard
+  // returns only a VERDICT, so a billing failure can never surface here as a foreign error class
+  // (which would 500 instead of 409). Billing's own guard is tested in modules/billing/gate.test.ts.
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * The registry is module state shared by every testing module in one jest worker, so a guard a
+   * test leaks would refuse every OTHER suite's consult. Each test pushes its unregister here.
+   */
+  const registered: (() => void)[] = [];
+  afterEach(() => {
+    while (registered.length > 0) registered.pop()!();
+  });
+
+  /** open → vitals → call: an encounter parked in `waiting` with a called queue entry. */
+  async function calledVisit(at: Date = MON): Promise<Awaited<ReturnType<typeof openVisit>>> {
+    const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, at);
+    await recordVitals(db, vd.actor, opened.encounter.id, adultOk, at);
+    await callNext(db, dra.actor, opened.sessionId, at);
+    return opened;
+  }
+
+  it("D8 regression pin: with NO guard registered, start behaves exactly as shipped", async () => {
+    const opened = await calledVisit();
+    const r = await startConsultation(db, dra.actor, opened.encounter.id, MON);
+    expect(r.encounter.status).toBe("in_consultation");
+    expect(r.encounter.consultStartedAt).toEqual(MON);
+    expect(r.queueEntry.status).toBe("in_consult");
+    expect(r.queueEntry.calledAt).toEqual(MON);
+
+    const started = await eventsNamed("consultation.started");
+    expect(started).toHaveLength(1);
+    expect(started[0]!.encounterId).toBe(opened.encounter.id);
+    expect(started[0]!.patientId).toBe(patient.id);
+    expect(started[0]!.correlationId).toBe(opened.encounter.workflowInstanceId);
+    expect(started[0]!.payload).toEqual({
+      encounterId: opened.encounter.id, patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId,
+      serviceDate: "2026-08-17", sessionId: opened.sessionId, roomId, tokenNo: 1,
+    });
+  });
+
+  it("D8: a not-ok verdict throws consult_gate_refused carrying the guard's key, code and detail, and NOTHING moves", async () => {
+    const opened = await calledVisit();
+    const guard: ConsultStartGuard = async () => ({ ok: false, code: "fee_unsettled", detail: { y: 1 } });
+    registered.push(registerConsultStartGuard("test_gate", guard));
+
+    await expect(startConsultation(db, dra.actor, opened.encounter.id, MON)).rejects.toMatchObject({
+      code: "consult_gate_refused",
+      detail: { guard: "test_gate", code: "fee_unsettled", detail: { y: 1 } },
+    });
+
+    const after = (await getEncounter(db, opened.encounter.id))!;
+    expect(after.status).toBe("waiting");
+    expect(after.consultStartedAt).toBeNull();
+    expect(await eventsNamed("consultation.started")).toHaveLength(0);
+    const entries = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, opened.encounter.id));
+    expect(entries.map((e) => e.status)).toEqual(["called"]);
+  });
+
+  it("D8: the registry is KEYED — re-registering one key REPLACES (never doubles), and unregister restores pass-through", async () => {
+    const calls: string[] = [];
+    const first: ConsultStartGuard = async () => { calls.push("first"); return { ok: false, code: "first" }; };
+    const second: ConsultStartGuard = async () => { calls.push("second"); return { ok: false, code: "second" }; };
+    registered.push(registerConsultStartGuard("dup", first));
+    const unregisterSecond = registerConsultStartGuard("dup", second);
+    registered.push(unregisterSecond);
+
+    const opened = await calledVisit();
+    await expect(startConsultation(db, dra.actor, opened.encounter.id, MON)).rejects.toMatchObject({
+      code: "consult_gate_refused",
+      detail: { guard: "dup", code: "second" },
+    });
+    // ONE guard ran, and it was the replacement: an array-backed registry would have run both.
+    expect(calls).toEqual(["second"]);
+
+    unregisterSecond();
+    const r = await startConsultation(db, dra.actor, opened.encounter.id, MON);
+    expect(r.encounter.status).toBe("in_consultation");
+    expect(calls).toEqual(["second"]); // the replaced guard is gone too — one key, one entry
   });
 
   it("two concurrent completions: one winner, ONE mapped loser code, one event and one done entry", async () => {

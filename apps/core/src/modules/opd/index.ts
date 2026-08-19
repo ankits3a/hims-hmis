@@ -9,6 +9,8 @@ export { OpdError } from "./errors";
 export type { OpdErrorCode } from "./errors";
 export { OPD_VISIT_DEF_KEY, OPD_VISIT_DEFINITION_JSON, OPD_VISIT_STATES, opdVisitDefinition } from "./workflow-def";
 export type { OpdVisitState } from "./workflow-def";
+export { registerConsultStartGuard } from "./consultation";
+export type { ConsultStartGuard } from "./consultation";
 export { getEncounter, getVisit, listVisits, patientTimeline } from "./encounters";
 export type { EncounterRow, QueueEntryRow, TimelineItem } from "./encounters";
 export { classifyVisit } from "./visit-type";

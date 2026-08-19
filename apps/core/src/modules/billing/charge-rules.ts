@@ -1,0 +1,73 @@
+import { getEncounter } from "../opd";
+import { loadBillingConfig } from "./config";
+import { BillingError } from "./errors";
+import { previewInvoice } from "./invoices";
+import type { ChargeRules } from "./config";
+import type { PricedDraft } from "./invoices";
+import type { EncounterRow } from "../opd";
+import type { Db } from "../../kernel/db/client";
+
+/**
+ * Plan 08 D8 — the OPD fee branch. `billing_config.charge_rules` is DATA (D-17), validated
+ * against `services` by `validate:billing` (config.ts), so which service a visit is charged for
+ * is never a constant in code.
+ *
+ * `refunds.ts` (T8) carries a private copy of this branch because its own task could not create
+ * this file; this is the canonical one, and it is the one the gate and the daily close read.
+ */
+
+/** The preview's line id — nothing is persisted, so a stable id keeps a quote deterministic. */
+export const FEE_LINE_ID = "fee";
+
+/**
+ * The service a visit's consultation fee is charged against, or `null` when the visit is FREE.
+ *
+ * `revisit` is free (spec:224, Plan 07's owner decision): the null is the free branch, not a
+ * missing mapping, which is why the gate treats it as "nothing to collect" rather than as an
+ * error. A visit type outside the three OPD ships has no rule to apply at all.
+ */
+export function feeServiceFor(encounter: EncounterRow, rules: ChargeRules): string | null {
+  switch (encounter.visitType) {
+    case "revisit":
+      return null;
+    case "new":
+      return rules.opdConsult.new;
+    case "renewal":
+      return rules.opdConsult.renewal;
+    default:
+      throw new BillingError(
+        "fee_not_applicable",
+        `no charge rule for visit type "${encounter.visitType}"`,
+        { encounterId: encounter.id, visitType: encounter.visitType },
+      );
+  }
+}
+
+export type FeeQuote = {
+  encounterId: string;
+  visitType: string;
+  free: boolean; // the revisit branch — no fee service, no draft
+  feeServiceId: string | null;
+  draft: PricedDraft | null;
+};
+
+/**
+ * The counter screen's one-keystroke flow (D8): the branch plus a fee line priced exactly as
+ * `issueInvoice` would price it, and NOTHING persisted — `previewInvoice` is the shared core, so
+ * a quote and the invoice that follows it can never disagree about the money.
+ */
+export async function feeQuote(db: Db, encounterId: string, now: Date = new Date()): Promise<FeeQuote> {
+  const encounter = await getEncounter(db, encounterId);
+  if (!encounter) throw new BillingError("unknown_encounter", `unknown encounter ${encounterId}`);
+  const cfg = await loadBillingConfig(db);
+  const feeServiceId = feeServiceFor(encounter, cfg.chargeRules);
+  if (feeServiceId === null) {
+    return { encounterId, visitType: encounter.visitType, free: true, feeServiceId: null, draft: null };
+  }
+  const draft = await previewInvoice(
+    db,
+    { encounterId, lines: [{ lineId: FEE_LINE_ID, serviceId: feeServiceId, qty: 1 }] },
+    now,
+  );
+  return { encounterId, visitType: encounter.visitType, free: false, feeServiceId, draft };
+}

@@ -8,7 +8,7 @@ export type OpdErrorCode =
   | "patient_not_found"
   | "invalid_slot" | "slot_taken" | "slot_in_past" | "doctor_on_leave" | "unknown_appointment"
   | "appointment_state_conflict" | "appointment_not_today"
-  | "unknown_encounter" | "encounter_state_conflict" | "unknown_session" | "session_closed" | "doctor_out"
+  | "unknown_encounter" | "encounter_state_conflict" | "consult_gate_refused" | "unknown_session" | "session_closed" | "doctor_out"
   | "call_conflict" | "unknown_queue_entry" | "queue_entry_state_conflict" | "invalid_transfer"
   | "invalid_vitals" | "vitals_incomplete"
   | "invalid_follow_up_days" | "extension_cap_reached" | "reason_required"

@@ -55,6 +55,28 @@ export async function requireTreatingDoctor(db: Db | Tx, actor: Actor, encounter
   return doctor;
 }
 
+/**
+ * Plan 08 D8 — the pay-before-consult hook, dependency-inverted so OPD never imports billing.
+ * A guard returns a VERDICT; this module owns the thrown error, so a billing failure inside an
+ * OPD route can never surface as anything but `consult_gate_refused` (a foreign error class here
+ * would 500). The registry is KEYED: re-registering under the same key REPLACES, which keeps it
+ * idempotent across the jest testing modules that share one worker — an array would double-register.
+ */
+export type ConsultStartGuard = (
+  db: Db | Tx,
+  encounter: EncounterRow,
+) => Promise<{ ok: true } | { ok: false; code: string; detail?: unknown }>;
+
+const consultStartGuards = new Map<string, ConsultStartGuard>();
+
+/** Registers (or replaces) the guard under `key` and returns the unregister function. */
+export function registerConsultStartGuard(key: string, guard: ConsultStartGuard): () => void {
+  consultStartGuards.set(key, guard);
+  return () => {
+    consultStartGuards.delete(key);
+  };
+}
+
 /** The encounter's newest queue entry (seq, never id — ledger §3.26) and its session's room: the doctor-day event fields. */
 async function entryWhere(tx: Tx, encounterId: string): Promise<{ sessionId: string; roomId: string | null; tokenNo: number }> {
   const entries = await tx
@@ -74,6 +96,17 @@ export async function startConsultation(
   const doctor = await requireTreatingDoctor(db, actor, current);
   if (current.status !== "waiting") {
     throw new OpdError("encounter_state_conflict", `a consultation starts from waiting, not ${current.status}`);
+  }
+  // D8: every registered guard is consulted BEFORE any write. No guard registered ⇒ shipped behaviour.
+  for (const [key, guard] of consultStartGuards) {
+    const verdict = await guard(db, current);
+    if (!verdict.ok) {
+      throw new OpdError(
+        "consult_gate_refused",
+        `consult start refused by ${key}: ${verdict.code}`,
+        { guard: key, code: verdict.code, detail: verdict.detail },
+      );
+    }
   }
   return withTx(db, async (tx) => {
     const encounter = await moveEncounter(tx, actor, current, "in_consultation", { consultStartedAt: now }, now);
