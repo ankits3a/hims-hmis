@@ -7,7 +7,7 @@ import { configureApp } from "../src/app.bootstrap";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { mkDoctor, mkUser, seedOpdBase, seedOpdMasters, activateOpdVisitDefinition } from "./helpers/opd";
 import { mkBillingManager, mkCashier, seedBillingBase } from "./helpers/billing";
-import { billingConfig, events } from "../src/kernel/db/schema";
+import { billingConfig, events, receipts, refundVouchers } from "../src/kernel/db/schema";
 import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { DEFAULT_LETTERHEAD } from "../src/modules/opd/config";
 import { authManifest } from "../src/kernel/auth/manifest";
@@ -353,6 +353,143 @@ describe("billing e2e", () => {
     expect(worklist.body.items[0].payeeName).toBe("Kavita Singh");
   });
 
+  /**
+   * THE RULE 114B DISCLOSURE. `GET /billing/receipts` is guarded by `billing.invoice.read`, which
+   * the README grants to EVERY CASHIER, and it answered `select().from(receipts)` — the raw row,
+   * `panNumber` and all — so one unfiltered GET enumerated every patient's PAN. The projection
+   * drops the number and derives `panCaptured` in its place, so the counter still sees WHETHER the
+   * 114B capture happened.
+   *
+   * THE FIXTURE CARRIES THE VALUE, and the table is read first to prove it (evidence discipline 6):
+   * an absence assertion over a fixture that never stored a PAN would prove nothing.
+   */
+  it("receipts list: the stored 114B PAN never reaches the wire, panCaptured does, and the screens' fields survive", async () => {
+    const withPan = await registerPatient("Suman Lata", "9876543220");
+    const withoutPan = await registerPatient("Rekha Devi", "9876543221");
+    await openSession(cashier.token);
+
+    // ₹60,000 cash — ABOVE the D-17 PAN threshold (5_000_000p) and below both the warn
+    // (15_000_000p) and block (20_000_000p) thresholds, so this is the real §139A capture path and
+    // not a PAN handed over for no reason.
+    const panReceipt = await http().post("/billing/receipts").set(...auth(cashier.token)).send({
+      patientId: withPan, tenders: [{ mode: "cash", amountPaise: 6_000_000 }], panNumber: "ABCDE1234F",
+    }).expect(201);
+    const plainReceipt = await http().post("/billing/receipts").set(...auth(cashier.token)).send({
+      patientId: withoutPan, tenders: [{ mode: "cash", amountPaise: 50_000 }], note: "advance",
+    }).expect(201);
+
+    // `receipts.pan_number` is the column that would put the PAN on the wire: populated for one
+    // fixture row, null for the other.
+    const stored = await db.select({ id: receipts.id, panNumber: receipts.panNumber }).from(receipts);
+    expect(stored.find((r) => r.id === panReceipt.body.receiptId)?.panNumber).toBe("ABCDE1234F");
+    expect(stored.find((r) => r.id === plainReceipt.body.receiptId)?.panNumber).toBeNull();
+
+    const list = await http().get("/billing/receipts").set(...auth(cashier.token)).expect(200);
+    expect(list.body.items).toHaveLength(2);
+
+    // ABSENT FROM THE PARSED BODY — the KEY is gone, not merely a rendered string that omits it.
+    for (const item of list.body.items as Record<string, unknown>[]) {
+      expect(Object.keys(item)).not.toContain("panNumber");
+      expect("panNumber" in item).toBe(false);
+    }
+    expect(JSON.stringify(list.body)).not.toContain("ABCDE1234F"); // belt: nowhere in the payload
+
+    // Arrival order is `seq` DESC, never the id (§3.26) — newest first, unchanged by the rewrite.
+    const [newest, oldest] = list.body.items as [Record<string, unknown>, Record<string, unknown>];
+    expect(newest.id).toBe(plainReceipt.body.receiptId);
+    expect(oldest.id).toBe(panReceipt.body.receiptId);
+    expect(Number(newest.seq)).toBeGreaterThan(Number(oldest.seq));
+
+    // THE 114B SIGNAL SURVIVES THE REDACTION, in BOTH directions.
+    expect(oldest.panCaptured).toBe(true);
+    expect(newest.panCaptured).toBe(false);
+
+    // NOT OVER-BROAD (§3.44): a projection that redacts more than the one sensitive datum breaks
+    // the four screens about to be built on this route, and no mutant would catch it.
+    expect(oldest.receiptNo).toMatch(/^RCP\/\d{2}-\d{2}\/\d{6}$/);
+    expect(oldest.totalPaise).toBe(6_000_000);
+    expect(oldest.patientId).toBe(withPan);
+    expect(oldest.receivedBy).toBe(cashier.id);
+    expect(typeof oldest.receivedAt).toBe("string");
+    expect(oldest.serviceDay).toBe(istDay(new Date()));
+    expect(oldest.degraded).toBe(false);
+    expect(oldest.form60).toBe(false);
+    expect(typeof oldest.cashierSessionId).toBe("string");
+    expect(newest.note).toBe("advance");
+
+    // The `patientId` filter survives the rewrite from `select()` to an explicit projection.
+    const filtered = await http().get("/billing/receipts").query({ patientId: withPan })
+      .set(...auth(cashier.token)).expect(200);
+    expect(filtered.body.items).toHaveLength(1);
+    expect(filtered.body.items[0].id).toBe(panReceipt.body.receiptId);
+    expect(filtered.body.items[0].panCaptured).toBe(true);
+    expect("panNumber" in filtered.body.items[0]).toBe(false);
+  });
+
+  /**
+   * The refund worklist's own disclosure: `payeeIdRef` is the identity-DOCUMENT reference captured
+   * when the money leaves. `payeeName` and `payeeIdType` STAY — a worklist must show who is being
+   * paid and against what kind of document; the reference is verified against the physical document
+   * at pay time, never read off a list.
+   */
+  it("refunds worklist: the payee identity REFERENCE never reaches the wire, the name and id TYPE do", async () => {
+    const patientId = await registerPatient("Anita Verma", "9876543222");
+    await openSession(cashier.token);
+    const { invoiceId, netPayablePaise } = await issuePaid(patientId, base.consultNewServiceId);
+
+    const detail = await http().get(`/billing/invoices/${invoiceId}`).set(...auth(cashier.token)).expect(200);
+    const note = await http().post(`/billing/invoices/${invoiceId}/credit-notes`).set(...auth(cashier.token))
+      .send({ kind: "refund", reason: "service not rendered", lines: [{ invoiceLineId: detail.body.lines[0].id, qty: 1 }] })
+      .expect(201);
+    const creditNoteId = note.body.creditNoteId as string;
+    const requested = await http().post("/billing/refunds/request").set(...auth(cashier.token)).send({
+      kind: "invoice_refund", creditNoteId, amountPaise: netPayablePaise,
+      reasonClass: "mistake", reason: "wrong service billed",
+    }).expect(201);
+    const approvalId = requested.body.approvalId as string;
+    await http().post(`/approvals/${approvalId}/approve`).set(...auth(manager.token))
+      .send({ note: "refund approved at the counter" }).expect(201);
+    const voucher = await http().post("/billing/refunds").set(...auth(cashier.token)).send({
+      kind: "invoice_refund", creditNoteId, amountPaise: netPayablePaise,
+      reasonClass: "mistake", reason: "wrong service billed", approvalId, method: "cash",
+    }).expect(201);
+    await http().post(`/billing/refunds/${voucher.body.voucherId}/pay`).set(...auth(cashier.token))
+      .send({ payeeName: "Anita Verma", payeeIdType: "aadhaar", payeeIdRef: "9911-2233-4455" }).expect(201);
+
+    // `refund_vouchers.payee_id_ref` is the column that would put the identity document on the
+    // wire, and the fixture carries it (evidence discipline 6).
+    const [storedVoucher] = await db
+      .select({ payeeIdRef: refundVouchers.payeeIdRef })
+      .from(refundVouchers).where(eq(refundVouchers.id, voucher.body.voucherId as string));
+    expect(storedVoucher?.payeeIdRef).toBe("9911-2233-4455");
+
+    const worklist = await http().get("/billing/refunds").set(...auth(cashier.token)).expect(200);
+    expect(worklist.body.items).toHaveLength(1);
+    const [row] = worklist.body.items as [Record<string, unknown>];
+    expect(Object.keys(row)).not.toContain("payeeIdRef");
+    expect("payeeIdRef" in row).toBe(false);
+    expect(JSON.stringify(worklist.body)).not.toContain("9911-2233-4455");
+
+    // NOT OVER-BROAD (§3.44): a worklist that cannot say who is paid, for how much, against what
+    // kind of document, is not a worklist.
+    expect(row.voucherNo).toMatch(/^RFV\/\d{2}-\d{2}\/\d{6}$/);
+    expect(row.amountPaise).toBe(netPayablePaise);
+    expect(row.status).toBe("paid");
+    expect(row.payeeName).toBe("Anita Verma");
+    expect(row.payeeIdType).toBe("aadhaar");
+    expect(row.patientId).toBe(patientId);
+    expect(row.id).toBe(voucher.body.voucherId);
+    expect(row.kind).toBe("invoice_refund");
+    expect(row.method).toBe("cash");
+    expect(row.reasonClass).toBe("mistake");
+    expect(row.approvalId).toBe(approvalId);
+    expect(Array.isArray(row.guardFlags)).toBe(true);
+    expect(row.paidBy).toBe(cashier.id);
+    expect(typeof row.issuedAt).toBe("string");
+    expect(typeof row.paidAt).toBe("string");
+    expect(Object.keys(row)).toContain("cashierSessionId");
+  });
+
   it("the session: variance close files the SoD approval, only the OWN cashier may confirm, and the list reads it back", async () => {
     const sessionId = await openSession(cashier.token, 200_000);
 
@@ -395,6 +532,62 @@ describe("billing e2e", () => {
       const res = await http()[method](path).set(...auth(rando.token)).send({});
       expect({ method, path, status: res.status }).toEqual({ method, path, status: 403 });
     }
+  });
+
+  /**
+   * §3.42 — THE ROUTE→PERMISSION MAP, ASSERTED. The sweep above drives all 31 routes with a user
+   * holding NO ROLES AT ALL, so a route decorated with any existing-but-WRONG permission answers
+   * 403 identically and passes; and every positive path in this file uses ONE cashier holding all
+   * fourteen billing permissions at once, which can never observe a wrong grant either. Between
+   * them the map is entirely unasserted — and it is the assertion that would have caught the raw
+   * `receipts` row (PAN included) sitting behind every-cashier `billing.invoice.read`.
+   *
+   * So: a SECOND actor holding a REAL, NON-EMPTY set. Both sets are the README's own "Recommended
+   * permission grants" split — its cashier column and its billing_manager column — carried on
+   * dedicated roles so no shipped fixture is disturbed. THE ROUTES BELOW COME FROM THE DECORATORS,
+   * not from the README: `POST /billing/receipts` is `billing.receipt.record` and `POST
+   * /billing/invoices` is `billing.invoice.issue` (counter column only); `GET /billing/refunds` is
+   * `billing.reports.read` and `GET /billing/sessions` is `billing.session.read` (office column
+   * only). Each refusal is checked by the PERMISSION IT NAMES — the kernel guard's `missing
+   * permission <x>` — so a route repointed at a different permission cannot answer the same 403.
+   */
+  it("the permission MAP: the counter set and the office set are each refused on the other's routes, by name", async () => {
+    const COUNTER_SET = [
+      "billing.invoice.issue", "billing.invoice.read", "billing.credit.extend",
+      "billing.receipt.record", "billing.credit_note.issue",
+      "billing.refund.request", "billing.refund.pay", "billing.session.own",
+    ];
+    const OFFICE_SET = [
+      "billing.invoice.read", "billing.allocation.reverse", "billing.session.read",
+      "billing.recon.upload", "billing.reports.read", "billing.config.write", "billing.eie.mark",
+    ];
+    const counter = await mkUser(db, "shaped_counter", ["shaped_counter_role"]);
+    const office = await mkUser(db, "shaped_office", ["shaped_office_role"]);
+    for (const p of COUNTER_SET) await grantPermissionToRole(db, registry, "shaped_counter_role", p);
+    for (const p of OFFICE_SET) await grantPermissionToRole(db, registry, "shaped_office_role", p);
+
+    const patientId = await registerPatient("Bela Ghosh", "9876543223");
+
+    // BOTH SETS ARE REAL AND NON-EMPTY — without this leg a role-less user would satisfy every
+    // refusal below, which is precisely what the sweep already does and why it proves nothing.
+    await openSession(counter.token);
+    await http().post("/billing/receipts").set(...auth(counter.token))
+      .send({ patientId, tenders: [{ mode: "cash", amountPaise: 50_000 }] }).expect(201);
+    const officeWorklist = await http().get("/billing/refunds").set(...auth(office.token)).expect(200);
+    expect(officeWorklist.body.items).toEqual([]);
+
+    // DIRECTION 1 — routes the counter set reaches and the office set must NOT.
+    const officeOnReceipts = await http().post("/billing/receipts").set(...auth(office.token))
+      .send({ patientId, tenders: [{ mode: "cash", amountPaise: 50_000 }] }).expect(403);
+    expect(officeOnReceipts.body.message).toBe("missing permission billing.receipt.record");
+    const officeOnIssue = await http().post("/billing/invoices").set(...auth(office.token)).send({}).expect(403);
+    expect(officeOnIssue.body.message).toBe("missing permission billing.invoice.issue");
+
+    // DIRECTION 2 — routes the office set reaches and the counter set must NOT.
+    const counterOnRefunds = await http().get("/billing/refunds").set(...auth(counter.token)).expect(403);
+    expect(counterOnRefunds.body.message).toBe("missing permission billing.reports.read");
+    const counterOnSessions = await http().get("/billing/sessions").set(...auth(counter.token)).expect(403);
+    expect(counterOnSessions.body.message).toBe("missing permission billing.session.read");
   });
 
   it("refusal bodies: the OPD convention, a fractional paise 400, a readable message, and a bad config patch is 400 not 500", async () => {

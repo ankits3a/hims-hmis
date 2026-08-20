@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpException, Inject, Param, Post, Put, Query } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
@@ -266,6 +266,33 @@ const configPatchBody = z
 const degradedBody = z.object({ on: z.boolean(), reason: z.string().min(1) });
 
 type ReceiptRowSelect = typeof receipts.$inferSelect;
+
+/**
+ * THE RECEIPTS LIST PROJECTION — a wire shape, not a table row.
+ *
+ * `receipts.panNumber` is the Rule 114B PAN captured above the cash threshold (C-2 §139A). The
+ * record is correct and legally required; what was wrong was returning it to every holder of
+ * `billing.invoice.read`, which the README grants to EVERY CASHIER — one unfiltered GET
+ * enumerated every patient's PAN. The number is dropped and replaced by the DERIVED
+ * `panCaptured`, so the counter still sees WHETHER the 114B capture happened without seeing the
+ * number itself. Every other column of the row is carried: the four pipeline-C screens read
+ * `receiptNo`, `totalPaise`, `receivedAt`, `serviceDay`, `degraded` and the `seq` order, and a
+ * projection that redacts more than the one sensitive datum is the next defect (§3.44).
+ *
+ * There is deliberately NO query flag that switches the number back on — that is the same
+ * exposure with an extra step. A caller that genuinely needs the stored PAN needs a
+ * single-record route with its own permission, which nothing asks for today.
+ */
+type ReceiptListRow = Omit<ReceiptRowSelect, "panNumber"> & { panCaptured: boolean };
+
+/**
+ * THE REFUND WORKLIST PROJECTION. `payeeIdRef` — the identity-DOCUMENT reference captured when
+ * the money leaves — is dropped. `payeeName` and `payeeIdType` stay: a refund worklist must show
+ * who is being paid and against what KIND of document, and the reference number is verified
+ * against the physical document at pay time, never read off a list.
+ */
+type RefundVoucherListRow = Omit<RefundVoucherRow, "payeeIdRef">;
+
 type InvoiceDetail = { invoice: InvoiceRow; lines: InvoiceLineRow[]; settlement: Settlement };
 type InvoicePrint = {
   letterhead: OpdConfig["letterhead"];
@@ -409,13 +436,36 @@ export class BillingController {
    * here — against this module's OWN table, which module isolation (spec §4) allows; what it
    * forbids is reading ANOTHER module's tables, and every patient name on this surface still comes
    * from `getPatientSummaries`. Arrival order is `seq`, never the id (§3.26).
+   *
+   * The select is EXPLICIT and never `select()`: see `ReceiptListRow`. `panCaptured` is derived in
+   * SQL so the PAN is not even read out of the database.
    */
   @RequirePermission("billing.invoice.read", "hospital")
   @Get("receipts")
-  async receiptList(@Query() query: unknown): Promise<{ items: ReceiptRowSelect[] }> {
+  async receiptList(@Query() query: unknown): Promise<{ items: ReceiptListRow[] }> {
     const q = parsed(receiptsQuery, query);
     const where = q.patientId === undefined ? undefined : eq(receipts.patientId, q.patientId);
-    return { items: await this.db.select().from(receipts).where(where).orderBy(desc(receipts.seq)) };
+    return {
+      items: await this.db
+        .select({
+          id: receipts.id,
+          receiptNo: receipts.receiptNo,
+          patientId: receipts.patientId,
+          cashierSessionId: receipts.cashierSessionId,
+          receivedBy: receipts.receivedBy,
+          receivedAt: receipts.receivedAt,
+          serviceDay: receipts.serviceDay,
+          totalPaise: receipts.totalPaise,
+          panCaptured: sql<boolean>`(${receipts.panNumber} is not null)`,
+          form60: receipts.form60,
+          degraded: receipts.degraded,
+          note: receipts.note,
+          seq: receipts.seq,
+        })
+        .from(receipts)
+        .where(where)
+        .orderBy(desc(receipts.seq)),
+    };
   }
 
   @RequirePermission("billing.receipt.record", "hospital")
@@ -518,7 +568,7 @@ export class BillingController {
    * `listCreditNotes` precedent). */
   @RequirePermission("billing.reports.read", "hospital")
   @Get("refunds")
-  async refundList(@Query() query: unknown): Promise<{ items: RefundVoucherRow[] }> {
+  async refundList(@Query() query: unknown): Promise<{ items: RefundVoucherListRow[] }> {
     const q = parsed(refundsQuery, query);
     const conditions = [];
     if (q.patientId !== undefined) conditions.push(eq(refundVouchers.patientId, q.patientId));
@@ -526,7 +576,29 @@ export class BillingController {
     const where = conditions.length > 0 ? and(...conditions) : undefined;
     return {
       items: await this.db
-        .select().from(refundVouchers).where(where)
+        .select({
+          id: refundVouchers.id,
+          voucherNo: refundVouchers.voucherNo,
+          patientId: refundVouchers.patientId,
+          kind: refundVouchers.kind,
+          creditNoteId: refundVouchers.creditNoteId,
+          invoiceId: refundVouchers.invoiceId,
+          amountPaise: refundVouchers.amountPaise,
+          method: refundVouchers.method,
+          payeeName: refundVouchers.payeeName,
+          payeeIdType: refundVouchers.payeeIdType,
+          reasonClass: refundVouchers.reasonClass,
+          reason: refundVouchers.reason,
+          guardFlags: refundVouchers.guardFlags,
+          approvalId: refundVouchers.approvalId,
+          status: refundVouchers.status,
+          requestedBy: refundVouchers.requestedBy,
+          issuedAt: refundVouchers.issuedAt,
+          paidBy: refundVouchers.paidBy,
+          paidAt: refundVouchers.paidAt,
+          cashierSessionId: refundVouchers.cashierSessionId,
+        })
+        .from(refundVouchers).where(where)
         .orderBy(desc(refundVouchers.issuedAt), desc(refundVouchers.voucherNo)),
     };
   }
