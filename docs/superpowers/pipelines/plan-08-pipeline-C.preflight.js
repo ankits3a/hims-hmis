@@ -142,6 +142,20 @@ run(stubAgent, stubParallel, (t) => phases.push(t), (m) => logs.push(m))
       coders.filter((c) => !/Design\s+context:/.test(c.prompt)).map((c) => c.label).join(" "));
     ok("AUDIT: T13 names the wedge lane's REAL home and warns it is not in D1-D10",
       coders.find((c) => c.label.endsWith(":t13")).prompt.indexOf("THE WEDGE LANE IS NOT IN D1-D10") !== -1);
+    ok("HARNESS: every brief carries the PROBED fake-timer pattern, not the wrong user-event advice",
+      coders.every((c) => c.prompt.indexOf("waitFor` CANNOT DRIVE VITEST'S FAKE TIMERS") !== -1 &&
+                          c.prompt.indexOf("advanceTimersByTimeAsync") !== -1 &&
+                          c.prompt.indexOf("already solve this") === -1));
+    ok("HARNESS: T13 is told to delete the setAttribute LINE, not the useEffect",
+      coders.find((c) => c.label.endsWith(":t13")).prompt
+        .indexOf("DELETE THE `setAttribute` LINE, NOT THE `useEffect`") !== -1);
+    ok("HARNESS: T13 must ADD the /-hotkey pin (nothing asserts it today)",
+      coders.find((c) => c.label.endsWith(":t13")).prompt
+        .indexOf("THE `/`-HOTKEY CONTRACT GAINS ITS FIRST ASSERTION") !== -1);
+    ok("T13's gate must rule on whether T14/T15/T16 can build on the shared components",
+      gates.find((g) => g.label.indexOf("t13") !== -1).prompt
+        .indexOf("THE SHARED SURFACE IS FIT FOR ITS THREE CONSUMERS") !== -1);
+
     ok("MUTANTS: every brief requires a CONTROL run and none prescribes three repetitions",
       coders.every((c) => c.prompt.indexOf("ONE KILL RUN AND ONE CONTROL RUN") !== -1 &&
                           c.prompt.indexOf("3 isolated runs each") === -1 &&
