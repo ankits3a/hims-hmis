@@ -178,7 +178,8 @@ run(stubAgent, stubParallel, (t) => phases.push(t), (m) => logs.push(m))
       t15: ["W-8 AND W-9 ARE PLAN 07's SURVIVING MUTANTS", "FIXTURE REORDER, not a rewrite",
             "byte-frozen", "W-7, W-8, W-9"],
       t16: ["K46 IS THE HEART OF THIS TASK", "INTENTIONALLY INCONSISTENT", "todayIst",
-            "THE PERMISSION MAP IS UNTESTED SERVER-SIDE", "W-10, W-11"],
+            "PERMISSION MAP IS CLOSED - DO NOT REPORT IT AS OPEN",
+            "must NOT be reported as one", "W-10, W-11"],
     };
     Object.keys(spot).forEach((id) => {
       const c = coders.find((x) => x.label.endsWith(":" + id));
