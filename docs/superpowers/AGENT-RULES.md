@@ -149,8 +149,18 @@ Violating any one of these fails the task regardless of code quality.
     is a reading and typing surface, not a build environment: there is no local Postgres, no
     local `node_modules`, and a result obtained locally would not be a result.
 
-    **(f) The mirror is scratch.** Delete it when the task ends. It is not the owner's
-    checkout (rule 2), it is never git-operated, and nothing is ever committed from it.
+    **(f) The mirror is scratch, and you do NOT delete it.** Put it in your session scratchpad
+    directory and leave it there: that directory is removed automatically when the job is
+    deleted, and **`rm -rf` is denied outright on this host** by a standing deny rule
+    (`Bash(rm -rf *)`) in the owner's settings. Every agent in Plan 08 pipeline B — and the main
+    session — hit that denial trying to honour the older wording of this clause, and each one
+    spent part of its report explaining a failure that was never its fault.
+
+    So: do not attempt to delete the mirror, and do not report its survival as an unfinished
+    step. It is not the owner's checkout (rule 2), it is never git-operated, and nothing is ever
+    committed from it, so it cannot contaminate anything. **Server-side scratch under
+    `/opt/hmis` is a different matter and you DO still delete it** — with plain `rm -f`, which is
+    permitted — before your final counts and before committing.
 
 ---
 
