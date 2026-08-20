@@ -93,6 +93,11 @@ evidence rather than hand-walks: two probes, one surviving mutant, and a re-deri
 
 ### 3.1 Money defects — both measured, both BLOCKING for pipeline C
 
+> **STATUS: BOTH FIXED, 2026-08-20, on the owner's order to close them before pipeline C compiles.**
+> `44c8b86` — the EIE guard and the session cash filter. `7769c4b` — the SECOND DOOR into (a),
+> found by `44c8b86`'s own gate. Both shipped CRITICAL-tier with mutants, measured races and an
+> independent gate; verify green at 118 suites / 750 tests. See section 6.
+
 **(a) `advanceOf` can go NEGATIVE, and the next real advance silently absorbs it.**
 `receipts.ts` + T8's vouchers + T11's `POST /billing/eie` route combine into a path nobody owns.
 Executed probe: bank a 10,000p cash advance → issue an approved advance-refund voucher for the
@@ -206,14 +211,19 @@ every new caller routes through the boundary belt.
 
 ## 4. Carried forward into pipeline C — put these in the briefs
 
-1. **BLOCKING before any dues/advance screen ships.** `advanceOf` can return negative and
-   `patientBalance` serves it verbatim. T14 must not render it as a credit. The brief must
-   decide the fix — floor at zero **and** refuse `markEnteredInError` on a receipt with live
-   advance-refund vouchers drawn against it (may need a new `BillingErrorCode`; that is a plan
-   decision). Do not leave it to the screen.
-2. **BLOCKING for T15 (cashier session screen).** `sumCashTendersPaise` has no EIE filter while
-   `dayBook` has one. The brief must state whether the screen reflects a fix or explicitly warns
-   the cashier.
+1. ~~**BLOCKING before any dues/advance screen ships.**~~ **FIXED — `44c8b86` + `7769c4b`** (see
+   section 6). What T14 must still carry: `eie_advance_refunded` and `allocation_exceeds_advance`
+   are **terminal refusals by design**. Once an advance-refund voucher has returned a receipt's
+   money, that receipt can never be marked entered-in-error and its money can never be allocated.
+   The screen must render both as a dead end with **no remedial action offered** — there is no
+   correction path, deliberately, because a paid voucher is cash that physically left the drawer
+   and cannot be un-paid. Both refusals answer 409 and carry
+   `{ askedPaise?, wouldBeAdvancePaise, refundedPaise }`.
+2. ~~**BLOCKING for T15 (cashier session screen).**~~ **FIXED — `44c8b86`.** `sumCashTendersPaise`
+   now excludes entered-in-error receipts and agrees with `dayBook`. Nothing for the screen to
+   warn about. Note the test that pins the agreement compares 0 to 0 (it discriminates the mutant,
+   but does not prove agreement on a NON-ZERO figure) — if T15 touches that surface, strengthen it
+   with a live cash receipt alongside the voided one.
 3. **Permission binding.** Each brief must assert, for the routes its screen calls, that a user
    holding the *other* role's README grants is refused. Start with `GET /billing/receipts`
    (raw `panNumber` under a cashier-visible permission) and `GET /billing/refunds` (raw payee
@@ -260,3 +270,87 @@ so was the main session; four mirrors remain under the job's tmp directory. They
 scratch, never git-operated, outside `/opt/hmis`, so no commit was contaminated — but rule 22(f)
 is currently unsatisfiable on this host, and briefs should say so rather than making every agent
 report the same denial.
+
+---
+
+## 6. The two money defects, fixed (2026-08-20)
+
+The owner ordered §3.1's two defects fixed before pipeline C compiles. Both went through the
+repo's own CRITICAL-tier discipline — mutants built as separate scratch files, measured races,
+fail-first quoted, an independent opus gate — because that is what the method demands of money
+arithmetic, and because the discovery review had already shown that hand-walking this code is how
+the defects got here.
+
+### 6.1 `44c8b86` — the EIE guard and the session cash filter
+
+`markEnteredInError` now refuses with a new `eie_advance_refunded` when the mark would drive the
+patient's advance below zero, under the same single ordered patient-wide receipt lock T8's advance
+lane takes. `sumCashTendersPaise` excludes entered-in-error receipts via an inline `NOT EXISTS`
+and now agrees with `dayBook`.
+
+**`advanceOf` was deliberately NOT floored**, against the discovery review's own recommendation.
+A floor is theatre: with `total(live)=0, refunded=10,000` it clamps −10,000 to 0, but the
+patient's next 100,000p advance then computes `100,000 − 10,000 = 90,000`, which is positive, so
+the floor never bites and **the absorption — the actual harm — survives untouched**. The guard
+carries the fix and the reader stays honest. The reasoning is in the source docstring, not only
+here.
+
+**The brief was wrong about the lock, and the coder corrected it with evidence.** The brief
+asserted the new patient-wide lock is what serializes the guard against the advance-refund lane.
+It is not: the receipt being marked is always inside that lane's lock set, so the shipped
+single-row `lockReceipt` already served that pair. The patient-wide statement is load-bearing
+against **two concurrent marks on two DIFFERENT receipts of one patient**, where each mark locks a
+different row and neither waits. The coder added that as a second race leg unprompted; under
+shipped code it failed — 2 marks fulfilled instead of 1, advance −10,000. The defect had a second
+manifestation the discovery review never reached.
+
+### 6.2 `7769c4b` — the second door, found by the gate
+
+**`44c8b86`'s gate went past its brief and reproduced the identical harm through a writer the
+Files list never named.** `allocateReceipt` guards two things — the invoice's outstanding and the
+receipt's unallocated remainder — and neither subtracts `advanceRefundedPaise`. Its probe, shipped
+writers only, against the already-fixed commit:
+
+```
+bank 50,000p advance -> approved advance-refund voucher for the full 50,000 (advance correctly 0)
+                    -> allocateReceipt that same receipt's 50,000 onto a dues invoice
+OBSERVED: { afterAllocate: -50000, nextAdvance: 50000, servedAdvancePaise: 50000 }
+```
+
+This mattered immediately: the plan's Task 13 step 1 item (5) is *"apply advance: POST
+/billing/receipts/:id/allocations from an EXISTING receipt row"* — pipeline C's first screen walks
+straight through that door.
+
+The follow-up added the same invariant at that door with a code of its own,
+`allocation_exceeds_advance` — deliberately **not** a reused `over_allocation`, because two
+mechanisms behind one signal is the non-discriminating-assertion class this project keeps finding
+late, and because a caller that cannot tell "this bill has no room" from "this money already went
+back to the patient" cannot tell the cashier what to do.
+
+**The third writer is safe by construction, and that was proven rather than assumed.**
+`issueInvoice`'s allocation (`invoices.ts:563`) applies a receipt `insertReceiptWithTenders`
+created in the SAME transaction, and `allocatedPaise = Math.min(receiptTotal, netPayable)`, so its
+net effect on the balance is `receiptTotal - allocated >= 0` — it can only RAISE an advance. That
+is a stronger statement than "a new receipt carries no voucher", and it is asserted on the hardest
+patient for it: one whose advance a voucher has already emptied to zero.
+
+### 6.3 Verification (main session, independent)
+
+| check | result |
+|---|---|
+| detached `pnpm verify` at `7769c4b`, exit VALUE from a file | **0** — apps/core 118/750, web 21/80, contracts 3/7 |
+| `git show --stat` on both commits vs their Files lists | exact; 5 paths then 3 paths |
+| frozen paths | none touched |
+| migrations | none — both fixes are queries |
+| `Math.max` floor anywhere in billing source | **none** (checked repo-wide, not just the diff) |
+| shipped tests rewritten to match the fix | **none** — the 23 pre-existing tests in the touched suites pass unedited |
+| CI | green at `44c8b86` |
+| the amend the second coder disclosed | `4f72e98` is contained in no remote branch — unpublished history only, rule 15 held |
+
+### 6.4 Nits recorded, not fixed
+
+- The docstring above `allocateReceipt` calls the new check "THE THIRD GUARD ... `markEnteredInError`'s
+  advance invariant at the OTHER door", which reads as though it describes the other function. The
+  meaning is right and the code is right; the sentence is not worth a verify cycle on its own.
+  Fold it into the next commit that touches the file.
+- The §3.1(b) agreement test compares 0 to 0 (see §4 item 2).
