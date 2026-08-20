@@ -308,3 +308,186 @@ patient name or UHID (§14); go-live runbook step 6 above covers deploying it to
 **Realtime pushes are hints.** Every OPD screen — the display board included — BOTH subscribes to
 its realtime topics AND polls its read model every 15 s (`refetchInterval: 15_000`); a missed or
 delayed WebSocket frame costs a screen seconds of staleness, never correctness.
+
+## Billing module (Plan 08)
+
+The fourth domain module: `apps/core/src/modules/billing/` owns the money spine — invoices,
+credit notes, the receipts+allocations ledger, cashier sessions, refund vouchers, tender
+reconciliation and the daily close. Other modules import ONLY from `modules/billing/index` (or
+consume its events); billing itself reads no OPD, patient or tariff table directly — every
+cross-module read goes through `modules/opd/index`, `modules/patients/index` or
+`modules/tariff/index`.
+
+**The ledger, in three sentences.** Money in is one instrument: append-only `receipts` (mixed
+cash/UPI/card tenders) and append-only `allocations` (receipt → invoice, `apply` or `reverse`) —
+nothing in the ledger is ever updated or deleted, and a `receipts` row with nothing allocated
+against it IS a patient advance. Settlement (`unpaid|partial|settled`) is DERIVED —
+`netPayable − credited (live credit notes) − allocated`, floored at zero — never a stored status
+column, which is what keeps the six-table immutability below total. Partial settlement is
+first-class, not an edge case: dues and advances are the SAME mechanism, clearing dues needs no
+special permission because taking money is always safe, and the two acts this module actually
+gates are issuing an invoice UNSETTLED (`billing.credit.extend`, capped, approval above cap) and
+shrinking a receivable (`billing.credit_note.issue` with its own cap/approval, or a
+`billing.refund.*` voucher, approval-gated always).
+
+**Structural immutability.** `invoices`, `invoice_lines`, `credit_notes`, `credit_note_lines`,
+`receipts` and `allocations` carry a `BEFORE UPDATE OR DELETE` trigger that raises — six tables,
+proven by migration (0012), not by convention. The module's mutable surface is exhaustively:
+`receipt_tenders` (the E-25 lifecycle state), `refund_vouchers` (`issued → paid`),
+`cashier_sessions` (`open → closing → closed`), `document_series.next_no`, `billing_config`, and
+the `daily_closes` claim row. Every document series is per-fiscal-year and row-locked
+(`INV/26-27/000001`), and every threshold below is `billing_config` DATA a CA reviews — never a
+code constant.
+
+**Events** (all `module: "billing"`, exactly twenty names): `invoice.issued` ·
+`invoice.credit_extended` · `receipt.recorded` · `payment.received` · `advance.received` ·
+`allocation.reversed` · `credit_note.issued` · `refund_voucher.issued` · `payment.refunded` ·
+`cashier_session.opened` · `cashier_session.closed` · `variance.flagged` ·
+`cash_threshold.warned` · `cash_threshold.blocked` · `tender.reconciled` · `tender.mismatched` ·
+`degraded_mode.changed` · `document.entered_in_error` · `charge.orphan_flagged` · `day.closed`.
+The dispatcher stays unscheduled until Plan 11; billing screens (Plan 08 pipeline C) poll rather
+than subscribe — there are no billing realtime topics yet.
+
+**The pay-before-consult gate.** `modules/opd/consultation.ts` carries a keyed guard registry
+(`registerConsultStartGuard`, dependency-inverted so OPD ships with zero billing import); billing's
+`OnModuleInit` registers `billing_fee_gate` against it. A `new`/`renewal` visit with no
+settled-or-credit-extended fee invoice refuses `startConsultation` with `OpdError
+"consult_gate_refused"` (409, carrying `{ guard, code: "fee_unsettled" }` in `detail`); `revisit` is
+FREE and always passes. `runDailyClose`'s orphan scan is the safety net for anything the counter
+missed — nothing auto-charges.
+
+### Route table (31 routes, one controller, `@Controller("billing")`)
+
+| Method | Route | Notes |
+|---|---|---|
+| POST | `/billing/invoices` | issue (receipt + credit lane inline) |
+| POST | `/billing/invoices/preview` | price a draft, persist nothing |
+| GET | `/billing/invoices` | list, filter `patientId`/`encounterId` |
+| GET | `/billing/invoices/:id` | detail + derived settlement |
+| GET | `/billing/invoices/:id/print` | letterhead, lines, settlement, signed QR |
+| POST | `/billing/invoices/:id/credit-notes` | `refund` \| `clearance_discount` \| `correction` |
+| GET | `/billing/invoices/:id/credit-notes` | list for one invoice |
+| GET | `/billing/visits/:encounterId/fee-quote` | the D8 branch + a priced preview |
+| POST | `/billing/receipts` | standalone receipt (advance lane) |
+| GET | `/billing/receipts` | list, filter `patientId` |
+| POST | `/billing/receipts/:id/allocations` | apply toward one invoice (partial allowed) |
+| POST | `/billing/allocations/:id/reverse` | append the mirror `reverse` row |
+| POST | `/billing/eie` | mark a receipt entered-in-error; reverses its live allocations |
+| GET | `/billing/patients/:patientId/balance` | advance + outstanding + dues |
+| GET | `/billing/patients/:patientId/dues` | unsettled invoices, oldest first |
+| POST | `/billing/refunds/request` | files the mandatory `billing_refund` approval |
+| POST | `/billing/refunds` | issue the voucher (check-on-execute) |
+| POST | `/billing/refunds/:id/pay` | disburse; payee identity required, every method |
+| GET | `/billing/refunds` | worklist, filter `patientId`/`status` |
+| POST | `/billing/sessions` | open (one live session per cashier) |
+| GET | `/billing/sessions/current` | the caller's own open/closing session |
+| POST | `/billing/sessions/:id/close` | denominations → counted, variance, approval if any |
+| POST | `/billing/sessions/:id/confirm-close` | check-on-execute against the granted variance approval |
+| GET | `/billing/sessions` | worklist, filter `cashierUserId`/`status` |
+| POST | `/billing/recon/upload` | `{ csv, source }` statement match |
+| GET | `/billing/recon/mismatches` | the open mismatch worklist |
+| GET | `/billing/day-book` | receipts by mode, invoices, CN, vouchers, degraded breakout |
+| GET | `/billing/gstr1` | `(sacCode, rateBps, exempt)` groups from STORED line heads |
+| GET | `/billing/config` | the D-17 row |
+| PUT | `/billing/config` | admin patch, validated before write |
+| PUT | `/billing/degraded` | the E-24 toggle |
+
+Error body: the OPD convention `{ statusCode, message, code, detail? }` (billing is a new module;
+patients/tariff keep their own ratified `code: message` string bodies — neither side is
+realigned).
+
+### Recommended permission grants
+
+`billing.credit.extend` guards no route of its own — it is checked INSIDE the issue transaction,
+on the same `POST /billing/invoices` a plain issue uses. Every other permission below maps
+one-to-one to a route above.
+
+| Permission | cashier | billing_manager |
+|---|---|---|
+| `billing.invoice.issue` | ✓ | |
+| `billing.invoice.read` | ✓ | ✓ |
+| `billing.credit.extend` | ✓ | |
+| `billing.receipt.record` | ✓ | |
+| `billing.credit_note.issue` | ✓ | |
+| `billing.refund.request` | ✓ | |
+| `billing.refund.pay` | ✓ | |
+| `billing.session.own` | ✓ | |
+| `billing.allocation.reverse` | | ✓ |
+| `billing.session.read` | | ✓ |
+| `billing.recon.upload` | | ✓ |
+| `billing.reports.read` | | ✓ |
+| `billing.config.write` | | ✓ |
+| `billing.eie.mark` | | ✓ |
+| `approvals.requests.read` / `.decide` | | ✓ |
+
+The split follows the owner's ruling that taking money and issuing a routine bill is a cashier's
+ordinary work; the two acts that need a second set of eyes — issuing UNSETTLED and shrinking a
+receivable — stay cap/approval-gated (D2/D4/D6) rather than walled off the cashier entirely, so
+the counter can act under the cap without waiting on a supervisor. Reversing an allocation,
+voiding a document (EIE) and reconciling statements are back-office corrections, not counter
+actions, so they sit with `billing_manager` alone; `billing_manager` is also the `approverRole` on
+all five billing approval types (below), so it needs the generic approvals permissions too.
+
+### Go-live runbook (owner steps, once per environment)
+
+1. `pnpm --filter @hmis/core seed:billing` — the `billing_config` row (dev-placeholder
+   thresholds), roles `cashier`/`billing_manager` (created, not granted), and the five approval
+   types below. Idempotent.
+2. **CA review, every threshold against its statutory anchor** — `billing_config` is DATA, never a
+   code constant:
+   - `cashWarnPaise` / `cashBlockPaise` — **§269ST**: cash receipts of ₹2,00,000 or more from ONE
+     person in a day are prohibited; the seeded block sits AT that ceiling with a warn step below
+     it so the counter sees it coming.
+   - `panThresholdPaise` — **Rule 114B**: a single cash transaction (or connected transactions) of
+     ₹50,000 or more needs the payer's PAN or a Form 60 declaration; the seeded default sits at
+     that ceiling.
+   - the rounding behaviour itself (no config — it is how `totalInvoice` computes
+     `netPayablePaise`) — **§170 CGST Act**: round the tax invoice value to the nearest rupee,
+     applied ONCE, to the invoice's raw total, never per line and never inside a credit note's own
+     shares (D3/D4).
+   - the 16-character invoice-serial ceiling (**GST serial numbering rules**) —
+     `INV/26-27/000001` is 16 characters exactly; see watch item (a) below.
+   - `refundBankAbovePaise`, `creditCapPaise`, `outstandingCapPaise`, `feeBps`,
+     `reconTolerancePaise` carry no external statute — hospital policy, reviewed the same way.
+3. Flip `caSigned: true` via `PUT /billing/config` once every threshold above is reviewed — but
+   see watch item (b): the flip today is a paper record, not something the validate gate checks.
+4. `pnpm --filter @hmis/core validate:billing` must print `ok=true` before the first live invoice
+   (D-17) — it checks `chargeRules` against live `services`, the warn/block ordering and
+   `seriesPrefixes` completeness through the SAME loaders the runtime uses (the M1 lesson); see
+   watch item (a) for what it does NOT check.
+5. Confirm the five approval types are registered (`seed:billing` does this; a re-run is a no-op)
+   — `billing_credit_extension`, `billing_discount`, `billing_clearance_discount`,
+   `billing_refund`, `billing_variance`, all `approverRole: "billing_manager"`.
+6. Grant roles per the table above; every billing approval resolves to `billing_manager` — grant
+   `approvals.requests.read`/`.decide` there too, or nobody can ever clear one.
+7. **FY-rollover check, first week of April:** the series counters are per-`(seriesKey, fy)` and
+   cold-start at 1 automatically — confirm the first April invoice of each series actually reads
+   `.../27-28/000001`, not a continuation of the prior year's count.
+
+**Five watch items carried from pipeline A — read before trusting the numbers above:**
+
+(a) **`nextDocNo` pads to 6 digits unconditionally.** Serial 1,000,000 in a single fiscal year
+    renders `INV/26-27/1000000` — 17 characters, one past the GST ceiling — with no runtime guard.
+    `billing_config.seriesPrefixes` values are validated only as `z.string().min(1)`, no maximum,
+    so an admin patch to `{ invoice: "INVOICE" }` produces a 20-character serial and
+    `validateBillingConfig` still reports `ok: true`. Neither is a go-live blocker at Phase-1
+    volumes, but nobody should assume the gate already catches this.
+(b) **`validate:billing` returns `ok: true` on a config with `caSigned: false`.** D-17 frames the
+    gate as the thing that blocks the first live invoice until the CA has signed off; today it does
+    not read that flag at all. Until the gate is extended, step 3 above is the substitute: a human
+    confirms the review happened before flipping the flag, because nothing currently verifies that
+    the flip itself is honest.
+(c) **The `billing_variance` approval carries no `amountPaise`.** The kernel's general shape
+    (`requestApproval`) expects a positive `amountPaise` plus a `patientId` or `payeeId`; a session
+    variance is signed (can be negative) and belongs to neither a patient nor a payee, so it rides
+    the request note instead. The variance value is readable from the `variance.flagged` event and
+    from `cashier_sessions.variance_paise` — never from the approval row itself.
+(d) **Any non-zero variance locks the cashier out of ALL counter work**, not just session-close,
+    until a `billing_manager` grants the variance approval: `beginClose` moves the session to
+    `closing`, and every receipt/voucher-pay route requires the ACTING cashier's session to be
+    `open`. Correct by design (a drawer under dispute should not keep taking money), but it is an
+    operational surprise the first time a cashier meets it — train them on it before go-live, and
+    make sure a `billing_manager` is reachable during counter hours.
+(e) **`hmis_dev` already carries migrations `0011`+`0012` and a seeded `billing_config` row**
+    (applied by pipeline A's `pnpm db:migrate` / `seed:billing`) — a fresh environment gets both
+    from step 1 above; this note is only for anyone inspecting the shared dev database directly.
