@@ -126,6 +126,31 @@ run(stubAgent, stubParallel, (t) => phases.push(t), (m) => logs.push(m))
                           c.prompt.indexOf("Mutants are NOT required") === -1));
     ok("no per-task test-count target survives in any brief",
       coders.every((c) => !/apps\/web totals = \d+ files/.test(c.prompt)));
+    // --- the 2026-08-20 audit: design edges must be real, and mutants take a control run.
+    // Guard the regression itself, not every mention of the numbers: T13's correction note quotes
+    // the old wrong citation on purpose, so a bare /D5 \(/ sweep would fire on the fix.
+    ok("AUDIT: no brief OPENS its design context with D5 or D10 (the first compile's error)",
+      coders.every((c) => !/Design\s+context:\s*(D5|D10)\b/.test(c.prompt)),
+      coders.filter((c) => /Design\s+context:\s*(D5|D10)\b/.test(c.prompt)).map((c) => c.label).join(" "));
+    const t13dc = (coders.find((c) => c.label.endsWith(":t13")).prompt
+      .match(/Design\s+context:[\s\S]{0,700}/) || [""])[0];
+    const t13missing = ["D8", "D2", "D3", "D1", "D7"].filter((d) => !new RegExp("\\b" + d + "\\b").test(t13dc));
+    ok("AUDIT: T13's design context cites the sections that actually govern the counter screen",
+      t13missing.length === 0, "missing: " + t13missing.join(","));
+    ok("AUDIT: every coder brief declares a design context (wrap-tolerant match)",
+      coders.every((c) => /Design\s+context:/.test(c.prompt)),
+      coders.filter((c) => !/Design\s+context:/.test(c.prompt)).map((c) => c.label).join(" "));
+    ok("AUDIT: T13 names the wedge lane's REAL home and warns it is not in D1-D10",
+      coders.find((c) => c.label.endsWith(":t13")).prompt.indexOf("THE WEDGE LANE IS NOT IN D1-D10") !== -1);
+    ok("MUTANTS: every brief requires a CONTROL run and none prescribes three repetitions",
+      coders.every((c) => c.prompt.indexOf("ONE KILL RUN AND ONE CONTROL RUN") !== -1 &&
+                          c.prompt.indexOf("3 isolated runs each") === -1 &&
+                          c.prompt.indexOf("run 3 times ISOLATED") === -1));
+    ok("MUTANTS: every criteria set demands the control run explicitly",
+      coders.every((c) => /ONE as a CONTROL|ONCE as a CONTROL/.test(c.prompt)));
+    ok("MUTANTS: the supersession of the plan's 3x is stated, not silent",
+      coders.every((c) => c.prompt.indexOf("SUPERSEDES the plan's '3x each'") !== -1));
+
     ok("the not-over-broad rule (3.44) is in every brief AND every criteria set",
       coders.every((c) => c.prompt.indexOf("NOT-OVER-BROAD") !== -1 &&
                           c.prompt.indexOf("WRITE AND ASSERT THE NOT-OVER-BROAD CASE TOO") !== -1));
