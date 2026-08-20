@@ -239,14 +239,12 @@ describe("billing e2e", () => {
     // THE proof that billing.module.ts's OnModuleInit registration wired the guard into the
     // composed app: no test in this suite registers it, only AppModule's import does.
     //
-    // STATUS 400, NOT THE 409 D8 SPECIFIES — a shipped-code defect this suite records rather than
-    // fixes. T10 added `consult_gate_refused` to `OpdErrorCode` but not to `OPD_CONFLICT_CODES`
-    // in `opd-masters.controller.ts:36`, and `opdStatus` answers 400 for every code that is not
-    // in that set, does not end `_state_conflict` and does not start `unknown_`. The one-line fix
-    // is in an OPD controller that is byte-frozen for this pipeline and outside this task's Files
-    // list, so the refusal is asserted as it actually behaves, by its CODE, and the status
-    // discrepancy is carried forward.
-    const refused = await http().post(`/opd/visits/${encounterId}/consult/start`).set(...auth(dra.token)).expect(400);
+    // 409, per D8: an unsettled fee is a STATE conflict, not a malformed request. T10 added
+    // `consult_gate_refused` to `OpdErrorCode` but not to `OPD_CONFLICT_CODES`, so `opdStatus`
+    // answered 400 until the follow-up repair commit put it in that set beside every other OPD
+    // conflict code (`session_closed`, `slot_taken`, `not_your_patient`). The status AND the code
+    // are both asserted: the code is what the screens branch on, the status is what D8 promises.
+    const refused = await http().post(`/opd/visits/${encounterId}/consult/start`).set(...auth(dra.token)).expect(409);
     expect(refused.body.code).toBe("consult_gate_refused");
     expect(refused.body.detail.guard).toBe("billing_fee_gate");
     expect(refused.body.detail.code).toBe("fee_unsettled");

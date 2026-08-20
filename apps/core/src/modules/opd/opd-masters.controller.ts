@@ -35,7 +35,7 @@ import type { Db } from "../../kernel/db/client";
 const OPD_CONFLICT_CODES = new Set<OpdErrorCode>([
   "slot_taken", "call_conflict", "doctor_out", "session_closed", "doctor_on_leave", "appointment_not_today",
   "extension_cap_reached", "allergy_conflict", "user_already_doctor", "opd_not_configured", "opd_config_invalid",
-  "not_your_patient",
+  "not_your_patient", "consult_gate_refused",
 ]);
 
 function opdStatus(code: OpdErrorCode): number {
