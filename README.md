@@ -491,3 +491,62 @@ all five billing approval types (below), so it needs the generic approvals permi
 (e) **`hmis_dev` already carries migrations `0011`+`0012` and a seeded `billing_config` row**
     (applied by pipeline A's `pnpm db:migrate` / `seed:billing`) — a fresh environment gets both
     from step 1 above; this note is only for anyone inspecting the shared dev database directly.
+
+## Web app: billing screens (Plan 08)
+
+Four keyboard-first screens ride the same `apps/web` scaffold as the OPD screens. As there, **the
+client holds no permission model of its own** — every billing nav link renders for everyone, and the
+server's 403 on the underlying route is what actually decides who may use a screen. A refusal is
+rendered inline, in the server's own words, wherever the user was standing.
+
+| Route | Screen | Expected role(s) |
+|---|---|---|
+| `/billing[?encounterId=<id>]` | Billing counter — fee quote, line editor with the live priced preview and its contest, mixed tenders, the credit lane, the printed invoice | `cashier` |
+| `/billing/dues` | Dues & advances — one ledger: outstanding per invoice, partial dues clear, clearance discount, advance take/apply | `cashier` |
+| `/billing/session` | Cashier session — open with a float, denomination count-down, variance and its approval wait | `cashier` |
+| `/billing/office` | Back office — refund request/issue/pay worklist with guard flags, entered-in-error correction, statement reconciliation, day book, GSTR-1 | `billing_manager` |
+
+`cashier` gets the counter, dues and session screens; `billing_manager` adds the back office and the
+`billing_config` surface (`PUT /billing/config`, `PUT /billing/degraded`), and is the `approverRole`
+on all five billing approval types. See the module's permission table above for the exact grant per
+route — `/billing/office` reads `billing.reports.read` and writes through `billing.refund.*`,
+`billing.recon.upload` and `billing.eie.mark`, none of which a cashier holds.
+
+**Shortcuts.** Alt+B opens the counter (global, `keyboard.tsx`). The back office binds its own
+screen-local digit keys — `1` refunds, `2` reconciliation, `3` day book, `4` GSTR-1 — which are
+ignored while the focus is in a field, so typing an amount never changes tabs.
+
+**The wedge-scanner lane (UAT item closed).** `PatientPicker`'s scan input accepts a keyboard-wedge
+barcode/QR scanner as well as a paste: the buffer is an ACCUMULATOR and **Enter is the trigger**, so
+a scanner that types a UHID in under 30 ms and a human who types the same UHID slowly both verify
+through the identical call. The 500 ms idle timer only auto-CLEARS a stale buffer; it is not a speed
+gate, and no scanner needs configuring beyond "send Enter after the payload". The input itself
+carries `data-search-input`, so `/` focuses it on every screen that mounts the picker.
+
+**Polling, not push.** Billing publishes no realtime topics this plan — deliberately. Every billing
+screen refreshes its read model on the same 15 s convention as the OPD screens
+(`refetchInterval: 15_000`): the counter's fee-quote sidebar, the dues balance, the cashier's own
+drawer, and the back office's refund and mismatch worklists. A money worklist that is seconds stale
+is correct; one that is wrong is not.
+
+**Degraded-tender mode (E-24).** When `billing_config.degraded_tender` is on, a UPI or card tender
+needs a **hand-typed reference** and the receipt is stamped `degraded: true`. Operationally that
+means: the counter keeps taking money while the PSP terminal is down, the day book breaks the
+degraded receipts out as their own figure, and reconciliation should be run against those first —
+hand-typed references are where the ref that never matches comes from. Turn it off (`PUT
+/billing/degraded`, with a reason) as soon as the terminal is back; nothing turns it off by itself.
+
+**Two operating notes the screens render rather than hide.** A non-zero cashier-session variance
+moves the drawer to `closing` and locks that cashier out of all counter work until a
+`billing_manager` grants the variance approval (watch item (d) above) — the session screen says so on
+screen. And a clearance discount is refused `over_cap` on any category with no cap rule configured,
+which on a freshly seeded environment is EVERY category: the dues screen renders that as a
+configuration message naming the category, not as a money refusal, because an administrator has to
+add the cap rule in the tariff module before the lane works at all.
+
+**The day book is read live.** `/billing/office` reads `GET /billing/day-book?day=` rather than the
+totals stored on `daily_closes`: `runDailyClose` computes its totals outside the claim transaction,
+so a document that commits in that window is permanently absent from the stored close and no re-run
+repairs it. The screen renders the API's figures **verbatim** — it folds nothing of its own, and the
+GSTR-1 view likewise prints the stored per-line tax heads summed, never re-derived from a group's
+taxable value (§170/§15.1: heads are summed, never recomputed).

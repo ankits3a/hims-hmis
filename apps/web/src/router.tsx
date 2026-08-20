@@ -21,6 +21,7 @@ import { OpdDisplay } from "./screens/opd-display";
 import { BillingCounter } from "./screens/billing-counter";
 import { BillingDues } from "./screens/billing-dues";
 import { BillingSession } from "./screens/billing-session";
+import { BillingOffice } from "./screens/billing-office";
 
 function Shell(): React.ReactElement {
   const { t } = useTranslation();
@@ -44,6 +45,7 @@ function Shell(): React.ReactElement {
             <a href="/billing" className="hover:underline">{t("nav.billing")}</a>
             <a href="/billing/dues" className="hover:underline">{t("nav.billingDues")}</a>
             <a href="/billing/session" className="hover:underline">{t("nav.billingSession")}</a>
+            <a href="/billing/office" className="hover:underline">{t("nav.billingOffice")}</a>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <button type="button" onClick={() => switchLanguage(i18next.language === "hi" ? "en" : "hi")}>
@@ -179,13 +181,22 @@ const billingSessionRoute = createRoute({
   component: BillingSession,
 });
 
+// The back office (T16): refunds and their corrections, statement reconciliation, the day book
+// and the GSTR-1 view — the `billing_manager` half of the module. Nav is COMPLETE at this route:
+// counter, dues, session and office are every billing screen Plan 08 ships.
+const billingOfficeRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/billing/office",
+  component: BillingOffice,
+});
+
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
     authedRoute.addChildren([
       indexRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
-      billingSessionRoute,
+      billingSessionRoute, billingOfficeRoute,
     ]),
   ]),
 });
