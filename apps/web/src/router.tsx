@@ -19,6 +19,7 @@ import { OpdVitals } from "./screens/opd-vitals";
 import { OpdConsult } from "./screens/opd-consult";
 import { OpdDisplay } from "./screens/opd-display";
 import { BillingCounter } from "./screens/billing-counter";
+import { BillingDues } from "./screens/billing-dues";
 
 function Shell(): React.ReactElement {
   const { t } = useTranslation();
@@ -40,6 +41,7 @@ function Shell(): React.ReactElement {
             <a href="/opd/consult" className="hover:underline">{t("nav.opdConsult")}</a>
             <a href="/opd/display" className="hover:underline">{t("nav.opdDisplay")}</a>
             <a href="/billing" className="hover:underline">{t("nav.billing")}</a>
+            <a href="/billing/dues" className="hover:underline">{t("nav.billingDues")}</a>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <button type="button" onClick={() => switchLanguage(i18next.language === "hi" ? "en" : "hi")}>
@@ -160,12 +162,19 @@ const billingRoute = createRoute({
   component: BillingCounter,
 });
 
+// One ledger, one screen (T14): dues and advances are the same instrument, so they share a route.
+const billingDuesRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/billing/dues",
+  component: BillingDues,
+});
+
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
     authedRoute.addChildren([
       indexRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
-      opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute,
+      opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
     ]),
   ]),
 });
