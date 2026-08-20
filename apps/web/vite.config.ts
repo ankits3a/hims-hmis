@@ -18,6 +18,7 @@ export default defineConfig({
       "/workflow": "http://localhost:3000",
       "/health": "http://localhost:3000",
       "/opd": "http://localhost:3000",
+      "/billing": "http://localhost:3000",
       "/ws": { target: "ws://localhost:3000", ws: true },
     },
   },

@@ -32,6 +32,9 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }): R
       } else if (e.altKey && (e.key === "a" || e.key === "A")) {
         e.preventDefault();
         void navigate({ to: "/approvals" });
+      } else if (e.altKey && (e.key === "b" || e.key === "B")) {
+        e.preventDefault();
+        void navigate({ to: "/billing" });
       } else if (e.altKey && (e.key === "d" || e.key === "D")) {
         e.preventDefault();
         void navigate({ to: "/opd/desk" });
@@ -64,6 +67,7 @@ export function ShortcutLegend(): React.ReactElement {
       <span>{t("shortcuts.opdVitals")}</span>
       <span>{t("shortcuts.opdConsult")}</span>
       <span>{t("shortcuts.opdAppointments")}</span>
+      <span>{t("shortcuts.billing")}</span>
     </footer>
   );
 }

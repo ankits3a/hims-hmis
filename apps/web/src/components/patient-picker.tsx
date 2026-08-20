@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
@@ -30,6 +30,13 @@ function useDebounced(value: string, ms: number): string {
 }
 
 /**
+ * How long a keystroke buffer may sit idle before it is DISCARDED (Plan 08 owner ruling 5). This is
+ * NOT a trigger and NOT a speed heuristic: nothing is ever verified because the clock ran out. It
+ * exists so an interrupted half-scan cannot prefix the next scan.
+ */
+const WEDGE_IDLE_MS = 500;
+
+/**
  * Search-first patient picker (§11.1 entry lane), reused by T12's booking flow and T13's walk-in
  * open. Wraps `GET /patients/search` (typed digits, phone-first) and a QR-scan text box that posts
  * `POST /patients/qr/verify` — the same signed-QR verification Plan 05's card uses.
@@ -40,6 +47,14 @@ export function PatientPicker({ onPick }: { onPick: (hit: PatientPickerHit) => v
   const [scan, setScan] = useState("");
   const [scanError, setScanError] = useState(false);
   const debounced = useDebounced(q, 250);
+  // The wedge buffer and its idle timer (see the scan box below). Refs, not state: a keystroke of a
+  // 24-character payload must not cost a render, and the buffer is never read during one.
+  const wedgeRef = useRef("");
+  const idleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (idleRef.current !== null) clearTimeout(idleRef.current);
+  }, []);
 
   const search = useQuery({
     queryKey: ["picker-search", debounced],
@@ -64,7 +79,14 @@ export function PatientPicker({ onPick }: { onPick: (hit: PatientPickerHit) => v
 
   return (
     <div className="space-y-3">
+      {/*
+        `data-search-input` is the `/` hotkey's target (keyboard.tsx). It lives HERE, on the
+        picker's own input, rather than being stamped on from a screen's wrapper effect — which is
+        what opd-desk.tsx did while this component was outside that task's Files list (Plan 08 T13
+        absorbs that debt, and the wrapper's setAttribute line is deleted with it).
+      */}
       <input
+        data-search-input
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder={t("picker.searchPlaceholder")}
@@ -92,9 +114,50 @@ export function PatientPicker({ onPick }: { onPick: (hit: PatientPickerHit) => v
         ))}
       </div>
       <div>
+        {/*
+          THE WEDGE LANE (owner ruling 5): the counters' USB/Bluetooth scanners are KEYBOARDS. They
+          type the payload one keystroke at a time and finish with Enter, so there is no paste event
+          to hook — which is why the shipped `onPaste` lane alone left the scanners unsupported.
+
+          ENTER IS THE TRIGGER, and it is the only one. The buffer is an ACCUMULATOR, not a timer
+          gate: a scan delivered in 8 ms and a UHID typed by hand take the identical path and fire
+          the identical `verify` call the paste lane fires. The 500 ms idle window only DISCARDS a
+          stale buffer, so an interrupted half-scan cannot prefix the next one; nothing is ever
+          verified because the window elapsed. The box is cleared with the buffer — leaving the
+          stale text visible would let the next scan append to it, which is the bug this guards.
+          (A stated cost: hand-typing SLOWER than one character per 500 ms into the SCAN box loses
+          it. The free-text box above is the lane for typing, and it has no such window.)
+        */}
         <input
           value={scan}
-          onChange={(e) => setScan(e.target.value)}
+          onChange={(e) => {
+            setScan(e.target.value);
+            wedgeRef.current = e.target.value;
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (idleRef.current !== null) {
+                clearTimeout(idleRef.current);
+                idleRef.current = null;
+              }
+              const text = wedgeRef.current.trim();
+              wedgeRef.current = "";
+              if (text !== "") void verify(text);
+              return;
+            }
+            if (e.key.length !== 1) return; // Shift, Tab, arrows… are not payload
+            // The buffer only ACCUMULATES here; the visible box is updated by the browser's own
+            // text insertion, whose `onChange` above re-syncs the buffer to the truth. Writing the
+            // box from this handler would fight that insertion and double every character.
+            wedgeRef.current += e.key;
+            if (idleRef.current !== null) clearTimeout(idleRef.current);
+            idleRef.current = setTimeout(() => {
+              idleRef.current = null;
+              wedgeRef.current = "";
+              setScan("");
+            }, WEDGE_IDLE_MS);
+          }}
           onPaste={(e) => {
             const text = e.clipboardData.getData("text").trim();
             if (text !== "") void verify(text);

@@ -18,6 +18,7 @@ import { OpdDesk } from "./screens/opd-desk";
 import { OpdVitals } from "./screens/opd-vitals";
 import { OpdConsult } from "./screens/opd-consult";
 import { OpdDisplay } from "./screens/opd-display";
+import { BillingCounter } from "./screens/billing-counter";
 
 function Shell(): React.ReactElement {
   const { t } = useTranslation();
@@ -38,6 +39,7 @@ function Shell(): React.ReactElement {
             <a href="/opd/vitals" className="hover:underline">{t("nav.opdVitals")}</a>
             <a href="/opd/consult" className="hover:underline">{t("nav.opdConsult")}</a>
             <a href="/opd/display" className="hover:underline">{t("nav.opdDisplay")}</a>
+            <a href="/billing" className="hover:underline">{t("nav.billing")}</a>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <button type="button" onClick={() => switchLanguage(i18next.language === "hi" ? "en" : "hi")}>
@@ -147,12 +149,23 @@ const opdDisplayRoute = createRoute({
   component: OpdDisplay,
 });
 
+const billingRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/billing",
+  // The OPD desk hands a walk-in straight to the counter as `/billing?encounterId=…` (flag ⑧);
+  // without one the cashier types or scans the encounter id at the counter.
+  validateSearch: (search: Record<string, unknown>): { encounterId?: string } => ({
+    encounterId: typeof search.encounterId === "string" ? search.encounterId : undefined,
+  }),
+  component: BillingCounter,
+});
+
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
     authedRoute.addChildren([
       indexRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
-      opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute,
+      opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute,
     ]),
   ]),
 });

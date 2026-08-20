@@ -249,14 +249,13 @@ export function OpdDesk(): React.ReactElement {
   });
 
   /**
-   * `/` focuses `[data-search-input]` (keyboard.tsx), and "Next patient" refocuses the same box.
-   * PatientPicker (T12) carries no such attribute and is not in this task's Files list, so the desk
-   * tags the picker's own search input from its wrapper instead of editing the shipped component.
+   * "Next patient" refocuses the picker's search box. The `data-search-input` tag that `/` focuses
+   * (keyboard.tsx) now lives ON the picker's own input — Plan 08 T13 absorbed that debt — so this
+   * effect no longer stamps it from outside and only the refocus remains.
    */
   useEffect(() => {
     const input = pickerRef.current?.querySelector("input");
     if (!input) return;
-    input.setAttribute("data-search-input", "");
     if (pickerKey > 0) input.focus();
   }, [pickerKey]);
 
