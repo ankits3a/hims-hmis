@@ -242,8 +242,27 @@ describe("OpdVitals", () => {
     renderWithProviders(<OpdVitals />);
     const user = userEvent.setup();
 
-    // the 3-year-old: height, weight, temp, SpO2, pulse required — BP is NOT required (K47).
-    await user.click(await screen.findByTestId(`worklist-row-${ENC_CHILD.id as string}`));
+    // the adult: all seven.
+    await user.click(await screen.findByTestId(`worklist-row-${ENC_ADULT.id as string}`));
+    expect(await screen.findByTestId("patient-panel-name")).toHaveTextContent("Ravi Kumar");
+    expect(screen.getByTestId("band-label")).toHaveTextContent("Adult");
+    for (const label of ["Height (cm)", "Weight (kg)", "SBP (mmHg)", "DBP (mmHg)", "Pulse (/min)", "Temp (°C)", "SpO2 (%)"]) {
+      expect(screen.getByLabelText(`${label} *`)).toBeInTheDocument();
+    }
+    expect(screen.queryByLabelText("RR (/min) *")).toBeNull();
+
+    /*
+     * the 3-year-old: height, weight, temp, SpO2, pulse required — BP is NOT required (K47).
+     *
+     * K45 / Plan 08 T15 — THIS ROW IS SELECTED IMMEDIATELY BEFORE THE HIDDEN ONE, and that
+     * ORDER is the whole point. The last clause below asserts that a 404 falls back to the ADULT
+     * band; with the adult selected just before it, a screen that leaked the PREVIOUS patient's
+     * age into the band would render "Adult" too and the assertion would pass either way. Plan 07
+     * shipped exactly that order and its V5 mutant survived. Standing the 3-year-old in front of
+     * the hidden row makes the stale-age reading render "Child (1-5)" and the criterion
+     * discriminate. NOTHING BELOW WAS EDITED — only the order the rows are clicked in.
+     */
+    await user.click(screen.getByTestId(`worklist-row-${ENC_CHILD.id as string}`));
     expect(await screen.findByTestId("patient-panel-name")).toHaveTextContent("Baby Naina");
     expect(screen.getByTestId("band-label")).toHaveTextContent("Child (1-5)");
     expect(screen.getByLabelText("Height (cm) *")).toBeInTheDocument();
@@ -255,15 +274,6 @@ describe("OpdVitals", () => {
     expect(screen.queryByLabelText("SBP (mmHg) *")).toBeNull();
     expect(screen.getByLabelText("DBP (mmHg)")).toBeInTheDocument();
     expect(screen.queryByLabelText("DBP (mmHg) *")).toBeNull();
-
-    // the adult: all seven.
-    await user.click(screen.getByTestId(`worklist-row-${ENC_ADULT.id as string}`));
-    expect(await screen.findByTestId("patient-panel-name")).toHaveTextContent("Ravi Kumar");
-    expect(screen.getByTestId("band-label")).toHaveTextContent("Adult");
-    for (const label of ["Height (cm)", "Weight (kg)", "SBP (mmHg)", "DBP (mmHg)", "Pulse (/min)", "Temp (°C)", "SpO2 (%)"]) {
-      expect(screen.getByLabelText(`${label} *`)).toBeInTheDocument();
-    }
-    expect(screen.queryByLabelText("RR (/min) *")).toBeNull();
 
     // 404 from GET /patients/:id is a DOMAIN ANSWER (hidden confidential record), not a crash —
     // renders "restricted record" and falls back to the adult band (same seven).

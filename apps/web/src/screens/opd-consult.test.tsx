@@ -607,4 +607,122 @@ describe("OpdConsult", () => {
     await waitFor(() => expect(screen.queryByTestId("patient-panel")).toBeNull());
     await waitFor(() => expect(queueCalls).toBeGreaterThan(queueBefore));
   });
+
+  /**
+   * ——— K44 / Plan 08 T15: the three unasserted shortcuts, absorbed from Plan 07 ———
+   *
+   * Plan 07 shipped this screen with FOUR local Alt handlers and asserted ONE of them (Alt+N,
+   * above). Its gate mutant `gateX4` — a copy of the screen with the other three handlers stripped
+   * — SURVIVED the whole suite, which is the definition of an untested lane: the doctor's fastest
+   * three keys were held up by nothing. Plan 08 absorbs them as required-DIED (W-8), and each test
+   * asserts THE POSTED CALL rather than a rendered state, because a rendered state can be reached
+   * by the mouse and would not tell the two apart.
+   */
+  it("K44: Alt+K skips the called patient — the POSTED skip, and nothing else on the queue moves", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "POST /opd/queues/entries/qe-cur/skip": { status: 201, body: { entry: { ...CURRENT, status: "waiting" } } },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+    await screen.findByTestId("queue-row-qe-cur");
+
+    await user.keyboard("{Alt>}k{/Alt}");
+
+    await waitFor(() => expect(callsTo("POST", "/opd/queues/entries/qe-cur/skip")).toHaveLength(1));
+    expect(callsTo("POST", "/opd/queues/entries/qe-cur/skip")[0]!.body).toBe("");
+    // one key, one lane: Alt+K is not a general "do the next thing"
+    expect(callsTo("POST", "/opd/visits/enc-1/consult/start")).toHaveLength(0);
+    expect(callsTo("POST", "/opd/queues/sess-1/call-next")).toHaveLength(0);
+  });
+
+  it("K44: Alt+S with no consultation in progress posts consult/start and opens the panel", async () => {
+    mockRoutes(baseRoutes());
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+    await screen.findByTestId("queue-row-qe-cur");
+
+    await user.keyboard("{Alt>}s{/Alt}");
+
+    await waitFor(() => expect(callsTo("POST", "/opd/visits/enc-1/consult/start")).toHaveLength(1));
+    expect(callsTo("POST", "/opd/visits/enc-1/consult/start")[0]!.body).toBe("");
+    expect(await screen.findByTestId("patient-panel")).toBeInTheDocument();
+    expect(callsTo("POST", "/opd/queues/entries/qe-cur/skip")).toHaveLength(0);
+  });
+
+  it("K44: Alt+Enter completes the open consultation — the same body the button posts, with the default follow-up window OMITTED", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "POST /opd/visits/enc-1/consult/complete": {
+        status: 201, body: { encounter: { ...ENCOUNTER, status: "completed" } },
+      },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    const path = "/opd/visits/enc-1/consult/complete";
+
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+
+    await waitFor(() => expect(callsTo("POST", path)).toHaveLength(1));
+    // K49's rule holds through the keyboard too: the key is ABSENT, so the OPD config's own
+    // `followUpDefaultDays` applies rather than a number this screen invented.
+    const body = bodiesOf("POST", path)[0]!;
+    expect(Object.keys(body).sort()).toEqual(["note", "testsOrderedReturnToday"]);
+    expect(body.testsOrderedReturnToday).toBe(false);
+    await waitFor(() => expect(screen.queryByTestId("patient-panel")).toBeNull());
+  });
+
+  it("NOT OVER-BROAD (§3.44): a key this screen does not bind fires nothing, the same letters typed WITHOUT Alt into the note fire nothing, and Alt+S inside the prescription FORM is that form's own submit alone — never a second one from this screen", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "PUT /opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+      "POST /opd/queues/entries/qe-cur/skip": { status: 201, body: { entry: CURRENT } },
+      "POST /opd/visits/enc-1/consult/complete": { status: 201, body: { encounter: ENCOUNTER } },
+      "POST /opd/visits/enc-1/prescriptions": {
+        status: 201,
+        body: { prescriptionId: "rx-1", version: 1, qrPayload: PRINT_DATA.qrPayload, allergyOverrideCount: 0 },
+      },
+      "GET /opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<OpdConsult />);
+    await screen.findByTestId("queue-row-qe-cur");
+
+    // (a) Alt on a letter the screen does not bind reaches none of the four lanes
+    await user.keyboard("{Alt>}x{/Alt}");
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(callsTo("POST", "/opd/queues/entries/qe-cur/skip")).toHaveLength(0);
+    expect(callsTo("POST", "/opd/visits/enc-1/consult/start")).toHaveLength(0);
+    expect(callsTo("POST", "/opd/queues/sess-1/call-next")).toHaveLength(0);
+
+    // (b) the SAME letters, without Alt, typed where a doctor actually types them: `k`, `s` and
+    // Enter inside the note are text, not commands (`if (!e.altKey) return`).
+    await user.click(screen.getByRole("button", { name: "Start consultation" }));
+    await screen.findByTestId("patient-panel");
+    await user.type(screen.getByLabelText("Chief complaint"), "ks");
+    await user.keyboard("{Enter}");
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(callsTo("POST", "/opd/queues/entries/qe-cur/skip")).toHaveLength(0);
+    expect(callsTo("POST", "/opd/visits/enc-1/consult/complete")).toHaveLength(0);
+    // Enter landed in the note as a NEWLINE — the keystroke was text, exactly as it should be.
+    expect(screen.getByLabelText("Chief complaint")).toHaveValue("ks\n");
+
+    // (c) inside the FormKit prescription form Alt+S is ALREADY that form's submit, so the screen's
+    // own handler stands down (`e.target.closest("form")`). Exactly ONE prescription is posted —
+    // a handler without that guard would issue the e-Rx twice from one keystroke.
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(await screen.findByLabelText("Drug"), "Tab Paracetamol");
+    await user.type(screen.getByLabelText("Dose"), "500 mg");
+    await user.selectOptions(screen.getByLabelText("Route"), "oral");
+    await user.selectOptions(screen.getByLabelText("Frequency"), "TDS");
+    await user.type(screen.getByLabelText("Days"), "3");
+    await user.keyboard("{Alt>}s{/Alt}");
+
+    await waitFor(() => expect(document.querySelectorAll(".print-doc")).toHaveLength(1));
+    expect(callsTo("POST", "/opd/visits/enc-1/prescriptions")).toHaveLength(1);
+  });
 });

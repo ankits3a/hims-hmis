@@ -20,6 +20,7 @@ import { OpdConsult } from "./screens/opd-consult";
 import { OpdDisplay } from "./screens/opd-display";
 import { BillingCounter } from "./screens/billing-counter";
 import { BillingDues } from "./screens/billing-dues";
+import { BillingSession } from "./screens/billing-session";
 
 function Shell(): React.ReactElement {
   const { t } = useTranslation();
@@ -42,6 +43,7 @@ function Shell(): React.ReactElement {
             <a href="/opd/display" className="hover:underline">{t("nav.opdDisplay")}</a>
             <a href="/billing" className="hover:underline">{t("nav.billing")}</a>
             <a href="/billing/dues" className="hover:underline">{t("nav.billingDues")}</a>
+            <a href="/billing/session" className="hover:underline">{t("nav.billingSession")}</a>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <button type="button" onClick={() => switchLanguage(i18next.language === "hi" ? "en" : "hi")}>
@@ -169,12 +171,21 @@ const billingDuesRoute = createRoute({
   component: BillingDues,
 });
 
+// The cashier's own drawer (T15): float, denomination close, the variance approval wait. The
+// session id is never in the URL — every route on it derives the drawer from the acting cashier.
+const billingSessionRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/billing/session",
+  component: BillingSession,
+});
+
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
     authedRoute.addChildren([
       indexRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
+      billingSessionRoute,
     ]),
   ]),
 });
