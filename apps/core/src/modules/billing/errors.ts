@@ -3,7 +3,7 @@ export type BillingErrorCode =
   | "credit_permission_required" | "credit_approval_required" | "outstanding_cap_exceeded"
   | "discount_approval_missing" | "approval_subject_mismatch"
   | "unknown_invoice" | "unknown_receipt" | "unknown_line"
-  | "over_allocation" | "allocation_reversed_already"
+  | "over_allocation" | "allocation_exceeds_advance" | "allocation_reversed_already"
   | "no_open_session" | "session_already_open" | "session_state_conflict" | "variance_approval_required"
   | "pan_required" | "cash_threshold_blocked" | "tender_ref_required"
   | "credit_exceeds_line" | "correction_must_exhaust" | "over_cap"

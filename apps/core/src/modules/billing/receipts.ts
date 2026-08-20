@@ -162,8 +162,9 @@ async function advanceOfExcluding(
  * DELIBERATELY NOT FLOORED AT ZERO. A floor would hide the symptom and not the defect: with
  * `total(live) = 0` and `refunded = 10000` it clamps -10000 to 0, but the patient's NEXT 100000p
  * advance then computes 100000 - 10000 = 90000 — positive, so the floor never bites and the
- * absorption survives untouched. This reader stays honest and `markEnteredInError`'s guard is what
- * keeps the state from being created.
+ * absorption survives untouched. This reader stays honest, and the GUARDS are what keep the state
+ * from being created: `markEnteredInError`'s (money leaving the live set) and `allocateReceipt`'s
+ * (money being spent onto a bill). Both doors reach the same negative balance and both are shut.
  */
 export async function advanceOf(exec: Db | Tx, patientId: string): Promise<number> {
   return advanceOfExcluding(exec, patientId, null);
@@ -341,12 +342,18 @@ export type AllocateReceiptResult = { allocationId: string; amountPaise: number;
  * Clears (part of) an invoice from money already received. Partial settlement is the normal case,
  * not an exception: the ledger carries the amount, and settlement state is re-derived from it.
  *
- * The two guards are ordinary in-transaction sum checks made total by the two row locks above —
+ * The first two guards are ordinary in-transaction sum checks made total by the two row locks above —
  * the invoice cannot be overpaid (`over_allocation`, invoice side) and a receipt cannot be spent
  * twice (`over_allocation`, receipt side). Nothing in this module marks an INVOICE
  * entered-in-error (D4 gives invoices the `correction` credit note instead), so no invoice-side EIE
  * check exists here; the receipt side has one because `markEnteredInError` below writes exactly
  * that mark.
+ *
+ * THE THIRD GUARD is `markEnteredInError`'s advance invariant at the OTHER door, and it answers
+ * with a code of its OWN (`allocation_exceeds_advance`) rather than with `over_allocation`: the
+ * two mechanisms are different — one is "this bill/receipt has no room", the other is "this money
+ * has already gone back to the patient" — and a caller that cannot tell them apart cannot tell the
+ * cashier what to do about it. See the block comment on the check itself.
  */
 export async function allocateReceipt(
   db: Db,
@@ -361,6 +368,33 @@ export async function allocateReceipt(
 
   return withTx(db, async (tx) => {
     const invoice = await lockInvoice(tx, input.invoiceId);
+
+    // Read the receipt's owner UNLOCKED, only so the patient-wide lock below can name a patient —
+    // `markEnteredInError`'s precedent, safe for the same reason: `receipts` is immutable under
+    // migration 0012's trigger (UPDATE and DELETE are both forbidden), so `patient_id` cannot
+    // change under us between this read and the locks. A missing row is left to `lockReceipt`,
+    // which raises `unknown_receipt` as it always has. The INVOICE's patient is not usable here:
+    // the two may disagree, and that disagreement is a refusal a few lines below, not a lock key.
+    const owner = await tx
+      .select({ patientId: receipts.patientId })
+      .from(receipts)
+      .where(eq(receipts.id, input.receiptId));
+    const ownerPatientId = owner[0]?.patientId;
+    if (ownerPatientId !== undefined) {
+      // THE SINGLE ORDERED LOCK, mode FOR UPDATE — the SAME statement T8's advance-refund lane
+      // takes (`refunds.ts` issueRefundVoucher) and `markEnteredInError` takes: every receipt row
+      // of this patient, in id order, in ONE statement, never row-then-set (the Plan 06.1 C1
+      // lesson). Taken BEFORE `lockReceipt` so the file's INVOICES-then-RECEIPTS order still holds
+      // and receipts are still acquired in id order.
+      //
+      // What it adds over `lockReceipt` alone: against T8's lane the single-row lock would already
+      // have served, because the target receipt is INSIDE that lane's lock set. It does NOT serve
+      // against a second ALLOCATION spending a DIFFERENT receipt of the same patient — different
+      // invoice row, different receipt row, nothing to wait on — and two such allocations can each
+      // read a sufficient balance and together drive it below zero. This statement is what makes
+      // the advance check below total in that case.
+      await tx.execute(sql`select id from receipts where patient_id = ${ownerPatientId} order by id for update`);
+    }
     const receipt = await lockReceipt(tx, input.receiptId);
 
     // One patient's money never settles another patient's bill. The invoice is existence-hidden
@@ -393,6 +427,41 @@ export async function allocateReceipt(
         "over_allocation",
         `${String(input.amountPaise)}p exceeds the ${String(remainingPaise)}p still unallocated on this receipt`,
         { askedPaise: input.amountPaise, remainingPaise },
+      );
+    }
+
+    // THE ADVANCE INVARIANT — the invariant `markEnteredInError` carries, at the OTHER door. An
+    // advance-refund voucher is PER-PATIENT and names no receipt (`advanceRefundedPaise`), so
+    // "how much of THIS receipt has already been refunded" is not a question the ledger can
+    // answer; the invariant is stated as a BALANCE instead. Allocating adds to the effective-
+    // allocations term of D1's formula, so it lowers the advance by exactly `amountPaise`:
+    // spending money a voucher has already handed back drives `advanceOf` NEGATIVE,
+    // `patientBalance().advancePaise` serves that verbatim over
+    // `GET /billing/patients/:patientId/balance`, and the patient's next unrelated advance is
+    // silently absorbed by the shortfall. Neither guard above can see it — the ask fits the
+    // invoice's outstanding and fits the receipt's own unspent remainder; what it does not fit is
+    // the money the hospital still holds.
+    //
+    // THE SUBTRACTION IS THE CHECK. Read BEFORE the allocation the balance is merely 0, never
+    // negative, so a guard wired to `advanceOf` alone would never fire and this defect would ship
+    // behind a green suite. `advanceOf` itself stays UNFLOORED (see its docstring): a floor clamps
+    // the symptom and leaves the absorption, so the refusal is what has to carry the fix.
+    //
+    // IT IS NOT OVER-BROAD. Every live receipt's remainder is non-negative — the receipt-side
+    // guard above is what keeps it so — hence Sigma(remainders) >= this receipt's own remainder >=
+    // `amountPaise`, and the difference below can only go negative when `advanceRefundedPaise` is
+    // positive. A patient with no voucher against them can never be refused here, and one with a
+    // voucher is refused only for the paise beyond what the hospital still holds. Refusing leaves
+    // no dead end: that money went back to the patient, so there is nothing left on this receipt
+    // for the bill to be settled from, and nothing cascades onto the voucher — paid cash cannot be
+    // un-paid.
+    const wouldBeAdvancePaise = (await advanceOf(tx, receipt.patientId)) - input.amountPaise;
+    if (wouldBeAdvancePaise < 0) {
+      const refundedPaise = await advanceRefundedPaise(tx, receipt.patientId);
+      throw new BillingError(
+        "allocation_exceeds_advance",
+        `allocating ${String(input.amountPaise)}p from receipt ${receipt.receiptNo} would leave this patient a ${String(wouldBeAdvancePaise)}p advance: ${String(refundedPaise)}p has already gone back on advance-refund vouchers`,
+        { askedPaise: input.amountPaise, wouldBeAdvancePaise, refundedPaise },
       );
     }
 

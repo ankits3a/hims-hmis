@@ -629,4 +629,231 @@ describe("receipts and allocations: the patient money ledger (D1)", () => {
     expect(await countRows()).toMatchObject({ receipts: 2, marks: 1 });
     expect(await advanceOf(db, patientId)).toBe(10_000);
   });
+
+  // ===========================================================================================
+  // The SECOND door into the same invariant: an ALLOCATION may never drive the advance negative
+  //
+  // `markEnteredInError` above takes the receipt's money OUT of the live set while the voucher's
+  // subtraction stands. `allocateReceipt` reaches the identical state from the other side: it adds
+  // to the effective-allocations term, which subtracts from the same balance. Both shipped
+  // `over_allocation` guards pass in the fixture below — the ask fits the invoice's outstanding and
+  // fits the receipt's unspent remainder — because neither of them knows a voucher exists.
+  // ===========================================================================================
+
+  test("an allocation that would spend an advance a voucher already refunded is REFUSED, and the patient's next advance still reads in full", async () => {
+    await grantCreditExtend(db);
+    const cashier = await cashierWithSession("cashier-alloc-refunded");
+    const manager = await mkBillingManager(db, "manager-alloc-refunded");
+    const patientId = await mkTestPatient();
+
+    // 50000p banked, then the WHOLE 50000 handed back on an approved advance-refund voucher.
+    // `advanceRefundedPaise` is PER-PATIENT and names no receipt, so the balance is correctly 0 and
+    // NOTHING links the voucher to the receipt that funded it.
+    const banked = await bankCashAdvance(cashier, patientId, 50_000);
+    await refundWholeAdvance(cashier, manager, patientId, 50_000);
+    expect(await advanceOf(db, patientId)).toBe(0);
+
+    // A 100000p dues bill, so BOTH shipped guards wave the ask through: 50000 <= the invoice's
+    // 100000 outstanding, and 50000 <= the 50000 still unallocated on the receipt.
+    const dues = await issueDuesInvoice(db, cashier, { patientId, serviceId: base.consultNewServiceId, qty: 2 });
+    expect(dues.totals.netPayablePaise).toBe(100_000);
+
+    const refusal = await codeOf(
+      allocateReceipt(db, cashier.actor, { receiptId: banked.receiptId, invoiceId: dues.invoiceId, amountPaise: 50_000 }, NOW),
+    );
+    expect(refusal).toMatchObject({
+      code: "allocation_exceeds_advance",
+      detail: { askedPaise: 50_000, wouldBeAdvancePaise: -50_000, refundedPaise: 50_000 },
+    });
+    // A DISCRIMINATING signal: the two over-allocation guards and this one are different
+    // mechanisms, and a caller that cannot tell them apart cannot tell the cashier what to do.
+    expect(refusal.code).not.toBe("over_allocation");
+    expect((await countRows()).allocations).toBe(0); // the refusal wrote nothing
+    expect(await invoiceSettlement(db, dues.invoiceId)).toEqual({ state: "unpaid", outstandingPaise: 100_000 });
+    expect(await advanceOf(db, patientId)).toBe(0);
+
+    // THE HARM, ASSERTED. The patient's NEXT, unrelated advance must read back at its FULL value.
+    // Against shipped code the allocation succeeded, `advanceOf` went to -50000, and this read
+    // 50_000 — the hospital silently kept 50000p of a patient's money with no document naming it,
+    // over the same `GET /billing/patients/:patientId/balance` the counter screen polls.
+    await bankCashAdvance(cashier, patientId, 100_000);
+    expect(await advanceOf(db, patientId)).toBe(100_000);
+    expect(await patientBalance(db, cashier.actor, patientId)).toMatchObject({ advancePaise: 100_000 });
+  });
+
+  test("the advance guard is NOT over-broad: an unrefunded advance still clears a bill in full, a partly refunded one clears what is left, and the issue-with-receipt path is untouched", async () => {
+    await grantCreditExtend(db);
+    const cashier = await cashierWithSession("cashier-alloc-legit");
+    const manager = await mkBillingManager(db, "manager-alloc-legit");
+
+    // (a) NO voucher anywhere — the ordinary counter act. The whole advance still spends.
+    const plainId = await mkTestPatient("Plain Advance Patient");
+    const plain = await bankCashAdvance(cashier, plainId, 50_000);
+    const plainDues = await issueDuesInvoice(db, cashier, { patientId: plainId, serviceId: base.consultNewServiceId, qty: 1 });
+    const applied = await allocateReceipt(
+      db, cashier.actor, { receiptId: plain.receiptId, invoiceId: plainDues.invoiceId, amountPaise: 50_000 }, NOW,
+    );
+    expect(applied.settlement).toEqual({ state: "settled", outstandingPaise: 0 });
+    expect(await advanceOf(db, plainId)).toBe(0);
+    expect((await countRows()).allocations).toBe(1);
+
+    // (b) A voucher the REMAINING money covers is not the defect either: 100000 banked, 40000
+    // returned -> 60000 of real money left, and every paisa of it still clears a bill. The guard
+    // bites at 60001, not at 60000 — it is a balance check, not a "has this patient a voucher"
+    // check.
+    const partId = await mkTestPatient("Part Refunded Patient");
+    const part = await bankCashAdvance(cashier, partId, 100_000);
+    const approvalId = await grantedAdvanceRefundApproval({
+      patientId: partId, amountPaise: 40_000, requester: cashier.actor, approver: manager.actor,
+    });
+    await issueRefundVoucher(
+      db, cashier.actor,
+      {
+        kind: "advance_refund", patientId: partId, amountPaise: 40_000, reasonClass: "genuine",
+        reason: "the patient wanted part of the balance back", approvalId, method: "cash",
+      },
+      NOW,
+    );
+    expect(await advanceOf(db, partId)).toBe(60_000);
+    const partDues = await issueDuesInvoice(db, cashier, { patientId: partId, serviceId: base.consultNewServiceId, qty: 2 });
+    const overAsk = await codeOf(
+      allocateReceipt(db, cashier.actor, { receiptId: part.receiptId, invoiceId: partDues.invoiceId, amountPaise: 60_001 }, NOW),
+    );
+    expect(overAsk).toMatchObject({
+      code: "allocation_exceeds_advance",
+      detail: { askedPaise: 60_001, wouldBeAdvancePaise: -1, refundedPaise: 40_000 },
+    });
+    const partApplied = await allocateReceipt(
+      db, cashier.actor, { receiptId: part.receiptId, invoiceId: partDues.invoiceId, amountPaise: 60_000 }, NOW,
+    );
+    expect(partApplied.settlement).toEqual({ state: "partial", outstandingPaise: 40_000 });
+    expect(await advanceOf(db, partId)).toBe(0);
+
+    // (c) THE ISSUE-WITH-RECEIPT PATH IS UNTOUCHED (`issueInvoice`, invoices.ts — deliberately NOT
+    // modified). It allocates a receipt it creates in the SAME transaction and caps the allocation
+    // at that receipt's own total, so its net effect on the advance is `total - allocated >= 0`: it
+    // can only RAISE the balance and can never strand a voucher. Asserted here on the hardest
+    // patient for it — one whose advance a voucher has already emptied to zero.
+    const issueId = await mkTestPatient("Issue With Receipt Patient");
+    const emptied = await bankCashAdvance(cashier, issueId, 50_000);
+    await refundWholeAdvance(cashier, manager, issueId, 50_000);
+    expect(await advanceOf(db, issueId)).toBe(0);
+    const paid = await issuePaidInvoice(db, cashier, { patientId: issueId, serviceId: base.consultNewServiceId });
+    expect(paid.totals.netPayablePaise).toBe(50_000);
+    expect(await invoiceSettlement(db, paid.invoiceId)).toEqual({ state: "settled", outstandingPaise: 0 });
+    expect(await advanceOf(db, issueId)).toBe(0); // still 0 — never negative, never absorbed
+    expect(paid.receiptId).not.toBe(emptied.receiptId);
+  });
+
+  test("race — an allocation against an advance refund, and two allocations on two receipts of one patient: exactly one wins and the advance never goes negative (measured 5x isolated, cold start every run)", async () => {
+    const RUNS = 5;
+    let cleanRuns = 0;
+    for (let i = 0; i < RUNS; i++) {
+      await resetToSeededBase();
+      await grantCreditExtend(db);
+      const cashier = await cashierWithSession(`cashier-alloc-race-${String(i)}`);
+      const manager = await mkBillingManager(db, `manager-alloc-race-${String(i)}`);
+
+      // LEG A — allocateReceipt against an advance-refund voucher issue, SAME patient, SAME
+      // receipt. Both serialize on receipt rows taken FOR UPDATE: T8's lane takes the whole
+      // patient-wide ordered set, and `allocateReceipt` now takes that same set (its own
+      // single-row `lockReceipt` would already have intersected it, because the target receipt is
+      // inside the refund lane's set — this leg therefore measures the RECEIPT lock, not
+      // specifically the patient-wide statement; leg B is the one that isolates that).
+      const legA = await mkTestPatient();
+      const bankedA = await bankCashAdvance(cashier, legA, 50_000);
+      const duesA = await issueDuesInvoice(db, cashier, { patientId: legA, serviceId: base.consultNewServiceId, qty: 2 });
+      const approvalA = await grantedAdvanceRefundApproval({
+        patientId: legA, amountPaise: 50_000, requester: cashier.actor, approver: manager.actor,
+      });
+      const raced = await Promise.allSettled([
+        allocateReceipt(db, cashier.actor, { receiptId: bankedA.receiptId, invoiceId: duesA.invoiceId, amountPaise: 50_000 }, NOW),
+        issueRefundVoucher(db, cashier.actor, {
+          kind: "advance_refund", patientId: legA, amountPaise: 50_000, reasonClass: "genuine",
+          reason: "balance returned", approvalId: approvalA, method: "cash",
+        }, NOW),
+      ]);
+      expect(raced.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      const lostA = raced.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+      expect(lostA).toBeDefined();
+      // BOTH commit orders are correct and the loser names which one happened:
+      //   · refund first     -> the allocation would leave -50000 -> allocation_exceeds_advance
+      //   · allocation first -> the advance is 0, nothing to refund -> refund_exceeds_advance
+      expect(["allocation_exceeds_advance", "refund_exceeds_advance"]).toContain(lostA!.reason.code);
+      expect(await advanceOf(db, legA)).toBe(0);
+
+      // LEG B — TWO concurrent allocations spending TWO DIFFERENT receipts of one patient onto TWO
+      // DIFFERENT invoices, against one outstanding voucher. This is the leg where the ordered
+      // patient-wide receipt lock is the SOLE defence: the two invoice locks are different rows and
+      // each allocation's own `lockReceipt` takes a different row, so without the patient-wide
+      // statement nothing makes the two transactions wait, both read an advance of 50000, both
+      // compute a would-be advance of 0, and the pair lands the balance at -50000.
+      const legB = await mkTestPatient("Two Receipt Patient");
+      const firstReceipt = await bankCashAdvance(cashier, legB, 50_000);
+      const secondReceipt = await bankCashAdvance(cashier, legB, 50_000);
+      await refundWholeAdvance(cashier, manager, legB, 50_000);
+      expect(await advanceOf(db, legB)).toBe(50_000);
+      const firstDues = await issueDuesInvoice(db, cashier, { patientId: legB, serviceId: base.consultNewServiceId, qty: 1 });
+      const secondDues = await issueDuesInvoice(db, cashier, { patientId: legB, serviceId: base.consultNewServiceId, qty: 1 });
+
+      const spends = await Promise.allSettled([
+        allocateReceipt(db, cashier.actor, { receiptId: firstReceipt.receiptId, invoiceId: firstDues.invoiceId, amountPaise: 50_000 }, NOW),
+        allocateReceipt(db, cashier.actor, { receiptId: secondReceipt.receiptId, invoiceId: secondDues.invoiceId, amountPaise: 50_000 }, NOW),
+      ]);
+      expect(spends.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      const lostB = spends.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+      expect(lostB).toBeDefined();
+      expect(lostB!.reason.code).toBe("allocation_exceeds_advance");
+      expect(await advanceOf(db, legB)).toBe(0);
+      // No cascade cancelled the voucher: a paid-out refund is cash that left the drawer.
+      expect(await db.select().from(refundVouchers).where(eq(refundVouchers.patientId, legB))).toHaveLength(1);
+
+      cleanRuns++;
+    }
+    expect(cleanRuns).toBe(RUNS);
+  });
+
+  test("race, the lock leg — the ordered patient-wide receipt FOR UPDATE is REAL in allocateReceipt: it is still pending while an outside session holds a DIFFERENT receipt of the same patient", async () => {
+    await grantCreditExtend(db);
+    const cashier = await cashierWithSession("cashier-alloc-lock");
+    const patientId = await mkTestPatient();
+    const held = await bankCashAdvance(cashier, patientId, 50_000);
+    const target = await bankCashAdvance(cashier, patientId, 50_000);
+    const dues = await issueDuesInvoice(db, cashier, { patientId, serviceId: base.consultNewServiceId, qty: 2 });
+
+    // §3.28/§3.39: the observation point sits OUTSIDE the target's own write path, and the LOCK
+    // MODE is load-bearing.
+    //   · The outside holder takes FOR NO KEY UPDATE on ONE receipt of this patient — the one the
+    //     allocation does NOT spend. That mode conflicts with FOR UPDATE and NOT with FOR KEY
+    //     SHARE, the mode an FK check would take.
+    //   · `allocateReceipt`'s other locks cannot produce this wait: `lockInvoice` takes FOR UPDATE
+    //     on an `invoices` row nobody holds; `lockReceipt` takes FOR UPDATE on `target`, a
+    //     DIFFERENT row from the one held here; the INSERT into `allocations` takes the implicit
+    //     FOR KEY SHARE of its two foreign keys on that same invoice row and on `target`, never on
+    //     `held`, and FOR KEY SHARE does not conflict with FOR NO KEY UPDATE in any case;
+    //     `appendEvent` writes `events`; the advance and settlement reads are plain SELECTs and
+    //     never wait.
+    //   · So the ONLY lock in the implementation that can wait on this hold is the single ordered
+    //     `select id from receipts where patient_id = $1 order by id for update` itself.
+    const holder = await pool.connect();
+    try {
+      await holder.query("begin");
+      await holder.query("select id from receipts where id = $1 for no key update", [held.receiptId]);
+
+      const p = allocateReceipt(
+        db, cashier.actor, { receiptId: target.receiptId, invoiceId: dues.invoiceId, amountPaise: 50_000 }, NOW,
+      );
+      p.catch(() => {}); // no unhandled rejection while unobserved
+      const state = await Promise.race([p.then(() => "settled", () => "settled"), delay(400).then(() => "pending")]);
+      expect(state).toBe("pending");
+
+      await holder.query("commit");
+      const done = await p;
+      expect(done.settlement).toEqual({ state: "partial", outstandingPaise: 50_000 });
+    } finally {
+      holder.release();
+    }
+    expect((await countRows()).allocations).toBe(1);
+    expect(await advanceOf(db, patientId)).toBe(50_000);
+  });
 });
