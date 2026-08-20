@@ -32,43 +32,48 @@ import type { Db } from "../src/kernel/db/client";
  * quietly disappearing. This file was written RED-FIRST against this table: before
  * `billing.controller.ts` existed every one of the 31 entries answered 404 instead of 403.
  *
+ * EACH ENTRY ALSO CARRIES THE PERMISSION ITS DECORATOR NAMES (§3.42 / §2.37). The sweep asserts
+ * the kernel guard's `missing permission <x>` per route, so all 31 BINDINGS are asserted rather
+ * than the 4 the shaped two-actor test below reaches: a route repointed at a different existing
+ * permission now fails BY NAME instead of answering the same anonymous 403.
+ *
  * The load-bearing leg is test 2. T10's own gate test registers the guard BY HAND, so this suite
  * is the only place the module-init registration in `billing.module.ts` is exercised: an unpaid
  * `new` visit is refused at `/opd/.../consult/start` with 409 `consult_gate_refused`, the fee is
  * taken through the billing routes, and the retry starts 201 — all through the composed app.
  */
-const ROUTES: [method: "get" | "post" | "put", path: string][] = [
-  ["post", "/billing/invoices"],
-  ["post", "/billing/invoices/preview"],
-  ["get", "/billing/invoices"],
-  ["get", "/billing/invoices/X"],
-  ["get", "/billing/invoices/X/print"],
-  ["post", "/billing/invoices/X/credit-notes"],
-  ["get", "/billing/invoices/X/credit-notes"],
-  ["get", "/billing/visits/X/fee-quote"],
-  ["post", "/billing/receipts"],
-  ["get", "/billing/receipts"],
-  ["post", "/billing/receipts/X/allocations"],
-  ["post", "/billing/allocations/X/reverse"],
-  ["post", "/billing/eie"],
-  ["get", "/billing/patients/X/balance"],
-  ["get", "/billing/patients/X/dues"],
-  ["post", "/billing/refunds/request"],
-  ["post", "/billing/refunds"],
-  ["post", "/billing/refunds/X/pay"],
-  ["get", "/billing/refunds"],
-  ["post", "/billing/sessions"],
-  ["get", "/billing/sessions/current"],
-  ["post", "/billing/sessions/X/close"],
-  ["post", "/billing/sessions/X/confirm-close"],
-  ["get", "/billing/sessions"],
-  ["post", "/billing/recon/upload"],
-  ["get", "/billing/recon/mismatches"],
-  ["get", "/billing/day-book"],
-  ["get", "/billing/gstr1"],
-  ["get", "/billing/config"],
-  ["put", "/billing/config"],
-  ["put", "/billing/degraded"],
+const ROUTES: [method: "get" | "post" | "put", path: string, permission: string][] = [
+  ["post", "/billing/invoices", "billing.invoice.issue"],
+  ["post", "/billing/invoices/preview", "billing.invoice.issue"],
+  ["get", "/billing/invoices", "billing.invoice.read"],
+  ["get", "/billing/invoices/X", "billing.invoice.read"],
+  ["get", "/billing/invoices/X/print", "billing.invoice.read"],
+  ["post", "/billing/invoices/X/credit-notes", "billing.credit_note.issue"],
+  ["get", "/billing/invoices/X/credit-notes", "billing.invoice.read"],
+  ["get", "/billing/visits/X/fee-quote", "billing.invoice.read"],
+  ["post", "/billing/receipts", "billing.receipt.record"],
+  ["get", "/billing/receipts", "billing.invoice.read"],
+  ["post", "/billing/receipts/X/allocations", "billing.receipt.record"],
+  ["post", "/billing/allocations/X/reverse", "billing.allocation.reverse"],
+  ["post", "/billing/eie", "billing.eie.mark"],
+  ["get", "/billing/patients/X/balance", "billing.invoice.read"],
+  ["get", "/billing/patients/X/dues", "billing.invoice.read"],
+  ["post", "/billing/refunds/request", "billing.refund.request"],
+  ["post", "/billing/refunds", "billing.refund.request"],
+  ["post", "/billing/refunds/X/pay", "billing.refund.pay"],
+  ["get", "/billing/refunds", "billing.reports.read"],
+  ["post", "/billing/sessions", "billing.session.own"],
+  ["get", "/billing/sessions/current", "billing.session.own"],
+  ["post", "/billing/sessions/X/close", "billing.session.own"],
+  ["post", "/billing/sessions/X/confirm-close", "billing.session.own"],
+  ["get", "/billing/sessions", "billing.session.read"],
+  ["post", "/billing/recon/upload", "billing.recon.upload"],
+  ["get", "/billing/recon/mismatches", "billing.reports.read"],
+  ["get", "/billing/day-book", "billing.reports.read"],
+  ["get", "/billing/gstr1", "billing.reports.read"],
+  ["get", "/billing/config", "billing.reports.read"],
+  ["put", "/billing/config", "billing.config.write"],
+  ["put", "/billing/degraded", "billing.config.write"],
 ];
 
 /** A complete, in-range adult reading — the opd.e2e fixture, so vitals move the encounter to `waiting`. */
@@ -526,21 +531,61 @@ describe("billing e2e", () => {
     expect(current.body.session).toBeNull();
   });
 
-  it("the 403 sweep: every route in the table refuses a permission-less user", async () => {
+  it("the 403 sweep: every route in the table refuses a permission-less user, BY THE PERMISSION IT NAMES", async () => {
     expect(ROUTES).toHaveLength(31);
-    for (const [method, path] of ROUTES) {
+    for (const [method, path, permission] of ROUTES) {
       const res = await http()[method](path).set(...auth(rando.token)).send({});
-      expect({ method, path, status: res.status }).toEqual({ method, path, status: 403 });
+      expect({ method, path, status: res.status, message: res.body.message }).toEqual({
+        method, path, status: 403, message: `missing permission ${permission}`,
+      });
     }
   });
 
   /**
-   * §3.42 — THE ROUTE→PERMISSION MAP, ASSERTED. The sweep above drives all 31 routes with a user
-   * holding NO ROLES AT ALL, so a route decorated with any existing-but-WRONG permission answers
-   * 403 identically and passes; and every positive path in this file uses ONE cashier holding all
-   * fourteen billing permissions at once, which can never observe a wrong grant either. Between
-   * them the map is entirely unasserted — and it is the assertion that would have caught the raw
-   * `receipts` row (PAN included) sitting behind every-cashier `billing.invoice.read`.
+   * §2.37 — THE TWO LEGS THE TRANSCRIPTION CANNOT SUPPLY. The permission column above is copied
+   * from the decorators, so the sweep on its own is a REGRESSION PIN: it catches a decorator that
+   * MOVES without the table, never one that was wrong the day both were written. Neither assertion
+   * below reads the table's permission column against the decorators — they read it against the
+   * MANIFEST and against a real grant set, which are two independent sources.
+   */
+  it("the guarded set closes over the manifest: every demanded permission is declared, and exactly one declared permission guards no route", () => {
+    const guarded = [...new Set(ROUTES.map(([, , permission]) => permission))].sort();
+    const declared = [...billingManifest.permissions].sort();
+    // A route demanding a permission the manifest never declares is a route `syncPermissions`
+    // leaves unreachable by EVERY role, forever — and the role-less sweep above answers 403 for it
+    // exactly as it does for a correctly guarded route, so nothing else in this file can tell them
+    // apart.
+    expect(guarded.filter((permission) => !declared.includes(permission))).toEqual([]);
+    // The other direction, and the reason it is `toEqual` and not `toContain`:
+    // `billing.credit.extend` is the ONE declared permission no route guards — it is checked INSIDE
+    // `issueInvoice` (D2 step 3, owner ruling 2) on the same `POST /billing/invoices` a plain issue
+    // uses. A SECOND name appearing here is a route that was dropped from the controller or a
+    // decorator repointed away from its permission.
+    expect(declared.filter((permission) => !guarded.includes(permission))).toEqual(["billing.credit.extend"]);
+  });
+
+  it("the granted direction: the all-fourteen cashier is refused for a MISSING PERMISSION on no route in the table", async () => {
+    for (const [method, path] of ROUTES) {
+      const res = await http()[method](path).set(...auth(cashier.token)).send({});
+      // Deliberately NOT a status assertion: an empty body legitimately answers 400/404/409 here,
+      // and `POST /billing/sessions/:id/confirm-close` answers 403 for OWNERSHIP. The permission
+      // guard is the only refusal that names a permission, so that is what is asserted absent —
+      // which is what makes a decorator pointing at an undeclared or misspelt permission fail here
+      // even though the sweep above and the manifest leg would both still pass.
+      const message: unknown = res.body?.message;
+      const refusedForPermission = typeof message === "string" && message.startsWith("missing permission ");
+      expect({ method, path, refusedForPermission, message }).toEqual({ method, path, refusedForPermission: false, message });
+    }
+  });
+
+  /**
+   * §3.42 — THE ROUTE→PERMISSION MAP, WITH A SECOND ACTOR. The sweep above asserts all 31 bindings
+   * by name, but it drives them with a user holding NO ROLES AT ALL: it proves what each route
+   * DEMANDS, never that a REAL, NON-EMPTY grant set is ADMITTED on its own routes and REFUSED on
+   * the other role's. Every positive path in this file uses ONE cashier holding all fourteen
+   * billing permissions at once, which can never observe a wrong grant either. This test is the
+   * assertion that would have caught the raw `receipts` row (PAN included) sitting behind
+   * every-cashier `billing.invoice.read`.
    *
    * So: a SECOND actor holding a REAL, NON-EMPTY set. Both sets are the README's own "Recommended
    * permission grants" split — its cashier column and its billing_manager column — carried on
