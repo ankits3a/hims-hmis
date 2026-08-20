@@ -237,9 +237,10 @@ Do not chase a predicted per-task test total. The rule is:
 Three numbered steps, in this order. Do not chain them onto one line.
 
 0. **Before any `git add`:** run `git status --porcelain` on the server and READ IT. Delete
-   every scratch file you created — mutants, scratch specs, `.log`, `.exit`, generated reports —
-   and delete your local mirror. The tree must contain ONLY files your Files list names. Never
-   run `git add -A` over a status you have not read.
+   every SERVER-side scratch file you created — mutants, scratch specs, `.log`, `.exit`, generated
+   reports — with plain `rm -f`. **LEAVE YOUR LOCAL MIRROR ALONE** (rule 22(f)): you do not delete
+   it and must not try. The tree must contain ONLY files your Files list names. Never run
+   `git add -A` over a status you have not read.
 1. **Commit** with the plan's EXACT commit message for your task.
 2. `git pull --rebase origin main`
 3. `git push origin main`
