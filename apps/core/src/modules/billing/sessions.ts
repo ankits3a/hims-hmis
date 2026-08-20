@@ -63,17 +63,38 @@ export async function requireOpenSession(db: Db | Tx, actor: Actor): Promise<Cas
 
 /**
  * The session's cash tenders, session-scoped: Sigma `receipt_tenders.amount_paise` where
- * `mode = 'cash'` over receipts belonging to this session. No writer creates these rows yet (T5
+ * `mode = 'cash'` over the session's LIVE receipts. No writer creates these rows yet (T5
  * issues invoices with receipts, T6 ships allocations) -- sessions.test.ts SHAPES them by direct
  * insert against T1's schema (disclosed there and in this task's report). Written once, against
  * the FINAL shape, so T5/T6 need no change here.
+ *
+ * ENTERED-IN-ERROR RECEIPTS ARE EXCLUDED, and that is the same law `dayBook` states one file over
+ * (daily-close.ts): money never really received cannot appear in the cash the drawer is reconciled
+ * against. Without it, voiding a mis-keyed cash receipt left this fold counting money that is not
+ * in the drawer -- a phantom shortfall that moved the session to `closing` and locked the cashier
+ * out of all counter work (`requireOpenSession` accepts only `open`) behind a `billing_variance`
+ * approval nobody could honestly grant.
+ *
+ * INLINE, deliberately. `enteredInErrorDocIds` exists as four private copies across this module
+ * and the nearest one lives in `receipts.ts`, which imports `requireOpenSession` FROM THIS FILE --
+ * so importing it would be a cycle, and copying it a fifth time would be worse. A correlated
+ * NOT EXISTS in the query the fold already runs needs neither.
  */
 async function sumCashTendersPaise(tx: Tx, sessionId: string): Promise<number> {
   const rows = await tx
     .select({ total: sql<string>`coalesce(sum(${receiptTenders.amountPaise}), 0)` })
     .from(receiptTenders)
     .innerJoin(receipts, eq(receiptTenders.receiptId, receipts.id))
-    .where(and(eq(receipts.cashierSessionId, sessionId), eq(receiptTenders.mode, "cash")));
+    .where(
+      and(
+        eq(receipts.cashierSessionId, sessionId),
+        eq(receiptTenders.mode, "cash"),
+        sql`not exists (
+          select 1 from entered_in_error_marks
+          where entered_in_error_marks.doc_type = 'receipt' and entered_in_error_marks.doc_id = receipts.id
+        )`,
+      ),
+    );
   return Number(rows[0]!.total);
 }
 

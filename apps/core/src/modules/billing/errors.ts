@@ -9,7 +9,8 @@ export type BillingErrorCode =
   | "credit_exceeds_line" | "correction_must_exhaust" | "over_cap"
   | "clearance_approval_required" | "clearance_requires_outstanding"
   | "refund_exceeds_received" | "refund_exceeds_advance" | "bank_transfer_required" | "voucher_state_conflict"
-  | "approval_not_granted" | "unknown_series" | "eie_already_marked" | "recon_parse_failed"
+  | "approval_not_granted" | "unknown_series" | "eie_already_marked" | "eie_advance_refunded"
+  | "recon_parse_failed"
   | "unknown_encounter" | "fee_not_applicable" | "duplicate_ref";
 
 export class BillingError extends Error {

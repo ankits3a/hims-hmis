@@ -126,23 +126,47 @@ async function advanceRefundedPaise(exec: Db | Tx, patientId: string): Promise<n
 }
 
 /**
- * The patient's advance balance (D1): Sigma receipt totals - Sigma effective allocations of those
- * receipts - Sigma advance-refund vouchers. Money on a receipt marked `entered-in-error` leaves
- * the balance entirely — the mark reverses that receipt's live allocations in the same
- * transaction, so neither term counts it afterwards.
+ * D1's advance formula, with ONE receipt optionally dropped from the live set.
+ *
+ * `excludeReceiptId === null` is `advanceOf` itself. A non-null id answers "what would this
+ * patient's advance be if that receipt were dead?" — which is exactly the post-mark state, because
+ * marking a receipt entered-in-error takes its total AND its allocations out of the balance
+ * together (`markEnteredInError` reverses the live allocations in the same transaction). The
+ * refund term is untouched by the exclusion: `advanceRefundedPaise` is PER-PATIENT and no voucher
+ * names a receipt, which is the whole reason the invariant below has to be stated as a balance.
  */
-export async function advanceOf(exec: Db | Tx, patientId: string): Promise<number> {
+async function advanceOfExcluding(
+  exec: Db | Tx,
+  patientId: string,
+  excludeReceiptId: string | null,
+): Promise<number> {
   const rows = await exec
     .select({ id: receipts.id, totalPaise: receipts.totalPaise })
     .from(receipts)
     .where(eq(receipts.patientId, patientId));
   if (rows.length === 0) return 0;
   const dead = await enteredInErrorDocIds(exec, "receipt", rows.map((r) => r.id));
-  const live = rows.filter((r) => !dead.has(r.id));
+  const live = rows.filter((r) => !dead.has(r.id) && r.id !== excludeReceiptId);
   const allocated = await allocatedByReceipt(exec, live.map((r) => r.id));
   let total = 0;
   for (const row of live) total += row.totalPaise - (allocated.get(row.id) ?? 0);
   return total - (await advanceRefundedPaise(exec, patientId));
+}
+
+/**
+ * The patient's advance balance (D1): Sigma receipt totals - Sigma effective allocations of those
+ * receipts - Sigma advance-refund vouchers. Money on a receipt marked `entered-in-error` leaves
+ * the balance entirely — the mark reverses that receipt's live allocations in the same
+ * transaction, so neither term counts it afterwards.
+ *
+ * DELIBERATELY NOT FLOORED AT ZERO. A floor would hide the symptom and not the defect: with
+ * `total(live) = 0` and `refunded = 10000` it clamps -10000 to 0, but the patient's NEXT 100000p
+ * advance then computes 100000 - 10000 = 90000 — positive, so the floor never bites and the
+ * absorption survives untouched. This reader stays honest and `markEnteredInError`'s guard is what
+ * keeps the state from being created.
+ */
+export async function advanceOf(exec: Db | Tx, patientId: string): Promise<number> {
+  return advanceOfExcluding(exec, patientId, null);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -504,9 +528,21 @@ export type MarkEnteredInErrorResult = { markId: string; reversedAllocationIds: 
  * instead (D4) and credit notes are T7's, so `receipt` is the only doc type this function writes.
  *
  * Lock order is the file's global one — INVOICES first (as ONE ordered statement over every
- * invoice this receipt's money touches: the Plan 06.1 C1 lesson, never row-then-set), the RECEIPT
- * second. Holding the receipt row is also what makes the "already marked" check total: a second
- * marker queues behind it and reads the committed mark.
+ * invoice this receipt's money touches: the Plan 06.1 C1 lesson, never row-then-set), then the
+ * patient's RECEIPTS as ONE ordered statement, then this receipt. Holding the receipt row is also
+ * what makes the "already marked" check total: a second marker queues behind it and reads the
+ * committed mark.
+ *
+ * THE ADVANCE INVARIANT (the money defect this guard exists for). An advance-refund voucher is
+ * PER-PATIENT and names no receipt (`advanceRefundedPaise`), so there is no receipt -> voucher link
+ * to ask about. Marking a receipt whose money a voucher has ALREADY returned takes the receipt out
+ * of the live set while the voucher's subtraction stands: `advanceOf` goes NEGATIVE, the balance
+ * endpoint serves that verbatim, and the patient's next unrelated advance is silently absorbed by
+ * the shortfall. Stated as a balance invariant instead: the mark must not drive this patient's
+ * advance below zero. Refusing leaves no dead end — the money was returned, so the receipt is
+ * already economically neutralised and the audit trail is right as it stands; voiding it as well
+ * would double-count. Nothing cascades onto the voucher: a paid voucher is cash that physically
+ * left the drawer and cannot be un-paid.
  */
 export async function markEnteredInError(
   db: Db,
@@ -515,11 +551,32 @@ export async function markEnteredInError(
   now: Date = new Date(),
 ): Promise<MarkEnteredInErrorResult> {
   return withTx(db, async (tx) => {
+    // Read the owner UNLOCKED, only so the patient-wide lock below can name a patient. Safe by
+    // construction: `receipts` is immutable under migration 0012's trigger (UPDATE and DELETE are
+    // both forbidden), so `patient_id` cannot change under us between this read and the locks.
+    // A missing row is left to `lockReceipt`, which raises `unknown_receipt` as it always has.
+    const owner = await tx
+      .select({ patientId: receipts.patientId })
+      .from(receipts)
+      .where(eq(receipts.id, input.receiptId));
+    const ownerPatientId = owner[0]?.patientId;
+
     await tx.execute(
       sql`select id from invoices
           where id in (select invoice_id from allocations where receipt_id = ${input.receiptId})
           order by id for update`,
     );
+    if (ownerPatientId !== undefined) {
+      // THE SINGLE ORDERED LOCK, mode FOR UPDATE — the SAME statement T8's advance-refund lane
+      // takes (`refunds.ts` issueRefundVoucher): every receipt row of this patient, in id order,
+      // in ONE statement, never row-then-set (the Plan 06.1 C1 lesson). Taken BEFORE `lockReceipt`
+      // so the file's INVOICES-then-RECEIPTS order still holds and receipts are still acquired in
+      // id order. It is what serializes the balance check below — against a concurrent advance
+      // refund, and against a concurrent mark of a DIFFERENT receipt of the same patient, where
+      // each mark's own single-row `lockReceipt` would otherwise take a different row and neither
+      // would wait.
+      await tx.execute(sql`select id from receipts where patient_id = ${ownerPatientId} order by id for update`);
+    }
     const receipt = await lockReceipt(tx, input.receiptId);
 
     const marked = await enteredInErrorDocIds(tx, "receipt", [receipt.id]);
@@ -527,6 +584,18 @@ export async function markEnteredInError(
       throw new BillingError("eie_already_marked", `receipt ${receipt.id} is already entered-in-error`, {
         receiptId: receipt.id,
       });
+    }
+
+    // The post-mark advance, simulated by excluding this receipt from the live set — its total and
+    // its allocations drop out together, which is exactly what the mark is about to do.
+    const wouldBeAdvancePaise = await advanceOfExcluding(tx, receipt.patientId, receipt.id);
+    if (wouldBeAdvancePaise < 0) {
+      const refundedPaise = await advanceRefundedPaise(tx, receipt.patientId);
+      throw new BillingError(
+        "eie_advance_refunded",
+        `marking receipt ${receipt.receiptNo} entered-in-error would leave this patient a ${String(wouldBeAdvancePaise)}p advance: ${String(refundedPaise)}p has already gone back on advance-refund vouchers`,
+        { receiptId: receipt.id, wouldBeAdvancePaise, refundedPaise },
+      );
     }
 
     const applied = await tx

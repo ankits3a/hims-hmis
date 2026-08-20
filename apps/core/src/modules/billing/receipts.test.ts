@@ -3,16 +3,23 @@ import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import {
-  grantCreditExtend, issueDuesInvoice, issuePaidInvoice, mkCashier, openSessionFor, seedBillingBase,
+  grantCreditExtend, issueDuesInvoice, issuePaidInvoice, mkBillingManager, mkCashier, openSessionFor,
+  seedBillingBase,
 } from "../../../test/helpers/billing";
 import type { BillingBaseFixture } from "../../../test/helpers/billing";
+import { approveRequest } from "../../kernel/approvals/decisions";
+import { requestApproval } from "../../kernel/approvals/requests";
 import { withTx } from "../../kernel/db/client";
-import { allocations, enteredInErrorMarks, events, receipts, receiptTenders, registrationConfig } from "../../kernel/db/schema";
+import {
+  allocations, enteredInErrorMarks, events, receipts, receiptTenders, refundVouchers, registrationConfig,
+} from "../../kernel/db/schema";
 import { registerPatient } from "../patients";
 import { invoiceSettlement } from "./invoices";
 import {
   advanceOf, allocateReceipt, listDues, markEnteredInError, patientBalance, recordReceipt, reverseAllocation,
 } from "./receipts";
+import { issueRefundVoucher, REFUND_APPROVAL_SUBJECT, REFUND_APPROVAL_TYPE } from "./refunds";
+import type { Pool } from "pg";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -33,6 +40,7 @@ import type { Db } from "../../kernel/db/client";
  */
 describe("receipts and allocations: the patient money ledger (D1)", () => {
   let db: Db;
+  let pool: Pool;
   let teardown: () => Promise<void>;
   let base: BillingBaseFixture;
 
@@ -42,8 +50,10 @@ describe("receipts and allocations: the patient money ledger (D1)", () => {
   const NOW = new Date("2026-08-19T06:00:00Z");
   const SERVICE_DAY = "2026-08-19";
 
+  const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
   beforeAll(async () => {
-    ({ db, teardown } = await setupTestDb());
+    ({ db, pool, teardown } = await setupTestDb());
   });
   afterAll(async () => teardown());
   beforeEach(async () => {
@@ -51,6 +61,13 @@ describe("receipts and allocations: the patient money ledger (D1)", () => {
     await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "t" }).onConflictDoNothing();
     base = await seedBillingBase(db);
   });
+
+  /** A fresh database in the state `beforeEach` leaves — the cold start each race iteration needs. */
+  async function resetToSeededBase(): Promise<void> {
+    await truncateAll(db);
+    await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "t" }).onConflictDoNothing();
+    base = await seedBillingBase(db);
+  }
 
   async function mkTestPatient(name = "Ledger Patient"): Promise<string> {
     const actor: Actor = { type: "user", id: "ledger-clerk" };
@@ -82,6 +99,70 @@ describe("receipts and allocations: the patient money ledger (D1)", () => {
   });
 
   const eventsNamed = (name: string) => db.select().from(events).where(eq(events.name, name));
+
+  /** One cash advance for this patient, through the shipped writer. */
+  const bankCashAdvance = async (
+    cashier: { actor: Actor }, patientId: string, amountPaise: number,
+  ): Promise<{ receiptId: string }> =>
+    recordReceipt(db, cashier.actor, { patientId, tenders: [{ mode: "cash", amountPaise }] }, NOW);
+
+  /**
+   * A GRANTED `billing_refund` approval bound to this patient and this exact amount — the T8 shape
+   * (refunds.test.ts `grantedRefundApproval`). An advance refund's subject IS the patient: an
+   * advance is a balance, not a document (`resolveTarget`).
+   */
+  async function grantedAdvanceRefundApproval(input: {
+    patientId: string; amountPaise: number; requester: Actor; approver: Actor;
+  }): Promise<string> {
+    const filed = await withTx(db, (tx) =>
+      requestApproval(tx, input.requester, {
+        typeKey: REFUND_APPROVAL_TYPE,
+        subject: { type: REFUND_APPROVAL_SUBJECT, id: input.patientId },
+        patientId: input.patientId,
+        amountPaise: input.amountPaise,
+        requestNote: "the patient is leaving and wants the balance back",
+      }),
+    );
+    await approveRequest(db, input.approver, { approvalId: filed.approvalId, note: "approved for the test" });
+    return filed.approvalId;
+  }
+
+  /** Issues the whole of `amountPaise` back to the patient as an advance-refund voucher (status `issued`). */
+  async function refundWholeAdvance(
+    cashier: { actor: Actor }, manager: { actor: Actor }, patientId: string, amountPaise: number,
+  ): Promise<string> {
+    const approvalId = await grantedAdvanceRefundApproval({
+      patientId, amountPaise, requester: cashier.actor, approver: manager.actor,
+    });
+    const voucher = await issueRefundVoucher(
+      db, cashier.actor,
+      {
+        kind: "advance_refund", patientId, amountPaise, reasonClass: "genuine",
+        reason: "the patient is leaving and wants the balance back", approvalId, method: "cash",
+      },
+      NOW,
+    );
+    return voucher.voucherId;
+  }
+
+  /**
+   * The T7/T8 `codeOf` shape, kept verbatim so a refusal that WRONGLY RETURNS is reported as an
+   * expected-vs-received pair rather than as a bare throw. A guard implemented wrongly fails by
+   * ACCEPTING, so this is exactly where tripwire 21's expected/received pair has to come from.
+   */
+  const codeOf = async (run: Promise<unknown>): Promise<{ code: unknown; detail: unknown }> => {
+    let refused = false;
+    let returned: unknown = null;
+    let err: { code?: unknown; detail?: unknown } = {};
+    try {
+      returned = (await run) ?? null;
+    } catch (e) {
+      refused = true;
+      err = e as { code?: unknown; detail?: unknown };
+    }
+    expect({ refused, returned }).toEqual({ refused: true, returned: null });
+    return { code: err.code, detail: err.detail };
+  };
 
   test("recordReceipt banks an advance: the receipt and its tenders persist, receipt.recorded and advance.received are appended", async () => {
     const cashier = await cashierWithSession("cashier-advance");
@@ -409,5 +490,143 @@ describe("receipts and allocations: the patient money ledger (D1)", () => {
     expect(await invoiceSettlement(db, dues.invoiceId)).toEqual({ state: "unpaid", outstandingPaise: 100_000 });
     expect((await listDues(db, cashier.actor, { patientId })).map((d) => d.outstandingPaise)).toEqual([100_000]);
     expect(await patientBalance(db, cashier.actor, patientId)).toMatchObject({ advancePaise: 0, outstandingPaise: 100_000 });
+  });
+
+  // ===========================================================================================
+  // The entered-in-error / advance-refund invariant: a mark may never drive the advance negative
+  // ===========================================================================================
+
+  test("an entered-in-error mark that would strand an advance refund is REFUSED, and the patient's next advance still reads in full", async () => {
+    const cashier = await cashierWithSession("cashier-eie-refunded");
+    const manager = await mkBillingManager(db, "manager-eie-refunded");
+    const patientId = await mkTestPatient();
+
+    // 10000p banked, then the WHOLE 10000 handed back on an approved advance-refund voucher.
+    // `advanceRefundedPaise` is PER-PATIENT and names no receipt, so the balance is correctly 0
+    // and NOTHING links the voucher to the receipt that funded it.
+    const banked = await bankCashAdvance(cashier, patientId, 10_000);
+    await refundWholeAdvance(cashier, manager, patientId, 10_000);
+    expect(await advanceOf(db, patientId)).toBe(0);
+
+    // Marking the receipt now would drop its 10000 out of the live set while the voucher's
+    // subtraction stands, leaving a -10000 advance. The mark is refused instead: the money HAS
+    // been returned, the receipt is already economically neutralised, and voiding it as well would
+    // double-count. No cascade cancels the voucher — paid cash cannot be un-paid.
+    const refusal = await codeOf(
+      markEnteredInError(db, cashier.actor, { receiptId: banked.receiptId, reason: "cash was never handed over" }, NOW),
+    );
+    expect(refusal).toMatchObject({
+      code: "eie_advance_refunded",
+      detail: { receiptId: banked.receiptId, wouldBeAdvancePaise: -10_000, refundedPaise: 10_000 },
+    });
+    expect(await countRows()).toMatchObject({ receipts: 1, marks: 0 }); // the refusal wrote nothing
+    expect(await advanceOf(db, patientId)).toBe(0);
+
+    // THE HARM, ASSERTED. The patient's NEXT, unrelated advance must read back at its FULL value.
+    // Against shipped code the mark succeeded and this read 90_000 — the hospital silently kept
+    // 10000p of a patient's money with no document naming it.
+    await bankCashAdvance(cashier, patientId, 100_000);
+    expect(await advanceOf(db, patientId)).toBe(100_000);
+    expect(await patientBalance(db, cashier.actor, patientId)).toMatchObject({ advancePaise: 100_000 });
+  });
+
+  test("race — a mark and an advance refund on ONE patient, and two marks on one patient: exactly one wins and the advance never goes negative (measured 5x isolated, cold start every run)", async () => {
+    const RUNS = 5;
+    let cleanRuns = 0;
+    for (let i = 0; i < RUNS; i++) {
+      await resetToSeededBase();
+      const cashier = await cashierWithSession(`cashier-eie-race-${String(i)}`);
+      const manager = await mkBillingManager(db, `manager-eie-race-${String(i)}`);
+
+      // LEG A — markEnteredInError against an advance-refund voucher issue, same patient.
+      // Both serialize on the SINGLE ordered patient-wide receipt lock
+      // (`select id from receipts where patient_id = $1 order by id for update`, mode FOR UPDATE),
+      // which the mark now takes and T8's advance lane already took.
+      const legA = await mkTestPatient();
+      const bankedA = await bankCashAdvance(cashier, legA, 10_000);
+      const approvalA = await grantedAdvanceRefundApproval({
+        patientId: legA, amountPaise: 10_000, requester: cashier.actor, approver: manager.actor,
+      });
+      const raced = await Promise.allSettled([
+        markEnteredInError(db, cashier.actor, { receiptId: bankedA.receiptId, reason: "cash was never handed over" }, NOW),
+        issueRefundVoucher(db, cashier.actor, {
+          kind: "advance_refund", patientId: legA, amountPaise: 10_000, reasonClass: "genuine",
+          reason: "balance returned", approvalId: approvalA, method: "cash",
+        }, NOW),
+      ]);
+      expect(raced.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      const lostA = raced.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+      expect(lostA).toBeDefined();
+      // BOTH commit orders are correct and the loser names which one happened:
+      //   · refund first -> the mark would leave -10000  -> eie_advance_refunded
+      //   · mark first   -> the receipt is dead, advance 0 -> refund_exceeds_advance
+      expect(["eie_advance_refunded", "refund_exceeds_advance"]).toContain(lostA!.reason.code);
+      expect(await advanceOf(db, legA)).toBe(0);
+
+      // LEG B — TWO concurrent marks on TWO receipts of one patient, against one outstanding
+      // voucher. This is the leg where the patient-wide lock is the SOLE defence: each mark's own
+      // `lockReceipt` takes a DIFFERENT row, so without the patient-wide lock nothing makes the
+      // two transactions wait for one another and both read a would-be advance of 0.
+      const legB = await mkTestPatient("Two Receipt Patient");
+      const first = await bankCashAdvance(cashier, legB, 10_000);
+      const second = await bankCashAdvance(cashier, legB, 10_000);
+      await refundWholeAdvance(cashier, manager, legB, 10_000);
+      expect(await advanceOf(db, legB)).toBe(10_000);
+
+      const marks = await Promise.allSettled([
+        markEnteredInError(db, cashier.actor, { receiptId: first.receiptId, reason: "keyed twice" }, NOW),
+        markEnteredInError(db, cashier.actor, { receiptId: second.receiptId, reason: "keyed twice" }, NOW),
+      ]);
+      expect(marks.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      const lostB = marks.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+      expect(lostB).toBeDefined();
+      expect(lostB!.reason.code).toBe("eie_advance_refunded");
+      expect(await advanceOf(db, legB)).toBe(0);
+      // No cascade cancelled the voucher: a paid-out refund is cash that left the drawer.
+      expect(await db.select().from(refundVouchers).where(eq(refundVouchers.patientId, legB))).toHaveLength(1);
+
+      cleanRuns++;
+    }
+    expect(cleanRuns).toBe(RUNS);
+  });
+
+  test("race, the lock leg — the ordered patient-wide receipt FOR UPDATE is REAL: the mark is still pending while an outside session holds a DIFFERENT receipt of the same patient", async () => {
+    const cashier = await cashierWithSession("cashier-eie-lock");
+    const patientId = await mkTestPatient();
+    const held = await bankCashAdvance(cashier, patientId, 10_000);
+    const target = await bankCashAdvance(cashier, patientId, 10_000);
+
+    // §3.28/§3.39: the observation point sits OUTSIDE the target's own write path, and the LOCK
+    // MODE is load-bearing.
+    //   · The outside holder takes FOR NO KEY UPDATE on ONE receipt of this patient — the one the
+    //     mark does NOT target. That mode conflicts with FOR UPDATE and NOT with FOR KEY SHARE,
+    //     the mode an FK check would take.
+    //   · `markEnteredInError`'s other locks cannot produce this wait: its ordered invoice
+    //     statement touches `invoices` only (and `target` carries no allocation, so that set is
+    //     empty), and `lockReceipt` takes FOR UPDATE on `target` — a DIFFERENT row from the one
+    //     held here. `entered_in_error_marks` carries NO foreign key to `receipts` (`doc_id` is
+    //     plain text), so its INSERT takes no implicit FOR KEY SHARE on any receipt row; nothing
+    //     is appended to `allocations` because there is no allocation to reverse; `appendEvent`
+    //     writes `events`; the advance reads are plain SELECTs and never wait.
+    //   · So the ONLY lock in the implementation that can wait on this hold is the single ordered
+    //     `select id from receipts where patient_id = $1 order by id for update` itself.
+    const holder = await pool.connect();
+    try {
+      await holder.query("begin");
+      await holder.query("select id from receipts where id = $1 for no key update", [held.receiptId]);
+
+      const p = markEnteredInError(db, cashier.actor, { receiptId: target.receiptId, reason: "cash was never handed over" }, NOW);
+      p.catch(() => {}); // no unhandled rejection while unobserved
+      const state = await Promise.race([p.then(() => "settled", () => "settled"), delay(400).then(() => "pending")]);
+      expect(state).toBe("pending");
+
+      await holder.query("commit");
+      const done = await p;
+      expect(done.reversedAllocationIds).toEqual([]);
+    } finally {
+      holder.release();
+    }
+    expect(await countRows()).toMatchObject({ receipts: 2, marks: 1 });
+    expect(await advanceOf(db, patientId)).toBe(10_000);
   });
 });

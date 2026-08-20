@@ -10,6 +10,8 @@ import { SodViolationError } from "../../kernel/auth/sod";
 import { withTx } from "../../kernel/db/client";
 import { approvals, events, receipts, receiptTenders, registrationConfig } from "../../kernel/db/schema";
 import { registerPatient } from "../patients";
+import { dayBook } from "./daily-close";
+import { markEnteredInError, recordReceipt } from "./receipts";
 import { istDay } from "./time";
 import { beginClose, confirmClose, openSession, requireOpenSession } from "./sessions";
 import type { CashierSessionRow } from "./sessions";
@@ -26,6 +28,10 @@ import type { Db } from "../../kernel/db/client";
 describe("sessions: openSession / requireOpenSession / beginClose / confirmClose (D9)", () => {
   let db: Db;
   let teardown: () => Promise<void>;
+
+  // The fixed instant T5-T8 use: 2026-08-19T06:00:00Z + 5:30 = 11:30 IST -> IST day "2026-08-19".
+  const NOW = new Date("2026-08-19T06:00:00Z");
+  const SERVICE_DAY = "2026-08-19";
 
   beforeAll(async () => {
     ({ db, teardown } = await setupTestDb());
@@ -204,5 +210,50 @@ describe("sessions: openSession / requireOpenSession / beginClose / confirmClose
     expect(sodEvents[0]!.payload).toMatchObject({
       pairKey: "requester_approver", actorAId: cashier.id, actorBId: cashier.id,
     });
+  });
+
+  // ===========================================================================================
+  // The expected-cash fold and the day book read the SAME "cash taken" and must agree about it
+  // ===========================================================================================
+
+  test("a voided cash receipt creates NO drawer variance: expected cash matches the day book, the session closes, and no billing_variance is filed", async () => {
+    const cashier = await mkCashier(db, "cashier-void-cash");
+    const patient = await mkTestPatient(cashier.actor);
+    const session = await openSession(db, cashier.actor, 100_000);
+
+    // A mis-keyed 50000p cash receipt, taken and then voided through the shipped write paths --
+    // no shaping here: `markEnteredInError` is what puts the mark in `entered_in_error_marks`.
+    const mistake = await recordReceipt(
+      db, cashier.actor, { patientId: patient.id, tenders: [{ mode: "cash", amountPaise: 50_000 }] }, NOW,
+    );
+    await markEnteredInError(db, cashier.actor, { receiptId: mistake.receiptId, reason: "keyed against the wrong patient" }, NOW);
+
+    // Voiding a receipt is not a lockout: the cashier's session is untouched and still `open`.
+    expect(await requireOpenSession(db, cashier.actor)).toMatchObject({ id: session.id, status: "open" });
+
+    // The day book already excludes it: money never really received cannot appear in the cash the
+    // drawer is reconciled against (daily-close.ts's own docstring).
+    const book = await dayBook(db, SERVICE_DAY);
+    expect(book.receipts).toMatchObject({ count: 0, totalPaise: 0 });
+    expect(book.receipts.byMode.cash).toBe(0);
+
+    // The drawer physically holds exactly the opening float. Against shipped code the fold still
+    // counted the voided 50000, so this reported expected 150000, variance -50000, status
+    // `closing` and a filed `billing_variance` -- locking the cashier out of all counter work
+    // (`requireOpenSession` accepts only `open`) until a billing_manager granted it.
+    const closed = await beginClose(db, cashier.actor, { denominations: { "50000": 2 } }, NOW);
+    expect(closed.status).toBe("closed");
+    expect(closed.countedCashPaise).toBe(100_000);
+    expect(closed.expectedCashPaise).toBe(100_000);
+    expect(closed.variancePaise).toBe(0);
+    expect(closed.varianceApprovalId).toBeNull();
+    expect(closed.closedAt).not.toBeNull();
+
+    // THE TWO READERS AGREE, over the same voided receipt: expected cash net of the opening float
+    // IS the day book's cash total.
+    expect(closed.expectedCashPaise! - session.openingFloatPaise).toBe(book.receipts.byMode.cash);
+
+    expect(await db.select().from(approvals).where(eq(approvals.typeKey, "billing_variance"))).toHaveLength(0);
+    expect(await db.select().from(events).where(eq(events.name, "variance.flagged"))).toHaveLength(0);
   });
 });
