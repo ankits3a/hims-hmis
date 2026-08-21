@@ -48,8 +48,9 @@ killing mutant per assertion, and the acceptance criteria a compiler can paste i
 - **The next migration is `0014`.** `0013_billing_idempotency` landed 2026-08-21.
 - **Pipeline 8C is CLOSED.** Roadmap trap (7) — "do not touch `apps/` while 8C is open" — is
   discharged; its gate report is `plan-08-pipeline-C-notes.md`.
-- **CI is RED on `main` at `2bf324f`** on a flaky perf budget, not a code defect — see §6.1. Confirm
-  the current state yourself before you write anything that depends on "CI is green".
+- **A CI perf gate flaked at `2bf324f` and was fixed on 2026-08-21** (statistic changed to min-of-5;
+  budgets unchanged) — see §6.1. Confirm the current CI state yourself before you write anything
+  that depends on "CI is green".
 - Every number in the roadmap's "measured facts the plan must start from" bullet must be re-verified
   at compile time. Several were measured at `ce8b6e7`, four commits ago.
 
@@ -153,26 +154,49 @@ Four commits, and three of them bear on this plan.
 
 ## 6. Things needing attention — rule on each, in the plan or in a decisions list
 
-### 6.1 CI is RED on `main`, and it is a perf budget, not a defect *(decide this first)*
+### 6.1 The CI perf gates were flaky and are now FIXED — inherit the reasoning, do not redo it
 
-`test/perf-opd-queue.test.ts` — *"openVisit median over 5 runs is under 100 ms over 200000 completed
-encounters"* — failed at `2bf324f` with `Received: 107.35`. The five timings were
-**`107.3, 230.0, 275.9, 59.4, 48.3`**: a 5.7× spread with two runs comfortably under budget, and
-`boardSnapshot` in the same suite showed the same signature (a 731 ms outlier among ~230 ms runs).
-The commit contains **no** OPD, perf, queue or encounter file.
+**Resolved 2026-08-21, before this prompt was finished.** Recorded here because 08.5 adds a worker
+that does periodic database work, i.e. more contention on exactly the resource these budgets
+measure, and because the reasoning generalises to every timing assertion this plan writes.
 
-**This is the third occurrence of a class the ledger already records** (§4 cost ledger, 2026-08-17):
-Plan 07 T10's `boardSnapshot` budget was authored from an ISOLATED measurement, broke under parallel
-load, and was raised 300 → 500 ms with its measured distribution. **`openVisit`'s 100 ms was never
-re-derived that way.**
+`test/perf-opd-queue.test.ts` failed CI at `2bf324f` — *"openVisit median over 5 runs under 100 ms"*,
+`Received: 107.35`. The commit contained no OPD, perf, queue or encounter file. The next commit,
+`eb283eb`, **contains that same code and PASSED**:
 
-Why it belongs to 08.5 specifically: **this plan adds a worker process that does periodic database
-work**, i.e. more contention on exactly the resource these budgets measure — and 08.5's own gate
-report is required to show "the six sweeps firing on a real clock … a five-minute transcript",
-which is a timing artefact on the same hardware. Rule on: re-derive the budgets under parallel load
-and raise them with the distribution recorded (the Plan 07 precedent), or move perf budgets out of
-the CI gate into a reporting suite. **Do not leave a flaky gate in front of a plan whose whole
-subject is background work.**
+| run | openVisit timings (ms) | median | verdict |
+|---|---|---|---|
+| `2bf324f` | `107.3, 230.0, 275.9, 59.4, 48.3` | 107.3 | failure |
+| `eb283eb` (contains it) | `20.2, 19.2, 23.7, 22.3, 21.3` | 21.3 | success |
+
+A 5x swing in the median on identical code: a contended runner, not a regression. **The decisive
+number is the minimum.** Across those two runs `boardSnapshot`'s fastest sample moved 225.0 -> 225.8
+(0.4%) while its median moved 242 -> 243 and its worst sample moved 731 -> 433; measured again on
+the build host it was 219.6. Three machines, three load conditions, ~3% apart.
+
+**The fix was the STATISTIC, not the threshold.** All five gated budgets in
+`perf-opd-queue.test.ts` and `perf-patient-search.test.ts` now compare `fastest(times)` instead of
+`median(times)`; every budget number is unchanged; both figures are still logged. Contention only
+ever ADDS time, so the minimum is the least-noisy estimator of the cost worth gating.
+
+Note what was NOT done and why, because the tempting fix was wrong: raising the ceiling. Normal
+`openVisit` is ~21 ms against a 100 ms budget, so the budget was never tight — absorbing a contended
+window would have meant raising it past ~300 ms and destroying the gate. `boardSnapshot` is the
+cautionary case: its ceiling was already raised 300 -> 500 for this exact reason (ledger §4,
+2026-08-17), and it still threw a 433 ms sample in a PASSING run.
+
+**Proof the gate still gates:** a mutant adding a fixed 150 ms to the measured block raises the
+floor to 176.7 and fails — `Expected: < 100 / Received: 176.65`. And on the recorded failing
+distribution, `min(107.3, 230.0, 275.9, 59.4, 48.3)` = 48.3, so the run that went red now passes
+with 2x headroom.
+
+**What 08.5 must take from this.** (a) Any timing assertion this plan writes — sweep latency, the
+dispatcher's cycle, the five-minute transcript — gates on the *fastest* observation or on an
+invariant, never on a mean or median taken under whatever load the box had. (b) The worker itself
+adds background load to the same box the perf gates run on; if a sweep interval is short enough to
+matter, say so and measure it. (c) This was the THIRD occurrence of "a CI-enforced perf ceiling
+authored from an isolated measurement" — if the plan authors any new budget, derive it under
+parallel load and record the distribution in the plan.
 
 ### 6.2 A dated-suite bomb, in a scheduling plan
 
