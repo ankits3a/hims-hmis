@@ -31,4 +31,23 @@ describe("loadConfig", () => {
     expect(cfg.port).toBe(4000);
     expect(cfg.sessionTtlMinutes).toBe(60);
   });
+
+  // Plan 10 / the B1 scar: none of these three keys may require a value. This asserts the
+  // defaults resolve from the same minimal env every other test in this file uses — no
+  // WORKER_NOTIFY_INTERVAL_MS / NOTIFY_PROVIDER / NOTIFY_STUCK_AFTER_MS entry anywhere.
+  it("defaults the three notify keys from an empty (minimal) environment", () => {
+    const cfg = loadConfig(base);
+    expect(cfg.workerNotifyIntervalMs).toBe(5000);
+    expect(cfg.notifyProvider).toBe("console");
+    expect(cfg.notifyStuckAfterMs).toBe(300000);
+  });
+
+  it("honours an override of NOTIFY_PROVIDER within the enum", () => {
+    const cfg = loadConfig({ ...base, NOTIFY_PROVIDER: "console" });
+    expect(cfg.notifyProvider).toBe("console");
+  });
+
+  it("rejects a NOTIFY_PROVIDER outside the enum", () => {
+    expect(() => loadConfig({ ...base, NOTIFY_PROVIDER: "twilio" })).toThrow();
+  });
 });

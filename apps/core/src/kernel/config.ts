@@ -26,6 +26,11 @@ export function requireEnv(name: string): string {
   return value;
 }
 
+/** Plan 10 D11: the enum widens when a real provider lands; a new member's config key becomes
+ * required-only-when-selected via a zod refinement at that point, not here. */
+const notifyProviderSchema = z.enum(["console"]);
+export type NotifyProvider = z.infer<typeof notifyProviderSchema>;
+
 const configSchema = z.object({
   DATABASE_URL: z.string().min(1),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -49,6 +54,12 @@ const configSchema = z.object({
   WORKER_TIMERS_INTERVAL_MS: z.coerce.number().int().positive().default(20000),
   WORKER_TEMP_ROLES_INTERVAL_MS: z.coerce.number().int().positive().default(60000),
   WORKER_DAILY_TICK_MS: z.coerce.number().int().positive().default(30000),
+  // Plan 10 (notifications gateway). All three defaulted — the B1 scar: this schema is parsed
+  // through the WHOLE environment by every caller of loadConfig(), so nothing added here may
+  // require a value or a new .env entry anywhere (server or CI).
+  WORKER_NOTIFY_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
+  NOTIFY_PROVIDER: notifyProviderSchema.default("console"),
+  NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
 });
 
 export type AppConfig = {
@@ -64,6 +75,9 @@ export type AppConfig = {
   workerTimersIntervalMs: number;
   workerTempRolesIntervalMs: number;
   workerDailyTickMs: number;
+  workerNotifyIntervalMs: number;
+  notifyProvider: NotifyProvider;
+  notifyStuckAfterMs: number;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -82,5 +96,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     workerTimersIntervalMs: parsed.WORKER_TIMERS_INTERVAL_MS,
     workerTempRolesIntervalMs: parsed.WORKER_TEMP_ROLES_INTERVAL_MS,
     workerDailyTickMs: parsed.WORKER_DAILY_TICK_MS,
+    workerNotifyIntervalMs: parsed.WORKER_NOTIFY_INTERVAL_MS,
+    notifyProvider: parsed.NOTIFY_PROVIDER,
+    notifyStuckAfterMs: parsed.NOTIFY_STUCK_AFTER_MS,
   };
 }
