@@ -23,6 +23,33 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { AddressInfo } from "node:net";
 import type { Db } from "../src/kernel/db/client";
 
+/**
+ * THE CLOCK IS PINNED FOR THIS WHOLE SUITE, AND HERE IS WHY (Plan 08.5 D10, ledger §3.41).
+ *
+ * `bookAndCheckIn` below books "today's first slot more than 20 minutes out" against the wall
+ * clock, and the day's last bookable slot is 23:40 IST. After roughly 23:30 IST no such slot
+ * exists, so legs 1, 2 and 3 failed on `expect(slot).toBeDefined()` for the last ~30 minutes of
+ * every IST day — a docs-only commit went CI-red on it, on a suite whose code nobody had touched.
+ * A suite that is green for 23½ hours a day is not a green suite; it is a bomb with a date on it.
+ *
+ * The fix is to stop reading the wall clock at all. `Date` — and ONLY `Date` — is faked for the
+ * whole file: the `doNotFake` list below is jest's complete fakeable-API set MINUS `Date`, taken
+ * verbatim from the spike report's question E (`reports/plan-08.5-spike-report.md`, "The
+ * `doNotFake` list that works"), which measured that under it `new Date()` returns the pin while
+ * a live `pg` round-trip containing `pg_sleep(0.2)` still takes 203 ms of REAL wall time and a
+ * supertest round-trip against the booted app returns normally. Every socket, every pg timer and
+ * every `setTimeout` therefore stays real, so nothing here needs `advanceTimersByTime` and there
+ * is no sleep anywhere in this file. It is installed in `beforeAll` AFTER `app.init()`/`listen()`
+ * and released in `afterAll` BEFORE `app.close()`, exactly as the spike measured it.
+ *
+ * The app boots in this same jest process, so the pin reaches every `new Date()` on BOTH sides of
+ * HTTP — which is what the first test below asserts rather than assumes. It does NOT reach `now()`
+ * inside SQL: Postgres keeps its own clock, correctly. Nothing in this suite compares a
+ * JS-pinned instant against a database-generated timestamp.
+ */
+const PINNED_NOW = new Date("2026-03-11T07:30:00.000Z"); // 13:00 IST — mid-day, far from any boundary
+const PINNED_IST_DATE = "2026-03-11";
+
 /** A complete, in-range adult reading — every field the adult band requires, no danger flag. */
 const adultOk = { heightCm: 165, weightKg: 62, sbp: 118, dbp: 76, pulse: 72, rr: 16, spo2: 98, tempC: 36.8 };
 /** The same reading with a systolic above the adult band's 180 max — exactly one flag, on `sbp`. */
@@ -127,8 +154,19 @@ describe("opd lifecycle e2e (HTTP + WebSocket)", () => {
     // listen(0), not init(): a real ws client needs a real port (flag ⑰).
     await app.listen(0);
     port = (app.getHttpServer().address() as AddressInfo).port;
+    jest.useFakeTimers({
+      doNotFake: [
+        "hrtime", "nextTick", "performance", "queueMicrotask",
+        "requestAnimationFrame", "cancelAnimationFrame",
+        "requestIdleCallback", "cancelIdleCallback",
+        "setImmediate", "clearImmediate",
+        "setInterval", "clearInterval",
+        "setTimeout", "clearTimeout",
+      ],
+      now: PINNED_NOW,
+    });
   });
-  afterAll(async () => { await app.close(); await teardown(); });
+  afterAll(async () => { jest.useRealTimers(); await app.close(); await teardown(); });
 
   beforeEach(async () => {
     await truncateAll(db);
@@ -250,6 +288,28 @@ describe("opd lifecycle e2e (HTTP + WebSocket)", () => {
     const checkedIn = await http().post(`/opd/appointments/${appointment.id}/check-in`).set(...auth(clerk.token)).expect(201);
     return { patientId, scheduleIds, slots, slotStart, appointment, checkIn: checkedIn.body as OpenWire };
   };
+
+  it("the pinned clock reaches SERVER code: /opd/slots with no date defaults to the pinned IST day", async () => {
+    // THE TEETH ON THE PIN (D10). Everything else in this file would still pass if `Date` were
+    // faked only inside the test file and the Nest app read the real clock — the suite would look
+    // fixed and the bomb would still be armed on the server side. `GET /opd/slots` without a
+    // `date` resolves it as `q.date ?? istDate(new Date())` INSIDE the controller
+    // (opd-visits.controller.ts), so the day these slots land on is the server's own answer to
+    // "what day is it", travelled back over HTTP.
+    expect(today).toBe(PINNED_IST_DATE); // the test side of the pin, stated so the two are separable
+    await putFullDayTemplate(dra.doctorId, [istWeekday(today)]);
+
+    const defaulted = await http().get("/opd/slots").query({ doctorId: dra.doctorId }).set(...auth(supervisor.token)).expect(200);
+    const slots = defaulted.body.slots as SlotWire[];
+    // Both halves are load-bearing. An unpinned server would answer with the REAL today: a
+    // different weekday returns zero slots (the template covers one weekday only), and the same
+    // weekday returns slots dated some other day. Neither survives the pair.
+    expect(slots.length).toBeGreaterThan(0);
+    expect([...new Set(slots.map((s) => istDate(new Date(s.start))))]).toEqual([PINNED_IST_DATE]);
+    // And the explicit-date call agrees with the defaulted one — the default is the only thing
+    // under test here, not the slot grid itself.
+    expect(await slotsFor(dra.doctorId, PINNED_IST_DATE)).toEqual(slots);
+  });
 
   it("leg 1 — a booked appointment is checked in as an appointment visit and waits as a FUTURE-class token", async () => {
     const { scheduleIds, slots, slotStart, appointment, checkIn } = await bookAndCheckIn("Asha Devi", "9876543210");
