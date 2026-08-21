@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { MoneyInput } from "../components/money-input";
+import { SubmitButton } from "../components/submit-button";
 import { fmtPaise } from "../lib/format";
 import { todayIst } from "../lib/opd-api";
 import { api } from "../lib/api";
@@ -529,9 +530,9 @@ export function BillingOffice(): React.ReactElement {
           {requestError !== null && (
             <p role="alert" data-testid="refund-request-error" className="text-sm text-red-600">{requestError}</p>
           )}
-          <Button data-testid="refund-request-submit" onClick={() => void fileRequest()}>
+          <SubmitButton data-testid="refund-request-submit" onClick={() => fileRequest()}>
             {t("billingOffice.request.submit")}
-          </Button>
+          </SubmitButton>
 
           {filed !== null && (
             <div className="space-y-2 rounded border border-amber-400 p-2">
@@ -558,9 +559,9 @@ export function BillingOffice(): React.ReactElement {
               {issueError !== null && (
                 <p role="alert" data-testid="issue-error" className="text-sm text-red-600">{issueError}</p>
               )}
-              <Button data-testid="issue-submit" onClick={() => void issueVoucher()}>
+              <SubmitButton data-testid="issue-submit" onClick={() => issueVoucher()}>
                 {t("billingOffice.issue.submit")}
-              </Button>
+              </SubmitButton>
               {issued !== null && (
                 <p role="status" data-testid="issue-done" className="text-sm">
                   {t("billingOffice.issue.done", { voucherNo: issued.voucherNo })}
@@ -696,7 +697,7 @@ export function BillingOffice(): React.ReactElement {
               <p role="alert" data-testid="pay-error" className="text-sm text-red-600">{payError}</p>
             )}
             <div className="flex gap-2">
-              <Button data-testid="pay-submit" onClick={() => void payVoucher()}>{t("billingOffice.pay.submit")}</Button>
+              <SubmitButton data-testid="pay-submit" onClick={() => payVoucher()}>{t("billingOffice.pay.submit")}</SubmitButton>
               <Button variant="outline" onClick={() => setPayVoucherId(null)}>{t("billingOffice.cancel")}</Button>
             </div>
           </div>
@@ -740,9 +741,9 @@ export function BillingOffice(): React.ReactElement {
         {reconError !== null && (
           <p role="alert" data-testid="recon-error" className="text-sm text-red-600">{reconError}</p>
         )}
-        <Button data-testid="recon-submit" onClick={() => void uploadStatement()}>
+        <SubmitButton data-testid="recon-submit" onClick={() => uploadStatement()}>
           {t("billingOffice.recon.submit")}
-        </Button>
+        </SubmitButton>
       </div>
 
       {uploaded !== null && (
@@ -958,9 +959,9 @@ export function BillingOffice(): React.ReactElement {
             {t("billingOffice.eie.cascade", { receiptId: eieReceiptId })}
           </p>
           <div className="flex gap-2">
-            <Button data-testid="eie-confirm-submit" onClick={() => void markEnteredInError()}>
+            <SubmitButton data-testid="eie-confirm-submit" onClick={() => markEnteredInError()}>
               {t("billingOffice.eie.confirm")}
-            </Button>
+            </SubmitButton>
             <Button variant="outline" onClick={() => setEieConfirming(false)}>{t("billingOffice.cancel")}</Button>
           </div>
         </DialogContent>

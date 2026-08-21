@@ -226,7 +226,8 @@ from it unsound.
 
 Ordered by severity. Items 1–3 want an owner ruling before a live counter.
 
-1. **BLOCKING: re-entrancy on every money button** (§3.1). One shared in-flight idiom across
+1. ~~**BLOCKING: re-entrancy on every money button**~~ **FIXED — see §7.** The original entry is
+   kept because its prescription is exactly what the fix followed. (§3.1). One shared in-flight idiom across
    `submit-invoice`, `clear-submit`, take/apply-advance, `open-submit`, `close-submit`,
    confirm-close, `pay-submit`, `eie-confirm-submit`, recon upload. **Assert it with two synchronous
    clicks and a call count, not with a `disabled` attribute** — a disabled button proves the DOM,
@@ -435,3 +436,64 @@ its own killing assertion** (§6.3); a fix whose second line nothing tests is §
   (§2.26).
 - Carried item 4 (the IST wall-clock window) was respected: every run was taken at ~09:25 IST,
   nowhere near 23:30–00:00.
+
+---
+
+## 7. The re-entrancy fix (2026-08-21)
+
+§4 item 1 — the discovery review's BLOCKING finding — closed on the owner's order. CRITICAL-tier
+discipline again: fail-first quoted, mutants as separate scratch with controls, all evidence on the
+build host.
+
+### 7.1 Thirteen lanes, not nine
+
+The review named nine buttons and described the rest as "the lanes beside it". A grep for the
+idiom found **thirteen**: counter 1, dues 4, session 3, office 5. Fixing the nine would have been
+scoping to the reproduction (§3.43) behind a commit that read as complete.
+
+### 7.2 One owner, one enforcement point
+
+- **`components/submit-button.tsx`** — a `SubmitButton` wrapping the frozen shadcn `Button`. A
+  `useRef` latch flips SYNCHRONOUSLY inside the first handler call; `disabled={busy}` is the
+  affordance only. The latch is per BUTTON by construction, so guarding the pay lane never disables
+  the recon upload beside it.
+- **`components/submit-button.test.tsx`** — owns the discrimination once (§3.34), plus a SOURCE
+  SWEEP asserting no billing screen still contains `onClick={() => void ` AND a per-screen census
+  of `<SubmitButton` mounts. Neither half discriminates alone: the sweep is satisfied by deleting
+  every button, the census by leaving a bare lane beside a guarded one.
+
+### 7.3 Two defects found in the fix itself, both by its own mutants
+
+**(a) The first version of the double-click test could not see the guard.** Written the obvious way
+— two `fireEvent.click` calls — the latch-deleted mutant **SURVIVED** (`Tests 1 passed | 5 skipped
+(6)`, exit 0). Testing Library wraps every `fireEvent` in `act()`, so React re-renders between the
+clicks and `disabled` blocks the second before the handler sees it. Measured with a probe against
+both modules in one run: **shipped `calls=1`, latch-deleted `calls=2`, `disabled` true in BOTH.**
+Rewritten as two RAW dispatches in one `act` block, the mutant dies. Now §3.47.
+
+**(b) The component leaked an unhandled rejection.** `void (async () => { try … finally … })()` with
+no `catch` means a rejecting handler rejects the IIFE's promise unheld. The run reported
+`Test Files 5 passed (5)` / `Tests 42 passed (42)` **and exited 1** — green tests, red suite, §2.16's
+`f84f1b1` shape, and vitest bills such a rejection to whatever file is running. Fixed with a catch
+that REPORTS rather than swallows, and asserted. Now §3.48.
+
+### 7.4 Evidence
+
+| step | result |
+|---|---|
+| fail-first #1 — dues double click vs **unmodified shipped** screens, isolated, exit VALUE 1 | `AssertionError: expected [ {…}, {…} ] to have a length of 1 but got 2` — two receipt POSTs from one double click, `Tests 1 failed \| 9 skipped (10)` |
+| fail-first #2 — component spec vs a guard-less STUB (the pre-fix idiom verbatim; §2.5 staged subset, disclosed) | `expected "spy" to be called 1 times, but got 2 times` |
+| **M-A** latch deleted, `disabled` KEPT (one line, `diff`-verified) | **DIED** — `expected "spy" to be called 1 times, but got 2 times`, `1 failed \| 5 skipped (6)`. This is the review's own warning, encoded: the attribute is not the guard |
+| **M-B** one lane reverted to the bare idiom (scratch copy) | **DIED** at runtime — `expected [ {…}, {…} ] to have a length of 1 but got 2`, `1 failed \| 9 skipped (10)` |
+| **M-C** same lane, seen by the SWEEP | **DIED** — `expected [ 'billing-dues.tsx:347' ] to deeply equal []`, and the census failed independently |
+| **CONTROL** byte-identical spec against the shipped module | **PASS** — `1 passed \| 5 skipped (6)` exit 0, and the full five-suite run `42 passed (42)` exit 0 |
+| not-over-broad (§3.44) | a rejecting handler still releases the latch (the counter's whole error lane is correctable 409s/400s — a latch that stuck would brick the button after the first refusal); a second legitimate write still fires; an explicitly `disabled` button is unaffected |
+| `pnpm verify` detached, exit **VALUE** from a file | **0** — apps/web **30 files / 142 tests**, apps/core 118/755, contracts 3/7 |
+| scratch | 5 mutant/probe files, a `screens-mutant` dir and 14 log/exit files deleted with `rm -f`/`rmdir`; tree clean, `find` finds no residue |
+
+### 7.5 Still open, and it is not a client problem
+
+**The server has no idempotency key** on `POST /billing/invoices` or `POST /billing/receipts`. This
+fix makes a double click impossible in the UI; it does nothing about a retry after a page reload, a
+second tab, or a request the network duplicates. Carried item 1's second sentence stands and needs
+an owner ruling.

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { PatientPicker } from "../components/patient-picker";
+import { SubmitButton } from "../components/submit-button";
 import type { PatientPickerHit } from "../components/patient-picker";
 import { MoneyInput } from "../components/money-input";
 import { TenderEditor } from "../components/tender-editor";
@@ -343,9 +344,9 @@ export function BillingDues(): React.ReactElement {
           />
           {errorLine}
           <div className="flex gap-2">
-            <Button data-testid="clear-submit" onClick={() => void clearDue(due)}>
+            <SubmitButton data-testid="clear-submit" onClick={() => clearDue(due)}>
               {t("billingDues.clear.submit")}
-            </Button>
+            </SubmitButton>
             <Button variant="outline" onClick={closeLane}>{t("billingDues.cancel")}</Button>
           </div>
         </div>
@@ -409,9 +410,9 @@ export function BillingDues(): React.ReactElement {
             </p>
           ))}
           <div className="flex gap-2">
-            <Button data-testid="clearance-submit" onClick={() => void clearanceDiscount(due)}>
+            <SubmitButton data-testid="clearance-submit" onClick={() => clearanceDiscount(due)}>
               {t("billingDues.clearance.submit")}
-            </Button>
+            </SubmitButton>
             <Button variant="outline" onClick={closeLane}>{t("billingDues.cancel")}</Button>
           </div>
         </div>
@@ -453,9 +454,9 @@ export function BillingDues(): React.ReactElement {
         />
         {errorLine}
         <div className="flex gap-2">
-          <Button data-testid="apply-submit" onClick={() => void applyAdvance(due)}>
+          <SubmitButton data-testid="apply-submit" onClick={() => applyAdvance(due)}>
             {t("billingDues.advanceLane.apply")}
-          </Button>
+          </SubmitButton>
           <Button variant="outline" onClick={closeLane}>{t("billingDues.cancel")}</Button>
         </div>
       </div>
@@ -522,9 +523,9 @@ export function BillingDues(): React.ReactElement {
                     <TenderEditor payablePaise={0} onChange={setTenders} />
                     {errorLine}
                     <div className="flex gap-2">
-                      <Button data-testid="take-advance-submit" onClick={() => void takeAdvance()}>
+                      <SubmitButton data-testid="take-advance-submit" onClick={() => takeAdvance()}>
                         {t("billingDues.advanceLane.take")}
-                      </Button>
+                      </SubmitButton>
                       <Button variant="outline" onClick={closeLane}>{t("billingDues.cancel")}</Button>
                     </div>
                   </div>

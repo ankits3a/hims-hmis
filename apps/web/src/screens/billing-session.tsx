@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { MoneyInput } from "../components/money-input";
+import { SubmitButton } from "../components/submit-button";
 import { fmtIst, fmtPaise } from "../lib/format";
 import { api } from "../lib/api";
 import { billingErrorMessage } from "../lib/billing-api";
@@ -223,9 +224,9 @@ export function BillingSession(): React.ReactElement {
       {openError !== null && (
         <p role="alert" data-testid="open-error" className="text-sm text-red-600">{openError}</p>
       )}
-      <Button data-testid="open-submit" onClick={() => void openDrawer()}>
+      <SubmitButton data-testid="open-submit" onClick={() => openDrawer()}>
         {t("billingSession.open.submit")}
-      </Button>
+      </SubmitButton>
     </div>
   );
 
@@ -305,9 +306,9 @@ export function BillingSession(): React.ReactElement {
             <p role="alert" data-testid="close-error" className="text-sm text-red-600">{closeError}</p>
           )}
           <div className="flex gap-2">
-            <Button data-testid="close-submit" onClick={() => void beginClose()}>
+            <SubmitButton data-testid="close-submit" onClick={() => beginClose()}>
               {t("billingSession.close.submit")}
-            </Button>
+            </SubmitButton>
             <Button variant="outline" onClick={() => setCloseLane(false)}>{t("billingSession.cancel")}</Button>
           </div>
         </div>
@@ -336,9 +337,9 @@ export function BillingSession(): React.ReactElement {
           {closeError !== null && (
             <p role="alert" data-testid="close-error" className="text-sm text-red-600">{closeError}</p>
           )}
-          <Button data-testid="confirm-close" onClick={() => void confirmClose()}>
+          <SubmitButton data-testid="confirm-close" onClick={() => confirmClose()}>
             {t("billingSession.confirmClose")}
-          </Button>
+          </SubmitButton>
         </div>
       )}
 

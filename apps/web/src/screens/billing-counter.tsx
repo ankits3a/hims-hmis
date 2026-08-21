@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { PatientPicker } from "../components/patient-picker";
+import { SubmitButton } from "../components/submit-button";
 import type { PatientPickerHit } from "../components/patient-picker";
 import { InvoicePrint } from "../components/invoice-print";
 import { MoneyInput } from "../components/money-input";
@@ -598,9 +599,9 @@ export function BillingCounter(): React.ReactElement {
             <p data-testid="counter-error-code" className="font-mono text-xs text-neutral-500">{errorCode}</p>
           )}
 
-          <Button data-testid="submit-invoice" onClick={() => void submit()}>
+          <SubmitButton data-testid="submit-invoice" onClick={() => submit()}>
             {t("billing.counter.issue")}
-          </Button>
+          </SubmitButton>
         </div>
       </div>
     </div>

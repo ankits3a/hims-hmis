@@ -488,4 +488,50 @@ describe("BillingDues", () => {
     await flush();
     expect(callsTo("GET", "/billing/patients/p-1/balance").length).toBeGreaterThan(1);
   });
+
+  /**
+   * REGRESSION — the re-entrancy the pipeline-C discovery review reproduced against SHIPPED code
+   * (finding 2 / carried item 1), on the very lane it used. Every money write on all four billing
+   * screens was `<Button onClick={() => void handler()}>` with no in-flight guard, so a double
+   * click posted twice. There is no idempotency key on `POST /billing/receipts`, so the duplicate
+   * is a REAL SECOND RECEIPT: it inflates the patient's advance and manufactures the drawer
+   * variance `44c8b86` exists to remove. One physical payment, two rows.
+   *
+   * The clicks are SYNCHRONOUS (`fireEvent`, no await between) because that is the shape that
+   * discriminates: `userEvent.click` awaits, React re-renders, and a `disabled` attribute would
+   * carry the test on its own. `submit-button.test.tsx` owns the proof that the ref latch — not
+   * the attribute — is what stops the second call; THIS asserts the wiring, that this lane really
+   * is guarded end to end.
+   */
+  it("REGRESSION: a double click on the clear lane posts ONE receipt and ONE allocation, not two — the money write is not re-entrant", async () => {
+    mockRoutes({
+      ...BASE_ROUTES,
+      "POST /billing/receipts": { status: 201, body: RECEIPT_TAKEN },
+      "POST /billing/receipts/rcp-new/allocations": { status: 201, body: ALLOCATED },
+    });
+    renderWithProviders(<BillingDues />);
+    const user = userEvent.setup();
+
+    await pickPatient(user);
+    await user.click(await screen.findByTestId("due-open-clear-inv-7"));
+    await typeAmount(user, "Amount to allocate", "#clear-amount", "300");
+    await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "300");
+
+    const submit = screen.getByTestId("clear-submit");
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(callsTo("POST", "/billing/receipts/rcp-new/allocations")).toHaveLength(1));
+    // let anything a second handler call would have issued actually land before counting
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(callsTo("POST", "/billing/receipts")).toHaveLength(1);
+    expect(callsTo("POST", "/billing/receipts/rcp-new/allocations")).toHaveLength(1);
+    expect(bodiesOf("POST", "/billing/receipts")[0]).toEqual({
+      patientId: "p-1",
+      tenders: [{ mode: "cash", amountPaise: 30000 }],
+    });
+  });
 });
