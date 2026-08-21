@@ -60,15 +60,27 @@ describe("temp roles", () => {
     expect(await db.select().from(events).where(eq(events.name, "temp_role.granted"))).toHaveLength(1);
   });
 
-  it("sweep emits temp_role.expired exactly once per lapsed grant", async () => {
+  it("sweep emits temp_role.expired exactly once per lapsed grant, honouring an explicit now", async () => {
     const { id } = await createUser(db, { username: "g5", fullName: "G", password: "p1234567" });
+    // Plan 08.5 (Global Constraint 9): the sweep now takes `now` instead of reading the wall
+    // clock inline. `expiresAt` stays in the REAL past (as shipped) so hasPermission's own
+    // live expiry check below still refuses independently of the sweep ("enforcement was
+    // already inline") — but `beforeExpiry`, passed as `now`, is EARLIER still than
+    // `expiresAt`. A sweep that silently fell back to `new Date()` (the real, later, wall
+    // clock) would find the grant due anyway and return 1; only a sweep that actually honours
+    // the passed `now` correctly returns 0 here.
+    const expiresAt = new Date(Date.now() - 60 * 60_000);
     await db.insert(tempRoleGrants).values({
       id: "01HGRANTEXPIRED0000000000A", userId: id, roleKey: "reviewer", grantedBy: "x",
-      kind: "granted", reason: "r", expiresAt: new Date(Date.now() - 60_000),
+      kind: "granted", reason: "r", expiresAt,
     });
-    expect(await sweepExpiredTempRoles(db)).toBe(1);
-    expect(await sweepExpiredTempRoles(db)).toBe(0); // idempotent
-    expect(await db.select().from(events).where(eq(events.name, "temp_role.expired"))).toHaveLength(1);
+    const beforeExpiry = new Date(expiresAt.getTime() - 60_000);
+    expect(await sweepExpiredTempRoles(db, beforeExpiry)).toBe(0); // not due yet, per the passed now
+    const afterExpiry = new Date(expiresAt.getTime() + 60_000);
+    expect(await sweepExpiredTempRoles(db, afterExpiry)).toBe(1);
+    expect(await sweepExpiredTempRoles(db, afterExpiry)).toBe(0); // idempotent
+    const expired = await db.select().from(events).where(eq(events.name, "temp_role.expired"));
+    expect(expired).toHaveLength(1);
     expect(await hasPermission(db, id, "auth.break_glass.review", "hospital")).toBe(false); // enforcement was already inline
   });
 });

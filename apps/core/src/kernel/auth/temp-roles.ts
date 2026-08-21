@@ -76,11 +76,14 @@ export async function emergencyElevate(
   return { grantId, expiresAt };
 }
 
-export async function sweepExpiredTempRoles(db: Db): Promise<number> {
+// Plan 08.5 D2/Global Constraint 9: the worker's scheduler calls every job as `run(now)`, so
+// this sweep takes `now` like the others (sweepGuardianMajority, sweepAppointmentNoShows,
+// runDailyClose already did). Defaulted for backward compatibility with existing callers.
+export async function sweepExpiredTempRoles(db: Db, now: Date = new Date()): Promise<number> {
   const due = await db
     .select()
     .from(tempRoleGrants)
-    .where(and(lte(tempRoleGrants.expiresAt, new Date()), isNull(tempRoleGrants.expiredEventAt)));
+    .where(and(lte(tempRoleGrants.expiresAt, now), isNull(tempRoleGrants.expiredEventAt)));
   for (const grant of due) {
     await withTx(db, async (tx) => {
       await appendEvent(
@@ -90,7 +93,7 @@ export async function sweepExpiredTempRoles(db: Db): Promise<number> {
           payload: { grantId: grant.id, userId: grant.userId, roleKey: grant.roleKey },
         }),
       );
-      await tx.update(tempRoleGrants).set({ expiredEventAt: new Date() }).where(eq(tempRoleGrants.id, grant.id));
+      await tx.update(tempRoleGrants).set({ expiredEventAt: now }).where(eq(tempRoleGrants.id, grant.id));
     });
   }
   return due.length;

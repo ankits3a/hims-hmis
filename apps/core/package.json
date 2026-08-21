@@ -7,6 +7,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "start:dev": "tsx watch src/main.ts",
+    "start:worker": "tsx src/worker.ts",
     "seed:admin": "tsx scripts/seed-admin.ts",
     "agent:create": "tsx scripts/create-agent.ts",
     "seed:registration": "tsx scripts/seed-registration.ts",
