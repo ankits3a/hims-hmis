@@ -6,6 +6,10 @@
 > `reports/PLAN-10-PROMPT-2026-08-21.md`. **No pipeline is compiled and nothing is executed by the
 > session that wrote this** — that separation is deliberate and has paid twice.
 
+> **STATUS: OWNER-APPROVED 2026-08-21 (in-conversation, after section-by-section review) —
+> READY TO COMPILE.** No spike phase, no forks to resolve. The execute handoff is
+> `reports/PLAN-10-EXECUTE-PROMPT-2026-08-21.md`; a FRESH session compiles and runs it.
+
 ## Owner rulings reached in the brainstorm (2026-08-21, in conversation) — the plan encodes them
 
 1. **SPLIT (prompt §6.1 option a).** Plan 10 is the **notifications gateway only**. The public read

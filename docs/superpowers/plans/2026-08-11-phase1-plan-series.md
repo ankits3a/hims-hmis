@@ -191,8 +191,8 @@ Plan [`2026-08-14-phase1-06-tariff-gst-golden.md`](2026-08-14-phase1-06-tariff-g
 ## Plan 10 — Notifications Gateway & Public Read Surface
 
 **RE-SCOPED 2026-08-21 (owner ruling, reached in the Plan 10 brainstorm):** Plan 10 is the
-**notifications gateway only** — plan `2026-08-21-phase1-10-notifications.md` (WRITTEN, awaiting
-owner review of the document). The **public read surface** (`apps/relay`, signed short-lived
+**notifications gateway only** — plan `2026-08-21-phase1-10-notifications.md` (**OWNER-APPROVED
+2026-08-21, READY TO COMPILE**; execute prompt `reports/PLAN-10-EXECUTE-PROMPT-2026-08-21.md`). The **public read surface** (`apps/relay`, signed short-lived
 tokens, queue position, document verification, E-22 token revocation) is **split out**, to land
 where the topology decision lives — Plan 10.5 or joining Plan 11 (owner decision open; the plan
 recommends joining 11). E-1 (DMZ vs cloud relay) remains an OPEN pre-go-live gate; the split was
