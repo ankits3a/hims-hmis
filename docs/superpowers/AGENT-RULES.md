@@ -4,7 +4,7 @@
 before you touch anything. Where this file and a task brief disagree about PROCESS, this file
 wins; where they disagree about CODE, the plan document wins.
 
-Version 2 (2026-08-19; rule 22 amended 2026-08-20 and 2026-08-21; rule 20 amended 2026-08-21). Supersedes the inlined tripwire
+Version 2 (2026-08-19; rule 22 amended 2026-08-20 and 2026-08-21; rules 20 and 21 amended 2026-08-21). Supersedes the inlined tripwire
 block used through Plan 08 pipeline A. Rule 22 (the local mirror) is new and changes how you read
 and author files — read it first. **22(a) now requires a mirror directory unique to YOU, and 22(g)
 forbids concluding anything about the server's tree from a mirror; both were bought by §2.40.**
@@ -111,7 +111,12 @@ Violating any one of these fails the task regardless of code quality.
     SEPARATE scratch file beside the source (never by editing, moving, or reverting the shipped
     file), run the test against it, and report DIED or SURVIVED with counts. **A mutant that
     dies at TYPECHECK proves nothing** — this repo compiles with `noUncheckedIndexedAccess`, so
-    an indexed array literal dies at `TS2532` before any assertion runs. A kill is evidenced by
+    an indexed array literal dies at `TS2532` before any assertion runs. **A second, sneakier
+    case: a class with `private` members is compared NOMINALLY, so a byte-copy mutant of such a
+    class cannot be passed to a function typed against the shipped one.** Copy the one
+    intermediate module between mutant and test, repointing ONLY its `import type` (§2.61).
+    When a mutant will not compile, ask whether the obstacle is the LANGUAGE or the ASSERTION
+    before rewriting either. A kill is evidenced by
     the ASSERTION's own failure: quote expected vs received.
 
 **The local mirror**

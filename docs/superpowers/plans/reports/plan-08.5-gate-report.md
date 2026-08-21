@@ -332,3 +332,155 @@ Wall clock: 5 h 47 m, 1062 tool calls, 13 agents.
 **Plan 10 is NOT next.** It was to be written by a session that reads this report cold; that
 session should read it and then write the remediation, because 08.5 is not shipped until the loop
 actually loops.
+
+---
+
+# ADDENDUM — the remediation, 2026-08-21
+
+**Commit `b0f00f6` — `fix(core): the worker actually dispatches — amendment 6's wire, and CI goes
+green`.** Seven files, +624/−147, one opus coder, one opus gate, independently verified by the main
+session. Authorised by the owner ("fix it") after this report's original verdict.
+
+## Verdict on the three blockers
+
+| # | was | now |
+|---|---|---|
+| **B1** CI red since T2 | `registerAllJobs` → `loadConfig()` → required `DATABASE_URL` | **FIXED.** Config arrives as a parameter; the function reads no environment |
+| **B2** worker dispatches to nobody | `worker.module.ts:58` a placeholder comment | **FIXED.** Both halves of amendment 6 landed in one commit |
+| **B3** M-S2 survives the census | census asserted only the SET of six names | **FIXED.** Census keys on the day index against a seeded heartbeat |
+
+Plus **B4**: the SIGTERM path's missing `.catch` (§3.48 verbatim) and `Scheduler.stop()` not
+preventing a job from *starting* afterwards — both fixed and both asserted.
+
+## What the MAIN SESSION verified itself (not agent self-report)
+
+- **`pnpm verify` GREEN**, detached, **exit VALUE 0** read from a file:
+  `apps/core 126 suites / 811 tests` (+4), `apps/web 31 / 147`, `packages/contracts 3 / 7`. No
+  total decreased, no test deleted, zero failures anywhere in the run.
+- **B1, reproduced in CI's own condition** — the L14 census run on the build host with
+  `DATABASE_URL` UNSET: `Tests: 5 skipped, 1 passed`, isolation quoted from output. That is the
+  exact environment that produced six red commits.
+- **B2, reproduced as a behaviour change, which is stronger than any test.** Booting the real
+  worker against the dev compose:
+
+  | | before the fix | after the fix |
+  |---|---|---|
+  | `event_cursors` rows | **0** | **`kernel.alerts \| 0`** |
+
+  Zero cursor rows meant the per-consumer loop never executed at all. The row's existence means
+  `runDispatchCycle` is now iterating a non-empty `bus.consumers()` and has claimed its cursor.
+  (`last_seq = 0` is correct — the dev database holds no `escalation.triggered` events.)
+- **The commit touches exactly its seven permitted files**; server tree clean; no `*.mutant.*`,
+  `*.prefix.*` or scratch residue anywhere under `/opt/hmis`.
+- **The source diff read in full.** `shutdownWorker` is extracted into `worker.module.ts` with a
+  stated reason — `worker.ts` calls `bootstrap()` at import time, so nothing can import the entry
+  point without starting a real worker, which is *why* the §3.48 shape shipped unasserted. The
+  latch sets `stopped` **before** clearing timers and re-checks after every await that can outlive
+  `stop()`. `JobIntervals` is a `Pick<AppConfig, …>`, so production passes the config it already
+  resolved while a test passes three numbers and no ambient environment.
+- **The assertion that would have caught B2 exists and reads the right registry**:
+  `worker-runtime.e2e.test.ts` boots `createApplicationContext(WorkerModule)`, takes
+  `MODULE_REGISTRY` **out of the context**, and asserts the pair **whole** —
+  `expect(pairs).toEqual([[ALERTS_CONSUMER, "escalation.triggered"]])` — plus the boot-error half,
+  `expect(() => buildSubscriptionBus(registry, {})).toThrow(/kernel\.alerts/)`, on that same
+  registry. Every earlier seam test built a private registry; this one cannot.
+
+## CI COULD NOT VERIFY THIS, AND THAT IS ITS OWN FINDING
+
+**GitHub Actions billing lapsed on the account mid-session.** Every push after ~13:58Z produces a
+run that lasts three to four seconds, executes nothing, and reports `conclusion: "failure"`:
+
+> *"The job was not started because recent account payments have failed or your spending limit
+> needs to be increased."*
+
+| commit | CI |
+|---|---|
+| `265c758` (T1) | ran — success |
+| `e6f1e0f` … `50fbbfb` (T2–T6) | **ran — genuinely red** (the B1 ZodError) |
+| `840c746`, `99d0f1b`, `b0f00f6` | **BILLING-BLOCKED — job never started** |
+
+So the six reds in this report's §1 were real and the diagnosis stands; the three after them are
+not verdicts about code at all. **I nearly recorded the remediation as failed** — its own commit
+message says "CI goes green", CI said `failure`, and the honest reading of those two together is
+that the fix did not work. What prevented that was implausibility, not method. The method is now
+ledger **§2.59**: a CI result has three states — green, red, and *did not run* — and the third
+reports identically to the second in `gh run list --json conclusion`.
+
+**Consequence for this report: the CI criterion is UNDISCHARGED, not satisfied.** It was replaced
+by reproducing CI's condition on the build host, which is a reproduction of CI and not CI. **Someone
+must fix the billing and re-run CI at `b0f00f6` before Plan 08.5 is called shipped.** That is the
+one remaining item and it is not a code item.
+
+## A finding the remediation turned up
+
+**T2's census set `WORKER_DAILY_TICK_MS: 5000` in an env-override block, and it was never in
+effect.** `Scheduler` takes its tick from its **constructor** (4th argument, default 30 000) and the
+census never passed one, so the env key it set was read by nobody. The comment argued at length
+that 5 s gives ~12 ticks of margin inside `runDailyClose`'s one-IST-minute window instead of ~2;
+the margin has always actually been 2. Worse, T2's mechanical checker found that comment while
+investigating a real `runDailyClose` miss under load and **routed it forward into the findings inbox
+as the explanation** — a false premise propagated in good faith through the very channel built to
+carry facts between tasks. Recorded as ledger **§2.60**; the value is now explicit and documented
+rather than silently changed, because tightening it is a real runtime/flake trade for whoever owns
+that test next, not a drive-by edit.
+
+
+## The independent gate — both new assertions have teeth, measured
+
+An opus gate rebuilt **both** mutants from scratch and both **DIED by a real assertion failure** —
+not by typecheck, not by timeout — each with a passing control whose spec differs in exactly two
+import lines.
+
+**M-S2 (UTC calendar instead of IST):** killed at `scheduler.test.ts:311`,
+`Expected ["sweepGuardianMajority"] / Received []`. Isolation `1 failed, 5 skipped, 6 total`
+against a control of `5 skipped, 1 passed`. Instrumented, the shipped scheduler fires guardians on
+**poll iteration 4 of 400**; the mutant burns all 400 and fires zero — **100× headroom**. The
+day-index-against-a-seeded-heartbeat input separates the two calendars where the Assertion Book's
+original input could not.
+
+**The shutdown latch:** the mutant is `git show 99d0f1b:…/scheduler.ts` — the literal pre-fix file,
+not a hand-edit — and the latch is the only change `b0f00f6` made to that file, so it differs from
+shipped by exactly the latch. Killed at `scheduler.test.ts:493`, `Expected [] / Received
+["latch-stub"]`, **5 of 5 runs**, durations 328–401 ms with no variance suggesting a race.
+Instrumented: the un-latched scheduler starts the job after **2 poll iterations (~10 ms)** of a
+~1000 ms budget; the shipped one exhausts all 200 proving absence. **This directly answers the
+question the implementer's own disclosure raised** — its first attempt yielded two *microtask*
+turns, which cannot cover two real DB round-trips; the fix is not a longer guess but a different
+kind of wait with two orders of magnitude of slack.
+
+The gate also confirmed, by reading: both halves of amendment 6 present and neither able to ship
+alone (`buildSubscriptionBus` throws on a declaration with no handler, and `worker.ts` calls
+`registerAllJobs` inside `bootstrap()` before `scheduler.start()`, so the throw is genuinely a boot
+error); `registerAllJobs` reads no environment (`loadConfig` survives only in a docstring; the
+import is now `import type`); `shutdownWorker` never rejects and the SIGTERM path calls it; scope
+clean at exactly seven files with `dispatcher.ts` untouched; no test observes the advisory lock; and
+the one `- it(` in the diff is a **rename**, not a deleted test.
+
+**Verdict: PASS, no violations.** It also caught that the server tree was not clean — two
+`.myverify.*` files, which were **mine** from the independent verify above, correctly identified as
+not the commit's and left for their owner to remove. They are deleted.
+
+## What the gate left booked
+
+1. **`worker.ts`'s half of amendment 6 is verified but NOT regression-guarded, and it is the same
+   structural shape that let the original defect survive six tasks and two gates.** `worker.ts`
+   calls `bootstrap()` at import time, so no test can import it; `worker-runtime.e2e.test.ts`
+   *re-types* the `{ [ALERTS_CONSUMER]: alertsConsumer(db) }` expression rather than reading the one
+   `worker.ts` actually uses. **Deleting that entry from `worker.ts` would leave the whole suite
+   green and blow up only at real worker boot.** The `worker.module.ts` half *is* guarded by the new
+   real-registry assertions. Cheap fix for the next plan that owns this file: extract `bootstrap()`'s
+   wiring into an importable function and assert the consumers map from it.
+2. **`start()` clears the latch unconditionally** — a `start()` called while `stop()` is still
+   draining would re-arm the scheduler the caller is trying to stop. Nothing does this today and the
+   "stopped and started again is armed again" behaviour is deliberate; latent only.
+3. **`shutdownWorker`'s own `.catch` handler is unprotected** — if the logger throws, the promise
+   rejects and the `void` at the call site drops it, which is §3.48 one level out. Theoretical with
+   `console.error`; real for any logger that does I/O.
+4. **`ts-jest` emits `TS151002` on every core run** — pre-existing noise, one
+   `diagnostics.ignoreCodes` entry away from silence.
+
+## Status
+
+**Plan 08.5 is code-complete and functionally correct on the build host, with one non-code item
+outstanding: CI has not run since the fix, because the account cannot run it.** The roadmap stays
+short of SHIPPED until a green CI run exists at `b0f00f6` or later.

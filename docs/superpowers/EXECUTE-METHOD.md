@@ -129,6 +129,12 @@ references exact to the line.
    is not between the waves either. Six commits shipped red on one deterministic defect while every
    build-host `pnpm verify` was green. Either give the build host an authenticated `gh`, or poll by
    full SHA between waves from the machine that has one.
+   **And read more than `conclusion` (§2.59): a CI result has THREE states — green, red, and DID
+   NOT RUN — and the third reports identically to the second.** A billing-blocked or
+   never-dispatched job "fails" in three seconds having executed nothing. Confirm the run actually
+   ran (a duration in minutes not seconds, a non-empty `steps` array, no annotation saying the job
+   was not started) before treating red as a fact about the code. And when CI genuinely cannot run,
+   say the criterion is UNDISCHARGED and reproduce its condition by hand — do not quietly drop it.
 
 **Pre-flight, unchanged and still mandatory** — every probe ships with a negative control that
 must be observed to fail in the same run:
