@@ -190,6 +190,17 @@ Plan [`2026-08-14-phase1-06-tariff-gst-golden.md`](2026-08-14-phase1-06-tariff-g
 
 ## Plan 10 — Notifications Gateway & Public Read Surface
 
+**RE-SCOPED 2026-08-21 (owner ruling, reached in the Plan 10 brainstorm):** Plan 10 is the
+**notifications gateway only** — plan `2026-08-21-phase1-10-notifications.md` (WRITTEN, awaiting
+owner review of the document). The **public read surface** (`apps/relay`, signed short-lived
+tokens, queue position, document verification, E-22 token revocation) is **split out**, to land
+where the topology decision lives — Plan 10.5 or joining Plan 11 (owner decision open; the plan
+recommends joining 11). E-1 (DMZ vs cloud relay) remains an OPEN pre-go-live gate; the split was
+ruled precisely so the gateway is not blocked behind it. Two lines below are superseded by
+execution: "(pg-boss)" is dead (08.5 FORK-B, by measurement — the queue rides 08.5's Scheduler as
+the following sentence already says), and the opt-in registry is now a `patients` column captured
+at registration with promotional sending structurally OFF until CRM (the plan's D9).
+
 **Sequencing (2026-08-20):** **go-live scope** (§17 step 1 — WhatsApp/SMS confirmations) and second in line after 08.5. 08.5's in-app `alerts` is the first delivery surface; Plan 10 attaches external channels to the same alert (escalation → WhatsApp/SMS per the §11.13 staff matrix; active alerts are quiet-hours-exempt; the owner-SMS half of fix 11 lands here). **The outbound queue runs on 08.5's worker/scheduler** — no second scheduler, no second process. The Digest Writer (12a) sends through this gateway; keep the send API generic.
 
 - **Spec anchors:** §11.13 (matrices, quiet hours 9pm–8am, template registry versioned w/ approval status, DPDP transactional/promotional split + opt-in), §11.5 (fallback ladder WhatsApp→SMS→IVR→manual flag; language per patient), D-24 (spoof defenses, registered-VPA rule), E-22 (amended-report supersession), E-1 (**public read-only surface**: one-way outbound push to DMZ/cloud relay; signed short-lived tokens; queue position + document verification; no PHI beyond token; no inbound path), D-33 (deceased suppression enforced at gateway), provider selection deferred (§19) → provider-agnostic adapter + dev/console provider.
@@ -216,7 +227,10 @@ Plan [`2026-08-14-phase1-06-tariff-gst-golden.md`](2026-08-14-phase1-06-tariff-g
   when the worker first runs against a database that already has history — and again whenever a new
   consumer is registered — seed that consumer's `event_cursors` row at the current `max(seq)` as a
   deployment step, or accept and schedule the catch-up. Found by 08.5's discovery reviewer
-  (cross-task risk 1); see `reports/plan-08.5-gate-report.md`.
+  (cross-task risk 1); see `reports/plan-08.5-gate-report.md`. **Plan 10 adds `kernel.notify` —
+  seed it the same way. Its gateway additionally expires stale messages structurally at send time
+  (Plan 10 D5/N3), so for that consumer this runbook step is defense-in-depth, not the only thing
+  standing between a history replay and messages to real people.**
 - **Traps:** this plan is infra-heavy — several tasks are scripts+runbooks verified by drills rather than unit tests; the gate criteria are drill transcripts. Mark tasks needing real hardware as environment-gated (CI-skipped, drill-verified).
 
 ## Plan 12a — Agent Runtime + two proofs (one agent, one automation)
