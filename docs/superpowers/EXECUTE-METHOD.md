@@ -116,6 +116,19 @@ references exact to the line.
    message (six commits of drift) or halts (a wasted rung).
 7. **Stat the template before grepping it** (§2.51). An empty grep against a missing file reads
    identically to an empty grep against a present one. Its path is in this ledger's §2 header.
+8. **ASSERT THAT THE SCRIPT'S `files` ARRAYS EQUAL THE PLAN'S FILE STRUCTURE** (§2.54 — the entry
+   that cost Plan 08.5 its headline deliverable). §2.25 made the frozen block *generated* from the
+   script's arrays, which removed one hand-maintained copy and left another: those arrays are now a
+   second copy of the plan's Files lists, and nothing reconciles them. Amend the plan without
+   amending the script and the brief silently FORBIDS what the plan REQUIRES — the coder obeys the
+   brief, correctly, and the work does not happen. Parse the plan's File Structure at pre-flight
+   time and compare, per task, both directions. **A generated artefact is only as trustworthy as
+   the list it is generated FROM, and that list needs its own check.**
+9. **Check CI after every task's commit, not once at the end** (§2.55). `gh` cannot run on the
+   build host, so no in-pipeline agent can check CI — and under the Workflow tool the main session
+   is not between the waves either. Six commits shipped red on one deterministic defect while every
+   build-host `pnpm verify` was green. Either give the build host an authenticated `gh`, or poll by
+   full SHA between waves from the machine that has one.
 
 **Pre-flight, unchanged and still mandatory** — every probe ships with a negative control that
 must be observed to fail in the same run:
