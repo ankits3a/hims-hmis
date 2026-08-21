@@ -233,7 +233,8 @@ Ordered by severity. Items 1–3 want an owner ruling before a live counter.
    not the handler. Decide at the same time whether `POST /billing/invoices` and
    `POST /billing/receipts` should take an idempotency key; a client guard does not survive a reload.
 
-2. **The cashier session screen re-posts a stale float, and the consequence is a lockout.**
+2. ~~**The cashier session screen re-posts a stale float, and the consequence is a lockout.**~~
+   **FIXED — `80fa9a3`, on the owner's order, immediately after the pipeline. See §6.**
    `billing-session.tsx:195` renders `<MoneyInput id="open-float" onChange={setFloatPaise} />` with
    no `value` and no `key`; `floatPaise` (`:98`) is never reset in `land()`. `MoneyInput` seeds its
    text once in a `useState` initializer, and its own comment states the contract: *"Parents that
@@ -374,3 +375,63 @@ failure mode. Both the main session and the discovery reviewer independently jud
 **Cost.** 2.20M subagent tokens for four CRITICAL tasks with full opus gates and a discovery pass,
 against pipeline B's comparable run. The mirror workflow held: the coders navigated locally and
 used SSH for evidence only.
+
+---
+
+## 6. The session float fix (`80fa9a3`, 2026-08-21)
+
+The owner ordered §4 item 2 fixed as soon as the pipeline finished. It went through CRITICAL-tier
+discipline — fail-first quoted, mutants built as separate scratch files with a passing control,
+every measurement on the build host — because that is what the method demands of a money path, and
+because this defect reached the operator through a screen that four reviews had already passed.
+
+### 6.1 What was wrong
+
+`openForm` is rendered only while `live === null || live.status === "closing"`, so `MoneyInput`
+unmounts for the life of an open drawer and remounts with an EMPTY box after the close — while
+`floatPaise` survived in the parent, because `land()` reset `closeLane`, `counts`, `note` and
+`closed` but not the float. Pressing Open without typing then posted a float the cashier never
+entered. That float anchors `expectedCashPaise`, so her real drawer closes on a **manufactured
+variance**, files a `billing_variance` approval, and locks her out of all counter work (pipeline A
+carried item 18) — the same lockout shape `44c8b86` was written to remove.
+
+### 6.2 Why the fix is two lines and not one
+
+The invariant is **the float that gets POSTED is the float the cashier can SEE**, and it takes both
+halves:
+
+- `setFloatPaise(undefined)` in `land()` — the load-bearing half. Clears the value.
+- `key={closed?.id ?? "new"}` on the `MoneyInput` — clears the VISIBLE box on the one transition
+  where this form does **not** unmount: a drawer confirmed out of `closing`, because both branches
+  of `live === null || live.status === "closing"` keep it mounted. `MoneyInput` seeds its text once
+  in a `useState` initializer and its own docstring says parents needing a reset must remount with
+  a `key`.
+
+Without the second line the box would show the finished drawer's float while the value behind it
+was already cleared — safe, but a money screen showing a number it will not post. **Each half has
+its own killing assertion** (§6.3); a fix whose second line nothing tests is §3.34's defect.
+
+### 6.3 Evidence (all on the build host, nothing taken on trust)
+
+| step | result |
+|---|---|
+| fail-first, isolated, exit **VALUE** 1 from a file | `Tests 1 failed \| 6 skipped (7)` — and the DOM dump shows a second drawer **actually open at the stale ₹1,000 float** (`session-float ₹1,000.00`), not merely a missing element |
+| **M1** — `setFloatPaise(undefined)` deleted (one line, `diff`-verified) | **DIED**, `Tests 2 failed \| 6 skipped (8)`, both legs at `Unable to find an element by: [data-testid="open-error"]` — it posted instead of refusing |
+| **M2** — `key={closed?.id ?? "new"}` deleted (one line, `diff`-verified) | **DIED**, `Tests 1 failed \| 1 passed \| 6 skipped (8)`, at the assertion itself: `Expected the element to have value: <empty> / Received: 1000`. Only the confirm-close leg fails — exactly as predicted, since the other path unmounts anyway |
+| **CONTROL** — byte-identical spec, import repointed at the shipped module | **PASS**, `Tests 2 passed \| 6 skipped (8)`, exit 0 |
+| not-over-broad (§3.44) | a freshly typed float still opens the next drawer at the **NEW** figure (₹2,500, asserted on the posted body); the ordinary first open is unchanged |
+| `pnpm verify` detached, exit **VALUE** from a file | **0** — apps/web **29 files / 135 tests** (+2), apps/core 118/755, contracts 3/7 |
+| scratch | all five scratch files and ten log/exit files deleted with plain `rm -f`; `git status --porcelain` empty; `find` finds no residue |
+| host content vs the tested tree | md5 identical after the pull — the committed bytes are the bytes that produced the evidence (the local checkout is CRLF via `core.autocrlf`, so every transfer was LF-normalised and checksummed both ways) |
+
+### 6.4 Notes
+
+- **The fixture separates what it claims to.** The second float (₹2,500) differs from the first
+  (₹1,000), and the assertions are on the POSTED BODY and the POST COUNT — never on the rendered
+  box, which is empty under the defect too. That emptiness is the whole trap: an assertion on the
+  box alone would pass against the broken screen.
+- **§2.35 again held.** Two mutants, two kills, one shared control, no ambiguity; both kills quote
+  the assertion's own expected-vs-received rather than an exit code, and neither died at typecheck
+  (§2.26).
+- Carried item 4 (the IST wall-clock window) was respected: every run was taken at ~09:25 IST,
+  nowhere near 23:30–00:00.
