@@ -334,10 +334,24 @@ shrinking a receivable (`billing.credit_note.issue` with its own cap/approval, o
 `receipts` and `allocations` carry a `BEFORE UPDATE OR DELETE` trigger that raises — six tables,
 proven by migration (0012), not by convention. The module's mutable surface is exhaustively:
 `receipt_tenders` (the E-25 lifecycle state), `refund_vouchers` (`issued → paid`),
-`cashier_sessions` (`open → closing → closed`), `document_series.next_no`, `billing_config`, and
-the `daily_closes` claim row. Every document series is per-fiscal-year and row-locked
-(`INV/26-27/000001`), and every threshold below is `billing_config` DATA a CA reviews — never a
-code constant.
+`cashier_sessions` (`open → closing → closed`), `document_series.next_no`, `billing_config`,
+the `daily_closes` claim row, and `idempotency_keys` (a claim updated once with its result).
+Every document series is per-fiscal-year and row-locked (`INV/26-27/000001`), and every threshold
+below is `billing_config` DATA a CA reviews — never a code constant.
+
+**Idempotency (`Idempotency-Key`, optional header, migration 0013).** The eight
+document-CREATING writes — `POST /billing/invoices`, `/billing/receipts`,
+`/billing/receipts/:id/allocations`, `/billing/invoices/:id/credit-notes`, `/billing/refunds/request`,
+`/billing/refunds`, `/billing/refunds/:id/pay`, `/billing/eie` — accept an `Idempotency-Key`
+header. The key is claimed with `INSERT … ON CONFLICT DO NOTHING` **before** the work, so a
+concurrent duplicate never reaches the write path at all; recording it afterwards would be too
+late, because by then both requests have issued a document. A replay returns the **original**
+result rather than a refusal — a cashier who reloads mid-payment must see the receipt she already
+took — and the stored request hash is what makes that safe: the same key against a *different*
+body answers `409 idempotency_key_reused` instead of an unrelated document. A write that FAILS
+releases its key, so a corrected retry may reuse it. The header is optional and a request without
+one behaves exactly as before; the web client mints one per submit attempt, in one place.
+Uniqueness is per `(actor, route, key)`, so one cashier's key can never replay another's.
 
 **Events** (all `module: "billing"`, exactly twenty names): `invoice.issued` ·
 `invoice.credit_extended` · `receipt.recorded` · `payment.received` · `advance.received` ·

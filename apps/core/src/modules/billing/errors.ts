@@ -11,6 +11,7 @@ export type BillingErrorCode =
   | "refund_exceeds_received" | "refund_exceeds_advance" | "bank_transfer_required" | "voucher_state_conflict"
   | "approval_not_granted" | "unknown_series" | "eie_already_marked" | "eie_advance_refunded"
   | "recon_parse_failed"
+  | "idempotency_key_reused" | "idempotency_key_in_progress"
   | "unknown_encounter" | "fee_not_applicable" | "duplicate_ref";
 
 export class BillingError extends Error {

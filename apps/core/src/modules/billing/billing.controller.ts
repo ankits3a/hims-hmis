@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpException, Inject, Param, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Get, HttpException, Inject, Param, Post, Put, Query, Headers } from "@nestjs/common";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
@@ -18,6 +18,7 @@ import { loadBillingConfig, updateBillingConfig } from "./config";
 import { dayBook, gstr1Summary } from "./daily-close";
 import { issueCreditNote, listCreditNotes } from "./credit-notes";
 import { BillingError } from "./errors";
+import { withIdempotency } from "./idempotency";
 import { getInvoice, invoiceSettlement, issueInvoice, listInvoices, previewInvoice } from "./invoices";
 import {
   allocateReceipt, listDues, markEnteredInError, patientBalance, recordReceipt, reverseAllocation,
@@ -314,10 +315,15 @@ export class BillingController {
 
   @RequirePermission("billing.invoice.issue", "hospital")
   @Post("invoices")
-  async issue(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<IssueInvoiceResult> {
+  async issue(@CurrentActor() actor: Actor, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string): Promise<IssueInvoiceResult> {
     const b = parsed(issueInvoiceBody, body);
     try {
-      return await issueInvoice(this.db, actor, b);
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: "POST /billing/invoices", key: idemKey },
+        b,
+        () => issueInvoice(this.db, actor, b),
+      );
     } catch (e) {
       toHttp(e);
     }
@@ -380,7 +386,7 @@ export class BillingController {
   @RequirePermission("billing.credit_note.issue", "hospital")
   @Post("invoices/:id/credit-notes")
   async creditNote(
-    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string,
   ): Promise<IssueCreditNoteResult> {
     const b = parsed(creditNoteBody, body);
     // Rebuilt branch by branch rather than spread: `{ ...b, invoiceId }` over a discriminated
@@ -396,7 +402,12 @@ export class BillingController {
           }
           : { kind: "correction", invoiceId: id, reason: b.reason, lines: b.lines };
     try {
-      return await issueCreditNote(this.db, actor, input);
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: `POST /billing/invoices/${id}/credit-notes`, key: idemKey },
+        input,
+        () => issueCreditNote(this.db, actor, input),
+      );
     } catch (e) {
       toHttp(e);
     }
@@ -422,10 +433,15 @@ export class BillingController {
 
   @RequirePermission("billing.receipt.record", "hospital")
   @Post("receipts")
-  async receipt(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<RecordReceiptResult> {
+  async receipt(@CurrentActor() actor: Actor, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string): Promise<RecordReceiptResult> {
     const b = parsed(recordReceiptBody, body);
     try {
-      return await recordReceipt(this.db, actor, b);
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: "POST /billing/receipts", key: idemKey },
+        b,
+        () => recordReceipt(this.db, actor, b),
+      );
     } catch (e) {
       toHttp(e);
     }
@@ -471,11 +487,16 @@ export class BillingController {
   @RequirePermission("billing.receipt.record", "hospital")
   @Post("receipts/:id/allocations")
   async allocate(
-    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string,
   ): Promise<AllocateReceiptResult> {
     const b = parsed(allocationBody, body);
     try {
-      return await allocateReceipt(this.db, actor, { receiptId: id, invoiceId: b.invoiceId, amountPaise: b.amountPaise });
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: `POST /billing/receipts/${id}/allocations`, key: idemKey },
+        b,
+        () => allocateReceipt(this.db, actor, { receiptId: id, invoiceId: b.invoiceId, amountPaise: b.amountPaise }),
+      );
     } catch (e) {
       toHttp(e);
     }
@@ -496,10 +517,15 @@ export class BillingController {
 
   @RequirePermission("billing.eie.mark", "hospital")
   @Post("eie")
-  async eie(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<MarkEnteredInErrorResult> {
+  async eie(@CurrentActor() actor: Actor, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string): Promise<MarkEnteredInErrorResult> {
     const b = parsed(eieBody, body);
     try {
-      return await markEnteredInError(this.db, actor, b);
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: "POST /billing/eie", key: idemKey },
+        b,
+        () => markEnteredInError(this.db, actor, b),
+      );
     } catch (e) {
       toHttp(e);
     }
@@ -529,10 +555,15 @@ export class BillingController {
 
   @RequirePermission("billing.refund.request", "hospital")
   @Post("refunds/request")
-  async refundRequest(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<RequestRefundResult> {
+  async refundRequest(@CurrentActor() actor: Actor, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string): Promise<RequestRefundResult> {
     const b = parsed(requestRefundBody, body);
     try {
-      return await requestRefund(this.db, actor, b);
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: "POST /billing/refunds/request", key: idemKey },
+        b,
+        () => requestRefund(this.db, actor, b),
+      );
     } catch (e) {
       toHttp(e);
     }
@@ -540,10 +571,15 @@ export class BillingController {
 
   @RequirePermission("billing.refund.request", "hospital")
   @Post("refunds")
-  async refundIssue(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<IssueRefundVoucherResult> {
+  async refundIssue(@CurrentActor() actor: Actor, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string): Promise<IssueRefundVoucherResult> {
     const b = parsed(issueRefundBody, body);
     try {
-      return await issueRefundVoucher(this.db, actor, b);
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: "POST /billing/refunds", key: idemKey },
+        b,
+        () => issueRefundVoucher(this.db, actor, b),
+      );
     } catch (e) {
       toHttp(e);
     }
@@ -552,11 +588,16 @@ export class BillingController {
   @RequirePermission("billing.refund.pay", "hospital")
   @Post("refunds/:id/pay")
   async refundPay(
-    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string,
   ): Promise<PayRefundVoucherResult> {
     const b = parsed(payRefundBody, body);
     try {
-      return await payRefundVoucher(this.db, actor, { voucherId: id, ...b });
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: `POST /billing/refunds/${id}/pay`, key: idemKey },
+        b,
+        () => payRefundVoucher(this.db, actor, { voucherId: id, ...b }),
+      );
     } catch (e) {
       toHttp(e);
     }

@@ -757,4 +757,59 @@ describe("billing e2e", () => {
     const started = await http().post(`/opd/visits/${encounterId}/consult/start`).set(...auth(dra.token)).expect(201);
     expect(started.body.encounter.status).toBe("in_consultation");
   });
+
+  /**
+   * IDEMPOTENCY OVER HTTP — the half `SubmitButton` cannot reach.
+   *
+   * The web guard makes a double click impossible inside one tab. A reload, a second tab, or a
+   * request the network duplicates after the client gave up waiting all still arrive here as two
+   * genuine POSTs, and without a key each one records a receipt. A duplicated cash receipt
+   * inflates the patient's advance and manufactures the drawer variance `44c8b86` was written to
+   * remove, so the count assertion below is the one that matters, not the body comparison.
+   */
+  it("IDEMPOTENCY: replaying POST /billing/receipts with the same Idempotency-Key records ONE receipt and returns the ORIGINAL body", async () => {
+    const patientId = await registerPatient("Rekha Nair", "9876543219");
+    await openSession(cashier.token);
+
+    const body = { patientId, tenders: [{ mode: "cash", amountPaise: 25_000 }] };
+    const key = `attempt-${patientId}`;
+
+    const first = await http().post("/billing/receipts")
+      .set(...auth(cashier.token)).set("Idempotency-Key", key).send(body).expect(201);
+    const replay = await http().post("/billing/receipts")
+      .set(...auth(cashier.token)).set("Idempotency-Key", key).send(body).expect(201);
+
+    expect(replay.body.receiptId).toBe(first.body.receiptId);
+    expect(replay.body).toEqual(first.body); // the ORIGINAL result, not a refusal
+
+    // THE LOAD-BEARING ASSERTION: one document, not two.
+    const list = await http().get(`/billing/receipts?patientId=${patientId}`)
+      .set(...auth(cashier.token)).expect(200);
+    expect(list.body.items).toHaveLength(1);
+
+    // the same key against a DIFFERENT body is a client bug — refused, never answered with the
+    // unrelated document it already has
+    const reused = await http().post("/billing/receipts")
+      .set(...auth(cashier.token)).set("Idempotency-Key", key)
+      .send({ patientId, tenders: [{ mode: "cash", amountPaise: 99_000 }] }).expect(409);
+    expect(reused.body.code).toBe("idempotency_key_reused");
+
+    /*
+     * NOT-OVER-BROAD (§3.44), and the case a content-derived key would have broken: a SECOND
+     * genuine payment, same patient, same amount, same minute, under a NEW key must still be
+     * taken. This is why the key is client-minted rather than a hash of the request.
+     */
+    const second = await http().post("/billing/receipts")
+      .set(...auth(cashier.token)).set("Idempotency-Key", `${key}-2`).send(body).expect(201);
+    expect(second.body.receiptId).not.toBe(first.body.receiptId);
+
+    const both = await http().get(`/billing/receipts?patientId=${patientId}`)
+      .set(...auth(cashier.token)).expect(200);
+    expect(both.body.items).toHaveLength(2);
+
+    // and a request with NO key is untouched by any of this — the pre-existing behaviour
+    const keyless = await http().post("/billing/receipts")
+      .set(...auth(cashier.token)).send(body).expect(201);
+    expect(keyless.body.receiptId).not.toBe(first.body.receiptId);
+  });
 });

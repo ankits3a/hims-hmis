@@ -16,8 +16,9 @@ import { patients } from "./patients";
  * derived from allocations and credit notes (D1), which is exactly what lets those triggers
  * be total. The module's mutable columns, exhaustively: `receipt_tenders` lifecycle
  * (state/settled/reconciled/mismatch), `refund_vouchers` payment columns,
- * `cashier_sessions` lifecycle, `document_series.next_no`, `billing_config`, and the
- * `daily_closes` claim row.
+ * `cashier_sessions` lifecycle, `document_series.next_no`, `billing_config`, the
+ * `daily_closes` claim row, and `idempotency_keys.state/response/completed_at` (the claim is
+ * updated once with its result, and deleted when the work it guarded failed).
  *
  * FK group: `invoices`, `receipts` and `refund_vouchers` carry a REAL foreign key into
  * `patients` (owner ruling R5, 2026-08-19) — a money document must never be able to name a
@@ -287,3 +288,40 @@ export const dailyCloses = pgTable("daily_closes", {
   closedAt: timestamp("closed_at", { withTimezone: true }).notNull(),
   totals: jsonb("totals").notNull(),
 });
+
+/**
+ * THE IDEMPOTENCY CLAIM — one row per (actor, route, client key).
+ *
+ * A double-clicked, reloaded, retried or duplicated write must not create a SECOND money
+ * document. `SubmitButton` (apps/web) closes the double click inside one tab; it cannot close a
+ * page reload, a second tab, or a request the network duplicates after the client gave up
+ * waiting. Only the server can, and only by remembering what it already did.
+ *
+ * THE CLAIM IS TAKEN BEFORE THE WORK, NOT AFTER. `INSERT … ON CONFLICT DO NOTHING` is the
+ * arbiter (the `daily_closes` precedent, D9): the request that inserts owns the work, and a
+ * concurrent duplicate loses the insert and never reaches the write path at all. Recording the
+ * key AFTER the work would be too late — both requests would already have issued a document.
+ *
+ * `response` is written when the work succeeds, so a replay returns the ORIGINAL result rather
+ * than a refusal: a cashier who reloads mid-payment must see the receipt she already took, not
+ * an error. `request_hash` is what makes that safe — the same key against a DIFFERENT body is a
+ * client bug and is refused, never silently answered with the old document.
+ *
+ * This table is deliberately NOT in the immutability trigger set: the claim is updated once with
+ * its response, and deleted if the work failed so a corrected retry may reuse the key.
+ */
+export const idempotencyKeys = pgTable(
+  "idempotency_keys",
+  {
+    id: text("id").primaryKey(),
+    actorId: text("actor_id").notNull(),
+    route: text("route").notNull(), // 'POST /billing/receipts' — the scope the key is unique within
+    key: text("key").notNull(), // the client's `Idempotency-Key` header, verbatim
+    requestHash: text("request_hash").notNull(), // sha256 of the canonical body
+    state: text("state").notNull().default("in_progress"), // 'in_progress' | 'done'
+    response: jsonb("response"), // the original result, served verbatim on replay
+    claimedAt: timestamp("claimed_at", { withTimezone: true }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("idempotency_keys_actor_route_key_ux").on(t.actorId, t.route, t.key)],
+);
