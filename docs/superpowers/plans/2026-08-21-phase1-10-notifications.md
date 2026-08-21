@@ -6,9 +6,13 @@
 > `reports/PLAN-10-PROMPT-2026-08-21.md`. **No pipeline is compiled and nothing is executed by the
 > session that wrote this** — that separation is deliberate and has paid twice.
 
-> **STATUS: OWNER-APPROVED 2026-08-21 (in-conversation, after section-by-section review) —
-> READY TO COMPILE.** No spike phase, no forks to resolve. The execute handoff is
-> `reports/PLAN-10-EXECUTE-PROMPT-2026-08-21.md`; a FRESH session compiles and runs it.
+> **STATUS: SHIPPED 2026-08-22.** Six tasks, `48f118e`..`b6d5647`, all gate-passed on the first
+> rung. Compiled and executed by a fresh session per `reports/PLAN-10-EXECUTE-PROMPT-2026-08-21.md`;
+> pipeline `../pipelines/plan-10-notifications.js`. **The gate report is the ground truth for what
+> shipped, and it is not an unqualified pass:** [`reports/plan-10-gate-report.md`](reports/plan-10-gate-report.md)
+> books two MAJOR gaps in protection (the suppression gauntlet's ORDER is unpinned; `NOTIFY_STUCK_AFTER_MS`
+> is a dead key) and one UNDISCHARGED CI criterion (T2's commit has no CI run at all). Read it before
+> building on this surface. Amendment 7 below was landed by the compiling session, not the author.
 
 > **AMENDMENT 7 — 2026-08-21, by the COMPILING session, before any brief was written
 > (EXECUTE-METHOD §3 sweep items 1–2; §2.46 crossed with §2.54 and §2.47).**

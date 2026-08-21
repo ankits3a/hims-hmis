@@ -2,7 +2,7 @@
 
 **Purpose:** This file carries the inter-plan thinking so any fresh session can write Plan N at Plan-01 quality without the original conversation. Read order for a new session: spec v4.6 (`2026-08-10-hmis-architecture-design.md`) → S10 v1.3 → this file → the previous plan + its gate report. The specs are design law — never re-litigate them in a planning session; open questions go to the owner.
 
-**RE-SEQUENCED 2026-08-20 (owner decision, in-conversation, full authority granted) after the architecture audit and its independent review — [`reports/ARCHITECTURE-REVIEW-2026-08-20.md`](reports/ARCHITECTURE-REVIEW-2026-08-20.md) (the ruling) and [`reports/ARCHITECTURE-REVIEW-PROMPT-2026-08-20.md`](reports/ARCHITECTURE-REVIEW-PROMPT-2026-08-20.md) (the audit's claims it adjudicates).** The order is now **08 → 08.5 → 10 → 11 → 09 → 12a → 13 → stage-2 modules (each carrying its 12b agents)** — see *Sequencing notes*. The 2026-08-12 option-(b) decision that deferred ALL scheduling to Plan 11 is **SUPERSEDED**: Plan 08.5 owns the worker process and the six sweeps; Plan 11 productionises it. Code comments and README lines that still say "Plan 11 registers …" are rewritten by 08.5, not before — **pipeline 8C is in flight and nothing under `apps/` moves until it closes.** Spec v4.6 carries the matching amendments, each marked `(v4.6)` inline (§9, §10.2, §11.18, §16, §17, §19). **Next plan to write: 10** (go-live scope — external notification channels attached to 08.5's alerts). Plan 08.5 SHIPPED 2026-08-21 with CI green at `c5316f9`.
+**RE-SEQUENCED 2026-08-20 (owner decision, in-conversation, full authority granted) after the architecture audit and its independent review — [`reports/ARCHITECTURE-REVIEW-2026-08-20.md`](reports/ARCHITECTURE-REVIEW-2026-08-20.md) (the ruling) and [`reports/ARCHITECTURE-REVIEW-PROMPT-2026-08-20.md`](reports/ARCHITECTURE-REVIEW-PROMPT-2026-08-20.md) (the audit's claims it adjudicates).** The order is now **08 → 08.5 → 10 → 11 → 09 → 12a → 13 → stage-2 modules (each carrying its 12b agents)** — see *Sequencing notes*. The 2026-08-12 option-(b) decision that deferred ALL scheduling to Plan 11 is **SUPERSEDED**: Plan 08.5 owns the worker process and the six sweeps; Plan 11 productionises it. Code comments and README lines that still say "Plan 11 registers …" are rewritten by 08.5, not before — **pipeline 8C is in flight and nothing under `apps/` moves until it closes.** Spec v4.6 carries the matching amendments, each marked `(v4.6)` inline (§9, §10.2, §11.18, §16, §17, §19). **Plan 10 SHIPPED 2026-08-22** (`48f118e`..`b6d5647`, gate report `reports/plan-10-gate-report.md`) — the gateway half only, by owner ruling; the relay half is split out and still waits on E-1. Plan 08.5 SHIPPED 2026-08-21 with CI green at `c5316f9`. **Next: the E-1 / deployment-topology decision, which blocks both Plan 11 and wherever the relay lands.** A session picking that up should read Plan 10's gate report cold — it books two MAJOR gaps in protection and one undischarged CI criterion.
 
 **Quality bar:** `2026-08-11-phase1-01-foundation-kernel.md` is the reference standard — bite-sized TDD tasks, exact code in every step, Interfaces blocks with exact signatures, no placeholders, self-review at the end.
 
@@ -190,9 +190,55 @@ Plan [`2026-08-14-phase1-06-tariff-gst-golden.md`](2026-08-14-phase1-06-tariff-g
 
 ## Plan 10 — Notifications Gateway & Public Read Surface
 
-**RE-SCOPED 2026-08-21 (owner ruling, reached in the Plan 10 brainstorm):** Plan 10 is the
-**notifications gateway only** — plan `2026-08-21-phase1-10-notifications.md` (**OWNER-APPROVED
-2026-08-21, READY TO COMPILE**; execute prompt `reports/PLAN-10-EXECUTE-PROMPT-2026-08-21.md`). The **public read surface** (`apps/relay`, signed short-lived
+**STATUS: SHIPPED 2026-08-22 — 6/6 tasks, gate report [`reports/plan-10-gate-report.md`](reports/plan-10-gate-report.md).**
+Six commits `48f118e` → `b6d5647` (T1 `48f118e`, T2 `0f512c3`, T3 `b7546cf`, T4 `342cea5`,
+T5 `bb0b4ad`, T6 `b6d5647`), five waves, thirteen agents, **no rung escalation, no wave stall, no
+halt**. Independent main-session `pnpm verify` detached, **exit VALUE 0**: `apps/core` 126 suites/811
+tests → **132/908**, `apps/web` 31/147 → **31/152**, `packages/contracts` 3/7 unchanged; no total
+decreased, no test deleted. Per-commit Files-list audit in-scope six for six; no `pnpm-lock.yaml`
+diff anywhere; `dispatcher.ts` changed by **exactly 3 insertions and 0 deletions** — the envelope
+lines D5/GC10 permit, window/claim/cursor/backoff byte-identical. Migration `0015_previous_shiver_man`,
+the plan's only one. **Assertion Book: fifteen rows, twenty mutants, twenty DIED, zero survived**,
+every kill by an assertion's own expected-vs-received; T5's gate independently rebuilt all nine of
+its mutants and all nine died again. **N5, the plan's one §7.4 pre-declared prediction, was
+confirmed by execution and honestly qualified**: of its five stated boundary inputs only
+21:00:00.000 and 08:00:00.000 IST discriminate; the other three are bounds, not teeth — reported by
+the task rather than left reading as fully confirmed. **The flag-④ demonstration passed on a real
+scheduler** (dev compose, `start:worker`): the boot line names **seven** jobs, and four seeded rows
+produced exactly one console send, one `expired`, one `suppressed(deceased)` with zero adapter
+calls, plus a live-patient routine row correctly held to 08:00 IST by quiet hours — the transcript
+is in the gate report §5. **Closes 08.5 booked item 1:** `workerConsumers` is now the one importable
+place the production consumers map exists, and N12's three mutants prove deleting either entry fails.
+**Cost 2,643,332 subagent tokens against a 1.2M target (2.2× over, ledger §2.68 — the target was
+wrong for a Book with twenty mutants, not a budget the run overspent), 5 h 25 m.**
+
+**Two MAJOR gaps in protection are BOOKED, NOT FIXED** (shipped code correct in both; see gate
+report §7): (a) **nothing pins the suppression gauntlet's ORDER** — the D-33 deceased stop can be
+relocated past channel resolution with the whole T4 suite still green, and a deceased-AND-phoneless
+patient then reaches a duty manager as a desk task instructing them to telephone the family; the
+missing assertion is one row, and it is the first thing any remediation should take. (b)
+**`NOTIFY_STUCK_AFTER_MS` is a dead configuration key** no production code reads — the
+`WORKER_DAILY_TICK_MS` specimen repeated inside the plan that was told about it. Also booked: a
+dormant-then-armed cross-commit chain (T4 tolerates a patient row with no `patient_id`, T5 throws on
+it), and two orphaned self-matching shells left spinning on the build host (PIDs 3501080/3502071 —
+owner's call to kill). **One CI criterion is UNDISCHARGED and is not being called green:** T2's
+`0f512c3` has **no CI run at all** — wave 2's parallel tasks coalesced their commits into one push
+(ledger §2.62), and it cannot be created retroactively; T2's three files are byte-identical at two
+later CI-green commits, which is discharge by equivalence and is labelled as such. T3's `b7546cf`
+went red on a **flaky** 25-hour census (`invoked` came back empty) and is **GREEN on re-run of the
+identical commit**, 445 s — proved by re-running, not by arguing (§2.64). Every other commit green
+by full SHA. `ci-watch.sh` ran the whole pipeline and caught none of this: it stalls permanently on
+the first commit with no run (§2.63) — fixing it is booked.
+
+**Compile-time amendment 7** (`1eac9ab`, plan and pipeline script in one commit per §2.54): the
+EXECUTE-METHOD §3 sweep found a HALT-class defect the plan's own path sweep structurally could not
+— T4 widens `JobIntervals` and registers a seventh job, breaking `THE_SIX`, `spyOnTheSix` and a
+`JobIntervals` object literal in `scheduler.test.ts`, a file **no task owned** and therefore frozen
+to all six, plus the census in T5's `worker-runtime.e2e.test.ts`. The plan had also named the wrong
+file for the work. Pre-flight: 196 assertions, exit VALUE 0, five negative controls observed to fail
+(§2.65).
+
+The **public read surface** (`apps/relay`, signed short-lived
 tokens, queue position, document verification, E-22 token revocation) is **split out**, to land
 where the topology decision lives — Plan 10.5 or joining Plan 11 (owner decision open; the plan
 recommends joining 11). E-1 (DMZ vs cloud relay) remains an OPEN pre-go-live gate; the split was
