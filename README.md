@@ -20,8 +20,8 @@ Agentic hospital operating system. Specs: `docs/superpowers/specs/`.
 Definitions are versioned data (draft → approve per change class → activate; immutable once
 active; one active version per key). Instances pin their definition version; transitions
 enforce the definition's allowed roles. SLA timers are DB rows: `runDueTimers()` emits
-`sla.breached` and climbs escalation ladders — it is UNSCHEDULED until Plan 11 registers it
-as a pg-boss cron (owner decision 2026-08-12), same as `runDispatchCycle` and
+`sla.breached` and climbs escalation ladders — it runs on a clock as of Plan 08.5 (the worker
+process's scheduler; see **Worker process** below), same as `runDispatchCycle` and
 `sweepExpiredTempRoles`. Authoring flows: POST /workflow/definitions with
 `{ key, title, changeClass, initialState, states, transitions }` — every branch must reach
 a terminal state or the draft is rejected with the full problem list.
@@ -31,8 +31,8 @@ One generic mechanism (spec §8): request → approver role → approve/reject w
 note → event. Every request type is registered configuration backed by a workflow definition
 (`approval_<typeKey>`, built by `approvalFlowDefinition`, activated through the workflow
 engine's own draft→activate governance), so closure SLAs and escalation ladders run on the
-workflow engine's DB-row timers — `runDueTimers()` remains UNSCHEDULED until Plan 11's
-pg-boss cron. Requester≠approver is enforced through the seeded `requester_approver` SoD
+workflow engine's DB-row timers — `runDueTimers()` runs on the worker's clock as of Plan 08.5
+(see **Worker process** below). Requester≠approver is enforced through the seeded `requester_approver` SoD
 pair; decisions are single-winner instance transitions. C-12 cumulative same-patient/
 same-payee/same-IST-day totals are snapshotted on every money request (report-only —
 thresholds arrive with CA configuration in Plans 06/08). Urgency classes
@@ -48,9 +48,12 @@ Other modules reference `patient_id` and import ONLY from `modules/patients/inde
 events) — the module-isolation lint rule enforces it. UHID = `<PREFIX>-<8 digits>-<Verhoeff>`;
 phone-first search carries a CI-enforced <300 ms budget (`test/perf-patient-search.test.ts`).
 Merge/unmerge are approval-gated through the approvals engine (types `patient_merge`,
-`patient_unmerge` — act-first enabled). Guardian majority is read-time-enforced;
-`sweepGuardianMajority` is the FOURTH unscheduled sweep (pg-boss cron in Plan 11, with
-`runDispatchCycle`, `sweepExpiredTempRoles`, `runDueTimers`).
+`patient_unmerge` — act-first enabled; `executeMerge` itself stays check-on-execute BY DESIGN,
+never an event consumer — a merge is a synchronous admin action a human is waiting on at the
+screen, and the worker existing does not change that). Guardian majority is read-time-enforced;
+`sweepGuardianMajority` is one of the worker's six scheduled sweeps as of Plan 08.5 (daily 00:05
+IST — see **Worker process** below), alongside `runDispatchCycle`, `sweepExpiredTempRoles`,
+`runDueTimers`, `sweepAppointmentNoShows` and `runDailyClose`.
 
 ### Go-live runbook (owner steps, once per environment)
 1. Choose the UHID prefix (Class A decision — printed on every card):
@@ -185,9 +188,9 @@ side is realigned.
 `consultation.completed` · `prescription.issued` · `referral.issued` · `admission.requested`, plus
 `qr.signature_failed` for e-Rx scans.
 
-**Sweeps.** `sweepAppointmentNoShows` is the FIFTH unscheduled sweep — Plan 11 registers all five as
-pg-boss crons: `runDispatchCycle`, `sweepExpiredTempRoles`, `runDueTimers`, `sweepGuardianMajority`,
-`sweepAppointmentNoShows`.
+**Sweeps.** `sweepAppointmentNoShows` is one of the worker's six scheduled sweeps as of Plan 08.5
+(daily 23:55 IST — see **Worker process** below), alongside `runDispatchCycle`,
+`sweepExpiredTempRoles`, `runDueTimers`, `sweepGuardianMajority` and `runDailyClose`.
 
 **Perf budgets** are CI-enforced in `test/perf-opd-queue.test.ts` (300 doctor-days × 60 entries,
 200k completed historical encounters): `listQueue` < 100 ms, `openVisit` including the visit-type
@@ -359,8 +362,10 @@ Uniqueness is per `(actor, route, key)`, so one cashier's key can never replay a
 `cashier_session.opened` · `cashier_session.closed` · `variance.flagged` ·
 `cash_threshold.warned` · `cash_threshold.blocked` · `tender.reconciled` · `tender.mismatched` ·
 `degraded_mode.changed` · `document.entered_in_error` · `charge.orphan_flagged` · `day.closed`.
-The dispatcher stays unscheduled until Plan 11; billing screens (Plan 08 pipeline C) poll rather
-than subscribe — there are no billing realtime topics yet.
+The dispatcher runs on the worker's clock as of Plan 08.5 (see **Worker process** below), but
+every billing approval stays check-on-execute BY DESIGN — the loop existing does not change it
+(Global Constraint 1). Billing screens (Plan 08 pipeline C) poll rather than subscribe — there are
+still no billing realtime topics.
 
 **The pay-before-consult gate.** `modules/opd/consultation.ts` carries a keyed guard registry
 (`registerConsultStartGuard`, dependency-inverted so OPD ships with zero billing import); billing's
@@ -576,3 +581,62 @@ so a document that commits in that window is permanently absent from the stored 
 repairs it. The screen renders the API's figures **verbatim** — it folds nothing of its own, and the
 GSTR-1 view likewise prints the stored per-line tax heads summed, never re-derived from a group's
 taxable value (§170/§15.1: heads are summed, never recomputed).
+
+## Worker process (Plan 08.5)
+
+A second Node process, `apps/core/src/worker.ts`, boots a providers-only Nest application context
+(`WorkerModule` — no controllers, no `RealtimeModule`, so it structurally cannot open `/ws` or run
+the realtime tail; that stays the API process's, Global Constraint 2) from the SAME build as the
+API, with its own DB pool. It runs six sweeps on an advisory-lock interval loop — never pg-boss,
+never a second scheduler (D2): each tick, one checked-out client takes
+`pg_try_advisory_lock(hashtext('job:<name>'))`; the loser skips the tick silently, so running more
+than one worker process is safe by construction. The lock is noise-reduction only — correctness
+never rests on it (D3): every sweep below is already idempotent and multi-process-safe on its own
+claim (a conditional `UPDATE … RETURNING`, or `INSERT … ON CONFLICT DO NOTHING`).
+
+**Start it:** `pnpm --filter @hmis/core start:worker` (mirrors `start:dev` — same `loadConfig()`,
+same `.env`, no new environment variable is ever required). Dev compose is unchanged; a
+production compose service, restart policy and heartbeat alerting are Plan 11's.
+
+**The six jobs and their cadences** (every interval defaults in the config schema):
+
+| Job | Cadence | Config key |
+|---|---|---|
+| `runDispatchCycle` | every 2 s | `WORKER_DISPATCH_INTERVAL_MS` (default 2 000) |
+| `runDueTimers` | every 20 s | `WORKER_TIMERS_INTERVAL_MS` (default 20 000) |
+| `sweepExpiredTempRoles` | every 60 s | `WORKER_TEMP_ROLES_INTERVAL_MS` (default 60 000) |
+| `sweepGuardianMajority` | daily, 00:05 IST | code constant, not a knob |
+| `sweepAppointmentNoShows` | daily, 23:55 IST | code constant, not a knob |
+| `runDailyClose` | daily, 23:59 IST | code constant, not a knob |
+
+The three daily jobs share one ticker, `WORKER_DAILY_TICK_MS` (default 30 000 ms): each tick it
+checks whether `now` is past today's IST instant AND the job's heartbeat has no `last_ok_at` yet
+on this IST day — the heartbeat doubles as the daily-run memory, so a failed daily run retries on
+the next tick until it succeeds, and a successful one does not re-fire until tomorrow.
+
+**Heartbeats.** `scheduler_heartbeats(job PK, last_started_at, last_ok_at, last_error,
+last_duration_ms)` is upserted on every tick that WINS the lock — never a per-tick event (that
+would flood the log). `GET /health` reads it and reports a `worker` field:
+
+| `worker` | Meaning | `status` |
+|---|---|---|
+| `not_running` | zero heartbeat rows — no worker has ever ticked against this database | `ok` |
+| `ok` | the freshest `last_started_at` is within `WORKER_STALE_AFTER_MS` (default 60 000 ms) | `ok` |
+| `stale` | older than that | `degraded` |
+
+The worker is never reported `down` — it is never load-bearing for a human flow (Global
+Constraint 1), so its absence degrades a diagnostic; it never fails one.
+
+**When the worker is down, nothing blocks.** Every sweep is a pure catch-up read over rows that
+already carry their own due-ness (a due timer, an unresolved event past the dispatcher's cursor,
+an appointment past its service date): with the worker not running, timers, escalations and
+deliveries simply ACCUMULATE, and every one of them drains on restart — no request a human is
+waiting on depends on the worker having ticked at all. This is proved, not asserted:
+`apps/core/test/worker-runtime.e2e.test.ts`'s drain leg builds a backlog with the worker never
+having run, then drives the sweeps directly and shows the backlog resolves and a second pass over
+the same instant fires nothing further.
+
+**The alerts bell** (`apps/web/src/components/alerts-bell.tsx`) is the runtime loop's first
+human-facing surface: it polls `GET /alerts` (`refetchInterval: 15_000`) and treats a WebSocket
+frame on `alerts:<userId>` as an invalidate hint only — the frame carries no title and no patient
+identity (§14), so nothing is ever rendered from the frame itself, only from the poll it triggers.

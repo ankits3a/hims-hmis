@@ -16,8 +16,10 @@ import type { Db, Tx } from "../../kernel/db/client";
 
 /**
  * Plan 08 D9 / §11.11 — the daily close: the day book, the charge-orphan scan and the GSTR-1
- * summary. `runDailyClose` is the module's ONE unscheduled sweep (Plan 11 registers it with
- * pg-boss); `dayBook` and `gstr1Summary` serve the same numbers live to the back office.
+ * summary. `runDailyClose` is the module's ONE sweep, and as of Plan 08.5 it runs on a clock:
+ * the worker process's scheduler (kernel/worker/jobs.ts) fires it daily at 23:59 IST, the sixth
+ * of the six sweeps — Plan 11 productionises the worker, it does not schedule this. `dayBook`
+ * and `gstr1Summary` serve the same numbers live to the back office regardless.
  *
  * TWO RULES THIS FILE EXISTS TO HOLD:
  *  1. **The claim is idempotent.** `daily_closes(day)` is taken with `ON CONFLICT DO NOTHING`, so

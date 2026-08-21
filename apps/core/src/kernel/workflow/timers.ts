@@ -14,8 +14,9 @@ import { slaBreached, escalationTriggered } from "./events";
 import type { Db } from "../db/client";
 
 // Timers are ROWS, never processes (roadmap trap: survive restarts; no setTimeout).
-// Nothing here schedules execution — runDueTimers (Task 7) is invoked by tests now
-// and by Plan 11's pg-boss cron later.
+// Nothing here schedules execution — runDueTimers is invoked by tests directly and, since
+// Plan 08.5, by the worker process's own scheduler (kernel/worker/jobs.ts), every
+// WORKER_TIMERS_INTERVAL_MS.
 
 export async function scheduleSlaTimer(
   tx: Tx,
@@ -72,12 +73,15 @@ export const DUTY_MANAGER_ROLE = "duty_manager";
 const TIMER_ACTOR: Actor = { type: "system", id: "workflow-timer" };
 
 /**
- * Fires every due, unfired, uncancelled timer. Deliberately UNSCHEDULED (owner decision
- * 2026-08-12, option (b)) — Plan 11 registers this as a pg-boss cron in the worker
- * process, alongside runDispatchCycle and sweepExpiredTempRoles. Idempotent and
- * multi-process-safe: each timer is claimed with a conditional UPDATE…RETURNING in its
- * own transaction before anything is emitted; two concurrent callers cannot double-fire.
- * One call fires one rung per escalation chain; repeated calls drain a backlog.
+ * Fires every due, unfired, uncancelled timer. RUNS ON A CLOCK as of Plan 08.5: the worker
+ * process's scheduler ticks it every WORKER_TIMERS_INTERVAL_MS (kernel/worker/jobs.ts),
+ * alongside runDispatchCycle and sweepExpiredTempRoles — the 2026-08-12 owner ruling that left
+ * this unscheduled is superseded (Plan 08.5 owns the worker; Plan 11 productionises it, spec §2
+ * v4.3). Idempotent and multi-process-safe regardless: each timer is claimed with a conditional
+ * UPDATE…RETURNING in its own transaction before anything is emitted; two concurrent callers —
+ * including two overlapping scheduler ticks — cannot double-fire. One call fires one rung per
+ * escalation chain; repeated calls drain a backlog, including the backlog that accumulates while
+ * the worker is down (Global Constraint 1: the worker is never load-bearing for a human flow).
  */
 export async function runDueTimers(db: Db, now: Date = new Date()): Promise<number> {
   const due = await db

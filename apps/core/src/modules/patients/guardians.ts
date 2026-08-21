@@ -161,11 +161,13 @@ export async function endGuardian(tx: Tx, actor: Actor, guardianId: string): Pro
 }
 
 /**
- * The FOURTH unscheduled sweep (owner decision 2026-08-13 Q4), alongside runDispatchCycle,
- * sweepExpiredTempRoles, and runDueTimers — Plan 11 registers all four as pg-boss crons.
- * Correctness never depends on it (effectiveGuardianAuthority above); this flips row status
- * and emits guardian.authority_changed for downstream consumers (Plan 10 routing, reports).
- * Concurrency: the status='active' predicate re-evaluates under READ COMMITTED, so two
+ * Scheduled daily at 00:05 IST as of Plan 08.5 — the 2026-08-13 owner ruling (Q4) that left this
+ * unscheduled is superseded: the worker process's scheduler (kernel/worker/jobs.ts) runs all six
+ * sweeps, this one alongside runDispatchCycle, sweepExpiredTempRoles, runDueTimers,
+ * sweepAppointmentNoShows and runDailyClose; Plan 11 productionises the worker, it does not
+ * schedule this. Correctness never depends on it (effectiveGuardianAuthority above); this flips
+ * row status and emits guardian.authority_changed for downstream consumers (Plan 10 routing,
+ * reports). Concurrency: the status='active' predicate re-evaluates under READ COMMITTED, so two
  * racing sweeps split the claimed rows — proven by the parallel test.
  */
 export async function sweepGuardianMajority(db: Db, now: Date = new Date()): Promise<number> {

@@ -211,9 +211,12 @@ export async function listAppointments(
 }
 
 /**
- * Unscheduled (Plan 11's pg-boss list — the fifth sweep, joining runDispatchCycle / sweepExpiredTempRoles /
- * runDueTimers / sweepGuardianMajority). Claims each row with a conditional UPDATE and appends its event in the
- * SAME per-row transaction as the claim — never one bulk UPDATE with events appended outside the claim's tx.
+ * Scheduled daily at 23:55 IST as of Plan 08.5 (the worker process's scheduler,
+ * kernel/worker/jobs.ts — the fifth of six sweeps, joining runDispatchCycle,
+ * sweepExpiredTempRoles, runDueTimers, sweepGuardianMajority and runDailyClose; Plan 11
+ * productionises the worker, it does not schedule this). Claims each row with a conditional
+ * UPDATE and appends its event in the SAME per-row transaction as the claim — never one bulk
+ * UPDATE with events appended outside the claim's tx.
  */
 export async function sweepAppointmentNoShows(db: Db, now: Date = new Date()): Promise<number> {
   const today = istDate(now);

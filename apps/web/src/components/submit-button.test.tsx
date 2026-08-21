@@ -163,19 +163,24 @@ describe("SubmitButton", () => {
  * alone would be satisfied by leaving a bare lane beside a guarded one.
  */
 const WRITE_LANES: Record<string, number> = {
-  "billing-counter": 1, // submit-invoice
-  "billing-dues": 4, // clear-submit, clearance-submit, apply-submit, take-advance-submit
-  "billing-session": 3, // open-submit, close-submit, confirm-close
-  "billing-office": 5, // refund-request-submit, issue-submit, pay-submit, recon-submit, eie-confirm-submit
+  "screens/billing-counter": 1, // submit-invoice
+  "screens/billing-dues": 4, // clear-submit, clearance-submit, apply-submit, take-advance-submit
+  "screens/billing-session": 3, // open-submit, close-submit, confirm-close
+  "screens/billing-office": 5, // refund-request-submit, issue-submit, pay-submit, recon-submit, eie-confirm-submit
+  "components/alerts-bell": 1, // mark-read — Plan 08.5 T5 / D11: the bell mounts SubmitButton prospectively
 };
 
 /**
- * Vitest runs each workspace from its own package root, so `src/screens` resolves off `cwd`.
- * A WRONG path here cannot produce a false green: `readFileSync` throws, which fails the test
- * loudly rather than sweeping an empty file set and reporting no offenders.
+ * Vitest runs each workspace from its own package root, so `src` resolves off `cwd`. The plan's
+ * File Structure amendment 1 EXTENDS this to resolve any full relative path under `src/` — it
+ * resolved `src/screens/<name>.tsx` only, and the bell lives in `src/components/`. A WRONG path
+ * here cannot produce a false green: `readFileSync` throws, which fails the test loudly rather
+ * than sweeping an empty file set and reporting no offenders — that property is preserved:
+ * `resolve` + `readFileSync` throw exactly the same way for a path under `components/` as they
+ * did for one under `screens/`.
  */
-function screenSource(name: string): string {
-  return readFileSync(resolve(process.cwd(), "src/screens", `${name}.tsx`), "utf8");
+function screenSource(relPath: string): string {
+  return readFileSync(resolve(process.cwd(), "src", `${relPath}.tsx`), "utf8");
 }
 
 describe("the single-submit convention across the billing screens", () => {
@@ -197,9 +202,9 @@ describe("the single-submit convention across the billing screens", () => {
    * that actually thread the attempt key through to `api()`.
    */
   const KEYED_WRITES: Record<string, number> = {
-    "billing-counter": 1, // issueInvoice
-    "billing-dues": 5, // receipt ×2, allocation ×2, credit-note
-    "billing-office": 4, // refund request, issue, pay, eie
+    "screens/billing-counter": 1, // issueInvoice
+    "screens/billing-dues": 5, // receipt ×2, allocation ×2, credit-note
+    "screens/billing-office": 4, // refund request, issue, pay, eie
   };
 
   it("every write to an idempotency-protected route threads the attempt key through to api()", () => {

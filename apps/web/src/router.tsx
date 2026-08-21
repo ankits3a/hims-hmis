@@ -7,6 +7,7 @@ import { useAuth } from "./lib/auth";
 import { KeyboardProvider, ShortcutLegend } from "./lib/keyboard";
 import { switchLanguage } from "./lib/i18n";
 import i18next from "./lib/i18n";
+import { AlertsBell } from "./components/alerts-bell";
 import { LoginScreen } from "./screens/login";
 import { RegistrationDesk } from "./screens/registration-desk";
 import { PatientDetail } from "./screens/patient-detail";
@@ -48,6 +49,7 @@ function Shell(): React.ReactElement {
             <a href="/billing/office" className="hover:underline">{t("nav.billingOffice")}</a>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
+            <AlertsBell />
             <button type="button" onClick={() => switchLanguage(i18next.language === "hi" ? "en" : "hi")}>
               {t("app.language")}
             </button>

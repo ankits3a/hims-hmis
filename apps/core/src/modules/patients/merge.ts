@@ -83,9 +83,12 @@ export async function getMergeRequest(
 }
 
 /**
- * Check-on-execute (owner decision Q3): the gate is verified against the approvals row at
- * execution time — NOT an event consumer, because runDispatchCycle is unscheduled until
- * Plan 11 and a subscription would never tick in production.
+ * Check-on-execute (owner decision Q3), and this STAYS check-on-execute BY DESIGN even though
+ * Plan 08.5 puts runDispatchCycle on a clock: the gate is verified against the approvals row at
+ * execution time, never via an event consumer, because a merge is a synchronous admin action a
+ * human is waiting on at the screen — trading that for the dispatcher's at-least-once, polled
+ * delivery would buy nothing (Global Constraint 1, roadmap trap 1). The worker existing does not
+ * change this file's shape.
  */
 export async function executeMerge(
   db: Db,

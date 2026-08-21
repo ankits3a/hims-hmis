@@ -418,8 +418,10 @@ export async function requestRefund(db: Db, actor: Actor, rawInput: RequestRefun
 }
 
 /**
- * D6 — the voucher. Check-on-execute against the GRANTED approval (the dispatcher stays
- * unscheduled until Plan 11), then GUARD 1 under a row lock, then the row.
+ * D6 — the voucher. Check-on-execute against the GRANTED approval, and this STAYS
+ * check-on-execute BY DESIGN even though Plan 08.5 puts the dispatcher on a clock (Global
+ * Constraint 1, roadmap trap 1: the loop existing does not change it) — then GUARD 1 under a row
+ * lock, then the row.
  *
  * GUARD 1, invoice lane: `Sigma vouchers against this invoice + this ask <= min(money RECEIVED,
  * refundable surplus)`. Both terms matter and neither is the invoice's NET (K27/M-R1 — capping at

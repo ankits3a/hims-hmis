@@ -26,5 +26,7 @@ export const billingManifest: ModuleManifest = {
     "billing.session.own", "billing.session.read",
     "billing.recon.upload", "billing.reports.read", "billing.config.write", "billing.eie.mark",
   ],
-  subscriptions: [], // the dispatcher stays unscheduled until Plan 11; billing screens poll
+  // No subscriptions: billing stays check-on-execute BY DESIGN (Global Constraint 1) — Plan 08.5
+  // puts the dispatcher on a clock, but no billing route consumes an event; screens poll instead.
+  subscriptions: [],
 };

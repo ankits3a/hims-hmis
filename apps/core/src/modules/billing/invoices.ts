@@ -336,7 +336,9 @@ export async function insertReceiptWithTenders(
 }
 
 // ---------------------------------------------------------------------------------------------
-// Approvals — check-on-execute (the dispatcher stays unscheduled until Plan 11)
+// Approvals — check-on-execute BY DESIGN (Global Constraint 1, roadmap trap 1). Plan 08.5 puts
+// the dispatcher on a clock; this section still verifies against the approvals row at execution
+// time, never via an event consumer — the loop existing does not change it.
 // ---------------------------------------------------------------------------------------------
 
 async function assertGrantedApproval(

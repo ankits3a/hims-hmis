@@ -1,7 +1,8 @@
 /**
  * THE cross-module interface of the billing module (spec §4). Later plans import from here or
  * consume events — never internals. Plan 09's accrual ledger consumes `payment.received` /
- * `payment.refunded`; Plan 11 registers `runDailyClose` as the sixth unscheduled sweep; the IPD
+ * `payment.refunded`; Plan 08.5's worker process runs `runDailyClose` daily at 23:59 IST as the
+ * sixth of its six sweeps (Plan 11 productionises the worker, it does not schedule this); the IPD
  * phase consumes the advance instrument. Everything else the counter needs is reachable over HTTP
  * only (the Plan 05/07 pattern) — `billing.controller.ts` is the wire contract.
  */
