@@ -196,7 +196,7 @@ export function BillingDues(): React.ReactElement {
    * second call is refused the FIRST has already committed, so the receipt number is carried into
    * the message: that money is now sitting on the patient's advance, not lost.
    */
-  const clearDue = async (due: WireDueRow): Promise<void> => {
+  const clearDue = async (due: WireDueRow, idemKey: string): Promise<void> => {
     if (patient === null) return;
     if (tenders.length === 0) {
       setError(t("billingDues.clear.tendersRequired"));
@@ -212,7 +212,7 @@ export function BillingDues(): React.ReactElement {
       receipt = await api<WireRecordReceiptResult>("POST", "/billing/receipts", {
         patientId: patient.id,
         tenders,
-      });
+      }, idemKey);
     } catch (e) {
       showRefusal(e);
       return;
@@ -222,7 +222,7 @@ export function BillingDues(): React.ReactElement {
       await api("POST", `/billing/receipts/${encodeURIComponent(receipt.receiptId)}/allocations`, {
         invoiceId: due.invoiceId,
         amountPaise: allocatePaise,
-      });
+      }, idemKey);
     } catch (e) {
       showRefusal(e, t("billingDues.clear.receiptBanked", { receiptNo: receipt.receiptNo }));
       await refresh();
@@ -237,7 +237,7 @@ export function BillingDues(): React.ReactElement {
    * seam. Category and reason are both mandatory here as well as at the server: a write-off with
    * no category has no cap to be checked against, and one with no reason is unsigned.
    */
-  const clearanceDiscount = async (due: WireDueRow): Promise<void> => {
+  const clearanceDiscount = async (due: WireDueRow, idemKey: string): Promise<void> => {
     if (category === "") {
       setError(t("billingDues.clearance.categoryRequired"));
       return;
@@ -258,7 +258,7 @@ export function BillingDues(): React.ReactElement {
         discountCategory: category,
         askPaise,
         reason: reason.trim(),
-      });
+      }, idemKey);
     } catch (e) {
       showRefusal(e);
       return;
@@ -272,7 +272,7 @@ export function BillingDues(): React.ReactElement {
    * exists. No new money changes hands, so NO receipt is posted: that absence is the whole
    * difference between the two lanes.
    */
-  const applyAdvance = async (due: WireDueRow): Promise<void> => {
+  const applyAdvance = async (due: WireDueRow, idemKey: string): Promise<void> => {
     if (receiptId === "") {
       setError(t("billingDues.advanceLane.receiptRequired"));
       return;
@@ -286,7 +286,7 @@ export function BillingDues(): React.ReactElement {
       await api("POST", `/billing/receipts/${encodeURIComponent(receiptId)}/allocations`, {
         invoiceId: due.invoiceId,
         amountPaise: allocatePaise,
-      });
+      }, idemKey);
     } catch (e) {
       showRefusal(e);
       return;
@@ -296,7 +296,7 @@ export function BillingDues(): React.ReactElement {
   };
 
   /** TAKE AN ADVANCE — a receipt with nothing allocated against it. That is the whole instrument. */
-  const takeAdvance = async (): Promise<void> => {
+  const takeAdvance = async (idemKey: string): Promise<void> => {
     if (patient === null) return;
     if (tenders.length === 0) {
       setError(t("billingDues.clear.tendersRequired"));
@@ -304,7 +304,7 @@ export function BillingDues(): React.ReactElement {
     }
     setError(null);
     try {
-      await api<WireRecordReceiptResult>("POST", "/billing/receipts", { patientId: patient.id, tenders });
+      await api<WireRecordReceiptResult>("POST", "/billing/receipts", { patientId: patient.id, tenders }, idemKey);
     } catch (e) {
       showRefusal(e);
       return;
@@ -344,7 +344,7 @@ export function BillingDues(): React.ReactElement {
           />
           {errorLine}
           <div className="flex gap-2">
-            <SubmitButton data-testid="clear-submit" onClick={() => clearDue(due)}>
+            <SubmitButton data-testid="clear-submit" onClick={(k) => clearDue(due, k)}>
               {t("billingDues.clear.submit")}
             </SubmitButton>
             <Button variant="outline" onClick={closeLane}>{t("billingDues.cancel")}</Button>
@@ -410,7 +410,7 @@ export function BillingDues(): React.ReactElement {
             </p>
           ))}
           <div className="flex gap-2">
-            <SubmitButton data-testid="clearance-submit" onClick={() => clearanceDiscount(due)}>
+            <SubmitButton data-testid="clearance-submit" onClick={(k) => clearanceDiscount(due, k)}>
               {t("billingDues.clearance.submit")}
             </SubmitButton>
             <Button variant="outline" onClick={closeLane}>{t("billingDues.cancel")}</Button>
@@ -454,7 +454,7 @@ export function BillingDues(): React.ReactElement {
         />
         {errorLine}
         <div className="flex gap-2">
-          <SubmitButton data-testid="apply-submit" onClick={() => applyAdvance(due)}>
+          <SubmitButton data-testid="apply-submit" onClick={(k) => applyAdvance(due, k)}>
             {t("billingDues.advanceLane.apply")}
           </SubmitButton>
           <Button variant="outline" onClick={closeLane}>{t("billingDues.cancel")}</Button>
@@ -523,7 +523,7 @@ export function BillingDues(): React.ReactElement {
                     <TenderEditor payablePaise={0} onChange={setTenders} />
                     {errorLine}
                     <div className="flex gap-2">
-                      <SubmitButton data-testid="take-advance-submit" onClick={() => takeAdvance()}>
+                      <SubmitButton data-testid="take-advance-submit" onClick={(k) => takeAdvance(k)}>
                         {t("billingDues.advanceLane.take")}
                       </SubmitButton>
                       <Button variant="outline" onClick={closeLane}>{t("billingDues.cancel")}</Button>

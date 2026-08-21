@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { newIdempotencyKey } from "../lib/api";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -27,7 +28,7 @@ export function SubmitButton({
   children,
   ...rest
 }: Omit<React.ComponentProps<typeof Button>, "onClick"> & {
-  onClick: () => Promise<void>;
+  onClick: (idempotencyKey: string) => Promise<void>;
 }): React.ReactElement {
   const inFlight = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -36,9 +37,17 @@ export function SubmitButton({
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
+    /*
+     * ONE KEY PER ATTEMPT, minted here because this is the only place that knows where an attempt
+     * BEGINS. Every request the handler makes travels under it, and the server's uniqueness is per
+     * (actor, route, key) — so a lane that posts a receipt and then an allocation is two distinct
+     * claims under one key, exactly as intended. A handler that ignores the argument simply gets no
+     * server-side protection, which is why `submit-button.test.tsx` sweeps for that.
+     */
+    const idempotencyKey = newIdempotencyKey();
     void (async () => {
       try {
-        await onClick();
+        await onClick(idempotencyKey);
       } catch (e) {
         /*
          * THE REJECTION IS CAUGHT HERE, AND THAT IS NOT DEFENSIVE PADDING. Without it the async

@@ -43,6 +43,13 @@ function bodiesOf(method: string, path: string): Record<string, unknown>[] {
   return callsTo(method, path).map((c) => JSON.parse(c.body === "" ? "{}" : c.body) as Record<string, unknown>);
 }
 
+/** The `Idempotency-Key` each request to `path` carried, in order (migration 0013). */
+function keysOf(method: string, path: string): (string | undefined)[] {
+  return vi.mocked(fetch).mock.calls
+    .filter(([input, init]) => (init?.method ?? "GET") === method && String(input).split("?")[0] === path)
+    .map(([, init]) => (init?.headers as Record<string, string> | undefined)?.["Idempotency-Key"]);
+}
+
 // ——— fixtures ————————————————————————————————————————————————————————————————————————————————
 
 const SEARCH_HIT = {
@@ -533,5 +540,17 @@ describe("BillingDues", () => {
       patientId: "p-1",
       tenders: [{ mode: "cash", amountPaise: 30000 }],
     });
+
+    /*
+     * THE SERVER HALF IS ARMED (migration 0013). The client guard above stops a second click
+     * inside this tab; the header is what lets the server refuse a duplicate DELIVERY of these
+     * same requests. One attempt mints ONE key, and both of its requests carry it — the server's
+     * uniqueness is per (actor, route, key), so a receipt and an allocation under one key are two
+     * distinct claims rather than a collision.
+     */
+    const receiptKey = keysOf("POST", "/billing/receipts")[0];
+    const allocationKey = keysOf("POST", "/billing/receipts/rcp-new/allocations")[0];
+    expect(receiptKey).toMatch(/\S/);
+    expect(allocationKey).toBe(receiptKey);
   });
 });

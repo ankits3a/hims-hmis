@@ -524,7 +524,19 @@ rendered inline, in the server's own words, wherever the user was standing.
 `billing_config` surface (`PUT /billing/config`, `PUT /billing/degraded`), and is the `approverRole`
 on all five billing approval types. See the module's permission table above for the exact grant per
 route — `/billing/office` reads `billing.reports.read` and writes through `billing.refund.*`,
-`billing.recon.upload` and `billing.eie.mark`, none of which a cashier holds.
+`billing.recon.upload` and `billing.eie.mark`. Of these a cashier holds only
+`billing.refund.request` and `billing.refund.pay`, so a cashier who opens the back office can file,
+issue and pay a refund voucher but is refused the worklist read, the statement upload and the
+entered-in-error correction.
+
+**Money writes are single-flight, on both sides.** Every write button on the four screens is a
+`SubmitButton` (`components/submit-button.tsx`): a `useRef` latch that flips synchronously, so two
+clicks in one tick call the handler once — `disabled` is the affordance, never the guard. That
+closes the double click inside one tab. It cannot close a duplicate DELIVERY of the same request,
+so each attempt also mints one `Idempotency-Key` and every write it makes carries it; the server
+claims that key before doing the work (see **Idempotency** above). A deliberate second submit mints
+a NEW key and is a new attempt — the guard is against duplication, never against a cashier who
+means it.
 
 **Shortcuts.** Alt+B opens the counter (global, `keyboard.tsx`). The back office binds its own
 screen-local digit keys — `1` refunds, `2` reconciliation, `3` day book, `4` GSTR-1 — which are

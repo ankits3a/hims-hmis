@@ -224,8 +224,11 @@ export function previewInvoice(body: {
   return api("POST", "/billing/invoices/preview", body);
 }
 
-export function issueInvoice(body: WireIssueInvoiceBody): Promise<WireIssueInvoiceResult> {
-  return api("POST", "/billing/invoices", body);
+export function issueInvoice(
+  body: WireIssueInvoiceBody,
+  idempotencyKey?: string,
+): Promise<WireIssueInvoiceResult> {
+  return api("POST", "/billing/invoices", body, idempotencyKey);
 }
 
 export function fetchInvoicePrint(invoiceId: string): Promise<WireInvoicePrint> {

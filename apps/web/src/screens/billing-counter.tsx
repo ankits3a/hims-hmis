@@ -193,7 +193,7 @@ export function BillingCounter(): React.ReactElement {
 
   // ——— the write ————————————————————————————————————————————————————————————————————————————
 
-  const submit = async (): Promise<void> => {
+  const submit = async (idemKey: string): Promise<void> => {
     if (patient === null) {
       setError(t("billing.counter.pickPatientFirst"));
       setErrorCode(null);
@@ -238,7 +238,7 @@ export function BillingCounter(): React.ReactElement {
     if (Object.keys(approvals).length > 0) body.discountApprovals = approvals;
 
     try {
-      setIssued(await issueInvoice(body));
+      setIssued(await issueInvoice(body, idemKey));
     } catch (e) {
       const code = billingErrorCode(e);
       setErrorCode(code);
@@ -599,7 +599,7 @@ export function BillingCounter(): React.ReactElement {
             <p data-testid="counter-error-code" className="font-mono text-xs text-neutral-500">{errorCode}</p>
           )}
 
-          <SubmitButton data-testid="submit-invoice" onClick={() => submit()}>
+          <SubmitButton data-testid="submit-invoice" onClick={(k) => submit(k)}>
             {t("billing.counter.issue")}
           </SubmitButton>
         </div>

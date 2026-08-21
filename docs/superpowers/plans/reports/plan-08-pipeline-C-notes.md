@@ -491,9 +491,77 @@ that REPORTS rather than swallows, and asserted. Now §3.48.
 | `pnpm verify` detached, exit **VALUE** from a file | **0** — apps/web **30 files / 142 tests**, apps/core 118/755, contracts 3/7 |
 | scratch | 5 mutant/probe files, a `screens-mutant` dir and 14 log/exit files deleted with `rm -f`/`rmdir`; tree clean, `find` finds no residue |
 
-### 7.5 Still open, and it is not a client problem
+### 7.5 ~~Still open~~ — CLOSED, on the owner's order: the server takes a key too
 
-**The server has no idempotency key** on `POST /billing/invoices` or `POST /billing/receipts`. This
-fix makes a double click impossible in the UI; it does nothing about a retry after a page reload, a
-second tab, or a request the network duplicates. Carried item 1's second sentence stands and needs
-an owner ruling.
+The client guard closes the double click inside one tab and nothing more. The server half landed in
+`2bf324f` (+ the client wiring): an `Idempotency-Key` header on all EIGHT document-creating writes,
+claimed with `INSERT … ON CONFLICT DO NOTHING` BEFORE the work, migration 0013. See §8.
+
+---
+
+## 8. Server-side idempotency (`2bf324f` + the client wiring, 2026-08-21)
+
+§7.5's residual, closed on the owner's order. Design confirmed with the owner before any schema
+work, because it was a migration on the money schema and the scope varied fourfold.
+
+### 8.1 What was decided, and what it rules out
+
+- **All EIGHT document-creating writes**, not the two named in carried item 1 — the review had
+  listed the rest as "the lanes beside it". `POST /billing/refunds/:id/pay` moves cash out of the
+  drawer and was not on the original list. §3.43 again.
+- **A client-minted `Idempotency-Key` header**, NOT a hash of the request. The rejected alternative
+  matters: a content-derived key would collapse two genuinely separate ₹100 cash payments for the
+  same patient in the same window into one, and the hospital would keep money with no document
+  naming it. The key says "this is the same ATTEMPT", which is a fact only the client knows.
+- **A replay returns the ORIGINAL result**, not a 409. A cashier who reloads mid-payment must see
+  the receipt she already took; answering "failed" while the hospital holds her money is worse than
+  the duplicate.
+
+### 8.2 The one decision the mutants exist to prove
+
+**The claim is taken BEFORE the work.** `INSERT … ON CONFLICT DO NOTHING` (the `daily_closes`
+precedent, D9) makes the request that wins the insert the owner; a concurrent duplicate loses it and
+never reaches the write path. Recording the key AFTER the work would be too late — by then both
+requests have issued a document, which is the entire defect.
+
+That is not an argument, it is a measurement. **M-I1 is the same module with only that inverted**,
+and it passes SIX of the seven tests: the sequential replay still works, because by the time the
+second request arrives the row exists. It dies on the concurrency test alone —
+`Expected: 1 / Received: 2`, the work ran twice. A test suite without that one case would have
+ratified the wrong design.
+
+### 8.3 Evidence
+
+| step | result |
+|---|---|
+| fail-first vs a no-op stub (today's behaviour, staged §2.5, disclosed) | 5 failed / 2 passed, exit VALUE 1 — `Expected: 1` (work ran twice), `Received promise resolved instead of rejected. Resolved to value: {"receiptId": "rcp-1"}` |
+| **M-I1** claim recorded AFTER the work | **DIED** — `Expected: 1 / Received: 2`, and only on the concurrency test (6 of 7 pass) |
+| **M-I2** request-hash check removed | **DIED** on the different-body test |
+| **M-I3** claim not released on failure | **DIED** on the corrected-retry test |
+| **M-W1** one key per component instead of per attempt | **DIED** — `expected 'fixed-key' not to be 'fixed-key'` |
+| **M-W2** one write drops the key | **DIED twice** — runtime (`.toMatch() … got undefined`, the header is absent) and the census (`- "billing-dues": 5 / + "billing-dues": 4`) |
+| **CONTROL** byte-identical specs, shipped modules | **PASS** 7/7 exit 0 |
+| e2e over HTTP, isolated | `17 skipped, 1 passed` — one receipt from two identical POSTs, identical body, 409 on the same key with a different body |
+| not-over-broad (§3.44) | distinct keys run distinct work; an absent key claims nothing; a second genuine payment of the same amount, same patient, same minute still goes through; a FAILED write releases its key so a corrected retry is not stranded |
+| migration 0013 | additive-only — one CREATE TABLE + one CREATE UNIQUE INDEX, **zero** ALTER/DROP, no FK into an existing table. Rollback named before the generator ran (§6): `DROP TABLE idempotency_keys;`. Full generator output set committed (§3.16); the table joined the truncate statement |
+| `pnpm verify` | exit VALUE 0 — apps/core 119 suites / 763 tests (from 118/755) |
+
+### 8.4 Two honesty notes
+
+- **M-I1 first died on a 15-second jest TIMEOUT, not an assertion** — under it the duplicate never
+  rejects, so `await expect().rejects` simply hung. That is a kill with nothing behind it (§2.26).
+  The test was rewritten to capture the loser's outcome and assert the INVARIANT (the work ran once)
+  rather than the loser's diagnosis (§3.13, since which of "refused" or "served the finished result"
+  you get depends on commit timing). The kill went from 15 s to 288 ms and acquired a real
+  expected-vs-received.
+- **What the client key does and does not cover.** It protects duplicate DELIVERY of the same
+  request — transport retries, browser form-resends, any in-tab re-fire. A user who reloads an SPA
+  and re-enters the form gets a NEW key and a new attempt, correctly. The claim "reload-safe" would
+  be an overstatement and is not made.
+
+### 8.5 Folded in while editing the same README section
+
+T16's gate finding 1 (§3.5 above): the README said `/billing/office` writes through permissions
+"none of which a cashier holds", contradicting its own table 90 lines earlier. Corrected to name
+the two a cashier does hold (`billing.refund.request`, `billing.refund.pay`). Disclosed rather than
+folded in silently, because it was not part of the ask.

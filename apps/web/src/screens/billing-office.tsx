@@ -326,7 +326,7 @@ export function BillingOffice(): React.ReactElement {
       : { kind, creditNoteId: subject.trim(), ...common };
   };
 
-  const fileRequest = async (): Promise<void> => {
+  const fileRequest = async (idemKey: string): Promise<void> => {
     const body = requestBody();
     if (body === null) {
       setRequestError(t("billingOffice.request.required"));
@@ -334,7 +334,7 @@ export function BillingOffice(): React.ReactElement {
     }
     setRequestError(null);
     try {
-      const result = await api<WireRequestRefundResult>("POST", "/billing/refunds/request", body);
+      const result = await api<WireRequestRefundResult>("POST", "/billing/refunds/request", body, idemKey);
       setFiled({ result, body });
       setIssued(null);
       setIssueError(null);
@@ -348,7 +348,7 @@ export function BillingOffice(): React.ReactElement {
    * it was given and the method the manager chose; the grant itself is checked ON EXECUTE, at the
    * server, which owns it — this screen never decides that an approval is good enough.
    */
-  const issueVoucher = async (): Promise<void> => {
+  const issueVoucher = async (idemKey: string): Promise<void> => {
     if (filed === null) return;
     setIssueError(null);
     try {
@@ -356,7 +356,7 @@ export function BillingOffice(): React.ReactElement {
         ...filed.body,
         approvalId: filed.result.approvalId,
         method,
-      });
+      }, idemKey);
       setIssued(result);
       await refresh();
     } catch (e) {
@@ -373,7 +373,7 @@ export function BillingOffice(): React.ReactElement {
     setPaid(null);
   };
 
-  const payVoucher = async (): Promise<void> => {
+  const payVoucher = async (idemKey: string): Promise<void> => {
     if (payVoucherId === null) return;
     // The client-side mirror of `payRefundBody`. The SERVER is the authority; this only spares the
     // operator a round trip, and it never decides that an identity is acceptable.
@@ -387,6 +387,7 @@ export function BillingOffice(): React.ReactElement {
         "POST",
         `/billing/refunds/${encodeURIComponent(payVoucherId)}/pay`,
         { payeeName: payeeName.trim(), payeeIdType: payeeIdType.trim(), payeeIdRef: payeeIdRef.trim() },
+        idemKey,
       );
       setPaid(result);
       setPayVoucherId(null);
@@ -406,13 +407,13 @@ export function BillingOffice(): React.ReactElement {
     setEieConfirming(true);
   };
 
-  const markEnteredInError = async (): Promise<void> => {
+  const markEnteredInError = async (idemKey: string): Promise<void> => {
     setEieConfirming(false);
     try {
       const result = await api<WireMarkEnteredInErrorResult>("POST", "/billing/eie", {
         receiptId: eieReceiptId.trim(),
         reason: eieReason.trim(),
-      });
+      }, idemKey);
       setEieDone(result);
       setEieReceiptId("");
       setEieReason("");
@@ -530,7 +531,7 @@ export function BillingOffice(): React.ReactElement {
           {requestError !== null && (
             <p role="alert" data-testid="refund-request-error" className="text-sm text-red-600">{requestError}</p>
           )}
-          <SubmitButton data-testid="refund-request-submit" onClick={() => fileRequest()}>
+          <SubmitButton data-testid="refund-request-submit" onClick={(k) => fileRequest(k)}>
             {t("billingOffice.request.submit")}
           </SubmitButton>
 
@@ -559,7 +560,7 @@ export function BillingOffice(): React.ReactElement {
               {issueError !== null && (
                 <p role="alert" data-testid="issue-error" className="text-sm text-red-600">{issueError}</p>
               )}
-              <SubmitButton data-testid="issue-submit" onClick={() => issueVoucher()}>
+              <SubmitButton data-testid="issue-submit" onClick={(k) => issueVoucher(k)}>
                 {t("billingOffice.issue.submit")}
               </SubmitButton>
               {issued !== null && (
@@ -697,7 +698,7 @@ export function BillingOffice(): React.ReactElement {
               <p role="alert" data-testid="pay-error" className="text-sm text-red-600">{payError}</p>
             )}
             <div className="flex gap-2">
-              <SubmitButton data-testid="pay-submit" onClick={() => payVoucher()}>{t("billingOffice.pay.submit")}</SubmitButton>
+              <SubmitButton data-testid="pay-submit" onClick={(k) => payVoucher(k)}>{t("billingOffice.pay.submit")}</SubmitButton>
               <Button variant="outline" onClick={() => setPayVoucherId(null)}>{t("billingOffice.cancel")}</Button>
             </div>
           </div>
@@ -959,7 +960,7 @@ export function BillingOffice(): React.ReactElement {
             {t("billingOffice.eie.cascade", { receiptId: eieReceiptId })}
           </p>
           <div className="flex gap-2">
-            <SubmitButton data-testid="eie-confirm-submit" onClick={() => markEnteredInError()}>
+            <SubmitButton data-testid="eie-confirm-submit" onClick={(k) => markEnteredInError(k)}>
               {t("billingOffice.eie.confirm")}
             </SubmitButton>
             <Button variant="outline" onClick={() => setEieConfirming(false)}>{t("billingOffice.cancel")}</Button>

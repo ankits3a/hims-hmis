@@ -112,6 +112,32 @@ describe("SubmitButton", () => {
     reported.mockRestore();
   });
 
+  /**
+   * The client half of migration 0013. The key is minted HERE because this is the only place that
+   * knows where an attempt begins — and it is minted PER ATTEMPT, not per component, so a
+   * deliberate second submit is a new attempt rather than a replay of the first. That distinction
+   * is the whole reason the key is client-minted instead of hashed from the request: two genuine
+   * ₹100 payments a minute apart must both be taken.
+   */
+  it("mints a FRESH idempotency key for every attempt and hands it to the handler", async () => {
+    const keys: string[] = [];
+    const handler = vi.fn(async (k: string) => {
+      keys.push(k);
+      await Promise.resolve();
+    });
+    renderWithProviders(<SubmitButton data-testid="go" onClick={handler}>Pay</SubmitButton>);
+    const button = screen.getByTestId("go");
+    const user = userEvent.setup();
+
+    await user.click(button);
+    await waitFor(() => expect(keys).toHaveLength(1));
+    await user.click(button);
+    await waitFor(() => expect(keys).toHaveLength(2));
+
+    expect(keys[0]).toMatch(/\S/);
+    expect(keys[1]).not.toBe(keys[0]);
+  });
+
   it("an explicitly disabled button never reaches the handler, and the caller's own disabled state survives the guard", async () => {
     const handler = vi.fn(async () => {});
     renderWithProviders(<SubmitButton data-testid="go" disabled onClick={handler}>Pay</SubmitButton>);
@@ -161,6 +187,27 @@ describe("the single-submit convention across the billing screens", () => {
       });
     }
     expect(offenders).toEqual([]);
+  });
+
+  /**
+   * The server mechanism (migration 0013) is inert unless the client actually sends a key, and
+   * "every call site remembers to" is the §3.34 shape that has already cost this plan twice. The
+   * census below is the artefact: `idemKey` followed by `,` or `)` is a USE (the handler
+   * signatures spell it `idemKey: string`, which cannot match), so this counts the write calls
+   * that actually thread the attempt key through to `api()`.
+   */
+  const KEYED_WRITES: Record<string, number> = {
+    "billing-counter": 1, // issueInvoice
+    "billing-dues": 5, // receipt ×2, allocation ×2, credit-note
+    "billing-office": 4, // refund request, issue, pay, eie
+  };
+
+  it("every write to an idempotency-protected route threads the attempt key through to api()", () => {
+    const counted: Record<string, number> = {};
+    for (const name of Object.keys(KEYED_WRITES)) {
+      counted[name] = (screenSource(name).match(/idemKey[,)]/g) ?? []).length;
+    }
+    expect(counted).toEqual(KEYED_WRITES);
   });
 
   it("every one of the thirteen write lanes mounts a SubmitButton — the sweep above cannot be satisfied by deleting the buttons", () => {
