@@ -202,6 +202,21 @@ Plan [`2026-08-14-phase1-06-tariff-gst-golden.md`](2026-08-14-phase1-06-tariff-g
 
 - **Spec anchors:** §5 (Compose, Caddy, Grafana/Prometheus/Loki), §2-v4.3 (process split: api / ws hub / worker / renderer from one build), §12 (semi-sync + **replication state machine** E-13, fencing, floor degradation, pgBackRest + weekly restore drill, immutable offsite), E-2 (LUKS everywhere, repo encryption, key escrow), E-16 (out-of-band watchdog sends primary-down), §11.14 sweep (NTP/clock-drift monitoring, interface heartbeat framework), D-17 (config-validation gate wired to go-live), downtime kit printables (§11.4 map 1: numbered-form PDFs, runbooks), E-10 (commissioning/ramp mode flag), **productionising the 08.5 worker** (scheduling shipped in 08.5 — here: compose service, restart policy, heartbeat-staleness alert rule); **events-table partitioning conversion** per the resolved decision above (monthly `recorded_at` partitions, dispatcher floor, partition-creation job, retention/archival with legal holds) + production `SECRET_KEY` generation/escrow ceremony (E-2).
 - **Scope:** production compose files + process-split entrypoints (api · ws · **the 08.5 worker** · renderer); Caddy config; replication setup scripts + state machine daemon + promotion runbook (printed); backup stack + automated weekly restore-drill job with sanity checks; monitoring dashboards + alert rules (selective list per §10.3); watchdog box config; encryption provisioning docs + key escrow procedure; heartbeat framework (`interface.down/.restored`) with printer/scanner registration; downtime kit generator (PDF, reserved serial ranges); operating-mode service (normal/ramp/downtime/degraded flags the whole app + agents read).
+- **DEPLOYMENT NOTE INHERITED FROM 08.5 (recorded 2026-08-21, deliberately NOT coded around):**
+  **a newly-wired dispatcher consumer starts from `seq 0` and will replay the entire event history
+  on its first cycle.** `event_cursors.last_seq` defaults to `0` and `runDispatchCycle` creates the
+  row on first sight with `insert … on conflict do nothing`, so the first cycle after a consumer is
+  registered reads `seq > max(0 − lookback, 0) = 0` and walks every matching event ever recorded, at
+  `batchSize` (100) per tick. For `kernel.alerts` that means one alert row and one WS frame per
+  recipient per historical `escalation.triggered`. **It is a VOLUME concern, not a correctness one**
+  — `alerts` is UNIQUE `(source_event_id, user_id)` and the consumer inserts `ON CONFLICT DO
+  NOTHING`, so a replay mints no duplicates. The 08.5 remediation deliberately left the code alone
+  rather than changing cursor-creation semantics for every consumer to pre-empt a deployment that
+  did not yet exist (speculative fix, and the wrong place for the decision). **Plan 11 owns it:**
+  when the worker first runs against a database that already has history — and again whenever a new
+  consumer is registered — seed that consumer's `event_cursors` row at the current `max(seq)` as a
+  deployment step, or accept and schedule the catch-up. Found by 08.5's discovery reviewer
+  (cross-task risk 1); see `reports/plan-08.5-gate-report.md`.
 - **Traps:** this plan is infra-heavy — several tasks are scripts+runbooks verified by drills rather than unit tests; the gate criteria are drill transcripts. Mark tasks needing real hardware as environment-gated (CI-skipped, drill-verified).
 
 ## Plan 12a — Agent Runtime + two proofs (one agent, one automation)
