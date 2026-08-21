@@ -85,6 +85,38 @@ tokens of MCP roster — 248 tool names across six servers — into every agent 
 MCP calls, ~132k per pipeline of listing nobody read. claude-mem is not wired into agents
 either: it stores main-session narrative, not task context.
 
+### The compile-time sweep — run this BEFORE writing a single brief
+
+Added 2026-08-21 after Plan 08.5's compile found **six** plan defects in about twenty minutes,
+five of which would have HALTED a task rather than inconvenienced it. Each line names the ledger
+entry that earned it; read the entry for the specimen, run the line for the check. **All of it is
+mechanical. None of it requires judgement, and none of it can be done by reading the plan** —
+which is the point: the plan that produced all six was scrupulous prose with source-line
+references exact to the line.
+
+1. **Resolve every path in the File Structure against the tree** (§2.46). Modify-targets must
+   EXIST; create-targets must NOT. Under §2.25 the frozen block is generated from these lists, so
+   a wrong path makes the correct action and the forbidden action the same action.
+2. **Look for forward references** (§2.47). For every task, does its body name a file, export or
+   symbol owned by a LATER task? A plan written in dependency order still hides these, because
+   its author is describing the finished system. The cheap resolution is: the earlier task ships
+   the SEAM, the later task FILLS it — and the later task's Files list grows by one line.
+3. **If the plan is fork-open, grep for the LOSING branch by name after resolving** (§2.48).
+   "Fork resolution is not a plan amendment" is about authority, not about process. Mark the dead
+   branch dead *in place*, or the next reader treats a refuted alternative as an option.
+4. **Ask what the plan asserts about anything the spike proved unused** (§2.49). "Nothing calls
+   this yet" plus "assert X equals the union of declarations" equals `[] === []`, which passes
+   forever. Give it a synthetic-fixture leg that can fail, and keep the real one as a labelled pin.
+5. **Count the tasks that will have no in-pipeline verdict** (§2.50). Under the Workflow tool a
+   task nothing judges cannot fail, so the wave-stall break is dead for it. If any ROUTINE task
+   precedes work that depends on it — and especially if any task applies a migration — give it a
+   cheap mechanical-check agent, or the chain cannot stop in time.
+6. **Confirm the plan carries a commit message per task.** AGENT-RULES §5 step 1 points at one; a
+   plan that omits it leaves the instruction resolving to nothing, and an agent either invents a
+   message (six commits of drift) or halts (a wasted rung).
+7. **Stat the template before grepping it** (§2.51). An empty grep against a missing file reads
+   identically to an empty grep against a present one. Its path is in this ledger's §2 header.
+
 **Pre-flight, unchanged and still mandatory** — every probe ships with a negative control that
 must be observed to fail in the same run:
 1. Module-parse probe (the `return`-rewritten copy parsed as ESM) — catches duplicate

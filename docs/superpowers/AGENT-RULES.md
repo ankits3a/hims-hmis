@@ -4,7 +4,7 @@
 before you touch anything. Where this file and a task brief disagree about PROCESS, this file
 wins; where they disagree about CODE, the plan document wins.
 
-Version 2 (2026-08-19; rule 22 amended 2026-08-20 and 2026-08-21). Supersedes the inlined tripwire
+Version 2 (2026-08-19; rule 22 amended 2026-08-20 and 2026-08-21; rule 20 amended 2026-08-21). Supersedes the inlined tripwire
 block used through Plan 08 pipeline A. Rule 22 (the local mirror) is new and changes how you read
 and author files — read it first. **22(a) now requires a mirror directory unique to YOU, and 22(g)
 forbids concluding anything about the server's tree from a mirror; both were bought by §2.40.**
@@ -100,6 +100,11 @@ Violating any one of these fails the task regardless of code quality.
     flake measurement, confirm nothing else is running (`pgrep -af jest`), re-run anything that
     failed with a concurrency signature in isolation, and say in your report whether you
     observed interference.
+    **READ THE MATCHED COMMAND LINES, NEVER THE COUNT.** `pgrep -af jest` is almost always run
+    inside a compound `ssh root@... 'cd /opt/hmis && ... pgrep -af jest ...'`, and that shell's
+    OWN command line contains the literal string `jest` -- so it matches ITSELF, once per shell,
+    and prints hits that look exactly like concurrent test runs. Two agents have already read
+    their own probe as somebody else's suite. Look at what each matched line actually is.
 21. **NEVER claim an assertion DISCRIMINATES unless you built the mutant and watched it FAIL.**
     A hand-walk of "a wrong implementation would produce X" is a prediction, not evidence, and
     it has been wrong in BOTH directions in the same plan. Build the wrong implementation as a
