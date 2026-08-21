@@ -366,4 +366,38 @@ describe("runDispatchCycle", () => {
     ]);
     expect(await cursorOf(db, "window.consumer")).toBe(e2.seq);
   });
+
+  /**
+   * N11 — THE ENVELOPE WIDENING (Plan 10 D5). Every scheduling and staleness decision the notify
+   * consumer makes reads `e.occurredAt`, so what this field CONTAINS is load-bearing: the row's
+   * own `occurred_at`, never the dispatcher's clock. Selecting `now()` instead — or dropping the
+   * column and letting `new Date(undefined)` produce an Invalid Date — turns every replay into a
+   * fresh, live message to a patient about an appointment that is already over.
+   *
+   * The instant below is deliberately MONTHS in the past and is written by the appending
+   * transaction itself (§3.41: a pinned date must reach the writer), so "the handler received
+   * the row's own time" and "the handler received a clock reading" cannot look alike.
+   */
+  it("hands the handler the inserted row's OWN occurred_at, not the dispatch clock", async () => {
+    const OCCURRED = new Date("2026-05-04T09:17:23.000Z");
+    const received: Date[] = [];
+    const bus = new SubscriptionBus();
+    bus.on("occurredAt.consumer", "visit.opened", async (e) => { received.push(e.occurredAt); });
+
+    const e1 = await withTx(db, (tx) =>
+      appendEvent(tx, { ...mkInput("visit.opened"), occurredAt: OCCURRED }),
+    );
+
+    expect(await runDispatchCycle(db, bus, { now: T0 })).toBe(1);
+    expect(received).toHaveLength(1);
+    expect(received[0]).toEqual(OCCURRED);
+    // The fixture proof for the assertion above (§3.14): the stored row really does carry that
+    // instant, and T0 — the clock this cycle ran on — is a different one, so an implementation
+    // that read the clock could not accidentally pass.
+    const stored = (await db.execute(
+      sql`select occurred_at as "occurredAt" from events where seq = ${e1.seq}`,
+    )).rows as [{ occurredAt: Date | string }];
+    expect(new Date(stored[0].occurredAt)).toEqual(OCCURRED);
+    expect(received[0]).not.toEqual(T0);
+  });
 });

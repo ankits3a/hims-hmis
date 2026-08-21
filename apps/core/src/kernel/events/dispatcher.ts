@@ -43,6 +43,7 @@ type WindowRow = {
   payload: unknown;
   patientId: string | null;
   correlationId: string | null;
+  occurredAt: Date | string;
   status: string | null;
   attempts: number | string | null;
   nextAttemptAt: Date | string | null;
@@ -140,6 +141,7 @@ export async function runDispatchCycle(
     const rows = (await db.execute(sql`
       select e.seq, e.event_id as "eventId", e.name, e.payload,
              e.patient_id as "patientId", e.correlation_id as "correlationId",
+             e.occurred_at as "occurredAt",
              d.status, d.attempts, d.next_attempt_at as "nextAttemptAt"
       from events e
       left join event_deliveries d on d.consumer = ${consumer} and d.seq = e.seq
@@ -177,6 +179,7 @@ export async function runDispatchCycle(
         payload: row.payload,
         patientId: row.patientId,
         correlationId: row.correlationId,
+        occurredAt: new Date(row.occurredAt),
       };
 
       try {

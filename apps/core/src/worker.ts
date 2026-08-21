@@ -1,12 +1,11 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import type { Pool } from "pg";
-import { WorkerModule, shutdownWorker } from "./kernel/worker/worker.module";
+import { WorkerModule, shutdownWorker, workerConsumers } from "./kernel/worker/worker.module";
 import { CONFIG, DB, DB_POOL, MODULE_REGISTRY } from "./kernel/tokens";
 import { ModuleRegistry } from "./kernel/modules/loader";
 import { Scheduler, pgLocks } from "./kernel/worker/scheduler";
 import { registerAllJobs } from "./kernel/worker/jobs";
-import { ALERTS_CONSUMER, alertsConsumer } from "./kernel/alerts/consumer";
 import type { AppConfig } from "./kernel/config";
 import type { Db } from "./kernel/db/client";
 import type { ShutdownLog } from "./kernel/worker/worker.module";
@@ -24,16 +23,21 @@ async function bootstrap(): Promise<void> {
   const registry = app.get<ModuleRegistry>(MODULE_REGISTRY);
 
   const scheduler = new Scheduler(db, pool, pgLocks(pool), cfg.workerDailyTickMs);
-  // AMENDMENT 6, THE OTHER HALF OF WHICH IS `registry.install(alertsManifest)` IN
-  // `worker.module.ts`. The two are ONE edit and must never be split: the manifest declares
-  // `escalation.triggered -> kernel.alerts`, and `buildSubscriptionBus` makes a declaration
-  // with no matching handler a boot error. Without this entry the worker throws at startup;
-  // without the install over there, this worker heartbeats every 2 s and dispatches to nobody
-  // — which is exactly what it did for six commits (12 events, 0 deliveries, 0 alerts).
+  // AMENDMENT 6, THE OTHER HALF OF WHICH IS THE `registry.install(...)` BLOCK IN
+  // `worker.module.ts`. The two are ONE edit and must never be split: the manifests declare
+  // `escalation.triggered -> kernel.alerts` and five events -> `kernel.notify`, and
+  // `buildSubscriptionBus` makes a declaration with no matching handler a boot error. Without
+  // these handlers the worker throws at startup; without the installs over there, this worker
+  // heartbeats every 2 s and dispatches to nobody — which is exactly what it did for six
+  // commits (12 events, 0 deliveries, 0 alerts).
+  //
+  // THE MAP ITSELF NOW LIVES IN `worker.module.ts` AS `workerConsumers(db)` (Plan 10 T5), for
+  // the reason this file exists as a counter-example: `bootstrap()` runs at import, so nothing
+  // can import THIS file to assert what it passes. That map can be imported, and it is.
   //
   // `cfg` (the whole AppConfig, already resolved above) satisfies `JobIntervals` structurally.
   // `registerAllJobs` no longer reads the environment itself — see its docstring.
-  registerAllJobs(scheduler, db, registry, { [ALERTS_CONSUMER]: alertsConsumer(db) }, cfg);
+  registerAllJobs(scheduler, db, registry, workerConsumers(db), cfg);
   scheduler.start();
   console.log(`worker started: jobs=${scheduler.jobs().join(",")}`);
 

@@ -16,5 +16,14 @@ export const alertsManifest: ModuleManifest = {
   title: "Alerts",
   menu: [], // the bell lives in the Shell header, not the menu (T5)
   permissions: [],
-  subscriptions: [{ event: "escalation.triggered", consumer: "kernel.alerts" }],
+  subscriptions: [
+    { event: "escalation.triggered", consumer: "kernel.alerts" },
+    // PLAN 10 D6 — THE LAST PATIENT RUNG IS A HUMAN AT A DESK. When the gateway's ladder is
+    // exhausted (or the patient has no phone at all) the pump appends `notification.failed` and
+    // raises no alert of its own; THIS subscription is what turns that event into a
+    // `manual_notify` row in front of the duty managers, reusing the machinery above instead of
+    // duplicating it. Declaring it without the branch in `consumer.ts` would deliver every
+    // notification failure into the escalation parser — the two are one edit.
+    { event: "notification.failed", consumer: "kernel.alerts" },
+  ],
 };

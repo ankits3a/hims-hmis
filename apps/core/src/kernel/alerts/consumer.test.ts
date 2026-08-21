@@ -2,17 +2,20 @@ import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../db/client";
-import { alerts, events, patients, workflowDefinitions, workflowInstances } from "../db/schema";
+import { alerts, events, notifications, patients, workflowDefinitions, workflowInstances } from "../db/schema";
 import { appendEvent } from "../events/append";
 import { createUser } from "../auth/identity";
 import { assignRole, createRole } from "../auth/permissions";
 import { ModuleRegistry } from "../modules/loader";
 import { buildSubscriptionBus } from "../worker/jobs";
 import { escalationTriggered } from "../workflow/events";
-import { ALERTS_CONSUMER, OWNER_ROLE, alertsConsumer } from "./consumer";
+import { enqueueNotification } from "../notify/enqueue";
+import { runNotifyPump } from "../notify/pump";
+import { ALERTS_CONSUMER, DUTY_MANAGER_ROLE, OWNER_ROLE, alertsConsumer } from "./consumer";
 import { alertsManifest } from "./manifest";
 import type { Db } from "../db/client";
 import type { DispatchedEvent, Handler } from "../events/subscriptions";
+import type { ChannelAdapter } from "../notify/adapters";
 
 // §3.14: an absence assertion whose fixture could never have produced the thing proves nothing.
 // The patient is real, she has a name and a UHID, the instance is bound to her, and the
@@ -20,10 +23,27 @@ import type { DispatchedEvent, Handler } from "../events/subscriptions";
 const ASHA_NAME = "Asha Devi";
 const ASHA_UHID = "HMIS-00004242-7";
 
+const ASHA_PHONE = "9876500001";
+
 const DEF_KEY = "opd_wait";
 const STATE = "waiting";
 const RUNG_ROLE = "floor_supervisor";
-const DUTY_MANAGER_ROLE = "duty_manager";
+
+/** 2026-08-21 11:30 IST — the middle of the day, so no pump cycle here trips quiet hours (D7). */
+const NOON = new Date("2026-08-21T06:00:00.000Z");
+const WELCOME_PARAMS = { uhid: ASHA_UHID };
+
+/** An adapter that always says no — the ladder-exhaustion fixture N8 is built on. */
+const alwaysThrows = (channel: ChannelAdapter["channel"]): ChannelAdapter => ({
+  channel,
+  async send() {
+    throw new Error(`${channel} provider refused`);
+  },
+});
+const REFUSING_ADAPTERS: Record<ChannelAdapter["channel"], ChannelAdapter> = {
+  whatsapp: alwaysThrows("whatsapp"),
+  sms: alwaysThrows("sms"),
+};
 
 type EscalationPayload = {
   instanceId: string;
@@ -60,6 +80,37 @@ describe("kernel alerts consumer", () => {
    * as the dispatcher builds one — so the consumer is handed the same object shape production
    * hands it, `patientId` included.
    */
+  /**
+   * Reads a stored event row back into a `DispatchedEvent` exactly as the dispatcher builds one —
+   * `occurredAt` included (Plan 10 D5), so the consumer is handed the same object shape
+   * production hands it and nothing here invents a field the dispatcher does not project.
+   */
+  const readDispatched = async (eventId: string): Promise<DispatchedEvent> => {
+    const rows = await db
+      .select({
+        seq: events.seq,
+        eventId: events.eventId,
+        name: events.name,
+        payload: events.payload,
+        patientId: events.patientId,
+        correlationId: events.correlationId,
+        occurredAt: events.occurredAt,
+      })
+      .from(events)
+      .where(eq(events.eventId, eventId));
+    const row = rows[0]!;
+    return {
+      seq: Number(row.seq),
+      eventId: row.eventId,
+      name: row.name,
+      payload: row.payload,
+      patientId: row.patientId,
+      correlationId: row.correlationId,
+      occurredAt: row.occurredAt,
+    };
+  };
+
+  /** Appends a REAL `escalation.triggered` row and reads it back. */
   const dispatched = async (
     payload: EscalationPayload,
     envelopePatientId: string | undefined,
@@ -75,26 +126,7 @@ describe("kernel alerts consumer", () => {
         }),
       ),
     );
-    const rows = await db
-      .select({
-        seq: events.seq,
-        eventId: events.eventId,
-        name: events.name,
-        payload: events.payload,
-        patientId: events.patientId,
-        correlationId: events.correlationId,
-      })
-      .from(events)
-      .where(eq(events.eventId, eventId));
-    const row = rows[0]!;
-    return {
-      seq: Number(row.seq),
-      eventId: row.eventId,
-      name: row.name,
-      payload: row.payload,
-      patientId: row.patientId,
-      correlationId: row.correlationId,
-    };
+    return readDispatched(eventId);
   };
 
   beforeEach(async () => {
@@ -107,6 +139,9 @@ describe("kernel alerts consumer", () => {
       uhid: ASHA_UHID,
       name: ASHA_NAME,
       sex: "female",
+      // She HAS a number, so the desk flag below is earned by an EXHAUSTED LADDER rather than by
+      // D-34's phoneless shortcut — two different rungs of D6, and only one of them is N8.
+      phone: ASHA_PHONE,
       createdBy: "seed",
       updatedBy: "seed",
     });
@@ -140,6 +175,9 @@ describe("kernel alerts consumer", () => {
     // produces is no longer the vacuous `[] === []` a checker would pass.
     expect(alertsManifest.subscriptions).toEqual([
       { event: "escalation.triggered", consumer: ALERTS_CONSUMER },
+      // Plan 10 D6: the desk flag is a SECOND subscription on this SAME consumer, not a second
+      // consumer — 08.5's machinery is reused rather than duplicated.
+      { event: "notification.failed", consumer: ALERTS_CONSUMER },
     ]);
 
     const registry = new ModuleRegistry();
@@ -147,10 +185,13 @@ describe("kernel alerts consumer", () => {
     expect(registry.subscriptionsFor("escalation.triggered")).toEqual([
       { consumer: ALERTS_CONSUMER, moduleKey: "alerts" },
     ]);
+    expect(registry.subscriptionsFor("notification.failed")).toEqual([
+      { consumer: ALERTS_CONSUMER, moduleKey: "alerts" },
+    ]);
 
     const bus = buildSubscriptionBus(registry, { [ALERTS_CONSUMER]: handler });
     expect(bus.consumers().map((c) => ({ consumer: c.consumer, events: c.events }))).toEqual([
-      { consumer: ALERTS_CONSUMER, events: ["escalation.triggered"] },
+      { consumer: ALERTS_CONSUMER, events: ["escalation.triggered", "notification.failed"] },
     ]);
 
     // The boot error, not a silent skip: a module that declares a subscription nobody serves
@@ -293,5 +334,206 @@ describe("kernel alerts consumer", () => {
     expect(rows).toHaveLength(2);
     expect(rows.map((r) => r.userId).sort()).toEqual([ownerOne, ownerTwo].sort());
     expect(rows.map((r) => r.userId)).not.toContain(bystander);
+  });
+
+  // ————————————— Plan 10 D6: the last patient rung is a human at a desk (N8) —————————————
+
+  /**
+   * N8, DRIVEN THROUGH THE REAL PUMP RATHER THAN THROUGH A HAND-WRITTEN EVENT.
+   *
+   * The desk flag exists for one situation: the machinery ran out of ways to reach a patient.
+   * Asserting it from a `notification.failed` row typed out here would prove the branch parses a
+   * payload; asserting it from a row the SHIPPED pump appended after a real ladder exhaustion
+   * proves the two halves of D6 meet. `enqueueNotification` -> `runNotifyPump` with both adapters
+   * refusing -> `undeliverable` + `notification.failed` -> this consumer -> a task in front of
+   * every duty manager. Every step is production code; only the adapters are fakes.
+   */
+  describe("the manual_notify desk flag (D6 / N8)", () => {
+    const enqueueWelcome = async (): Promise<void> => {
+      await withTx(db, (tx) =>
+        enqueueNotification(tx, {
+          templateKey: "patient_welcome",
+          params: WELCOME_PARAMS,
+          dedupeKey: `n:${newId()}:patient_welcome:${patientId}`,
+          occurredAt: NOON,
+          patientId,
+        }),
+      );
+    };
+
+    /**
+     * Two cycles at `maxAttemptsPerRung: 1` walk the whole patient ladder — whatsapp refuses,
+     * the rung advances, sms refuses, and the rung after sms is the desk. Returns the failure
+     * event as the dispatcher would hand it over.
+     */
+    const exhaustTheLadder = async (): Promise<DispatchedEvent> => {
+      const opts = { adapters: REFUSING_ADAPTERS, maxAttemptsPerRung: 1 };
+      await runNotifyPump(db, { ...opts, now: NOON });
+      // Past the 2 s adapter-failure backoff the first cycle wrote.
+      await runNotifyPump(db, { ...opts, now: new Date(NOON.getTime() + 10_000) });
+
+      const outbox = await db
+        .select({ status: notifications.status })
+        .from(notifications);
+      expect(outbox).toHaveLength(1);
+      expect(outbox[0]!.status).toBe("undeliverable");
+
+      const failures = await db
+        .select({ eventId: events.eventId, payload: events.payload, patientId: events.patientId })
+        .from(events)
+        .where(eq(events.name, "notification.failed"));
+      expect(failures).toHaveLength(1);
+      // The fixture proof (§3.14): this really is a PATIENT-audience ladder exhaustion carrying
+      // her id on the envelope. Without these two, the alert assertions below could pass against
+      // a fixture that could never have produced a desk flag at all.
+      expect(failures[0]!.payload).toMatchObject({ audience: "patient", reason: "ladder_exhausted" });
+      expect(failures[0]!.patientId).toBe(patientId);
+
+      return readDispatched(failures[0]!.eventId);
+    };
+
+    const seedDutyManagers = async (): Promise<{ dutyOne: string; dutyTwo: string; bystander: string }> => {
+      await createRole(db, DUTY_MANAGER_ROLE, "Duty Manager");
+      const dutyOne = await mkUser("n8duty1");
+      const dutyTwo = await mkUser("n8duty2");
+      const bystander = await mkUser("n8bystander");
+      await assignRole(db, { userId: dutyOne, roleKey: DUTY_MANAGER_ROLE, scopeType: "hospital" });
+      await assignRole(db, { userId: dutyTwo, roleKey: DUTY_MANAGER_ROLE, scopeType: "hospital" });
+      return { dutyOne, dutyTwo, bystander };
+    };
+
+    it("N8: an exhausted patient ladder becomes a manual_notify task for EVERY duty manager", async () => {
+      const { dutyOne, dutyTwo, bystander } = await seedDutyManagers();
+      await enqueueWelcome();
+      const event = await exhaustTheLadder();
+
+      await handler(event);
+
+      const rows = await db.select().from(alerts);
+      expect(rows).toHaveLength(2);
+      expect(rows.map((r) => r.userId).sort()).toEqual([dutyOne, dutyTwo].sort());
+      expect(rows.map((r) => r.userId)).not.toContain(bystander);
+
+      const row = rows[0]!;
+      expect(row.kind).toBe("manual_notify");
+      // The title is built from `templateKey` AND NOTHING ELSE (D6). Whole-string equality, so a
+      // name, a phone or a rendered body appended to it fails here.
+      expect(row.title).toBe("Notify manually: patient_welcome");
+      // An ID, not an identity: the desk opens the patient through a permission-checked route.
+      expect(row.refType).toBe("patient");
+      expect(row.refId).toBe(patientId);
+      expect(row.sourceEventId).toBe(event.eventId);
+
+      // GC5 / L8's mutant class, applied to the new branch: every column of every row, whatever
+      // a future field is called. `refId` IS the patient id by design, so THAT is asserted above
+      // rather than forbidden here — what may never appear is the identity itself.
+      const everyColumn = rows
+        .flatMap((r) => Object.values(r))
+        .map((v) => (v instanceof Date ? v.toISOString() : String(v)))
+        .join(" | ");
+      expect(everyColumn).not.toMatch(/Asha/i);
+      expect(everyColumn).not.toMatch(/Devi/i);
+      expect(everyColumn).not.toContain(ASHA_UHID);
+      expect(everyColumn).not.toContain(ASHA_PHONE);
+
+      // The push surface too — `alert.raised` rides the tail to a browser.
+      const raised = await db
+        .select({ payload: events.payload, patientId: events.patientId })
+        .from(events)
+        .where(eq(events.name, "alert.raised"));
+      expect(raised).toHaveLength(2);
+      const raisedJson = JSON.stringify(raised.map((r) => r.payload));
+      expect(raisedJson).not.toMatch(/Asha|Devi/i);
+      expect(raisedJson).not.toContain(ASHA_UHID);
+      expect(raisedJson).not.toContain(ASHA_PHONE);
+      expect(raised.map((r) => r.patientId)).toEqual([null, null]);
+    });
+
+    it("N8: redelivery of the same notification.failed adds no second task and no second push", async () => {
+      const { dutyOne, dutyTwo } = await seedDutyManagers();
+      await enqueueWelcome();
+      const event = await exhaustTheLadder();
+
+      // At-least-once is the dispatcher's contract (D4). Capture the second outcome rather than
+      // `await expect(...).rejects`, which hangs forever on a promise a mutant makes resolve.
+      const outcomes: string[] = [];
+      await handler(event);
+      outcomes.push("first: resolved");
+      try {
+        await handler(event);
+        outcomes.push("second: resolved");
+      } catch (err) {
+        outcomes.push(`second: threw ${err instanceof Error ? err.message : String(err)}`);
+      }
+      expect(outcomes).toEqual(["first: resolved", "second: resolved"]);
+
+      const rows = await db.select({ userId: alerts.userId }).from(alerts);
+      expect(rows).toHaveLength(2);
+      expect(rows.map((r) => r.userId).sort()).toEqual([dutyOne, dutyTwo].sort());
+      const raised = await db.select({ id: events.eventId }).from(events).where(eq(events.name, "alert.raised"));
+      expect(raised).toHaveLength(2);
+    });
+
+    it("a STAFF failure raises no desk flag — 08.5's in-app alert already covers it (D6)", async () => {
+      await seedDutyManagers();
+      // A staff member with no phone at all: one cycle, no adapter reachable, `no_phone`.
+      const phoneless = await mkUser("n8phoneless");
+      await withTx(db, (tx) =>
+        enqueueNotification(tx, {
+          templateKey: "staff_escalation",
+          params: { defKey: DEF_KEY, state: STATE, rung: 0, role: RUNG_ROLE },
+          dedupeKey: `n:${newId()}:staff_escalation:${phoneless}`,
+          occurredAt: NOON,
+          userId: phoneless,
+        }),
+      );
+      await runNotifyPump(db, { now: NOON, adapters: REFUSING_ADAPTERS });
+
+      const failures = await db
+        .select({ eventId: events.eventId, payload: events.payload })
+        .from(events)
+        .where(eq(events.name, "notification.failed"));
+      expect(failures).toHaveLength(1);
+      expect(failures[0]!.payload).toMatchObject({ audience: "staff", reason: "no_phone" });
+
+      await handler(await readDispatched(failures[0]!.eventId));
+
+      expect(await db.select().from(alerts)).toEqual([]);
+      expect(await db.select().from(events).where(eq(events.name, "alert.raised"))).toEqual([]);
+    });
+
+    it("keys on the notification.failed event's OWN id, so it cannot collide with an escalation alert", async () => {
+      const { dutyOne, dutyTwo } = await seedDutyManagers();
+
+      // The SAME duty manager is both an escalation recipient and a desk-task recipient. If the
+      // desk task keyed on anything the escalation also keys on, the (source_event_id, user_id)
+      // unique would swallow one of the two and a patient nobody could reach would go unflagged.
+      const escalation = await dispatched(
+        {
+          instanceId,
+          defKey: DEF_KEY,
+          state: STATE,
+          rung: 0,
+          role: RUNG_ROLE,
+          resolvedUserIds: [dutyOne, dutyTwo],
+          fallback: false,
+          fallbackExhausted: false,
+        },
+        patientId,
+      );
+      await handler(escalation);
+
+      await enqueueWelcome();
+      const failure = await exhaustTheLadder();
+      await handler(failure);
+
+      const rows = await db.select({ userId: alerts.userId, kind: alerts.kind, sourceEventId: alerts.sourceEventId }).from(alerts);
+      expect(rows).toHaveLength(4);
+      expect(rows.filter((r) => r.kind === "escalation")).toHaveLength(2);
+      expect(rows.filter((r) => r.kind === "manual_notify")).toHaveLength(2);
+      expect(rows.filter((r) => r.userId === dutyOne).map((r) => r.sourceEventId).sort()).toEqual(
+        [escalation.eventId, failure.eventId].sort(),
+      );
+    });
   });
 });

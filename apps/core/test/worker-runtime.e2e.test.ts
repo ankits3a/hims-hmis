@@ -7,12 +7,13 @@ import { eq, isNull, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/app.bootstrap";
-import { WorkerModule, shutdownWorker } from "../src/kernel/worker/worker.module";
+import { WorkerModule, shutdownWorker, workerConsumers } from "../src/kernel/worker/worker.module";
 import { CONFIG, DB, DB_POOL, MODULE_REGISTRY } from "../src/kernel/tokens";
 import { Scheduler, pgLocks } from "../src/kernel/worker/scheduler";
 import { buildSubscriptionBus, registerAllJobs } from "../src/kernel/worker/jobs";
 import { ALERTS_CONSUMER, alertsConsumer } from "../src/kernel/alerts/consumer";
 import { alertsManifest } from "../src/kernel/alerts/manifest";
+import { NOTIFY_CONSUMER, notifyConsumer } from "../src/kernel/notify/consumer";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { runDueTimers } from "../src/kernel/workflow/timers";
 import { runDispatchCycle } from "../src/kernel/events/dispatcher";
@@ -275,29 +276,61 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
    *
    * So this boots the worker exactly as `worker.ts` does, takes `MODULE_REGISTRY` OUT OF THE
    * CONTEXT, and builds the bus from THAT with the SAME consumers map production passes. The
-   * pair is asserted whole rather than "non-empty": `escalation.triggered` reaching
-   * `kernel.alerts` is the plan's entire headline outcome, and `toEqual` on the flattened list
-   * says it is exactly that pair and nothing else.
+   * pairs are asserted whole rather than "non-empty": `escalation.triggered` reaching
+   * `kernel.alerts` is 08.5's entire headline outcome, and `toEqual` on the whole list says it
+   * is exactly those pairs and nothing else.
+   *
+   * PLAN 10 T5 ADDS THE SECOND WIRE AND THE SECOND HALF OF THE PROOF. `notifyManifest` declares
+   * five subscriptions to `kernel.notify`, and the consumers map is no longer a literal typed
+   * out here — it is `workerConsumers(db)`, imported from `worker.module.ts`, which is the
+   * function the daemon itself calls. That is what closes booked item 1: `worker.ts` runs
+   * `bootstrap()` at import, so its half of the wire could never be read by a test; this one
+   * can, and deleting either entry from it now fails this assertion (N12).
    */
-  it("(a) the worker's OWN registry carries the alerts subscription — the bus production builds is NOT empty", async () => {
+  it("(a) the worker's OWN registry carries BOTH wires — the bus production builds, asserted whole", async () => {
     const ctx = await NestFactory.createApplicationContext(WorkerModule, { logger: false });
     try {
       const workerDb = ctx.get<Db>(DB);
       const registry = ctx.get<ModuleRegistry>(MODULE_REGISTRY);
 
-      const bus = buildSubscriptionBus(registry, { [ALERTS_CONSUMER]: alertsConsumer(workerDb) });
+      // THE REAL REGISTRY AND THE REAL CONSUMERS MAP — `workerConsumers` is the exact value
+      // `worker.ts:36` passes, imported rather than re-typed (Plan 10 T5: that import is the
+      // whole reason the function was extracted out of an entry point nothing can import).
+      const bus = buildSubscriptionBus(registry, workerConsumers(workerDb));
       const pairs = bus
         .consumers()
-        .flatMap((c) => c.events.map((e): [string, string] => [c.consumer, e]));
+        .map((c): [string, string[]] => [c.consumer, [...c.events].sort()])
+        .sort((a, b) => a[0].localeCompare(b[0]));
 
-      expect(pairs).toEqual([[ALERTS_CONSUMER, "escalation.triggered"]]);
+      // WHOLE-EQUALITY, both consumers, every event: exactly these pairs and nothing else.
+      // Not "at least", not "non-empty" — the six-commit failure this assertion exists for was
+      // a bus that WAS non-empty in every test that looked at one.
+      expect(pairs).toEqual([
+        ["kernel.alerts", ["escalation.triggered", "notification.failed"]],
+        [
+          "kernel.notify",
+          [
+            "appointment.booked",
+            "appointment.cancelled",
+            "appointment.rescheduled",
+            "escalation.triggered",
+            "patient.registered",
+          ],
+        ],
+      ]);
 
-      // AND HALF THE EDIT WOULD NOT BOOT — on THIS registry, not a synthetic one. Installing
-      // the manifest without passing the handler is a boot error by design (`jobs.ts`), which
-      // is exactly why `worker.module.ts`'s install and `worker.ts`'s consumers entry are one
-      // edit that must never be split: ship the install alone and the worker throws at
-      // startup, behind a suite that would still be green.
+      // AND HALF THE EDIT WOULD NOT BOOT — on THIS registry, not a synthetic one. Installing a
+      // manifest without passing its handler is a boot error by design (`jobs.ts`), which is
+      // why each install and its consumers-map entry are one edit that must never be split:
+      // ship the install alone and the worker throws at startup, behind a suite that would
+      // otherwise still be green. Both directions, so DELETING EITHER ENTRY fails here (N12).
       expect(() => buildSubscriptionBus(registry, {})).toThrow(/kernel\.alerts/);
+      expect(() =>
+        buildSubscriptionBus(registry, { [ALERTS_CONSUMER]: alertsConsumer(workerDb) }),
+      ).toThrow(/kernel\.notify/);
+      expect(() =>
+        buildSubscriptionBus(registry, { [NOTIFY_CONSUMER]: notifyConsumer(workerDb) }),
+      ).toThrow(/kernel\.alerts/);
     } finally {
       await ctx.close();
     }
@@ -318,13 +351,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       const scheduler = new Scheduler(workerDb, pool, pgLocks(pool), config.workerDailyTickMs);
       // `config` is the context's own `AppConfig` and satisfies `JobIntervals` structurally —
       // the same value `worker.ts` passes. `registerAllJobs` reads no environment of its own.
-      registerAllJobs(
-        scheduler,
-        workerDb,
-        registry,
-        { [ALERTS_CONSUMER]: alertsConsumer(workerDb) },
-        config,
-      );
+      registerAllJobs(scheduler, workerDb, registry, workerConsumers(workerDb), config);
 
       // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these seven, in
       // registration order — not "at least", not "these among others".
@@ -365,13 +392,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
     const config = ctx.get<AppConfig>(CONFIG);
     const registry = ctx.get<ModuleRegistry>(MODULE_REGISTRY);
     const scheduler = new Scheduler(workerDb, pool, pgLocks(pool), config.workerDailyTickMs);
-    registerAllJobs(
-      scheduler,
-      workerDb,
-      registry,
-      { [ALERTS_CONSUMER]: alertsConsumer(workerDb) },
-      config,
-    );
+    registerAllJobs(scheduler, workerDb, registry, workerConsumers(workerDb), config);
     // Real work through the context's own pool first, so the close below is closing a pool that
     // has actually been used rather than an untouched one.
     await runDueTimers(workerDb, new Date());

@@ -5,7 +5,10 @@ import { createDb, Db } from "../db/client";
 import { loadConfig, AppConfig } from "../config";
 import { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "../tokens";
 import { ModuleRegistry } from "../modules/loader";
+import { ALERTS_CONSUMER, alertsConsumer } from "../alerts/consumer";
 import { alertsManifest } from "../alerts/manifest";
+import { NOTIFY_CONSUMER, notifyConsumer } from "../notify/consumer";
+import { notifyManifest } from "../notify/manifest";
 import { authManifest } from "../auth/manifest";
 import { workflowManifest } from "../workflow/manifest";
 import { approvalsManifest } from "../approvals/manifest";
@@ -13,6 +16,7 @@ import { patientsManifest } from "../../modules/patients";
 import { tariffManifest } from "../../modules/tariff";
 import { opdManifest } from "../../modules/opd";
 import { billingManifest } from "../../modules/billing";
+import type { Handler } from "../events/subscriptions";
 import type { Scheduler } from "./scheduler";
 
 type DbBundle = { db: Db; pool: Pool };
@@ -66,6 +70,12 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // the worker throws at startup — behind a fully green suite, because every seam test
         // that came before built its own private registry rather than reading THIS one.
         registry.install(alertsManifest);
+        // PLAN 10 D13, THE SAME ONE EDIT ONE WAVE LATER: `notifyManifest` declares FIVE
+        // subscriptions to `kernel.notify`, and `workerConsumers` below is the only place the
+        // handler for that key is produced. Install without that entry and the worker throws at
+        // startup (`buildSubscriptionBus`); pass the entry without installing and the gateway
+        // hears nothing at all. Both halves live in this file now, which is the point.
+        registry.install(notifyManifest);
         return registry;
       },
     },
@@ -85,6 +95,29 @@ export class WorkerModule implements OnModuleDestroy {
     this.poolClosed = true;
     await this.pool.end();
   }
+}
+
+/**
+ * THE PRODUCTION CONSUMERS MAP, AND THE ONE IMPORTABLE PLACE IT EXISTS.
+ *
+ * `worker.ts` calls `bootstrap()` at import time, so nothing may import the entry point — which
+ * meant that for six commits its `{ [ALERTS_CONSUMER]: alertsConsumer(db) }` literal was
+ * unobservable from any test, and a worker that dispatched to nobody survived two opus gates
+ * behind a fully green suite (gate report, booked item 1). Every seam test built its OWN
+ * registry and its OWN handler map, so none of them could see the map production actually
+ * passes. This function is that map, importable, and `worker-runtime.e2e.test.ts` asserts the
+ * pairs it produces against the registry a BOOTED `WorkerModule` hands over — so deleting either
+ * entry below now fails a test instead of a hospital.
+ *
+ * It is a plain function, not a provider: `registerAllJobs` is called by the daemon and by the
+ * assertions with a `Db` they already hold, and threading a Nest token through would buy a
+ * second way to be wrong.
+ */
+export function workerConsumers(db: Db): Record<string, Handler> {
+  return {
+    [ALERTS_CONSUMER]: alertsConsumer(db),
+    [NOTIFY_CONSUMER]: notifyConsumer(db),
+  };
 }
 
 /** Where a shutdown says what it did. `console` in the daemon; a recorder in the assertions. */
