@@ -1,11 +1,13 @@
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
+import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { Scheduler, type Locks } from "./scheduler";
 import { registerAllJobs } from "./jobs";
 import { ModuleRegistry } from "../modules/loader";
 import { requireEnv } from "../config";
 import * as schema from "../db/schema";
+import { events, schedulerHeartbeats } from "../db/schema";
 import { authManifest } from "../auth/manifest";
 import { workflowManifest } from "../workflow/manifest";
 import { approvalsManifest } from "../approvals/manifest";
@@ -199,6 +201,48 @@ describe("Scheduler", () => {
   // Flag 9 — stop() must await the in-flight run, and no rejection may leak. A deliberately
   // slow stub job (gated on a manually-controlled promise, not a real sleep) so the test
   // controls exactly when the run completes relative to stop().
+  // D8/Global Constraint 11: sweep.failed is appended when a run THROWS, and there is NO
+  // per-tick event on an ordinary successful run — the heartbeat row is the UPDATE. A stub
+  // job that throws on its first invocation and succeeds afterwards proves both halves in one
+  // test: exactly one sweep.failed row, never re-appended by the later successful ticks.
+  it("appends sweep.failed when a job throws, and nothing per successful tick", async () => {
+    const scheduler = new Scheduler(db, pool, stubLocks());
+    let attempts = 0;
+    scheduler.register({
+      name: "throwing-stub",
+      every: 5,
+      run: async () => {
+        attempts += 1;
+        if (attempts === 1) throw new Error("stub failure for sweep.failed");
+      },
+    });
+
+    scheduler.start();
+    try {
+      const deadline = Date.now() + 2000;
+      while (attempts < 3 && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      expect(attempts).toBeGreaterThanOrEqual(3); // at least one failing tick, then successful ones
+    } finally {
+      await scheduler.stop();
+    }
+
+    const failed = await db.select().from(events).where(eq(events.name, "sweep.failed"));
+    expect(failed).toHaveLength(1); // the one throw — NOT one per tick
+    const payload = failed[0]!.payload as { job: string; error: string; durationMs: number };
+    expect(payload.job).toBe("throwing-stub");
+    expect(payload.error).toBe("stub failure for sweep.failed");
+    expect(typeof payload.durationMs).toBe("number");
+
+    const [hb] = await db
+      .select()
+      .from(schedulerHeartbeats)
+      .where(eq(schedulerHeartbeats.job, "throwing-stub"));
+    expect(hb?.lastOkAt).not.toBeNull(); // a later successful tick cleared the error state
+    expect(hb?.lastError).toBeNull();
+  });
+
   it("stop() awaits an in-flight run before resolving, and leaks no rejection", async () => {
     const order: string[] = [];
     let release: () => void = () => {};
