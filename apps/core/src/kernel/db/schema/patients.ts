@@ -50,6 +50,12 @@ export const patients = pgTable(
     stateName: text("state_name"),
     pincode: text("pincode"),
     language: text("language").notNull().default("hi"), // 'hi' | 'en' — outbound-message language (§6), NOT the UI language
+    // D9 (DPDP): promotional consent, captured at registration from go-live day one and revocable
+    // on the patient record. DEFAULT FALSE is the decision, not a convenience — opt-IN means the
+    // patient acted. Nothing in Phase 1 reads it in the send path: the gateway REFUSES the
+    // promotional class outright, and the CRM plan that builds promotional sending owns replacing
+    // that refusal with a check against this column.
+    promotionalOptIn: boolean("promotional_opt_in").notNull().default(false),
     bloodGroup: text("blood_group"), // 'A+'|'A-'|'B+'|'B-'|'AB+'|'AB-'|'O+'|'O-'
     isConfidential: boolean("is_confidential").notNull().default(false), // §14 staff-as-patient / VIP
     alias: text("alias"), // required when confidential; the name public surfaces use
@@ -60,6 +66,13 @@ export const patients = pgTable(
     abhaLinkToken: text("abha_link_token"), // D-30 reserved M1/M2 field — populated by the real ABDM flow, later plan
     legacyUhid: text("legacy_uhid"), // D-43 old-UHID cross-reference (paper-era continuity)
     qrVersion: integer("qr_version").notNull().default(1), // D-23: reissue increments; old cards fail the scan
+    // D10 (D-33): the deceased flag. NULL means alive-as-far-as-this-system-knows. The
+    // notifications gateway reads it at SEND time as a hard stop that beats urgency and beats
+    // everything else in the suppression gauntlet — a deceased patient's family is structurally
+    // unreachable by this machinery from the first message it ever sends. Phase 1 has no
+    // death-recording flow, so it is set on the patient-master edit surface and audited through
+    // patient.updated's field diff; IPD's death cascade will write it later.
+    deceasedAt: timestamp("deceased_at", { withTimezone: true }),
     status: text("status").notNull().default("active"), // 'active' | 'merged'
     mergedIntoPatientId: text("merged_into_patient_id"), // set when status='merged'; resolution follows the chain
     createdBy: text("created_by").notNull(),

@@ -8,6 +8,11 @@ export const users = pgTable(
     id: text("id").primaryKey(),
     username: text("username").notNull(),
     fullName: text("full_name").notNull(),
+    // Staff/owner external messaging (Plan 10). Normalized 10-digit Indian mobile — the SAME
+    // convention as patients.phone (schema/patients.ts) — and NULLABLE: a phoneless owner simply
+    // degrades to the in-app alert that already ships. No collection flow exists in this phase;
+    // numbers are deployment data, seeded per hospital.
+    phone: text("phone"),
     passwordHash: text("password_hash").notNull(),
     pinHash: text("pin_hash"),
     badgeVersion: integer("badge_version").notNull().default(0),

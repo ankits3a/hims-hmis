@@ -71,12 +71,17 @@ export async function truncateAll(db: Db): Promise<void> {
   //   "When a plan adds a table that FKs into an existing truncate group, that group's
   //    statement must gain the new table's name; a separate earlier statement does not
   //    satisfy Postgres" (§3.12)
+  //
+  // `notifications` (Plan 10) is named in TWO statements — this one AND the patients group
+  // below — because it FKs into BOTH `users` and `patients`. That is not redundancy: by the
+  // two rules above, each group's OWN statement must carry the name, and the second truncate
+  // of an already-empty table is a no-op. Precedent: `approvals` sits in two statements above.
   await db.execute(
-    sql`truncate table alerts, break_glass_grants, temp_role_grants, user_totp, auth_sessions,
+    sql`truncate table notifications, alerts, break_glass_grants, temp_role_grants, user_totp, auth_sessions,
         role_assignments, role_permissions, agents, sod_pairs, permissions, roles, users`,
   );
   await db.execute(
-    sql`truncate table opd_prescriptions, opd_vitals, opd_queue_entries, opd_encounters, opd_appointments,
+    sql`truncate table notifications, opd_prescriptions, opd_vitals, opd_queue_entries, opd_encounters, opd_appointments,
         opd_queue_sessions, opd_doctor_leaves, opd_doctor_schedules, opd_doctors, opd_rooms, opd_departments,
         opd_config, allocations, receipt_tenders, receipts, credit_note_lines, credit_notes, invoice_lines,
         invoices, refund_vouchers, cashier_sessions, entered_in_error_marks, recon_batches, daily_closes,

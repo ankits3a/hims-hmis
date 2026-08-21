@@ -10,3 +10,4 @@ export * from "./opd";
 export * from "./billing";
 export * from "./worker";
 export * from "./alerts";
+export * from "./notifications";
