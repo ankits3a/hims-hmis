@@ -36,6 +36,10 @@ const configSchema = z.object({
   SECOND_FACTOR_WINDOW_MINUTES: z.coerce.number().int().positive().default(5),
   BREAK_GLASS_TTL_MINUTES: z.coerce.number().int().positive().default(60),
   TEMP_ROLE_MAX_TTL_MINUTES: z.coerce.number().int().positive().default(720),
+  // 2x the slowest INTERVAL job's cadence, NOT 2x the daily jobs': a daily job that has not
+  // run since yesterday must never make the worker read stale (D7/D9). Defaulted here so no
+  // .env changes anywhere — the hard-fail-on-missing rule is untouched, nothing new is required.
+  WORKER_STALE_AFTER_MS: z.coerce.number().int().positive().default(60000),
 });
 
 export type AppConfig = {
@@ -46,6 +50,7 @@ export type AppConfig = {
   secondFactorWindowMinutes: number;
   breakGlassTtlMinutes: number;
   tempRoleMaxTtlMinutes: number;
+  workerStaleAfterMs: number;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -59,5 +64,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     secondFactorWindowMinutes: parsed.SECOND_FACTOR_WINDOW_MINUTES,
     breakGlassTtlMinutes: parsed.BREAK_GLASS_TTL_MINUTES,
     tempRoleMaxTtlMinutes: parsed.TEMP_ROLE_MAX_TTL_MINUTES,
+    workerStaleAfterMs: parsed.WORKER_STALE_AFTER_MS,
   };
 }

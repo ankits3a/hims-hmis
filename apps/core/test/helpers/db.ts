@@ -49,16 +49,30 @@ export async function setupTestDb(): Promise<{ db: Db; pool: Pool; teardown(): P
 }
 
 export async function truncateAll(db: Db): Promise<void> {
-  await db.execute(sql`truncate table events restart identity`);
+  // event_deliveries and event_dead_letters ride the EVENTS statement. No FK forces it — they
+  // reference nothing (the trade recorded in schema/worker.ts) — but `restart identity` resets
+  // events.seq, and a stale claim row against a reset sequence would silently SUPPRESS
+  // deliveries in the next test: the dispatcher would read seq 1 back, LEFT-JOIN a leftover
+  // `done` claim, and drop the row with no error anywhere. Same statement, by design.
+  await db.execute(sql`truncate table events, event_deliveries, event_dead_letters restart identity`);
   await db.execute(sql`truncate table event_cursors`);
   await db.execute(sql`truncate table event_idempotency`);
+  // No FK and no coupling to any other group: its own statement.
+  await db.execute(sql`truncate table scheduler_heartbeats`);
   await db.execute(sql`truncate table approvals, approval_types`);
   await db.execute(
     sql`truncate table approvals, workflow_timers, workflow_transitions, workflow_instances,
         workflow_definition_approvals, workflow_definitions`,
   );
+  // `alerts` joins THIS statement — the same command that truncates `users` — because
+  // alerts.user_id references users.id. Two ledger rules, transcribed verbatim:
+  //   "Postgres checks whether an FK constraint POINTS AT the table being truncated —
+  //    constraint existence, never row counts and never statement order" (§3.35)
+  //   "When a plan adds a table that FKs into an existing truncate group, that group's
+  //    statement must gain the new table's name; a separate earlier statement does not
+  //    satisfy Postgres" (§3.12)
   await db.execute(
-    sql`truncate table break_glass_grants, temp_role_grants, user_totp, auth_sessions,
+    sql`truncate table alerts, break_glass_grants, temp_role_grants, user_totp, auth_sessions,
         role_assignments, role_permissions, agents, sod_pairs, permissions, roles, users`,
   );
   await db.execute(

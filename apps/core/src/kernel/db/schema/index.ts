@@ -8,3 +8,5 @@ export * from "./patients";
 export * from "./tariff";
 export * from "./opd";
 export * from "./billing";
+export * from "./worker";
+export * from "./alerts";
