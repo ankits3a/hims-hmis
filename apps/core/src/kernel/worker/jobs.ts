@@ -8,6 +8,7 @@ import { sweepExpiredTempRoles } from "../auth/temp-roles";
 import { sweepGuardianMajority } from "../../modules/patients/guardians";
 import { sweepAppointmentNoShows } from "../../modules/opd/appointments";
 import { runDailyClose } from "../../modules/billing/daily-close";
+import { runNotifyPump } from "../notify/pump";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
 
@@ -54,7 +55,8 @@ export function buildSubscriptionBus(
 }
 
 /**
- * The three INTERVAL cadences (D9) — and nothing else `registerAllJobs` needs from config.
+ * The FOUR interval cadences (D9, + Plan 10's pump) — and nothing else `registerAllJobs` needs
+ * from config.
  *
  * IT IS A `Pick` OF `AppConfig`, DELIBERATELY, AND IT IS THE NARROWEST THING THAT WORKS.
  * `worker.ts` already holds the whole `AppConfig` (`app.get<AppConfig>(CONFIG)`) and passes it
@@ -65,15 +67,25 @@ export function buildSubscriptionBus(
  */
 export type JobIntervals = Pick<
   AppConfig,
-  "workerDispatchIntervalMs" | "workerTimersIntervalMs" | "workerTempRolesIntervalMs"
+  | "workerDispatchIntervalMs"
+  | "workerTimersIntervalMs"
+  | "workerTempRolesIntervalMs"
+  // Plan 10 D3: the notification pump's cadence (WORKER_NOTIFY_INTERVAL_MS, default 5 000).
+  // WIDENING THIS `Pick` IS A TYPE EVENT, NOT A COSMETIC ONE (plan amendment 7): every
+  // `JobIntervals` OBJECT LITERAL in the suite stops compiling until it carries the new key —
+  // `CENSUS_INTERVALS` in `scheduler.test.ts` is the one that found it. Production is unaffected
+  // because `worker.ts` passes the whole `AppConfig`, which satisfies the wider Pick structurally.
+  | "workerNotifyIntervalMs"
 >;
 
 /**
- * The six sweeps on the clock (D2/D9/step 2), transcribed exactly — do not invent cadences.
+ * The SEVEN jobs on the clock (D2/D9/step 2 + Plan 10 D3), transcribed exactly — do not invent
+ * cadences.
  * `runDispatchCycle` every `workerDispatchIntervalMs` · `runDueTimers` every
  * `workerTimersIntervalMs` · `sweepExpiredTempRoles` every `workerTempRolesIntervalMs` ·
  * `sweepGuardianMajority` daily 00:05 IST · `sweepAppointmentNoShows` daily 23:55 IST ·
- * `runDailyClose` daily 23:59 IST, called as `runDailyClose(db, undefined, now)`.
+ * `runDailyClose` daily 23:59 IST, called as `runDailyClose(db, undefined, now)` ·
+ * `runNotifyPump` every `workerNotifyIntervalMs` (Plan 10 D3).
  *
  * `runDispatchCycle` takes T3's SHIPPED signature — `(db, bus, opts?: { batchSize?, lookback?,
  * maxAttempts?, now? })` since `39e520d` — and this registration THREADS `now` through it, the
@@ -127,5 +139,15 @@ export function registerAllJobs(
     name: "runDailyClose",
     dailyIst: DAILY_CLOSE_IST,
     run: async (now) => { await runDailyClose(db, undefined, now); },
+  });
+  // Plan 10 D3: the notification pump. It threads `now` through exactly as the other six do —
+  // `now` is what reaches the expiry gate, the quiet-hours window and the backoff arithmetic, so
+  // dropping it here would hand production a different clock from the one the scheduler
+  // heartbeats with. Correctness never rests on the advisory lock: the pump's own
+  // `FOR UPDATE SKIP LOCKED` claim carries it (D2/D3).
+  scheduler.register({
+    name: "runNotifyPump",
+    every: intervals.workerNotifyIntervalMs,
+    run: async (now) => { await runNotifyPump(db, { now }); },
   });
 }

@@ -21,6 +21,7 @@ import * as tempRolesMod from "../auth/temp-roles";
 import * as guardiansMod from "../../modules/patients/guardians";
 import * as appointmentsMod from "../../modules/opd/appointments";
 import * as dailyCloseMod from "../../modules/billing/daily-close";
+import * as notifyPumpMod from "../notify/pump";
 import type { Db } from "../db/client";
 
 // D3/halt condition 7: no test in this file ever observes the advisory lock. Every test below
@@ -65,13 +66,19 @@ function pinDateOnly(now: Date): void {
  * Global Constraint 3: jest runs sweeps DIRECTLY, never through the scheduler. Both census
  * tests below call the REAL `registerAllJobs` (so the job names, the D9 cadences, the IST
  * daily semantics and the amendment-6 bus-building are all real and unmodified) but replace
- * the six underlying sweep functions with recording stubs on their own modules — so no real
+ * the seven underlying sweep functions with recording stubs on their own modules — so no real
  * sweep body ever runs inside jest, only the scheduling machinery around it.
+ *
+ * THE SEVENTH SPY IS NOT BOOKKEEPING (Plan 10, amendment 7). `runNotifyPump` is the send path:
+ * un-stubbed, a REAL pump body would run inside jest against a live per-worker database on a
+ * 25-fake-hour advance, claiming rows with `FOR UPDATE SKIP LOCKED` and handing them to the
+ * console adapter — which Global Constraint 8 forbids (jest drives the pump DIRECTLY, in
+ * `notify/pump.test.ts`, never through the Scheduler).
  *
  * Names are pushed in invocation ORDER, and duplicates are kept: "fired exactly once across
  * five ticks" is a claim a `Set` cannot make.
  */
-function spyOnTheSix(invoked: string[]): jest.SpyInstance[] {
+function spyOnTheSeven(invoked: string[]): jest.SpyInstance[] {
   return [
     jest.spyOn(dispatcherMod, "runDispatchCycle").mockImplementation(async () => {
       invoked.push("runDispatchCycle");
@@ -98,16 +105,21 @@ function spyOnTheSix(invoked: string[]): jest.SpyInstance[] {
         invoked.push("runDailyClose");
       }) as unknown as typeof dailyCloseMod.runDailyClose,
     ),
+    jest.spyOn(notifyPumpMod, "runNotifyPump").mockImplementation(async () => {
+      invoked.push("runNotifyPump");
+      return 0;
+    }),
   ];
 }
 
-const THE_SIX = [
+const THE_SEVEN = [
   "runDispatchCycle",
   "runDueTimers",
   "sweepExpiredTempRoles",
   "sweepGuardianMajority",
   "sweepAppointmentNoShows",
   "runDailyClose",
+  "runNotifyPump",
 ];
 
 /**
@@ -166,7 +178,7 @@ describe("Scheduler", () => {
     expect(scheduler.leakedErrors()).toEqual([]);
   });
 
-  // L14 — the registration census. Two tests, because there are two claims: that all six jobs
+  // L14 — the registration census. Two tests, because there are two claims: that all seven jobs
   // are registered and reached at their cadences, and that the DAILY three are keyed on the IST
   // calendar rather than the UTC one. The first cannot make the second — see M-S2 below.
   describe("the registration census (L14)", () => {
@@ -185,6 +197,12 @@ describe("Scheduler", () => {
       workerDispatchIntervalMs: 4 * 60 * 60 * 1000,
       workerTimersIntervalMs: 6 * 60 * 60 * 1000,
       workerTempRolesIntervalMs: 9 * 60 * 60 * 1000,
+      // Plan 10, amendment 7: this is a `JobIntervals` object LITERAL, so widening the `Pick` in
+      // jobs.ts stops it compiling until the new key is here — which is exactly how a seventh
+      // job that nothing else in this file mentions announces itself to a typechecker. Hours,
+      // like its three neighbours, for the same reason: at the shipped 5 s default a
+      // 25-fake-hour advance would tick the pump 18 000 times.
+      workerNotifyIntervalMs: 8 * 60 * 60 * 1000,
     };
 
     // The SHIPPED default (D9), passed explicitly. `isDailyDue()` gates its (only) DB read
@@ -216,23 +234,23 @@ describe("Scheduler", () => {
       else process.env.DATABASE_URL = savedDatabaseUrl;
     });
 
-    it("invokes all six jobs within a faked 25 hours advanced from a pinned instant", async () => {
+    it("invokes all seven jobs within a faked 25 hours advanced from a pinned instant", async () => {
       expect(process.env.DATABASE_URL).toBeUndefined(); // CI's environment, reproduced here
       const invoked: string[] = [];
-      const spies = spyOnTheSix(invoked);
+      const spies = spyOnTheSeven(invoked);
       const registry = censusRegistry();
       const fresh = freshWorkerDb();
       jest.useFakeTimers({ now: new Date("2026-08-21T12:00:00.000Z") });
       try {
         const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), CENSUS_DAILY_TICK_MS);
         registerAllJobs(scheduler, fresh.db, registry, {}, CENSUS_INTERVALS);
-        expect(scheduler.jobs()).toEqual(THE_SIX);
+        expect(scheduler.jobs()).toEqual(THE_SEVEN);
 
         scheduler.start();
         await jest.advanceTimersByTimeAsync(25 * 60 * 60 * 1000);
         await scheduler.stop();
 
-        expect(new Set(invoked)).toEqual(new Set(THE_SIX));
+        expect(new Set(invoked)).toEqual(new Set(THE_SEVEN));
         expect(scheduler.leakedErrors()).toEqual([]);
       } finally {
         jest.useRealTimers();
@@ -282,7 +300,7 @@ describe("Scheduler", () => {
       const NOW = new Date("2026-08-21T19:00:00.000Z"); // IST 2026-08-22 00:30
       const LAST_OK = new Date("2026-08-21T10:00:00.000Z"); // IST 2026-08-21 15:30 — same UTC day
       const invoked: string[] = [];
-      const spies = spyOnTheSix(invoked);
+      const spies = spyOnTheSeven(invoked);
       const registry = censusRegistry();
       const fresh = freshWorkerDb();
       try {
