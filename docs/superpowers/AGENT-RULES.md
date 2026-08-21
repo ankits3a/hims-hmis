@@ -4,8 +4,10 @@
 before you touch anything. Where this file and a task brief disagree about PROCESS, this file
 wins; where they disagree about CODE, the plan document wins.
 
-Version 2 (2026-08-19). Supersedes the inlined tripwire block used through Plan 08 pipeline A.
-Rule 22 (the local mirror) is new and changes how you read and author files — read it first.
+Version 2 (2026-08-19; rule 22 amended 2026-08-20 and 2026-08-21). Supersedes the inlined tripwire
+block used through Plan 08 pipeline A. Rule 22 (the local mirror) is new and changes how you read
+and author files — read it first. **22(a) now requires a mirror directory unique to YOU, and 22(g)
+forbids concluding anything about the server's tree from a mirror; both were bought by §2.40.**
 
 ---
 
@@ -113,15 +115,25 @@ Violating any one of these fails the task regardless of code quality.
     one SSH call at a time was 70% of all coder shell calls in Plan 08 pipeline A — ~42
     round-trips per agent against 30 native tool calls in total. Do this instead, in order:
 
-    **(a) Pull the mirror — ONE command, at the very start of your task.** The tree is ~7 MB
-    without `node_modules`/`.git`:
+    **(a) Pull the mirror — ONE command, at the very start of your task, into a directory that
+    is YOURS ALONE.** The tree is ~7 MB without `node_modules`/`.git`:
     ```
-    mkdir -p "<SCRATCH>/mirror" && ssh root@62.238.106.231 \
+    M="<SCRATCH>/mirror-<taskid>-<role>"        # e.g. mirror-t13-coder, mirror-t13-gate
+    mkdir -p "$M" && ssh root@62.238.106.231 \
       'cd /opt/hmis && tar czf - --exclude=node_modules --exclude=.git .' \
-      | tar xzf - -C "<SCRATCH>/mirror"
+      | tar xzf - -C "$M"
     ```
     `<SCRATCH>` is your session scratchpad directory — a Windows path, so `Read`, `Grep`,
     `Glob`, `Edit` and `Write` all work natively against it.
+
+    **The per-agent suffix is correctness, not tidiness.** Every agent in a pipeline SHARES one
+    session scratchpad; `tar x` does not remove files the archive lacks; and clause (b) has you
+    AUTHORING scratch inside the mirror. Without the suffix every later agent's "fresh" pull
+    silently inherits every earlier agent's mutants, stubs and scratch specs — and they look
+    exactly like files somebody left lying in the tree. In Plan 08 pipeline C two consecutive
+    agents pulled trees carrying seven files that existed in no commit and had never been on the
+    server (§2.40). A RETRY of your own task deliberately reuses your own directory: that is the
+    state a retry is told to expect.
 
     **(b) Navigate and author in the mirror** with `Read`, `Grep`, `Glob`, `Edit`, `Write`.
     This is where you read shipped code, read the plan, and write your own files. It costs one
@@ -131,7 +143,7 @@ Violating any one of these fails the task regardless of code quality.
     **(c) Push the files you changed — ONE command, and the FILES LIST IS THE SYNC LIST.**
     `scp` exactly the paths your task's Files list names:
     ```
-    scp "<SCRATCH>/mirror/<path>" root@62.238.106.231:/opt/hmis/<path>
+    scp "$M/<path>" root@62.238.106.231:/opt/hmis/<path>
     ```
     (batch several paths in one `scp` invocation). **If you find yourself syncing a file your
     Files list does not name, stop — that is a scope violation, not a sync problem.**
@@ -161,6 +173,17 @@ Violating any one of these fails the task regardless of code quality.
     committed from it, so it cannot contaminate anything. **Server-side scratch under
     `/opt/hmis` is a different matter and you DO still delete it** — with plain `rm -f`, which is
     permitted — before your final counts and before committing.
+
+    **(g) THE MIRROR IS A COPY, AND IT IS NOT EVIDENCE ABOUT THE SERVER'S TREE.** Read code from it
+    freely — that is what it is for. But every claim of the form *"this file is present / absent /
+    left behind / never cleaned up"* must be made against the SERVER, with `git status --porcelain`
+    and `find`, in the same batch as the claim. A copy can only tell you what was true when it was
+    taken and — per (a) — what somebody else put there. The failure this prevents is not a stale
+    read: in Plan 08 pipeline C a reviewer used seven phantom files from a shared mirror to
+    conclude, with executed evidence and in good faith, that a compliant agent had broken a hard
+    rule and that a green `pnpm verify` could not have been green. It had been green; the files
+    were never on the server. **A positive observation from a mirror is the dangerous one, because
+    it arrives looking like a discovery.**
 
 ---
 

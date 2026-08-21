@@ -131,12 +131,16 @@ Four commits, and three of them bear on this plan.
    *app* convention? If the latter, the census must grow and the sweep's scope must widen — and per
    §3.34 that decision needs an owner and an assertion, not a sentence in six briefs.
 3. **New ledger entries you must apply, not just read:**
-   - **§2.40 — the local mirror is SHARED across agents and `tar x` does not clean it.** A pipeline-C
-     reviewer accused a compliant agent of breaking a hard rule on the strength of a contaminated
-     mirror. **AGENT-RULES rule 22(a) still says to put the mirror in "your session scratchpad", so
-     the next pipeline reproduces this.** Per the ledger's own §5 ("land the template fix BEFORE
-     compiling the next pipeline"), **flag amending rule 22 as a PRE-COMPILE PREREQUISITE for 08.5**
-     — unique mirror dir per agent, or a post-pull `git status --porcelain` reconciliation.
+   - **§2.40 — the shared mirror. FIXED 2026-08-21; one residual is YOURS.** A pipeline-C reviewer
+     accused a compliant agent of breaking a hard rule on the strength of a contaminated mirror.
+     AGENT-RULES **22(a)** now mandates a per-agent mirror directory
+     (`<SCRATCH>/mirror-<taskid>-<role>`), 22(c) moved with it, and a new **22(g)** forbids the
+     inference that did the damage (*a mirror is not evidence about the server's tree*). **The
+     residual: the compiled brief's `MIRROR` block RESTATES rule 22 instead of pointing at it, and
+     that second copy is what drifted.** Pipeline C's script was left unedited on purpose — it is a
+     completed artefact and editing it would falsify what its agents received. **When 08.5 is
+     compiled, that block must be rendered from the amended rule or reduced to a pointer.** Say so
+     in the plan's Pipeline Notes so the compiling session cannot miss it.
    - **§3.49 — a design decision needs a mutant that INVERTS the decision, not one that breaks a
      line.** The idempotency claim-before-work mutant passed six of seven tests and died only on the
      concurrency case. **T3 is exactly this shape**: cursor-advance vs delivery-claim, look-back
