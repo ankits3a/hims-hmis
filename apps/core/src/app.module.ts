@@ -16,6 +16,8 @@ import { AuthModule } from "./kernel/auth/auth.module";
 import { WorkflowModule } from "./kernel/workflow/workflow.module";
 import { ApprovalsModule } from "./kernel/approvals/approvals.module";
 import { RealtimeModule } from "./kernel/realtime/realtime.module";
+import { AlertsModule } from "./kernel/alerts/alerts.module";
+import { alertsManifest } from "./kernel/alerts/manifest";
 
 export { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "./kernel/tokens";
 
@@ -24,7 +26,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
 
 @Global()
 @Module({
-  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule, OpdModule, BillingModule], // ← PatientsModule added
+  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule, OpdModule, BillingModule, AlertsModule], // ← PatientsModule added; AlertsModule (Plan 08.5 D6)
   controllers: [HealthController],
   providers: [
     { provide: CONFIG, useFactory: (): AppConfig => loadConfig() },
@@ -46,6 +48,10 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         registry.install(tariffManifest);
         registry.install(opdManifest);
         registry.install(billingManifest);
+        // kernel/alerts is kernel code, but it carries a manifest for one reason: the §4
+        // subscriptions seam. This is the first non-empty `subscriptions` declaration in the
+        // repo. It mints NO permission (D6 — access is identity-scoped).
+        registry.install(alertsManifest);
         // Later plans install their module manifests here.
         return registry;
       },

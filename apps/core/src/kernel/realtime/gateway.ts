@@ -12,7 +12,17 @@ import type { TailedEvent } from "./tail";
 import type { Db } from "../db/client";
 
 export type TopicRouter = { names: string[]; topicsFor: (e: TailedEvent) => string[] };
-export type TopicSpace = { prefix: string; permission: string };
+/**
+ * A space declares EXACTLY ONE of `permission` | `authorize`, validated at registerTopicSpace.
+ * `permission` is the shipped role-gated form (`hasPermission` at hospital scope). `authorize`
+ * is the identity-scoped form Plan 08.5 D6 adds for `alerts:<userId>`: a topic that belongs to
+ * one human, where the answer is a property of the topic STRING and no role can grant it.
+ */
+export type TopicSpace = {
+  prefix: string;
+  permission?: string;
+  authorize?: (userId: string, topic: string) => boolean;
+};
 export const REALTIME_PATH = "/ws";
 
 type ClientState = { userId: string | null; topics: Set<string>; authTimer: NodeJS.Timeout | null };
@@ -63,7 +73,16 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy,
 
   configure(opts: { authTimeoutMs?: number }): void { if (opts.authTimeoutMs !== undefined) this.authTimeoutMs = opts.authTimeoutMs; }
   registerRouter(r: TopicRouter): void { this.routers.push(r); }
-  registerTopicSpace(s: TopicSpace): void { this.spaces.set(s.prefix, s); }
+  registerTopicSpace(s: TopicSpace): void {
+    // Exactly one, refused at REGISTRATION rather than at subscribe: a space that declared
+    // neither would silently reject every topic, and one that declared both would leave which
+    // check actually runs to the reading order of a branch.
+    const declared = (s.permission === undefined ? 0 : 1) + (s.authorize === undefined ? 0 : 1);
+    if (declared !== 1) {
+      throw new Error(`topic space "${s.prefix}" must declare exactly one of permission | authorize`);
+    }
+    this.spaces.set(s.prefix, s);
+  }
   /** Union of every router's names — the tail's filter, re-read on each poll so late registrations count. */
   names(): string[] { return [...new Set(this.routers.flatMap((r) => r.names))]; }
 
@@ -160,7 +179,13 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy,
     const rejected: string[] = [];
     for (const topic of topics) {
       const space = this.spaces.get(topic.split(":")[0] ?? "");
-      if (space === undefined || !(await hasPermission(this.db, st.userId, space.permission, "hospital"))) {
+      // ONE BRANCH. The permission path is unchanged for every space that declares one; an
+      // `authorize` space never reaches hasPermission, because there is no permission to check.
+      const allowed =
+        space === undefined ? false
+          : space.authorize !== undefined ? space.authorize(st.userId, topic)
+            : await hasPermission(this.db, st.userId, space.permission!, "hospital");
+      if (!allowed) {
         rejected.push(topic);
         continue;
       }

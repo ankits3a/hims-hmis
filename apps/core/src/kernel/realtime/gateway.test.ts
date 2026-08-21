@@ -15,6 +15,7 @@ import { ModuleRegistry } from "../modules/loader";
 import { loadConfig, requireEnv } from "../config";
 import { appendEvent } from "../events/append";
 import { createDb, withTx } from "../db/client";
+import { alertRaised } from "../alerts/events";
 import { RealtimeGateway } from "./gateway";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { AddressInfo } from "node:net";
@@ -53,6 +54,7 @@ describe("RealtimeGateway", () => {
 
   let readerId: string;
   let readerToken: string;
+  let randoId: string;
   let randoToken: string;
   const sockets: WebSocket[] = [];
 
@@ -139,6 +141,7 @@ describe("RealtimeGateway", () => {
     const rando = await mk("wsrando");
     readerId = reader.id;
     readerToken = reader.token;
+    randoId = rando.id;
     randoToken = rando.token;
     await assignRole(db, { userId: reader.id, roleKey: "ws_reader", scopeType: "hospital" });
   });
@@ -232,6 +235,73 @@ describe("RealtimeGateway", () => {
     send(leaver.ws, { type: "ping" });
     expect(await waitFor(leaver.frames, (f) => f.type === "pong")).toEqual({ type: "pong" });
     expect(leaver.frames.some((f) => f.type === "event")).toBe(false);
+  });
+
+  it("registers a space that declares exactly one of permission | authorize, and refuses one that declares neither or both", () => {
+    // NOT-OVER-BROAD first (§3.44): a new guard is only correct if the adjacent legitimate
+    // cases still pass. Both shipped shapes must still register.
+    expect(() => gateway.registerTopicSpace({ prefix: "spaceok1", permission: "patients.read" })).not.toThrow();
+    expect(() => gateway.registerTopicSpace({ prefix: "spaceok2", authorize: () => true })).not.toThrow();
+
+    expect(() => gateway.registerTopicSpace({ prefix: "spacebad1" })).toThrow(/exactly one of permission \| authorize/);
+    expect(() =>
+      gateway.registerTopicSpace({ prefix: "spacebad2", permission: "patients.read", authorize: () => true }),
+    ).toThrow(/exactly one of permission \| authorize/);
+  });
+
+  it("L10: alerts:<userId> is subscribable only by that user, and an alert frame reaches that user and nobody else", async () => {
+    const a = await authed(readerToken);
+    const b = await authed(randoToken);
+
+    // DIRECTION 1 — the subscribe REPLY is gated. Wait for whichever reply comes back, never
+    // for the refusal alone: a mutant that ACCEPTS the subscribe would otherwise hang the test
+    // out to its timeout and prove nothing (§2.45). This way the mutant fails an assertion.
+    send(b.ws, { type: "subscribe", topics: [`alerts:${readerId}`] });
+    const reply = await waitFor(b.frames, (f) => f.type === "error" || f.type === "subscribed");
+    expect(reply).toEqual({ type: "error", code: "forbidden_topic", topics: [`alerts:${readerId}`] });
+
+    // Each socket now holds its OWN topic. B's silence below is then discriminating rather
+    // than vacuous — a dead socket would be silent too.
+    send(a.ws, { type: "subscribe", topics: [`alerts:${readerId}`] });
+    expect(await waitFor(a.frames, (f) => f.type === "subscribed")).toEqual({ type: "subscribed", topics: [`alerts:${readerId}`] });
+    send(b.ws, { type: "subscribe", topics: [`alerts:${randoId}`] });
+    expect(await waitFor(b.frames, (f) => f.type === "subscribed")).toEqual({ type: "subscribed", topics: [`alerts:${randoId}`] });
+
+    // DIRECTION 2 — the FRAME path, which a refusal alone does not prove. One fanOut serves
+    // every client, so by the time A's frame has arrived a leak to B would already be in B's
+    // buffer.
+    const forA = await withTx(db, (tx) =>
+      appendEvent(
+        tx,
+        alertRaised.make({
+          actor: { type: "system", id: "kernel-alerts" },
+          payload: {
+            alertId: "alert-for-a", userId: readerId, kind: "escalation",
+            refType: "workflow_instance", refId: "wf-a", sourceEventId: "evt-a",
+          },
+        }),
+      ),
+    );
+    const frameA = await waitFor(a.frames, (f) => f.type === "event");
+    expect(frameA).toMatchObject({ type: "event", topic: `alerts:${readerId}`, name: "alert.raised", seq: forA.seq });
+    expect(b.frames.filter((f) => f.type === "event")).toHaveLength(0);
+
+    // And B's own subscription really is live: the silence was about the TOPIC, not the socket.
+    await withTx(db, (tx) =>
+      appendEvent(
+        tx,
+        alertRaised.make({
+          actor: { type: "system", id: "kernel-alerts" },
+          payload: {
+            alertId: "alert-for-b", userId: randoId, kind: "escalation",
+            refType: "workflow_instance", refId: "wf-b", sourceEventId: "evt-b",
+          },
+        }),
+      ),
+    );
+    const frameB = await waitFor(b.frames, (f) => f.type === "event");
+    expect(frameB).toMatchObject({ type: "event", topic: `alerts:${randoId}`, name: "alert.raised" });
+    expect(a.frames.filter((f) => f.type === "event")).toHaveLength(1);
   });
 
   it("answers an unparseable frame with bad_message and keeps the socket open", async () => {
