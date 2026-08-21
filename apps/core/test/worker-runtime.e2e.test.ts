@@ -7,7 +7,7 @@ import { eq, isNull, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/app.bootstrap";
-import { WorkerModule } from "../src/kernel/worker/worker.module";
+import { WorkerModule, shutdownWorker } from "../src/kernel/worker/worker.module";
 import { CONFIG, DB, DB_POOL, MODULE_REGISTRY } from "../src/kernel/tokens";
 import { Scheduler, pgLocks } from "../src/kernel/worker/scheduler";
 import { buildSubscriptionBus, registerAllJobs } from "../src/kernel/worker/jobs";
@@ -33,6 +33,7 @@ import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../src/kernel/config";
 import type { Db } from "../src/kernel/db/client";
 import type { SubscriptionBus } from "../src/kernel/events/subscriptions";
+import type { ShutdownLog } from "../src/kernel/worker/worker.module";
 
 /**
  * THE RUNTIME LOOP, END TO END (Plan 08.5 T6 / Assertion Book L17). Three separate proofs:
@@ -200,11 +201,17 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
   /**
    * The bus the worker's dispatch job builds, built the same way it builds it: walk a registry's
    * DECLARED subscriptions and look each `consumer` key up in the handler map
-   * (`buildSubscriptionBus`, the §4 seam). A local registry is used rather than the worker
-   * context's, because `worker.module.ts` does not install `alertsManifest` yet — that one edit
-   * is the plan's amendment 6, it lands on two of T2's files, and both are frozen to this task.
-   * Building the bus explicitly is what the T4 gate's inbox finding prescribes, and it proves the
-   * declaration→handler join rather than assuming it.
+   * (`buildSubscriptionBus`, the §4 seam). A LOCAL registry, because legs (b) and (c) below drive
+   * the loop against THIS suite's `db` — the API process's own handle — and never boot a worker
+   * context at all; booting one just to reach a manifest they already name would buy nothing.
+   *
+   * WHAT THIS HELPER CANNOT DO IS PROVE THE WORKER INSTALLS THAT MANIFEST, and for six commits
+   * nothing did. `worker.module.ts` carried `registry.install(alertsManifest)` as a COMMENT while
+   * every seam test — this one, `jobs.test.ts`, `alerts/consumer.test.ts` — assembled its own
+   * private registry, so a green suite sat on top of a worker that dispatched to nobody: 12 events,
+   * 0 deliveries, 0 alerts, 0 `event_cursors` rows over five real minutes. The assertion that CAN
+   * see it is the first one in section (a) below, and it reads `MODULE_REGISTRY` out of a booted
+   * context rather than out of a list in a test file.
    */
   const alertsBus = (): SubscriptionBus => {
     const registry = new ModuleRegistry();
@@ -250,6 +257,47 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
 
   // ——————————————————————————————— (a) the boot proof ———————————————————————————————
 
+  /**
+   * THE ASSERTION NOBODY MADE, and the one defect in this plan that a green suite actively hid.
+   *
+   * Amendment 6 is TWO edits in two files: `worker.module.ts` installs `alertsManifest`, and
+   * `worker.ts` passes `{ [ALERTS_CONSUMER]: alertsConsumer(db) }`. Only the second half was
+   * ever observable from a test, because every existing seam assertion builds its OWN
+   * `ModuleRegistry` — `jobs.test.ts:63`, `alerts/consumer.test.ts:145`, `alertsBus()` above.
+   * A registry assembled inside a test file cannot be missing anything the test file did not
+   * forget to add, so none of them could see a `worker.module.ts` that installed seven
+   * manifests and left the eighth as a comment.
+   *
+   * So this boots the worker exactly as `worker.ts` does, takes `MODULE_REGISTRY` OUT OF THE
+   * CONTEXT, and builds the bus from THAT with the SAME consumers map production passes. The
+   * pair is asserted whole rather than "non-empty": `escalation.triggered` reaching
+   * `kernel.alerts` is the plan's entire headline outcome, and `toEqual` on the flattened list
+   * says it is exactly that pair and nothing else.
+   */
+  it("(a) the worker's OWN registry carries the alerts subscription — the bus production builds is NOT empty", async () => {
+    const ctx = await NestFactory.createApplicationContext(WorkerModule, { logger: false });
+    try {
+      const workerDb = ctx.get<Db>(DB);
+      const registry = ctx.get<ModuleRegistry>(MODULE_REGISTRY);
+
+      const bus = buildSubscriptionBus(registry, { [ALERTS_CONSUMER]: alertsConsumer(workerDb) });
+      const pairs = bus
+        .consumers()
+        .flatMap((c) => c.events.map((e): [string, string] => [c.consumer, e]));
+
+      expect(pairs).toEqual([[ALERTS_CONSUMER, "escalation.triggered"]]);
+
+      // AND HALF THE EDIT WOULD NOT BOOT — on THIS registry, not a synthetic one. Installing
+      // the manifest without passing the handler is a boot error by design (`jobs.ts`), which
+      // is exactly why `worker.module.ts`'s install and `worker.ts`'s consumers entry are one
+      // edit that must never be split: ship the install alone and the worker throws at
+      // startup, behind a suite that would still be green.
+      expect(() => buildSubscriptionBus(registry, {})).toThrow(/kernel\.alerts/);
+    } finally {
+      await ctx.close();
+    }
+  });
+
   it("(a) boots the worker context, and its Scheduler names EXACTLY the six jobs", async () => {
     const ctx = await NestFactory.createApplicationContext(WorkerModule, { logger: false });
     try {
@@ -263,7 +311,15 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       expect(await runDueTimers(workerDb, new Date())).toBe(0);
 
       const scheduler = new Scheduler(workerDb, pool, pgLocks(pool), config.workerDailyTickMs);
-      registerAllJobs(scheduler, workerDb, registry, { [ALERTS_CONSUMER]: alertsConsumer(workerDb) });
+      // `config` is the context's own `AppConfig` and satisfies `JobIntervals` structurally —
+      // the same value `worker.ts` passes. `registerAllJobs` reads no environment of its own.
+      registerAllJobs(
+        scheduler,
+        workerDb,
+        registry,
+        { [ALERTS_CONSUMER]: alertsConsumer(workerDb) },
+        config,
+      );
 
       // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these six, in
       // registration order — not "at least", not "these among others".
@@ -304,21 +360,34 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
     const config = ctx.get<AppConfig>(CONFIG);
     const registry = ctx.get<ModuleRegistry>(MODULE_REGISTRY);
     const scheduler = new Scheduler(workerDb, pool, pgLocks(pool), config.workerDailyTickMs);
-    registerAllJobs(scheduler, workerDb, registry, { [ALERTS_CONSUMER]: alertsConsumer(workerDb) });
+    registerAllJobs(
+      scheduler,
+      workerDb,
+      registry,
+      { [ALERTS_CONSUMER]: alertsConsumer(workerDb) },
+      config,
+    );
     // Real work through the context's own pool first, so the close below is closing a pool that
     // has actually been used rather than an untouched one.
     await runDueTimers(workerDb, new Date());
 
-    // THE SHIPPED SHUTDOWN SHAPE, verbatim from `worker.ts`'s SIGTERM handler: a `void`-ed async
-    // IIFE that stops the scheduler and then closes the context. §3.48 is exactly this shape — a
-    // rejection inside one has nobody holding it, and jest bills it to whichever file happens to
-    // be running. The OUTCOME is captured rather than awaited-as-rejects (§2.45: a hang recorded
-    // as a timeout is a non-kill wearing a kill's clothes).
-    const shutdown = sink((async (): Promise<void> => {
-      await scheduler.stop();
-      await ctx.close();
-    })());
+    // THE SHIPPED SHUTDOWN SEQUENCE ITSELF — `shutdownWorker`, the exact function `worker.ts`'s
+    // SIGTERM handler calls, not a copy of its shape. This block used to re-type the daemon's
+    // `void (async () => { … })()` inline, which asserted the TEST's copy and left the daemon's
+    // own version — the one with no `.catch` on it (§3.48 verbatim) — unobserved. The OUTCOME is
+    // captured rather than awaited-as-rejects (§2.45: a hang recorded as a timeout is a non-kill
+    // wearing a kill's clothes).
+    const logged: string[] = [];
+    const recorder: ShutdownLog = {
+      log: (message) => { logged.push(message); },
+      error: (message, err) => { logged.push(`${message}: ${String(err)}`); },
+    };
+    const shutdown = sink(shutdownWorker(scheduler, ctx, recorder));
     expect(await shutdown.then(() => "resolved" as const, () => "rejected" as const)).toBe("resolved");
+    expect(logged).toEqual([
+      "worker: scheduler stopped, closing context",
+      "worker: context closed, exiting",
+    ]);
     expect(leaked).toEqual([]);
     expect(scheduler.leakedErrors()).toEqual([]);
 
@@ -338,6 +407,75 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
     // SIGTERMs, or Nest's own hooks racing the handler — resolves instead of rejecting.
     const again = sink(ctx.close());
     expect(await again.then(() => "resolved" as const, () => "rejected" as const)).toBe("resolved");
+    expect(leaked).toEqual([]);
+  });
+
+  /**
+   * §3.48's actual teeth, and the reason `shutdownWorker` exists as a function at all.
+   *
+   * The daemon's SIGTERM path was `void (async () => { await scheduler.stop(); await
+   * app.close(); })()` with NO `catch`. A pool that will not drain, a provider whose
+   * `onModuleDestroy` throws, a sweep that rejects on its way out — any of those produced a
+   * rejection with no owner, in the one path that runs while the process is already leaving,
+   * where node either bills it to an unrelated file or loses it entirely in the exit.
+   *
+   * BOTH await points are exercised, because they fail differently: a `stop()` that rejects
+   * must not go on to close the context (the second log line is the assertion that it did not),
+   * and a `close()` that rejects must still have reported the scheduler stop that preceded it.
+   * The outcome is captured rather than awaited-as-rejects, and the sink is proven to record
+   * before anything is concluded from its emptiness (§3.14).
+   */
+  it("(a) a shutdown that FAILS is caught and REPORTED, never left as an unowned rejection", async () => {
+    const leaked: unknown[] = [];
+    const sink = <T>(p: Promise<T>): Promise<T> => {
+      p.catch((e: unknown) => { leaked.push(e); });
+      return p;
+    };
+    const probe = new Error("sink probe");
+    sink(Promise.reject(probe));
+    await Promise.resolve();
+    expect(leaked).toEqual([probe]);
+    leaked.length = 0;
+
+    const record = (): { logged: string[]; recorder: ShutdownLog } => {
+      const logged: string[] = [];
+      return {
+        logged,
+        recorder: {
+          log: (message) => { logged.push(message); },
+          error: (message, err) => { logged.push(`${message}: ${String(err)}`); },
+        },
+      };
+    };
+
+    // ——— the context refuses to close.
+    const closeBoom = new Error("pool would not drain");
+    const onClose = record();
+    const closeOutcome = sink(
+      shutdownWorker({ stop: async () => {} }, { close: async () => { throw closeBoom; } }, onClose.recorder),
+    );
+    expect(await closeOutcome.then(() => "resolved" as const, () => "rejected" as const)).toBe("resolved");
+    expect(onClose.logged).toEqual([
+      "worker: scheduler stopped, closing context",
+      `worker: shutdown failed: ${String(closeBoom)}`,
+    ]);
+
+    // ——— the scheduler refuses to stop: reported, and the context is NEVER closed after it.
+    const stopBoom = new Error("a sweep rejected on the way out");
+    let closed = false;
+    const onStop = record();
+    const stopOutcome = sink(
+      shutdownWorker(
+        { stop: async () => { throw stopBoom; } },
+        { close: async () => { closed = true; } },
+        onStop.recorder,
+      ),
+    );
+    expect(await stopOutcome.then(() => "resolved" as const, () => "rejected" as const)).toBe("resolved");
+    expect(onStop.logged).toEqual([`worker: shutdown failed: ${String(stopBoom)}`]);
+    expect(closed).toBe(false);
+
+    // NOTHING ESCAPED. Both failures are on the record above, and neither reached the sink.
     expect(leaked).toEqual([]);
   });
 

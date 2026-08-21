@@ -1,13 +1,15 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import type { Pool } from "pg";
-import { WorkerModule } from "./kernel/worker/worker.module";
+import { WorkerModule, shutdownWorker } from "./kernel/worker/worker.module";
 import { CONFIG, DB, DB_POOL, MODULE_REGISTRY } from "./kernel/tokens";
 import { ModuleRegistry } from "./kernel/modules/loader";
 import { Scheduler, pgLocks } from "./kernel/worker/scheduler";
 import { registerAllJobs } from "./kernel/worker/jobs";
+import { ALERTS_CONSUMER, alertsConsumer } from "./kernel/alerts/consumer";
 import type { AppConfig } from "./kernel/config";
 import type { Db } from "./kernel/db/client";
+import type { ShutdownLog } from "./kernel/worker/worker.module";
 
 /**
  * D1/FORK-A (resolved): a providers-only Nest APPLICATION CONTEXT, never an HTTP app.
@@ -22,8 +24,16 @@ async function bootstrap(): Promise<void> {
   const registry = app.get<ModuleRegistry>(MODULE_REGISTRY);
 
   const scheduler = new Scheduler(db, pool, pgLocks(pool), cfg.workerDailyTickMs);
-  // T4 (amendment 6) adds the one live entry here: { "kernel.alerts": alertsConsumer(db) }.
-  registerAllJobs(scheduler, db, registry, {});
+  // AMENDMENT 6, THE OTHER HALF OF WHICH IS `registry.install(alertsManifest)` IN
+  // `worker.module.ts`. The two are ONE edit and must never be split: the manifest declares
+  // `escalation.triggered -> kernel.alerts`, and `buildSubscriptionBus` makes a declaration
+  // with no matching handler a boot error. Without this entry the worker throws at startup;
+  // without the install over there, this worker heartbeats every 2 s and dispatches to nobody
+  // — which is exactly what it did for six commits (12 events, 0 deliveries, 0 alerts).
+  //
+  // `cfg` (the whole AppConfig, already resolved above) satisfies `JobIntervals` structurally.
+  // `registerAllJobs` no longer reads the environment itself — see its docstring.
+  registerAllJobs(scheduler, db, registry, { [ALERTS_CONSUMER]: alertsConsumer(db) }, cfg);
   scheduler.start();
   console.log(`worker started: jobs=${scheduler.jobs().join(",")}`);
 
@@ -41,19 +51,26 @@ async function bootstrap(): Promise<void> {
   // (WorkerModule.onModuleDestroy ends the pool once, guarded) -> pool end. Deliberately NOT
   // app.enableShutdownHooks(): that would let Nest close the context on its own signal
   // listener, racing scheduler.stop() and risking the pool ending mid-sweep.
+  //
+  // The sequence itself lives in `worker.module.ts` as `shutdownWorker` so that it can be
+  // ASSERTED (this file boots on import, so nothing may import it). It attaches the `.catch`
+  // that the inline `void (async () => { … })()` here did not have — §3.48 verbatim, in the
+  // one path that runs while the process is already leaving. `shutdownWorker` never rejects;
+  // a failure is reported through the logger below instead of escaping as an unowned
+  // rejection, so `void` is safe here and says what it means.
   let shuttingDown = false;
   process.on("SIGTERM", () => {
     if (shuttingDown) return;
     shuttingDown = true;
     clearInterval(keepAlive);
     console.log("worker: SIGTERM received, stopping scheduler");
-    void (async () => {
-      await scheduler.stop();
-      console.log("worker: scheduler stopped, closing context");
-      await app.close();
-      console.log("worker: context closed, exiting");
-    })();
+    void shutdownWorker(scheduler, app, CONSOLE_SHUTDOWN_LOG);
   });
 }
+
+const CONSOLE_SHUTDOWN_LOG: ShutdownLog = {
+  log: (message) => { console.log(message); },
+  error: (message, err) => { console.error(message, err); },
+};
 
 void bootstrap();

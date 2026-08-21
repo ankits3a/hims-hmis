@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { Scheduler, type Locks } from "./scheduler";
-import { registerAllJobs } from "./jobs";
+import { registerAllJobs, type JobIntervals } from "./jobs";
 import { ModuleRegistry } from "../modules/loader";
 import { requireEnv } from "../config";
 import * as schema from "../db/schema";
@@ -30,6 +30,27 @@ import type { Db } from "../db/client";
 const stubLocks = (): Locks => ({ tryLock: async () => true, unlock: async () => {} });
 
 /**
+ * Fakes `Date` and NOTHING ELSE: `doNotFake` is jest's complete fakeable-API set MINUS `Date`,
+ * verbatim from the spike report's question E and already in use in
+ * `test/opd-lifecycle.e2e.test.ts`. Under it `new Date()` returns the pin while every socket,
+ * every pg timer and every `setTimeout` stays REAL — which is what a test that pins an IST
+ * instant AND talks to a live database needs.
+ */
+function pinDateOnly(now: Date): void {
+  jest.useFakeTimers({
+    now,
+    doNotFake: [
+      "hrtime", "nextTick", "performance", "queueMicrotask",
+      "requestAnimationFrame", "cancelAnimationFrame",
+      "requestIdleCallback", "cancelIdleCallback",
+      "setImmediate", "clearImmediate",
+      "setInterval", "clearInterval",
+      "setTimeout", "clearTimeout",
+    ],
+  });
+}
+
+/**
  * A dedicated connection to the SAME per-worker test database `setupTestDb()` already
  * migrated, but with `idleTimeoutMillis: 0`. The L14 census test below fakes ALL timers
  * (`setInterval` included, to compress 25 h into a fast advance) — and `pg`'s own Pool runs
@@ -40,6 +61,76 @@ const stubLocks = (): Locks => ({ tryLock: async () => true, unlock: async () =>
  * test its own pool with eviction disabled. The suite's shared `pool`/`db` (used by the other
  * two tests, which run under real timers) is left untouched.
  */
+/**
+ * Global Constraint 3: jest runs sweeps DIRECTLY, never through the scheduler. Both census
+ * tests below call the REAL `registerAllJobs` (so the job names, the D9 cadences, the IST
+ * daily semantics and the amendment-6 bus-building are all real and unmodified) but replace
+ * the six underlying sweep functions with recording stubs on their own modules — so no real
+ * sweep body ever runs inside jest, only the scheduling machinery around it.
+ *
+ * Names are pushed in invocation ORDER, and duplicates are kept: "fired exactly once across
+ * five ticks" is a claim a `Set` cannot make.
+ */
+function spyOnTheSix(invoked: string[]): jest.SpyInstance[] {
+  return [
+    jest.spyOn(dispatcherMod, "runDispatchCycle").mockImplementation(async () => {
+      invoked.push("runDispatchCycle");
+      return 0;
+    }),
+    jest.spyOn(timersMod, "runDueTimers").mockImplementation(async () => {
+      invoked.push("runDueTimers");
+      return 0;
+    }),
+    jest.spyOn(tempRolesMod, "sweepExpiredTempRoles").mockImplementation(async () => {
+      invoked.push("sweepExpiredTempRoles");
+      return 0;
+    }),
+    jest.spyOn(guardiansMod, "sweepGuardianMajority").mockImplementation(async () => {
+      invoked.push("sweepGuardianMajority");
+      return 0;
+    }),
+    jest.spyOn(appointmentsMod, "sweepAppointmentNoShows").mockImplementation(async () => {
+      invoked.push("sweepAppointmentNoShows");
+      return 0;
+    }),
+    jest.spyOn(dailyCloseMod, "runDailyClose").mockImplementation(
+      (async () => {
+        invoked.push("runDailyClose");
+      }) as unknown as typeof dailyCloseMod.runDailyClose,
+    ),
+  ];
+}
+
+const THE_SIX = [
+  "runDispatchCycle",
+  "runDueTimers",
+  "sweepExpiredTempRoles",
+  "sweepGuardianMajority",
+  "sweepAppointmentNoShows",
+  "runDailyClose",
+];
+
+/**
+ * The seven manifests that declare NO subscription, so both censuses can pass `{}` for the
+ * handler map and stay about the CLOCK. `alertsManifest` is deliberately absent here: it is the
+ * one manifest that declares a subscription, and the assertion that the WORKER'S OWN registry
+ * carries it lives in `test/worker-runtime.e2e.test.ts`, against the registry
+ * `createApplicationContext(WorkerModule)` actually builds. A private registry assembled inside
+ * a test file — like this one — structurally cannot make that claim, which is exactly how a
+ * worker that dispatched to nobody survived six tasks and two gates.
+ */
+function censusRegistry(): ModuleRegistry {
+  const registry = new ModuleRegistry();
+  registry.install(authManifest);
+  registry.install(workflowManifest);
+  registry.install(approvalsManifest);
+  registry.install(patientsManifest);
+  registry.install(tariffManifest);
+  registry.install(opdManifest);
+  registry.install(billingManifest);
+  return registry;
+}
+
 function freshWorkerDb(): { db: Db; pool: Pool; close: () => Promise<void> } {
   const baseUrl = requireEnv("TEST_DATABASE_URL");
   const workerId = process.env.JEST_WORKER_ID ?? "1";
@@ -75,123 +166,161 @@ describe("Scheduler", () => {
     expect(scheduler.leakedErrors()).toEqual([]);
   });
 
-  // L14 — the registration census. Global Constraint 3: jest runs sweeps DIRECTLY, never
-  // through the scheduler; this test calls the REAL registerAllJobs (proving the wiring: job
-  // names, D9 cadences, IST daily semantics, and the amendment-6 bus-building are all real and
-  // unmodified) but replaces the six underlying sweep functions with recording stubs via
-  // jest.spyOn on their own modules — so no real sweep body ever runs inside jest, only the
-  // scheduling machinery around it.
+  // L14 — the registration census. Two tests, because there are two claims: that all six jobs
+  // are registered and reached at their cadences, and that the DAILY three are keyed on the IST
+  // calendar rather than the UTC one. The first cannot make the second — see M-S2 below.
   describe("the registration census (L14)", () => {
-    // With the shipped D9 defaults (2 s / 20 s / 60 s), a 25 REAL-fake-hour advance would fire
-    // the three "every" jobs tens of thousands of times, EACH doing a real heartbeat write —
-    // correct, but far too slow for a unit test (the daily jobs need the full ~25 h span to
-    // cross an IST day boundary, so that span cannot shrink). D9's config keys are designed to
-    // be env-overridable (flag 8 is about the SERVER/CI .env, not this process's own env), so
-    // this override — scoped to this describe block only, restored in afterEach — keeps the
-    // exact same registerAllJobs code path while keeping the real-DB heartbeat cost to a few
-    // dozen writes instead of tens of thousands.
-    //
-    // WORKER_DAILY_TICK_MS is overridden TIGHTER, not wider: isDailyDue() gates its (only) DB
-    // read behind a cheap in-memory hour/minute check, so the ticker's own cost stays
-    // negligible regardless of granularity. A first attempt WIDENED it to 30 min and reliably
-    // STEPPED OVER daily-close's due window (23:59 IST is exactly ONE IST minute wide) every
-    // time — a coarser grid than the window itself. The shipped 30 s default fixed that (2
-    // ticks land inside the 1-minute window), but under `pnpm verify`'s full parallel load one
-    // run still missed `runDailyClose` once (782/782 otherwise, not reproduced across 3
-    // subsequent full runs) — consistent with 2 ticks being the THINNEST margin of the three
-    // daily jobs against a single transient DB hiccup under contention. 5 s gives daily-close
-    // ~12 ticks of margin inside the same window instead of 2, at negligible extra cost.
-    const OVERRIDE: Record<string, string> = {
-      WORKER_DISPATCH_INTERVAL_MS: String(4 * 60 * 60 * 1000),
-      WORKER_TIMERS_INTERVAL_MS: String(6 * 60 * 60 * 1000),
-      WORKER_TEMP_ROLES_INTERVAL_MS: String(9 * 60 * 60 * 1000),
-      WORKER_DAILY_TICK_MS: String(5000),
+    // THE CADENCES ARE A PARAMETER NOW, NOT THE ENVIRONMENT. This block used to override four
+    // `process.env` keys and let `registerAllJobs` re-read them through `loadConfig()` — which
+    // parses the WHOLE environment through a zod schema where `DATABASE_URL` is required with
+    // no default. A fake-clock unit test that touches no database therefore hard-required a
+    // database URL, and `main` was CI-red on exactly this test for six consecutive commits
+    // (CI sets only `TEST_DATABASE_URL`; the build host has `DATABASE_URL` in `apps/core/.env`
+    // because it doubles as a dev machine). The values below are the same intent as the old
+    // override: with the shipped D9 defaults (2 s / 20 s / 60 s) a 25-fake-hour advance would
+    // fire the three interval jobs tens of thousands of times, each doing a REAL heartbeat
+    // write. The 25-hour span itself cannot shrink — the daily jobs need it to cross an IST day
+    // boundary.
+    const CENSUS_INTERVALS: JobIntervals = {
+      workerDispatchIntervalMs: 4 * 60 * 60 * 1000,
+      workerTimersIntervalMs: 6 * 60 * 60 * 1000,
+      workerTempRolesIntervalMs: 9 * 60 * 60 * 1000,
     };
-    const original: Record<string, string | undefined> = {};
 
+    // The SHIPPED default (D9), passed explicitly. `isDailyDue()` gates its (only) DB read
+    // behind a cheap in-memory hour/minute check, so the ticker's granularity is nearly free —
+    // but only nearly: guardians' window (00:05 IST) is open ~23.9 h of every day, so across a
+    // 25-hour advance this grid costs ~3 000 real reads and a tighter one costs proportionally
+    // more. FINDING, disclosed rather than silently changed: the old `OVERRIDE` block set
+    // `WORKER_DAILY_TICK_MS: 5000` and its comment explains at length why 5 s beats 30 s for
+    // `runDailyClose`'s one-IST-minute window — but the value was NEVER IN EFFECT. The
+    // Scheduler takes its tick from its CONSTRUCTOR (4th argument, default 30 000) and this
+    // test never passed one, so the env key it set was read by nobody. The margin the comment
+    // claims (~12 ticks) has always actually been 2. Made visible here instead of quietly
+    // altered: changing it is a runtime/flake trade for the plan that owns this test.
+    const CENSUS_DAILY_TICK_MS = 30_000;
+
+    // THE B1 REGRESSION GUARD, and it is the whole point of the parameter above. `loadEnv()`
+    // has already run (jest's `setupFiles`), and it is idempotent by a module-level flag, so
+    // deleting the key here is not undone by anything downstream: for the duration of these
+    // tests this process looks EXACTLY like CI. If `registerAllJobs` ever reaches for the
+    // environment again, these tests go red HERE rather than only on a machine nobody in the
+    // pipeline can run.
+    let savedDatabaseUrl: string | undefined;
     beforeEach(() => {
-      for (const k of Object.keys(OVERRIDE)) {
-        original[k] = process.env[k];
-        process.env[k] = OVERRIDE[k];
-      }
+      savedDatabaseUrl = process.env.DATABASE_URL;
+      delete process.env.DATABASE_URL;
     });
     afterEach(() => {
-      for (const k of Object.keys(OVERRIDE)) {
-        if (original[k] === undefined) delete process.env[k];
-        else process.env[k] = original[k];
-      }
+      if (savedDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = savedDatabaseUrl;
     });
 
     it("invokes all six jobs within a faked 25 hours advanced from a pinned instant", async () => {
-      const invoked = new Set<string>();
-      const spies = [
-        jest.spyOn(dispatcherMod, "runDispatchCycle").mockImplementation(async () => {
-          invoked.add("runDispatchCycle");
-          return 0;
-        }),
-        jest.spyOn(timersMod, "runDueTimers").mockImplementation(async () => {
-          invoked.add("runDueTimers");
-          return 0;
-        }),
-        jest.spyOn(tempRolesMod, "sweepExpiredTempRoles").mockImplementation(async () => {
-          invoked.add("sweepExpiredTempRoles");
-          return 0;
-        }),
-        jest.spyOn(guardiansMod, "sweepGuardianMajority").mockImplementation(async () => {
-          invoked.add("sweepGuardianMajority");
-          return 0;
-        }),
-        jest.spyOn(appointmentsMod, "sweepAppointmentNoShows").mockImplementation(async () => {
-          invoked.add("sweepAppointmentNoShows");
-          return 0;
-        }),
-        jest.spyOn(dailyCloseMod, "runDailyClose").mockImplementation(
-          (async () => {
-            invoked.add("runDailyClose");
-          }) as unknown as typeof dailyCloseMod.runDailyClose,
-        ),
-      ];
-
-      const registry = new ModuleRegistry();
-      registry.install(authManifest);
-      registry.install(workflowManifest);
-      registry.install(approvalsManifest);
-      registry.install(patientsManifest);
-      registry.install(tariffManifest);
-      registry.install(opdManifest);
-      registry.install(billingManifest);
-
+      expect(process.env.DATABASE_URL).toBeUndefined(); // CI's environment, reproduced here
+      const invoked: string[] = [];
+      const spies = spyOnTheSix(invoked);
+      const registry = censusRegistry();
       const fresh = freshWorkerDb();
       jest.useFakeTimers({ now: new Date("2026-08-21T12:00:00.000Z") });
       try {
-        const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks());
-        registerAllJobs(scheduler, fresh.db, registry, {});
-        expect(scheduler.jobs()).toEqual([
-          "runDispatchCycle",
-          "runDueTimers",
-          "sweepExpiredTempRoles",
-          "sweepGuardianMajority",
-          "sweepAppointmentNoShows",
-          "runDailyClose",
-        ]);
+        const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), CENSUS_DAILY_TICK_MS);
+        registerAllJobs(scheduler, fresh.db, registry, {}, CENSUS_INTERVALS);
+        expect(scheduler.jobs()).toEqual(THE_SIX);
 
         scheduler.start();
         await jest.advanceTimersByTimeAsync(25 * 60 * 60 * 1000);
         await scheduler.stop();
 
-        expect(invoked).toEqual(
-          new Set([
-            "runDispatchCycle",
-            "runDueTimers",
-            "sweepExpiredTempRoles",
-            "sweepGuardianMajority",
-            "sweepAppointmentNoShows",
-            "runDailyClose",
-          ]),
-        );
+        expect(new Set(invoked)).toEqual(new Set(THE_SIX));
         expect(scheduler.leakedErrors()).toEqual([]);
       } finally {
         jest.useRealTimers();
+        for (const s of spies) s.mockRestore();
+        await fresh.close();
+      }
+    });
+
+    /**
+     * M-S2's GRAVE — the mutant that survived the census above, and the reason this second test
+     * exists at all. M-S2 computes `istDayIndex`/`istHourMinute` from the UTC calendar instead
+     * of `+IST_OFFSET_MS`. The 25-hour census cannot see it: it asserts only the SET of six
+     * names, and all three daily jobs fire within any 25-hour span under EITHER calendar.
+     *
+     * The Assertion Book's own stated discriminating input does not separate them either — it
+     * names the tick window containing `2026-08-21T18:35:00Z` and predicts the UTC mutant fires
+     * guardians ~5.5 h late, but `isDailyDue`'s `pastInstant` is a `>=`, so at 18:35 UTC the
+     * mutant sees hour 18 > 0 and fires guardians in that very window too. Both predictions
+     * were hand-walks; both were wrong (rule 21's whole argument).
+     *
+     * WHAT ACTUALLY DISCRIMINATES IS THE DAY INDEX AGAINST AN EXISTING HEARTBEAT, and it needs
+     * an instant where the two calendars disagree about which day it is:
+     *
+     *   now          2026-08-21T19:00:00Z  =  IST 2026-08-22 00:30  ·  UTC day Aug 21
+     *   last_ok_at   2026-08-21T10:00:00Z  =  IST 2026-08-21 15:30  ·  UTC day Aug 21
+     *
+     * `pastInstant` is true for BOTH implementations (IST hour 0 ≥ 00:05 by the minute; UTC
+     * hour 19 > 0), so the guard that decides is `istDay(last_ok_at) < istDay(now)`:
+     *   · SHIPPED — Aug 21 IST < Aug 22 IST → DUE. The job ran this afternoon, IST has since
+     *     rolled over, today's 00:05 run is owed. Fires.
+     *   · M-S2    — Aug 21 UTC < Aug 21 UTC is FALSE → not due. Never fires.
+     * The other two daily jobs (23:55 / 23:59 IST) are correctly NOT due at 00:30 IST, and the
+     * three interval jobs are hours apart so a sub-second window cannot reach them.
+     *
+     * `Date` — AND ONLY `Date` — IS FAKED HERE, on the `doNotFake` list the spike measured
+     * (question E) and `opd-lifecycle.e2e.test.ts` already uses. The census above compresses 25
+     * hours with `advanceTimersByTimeAsync`, which cannot be done here: `isDailyDue` awaits a
+     * REAL database round-trip, fake time advances in no real time at all, and the first draft
+     * of this test therefore called `stop()` while every tick was still suspended mid-query —
+     * whereupon the shutdown latch (correctly) bailed them all out and the job never ran. Real
+     * timers, a pinned `Date`, and a bounded poll for the invocation: the poll is a sequencing
+     * wait, not a timing assertion (Global Constraint 10), and when the job never comes it
+     * exhausts its iterations and FAILS, which is exactly what a mutant needs it to do.
+     */
+    it("a daily job that last succeeded earlier the same UTC day but a PREVIOUS IST day is due (M-S2)", async () => {
+      expect(process.env.DATABASE_URL).toBeUndefined();
+      const NOW = new Date("2026-08-21T19:00:00.000Z"); // IST 2026-08-22 00:30
+      const LAST_OK = new Date("2026-08-21T10:00:00.000Z"); // IST 2026-08-21 15:30 — same UTC day
+      const invoked: string[] = [];
+      const spies = spyOnTheSix(invoked);
+      const registry = censusRegistry();
+      const fresh = freshWorkerDb();
+      try {
+        await fresh.db.insert(schedulerHeartbeats).values({
+          job: "sweepGuardianMajority",
+          lastStartedAt: LAST_OK,
+          lastOkAt: LAST_OK,
+        });
+
+        pinDateOnly(NOW);
+        try {
+          const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), 10);
+          registerAllJobs(scheduler, fresh.db, registry, {}, CENSUS_INTERVALS);
+          scheduler.start();
+          for (let i = 0; i < 400 && !invoked.includes("sweepGuardianMajority"); i += 1) {
+            await new Promise((r) => setTimeout(r, 5)); // REAL setTimeout — only Date is faked
+          }
+          await scheduler.stop();
+        } finally {
+          jest.useRealTimers();
+        }
+
+        // EXACTLY ONCE across every tick that fitted, not once per tick: the run writes its own
+        // `last_ok_at` at the pinned instant, whose IST day now EQUALS today's, so the same
+        // guard that made it due immediately makes it not-due again.
+        expect(invoked.filter((n) => n === "sweepGuardianMajority")).toEqual(["sweepGuardianMajority"]);
+        // And the ones whose IST instant has NOT passed at 00:30 IST stayed put.
+        expect(invoked).not.toContain("sweepAppointmentNoShows");
+        expect(invoked).not.toContain("runDailyClose");
+
+        // The heartbeat moved to the pinned instant — the run went through the real machinery
+        // (lock → heartbeat → run → last_ok_at), it was not merely counted.
+        const [hb] = await fresh.db
+          .select()
+          .from(schedulerHeartbeats)
+          .where(eq(schedulerHeartbeats.job, "sweepGuardianMajority"));
+        expect(hb?.lastOkAt?.getTime()).toBe(NOW.getTime());
+      } finally {
         for (const s of spies) s.mockRestore();
         await fresh.close();
       }
@@ -288,6 +417,83 @@ describe("Scheduler", () => {
       expect(order).toEqual(["start", "release", "end"]);
       expect(scheduler.leakedErrors()).toEqual([]);
     } finally {
+      await scheduler.stop();
+    }
+  });
+
+  /**
+   * Flag ⑨'s OTHER HALF. `stop()` awaiting an in-flight run (asserted above) is NOT the same
+   * guarantee as no job STARTING afterwards, and only the first was ever true.
+   *
+   * `dailyTick()` awaits a heartbeat READ inside `isDailyDue()`, and NOTHING holds that tick:
+   * `runTick()` is what records a job's `inFlight`, and this tick has not reached it. So
+   * `stop()` sees nothing in flight and RESOLVES — after which `worker.ts` closes the context
+   * and `WorkerModule.onModuleDestroy` ends the pool — and only THEN does the read settle and
+   * start a sweep, against a pool that is already gone.
+   *
+   * The gate is on that one READ. `gatedDb` delegates every other call — the heartbeat write,
+   * the sweep, `withTx` — to the real database, and intercepts exactly the
+   * `select().from().where()` chain `isDailyDue` uses. Nothing here sleeps or polls the wall
+   * clock: the test chooses the interleaving rather than racing it.
+   */
+  it("no job STARTS after stop() resolves — a daily tick suspended on its heartbeat read finds the latch", async () => {
+    let readEntered: () => void = () => {};
+    const entered = new Promise<void>((resolve) => { readEntered = resolve; });
+    let releaseRead: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { releaseRead = resolve; });
+
+    type SelectChain = { from: (t: unknown) => { where: (p: unknown) => Promise<unknown> } };
+    const realSelect = db.select.bind(db) as unknown as (f: unknown) => SelectChain;
+    const gatedDb = {
+      select: (fields: unknown) => ({
+        from: (table: unknown) => ({
+          where: async (predicate: unknown) => {
+            readEntered();
+            await gate;
+            return realSelect(fields).from(table).where(predicate);
+          },
+        }),
+      }),
+      insert: db.insert.bind(db),
+      update: db.update.bind(db),
+      transaction: db.transaction.bind(db),
+    } as unknown as Db;
+
+    const started: string[] = [];
+    // `dailyIst: "00:00"` is past at every instant of every day, so the job's only remaining
+    // gate is the heartbeat read this test suspends — and there is no heartbeat row, so an
+    // un-latched Scheduler runs it the moment the read settles.
+    const scheduler = new Scheduler(gatedDb, pool, stubLocks(), 5);
+    scheduler.register({
+      name: "latch-stub",
+      dailyIst: "00:00",
+      run: async () => { started.push("latch-stub"); },
+    });
+
+    try {
+      scheduler.start();
+      await entered; // a daily tick is now suspended INSIDE isDailyDue's read
+
+      let stopResolved = false;
+      await scheduler.stop().then(() => { stopResolved = true; });
+      expect(stopResolved).toBe(true); // nothing was in flight, so stop() is already done
+
+      releaseRead();
+      // GIVE AN UN-LATCHED SCHEDULER EVERY CHANCE TO START THE JOB. The resumed tick still has
+      // two REAL round-trips ahead of it — the heartbeat read it was suspended on, then the
+      // heartbeat write — so a couple of microtask turns is not a wait, it is a head start for
+      // the absence. (Measured: the first draft of this test yielded twice and the un-latched
+      // mutant SURVIVED, passing for no reason at all.) This bounded poll exits the instant the
+      // job starts, so against the mutant it costs milliseconds; against the shipped Scheduler
+      // it spends its whole budget proving the job never comes.
+      for (let i = 0; i < 200 && started.length === 0; i += 1) {
+        await new Promise((r) => setTimeout(r, 5));
+      }
+
+      expect(started).toEqual([]); // the sweep never started, though its tick had already begun
+      expect(scheduler.leakedErrors()).toEqual([]);
+    } finally {
+      releaseRead();
       await scheduler.stop();
     }
   });

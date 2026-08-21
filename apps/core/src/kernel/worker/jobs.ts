@@ -8,7 +8,7 @@ import { sweepExpiredTempRoles } from "../auth/temp-roles";
 import { sweepGuardianMajority } from "../../modules/patients/guardians";
 import { sweepAppointmentNoShows } from "../../modules/opd/appointments";
 import { runDailyClose } from "../../modules/billing/daily-close";
-import { loadConfig } from "../config";
+import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
 
 // D9/step 2: the daily jobs' clock instants are CODE CONSTANTS beside their registration, not
@@ -26,8 +26,12 @@ const DAILY_CLOSE_IST = "23:59";
  * look each `consumer` key up in `consumers`. A declared subscription with NO matching
  * handler is a BOOT ERROR, never a silent skip — that is what makes the seam load-bearing in
  * BOTH directions (a module that declares a subscription it cannot serve must fail loudly,
- * not silently drop deliveries). `worker.module.ts` passes `{}` today; T4 adds the one
- * `"kernel.alerts"` entry once the alerts manifest declares its first subscription.
+ * not silently drop deliveries).
+ *
+ * THE SEAM IS NOW FILLED: `worker.module.ts` installs `alertsManifest` and `worker.ts` passes
+ * `{ [ALERTS_CONSUMER]: alertsConsumer(db) }`. Those two edits are ONE edit and must never be
+ * split — installing the manifest without passing the handler makes the `throw` below fire at
+ * worker boot, by design. The reverse (a handler with no declaration) is harmless but dead.
  */
 export function buildSubscriptionBus(
   registry: ModuleRegistry,
@@ -50,38 +54,63 @@ export function buildSubscriptionBus(
 }
 
 /**
+ * The three INTERVAL cadences (D9) — and nothing else `registerAllJobs` needs from config.
+ *
+ * IT IS A `Pick` OF `AppConfig`, DELIBERATELY, AND IT IS THE NARROWEST THING THAT WORKS.
+ * `worker.ts` already holds the whole `AppConfig` (`app.get<AppConfig>(CONFIG)`) and passes it
+ * unchanged — structural typing means production hands over what it already has, with no
+ * adapter and no second source of truth for the key names. A TEST, meanwhile, supplies three
+ * numbers and NOTHING ELSE: no `DATABASE_URL`, no `SECRET_KEY`, no ambient environment at all.
+ * That asymmetry is the whole point of the parameter — see below.
+ */
+export type JobIntervals = Pick<
+  AppConfig,
+  "workerDispatchIntervalMs" | "workerTimersIntervalMs" | "workerTempRolesIntervalMs"
+>;
+
+/**
  * The six sweeps on the clock (D2/D9/step 2), transcribed exactly — do not invent cadences.
- * `runDispatchCycle` every WORKER_DISPATCH_INTERVAL_MS · `runDueTimers` every
- * WORKER_TIMERS_INTERVAL_MS · `sweepExpiredTempRoles` every WORKER_TEMP_ROLES_INTERVAL_MS ·
+ * `runDispatchCycle` every `workerDispatchIntervalMs` · `runDueTimers` every
+ * `workerTimersIntervalMs` · `sweepExpiredTempRoles` every `workerTempRolesIntervalMs` ·
  * `sweepGuardianMajority` daily 00:05 IST · `sweepAppointmentNoShows` daily 23:55 IST ·
  * `runDailyClose` daily 23:59 IST, called as `runDailyClose(db, undefined, now)`.
  *
- * `runDispatchCycle` is called at its SHIPPED (pre-T3) signature — T2 runs before T3 in this
- * pipeline, so `dispatcher.ts` still reads `(db, bus, batchSize?)` with no `now` option; T3
- * owns that file and its rewrite (D4), not T2.
+ * `runDispatchCycle` takes T3's SHIPPED signature — `(db, bus, opts?: { batchSize?, lookback?,
+ * maxAttempts?, now? })` since `39e520d` — and this registration THREADS `now` through it, the
+ * same as the other five. It is `now` that reaches the dispatcher's backoff arithmetic
+ * (`next_attempt_at = now + min(2^attempts, 60) s`), so dropping it here silently handed
+ * production a different clock from the one the scheduler heartbeats with.
+ *
+ * THIS FUNCTION READS NO ENVIRONMENT. It used to call `loadConfig()`, which parses
+ * `process.env` through a zod schema in which `DATABASE_URL` is REQUIRED with no default — so
+ * a fake-clock unit test that touches no database still hard-failed wherever `DATABASE_URL`
+ * was unset. CI sets only `TEST_DATABASE_URL`; the build host happens to carry `DATABASE_URL`
+ * in `apps/core/.env` because it doubles as a dev machine. The result was a test that was
+ * green on exactly one machine in the world and red on CI for six consecutive commits. The
+ * caller resolves config; this function is handed the three numbers it actually uses.
  */
 export function registerAllJobs(
   scheduler: Scheduler,
   db: Db,
   registry: ModuleRegistry,
   consumers: Record<string, Handler>,
+  intervals: JobIntervals,
 ): void {
-  const cfg = loadConfig();
   const bus = buildSubscriptionBus(registry, consumers);
 
   scheduler.register({
     name: "runDispatchCycle",
-    every: cfg.workerDispatchIntervalMs,
-    run: async () => { await runDispatchCycle(db, bus); },
+    every: intervals.workerDispatchIntervalMs,
+    run: async (now) => { await runDispatchCycle(db, bus, { now }); },
   });
   scheduler.register({
     name: "runDueTimers",
-    every: cfg.workerTimersIntervalMs,
+    every: intervals.workerTimersIntervalMs,
     run: async (now) => { await runDueTimers(db, now); },
   });
   scheduler.register({
     name: "sweepExpiredTempRoles",
-    every: cfg.workerTempRolesIntervalMs,
+    every: intervals.workerTempRolesIntervalMs,
     run: async (now) => { await sweepExpiredTempRoles(db, now); },
   });
   scheduler.register({

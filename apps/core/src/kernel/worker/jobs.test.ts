@@ -54,13 +54,21 @@ describe("buildSubscriptionBus (amendment 6 seam)", () => {
     expect(() => buildSubscriptionBus(registry, {})).toThrow(/synthetic\.consumer/);
   });
 
-  // Leg (b) — the honest, currently-empty pin. Every one of the seven shipped manifests
-  // declares `subscriptions: []` at T2's commit (spike question D); this assertion is
-  // load-bearing FROM T4 ON, once amendment 6's `alertsManifest` joins this same registry and
-  // declares `escalation.triggered -> kernel.alerts`. Shipping ONLY this leg (without leg (a)
-  // above) would be EXECUTION-LESSONS 3.14's failure class — an assertion that cannot
-  // discriminate because it starts and ends at `[] === []`.
-  it("the real registry's union equals the real bus — CURRENTLY EMPTY (all seven shipped manifests declare subscriptions: [])", () => {
+  // Leg (b) — the honest empty pin, AND A CORRECTED CLAIM ABOUT ITSELF. This leg used to say
+  // it would become load-bearing "once amendment 6's alertsManifest joins this same registry".
+  // IT NEVER COULD: "this same registry" is a literal list inside this test file, so nothing
+  // that happens to the WORKER's registry can ever change what this assertion sees. That is
+  // precisely how a worker that installed no alerts manifest — and therefore dispatched
+  // `escalation.triggered` to nobody — passed six tasks and two gates with a green suite:
+  // `jobs.test.ts`, `alerts/consumer.test.ts` and `worker-runtime.e2e.test.ts` each built a
+  // PRIVATE ModuleRegistry, so no assertion anywhere read the one production builds.
+  //
+  // The assertion that CAN see it boots the worker context and reads `MODULE_REGISTRY` out of
+  // it: `test/worker-runtime.e2e.test.ts`, "(a) the worker's OWN registry". This leg keeps its
+  // real job — pinning that the seven non-alerts manifests declare nothing, so leg (a)'s
+  // synthetic manifest is what gives the seam its teeth here (EXECUTION-LESSONS 3.14: shipping
+  // only this leg would be an assertion that starts and ends at `[] === []`).
+  it("the real registry's union equals the real bus — EMPTY for the seven non-alerts manifests (all declare subscriptions: [])", () => {
     const registry = new ModuleRegistry();
     registry.install(authManifest);
     registry.install(workflowManifest);

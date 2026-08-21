@@ -96,6 +96,22 @@ export class Scheduler {
   private dailyTimer: NodeJS.Timeout | null = null;
   private readonly leaked: unknown[] = [];
 
+  /**
+   * THE SHUTDOWN LATCH. `stop()` awaiting in-flight runs is NOT the same guarantee as no job
+   * STARTING afterwards, and only the first was true before this flag existed.
+   *
+   * `dailyTick()` awaits a heartbeat READ (`isDailyDue`) and is NOT tracked in any job's
+   * `inFlight` — `runTick()` is what sets that, and `dailyTick` has not reached it yet. So a
+   * daily ticker suspended on that read had nothing holding it: `stop()` saw no in-flight run,
+   * RESOLVED, the caller closed the context and ended the pool, and only then did the read
+   * settle and start a sweep against a dead pool. `executeJob()` has the same exposure at its
+   * lock acquisition and its heartbeat write.
+   *
+   * Every one of those points re-checks this flag AFTER its await. `start()` clears it, so a
+   * Scheduler that is stopped and started again is armed again rather than silently dead.
+   */
+  private stopped = false;
+
   constructor(
     private readonly db: Db,
     pool: Pool,
@@ -135,6 +151,7 @@ export class Scheduler {
   }
 
   start(): void {
+    this.stopped = false;
     for (const job of this.jobsByName.values()) {
       if ("every" in job.spec) {
         const t = setInterval(() => {
@@ -151,8 +168,15 @@ export class Scheduler {
     this.dailyTimer = dt;
   }
 
-  /** Awaits any in-flight run before resolving (flag 9) — never leaves a sweep mid-write when the caller then closes the pool. */
+  /**
+   * Awaits any in-flight run before resolving (flag 9) — never leaves a sweep mid-write when
+   * the caller then closes the pool — AND latches `stopped` FIRST, so nothing that is merely
+   * on its way to starting gets to start once this resolves. The order matters: the latch is
+   * set before the timers are cleared, so a callback that fires between the two lines is
+   * already too late.
+   */
   async stop(): Promise<void> {
+    this.stopped = true;
     for (const job of this.jobsByName.values()) {
       if (job.timer) { clearInterval(job.timer); job.timer = null; }
     }
@@ -163,9 +187,15 @@ export class Scheduler {
   private async dailyTick(): Promise<void> {
     const now = new Date();
     for (const job of this.jobsByName.values()) {
+      if (this.stopped) return;
       if (!("dailyIst" in job.spec)) continue;
       if (job.running) continue; // cheap skip — the definitive guard is in runTick()
-      if (await this.isDailyDue(job, now)) {
+      const due = await this.isDailyDue(job, now);
+      // THE AWAIT ABOVE IS THE HOLE THE LATCH CLOSES. `stop()` does not await this tick (no
+      // job is in flight yet), so it can resolve — and the caller can end the pool — while
+      // that heartbeat read is still outstanding. Re-checked here, after it settles.
+      if (this.stopped) return;
+      if (due) {
         this.runTick(job).catch((err: unknown) => { this.leaked.push(err); });
       }
     }
@@ -188,6 +218,7 @@ export class Scheduler {
   }
 
   private async runTick(job: Registered): Promise<void> {
+    if (this.stopped) return; // the shutdown latch — no job starts once stop() has been called
     if (job.running) return; // per-job re-entrancy guard — a slow run is never overlapped by its own next tick
     job.running = true;
     const run = this.executeJob(job);
@@ -205,11 +236,13 @@ export class Scheduler {
     const won = await this.locks.tryLock(lockName);
     if (!won) return; // another process holds this job's lock this tick — skip silently (D3)
     try {
+      if (this.stopped) return; // stop() latched while this tick waited on the lock
       const startedAt = new Date();
       await this.db
         .insert(schedulerHeartbeats)
         .values({ job: job.spec.name, lastStartedAt: startedAt })
         .onConflictDoUpdate({ target: schedulerHeartbeats.job, set: { lastStartedAt: startedAt } });
+      if (this.stopped) return; // ... or while it wrote the heartbeat. The sweep never starts.
       const t0 = Date.now();
       try {
         await job.spec.run(startedAt);
