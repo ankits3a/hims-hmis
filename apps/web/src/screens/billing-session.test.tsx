@@ -365,4 +365,102 @@ describe("BillingSession", () => {
     // the closing drawer is still on screen: the refusal is information, not a state change
     expect(screen.getByTestId("session-status")).toHaveTextContent("AWAITING APPROVAL");
   });
+
+  /**
+   * REGRESSION — the drawer-to-drawer float carry-over (Plan 08 pipeline C discovery, T15 gate
+   * finding 1). `openForm` renders only while `live === null || live.status === "closing"`, so
+   * `MoneyInput` unmounts for the life of an open drawer and remounts with an EMPTY box after the
+   * close — while `floatPaise` survived in the parent, because `land()` reset `closeLane`,
+   * `counts`, `note` and `closed` but not the float. Pressing Open without typing then posted a
+   * float the cashier never entered, which anchors `expectedCashPaise` to it, manufactures a
+   * variance at the next close, files a `billing_variance` approval and locks her out of all
+   * counter work (pipeline A carried item 18).
+   *
+   * WHY THIS FIXTURE CAN SEPARATE IT: the second float (₹2,500) DIFFERS from the first (₹1,000),
+   * and the assertion is on the POSTED BODY and the POST COUNT, not on the rendered box. The box
+   * is empty under the defect too — that is the whole trap — so an assertion on the box alone
+   * would pass against the broken screen.
+   */
+  it("REGRESSION: a closed drawer leaves NO float behind — Open without typing is refused and posts nothing, and a freshly typed float still opens the next drawer at the NEW figure", async () => {
+    const NEXT_FLOAT_PAISE = 250_000; // ₹2,500.00 — deliberately NOT FLOAT_PAISE
+    const closedRow = session({
+      status: "closed", denominations: { "50000": 2 },
+      countedCashPaise: FLOAT_PAISE, expectedCashPaise: FLOAT_PAISE, variancePaise: 0, closedAt: CLOSED_AT,
+    });
+    let current: SessionRow | null = null;
+    mockRoutes({
+      "GET /billing/sessions/current": () => ({ status: 200, body: { session: current } }),
+      "POST /billing/sessions": (init) => {
+        // the drawer the server opens carries whatever float it was actually sent
+        const sent = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as { floatPaise?: number };
+        current = session({ openingFloatPaise: sent.floatPaise ?? 0 });
+        return { status: 201, body: current };
+      },
+      "POST /billing/sessions/cs-1/close": () => {
+        current = null;
+        return { status: 201, body: closedRow };
+      },
+    });
+    renderWithProviders(<BillingSession />);
+    const user = userEvent.setup();
+
+    // 1 — open the first drawer with ₹1,000
+    await user.type(await screen.findByLabelText("Opening float"), "1000");
+    await user.click(screen.getByTestId("open-submit"));
+    await waitFor(() => expect(callsTo("POST", "/billing/sessions")).toHaveLength(1));
+    expect(bodiesOf("POST", "/billing/sessions")[0]).toEqual({ floatPaise: FLOAT_PAISE });
+
+    // 2 — close it at zero variance; the drawer is gone and the open form is back
+    await user.click(await screen.findByTestId("close-open"));
+    await countNotes(user, [[500, "2"]]);
+    await user.click(screen.getByTestId("close-submit"));
+    await screen.findByTestId("day-summary");
+    await screen.findByTestId("no-session");
+
+    // 3 — THE DEFECT. The box is empty, so Open must refuse and post NOTHING.
+    expect(screen.getByLabelText("Opening float")).toHaveValue("");
+    await user.click(screen.getByTestId("open-submit"));
+    const refusal = await screen.findByTestId("open-error");
+    expect(refusal).toHaveAttribute("role", "alert");
+    expect(callsTo("POST", "/billing/sessions")).toHaveLength(1);
+
+    // 4 — NOT-OVER-BROAD (§3.44): the legitimate next drawer still opens, at the NEW float.
+    await user.type(screen.getByLabelText("Opening float"), "2500");
+    await user.click(screen.getByTestId("open-submit"));
+    await waitFor(() => expect(callsTo("POST", "/billing/sessions")).toHaveLength(2));
+    expect(bodiesOf("POST", "/billing/sessions")[1]).toEqual({ floatPaise: NEXT_FLOAT_PAISE });
+    expect(screen.getByTestId("session-float")).toHaveTextContent("₹2,500.00");
+  });
+
+  /**
+   * The OTHER half of the same invariant, and the reason the fix is two lines rather than one.
+   * Both branches of `live === null || live.status === "closing"` render `openForm`, so confirming
+   * a drawer out of `closing` is the one transition that leaves this form MOUNTED — `MoneyInput`
+   * seeds its text once in a `useState` initializer, so nothing but the `key` can clear the
+   * visible box here. The two assertions below separate the two halves: `toHaveValue("")` fails if
+   * the `key` goes, and the POST count fails if `land`'s reset goes.
+   */
+  it("REGRESSION: confirming a drawer out of `closing` clears the open form too — the form stays MOUNTED across that transition, so the visible box and the value behind it must still agree", async () => {
+    let current: SessionRow | null = CLOSING;
+    mockRoutes({
+      "GET /billing/sessions/current": () => ({ status: 200, body: { session: current } }),
+      "POST /billing/sessions/cs-1/confirm-close": () => {
+        current = null;
+        return { status: 201, body: CONFIRMED };
+      },
+      "POST /billing/sessions": { status: 201, body: session() },
+    });
+    renderWithProviders(<BillingSession />);
+    const user = userEvent.setup();
+
+    // the open form is already on screen while the drawer awaits its approval — type into it
+    await user.type(await screen.findByLabelText("Opening float"), "1000");
+    await user.click(screen.getByTestId("confirm-close"));
+    await screen.findByTestId("day-summary");
+
+    expect(screen.getByLabelText("Opening float")).toHaveValue("");
+    await user.click(screen.getByTestId("open-submit"));
+    expect(await screen.findByTestId("open-error")).toHaveAttribute("role", "alert");
+    expect(callsTo("POST", "/billing/sessions")).toHaveLength(0);
+  });
 });

@@ -117,12 +117,26 @@ export function BillingSession(): React.ReactElement {
     await qc.invalidateQueries({ queryKey: ["billing-session"] });
   };
 
-  /** A drawer the response says is `closed` is kept locally; anything else lives on the server. */
+  /**
+   * A drawer the response says is `closed` is kept locally; anything else lives on the server.
+   *
+   * THE FLOAT RESET IS LOAD-BEARING, NOT TIDINESS. `openForm` is rendered only while
+   * `live === null || live.status === "closing"`, so `MoneyInput` UNMOUNTS for the life of an open
+   * drawer and remounts with an EMPTY box once the drawer closes — while `floatPaise` would
+   * otherwise survive here. The next Open would then post a float the cashier never typed, and
+   * that float anchors `expectedCashPaise`: her real drawer then closes on a MANUFACTURED
+   * variance, which files a `billing_variance` approval and locks her out of all counter work
+   * (Plan 08 pipeline A carried item 18) — the same lockout shape `44c8b86` was written to remove.
+   *
+   * The invariant is: THE FLOAT THAT GETS POSTED IS THE FLOAT THE CASHIER CAN SEE. The `key` on
+   * the MoneyInput below is the other half of it.
+   */
   const land = async (row: WireCashierSession): Promise<void> => {
     setClosed(row.status === "closed" ? row : null);
     setCloseLane(false);
     setCounts({});
     setNote("");
+    setFloatPaise(undefined);
     await refresh();
   };
 
@@ -192,7 +206,20 @@ export function BillingSession(): React.ReactElement {
   const openForm = (
     <div className="space-y-2 rounded border p-2">
       <h2 className="text-sm font-semibold">{t("billingSession.open.title")}</h2>
-      <MoneyInput id="open-float" label={t("billingSession.open.float")} onChange={setFloatPaise} />
+      {/*
+        `key` clears the VISIBLE box on the one path where this form does not unmount: a drawer
+        confirmed out of `closing` keeps `openForm` mounted throughout, because both branches of
+        `live === null || live.status === "closing"` render it. `MoneyInput` seeds its text once in
+        a `useState` initializer and documents that parents needing a reset must remount with a
+        `key` — so without this the box would still show the finished drawer's float while
+        `land`'s reset had already cleared the value behind it. Pairs with that reset.
+      */}
+      <MoneyInput
+        key={closed?.id ?? "new"}
+        id="open-float"
+        label={t("billingSession.open.float")}
+        onChange={setFloatPaise}
+      />
       {openError !== null && (
         <p role="alert" data-testid="open-error" className="text-sm text-red-600">{openError}</p>
       )}
