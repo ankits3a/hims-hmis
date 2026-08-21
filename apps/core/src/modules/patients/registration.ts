@@ -49,6 +49,7 @@ export type RegisterPatientInput = {
   abhaVerificationStatus?: AbhaVerificationStatus;
   legacyUhid?: string;
   guardian?: GuardianInput;
+  promotionalOptIn?: boolean; // D9: DPDP consent, captured at registration — default false (opt-IN means the patient acted)
 };
 
 /** Registers a patient on the caller's transaction. Rules in order, each separately tested. */
@@ -107,6 +108,7 @@ export async function registerPatient(
       abhaNumber: input.abhaNumber ?? null,
       abhaVerificationStatus: input.abhaVerificationStatus ?? "none",
       legacyUhid: input.legacyUhid ?? null,
+      promotionalOptIn: input.promotionalOptIn ?? false,
       createdBy: actor.id,
       updatedBy: actor.id,
     })
@@ -189,18 +191,32 @@ export type PatientPatch = Partial<{
   abhaVerificationStatus: AbhaVerificationStatus;
   abhaLinkToken: string | null;
   legacyUhid: string | null;
+  promotionalOptIn: boolean; // D9: revocable on the patient record — this PATCH is the revocation path
+  deceasedAt: string | null; // D10 (D-33): ISO datetime; the hard stop the notifications gateway reads at send time
 }>;
 
 const PATCHABLE = [
   "name", "phone", "altPhone", "dob", "dobEstimated", "sex", "addressLine", "district",
   "stateName", "pincode", "language", "bloodGroup", "isConfidential", "alias",
   "sensitiveContext", "abhaAddress", "abhaNumber", "abhaVerificationStatus",
-  "abhaLinkToken", "legacyUhid",
+  "abhaLinkToken", "legacyUhid", "promotionalOptIn", "deceasedAt",
 ] as const;
 
 function asAuditString(v: unknown): string | null {
   if (v === null || v === undefined) return null;
   if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return String(v);
+}
+
+/**
+ * deceasedAt is a TIMESTAMP (unlike dob, a date-only column) — asAuditString's date-only
+ * truncation would make two different same-day instants compare equal and silently skip both
+ * the audit entry and the DB write for a genuine change to this D-33 hard-stop column. Diffed
+ * at full ISO precision instead, on both sides (the current row's Date and the patch's string).
+ */
+function asAuditTimestamp(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  if (v instanceof Date) return v.toISOString();
   return String(v);
 }
 
@@ -224,10 +240,13 @@ export async function updatePatient(
   const set: Record<string, unknown> = {};
   for (const field of PATCHABLE) {
     if (!(field in patch)) continue;
-    const next = (patch as Record<string, unknown>)[field];
+    let next = (patch as Record<string, unknown>)[field];
+    // deceasedAt arrives as a validated ISO string (patients.controller.ts's z.string().datetime());
+    // the column is a real Date, so it is converted here — once — before diffing and before the set.
+    if (field === "deceasedAt" && typeof next === "string") next = new Date(next);
     const prev = (current as Record<string, unknown>)[field];
-    const prevS = asAuditString(prev);
-    const nextS = asAuditString(next);
+    const prevS = field === "deceasedAt" ? asAuditTimestamp(prev) : asAuditString(prev);
+    const nextS = field === "deceasedAt" ? asAuditTimestamp(next) : asAuditString(next);
     if (prevS === nextS) continue;
     changes.push({ field, from: prevS, to: nextS });
     set[field] = next ?? null;

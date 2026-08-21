@@ -88,6 +88,8 @@ const registerBody = z.object({
   abhaVerificationStatus: z.enum(["none", "self_declared", "verified"]).optional(),
   legacyUhid: z.string().max(50).optional(),
   guardian: guardianBody.optional(),
+  // D9 (DPDP): opt-IN means the patient acted — default false, never pre-checked (T6).
+  promotionalOptIn: z.boolean().default(false),
 });
 
 const patchBody = registerBody
@@ -108,6 +110,16 @@ const patchBody = registerBody
     district: z.string().max(100).nullable().optional(),
     stateName: z.string().max(100).nullable().optional(),
     pincode: z.string().regex(/^\d{6}$/).nullable().optional(),
+    // Overridden here, NOT inherited via .partial(): registerBody's field carries
+    // `.default(false)`, and zod v4 applies a default to a key the caller omits entirely —
+    // `.partial()` alone would make every PATCH that never mentions consent parse to
+    // `promotionalOptIn: false` and silently revert an existing opt-in on any unrelated edit.
+    // Redeclaring it here (no default) restores "omitted key" as "leave it alone".
+    promotionalOptIn: z.boolean().optional(),
+    // D10 (D-33): settable on the existing edit surface — Phase 1 has no death-recording flow.
+    // Strict ISO-8601 (not z.coerce.date()): the deceased hard stop is CRITICAL machinery and
+    // the wire contract should reject a loosely-parsed date rather than silently accept one.
+    deceasedAt: z.string().datetime().nullable().optional(),
   });
 
 const searchQuery = z.object({ q: z.string(), limit: z.coerce.number().int().positive().max(50).optional() });

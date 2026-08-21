@@ -144,6 +144,50 @@ describe("RegistrationDesk", () => {
     expect(body.guardian).toEqual({ name: "Sunita Kumar", relationship: "father" });
   });
 
+  it("D9: the promotional opt-in checkbox is unchecked by default and posts false when left alone", async () => {
+    stubFetch({
+      "POST /patients": { patient: { id: "p-new" }, guardianId: null },
+      "GET /patients/p-new/qr": {
+        payload: "1.p-new.3.6f2a9c", uhid: "HMS0000009997", name: "Leela Bai", sex: "unknown", dob: null,
+      },
+    });
+    renderWithProviders(<RegistrationDesk />);
+    const user = userEvent.setup();
+    await openNewPatientForm(user);
+
+    const optIn = screen.getByLabelText("Promotional messages: opted in") as HTMLInputElement;
+    expect(optIn.checked).toBe(false);
+
+    await user.type(screen.getByLabelText("Full name"), "Leela Bai");
+    await user.click(screen.getByRole("button", { name: "Register (Alt+S)" }));
+
+    await waitFor(() => expect(fetchCalls().some((c) => c.method === "POST" && c.url === "/patients")).toBe(true));
+    const posted = fetchCalls().find((c) => c.method === "POST" && c.url === "/patients")!;
+    const body = JSON.parse(posted.body) as Record<string, unknown>;
+    expect(body.promotionalOptIn).toBe(false);
+  });
+
+  it("D9: checking the promotional opt-in box posts promotionalOptIn: true", async () => {
+    stubFetch({
+      "POST /patients": { patient: { id: "p-new" }, guardianId: null },
+      "GET /patients/p-new/qr": {
+        payload: "1.p-new.3.6f2a9c", uhid: "HMS0000009996", name: "Meena Rao", sex: "unknown", dob: null,
+      },
+    });
+    renderWithProviders(<RegistrationDesk />);
+    const user = userEvent.setup();
+    await openNewPatientForm(user);
+
+    await user.type(screen.getByLabelText("Full name"), "Meena Rao");
+    await user.click(screen.getByLabelText("Promotional messages: opted in"));
+    await user.click(screen.getByRole("button", { name: "Register (Alt+S)" }));
+
+    await waitFor(() => expect(fetchCalls().some((c) => c.method === "POST" && c.url === "/patients")).toBe(true));
+    const posted = fetchCalls().find((c) => c.method === "POST" && c.url === "/patients")!;
+    const body = JSON.parse(posted.body) as Record<string, unknown>;
+    expect(body.promotionalOptIn).toBe(true);
+  });
+
   it("a valid submit posts /patients and advances to the printed card view", async () => {
     stubFetch({
       "POST /patients": { patient: { id: "p-new" }, guardianId: null },

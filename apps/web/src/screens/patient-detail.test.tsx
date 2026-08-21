@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders, stubFetch } from "../test-utils";
@@ -35,6 +35,8 @@ const PATIENT = {
   qrVersion: 1,
   status: "active",
   mergedIntoPatientId: null,
+  promotionalOptIn: false,
+  deceasedAt: null,
 };
 
 const ALLERGIES = [
@@ -154,6 +156,76 @@ describe("PatientDetail", () => {
     const body = JSON.parse(patched?.body ?? "{}") as Record<string, unknown>;
     expect(Object.keys(body)).toEqual(["phone"]);
     expect(body.phone).toBe("9998887766");
+  });
+
+  it("D9: the promotional opt-in toggle posts an exact single-field PATCH", async () => {
+    stubFetch({
+      "GET /patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /patients/p-1/allergies": { items: [] },
+      "GET /patients/p-1/guardians": { items: [] },
+      "GET /patients/p-1/qr": QR,
+      "PATCH /patients/p-1": { patient: { ...PATIENT, promotionalOptIn: true }, changed: ["promotionalOptIn"] },
+    });
+    renderWithProviders(<PatientDetail />);
+    const user = userEvent.setup();
+
+    const toggle = (await screen.findByLabelText("Promotional messages (opted in)")) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    await user.click(toggle);
+    await user.click(screen.getByRole("button", { name: "Save consent" }));
+
+    await waitFor(() => expect(fetchCalls().some((c) => c.method === "PATCH")).toBe(true));
+    const patched = fetchCalls().find((c) => c.method === "PATCH")!;
+    const body = JSON.parse(patched.body) as Record<string, unknown>;
+    expect(body).toEqual({ promotionalOptIn: true });
+  });
+
+  it("D10/D-33: marking deceased with a date posts an exact single-field PATCH", async () => {
+    stubFetch({
+      "GET /patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /patients/p-1/allergies": { items: [] },
+      "GET /patients/p-1/guardians": { items: [] },
+      "GET /patients/p-1/qr": QR,
+      "PATCH /patients/p-1": {
+        patient: { ...PATIENT, deceasedAt: "2026-08-20T00:00:00.000Z" },
+        changed: ["deceasedAt"],
+      },
+    });
+    renderWithProviders(<PatientDetail />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "Mark deceased" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Date of death"), { target: { value: "2026-08-20" } });
+    await user.click(within(dialog).getByRole("button", { name: "Confirm deceased" }));
+
+    await waitFor(() => expect(fetchCalls().some((c) => c.method === "PATCH")).toBe(true));
+    const patched = fetchCalls().find((c) => c.method === "PATCH")!;
+    const body = JSON.parse(patched.body) as Record<string, unknown>;
+    expect(body).toEqual({ deceasedAt: "2026-08-20T00:00:00.000Z" });
+  });
+
+  it("D10/D-33: the deceased banner shows the date and clearing posts an exact PATCH of null", async () => {
+    const deceasedPatient = { ...PATIENT, deceasedAt: "2026-08-15T00:00:00.000Z" };
+    stubFetch({
+      "GET /patients/p-1": { patient: deceasedPatient, resolvedFrom: null },
+      "GET /patients/p-1/allergies": { items: [] },
+      "GET /patients/p-1/guardians": { items: [] },
+      "GET /patients/p-1/qr": QR,
+      "PATCH /patients/p-1": { patient: PATIENT, changed: ["deceasedAt"] },
+    });
+    renderWithProviders(<PatientDetail />);
+    const user = userEvent.setup();
+
+    expect(await screen.findByText("Marked deceased on 2026-08-15")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mark deceased" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Clear deceased mark" }));
+
+    await waitFor(() => expect(fetchCalls().some((c) => c.method === "PATCH")).toBe(true));
+    const patched = fetchCalls().find((c) => c.method === "PATCH")!;
+    const body = JSON.parse(patched.body) as Record<string, unknown>;
+    expect(body).toEqual({ deceasedAt: null });
   });
 
   it("E-8: a correction posts to entered-in-error with the typed reason, and is blocked without one", async () => {

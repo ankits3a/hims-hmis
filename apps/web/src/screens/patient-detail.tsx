@@ -7,6 +7,7 @@ import { z } from "zod";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { FormKit, TextField, SelectField, CheckboxField } from "../components/form-kit";
+import { SubmitButton } from "../components/submit-button";
 import { PatientPhoto } from "./registration-desk";
 import { QrCard, type QrCardData } from "../components/qr-card";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,8 @@ type PatientRow = {
   qrVersion: number;
   status: string;
   mergedIntoPatientId: string | null;
+  promotionalOptIn: boolean;
+  deceasedAt: string | null;
 };
 
 type AllergyRow = {
@@ -96,6 +99,95 @@ function Header({ patient, resolvedFrom }: { patient: PatientRow; resolvedFrom: 
         </div>
       </div>
     </header>
+  );
+}
+
+// ——— Promotional opt-in (D9, DPDP): revocable consent — a single-field PATCH, exact payload ———
+
+function OptInSection({ patient }: { patient: PatientRow }): React.ReactElement {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const patientId = patient.id;
+  const [optIn, setOptIn] = useState(patient.promotionalOptIn);
+
+  const save = async (idempotencyKey: string): Promise<void> => {
+    await api("PATCH", `/patients/${patientId}`, { promotionalOptIn: optIn }, idempotencyKey);
+    await queryClient.invalidateQueries({ queryKey: ["patient", patientId] });
+  };
+
+  return (
+    <section className="space-y-2">
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          data-field
+          checked={optIn}
+          onChange={(e) => setOptIn(e.target.checked)}
+        />
+        {t("patient.promotionalOptIn")}
+      </label>
+      <SubmitButton size="sm" onClick={save}>{t("patient.saveConsent")}</SubmitButton>
+    </section>
+  );
+}
+
+// ——— Deceased (D10, D-33): a send-time hard stop — mark and clear both PATCH-and-diff (D10) ———
+
+function DeceasedSection({ patient }: { patient: PatientRow }): React.ReactElement {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const patientId = patient.id;
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  const refresh = (): Promise<void> => queryClient.invalidateQueries({ queryKey: ["patient", patientId] });
+
+  const mark = async (idempotencyKey: string): Promise<void> => {
+    await api("PATCH", `/patients/${patientId}`, { deceasedAt: `${date}T00:00:00.000Z` }, idempotencyKey);
+    await refresh();
+    setConfirmOpen(false);
+  };
+
+  const clear = async (idempotencyKey: string): Promise<void> => {
+    await api("PATCH", `/patients/${patientId}`, { deceasedAt: null }, idempotencyKey);
+    await refresh();
+  };
+
+  if (patient.deceasedAt !== null) {
+    return (
+      <section className="space-y-2">
+        <p className="rounded bg-neutral-100 px-3 py-2 text-sm text-neutral-700">
+          {t("patient.deceasedBanner", { date: patient.deceasedAt.slice(0, 10) })}
+        </p>
+        <SubmitButton size="sm" variant="outline" onClick={clear}>{t("patient.clearDeceased")}</SubmitButton>
+      </section>
+    );
+  }
+
+  return (
+    <section className="space-y-2">
+      <Button size="sm" variant="outline" onClick={() => setConfirmOpen(true)}>{t("patient.markDeceased")}</Button>
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{t("patient.markDeceased")}</DialogTitle></DialogHeader>
+          <p>{t("patient.markDeceasedWarning")}</p>
+          <div>
+            <label className="block text-sm font-medium" htmlFor="deceased-date">{t("patient.deceasedDate")}</label>
+            <input
+              id="deceased-date"
+              data-field
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="rounded border px-2 py-1"
+            />
+          </div>
+          <div className="flex justify-end">
+            <SubmitButton onClick={mark}>{t("patient.confirmDeceased")}</SubmitButton>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </section>
   );
 }
 
@@ -621,7 +713,9 @@ export function PatientDetail(): React.ReactElement {
   return (
     <div className="space-y-6 p-6">
       <Header patient={patient} resolvedFrom={resolvedFrom} />
+      <DeceasedSection patient={patient} />
       <DemographicsSection patient={patient} />
+      <OptInSection patient={patient} />
       <AllergiesSection patientId={patient.id} />
       <GuardiansSection patient={patient} />
       <CardSection patient={patient} />

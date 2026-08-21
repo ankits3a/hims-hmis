@@ -123,6 +123,49 @@ describe("registration service", () => {
     expect(await db.select().from(events).where(eq(events.name, "patient.updated"))).toHaveLength(1);
   });
 
+  // Plan 10 T6 · verify-by-execution flag ⑤ — registration persists promotionalOptIn; a PATCH
+  // marking (and clearing) deceased lands in patient.updated.changes.
+  it("persists promotionalOptIn on registration, and PATCH diffs deceasedAt into patient.updated on mark and clear (flag ⑤)", async () => {
+    const { patient } = await withTx(db, (tx) =>
+      registerPatient(tx, clerk, { ...baseInput, promotionalOptIn: true }),
+    );
+    expect(patient.promotionalOptIn).toBe(true);
+    expect(patient.deceasedAt).toBeNull();
+
+    const markedAt = "2026-08-20T10:15:00.000Z";
+    const marked = await withTx(db, (tx) => updatePatient(tx, clerk, patient.id, { deceasedAt: markedAt }));
+    expect(marked.changed).toEqual(["deceasedAt"]);
+    expect(marked.patient.deceasedAt?.toISOString()).toBe(markedAt);
+
+    const afterMark = await db.select().from(events).where(eq(events.name, "patient.updated"));
+    expect(afterMark).toHaveLength(1);
+    const markPayload = afterMark[0]!.payload as { changes: { field: string; from: string | null; to: string | null }[] };
+    expect(markPayload.changes).toEqual([{ field: "deceasedAt", from: null, to: markedAt }]);
+
+    const cleared = await withTx(db, (tx) => updatePatient(tx, clerk, patient.id, { deceasedAt: null }));
+    expect(cleared.changed).toEqual(["deceasedAt"]);
+    expect(cleared.patient.deceasedAt).toBeNull();
+
+    const afterClear = await db.select().from(events).where(eq(events.name, "patient.updated"));
+    expect(afterClear).toHaveLength(2);
+    const clearPayload = afterClear[1]!.payload as { changes: { field: string; from: string | null; to: string | null }[] };
+    expect(clearPayload.changes).toEqual([{ field: "deceasedAt", from: markedAt, to: null }]);
+  });
+
+  it("promotionalOptIn defaults false when omitted at registration, and updatePatient leaves it untouched when the patch key is absent", async () => {
+    const { patient } = await withTx(db, (tx) => registerPatient(tx, clerk, baseInput));
+    expect(patient.promotionalOptIn).toBe(false);
+
+    const { patient: optedIn } = await withTx(db, (tx) =>
+      registerPatient(tx, clerk, { ...baseInput, phone: "9876500099", promotionalOptIn: true }),
+    );
+    const { changed, patient: afterUnrelatedPatch } = await withTx(db, (tx) =>
+      updatePatient(tx, clerk, optedIn.id, { language: "en" }),
+    );
+    expect(changed).toEqual(["language"]);
+    expect(afterUnrelatedPatch.promotionalOptIn).toBe(true); // an unrelated field patch must never revert consent
+  });
+
   it("updatePatient refuses a merged (frozen) row with patient_not_active", async () => {
     const { patient } = await withTx(db, (tx) => registerPatient(tx, clerk, baseInput));
     await db.update(patients).set({ status: "merged", mergedIntoPatientId: "01WINNER00000000000000001" }).where(eq(patients.id, patient.id));

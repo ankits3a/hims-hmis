@@ -91,6 +91,7 @@ const registerSchema = z
     isConfidential: z.boolean(),
     alias: z.string().optional(),
     sensitiveContext: z.boolean(),
+    promotionalOptIn: z.boolean(),
     abhaAddress: z.string().optional(),
     abhaNumber: z.string().optional(),
     legacyUhid: z.string().optional(),
@@ -137,6 +138,7 @@ function NewPatientForm({
     defaultValues: {
       name: "", phone: prefillPhone, sex: "unknown", language: "hi",
       isConfidential: false, sensitiveContext: false, guardianRelationship: "father",
+      promotionalOptIn: false, // opt-IN means the patient acted (D9) — never pre-checked
     },
   });
   const watched = form.watch(["dob", "ageYears"]);
@@ -160,6 +162,7 @@ function NewPatientForm({
       ...(v.pincode !== undefined && v.pincode !== "" ? { pincode: v.pincode } : {}),
       ...(v.isConfidential ? { isConfidential: true, alias: v.alias } : {}),
       ...(v.sensitiveContext ? { sensitiveContext: true } : {}),
+      promotionalOptIn: v.promotionalOptIn, // always posted with registration — the recorded consent answer (D9)
       ...(v.abhaAddress !== undefined && v.abhaAddress !== "" ? { abhaAddress: v.abhaAddress } : {}),
       ...(v.abhaNumber !== undefined && v.abhaNumber !== "" ? { abhaNumber: v.abhaNumber } : {}),
       ...(v.legacyUhid !== undefined && v.legacyUhid !== "" ? { legacyUhid: v.legacyUhid } : {}),
@@ -225,6 +228,7 @@ function NewPatientForm({
         <div className="flex gap-6">
           <CheckboxField name="isConfidential" label={t("register.confidential")} />
           <CheckboxField name="sensitiveContext" label={t("register.sensitive")} />
+          <CheckboxField name="promotionalOptIn" label={t("register.promotionalOptIn")} />
         </div>
         {form.watch("isConfidential") && <TextField name="alias" label={t("register.alias")} />}
         {minor && (
