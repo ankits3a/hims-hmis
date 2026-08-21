@@ -135,6 +135,13 @@ references exact to the line.
    ran (a duration in minutes not seconds, a non-empty `steps` array, no annotation saying the job
    was not started) before treating red as a fact about the code. And when CI genuinely cannot run,
    say the criterion is UNDISCHARGED and reproduce its condition by hand — do not quietly drop it.
+   **The artifact that does all of this: `docs/superpowers/pipelines/ci-watch.sh`.** Run it in the
+   background on the owner's machine for the duration of every pipeline —
+   `bash docs/superpowers/pipelines/ci-watch.sh &` — and it reports each new commit on `origin/main`
+   as GREEN, RED (stop the pipeline) or DID-NOT-RUN, exiting 1 if anything went red. It needs no
+   credential on the build host, which is why it is preferred to putting a token there: `gh` is now
+   installed on the host but deliberately left unauthenticated, and the host takes tens of thousands
+   of SSH probe attempts a week.
 
 **Pre-flight, unchanged and still mandatory** — every probe ships with a negative control that
 must be observed to fail in the same run:

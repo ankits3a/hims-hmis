@@ -264,6 +264,19 @@ Two more things worth keeping. **The §2.39 inbox worked and could not help:** T
 **2.55 — CI IS THE ONE CHECKLIST ITEM NO IN-PIPELINE AGENT CAN RUN, AND UNDER THE WORKFLOW TOOL NOBODY ELSE RUNS IT EITHER. SIX COMMITS SHIPPED RED.** *(Plan 08.5 — §2.33 recurring at 1.5× its original cost, and §2.50's fix aimed at the wrong hole)*
 `gh` is not installed on the build host and the repo is private, so every gate and checker was told — correctly, and by me — to report CI as *"delegated to main session"* and move on. That delegation is sound when the main session sits between waves. **Under the Workflow tool it does not.** I anticipated exactly this and put mechanical-check agents on the four ROUTINE tasks so a ROUTINE wave could fail and the wave-stall break could fire (§2.50). It worked as designed and was irrelevant: **the hole I patched and the hole that swallowed the run were different holes.** The checkers ran every item they could; CI is the only one they cannot, and it is the one that was red.
 `main` went red at T2 and stayed red through T3, T4, T5 and T6 — six commits, always the same test, always the same error — while `pnpm verify` on the build host was green at every one of them. Nobody was wrong; the loop had no eye on that axis for five and a half hours.
+**CLOSED 2026-08-21, and not the way this entry first proposed.** `gh` IS now installed on the build
+host — but deliberately left **unauthenticated**, because `gh` refuses to run without a token even
+for a public repo, and the only way to give it one is to put a GitHub credential on an
+internet-facing box that logs ~71 000 failed auth attempts and 343 distinct probing IPs per log
+rotation. That is a new exposure to close an old hole. Instead the watch runs where an authenticated
+`gh` already exists — the owner's machine — as **`docs/superpowers/pipelines/ci-watch.sh`**, in the
+background for the duration of a pipeline. It reports every new commit on `origin/main` as GREEN, RED
+or DID-NOT-RUN and exits 1 on red. It was validated against this session's own history, which
+happened to contain all three states: T1 green (808 s), T2–T6 red (800–1600 s), and three
+billing-blocked commits correctly identified as *did not run* (4–5 s) rather than red.
+**The lesson that generalises past this fix: when the obvious remedy is "give the untrusted box a
+credential", check whether the check can simply run somewhere that already has one.**
+
 **Two fixes, and the first is the real one.** (a) **Put CI in the pipeline, not in the epilogue** — either install and authenticate `gh` on the build host (§2.33 proposed this two plans ago and it was never done), or have the compiling session poll CI by full SHA between waves from the machine that has it. A pipeline that cannot see CI is a pipeline that cannot stop for CI. (b) Until then, the compiling session must check CI **after every task's commit**, not once at the end — the wave-stall break exists to stop a chain in time, and an epilogue check cannot.
 
 **2.56 — A TEST THAT CALLS A PRODUCTION FACTORY INHERITS ITS ENVIRONMENT REQUIREMENTS, AND THE BUILD HOST'S `.env` HIDES THAT FROM EVERY LOCAL RUN.** *(Plan 08.5, T2 — the specific defect behind §2.55, green on exactly one machine in the world)*

@@ -479,8 +479,22 @@ not the commit's and left for their owner to remove. They are deleted.
 4. **`ts-jest` emits `TS151002` on every core run** — pre-existing noise, one
    `diagnostics.ignoreCodes` entry away from silence.
 
-## Status
+## Status — SHIPPED, 2026-08-21
 
-**Plan 08.5 is code-complete and functionally correct on the build host, with one non-code item
-outstanding: CI has not run since the fix, because the account cannot run it.** The roadmap stays
-short of SHIPPED until a green CI run exists at `b0f00f6` or later.
+**CI IS GREEN at `c5316f9`** — run `32496898177`, `run_started_at 15:27:26Z → updated 15:34:21Z`, a
+real **415-second** run rather than a 3-second block. `c5316f9` contains `b0f00f6`, so the criterion
+("a green run at `b0f00f6` or later") is met and **the CI item is DISCHARGED**.
+
+The block was never a code problem. GitHub Actions billing had lapsed on the account; making the
+repository public restored Actions minutes (public repos get them free on standard runners,
+independently of the spending limit), and the **same commit re-run unchanged went green**. That is
+itself the cleanest possible confirmation of §2.59: the code never changed between `failure` and
+`success`, only whether the job was allowed to start.
+
+**Plan 08.5 is SHIPPED.** Two residuals are booked and neither blocks: `worker.ts`'s half of the
+amendment-6 wire is verified but not regression-guarded, and a newly-wired consumer replays event
+history on its first cycle (a Plan 11 deployment step, recorded on Plan 11's roadmap entry).
+
+**Landed alongside, from this session's own failure:** `docs/superpowers/pipelines/ci-watch.sh` —
+the watcher that would have caught B1 on the day it shipped instead of five and a half hours later.
+It was validated against this session's history, which contained all three CI states.
