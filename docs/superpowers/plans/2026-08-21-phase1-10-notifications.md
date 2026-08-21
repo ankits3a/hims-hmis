@@ -10,6 +10,31 @@
 > READY TO COMPILE.** No spike phase, no forks to resolve. The execute handoff is
 > `reports/PLAN-10-EXECUTE-PROMPT-2026-08-21.md`; a FRESH session compiles and runs it.
 
+> **AMENDMENT 7 — 2026-08-21, by the COMPILING session, before any brief was written
+> (EXECUTE-METHOD §3 sweep items 1–2; §2.46 crossed with §2.54 and §2.47).**
+> **The contradiction:** T4 registers a seventh `Scheduler` job and widens `JobIntervals`. Three
+> shipped artefacts break the instant it does, and NEITHER file that holds them was in T4's Files
+> list — so under §2.25 the generated frozen block would have told T4 the correct action was the
+> forbidden action, exactly as it told 08.5's T4, and T4's own `pnpm verify` could not have been
+> green:
+> · `apps/core/src/kernel/worker/scheduler.test.ts` — in **no** task's Files list, therefore frozen
+>   to all six. It holds `THE_SIX` (:104), `spyOnTheSix` (:74) and — the one nothing but a
+>   typechecker finds — `const CENSUS_INTERVALS: JobIntervals = { …three keys }` (:184), an object
+>   LITERAL that stops compiling the moment the `Pick` widens.
+> · `apps/core/test/worker-runtime.e2e.test.ts` — its own `THE_SIX` (:89) and
+>   `expect(scheduler.jobs()).toEqual(THE_SIX)` (:326). That file was **T5's**, one wave later.
+> **And the plan named the wrong file for the work:** T4 step 3 said *"the census in `jobs.test.ts`
+> grows to seven names"*. `jobs.test.ts` holds no job-name census at all — it tests only
+> `buildSubscriptionBus`. Write-from-memory, §2.46's exact class, in a document whose own §7.1 sweep
+> had already caught one of these.
+> **The resolution — no task added, no design touched, D1–D14 untouched:** T4's Files list gains
+> both files; T4 step 3 names the real censuses; `test/worker-runtime.e2e.test.ts` becomes a
+> deliberate TWO-OWNER file across the SEQUENTIAL waves 3 → 4 (T4 grows the job census, then T5
+> grows the pairs census), carried forward explicitly in both briefs per §3.2; self-review item 7's
+> "none" is corrected in place rather than left standing. T5 step 5 additionally now names the two
+> `registerAllJobs(...)` call sites that installing `notifyManifest` turns into boot errors.
+> The pipeline script's `files` arrays are updated in this same commit (§2.54).
+
 ## Owner rulings reached in the brainstorm (2026-08-21, in conversation) — the plan encodes them
 
 1. **SPLIT (prompt §6.1 option a).** Plan 10 is the **notifications gateway only**. The public read
@@ -444,7 +469,9 @@ apps/core/
   src/kernel/notify/pump.ts                                  T4 create (claim, gauntlet, quiet hours, ladder)
   src/kernel/notify/pump.test.ts                             T4 create
   src/kernel/worker/jobs.ts                                  T4 (JobIntervals + runNotifyPump registration)
-  src/kernel/worker/jobs.test.ts                             T4 (census gains the seventh name)
+  src/kernel/worker/jobs.test.ts                             T4 (the amendment-6 seam tests; see amendment 7)
+  src/kernel/worker/scheduler.test.ts                        T4 (amendment 7 — the L14 censuses + CENSUS_INTERVALS)
+  test/worker-runtime.e2e.test.ts                            T4 (amendment 7 — its own THE_SIX census) AND T5, sequential
   src/kernel/notify/consumer.ts                              T5 create (kernel.notify handler)
   src/kernel/notify/consumer.test.ts                         T5 create
   src/kernel/notify/manifest.ts                              T5 create (subscriptions declaration)
@@ -551,8 +578,16 @@ structurally).
    Stuck-`sending` recovery per D2 (N14). Quiet-hours function per D7 with the IST constants.
 3. `jobs.ts`: `JobIntervals` Pick gains `workerNotifyIntervalMs`; register
    `{ name: "runNotifyPump", every: intervals.workerNotifyIntervalMs, run: async (now) =>
-   { await runNotifyPump(db, { now }); } }`. The census in `jobs.test.ts` grows to seven names —
-   keyed the B3 way (the day-index-against-seeded-heartbeat lesson does not apply to an `every`
+   { await runNotifyPump(db, { now }); } }`. **AMENDMENT 7 — the job-name census does NOT live in
+   `jobs.test.ts`** (that file tests only `buildSubscriptionBus`). It lives in TWO places and both
+   are T4's to grow, or T4's own `pnpm verify` cannot be green:
+   · `src/kernel/worker/scheduler.test.ts` — `THE_SIX` (:104) → seven, `spyOnTheSix` (:74) → a
+     seventh spy on `runNotifyPump` so no real pump body runs inside jest (GC8), and
+     `CENSUS_INTERVALS` (:184), a `JobIntervals` object LITERAL that stops typechecking the moment
+     the Pick widens.
+   · `test/worker-runtime.e2e.test.ts` — its own `THE_SIX` (:89) and
+     `expect(scheduler.jobs()).toEqual(THE_SIX)` (:326).
+   Keyed the B3 way (the day-index-against-seeded-heartbeat lesson does not apply to an `every`
    job, but the census set does).
 4. Tests drive `runNotifyPump` directly with injected `now` and recording/failing fake adapters
    (GC8): the gauntlet order, every N-row this task owns (Book), the ladder, quiet-hours
@@ -580,7 +615,13 @@ structurally).
    Record<string, Handler>`** returning both entries — the one importable place the production
    consumers map exists (closes gate-report booked item 1). `worker.ts:36` becomes
    `registerAllJobs(scheduler, db, registry, workerConsumers(db), cfg)`.
-5. `worker-runtime.e2e.test.ts`: pairs asserted WHOLE against the REAL registry and
+5. `worker-runtime.e2e.test.ts`: **installing `notifyManifest` makes the two shipped
+   `registerAllJobs(...)` call sites in this file (:316 and :363, both passing only
+   `{ [ALERTS_CONSUMER]: alertsConsumer(workerDb) }` against the CONTEXT'S OWN registry) throw the
+   amendment-6 boot error** — five declared `kernel.notify` subscriptions with no handler. Both
+   become `workerConsumers(workerDb)`; that is the same edit N12 demands and shipping half of it is
+   a task failure. T4 has already grown this file's `THE_SIX` census to seven (amendment 7) — read
+   the file as T4 left it, do not restore six. Then: pairs asserted WHOLE against the REAL registry and
    `workerConsumers` —
    `[["kernel.alerts", ["escalation.triggered", "notification.failed"]], ["kernel.notify",
    ["appointment.booked", "appointment.cancelled", "appointment.rescheduled",
@@ -685,7 +726,10 @@ must confirm by building the mutant and watching it die, adjusting the input if 
    D13 · D-33 ✅ D10 · D-34 ✅ D6/N9 · E-22 ✅ booked with its seam, D14 · D-24 spoof defenses —
    provider-boundary scope, arrives with the provider (noted in D11's deferral) · E-1 ✅ split by
    ruling 1.
-7. **Two-owner files:** none. `kernel/config.ts` (T3), `jobs.ts` (T4), all worker/alerts/dispatcher
+7. **Two-owner files: ONE, and this claim was wrong when written — see amendment 7.**
+   `test/worker-runtime.e2e.test.ts` is T4's (its job census) and then T5's (its pairs census), in
+   that order, across SEQUENTIAL waves 3 → 4 with no parallelism, and both briefs name it as a
+   carried-forward file with the rationale (§3.2). `kernel/config.ts` (T3), `jobs.ts` (T4), all other worker/alerts/dispatcher
    files (T5), patient-master files (T6) — each appears in exactly one task's Files list.
 
 ## Pipeline Notes (for /execute compilation — do not compile before owner approval of this plan)
