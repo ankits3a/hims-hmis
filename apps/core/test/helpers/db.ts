@@ -102,4 +102,29 @@ export async function truncateAll(db: Db): Promise<void> {
     sql`truncate table tariff_items, regulated_prices, adjustment_rules, gst_config, gst_settings,
         tariff_versions, services`,
   );
+  // ───────────────────────── Plan 11c — the six ops tables, three statements ─────────────────────
+  //
+  // NONE of them joins a statement above, and that is a property of the SCHEMA rather than an
+  // accident: every actor column in `schema/ops.ts` is plain text (`events.actor_id` /
+  // `retention_legal_holds.created_by` precedent), so no FK anywhere in this group POINTS AT
+  // `users`, `patients` or anything else already truncated. By the two rules transcribed above
+  // (§3.35 constraint EXISTENCE, §3.12 the group's OWN statement must carry the name), a table
+  // with no inbound FK from an existing group has no claim on that group's statement.
+  //
+  // The ops group: `operating_mode_changes` carries `report_id` as PLAIN TEXT rather than an FK
+  // into `config_validation_reports`, so these two need not share a statement — they do anyway,
+  // because they are one concern and `restart identity` on both keeps `seq` comparable between
+  // tests that assert ordering.
+  await db.execute(sql`truncate table operating_mode_changes, config_validation_reports restart identity`);
+  // No FK in either direction: its own statement.
+  await db.execute(sql`truncate table interfaces restart identity`);
+  // THE KIT GROUP IS ONE STATEMENT AND THE FK RIDES IT (§3.12): `downtime_kit_ranges.kit_id`
+  // references `downtime_kits.id`, so truncating `downtime_kits` in a statement that does not
+  // also name `downtime_kit_ranges` is refused by Postgres outright. `downtime_form_counters`
+  // has no FK at all and joins for cohesion — a kit test that reset the ranges but not the
+  // counters would inherit the previous test's serials and its "contiguous, no gap" assertion
+  // would be measuring the wrong thing.
+  await db.execute(
+    sql`truncate table downtime_kit_ranges, downtime_kits, downtime_form_counters restart identity`,
+  );
 }

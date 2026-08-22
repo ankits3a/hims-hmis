@@ -12,3 +12,4 @@ export * from "./worker";
 export * from "./alerts";
 export * from "./notifications";
 export * from "./retention";
+export * from "./ops";

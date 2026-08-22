@@ -314,7 +314,9 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       // Not "at least", not "non-empty" — the six-commit failure this assertion exists for was
       // a bus that WAS non-empty in every test that looked at one.
       expect(pairs).toEqual([
-        ["kernel.alerts", ["escalation.triggered", "notification.failed"]],
+        // Plan 11c T1: `ops.mode_changed` is the alerts consumer's THIRD subscription (D4). The
+        // array is `.sort()`ed above, so it lands after `notification.failed`.
+        ["kernel.alerts", ["escalation.triggered", "notification.failed", "ops.mode_changed"]],
         [
           "kernel.notify",
           [

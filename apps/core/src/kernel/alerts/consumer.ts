@@ -4,6 +4,7 @@ import { withTx } from "../db/client";
 import { alerts } from "../db/schema";
 import { appendEvent } from "../events/append";
 import { notificationFailed } from "../notify/events";
+import { modeChanged } from "../ops/events";
 import { escalationTriggered } from "../workflow/events";
 import { usersHoldingRole } from "../workflow/roles";
 import { alertRaised } from "./events";
@@ -32,11 +33,26 @@ const ALERT_REF_TYPE = "workflow_instance";
 const ALERT_KIND_MANUAL_NOTIFY = "manual_notify";
 /** D6: an ID, not an identity. The desk reaches the patient through permission-checked routes. */
 const MANUAL_NOTIFY_REF_TYPE = "patient";
+const ALERT_KIND_OPERATING_MODE = "operating_mode";
+/**
+ * Plan 11c D4. The mode service has exactly ONE hospital-wide subject and no per-subject
+ * instances (D2), so the "id" the alert refers to is the mode word itself and the full history is
+ * one screen away at `/ops/mode`. `sourceEventId` already carries the exact `ops.mode_changed`
+ * row, so nothing is lost by not duplicating it here.
+ */
+const OPERATING_MODE_REF_TYPE = "operating_mode";
+/** The two modes whose entry or exit is worth waking somebody for (D4). */
+const ALERTING_MODES: ReadonlySet<string> = new Set(["downtime", "degraded"]);
 const ALERTS_ACTOR: Actor = { type: "system", id: "kernel-alerts" };
 
 /**
- * The alerts consumer (D6-08.5 + Plan 10 D6): TWO subscriptions, one output — a row in front of
- * a human being.
+ * The alerts consumer (D6-08.5 + Plan 10 D6 + Plan 11c D4): THREE subscriptions, one output — a
+ * row in front of a human being.
+ *
+ * ROUTING IS BY NAME AND THE DEFAULT BRANCH IS ESCALATION. Every subscription this consumer gains
+ * therefore needs its OWN explicit `if` ABOVE the fallthrough, or its events are handed to
+ * `escalationTriggered.payloadSchema.parse` and fail the delivery. That is why the manifest and
+ * this function are one edit, and it is why the fallthrough is left exactly as it is.
  *
  * NO ALERT COLUMN EVER CARRIES PATIENT IDENTITY (Global Constraint 6, spec §14's public-surface
  * rule). Titles and bodies are built EXCLUSIVELY from structural payload fields — defKey, state,
@@ -57,6 +73,10 @@ export function alertsConsumer(db: Db): Handler {
   return async (e: DispatchedEvent): Promise<void> => {
     if (e.name === notificationFailed.name) {
       await handleNotificationFailed(db, e);
+      return;
+    }
+    if (e.name === modeChanged.name) {
+      await handleModeChanged(db, e);
       return;
     }
     await handleEscalationTriggered(db, e);
@@ -188,5 +208,45 @@ async function handleNotificationFailed(db: Db, e: DispatchedEvent): Promise<voi
     body: `The "${payload.templateKey}" message could not be delivered (${payload.reason}). Please contact the patient from the record linked below.`,
     refType: MANUAL_NOTIFY_REF_TYPE,
     refId: e.patientId,
+  });
+}
+
+/**
+ * PLAN 11c D4 — THE OWNER LEARNS THAT THE HOSPITAL WENT DARK, FROM THE MACHINERY RATHER THAN FROM
+ * A PHONE CALL.
+ *
+ * Only transitions that TOUCH `downtime` or `degraded` raise — entering one, or leaving one for
+ * anything else. `ramp → normal` is a milestone, not an incident, and alerting on it would train
+ * the one person this surface exists for to ignore it (the control leg of Book V6).
+ *
+ * Both ends are checked, not just the destination: a hospital coming BACK from downtime is
+ * exactly as much news as one going into it, and it is the message that tells the owner they can
+ * stop worrying.
+ *
+ * RECIPIENTS ARE EVERY `OWNER_ROLE` HOLDER, AND THE DECLARING DUTY MANAGER IS NOT AMONG THEM
+ * UNLESS THEY HOLD THAT ROLE TOO — map 1: the owner is alerted, never required to act, and
+ * nobody is re-notified about their own act. `raiseAlerts` is reused VERBATIM, so the
+ * `(source_event_id, user_id)` idempotency and the won-insert-only `alert.raised` append come
+ * free and a redelivery adds nothing.
+ *
+ * NO PATIENT IDENTITY IS EVEN AVAILABLE HERE (GC6): `ops.mode_changed` carries mode words and a
+ * free-text note, its envelope has no `patientId`, and the title and body below are built from
+ * the payload's structural fields plus the note the declarer wrote.
+ */
+async function handleModeChanged(db: Db, e: DispatchedEvent): Promise<void> {
+  const payload = modeChanged.payloadSchema.parse(e.payload);
+  if (!ALERTING_MODES.has(payload.from) && !ALERTING_MODES.has(payload.to)) return;
+
+  const recipients = await withTx(db, (tx) => usersHoldingRole(tx, OWNER_ROLE));
+
+  await raiseAlerts(db, e, recipients, {
+    kind: ALERT_KIND_OPERATING_MODE,
+    title: `Operating mode: ${payload.from} → ${payload.to}`,
+    body:
+      payload.note === null
+        ? `The hospital moved from ${payload.from} to ${payload.to}. No note was recorded.`
+        : payload.note,
+    refType: OPERATING_MODE_REF_TYPE,
+    refId: payload.to,
   });
 }

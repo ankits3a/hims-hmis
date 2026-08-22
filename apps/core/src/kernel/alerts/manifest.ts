@@ -25,5 +25,15 @@ export const alertsManifest: ModuleManifest = {
     // duplicating it. Declaring it without the branch in `consumer.ts` would deliver every
     // notification failure into the escalation parser — the two are one edit.
     { event: "notification.failed", consumer: "kernel.alerts" },
+    // PLAN 11c D4 — A DOWNTIME DECLARATION MUST REACH A HUMAN WHO IS NOT IN THE ROOM. The duty
+    // manager who declares it already knows; the owner is alerted and is never required to act
+    // (map 1). Transitions INTO OR OUT OF `downtime`/`degraded` raise for every OWNER_ROLE
+    // holder, and every other transition raises nothing at all.
+    //
+    // THE SAME ONE-EDIT RULE APPLIES HERE AS ABOVE, and it bites harder: `alertsConsumer`'s
+    // default branch is the ESCALATION parser, so declaring this subscription without its own
+    // explicit branch in `consumer.ts` would feed every mode change into
+    // `escalationTriggered.payloadSchema.parse` and fail the delivery instead of raising an alert.
+    { event: "ops.mode_changed", consumer: "kernel.alerts" },
   ],
 };

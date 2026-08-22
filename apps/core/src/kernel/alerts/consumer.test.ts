@@ -2,7 +2,9 @@ import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../db/client";
-import { alerts, events, notifications, patients, workflowDefinitions, workflowInstances } from "../db/schema";
+import {
+  alerts, configValidationReports, events, notifications, patients, workflowDefinitions, workflowInstances,
+} from "../db/schema";
 import { appendEvent } from "../events/append";
 import { createUser } from "../auth/identity";
 import { assignRole, createRole } from "../auth/permissions";
@@ -11,11 +13,13 @@ import { buildSubscriptionBus } from "../worker/jobs";
 import { escalationTriggered } from "../workflow/events";
 import { enqueueNotification } from "../notify/enqueue";
 import { runNotifyPump } from "../notify/pump";
+import { changeOperatingMode } from "../ops/mode";
 import { ALERTS_CONSUMER, DUTY_MANAGER_ROLE, OWNER_ROLE, alertsConsumer } from "./consumer";
 import { alertsManifest } from "./manifest";
 import type { Db } from "../db/client";
 import type { DispatchedEvent, Handler } from "../events/subscriptions";
 import type { ChannelAdapter } from "../notify/adapters";
+import type { OperatingMode } from "../ops/mode";
 
 // §3.14: an absence assertion whose fixture could never have produced the thing proves nothing.
 // The patient is real, she has a name and a UHID, the instance is bound to her, and the
@@ -178,6 +182,9 @@ describe("kernel alerts consumer", () => {
       // Plan 10 D6: the desk flag is a SECOND subscription on this SAME consumer, not a second
       // consumer — 08.5's machinery is reused rather than duplicated.
       { event: "notification.failed", consumer: ALERTS_CONSUMER },
+      // Plan 11c D4: the THIRD subscription on the SAME consumer. A mode change that touches
+      // downtime or degraded becomes a row in front of every owner.
+      { event: "ops.mode_changed", consumer: ALERTS_CONSUMER },
     ]);
 
     const registry = new ModuleRegistry();
@@ -188,10 +195,16 @@ describe("kernel alerts consumer", () => {
     expect(registry.subscriptionsFor("notification.failed")).toEqual([
       { consumer: ALERTS_CONSUMER, moduleKey: "alerts" },
     ]);
+    expect(registry.subscriptionsFor("ops.mode_changed")).toEqual([
+      { consumer: ALERTS_CONSUMER, moduleKey: "alerts" },
+    ]);
 
     const bus = buildSubscriptionBus(registry, { [ALERTS_CONSUMER]: handler });
     expect(bus.consumers().map((c) => ({ consumer: c.consumer, events: c.events }))).toEqual([
-      { consumer: ALERTS_CONSUMER, events: ["escalation.triggered", "notification.failed"] },
+      {
+        consumer: ALERTS_CONSUMER,
+        events: ["escalation.triggered", "notification.failed", "ops.mode_changed"],
+      },
     ]);
 
     // The boot error, not a silent skip: a module that declares a subscription nobody serves
@@ -534,6 +547,155 @@ describe("kernel alerts consumer", () => {
       expect(rows.filter((r) => r.userId === dutyOne).map((r) => r.sourceEventId).sort()).toEqual(
         [escalation.eventId, failure.eventId].sort(),
       );
+    });
+  });
+
+  // ————————————— Plan 11c D4: the owner learns the hospital went dark (V6) —————————————
+
+  /**
+   * V6. The third subscription, driven the same way the other two are: a REAL `ops.mode_changed`
+   * row appended by the shipped `changeOperatingMode` and read back exactly as the dispatcher
+   * projects it. Nothing here types out an event payload by hand — a branch that parses a
+   * hand-written payload proves only that zod works.
+   */
+  describe("the operating-mode alert (11c D4 / V6)", () => {
+    const DECLARED_AT = new Date("2026-08-23T09:00:00.000Z");
+    const DOWNTIME_NOTE = "UPS failure in the server room — paper kit issued to both desks";
+
+    /** A fresh, green validation report, so the commissioning exit is legal (D3). */
+    const seedFreshOkReport = async (): Promise<void> => {
+      await db.insert(configValidationReports).values({
+        id: newId(),
+        ok: true,
+        scopes: { tariff: { ok: true }, billing: { ok: true } },
+        at: new Date(DECLARED_AT.getTime() - 60 * 60 * 1000),
+      });
+    };
+
+    /** Runs a real transition and hands back its event as the dispatcher would. */
+    const declare = async (to: OperatingMode, note: string | null): Promise<DispatchedEvent> => {
+      const { eventId } = await withTx(db, (tx) =>
+        changeOperatingMode(tx, { type: "user", id: "duty-manager-1" }, { to, note }, DECLARED_AT),
+      );
+      return readDispatched(eventId);
+    };
+
+    const seedOwners = async (): Promise<{ ownerOne: string; ownerTwo: string; bystander: string }> => {
+      await createRole(db, OWNER_ROLE, "Owner");
+      const ownerOne = await mkUser("v6owner1");
+      const ownerTwo = await mkUser("v6owner2");
+      const bystander = await mkUser("v6bystander");
+      await assignRole(db, { userId: ownerOne, roleKey: OWNER_ROLE, scopeType: "hospital" });
+      await assignRole(db, { userId: ownerTwo, roleKey: OWNER_ROLE, scopeType: "hospital" });
+      return { ownerOne, ownerTwo, bystander };
+    };
+
+    it("V6: entering downtime alerts EVERY owner-role holder, and a redelivery adds nothing", async () => {
+      const { ownerOne, ownerTwo, bystander } = await seedOwners();
+      await seedFreshOkReport();
+      await declare("normal", null); // commissioning → normal, through the real gate
+      const event = await declare("downtime", DOWNTIME_NOTE);
+
+      // The fixture proof (§3.14): this really is a downtime declaration with a note on it. If
+      // this leg stops holding, everything below stops meaning anything.
+      expect(event.name).toBe("ops.mode_changed");
+      expect(event.payload).toMatchObject({ from: "normal", to: "downtime", note: DOWNTIME_NOTE });
+
+      // At-least-once is the dispatcher's contract (D4). Capture the second outcome rather than
+      // `await expect(...).rejects`, which hangs forever on a promise a mutant makes resolve.
+      const outcomes: string[] = [];
+      await handler(event);
+      outcomes.push("first: resolved");
+      try {
+        await handler(event);
+        outcomes.push("second: resolved");
+      } catch (err) {
+        outcomes.push(`second: threw ${err instanceof Error ? err.message : String(err)}`);
+      }
+      expect(outcomes).toEqual(["first: resolved", "second: resolved"]);
+
+      const rows = await db.select().from(alerts);
+      expect(rows).toHaveLength(2);
+      expect(rows.map((r) => r.userId).sort()).toEqual([ownerOne, ownerTwo].sort());
+      expect(rows.map((r) => r.userId)).not.toContain(bystander);
+
+      const row = rows[0]!;
+      expect(row.kind).toBe("operating_mode");
+      // Whole-string equality: the mode words and nothing else.
+      expect(row.title).toBe("Operating mode: normal → downtime");
+      expect(row.body).toBe(DOWNTIME_NOTE);
+      expect(row.refType).toBe("operating_mode");
+      expect(row.refId).toBe("downtime");
+      expect(row.sourceEventId).toBe(event.eventId);
+
+      // The won-insert-only rule: the SECOND delivery appended nothing.
+      const raised = await db.select({ id: events.eventId }).from(events).where(eq(events.name, "alert.raised"));
+      expect(raised).toHaveLength(2);
+    });
+
+    it("V6: LEAVING downtime alerts too — coming back is as much news as going dark", async () => {
+      const { ownerOne, ownerTwo } = await seedOwners();
+      await seedFreshOkReport();
+      await declare("normal", null);
+      await declare("downtime", DOWNTIME_NOTE);
+      const recovery = await declare("normal", null);
+
+      await handler(recovery);
+
+      const rows = await db.select({ userId: alerts.userId, title: alerts.title, body: alerts.body }).from(alerts);
+      expect(rows).toHaveLength(2);
+      expect(rows.map((r) => r.userId).sort()).toEqual([ownerOne, ownerTwo].sort());
+      expect(rows[0]!.title).toBe("Operating mode: downtime → normal");
+      // A recovery carries no mandatory note, and the body says so rather than being blank.
+      expect(rows[0]!.body).toBe("The hospital moved from downtime to normal. No note was recorded.");
+    });
+
+    it("V6 CONTROL: ramp → normal raises nothing — a milestone is not an incident", async () => {
+      await seedOwners();
+      await seedFreshOkReport();
+      await declare("ramp", null); // commissioning → ramp, through the real gate
+      const event = await declare("normal", null);
+
+      // The fixture proof: this transition really did happen and really was delivered.
+      expect(event.payload).toMatchObject({ from: "ramp", to: "normal" });
+      await handler(event);
+
+      expect(await db.select().from(alerts)).toEqual([]);
+      expect(await db.select().from(events).where(eq(events.name, "alert.raised"))).toEqual([]);
+    });
+
+    it("carries mode words and a note and NEVER patient identity (GC6)", async () => {
+      await seedOwners();
+      await seedFreshOkReport();
+      await declare("normal", null);
+      const event = await declare("degraded", DOWNTIME_NOTE);
+
+      // The envelope itself never carried her: a mode change is a hospital-wide fact, and Asha
+      // Devi is a real row one query away throughout this suite (see beforeEach).
+      expect(event.patientId).toBeNull();
+      await handler(event);
+
+      const rows = await db.select().from(alerts);
+      expect(rows).toHaveLength(2);
+      const everyColumn = rows
+        .flatMap((r) => Object.values(r))
+        .map((v) => (v instanceof Date ? v.toISOString() : String(v)))
+        .join(" | ");
+      expect(everyColumn).not.toMatch(/Asha/i);
+      expect(everyColumn).not.toMatch(/Devi/i);
+      expect(everyColumn).not.toContain(ASHA_UHID);
+      expect(everyColumn).not.toContain(ASHA_PHONE);
+      expect(everyColumn).not.toContain(patientId);
+
+      const raised = await db
+        .select({ payload: events.payload, patientId: events.patientId })
+        .from(events)
+        .where(eq(events.name, "alert.raised"));
+      expect(raised).toHaveLength(2);
+      expect(raised.map((r) => r.patientId)).toEqual([null, null]);
+      const raisedJson = JSON.stringify(raised.map((r) => r.payload));
+      expect(raisedJson).not.toMatch(/Asha|Devi/i);
+      expect(raisedJson).not.toContain(ASHA_UHID);
     });
   });
 });
