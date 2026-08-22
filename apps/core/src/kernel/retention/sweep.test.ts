@@ -494,6 +494,188 @@ describe("retentionSweep", () => {
   });
 
   // ---------------------------------------------------------------------------------------------
+  // §7.2 — THE HOLD REACHES THE SIDE TABLES. THIS BLOCK IS THE COMPOSITION, AND THE COMPOSITION
+  // IS THE POINT.
+  //
+  // V5's fixture carries a hold and NO side-table rows. V12's carries side-table rows and NO
+  // hold. Both were correct, both passed, and the defect lived in the gap between them: the sweep
+  // saved the held month's `events` partition, evented `retention.drop_blocked`, and in the SAME
+  // RUN deleted that month's idempotency, delivery and dead-letter rows. Two disjoint fixture
+  // worlds, so no mutant either of them could build ever reached the composition (§2.57) — which
+  // is why every fixture below carries BOTH conditions at once, with the sweep ENABLED.
+  //
+  // THE UN-HELD MONTH OLDER THAN THE HELD ONE IS LOAD-BEARING IN THE OTHER DIRECTION (§2.49).
+  // Without it, "the held rows survived" would pass just as well under a sweep that had stopped
+  // pruning side tables altogether, and the assertion would be measuring an outage rather than a
+  // hold. Its rows must still go, and the released-hold case below is the same discipline again:
+  // a clamp that always clamps is not a hold check.
+  // ---------------------------------------------------------------------------------------------
+  describe("a legal hold governs the companion sweep too (gate report §7.2)", () => {
+    /** 2009-12 — OLDER than the held month, held by nothing, and no partition of its own. */
+    const BEFORE_HELD = new Date("2009-12-15T06:00:00.000Z");
+
+    beforeEach(async () => {
+      await db.insert(events).values([
+        // The hold's anchor: one event of the held patient, inside ANCIENT (2010-01).
+        eventRow("01HRETENTIONS72HELDEVENT01", IN_ANCIENT, HELD_PATIENT),
+        // ANCIENT_2 (2010-02) is nobody's held month, so it is still dropped — that is what keeps
+        // an "enabled" run from being indistinguishable from an inert one.
+        eventRow("01HRETENTIONS72FREEEVENT01", IN_ANCIENT_2, FREE_PATIENT),
+      ]);
+      await db.insert(eventIdempotency).values([
+        {
+          idempotencyKey: "retention:s72:held", eventId: "01HRETENTIONS72IDEMHELD001",
+          seq: 1, recordedAt: IN_ANCIENT,
+        },
+        {
+          idempotencyKey: "retention:s72:older", eventId: "01HRETENTIONS72IDEMOLDER01",
+          seq: 2, recordedAt: BEFORE_HELD,
+        },
+      ]);
+      await db.insert(eventDeliveries).values([
+        { consumer: "s72.consumer", seq: 1, status: "done", updatedAt: IN_ANCIENT },
+        { consumer: "s72.consumer", seq: 2, status: "parked", updatedAt: IN_ANCIENT },
+        { consumer: "s72.consumer", seq: 3, status: "done", updatedAt: BEFORE_HELD },
+      ]);
+      await db.insert(eventDeadLetters).values([
+        {
+          consumer: "s72.consumer", seq: 4, eventId: "01HRETENTIONS72DEADHELD01",
+          name: "visit.opened", error: "boom", attempts: 5, parkedAt: IN_ANCIENT,
+        },
+        {
+          consumer: "s72.consumer", seq: 5, eventId: "01HRETENTIONS72DEADOLDER1",
+          name: "visit.opened", error: "boom", attempts: 5, parkedAt: BEFORE_HELD,
+        },
+      ]);
+      // D7's table, present in every case here so each one can also state what a hold does NOT
+      // do: the outbox prune is a different window on a different table and is untouched.
+      await db.insert(notifications).values([
+        notificationRow("01HRETENTIONS72NOTIFYOLD01", "sent", daysBefore(400)),
+        notificationRow("01HRETENTIONS72NOTIFYNEW01", "sent", daysBefore(2)),
+      ]);
+    });
+
+    it("a PATIENT hold keeps the held month's idempotency, delivery and dead-letter rows, not just its events", async () => {
+      await db.insert(retentionLegalHolds).values({
+        id: "01HRETENTIONS72HOLDPATIENT", patientId: HELD_PATIENT,
+        reason: "Sharma v. hospital — preserve this patient's record", createdBy: "u1",
+      });
+
+      const result = await retentionSweep(db, { now: NOW, enabled: true, eventsMonths: 120 });
+
+      // The partition half is UNCHANGED: the held month survives, the un-held one goes.
+      expect(result.blocked).toEqual([ANCIENT]);
+      expect(result.dropped).toEqual([ANCIENT_2]);
+      expect(await partitions()).toContain(ANCIENT);
+
+      // ...and here is the half that was missing. Every side-table row IN the held month lives.
+      expect(
+        (await db.select().from(eventIdempotency).orderBy(eventIdempotency.idempotencyKey))
+          .map((r) => r.idempotencyKey),
+      ).toEqual(["retention:s72:held"]);
+      expect(
+        (await db.select().from(eventDeliveries).orderBy(eventDeliveries.seq))
+          .map((r) => ({ seq: r.seq, status: r.status })),
+      ).toEqual([{ seq: 1, status: "done" }, { seq: 2, status: "parked" }]);
+      expect(
+        (await db.select().from(eventDeadLetters).orderBy(eventDeadLetters.seq)).map((r) => r.seq),
+      ).toEqual([4]);
+
+      // The month BEFORE the held one is protected by nothing and still goes — one row from each
+      // table. The hold moved the cutoff; it did not switch the companion sweep off.
+      expect(result.idempotencyDeleted).toBe(1);
+      expect(result.deliveriesDeleted).toBe(1);
+      expect(result.deadLettersDeleted).toBe(1);
+
+      // D7 is not patient-event-scoped and a hold does not reach it (the note above step 3).
+      expect(result.notificationsDeleted).toBe(1);
+      expect(await notificationIds()).toEqual(["01HRETENTIONS72NOTIFYNEW01"]);
+    });
+
+    // The clamped instant is EVENTED, so an auditor reading the stream can see which run was
+    // shortened by a hold instead of inferring it from a count that happens to be low.
+    it("events the companion counts against the CLAMPED cutoff, not the window's", async () => {
+      await db.insert(retentionLegalHolds).values({
+        id: "01HRETENTIONS72HOLDCUTOFF0", patientId: HELD_PATIENT,
+        reason: "Sharma v. hospital — preserve this patient's record", createdBy: "u1",
+      });
+
+      await retentionSweep(db, { now: NOW, enabled: true, eventsMonths: 120 });
+
+      const appended = await retentionEventsNamed("retention.side_tables_pruned");
+      expect(appended).toHaveLength(1);
+      expect(appended[0]!.payload).toEqual({
+        eventIdempotency: 1,
+        eventDeliveries: 1,
+        eventDeadLetters: 1,
+        retainedMonths: 120,
+        // NOT 2016-08-01, which is where the 120-month window alone would have put it: the first
+        // of the HELD month, because the month is the retention unit.
+        cutoff: new Date("2010-01-01T00:00:00+05:30").toISOString(),
+      });
+    });
+
+    it("an ACTIVE GLOBAL hold makes the companion sweep a no-op — 'preserve everything' includes the trail", async () => {
+      await db.insert(retentionLegalHolds).values({
+        id: "01HRETENTIONS72HOLDGLOBAL0", patientId: null,
+        reason: "commission of inquiry — preserve everything from this period", createdBy: "u1",
+      });
+
+      const result = await retentionSweep(db, {
+        now: NOW, enabled: true, eventsMonths: 120, notifyRetainDays: 180,
+      });
+
+      expect(result.dropped).toEqual([]);
+      expect(result.blocked).toEqual([ANCIENT, ANCIENT_2]);
+      expect(result.idempotencyDeleted).toBe(0);
+      expect(result.deliveriesDeleted).toBe(0);
+      expect(result.deadLettersDeleted).toBe(0);
+      // Including the 2009-12 rows, which NO partition protects — a global hold is not "every
+      // month that happens to have a partition the loop looked at", it is every month.
+      expect(await db.select().from(eventIdempotency)).toHaveLength(2);
+      expect(await db.select().from(eventDeliveries)).toHaveLength(3);
+      expect(await db.select().from(eventDeadLetters)).toHaveLength(2);
+      expect(await retentionEventsNamed("retention.side_tables_pruned")).toEqual([]);
+
+      // AND THE RUN WAS LIVE, not inert: the outbox prune still ran. D7 is deliberately outside
+      // the hold — a different window on a different table. If counsel ever rules that a global
+      // hold must suspend the outbox too, THIS is the assertion that has to change, and that is
+      // the point of asserting it.
+      expect(result.notificationsDeleted).toBe(1);
+      expect(await notificationIds()).toEqual(["01HRETENTIONS72NOTIFYNEW01"]);
+    });
+
+    /**
+     * THE OTHER HALF, and without it a clamp that always clamps would pass every test above. A
+     * hold is RELEASED, never deleted, so `released_at` is the only thing separating the two
+     * states — and both legs are released here, so neither can be the one silently doing nothing.
+     */
+    it("a RELEASED hold does not clamp: the whole window's trail goes, held month included", async () => {
+      await db.insert(retentionLegalHolds).values([
+        {
+          id: "01HRETENTIONS72RELPATIENT", patientId: HELD_PATIENT, reason: "matter closed",
+          releasedAt: new Date("2026-01-01T00:00:00.000Z"), createdBy: "u1",
+        },
+        {
+          id: "01HRETENTIONS72RELGLOBAL0", patientId: null, reason: "inquiry closed",
+          releasedAt: new Date("2026-02-01T00:00:00.000Z"), createdBy: "u1",
+        },
+      ]);
+
+      const result = await retentionSweep(db, { now: NOW, enabled: true, eventsMonths: 120 });
+
+      expect(result.blocked).toEqual([]);
+      expect(result.dropped).toEqual([ANCIENT, ANCIENT_2]);
+      expect(result.idempotencyDeleted).toBe(2);
+      expect(result.deliveriesDeleted).toBe(3);
+      expect(result.deadLettersDeleted).toBe(2);
+      expect(await db.select().from(eventIdempotency)).toEqual([]);
+      expect(await db.select().from(eventDeliveries)).toEqual([]);
+      expect(await db.select().from(eventDeadLetters)).toEqual([]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------------------------
   // GLOBAL CONSTRAINT 14 / BOOK V9 — THE CONFIG REACHES THE SWEEP THROUGH THE PRODUCTION
   // REGISTRATION, and this is the only block in the file that goes through `registerAllJobs`.
   //

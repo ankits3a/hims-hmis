@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import {
   eventDeadLetters,
@@ -23,6 +23,14 @@ import { dropBlocked, notificationsPruned, partitionDropped, sideTablesPruned } 
 // the key gets the safe answer rather than the configured one. Flipping either default, or
 // weakening the hold check, is on the plan's HALT list: it is the owner's decision with a value
 // counsel has signed, not a judgement any task makes.
+//
+// A LEGAL HOLD GOVERNS EVERY LEG THAT TOUCHES A PATIENT'S EVENT RECORD, not just the partition
+// drop. It did not, once (gate report §7.2): the hold saved the month's `events` and the same run
+// deleted that month's idempotency, delivery and dead-letter rows, so the record survived and the
+// account of what was done with it did not. `activeGlobalHold` and `companionSweepCutoff` are the
+// two halves of the repair, and they read the SAME rows `blockingHold` reads for the same reason.
+// The `notifications` prune (step 3) is deliberately NOT governed by holds — it is a different
+// window on a different table and is not patient-event-scoped; see the note above step 3.
 //
 // EVENTS GO BY PARTITION, NOTIFICATIONS BY ROW, and that asymmetry is the whole point of D5's
 // partitioning: dropping a month of `events` is one DDL statement against the retention unit,
@@ -138,6 +146,25 @@ function partitionMonthIndex(name: string): number | null {
 type Blocker = { reason: "legal_hold_global" | "legal_hold_patient"; holdId: string | null };
 
 /**
+ * THE ACTIVE GLOBAL HOLD, if any — ONE query with TWO consumers: the partition loop (through
+ * `blockingHold`) and the companion sweep (through `companionSweepCutoff`).
+ *
+ * It is a named function rather than the same four-line `where` written twice on purpose. Two
+ * copies of this predicate is EXACTLY how the events partitions came to be protected while the
+ * side tables were not (gate report §7.2): the hold rule lived at one call site, the second leg
+ * of the sweep never asked, and the two could not be seen to disagree because there was nothing
+ * to compare. One function cannot drift from itself.
+ */
+async function activeGlobalHold(db: Db): Promise<string | null> {
+  const [hold] = await db
+    .select({ id: retentionLegalHolds.id })
+    .from(retentionLegalHolds)
+    .where(and(isNull(retentionLegalHolds.releasedAt), isNull(retentionLegalHolds.patientId)))
+    .limit(1);
+  return hold?.id ?? null;
+}
+
+/**
  * A HOLD IS A ROW, NOT A CONFIG FLAG (D6), and this is the query that makes it structural. Two
  * shapes, both read from `retention_legal_holds` with `released_at is null`:
  *   · a GLOBAL hold (`patient_id` null) holds every month for everyone — litigation's actual
@@ -148,12 +175,8 @@ type Blocker = { reason: "legal_hold_global" | "legal_hold_patient"; holdId: str
  * computed inside the statement does not).
  */
 async function blockingHold(db: Db, from: Date, to: Date): Promise<Blocker | null> {
-  const [global] = await db
-    .select({ id: retentionLegalHolds.id })
-    .from(retentionLegalHolds)
-    .where(and(isNull(retentionLegalHolds.releasedAt), isNull(retentionLegalHolds.patientId)))
-    .limit(1);
-  if (global) return { reason: "legal_hold_global", holdId: global.id };
+  const globalHoldId = await activeGlobalHold(db);
+  if (globalHoldId !== null) return { reason: "legal_hold_global", holdId: globalHoldId };
 
   const [patient] = await db
     .select({ id: retentionLegalHolds.id })
@@ -171,6 +194,60 @@ async function blockingHold(db: Db, from: Date, to: Date): Promise<Blocker | nul
   if (patient) return { reason: "legal_hold_patient", holdId: patient.id };
 
   return null;
+}
+
+/**
+ * THE HOLD FLOOR FOR THE COMPANION SWEEP (gate report §7.2). A hold used to save the events
+ * partition while the SAME RUN deleted that month's delivery, idempotency and dead-letter trail —
+ * the partition survived, `retention.drop_blocked` was evented, and the record of who was told
+ * what about that month went anyway. This is the query that closes it.
+ *
+ * The contract: **no side-table row at or after the returned instant is deleted.**
+ *   · `null` — a GLOBAL hold is active, and the companion sweep deletes NOTHING at all. That is
+ *     the correct reading of "preserve everything from this period": a delivery trail is part of
+ *     everything, and a global hold blocks every candidate month anyway, so the honest form of
+ *     the clamp is a no-op rather than an instant.
+ *   · a Date — `cutoff` unchanged when no active patient hold reaches back past it (the
+ *     unheld-estate case, and the one V12 measures), and otherwise the IST MONTH START of the
+ *     oldest held event, because the month is the retention unit (D5): a held month keeps its
+ *     trail from the first of the month, not from the instant of one event inside it.
+ *
+ * WHY THIS IS A QUERY AND NOT THE PARTITION LOOP'S `blocked` LIST, which is the shorter fix and
+ * was the first design considered: the loop only ever asks about months that have a NAMED
+ * `events_YYYY_MM` partition AND are drop-eligible. Two real months escape it — a month whose
+ * rows landed in the DEFAULT partition (never listed, never dropped, so never asked about) and a
+ * month older than the oldest surviving partition that still has side-table rows of its own. A
+ * global hold with no drop-eligible partition at all escapes it too, and leaves `blocked` empty
+ * while the sweep deletes on the raw cutoff. Under a hold, every one of those is the same defect
+ * one case narrower. Reading the holds directly cannot miss a month.
+ *
+ * It cannot be defeated by the drops that ran first, either: a partition containing an event of a
+ * held patient is blocked, never dropped, so no drop above can have removed the evidence this
+ * reads. (`blocked` is therefore always a SUBSET of what this protects, never a superset.)
+ */
+async function companionSweepCutoff(db: Db, cutoff: Date): Promise<Date | null> {
+  if ((await activeGlobalHold(db)) !== null) return null;
+
+  // Only rows OLDER than `cutoff` are candidates for deletion at all, so only a held event older
+  // than `cutoff` can move the floor — and bounding the scan here keeps it off the live months.
+  const [oldest] = await db
+    .select({ recordedAt: events.recordedAt })
+    .from(events)
+    .innerJoin(retentionLegalHolds, eq(retentionLegalHolds.patientId, events.patientId))
+    .where(
+      and(
+        lt(events.recordedAt, cutoff),
+        isNull(retentionLegalHolds.releasedAt),
+        isNotNull(retentionLegalHolds.patientId),
+      ),
+    )
+    .orderBy(asc(events.recordedAt))
+    .limit(1);
+  if (!oldest) return cutoff;
+
+  // Strictly earlier than `cutoff` by construction: the event is older than `cutoff`, `cutoff` is
+  // itself an IST month start, so the month containing the event starts before it.
+  return istMonthStart(istMonthIndex(oldest.recordedAt));
 }
 
 const rowsAffected = (result: { rowCount: number | null }): number => result.rowCount ?? 0;
@@ -280,50 +357,59 @@ export async function retentionSweep(
   // 2. THE COMPANION SWEEP (D6, from the spike's finding 3) — the three side tables a partition
   //    drop ORPHANS. There are no FKs from any of them into `events` (a recorded trade in
   //    schema/worker.ts), so a dropped month leaves their rows behind and moves the growth
-  //    problem one table over. Same gate, same window, same cutoff instant as the drops above.
+  //    problem one table over. Same gate, same window and — since §7.2 — THE SAME HOLDS as the
+  //    drops above, which is the whole of the fix: `sideCutoff` is `cutoff` clamped back to the
+  //    start of the oldest held month, or `null` when a global hold makes the whole leg a no-op.
+  //    A held month keeps its delivery trail, not just its events.
   //
   //    STATED CONSEQUENCE, ACCEPTED BY THE PLAN: deleting an `event_idempotency` row older than
   //    the window re-opens semantic dedup for a key whose event no longer exists. That is
   //    consistent — the event it deduplicated is gone — and it is said out loud rather than
-  //    discovered later.
+  //    discovered later. Under a hold the event is NOT gone, which is the other half of why the
+  //    clamp belongs here.
   // ---------------------------------------------------------------------------------------------
-  result.idempotencyDeleted = rowsAffected(
-    await db.delete(eventIdempotency).where(lt(eventIdempotency.recordedAt, cutoff)),
-  );
-  // `retrying` IS NOT IN `PRUNABLE_DELIVERY_STATUSES` AND MUST NOT BE: it is a delivery still owed
-  // to a consumer, and its age says only that it has been failing for a long time.
-  result.deliveriesDeleted = rowsAffected(
-    await db
-      .delete(eventDeliveries)
-      .where(
-        and(
-          lt(eventDeliveries.updatedAt, cutoff),
-          inArray(eventDeliveries.status, PRUNABLE_DELIVERY_STATUSES),
-        ),
-      ),
-  );
-  result.deadLettersDeleted = rowsAffected(
-    await db.delete(eventDeadLetters).where(lt(eventDeadLetters.parkedAt, cutoff)),
-  );
-
-  const sideTotal =
-    result.idempotencyDeleted + result.deliveriesDeleted + result.deadLettersDeleted;
-  if (sideTotal > 0) {
-    await withTx(db, (tx) =>
-      appendEvent(
-        tx,
-        sideTablesPruned.make({
-          actor: RETENTION_ACTOR,
-          payload: {
-            eventIdempotency: result.idempotencyDeleted,
-            eventDeliveries: result.deliveriesDeleted,
-            eventDeadLetters: result.deadLettersDeleted,
-            retainedMonths: eventsMonths,
-            cutoff: cutoff.toISOString(),
-          },
-        }),
-      ),
+  const sideCutoff = await companionSweepCutoff(db, cutoff);
+  if (sideCutoff !== null) {
+    result.idempotencyDeleted = rowsAffected(
+      await db.delete(eventIdempotency).where(lt(eventIdempotency.recordedAt, sideCutoff)),
     );
+    // `retrying` IS NOT IN `PRUNABLE_DELIVERY_STATUSES` AND MUST NOT BE: it is a delivery still
+    // owed to a consumer, and its age says only that it has been failing for a long time.
+    result.deliveriesDeleted = rowsAffected(
+      await db
+        .delete(eventDeliveries)
+        .where(
+          and(
+            lt(eventDeliveries.updatedAt, sideCutoff),
+            inArray(eventDeliveries.status, PRUNABLE_DELIVERY_STATUSES),
+          ),
+        ),
+    );
+    result.deadLettersDeleted = rowsAffected(
+      await db.delete(eventDeadLetters).where(lt(eventDeadLetters.parkedAt, sideCutoff)),
+    );
+
+    const sideTotal =
+      result.idempotencyDeleted + result.deliveriesDeleted + result.deadLettersDeleted;
+    if (sideTotal > 0) {
+      await withTx(db, (tx) =>
+        appendEvent(
+          tx,
+          sideTablesPruned.make({
+            actor: RETENTION_ACTOR,
+            payload: {
+              eventIdempotency: result.idempotencyDeleted,
+              eventDeliveries: result.deliveriesDeleted,
+              eventDeadLetters: result.deadLettersDeleted,
+              retainedMonths: eventsMonths,
+              // The instant ACTUALLY used, so a hold that moved it is visible in the event
+              // stream rather than inferable only from the counts.
+              cutoff: sideCutoff.toISOString(),
+            },
+          }),
+        ),
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -335,6 +421,13 @@ export async function retentionSweep(
   //
   //    The predicate is `(status, updated_at)` in that order, which is T2's prune index (added to
   //    schema/notifications.ts for exactly this statement) rather than the pump's claim index.
+  //
+  //    AND IT IS NOT GOVERNED BY A LEGAL HOLD, deliberately. `NOTIFY_RETAIN_DAYS` is a different
+  //    window on a different table, and the outbox is not the patient event record a hold
+  //    preserves: it is the messaging side-effect of one. Whether a GLOBAL hold ought to suspend
+  //    it as well is a question for counsel and the owner, not for this function — it is booked
+  //    as a recommendation, not implemented here, and the shape of the change if it is ever taken
+  //    is one more `activeGlobalHold` check guarding this loop.
   // ---------------------------------------------------------------------------------------------
   const notifyCutoff = new Date(now.getTime() - notifyRetainDays * DAY_MS);
   let batches = 0;
