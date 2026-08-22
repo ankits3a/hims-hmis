@@ -3,9 +3,17 @@
 **Written 2026-08-23 by the next-phase brainstorm session** (prompt:
 [`reports/NEXT-PHASE-BRAINSTORM-PROMPT-2026-08-23.md`](reports/NEXT-PHASE-BRAINSTORM-PROMPT-2026-08-23.md)),
 against the tree at **`8ec862f`** (== `origin/main`; all four 11a-addendum commits present).
-Spike brief: [`reports/PLAN-11C-SPIKE-BRIEF-2026-08-23.md`](reports/PLAN-11C-SPIKE-BRIEF-2026-08-23.md) —
-**one fork in this plan (D12, the L14 census shape) is OPEN until the spike resolves it; do not
-compile before that resolution is written into this document in place.** Execute prompt:
+Spike brief: [`reports/PLAN-11C-SPIKE-BRIEF-2026-08-23.md`](reports/PLAN-11C-SPIKE-BRIEF-2026-08-23.md) ·
+**spike report: [`reports/plan-11c-spike-report.md`](reports/plan-11c-spike-report.md).**
+
+> **FORK CLOSED 2026-08-23 by the execute session, against measurement.** D12 (the L14 census
+> shape) was the one open fork; it is **RESOLVED** — 30/30 green isolated on the build host, with
+> two amendments the measurement forced and which are written into D12 below. T6's SMTP shape is
+> likewise settled: **587/STARTTLS, and 465 is BLOCKED outbound on this box**, so it is not a
+> fallback (D10). Execute-prerequisites 3 and 4 are discharged. Nothing in this document is
+> fork-open any more; where superseded text survives it is marked dead where it stands (§2.48).
+
+Execute prompt:
 [`reports/PLAN-11C-EXECUTE-PROMPT-2026-08-23.md`](reports/PLAN-11C-EXECUTE-PROMPT-2026-08-23.md).
 The writer of this plan does not execute it (the separation that has paid three times).
 
@@ -130,6 +138,13 @@ NEVER downed — there is nothing to lose and the event would be noise (V10). St
 physical printers; the e2e drives a synthetic registrant end to end, and the seam is the
 deliverable — 11b's printer/scanner registration lands on it.
 
+> **BINDING ON T3, from the spike's question-A measurement (D12 amendment 2):** R0-2 shrinks the
+> L14 census span to **9 h 05 m**. T3's new `workerInterfaceSweepIntervalMs` entry in
+> `CENSUS_INTERVALS` must therefore be **under 9 h 05 m** or the tenth job never fires inside the
+> census window. Its four neighbours there are 4/6/8/9 h; anything at or below 8 h is safe. The
+> failure is loud — the set-equality assertion goes red naming the missing job — but it is a
+> wasted rung, so it is written here.
+
 **The tenth job is a census event, enumerated completely** (§2.65/§2.73, measured at `8ec862f`):
 the cadence is a real config key, so `JobIntervals` WIDENS — the Pick at `jobs.ts:79-110` plus
 all **three** object literals (`scheduler.test.ts:223` `CENSUS_INTERVALS` · `jobs.test.ts:131`
@@ -173,6 +188,32 @@ verifiable from day one.
 
 ### D10. Alertmanager: `severity: critical` reaches the owner's inbox, and no secret enters git
 
+> **MEASURED 2026-08-23 by the spike ([report](reports/plan-11c-spike-report.md), questions B and
+> C) — four facts, all binding on T6:**
+>
+> 1. **SMTP stays `587` with STARTTLS, as written below.** Confirmed against two independent
+>    providers, IPv4 and IPv6: TCP connects, TLS 1.3 establishes, certificate verifies, the server
+>    reaches `250`.
+> 2. **`465` is BLOCKED OUTBOUND on this box — it is NOT a fallback.** Silent timeout (`rc=124`,
+>    no output at all, the drop signature rather than a refusal) on both providers and both address
+>    families; port 25 is blocked too. **A provider that offers only implicit-TLS 465 cannot be used
+>    here without a relay.** Recorded because the plan elsewhere assumed 465 was an available
+>    alternative; it is not. *(Execute-prerequisite 4 is thereby discharged: no relay decision is
+>    owed by the owner.)*
+> 3. **The compose service MUST give `/alertmanager` a NAMED volume.** `prom/alertmanager:v0.27.0`
+>    declares `VOLUME`, so without one every recreate strands another anonymous volume and loses the
+>    silence and notification-log state across restarts. This is gate report §7.8's exact specimen —
+>    the stray anonymous Prometheus volume that the T6 mechanical check rejected a task over — and
+>    it is the one new volume the post-W6 roster may gain.
+> 4. **Alertmanager REDACTS the receiver URL in its own notify log** (`Post "<redacted>"`). Flag ⑤'s
+>    drill evidence therefore comes from the alert's `receivers` field and `amtool`, never from an
+>    expectation that the log names the SMTP endpoint.
+>
+> Also confirmed so T6's first rung is not a discovery: the pinned tag boots this exact routing
+> shape, answers `/-/ready` and `/-/healthy` 200 on loopback, dispatches a `severity: critical`
+> alert immediately under `group_wait: 0s`, routes `warning` to the grouped leg, and **ships
+> `amtool`** — no curl-only fallback shape is needed.
+
 The 11a gate report's §7.6, closed. A ninth compose service (`prom/alertmanager:v0.27.0`,
 `127.0.0.1:9093`, resource-limited like its neighbours), an `alerting:` block in
 `prometheus.yml`, and a routing config that sends `severity: critical` immediately and
@@ -208,6 +249,44 @@ the task (flag ⑥), not by reading YAML.
 
 ### D12. Phase 0 / R0-2 — the L14 census flake, fixed by SHAPE, resolved by the SPIKE
 
+> **RESOLVED 2026-08-23 by the spike ([report](reports/plan-11c-spike-report.md), question A).
+> Read the rest of this section as the reasoning that produced the fork, not as a live choice.**
+> The stepwise direction WON and R0-2 ships it. **The fallback — a test-only daily-check seam on
+> `Scheduler` — is DEAD and is not to be built.** Three things the measurement changed, and they
+> are binding on R0-2 because the shape below is not literally what this section described:
+>
+> 1. **The settle is REAL EVENT-LOOP TURNS, and this is the load-bearing half of the fix.** "Settle
+>    room" below does not say what settle room *is* under fully-faked timers — and it cannot be
+>    `setTimeout`/`setImmediate`/`queueMicrotask`, because the census fakes all three. R0-2 captures
+>    the real timer at module load (`const realSetTimeout = setTimeout;`) and yields *n* genuine
+>    turns through a `settleRealTurns(n)` helper. A fixed COUNT, not a time budget: on a starved
+>    container each turn takes longer, so the same count buys proportionally more real time exactly
+>    where more of it is needed. It asserts nothing and cannot fail (GC8 is not engaged).
+> 2. **The span SHRANK, 25 h → 9 h 05 m**, which this section did not state and which is what makes
+>    the tick count fall (~3 000 → ~1 090, −63.7 %). The five daily instants all fall within 7 h
+>    45 m of the pin, and the longest cadence in `CENSUS_INTERVALS` is `workerTempRolesIntervalMs`
+>    at 9 h. **This binds T3:** its new `workerInterfaceSweepIntervalMs` census value must be
+>    **under 9 h 05 m** or the tenth job never fires. The failure is loud, not silent — the
+>    set-equality assertion goes red naming the missing job — which is the only reason a bare
+>    constant is acceptable there rather than a computed maximum.
+> 3. **The test's NAME changes** (`…within a faked 25 hours advanced from a pinned instant` →
+>    `…across a stepwise advance from a pinned instant`). Grepped at `349c735`: no parity test, no
+>    other suite and no CI config pins the old name.
+>
+> **Measured: 30/30 green isolated, runtime PARITY (median 2735 ms vs the shipped 2717 ms), full
+> suite green beside it, typecheck and lint exit 0.** §7.9's constraint — *must not multiply the
+> ~3 000 real DB reads* — is satisfied with room to spare, at equal wall clock. The brief predicted
+> a runtime reduction; there is none, and the spike said so plainly.
+>
+> **AND THE CAVEAT THAT MATTERS MOST, which the brief did not ask for and the spike ran anyway:**
+> under `taskset -c 0` starvation the SHIPPED shape is *also* **10/10 green** on this host, as is
+> the stepwise one. **So the 30/30 demonstrates determinism; it does not DISCRIMINATE between the
+> two shapes.** No measurement available on the build host reproduces the failure at all — gate
+> report §3a's CI observation (~16 % red per run, red twice consecutively) remains the only
+> evidence it exists. **The post-ship CI window is the real confirmation, and the Pipeline Notes'
+> "a post-R0-2 census red is a REGRESSION SIGNAL, not a flake to re-run past" is therefore
+> load-bearing rather than belt-and-braces.**
+
 Gate report §3a/§7.9, with the runtime/flake trade stated there. Root cause (written inside the
 test itself, `scheduler.test.ts:250-261`): the Scheduler takes its daily tick from its
 CONSTRUCTOR (`scheduler.ts:115-119`, default 30 000), the census passes `CENSUS_DAILY_TICK_MS =
@@ -223,12 +302,14 @@ sequence — advance TO just past each instant, then advance a small, bounded nu
 settle room so the due window is crossed deterministically and every tick's DB promise resolves
 before the next step. Same assertions (`jobs()` census + invoked-set equality + the
 `DATABASE_URL`-unset guard at `:269-277` untouched); M-S2's grave (`:304-339`) is a separate
-test and is not touched. **This shape is a prediction until the spike runs it ≥30× isolated on
+test and is not touched. ~~**This shape is a prediction until the spike runs it ≥30× isolated on
 the build host and reports the observed rate and runtime** — spike question A. If the measured
 rate is not 0/30-or-better, the spike names what it observed and R0-2 is re-authored against the
 measurement (fallback direction: a test-only seam on `Scheduler` to invoke the daily check
-directly — a scheduler.ts change this plan does not make on speculation). Book R2 is a
-measurement row, not a mutant row.
+directly — a scheduler.ts change this plan does not make on speculation).~~ **STRUCK — the spike
+ran it 30/30; the shape is measured, not predicted, and the `Scheduler`-seam fallback is dead.
+The verbatim diff R0-2 ships is in the spike report §A.9.** Book R2 is a measurement row, not a
+mutant row.
 
 ### D13. What this plan deliberately does NOT build
 
@@ -563,7 +644,7 @@ Rows marked **P** carry inputs the task must confirm by building the mutant and 
 | # | task | assertion | killing mutant | discriminating input | P? |
 |---|---|---|---|---|---|
 | R1 | R0-1 | No response carries `X-Powered-By` | revert the disable | `GET /health` → shipped: header absent (assert the header NAME, §2.6); mutant: `X-Powered-By: Express` | |
-| R2 | R0-2 | **Measurement:** restructured census ≥30/30 isolated on the build host (spike) + 10/10 in-run re-verify, runtime ≤ the shipped census's | (none — a flake fix has no mutant; the evidence is the observed rate, quoted) | | |
+| R2 | R0-2 | **Measurement — DISCHARGED BY THE SPIKE: 30/30 green isolated**, full suite green beside it, typecheck+lint 0. Runtime **PARITY** (median 2735 ms vs shipped 2717 ms), not the reduction the brief predicted; daily ticks −3 000→≈1 090 (−63.7 %), so §7.9's “do not multiply the reads” holds. R0-2 still owes a 10× in-run isolated re-verify, quoted. **CAVEAT (spike §A.7): under `taskset -c 0` the SHIPPED shape is also 10/10 green here — this host discriminates nothing; CI is the confirmation.** | (none — a flake fix has no mutant; the evidence is the observed rate, quoted) | | |
 | V1 | T1 | Zero rows reads `commissioning` | default `"normal"` | empty table → `getOperatingMode` → shipped: `commissioning`; mutant: `normal` | |
 | V2 | T1 | Commissioning exit requires a fresh ok report | delete the guard | three fixtures: no report / ok report 25 h old / latest ok=false → all refused `golive_gate_unsatisfied` with the right detail; fresh ok=true → allowed (the control) | |
 | V3 | T1 | `commissioning` is initial-only | drop the rule | from `normal`, `to: "commissioning"` → shipped: `mode_commissioning_is_initial_only`; mutant: succeeds | |
@@ -605,7 +686,7 @@ in the execute prompt, before the run.
 - **⑦** (T2) The mode-change route enforces the SPECIFIC permission: an actor granted
   `ops.mode.set` succeeds; the same actor without it (not merely role-less) gets 403 (§3.42).
 
-## Pipeline Notes (for the compile session — do not compile before D12 is resolved in this document)
+## Pipeline Notes (for the compile session — ~~do not compile before D12 is resolved in this document~~ **D12 RESOLVED 2026-08-23; compile is unblocked**)
 
 - **Spike FIRST** (the brief beside this plan), **then Phase 0** (two commits, CI checked per
   commit by full SHA, one push each — §2.62), then compile.
@@ -650,11 +731,15 @@ in the execute prompt, before the run.
    SMTP). **Independent of this plan and MORE urgent than it**: until it happens, every backup
    in R2 is one disk failure away from permanent ciphertext. Blocks nothing in the pipeline;
    screamed at here because the gate report's §9 already said it and it is still open.
-3. **The spike has run and D12 is resolved in this document** (blocks Phase 0's R0-2 and
-   therefore compile).
-4. Nothing else: no DNS, no R2, no new hostname. Port-587 egress is the spike's question B — if
+3. ~~**The spike has run and D12 is resolved in this document** (blocks Phase 0's R0-2 and
+   therefore compile).~~ **DISCHARGED 2026-08-23** — spike run (172k tokens, inside its budget),
+   report committed at [`reports/plan-11c-spike-report.md`](reports/plan-11c-spike-report.md),
+   D12 amended in place above. Phase 0 is unblocked.
+4. Nothing else: no DNS, no R2, no new hostname. ~~Port-587 egress is the spike's question B — if
    it is blocked, T6's SMTP port and the `.env.smtp` shape change to what the spike measured
-   (585/465 or a relay), before compile, in this document.
+   (585/465 or a relay), before compile, in this document.~~ **DISCHARGED 2026-08-23: 587 is OPEN
+   and STARTTLS establishes, so T6 ships as written and NO relay decision is owed by the owner.
+   465 is blocked outbound and is not a fallback (D10).**
 
 ## Decisions for the owner (with what stalls without each)
 
@@ -691,8 +776,9 @@ in the execute prompt, before the run.
 3. **§2.72 applied to this plan's own multi-owner files:** `kernel/ops/events.ts` and
    `ops.controller.ts` have four and three sequential owners; every brief ENUMERATES its
    additions; no brief may carry "change nothing else".
-4. **What is deliberately a prediction, flagged as such:** D12's census shape (spike question A,
-   Book R2 is a measurement row) · port-587 egress (spike question B) · V5, V8, V12, V13 carry
+4. **What is deliberately a prediction, flagged as such** — *and the first two are now MEASURED,
+   2026-08-23:* ~~D12's census shape (spike question A, Book R2 is a measurement row) · port-587
+   egress (spike question B)~~ **both discharged by the spike; see D12, D10 and Book R2** · V5, V8, V12, V13 carry
    **P** because their discriminating inputs are exactly the class §2.57/§3.24 has been wrong
    about — orderings, persisted-vs-memory reads, take-effect wiring, race windows.
 5. **Authoring defects caught in this session's own passes:** the draft's `/health`-carries-mode
