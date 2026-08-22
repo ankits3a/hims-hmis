@@ -3,9 +3,10 @@
 **One agent. Target ~50k tokens. Throwaway branch. Nothing here is committed to `main`.**
 
 You are the spike for Plan 11a ([`2026-08-22-phase1-11a-deployment.md`](2026-08-22-phase1-11a-deployment.md)).
-Your job is **not** to build the plan. It is to answer four questions **by execution**, so that four
-forks in that plan can be closed from measurement instead of taste, and so the plan's tasks are
-written against behaviour somebody has actually observed.
+Your job is **not** to build the plan. It is to answer five questions **by execution** — four that
+close forks A–D from measurement instead of taste, plus one (E, added 2026-08-22) that discharges
+the plan's verify-flag ④ early — so the plan's tasks are written against behaviour somebody has
+actually observed.
 
 **Read first, in full:** [`../AGENT-RULES.md`](../AGENT-RULES.md) — the binding contract. Then
 [`../EXECUTE-METHOD.md`](../EXECUTE-METHOD.md) §1 (why this phase exists), then the plan above.
@@ -27,12 +28,18 @@ it for 50k. Every question below is a claim Plan 11a would otherwise have to wri
   `createdb -T`, drop it when done, and if you cannot drop it, **say so** rather than leaving it
   silently.
 - **Rule 3: `/opt/hmis` is the only writable path. No writes to `/tmp`, ever** — not even a
-  throwaway. Rule 6: never read, stat or reference `/opt/InsForge` or any `insforge-*` container;
-  it is an unrelated co-tenant on the same host and it is off-limits.
-- **Rule 7 has one deliberate exception for you, and only for you:** you MAY create containers, but
-  only under a compose project name that is yours and obviously temporary (e.g. `hmis-spike`), and
-  you delete them before you report. You may NOT touch `hmis-db-1` (the dev database) or any
-  `insforge-*` container.
+  throwaway. *(Rule 6 was RETIRED 2026-08-22 — the InsForge co-tenant was removed and the host is
+  dedicated to this project. The owner-owned archive at `/opt/insforge-archive-2026-08-22/` is not
+  yours: do not read it, list it, diff it, or include it in anything.)*
+- **Rule 7 (as amended 2026-08-22) covers you:** you MAY create containers, but only under a
+  clearly-temporary compose project of your own (e.g. `hmis-spike`) that you remove before you
+  report. **`hmis-db-1` and the `hmis_hmis_pgdata` volume are the dev database — never stop,
+  remove, rebuild or prune them, and never run a blanket `docker system prune` /
+  `docker volume prune` / `docker rmi -a`; remove by explicit name, always.**
+- **Ports 80 and 443 are TAKEN on this host** (verified 2026-08-22): a host-level nginx — enabled
+  and active — still carries the removed InsForge stack's site (`cc.elar.club` → dead
+  `127.0.0.1:7130`). It is the owner's residue to clean, not yours: do not touch nginx, do not
+  bind 80 or 443 anywhere in your throwaway compose. Every probe in this brief works on high ports.
 - **Rules 16–18:** long commands run DETACHED with the exit VALUE read from a file. Never a pipe's
   status, never a wrapper's.
 - **Rule 20:** before anything that measures, confirm nothing else is running — and **read the
@@ -161,6 +168,29 @@ and Caddy.
 
 **Decision rule:** if the reduced stack costs more than ~15% of the VM, FORK-D branches to putting
 Prometheus/Grafana on the existing build host and scraping over the private network.
+
+---
+
+## Question E — does a WebSocket upgrade survive Caddy? *(added 2026-08-22; discharges plan flag ④ early — not a fork)*
+
+Nothing in this repository has ever run behind Caddy, and the realtime gateway lives inside the API
+process (plan D1), so an untested proxy config is a dead bell. The plan's T3 carries this as
+verify-by-execution flag ④; you can convert it from a flag into a measured fact for the cost of one
+container, inside the same throwaway project you already have up.
+
+1. Add a `caddy:2` container to `hmis-spike`, listening on a **HIGH port** (nginx owns 80/443 —
+   ground rules above), reverse-proxying to the API you booted for Question A (compiled or `tsx`,
+   whichever runs).
+2. Prove `/health` answers THROUGH Caddy.
+3. Open a WebSocket **through Caddy** to the realtime gateway and confirm the upgrade completes
+   (HTTP 101). Report what the gateway then does with the connection — an auth-rejection close is
+   still a completed upgrade; say which you observed, and quote it.
+4. If the upgrade needs anything beyond a bare `reverse_proxy` directive in the Caddyfile, that is
+   the finding — name it precisely. Report the exact Caddyfile that worked, verbatim: T3 starts
+   from it.
+
+**Decision rule: none — this is not a fork.** Its output is flag ④ converted from "an admission we
+could not check" (EXECUTE-METHOD §1) into measured behaviour, plus the Caddyfile T3 inherits.
 
 ---
 
