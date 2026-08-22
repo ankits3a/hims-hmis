@@ -135,6 +135,18 @@ export async function runDispatchCycle(
     )).rows as [{ lastSeq: number | string }];
     const cursor = Number(cursorRows[0]!.lastSeq);
 
+    // PLAN 11's PARTITION FLOOR, and this lookup is its whole input: the IST month containing the
+    // `recorded_at` of the CURSOR'S OWN seq. Month truncation is what absorbs seq/recorded_at skew
+    // — `recorded_at` is transaction-start time, so a row committed late carries an earlier
+    // instant than its seq suggests, and a floor at row granularity would skip it.
+    // A MISSING ROW DEGRADES TO NO FLOOR (cursor 0, or a month retention has already dropped):
+    // pruning is an optimization and the `seq >` predicate still bounds correctness on its own.
+    const floorRows = (await db.execute(sql`
+      select date_trunc('month', recorded_at at time zone 'Asia/Kolkata') at time zone 'Asia/Kolkata' as "floor"
+      from events where seq = ${cursor}
+    `)).rows as { floor: Date | string }[];
+    const floor = floorRows[0]?.floor ?? null;
+
     // ONE WHERE CHAIN (Global Constraint 7) so Plan 11's partition floor is one added predicate.
     // The LEFT JOIN is what drops already-resolved rows — `done` and `parked` both fall out, so a
     // window that re-reads far behind the cursor re-delivers nothing.
@@ -146,6 +158,7 @@ export async function runDispatchCycle(
       from events e
       left join event_deliveries d on d.consumer = ${consumer} and d.seq = e.seq
       where e.seq > ${Math.max(cursor - lookback, 0)}
+        and e.recorded_at >= coalesce(${floor}::timestamptz, '-infinity'::timestamptz)
         and e.name = any(${sql.param(names)}::text[])
         and (d.status is null or d.status = 'retrying')
       order by e.seq asc

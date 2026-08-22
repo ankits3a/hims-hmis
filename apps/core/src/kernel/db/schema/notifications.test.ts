@@ -204,7 +204,7 @@ describe("migration 0015 — the notifications outbox and the three columns besi
       expect(row.userId).toBeNull();
     });
 
-    it("carries exactly the three indexes the pump and the expire-by-ref path read", async () => {
+    it("carries exactly the four indexes the pump, the expire-by-ref path and the prune read", async () => {
       const rows = (await db.execute(sql`
         select indexname from pg_indexes where tablename = 'notifications' order by indexname
       `)).rows as { indexname: string }[];
@@ -213,6 +213,10 @@ describe("migration 0015 — the notifications outbox and the three columns besi
         "notifications_pkey",
         "notifications_ref_idx", // D13 — expire-by-ref on (ref_type, ref_id)
         "notifications_status_next_attempt_idx", // D2 — what the claim's FOR UPDATE SKIP LOCKED scans
+        // Plan 11a D7, migration 0016 — the retention prune's index. It is a SEPARATE index from
+        // the claim's above and not a widening of it: the claim leads on `next_attempt_at`, the
+        // prune on `updated_at`, and one btree cannot lead on both.
+        "notifications_status_updated_at_idx",
       ]);
     });
   });

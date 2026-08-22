@@ -40,7 +40,7 @@ import type { ShutdownLog } from "../src/kernel/worker/worker.module";
  * THE RUNTIME LOOP, END TO END (Plan 08.5 T6 / Assertion Book L17). Three separate proofs:
  *
  *  (a) the worker's BOOT SHAPE — `createApplicationContext(WorkerModule)` boots and its Scheduler
- *      knows exactly seven jobs, and the context closes with NO unhandled rejection;
+ *      knows exactly eight jobs, and the context closes with NO unhandled rejection;
  *  (b) the LOOP — an SLA breach becomes an escalation, becomes a dispatched event, becomes an
  *      alert row, becomes a `GET /alerts` body, becomes a WebSocket frame on ONE human's topic
  *      and on nobody else's;
@@ -87,11 +87,14 @@ const T6_DEF = {
 };
 
 /**
- * The seven jobs `registerAllJobs` must register, in registration order — the census (L17/flag ①).
- * `runNotifyPump` joined at Plan 10 T4 (amendment 7): this census is one of the TWO places a
- * seventh job has to be admitted, and neither of them is `jobs.test.ts`.
+ * The eight jobs `registerAllJobs` must register, in registration order — the census (L17/flag ①).
+ * `runNotifyPump` joined at Plan 10 T4 (amendment 7) and `createEventPartitions` at Plan 11a T2
+ * (D5): this census is one of the TWO places a new job has to be admitted, and neither of them is
+ * `jobs.test.ts`. The eighth needed no `JobIntervals` key — a `dailyIst` registration takes its
+ * instant from a code constant — so the typechecker could not announce it here the way
+ * amendment 7's widened `Pick` announced the seventh. This list is the only guard.
  */
-const THE_SEVEN = [
+const THE_EIGHT = [
   "runDispatchCycle",
   "runDueTimers",
   "sweepExpiredTempRoles",
@@ -99,6 +102,7 @@ const THE_SEVEN = [
   "sweepAppointmentNoShows",
   "runDailyClose",
   "runNotifyPump",
+  "createEventPartitions",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -336,7 +340,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
     }
   });
 
-  it("(a) boots the worker context, and its Scheduler names EXACTLY the seven jobs", async () => {
+  it("(a) boots the worker context, and its Scheduler names EXACTLY the eight jobs", async () => {
     const ctx = await NestFactory.createApplicationContext(WorkerModule, { logger: false });
     try {
       const workerDb = ctx.get<Db>(DB);
@@ -353,9 +357,9 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       // the same value `worker.ts` passes. `registerAllJobs` reads no environment of its own.
       registerAllJobs(scheduler, workerDb, registry, workerConsumers(workerDb), config);
 
-      // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these seven, in
+      // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these eight, in
       // registration order — not "at least", not "these among others".
-      expect(scheduler.jobs()).toEqual(THE_SEVEN);
+      expect(scheduler.jobs()).toEqual(THE_EIGHT);
       // The scheduler was never started, so nothing was scheduled and nothing needs stopping.
       expect(scheduler.leakedErrors()).toEqual([]);
     } finally {

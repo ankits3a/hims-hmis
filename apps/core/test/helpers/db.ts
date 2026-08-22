@@ -54,6 +54,12 @@ export async function truncateAll(db: Db): Promise<void> {
   // events.seq, and a stale claim row against a reset sequence would silently SUPPRESS
   // deliveries in the next test: the dispatcher would read seq 1 back, LEFT-JOIN a leftover
   // `done` claim, and drop the row with no error anywhere. Same statement, by design.
+  //
+  // `events` IS PARTITIONED since migration 0016 and this statement is UNCHANGED, deliberately:
+  // TRUNCATE on a partitioned PARENT empties every partition, and `restart identity` still finds
+  // `events_seq_seq` because 0016 runs `ALTER SEQUENCE … OWNED BY events.seq` on the new parent
+  // before dropping the old table. Both halves are asserted by execution in
+  // `kernel/worker/partitions.test.ts` rather than assumed here.
   await db.execute(sql`truncate table events, event_deliveries, event_dead_letters restart identity`);
   await db.execute(sql`truncate table event_cursors`);
   await db.execute(sql`truncate table event_idempotency`);
@@ -80,8 +86,12 @@ export async function truncateAll(db: Db): Promise<void> {
     sql`truncate table notifications, alerts, break_glass_grants, temp_role_grants, user_totp, auth_sessions,
         role_assignments, role_permissions, agents, sod_pairs, permissions, roles, users`,
   );
+  // `retention_legal_holds` (Plan 11a D6) joins THIS statement and only this one: its single FK
+  // is `patient_id → patients.id`, and by the two rules above the group whose table it points at
+  // must carry its name. `created_by` is plain actor text (the approvals.ts precedent), so it has
+  // no claim on the users statement.
   await db.execute(
-    sql`truncate table notifications, opd_prescriptions, opd_vitals, opd_queue_entries, opd_encounters, opd_appointments,
+    sql`truncate table retention_legal_holds, notifications, opd_prescriptions, opd_vitals, opd_queue_entries, opd_encounters, opd_appointments,
         opd_queue_sessions, opd_doctor_leaves, opd_doctor_schedules, opd_doctors, opd_rooms, opd_departments,
         opd_config, allocations, receipt_tenders, receipts, credit_note_lines, credit_notes, invoice_lines,
         invoices, refund_vouchers, cashier_sessions, entered_in_error_marks, recon_batches, daily_closes,

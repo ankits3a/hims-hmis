@@ -56,5 +56,12 @@ export const notifications = pgTable(
     uniqueIndex("notifications_dedupe_key_ux").on(t.dedupeKey),
     index("notifications_status_next_attempt_idx").on(t.status, t.nextAttemptAt),
     index("notifications_ref_idx").on(t.refType, t.refId),
+    // THE PRUNE INDEX (Plan 11a D7, riding migration 0016). This outbox gains a row per would-be
+    // message and, until 11a, never lost one — ~10^6 rows/year at target volume plus a params
+    // jsonb. `retentionSweep` deletes TERMINAL rows older than NOTIFY_RETAIN_DAYS in bounded
+    // batches, and `(status, updated_at)` is that predicate's index. It is deliberately NOT the
+    // claim index above: the claim reads `next_attempt_at`, the prune reads `updated_at`, and one
+    // index cannot serve both leading-column orders.
+    index("notifications_status_updated_at_idx").on(t.status, t.updatedAt),
   ],
 );

@@ -5,12 +5,21 @@ import { appendEvent } from "./append";
 import { SubscriptionBus } from "./subscriptions";
 import { runDispatchCycle } from "./dispatcher";
 import { createDb, withTx, Db } from "../db/client";
+import { eventCursors, eventDeliveries, events } from "../db/schema";
 import type { Pool } from "pg";
 
 const mkInput = (name: string) => ({
   name, version: 1, occurredAt: new Date(),
   actor: { type: "system" as const, id: "test" }, module: "opd",
   payload: { n: name }, siteId: "main",
+});
+
+// The floor tests below need `recorded_at` PINNED, and `appendEvent` deliberately does not take
+// it — the column is the append's own transaction-start time everywhere else in the system. They
+// insert the envelope directly instead, which is the only way to stage a row in a past month.
+const recordedRow = (eventId: string, recordedAt: Date) => ({
+  eventId, name: "visit.opened", version: 1, occurredAt: recordedAt, recordedAt,
+  actorType: "system", actorId: "test", module: "opd", payload: { eventId }, siteId: "main",
 });
 
 // Every cycle below is driven by an EXPLICIT `now` (Global Constraint 9), so the backoff
@@ -399,5 +408,113 @@ describe("runDispatchCycle", () => {
     )).rows as [{ occurredAt: Date | string }];
     expect(new Date(stored[0].occurredAt)).toEqual(OCCURRED);
     expect(received[0]).not.toEqual(T0);
+  });
+
+  /**
+   * V1 — THE PARTITION FLOOR PRUNES AND DOES NOT SKIP (Plan 11a D5, Assertion Book V1).
+   *
+   * `events` is RANGE-partitioned by IST month, and the window query gained ONE predicate:
+   * `recorded_at >= date_trunc('month', <recorded_at of the cursor's seq>)`. The floor is taken
+   * from THE CURSOR'S OWN ROW and never from the clock, and that distinction is the whole test.
+   * A floor computed from `now` looks identical on the day it is written and starts silently
+   * dropping events on the first of every month: the cursor is still in month M, the events
+   * behind it are still in month M, and the floor has moved to M+1.
+   *
+   * The three rows below make the two halves separable:
+   *   · one row in month M-1, undelivered — BELOW the floor, and not delivered. That is the
+   *     pruning half, and it is why an implementation with NO floor at all also fails here.
+   *   · the cursor's own row in month M, already claimed `done`.
+   *   · one row LATER in month M, undelivered — inside the floor, and delivered. That is the
+   *     not-skipping half.
+   * `now` is in M+1 throughout, so a clock-derived floor excludes all three.
+   *
+   * Recorded instants are written by the INSERT itself (§3.41) rather than defaulted, because
+   * `recorded_at` is exactly the column under test.
+   */
+  it("delivers an undelivered event in the CURSOR'S OWN month, and skips the month below it (V1)", async () => {
+    const OLDER_MONTH = new Date("2026-06-20T04:30:00.000Z"); // IST 2026-06-20 10:00 — month M-1
+    const CURSOR_AT = new Date("2026-07-10T04:30:00.000Z"); // IST 2026-07-10 10:00 — month M
+    const LATER_IN_MONTH = new Date("2026-07-25T04:30:00.000Z"); // IST 2026-07-25 10:00 — month M
+    const NOW_NEXT_MONTH = new Date("2026-08-05T04:30:00.000Z"); // IST 2026-08-05 10:00 — M+1
+
+    const seen: number[] = [];
+    const bus = new SubscriptionBus();
+    bus.on("floor.consumer", "visit.opened", async (e) => { seen.push(e.seq); });
+
+    const rows = await db.insert(events).values([
+      recordedRow("01HFLOOR0000000000000OLD", OLDER_MONTH),
+      recordedRow("01HFLOOR000000000000CURS", CURSOR_AT),
+      recordedRow("01HFLOOR00000000000LATER", LATER_IN_MONTH),
+    ]).returning({ seq: events.seq });
+    const [older, atCursor, later] = rows;
+
+    // The cursor sits on the middle row and that row is already resolved, so the only thing the
+    // floor decides is which of the OTHER two the window can still see.
+    await db.insert(eventDeliveries).values({
+      consumer: "floor.consumer", seq: atCursor!.seq, status: "done", attempts: 1, updatedAt: CURSOR_AT,
+    });
+    await db.insert(eventCursors).values({ consumer: "floor.consumer", lastSeq: atCursor!.seq });
+
+    expect(await runDispatchCycle(db, bus, { now: NOW_NEXT_MONTH })).toBe(1);
+    expect(seen).toEqual([later!.seq]);
+    // The pruned row is not merely undelivered — it is still unclaimed, so nothing marked it
+    // resolved on its way past.
+    expect(await deliveriesOf(db, "floor.consumer")).toEqual([
+      { seq: atCursor!.seq, status: "done", attempts: 1 },
+      { seq: later!.seq, status: "done", attempts: 1 },
+    ]);
+    expect(seen).not.toContain(older!.seq);
+  });
+
+  /**
+   * The floor's month boundary is IST (+05:30), not UTC — the same fact the partition bounds
+   * carry (Plan 11a D5: the retention unit is an IST concept). The row below is recorded at
+   * 2026-06-30T20:00:00Z, which is 2026-07-01 01:30 IST: it belongs to IST month July and is
+   * delivered, while a UTC truncation would put the floor at 2026-07-01T00:00:00Z — four hours
+   * LATER than the row — and lose it. Nothing else in this file separates those two.
+   */
+  it("truncates the floor on the IST month, not the UTC one", async () => {
+    const JUST_INTO_IST_JULY = new Date("2026-06-30T20:00:00.000Z"); // IST 2026-07-01 01:30
+    const CURSOR_AT = new Date("2026-07-10T04:30:00.000Z");
+    const NOW_NEXT_MONTH = new Date("2026-08-05T04:30:00.000Z");
+
+    const seen: number[] = [];
+    const bus = new SubscriptionBus();
+    bus.on("ist.consumer", "visit.opened", async (e) => { seen.push(e.seq); });
+
+    const rows = await db.insert(events).values([
+      recordedRow("01HFLOORIST00000000EDGE0", JUST_INTO_IST_JULY),
+      recordedRow("01HFLOORIST0000000CURSOR", CURSOR_AT),
+    ]).returning({ seq: events.seq });
+    const [edge, atCursor] = rows;
+
+    await db.insert(eventDeliveries).values({
+      consumer: "ist.consumer", seq: atCursor!.seq, status: "done", attempts: 1, updatedAt: CURSOR_AT,
+    });
+    await db.insert(eventCursors).values({ consumer: "ist.consumer", lastSeq: atCursor!.seq });
+
+    expect(await runDispatchCycle(db, bus, { now: NOW_NEXT_MONTH })).toBe(1);
+    expect(seen).toEqual([edge!.seq]);
+  });
+
+  /**
+   * The degrade case the plan names explicitly: cursor 0 (a brand-new consumer) has no row to
+   * read a floor from, so there is NO floor and the window is bounded by `seq` alone. An
+   * implementation that defaulted a missing floor to `now`'s month — or to anything but "no
+   * floor" — would deliver nothing at all to a new consumer over historical events.
+   */
+  it("degrades to NO floor when the cursor names no row", async () => {
+    const LONG_AGO = new Date("2024-02-11T04:30:00.000Z");
+    const seen: number[] = [];
+    const bus = new SubscriptionBus();
+    bus.on("newcomer.consumer", "visit.opened", async (e) => { seen.push(e.seq); });
+
+    const rows = await db.insert(events).values([
+      recordedRow("01HFLOORNONE0000000000A1", LONG_AGO),
+    ]).returning({ seq: events.seq });
+
+    // No cursor row is seeded: `runDispatchCycle` inserts one at 0, and seq 0 exists nowhere.
+    expect(await runDispatchCycle(db, bus, { now: T0 })).toBe(1);
+    expect(seen).toEqual([rows[0]!.seq]);
   });
 });

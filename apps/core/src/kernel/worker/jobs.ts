@@ -9,6 +9,7 @@ import { sweepGuardianMajority } from "../../modules/patients/guardians";
 import { sweepAppointmentNoShows } from "../../modules/opd/appointments";
 import { runDailyClose } from "../../modules/billing/daily-close";
 import { runNotifyPump } from "../notify/pump";
+import { createEventPartitions } from "./partitions";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
 
@@ -18,6 +19,10 @@ import type { Scheduler } from "./scheduler";
 const GUARDIAN_MAJORITY_IST = "00:05";
 const APPOINTMENT_NO_SHOWS_IST = "23:55";
 const DAILY_CLOSE_IST = "23:59";
+// Plan 11a D5: ten past midnight IST, ten minutes after the IST month has actually rolled over —
+// so the run that first needs a new month is the one that creates it, and it creates it before
+// anything else on the daily grid touches `events`.
+const CREATE_EVENT_PARTITIONS_IST = "00:15";
 
 /**
  * Amendment 6 (the plan's own resolution to the T2/T4 wave-order contradiction; spike
@@ -87,13 +92,14 @@ export type JobIntervals = Pick<
 >;
 
 /**
- * The SEVEN jobs on the clock (D2/D9/step 2 + Plan 10 D3), transcribed exactly — do not invent
- * cadences.
+ * The EIGHT jobs on the clock (D2/D9/step 2 + Plan 10 D3 + Plan 11a D5), transcribed exactly — do
+ * not invent cadences.
  * `runDispatchCycle` every `workerDispatchIntervalMs` · `runDueTimers` every
  * `workerTimersIntervalMs` · `sweepExpiredTempRoles` every `workerTempRolesIntervalMs` ·
  * `sweepGuardianMajority` daily 00:05 IST · `sweepAppointmentNoShows` daily 23:55 IST ·
  * `runDailyClose` daily 23:59 IST, called as `runDailyClose(db, undefined, now)` ·
- * `runNotifyPump` every `workerNotifyIntervalMs` (Plan 10 D3).
+ * `runNotifyPump` every `workerNotifyIntervalMs` (Plan 10 D3) · `createEventPartitions` daily
+ * 00:15 IST (Plan 11a D5).
  *
  * `runDispatchCycle` takes T3's SHIPPED signature — `(db, bus, opts?: { batchSize?, lookback?,
  * maxAttempts?, now? })` since `39e520d` — and this registration THREADS `now` through it, the
@@ -166,5 +172,19 @@ export function registerAllJobs(
     run: async (now) => {
       await runNotifyPump(db, { now, stuckAfterMs: intervals.notifyStuckAfterMs });
     },
+  });
+  // Plan 11a D5: THE EIGHTH JOB, and it needs no interval key — `dailyIst` registrations take
+  // their instant from a code constant above, which is why this one does NOT widen `JobIntervals`
+  // and no `JobIntervals` object literal had to change for it. What DID have to change are the
+  // two CENSUSES (`scheduler.test.ts` and `test/worker-runtime.e2e.test.ts`): 7 → 8.
+  //
+  // `events` is RANGE-partitioned by IST month since 0016, and a month nobody created sends live
+  // appends to the DEFAULT partition — the one partition the dispatcher's floor can never prune.
+  // This job is what stops that happening, and it is idempotent (`create table if not exists`),
+  // so a run that finds every month already there is a no-op rather than an error.
+  scheduler.register({
+    name: "createEventPartitions",
+    dailyIst: CREATE_EVENT_PARTITIONS_IST,
+    run: async (now) => { await createEventPartitions(db, now); },
   });
 }
