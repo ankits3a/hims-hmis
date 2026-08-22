@@ -6,6 +6,10 @@ Agentic hospital operating system. Specs: `docs/superpowers/specs/`.
 1. `docker compose -f docker/docker-compose.dev.yml up -d`
 2. `pnpm install && pnpm --filter @hmis/core db:migrate`
 3. `pnpm --filter @hmis/core start:dev` → http://localhost:3000/health
+   (known issue since Plan 07, §2.58: this crashes at `OpdRealtimeRegistrar.onModuleInit` because
+   `tsx`'s esbuild transform emits no `design:paramtypes` metadata for Nest's constructor
+   injection. Production never hits it — see **Deployment (Plan 11a)**'s run-commands note below
+   for the compiled command that does start clean.)
 
 ## Verify (what CI runs)
 `pnpm verify`  — typecheck + lint + tests (needs the compose DB up)
@@ -640,3 +644,192 @@ the same instant fires nothing further.
 human-facing surface: it polls `GET /alerts` (`refetchInterval: 15_000`) and treats a WebSocket
 frame on `alerts:<userId>` as an invalidate hint only — the frame carries no title and no patient
 identity (§14), so nothing is ever rendered from the frame itself, only from the poll it triggers.
+
+## Deployment (Plan 11a)
+
+Stage 1 (spec v4.7 §1, roadmap "Deployment topology"): ONE Hetzner cloud box, no standby, running
+`hmis-prod` — its own Compose project, Postgres container, volumes and port range — BESIDE the
+dev/build stack on the same host (owner ruling 2). Stage 2 adds a live pilot beside the incumbent
+and moves toward hybrid (Plan 11b); stage 3 is fully on-prem. **Nothing here is provider-specific**
+(D4/GC1): Compose + Caddy + Postgres + pgBackRest stand up on any capable metal, and the two
+externals this plan touches are protocol-shaped — a backup destination speaking S3, and DNS
+pointing a hostname at a box — so racking this on-prem tomorrow RE-POINTS a handful of values; it
+rewrites nothing.
+
+### Deploy sequence
+
+`docker/prod/deploy.sh` is idempotent — run it to bring `hmis-prod` up from nothing or to
+re-converge a running stack; re-running it over a live stack is the normal case (measured: it
+recreates a container only when that container's OWN definition changed — a config-only edit to,
+say, `alerts.yml` recreates nothing; see **Monitoring** below for how such an edit takes effect).
+
+0. **Pre-flight** — refuses unless `/opt/hmis-prod` exists, `.env` and `.env.r2` are present and
+   `chmod 600`, and 80/443 are free or already held by this stack's own Caddy.
+1. **Build** the server, web and db images FROM THE CHECKOUT (never from `/opt/hmis-prod`).
+2. **Copy configs** into `/opt/hmis-prod` (compose file, Caddyfile, pgBackRest config, the restore
+   drill, the Prometheus/Grafana/postgres-exporter trees) and derive the backup credentials.
+3. **`db` up**, waited on its own `pg_isready` healthcheck.
+4. **pgBackRest**: stanza created, archiving CHECKED end to end (a forced WAL switch that has to
+   actually land in the repository — D8).
+5. **Migrations** from inside the image, then **cursor seeding** (D10, this task): every
+   production consumer (`kernel.alerts`, `kernel.notify`) is seeded at `max(seq)` so a first boot
+   against a database that already carries history does not replay it through the dispatcher.
+   Idempotent — it stays in the re-deploy path forever, and never lowers a cursor a live dispatch
+   cycle has already moved past.
+6. **`api`, `worker`, `caddy` and the monitoring stack up** in one whole-project `compose up -d`;
+   Caddy's edge config is then explicitly RELOADED (its directory-mounted Caddyfile does not
+   itself trigger a container recreate on a content-only change).
+7. **Cron installed**: the nightly full backup and the weekly restore drill (below).
+8. **`/health` verified GREEN through Caddy, over HTTPS, on the real hostname.**
+
+First bring-up, in order: create `/opt/hmis-prod` (`mkdir -p /opt/hmis-prod && chmod 700
+/opt/hmis-prod`) → copy `docker/prod/.env.prod.example` to `/opt/hmis-prod/.env` and fill the
+database password → run the **SECRET_KEY ceremony** below → put R2 credentials at
+`/opt/hmis-prod/.env.r2` (procedure below) → `docker/prod/deploy.sh`, which prints
+`hmis-prod is up: https://<hostname>` on success.
+
+### The `SECRET_KEY` ceremony and escrow (D11)
+
+- Generated **on the box**, never in git: `openssl rand -hex 32`, pasted after `SECRET_KEY=` in
+  `/opt/hmis-prod/.env`. `chmod 600` that file immediately — `deploy.sh` refuses to run without
+  it. This discharges `.env.example:5`'s promise that *"the production key is generated and
+  escrowed in Plan 11."*
+- **Escrow it**: copy the value into the hospital's own secret-management procedure for infra
+  credentials, then read it back from wherever it now lives and compare it byte-for-byte against
+  what is in `.env` before treating this step as done. Losing `SECRET_KEY` invalidates every
+  session and everything sealed under it; leaking it is a full compromise.
+- **A SECOND SECRET NEEDS THE SAME ESCROW, MINTED THE SAME WAY, BY `deploy.sh` ITSELF**: the first
+  time it runs, it mints `PGBACKREST_REPO1_CIPHER_PASS` into `/opt/hmis-prod/.env.pgbackrest`
+  (`chmod 600`) and preserves it verbatim on every later run — watch for the line
+  `MINTED A NEW REPOSITORY CIPHER PASSPHRASE`, printed exactly once. It is the client-side
+  encryption passphrase (spec E-2) for every backup in the R2 bucket: **losing it makes every
+  backup unreadable ciphertext, including to the owner; changing it orphans everything already
+  written** while every new backup keeps succeeding — the single most dangerous secret in this
+  deployment to mishandle, because the failure is silent until the day of a restore.
+- Neither value is ever written to this file, a report, a commit, or a chat message (GC2) — this
+  section names the procedure, never a value.
+
+### R2 credentials procedure
+
+- The five values (`R2_ENDPOINT`, `R2_BUCKET`, `R2_REGION`, `R2_ACCESS_KEY_ID`,
+  `R2_SECRET_ACCESS_KEY`) live **only** at `/opt/hmis-prod/.env.r2`, `chmod 600`, and never enter
+  git, a report, or a chat message — see `docker/prod/.env.prod.example` for the shape (values
+  empty on purpose).
+- `deploy.sh` reads them from that file on every run and derives
+  `/opt/hmis-prod/.env.pgbackrest` (also `chmod 600`) — the six `PGBACKREST_*` names the binary
+  reads, plus the cipher passphrase above. **Never hand-edit the derived file**; it is
+  regenerated every run, with the cipher passphrase preserved.
+- **To rotate the R2 access key**: update `.env.r2`, re-run `deploy.sh`. The derived file picks
+  up the new key/secret; the cipher passphrase is untouched.
+- **Owner-carried item (Decisions §6): mask the R2 endpoint under an owner-controlled domain
+  later** — re-point one line in `.env.r2` (and `pgbackrest.conf`'s CA path only if the new
+  endpoint needs a different CA) when that happens; nothing else in this deployment changes (D4).
+
+### The restore drill, and how to read its verdicts
+
+- `docker/prod/drill/restore-drill.sh`, installed to `/opt/hmis-prod/drill/restore-drill.sh` by
+  `deploy.sh`, runs **weekly** via a host cron entry `deploy.sh` also installs (Saturday 22:00
+  UTC = 03:30 IST Sunday, an hour after Saturday night's full) and logs to
+  `/opt/hmis-prod/log/restore-drill.log`.
+- **It restores for real, never a `--dry-run`** (Global Constraint 7 — a backup nobody has
+  restored is a belief, not a backup): census the live cluster → incremental backup → restore
+  into a throwaway scratch container (never production's own `PGDATA`) → boot a second postmaster
+  on the restored data → run the migrator's own consistency check against it → assert the row
+  count and the newest known event id came back → drop the scratch database and destroy the
+  container.
+- **Read the exit code first — it is the sole authoritative verdict**, quoted directly from the
+  script's own comment: a run whose EXIT trap still fires an evented append does not turn a
+  failed drill into a green one. `0` = passed; non-zero = failed, and the transcript above the
+  failure names the step that broke.
+- **The verdict is also appended to the hospital's own event log**: `backup.drill_passed` /
+  `backup.drill_failed` (module `backup`, defined in `apps/core/src/kernel/retention/events.ts`),
+  so it is visible through the same surfaces as every other fact this system records — stanza,
+  the live and restored row counts, the asserted event id (nullable), and the backup/restore
+  timings in seconds.
+- **A run against an empty `events` table says so out loud** rather than silently skipping the
+  check: `NO EVENT ID ASSERTED: the live events table was empty at census time`, while the row
+  count and migration-journal checks still run. The first genuinely event-bearing drill is the
+  first one after production actually records something.
+- To rehearse the drill without touching the production repository, point it at a scratch prefix
+  in the same bucket: `HMIS_DRILL_REPO_PATH=/hmis-prod-rehearsal-<name>
+  docker/prod/drill/restore-drill.sh` — this never touches the live cluster's own credentials or
+  the production prefix it backs up to.
+
+### The accepted shared-box failure mode (D13)
+
+Stage 1 runs `hmis-prod` on the **same box** as the dev/build stack (owner ruling 2, accepted with
+the contention risk named up front). **The symptom this can produce is LATENCY, NEVER DATA.** The
+two stacks are different Compose projects (`hmis` / `hmis-prod`), different Postgres CONTAINERS on
+different VOLUMES on different PORTS (dev 5433, prod `127.0.0.1:5434`) — there is no shared table
+for a `truncate`, a migration, or a schema change on one side to reach on the other. Per-service
+resource limits (`docker-compose.prod.yml`'s `deploy.resources`) bound how much either side can
+take from the other, so a heavy pipeline run or test suite pass on the dev side can make a live
+UAT session feel slow; it cannot make it wrong. If a UAT session is sluggish while a pipeline is
+running, check `docker stats` to see which side is using the CPU/IO before assuming anything is
+broken — that is this accepted trade-off working as designed, not an incident.
+
+### Stage-1 RPO/RTO — stated honestly for a single box
+
+- **RPO ≈ the WAL-push interval.** Continuous archiving pushes each WAL segment as it fills, or at
+  worst every `archive_timeout` (300 s — `docker-compose.prod.yml`'s `db` service `command`), so
+  the worst-case data-loss window is about five minutes of writes, not the time since the last
+  nightly full.
+- **RTO ≈ measured restore time + bring-up.** A real restore of a bundled, encrypted backup out of
+  the production R2 bucket measured **4 seconds** for a 33 MB / 1671-file cluster (the Plan 11a
+  T4 gate) — that number grows with database size, but it is the honest starting point. Add the
+  time to run `deploy.sh` end to end against a repaired or replacement box (image builds, then the
+  full sequence above) for the complete recovery time.
+- **THIS IS NOT SPEC §12'S <15-MINUTE RTO TARGET — that target assumes a standby ready to
+  promote, and stage 1 has none** (no replication, no promotion, no fencing; all Plan 11b, stage
+  2, a second machine). A real outage on this box means: repair or replace the box, run
+  `deploy.sh`, restore from R2. Nothing in stage 1 is engineered to make that FAST; it is
+  engineered to make it POSSIBLE and PRACTICED — the weekly drill above is what "practiced" means.
+
+### Monitoring (D9)
+
+- **Prometheus (`127.0.0.1:9090`) and Grafana (`127.0.0.1:3001`) join the same `hmis-prod`
+  Compose project** and are reached over an SSH tunnel — no new public port ships:
+  `ssh -L 3001:127.0.0.1:3001 -L 9090:127.0.0.1:9090 root@<box>`, then open
+  `http://127.0.0.1:3001` locally. `node_exporter` and `postgres_exporter` publish nothing at
+  all — Prometheus reaches both over the compose network by service name.
+- **Grafana's login is the image's stock default** (`admin` / `admin`, forced change on first
+  login) — change it the first time you tunnel in. No credential is generated or escrowed for it:
+  the surface is loopback-only either way, and `deploy.sh`'s credential-minting block mints only
+  `SECRET_KEY`'s companion (the pgBackRest cipher passphrase above) — nothing here adds a second
+  one.
+- **The provisioned dashboard** ("HMIS — production overview") reads per-job scheduler heartbeat
+  staleness (`hmis_scheduler_heartbeat_staleness_seconds`, a SELECT against the already-shipped
+  `scheduler_heartbeats` table — no new instrumentation), whether any job is currently failing,
+  `pg_up` and active connections (postgres_exporter's own built-in collectors), and host
+  CPU/memory/disk (node_exporter).
+- **The alert rule carries two legs, deliberately** (`docker/prod/prometheus/alerts.yml`): a
+  STALENESS threshold for a job that HAS a heartbeat row, and a MISSING-SERIES check (`absent()`)
+  for a job that has NEVER started. A heartbeat row is created only on a job's first tick, so
+  staleness alone reads green precisely when a job has never run at all — the missing-series leg
+  is what catches that (proven by drill; the gate report carries the transcript).
+- **A config-only edit to `prometheus.yml` or `alerts.yml` does not itself take effect on a
+  redeploy** — the directory mount that fixed this exact problem for Caddy (T3-1) means
+  `compose up -d` recreates nothing when only file CONTENTS changed. Reload Prometheus the same
+  way `deploy.sh` reloads Caddy: `curl -X POST http://127.0.0.1:9090/-/reload` over the tunnel.
+- **Loki is deliberately not here.** On one box, `docker compose -p hmis-prod logs <service>` and
+  `journalctl` are the log story; aggregation earns its cost with a second machine (stage 2).
+
+### Production run commands (§2.58 correction)
+
+FORK-A resolved to **COMPILED**: production never runs through `tsx`. The images `deploy.sh`
+builds run `node dist/src/main.js` (api), `node dist/src/worker.js` (worker) and
+`node dist/scripts/migrate.js` (the migrator) — named directly in `docker-compose.prod.yml`'s
+`command:` for each service.
+
+**This corrects a run command that has been silently broken since Plan 07.** The dev command this
+README's **Run locally** section documents (`start:dev`, i.e. `tsx watch src/main.ts`) crashes at
+`OpdRealtimeRegistrar.onModuleInit`: `tsx`'s transformer (esbuild) emits no `design:paramtypes`
+metadata for Nest's constructor injection, so a class-typed dependency resolves to `undefined` and
+the crash surfaces the first time that dependency is used. `tsc` — what
+`pnpm --filter @hmis/core build` runs, and what `deploy.sh` builds the production image with —
+DOES emit that metadata, so the compiled api starts clean: measured serving a `200`
+(`degraded`/`worker: stale` with no worker running, `ok` with one) `/health` response in the Plan
+11a spike, faster to first response than the (non-booting) `tsx` path it replaces. Production
+sidesteps the bug class entirely by never transpiling on boot — this is not a fix for `tsx`'s dev
+experience, and `start:dev`'s crash remains something to know about rather than something this
+plan repairs.

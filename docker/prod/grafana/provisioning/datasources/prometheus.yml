@@ -1,0 +1,14 @@
+# Plan 11a / D9 — Grafana's Prometheus datasource, FILE-PROVISIONED so a fresh Grafana container
+# comes up already wired, never clicked together by hand. `uid: prometheus` is fixed on purpose:
+# dashboards/hmis.json references this datasource BY THAT UID rather than by name, so renaming
+# the datasource later cannot silently detach every panel from it.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

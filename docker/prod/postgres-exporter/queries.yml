@@ -1,0 +1,38 @@
+# Plan 11a / D9 — the heartbeat-staleness gauge, proven end to end by the spike (question D,
+# finding 6). Mounted as a DIRECTORY (T3-1/T4-9's inode lesson) — never as a single bind-mounted
+# file.
+#
+# NO NEW INSTRUMENTATION: this is a SELECT against the shipped `scheduler_heartbeats` table
+# (apps/core/src/kernel/db/schema/worker.ts) exactly as it stands. The namespace key below
+# (`hmis_scheduler_heartbeat`) plus the `staleness_seconds` column is what produces the metric
+# name the spike measured: `hmis_scheduler_heartbeat_staleness_seconds{job="...",...}`.
+#
+# STALENESS IS MEASURED AGAINST `last_started_at`, the SAME column `health.controller.ts` reads
+# for the API's own worker-liveness field, and for the same reason: it is upserted on every tick
+# that WINS the advisory lock (kernel/worker/scheduler.ts's `executeJob`), so it answers "is
+# anything ticking for this job" rather than "did it last succeed" — a job that starts but keeps
+# failing should show FRESH here (the process is alive) and its failures are visible separately
+# through `last_error`/`last_ok_at`, which this query also exposes rather than folds away.
+#
+# THIS QUERY RETURNS A ROW ONLY FOR A JOB THAT HAS STARTED AT LEAST ONCE (spike finding 6): the
+# worker registers NINE jobs (`kernel/worker/jobs.ts`'s `registerAllJobs`) but
+# `scheduler_heartbeats` gains a row only on that job's first tick. A job that has NEVER started
+# is therefore invisible to this gauge — which is exactly why `alerts.yml`'s missing-series leg
+# cannot be built from this query alone and checks each expected job name with `absent()` instead.
+hmis_scheduler_heartbeat:
+  query: |
+    select
+      job,
+      extract(epoch from (now() - last_started_at))::float8 as staleness_seconds,
+      case when last_error is null then 0 else 1 end as failing
+    from scheduler_heartbeats
+  metrics:
+    - job:
+        usage: "LABEL"
+        description: "Scheduled job name (kernel/worker/jobs.ts registration)"
+    - staleness_seconds:
+        usage: "GAUGE"
+        description: "Seconds since this job's heartbeat last recorded a start (scheduler_heartbeats.last_started_at)"
+    - failing:
+        usage: "GAUGE"
+        description: "1 if this job's most recent run recorded an error (scheduler_heartbeats.last_error), else 0"

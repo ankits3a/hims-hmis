@@ -1,0 +1,79 @@
+# Plan 11a / D9, flag ⑨ — the worker's own liveness alert, and the blind spot the spike found
+# (finding 6): `scheduler_heartbeats` (kernel/db/schema/worker.ts) gains a row only once a job
+# has STARTED at least once, so a staleness threshold over EXISTING rows alone reads GREEN
+# exactly when a job has never run at all — the worst possible failure to miss. This file ships
+# BOTH legs, and the second is the whole point of the rule:
+#
+#   1. HmisSchedulerJobStale{Interval,Daily} — a job that HAS a heartbeat row and has gone quiet.
+#   2. HmisSchedulerJobMissing               — a job that has NO row at all.
+#
+# Leg 2 is proven by drill in the T6 gate report: a job name with no heartbeat row fires
+# HmisSchedulerJobMissing while the staleness legs stay silent for it — they have no series to
+# threshold against, which is exactly the blind spot this rule exists to close.
+#
+# The nine job names and their cadences are transcribed verbatim from `registerAllJobs`
+# (apps/core/src/kernel/worker/jobs.ts) — this file invents no cadence of its own.
+groups:
+  - name: hmis-scheduler
+    rules:
+      # Leg 1a — the four `every(ms)` jobs. The slowest shipped cadence is 60s
+      # (WORKER_TEMP_ROLES_INTERVAL_MS); 5 minutes is a wide margin over one missed tick before
+      # paging anyone, while still catching a genuinely stuck loop inside the same shift.
+      - alert: HmisSchedulerJobStaleInterval
+        expr: |
+          hmis_scheduler_heartbeat_staleness_seconds{
+            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump"
+          } > 300
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Scheduler job {{ $labels.job }} has not ticked in over 5 minutes"
+          description: >-
+            {{ $labels.job }} last started {{ $value | humanizeDuration }} ago. Check
+            `docker compose -p hmis-prod logs worker`.
+
+      # Leg 1b — the five `dailyIst` jobs. Each runs once every ~24h by design
+      # (kernel/worker/scheduler.ts's `isDailyDue`), so staleness legitimately climbs to ~24h
+      # between runs; 26h (93600s) gives a two-hour margin for scheduling jitter before treating
+      # a missed day as an incident.
+      - alert: HmisSchedulerJobStaleDaily
+        expr: |
+          hmis_scheduler_heartbeat_staleness_seconds{
+            job=~"sweepGuardianMajority|sweepAppointmentNoShows|runDailyClose|createEventPartitions|retentionSweep"
+          } > 93600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Daily scheduler job {{ $labels.job }} missed its run"
+          description: >-
+            {{ $labels.job }} last started {{ $value | humanizeDuration }} ago (expected about
+            once every 24h). Check `docker compose -p hmis-prod logs worker`.
+
+      # Leg 2 — THE BLIND SPOT (spike finding 6, flag ⑨). A job that has NEVER started has no row
+      # in scheduler_heartbeats at all, so it has no series for leg 1 to threshold against — that
+      # is precisely what leg 1 cannot see. `absent()` over each of the nine expected job names
+      # closes it: every term that matches carries that job's own name as $labels.job (from the
+      # positive equality matcher inside it), so `or` fires one alert instance PER missing job
+      # rather than one alert for all of them together.
+      - alert: HmisSchedulerJobMissing
+        expr: |
+          absent(hmis_scheduler_heartbeat_staleness_seconds{job="runDispatchCycle"})
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="runDueTimers"})
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepExpiredTempRoles"})
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="runNotifyPump"})
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepGuardianMajority"})
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepAppointmentNoShows"})
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="runDailyClose"})
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="createEventPartitions"})
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="retentionSweep"})
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Scheduler job {{ $labels.job }} has never reported a heartbeat"
+          description: >-
+            No scheduler_heartbeats row exists for {{ $labels.job }} — it has never started. A
+            staleness threshold over existing rows cannot see this; that is what this rule is
+            for.

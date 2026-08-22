@@ -193,6 +193,136 @@ services:
         reservations:
           memory: "64m"
 
+  # ------------------------------------------------------------------------------------------
+  # node-exporter — host metrics (D9). COMPOSE-NETWORK-INTERNAL ONLY: no `ports:` entry, so it
+  # publishes nothing new (D13's port map). Prometheus reaches it by service name over the
+  # `hmis-prod` network, which is also why it must listen on 0.0.0.0 (the image's default) rather
+  # than loopback — inside ITS OWN container namespace, 127.0.0.1 is unreachable from Prometheus's.
+  # `pid: host` and the three read-only host mounts are what let it report the HOST's CPU/memory/
+  # disk rather than its own tiny container's.
+  # ------------------------------------------------------------------------------------------
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    restart: unless-stopped
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(rootfs/)?(dev|proc|sys|run|var/lib/docker/.+)($$|/)"
+    expose:
+      - "9100"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: "128m"
+        reservations:
+          memory: "32m"
+
+  # ------------------------------------------------------------------------------------------
+  # postgres-exporter — the shipped `scheduler_heartbeats` table read out as
+  # `hmis_scheduler_heartbeat_staleness_seconds` (D9, spike finding 6/question D), plus the
+  # image's own built-in `pg_up`/`pg_stat_*` collectors. NO NEW INSTRUMENTATION: `queries.yml`
+  # is a SELECT against a table Plan 08.5 already shipped.
+  #
+  # `DATA_SOURCE_NAME` is built from the SAME `POSTGRES_*` values the `db` service's own
+  # `environment:` block already interpolates from `/opt/hmis-prod/.env` (compose reads that file
+  # for `${...}` substitution because deploy.sh runs it with `--project-directory` pointed there)
+  # — GC2 is satisfied by reusing that value, never by adding a second credential anywhere.
+  # `sslmode=disable` because this connection never leaves the compose network's own bridge.
+  # ------------------------------------------------------------------------------------------
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:?set POSTGRES_USER in the deploy .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the deploy .env}@db:5432/${POSTGRES_DB:?set POSTGRES_DB in the deploy .env}?sslmode=disable"
+      PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres-exporter/queries.yml
+    volumes:
+      # A DIRECTORY, per T3-1/T4-9's measured inode lesson: a single-file bind mount is pinned to
+      # the file's inode, and deploy.sh's `install(1)` replaces the inode on every config update.
+      - ./postgres-exporter:/etc/postgres-exporter:ro
+    expose:
+      - "9187"
+    depends_on:
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: "128m"
+        reservations:
+          memory: "32m"
+
+  # ------------------------------------------------------------------------------------------
+  # prometheus — scrapes itself, node-exporter and postgres-exporter over the compose network;
+  # evaluates prometheus/alerts.yml (D9 + flag ⑨). `127.0.0.1` ONLY (D13's port map): reached by
+  # SSH tunnel, never the public interface. `--web.enable-lifecycle` is what lets a config or
+  # rule-file edit take effect on a redeploy WITHOUT recreating the container (the README's
+  # monitoring section names the reload call) — `docker-compose.prod.yml` gained no new
+  # dependency to get it; it is a flag the shipped image already understands.
+  # ------------------------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=90d"
+      - "--web.enable-lifecycle"
+    volumes:
+      # A DIRECTORY: prometheus.yml AND alerts.yml both live under it (T3-1's lesson, again).
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - node-exporter
+      - postgres-exporter
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512m"
+        reservations:
+          memory: "128m"
+
+  # ------------------------------------------------------------------------------------------
+  # grafana — the provisioned dashboard (D9). `127.0.0.1` ONLY, same reasoning as prometheus
+  # above. Datasource and dashboard are FILE-PROVISIONED (grafana/provisioning/), never clicked
+  # together by hand, so a fresh container comes up already wired to Prometheus.
+  #
+  # NO ADMIN PASSWORD IS SET HERE, AND THAT IS DELIBERATE, NOT AN OVERSIGHT (GC2): this task's
+  # Files list does not include deploy.sh's credential-minting block (D13's pgBackRest cipher
+  # passphrase is the only secret deploy.sh mints, and "change nothing else" in that file is the
+  # brief's own instruction), so there is nowhere for a generated Grafana password to be
+  # escrowed. Grafana's stock default (admin/admin, forced change on first login) is what ships;
+  # the README's monitoring section makes changing it on first tunnel login step one. The surface
+  # is loopback-only either way — no public port is added by this service.
+  # ------------------------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:11.1.0
+    restart: unless-stopped
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          cpus: "0.3"
+          memory: "256m"
+        reservations:
+          memory: "64m"
+
 volumes:
   # Named inside the `hmis-prod` project, so the real volume is `hmis-prod_hmis_prod_pgdata` —
   # a different object from dev's `hmis_hmis_pgdata`, which nothing here may touch (rule 7).
@@ -202,3 +332,7 @@ volumes:
   pgbackrest_log:
   caddy_data:
   caddy_config:
+  # T6/D9. TSDB and the dashboard/session DB — without these a container recreate would lose a
+  # year of history and every hand-tweak to the provisioned dashboard alike.
+  prometheus_data:
+  grafana_data:

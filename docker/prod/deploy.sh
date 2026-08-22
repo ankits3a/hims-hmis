@@ -5,7 +5,7 @@
 # IDEMPOTENT: run it as often as you like. Every step is a no-op when it is already true, and a
 # re-deploy over a running stack is the normal case, not the exceptional one.
 #
-# The sequence, minus one step:
+# The sequence:
 #
 #   0. pre-flight — refuse unless the deploy directory exists, its .env is present and 600, and
 #      80/443 are free or already held by this stack's own caddy
@@ -13,8 +13,9 @@
 #   2. copy the configs INTO the deploy directory, and derive the backup credentials
 #   3. db up, waited to healthy on its own compose healthcheck
 #   4. pgBackRest: stanza created, archiving CHECKED end to end (D8)
-#   5. migrations FROM INSIDE THE IMAGE (D2)
-#   -- SEAM: first-boot cursor seeding (D10) belongs here; see the marker below --
+#   5. migrations FROM INSIDE THE IMAGE (D2), then CURSOR SEEDING (D10) — every production
+#      consumer's cursor seeded at max(seq), so a first boot against a database that already
+#      carries history does not replay it through the dispatcher
 #   6. api, worker and caddy up
 #   7. the backup and restore-drill cron entries
 #   8. /health green THROUGH Caddy over HTTPS on the real hostname
@@ -221,19 +222,14 @@ step "5/8 migrations, run from inside the image (D2)"
 compose run --rm api node dist/scripts/migrate.js
 
 # ----------------------------------------------------------------------------------------------
-# SEAM — FIRST-BOOT CURSOR SEEDING (D10) BELONGS HERE, AND IS DELIBERATELY ABSENT.
-#
-# D13's full sequence runs the cursor-seeding script between the migrations and the application
-# services, so a first boot against a database that already carries history does not replay every
-# event through the dispatcher. That script is T6's and does not exist yet; a call to it from this
-# version of deploy.sh would fail T3's own from-zero bring-up drill.
-#
-# T6: add it immediately below this comment, in this position, as
-#
-#     compose run --rm api node dist/scripts/seed-cursors.js
-#
-# and delete this paragraph. It is idempotent by design, so it stays in the re-deploy path.
+step "cursor seeding, before any consumer's first cycle (D10)"
 # ----------------------------------------------------------------------------------------------
+# `event_cursors.last_seq` defaults to 0 and `runDispatchCycle` creates the row on first sight, so
+# the first cycle after a consumer is registered would otherwise walk the ENTIRE event history at
+# 100 rows/tick. This seeds every production consumer (`workerConsumers`'s keys) at `max(seq)`
+# and NEVER LOWERS an existing cursor (V11), so it stays in the re-deploy path forever: a consumer
+# already caught up is left exactly where it is.
+compose run --rm api node dist/scripts/seed-cursors.js
 
 # ----------------------------------------------------------------------------------------------
 step "6/8 api, worker and caddy up"

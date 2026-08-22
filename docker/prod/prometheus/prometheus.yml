@@ -1,0 +1,42 @@
+# Plan 11a / D9 — Prometheus for the hmis-prod stack (FORK-D: same box, measured ~0.6% of it).
+#
+# Mounted as a DIRECTORY alongside alerts.yml (T3-1/T4-9's measured inode lesson: a single-file
+# bind mount pins the container to the replaced inode, and deploy.sh's `install(1)` replaces the
+# inode on every config update — the edge, or here the evaluator, would keep reading the OLD
+# bytes for the container's whole life). `--web.enable-lifecycle` below is what then lets a
+# config or rule-file EDIT take effect without recreating the container:
+#
+#     curl -X POST http://127.0.0.1:9090/-/reload
+#
+# (loopback only — the README's monitoring section names this as the config-update procedure).
+#
+# Both exporters are reached by SERVICE NAME over the `hmis-prod` compose network. Neither
+# publishes a host port (D13's port map: "api and the exporters are compose-network-internal
+# only and publish nothing") — only this file and grafana bind 127.0.0.1.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:9090"]
+
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  - job_name: postgres
+    # HONOR_LABELS, AND IT IS LOAD-BEARING — measured, not stylistic (spike Question D). The
+    # custom query in postgres-exporter/queries.yml returns its OWN "job" column (the scheduled
+    # job name). Without honor_labels, Prometheus's target-label collision rule renames a
+    # scraped "job" label to "exported_job" and keeps this SCRAPE's job name ("postgres") on the
+    # metric instead — every per-job matcher in alerts.yml would then match nothing. WITH it, the
+    # scraped label wins, exactly as the spike measured it:
+    #   hmis_scheduler_heartbeat_staleness_seconds{job="runDispatchCycle",...}
+    honor_labels: true
+    static_configs:
+      - targets: ["postgres-exporter:9187"]

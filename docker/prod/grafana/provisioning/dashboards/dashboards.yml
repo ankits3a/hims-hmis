@@ -1,0 +1,14 @@
+# Plan 11a / D9 — provisions hmis.json from this same directory on every container start, so a
+# fresh Grafana always has the dashboard without a manual import.
+apiVersion: 1
+
+providers:
+  - name: hmis
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

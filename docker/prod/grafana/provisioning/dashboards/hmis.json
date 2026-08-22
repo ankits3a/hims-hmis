@@ -1,0 +1,157 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "id": null,
+  "uid": "hmis-prod-overview",
+  "title": "HMIS — production overview",
+  "description": "Plan 11a D9. Worker liveness (the scheduler_heartbeats gauge the spike proved end to end) plus host and Postgres health from node_exporter/postgres_exporter's own built-in collectors — no new instrumentation.",
+  "tags": ["hmis", "plan-11a"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Scheduler job staleness (seconds since last start)",
+      "description": "hmis_scheduler_heartbeat_staleness_seconds, per job — the interval jobs (runDispatchCycle, runDueTimers, sweepExpiredTempRoles, runNotifyPump) should sit under a minute; the dailyIst jobs climb toward ~86400s between runs by design (see alerts.yml).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10, "spanNulls": true } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hmis_scheduler_heartbeat_staleness_seconds",
+          "legendFormat": "{{job}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Scheduler jobs currently failing",
+      "description": "hmis_scheduler_heartbeat_failing — 1 when a job's last run recorded scheduler_heartbeats.last_error, per job. Zero everywhere is the healthy state.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 9 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value_and_name" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hmis_scheduler_heartbeat_failing",
+          "legendFormat": "{{job}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Postgres up",
+      "description": "postgres_exporter's own built-in pg_up — 1 while the exporter can reach the production database.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 9 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value" },
+      "targets": [{ "refId": "A", "expr": "pg_up" }]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Postgres active connections",
+      "description": "postgres_exporter's built-in pg_stat_activity_count (sum across all states/databases).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "value" },
+      "targets": [{ "refId": "A", "expr": "sum(pg_stat_activity_count)" }]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Host CPU busy %",
+      "description": "node_exporter: 100 minus the idle-mode rate, averaged across cores.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "legendFormat": "CPU busy"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Host memory available %",
+      "description": "node_exporter: MemAvailable as a share of MemTotal.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100",
+          "legendFormat": "Memory available"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Host root filesystem free %",
+      "description": "node_exporter: free space on the root filesystem, as a share of its size — the box's own disk headroom (T3-8's committed limits share this same disk).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 23 },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"} * 100",
+          "legendFormat": "root filesystem free"
+        }
+      ]
+    }
+  ]
+}
