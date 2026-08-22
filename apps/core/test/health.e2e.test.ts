@@ -4,9 +4,11 @@ import { eq } from "drizzle-orm";
 import request from "supertest";
 import type { Pool } from "pg";
 import { AppModule, DB_POOL } from "../src/app.module";
+import { configureApp } from "../src/app.bootstrap";
 import { setupTestDb } from "./helpers/db";
 import { requireEnv } from "../src/kernel/config";
 import { schedulerHeartbeats } from "../src/kernel/db/schema/worker";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { Db } from "../src/kernel/db/client";
 
 describe("GET /health", () => {
@@ -22,7 +24,12 @@ describe("GET /health", () => {
     workerUrl.pathname = `${workerUrl.pathname}_${process.env.JEST_WORKER_ID ?? "1"}`;
     process.env.DATABASE_URL = workerUrl.toString();
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = moduleRef.createNestApplication();
+    // The eight sibling e2e suites all build the app this way, and this one had drifted: without
+    // `configureApp` no e2e app here gets the shared HTTP configuration at all. Both halves are
+    // required — `configureApp` calls `useBodyParser`, so `{ bodyParser: false }` is what keeps
+    // two parsers from stacking (the reason is written above `configureApp` itself).
+    app = moduleRef.createNestApplication<NestExpressApplication>({ bodyParser: false });
+    configureApp(app as NestExpressApplication);
     await app.init();
   });
   // The worker field is decided entirely by the heartbeat rows, so start every test from none.
@@ -36,6 +43,16 @@ describe("GET /health", () => {
   it("reports ok with db connectivity", async () => {
     const res = await request(app.getHttpServer()).get("/health").expect(200);
     expect(res.body).toEqual({ status: "ok", db: "ok", worker: "not_running" });
+  });
+
+  // R1. Express stamps `X-Powered-By: Express` on every response unless the adapter disables it,
+  // so the header NAME is the field that would make this assertion appear (§2.6): asserted by
+  // name, never as a vacuous whole-headers compare. The 200 and the normal body beside it are the
+  // positive control — absence must not be purchased by a request that failed.
+  it("serves /health with no X-Powered-By banner", async () => {
+    const res = await request(app.getHttpServer()).get("/health").expect(200);
+    expect(res.body).toEqual({ status: "ok", db: "ok", worker: "not_running" });
+    expect(res.headers["x-powered-by"]).toBeUndefined();
   });
 
   // L16. WORKER_STALE_AFTER_MS defaults to 60 000 (D9), and the AGED ROW is the fixture field
