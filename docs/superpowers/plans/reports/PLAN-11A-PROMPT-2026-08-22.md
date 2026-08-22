@@ -36,7 +36,7 @@ different, fresh session compiles and runs it afterwards.
 
 | # | file | what to take |
 |---|---|---|
-| 1 | `docs/superpowers/AGENT-RULES.md` | the binding contract, in full. **Rules 6, 7 and 9 are about to become stale — see §5 below** |
+| 1 | `docs/superpowers/AGENT-RULES.md` | the binding contract, in full. **Rule 6 was RETIRED and rules 7 and 9 AMENDED on 2026-08-22 when InsForge was removed — read rule 7's new boundary before your spike creates any container; see §5** |
 | 2 | `docs/superpowers/EXECUTE-METHOD.md` | v2 in full. §1 (why a spike), §2 (what a plan must carry), §3 (the compile-time sweep the NEXT session runs — write the plan so it passes), §8 (the calibration note; read it before promising a token number) |
 | 3 | `docs/superpowers/plans/2026-08-22-phase1-11a-deployment.md` | **the draft you are refining.** Fork-open, D1–D13, four forks, six tasks, a self-review section |
 | 4 | `docs/superpowers/plans/2026-08-22-phase1-11a-spike-brief.md` | the spike you are about to fire |
@@ -51,7 +51,7 @@ different, fresh session compiles and runs it afterwards.
 
 ## 2. Ground truth — verify it, do not trust it
 
-- **HEAD `28bf8db` on `main`.** Local `C:\Users\ankit\hmis`, build host
+- **HEAD `31e5b1f` on `main`** (or later — this file was amended after the InsForge removal). Local `C:\Users\ankit\hmis`, build host
   `root@62.238.106.231:/opt/hmis`, and `origin/main` were all in sync at handoff. **Re-verify all
   three and `git pull --rebase` anything stale** — the build host has been found stale before.
 - **Test baseline, measured 2026-08-22 detached with the exit VALUE read from a file:** `apps/core`
@@ -128,13 +128,24 @@ spec's tech table until 2026-08-22; both are now struck. Jobs ride
 
 ## 5. ⚠ THE SERVER IS CHANGING — InsForge is being removed
 
-**The owner is removing the InsForge stack completely and dedicating `62.238.106.231` to this
-project.** At the time of writing it had not happened yet. **VERIFY THE ACTUAL STATE BEFORE YOU
-RELY ON EITHER VERSION** — `docker ps`, `ls /opt`, and check ports 5430 / 5432 / 7130 / 7133.
+**DONE 2026-08-22 — this section is now history, kept so you know what changed and why.** The
+InsForge stack was removed and `62.238.106.231` is dedicated to this project. Removed: four
+containers (`insforge-deno-1`, `insforge-insforge-1`, `insforge-postgrest-1`, `insforge-postgres-2`),
+ten volumes, its images, and `/opt/InsForge`. **The whole stack was archived first** to
+`/opt/insforge-archive-2026-08-22/` (210 MB: a `pg_dumpall`, a tar of `/opt/InsForge` including its
+`.env` and git history, and a tar per volume) — **owner-owned, not for agents to read, delete or
+diff.** It turned out to be an essentially unused install: 9 rows in `system.secrets`, 1 audit-log
+row, no application data.
 
-This invalidates standing rules and roadmap facts. **Once you have confirmed InsForge is gone,
-amend these in a visible docs commit** (and if it is NOT gone yet, leave every one of them exactly
-as it is — they are still binding):
+**Verified after removal:** only `hmis-db-1` runs, only `hmis_hmis_pgdata` remains, only port 5433
+listens (5430/5432/7130/7131/7133 free), all 16 migrations and all eight per-worker test databases
+intact, and a full detached `pnpm verify` came back **exit VALUE 0** with core 132/908, web 31/152,
+contracts 3/7 — identical to before. Disk 19G → 17G; RAM unchanged at 1.6 GiB used of 15 (the stack
+was idle, so **the win is dedication and freed ports, not resources** — factor that into FORK-D
+rather than assuming headroom appeared).
+
+**The rule and doc amendments below were made in the same commit.** They are recorded here because
+a brief compiled before 2026-08-22 may still cite rule 6 by number:
 
 | where | current text | why it changes |
 |---|---|---|
@@ -151,9 +162,12 @@ holding port **5432** (this project's dev DB is on 5433). Freed RAM/CPU/disk dir
 FORK-D (does the monitoring stack fit?) and the "does production get its own VM" question. **Measure
 the box after removal and feed the number into both.**
 
-**One caution.** Whoever removes InsForge should be certain nothing else depends on it. That is the
-owner's call and the owner's action — **do not remove it yourself**, and do not touch it until the
-owner confirms it is gone.
+**The one thing to carry forward from this, and it is rule 7.** *"Create no docker container"* and
+*"ship a production compose"* could not both be true, so rule 7 is now a **boundary** rather than an
+absolute: containers belong to the `hmis` compose project or to a clearly-temporary project you
+remove before reporting; `hmis-db-1` and `hmis_hmis_pgdata` are never stopped, removed or pruned;
+and **a blanket `docker system prune` is forbidden outright**, because a prune cannot tell your
+scratch from the dev database. Read rule 7 in full before your spike creates anything.
 
 ---
 

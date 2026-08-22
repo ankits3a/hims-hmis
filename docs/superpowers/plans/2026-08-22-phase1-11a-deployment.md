@@ -348,10 +348,18 @@ standard this section is written to.
 2. **A domain name and TLS.** Caddy will do automatic HTTPS given a hostname; without one, stage 1
    is IP-only with a self-signed certificate, which is acceptable for a build/UAT box and **not**
    acceptable for the stage-2 pilot. **Stalls: nothing in 11a; blocks the pilot.**
-3. **The stage-1 production VM.** It must be its own machine: `62.238.106.231` is the build host
-   *and* the InsForge co-tenant's home, and production must not share a box with a suite that
-   hammers Postgres. A CX43-class VM is ~€16/mo. **Stalls: T3's and T4's real-environment
-   verification** — they can be built and unit-verified without it, but the drills need a box.
+3. **The stage-1 production VM. UPDATED 2026-08-22 — one of the two reasons went away.** The
+   owner removed InsForge that day and `62.238.106.231` is now dedicated to this project (rule 6
+   retired; rule 7 amended). **The co-tenant argument is gone; the build-host argument is not** —
+   the box still runs a suite that hammers Postgres and truncates databases on every run, and
+   production must not share a machine with that. Recommendation stands, on the narrower ground:
+   its own CX43-class VM, ~€16/mo. **Stalls: T3's and T4's real-environment verification** — both
+   can be built and unit-verified without it, but the compose bring-up and the restore drill need
+   a box. *(Counter-argument worth putting to the owner rather than deciding for them: a dedicated
+   box with 15 GiB free and 128 GB of disk could host both if the production stack were pinned to
+   its own compose project, its own volumes and its own port range. It is cheaper and it is worse
+   — the failure mode is a test run degrading a live counter, and the whole point of stage 1 is
+   that the owner trusts what they are testing.)*
 4. **The backup destination.** Recommended: a Hetzner Storage Box over SFTP (~€3.5/mo, 1 TB),
    chosen for portability (D4). **Stalls: T4's drill.**
 5. **When the stage-2 pilot starts** — because it triggers the new PRE-PILOT gate (spec §19 v4.7):

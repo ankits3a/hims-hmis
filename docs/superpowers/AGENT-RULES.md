@@ -4,7 +4,7 @@
 before you touch anything. Where this file and a task brief disagree about PROCESS, this file
 wins; where they disagree about CODE, the plan document wins.
 
-Version 2 (2026-08-19; rule 22 amended 2026-08-20 and 2026-08-21; rules 20 and 21 amended 2026-08-21). Supersedes the inlined tripwire
+Version 2 (2026-08-19; rule 22 amended 2026-08-20 and 2026-08-21; rules 20 and 21 amended 2026-08-21; **rule 6 RETIRED and rules 7 and 9 AMENDED 2026-08-22 — the InsForge co-tenant was removed and the build host is now dedicated to this project; read rule 7's new boundary before you create any container**). Supersedes the inlined tripwire
 block used through Plan 08 pipeline A. Rule 22 (the local mirror) is new and changes how you read
 and author files — read it first. **22(a) now requires a mirror directory unique to YOU, and 22(g)
 forbids concluding anything about the server's tree from a mirror; both were bought by §2.40.**
@@ -33,14 +33,37 @@ Violating any one of these fails the task regardless of code quality.
 5. **NEVER run a command that emits compiled JavaScript into the source tree** (bare `tsc`,
    `tsc -b`). Typecheck only via the repo's own `pnpm typecheck` / `pnpm verify`, which pass
    `--noEmit`. Jest resolves `.js` before `.ts`, so stale emit silently shadows sources.
-6. Never read, stat, list, or reference `/opt/InsForge` or any `insforge-*` container — not
-   even read-only. It is an unrelated co-tenant stack on the same host.
-7. **Create no docker container. Create and drop no database by hand**; the test suite manages
-   its own per-worker databases.
+6. **RETIRED 2026-08-22 — the co-tenant is gone and the host is now dedicated to this project.**
+   ~~Never read, stat, list, or reference `/opt/InsForge` or any `insforge-*` container — not even
+   read-only. It is an unrelated co-tenant stack on the same host.~~ The owner removed the InsForge
+   stack on 2026-08-22 (four containers, ten volumes, its images and `/opt/InsForge`); the box is
+   now this project's alone. **The rule is struck rather than deleted** because briefs compiled
+   before that date cite rule 6 by number, and an agent reading one must be able to see what
+   happened rather than find a gap. Nothing replaces it: there is no co-tenant left to avoid.
+   *(An archive of the removed stack sits at `/opt/insforge-archive-2026-08-22/`, owner-owned. It
+   is not yours: do not read it, do not delete it, do not include it in any diff.)*
+7. **AMENDED 2026-08-22.** ~~Create no docker container.~~ **Create no docker container EXCEPT
+   under the `hmis` compose project, and only when your task's brief says to.** The original
+   absolute existed to protect a shared docker daemon that no longer exists (rule 6) — but it
+   cannot survive Plan 11a unchanged, because that plan's entire job is to ship a production
+   compose, and *"create no container"* and *"ship a compose file"* cannot both be true. The
+   boundary that replaces the absolute, and it is narrow on purpose:
+   - Containers you create belong to a compose project you can name, and it is `hmis` or a
+     clearly-temporary project of your own (`hmis-spike`, `hmis-drill`) that **you remove before
+     you report**. A container nobody named is a container nobody will clean up.
+   - **`hmis-db-1` and the `hmis_hmis_pgdata` volume are the dev database. Never stop, remove,
+     rebuild or prune them.** The suite's per-worker databases live in there.
+   - **Never run a blanket `docker system prune`, `docker volume prune`, or `docker rmi -a`.**
+     Remove by explicit name, always — a prune cannot tell your scratch from the dev database.
+   **Create and drop no database by hand**; the test suite manages its own per-worker databases.
+   The one exception is a scratch database you create with a name that is obviously yours, use,
+   and drop in the same task — and if you cannot drop it, say so rather than leaving it silently.
 8. The owner may be working on the same host from the same IP and SSH key. Never infer from
    logs, timestamps, or file mtimes who did what. Report only what you yourself did.
-9. Guard every `apt` invocation with `NEEDRESTART_MODE=l` so it cannot bounce the shared docker
-   daemon.
+9. Guard every `apt` invocation with `NEEDRESTART_MODE=l`. **(Amended 2026-08-22: the docker
+   daemon is no longer *shared* — rule 6 — but the guard stands. It now protects THIS project's
+   own database container and any running pipeline, which is a smaller blast radius and an
+   equally unwelcome one.)**
 10. The server's deploy key CANNOT push `.github/workflows/*` — GitHub refuses it. If you
     believe a workflow edit is needed, STOP and report instead of editing.
 11. `git pull --rebase origin main` before writing: docs commits land from the owner's machine
