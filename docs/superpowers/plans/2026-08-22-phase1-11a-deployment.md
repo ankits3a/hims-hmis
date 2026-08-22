@@ -820,12 +820,16 @@ budget below.
 
 ## Execute-prerequisites (owner actions; the pipeline halts where noted)
 
-1. **nginx/Certbot residue removed; 80/443 free** (verified: `ss -tlnp` shows no listener) —
-   blocks T3's bring-up drill.
-2. **The two orphan shells killed by PID** (`3501080`, `3502071`) — blocks nothing, but every
-   agent's rule-20 probe reads cleaner; owner's call under rule 8. **Same visit, same standing:**
-   the pre-existing `hmis_spike85_1` database on `hmis-db-1` (visibly the 08.5 spike's residue —
-   spike finding 8) is the owner's to drop or keep.
+1. **DISCHARGED 2026-08-22 — 80/443 free and staying free.** nginx stopped and disabled at owner
+   direction (unit link removed; `ss -tlnp` re-verified no listener). A first "cleaned" report
+   did not verify — same nginx worker PIDs still up, §2.70's class — so the writing session
+   performed the minimal reversible action and re-measured. **Optional owner hygiene remaining,
+   non-blocking:** the nginx packages, `sites-enabled/insforge`, the `cc.elar.club` Let's
+   Encrypt material, and the certbot timer (renewals for the dead domain now fail harmlessly).
+   The compile session still re-verifies per the execute prompt.
+2. **DISCHARGED 2026-08-22** — both orphan shells (`3501080`, `3502071`) killed by PID and
+   confirmed gone. **Still the owner's, still open:** the pre-existing `hmis_spike85_1` database
+   on `hmis-db-1` (visibly the 08.5 spike's residue — spike finding 8), drop or keep.
 3. **DNS: the chosen subdomain → `62.238.106.231`** — blocks T3's auto-HTTPS leg (Caddy needs the
    name to resolve).
 4. **Cloudflare R2: bucket + scoped API token created; credentials handed to the deploy `.env`
