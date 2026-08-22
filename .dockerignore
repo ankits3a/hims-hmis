@@ -1,0 +1,34 @@
+# Build-context exclusions. Two jobs: keep secrets out of the image (GC2 — no secret in git, and
+# none in an artefact either), and keep the context small enough that a rebuild is cheap.
+
+# Secrets first and unconditionally. apps/core/.env is gitignored and lives on the build host.
+# This also covers docker/prod/.env.prod.example, which nothing in any image needs.
+**/.env
+**/.env.*
+
+# Host artefacts. node_modules is reinstalled from the frozen lockfile inside the image; dist is
+# recompiled inside the image, and copying a stale one in would be rule 5's hazard by another
+# route.
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+
+# Repository furniture that no stage reads.
+.git
+.gitignore
+.github
+.superpowers
+.nvmrc
+docs
+LICENSE
+README.md
+
+**/*.log
+**/.DS_Store
+
+# NOT excluded, deliberately: `docker/`. A .dockerignore governs the CONTEXT, not the Dockerfile,
+# so it applies to every build rooted at this directory — including `docker build -f
+# docker/prod/db.Dockerfile .` (D8/FORK-C's Postgres+pgBackRest image, T4). Excluding `docker/`
+# here would make that build unable to COPY its own pgbackrest.conf, for a saving of a few KB.
+# Nothing in this file's stages copies `docker/`, so it never reaches an image.
