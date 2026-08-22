@@ -49,6 +49,10 @@ STANZA="hmis"
 CRON_FILE="${HMIS_CRON_FILE:-/etc/cron.d/hmis-prod-backup}"
 # A first bring-up has to wait for an ACME order; a re-deploy answers in seconds.
 EDGE_HEALTH_TIMEOUT="${HMIS_EDGE_HEALTH_TIMEOUT:-240}"
+# Step 6b's settle window. Grafana provisioning and prometheus TSDB replay are the slow ones; a
+# crash-looping container never becomes `running`, so this bounds how long a broken deploy takes
+# to say so rather than how long a healthy one waits.
+SERVICES_UP_TIMEOUT="${HMIS_SERVICES_UP_TIMEOUT:-120}"
 
 die() { printf 'deploy.sh: FATAL: %s\n' "$*" >&2; exit 1; }
 step() { printf '\n==> %s\n' "$*"; }
@@ -138,8 +142,29 @@ install -D -m 0644 "$SRC_DIR/Caddyfile" "$DEPLOY_DIR/caddy/Caddyfile"
 install -D -m 0644 "$SRC_DIR/pgbackrest/pgbackrest.conf" "$DEPLOY_DIR/pgbackrest/pgbackrest.conf"
 install -D -m 0750 "$SRC_DIR/drill/restore-drill.sh" "$DEPLOY_DIR/drill/restore-drill.sh"
 install -d -m 0750 "$DEPLOY_DIR/log"
-# T6 installs the prometheus/ and grafana/ trees here.
+# The monitoring trees, same directory-mount shape as caddy/ and pgbackrest/ above.
+#
+# THESE SIX LINES WERE MISSING AND THE WHOLE MONITORING STACK WAS INERT IN PRODUCTION (ledger
+# §2.72, Plan 11a gate report §7.1). T3 left a `# T6 installs the prometheus/ and grafana/ trees
+# here.` comment where they belong; T6 added the four services to the compose file and, told by
+# its brief to "change nothing else" in this script, correctly did not add them. The compose
+# bind-mounts `./prometheus:/etc/prometheus:ro`, docker auto-created the missing source as an
+# EMPTY DIRECTORY, the mount succeeded, and prometheus crash-looped on
+# `open /etc/prometheus/prometheus.yml: no such file or directory` while this script exited 0.
+# Grafana came up with no datasource and no dashboards, and postgres-exporter ran without
+# `queries.yml` — so `hmis_scheduler_heartbeat_staleness_seconds`, the whole point of D9, did not
+# exist and neither did the alert rules that read it.
+install -D -m 0644 "$SRC_DIR/prometheus/prometheus.yml" "$DEPLOY_DIR/prometheus/prometheus.yml"
+install -D -m 0644 "$SRC_DIR/prometheus/alerts.yml" "$DEPLOY_DIR/prometheus/alerts.yml"
+install -D -m 0644 "$SRC_DIR/postgres-exporter/queries.yml" "$DEPLOY_DIR/postgres-exporter/queries.yml"
+install -D -m 0644 "$SRC_DIR/grafana/provisioning/datasources/prometheus.yml" \
+  "$DEPLOY_DIR/grafana/provisioning/datasources/prometheus.yml"
+install -D -m 0644 "$SRC_DIR/grafana/provisioning/dashboards/dashboards.yml" \
+  "$DEPLOY_DIR/grafana/provisioning/dashboards/dashboards.yml"
+install -D -m 0644 "$SRC_DIR/grafana/provisioning/dashboards/hmis.json" \
+  "$DEPLOY_DIR/grafana/provisioning/dashboards/hmis.json"
 note "docker-compose.prod.yml, caddy/Caddyfile, pgbackrest/pgbackrest.conf, drill/restore-drill.sh"
+note "prometheus/{prometheus,alerts}.yml, postgres-exporter/queries.yml, grafana/provisioning/**"
 
 # --- the backup credentials, derived rather than duplicated --------------------------------------
 # GC2: the five owner-supplied values live in $R2_ENV and ONLY there. They are translated here into
@@ -256,7 +281,73 @@ if [ -n "$(compose ps -q caddy)" ]; then
   done
 fi
 
+# --- SERVICES THAT READ THEIR CONFIG ONLY AT STARTUP -------------------------------------------
+# The same trap as the caddy reload above, and it bit for real: grafana and prometheus mount their
+# config from a bind-mounted DIRECTORY, so step 2 replacing the files changes nothing in the
+# service DEFINITION — `compose up -d` sees no reason to recreate them and leaves the running
+# process on whatever it read at boot. Measured: grafana started 18:32:36 with an empty
+# provisioning directory, the files landed at 19:07:52, the container could see them, and the API
+# still reported zero datasources and zero dashboards 35 minutes later.
+#
+# Caddy has a first-class `reload`. These two do not, without either enabling a lifecycle endpoint
+# or putting admin credentials in this script (GC2 says no), so they are RESTARTED. Both keep their
+# state on volumes, both come back in seconds, and both are loopback-only — a blip costs nothing.
+# Unconditional on purpose: "restart only if the config changed" is a second source of truth about
+# what changed, and this script has just overwritten the files either way.
+for svc in prometheus grafana; do
+  if [ -n "$(compose ps -q "$svc" 2>/dev/null)" ]; then
+    compose restart "$svc" >/dev/null 2>&1 \
+      || die "$svc would not restart after its config was installed — see: compose logs $svc"
+    note "$svc restarted so it re-reads $DEPLOY_DIR/$svc"
+  fi
+done
+
 compose ps
+
+# --- EVERY DECLARED SERVICE IS ACTUALLY RUNNING ------------------------------------------------
+# Ledger §2.74: this script once printed `==> hmis-prod is up` and exited 0 with prometheus in
+# `Restarting (2)` beside it, because its only gate was `/health` — a statement about api, db and
+# worker, and about NOTHING ELSE. Everything that gate looked at was genuinely healthy.
+#
+# The property to verify is "every service this compose declares is running", so ask THAT, of the
+# whole set, rather than curling one route and generalising. A crash-looping container reports
+# `restarting`, never `running`, so the check catches it by construction; the deadline is for
+# containers still legitimately starting, and the restart counter is reported because a service
+# that is `running` on its fourth attempt is also news.
+step "6b/8 every declared service is up"
+SERVICES="$(compose config --services | tr -d '\r')"
+[ -n "$SERVICES" ] || die "could not enumerate services from $DEPLOY_DIR/docker-compose.prod.yml"
+deadline=$(( $(date +%s) + SERVICES_UP_TIMEOUT ))
+while :; do
+  not_up=""
+  for svc in $SERVICES; do
+    cid="$(compose ps -q "$svc" 2>/dev/null)"
+    if [ -z "$cid" ]; then not_up="$not_up $svc(no-container)"; continue; fi
+    state="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || echo unknown)"
+    [ "$state" = "running" ] || not_up="$not_up $svc($state)"
+  done
+  [ -n "$not_up" ] || break
+  if [ "$(date +%s)" -ge "$deadline" ]; then
+    printf '\n'
+    for svc in $not_up; do
+      case "$svc" in *"(no-container)") continue;; esac
+      name="${svc%%(*}"
+      printf '    --- last log lines from %s ---\n' "$name"
+      compose logs --tail 15 "$name" 2>&1 | sed 's/^/    /'
+    done
+    die "these services are not running after ${SERVICES_UP_TIMEOUT}s:$not_up
+    A service that will not start is a deploy that has not happened, however green /health is.
+    The usual cause is a config file this script did not install into $DEPLOY_DIR — check step 2."
+  fi
+  sleep 3
+done
+for svc in $SERVICES; do
+  cid="$(compose ps -q "$svc")"
+  restarts="$(docker inspect -f '{{.RestartCount}}' "$cid" 2>/dev/null || echo '?')"
+  [ "$restarts" = "0" ] && continue
+  note "NOTE: $svc is running but has restarted $restarts time(s) — worth a look at its log"
+done
+note "all $(printf '%s\n' $SERVICES | wc -l | tr -d ' ') declared services running: $(printf '%s ' $SERVICES)"
 
 # ----------------------------------------------------------------------------------------------
 step "7/8 backup and restore-drill cron"
