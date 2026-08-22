@@ -203,6 +203,13 @@ describe("Scheduler", () => {
       // like its three neighbours, for the same reason: at the shipped 5 s default a
       // 25-fake-hour advance would tick the pump 18 000 times.
       workerNotifyIntervalMs: 8 * 60 * 60 * 1000,
+      // Plan 11a R0-2, and it is deliberately NOT hours. This one is a WINDOW, not a cadence: it
+      // gates which `sending` rows a cycle recovers and it never causes an invocation, so the
+      // 25-fake-hour reasoning that sets its four neighbours does not apply and copying it here
+      // would be cargo cult. The SHIPPED DEFAULT, passed explicitly — these two census tests spy
+      // the seven jobs out, so the value is inert for them; `jobs.test.ts` is where a DISTINCT
+      // value is asserted to actually reach the pump (Book R2).
+      notifyStuckAfterMs: 300_000,
     };
 
     // The SHIPPED default (D9), passed explicitly. `isDailyDue()` gates its (only) DB read

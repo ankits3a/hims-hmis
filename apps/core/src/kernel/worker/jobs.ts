@@ -55,8 +55,8 @@ export function buildSubscriptionBus(
 }
 
 /**
- * The FOUR interval cadences (D9, + Plan 10's pump) — and nothing else `registerAllJobs` needs
- * from config.
+ * The FOUR interval cadences (D9, + Plan 10's pump) AND ONE WINDOW — and nothing else
+ * `registerAllJobs` needs from config.
  *
  * IT IS A `Pick` OF `AppConfig`, DELIBERATELY, AND IT IS THE NARROWEST THING THAT WORKS.
  * `worker.ts` already holds the whole `AppConfig` (`app.get<AppConfig>(CONFIG)`) and passes it
@@ -76,6 +76,14 @@ export type JobIntervals = Pick<
   // `CENSUS_INTERVALS` in `scheduler.test.ts` is the one that found it. Production is unaffected
   // because `worker.ts` passes the whole `AppConfig`, which satisfies the wider Pick structurally.
   | "workerNotifyIntervalMs"
+  // Plan 11a R0-2: NOT a cadence — the pump's STUCK WINDOW (`NOTIFY_STUCK_AFTER_MS`, default
+  // 300 000). config.ts:62 parsed it and config.ts:101 exposed `cfg.notifyStuckAfterMs`, and
+  // NOBODY READ IT: the registration below said `runNotifyPump(db, { now })`, so the pump always
+  // fell back to its own `DEFAULT_STUCK_AFTER_MS` and an operator who set the key got exactly
+  // nothing (plan-10 gate report §7.2 — proved by execution, not argued). Amendment 7's
+  // prediction directly above held to the letter when this key was added: `CENSUS_INTERVALS`
+  // stopped compiling until it carried it.
+  | "notifyStuckAfterMs"
 >;
 
 /**
@@ -145,9 +153,18 @@ export function registerAllJobs(
   // dropping it here would hand production a different clock from the one the scheduler
   // heartbeats with. Correctness never rests on the advisory lock: the pump's own
   // `FOR UPDATE SKIP LOCKED` claim carries it (D2/D3).
+  //
+  // Plan 11a R0-2: `stuckAfterMs` is threaded HERE, and this line is the whole fix. This is the
+  // one place an `AppConfig` value can reach the pump, because `worker.ts` hands this function
+  // the whole config and the pump is constructed nowhere else. A wiring test in `jobs.test.ts`
+  // registers through this exact call with a distinct value and asserts a stale `sending` row
+  // flips under this job's own `run(now)` (Book R2) — asserting that config PARSES the key
+  // would discharge nothing, which is what the dead key looked like for a whole plan.
   scheduler.register({
     name: "runNotifyPump",
     every: intervals.workerNotifyIntervalMs,
-    run: async (now) => { await runNotifyPump(db, { now }); },
+    run: async (now) => {
+      await runNotifyPump(db, { now, stuckAfterMs: intervals.notifyStuckAfterMs });
+    },
   });
 }

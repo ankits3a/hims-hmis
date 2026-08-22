@@ -51,7 +51,14 @@ export type NotifyPumpOptions = {
 const DEFAULT_BATCH_SIZE = 50;
 /** D6: `attempts` counts failures on the CURRENT rung; at this many the rung advances. */
 const DEFAULT_MAX_ATTEMPTS_PER_RUNG = 3;
-/** D2: mirrors `NOTIFY_STUCK_AFTER_MS`'s zod default (config.ts:62). */
+/**
+ * D2's FALLBACK ONLY, for a caller that passes no `stuckAfterMs` — tests, and any direct call.
+ * PRODUCTION NO LONGER LANDS HERE: `registerAllJobs` threads `cfg.notifyStuckAfterMs` through the
+ * registration (jobs.ts, Plan 11a R0-2), so the operator's `NOTIFY_STUCK_AFTER_MS` is what takes
+ * effect. This constant is NOT a mirror of that key's zod default and must not be maintained as
+ * one: the comment that used to stand here said it was, and a duplicated literal drifts with
+ * nothing noticing (plan-10 gate report §7.2).
+ */
 const DEFAULT_STUCK_AFTER_MS = 300_000;
 /** The dispatcher's own curve (dispatcher.ts:37), one convention across the codebase. */
 const MAX_BACKOFF_SECONDS = 60;
