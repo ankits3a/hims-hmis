@@ -228,6 +228,51 @@ describe("runNotifyPump — the send path (Plan 10 T4: D2/D3/D4/D6/D7)", () => {
     expect((await rowById(id)).status).toBe("suppressed");
   });
 
+  /**
+   * ASSERTION BOOK R1 (Plan 11a Phase 0, R0-1) — THE GAUNTLET'S ORDER, PINNED, and the case the
+   * two N1 tests above cannot see. Their patient has a phone, so the deceased stop can be moved
+   * anywhere ahead of the adapter call and they still pass: the plan-10 gate report relocated it
+   * past channel resolution and the whole shipped suite stayed green (§7.1).
+   *
+   * A patient who is BOTH deceased and phoneless is where the two rungs disagree. Position 2 says
+   * `suppressed(deceased)` — silence, and an audit row proving the stop fired. The `no_phone` rung
+   * at step 5 says `undeliverable` + `notification.failed`, which `alertsConsumer` turns into a
+   * `manual_notify` desk task telling a duty manager to phone the family of a dead patient. Both
+   * make zero adapter calls, so counting adapter calls does NOT discriminate; the count of
+   * `notification.failed` is the row that does, and it is why it is asserted as a COUNT.
+   */
+  it("suppresses a patient who is BOTH deceased and phoneless, with NO notification.failed (R1)", async () => {
+    const id = await enqueueWelcome();
+    // Both truths land AFTER enqueue: contact truth is read at SEND time (D4), and the phone is
+    // NULL precisely so that the `no_phone` rung WOULD fire if the deceased stop were relocated
+    // past channel resolution. This fixture cannot pass the assertion below vacuously.
+    await db
+      .update(patients)
+      .set({ deceasedAt: new Date("2026-08-21T05:00:00.000Z"), phone: null })
+      .where(eq(patients.id, PATIENT_A));
+
+    await runNotifyPump(db, { now: NOON, adapters: adapterSet() });
+
+    expect(calls).toEqual([]);
+    const row = await rowById(id);
+    expect(row.status).toBe("suppressed");
+    expect(row.sentAt).toBeNull();
+
+    const suppressed = await eventsNamed("notification.suppressed");
+    expect(suppressed).toHaveLength(1);
+    expect(suppressed[0]!.payload).toEqual({
+      notificationId: id,
+      templateKey: "patient_welcome",
+      audience: "patient",
+      reason: "deceased",
+    });
+
+    // THE LOAD-BEARING ROW. Not `toEqual([])` on a filtered list but the COUNT of the event that
+    // becomes a human being's phone task: the deceased stop must run BEFORE channel resolution.
+    expect(await eventsNamed("notification.failed")).toHaveLength(0);
+    expect(await eventsNamed("notification.sent")).toEqual([]);
+  });
+
   it("suppresses a promotional-class row at send time — the belt to D9's enqueue refusal", async () => {
     const real = templatesMod.templateByKey;
     const promotional: NotificationTemplate = { ...real("patient_welcome"), class: "promotional" };
