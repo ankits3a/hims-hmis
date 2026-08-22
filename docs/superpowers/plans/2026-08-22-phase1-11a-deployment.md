@@ -830,10 +830,15 @@ budget below.
 2. **DISCHARGED 2026-08-22** — both orphan shells (`3501080`, `3502071`) killed by PID and
    confirmed gone. **Still the owner's, still open:** the pre-existing `hmis_spike85_1` database
    on `hmis-db-1` (visibly the 08.5 spike's residue — spike finding 8), drop or keep.
-3. **DNS: the chosen subdomain → `62.238.106.231`** — blocks T3's auto-HTTPS leg (Caddy needs the
-   name to resolve).
-4. **Cloudflare R2: bucket + scoped API token created; credentials handed to the deploy `.env`
-   by the owner** — T4 HALTS without them (its remote leg must be real).
+3. **DISCHARGED 2026-08-22 — the hostname is `hmis.crkmch.com`**, resolving to
+   `62.238.106.231` from both the owner's network and the box itself, **unproxied** — exactly
+   what Caddy's ACME needs. T3's Caddyfile uses this name. *(If the record is ever flipped to
+   Cloudflare-proxied, auto-HTTPS breaks and T3's TLS approach must be revisited.)*
+4. **DISCHARGED 2026-08-22 — verified by execution:** the R2 bucket exists and the S3
+   credentials list it (signed ListObjectsV2, HTTP 200, empty as a fresh destination should
+   be). Endpoint, bucket and keys live at **`/opt/hmis-prod/.env.r2`** (chmod 600; deliberately
+   not named in this public repo). T4 reads them from there. The account-level Cloudflare API
+   token was neither needed nor stored anywhere.
 5. **`SECRET_KEY` ceremony scheduled** (T6 documents it; the owner performs it at first prod
    deploy).
 6. **Counsel engagement started** (rulings 6+7): retention floors + DPDP pilot posture — blocks
@@ -851,6 +856,9 @@ budget below.
 4. **Staff/owner phone numbers** for `users.phone` (Plan 10's decision 4) — deployment data for
    the runbook's seed step. Stalls staff/owner external messages only.
 5. **Plan 11c's slot** — any time after 11a, before go-live (ruling 8).
+6. **Mask the R2 endpoint under an owner-controlled domain** — the owner asked to be REMINDED of
+   this later. Cosmetic; when done, re-point one line in `/opt/hmis-prod/.env.r2` (and
+   pgbackrest.conf if T4 has landed). Stalls nothing.
 
 ## Self-review — what this plan's own passes caught before commit, and what the spike refuted
 

@@ -55,11 +55,14 @@
   three; `git pull --rebase` anything stale.** SSH to the host is intermittently flaky — retry;
   a 255 is transport, not a verdict.
 - **Execute-prerequisites (plan §, owner actions) — CHECK, do not assume:**
-  (1) nginx residue gone and **80/443 free** (`ss -tlnp`) — **T3's bring-up halts if not**;
-  (2) the two orphan shells (`3501080`/`3502071`) gone or still present — note which, rule 20
-  either way; (3) DNS for the owner's chosen subdomain resolving to `62.238.106.231` — T3's
-  auto-HTTPS leg needs it; (4) **R2 bucket + token available to the deploy `.env` — T4 HALTS
-  without them, by design**; the plan forbids shipping an untested remote leg.
+  (1) nginx residue gone and **80/443 free** (`ss -tlnp`) — discharged 2026-08-22 (nginx
+  stopped+disabled), **T3's bring-up halts if it has returned**; (2) the two orphan shells
+  (`3501080`/`3502071`) — killed 2026-08-22; note whatever a fresh rule-20 probe shows; (3)
+  **`hmis.crkmch.com`** resolving **unproxied** to `62.238.106.231` — verified 2026-08-22; T3's
+  Caddyfile uses this name, and a Cloudflare-proxied flip would break auto-HTTPS; (4) **the
+  verified R2 credentials at `/opt/hmis-prod/.env.r2`** (chmod 600; a signed bucket list
+  succeeded 2026-08-22) — **T4 HALTS if they are absent or no longer valid**; the plan forbids
+  shipping an untested remote leg.
 - Baseline (2026-08-22, gate report, exit VALUE from a file): core **132 / 908** · web
   **31 / 152** · contracts **3 / 7**. **Re-measure per-workspace immediately before compiling**
   and paste the measurement, never these numbers, into the briefs.
