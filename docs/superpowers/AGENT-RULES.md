@@ -26,8 +26,12 @@ Violating any one of these fails the task regardless of code quality.
    If you discover you have written there, report it and LEAVE IT EXACTLY AS IT IS — do not
    delete, revert, stash, or clean it. It is not yours to clean. (Reading it is also not
    needed: rule 22 gives you your own mirror.)
-3. **`/opt/hmis` is the only writable path on the server. NO writes to `/tmp`, ever**, for any
-   reason — not even a throwaway sanity check.
+3. **AMENDED 2026-08-22 (Plan 11a's deploy directory).** **`/opt/hmis` (the build checkout) and
+   `/opt/hmis-prod` (the production deploy directory) are the only writable paths on the server.
+   NO writes to `/tmp`, ever**, for any reason — not even a throwaway sanity check.
+   `/opt/hmis-prod` holds deploy-script-managed configs and the production `.env` ONLY: it is
+   never scratch, never a mirror, never a checkout, and a task may write it only when its brief
+   says so in as many words.
 4. Keep any scratch file under `/opt/hmis` (server) or your own mirror (local), and delete it
    before committing.
 5. **NEVER run a command that emits compiled JavaScript into the source tree** (bare `tsc`,
