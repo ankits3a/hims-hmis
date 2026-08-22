@@ -1,0 +1,72 @@
+# Plan 11a / D14 — the production edge.
+#
+# Three jobs: terminate TLS on the real hostname, serve the built SPA, and reverse-proxy the API
+# path prefixes (including the WebSocket upgrade) to the api container.
+#
+# THE UPGRADE NEEDS NOTHING SPECIAL. Spike question E measured it rather than assuming it: a bare
+# `reverse_proxy` produced HTTP 101 with a `sec-websocket-accept` header, the gateway then ran its
+# own auth protocol over the proxied socket (auth_timeout frame, close 4001), a direct-connection
+# control behaved byte-identically, and a wrong-path upgrade came back 502. No `header_up`, no
+# transport block, no websocket matcher.
+#
+# TLS: automatic. Caddy provisions and renews a Let's Encrypt certificate for the site address
+# below over ACME, and — because the site is named by hostname with automatic HTTPS on — Caddy
+# also serves the HTTP→HTTPS redirect on :80 itself. There is deliberately NO explicit `http://`
+# site block: one would take :80 away from Caddy's own automatic redirect and ACME handling for
+# no gain. The redirect is proved by drill (308), not asserted here.
+#
+# There is NO auth gate in front of the app. Plan 02's auth is the gate; an IP allowlist is a
+# Decisions-§ option the owner can turn on later in one directive.
+#
+# D4/GC1 portability: on on-prem metal this file is RE-POINTED (a different hostname, or an
+# internal CA) and never rewritten.
+{
+	# HTTP/1.1 and HTTP/2 only. Left at the default, Caddy also opens HTTP/3 on 443/UDP and
+	# advertises it with `alt-svc: h3=":443"; ma=2592000` — measured on the first bring-up. The
+	# compose file publishes 443/TCP only, matching a host firewall that admits 80/tcp and
+	# 443/tcp, so that advertisement is a promise nothing can keep: clients cache it for 30 days
+	# and race a QUIC connection that never arrives before falling back. Publishing the UDP port
+	# and opening it is the other coherent answer; delete this block if you take it.
+	servers {
+		protocols h1 h2
+	}
+}
+
+hmis.crkmch.com {
+	encode zstd gzip
+
+	# Security headers, applied to every response the site produces — proxied and static alike.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Cross-Origin-Opener-Policy "same-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		-Server
+	}
+
+	# ---------------------------------------------------------------------------------------
+	# THE PARITY LINE. These nine prefixes are mirrored from apps/web/vite.config.ts's dev proxy
+	# and pinned by apps/core/test/caddyfile-parity.test.ts (D14): a module that adds a prefix
+	# there and forgets it here breaks that test rather than shipping an SPA whose calls work in
+	# dev and 404 into index.html in production. Change both files, in one commit.
+	# ---------------------------------------------------------------------------------------
+	@api path /auth* /patients* /approvals* /workflow* /health* /opd* /billing* /alerts* /ws*
+
+	# `handle` blocks are mutually exclusive and evaluated in the order written, which is what
+	# this site needs: without them Caddy's directive ordering would run `try_files` (a rewrite)
+	# BEFORE `reverse_proxy`, rewrite /health to /index.html because no such file exists under
+	# the static root, and quietly stop the api from ever being reached.
+	handle @api {
+		reverse_proxy api:3000
+	}
+
+	# The SPA. /srv is where the Dockerfile's `web` target puts the vite build (T1-1); the
+	# index.html fallback is what makes client-side routing survive a hard refresh.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

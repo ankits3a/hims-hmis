@@ -1,0 +1,172 @@
+# Plan 11a / D13 — the stage-1 production stack, running BESIDE the dev stack on one box
+# (owner ruling 2). Everything about that coexistence is structural, not a convention:
+#
+#   * the compose project is `hmis-prod` and dev's is `hmis`, so a `compose down`/`up` against
+#     one can never act on the other (AGENT-RULES rule 7 as amended 2026-08-22);
+#   * the databases are different CONTAINERS on different VOLUMES on different PORTS — dev
+#     Postgres stays on 5433 and is never touched here, prod Postgres is 127.0.0.1:5434;
+#   * this file is COPIED to /opt/hmis-prod by deploy.sh and compose is run from there, so a git
+#     operation in the /opt/hmis checkout cannot mutate what production is running.
+#
+# Port map, stated once (D13): dev Postgres 5433 (untouched) · prod Postgres 127.0.0.1:5434 ·
+# Caddy 80/443 · Grafana 127.0.0.1:3001 and Prometheus 127.0.0.1:9090 (T6) · api and the
+# exporters are compose-network-internal only and publish nothing.
+#
+# There is no `build:` key anywhere below, deliberately. Images are built FROM THE CHECKOUT by
+# deploy.sh and run FROM THE DAEMON by tag: production never executes from a working tree.
+#
+# D4/GC1 portability: postgres, a node image built from this repo, and Caddy. No cloud load
+# balancer, no cloud volume, no cloud DNS API, no cloud secrets manager. Racked on on-prem metal
+# tomorrow, nothing here is REWRITTEN — the hostname in the Caddyfile and the backup endpoint in
+# /opt/hmis-prod/.env are RE-POINTED.
+#
+# Sequential ownership: T3 (this file's creation) · T4 (the db image gains pgBackRest) ·
+# T6 (prometheus, grafana and the two exporters). Leave it clean for them.
+name: hmis-prod
+
+services:
+  # ------------------------------------------------------------------------------------------
+  # db — production Postgres. T4 replaces this image with the pgBackRest-carrying build from
+  # docker/prod/db.Dockerfile (FORK-C: archive_command runs in THIS container); nothing else
+  # about the service changes when it does.
+  # ------------------------------------------------------------------------------------------
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    # Loopback only. The dev database on 5433 is a different container on a different volume and
+    # is never addressed from this project.
+    ports:
+      - "127.0.0.1:5434:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in the deploy .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the deploy .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in the deploy .env}
+    volumes:
+      - hmis_prod_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # D12. `$$` escapes compose interpolation so the CONTAINER's own environment expands here.
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    deploy:
+      resources:
+        # Ruling 2 makes these load-bearing rather than hygiene: the dev suite runs on this same
+        # box and must not be able to starve production, nor production the suite. Sized against
+        # the spike's measurements on a 16 GB box — the whole T6 monitoring stack came in at
+        # ~96 MiB, so the headroom below is real.
+        limits:
+          cpus: "2.0"
+          memory: "4g"
+        reservations:
+          memory: "1g"
+
+  # ------------------------------------------------------------------------------------------
+  # api — the Nest server. One image, several entrypoints (D3): the process is the COMMAND.
+  # Publishes no port; Caddy reaches it over the compose network.
+  # ------------------------------------------------------------------------------------------
+  api:
+    image: hmis-prod/server:latest
+    restart: unless-stopped
+    command: ["node", "dist/src/main.js"]
+    env_file:
+      - .env
+    expose:
+      - "3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # D12 + T1-2: there is no curl and no wget in node:22-bookworm-slim, so the check is node's
+      # own fetch. /health is degraded-never-down by design, so any 2xx is alive.
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: "1g"
+        reservations:
+          memory: "256m"
+
+  # ------------------------------------------------------------------------------------------
+  # worker — the scheduler process. THE WORKER DELIBERATELY HAS NO HEALTHCHECK (D12): it has no
+  # HTTP surface, its liveness is its `scheduler_heartbeats` row, and that row is what T6's
+  # alert rule reads. A pgrep-style check would assert that a process exists, which is not the
+  # thing anyone needs to know. Do not add one.
+  # ------------------------------------------------------------------------------------------
+  worker:
+    image: hmis-prod/server:latest
+    restart: unless-stopped
+    command: ["node", "dist/src/worker.js"]
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "768m"
+        reservations:
+          memory: "256m"
+
+  # ------------------------------------------------------------------------------------------
+  # caddy — the edge. The image is the Dockerfile's `web` target: caddy:2-alpine with the built
+  # SPA at /srv (T1-1). The Caddyfile is NOT baked in; it is deploy-directory config (D13) so it
+  # can be corrected without a rebuild, and deploy.sh copies it here.
+  #
+  # `service_started`, not `service_healthy`: if the api is sick the site should still serve the
+  # SPA and return the api's own error, not vanish. Caddy resolves `api:3000` per request, so it
+  # tolerates the api restarting under it.
+  #
+  # No compose healthcheck: caddy:2-alpine carries no HTTP client, and the check that actually
+  # matters is the external one deploy.sh performs — /health through Caddy over HTTPS.
+  # ------------------------------------------------------------------------------------------
+  caddy:
+    image: hmis-prod/web:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      # HTTP/3 (443/udp) is deliberately NOT published: the host firewall admits 80/tcp and
+      # 443/tcp only, and clients negotiate HTTP/2 over TCP with no loss of function.
+    volumes:
+      # A DIRECTORY, not the Caddyfile itself, and that is load-bearing. A single-file bind mount
+      # is bound to the file's INODE: deploy.sh replacing the file (install(1) unlinks and
+      # recreates) leaves the container reading the OLD inode, so the edge silently keeps serving
+      # the previous config and a `caddy reload` reloads it. Measured on this box, not reasoned:
+      # after a config change the host file hashed one way and /etc/caddy/Caddyfile inside the
+      # container still hashed the other. Mounting the directory makes the lookup go through the
+      # directory every time, so a replaced file is seen. T4 and T6: same trap, same answer.
+      - ./caddy:/etc/caddy:ro
+      # ACME account keys and issued certificates. Without this volume every restart would ask
+      # Let's Encrypt for a fresh certificate and hit the rate limit.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "512m"
+        reservations:
+          memory: "64m"
+
+volumes:
+  # Named inside the `hmis-prod` project, so the real volume is `hmis-prod_hmis_prod_pgdata` —
+  # a different object from dev's `hmis_hmis_pgdata`, which nothing here may touch (rule 7).
+  hmis_prod_pgdata:
+  caddy_data:
+  caddy_config:
