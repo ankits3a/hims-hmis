@@ -51,7 +51,7 @@ different, fresh session compiles and runs it afterwards.
 
 ## 2. Ground truth — verify it, do not trust it
 
-- **HEAD `31e5b1f` on `main`** (or later — this file was amended after the InsForge removal). Local `C:\Users\ankit\hmis`, build host
+- **HEAD `849a16c` on `main`** or later — this file was amended after the InsForge removal, so re-check rather than trusting the SHA. Local `C:\Users\ankit\hmis`, build host
   `root@62.238.106.231:/opt/hmis`, and `origin/main` were all in sync at handoff. **Re-verify all
   three and `git pull --rebase` anything stale** — the build host has been found stale before.
 - **Test baseline, measured 2026-08-22 detached with the exit VALUE read from a file:** `apps/core`
