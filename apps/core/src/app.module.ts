@@ -18,6 +18,8 @@ import { ApprovalsModule } from "./kernel/approvals/approvals.module";
 import { RealtimeModule } from "./kernel/realtime/realtime.module";
 import { AlertsModule } from "./kernel/alerts/alerts.module";
 import { alertsManifest } from "./kernel/alerts/manifest";
+import { OpsModule } from "./kernel/ops/ops.module";
+import { opsManifest } from "./kernel/ops/manifest";
 
 export { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "./kernel/tokens";
 
@@ -26,7 +28,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
 
 @Global()
 @Module({
-  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule, OpdModule, BillingModule, AlertsModule], // ← PatientsModule added; AlertsModule (Plan 08.5 D6)
+  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule, OpdModule, BillingModule, AlertsModule, OpsModule], // ← PatientsModule added; AlertsModule (Plan 08.5 D6); OpsModule (Plan 11c T2)
   controllers: [HealthController],
   providers: [
     { provide: CONFIG, useFactory: (): AppConfig => loadConfig() },
@@ -52,6 +54,11 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // subscriptions seam. This is the first non-empty `subscriptions` declaration in the
         // repo. It mints NO permission (D6 — access is identity-scoped).
         registry.install(alertsManifest);
+        // PLAN 11c T2 — kernel/ops carries a manifest for the same §4 reason kernel/alerts does:
+        // a route guarding on a permission NO manifest declares is a route syncPermissions leaves
+        // unreachable by every role forever. All three ops permissions are declared here now,
+        // including the two whose routes arrive in later waves of this plan (see manifest.ts).
+        registry.install(opsManifest);
         // Later plans install their module manifests here.
         return registry;
       },
