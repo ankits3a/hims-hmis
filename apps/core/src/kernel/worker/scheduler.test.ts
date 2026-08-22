@@ -54,6 +54,34 @@ function pinDateOnly(now: Date): void {
 }
 
 /**
+ * A HANDLE TO THE REAL EVENT LOOP, captured at module load while the timers are still real.
+ * The L14 census below fakes EVERY timer — it has to, compressing hours of fake clock is the
+ * whole technique — which leaves it no way to yield actual wall-clock time to the REAL database
+ * round-trips its own ticks are waiting on: `setTimeout`, `setImmediate` and `queueMicrotask`
+ * all belong to the fake clock by then. This reference does not.
+ */
+const realSetTimeout = setTimeout;
+
+/**
+ * Yields `turns` REAL event-loop turns — timers phase, then poll phase, `turns` times over, at
+ * ≥1 ms apiece because node clamps a 0 ms timeout to 1 ms. The poll phase is the point: it is
+ * where `pg`'s socket data actually arrives, so an outstanding `isDailyDue` read — and the
+ * heartbeat writes of whatever run it starts — can finish while fake time stands still.
+ *
+ * A FIXED COUNT rather than a real-time budget, deliberately: on a starved container each turn
+ * takes LONGER, so the same count buys proportionally more real time exactly where more of it is
+ * needed. It is a sequencing wait, not a timing assertion (Global Constraint 10) — it asserts
+ * nothing and cannot fail; a census that settles and still comes back short fails on its SET.
+ */
+async function settleRealTurns(turns: number): Promise<void> {
+  for (let i = 0; i < turns; i += 1) {
+    await new Promise<void>((resolve) => {
+      realSetTimeout(() => { resolve(); }, 0);
+    });
+  }
+}
+
+/**
  * A dedicated connection to the SAME per-worker test database `setupTestDb()` already
  * migrated, but with `idleTimeoutMillis: 0`. The L14 census test below fakes ALL timers
  * (`setInterval` included, to compress 25 h into a fast advance) — and `pg`'s own Pool runs
@@ -276,20 +304,112 @@ describe("Scheduler", () => {
       else process.env.DATABASE_URL = savedDatabaseUrl;
     });
 
-    it("invokes all nine jobs within a faked 25 hours advanced from a pinned instant", async () => {
+    // ── Plan 11c R0-2 / D12: THE ADVANCE IS WALKED, NOT JUMPED ────────────────────────────
+    //
+    // Gate report §3a measured this test red on ~16% of CI runs — and red TWICE CONSECUTIVELY,
+    // so one re-run was never a clearing procedure — always with an empty or partial `invoked`
+    // set. §7.9 refused the obvious fix, a finer `CENSUS_DAILY_TICK_MS`, and it stays refused:
+    // `runDailyClose`'s window is ONE IST minute, the 30 s grid above samples it exactly twice
+    // (the finding beside that constant), and a 5 s grid would multiply the REAL database reads
+    // sixfold on the container that is already too slow to keep up.
+    //
+    // THE FAILURE IS A QUEUE, NOT A SAMPLE. A single `advanceTimersByTimeAsync(25 h)` fires
+    // ~3 000 daily ticks back to back with one event-loop turn between them, and every tick
+    // awaits a real heartbeat read for each daily job whose IST instant has already passed —
+    // three of the five nearly always, since guardians' 00:05 window alone is open ~23.9 h of
+    // every day. That is ~9 000 queries queued against a ten-client pool while fake time races
+    // to the end of the sweep. `stop()` then latches `stopped` with the reads issued INSIDE the
+    // one-minute window still in that queue, and `dailyTick`'s post-await re-check
+    // (`scheduler.ts:193-199`) drops the runs they would have started. That re-check is
+    // CORRECT — it is what stops a job starting against a pool the caller is about to end, and
+    // the test at the bottom of this file exists to keep it. A fast box drains the queue before
+    // `stop()`; a starved one does not, and the set comes back short.
+    //
+    // So the advance is WALKED: hour-sized chunks, each followed by real event-loop turns, keep
+    // the queue shallow instead of letting 9 000 reads pile up behind fake time; and each of the
+    // five daily instants is ARRIVED AT — one second past it, so the tick that lands ON the
+    // instant has fired — then crossed in tick-sized advances, every one of them settled. Every
+    // `isDailyDue` an open window issues has resolved, and every run it starts has reached its
+    // spy, before the clock leaves that window and long before `stop()` is called.
+    //
+    // AND THE SPAN SHRANK, 25 h → 9 h 05 m, which is the runtime half of §7.9's trade: the five
+    // daily instants all fall within 7 h 45 m of the pin (below) and the longest cadence in
+    // `CENSUS_INTERVALS` is `workerTempRolesIntervalMs` at 9 h, so 9 h 05 m is the entire span
+    // this census has ever needed. The old 25 h was sized to "cross an IST day boundary" without
+    // computing where the boundary actually is (18:30 UTC, 6 h 30 m in). ~1 090 daily ticks
+    // instead of ~3 000. **A FUTURE `every` JOB CENSUSED AT A CADENCE LONGER THAN THIS SPAN WILL
+    // NEVER FIRE** — and the set-equality assertion below then goes red naming it, which is the
+    // only reason a bare constant is safe here rather than a computed maximum.
+
+    const MINUTE_MS = 60_000;
+    const HOUR_MS = 60 * MINUTE_MS;
+
+    /** 2026-08-21T12:00:00Z is 17:30 IST on 2026-08-21 — the pin every offset below counts from. */
+    const CENSUS_PIN = new Date("2026-08-21T12:00:00.000Z");
+
+    /**
+     * The five daily instants as offsets from the pin, ASCENDING — one per `dailyIst`
+     * registration in `jobs.ts:20-31`, and this list is a transcription of those constants, not
+     * a fixture. Three of them (00:05, 00:15, 01:15 IST) are already `pastInstant` at 17:30 IST
+     * with no heartbeat, so they fire on the very first tick and fire AGAIN once IST rolls over
+     * at 18:30 UTC; the walk visits them regardless, so the list stays a transcription of the
+     * registrations rather than a record of which ones today's pin happens to make interesting.
+     */
+    const DAILY_INSTANTS_MS = [
+      6 * HOUR_MS + 25 * MINUTE_MS, // 18:25Z = 23:55 IST 08-21 · sweepAppointmentNoShows (5-min window)
+      6 * HOUR_MS + 29 * MINUTE_MS, // 18:29Z = 23:59 IST 08-21 · runDailyClose (ONE-minute window — the flake)
+      6 * HOUR_MS + 35 * MINUTE_MS, // 18:35Z = 00:05 IST 08-22 · sweepGuardianMajority
+      6 * HOUR_MS + 45 * MINUTE_MS, // 18:45Z = 00:15 IST 08-22 · createEventPartitions
+      7 * HOUR_MS + 45 * MINUTE_MS, // 19:45Z = 01:15 IST 08-22 · retentionSweep
+    ];
+
+    /** Total fake time advanced: past the last daily instant AND past the 9 h longest cadence. */
+    const CENSUS_SPAN_MS = 9 * HOUR_MS + 5 * MINUTE_MS;
+    /** The largest single advance taken anywhere — the queue-depth bound. */
+    const WALK_CHUNK_MS = HOUR_MS;
+    /** Tick-sized advances taken at each instant after arriving just past it. */
+    const TICKS_PER_INSTANT = 3;
+    /** Real turns after an ordinary walk chunk: queue control, nothing is due. */
+    const WALK_SETTLE_TURNS = 10;
+    /** Real turns at an instant, where a window is open and a run must reach its spy. */
+    const INSTANT_SETTLE_TURNS = 50;
+
+    it("invokes all nine jobs across a stepwise advance from a pinned instant", async () => {
       expect(process.env.DATABASE_URL).toBeUndefined(); // CI's environment, reproduced here
       const invoked: string[] = [];
       const spies = spyOnTheNine(invoked);
       const registry = censusRegistry();
       const fresh = freshWorkerDb();
-      jest.useFakeTimers({ now: new Date("2026-08-21T12:00:00.000Z") });
+      jest.useFakeTimers({ now: CENSUS_PIN });
       try {
         const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), CENSUS_DAILY_TICK_MS);
         registerAllJobs(scheduler, fresh.db, registry, {}, CENSUS_INTERVALS);
         expect(scheduler.jobs()).toEqual(THE_NINE);
 
+        // Fake milliseconds advanced so far, measured from the pin. The walk only moves forward,
+        // so a target already behind the cursor is a no-op rather than a rewind.
+        let cursorMs = 0;
+        const walkTo = async (targetMs: number): Promise<void> => {
+          while (cursorMs < targetMs) {
+            const step = Math.min(WALK_CHUNK_MS, targetMs - cursorMs);
+            await jest.advanceTimersByTimeAsync(step);
+            cursorMs += step;
+            await settleRealTurns(WALK_SETTLE_TURNS);
+          }
+        };
+
         scheduler.start();
-        await jest.advanceTimersByTimeAsync(25 * 60 * 60 * 1000);
+        for (const instantMs of DAILY_INSTANTS_MS) {
+          await walkTo(instantMs + 1_000); // one second PAST it: the tick landing on the instant has fired
+          await settleRealTurns(INSTANT_SETTLE_TURNS);
+          for (let i = 0; i < TICKS_PER_INSTANT; i += 1) {
+            await jest.advanceTimersByTimeAsync(CENSUS_DAILY_TICK_MS);
+            cursorMs += CENSUS_DAILY_TICK_MS;
+            await settleRealTurns(INSTANT_SETTLE_TURNS);
+          }
+        }
+        await walkTo(CENSUS_SPAN_MS); // the tail — nothing daily is left, the interval cadences need it
+        await settleRealTurns(INSTANT_SETTLE_TURNS);
         await scheduler.stop();
 
         expect(new Set(invoked)).toEqual(new Set(THE_NINE));
