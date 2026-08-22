@@ -369,3 +369,112 @@ and has had a restore performed and verified. **Plan 11c is unblocked.**
 
 **Not next, and deliberately:** Plans 09, 11c and the relay belong to a session that reads this
 report cold. E-1 (DMZ vs cloud relay) remains open and blocks only the relay.
+
+---
+
+## ADDENDUM 2026-08-23 — ALL FOUR MAJOR RESIDUALS ARE CLOSED
+
+Written by the same session, immediately after this report, on the owner's instruction to clear
+the residuals before the next phase is planned. **The body of this report above is left exactly as
+it was written** — it is the honest record of what the pipeline delivered, and editing it to look
+better afterwards would destroy the only thing it is for. This addendum says what changed since.
+
+| # | residual | fix | CI |
+|---|---|---|---|
+| §7.1 | monitoring inert in production | `2174752` | GREEN 325 s |
+| §7.2 | a legal hold did not reach the side tables | `8a9fb46` | GREEN 444 s |
+| §7.4 | no retention section in the runbook | `05fdee8` | see below |
+| §7.3 | nothing pinned `alerts.yml` to the job registry | `63dc27a` | see below |
+
+### §7.1 — closed, and the first fix was incomplete
+
+Six `install` lines put the prometheus / postgres-exporter / grafana trees into the deploy
+directory. Two further things came out of verifying rather than assuming:
+
+- **A gate that would have caught it.** New step 6b asserts every service
+  `compose config --services` declares reaches `running` inside a deadline, prints the last 15 log
+  lines of anything that does not, and reports a non-zero restart count on anything that bounced.
+  **Its teeth were observed before it was trusted**, against the still-broken live stack:
+  `GATE WOULD FAIL - not running: prometheus(restarting)`.
+- **Installing the configs was not enough.** Grafana still reported zero datasources and zero
+  dashboards afterwards. The files were visibly inside the container — but grafana had started at
+  18:32:36 and they landed at 19:07:52, and **grafana reads provisioning only at startup**.
+  `compose up -d` does not recreate a service whose DEFINITION is unchanged; only its bind-mounted
+  contents were. That is the identical trap T3 had already documented for Caddy and solved with an
+  explicit reload, and prometheus had the same exposure. Both are now restarted after the install.
+  **Ledger §2.77.**
+
+Verified end to end on the box: all 8 declared services running · prometheus `/-/ready` 200 · all
+three alert rules loaded (`HmisSchedulerJobStaleInterval`, `HmisSchedulerJobStaleDaily`,
+`HmisSchedulerJobMissing`) · `hmis_scheduler_heartbeat_staleness_seconds` serving **8 real per-job
+series** through postgres-exporter · grafana provisioned with the `Prometheus` datasource and the
+`HMIS — production overview` dashboard · `/health` 200 through Caddy over HTTPS.
+
+### §7.2 — closed, by a better mechanism than the one I specified
+
+I briefed the clamp as "clamp the companion sweep to the earliest month the partition loop marked
+blocked". **The agent beat it and was right to.** That loop only asks about months with a named
+`events_YYYY_MM` partition that are drop-eligible, so three cases escape it and keep the same
+defect one case narrower: a month whose rows landed in the **DEFAULT partition**; a month **older
+than the oldest surviving partition** that still has side-table rows; and a **global hold with no
+drop-eligible partition at all**, where `blocked` comes back empty and the companion sweep prunes
+at full width during a hold that says *preserve everything*.
+
+The shipped mechanism reads the holds **directly**, in `companionSweepCutoff(db, cutoff)`: an
+active global hold returns `null` and the whole companion leg is skipped; otherwise the cutoff is
+clamped back to the IST month start of the oldest event of any actively-held patient older than
+`cutoff`. It is a provable superset of the loop's `blocked` set. **`activeGlobalHold` is now one
+shared function called by both `blockingHold` and `companionSweepCutoff`** — two copies of that
+predicate is precisely how the partitions came to be protected and the side tables not, and one
+function cannot drift from itself.
+
+- **Fail-first, semantic and quoted:** three of the four new tests RED against shipped code
+  (`Tests: 3 failed, 18 skipped, 1 passed`). The fourth — *a RELEASED hold does not clamp* —
+  passed against shipped code by design: it is the control that stops "clamp always" being
+  mistaken for a fix.
+- **The fixture is the point.** Each carries an active hold AND `event_idempotency` /
+  `event_deliveries` / `event_dead_letters` rows in the held month, **plus an un-held month older
+  than it whose rows must still go** — without that, "nothing was deleted" would also pass under a
+  sweep that had simply stopped working, and the assertion would be measuring an outage.
+- **Mutant DIED twice**, for both hold shapes, isolated, expected-vs-received quoted.
+- V5, V6, V7, V8, V9 and V12 all still pass unchanged. GC5's default and GC6's immunity untouched.
+
+**The notifications question was NOT silently widened.** The prune is behaviourally unchanged and
+both new hold tests pin that. The agent's recommendation, which I accept: leave it, and put it to
+counsel — a global hold suspending `NOTIFY_RETAIN_DAYS` would let a legal instrument silently
+disable the only prune on a table that gains ~10⁶ rows/year. The two questions for counsel and the
+one-guard shape of the change are recorded in a comment above the batch loop.
+
+### §7.4 — closed, and every statement in it was executed
+
+A full "Retention (D6/D7)" section in the README: the settings and defaults, what is dropped and
+what never is, the four events, **how to place a patient hold and a global hold, how to release
+one (never delete), how to list what is in force**, and how to read a refusal. `.env.prod.example`
+gains the three keys, commented, at their defaults, with the warning that `RETENTION_ENABLED`
+stays false until counsel signs.
+
+**Every SQL statement in the section was run against the live production schema inside a
+transaction that was ROLLED BACK** — insert, list, release, count — confirming
+`rows_left_behind_after_rollback = 0`. A runbook whose SQL does not run is worse than no runbook.
+
+### §7.3 — closed, with both negative controls observed
+
+`apps/core/test/alerts-parity.test.ts`, deliberately the twin of `caddyfile-parity.test.ts`.
+Vacuity defences: every parser throws rather than returning empty (asserted in its own test), the
+registry census is pinned by name and count before anything is compared, and the two `job=~` legs
+are asserted DISJOINT so a leg that swallowed every name could not satisfy the union.
+
+Both drifts observed to fail, as scratch mutations of the real files, reverted: a job removed from
+the `absent()` set fails exactly the missing-series test; a tenth job registered with `alerts.yml`
+untouched fails three of four including the census pin.
+
+### Still open after this addendum
+
+**Unchanged from §9, and none of it is a MAJOR:** the two MINORs (§7.6 no Alertmanager, so
+`severity: critical` reaches no one; §7.7 the `X-Powered-By: Express` leak) and §7.9's L14 census
+flake with its runtime/flake trade. **Owner actions are unchanged and the first is still the most
+urgent: the `SECRET_KEY` and pgBackRest cipher-passphrase escrow ceremony** — without the
+passphrase every backup in R2 is unreadable ciphertext, including by the owner.
+
+**Final state:** `pnpm verify` exit 0 — `apps/core` **138 suites / 961 tests** (from 953),
+`apps/web` 31/152, `packages/contracts` 3/7, zero FAIL lines. Server tree clean.
