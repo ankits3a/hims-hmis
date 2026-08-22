@@ -136,6 +136,17 @@ describe("registerAllJobs threads NOTIFY_STUCK_AFTER_MS to the pump (Book R2)", 
     // 1 000, chosen so it cannot be confused with the pump's own 300 000 fallback: if this test
     // passes, no fallback could have produced the result.
     notifyStuckAfterMs: 1000,
+    // Plan 11a T5, and this literal is here BECAUSE the type event fired: widening the
+    // `JobIntervals` Pick with the three retention keys stopped this object compiling
+    // (`TS2739 ... is missing the following properties from type 'JobIntervals':
+    // retentionEnabled, retentionEventsMonths, notifyRetainDays`), exactly as the Pick's own
+    // comment in jobs.ts promises it will. THE SHIPPED DEFAULTS, PASSED EXPLICITLY: this block is
+    // about the pump, `retentionEnabled: false` keeps the ninth job inert here, and where a
+    // NON-default retention value is asserted to reach the sweep is
+    // `kernel/retention/sweep.test.ts` (Book V9, Global Constraint 14).
+    retentionEnabled: false,
+    retentionEventsMonths: 120,
+    notifyRetainDays: 180,
   };
 
   let db: Db;

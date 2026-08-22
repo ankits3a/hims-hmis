@@ -1,0 +1,379 @@
+import { and, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import type { Actor } from "@hmis/contracts";
+import {
+  eventDeadLetters,
+  eventDeliveries,
+  eventIdempotency,
+  events,
+  notifications,
+  retentionLegalHolds,
+} from "../db/schema";
+import { withTx } from "../db/client";
+import type { Db } from "../db/client";
+import { appendEvent } from "../events/append";
+import { EVENTS_DEFAULT_PARTITION, listEventPartitions } from "../worker/partitions";
+import { dropBlocked, notificationsPruned, partitionDropped, sideTablesPruned } from "./events";
+
+// RETENTION (Plan 11a D6/D7). THIS FILE DESTROYS CLINICAL RECORDS, and every guard below is
+// therefore written to fail CLOSED — the sweep does nothing at all unless it is switched on, and
+// it refuses a drop on the first sign of a reason not to.
+//
+// THE MECHANISM SHIPS INERT (Global Constraint 5, owner ruling 6). `RETENTION_ENABLED` defaults
+// to false in config.ts AND `enabled` defaults to false here, so a caller that forgets to thread
+// the key gets the safe answer rather than the configured one. Flipping either default, or
+// weakening the hold check, is on the plan's HALT list: it is the owner's decision with a value
+// counsel has signed, not a judgement any task makes.
+//
+// EVENTS GO BY PARTITION, NOTIFICATIONS BY ROW, and that asymmetry is the whole point of D5's
+// partitioning: dropping a month of `events` is one DDL statement against the retention unit,
+// while `notifications` is an ordinary heap whose terminal rows are deleted in bounded batches on
+// the index T2 shipped for exactly this predicate.
+
+/** IST is a fixed UTC+05:30 design-law constant (no DST) — the same fact `scheduler.ts:67` and
+ * `worker/partitions.ts` each keep locally rather than importing, for the same reason: one
+ * constant is not a dependency, and `partitions.ts`'s copy is module-private besides. */
+const IST_OFFSET_MS = 330 * 60_000;
+const DAY_MS = 24 * 60 * 60_000;
+
+const RETENTION_ACTOR: Actor = { type: "system", id: "retention-sweep" };
+
+/**
+ * THE INERT DEFAULT, AND IT IS NOT A MIRROR OF THE ZOD DEFAULT (the `NOTIFY_STUCK_AFTER_MS` scar,
+ * pump.ts:56-60): production reaches this function through `registerAllJobs`, which threads
+ * `cfg.retentionEnabled`, so this value is what a DIRECT caller — a test, a script — gets when it
+ * says nothing. It is `false` because the safe answer to "should I delete records?" asked by
+ * someone who did not think about it is no.
+ */
+const DEFAULT_ENABLED = false;
+/** D6's conservative window: ten years of events, in months. */
+const DEFAULT_EVENTS_MONTHS = 120;
+/** D7: half a year of terminal outbox rows. */
+const DEFAULT_NOTIFY_RETAIN_DAYS = 180;
+const DEFAULT_BATCH_SIZE = 500;
+/**
+ * The prune is bounded in BOTH directions: `batchSize` rows per statement, and no more than this
+ * many statements per run. A nightly job that finds a million-row backlog takes it down over
+ * several nights instead of holding one transaction open for minutes — and a loop that somehow
+ * stopped making progress stops here rather than spinning.
+ */
+const MAX_NOTIFY_BATCHES = 100;
+/**
+ * THE CURRENT AND ADJACENT MONTHS ARE NEVER DROPPED, REGARDLESS OF CONFIGURATION (D6). This is
+ * the guard that does not consult `eventsMonths` at all: a misconfigured window of 0 or 1 month
+ * cannot reach the month live traffic is being written into, nor the one it was written into
+ * yesterday. Future months (a partition created ahead by `createEventPartitions`) fall out of the
+ * same comparison, because their distance from the current month is negative.
+ */
+const MIN_RETAINED_MONTHS = 1;
+
+/** D7's terminal set. `queued` and `sending` are ABSENT and must stay absent — Global Constraint
+ * 6: a `sending` row is the only record that a message may already be with a patient. */
+const TERMINAL_NOTIFICATION_STATUSES = ["sent", "expired", "suppressed", "undeliverable"];
+/** D6's mirror of the same rule one table over: a `retrying` delivery is never touched at any
+ * age, because it is still owed to a consumer. */
+const PRUNABLE_DELIVERY_STATUSES = ["done", "parked"];
+
+/** `events_YYYY_MM`, and nothing else is ever dropped: a partition whose name this does not match
+ * is one this codebase did not create, so retention leaves it exactly where it is. */
+const PARTITION_NAME_RE = /^events_(\d{4})_(\d{2})$/;
+
+export type RetentionSweepOptions = {
+  /** Global Constraint 5. Defaults to FALSE here as well as in config. */
+  enabled?: boolean;
+  eventsMonths?: number;
+  notifyRetainDays?: number;
+  batchSize?: number;
+  /** Global Constraint 11: the clock is a parameter, never read from the wall inside a branch. */
+  now?: Date;
+};
+
+export type RetentionSweepResult = {
+  /** Partitions dropped, in the order they were dropped. */
+  dropped: string[];
+  /** Partitions old enough to drop that a hold saved. */
+  blocked: string[];
+  notificationsDeleted: number;
+  idempotencyDeleted: number;
+  deliveriesDeleted: number;
+  deadLettersDeleted: number;
+};
+
+const inert = (): RetentionSweepResult => ({
+  dropped: [],
+  blocked: [],
+  notificationsDeleted: 0,
+  idempotencyDeleted: 0,
+  deliveriesDeleted: 0,
+  deadLettersDeleted: 0,
+});
+
+const pad2 = (n: number): string => String(n).padStart(2, "0");
+
+/** Months since year 0, so month arithmetic is subtraction and a year rollover is not a case. */
+const monthIndexOf = (year: number, month1: number): number => year * 12 + (month1 - 1);
+
+/** The IST month `now` falls in, as a month index. */
+function istMonthIndex(now: Date): number {
+  const ist = new Date(now.getTime() + IST_OFFSET_MS); // read with getUTC* below: IST wall clock
+  return monthIndexOf(ist.getUTCFullYear(), ist.getUTCMonth() + 1);
+}
+
+/** Midnight on the 1st of that month IN IST, as an instant — `worker/partitions.ts` writes the
+ * same boundary as a string for a DDL bound; a sweep BINDS it, which is what keeps partition
+ * pruning at PLAN time rather than execution time (T2's gate measurement of flag ③). */
+function istMonthStart(index: number): Date {
+  return new Date(`${Math.floor(index / 12)}-${pad2((index % 12) + 1)}-01T00:00:00+05:30`);
+}
+
+const monthLabel = (index: number): string => `${Math.floor(index / 12)}-${pad2((index % 12) + 1)}`;
+
+function partitionMonthIndex(name: string): number | null {
+  const m = PARTITION_NAME_RE.exec(name);
+  if (!m) return null;
+  const month = Number(m[2]);
+  if (month < 1 || month > 12) return null;
+  return monthIndexOf(Number(m[1]), month);
+}
+
+type Blocker = { reason: "legal_hold_global" | "legal_hold_patient"; holdId: string | null };
+
+/**
+ * A HOLD IS A ROW, NOT A CONFIG FLAG (D6), and this is the query that makes it structural. Two
+ * shapes, both read from `retention_legal_holds` with `released_at is null`:
+ *   · a GLOBAL hold (`patient_id` null) holds every month for everyone — litigation's actual
+ *     shape ("preserve everything from this period");
+ *   · a PATIENT hold holds any month containing an event of that patient.
+ * The patient leg joins the partition's own rows through the parent with BOUND month bounds, so
+ * the planner prunes to the one partition (T2-GATE-1: a bound value folds to a Const, a `now()`
+ * computed inside the statement does not).
+ */
+async function blockingHold(db: Db, from: Date, to: Date): Promise<Blocker | null> {
+  const [global] = await db
+    .select({ id: retentionLegalHolds.id })
+    .from(retentionLegalHolds)
+    .where(and(isNull(retentionLegalHolds.releasedAt), isNull(retentionLegalHolds.patientId)))
+    .limit(1);
+  if (global) return { reason: "legal_hold_global", holdId: global.id };
+
+  const [patient] = await db
+    .select({ id: retentionLegalHolds.id })
+    .from(events)
+    .innerJoin(retentionLegalHolds, eq(retentionLegalHolds.patientId, events.patientId))
+    .where(
+      and(
+        gte(events.recordedAt, from),
+        lt(events.recordedAt, to),
+        isNull(retentionLegalHolds.releasedAt),
+        isNotNull(retentionLegalHolds.patientId),
+      ),
+    )
+    .limit(1);
+  if (patient) return { reason: "legal_hold_patient", holdId: patient.id };
+
+  return null;
+}
+
+const rowsAffected = (result: { rowCount: number | null }): number => result.rowCount ?? 0;
+
+/**
+ * `retentionSweep` — the NINTH job on the clock, a `dailyIst` registration at 01:15 IST
+ * (`RETENTION_SWEEP_IST` in `worker/jobs.ts`).
+ *
+ * Order is deliberate: partitions first, then the side tables the partitions orphan, then the
+ * outbox. A partition drop is the only irreversible step, and everything after it is a delete of
+ * rows whose event is already gone.
+ *
+ * IDEMPOTENT AND SAFE TO RUN TWICE: every step is a delete or a drop of things outside the
+ * window, so a second run in the same night finds nothing left to do and appends nothing.
+ */
+export async function retentionSweep(
+  db: Db,
+  opts: RetentionSweepOptions = {},
+): Promise<RetentionSweepResult> {
+  const enabled = opts.enabled ?? DEFAULT_ENABLED;
+  // GLOBAL CONSTRAINT 5 — THE INERT GATE, and it is the first statement in the function on
+  // purpose: disabled means NO drop, NO delete and NO event, not "a run that happens to find
+  // nothing". Nothing below this line executes, so nothing below it can be got wrong by a
+  // configuration that has not been signed off.
+  if (!enabled) return inert();
+
+  const now = opts.now ?? new Date();
+  const eventsMonths = opts.eventsMonths ?? DEFAULT_EVENTS_MONTHS;
+  const notifyRetainDays = opts.notifyRetainDays ?? DEFAULT_NOTIFY_RETAIN_DAYS;
+  const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE;
+
+  const currentMonth = istMonthIndex(now);
+  /** The oldest month INSIDE the window. Everything strictly older is eligible — which makes the
+   * events window and the side-table window one number rather than two that can drift. */
+  const oldestRetainedMonth = currentMonth - eventsMonths;
+  const cutoff = istMonthStart(oldestRetainedMonth);
+
+  const result = inert();
+
+  // ---------------------------------------------------------------------------------------------
+  // 1. Partitions — DROPPED WHOLE, never deleted row by row (D6).
+  // ---------------------------------------------------------------------------------------------
+  for (const name of await listEventPartitions(db)) {
+    // `listEventPartitions` already excludes it; said again here because the consequence of
+    // getting it wrong is not a lost month but a FAILED INSERT on the hospital's write path for
+    // every row whose month nobody pre-created (worker/partitions.ts).
+    if (name === EVENTS_DEFAULT_PARTITION) continue;
+    const index = partitionMonthIndex(name);
+    if (index === null) continue;
+    if (currentMonth - index <= MIN_RETAINED_MONTHS) continue; // regardless of configuration
+    if (index >= oldestRetainedMonth) continue; // inside the retention window
+
+    const from = istMonthStart(index);
+    const to = istMonthStart(index + 1);
+
+    const blocker = await blockingHold(db, from, to);
+    if (blocker) {
+      await withTx(db, (tx) =>
+        appendEvent(
+          tx,
+          dropBlocked.make({
+            actor: RETENTION_ACTOR,
+            payload: {
+              partition: name,
+              month: monthLabel(index),
+              reason: blocker.reason,
+              holdId: blocker.holdId,
+            },
+          }),
+        ),
+      );
+      result.blocked.push(name);
+      continue;
+    }
+
+    const [counted] = await db
+      .select({ rows: sql<number>`count(*)::int` })
+      .from(events)
+      .where(and(gte(events.recordedAt, from), lt(events.recordedAt, to)));
+
+    // ONE TRANSACTION, so a month is never destroyed without the record of its destruction. The
+    // DROP takes ACCESS EXCLUSIVE on the parent and the append then writes into the CURRENT
+    // month's partition under that same lock — which is safe, and is one more reason this job
+    // runs at 01:15 IST rather than during a clinic.
+    await withTx(db, async (tx) => {
+      // `name` came from pg_class and has just been matched against `^events_\d{4}_\d{2}$`, so
+      // nothing a caller supplies can reach this statement text. A partition bound cannot be a
+      // parameter and neither can an identifier, which is why this is `sql.raw` at all.
+      await tx.execute(sql.raw(`drop table "${name}"`));
+      await appendEvent(
+        tx,
+        partitionDropped.make({
+          actor: RETENTION_ACTOR,
+          payload: {
+            partition: name,
+            month: monthLabel(index),
+            rows: counted?.rows ?? 0,
+            retainedMonths: eventsMonths,
+          },
+        }),
+      );
+    });
+    result.dropped.push(name);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // 2. THE COMPANION SWEEP (D6, from the spike's finding 3) — the three side tables a partition
+  //    drop ORPHANS. There are no FKs from any of them into `events` (a recorded trade in
+  //    schema/worker.ts), so a dropped month leaves their rows behind and moves the growth
+  //    problem one table over. Same gate, same window, same cutoff instant as the drops above.
+  //
+  //    STATED CONSEQUENCE, ACCEPTED BY THE PLAN: deleting an `event_idempotency` row older than
+  //    the window re-opens semantic dedup for a key whose event no longer exists. That is
+  //    consistent — the event it deduplicated is gone — and it is said out loud rather than
+  //    discovered later.
+  // ---------------------------------------------------------------------------------------------
+  result.idempotencyDeleted = rowsAffected(
+    await db.delete(eventIdempotency).where(lt(eventIdempotency.recordedAt, cutoff)),
+  );
+  // `retrying` IS NOT IN `PRUNABLE_DELIVERY_STATUSES` AND MUST NOT BE: it is a delivery still owed
+  // to a consumer, and its age says only that it has been failing for a long time.
+  result.deliveriesDeleted = rowsAffected(
+    await db
+      .delete(eventDeliveries)
+      .where(
+        and(
+          lt(eventDeliveries.updatedAt, cutoff),
+          inArray(eventDeliveries.status, PRUNABLE_DELIVERY_STATUSES),
+        ),
+      ),
+  );
+  result.deadLettersDeleted = rowsAffected(
+    await db.delete(eventDeadLetters).where(lt(eventDeadLetters.parkedAt, cutoff)),
+  );
+
+  const sideTotal =
+    result.idempotencyDeleted + result.deliveriesDeleted + result.deadLettersDeleted;
+  if (sideTotal > 0) {
+    await withTx(db, (tx) =>
+      appendEvent(
+        tx,
+        sideTablesPruned.make({
+          actor: RETENTION_ACTOR,
+          payload: {
+            eventIdempotency: result.idempotencyDeleted,
+            eventDeliveries: result.deliveriesDeleted,
+            eventDeadLetters: result.deadLettersDeleted,
+            retainedMonths: eventsMonths,
+            cutoff: cutoff.toISOString(),
+          },
+        }),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // 3. `notifications` — TERMINAL ROWS ONLY, in bounded batches (D7).
+  //
+  //    GLOBAL CONSTRAINT 6: `queued` and `sending` are never pruned at any age. A `queued` row is
+  //    a message still owed to a patient; a `sending` row is the only record that a message may
+  //    ALREADY BE WITH ONE. Neither becomes safe to delete by getting old.
+  //
+  //    The predicate is `(status, updated_at)` in that order, which is T2's prune index (added to
+  //    schema/notifications.ts for exactly this statement) rather than the pump's claim index.
+  // ---------------------------------------------------------------------------------------------
+  const notifyCutoff = new Date(now.getTime() - notifyRetainDays * DAY_MS);
+  let batches = 0;
+  while (batches < MAX_NOTIFY_BATCHES) {
+    const doomed = await db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(
+        and(
+          inArray(notifications.status, TERMINAL_NOTIFICATION_STATUSES),
+          lt(notifications.updatedAt, notifyCutoff),
+        ),
+      )
+      .limit(batchSize);
+    if (doomed.length === 0) break;
+    await db.delete(notifications).where(
+      inArray(notifications.id, doomed.map((r) => r.id)),
+    );
+    result.notificationsDeleted += doomed.length;
+    batches += 1;
+    if (doomed.length < batchSize) break;
+  }
+
+  if (result.notificationsDeleted > 0) {
+    await withTx(db, (tx) =>
+      appendEvent(
+        tx,
+        notificationsPruned.make({
+          actor: RETENTION_ACTOR,
+          payload: {
+            deleted: result.notificationsDeleted,
+            batches,
+            retainDays: notifyRetainDays,
+            cutoff: notifyCutoff.toISOString(),
+          },
+        }),
+      ),
+    );
+  }
+
+  return result;
+}

@@ -60,6 +60,24 @@ const configSchema = z.object({
   WORKER_NOTIFY_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
   NOTIFY_PROVIDER: notifyProviderSchema.default("console"),
   NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
+  // Plan 11a D6/D7 (retention). All three defaulted, same B1 scar as the block above: no .env
+  // entry is required anywhere, on the server or in CI.
+  //
+  // RETENTION_ENABLED DEFAULTS TO FALSE AND THE MECHANISM SHIPS INERT (Global Constraint 5, owner
+  // ruling 6): the sweep drops whole months of clinical records, and the owner flips this only
+  // with a window counsel has signed. Changing this default is on the plan's HALT list.
+  //
+  // IT IS AN ENUM OF TWO EXACT STRINGS, NOT `z.coerce.boolean()`, and that is the whole reason it
+  // is spelled out: `z.coerce.boolean()` reads the string "false" as TRUE (a non-empty string is
+  // truthy), so the one value an operator would most plausibly write to keep retention off would
+  // have switched it on. Anything other than "true" or "false" — "1", "yes", "TRUE" — fails
+  // config parsing loudly at boot rather than being guessed at in either direction.
+  RETENTION_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  RETENTION_EVENTS_MONTHS: z.coerce.number().int().positive().default(120),
+  NOTIFY_RETAIN_DAYS: z.coerce.number().int().positive().default(180),
 });
 
 export type AppConfig = {
@@ -78,6 +96,12 @@ export type AppConfig = {
   workerNotifyIntervalMs: number;
   notifyProvider: NotifyProvider;
   notifyStuckAfterMs: number;
+  // Plan 11a D6/D7. `retentionEnabled` is FALSE unless an operator says otherwise, in as many
+  // letters; `worker/jobs.ts` threads all three into `retentionSweep` through the registration,
+  // which is where Global Constraint 14 is discharged rather than at the parse.
+  retentionEnabled: boolean;
+  retentionEventsMonths: number;
+  notifyRetainDays: number;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -99,5 +123,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     workerNotifyIntervalMs: parsed.WORKER_NOTIFY_INTERVAL_MS,
     notifyProvider: parsed.NOTIFY_PROVIDER,
     notifyStuckAfterMs: parsed.NOTIFY_STUCK_AFTER_MS,
+    retentionEnabled: parsed.RETENTION_ENABLED,
+    retentionEventsMonths: parsed.RETENTION_EVENTS_MONTHS,
+    notifyRetainDays: parsed.NOTIFY_RETAIN_DAYS,
   };
 }

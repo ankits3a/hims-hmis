@@ -87,14 +87,17 @@ const T6_DEF = {
 };
 
 /**
- * The eight jobs `registerAllJobs` must register, in registration order — the census (L17/flag ①).
- * `runNotifyPump` joined at Plan 10 T4 (amendment 7) and `createEventPartitions` at Plan 11a T2
- * (D5): this census is one of the TWO places a new job has to be admitted, and neither of them is
- * `jobs.test.ts`. The eighth needed no `JobIntervals` key — a `dailyIst` registration takes its
- * instant from a code constant — so the typechecker could not announce it here the way
- * amendment 7's widened `Pick` announced the seventh. This list is the only guard.
+ * The nine jobs `registerAllJobs` must register, in registration order — the census (L17/flag ①).
+ * `runNotifyPump` joined at Plan 10 T4 (amendment 7), `createEventPartitions` at Plan 11a T2 (D5)
+ * and `retentionSweep` at Plan 11a T5 (D6/D7): this census is one of the TWO places a new job has
+ * to be admitted, and neither of them is `jobs.test.ts`. The eighth needed no `JobIntervals` key —
+ * a `dailyIst` registration takes its instant from a code constant — so the typechecker could not
+ * announce it here the way amendment 7's widened `Pick` announced the seventh. The NINTH is
+ * `dailyIst` too, but it widened the `Pick` anyway (its three retention keys are values an
+ * operator sets), so a literal somewhere did stop compiling — just not this file, which passes the
+ * whole `AppConfig`. This list remains the only guard here.
  */
-const THE_EIGHT = [
+const THE_NINE = [
   "runDispatchCycle",
   "runDueTimers",
   "sweepExpiredTempRoles",
@@ -103,6 +106,7 @@ const THE_EIGHT = [
   "runDailyClose",
   "runNotifyPump",
   "createEventPartitions",
+  "retentionSweep",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -340,7 +344,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
     }
   });
 
-  it("(a) boots the worker context, and its Scheduler names EXACTLY the eight jobs", async () => {
+  it("(a) boots the worker context, and its Scheduler names EXACTLY the nine jobs", async () => {
     const ctx = await NestFactory.createApplicationContext(WorkerModule, { logger: false });
     try {
       const workerDb = ctx.get<Db>(DB);
@@ -357,9 +361,9 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       // the same value `worker.ts` passes. `registerAllJobs` reads no environment of its own.
       registerAllJobs(scheduler, workerDb, registry, workerConsumers(workerDb), config);
 
-      // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these eight, in
+      // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these nine, in
       // registration order — not "at least", not "these among others".
-      expect(scheduler.jobs()).toEqual(THE_EIGHT);
+      expect(scheduler.jobs()).toEqual(THE_NINE);
       // The scheduler was never started, so nothing was scheduled and nothing needs stopping.
       expect(scheduler.leakedErrors()).toEqual([]);
     } finally {

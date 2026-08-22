@@ -50,4 +50,41 @@ describe("loadConfig", () => {
   it("rejects a NOTIFY_PROVIDER outside the enum", () => {
     expect(() => loadConfig({ ...base, NOTIFY_PROVIDER: "twilio" })).toThrow();
   });
+
+  /**
+   * Plan 11a D6/D7 — the three retention keys.
+   *
+   * WHAT THIS BLOCK DOES *NOT* DISCHARGE, said here so nobody mistakes it for protection: Global
+   * Constraint 14 (and §2.60(a), the `NOTIFY_STUCK_AFTER_MS` scar) asks that a NON-DEFAULT value
+   * change BEHAVIOUR through the production wiring shape. Parsing was never the thing in doubt —
+   * `config.test.ts:38-43` asserted the notify keys parsed for a whole plan while one of them
+   * reached nothing at all. The take-effect leg for all three of these lives in
+   * `kernel/retention/sweep.test.ts` ("through the PRODUCTION REGISTRATION", Book V9), where each
+   * key is registered through the real `registerAllJobs` with a distinct value and the sweep's
+   * behaviour is asserted to differ from the default's. These tests below pin the DEFAULTS, which
+   * is a different claim and a load-bearing one: `RETENTION_ENABLED` defaulting to false is
+   * Global Constraint 5.
+   */
+  it("defaults the three retention keys from an empty (minimal) environment — INERT by default", () => {
+    const cfg = loadConfig(base);
+    expect(cfg.retentionEnabled).toBe(false); // GC5: the mechanism ships off
+    expect(cfg.retentionEventsMonths).toBe(120);
+    expect(cfg.notifyRetainDays).toBe(180);
+  });
+
+  it("honours RETENTION_ENABLED only for the exact strings 'true' and 'false'", () => {
+    expect(loadConfig({ ...base, RETENTION_ENABLED: "true" }).retentionEnabled).toBe(true);
+    expect(loadConfig({ ...base, RETENTION_ENABLED: "false" }).retentionEnabled).toBe(false);
+    // The `z.coerce.boolean()` trap, pinned: under coercion "false" is a non-empty string and
+    // therefore TRUE, which would switch retention ON for an operator writing the value that
+    // means off. Anything ambiguous fails loudly instead.
+    expect(() => loadConfig({ ...base, RETENTION_ENABLED: "1" })).toThrow();
+    expect(() => loadConfig({ ...base, RETENTION_ENABLED: "TRUE" })).toThrow();
+  });
+
+  it("honours numeric overrides of the two retention windows", () => {
+    const cfg = loadConfig({ ...base, RETENTION_EVENTS_MONTHS: "24", NOTIFY_RETAIN_DAYS: "30" });
+    expect(cfg.retentionEventsMonths).toBe(24);
+    expect(cfg.notifyRetainDays).toBe(30);
+  });
 });

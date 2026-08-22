@@ -23,6 +23,7 @@ import * as appointmentsMod from "../../modules/opd/appointments";
 import * as dailyCloseMod from "../../modules/billing/daily-close";
 import * as notifyPumpMod from "../notify/pump";
 import * as partitionsMod from "./partitions";
+import * as retentionMod from "../retention/sweep";
 import type { Db } from "../db/client";
 
 // D3/halt condition 7: no test in this file ever observes the advisory lock. Every test below
@@ -81,10 +82,17 @@ function pinDateOnly(now: Date): void {
  * unit test — idempotent, but still schema mutation driven by the Scheduler rather than by the
  * test. It is driven DIRECTLY in `partitions.test.ts`, which is where its behaviour is asserted.
  *
+ * THE NINTH (Plan 11a D6) IS DDL THAT DESTROYS DATA. `retentionSweep` DROPS whole `events`
+ * partitions; the shipped registration passes `enabled: intervals.retentionEnabled`, which these
+ * censuses leave at the inert default, so un-stubbed it would do nothing today — and that is
+ * exactly the reason to stub it rather than to rely on it. The census is about the CLOCK, and a
+ * job whose harmlessness here depends on one config key being false is not a job to leave live
+ * inside a 25-fake-hour advance. Its behaviour is asserted DIRECTLY in `retention/sweep.test.ts`.
+ *
  * Names are pushed in invocation ORDER, and duplicates are kept: "fired exactly once across
  * five ticks" is a claim a `Set` cannot make.
  */
-function spyOnTheEight(invoked: string[]): jest.SpyInstance[] {
+function spyOnTheNine(invoked: string[]): jest.SpyInstance[] {
   return [
     jest.spyOn(dispatcherMod, "runDispatchCycle").mockImplementation(async () => {
       invoked.push("runDispatchCycle");
@@ -119,10 +127,17 @@ function spyOnTheEight(invoked: string[]): jest.SpyInstance[] {
       invoked.push("createEventPartitions");
       return [];
     }),
+    jest.spyOn(retentionMod, "retentionSweep").mockImplementation(async () => {
+      invoked.push("retentionSweep");
+      return {
+        dropped: [], blocked: [], notificationsDeleted: 0,
+        idempotencyDeleted: 0, deliveriesDeleted: 0, deadLettersDeleted: 0,
+      };
+    }),
   ];
 }
 
-const THE_EIGHT = [
+const THE_NINE = [
   "runDispatchCycle",
   "runDueTimers",
   "sweepExpiredTempRoles",
@@ -131,6 +146,7 @@ const THE_EIGHT = [
   "runDailyClose",
   "runNotifyPump",
   "createEventPartitions",
+  "retentionSweep",
 ];
 
 /**
@@ -189,8 +205,8 @@ describe("Scheduler", () => {
     expect(scheduler.leakedErrors()).toEqual([]);
   });
 
-  // L14 — the registration census. Two tests, because there are two claims: that all eight jobs
-  // are registered and reached at their cadences, and that the DAILY three are keyed on the IST
+  // L14 — the registration census. Two tests, because there are two claims: that all nine jobs
+  // are registered and reached at their cadences, and that the DAILY four are keyed on the IST
   // calendar rather than the UTC one. The first cannot make the second — see M-S2 below.
   describe("the registration census (L14)", () => {
     // THE CADENCES ARE A PARAMETER NOW, NOT THE ENVIRONMENT. This block used to override four
@@ -221,6 +237,14 @@ describe("Scheduler", () => {
       // the eight jobs out, so the value is inert for them; `jobs.test.ts` is where a DISTINCT
       // value is asserted to actually reach the pump (Book R2).
       notifyStuckAfterMs: 300_000,
+      // Plan 11a T5, and the same reasoning one more time: these three are not cadences either.
+      // THE SHIPPED DEFAULTS, PASSED EXPLICITLY — `retentionEnabled: false` above all, because
+      // these two census tests spy the ninth job out and a census must never be the thing that
+      // decides whether a sweep that drops partitions is live. Where a NON-default value is
+      // asserted to reach the sweep is `retention/sweep.test.ts` (Book V9, Global Constraint 14).
+      retentionEnabled: false,
+      retentionEventsMonths: 120,
+      notifyRetainDays: 180,
     };
 
     // The SHIPPED default (D9), passed explicitly. `isDailyDue()` gates its (only) DB read
@@ -252,23 +276,23 @@ describe("Scheduler", () => {
       else process.env.DATABASE_URL = savedDatabaseUrl;
     });
 
-    it("invokes all eight jobs within a faked 25 hours advanced from a pinned instant", async () => {
+    it("invokes all nine jobs within a faked 25 hours advanced from a pinned instant", async () => {
       expect(process.env.DATABASE_URL).toBeUndefined(); // CI's environment, reproduced here
       const invoked: string[] = [];
-      const spies = spyOnTheEight(invoked);
+      const spies = spyOnTheNine(invoked);
       const registry = censusRegistry();
       const fresh = freshWorkerDb();
       jest.useFakeTimers({ now: new Date("2026-08-21T12:00:00.000Z") });
       try {
         const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), CENSUS_DAILY_TICK_MS);
         registerAllJobs(scheduler, fresh.db, registry, {}, CENSUS_INTERVALS);
-        expect(scheduler.jobs()).toEqual(THE_EIGHT);
+        expect(scheduler.jobs()).toEqual(THE_NINE);
 
         scheduler.start();
         await jest.advanceTimersByTimeAsync(25 * 60 * 60 * 1000);
         await scheduler.stop();
 
-        expect(new Set(invoked)).toEqual(new Set(THE_EIGHT));
+        expect(new Set(invoked)).toEqual(new Set(THE_NINE));
         expect(scheduler.leakedErrors()).toEqual([]);
       } finally {
         jest.useRealTimers();
@@ -318,7 +342,7 @@ describe("Scheduler", () => {
       const NOW = new Date("2026-08-21T19:00:00.000Z"); // IST 2026-08-22 00:30
       const LAST_OK = new Date("2026-08-21T10:00:00.000Z"); // IST 2026-08-21 15:30 — same UTC day
       const invoked: string[] = [];
-      const spies = spyOnTheEight(invoked);
+      const spies = spyOnTheNine(invoked);
       const registry = censusRegistry();
       const fresh = freshWorkerDb();
       try {
@@ -348,7 +372,10 @@ describe("Scheduler", () => {
         // And the ones whose IST instant has NOT passed at 00:30 IST stayed put. Plan 11a's
         // eighth job is deliberately not among them: `createEventPartitions` is 00:15 IST, so at
         // the pinned 00:30 it is legitimately due and firing — which is why this absence list
-        // names the two 23:5x jobs and not "everything except guardians".
+        // names the two 23:5x jobs and not "everything except guardians". The NINTH is 01:15 IST
+        // and so is legitimately NOT due at 00:30 — it is left out of this list all the same,
+        // because this test's claim is about the two jobs whose UTC/IST reading differs, and a
+        // longer absence list would quietly turn it into a second census.
         expect(invoked).not.toContain("sweepAppointmentNoShows");
         expect(invoked).not.toContain("runDailyClose");
 

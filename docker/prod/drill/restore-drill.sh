@@ -21,11 +21,12 @@
 #      The verdict is read out of the restored database, never out of pgbackrest's exit code;
 #   7. drops the restored database and destroys the scratch container.
 #
-# IT EMITS AN EXIT CODE AND A TRANSCRIPT, AND NOTHING ELSE. `backup.drill_passed` and
-# `backup.drill_failed` are defined in T5's apps/core/src/kernel/retention/events.ts, one wave
-# after this file was written; emitting them here today would be a forward reference to a module
-# that does not exist. There is exactly one insertion point for that wire and it is marked
-# `T5 SEAM` below.
+# IT EMITS AN EXIT CODE, A TRANSCRIPT, AND — since Plan 11a T5 wired the seam below — ONE EVENT:
+# `backup.drill_passed` or `backup.drill_failed`, defined in
+# apps/core/src/kernel/retention/events.ts and appended through the application's own
+# `appendEvent`. THE EXIT CODE REMAINS THE AUTHORITATIVE VERDICT — the event is what a dashboard
+# and an alert rule can see, and an append that fails is noted without changing it. There is
+# exactly one insertion point for that wire and it is marked `T5 SEAM` below.
 #
 # SCHEDULING: a host cron entry installed by deploy.sh (weekly, IST off-hours), deliberately NOT a
 # Scheduler job — the worker must hold no restore privilege and must never block for minutes on a
@@ -69,24 +70,32 @@ note() { printf '    %s\n' "$*"; }
 # ------------------------------------------------------------------------------------------------
 # ================================== T5 SEAM — THE EVENTED VERDICT ===============================
 #
-# This is the ONE place the evented verdict goes, and nothing else in this script has to change
-# when it does.
+# This is the ONE place the evented verdict goes, and nothing else in this script had to change
+# when it did.
 #
-# `backup.drill_passed` / `backup.drill_failed` live in T5's
-# apps/core/src/kernel/retention/events.ts, one wave after this file was written, so today this
-# script deliberately emits NO event: its verdict is its EXIT CODE plus the transcript above it.
-# A forward reference to a module that does not exist would have been a lie in a transcript that
-# exists to be believed.
+# T4 left this seam because `backup.drill_passed` / `backup.drill_failed` did not exist yet. They
+# do now: apps/core/src/kernel/retention/events.ts (Plan 11a T5) defines both, and the wire below
+# appends one of them THROUGH THE APPLICATION'S OWN `appendEvent` — the same envelope, the same
+# zod payload validation and the same `events` table every other fact in this hospital's record
+# goes through. A hand-written INSERT would have produced a row that looked like an event and was
+# not one.
 #
-# T5: add ONE call inside emit_verdict(), below the note. It is invoked from the EXIT trap on BOTH
-# paths — success and every failure, including a `die` before the restore ever starts — with
+# The emitter is invoked from the EXIT trap on BOTH paths — success and every failure, including a
+# `die` before the restore ever starts — with
 #   $1                 "passed" | "failed"
 #   $CENSUS_EVENTS     events counted in the LIVE cluster before the backup ("" if not reached)
 #   $RESTORED_EVENTS   events counted in the RESTORED cluster        ("" if not reached)
 #   $CENSUS_EVENT_ID   the known event id that was asserted          ("" if the table was empty)
 #   $BACKUP_SECONDS / $RESTORE_SECONDS
 # All of them are pre-declared empty immediately below, so the trap is safe under `set -u` even
-# when the drill dies on its first line.
+# when the drill dies on its first line, and every one of them is NULLABLE in the payload schema
+# for exactly that case.
+#
+# THE APPEND CAN FAIL AND THAT MUST NOT CHANGE THE VERDICT. Every prerequisite is checked rather
+# than assumed (the trap fires on paths where none of them hold), and a failure to append is
+# NOTED, never fatal: the exit code and this transcript remain the record. Each guard's last
+# command succeeds, so the trap still ends 0 and the shell still exits with the drill's own
+# status — the property the whole script's verdict rests on.
 # ------------------------------------------------------------------------------------------------
 CENSUS_EVENTS=""
 CENSUS_EVENT_ID=""
@@ -96,10 +105,76 @@ RESTORED_MIGRATIONS=""
 BACKUP_SECONDS=""
 RESTORE_SECONDS=""
 
+emit_drill_event() {
+  local verdict="$1"
+  [ -f "$ENV_FILE" ] || { note "no $ENV_FILE — no database to append the verdict to"; return 1; }
+  command -v docker >/dev/null 2>&1 || { note "docker is not installed — verdict not appended"; return 1; }
+  docker image inspect "$SERVER_IMAGE" >/dev/null 2>&1 \
+    || { note "image $SERVER_IMAGE is not on this host — verdict not appended"; return 1; }
+  [ "$(docker inspect -f '{{.State.Running}}' "$DB_CONTAINER" 2>/dev/null)" = "true" ] \
+    || { note "container $DB_CONTAINER is not running — verdict not appended"; return 1; }
+
+  local prod_url; prod_url="$(sed -n 's/^DATABASE_URL=//p' "$ENV_FILE" | head -n 1)"
+  [ -n "$prod_url" ] || { note "$ENV_FILE carries no DATABASE_URL — verdict not appended"; return 1; }
+
+  # The same host:port rewrite step 5/7 does, for the same reason: the deploy .env's own URL with
+  # only the endpoint swapped, so the password is never re-encoded and never built by hand. The
+  # container joins the LIVE db container's network namespace, where the cluster is on loopback.
+  # Exported and passed BY NAME so the credential never appears in the process table.
+  local prefix="${prod_url%@*}" suffix="${prod_url##*@}"
+  export DATABASE_URL="$prefix@127.0.0.1:5432/${suffix#*/}"
+  export HMIS_DRILL_VERDICT="$verdict"
+  export HMIS_DRILL_EVENT_STANZA="$STANZA"
+  export HMIS_DRILL_EVENT_CENSUS="$CENSUS_EVENTS"
+  export HMIS_DRILL_EVENT_RESTORED="$RESTORED_EVENTS"
+  export HMIS_DRILL_EVENT_ID="$CENSUS_EVENT_ID"
+  export HMIS_DRILL_EVENT_BACKUP_SECONDS="$BACKUP_SECONDS"
+  export HMIS_DRILL_EVENT_RESTORE_SECONDS="$RESTORE_SECONDS"
+
+  local rc=0
+  docker run --rm --network "container:$DB_CONTAINER" \
+    --env DATABASE_URL \
+    --env HMIS_DRILL_VERDICT \
+    --env HMIS_DRILL_EVENT_STANZA \
+    --env HMIS_DRILL_EVENT_CENSUS \
+    --env HMIS_DRILL_EVENT_RESTORED \
+    --env HMIS_DRILL_EVENT_ID \
+    --env HMIS_DRILL_EVENT_BACKUP_SECONDS \
+    --env HMIS_DRILL_EVENT_RESTORE_SECONDS \
+    "$SERVER_IMAGE" node -e '
+const { createDb, withTx } = require("./dist/src/kernel/db/client.js");
+const { appendEvent } = require("./dist/src/kernel/events/append.js");
+const catalog = require("./dist/src/kernel/retention/events.js");
+const num = (v) => (v === undefined || v === "" ? null : Number(v));
+const str = (v) => (v === undefined || v === "" ? null : v);
+const passed = process.env.HMIS_DRILL_VERDICT === "passed";
+const def = passed ? catalog.backupDrillPassed : catalog.backupDrillFailed;
+const { db, pool } = createDb(process.env.DATABASE_URL);
+withTx(db, (tx) => appendEvent(tx, def.make({
+  actor: { type: "system", id: "restore-drill" },
+  payload: {
+    stanza: process.env.HMIS_DRILL_EVENT_STANZA,
+    censusEvents: num(process.env.HMIS_DRILL_EVENT_CENSUS),
+    restoredEvents: num(process.env.HMIS_DRILL_EVENT_RESTORED),
+    assertedEventId: str(process.env.HMIS_DRILL_EVENT_ID),
+    backupSeconds: num(process.env.HMIS_DRILL_EVENT_BACKUP_SECONDS),
+    restoreSeconds: num(process.env.HMIS_DRILL_EVENT_RESTORE_SECONDS),
+  },
+})))
+  .then(() => pool.end())
+  .then(() => { console.log("appended " + def.name); })
+  .catch((err) => { console.error(String(err)); process.exit(1); });
+' || rc=$?
+  unset DATABASE_URL
+  [ "$rc" -eq 0 ] || { note "the verdict event could NOT be appended (exit $rc)"; return 1; }
+  return 0
+}
+
 emit_verdict() {
   local verdict="$1"
-  note "verdict: $verdict — exit code and transcript only, no event emitted (see the T5 SEAM)"
-  # T5: the single emitter call goes here.
+  note "verdict: $verdict — appending backup.drill_$verdict to the events log"
+  emit_drill_event "$verdict" \
+    || note "verdict NOT evented; the exit code and this transcript remain the record"
 }
 # ================================ END T5 SEAM ===================================================
 

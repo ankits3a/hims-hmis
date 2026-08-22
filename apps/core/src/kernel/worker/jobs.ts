@@ -10,6 +10,7 @@ import { sweepAppointmentNoShows } from "../../modules/opd/appointments";
 import { runDailyClose } from "../../modules/billing/daily-close";
 import { runNotifyPump } from "../notify/pump";
 import { createEventPartitions } from "./partitions";
+import { retentionSweep } from "../retention/sweep";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
 
@@ -23,6 +24,11 @@ const DAILY_CLOSE_IST = "23:59";
 // so the run that first needs a new month is the one that creates it, and it creates it before
 // anything else on the daily grid touches `events`.
 const CREATE_EVENT_PARTITIONS_IST = "00:15";
+// Plan 11a D6: an hour after the new month's partitions exist and well inside the quiet window —
+// a partition DROP takes ACCESS EXCLUSIVE on `events`, which is not a lock to take during a
+// clinic. Like its neighbours it is a code constant, not a deployment knob: WHAT retention does
+// is configurable (and off by default), WHEN it runs is a design decision.
+const RETENTION_SWEEP_IST = "01:15";
 
 /**
  * Amendment 6 (the plan's own resolution to the T2/T4 wave-order contradiction; spike
@@ -89,17 +95,29 @@ export type JobIntervals = Pick<
   // prediction directly above held to the letter when this key was added: `CENSUS_INTERVALS`
   // stopped compiling until it carried it.
   | "notifyStuckAfterMs"
+  // Plan 11a D6/D7: THE RETENTION TRIO, and none of them is a cadence either — `retentionSweep`
+  // is a `dailyIst` job whose instant is the code constant above. They are here because Global
+  // Constraint 14 says a key that ships must DEMONSTRABLY take effect, and this registration is
+  // the only place an `AppConfig` value can reach the sweep. `retentionEnabled` in particular is
+  // the difference between a mechanism that is inert by design and one that is inert by accident:
+  // drop it here and the sweep falls back to its own `DEFAULT_ENABLED = false` and the owner's
+  // signed-off window silently does nothing — the `NOTIFY_STUCK_AFTER_MS` defect exactly, on a
+  // surface where the failure mode is either "records never deleted" or, if the fallback had gone
+  // the other way, "records deleted that nobody authorised". Book V9 is its mutant.
+  | "retentionEnabled"
+  | "retentionEventsMonths"
+  | "notifyRetainDays"
 >;
 
 /**
- * The EIGHT jobs on the clock (D2/D9/step 2 + Plan 10 D3 + Plan 11a D5), transcribed exactly — do
- * not invent cadences.
+ * The NINE jobs on the clock (D2/D9/step 2 + Plan 10 D3 + Plan 11a D5/D6), transcribed exactly —
+ * do not invent cadences.
  * `runDispatchCycle` every `workerDispatchIntervalMs` · `runDueTimers` every
  * `workerTimersIntervalMs` · `sweepExpiredTempRoles` every `workerTempRolesIntervalMs` ·
  * `sweepGuardianMajority` daily 00:05 IST · `sweepAppointmentNoShows` daily 23:55 IST ·
  * `runDailyClose` daily 23:59 IST, called as `runDailyClose(db, undefined, now)` ·
  * `runNotifyPump` every `workerNotifyIntervalMs` (Plan 10 D3) · `createEventPartitions` daily
- * 00:15 IST (Plan 11a D5).
+ * 00:15 IST (Plan 11a D5) · `retentionSweep` daily 01:15 IST (Plan 11a D6/D7).
  *
  * `runDispatchCycle` takes T3's SHIPPED signature — `(db, bus, opts?: { batchSize?, lookback?,
  * maxAttempts?, now? })` since `39e520d` — and this registration THREADS `now` through it, the
@@ -186,5 +204,27 @@ export function registerAllJobs(
     name: "createEventPartitions",
     dailyIst: CREATE_EVENT_PARTITIONS_IST,
     run: async (now) => { await createEventPartitions(db, now); },
+  });
+  // Plan 11a D6/D7: THE NINTH JOB. Unlike the eighth it DID widen `JobIntervals`, because all
+  // three of its keys are values an operator sets and the plan requires each to demonstrably
+  // reach this call (Global Constraint 14) — so this time the typechecker does announce the new
+  // job to every `JobIntervals` object literal. The two CENSUSES still had to move by hand: 8 → 9
+  // in `scheduler.test.ts` and in `test/worker-runtime.e2e.test.ts`.
+  //
+  // THE SWEEP IS INERT UNLESS `retentionEnabled` IS TRUE (Global Constraint 5). Registering it
+  // unconditionally is deliberate: the job exists, heartbeats, and appears in the census on every
+  // deployment, so an operator can see that retention is scheduled and doing nothing — which is a
+  // very different thing from retention not being there at all.
+  scheduler.register({
+    name: "retentionSweep",
+    dailyIst: RETENTION_SWEEP_IST,
+    run: async (now) => {
+      await retentionSweep(db, {
+        now,
+        enabled: intervals.retentionEnabled,
+        eventsMonths: intervals.retentionEventsMonths,
+        notifyRetainDays: intervals.notifyRetainDays,
+      });
+    },
   });
 }
