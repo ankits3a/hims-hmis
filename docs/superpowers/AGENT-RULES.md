@@ -42,19 +42,27 @@ Violating any one of these fails the task regardless of code quality.
    happened rather than find a gap. Nothing replaces it: there is no co-tenant left to avoid.
    *(An archive of the removed stack sits at `/opt/insforge-archive-2026-08-22/`, owner-owned. It
    is not yours: do not read it, do not delete it, do not include it in any diff.)*
-7. **AMENDED 2026-08-22.** ~~Create no docker container.~~ **Create no docker container EXCEPT
-   under the `hmis` compose project, and only when your task's brief says to.** The original
-   absolute existed to protect a shared docker daemon that no longer exists (rule 6) — but it
-   cannot survive Plan 11a unchanged, because that plan's entire job is to ship a production
-   compose, and *"create no container"* and *"ship a compose file"* cannot both be true. The
-   boundary that replaces the absolute, and it is narrow on purpose:
-   - Containers you create belong to a compose project you can name, and it is `hmis` or a
-     clearly-temporary project of your own (`hmis-spike`, `hmis-drill`) that **you remove before
-     you report**. A container nobody named is a container nobody will clean up.
+7. **AMENDED 2026-08-22, TWICE — first when InsForge was removed, again the same day when the
+   owner ruled that stage-1 production SHARES this box (Plan 11a brainstorm).** ~~Create no docker
+   container.~~ **Create no docker container EXCEPT under the `hmis` or `hmis-prod` compose
+   projects, and only when your task's brief says to.** The original absolute existed to protect a
+   shared docker daemon that no longer exists (rule 6) — but it cannot survive Plan 11a unchanged,
+   because that plan's entire job is to ship a production compose, and *"create no container"* and
+   *"ship a compose file"* cannot both be true. The boundary that replaces the absolute, and it is
+   narrow on purpose:
+   - Containers you create belong to a compose project you can name, and it is `hmis` (dev),
+     **`hmis-prod` (the stage-1 production stack, Plan 11a — dev and production deliberately do
+     NOT share a project name, so a `compose down`/`up` against one can never act on the other)**,
+     or a clearly-temporary project of your own (`hmis-spike`, `hmis-drill`) that **you remove
+     before you report**. A container nobody named is a container nobody will clean up.
    - **`hmis-db-1` and the `hmis_hmis_pgdata` volume are the dev database. Never stop, remove,
      rebuild or prune them.** The suite's per-worker databases live in there.
+   - **Once `hmis-prod` exists, its database container and volumes are PRODUCTION DATA and are
+     exactly as untouchable** — with one stricter clause: no agent stops, restarts, or removes any
+     `hmis-prod` container unless its task's brief says so in as many words.
    - **Never run a blanket `docker system prune`, `docker volume prune`, or `docker rmi -a`.**
-     Remove by explicit name, always — a prune cannot tell your scratch from the dev database.
+     Remove by explicit name, always — a prune cannot tell your scratch from the dev database, and
+     once production exists it cannot tell either of those from a live hospital's data.
    **Create and drop no database by hand**; the test suite manages its own per-worker databases.
    The one exception is a scratch database you create with a name that is obviously yours, use,
    and drop in the same task — and if you cannot drop it, say so rather than leaving it silently.
