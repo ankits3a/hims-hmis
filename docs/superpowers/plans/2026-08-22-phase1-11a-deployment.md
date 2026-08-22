@@ -376,7 +376,11 @@ The architecture of coexistence, all of it structural:
   `/opt/hmis`'s working tree.
 - **The deploy sequence** (`deploy.sh`, idempotent): build images → copy configs → `db` up →
   migrations from inside the image (D2) → `seed-cursors` (D10) → `api`/`worker`/`caddy` up →
-  `/health` through Caddy green.
+  `/health` through Caddy green. **This is the END STATE, reached in two steps** (compile
+  amendment): T3 creates the script with every step BUT the seeding one and marks the slot as a
+  seam, because `scripts/seed-cursors.ts` is T6's and does not exist for three waves — a T3
+  script that called it would fail T3's own from-zero bring-up drill. T6 fills the slot in this
+  position. T4 adds the weekly restore-drill cron entry between them.
 - **The accepted failure mode, documented not hidden:** a pipeline run on the dev side can
   contend with a live UAT session for CPU/IO. The runbook says so, names the symptom (latency,
   never data), and the resource limits bound it. The dev suite's databases (`hmis_test_<N>`) and
@@ -557,8 +561,7 @@ apps/core/
   package.json                                      T1 (build + compiled start scripts)
   tsconfig.build.json                               T1 create (include src+scripts, rootDir ".", no test — D2)
   jest.config.cjs                                   T1 (the contracts source-resolution pin, if that mechanism wins — D2)
-  drizzle/0016_<generated-name>.sql                 T2 (generated/custom; full output committed)
-  drizzle/meta/*                                    T2 (generator-owned)
+  drizzle/                                          T2 (0016 hand-written SQL + generator-owned meta/; full output committed — AMENDED at compile: one row, because a placeholder name and a glob cannot be mechanically checked against the script's files array)
   src/kernel/db/schema/events.ts                    T2 (partitioned shape: composite PK + unique)
   src/kernel/db/schema/retention.ts                 T2 create (retention_legal_holds)
   src/kernel/db/schema/retention.test.ts            T2 create
@@ -582,13 +585,13 @@ apps/core/
   scripts/seed-cursors.ts                           T6 create (thin runner)
   test/caddyfile-parity.test.ts                     T3 create (D14's pin)
 docker/prod/
-  docker-compose.prod.yml                           T3 create AND T4 (pgBackRest per FORK-C) — sequential two-owner
+  docker-compose.prod.yml                           T3 create AND T4 (db swaps onto db.Dockerfile, FORK-C) AND T6 (the monitoring services join hmis-prod) — sequential THREE-owner (T6 added at compile)
   Caddyfile                                         T3 create (from spike E's measured config)
   .env.prod.example                                 T3 create (placeholders only, no secrets)
-  deploy.sh                                         T3 create (build → configs → migrate → seed → up → verify)
+  deploy.sh                                         T3 create (build → configs → migrate → up → verify; the SEED SLOT IS LEFT AS A SEAM) AND T4 (installs the weekly restore-drill cron) AND T6 (fills the seed-cursors slot) — sequential THREE-owner (T4+T6 added at compile)
   db.Dockerfile                                     T4 create (postgres:16 + pgbackrest — FORK-C's measured placement)
   pgbackrest/pgbackrest.conf                        T4 create (pg1-user=hmis; repo1-retention-* set — spike finding 5)
-  drill/restore-drill.sh                            T4 create (the weekly drill; T5 wires the evented verdict)
+  drill/restore-drill.sh                            T4 create (the weekly drill, exit code + transcript only) AND T5 (wires the evented verdict) — sequential two-owner (T5 added at compile)
   prometheus/prometheus.yml                         T6 create
   prometheus/alerts.yml                             T6 create (staleness + MISSING-series — spike finding 6)
   postgres-exporter/queries.yml                     T6 create (the heartbeat gauge the spike proved)
@@ -613,9 +616,43 @@ five retention/backup event definitions live in **T5's `kernel/retention/events.
 `createEventPartitions` **emits no event** (a monthly create-if-not-exists is not a fact the
 hospital record needs; the partitions' existence is the record). `kernel/worker/events.ts` is
 therefore not in this plan at all.
-**Two-owner files, all sequential, each named in both briefs (§3.2):** `jobs.ts` (T2→T5),
-`scheduler.test.ts` (R0-2→T2→T5), `worker-runtime.e2e.test.ts` (T2→T5),
-`docker-compose.prod.yml` (T3→T4).
+**Multi-owner files, all sequential, each named in EVERY owning brief (§3.2) — AMENDED AT COMPILE,
+2026-08-22, see the amendment note below:** `jobs.ts` (T2→T5), `scheduler.test.ts` (R0-2→T2→T5),
+`worker-runtime.e2e.test.ts` (T2→T5), **`docker-compose.prod.yml` (T3→T4→T6)**,
+**`deploy.sh` (T3→T4→T6)**, **`restore-drill.sh` (T4→T5)**.
+
+> ### AMENDMENT (compile session, 2026-08-22) — four files the prose required and the File Structure did not name
+>
+> **The contradiction, stated plainly, because §2.24 says a partial amendment is worse than none.**
+> Under §2.25 the frozen-path block is GENERATED from these Files lists, so a file the list omits is
+> FROZEN to the task that must edit it: the plan says do it, the brief says don't, **and the brief
+> wins** — that is §2.54's exact shape, and it is what cost Plan 08.5 its headline deliverable.
+> The compile sweep found four such files:
+>
+> 1. **`deploy.sh` needs T4** — T4's body: *"the drill is a host cron entry **installed by
+>    `deploy.sh`**"*.
+> 2. **`deploy.sh` needs T6** — T6's body: *"the thin script runner + **its `deploy.sh` slot**"*.
+>    This one has a §2.47 forward reference in the other direction as well: D13's deploy sequence
+>    lists `seed-cursors`, but `scripts/seed-cursors.ts` is **created by T6, three waves after T3**.
+>    A T3 `deploy.sh` that called it would fail T3's own from-zero bring-up drill. **Resolved
+>    seam-style: T3 ships the sequence WITHOUT the seed step and marks the seam; T6 fills it.**
+>    The File Structure row for `deploy.sh` is corrected accordingly (`→ migrate → up → verify`).
+> 3. **`docker-compose.prod.yml` needs T6** — T6's body: *"the monitoring services **joining
+>    `hmis-prod`**"*, and D13 pins the project to ONE top-level `name:` in that yml. T3's own body
+>    already says *"monitoring services arrive in T6"*.
+> 4. **`restore-drill.sh` needs T5** — the File Structure row itself already said *"T5 wires the
+>    evented verdict"* and T5's body lists *"the T4 drill-script wire"*, but the two-owner block
+>    omitted it entirely.
+>
+> Also corrected: the two `drizzle/` rows (a placeholder filename and a glob) collapse to one
+> `drizzle/` row, because a path containing `<generated-name>` or `*` cannot be mechanically
+> compared against the pipeline script's `files` array — and that comparison is the §2.54
+> pre-flight assertion this plan's compile is required to run.
+>
+> **Nothing about the design changed.** No ruling, no D-item, no task's work, no Assertion Book row
+> and no commit message is touched by this amendment: it names files the plan already required
+> those tasks to edit. The pipeline script's `files` arrays carry the same six owner-chains, and
+> the pre-flight asserts the two are equal in BOTH directions — the check whose absence is §2.54.
 
 ## Tasks
 
@@ -664,7 +701,8 @@ own volume · api · worker · caddy on 80/443 · monitoring services arrive in 
 E's measured config (SPA static root + API prefixes + `/ws` upgrade + auto-HTTPS on the owner's
 hostname + HTTP→HTTPS + headers), `.env.prod.example` (placeholders: `DATABASE_URL` pointing at
 the prod db service, `SECRET_KEY` empty with the ceremony pointer, R2 keys empty), `deploy.sh`
-(D13's sequence, idempotent, refuses to run if `/opt/hmis-prod` missing or 80/443 occupied), and
+(D13's sequence MINUS the seed step, which T3 leaves as a marked seam for T6 — compile amendment;
+idempotent, refuses to run if `/opt/hmis-prod` missing or 80/443 occupied), and
 the **caddyfile-parity test** (D14). **Acceptance: the full bring-up drill on the box — deploy.sh
 from zero, `/health` answering THROUGH Caddy over HTTPS on the real hostname, a WebSocket frame
 through Caddy (flag ④), dev suite still green with `hmis-prod` up (the ruling-2 coexistence
