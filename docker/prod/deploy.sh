@@ -10,23 +10,25 @@
 #   0. pre-flight — refuse unless the deploy directory exists, its .env is present and 600, and
 #      80/443 are free or already held by this stack's own caddy
 #   1. build the images FROM THE CHECKOUT
-#   2. copy the configs INTO the deploy directory
+#   2. copy the configs INTO the deploy directory, and derive the backup credentials
 #   3. db up, waited to healthy on its own compose healthcheck
-#   4. migrations FROM INSIDE THE IMAGE (D2)
+#   4. pgBackRest: stanza created, archiving CHECKED end to end (D8)
+#   5. migrations FROM INSIDE THE IMAGE (D2)
 #   -- SEAM: first-boot cursor seeding (D10) belongs here; see the marker below --
-#   5. api, worker and caddy up
-#   6. /health green THROUGH Caddy over HTTPS on the real hostname
+#   6. api, worker and caddy up
+#   7. the backup and restore-drill cron entries
+#   8. /health green THROUGH Caddy over HTTPS on the real hostname
 #
 # Production runs from the DEPLOY DIRECTORY, never from this checkout. The images are built here
 # and then run from the daemon by tag, and compose is invoked against the copied files — so a
 # `git checkout` in /opt/hmis cannot mutate what production is serving.
 #
-# D4/GC1 portability: docker, compose, postgres, caddy, curl, ss. Nothing provider-specific. On
-# on-prem metal the hostname in the Caddyfile and the backup endpoint in the deploy .env are
-# RE-POINTED; no line here is rewritten.
+# D4/GC1 portability: docker, compose, postgres, caddy, pgbackrest, curl, ss, openssl. Nothing
+# provider-specific. On on-prem metal the hostname in the Caddyfile and the five backup values in
+# /opt/hmis-prod/.env.r2 are RE-POINTED; no line here is rewritten.
 #
-# Sequential ownership: T3 creates it · T4 adds the weekly restore-drill cron entry · T6 fills
-# the seeding seam.
+# Sequential ownership: T3 creates it · T4 adds the backup fabric (db image, pgbackrest config and
+# credentials, stanza, cron) · T6 fills the seeding seam.
 
 set -euo pipefail
 
@@ -36,7 +38,14 @@ DEPLOY_DIR="${HMIS_DEPLOY_DIR:-/opt/hmis-prod}"
 PROJECT="hmis-prod"
 SERVER_IMAGE="hmis-prod/server:latest"
 WEB_IMAGE="hmis-prod/web:latest"
+DB_IMAGE="hmis-prod/db:latest"
 DB_HEALTH_TIMEOUT="${HMIS_DB_HEALTH_TIMEOUT:-180}"
+# D8. The stanza name is also written into the db service's archive_command in the compose file
+# and into the [hmis] section of pgbackrest.conf; changing it means changing all three.
+STANZA="hmis"
+# Overridable so the generated cron file can be inspected without writing to /etc on a box that is
+# only being rehearsed against.
+CRON_FILE="${HMIS_CRON_FILE:-/etc/cron.d/hmis-prod-backup}"
 # A first bring-up has to wait for an ACME order; a re-deploy answers in seconds.
 EDGE_HEALTH_TIMEOUT="${HMIS_EDGE_HEALTH_TIMEOUT:-240}"
 
@@ -64,7 +73,7 @@ our_caddy_running() {
 }
 
 # ----------------------------------------------------------------------------------------------
-step "0/6 pre-flight"
+step "0/8 pre-flight"
 # ----------------------------------------------------------------------------------------------
 command -v docker >/dev/null 2>&1 || die "docker is not installed"
 command -v curl >/dev/null 2>&1 || die "curl is required for the /health gate"
@@ -83,6 +92,17 @@ ENV_MODE="$(stat -c '%a' "$ENV_FILE")"
 [ "$ENV_MODE" = "600" ] || die "$ENV_FILE is mode $ENV_MODE; GC2 wants 600. Run: chmod 600 $ENV_FILE"
 note "deploy directory $DEPLOY_DIR, environment file present and 600"
 
+# D8/GC2. The object-store credentials are a SEPARATE root-only file: merging them into .env would
+# put a backup credential into every api and worker container for no reason at all.
+R2_ENV="$DEPLOY_DIR/.env.r2"
+[ -f "$R2_ENV" ] || die "$R2_ENV is missing. pgBackRest has nowhere to write. It holds five keys —
+    R2_ENDPOINT, R2_BUCKET, R2_REGION, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY — and nothing else;
+    see docker/prod/.env.prod.example for the shape. chmod 600 it."
+R2_MODE="$(stat -c '%a' "$R2_ENV")"
+[ "$R2_MODE" = "600" ] || die "$R2_ENV is mode $R2_MODE; GC2 wants 600. Run: chmod 600 $R2_ENV"
+command -v openssl >/dev/null 2>&1 || die "openssl is required for the repo cipher passphrase"
+note "backup credentials present and 600"
+
 for port in 80 443; do
   if port_in_use "$port"; then
     our_caddy_running \
@@ -95,14 +115,17 @@ for port in 80 443; do
 done
 
 # ----------------------------------------------------------------------------------------------
-step "1/6 building images from the checkout ($REPO_DIR)"
+step "1/8 building images from the checkout ($REPO_DIR)"
 # ----------------------------------------------------------------------------------------------
 docker build --tag "$SERVER_IMAGE" "$REPO_DIR"
 docker build --tag "$WEB_IMAGE" --target web "$REPO_DIR"
-note "built $SERVER_IMAGE and $WEB_IMAGE"
+# FORK-C: postgres:16 plus pgbackrest, because archive_command executes inside the postgres
+# server's own container and a sidecar therefore cannot archive at all.
+docker build --tag "$DB_IMAGE" --file "$SRC_DIR/db.Dockerfile" "$REPO_DIR"
+note "built $SERVER_IMAGE, $WEB_IMAGE and $DB_IMAGE"
 
 # ----------------------------------------------------------------------------------------------
-step "2/6 copying configs into $DEPLOY_DIR"
+step "2/8 copying configs into $DEPLOY_DIR"
 # ----------------------------------------------------------------------------------------------
 install -m 0644 "$SRC_DIR/docker-compose.prod.yml" "$DEPLOY_DIR/docker-compose.prod.yml"
 # The Caddyfile goes into a DIRECTORY that the caddy service mounts whole. A single-file bind
@@ -110,11 +133,65 @@ install -m 0644 "$SRC_DIR/docker-compose.prod.yml" "$DEPLOY_DIR/docker-compose.p
 # edge would keep serving the previous config for as long as the container lived. See the
 # comment on the volume in docker-compose.prod.yml; it was measured, not predicted.
 install -D -m 0644 "$SRC_DIR/Caddyfile" "$DEPLOY_DIR/caddy/Caddyfile"
-# T4 installs pgbackrest.conf here; T6 installs the prometheus/ and grafana/ trees.
-note "docker-compose.prod.yml, caddy/Caddyfile"
+# Same shape, same reason: the db service mounts $DEPLOY_DIR/pgbackrest as a directory.
+install -D -m 0644 "$SRC_DIR/pgbackrest/pgbackrest.conf" "$DEPLOY_DIR/pgbackrest/pgbackrest.conf"
+install -D -m 0750 "$SRC_DIR/drill/restore-drill.sh" "$DEPLOY_DIR/drill/restore-drill.sh"
+install -d -m 0750 "$DEPLOY_DIR/log"
+# T6 installs the prometheus/ and grafana/ trees here.
+note "docker-compose.prod.yml, caddy/Caddyfile, pgbackrest/pgbackrest.conf, drill/restore-drill.sh"
+
+# --- the backup credentials, derived rather than duplicated --------------------------------------
+# GC2: the five owner-supplied values live in $R2_ENV and ONLY there. They are translated here into
+# the six PGBACKREST_* names the binary reads, written to a 600 file that only the db service
+# loads, and never echoed — not by this script, not into a log, not into a report.
+#
+# D4/GC1: this translation is the whole of the provider coupling. Point $R2_ENV at MinIO on the NAS
+# and re-run; no file in git changes.
+r2_get() { sed -n "s/^$1=//p" "$R2_ENV" | head -n 1; }
+R2_ENDPOINT_HOST="$(r2_get R2_ENDPOINT | sed -E 's#^https?://##; s#/+$##')"
+R2_BUCKET_V="$(r2_get R2_BUCKET)"
+R2_REGION_V="$(r2_get R2_REGION)"
+R2_KEY_V="$(r2_get R2_ACCESS_KEY_ID)"
+R2_SECRET_V="$(r2_get R2_SECRET_ACCESS_KEY)"
+for pair in "R2_ENDPOINT=$R2_ENDPOINT_HOST" "R2_BUCKET=$R2_BUCKET_V" "R2_REGION=$R2_REGION_V" \
+            "R2_ACCESS_KEY_ID=$R2_KEY_V" "R2_SECRET_ACCESS_KEY=$R2_SECRET_V"; do
+  [ -n "${pair#*=}" ] || die "${pair%%=*} is empty in $R2_ENV. Refusing to deploy a backup
+    destination that cannot be reached — an untested remote leg is worse than an obvious hole."
+done
+
+PGBR_ENV="$DEPLOY_DIR/.env.pgbackrest"
+# THE CIPHER PASSPHRASE IS GENERATED EXACTLY ONCE AND THEN PRESERVED FOR EVER. Every byte already
+# in the repository is encrypted with it (spec E-2); regenerating it would silently orphan every
+# existing backup while every new one kept succeeding, which is the worst failure shape available
+# here. So: read it back if it is there, and only mint one if it is not.
+CIPHER_PASS=""
+if [ -f "$PGBR_ENV" ]; then
+  CIPHER_PASS="$(sed -n 's/^PGBACKREST_REPO1_CIPHER_PASS=//p' "$PGBR_ENV" | head -n 1)"
+fi
+if [ -z "$CIPHER_PASS" ]; then
+  CIPHER_PASS="$(openssl rand -hex 32)"
+  note "MINTED A NEW REPOSITORY CIPHER PASSPHRASE in $PGBR_ENV (this happens once)."
+  note "ESCROW IT with SECRET_KEY by the runbook's procedure. Without it every backup in the"
+  note "object store is unreadable ciphertext, including by you."
+fi
+( umask 077
+  cat > "$PGBR_ENV" <<EOF
+# GENERATED BY deploy.sh FROM $R2_ENV — DO NOT EDIT, DO NOT COPY, DO NOT COMMIT.
+# Loaded by the hmis-prod db service only. The passphrase below is preserved across deploys.
+PGBACKREST_REPO1_S3_ENDPOINT=$R2_ENDPOINT_HOST
+PGBACKREST_REPO1_S3_BUCKET=$R2_BUCKET_V
+PGBACKREST_REPO1_S3_REGION=$R2_REGION_V
+PGBACKREST_REPO1_S3_KEY=$R2_KEY_V
+PGBACKREST_REPO1_S3_KEY_SECRET=$R2_SECRET_V
+PGBACKREST_REPO1_CIPHER_PASS=$CIPHER_PASS
+EOF
+)
+chmod 600 "$PGBR_ENV"
+unset CIPHER_PASS R2_KEY_V R2_SECRET_V
+note "backup credentials derived into $(basename "$PGBR_ENV") (600)"
 
 # ----------------------------------------------------------------------------------------------
-step "3/6 database up"
+step "3/8 database up"
 # ----------------------------------------------------------------------------------------------
 compose up -d db
 deadline=$(( $(date +%s) + DB_HEALTH_TIMEOUT ))
@@ -125,7 +202,19 @@ done
 note "db healthy"
 
 # ----------------------------------------------------------------------------------------------
-step "4/6 migrations, run from inside the image (D2)"
+step "4/8 pgBackRest stanza and archiving check (D8)"
+# ----------------------------------------------------------------------------------------------
+# Both commands are idempotent and both are gates. `stanza-create` says "stanza already exists and
+# is valid" on every run after the first. `check` is the one that matters: it forces a WAL switch
+# and confirms the segment actually arrived in the repository, so a deploy cannot report success
+# over a backup fabric that is quietly archiving into the void. It is also the first thing that
+# would notice a credential rotation nobody carried into $R2_ENV.
+compose exec -T --user postgres db pgbackrest --stanza="$STANZA" stanza-create
+compose exec -T --user postgres db pgbackrest --stanza="$STANZA" check
+note "stanza $STANZA created/valid and WAL archiving verified end to end"
+
+# ----------------------------------------------------------------------------------------------
+step "5/8 migrations, run from inside the image (D2)"
 # ----------------------------------------------------------------------------------------------
 # `run --rm` on the api service: same image, different command. The migrator's cwd is
 # /app/apps/core, which is where drizzle/ and drizzle/meta/ live (T1-3).
@@ -147,17 +236,19 @@ compose run --rm api node dist/scripts/migrate.js
 # ----------------------------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------------------------
-step "5/6 api, worker and caddy up"
+step "6/8 api, worker and caddy up"
 # ----------------------------------------------------------------------------------------------
 # Whole-project `up`: api, worker and caddy today (db is already up from step 3), plus whatever
-# T4 and T6 add to the compose file later, with no edit to this line.
+# T6 adds to the compose file later, with no edit to this line.
 compose up -d
 
-# The Caddyfile is a BIND-MOUNTED FILE, so `up -d` sees no config change when only its CONTENTS
-# changed and leaves the running caddy on the old edge config — which would make step 2 a lie on
-# every re-deploy. Reload it in place instead: zero downtime, a no-op when the config is already
-# current, and it fails loudly on a Caddyfile that does not parse. The retry is for the first
-# bring-up, where the admin endpoint may not be listening the instant the container starts.
+# The Caddyfile reaches the container through a BIND-MOUNTED DIRECTORY (T3-1 — a single-file mount
+# pinned the container to a replaced inode and served stale config for the life of the container).
+# So `up -d` sees no config change when only the file's contents changed and leaves the running
+# caddy on the old edge config, which would make step 2 a lie on every re-deploy. Reload it in
+# place instead: zero downtime, a no-op when the config is already current, and it fails loudly on
+# a Caddyfile that does not parse. The retry is for the first bring-up, where the admin endpoint
+# may not be listening the instant the container starts.
 if [ -n "$(compose ps -q caddy)" ]; then
   for attempt in 1 2 3 4 5; do
     if compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile; then
@@ -172,7 +263,39 @@ fi
 compose ps
 
 # ----------------------------------------------------------------------------------------------
-step "6/6 /health through Caddy over HTTPS"
+step "7/8 backup and restore-drill cron"
+# ----------------------------------------------------------------------------------------------
+# D8. The weekly restore drill is a HOST CRON ENTRY and deliberately not a Scheduler job: the
+# worker must hold no restore privilege and must never block for minutes on a restore. The nightly
+# full rides in the same file because the two are one fabric — a drill with nothing to restore is
+# theatre, and a backup nobody restores is a belief.
+( umask 022
+  cat > "$CRON_FILE" <<EOF
+# hmis-prod backups — GENERATED BY docker/prod/deploy.sh. Edit that file, not this one; the next
+# deploy overwrites this.
+#
+# THE TIMES ARE UTC because this host runs on UTC, with the IST time named beside each. CRON_TZ is
+# deliberately not used: this cron build ships no crontab(5) man page and its CRON_TZ support could
+# not be confirmed on the box, and a silently ignored CRON_TZ would move both jobs from the small
+# hours into the hospital's working day. If the host timezone is ever changed, change these.
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Nightly full, 21:00 UTC = 02:30 IST. Continuous WAL archiving covers everything between them, and
+# \`expire\` runs at the end of each backup against the two retention settings in pgbackrest.conf.
+0 21 * * * root docker exec --user postgres ${PROJECT}-db-1 pgbackrest --stanza=$STANZA --type=full backup >> $DEPLOY_DIR/log/backup.log 2>&1
+
+# THE WEEKLY RESTORE DRILL, 22:00 UTC Saturday = 03:30 IST Sunday — an hour after Saturday night's
+# full, so there is always a fresh one to restore. It restores for real (GC7).
+0 22 * * 6 root $DEPLOY_DIR/drill/restore-drill.sh >> $DEPLOY_DIR/log/restore-drill.log 2>&1
+EOF
+)
+chmod 0644 "$CRON_FILE"
+note "cron installed at $CRON_FILE (nightly full 02:30 IST · restore drill 03:30 IST Sunday)"
+note "logs append to $DEPLOY_DIR/log/ — the runbook owns their rotation"
+
+# ----------------------------------------------------------------------------------------------
+step "8/8 /health through Caddy over HTTPS"
 # ----------------------------------------------------------------------------------------------
 # The hostname is read out of the Caddyfile rather than configured twice — one source of truth,
 # and re-pointing the stack at another name stays a one-file change (GC1).

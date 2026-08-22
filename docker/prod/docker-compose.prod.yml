@@ -26,13 +26,32 @@ name: hmis-prod
 
 services:
   # ------------------------------------------------------------------------------------------
-  # db — production Postgres. T4 replaces this image with the pgBackRest-carrying build from
-  # docker/prod/db.Dockerfile (FORK-C: archive_command runs in THIS container); nothing else
-  # about the service changes when it does.
+  # db — production Postgres, now carrying pgBackRest (T4, D8, FORK-C). T3 predicted that "nothing
+  # else about the service changes" when the image was swapped; that turned out not to be true and
+  # could not be, because `archive_command` is what makes archiving continuous and it is a server
+  # setting, not an image layer. Four things change here and nothing outside this service does:
+  # the image, the `command` that turns archiving on, the env file that carries the repo
+  # credentials to THIS container and no other, and two mounts.
   # ------------------------------------------------------------------------------------------
   db:
-    image: postgres:16
+    image: hmis-prod/db:latest
     restart: unless-stopped
+    # FORK-C, dissolved by measurement: `archive_command` runs INSIDE this container, so the
+    # binary has to be in this image (see docker/prod/db.Dockerfile) and the setting has to be on
+    # the server. It is passed on the command line rather than written into postgresql.conf so
+    # that it lives in git beside the rest of the deployment — and so that a restored copy of this
+    # cluster comes up with archiving OFF, because the setting was never in the backed-up config.
+    #
+    # archive_timeout bounds the RPO: a quiet hour still ships a WAL segment every 5 minutes, so
+    # the worst case is 5 minutes of writes rather than "whenever 16 MB finally fills".
+    command:
+      - "postgres"
+      - "-c"
+      - "archive_mode=on"
+      - "-c"
+      - "archive_command=pgbackrest --stanza=hmis archive-push %p"
+      - "-c"
+      - "archive_timeout=300"
     # Loopback only. The dev database on 5433 is a different container on a different volume and
     # is never addressed from this project.
     ports:
@@ -41,8 +60,18 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in the deploy .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the deploy .env}
       POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in the deploy .env}
+    env_file:
+      # GC2: the repo endpoint, bucket, keys and cipher passphrase. deploy.sh derives this file
+      # (mode 600) from /opt/hmis-prod/.env.r2; it is deliberately NOT the stack-wide .env, so the
+      # api and worker containers never see a backup credential they have no use for.
+      - .env.pgbackrest
     volumes:
       - hmis_prod_pgdata:/var/lib/postgresql/data
+      # A DIRECTORY, for the inode reason spelled out on the caddy service below.
+      - ./pgbackrest:/etc/pgbackrest:ro
+      # pgBackRest's own log. On a volume because the one time anybody reads it is after an
+      # archive-push started failing, which is exactly when the container has been recreated.
+      - pgbackrest_log:/var/log/pgbackrest
     healthcheck:
       # D12. `$$` escapes compose interpolation so the CONTAINER's own environment expands here.
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
@@ -168,5 +197,8 @@ volumes:
   # Named inside the `hmis-prod` project, so the real volume is `hmis-prod_hmis_prod_pgdata` —
   # a different object from dev's `hmis_hmis_pgdata`, which nothing here may touch (rule 7).
   hmis_prod_pgdata:
+  # There is no repo volume: repo1 is S3 (R2 today, MinIO on the NAS at stage 3), which is where
+  # D4's destination flexibility belongs. Only pgBackRest's local log survives the container.
+  pgbackrest_log:
   caddy_data:
   caddy_config:
