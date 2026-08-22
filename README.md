@@ -785,6 +785,116 @@ broken — that is this accepted trade-off working as designed, not an incident.
   `deploy.sh`, restore from R2. Nothing in stage 1 is engineered to make that FAST; it is
   engineered to make it POSSIBLE and PRACTICED — the weekly drill above is what "practiced" means.
 
+### Retention (D6/D7) — what is deleted, what never is, and how to place a legal hold
+
+**Retention is OFF as shipped, and that is deliberate.** `RETENTION_ENABLED` defaults to `false`,
+so the `retentionSweep` job runs nightly at **01:15 IST**, finds its work, and deletes nothing.
+**Do not turn it on until counsel has signed the window** (Plan 11a ruling 6). Deleting a clinical
+record is not a decision a deployment makes.
+
+Read this whole section before you flip it. In particular, understand how to place a legal hold
+*before* you enable deletion, not after.
+
+**The three settings** (all optional, all defaulted in `config.ts`, all commented in
+`.env.prod.example`):
+
+| key | default | what it governs |
+|---|---|---|
+| `RETENTION_ENABLED` | `false` | the master switch. False = the sweep is inert. |
+| `RETENTION_EVENTS_MONTHS` | `120` (10 years) | how much of the `events` history is kept |
+| `NOTIFY_RETAIN_DAYS` | `180` | how long terminal `notifications` rows are kept |
+
+**What the sweep does when it is enabled.**
+
+1. **`events` are dropped a whole month at a time, as partitions — never row by row.** That is the
+   entire point of partitioning by the retention unit (D5): a month leaves in one irreversible
+   statement, or it does not leave at all.
+2. **Three things are never dropped whatever the configuration says:** the `DEFAULT` partition,
+   the current month, and the adjacent month. A month with no partition of its own cannot be
+   dropped by definition.
+3. **The trail goes with the month, and only with the month.** The same run prunes
+   `event_idempotency` (by `recorded_at`), `event_deliveries` (by `updated_at`) and
+   `event_dead_letters` (by `parked_at`) in the same window — because a partition drop otherwise
+   *orphans* those rows and silently moves the growth problem one table over. A `retrying`
+   delivery is **never** deleted at any age: its age says only that it has been failing for a long
+   time, not that it is finished.
+4. **Terminal `notifications` rows** (`sent` · `expired` · `suppressed` · `undeliverable`) older
+   than `NOTIFY_RETAIN_DAYS` are pruned in bounded batches. **`queued` and `sending` are never
+   pruned at any age** — a `sending` row is the only record that a message may already be with a
+   patient.
+
+**Everything it does is evented**, so the hospital's own event stream is the audit trail:
+`retention.partition_dropped` · `retention.drop_blocked` · `retention.side_tables_pruned` ·
+`retention.notifications_pruned`.
+
+#### Placing a legal hold
+
+**A hold is a row, not a setting.** It lives in `retention_legal_holds`, and the sweep reads it on
+every run. There are two shapes.
+
+A **patient hold** protects every month containing any event of that patient:
+
+```sql
+insert into retention_legal_holds (id, patient_id, reason, created_by)
+values (
+  '01J000000000000000000HOLD',              -- any ULID; the id grammar entities share
+  '01HR0PATIENT00000000000001',             -- the patient
+  'Matter 2026/114 — preservation order of 2026-08-20, per counsel',
+  'owner:asharma'                           -- who placed it
+);
+```
+
+A **global hold** — litigation's actual shape, "preserve everything from this period" — is the
+same row with **`patient_id` left NULL**:
+
+```sql
+insert into retention_legal_holds (id, patient_id, reason, created_by)
+values ('01J000000000000000000GLOB', null, 'Matter 2026/114 — blanket preservation', 'owner:asharma');
+```
+
+**Releasing a hold NEVER deletes the row.** `released_at` is the only way a hold stops applying,
+so the record that a hold once existed survives it:
+
+```sql
+update retention_legal_holds set released_at = now() where id = '01J000000000000000000HOLD';
+```
+
+Listing what is currently in force:
+
+```sql
+select id, coalesce(patient_id, '(GLOBAL)') as scope, reason, created_at, created_by
+from retention_legal_holds where released_at is null order by created_at;
+```
+
+#### What a hold actually protects — and how to read a refusal
+
+An active hold protects **the month's events and the month's trail**: the partition is not
+dropped, and the same month's `event_idempotency`, `event_deliveries` and `event_dead_letters`
+rows are not pruned either. A **global** hold makes the companion prune a complete no-op.
+
+*(That second half was a real gap: the hold originally saved the partition while the same run
+deleted the month's delivery trail. Fixed in `8a9fb46`; if you are reading an older checkout,
+check that `companionSweepCutoff` exists in `kernel/retention/sweep.ts`.)*
+
+**A refusal is visible, not silent.** When a month is held, the sweep appends
+`retention.drop_blocked` naming the partition, the month, the reason (`legal_hold_global` or
+`legal_hold_patient`) and the hold's id. To see whether last night's sweep refused anything:
+
+```sql
+select recorded_at, payload from events
+where name = 'retention.drop_blocked' order by recorded_at desc limit 20;
+```
+
+And to confirm a shortened companion prune, `retention.side_tables_pruned` carries the **clamped**
+cutoff it actually used — so a run held back by a hold is readable in the stream rather than
+inferred from a low count.
+
+**One thing a hold does not currently cover:** the `notifications` prune runs on its own window
+regardless of holds. That is a deliberate, narrow reading — a notification is the messaging
+side-effect of an event, and the event itself is preserved — and it is a question for counsel
+rather than for a deployment. If the answer ever changes, it is one guard on the prune's batch
+loop, and the shape is written into the comment above it.
+
 ### Monitoring (D9)
 
 - **Prometheus (`127.0.0.1:9090`) and Grafana (`127.0.0.1:3001`) join the same `hmis-prod`
