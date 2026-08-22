@@ -1,5 +1,6 @@
 # HMIS Platform Architecture — Design Spec
 
+- **v4.7 2026-08-22** — two amendments marked `(v4.7)` inline in §1, §2, §3-table, §12, §13, §19: the owner's **STAGED DEPLOYMENT ruling** (cloud single-server now → hybrid after live pilot → on-prem end state) and the **death of pg-boss**, which lost by measurement in Plan 08.5 (FORK-B) and was still design law here.
 - **Date:** 2026-08-10, updated 2026-08-11 (v3 — Hospital Operating Fabric + patient-journey designs folded in); **v4.6 2026-08-20** — architecture-review amendments marked `(v4.6)` inline in §9, §10.2, §11.18, §16, §17, §19 (decisions in the Phase-1 roadmap; reasoning in `plans/reports/ARCHITECTURE-REVIEW-2026-08-20.md`)
 - **Status:** Approved in brainstorming sessions; **design series in progress — no implementation planning until the series and the owner's stress-test rounds complete** (see §17 status)
 - **Scope:** Platform foundation + first module slice (Registration/OPD/Billing, expanded scope §7–§9) + the operating fabric (§10) and patient-journey designs (§11) that every module instantiates. Every later module still gets its own spec → plan → build cycle.
@@ -19,6 +20,18 @@ A new Indian hospital is replacing crk-hmis (a fork of `hmislk/hmis` — a Java 
 **Constraints:**
 - Built and maintained by the owner directing AI coding agents — no dedicated developer staff. Architecture must favor boring, consolidated, heavily-documented technology.
 - Hosted on local (on-premises) servers. Patient care must never depend on internet connectivity.
+  **(v4.7) THIS IS THE END STATE, AND IT IS REACHED IN THREE STAGES — owner ruling 2026-08-22.** It is NOT
+  superseded and it is not negotiable as a destination; what changed is that the destination is no longer
+  also the starting line. **Stage 1 (now, through Phase-1 build and owner UAT): ONE cloud server (Hetzner),
+  no standby.** **Stage 2 (after weeks of live use in the working hospital as a SECONDARY HMIS beside the
+  incumbent): hybrid — on-prem primary, cloud standby/backup.** **Stage 3: fully on-prem, as this line says.**
+  The consequence that binds every plan from 11 onward: **nothing may be built that makes stage 3 expensive.**
+  No managed cloud service becomes load-bearing, no provider-specific primitive (cloud load balancer, cloud
+  volume, cloud DNS, cloud secrets manager) enters the deployable, and the whole stack must stand up from
+  Compose + Caddy + Postgres + pgBackRest on any capable metal. Stage 1 is a *substrate*, never an
+  *architecture*. Note also what stage 2 admits: **during the secondary-HMIS pilot, real patient data is
+  live on a cloud host outside India** — the DPDP posture for that window is a pre-pilot gate (§19), not a
+  post-go-live one.
 - India compliance stack: GST-correct billing from day one; **ABDM-ready data model from day one, actual ABDM/NHCX wiring after external approvals land** (go-live never blocks on approval timelines). NABH accreditation work already underway → Quality pack lands early (§17). TPA/PMJAY handled as payers on the standard billing model when those desks open.
 
 ## 2. Architecture Decision
@@ -28,7 +41,7 @@ A new Indian hospital is replacing crk-hmis (a fork of `hmislk/hmis` — a Java 
 - The core — all administrative, clinical-record, and financial workflow — is one TypeScript application over one PostgreSQL database. ACID transactions guarantee financial and narcotics audit integrity; modules share data instantly without network calls.
 - Edge services exist only where a protocol or data-physics boundary forces them: lab analyzers (serial/USB/ASTM), ICU telemetry (per-second streams that must not load the transactional DB), and DICOM imaging (bulk storage). Each edge service can crash without taking the hospital down, and the core can restart without losing edge data (edges buffer locally).
 - **Rule for all future work: a new module goes in the monolith by default; it becomes a service only if hardware or data physics demands it.** No message broker, no service mesh, no per-module databases in the core.
-- **One codebase, several processes (v4.3):** "monolith" means one deployable codebase and one database — not one OS process. The core runs as separate processes from the same build (API · WebSocket hub · outbox/job worker · PDF renderer), so a rendering storm can't stall the API. Coordination stays in Postgres (pg-boss, outbox) — still no broker. Analytics, agents, and reports read from the standby replica (hot-standby reads), protecting the primary's <300 ms budgets.
+- **One codebase, several processes (v4.3):** "monolith" means one deployable codebase and one database — not one OS process. The core runs as separate processes from the same build (API · WebSocket hub · outbox/job worker · PDF renderer), so a rendering storm can't stall the API. Coordination stays in Postgres (the **Scheduler** and the outbox) — still no broker. **(v4.7) `pg-boss` is dead** and was never installed: Plan 08.5's FORK-B killed it by measurement (pg-boss@12 is ESM-only, the unmodified jest harness cannot parse it, zero tests ran). Jobs run on the shipped `kernel/worker/scheduler.ts` — an advisory-lock loop whose correctness never rests on the lock, with each job's own conditional claim carrying it. Analytics, agents, and reports read from the standby replica (hot-standby reads), protecting the primary's <300 ms budgets.
 
 **Rejected alternatives:**
 - *Assembled open-source suite (OpenMRS + OpenELIS + Odoo + dcm4chee, Bahmni-style):* fastest to feature parity, but repeats crk-hmis's disease — multiple heavyweight stacks, fragile inter-system sync, and a UX that can only be skinned, not owned. Worst fit for a solo maintainer whose #1 priority is UX.
@@ -92,7 +105,7 @@ BOUGHT, NOT BUILT (integrated lightly — see §9)
 | DB access | Drizzle ORM | Typed, SQL-first (billing/GST reporting needs real SQL); explicit migration files (auditable) |
 | Frontend | React + Vite SPA, Tailwind, shadcn/ui, TanStack Query | LAN app, no SEO; static SPA served by proxy; screens stay loaded, data streams in |
 | Real-time | WebSockets from core | Live OPD queue, bed board, result notifications |
-| Jobs/queues | pg-boss | Postgres-backed jobs; no Redis to run/fail over. Add Redis only if measurement demands |
+| Jobs/queues | **`kernel/worker/scheduler.ts` (v4.7)** — ~~pg-boss~~ | Postgres-backed jobs; no Redis, and now no pg-boss either: it is ESM-only and the jest harness cannot parse it (Plan 08.5 FORK-B, measured). The shipped Scheduler registers `every`/`dailyIst` jobs under `pg_try_advisory_lock`; every job's own claim is idempotent and multi-process-safe, so the lock is an efficiency, not a correctness dependency. Add Redis only if measurement demands |
 | ICU telemetry | Mosquitto MQTT → TimescaleDB (separate instance) | Per-second vitals never touch the core DB; Postgres skillset reused |
 | PACS | Orthanc + OHIF viewer | Solved problem; own storage volume; EMR stores references |
 | Lab edge | Node/TS on fanless mini-PC, SQLite buffer | Serial/USB isolation; driver crash affects only the lab agent |
@@ -684,6 +697,14 @@ Eight stress passes are complete: five solo passes (S2 era through the final swe
 
 ## 12. Failover, Backups, Data Portability
 
+- **(v4.7) EVERYTHING IN THIS SECTION THAT NEEDS A SECOND MACHINE IS STAGE 2+ (§1's staged-deployment ruling,
+  2026-08-22).** Stage 1 runs ONE cloud server, so semi-sync replication, scripted promotion, fencing, the
+  out-of-band watchdog (E-16) and hot-standby analytics reads all arrive with the hybrid step, not before.
+  **What stage 1 still owes in full, because it is the only thing standing between a mistake and total loss:**
+  pgBackRest continuous WAL archiving + nightly fulls, the **automated weekly restore drill**, and the weekly
+  encrypted offsite copy on immutable media. A single server with a *proven* restore is a defensible pilot
+  posture; a single server with an untested backup is not, and the drill is what tells the two apart. State the
+  stage-1 RPO/RTO honestly in the runbook rather than inheriting this section's <15 min, which assumes a standby.
 - **Two servers, scripted promotion.** Primary runs the full stack; standby receives every transaction via **semi-synchronous replication (v4.3)** — an acknowledged write exists on both servers, so failover can no longer lose the acked tail that hard-stop safety gates depend on. Failover = one scripted command; target RTO under 15 minutes; deliberately manual-trigger with a printed runbook. **Fencing (v4.3):** promotion revokes the old primary's outbound rights — a demoted/partitioned node's gateway and agent consumers stop (fencing token checked by outbox consumers), so a zombie node can't keep messaging patients. **Post-failover safety-gate revalidation:** in-flight hard-stop verifications (counts, cross-matches, pair-scans) re-verify against physical scans before resuming. Monitoring alerts the owner via WhatsApp/SMS. The downtime protocol (§11.4 map 1) covers the promotion window; **floor-scoped degradation (v4.3):** a single floor losing network triggers that floor's downtime kit and staleness banners on its screens — never a hospital-wide declaration.
 - **Backups assume the server room burns down — or is ransomed.** pgBackRest continuous WAL archiving + nightly fulls to a NAS outside the server room; **weekly encrypted offsite copy on immutable/air-gapped media** (a permanently-connected replica can be encrypted along with the primary — the offline copy is the ransomware answer). **Automated weekly restore drill.** Orthanc image store syncs nightly to the NAS. Cyber-incident protocol incl. CERT-In 6-hour reporting: §11.14.
 - **Portability:** Postgres open format; FHIR-shaped documents; DICOM portable by definition; one-click per-module CSV/JSON export. No lock-in, including to this software.
@@ -692,7 +713,8 @@ Eight stress passes are complete: five solo passes (S2 era through the final swe
 
 | Item | Spec sketch | Rough cost |
 |---|---|---|
-| **Phase 1 — before OPD go-live** | | **~₹11–15L** |
+| **(v4.7) STAGE 1 — cloud, now** | ONE Hetzner cloud VM; no capex. Build, Phase-1 completion and owner UAT run here | **~₹1.5–2k/month** |
+| **Phase 1 — before OPD go-live** *(v4.7: this is the ON-PREM cutover, stage 3 — see §1)* | | **~₹11–15L** |
 | Primary server | 32-core, 128 GB ECC, 2×3.84 TB NVMe RAID-1, HDD bays | ₹4.5–6L |
 | Backup NAS (outside server room) | 8-bay, 4×12 TB | ₹2–3L |
 | 2× online UPS 3 kVA + rack basics | | ₹1.5–2L |
@@ -701,7 +723,7 @@ Eight stress passes are complete: five solo passes (S2 era through the final swe
 | IP-PBX + 30–50 IP phones (bought infra) | | ₹1–2L |
 | Queue displays ×2–3 (43" TVs + player) — fast-follow | | ₹60–90k |
 | **Phase 2 — before IPD/ICU go-live** | | **~₹7–9L** |
-| Standby server | Similar, slightly smaller | ₹4–5L |
+| Standby server *(v4.7: this line and §19's pre-Plan-11 gate contradicted each other — the owner's staged ruling resolves it. The standby arrives at STAGE 2, with the hybrid step, not before Phase-1 go-live)* | Similar, slightly smaller | ₹4–5L |
 | PACS storage expansion, MQTT broker box, switches | | ₹2–3L |
 | Wristband printers (per ward station) | | ₹25–40k each |
 | Oxygen tank/pipeline level sensors + gateway | | ₹50–80k |
@@ -792,4 +814,4 @@ The vision (§1) lands here: agents form the hospital's operational intelligence
 - **PRE-IPD-GO-LIVE GATES:** pre-auth sanction object live (fix 6) · guardianship model in patient master (fix 31 — Phase 1 actually) · nursing scales in charting (fix 38).
 - **PRE-GO-LIVE GATES from pass 8 (§11.19-E):** public read-only surface decision — DMZ vs cloud relay (E-1) · at-rest encryption provisioned at build (E-2) · electronic-register legality opinion per act (E-21) · internal-auditor appointment (E-17) · transition-operations boundary map for the two-system period (E-11).
 - **(v4.6) Clinical knowledge sourcing — before the pharmacy spec:** drug & interaction database licence (the §11.8 hard-stop/warning tiers), terminology (SNOMED CT via NRCeS, LOINC, ICD-10), pediatric dose-range reference, IDSP/IHIP notifiable lists; budget line in §13; procurement + clinical governance, not code.
-- **(v4.6) PRE-12a GATES:** DPIA artefact (fix 42) + inference-locus decision (fix 44) before any agent activation · **PRE-PLAN-11 GATE:** deployment topology + second server in a different fire zone (§12) · **PRE-STAGE-2 GATE:** kernel resource registry (Plan 13) before pharmacy/lab; hard gate before IPD.
+- **(v4.6) PRE-12a GATES:** DPIA artefact (fix 42) + inference-locus decision (fix 44) before any agent activation · ~~**PRE-PLAN-11 GATE:** deployment topology + second server in a different fire zone (§12)~~ **— RESOLVED 2026-08-22 by owner ruling (§1 v4.7): staged deployment, cloud single-server at stage 1, so Plan 11 is no longer blocked. The second server moves to STAGE 2 with the hybrid step. NEW GATE IN ITS PLACE — **PRE-PILOT (stage 2, secondary-HMIS beside the incumbent): a DPDP posture for real patient data on a cloud host outside India**, plus E-11's transition-operations boundary map, which the two-system period now definitely needs. · **PRE-STAGE-2 GATE:** kernel resource registry (Plan 13) before pharmacy/lab; hard gate before IPD.
