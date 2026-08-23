@@ -36,9 +36,21 @@ const MANUAL_NOTIFY_REF_TYPE = "patient";
 const ALERT_KIND_OPERATING_MODE = "operating_mode";
 /**
  * Plan 11c D4. The mode service has exactly ONE hospital-wide subject and no per-subject
- * instances (D2), so the "id" the alert refers to is the mode word itself and the full history is
+ * instances (D2), so 11c made the "id" this alert refers to the mode WORD, with the full history
  * one screen away at `/ops/mode`. `sourceEventId` already carries the exact `ops.mode_changed`
- * row, so nothing is lost by not duplicating it here.
+ * row.
+ *
+ * 11d D6 SET OUT TO CORRECT THAT AND GOT HALF WAY, AND THE HALF THAT IS MISSING IS THIS LINE.
+ * `ops.mode_changed` now carries `changeId` — the `operating_mode_changes` row written in the same
+ * transaction as the event (see `kernel/ops/events.ts`) — so `refId` below can and should become
+ * `payload.changeId`: that is what both of this file's other ref types carry (an instance id, a
+ * patient id), and a mode word names a STATE rather than the fact the owner was woken for.
+ *
+ * IT IS NOT REPOINTED HERE BECAUSE THE REPOINT BREAKS AN ASSERTION IN A FILE 11d T3 MAY NOT TOUCH.
+ * `test/ops-lifecycle.e2e.test.ts` pins `refId: "downtime"` inside its leg-4 `toMatchObject`, and
+ * that file belongs to a later task. MEASURED, not predicted: the repoint was built and run, and
+ * that one e2e test failed on exactly that line while every other suite stayed green. The
+ * remaining change is TWO lines — this one and that one — and they must land in the same commit.
  */
 const OPERATING_MODE_REF_TYPE = "operating_mode";
 /** The two modes whose entry or exit is worth waking somebody for (D4). */
@@ -247,6 +259,8 @@ async function handleModeChanged(db: Db, e: DispatchedEvent): Promise<void> {
         ? `The hospital moved from ${payload.from} to ${payload.to}. No note was recorded.`
         : payload.note,
     refType: OPERATING_MODE_REF_TYPE,
+    // STILL THE MODE WORD, AND `payload.changeId` IS SITTING RIGHT THERE. See the header on
+    // OPERATING_MODE_REF_TYPE for why this line did not move in 11d T3 and what has to move with it.
     refId: payload.to,
   });
 }

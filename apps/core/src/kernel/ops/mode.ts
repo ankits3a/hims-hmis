@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { configValidationReports, operatingModeChanges } from "../db/schema";
 import { appendEvent } from "../events/append";
@@ -93,8 +93,10 @@ export type ModeChangeResult = {
  * says why it sits where it does:
  *
  *   1. `mode_commissioning_is_initial_only` — `commissioning` is what an empty table reads as and
- *      is NEVER a target. Checked FIRST because it is categorical: no state of the world makes it
- *      legal, so it does not deserve a database read to establish.
+ *      is NEVER a target. Checked FIRST OF THE FOUR because it is categorical: no state of the
+ *      world makes it legal, so it does not deserve a LEDGER READ to establish. It is no longer
+ *      the first STATEMENT in the function — 11d D5's advisory lock is, and the block above it
+ *      says why — but that reason is untouched: the lock reads no row of `operating_mode_changes`.
  *   2. `mode_unchanged` — a no-op transition is refused so the history never carries a change
  *      that changed nothing, and so `downtime → downtime` cannot quietly re-alert every owner.
  *   3. `mode_note_required` — entering `downtime` or `degraded` without a note. Before the gate
@@ -115,6 +117,54 @@ export async function changeOperatingMode(
   input: ModeChangeInput,
   now: Date = new Date(),
 ): Promise<ModeChangeResult> {
+  /**
+   * 11d D5 / MAJOR 1 — THE DECISION IS SERIALISED, NOT MERELY THE WRITE, AND THIS IS THE FIRST
+   * STATEMENT OF THE FUNCTION ON PURPOSE. Every clause below was measured before it was written.
+   *
+   * WHAT IT FIXES. Under READ COMMITTED all four refusals below are check-then-act with nothing
+   * between the check and the act. 11c's discovery reviewer measured what that costs, 15 rounds
+   * per case: two identical `normal → downtime` declarations BOTH appended in 14/15; a concurrent
+   * `→ downtime` and `→ degraded` BOTH succeeded in 15/15, leaving `current = degraded` while the
+   * duty manager who declared downtime had been told the hospital was in downtime; and two
+   * concurrent go-live exits left TWO `commissioning` exit rows in 15/15.
+   *
+   * `pg_advisory_xact_lock`, NOT `select … FOR UPDATE`. A row lock can only serialise callers that
+   * find a row, and the commissioning exit is the case with NO ROWS AT ALL — `getOperatingMode`
+   * reads zero rows and answers `commissioning`, which its own header explains is load-bearing
+   * rather than a fallback. That zero-row case is exactly the third measured case, so a primitive
+   * that cannot cover it is the wrong primitive however natural it looks beside a `select`.
+   *
+   * THE `_xact_` VARIANT, NOT THE SESSION VARIANT `kernel/worker/scheduler.ts` ALREADY USES. That
+   * file's `pgLocks` header records the discipline a session-scoped lock imposes: it pins ONE
+   * checked-out pooled client for the lock's whole lifetime and must be explicitly unlocked, so
+   * releasing the client without unlocking leaves the lock held until that connection happens to
+   * close. A transaction-scoped lock is released by COMMIT **or ROLLBACK** — the only discipline
+   * that survives a `ModeError` thrown between here and the append, and this function throws on
+   * four separate paths. MEASURED (spike Question A): a throw between the lock and the append left
+   * ZERO granted advisory locks anywhere, and the next transaction acquired in 1.5-1.8 ms against
+   * the ~203 ms of a genuinely contended acquisition. **So none of the four refusals below needs
+   * an unlock call** — which is the first thing a reader will worry about, and adding one would be
+   * the actual bug: it would drop the lock while the transaction still holds what it was taken to
+   * protect.
+   *
+   * FIRST — AHEAD OF THE `commissioning` REFUSAL AND AHEAD OF `getOperatingMode(tx)`, BOTH. A lock
+   * taken after the read serialises the WRITES and not the DECISIONS, so the second measured case
+   * survives it completely intact: both callers read `normal`, both decide on it, and one of them
+   * is told a transition the ledger then contradicts. Book V11 is a row of its own for exactly
+   * this, because a correctly-named lock in the wrong place reads as correct in every code review.
+   *
+   * THE PRIMITIVE ITSELF IS MEASURED, NOT ASSUMED (spike Question A, five runs, each against a
+   * control that would have caught a trivially-true result): `withTx` holds ONE backend for the
+   * transaction's life; against a 200 ms hold the loser waited 203.0-204.0 ms where the identical
+   * choreography with this statement removed waited 0 ms in all five; `pg_locks` named the wait
+   * exactly (`locktype=advisory`, `mode=ExclusiveLock`, `objid=774876239`) where the no-lock
+   * control's same snapshot returned no rows at all; and after acquiring, the loser's re-read SEES
+   * the winner's committed row. `hashtext('hmis.operating_mode')` is `774876239`, widening to the
+   * single-argument `pg_advisory_xact_lock(bigint)` overload — the same resolution `scheduler.ts`
+   * already relies on — and calling it twice in one transaction does not self-deadlock.
+   */
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"hmis.operating_mode"}))`);
+
   const to = input.to;
   if (to === "commissioning") {
     throw new ModeError(
@@ -158,7 +208,11 @@ export async function changeOperatingMode(
       occurredAt: now,
       // No patientId, ever (GC6): a mode change is a hospital-wide fact and this event is fanned
       // to browsers through `alert.raised`.
-      payload: { from, to, note, reportId },
+      //
+      // `changeId` IS THE ROW INSERTED FOUR LINES ABOVE, IN THIS SAME TRANSACTION (11d D6). The
+      // payload could not carry it before, so every consumer downstream had to refer to the change
+      // by its MODE WORD — which is not an identity and cannot be deep-linked.
+      payload: { changeId: id, from, to, note, reportId },
     }),
   );
 

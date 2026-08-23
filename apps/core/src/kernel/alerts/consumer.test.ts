@@ -1,9 +1,10 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../db/client";
 import {
-  alerts, configValidationReports, events, notifications, patients, workflowDefinitions, workflowInstances,
+  alerts, configValidationReports, events, notifications, operatingModeChanges, patients,
+  workflowDefinitions, workflowInstances,
 } from "../db/schema";
 import { appendEvent } from "../events/append";
 import { createUser } from "../auth/identity";
@@ -580,6 +581,24 @@ describe("kernel alerts consumer", () => {
       return readDispatched(eventId);
     };
 
+    /**
+     * The `operating_mode_changes` row the latest declaration wrote — read from the TABLE, never
+     * from the event payload, so V13 below compares the alert against the history row itself
+     * rather than against another copy of the same string.
+     */
+    const latestChange = async (): Promise<{ id: string; fromMode: string; toMode: string }> => {
+      const rows = await db
+        .select({
+          id: operatingModeChanges.id,
+          fromMode: operatingModeChanges.fromMode,
+          toMode: operatingModeChanges.toMode,
+        })
+        .from(operatingModeChanges)
+        .orderBy(desc(operatingModeChanges.seq))
+        .limit(1);
+      return rows[0]!;
+    };
+
     const seedOwners = async (): Promise<{ ownerOne: string; ownerTwo: string; bystander: string }> => {
       await createRole(db, OWNER_ROLE, "Owner");
       const ownerOne = await mkUser("v6owner1");
@@ -625,6 +644,18 @@ describe("kernel alerts consumer", () => {
       expect(row.title).toBe("Operating mode: normal → downtime");
       expect(row.body).toBe(DOWNTIME_NOTE);
       expect(row.refType).toBe("operating_mode");
+      // ───────────────────── 11d D6 / Book V13 — the HALF that shipped ─────────────────────
+      // The payload now carries `changeId`, and this asserts it IS the `operating_mode_changes`
+      // row — read from the TABLE, never from the payload, so the two sides are independent.
+      const change = await latestChange();
+      expect(change.toMode).toBe("downtime"); // fixture proof: the row this alert is actually about
+      expect(change.id).toHaveLength(26); // a ULID from newId(), not a mode word
+      expect(event.payload).toMatchObject({ changeId: change.id });
+      // AND THE HALF THAT DID NOT. `refId` is still the mode WORD where both other ref types in
+      // `consumer.ts` carry an entity id. Repointing it at `change.id` was BUILT AND RUN in 11d T3
+      // and broke `test/ops-lifecycle.e2e.test.ts`, which pins this same word and which T3 may not
+      // touch. This line is therefore pinned as it IS, not as it should be — see the header on
+      // `OPERATING_MODE_REF_TYPE`. When the two-line repoint lands, this becomes `change.id`.
       expect(row.refId).toBe("downtime");
       expect(row.sourceEventId).toBe(event.eventId);
 

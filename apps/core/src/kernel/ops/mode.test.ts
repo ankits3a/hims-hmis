@@ -333,10 +333,19 @@ describe("kernel ops — the operating-mode service (11c D1-D3)", () => {
 
   // ───────────────────────────── the append, and what it carries ─────────────────────────────
 
-  it("appends exactly one `ops.mode_changed` per change, carrying from/to/note/reportId and no patient", async () => {
+  it("appends exactly one `ops.mode_changed` per change, carrying changeId/from/to/note/reportId and no patient", async () => {
     const reportId = await seedReport(true, at(-1 * HOUR));
     const first = await change({ to: "normal" });
     const second = await change({ to: "downtime", note: "UPS failure" }, at(30 * 60 * 1000));
+
+    // 11d D6's fixture proof, and V13 stands on it: the `changeId` asserted below is not merely
+    // "some id the payload carried" — it is the `operating_mode_changes` row this event announces,
+    // written in the same transaction as the append.
+    const history = await db
+      .select({ id: operatingModeChanges.id })
+      .from(operatingModeChanges)
+      .orderBy(operatingModeChanges.seq);
+    expect(history.map((r) => r.id)).toEqual([first.id, second.id]);
 
     const rows = await db
       .select({
@@ -347,8 +356,12 @@ describe("kernel ops — the operating-mode service (11c D1-D3)", () => {
       .where(eq(events.name, "ops.mode_changed"))
       .orderBy(events.seq);
     expect(rows.map((r) => r.eventId)).toEqual([first.eventId, second.eventId]);
-    expect(rows[0]!.payload).toEqual({ from: "commissioning", to: "normal", note: null, reportId });
-    expect(rows[1]!.payload).toEqual({ from: "normal", to: "downtime", note: "UPS failure", reportId: null });
+    expect(rows[0]!.payload).toEqual({
+      changeId: first.id, from: "commissioning", to: "normal", note: null, reportId,
+    });
+    expect(rows[1]!.payload).toEqual({
+      changeId: second.id, from: "normal", to: "downtime", note: "UPS failure", reportId: null,
+    });
     // GC6: a mode change is a hospital-wide fact and this event is fanned to browsers.
     expect(rows.map((r) => r.patientId)).toEqual([null, null]);
     expect(rows.map((r) => r.module)).toEqual(["ops", "ops"]);
@@ -381,5 +394,251 @@ describe("kernel ops — the operating-mode service (11c D1-D3)", () => {
       { fromMode: "degraded", toMode: "normal" },
     ]);
     expect(await getOperatingMode(db)).toBe("normal");
+  });
+
+  // ───────── 11d D5 — V10 and V11: concurrent declarations serialise, and the lock is FIRST ─────────
+
+  /**
+   * MAJOR 1, MEASURED RATHER THAN ARGUED. 11c's discovery reviewer ran the unlocked function 15
+   * rounds per case and got: **A** two identical `normal → downtime` declarations both appended,
+   * 14/15 · **B** a concurrent `→ downtime` and `→ degraded` both succeeded, 15/15, leaving
+   * `current = degraded` while the duty manager who declared downtime had been told otherwise ·
+   * **C** two concurrent go-live exits left two `commissioning` exit rows, 15/15.
+   *
+   * THE ROUND COUNT IS A FLOOR, NOT A TARGET (§3.22): these tests report what they OBSERVE, the
+   * window is never engineered — no sleep, no hold, no hook between the read and the write — and
+   * the proof that the window opens at all is the MUTANT run, where it must reopen.
+   *
+   * WHY CASE C IS NOT MERELY CASE A FROM A DIFFERENT STARTING MODE: case C starts from an EMPTY
+   * `operating_mode_changes`, so there is no row for a `select … FOR UPDATE` to lock. That is the
+   * case that decides the primitive, and it is why `mode.ts` takes an advisory lock instead.
+   */
+  const ROUNDS = 15;
+
+  /**
+   * Per-TEST, never global (D11): `jest.config.cjs`'s 15 s default is right for every other test
+   * in this file and would be wrong for a 15-round race. A bound hit here is a real failure, not
+   * a slow box — a round is four short transactions against a local database.
+   */
+  const RACE_TIMEOUT_MS = 120_000;
+
+  type Won = { won: true; id: string; from: OperatingMode; to: OperatingMode };
+  type Refused = { won: false; code: string };
+  type Outcome = Won | Refused;
+
+  /** One declaration in its own transaction, its refusal CAPTURED rather than thrown. */
+  const declare = async (input: { to: OperatingMode; note?: string | null }): Promise<Outcome> => {
+    try {
+      const r = await withTx(db, (tx) => changeOperatingMode(tx, DUTY, input, NOW));
+      return { won: true, id: r.id, from: r.from, to: r.to };
+    } catch (err) {
+      if (err instanceof ModeError) return { won: false, code: err.code };
+      throw err;
+    }
+  };
+
+  /**
+   * TWO DECLARATIONS IN FLIGHT AT ONCE. Both promises are STARTED before either is awaited, so the
+   * two transactions' round trips interleave exactly as two duty managers' would. Nothing here
+   * widens the window (§3.22).
+   */
+  const bothAtOnce = (
+    a: { to: OperatingMode; note?: string | null },
+    b: { to: OperatingMode; note?: string | null },
+  ): Promise<[Outcome, Outcome]> => {
+    const left = declare(a);
+    const right = declare(b);
+    return Promise.all([left, right]);
+  };
+
+  /** Rendered so a round's outcomes sort deterministically whichever caller happened to win. */
+  const render = (o: Outcome): string => (o.won ? `won(${o.from}→${o.to})` : `refused(${o.code})`);
+
+  const ledger = (): Promise<{ id: string; fromMode: string; toMode: string; reportId: string | null }[]> =>
+    db
+      .select({
+        id: operatingModeChanges.id,
+        fromMode: operatingModeChanges.fromMode,
+        toMode: operatingModeChanges.toMode,
+        reportId: operatingModeChanges.reportId,
+      })
+      .from(operatingModeChanges)
+      .orderBy(operatingModeChanges.seq);
+
+  /** Puts the round at `normal` through the real gate, so the race starts where the reviewer's did. */
+  const startAtNormal = async (): Promise<void> => {
+    await truncateAll(db);
+    await seedReport(true, at(-1 * HOUR));
+    await change({ to: "normal" });
+  };
+
+  it("V10 case A: two identical `normal → downtime` declarations append exactly ONE row, every round", async () => {
+    const observed: string[] = [];
+    for (let round = 1; round <= ROUNDS; round++) {
+      await startAtNormal();
+      expect(await ledger()).toHaveLength(1); // fixture proof: the round really starts at `normal`
+
+      const outcomes = await bothAtOnce(
+        { to: "downtime", note: "generator failed — desk A" },
+        { to: "downtime", note: "generator failed — desk B" },
+      );
+      const appended = (await ledger()).slice(1);
+      const current = await getOperatingMode(db);
+      observed.push(
+        `appended=${appended.length} · ${outcomes.map(render).sort().join(" + ")} · current=${current}`,
+      );
+    }
+
+    // The whole run in ONE assertion, so a mutant quotes every round it broke rather than the
+    // first. Unlocked, this reads `appended=2 · won(normal→downtime) + won(normal→downtime)`.
+    expect(observed).toEqual(
+      Array.from(
+        { length: ROUNDS },
+        () => "appended=1 · refused(mode_unchanged) + won(normal→downtime) · current=downtime",
+      ),
+    );
+  }, RACE_TIMEOUT_MS);
+
+  it("V10 case B: a concurrent `→ downtime` and `→ degraded` leave ONE row departing `normal`, and a chain", async () => {
+    const observed: string[] = [];
+    for (let round = 1; round <= ROUNDS; round++) {
+      await startAtNormal();
+
+      await bothAtOnce(
+        { to: "downtime", note: "mains failure" },
+        { to: "degraded", note: "labs offline" },
+      );
+
+      const rows = (await ledger()).slice(1);
+      const current = await getOperatingMode(db);
+      const last = rows[rows.length - 1];
+      // THE INVARIANT IS THE CHAIN, NOT THE ROW COUNT, and that is deliberate: the loser of this
+      // race is NOT refused — it re-reads the winner's state and `downtime → degraded` is a
+      // perfectly legal transition, so two rows is the correct outcome. What must never happen is
+      // TWO rows departing the SAME state, which is the ledger forking under two callers who each
+      // believe they moved the hospital from `normal`.
+      const departingNormal = rows.filter((r) => r.fromMode === "normal").length;
+      const chained = rows.every((r, i) => r.fromMode === (i === 0 ? "normal" : rows[i - 1]!.toMode));
+      observed.push(
+        `appended=${rows.length} · departingNormal=${departingNormal} · chained=${chained}` +
+          ` · currentIsLastRow=${last === undefined ? current === "normal" : current === last.toMode}`,
+      );
+    }
+
+    expect(observed).toEqual(
+      Array.from(
+        { length: ROUNDS },
+        () => "appended=2 · departingNormal=1 · chained=true · currentIsLastRow=true",
+      ),
+    );
+  }, RACE_TIMEOUT_MS);
+
+  it("V10 case C: two concurrent go-live exits from an EMPTY ledger leave exactly ONE commissioning exit", async () => {
+    const observed: string[] = [];
+    for (let round = 1; round <= ROUNDS; round++) {
+      await truncateAll(db);
+      const reportId = await seedReport(true, at(-1 * HOUR));
+      // The fixture proof, and the reason this case decides the primitive: the table is EMPTY.
+      // There is no row here for a row lock to take.
+      expect(await ledger()).toEqual([]);
+      expect(await getOperatingMode(db)).toBe("commissioning");
+
+      const outcomes = await bothAtOnce({ to: "normal" }, { to: "normal" });
+      const rows = await ledger();
+      observed.push(
+        `appended=${rows.length}` +
+          ` · commissioningExits=${rows.filter((r) => r.fromMode === "commissioning").length}` +
+          ` · rodeTheReport=${rows.filter((r) => r.reportId === reportId).length}` +
+          ` · ${outcomes.map(render).sort().join(" + ")}`,
+      );
+    }
+
+    expect(observed).toEqual(
+      Array.from(
+        { length: ROUNDS },
+        () =>
+          "appended=1 · commissioningExits=1 · rodeTheReport=1" +
+          " · refused(mode_unchanged) + won(commissioning→normal)",
+      ),
+    );
+  }, RACE_TIMEOUT_MS);
+
+  /**
+   * V11 — THE LOCK'S POSITION, NOT ITS PRESENCE. A lock taken AFTER `getOperatingMode(tx)`
+   * serialises the writes and not the decisions: both callers still read `normal`, both still
+   * decide on it, and one of them is told a transition the ledger immediately contradicts. That
+   * mutant reads as correct in every code review, and this row is the only thing that catches it.
+   *
+   * Case B specifically, because it is the case where BOTH callers can legally succeed — so the
+   * question is not "did somebody get refused" but "did the second caller decide on the first
+   * caller's state". The ledger rows are matched back to the OUTCOME each caller was handed.
+   */
+  it("V11: the lock is taken BEFORE the read — the second declaration decides on the FIRST one's state", async () => {
+    const observed: string[] = [];
+    for (let round = 1; round <= ROUNDS; round++) {
+      await startAtNormal();
+
+      const outcomes = await bothAtOnce(
+        { to: "downtime", note: "mains failure" },
+        { to: "degraded", note: "labs offline" },
+      );
+      const rows = (await ledger()).slice(1);
+      const byId = new Map<string, Won>(
+        outcomes.filter((o): o is Won => o.won).map((o): [string, Won] => [o.id, o]),
+      );
+      // What each caller was TOLD, in the order the ledger actually committed them.
+      const told = rows.map((r) => byId.get(r.id)).map((o) => (o === undefined ? "unmatched" : `${o.from}→${o.to}`));
+      const first = rows[0] === undefined ? undefined : byId.get(rows[0].id);
+      const second = rows[1] === undefined ? undefined : byId.get(rows[1].id);
+      const current = await getOperatingMode(db);
+      observed.push(
+        `declarations=${told.length}` +
+          ` · departingNormal=${told.filter((t) => t.startsWith("normal→")).length}` +
+          ` · secondSawTheFirst=${first !== undefined && second !== undefined && second.from === first.to}` +
+          ` · currentIsTheLastDeclaration=${second !== undefined && current === second.to}`,
+      );
+    }
+
+    expect(observed).toEqual(
+      Array.from(
+        { length: ROUNDS },
+        () =>
+          "declarations=2 · departingNormal=1 · secondSawTheFirst=true" +
+          " · currentIsTheLastDeclaration=true",
+      ),
+    );
+  }, RACE_TIMEOUT_MS);
+
+  // ────────── V12b — the commissioning gate covers EVERY exit, and the bypass is driven ──────────
+
+  /**
+   * 11c's inbox left this as a PREDICTION and owner ruling 3 confirmed the reading: EVERY exit
+   * from `commissioning` rides D3's gate, not merely `→ ramp|normal`. The two-step journey is
+   * driven end to end rather than asserted a step at a time, because the thing worth refusing is
+   * not the first step — it is arriving at `normal` having read no configuration verdict at all.
+   */
+  it("V12b: `commissioning → downtime → normal` is not a way around D-17 — every exit rides the gate", async () => {
+    // The fixture: NO validation report has ever been recorded, so a bypass that worked would put
+    // this deployment into `normal` on a configuration nothing ever checked.
+    expect(await db.select().from(configValidationReports)).toEqual([]);
+
+    const step1 = await attempt(db, { to: "downtime", note: "flood in the records room" });
+    const afterStep1 = await getOperatingMode(db);
+    const step2 = await attempt(db, { to: "normal" });
+    const afterStep2 = await getOperatingMode(db);
+
+    // ONE assertion over the WHOLE journey: a mutant that narrows the guard to `ramp|normal` then
+    // quotes the entire bypass in its failure rather than only its first step.
+    expect([step1, afterStep1, step2, afterStep2]).toEqual([
+      { code: "golive_gate_unsatisfied", detail: "no_report" },
+      "commissioning",
+      { code: "golive_gate_unsatisfied", detail: "no_report" },
+      "commissioning",
+    ]);
+
+    expect(await db.select().from(operatingModeChanges)).toEqual([]);
+    expect(await db.select().from(events).where(eq(events.name, "ops.mode_changed"))).toEqual([]);
+    // And still nothing to read: the gate was never satisfied because there was nothing to satisfy it.
+    expect(await db.select().from(configValidationReports)).toEqual([]);
   });
 });

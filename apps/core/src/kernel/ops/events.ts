@@ -24,14 +24,22 @@ const OPS = "ops";
  * field". `reportId` is the `config_validation_reports` row that authorised leaving
  * commissioning — null on every other transition, because no other transition is gated.
  *
- * NO PATIENT IDENTITY, EVER (GC6). A mode change is a hospital-wide fact; the payload carries
- * mode words and a free-text note, the envelope carries no `patientId`, and the alerts consumer
- * fans `alert.raised` from this straight to a browser.
+ * `changeId` IS THE `operating_mode_changes` ROW THIS EVENT ANNOUNCES (11d D6, closing a finding
+ * 11c routed forward). `changeOperatingMode` mints it and inserts the row in the SAME transaction
+ * as this append, so the id is never a promise about a row that might not exist. It is here
+ * because without it a consumer can only refer to the change by its MODE WORD — which names a
+ * state, not a fact, and cannot be deep-linked to the history the reader actually wants. A payload
+ * that cannot identify its own row only gets more expensive to widen as consumers accumulate.
+ *
+ * NO PATIENT IDENTITY, EVER (GC6). A mode change is a hospital-wide fact; the payload carries an
+ * id, mode words and a free-text note, the envelope carries no `patientId`, and the alerts
+ * consumer fans `alert.raised` from this straight to a browser.
  */
 export const modeChanged = defineEvent(
   "ops.mode_changed",
   OPS,
   z.object({
+    changeId: z.string().min(1),
     from: z.enum(OPERATING_MODES),
     to: z.enum(OPERATING_MODES),
     note: z.string().nullable(),
