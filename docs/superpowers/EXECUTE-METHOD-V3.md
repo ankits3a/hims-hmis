@@ -138,11 +138,39 @@ Measured at close, against the last three phases' actuals (2.64M / 2.49M / 3.34M
 - One quiet run retires nothing of v2's; one bad run retires nothing of v3's. Specimens decide,
   as they always have (§2.68's caution, applied in both directions).
 
-## 8. A lever this method surfaces but does not pull
+## 8. The topology — RULED
 
 **The two-host topology.** A third of AGENT-RULES (rules 1–3, 13, 18, 22(a)–(g)), the SSH tax,
 the mirror protocol and §2.40's entire class exist only because authoring happens on Windows
-while evidence lives on the build host. Running the working session on the build host — or
-moving the build local — deletes them rather than simplifying them. That is an owner
-infrastructure decision with its own costs; it is named here so it is decided rather than
-drifted past.
+while evidence lives on the build host.
+
+**RULED, 2026-08-23 — the owner moved authoring onto the build host.** Effective with the
+pilot phase; nothing moves under running 11d. From the pilot on, the working session runs ON
+the host, in the checkout — Claude Code 2.1.241 is installed there (2026-08-23,
+`/usr/local/bin/claude`), tmux is present for session persistence, and the one remaining setup
+step is the owner authenticating it once (`ssh -t root@62.238.106.231 claude`). The Windows
+checkout becomes the owner's read-only copy, and keeps exactly one duty: running
+`pipelines/ci-watch.sh`, which stays off-host until the owner separately decides whether a
+read-only CI credential belongs on an SSH-probed box.
+
+**What the post-11d session strikes from AGENT-RULES when v3 activates** — in place, the
+rule-6 pattern, citing this section:
+
+- **Rule 13 and all of rule 22(a)–(g)**: no mirror, no `scp` sync, no md5 confirmation — the
+  reading surface and the evidence host are the same machine, and §2.40's class becomes
+  structurally impossible.
+- **The §2.79 CRLF class**: authoring happens on Linux.
+- **Rule 18 narrows**: the dropped-SSH-channel failure mode is gone; detached-with-exit-file
+  stays for genuinely long runs, and rules 16–17 are host-agnostic and unchanged.
+- **Rules 1–3 restate to one sentence**: you are on the build host; `/opt/hmis` and
+  `/opt/hmis-prod` are the only writable paths; the owner's Windows checkout is not reachable
+  from any session and stays out of scope.
+
+**What the ruling does not change:** privileges — agents already ran arbitrary root commands
+over SSH, so the move removes round-trips, not boundaries; rules 7 and 14–21; the evidence
+standard, whose sentence merely shortens: evidence still comes only from this host — it is
+simply no longer remote. One vigilance note, recorded so it is watched rather than
+discovered: production paths are now reachable by native file tools instead of visible SSH
+calls, so rule 3/7 discipline carries the weight the SSH boundary used to make conspicuous —
+if the pilot's reviewer ever finds a stray write near `/opt/hmis-prod`, that is a ledger entry
+and grounds to add user-level deny rules to the host's Claude settings.
