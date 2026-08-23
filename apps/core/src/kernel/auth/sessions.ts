@@ -11,6 +11,13 @@ export type LiveSession = {
   userId: string;
   terminalId: string | null;
   secondFactorAt: Date | null;
+  /**
+   * PLAN 11e D1 — carried as DATA, not enforced here. `findLiveSession` refuses an INACTIVE user's
+   * session outright (below); it does not refuse a must-change one, because the person holding it
+   * has exactly two things left to do — change the password, or log out — and both need the
+   * session to still resolve. The refusal is `AuthGuard`'s, which knows the route (`guards.ts`).
+   */
+  mustChangePassword: boolean;
 };
 
 export async function createSession(
@@ -32,6 +39,26 @@ export async function createSession(
   return { token, sessionId };
 }
 
+/**
+ * THE ONE PLACE A TOKEN BECOMES AN IDENTITY — two non-test callers, and both of them inherit
+ * everything decided here: `guards.ts`'s `AuthGuard` (an `APP_GUARD`, so EVERY authenticated HTTP
+ * route) and `realtime/gateway.ts`'s WebSocket auth.
+ *
+ * PLAN 11e D1 — IT NOW JOINS `users`, FOR TWO FACTS AND ONE QUERY.
+ *
+ *   `active`  — an inactive user's session RESOLVES TO NULL right here, so a caller cannot forget
+ *               a check that never reaches it. Before 11e, `active` was read only by the three
+ *               session-CREATION paths (`verifyPassword`, `verifyPin`, `resolveBadge`), and
+ *               `hasPermission` never reads `users` at all: a deactivated user holding a valid
+ *               token kept full authority for the rest of `SESSION_TTL_MINUTES` — up to twelve
+ *               hours — on HTTP and on the socket alike. That was measured, not supposed
+ *               (plan 11e §3 Q5), and `test/credential-lifecycle.e2e.test.ts` R1 executes it.
+ *
+ *   `mustChangePassword` — returned as data for `AuthGuard` to act on; see the type above.
+ *
+ * ONE QUERY STILL. The join adds no round-trip to a request path that runs on every single call,
+ * and `users.id` is the primary key `auth_sessions.user_id` already references.
+ */
 export async function findLiveSession(db: Db, token: string): Promise<LiveSession | null> {
   const rows = await db
     .select({
@@ -39,13 +66,16 @@ export async function findLiveSession(db: Db, token: string): Promise<LiveSessio
       userId: authSessions.userId,
       terminalId: authSessions.terminalId,
       secondFactorAt: authSessions.secondFactorAt,
+      mustChangePassword: users.mustChangePassword,
     })
     .from(authSessions)
+    .innerJoin(users, eq(users.id, authSessions.userId))
     .where(
       and(
         eq(authSessions.tokenHash, sha256Hex(token)),
         isNull(authSessions.revokedAt),
         gt(authSessions.expiresAt, new Date()),
+        eq(users.active, true),
       ),
     );
   return rows[0] ?? null;

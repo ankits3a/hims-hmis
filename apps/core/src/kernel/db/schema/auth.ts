@@ -17,6 +17,17 @@ export const users = pgTable(
     pinHash: text("pin_hash"),
     badgeVersion: integer("badge_version").notNull().default(0),
     active: boolean("active").notNull().default(true),
+    // PLAN 11e D1 — the forced-credential-change flag, and it lives on the USER rather than on the
+    // session on purpose: it is a fact about the credential, so it must survive every session the
+    // credential can open, including one opened on another terminal a second later.
+    //
+    // DEFAULT FALSE, and that is a migration decision rather than a style one: production carries
+    // sixteen live users whose passwords nobody is resetting in this migration, and a default of
+    // true would lock all sixteen out of every route at once (`AuthGuard`, guards.ts) the moment
+    // 0018 applied. The flag is written TRUE by the two acts that make it true — admin user
+    // creation and admin password reset (`users-admin.controller.ts`) — and cleared by exactly one
+    // act, `POST /auth/change-password`.
+    mustChangePassword: boolean("must_change_password").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

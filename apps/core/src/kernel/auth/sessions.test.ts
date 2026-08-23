@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { createUser, setPin, rotateBadge } from "./identity";
+import { createUser, setPin, rotateBadge, deactivateUser, reactivateUser, setPassword } from "./identity";
 import {
   createSession, findLiveSession, revokeSession, revokeUserSessions, revokeTerminalSessions,
   loginWithPassword, switchWithPin, switchWithBadge,
@@ -26,8 +26,52 @@ describe("sessions", () => {
     const userId = await mkUser();
     const { token, sessionId } = await createSession(db, cfg, userId, "counter-1");
     const live = await findLiveSession(db, token);
-    expect(live).toEqual({ sessionId, userId, terminalId: "counter-1", secondFactorAt: null });
+    expect(live).toEqual({
+      sessionId, userId, terminalId: "counter-1", secondFactorAt: null, mustChangePassword: false,
+    });
     expect(await findLiveSession(db, "not-a-token")).toBeNull();
+  });
+
+  // ───────────────────── PLAN 11e D1 — what the choke point learned ─────────────────────
+  //
+  // THESE TWO ARE THE WEBSOCKET'S COVERAGE AS WELL AS HTTP's. `realtime/gateway.ts`'s auth handler
+  // has exactly one decision to make about a token and it makes it from THIS function's return
+  // value — null closes the socket 4001, `mustChangePassword` closes it 4001 — so the contract
+  // asserted here is the whole of what the gateway can see. Driving a real socket to re-assert it
+  // would test `ws`, not the rule.
+
+  it("an INACTIVE user's still-valid session resolves to null — at the choke point, not at the caller", async () => {
+    const userId = await mkUser("retiring");
+    const { token } = await createSession(db, cfg, userId);
+    expect(await findLiveSession(db, token)).not.toBeNull();
+
+    await deactivateUser(db, userId);
+    // The row is untouched — not revoked, not expired. Before 11e this token kept full authority
+    // for the rest of SESSION_TTL_MINUTES on every HTTP route and on the socket (plan 11e §3 Q5).
+    const [row] = await db
+      .select({ revokedAt: authSessions.revokedAt })
+      .from(authSessions)
+      .where(eq(authSessions.userId, userId));
+    expect(row!.revokedAt).toBeNull();
+    expect(await findLiveSession(db, token)).toBeNull();
+
+    // …and reactivation restores the SAME session, which is the proof that the refusal is a live
+    // join and not a one-way write somewhere.
+    await reactivateUser(db, userId);
+    expect((await findLiveSession(db, token))!.userId).toBe(userId);
+  });
+
+  it("mustChangePassword is carried as DATA — the session still resolves, so the change can be made on it", async () => {
+    const userId = await mkUser("resetting");
+    const { token } = await createSession(db, cfg, userId);
+    await setPassword(db, userId, "temp-issued-by-admin", { mustChangePassword: true });
+
+    const live = await findLiveSession(db, token);
+    expect(live).not.toBeNull(); // NOT null: the flag is a route-level refusal, never a dead session
+    expect(live!.mustChangePassword).toBe(true);
+
+    await setPassword(db, userId, "the-one-they-chose", { mustChangePassword: false });
+    expect((await findLiveSession(db, token))!.mustChangePassword).toBe(false);
   });
 
   it("revoked and expired sessions are not live", async () => {

@@ -161,9 +161,21 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy,
     }
   }
 
+  /**
+   * PLAN 11e D1 — TWO REFUSALS, ONE OF THEM FREE.
+   *
+   * The DEACTIVATED case costs no code at all: `findLiveSession` joins `users` and returns null for
+   * an inactive one, so the existing null branch below closes the socket on a retired employee's
+   * still-valid token exactly as it does on a forged one. That is the reason the check lives at the
+   * choke point rather than in the two callers (sessions.ts).
+   *
+   * The MUST-CHANGE case is refused explicitly and with the same 4001, because a person mid-
+   * credential-reset has no business streaming a hospital's live event fabric, and the
+   * change-password flow is plain HTTP that needs no socket.
+   */
   private async auth(ws: WebSocket, st: ClientState, token: string): Promise<void> {
     const session = await findLiveSession(this.db, token);
-    if (session === null) {
+    if (session === null || session.mustChangePassword) {
       this.send(ws, { type: "error", code: "unauthorized" });
       ws.close(4001, "unauthorized");
       return;
