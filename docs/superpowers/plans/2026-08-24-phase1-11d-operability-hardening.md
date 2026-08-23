@@ -31,8 +31,17 @@ now paid four times.
 > declared permissions are held by nobody.**
 >
 > **Spike Question B is therefore DISCHARGED and the spike agent must not repeat it** (its brief is
-> amended to match). **Question A remains open and still blocks compile.** Nothing else in this
-> document is fork-open.
+> amended to match). ~~**Question A remains open and still blocks compile.**~~ **QUESTION A IS ALSO
+> DISCHARGED — 2026-08-24, by the spike, MEASURED** (`reports/plan-11d-spike-report.md`, and D5
+> below carries the numbers): `withTx` holds one backend, the loser blocks ~203 ms against a 200 ms
+> hold where the no-lock control waits 0 ms, the post-lock re-read sees the winner's commit 5/5, and
+> a thrown error releases the lock. **No halt condition fired and D5 ships as written.**
+>
+> **THIS DOCUMENT IS NO LONGER FORK-OPEN ANYWHERE. Compile is unblocked.** The spike additionally
+> moved D7 and V18a — the alert-path counters are present at zero on a fresh Alertmanager (so no
+> `absent()` leg is needed), and `promtool` reports SUCCESS at exit 0 for a healthy file that merely
+> OMITS the series a rule reads, which is why V18a gained a third required-DIED mutant and the
+> Book's count moved 26 → 27.
 
 **Baseline at writing** (gate-report addendum 2, re-measure at compile): `apps/core` **144 suites /
 1049 tests** · `apps/web` **34 / 173** · `packages/contracts` **3 / 7**, exit 0. Latest migration
@@ -360,11 +369,43 @@ Three things about that sentence are load-bearing and each has a reason:
   still happens. **Book V11 is a row of its own for exactly this**, because a correctly-named lock
   in the wrong place reads as correct in every code review.
 
-**This is the ONE new database primitive in the plan and nobody here has executed it** —
-`pg_advisory_xact_lock` appears nowhere in the tree. Spike Question A measures it: that `withTx`
-(`kernel/db/client.ts:14`, a bare `db.transaction(fn)`) holds one client for the transaction's
-life, that the loser BLOCKS rather than returning false, and that after acquiring the lock the
-loser's re-read sees the winner's committed row.
+**~~This is the ONE new database primitive in the plan and nobody here has executed it.~~ IT IS NOW
+MEASURED, NOT PREDICTED** — spike Question A (`reports/plan-11d-spike-report.md`), five runs against
+the dev database on PostgreSQL 16.14 through the shipped `withTx`/`Tx` surface. All four
+load-bearing claims hold, **each against a control that would have caught a trivially-true result**:
+
+- **`withTx` holds ONE backend for the transaction's life.** `pg_backend_pid()` = `291220` at
+  statement 1 and at statement 7 with four statements between; `txid_current()` identical too.
+  **Control:** two *concurrent* `withTx` blocks got pids `291220` and `291221`, so the pool does
+  hand out distinct backends and the pin is the transaction's.
+- **The loser BLOCKS for the winner's hold.** Against a 200 ms hold the loser waited
+  **203.0 / 203.7 / 203.6 / 204.0 / 204.0 ms**. **Control:** the identical choreography with the
+  lock statement removed waited **0 ms in all five runs**. `pg_locks` during the wait names it
+  exactly — `locktype=advisory`, `mode=ExclusiveLock`, `objid=774876239`, waiter's
+  `wait_event_type=Lock` / `wait_event=advisory` — and the no-lock control's same snapshot returned
+  **no rows at all**, so no other lock in this path produces that wait (AGENT-RULES §2.6).
+- **After acquiring, the loser's re-read SEES the winner's committed row** — sentinel present, 5/5.
+  **Control:** without the lock it is absent, 5/5. **That control IS case B.**
+- **A thrown error releases the lock.** A `ModeError`-shaped throw between the lock and the append
+  left **zero** granted advisory locks anywhere, and the next transaction acquired in
+  **1.5-1.8 ms** against the 203 ms of a genuinely contended acquisition. **No unlock call is needed
+  on any of the four refusal paths.**
+
+**The statement, exactly as measured and exactly as T3 should write it:**
+
+```ts
+await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"hmis.operating_mode"}))`);
+```
+
+It is `Tx`-typed and compiles: the scratch helper `takeModeLock(tx: Tx)` passed
+`pnpm --filter @hmis/core exec tsc --noEmit` at **exit VALUE 0** under `strict` +
+`noUncheckedIndexedAccess`, so T3 meets no type problem on its first rung. `hashtext` returns
+`integer` (`hashtext('hmis.operating_mode') = 774876239`), widening to the single-argument
+`pg_advisory_xact_lock(bigint)` overload — the same resolution `kernel/worker/scheduler.ts` already
+relies on. Calling it twice in one transaction does **not** self-deadlock. `statement_timeout`,
+`lock_timeout` and `idle_in_transaction_session_timeout` are all `0` on the dev server and nothing
+in `docker/` or the connection strings sets any of them, so a blocked acquisition cannot be cut off
+by a timeout.
 
 ### D6. `ops.mode_changed` gains `changeId`, closing a routed-forward finding
 
@@ -402,6 +443,16 @@ hardcoded path and parses it with matchers that throw on shapes they do not reco
 surface; `alerts-backup.yml` is the BACKUP surface; `alerts-meta.yml` is the ALERT-PATH surface.
 The `rule_files` list grows by one line and D8's new test is what stops that line being forgotten.
 
+**The third rule's series were also measured, and they behave differently from the first two.**
+`prometheus_notifications_dropped_total` is **unlabelled and present at 0 from boot,
+unconditionally**. `prometheus_notifications_errors_total` is **per-alertmanager-endpoint and exists
+only because `prometheus.yml` carries an `alerting:` block** — on a Prometheus with no such block it
+is absent from `/metrics` entirely; the moment one is configured, the series appears **at 0 for
+every configured endpoint within seconds, before any error**, and then climbs 0 -> 1 on the endpoint
+that fails. Since 11c's `alerting:` block is already at `prometheus.yml:41-43`, both series exist on
+the production box today and the rule is armed. **The OR is what makes it robust either way**: the
+`dropped_total` leg is always evaluable, so the rule can never be silently non-evaluable as a whole.
+
 **THE LIMIT, AND IT IS REAL: an alert about a broken alertmanager cannot be delivered by that
 alertmanager.** This plan does not pretend otherwise. What the three rules genuinely buy on a
 single-box deployment:
@@ -412,8 +463,26 @@ single-box deployment:
   Prometheus — on `/alerts` and in Grafana — even when it cannot be emailed.
 - `HmisAlertNotificationsFailing` covers the far more likely failure by a wide margin: **the sink is
   up and the credential or the mailbox is broken.** That alert *can* be delivered — a failing email
-  receiver does not stop Alertmanager evaluating or routing, and the counter keeps climbing so the
-  alert is re-sent as the situation persists.
+  receiver does not stop Alertmanager evaluating or routing — and **the counter climbing is
+  MEASURED, not assumed**: spike Question C drove a real SMTP refusal against
+  `prom/alertmanager:v0.27.0` and `alertmanager_notifications_failed_total{integration="email"}`
+  with `reason="other"` reached **6 in ~60 s** of continuous failure, so `increase(...[15m])` stays
+  far above 0 for as long as the situation persists and the alert is re-sent.
+
+**THE MISSING-SERIES BLIND SPOT DOES NOT EXIST HERE, AND THIS WAS MEASURED BEFORE THE RULE WAS
+WRITTEN.** A `prom/alertmanager:v0.27.0` that has never sent a notification already exports
+**`alertmanager_notifications_total` at 0 for all 13 integrations and
+`alertmanager_notifications_failed_total` at 0 for all 13 integrations x all 5 reasons (65
+series)**, with HELP and TYPE. The label cross-product is registered at start-up, not lazily on
+first use, and it is not restricted to the integrations the config names. **So `increase(...) > 0`
+is armed on a fresh deployment and needs no `or on() vector(0)` term and no `absent()` leg.**
+(Contrast D11's watcher and `alerts.yml`'s scheduler leg, where the series genuinely can be
+absent — the difference is which process owns the metric.)
+
+**The rule deliberately does not filter on `reason`, and that is now a decision rather than an
+omission.** A refused SMTP dial — the single likeliest real failure, a smarthost that stops
+answering — is bucketed as **`reason="other"`**, not `serverError` and not `clientError`. A rule
+filtered to the "error-looking" reasons would miss it entirely.
 - **The genuinely out-of-band answer is E-16's watchdog plus a deadman's switch, and both belong to
   11b**, where a second machine exists to host them. Booked below rather than half-built here — and
   a deadman's switch that depended on an external ping provider would also breach the portability
@@ -425,6 +494,13 @@ negative-space reasoning. It is redundant here — a scrape target that has neve
 `up` absent, but `alerts-meta.yml` is installed in the same commit as the scrape job, so the only
 way to reach that state is a `prometheus.yml` that loads the rules and omits the job. **D8's leg 2
 makes that a build failure instead of a silent gap**, which is a stronger answer than a rule.
+**Measured for completeness** (spike Question C.3): `up` for a target that has never been scraped is
+**genuinely absent** — an `/api/v1/query?query=up` one second after start-up returned `result: []` —
+and becomes `0` only when the first scrape *completes*, which for an unreachable target costs a full
+`scrape_timeout` (10 s) after a scrape offset anywhere in `[0, scrape_interval)`. On this box that
+is a window of up to ~25 s after any Prometheus restart. `HmisAlertmanagerDown`'s `for: 5m` covers
+it with two orders of magnitude to spare, **so the rejection stands — but the state is real, not
+hypothetical.**
 
 ### D8. `deploy.sh`'s two hand-maintained lists become ONE tested invariant (§2.77's rule, promoted)
 
@@ -439,9 +515,33 @@ into a source comment**:
 one guards the difference between a live watcher and an inert one. It becomes
 `apps/core/test/deploy-parity.test.ts`, in `caddyfile-parity.test.ts`'s shape, with three legs:
 
-1. **Restart-loop closure** — every service whose config `deploy.sh` installs into
-   `$DEPLOY_DIR/<svc>/` appears in the `for svc in …` loop at `:432`. `caddy` is the one declared
-   exception and the test names its reason (it gets an explicit `reload`, which is stronger).
+1. **Restart-loop closure** — every **COMPOSE SERVICE** whose config directory step 2 populates
+   under `$DEPLOY_DIR/<svc>/` — **by `install -D` OR by rendering** — appears in the
+   `for svc in …` loop at `:432`. `caddy` is the one declared exception and the test names its
+   reason (it gets an explicit `reload`, which is stronger).
+
+   **AMENDED AT COMPILE 2026-08-24, because the leg as first written would have FAILED against
+   correct shipped code** — measured at `84db774`, and the correction is load-bearing in three ways
+   a coder cannot infer from the sentence above:
+   - **Two `install -D` targets are NOT compose services.** `deploy.sh` installs into
+     `$DEPLOY_DIR/pgbackrest/` (`:180`) and `$DEPLOY_DIR/drill/` (`:181`); neither is a service and
+     neither belongs in a restart loop. A parser that maps a populated directory to a service name
+     demands both join the loop and reports two false failures.
+   - **`alertmanager`'s config is RENDERED, not installed.** `install -d` makes the directory at
+     `:299` and the config is derived from `.env.smtp` at `:300-328` (Plan 11c D10 — it carries an
+     SMTP password and is never committed). A parser keyed on `install -D` misses it entirely and
+     reports the loop's `alertmanager` entry as an extra — the third false failure.
+   - **The service list cannot come from `deploy.sh`.** It reads `compose config --services` at
+     `:453`, which a jest test cannot run; the test parses `docker/prod/docker-compose.prod.yml`
+     instead. **The nine services are** `db api worker caddy node-exporter postgres-exporter
+     prometheus grafana alertmanager`.
+
+   **Under the corrected wording the invariant closes EXACTLY**, which is what makes it worth
+   shipping: populated-and-a-service = `{caddy, prometheus, postgres-exporter, grafana,
+   alertmanager}`; the loop = `{prometheus, grafana, alertmanager, postgres-exporter}`; the
+   difference is `{caddy}` and it is the declared exception. **Three sources, one census, no
+   residue** — and the census pin of leg 3 is what stops a parser going blind and agreeing with
+   itself (§2.49).
 2. **Rule-file closure, both directions** (MINOR 6) — every path in `prometheus.yml`'s `rule_files`
    exists on disk under `docker/prod/prometheus/`, **and** every rule file on disk is both named in
    `rule_files` and installed by `deploy.sh`. Today that is three files and nothing checks any of
@@ -568,10 +668,18 @@ given, returns `{id}` · `hasPermission(...)` `:63` is what `PermissionGuard` re
 
 **`apps/core/src/kernel/auth/identity.ts`** — `createUser(db, {username, fullName, password,
 pin?})` `:18` returns `{id}`; argon2id at `memoryCost 19456 / timeCost 2 / parallelism 1` `:11-15`;
-`pinHash` is `null` when no pin is supplied · `verifyPassword(db, username, password)` `:34` returns
-`{userId}` or `null` and refuses an inactive user · `setPin(db, userId, pin)` `:46` ·
-`verifyPin(db, userId, pin)` `:51` · `rotateBadge` `:58`. **`setPin` and `rotateBadge` have ZERO
-non-test callers.**
+`pinHash` is `null` when no pin is supplied · `verifyPassword(db, username, password)` **`:35`**
+returns `{userId}` or `null` and refuses an inactive user · `setPin(db, userId, pin)` **`:47`** ·
+`verifyPin(db, userId, pin)` **`:52`** · `rotateBadge` **`:59`**. **`setPin` and `rotateBadge` have
+ZERO non-test callers.**
+
+> **CORRECTED AT COMPILE 2026-08-24 (§2.78), re-resolved at `84db774`.** This document was written
+> with `:34 / :46 / :51 / :58` for those four — **each off by one**, and `identity.ts` has not
+> changed since `78b0a3d`, so the transcription was simply wrong rather than stale. The argon2id
+> parameters are at `:13-15`, not `:11-15`. Nothing downstream breaks (T2 is briefed to navigate by
+> SYMBOL, which is precisely why §2.78 says to), but **a coordinate that was never right is worse
+> than one that expired**: the expired kind announces itself when the file moves, and this kind does
+> not.
 
 **`apps/core/src/kernel/workflow/roles.ts`** — `usersHoldingRole(tx, roleKey)` is **Tx-typed**;
 `seed-ops.ts:93` and `alerts/consumer.ts:153` both wrap it in `withTx`.
@@ -891,17 +999,26 @@ Rows marked **P** carry inputs the task must confirm by building the mutant and 
 | V15 | T4 | Manifest closure, both directions, with no exception | (a) a route on an UNDECLARED permission; (b) a fourth declared permission guarding no route | (a) `ops.interface.manag` → the closure leg names it; (b) a manifest-only string → the reverse direction names it. **Each must die on THIS leg with the other legs green**, or the legs are not independent | |
 | V16 | T4 | The granted direction: an all-three actor is refused for a missing permission on NO ops route | a decorator repointed to a misspelt permission | the all-three actor over all eleven routes → shipped: no `missing permission` refusal anywhere; mutant: one route refuses an actor that holds everything | |
 | V17 | T4 | The two-actor MAP: each real, non-empty grant set is refused on the other's routes, by name | swap the two decorator groups | `{mode.set, downtime.generate}` vs `{interface.manage}` → shipped: each refused on the other's routes naming the right permission; mutant: the refusals name the WRONG permission **while the status stays 403** — the exact tell §3.42 was written for | **P** |
-| V18a | T5 | Each of D7's three rules fires on its synthetic input and NOT on healthy input | widen a threshold; and separately break a rule so only the negative control fails | `promtool test rules` over `alerts-meta.yml`, both directions, exit VALUE quoted; **annotations asserted by EXACT text** (11c's `9d 6h 13m 20s` lesson — assert on rendering, not merely on firing) | |
+| V18a | T5 | Each of D7's three rules fires on its synthetic input and NOT on healthy input | widen a threshold; separately break a rule so only the negative control fails; **and a THIRD: delete one series from the healthy test's `input_series`** — that mutant CANNOT be killed by an `exp_alerts: []` leg (it makes it PASS), so the healthy file must additionally carry a `promql_expr_test` leg asserting each series present, and **the kill is THAT leg failing**, not the alert leg (§2.22 — a negative control that cannot fail this way is "not a pre-flight") | `promtool test rules` over `alerts-meta.yml`, both directions, exit VALUE quoted (spike MEASURED: firing **0**, healthy **0**, deliberate break **1** with `got:[]` naming both rules). **Annotations asserted by EXACT text, and the `{{ $value }}` render MEASURED before it is asserted** — the spike predicted the extrapolated `10.714285714285714` and promtool answered a bare `10`; assert the render, or write the annotation with a `printf "%.0f"` pipe so the text is stable. **The `for:` clause is genuinely driven and must be asserted in BOTH positions** — `exp_alerts: []` at `eval_time: 4m` and firing at `10m` for a `for: 5m` rule. **`[15m]` needs no shrinking**: `increase(...[15m])` is evaluable from the SECOND sample in the window whatever the window's width (measured: nil at 1 sample, `0E+00` at 2, `2E+00` at 4 over a 3-minute series). **AND THE NEGATIVE LEG MUST PIN EVERY SERIES PRESENT-AT-ZERO IN `input_series`, WITH ITS REAL LABELS** — `alertmanager_notifications_failed_total{integration,reason}`, `up{job,instance}`, `prometheus_notifications_errors_total{alertmanager}` and the unlabelled `prometheus_notifications_dropped_total`. **MEASURED: a healthy file that simply OMITS the series passes `exp_alerts: []` at exit VALUE 0, indistinguishable from a real green** | **P** |
 | V18b | T5 | Rule-file closure: `rule_files`, the files on disk, and `deploy.sh`'s installs are ONE set | (a) a `rule_files` entry naming no file; (b) delete an `install` line for a named rule file | each → shipped: the leg names the missing side; **both mutants must die on this leg**, and the census pin (three rule files) must fail first if a parser goes blind | **P** |
-| V19 | T5 | Restart-loop closure: every service whose config `deploy.sh` installs appears in the loop | remove `postgres-exporter` from the loop | §2.77's third specimen, now a test → shipped: the leg names the omitted service; control: `caddy` is the declared exception and its absence does NOT fail | **P** |
+| V19 | T5 | Restart-loop closure: every COMPOSE SERVICE whose config dir step 2 populates (by `install -D` **or by rendering**) appears in the loop | remove `postgres-exporter` from the loop | §2.77's third specimen, now a test → shipped: the leg names the omitted service; control: `caddy` is the declared exception and its absence does NOT fail | **P** |
 | V20 | T6 | A heartbeat landing mid-sweep is not overwritten by a false `interface.down` | drop the `lastSeenAt` predicate | ≥15 rounds (a floor): a heartbeat interleaved between the sweep's read and its claim → shipped: status stays `up`, **zero** `interface.down` events; mutant: the 14/15 false-down window reappears and is quoted | **P/M** |
 | V21 | T6 | The legitimate path is unharmed — a genuinely stale interface is STILL downed | (none — §3.44's not-over-broad control, and it must stay GREEN) | a stale `up` interface whose `lastSeenAt` does not move → downed, exactly one `interface.down`. **A predicate one term too wide passes every other row in this Book** | |
 
-**Required-DIED mutant count: 26** — R1 (1, Phase 0) · T1 (6: V1, V2, V3×2, V4, V5) · T2 (4) ·
-T3 (4) · T4 (5: V14, V15×2, V16, V17) · T5 (5: V18a×2, V18b×2, V19) · T6 (1). **Two measured races**
+**Required-DIED mutant count: ~~26~~ 27** — R1 (1, Phase 0) · T1 (6: V1, V2, V3×2, V4, V5) ·
+T2 (4) · T3 (4) · T4 (5: V14, V15×2, V16, V17) · **T5 (6: V18a×3, V18b×2, V19)** · T6 (1).
+**The 27th is the spike's** — V18a's third mutant, which exists because `promtool` reports SUCCESS
+at exit VALUE 0 for a healthy file that simply omits the series a rule reads. **Two measured races**
 (V10, V20) at a floor of 15 rounds each. **Two drills**: the `promtool` run in both directions, and
 the spike's read-only production query. **V21 is a required-GREEN control, not a mutant**, and a
 task that reports it as a kill has misread it.
+
+**V10 and V11's PRIMITIVE is no longer a prediction.** The spike measured `pg_advisory_xact_lock`
+end to end (report §Question A): the lock blocks, the post-lock re-read sees the winner's commit,
+and a thrown error releases it. **T3 does not re-measure the primitive; T3 measures the FUNCTION.**
+V11's mutant — the lock moved to after `getOperatingMode(tx)` — is known-constructible, and its
+expected symptom is the one the spike produced as its *no-lock control*: the loser reads the
+pre-change state (sentinel absent, 5/5) and decides on it.
 
 These are the §2.68 inputs to the budget in the Pipeline Notes. **If compile grows the Book, the
 target moves with it — in the execute prompt, before the run.**
@@ -999,10 +1116,12 @@ target moves with it — in the execute prompt, before the run.**
 
 ## Execute-prerequisites (owner actions; the pipeline halts where noted)
 
-1. **The spike has run and its Question A is written into this document** (blocks compile). A
-   decides whether T3's named fix is correct. ~~B decides whether T1 is the size stated here.~~
-   **B is DISCHARGED — measured 2026-08-24, §B-MEASURED, premise held.** **Nothing else in this plan
-   is fork-open.**
+1. ~~**The spike has run and its Question A is written into this document** (blocks compile). A
+   decides whether T3's named fix is correct.~~ ~~B decides whether T1 is the size stated here.~~
+   **BOTH DISCHARGED, and this prerequisite is MET.** **B** — measured 2026-08-24 in the planning
+   session, §B-MEASURED, premise held. **A** — measured 2026-08-24 by the spike, five runs each with
+   a control, written into D5 above; `pg_advisory_xact_lock` serialises `changeOperatingMode`
+   exactly as D5 predicted, and T3 is unblocked. **Nothing in this plan is fork-open.**
 2. **The staff roster** — usernames, full names, initial passwords, PINs, and the role each person
    holds, from D3's nine. **Needed for flag ③, NOT for the pipeline**: every task tests with
    fixtures it makes itself. The owner can produce this while the pipeline runs.

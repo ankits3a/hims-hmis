@@ -70,8 +70,18 @@ The plan states a baseline and a set of source coordinates. **Both expire.** Bef
   numbers are a census too, and they expired in the same commit that expired a count last time).
 - **Confirm `test/ops-lifecycle.e2e.test.ts`'s current content** before T4's brief is written. 11c
   already put a kit-permission leg in it (`leg 5`, around `:336`); T4 EXTENDS, never duplicates,
-  and the thirteen-route census must be **re-counted from the decorators**, not copied from the
-  plan.
+  and the ~~thirteen~~ **ELEVEN**-route census must be **re-counted from the decorators**, not
+  copied from the plan.
+  **RE-COUNTED AT COMPILE 2026-08-24, at `84db774`, and this prompt was WRONG: there are ELEVEN
+  routes — seven guarded, four unguarded.** Guarded: `POST mode` `:197` and `POST config-validation`
+  `:226` on `OPS_MODE_SET` · `POST interfaces` `:273` and `POST interfaces/:id/deactivate` `:285` on
+  `OPS_INTERFACE_MANAGE` · `POST downtime-kits` `:338`, `GET downtime-kits` `:353`,
+  `GET downtime-kits/:id` `:367` on `OPS_DOWNTIME_GENERATE`. Unguarded by design: `GET mode` `:169`,
+  `GET config-validation/latest` `:232`, `GET interfaces` `:262`,
+  `POST interfaces/:id/heartbeat` `:298`. **The plan's D9 and its Consumed Surfaces both say eleven
+  and both are right; only this prompt said thirteen.** `test/ops-lifecycle.e2e.test.ts` is 563
+  lines with seven legs, and its `leg 5` at `:336` already asserts the three kit routes by
+  permission name — so T4's table must EXTEND that leg, and the count it pins is ELEVEN.
 
 ## 3. Compile — the items history says get skipped, plus this plan's own
 
