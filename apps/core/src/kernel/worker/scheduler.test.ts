@@ -392,6 +392,50 @@ describe("Scheduler", () => {
     /** Real turns at an instant, where a window is open and a run must reach its spy. */
     const INSTANT_SETTLE_TURNS = 50;
 
+    /**
+     * Every `every(ms)` cadence in `CENSUS_INTERVALS` that can actually CAUSE an invocation.
+     * Only the five real cadences: `notifyStuckAfterMs` is a WINDOW and the three retention keys
+     * are values, so none of them fires anything and walking to one would stop where nothing
+     * happens.
+     */
+    const INTERVAL_CADENCES_MS = [
+      CENSUS_INTERVALS.workerDispatchIntervalMs,
+      CENSUS_INTERVALS.workerTimersIntervalMs,
+      CENSUS_INTERVALS.workerTempRolesIntervalMs,
+      CENSUS_INTERVALS.workerNotifyIntervalMs,
+      CENSUS_INTERVALS.workerInterfaceSweepIntervalMs,
+    ];
+
+    /**
+     * EVERY instant at which ANY job fires, ascending and de-duplicated — the five daily instants
+     * AND every interval multiple inside the span. Each one is walked to and settled, which is
+     * what the daily instants already got and the interval jobs did not.
+     *
+     * THE SPAN REDUCTION MADE THIS NECESSARY AND R0-2 MISSED IT. Across the old 25 h sweep the
+     * 8 h pump fired three times and the 9 h temp-roles sweep twice, so a firing whose real
+     * heartbeat write had not settled before `stop()` was covered by a later one. Inside
+     * 9 h 05 m each fires EXACTLY ONCE — both in the tail walk, which settled only
+     * `WALK_SETTLE_TURNS`, and temp-roles fires five fake minutes before the end. The redundancy
+     * that used to hide the unsettled write is gone.
+     *
+     * CI PROVED IT, and nothing on the build host could: commit `e81219d` came back red with
+     * `runNotifyPump` and `sweepExpiredTempRoles` missing from the invoked set and every other
+     * job present. That is the same queue-starvation mechanism R0-2 fixed for daily jobs, moved
+     * to the interval jobs at the tail.
+     */
+    const FIRE_INSTANTS: { atMs: number; daily: boolean }[] = (() => {
+      const byMs = new Map<number, boolean>();
+      for (const ms of DAILY_INSTANTS_MS) byMs.set(ms, true);
+      for (const cadence of INTERVAL_CADENCES_MS) {
+        for (let t = cadence; t <= CENSUS_SPAN_MS; t += cadence) {
+          if (!byMs.has(t)) byMs.set(t, false);
+        }
+      }
+      return [...byMs.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([atMs, daily]) => ({ atMs, daily }));
+    })();
+
     it("invokes all ten jobs across a stepwise advance from a pinned instant", async () => {
       expect(process.env.DATABASE_URL).toBeUndefined(); // CI's environment, reproduced here
       const invoked: string[] = [];
@@ -417,13 +461,17 @@ describe("Scheduler", () => {
         };
 
         scheduler.start();
-        for (const instantMs of DAILY_INSTANTS_MS) {
-          await walkTo(instantMs + 1_000); // one second PAST it: the tick landing on the instant has fired
+        for (const fire of FIRE_INSTANTS) {
+          await walkTo(fire.atMs + 1_000); // one second PAST it: the tick landing on the instant has fired
           await settleRealTurns(INSTANT_SETTLE_TURNS);
-          for (let i = 0; i < TICKS_PER_INSTANT; i += 1) {
-            await jest.advanceTimersByTimeAsync(CENSUS_DAILY_TICK_MS);
-            cursorMs += CENSUS_DAILY_TICK_MS;
-            await settleRealTurns(INSTANT_SETTLE_TURNS);
+          // Only a DAILY instant needs its due window crossed tick by tick; an interval job has
+          // already fired by the time we are one second past its multiple.
+          if (fire.daily) {
+            for (let i = 0; i < TICKS_PER_INSTANT; i += 1) {
+              await jest.advanceTimersByTimeAsync(CENSUS_DAILY_TICK_MS);
+              cursorMs += CENSUS_DAILY_TICK_MS;
+              await settleRealTurns(INSTANT_SETTLE_TURNS);
+            }
           }
         }
         await walkTo(CENSUS_SPAN_MS); // the tail — nothing daily is left, the interval cadences need it
