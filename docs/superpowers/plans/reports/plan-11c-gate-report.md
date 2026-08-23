@@ -33,12 +33,14 @@ inbox: [`plan-11c-findings-inbox.md`](plan-11c-findings-inbox.md).
 | T4 | `b819054` | `feat(core): the downtime kit — serial ranges under a single-winner counter, a signed QR on every form` | GREEN 8m07s a1 |
 | T5 | `5ae8ec8` | `feat(web): the mode banner, the mode desk, and the printable downtime kit` | GREEN 8m20s a1 |
 | T6 | `e81219d` | `feat(infra): Alertmanager to the owner's inbox — critical reaches a human, and the restore drill is watched` | **RED 8m01s a1** → §3a |
-| fix | `766cade` | `test(core): the census walks every interval instant too — the two jobs R0-2 left in the tail` | GREEN 8m05s a1 |
+| fix 1 | `766cade` | `test(core): the census walks every interval instant too — the two jobs R0-2 left in the tail` | GREEN 8m05s a1 — **but see §3a: this fix DID NOT WORK** |
+| gate report | `de668ad` | `docs(reports): Plan 11c gate report …` | **RED 8m03s a1** — the same census, on a four-markdown-file diff |
+| fix 2 | `7e38b28` | `test(core): the census waits on the CONDITION, not on a turn count — my last fix was wrong` | see §3a |
 
 Every task passed on its **first rung**. The wave-stall break never fired. Two commits are not in the
 plan's table and both are accounted for: `74dea4d` is T2's own line-ending correction, landed as a
-NEW commit rather than an amend (rule 15 honoured — see §7.5), and `766cade` is my remediation of
-the CI red (§3a).
+NEW commit rather than an amend (rule 15 honoured — see §7.5), and `766cade`/`7e38b28` are my two
+remediations of the CI red — **the first of which did not work** (§3a).
 
 ## 2. Independent main-session verification
 
@@ -60,7 +62,7 @@ the CI red (§3a).
   roster is byte-identical to the pre-pipeline roster because **nothing was deployed** (§5).
 - **`pnpm-lock.yaml` untouched across the entire range.** GC1 held; no task needed a dependency.
 
-## 3. CI — every commit green by FULL SHA except one, and that one was real
+## 3. CI — every commit green by FULL SHA except TWO, and neither was a flake
 
 Every duration above is minutes with a non-empty 12-step job — **none of these is §2.59's third
 state**, and every commit has a run object (§2.62 stayed closed: strictly sequential waves, one push
@@ -83,16 +85,30 @@ fires **five fake minutes** before the span ends. **The span reduction removed t
 had been hiding an unsettled write.** It is the identical queue-starvation mechanism R0-2 fixed for
 daily jobs, relocated to the interval jobs at the tail.
 
-**Fix (`766cade`):** the walk now stops at **every** instant where anything fires — the five daily
-instants plus every interval multiple inside the span, merged and de-duplicated — and settles fully
-at each; only a daily instant still needs its due window crossed tick by tick. CI **GREEN on attempt
-1**.
+**First fix (`766cade`) — AND IT DID NOT WORK. Corrected in place rather than left standing.** It
+made the walk stop at every instant where anything fires and settle fully at each. CI went green on
+attempt 1, **and I reported the defect fixed on that single run.** That was wrong. The very next
+commit — `de668ad`, four markdown files, incapable of reaching a test — came back **red with the
+identical signature**: `runNotifyPump` and `sweepExpiredTempRoles` missing. One green run against a
+roughly one-in-four failure rate is what luck looks like, and I read it as confirmation while this
+very report said "one green run is one data point".
 
-**The honest limit, and it is the spike's own caveat vindicated:** the build host reproduces this
-failure in **no** shape. Spike §A.7 measured shipped and stepwise both **10/10 green under
-`taskset -c 0`**, and predicted in as many words that CI would be the only confirmation available.
-It was. A green full suite on the box proves the fix breaks nothing; only CI can show it fixes
-anything, and one green run is one data point.
+**The real defect was the INSTRUMENT, not the placement (`7e38b28`).** A fixed turn count buys ~50 ms
+of real time regardless of load. R0-2's comment argues the opposite — *"on a starved container each
+turn takes LONGER, so the same count buys proportionally more real time"* — and **that is false when
+what you are waiting on is one database round-trip's latency rather than accumulated event-loop
+work.** The measurement is decisive: this census takes **37.6 s on CI against 2.9 s on the build
+host**. `settleUntil(done, maxTurns)` now yields real turns **until every job has actually been
+invoked**, bounded at 20 000. It costs one turn when the work is already done (suite time unchanged
+at ~2.9 s locally) and as many as the machine needs when it is not; it cannot hang the suite, and it
+cannot make a broken census pass because the assertion after it is untouched.
+
+**What is NOT claimed:** that the flake is fixed. The build host reproduces this failure in **no**
+shape — spike §A.7 measured shipped and stepwise both 10/10 green under `taskset -c 0` and predicted
+CI would be the only available confirmation. I did **not** manufacture starvation with CPU load,
+because production serves a live hospital on that box. **The honest bar is several consecutive green
+runs across commits touching unrelated files, and it has not been met.** This is a better instrument
+with an argument behind it, not a proven fix.
 
 ## 4. The Assertion Book — every row, with its verdict
 
@@ -316,7 +332,7 @@ pattern. **New ledger entry §2.79.**
 The commit was unpushed, so amending would not have violated rule 15 — but the classifier blocked
 `git commit --amend` anyway, and **that block was right**: rule 15's whole principle is that
 corrections land as new commits. I pushed as-is and recorded it here rather than fighting the denial.
-The diff is correct; only the message tail is missing.
+The diff is correct; only the message tail is missing. **The second remediation `7e38b28` was committed from a scp'd message FILE instead — the same §2.79 quoting family, hit a third time in one run, and the fix is to stop using nested heredocs over ssh at all.**
 
 ### 7.7 A residual I am not fixing, disclosed
 
