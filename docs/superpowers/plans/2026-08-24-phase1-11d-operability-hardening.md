@@ -906,9 +906,11 @@ apps/core/
   src/kernel/ops/mode.ts                        T3 (advisory lock first; changeId on the payload)
   src/kernel/ops/mode.test.ts                   T3 (V10, V11, V12b)
   src/kernel/ops/events.ts                      T3 (modeChanged payload gains changeId — that field ONLY)
-  src/kernel/alerts/consumer.ts                 T3 (refId = changeId — that branch ONLY)
+  src/kernel/alerts/consumer.ts                 T3 (changeId on the payload — SHIPPED) ·
+                                                T4 (the refId repoint — CHAIN-HALTED out of T3, see below)
   src/kernel/alerts/consumer.test.ts            T3 (V13)
-  test/ops-lifecycle.e2e.test.ts                T4 (the ROUTES table and D9's four legs)
+  test/ops-lifecycle.e2e.test.ts                T4 (the ROUTES table and D9's four legs, PLUS
+                                                leg 4's `refId` assertion — the other half of D6)
   test/deploy-parity.test.ts                    T5 create (D8's three legs)
   src/kernel/ops/interfaces.ts                  T6 (the lastSeenAt predicate — that term ONLY)
   src/kernel/ops/interfaces.test.ts             T6 (V20, V21)
@@ -1025,8 +1027,31 @@ session lock, a `FOR UPDATE`, or a retry loop on your own authority.**
 
 ### Task 4: The ops permission MAP — §3.42's four legs *(CRITICAL, opus coder + opus gate)*
 
-D9, in `test/ops-lifecycle.e2e.test.ts`. **This task changes no production code at all** (GC5): if a
-decorator and the table disagree, the decorator is the fact and the disagreement is a finding.
+> **T4 INHERITS THE OTHER HALF OF D6 — routed here by a CHAIN HALT that T3 raised correctly, and
+> the miss was the compile sweep's, not T3's.** The sweep enumerated every reader of the
+> `ops.mode_changed` PAYLOAD and found them all. It did not enumerate readers of **the value that
+> payload produces two hops downstream** — the alert's persisted `refId`. There is exactly one, and
+> it was frozen to T3: `test/ops-lifecycle.e2e.test.ts:319` pins `refId: "downtime"` inside leg 4's
+> `toMatchObject`. T3 built the full repoint, ran it, and MEASURED the break rather than predicting
+> it — `- "refId": "downtime"` / `+ "refId": "01M0QE1XGG08TFPCMBC9E7HSM0"` — then backed the repoint
+> out under AGENT-RULES §3(a) and shipped D6's payload half alone. **That is the behaviour
+> EXECUTE-METHOD §6 says not to touch.**
+>
+> **So T4 lands two lines, and they must land in ONE commit or the suite is red between them:**
+> 1. `src/kernel/alerts/consumer.ts` — `refId: payload.to` → `refId: payload.changeId`. **That
+>    branch ONLY; `raiseAlerts` is untouched.** T3 left a signpost in `OPERATING_MODE_REF_TYPE`'s
+>    header naming this blocker — **delete the signpost as you land the fix**, or it becomes a
+>    §2.60 stale sentence beside correct code.
+> 2. `test/ops-lifecycle.e2e.test.ts` leg 4 — `refId: "downtime"` → the `operating_mode_changes`
+>    row id, asserted by **whole-string equality against the id read back from the table**, never
+>    against a hardcoded ULID.
+>
+> **This also completes Book row V13**, whose Book mutant ("revert `refId` to the mode word") could
+> not fail while the halt stood — the shipped code WAS that mutant. Build it after the repoint.
+
+D9, in `test/ops-lifecycle.e2e.test.ts`. **Apart from that two-line D6 completion, this task changes
+no production code at all** (GC5): if a decorator and the table disagree, the decorator is the fact
+and the disagreement is a finding.
 Build the `ROUTES` table from the decorators — eleven routes, seven guarded, four unguarded, the
 census asserted before anything is compared — then the four legs of D9.
 
@@ -1094,7 +1119,7 @@ Rows marked **P** carry inputs the task must confirm by building the mutant and 
 | V7 | T2 | An unknown role key is a hard refusal BEFORE any write | skip the unknown key silently | a roster with one good row and one bad role key → shipped: exit non-zero and **zero users created**; mutant: one user exists holding nothing, exit 0 | **P** |
 | V8 | T2 | An existing username with a DIFFERENT password is refused, never overwritten | make the update unconditional | seed, then re-seed the same username with a new password → shipped: refused, and `verifyPassword` still accepts the ORIGINAL; mutant: the original stops working — a live user locked out with nobody watching | **P** |
 | V9 | T2 | No password and no PIN appears in stdout or stderr | log the roster row on error | drive a failing row whose password is a distinctive sentinel → shipped: the sentinel appears in neither stream; mutant: it appears. **Assert on the CAPTURED STREAMS, never on a return value** | **P** |
-| V10 | T3 | Concurrent declarations SERIALISE — one wins and the loser sees the winner | drop the advisory lock | ≥15 rounds per case (a floor, §3.22), the gate report's three: **A** two identical `normal→downtime` · **B** concurrent `→downtime` / `→degraded` · **C** two concurrent go-live exits → shipped: exactly one appended row per round in all three; mutant: the 14/15 and 15/15 overlaps reappear and are quoted | **P/M** |
+| V10 | T3 | Concurrent declarations SERIALISE — one wins and the loser sees the winner | drop the advisory lock | ≥15 rounds per case (a floor, §3.22), the gate report's three: **A** two identical `normal→downtime` · **B** concurrent `→downtime` / `→degraded` · **C** two concurrent go-live exits. **SHIPPED + MEASURED at `4daacf4`, 15 rounds each: A 15/15 `appended=1` · B 15/15 `departingNormal=1, chained=true` · C 15/15 `commissioningExits=1`. Mutant: A **14/15** — identical to 11c's own measurement — B 15/15 `departingNormal=2, chained=false`, C 15/15 `commissioningExits=2`.** · ~~shipped: exactly one appended row per round in all three~~ **CORRECTED IN-TASK: that phrase is FALSE for case B and cannot be made true. The loser there is not refused — it re-reads the winner's state and `downtime → degraded` is a LEGAL transition, so two rows is the CORRECT outcome (V11's own row already says "refused, **or appends from the winner's state**"). The discriminating invariant for B is ONE ROW PER PREDECESSOR STATE — `departingNormal=1` plus chain well-formedness — which is strictly stronger and which both mutants break.** | **P/M** |
 | V11 | T3 | The lock is taken BEFORE the read, not merely somewhere in the function | move the lock to after `getOperatingMode(tx)` | case B specifically → shipped: the loser is refused or appends from the winner's state; mutant: **both succeed and `current` disagrees with what one caller was told** — the identical symptom the unlocked code has, which is why presence alone is not the assertion | **P** |
 | V12b | T3 | The commissioning gate covers EVERY exit, so `commissioning → downtime → normal` is not a bypass | narrow the guard to `to === "ramp"` or `"normal"` (D3's literal text) | from `commissioning` with NO valid report: `→ downtime` then `→ normal` → shipped: refused at step one with `golive_gate_unsatisfied`; mutant: **reaches `normal` having read no report at all.** Closes the PREDICTION 11c's inbox left standing | **P** |
 | V13 | T3 | `ops.mode_changed` carries `changeId`, and the alert's `refId` IS that id | revert `refId` to the mode word | one mode change → shipped: `refId` equals the `operating_mode_changes.id` by whole-string equality; mutant: it equals `"downtime"` | |
