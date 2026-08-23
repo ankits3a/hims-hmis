@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, ne } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { authSessions, users } from "../db/schema";
 import { randomToken, sha256Hex } from "../crypto";
@@ -93,6 +93,35 @@ export async function revokeUserSessions(db: Db, userId: string): Promise<number
     .update(authSessions)
     .set({ revokedAt: new Date() })
     .where(and(eq(authSessions.userId, userId), isNull(authSessions.revokedAt)))
+    .returning({ id: authSessions.id });
+  return rows.length;
+}
+
+/**
+ * PLAN 11e T2 — "every session of this user EXCEPT the one asking", for `POST /auth/change-password`.
+ *
+ * A password change is what somebody does when they believe a credential leaked, so every other
+ * terminal that credential is signed in on must die — and the one in front of them must not, or
+ * the act of fixing the account would throw them out of it. It sits beside the other two revokes
+ * rather than inside the controller because this is the family that knows how a session ends;
+ * a controller reaching into `auth_sessions` directly would be the third place that knowledge
+ * lives.
+ */
+export async function revokeOtherUserSessions(
+  db: Db,
+  userId: string,
+  keepSessionId: string,
+): Promise<number> {
+  const rows = await db
+    .update(authSessions)
+    .set({ revokedAt: new Date() })
+    .where(
+      and(
+        eq(authSessions.userId, userId),
+        ne(authSessions.id, keepSessionId),
+        isNull(authSessions.revokedAt),
+      ),
+    )
     .returning({ id: authSessions.id });
   return rows.length;
 }

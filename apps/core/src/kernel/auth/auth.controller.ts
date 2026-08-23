@@ -2,21 +2,46 @@ import {
   BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Inject, Param, Post, Req,
   UnauthorizedException,
 } from "@nestjs/common";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../tokens";
-import { loginWithPassword, revokeSession, switchWithBadge, switchWithPin } from "./sessions";
+import {
+  loginWithPassword, revokeOtherUserSessions, revokeSession, switchWithBadge, switchWithPin,
+} from "./sessions";
+import { setPassword, verifyPassword } from "./identity";
+import { checkPassword } from "./password-policy";
 import { confirmTotp, enrollTotp, recordSecondFactor, verifyTotpCode } from "./totp";
 import { useBreakGlass, pendingReviews, recordReview } from "./break-glass";
 import { grantTempRole, emergencyElevate } from "./temp-roles";
 import { CurrentActor, Public, RequirePermission, AuthedRequest } from "./decorators";
+import { users } from "../db/schema";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 
+/**
+ * `min(1)` STAYS, AND IT IS A DECISION (11e D3). Login VERIFIES a credential that already exists;
+ * a floor here would lock out precisely the people the reset flow exists to save — every account
+ * whose password predates `password-policy.ts`, which on the live box is all sixteen of them. The
+ * floor lives where a human CHOOSES a credential, and this is not that place.
+ */
 const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
   terminalId: z.string().min(1).optional(),
+});
+
+/**
+ * PLAN 11e T2/D2 — self-service change-password: authenticated, NO permission, and one of the two
+ * routes `AuthGuard` admits while `must_change_password` is set (`guards.ts`).
+ *
+ * `min(1)` on both fields for the same reason as `loginSchema`: `currentPassword` is VERIFIED
+ * rather than chosen, and `newPassword`'s floor is the shared policy's — applied in the handler,
+ * where a refusal can name every clause the password broke instead of zod's first one.
+ */
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(1),
 });
 const pinSwitchSchema = z.object({
   username: z.string().min(1),
@@ -69,6 +94,59 @@ export class AuthController {
   @HttpCode(204)
   async logout(@Req() req: AuthedRequest): Promise<void> {
     if (req.hmisSession) await revokeSession(this.db, req.hmisSession.sessionId);
+  }
+
+  /**
+   * PLAN 11e T2 — THE ROUTE THAT ENDS PERMANENT LOCKOUT'S OTHER HALF.
+   *
+   * `POST /admin/users/:id/password-reset` (T3) lets an admin repair somebody. THIS is how the
+   * person repaired then takes their credential back, and how anybody changes a password they
+   * merely dislike. No permission: every authenticated human may change their own password, and
+   * requiring a grant for it would put the least privileged user — the one most likely to be
+   * handed a temporary password — behind the exact door this phase exists to open.
+   *
+   * FOUR THINGS HAPPEN, AND THE ORDER IS THE POINT:
+   *   1. the CURRENT password is verified. A session token is not consent to replace the
+   *      credential that opens it — an unattended terminal is the whole threat here, and R5's
+   *      mutant is a handler that validates the new password and skips this line.
+   *   2. the new one is judged by the shared policy, which also refuses the username;
+   *   3. it is written and `must_change_password` is CLEARED — this is the only act that clears it;
+   *   4. every OTHER session of this user is revoked. A password change is what somebody does when
+   *      they think a credential leaked, so the other terminals it may be signed in on must die —
+   *      but not THIS one, or the person who just fixed their account would be thrown out of it.
+   */
+  @Post("change-password")
+  @HttpCode(204)
+  async changePassword(@Req() req: AuthedRequest, @Body() body: unknown): Promise<void> {
+    const parsed = changePasswordSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    const actor = req.hmisActor;
+    const session = req.hmisSession;
+    if (!actor || actor.type !== "user" || !session) {
+      throw new ForbiddenException("change-password is for human users");
+    }
+
+    const rows = await this.db
+      .select({ username: users.username })
+      .from(users)
+      .where(eq(users.id, actor.id));
+    // The username is needed twice: `verifyPassword` is keyed by it, and the policy refuses it.
+    const username = rows[0]?.username;
+    if (username === undefined) throw new UnauthorizedException();
+    if ((await verifyPassword(this.db, username, parsed.data.currentPassword)) === null) {
+      // 403 rather than 400: the request was well-formed and the caller is authenticated — what
+      // failed is proof of possession. Nothing has been written at this point, and R5 asserts that
+      // by reading the flag and the session count back afterwards.
+      throw new ForbiddenException("current_password_incorrect");
+    }
+
+    const problems = checkPassword(parsed.data.newPassword, { username });
+    if (problems.length > 0) {
+      throw new BadRequestException({ code: "password_policy", problems });
+    }
+
+    await setPassword(this.db, actor.id, parsed.data.newPassword, { mustChangePassword: false });
+    await revokeOtherUserSessions(this.db, actor.id, session.sessionId);
   }
 
   @Get("me")

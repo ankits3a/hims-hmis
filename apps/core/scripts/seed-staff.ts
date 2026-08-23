@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createDb, type Db } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import { createUser, setPin, verifyPassword, verifyPin } from "../src/kernel/auth/identity";
+import { checkPassword, checkPin } from "../src/kernel/auth/password-policy";
 import { assignRole } from "../src/kernel/auth/permissions";
 import { OPD_ROLE_KEYS } from "../src/modules/opd/config";
 import { GRANTED_BY_OTHER_SEEDS, ROLE_MODEL } from "./seed-roles";
@@ -72,7 +73,7 @@ import { roleAssignments, rolePermissions, roles, users } from "../src/kernel/db
  * The roster is a JSON ARRAY:
  *   [
  *     { "username": "asha", "fullName": "Asha Verma",
- *       "password": "<at least 8 characters>", "pin": "1234",
+ *       "password": "<at least 10 characters — kernel/auth/password-policy.ts>", "pin": "1234",
  *       "roles": ["front_office", "vitals_desk"] }
  *   ]
  *
@@ -90,9 +91,10 @@ export const KNOWN_ROLE_KEYS: readonly string[] = [
 ].sort();
 
 /**
- * THE ROSTER SCHEMA. Every message below is a LITERAL WRITTEN HERE, never an interpolation of the
- * offending value: GC3 forbids a password or a PIN reaching any log, any error message or the
- * report, and an error message is the easiest place in a program to leak one by accident.
+ * THE ROSTER SCHEMA. Every message below is a LITERAL WRITTEN HERE OR IN `password-policy.ts`,
+ * never an interpolation of the offending value: GC3 forbids a password or a PIN reaching any log,
+ * any error message or the report, and an error message is the easiest place in a program to leak
+ * one by accident.
  *
  * `strictObject` is load-bearing rather than tidy. A misspelt `"pn"` under a permissive object
  * would be dropped in silence and the account would ship without the fast-switch PIN its operator
@@ -112,20 +114,17 @@ export const ROSTER_ROW_SCHEMA = z.strictObject({
     .string({ error: "must be a string" })
     .min(1, { error: "must not be empty — it is what the whole hospital sees beside the action" })
     .max(120, { error: "must be at most 120 characters" }),
-  // A SEED-TIME FLOOR, not an authentication policy: `loginSchema` accepts any non-empty password
-  // and this script does not change that. It simply refuses to be the tool that puts a
-  // four-character password on a live hospital.
-  password: z
-    .string({ error: "must be a string" })
-    .min(8, { error: "must be at least 8 characters (a seed-time floor, not an auth policy)" })
-    .max(256, { error: "must be at most 256 characters" }),
-  // Mirrors `pinSwitchSchema`'s `min(4)` in auth.controller.ts rather than inventing a stricter
-  // rule here: a PIN this script accepts must be a PIN that terminal can actually use.
-  pin: z
-    .string({ error: "must be a string" })
-    .min(4, { error: "must be at least 4 characters, matching the PIN fast-switch surface" })
-    .max(64, { error: "must be at most 64 characters" })
-    .optional(),
+  // PLAN 11e T2/D3 — THE APOLOGY IS GONE, AND SO IS THE PRIVATE FLOOR.
+  //
+  // What stood here was `min(8)` under a comment admitting it was "a seed-time floor, not an auth
+  // policy", because in August 2026 this script was the ONLY thing in the system with an opinion
+  // about password length. `kernel/auth/password-policy.ts` is now that opinion, owner-ruled, and
+  // the four other paths that set a credential apply the same one. The clauses that need the ROW
+  // rather than the field — the username comparison, and the PIN's shape — are applied in the
+  // row-level refinement below, which is also why these two are plain strings here: ONE place
+  // decides, and it is not this file.
+  password: z.string({ error: "must be a string" }),
+  pin: z.string({ error: "must be a string" }).optional(),
   roles: z
     .array(z.string({ error: "must be a string" }).min(1, { error: "must not be empty" }), {
       error: "must be an array of role keys",
@@ -134,7 +133,27 @@ export const ROSTER_ROW_SCHEMA = z.strictObject({
       error:
         "must name at least one role — a user holding none can reach nothing, which is the defect this script exists to fix",
     }),
-});
+})
+  /**
+   * PLAN 11e T2 — the shared policy, applied to the ROW because two of its clauses need one.
+   *
+   * `path` is stated explicitly so the refusal still names `roster[0].password` rather than the
+   * row: `formatPath` below turns zod's `[0].password` into that, and a refusal that named only
+   * the row would tell the owner a roster is bad without saying which field of which person.
+   *
+   * NO VALUE IS EVER QUOTED (GC3). Every message comes from `password-policy.ts`, which speaks
+   * about rules and never about credentials — the same discipline the refusal transcript keeps.
+   */
+  .superRefine((row, ctx) => {
+    for (const problem of checkPassword(row.password, { username: row.username })) {
+      ctx.addIssue({ code: "custom", path: ["password"], message: problem.message });
+    }
+    if (row.pin !== undefined) {
+      for (const problem of checkPin(row.pin)) {
+        ctx.addIssue({ code: "custom", path: ["pin"], message: problem.message });
+      }
+    }
+  });
 
 export const ROSTER_SCHEMA = z
   .array(ROSTER_ROW_SCHEMA, { error: "the roster must be a JSON array of staff rows" })

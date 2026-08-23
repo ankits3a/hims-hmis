@@ -48,11 +48,17 @@ import { roleAssignments, users } from "../src/kernel/db/schema";
 /** A password no other string in this repository contains, so a grep for it cannot be ambiguous. */
 const SENTINEL_PASSWORD = "zq7-tumbrel-quokka-sentinel-41";
 /**
- * The PIN sentinel. `pinSwitchSchema` requires only `min(4)`, so a non-numeric PIN is legal here;
- * a distinctive one is used deliberately, because a four-digit PIN could appear by coincidence in
- * an id or a timestamp and would make the absence assertion ambiguous.
+ * The PIN sentinel. PLAN 11e T2 MADE IT NUMERIC: the shared policy (`kernel/auth/password-policy.ts`,
+ * owner ruling 2026-08-23) is 4-6 DIGITS exactly, so the old `zq7-tumbrel-pin-41` is now a roster
+ * this script refuses — and the two V9 legs below need a roster that PARSES, because what they
+ * assert is what the script PRINTS.
+ *
+ * SIX DIGITS RATHER THAN FOUR, for the reason the old comment gave: a four-digit run could appear
+ * by coincidence and make an absence assertion ambiguous. This one cannot. `formatReport` prints
+ * usernames, full names, role keys, single-digit counts and fixed prose — no id and no timestamp
+ * — so there is nothing in the transcript a six-digit sequence could collide with.
  */
-const SENTINEL_PIN = "zq7-tumbrel-pin-41";
+const SENTINEL_PIN = "417293";
 
 type Captured = { out: string; err: string; code: number };
 
@@ -178,6 +184,14 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
         expectPath: "roster[0].password",
       },
       {
+        // PLAN 11e T2 / R4 — the floor is the SHARED POLICY's now (owner ruling 2026-08-23), not
+        // this script's own `min(8)`. NINE characters is the discriminating input: it cleared the
+        // old floor and does not clear this one.
+        label: "a nine-character password — one short of the shared policy's floor",
+        input: [row("asha", "Asha Verma", "nine-char", ["front_office"])],
+        expectPath: "roster[0].password",
+      },
+      {
         label: "a PIN the fast-switch surface would refuse",
         input: [row("asha", "Asha Verma", "a-good-password", ["front_office"], "12")],
         expectPath: "roster[0].pin",
@@ -203,6 +217,42 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       }
       expect([label, refusal?.name]).toEqual([label, "SeedStaffRefusal"]);
       expect([label, refusal?.reasons.some((r) => r.startsWith(expectPath))]).toEqual([label, true]);
+    }
+  });
+
+  it("R4 — the roster's floor is the SHARED policy: nine refused, ten accepted, username refused", () => {
+    // The other half of R4's per-path coverage. `seed:staff` is the fifth path that sets a
+    // credential, and before 11e T2 it was the only one with a floor at all — its own, at eight.
+    const refusalFor = (input: unknown): readonly string[] => {
+      try {
+        parseRoster(JSON.stringify(input));
+        return [];
+      } catch (e) {
+        return e instanceof SeedStaffRefusal ? e.reasons : ["not a SeedStaffRefusal"];
+      }
+    };
+
+    // TEN IS ACCEPTED — the control. Without it a schema that refused every password would pass
+    // the two refusal legs below and this test would prove nothing.
+    expect(refusalFor([row("asha", "Asha Verma", "abcdefghij", ["front_office"], "4321")])).toEqual([]);
+
+    expect(refusalFor([row("asha", "Asha Verma", "abcdefghi", ["front_office"])]).join("\n"))
+      .toContain("roster[0].password");
+    // The username clause needs the ROW, which is why the policy is applied at row level here.
+    expect(refusalFor([row("receptionist", "Recep Tionist", "receptionist", ["front_office"])]).join("\n"))
+      .toContain("roster[0].password");
+    // …and the PIN clause: 4-6 DIGITS, so the old "any four characters" PIN is now refused.
+    expect(refusalFor([row("asha", "Asha Verma", "abcdefghij", ["front_office"], "abcd")]).join("\n"))
+      .toContain("roster[0].pin");
+    expect(refusalFor([row("asha", "Asha Verma", "abcdefghij", ["front_office"], "1234567")]).join("\n"))
+      .toContain("roster[0].pin");
+
+    // NO CREDENTIAL IN ANY OF IT (GC3), asserted rather than assumed — these messages now come
+    // from `password-policy.ts` rather than from this file, so the discipline had to travel.
+    const leaked = refusalFor([row("asha", "Asha Verma", "abcdefghi", ["front_office"], "abcd")]);
+    for (const reason of leaked) {
+      expect(reason).not.toContain("abcdefghi");
+      expect(reason).not.toContain("abcd");
     }
   });
 
