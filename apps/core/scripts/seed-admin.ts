@@ -1,38 +1,172 @@
-import { eq } from "drizzle-orm";
-import { createDb } from "../src/kernel/db/client";
+import { and, eq } from "drizzle-orm";
+import { createDb, type Db } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import { createUser } from "../src/kernel/auth/identity";
 import { createRole, grantPermissionToRole, assignRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { authManifest } from "../src/kernel/auth/manifest";
-import { roles, users } from "../src/kernel/db/schema";
+import { roleAssignments, rolePermissions, roles, users } from "../src/kernel/db/schema";
+
+/**
+ * `pnpm --filter @hmis/core seed:admin` — the bootstrap administrator, and, since Plan 11e T5,
+ * THE DOCUMENTED REPAIR IT ALWAYS CLAIMED TO BE.
+ *
+ * ═══ WHAT WAS WRONG, AND IT SHIPPED TWICE ═══
+ *
+ * This script used to RETURN EARLY on any deployment that already had an admin — before the grant
+ * loop, but AFTER `syncPermissions`. The consequence, MEASURED on production during Plan 11d
+ * (MAJOR 1): a permission declared after first boot appeared in the `permissions` catalog and was
+ * granted to NOBODY, for ever, because the only script that grants to `admin` had already decided
+ * there was nothing to do. Re-running it — the repair every runbook named — printed
+ * `already exists — nothing to do` and changed nothing.
+ *
+ * Plan 11d addendum 5 made `seed:roles` DETECT and NAME that state (its census is MEASURED from
+ * `role_permissions` rather than predicted from the model). This is the other half: the repair.
+ *
+ * ═══ THE SHAPE NOW: EVERY PATH RUNS ON EVERY INVOCATION ═══
+ *
+ *   1. `syncPermissions` — the catalog. `role_permissions.permission` FKs `permissions.permission`,
+ *      so a catalog row must exist before any grant can.
+ *   2. ensure the `admin` role — `createRole` is a BARE INSERT and is not idempotent on its own,
+ *      so it is select-guarded here exactly as `seed-ops.ts` and `seed-roles.ts` guard it.
+ *   3. RECONCILE the grants — every permission in `registry.allPermissions()`, unconditionally.
+ *      `grantPermissionToRole` is `onConflictDoNothing`, so this is idempotent by construction.
+ *   4. create the user ONLY IF ABSENT. This is the one conditional left, and it is the only one
+ *      that should ever have existed: creating a second `admin` is impossible (unique index) and
+ *      overwriting an existing admin's password is the silent lockout `seed:staff` refuses to
+ *      perform for anybody else.
+ *   5. ensure the role assignment — select-guarded, because `assignRole` mints a fresh id on every
+ *      call and would otherwise stack duplicate rows on every deploy.
+ *
+ * IT IS NOT A SECOND EARLY RETURN. Steps 1, 2, 3 and 5 execute on every run; only step 4 branches,
+ * and it branches on the one fact that must never be overwritten.
+ *
+ * ═══ RE-GRANTING ON EVERY DEPLOY IS THE CONTRACT, NOT A RISK ═══
+ *
+ * `admin`'s grant set is DEFINED as `registry.allPermissions()` of the manifests this script
+ * installs. A deliberate revoke of an admin permission is therefore a model change — an edit to a
+ * manifest — and not a database state this script is expected to preserve. Anything narrower
+ * belongs to a purpose-built role, which is what `seed:roles` exists to mint.
+ *
+ * ═══ THE REGISTRY IS `authManifest` ALONE, AND THAT IS DELIBERATE ═══
+ *
+ * `app.module.ts` installs NINE manifests declaring fifty-nine permissions; this script installs
+ * ONE. That is not the drift §2.54 warns about — it is the point. `admin` is the break-glass
+ * account that can administer ACCESS, not a superuser that silently acquires every permission
+ * every future module invents. The other fifty-three permissions are handed to purpose-built roles
+ * by `seed:roles`, which is the script that owns the role model.
+ *
+ * ═══ ONE STATED SEAM: THIS SCRIPT APPLIES NO PASSWORD POLICY ═══
+ *
+ * `ADMIN_PASSWORD` is not checked against `kernel/auth/password-policy.ts`. Plan 11e D3 enumerates
+ * the five paths the policy guards and this bootstrap path is not among them — so it is NOT added
+ * here, and the gap is written down instead of closed by an executing session on its own authority.
+ * It is a real gap: the first account on a hospital's box can still be given a four-character
+ * password by an environment variable. The one-line fix belongs to whoever rules it.
+ */
+
+export type SeedAdminReport = {
+  userId: string;
+  userCreated: boolean;
+  roleCreated: boolean;
+  /** Permissions this run actually wrote a `role_permissions` row for. */
+  granted: string[];
+  /** Permissions `admin` already held — reported rather than silent, so a no-op run says so. */
+  already: string[];
+  assignmentCreated: boolean;
+};
+
+const ADMIN_ROLE_KEY = "admin";
+
+/**
+ * Exported so the suite can run it TWICE against one database, and once with a registry carrying a
+ * permission that was not declared on the first run — which is MAJOR 1's discriminating input, and
+ * the one the fix could previously only NAME (Book R13).
+ */
+export async function seedAdmin(
+  db: Db,
+  registry: ModuleRegistry,
+  input: { username: string; fullName: string; password: string },
+): Promise<SeedAdminReport> {
+  // 1 — the catalog.
+  await syncPermissions(db, registry);
+
+  // 2 — the role.
+  const haveRole = await db.select({ key: roles.key }).from(roles).where(eq(roles.key, ADMIN_ROLE_KEY));
+  const roleCreated = haveRole.length === 0;
+  if (roleCreated) await createRole(db, ADMIN_ROLE_KEY, "Administrator");
+
+  // 3 — RECONCILE. Read what is held first, so the report can distinguish "granted now" from
+  // "already there" by MEASUREMENT rather than by assuming `onConflictDoNothing` did nothing.
+  const heldBefore = new Set(
+    (await db
+      .select({ permission: rolePermissions.permission })
+      .from(rolePermissions)
+      .where(eq(rolePermissions.roleKey, ADMIN_ROLE_KEY))
+    ).map((r) => r.permission),
+  );
+  const granted: string[] = [];
+  const already: string[] = [];
+  for (const permission of registry.allPermissions()) {
+    await grantPermissionToRole(db, registry, ADMIN_ROLE_KEY, permission);
+    (heldBefore.has(permission) ? already : granted).push(permission);
+  }
+
+  // 4 — the user, and this is the ONLY conditional.
+  const existing = await db.select({ id: users.id }).from(users).where(eq(users.username, input.username));
+  const userCreated = existing.length === 0;
+  const userId = userCreated
+    ? (await createUser(db, { username: input.username, fullName: input.fullName, password: input.password })).id
+    : existing[0]!.id;
+
+  // 5 — the assignment. `assignRole` mints a fresh id per call, so without this guard every deploy
+  // would stack another hospital-scope `admin` row on the same person.
+  const haveAssignment = await db
+    .select({ id: roleAssignments.id })
+    .from(roleAssignments)
+    .where(and(eq(roleAssignments.userId, userId), eq(roleAssignments.roleKey, ADMIN_ROLE_KEY)));
+  const assignmentCreated = haveAssignment.length === 0;
+  if (assignmentCreated) {
+    await assignRole(db, { userId, roleKey: ADMIN_ROLE_KEY, scopeType: "hospital" });
+  }
+
+  return { userId, userCreated, roleCreated, granted: granted.sort(), already: already.sort(), assignmentCreated };
+}
+
+/** The transcript. Returned as lines so its shape is testable and `main` prints it verbatim. */
+export function formatReport(username: string, report: SeedAdminReport): string[] {
+  return [
+    `admin "${username}" (${report.userId}) — ${report.userCreated ? "CREATED" : "already existed"}`,
+    `role "${ADMIN_ROLE_KEY}": ${report.roleCreated ? "created" : "already existed"} · ` +
+      `assignment: ${report.assignmentCreated ? "created" : "already existed"}`,
+    `grants RECONCILED: ${report.granted.length} written now, ${report.already.length} already held ` +
+      `(of ${report.granted.length + report.already.length} declared by the installed manifests)`,
+    report.granted.length === 0
+      ? "nothing new to grant — this deployment was already reconciled"
+      : `newly granted: ${report.granted.join(", ")}`,
+    "",
+    "Re-running this script is the repair for a permission declared after first boot (MAJOR 1). " +
+      "It no longer returns early on a deployment that already has an admin.",
+  ];
+}
 
 async function main(): Promise<void> {
   const { db, pool } = createDb(requireEnv("DATABASE_URL"));
   const registry = new ModuleRegistry();
   registry.install(authManifest);
-  await syncPermissions(db, registry);
-
   const username = requireEnv("ADMIN_USERNAME");
-  const existing = await db.select({ id: users.id }).from(users).where(eq(users.username, username));
-  if (existing.length > 0) {
-    console.log(`admin "${username}" already exists — nothing to do`);
+  try {
+    const report = await seedAdmin(db, registry, {
+      username,
+      fullName: requireEnv("ADMIN_FULL_NAME"),
+      password: requireEnv("ADMIN_PASSWORD"),
+    });
+    for (const line of formatReport(username, report)) console.log(line);
+  } finally {
     await pool.end();
-    return;
   }
-
-  const { id } = await createUser(db, {
-    username,
-    fullName: requireEnv("ADMIN_FULL_NAME"),
-    password: requireEnv("ADMIN_PASSWORD"),
-  });
-  const haveAdminRole = await db.select({ key: roles.key }).from(roles).where(eq(roles.key, "admin"));
-  if (haveAdminRole.length === 0) await createRole(db, "admin", "Administrator");
-  for (const permission of registry.allPermissions()) {
-    await grantPermissionToRole(db, registry, "admin", permission);
-  }
-  await assignRole(db, { userId: id, roleKey: "admin", scopeType: "hospital" });
-  await pool.end();
-  console.log(`admin "${username}" created (${id}) with hospital-scope admin role`);
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+
+if (require.main === module) {
+  main().catch((e) => { console.error(e); process.exit(1); });
+}
