@@ -21,6 +21,7 @@
     "seed:billing": "tsx scripts/seed-billing.ts",
     "seed:ops": "tsx scripts/seed-ops.ts",
     "seed:roles": "tsx scripts/seed-roles.ts",
+    "seed:staff": "tsx scripts/seed-staff.ts",
     "validate:billing": "tsx scripts/validate-billing-config.ts",
     "validate:config": "tsx scripts/validate-config.ts"
   },

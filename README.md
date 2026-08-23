@@ -237,16 +237,29 @@ with the desk and vitals roles — the OPD screens read demographics through the
    module manifest declares is refused outright, never granted quietly. `seed-roles.test.ts`
    parses this table and compares it against the seed both ways, so a transcription error here
    fails the build. Assigning each user their role(s) at hospital scope is still a separate step.
-3. Activate the `opd_visit` definition (Class A, two-key): `GET /opd/definition` → post that exact
+3. `cat roster.json | pnpm --filter @hmis/core seed:staff` — THE ACCOUNTS THEMSELVES. The
+   roster is a JSON array of `{ username, fullName, password, pin?, roles }` piped in on STDIN,
+   so no credential is written to the box or into shell history and you keep the only copy. The
+   printed report — username, full name, roles, pin yes/no, created-or-already — IS the audit
+   record, precisely because stdin leaves no file behind; it carries no password and no PIN, and
+   a test asserts that by execution. Idempotent. It REFUSES, before writing anything at all, an
+   unknown role key, a role step 2 has not created, and an existing username whose password or
+   PIN differs from the roster's — there is no credential-reset flow in this system yet, so a
+   silent overwrite would be the one way to lock a real user out of a live hospital. GIVE EACH
+   PERSON A `pin`: without one they cannot use the sub-2-second PIN fast-switch at a shared
+   terminal, which is the whole reason ward terminals need not share a session. Roles are
+   ASSIGNED here and GRANTED in step 2 — this script never changes what a role may do. The two
+   steps below both need the humans this step creates.
+4. Activate the `opd_visit` definition (Class A, two-key): `GET /opd/definition` → post that exact
    JSON to `POST /workflow/definitions` as a user with `workflow.definitions.draft` →
    `POST /workflow/definitions/:id/approve` by an `owner`-role user AND by a
    `medical_superintendent`-role user → `POST /workflow/definitions/:id/activate` by a THIRD user
    with `workflow.definitions.activate` (drafter ≠ activator). No OPD visit can be opened before this.
-4. Enter departments, rooms, doctors (by username — the user must exist) and weekly schedules in
+5. Enter departments, rooms, doctors (by username — the user must exist) and weekly schedules in
    the admin screen `/opd/admin`.
-5. `PUT /opd/config`: the hospital letterhead and the danger ranges reviewed and signed off by
+6. `PUT /opd/config`: the hospital letterhead and the danger ranges reviewed and signed off by
    clinical staff at UAT; slot length and follow-up window if they differ from 10 min / 7 days.
-6. Display board: open `/opd/display?rooms=<roomIds>` on the counter TV and click Start ONCE —
+7. Display board: open `/opd/display?rooms=<roomIds>` on the counter TV and click Start ONCE —
    browser speech needs a user gesture before it may speak.
 
 ## Realtime (WebSocket) protocol
@@ -315,7 +328,7 @@ that gesture: afterwards the board's `GET /opd/queues/board` fires, the socket s
 `display:<roomId>` for each room in scope, and a `queue.called` frame speaks the token twice —
 Hindi first (`hi-IN`), then English (`en-IN`) — while patching that room's NOW SERVING
 immediately, ahead of the next poll. The board shows token, room and doctor ONLY — never a
-patient name or UHID (§14); go-live runbook step 6 above covers deploying it to the counter TV.
+patient name or UHID (§14); go-live runbook step 7 above covers deploying it to the counter TV.
 
 **Realtime pushes are hints.** Every OPD screen — the display board included — BOTH subscribes to
 its realtime topics AND polls its read model every 15 s (`refetchInterval: 15_000`); a missed or
