@@ -10,7 +10,8 @@
 #   0. pre-flight — refuse unless the deploy directory exists, its .env is present and 600, and
 #      80/443 are free or already held by this stack's own caddy
 #   1. build the images FROM THE CHECKOUT
-#   2. copy the configs INTO the deploy directory, and derive the backup credentials
+#   2. copy the configs INTO the deploy directory, and derive the backup credentials and the
+#      alert routing (Plan 11c D10: alertmanager.yml is RENDERED from .env.smtp, never committed)
 #   3. db up, waited to healthy on its own compose healthcheck
 #   4. pgBackRest: stanza created, archiving CHECKED end to end (D8)
 #   5. migrations FROM INSIDE THE IMAGE (D2), then CURSOR SEEDING (D10) — every production
@@ -25,11 +26,13 @@
 # `git checkout` in /opt/hmis cannot mutate what production is serving.
 #
 # D4/GC1 portability: docker, compose, postgres, caddy, pgbackrest, curl, ss, openssl. Nothing
-# provider-specific. On on-prem metal the hostname in the Caddyfile and the five backup values in
-# /opt/hmis-prod/.env.r2 are RE-POINTED; no line here is rewritten.
+# provider-specific. On on-prem metal the hostname in the Caddyfile, the five backup values in
+# /opt/hmis-prod/.env.r2 and the six alert values in /opt/hmis-prod/.env.smtp are RE-POINTED; no
+# line here is rewritten.
 #
 # Sequential ownership: T3 creates it · T4 adds the backup fabric (db image, pgbackrest config and
-# credentials, stanza, cron) · T6 fills the seeding seam.
+# credentials, stanza, cron) · T6 fills the seeding seam · Plan 11c T6 adds the alert path (the
+# .env.smtp pre-flight, the alertmanager render, the second rule file, the restart-loop entry).
 
 set -euo pipefail
 
@@ -49,6 +52,12 @@ STANZA="hmis"
 CRON_FILE="${HMIS_CRON_FILE:-/etc/cron.d/hmis-prod-backup}"
 # A first bring-up has to wait for an ACME order; a re-deploy answers in seconds.
 EDGE_HEALTH_TIMEOUT="${HMIS_EDGE_HEALTH_TIMEOUT:-240}"
+# Plan 11c / D10. `prom/alertmanager:v0.27.0` runs as `nobody`, and its /etc/passwd maps that to
+# uid/gid 65534 (verified against the pinned tag, not assumed). The two files this script derives
+# into $DEPLOY_DIR/alertmanager are chmod 600 — GC2, one of them is an SMTP password — so they must
+# be OWNED by that uid or the container cannot read its own config. If a future tag changes its
+# user, alertmanager will not start and step 6b will say so by name rather than silently degrading.
+ALERTMANAGER_UID="${HMIS_ALERTMANAGER_UID:-65534}"
 # Step 6b's settle window. Grafana provisioning and prometheus TSDB replay are the slow ones; a
 # crash-looping container never becomes `running`, so this bounds how long a broken deploy takes
 # to say so rather than how long a healthy one waits.
@@ -108,6 +117,35 @@ R2_MODE="$(stat -c '%a' "$R2_ENV")"
 command -v openssl >/dev/null 2>&1 || die "openssl is required for the repo cipher passphrase"
 note "backup credentials present and 600"
 
+# Plan 11c / D10 + GC2. THE ALERT SINK'S CREDENTIALS, a THIRD root-only file for the same reason
+# .env.r2 is a second one: an SMTP password merged into .env would be handed to every api and
+# worker container on the box for no reason at all. The shape is checked here and the VALUES are
+# checked (and rendered) in step 2, exactly as the R2 pair is — presence and mode are a pre-flight
+# question, emptiness is a derivation question.
+#
+# A MISSING FILE IS A `die`, NOT A SKIP, and that is the decision. A deploy that "succeeded" with
+# no alert path is the worst outcome available here: every rule in prometheus/alerts.yml would go
+# on evaluating correctly and reaching nobody, which is indistinguishable from a healthy hospital
+# right up until the night it is not. Loud and refused beats quiet and inert.
+SMTP_ENV="$DEPLOY_DIR/.env.smtp"
+[ -f "$SMTP_ENV" ] || die "$SMTP_ENV is missing. Alertmanager has nowhere to send, so a critical
+    alert would reach no human being. It holds six keys and nothing else:
+
+        SMTP_HOST=smtp.example.net
+        SMTP_PORT=587
+        SMTP_USER=alerts@example.net
+        SMTP_PASSWORD=<the mailbox or app password>
+        ALERT_EMAIL_FROM=alerts@example.net
+        ALERT_EMAIL_TO=<who is woken up at 03:00>
+
+    PORT 587 WITH STARTTLS. On this box 465 and 25 are BLOCKED OUTBOUND (measured — a silent
+    timeout, not a refusal), so a provider offering only implicit TLS on 465 needs a relay.
+    Write the file, then: chmod 600 $SMTP_ENV
+    See docker/prod/.env.prod.example for the same shape with the values left empty."
+SMTP_MODE="$(stat -c '%a' "$SMTP_ENV")"
+[ "$SMTP_MODE" = "600" ] || die "$SMTP_ENV is mode $SMTP_MODE; GC2 wants 600. Run: chmod 600 $SMTP_ENV"
+note "alert credentials present and 600"
+
 for port in 80 443; do
   if port_in_use "$port"; then
     our_caddy_running \
@@ -156,6 +194,12 @@ install -d -m 0750 "$DEPLOY_DIR/log"
 # exist and neither did the alert rules that read it.
 install -D -m 0644 "$SRC_DIR/prometheus/prometheus.yml" "$DEPLOY_DIR/prometheus/prometheus.yml"
 install -D -m 0644 "$SRC_DIR/prometheus/alerts.yml" "$DEPLOY_DIR/prometheus/alerts.yml"
+# Plan 11c / D11 — the SECOND rule file (the restore-drill watcher). It is a separate file because
+# `alerts.yml` is parity-pinned by apps/core/test/alerts-parity.test.ts against the scheduler's job
+# registry; see alerts-backup.yml's own header. Forgetting this line is the §7.1 failure again in
+# miniature: prometheus would load one rule file, evaluate three rules, and the drill would go on
+# rotting unwatched while this script exited 0.
+install -D -m 0644 "$SRC_DIR/prometheus/alerts-backup.yml" "$DEPLOY_DIR/prometheus/alerts-backup.yml"
 install -D -m 0644 "$SRC_DIR/postgres-exporter/queries.yml" "$DEPLOY_DIR/postgres-exporter/queries.yml"
 install -D -m 0644 "$SRC_DIR/grafana/provisioning/datasources/prometheus.yml" \
   "$DEPLOY_DIR/grafana/provisioning/datasources/prometheus.yml"
@@ -164,7 +208,7 @@ install -D -m 0644 "$SRC_DIR/grafana/provisioning/dashboards/dashboards.yml" \
 install -D -m 0644 "$SRC_DIR/grafana/provisioning/dashboards/hmis.json" \
   "$DEPLOY_DIR/grafana/provisioning/dashboards/hmis.json"
 note "docker-compose.prod.yml, caddy/Caddyfile, pgbackrest/pgbackrest.conf, drill/restore-drill.sh"
-note "prometheus/{prometheus,alerts}.yml, postgres-exporter/queries.yml, grafana/provisioning/**"
+note "prometheus/{prometheus,alerts,alerts-backup}.yml, postgres-exporter/queries.yml, grafana/provisioning/**"
 
 # --- the backup credentials, derived rather than duplicated --------------------------------------
 # GC2: the five owner-supplied values live in $R2_ENV and ONLY there. They are translated here into
@@ -215,6 +259,73 @@ EOF
 chmod 600 "$PGBR_ENV"
 unset CIPHER_PASS R2_KEY_V R2_SECRET_V
 note "backup credentials derived into $(basename "$PGBR_ENV") (600)"
+
+# --- the alert path, rendered rather than committed (Plan 11c / D10) ------------------------------
+# GC2, AND THE REPOSITORY IS PUBLIC: the SMTP host, the account, the password and — just as much —
+# the owner's own email address are values that may not enter git. The committed artefact is a
+# TEMPLATE carrying four `__TOKEN__` placeholders; the rendered config lives only here, chmod 600.
+# This is the .env.r2 → .env.pgbackrest shape immediately above, applied to a different secret.
+#
+# THE PASSWORD IS NOT SUBSTITUTED INTO THE YAML. It goes to a separate file that the template's
+# `smtp_auth_password_file` points at, so the derived alertmanager.yml — the file an operator opens
+# when routing looks wrong — is not itself a credential.
+#
+# THE SUBSTITUTION IS BASH PARAMETER EXPANSION, NOT `sed`, deliberately: an email address or a
+# password containing `/`, `&` or a backslash is a routine value and every one of those is special
+# to sed's `s///`. `${var//pat/repl}` treats the replacement literally, so there is no escaping
+# question to get wrong.
+smtp_get() { sed -n "s/^$1=//p" "$SMTP_ENV" | head -n 1; }
+SMTP_HOST_V="$(smtp_get SMTP_HOST)"
+SMTP_PORT_V="$(smtp_get SMTP_PORT)"
+SMTP_USER_V="$(smtp_get SMTP_USER)"
+SMTP_PASSWORD_V="$(smtp_get SMTP_PASSWORD)"
+ALERT_FROM_V="$(smtp_get ALERT_EMAIL_FROM)"
+ALERT_TO_V="$(smtp_get ALERT_EMAIL_TO)"
+# EVERY ONE OF THE SIX, INCLUDING THE PASSWORD. A key that is PRESENT AND EMPTY is the failure this
+# catches — a file created by hand with the names filled in and one value still to come reads as a
+# complete file to every check except this one, and Alertmanager would start, look healthy, and
+# fail authentication only at the moment it first had something to say.
+for pair in "SMTP_HOST=$SMTP_HOST_V" "SMTP_PORT=$SMTP_PORT_V" "SMTP_USER=$SMTP_USER_V" \
+            "SMTP_PASSWORD=$SMTP_PASSWORD_V" "ALERT_EMAIL_FROM=$ALERT_FROM_V" \
+            "ALERT_EMAIL_TO=$ALERT_TO_V"; do
+  [ -n "${pair#*=}" ] || die "${pair%%=*} is empty in $SMTP_ENV. Refusing to deploy an alert path
+    that cannot deliver — a critical alert nobody receives is worse than an obvious hole, because
+    it looks exactly like a quiet night. All six keys must carry a value:
+
+        SMTP_HOST · SMTP_PORT (587) · SMTP_USER · SMTP_PASSWORD ·
+        ALERT_EMAIL_FROM · ALERT_EMAIL_TO"
+done
+
+install -d -m 0755 "$DEPLOY_DIR/alertmanager"
+AM_YML="$DEPLOY_DIR/alertmanager/alertmanager.yml"
+AM_PASS="$DEPLOY_DIR/alertmanager/smtp_password"
+AM_TPL="$(cat "$SRC_DIR/alertmanager/alertmanager.yml.tpl")"
+AM_TPL="${AM_TPL//__SMTP_SMARTHOST__/$SMTP_HOST_V:$SMTP_PORT_V}"
+AM_TPL="${AM_TPL//__SMTP_AUTH_USERNAME__/$SMTP_USER_V}"
+AM_TPL="${AM_TPL//__ALERT_EMAIL_FROM__/$ALERT_FROM_V}"
+AM_TPL="${AM_TPL//__ALERT_EMAIL_TO__/$ALERT_TO_V}"
+# A placeholder the template gained and this block did not learn about would ship as the literal
+# string `__SOMETHING__` in a config field — Alertmanager would accept several of those happily
+# and mail into the void. Refuse instead.
+case "$AM_TPL" in
+  *__SMTP_*|*__ALERT_*)
+    die "alertmanager.yml.tpl still carries an unrendered __PLACEHOLDER__ after substitution.
+    The template and this block have drifted: see docker/prod/alertmanager/alertmanager.yml.tpl."
+    ;;
+esac
+( umask 077
+  printf '%s\n' "$AM_TPL" > "$AM_YML"
+  # NO TRAILING NEWLINE. Alertmanager trims whitespace around a password file's contents, but a
+  # password is not a place to depend on somebody else's trimming.
+  printf '%s' "$SMTP_PASSWORD_V" > "$AM_PASS"
+)
+chmod 600 "$AM_YML" "$AM_PASS"
+# 600 AND ROOT-OWNED WOULD BE 600 AND UNREADABLE: the container runs as uid 65534 and reads both
+# files itself. Ownership is what keeps them off every other account on the box while still being
+# readable by the one process that needs them.
+chown "$ALERTMANAGER_UID:$ALERTMANAGER_UID" "$AM_YML" "$AM_PASS"
+unset SMTP_PASSWORD_V AM_TPL
+note "alert routing derived into alertmanager/alertmanager.yml + smtp_password (600, uid $ALERTMANAGER_UID)"
 
 # ----------------------------------------------------------------------------------------------
 step "3/8 database up"
@@ -294,7 +405,17 @@ fi
 # state on volumes, both come back in seconds, and both are loopback-only — a blip costs nothing.
 # Unconditional on purpose: "restart only if the config changed" is a second source of truth about
 # what changed, and this script has just overwritten the files either way.
-for svc in prometheus grafana; do
+#
+# ALERTMANAGER JOINS THEM (Plan 11c / D10) AND FOR THE SHARPER VERSION OF THE SAME REASON. It
+# reads alertmanager.yml once, at startup; step 2 has just REWRITTEN that file from .env.smtp; and
+# `compose up -d` does not recreate a service whose DEFINITION is unchanged — so a re-pointed
+# mailbox, a rotated app password, or a corrected `ALERT_EMAIL_TO` would be installed on disk,
+# visible in the container, and completely ignored by the running process, for as long as that
+# container lived. That trap cost Plan 11a a second remediation with grafana and prometheus (§2.77)
+# and it is worse here: the failure is silent until the first alert nobody receives. Alertmanager
+# keeps its silence and notification logs on a NAMED volume (see the compose file), so a restart
+# costs nothing but a second of gossip-free startup.
+for svc in prometheus grafana alertmanager; do
   if [ -n "$(compose ps -q "$svc" 2>/dev/null)" ]; then
     compose restart "$svc" >/dev/null 2>&1 \
       || die "$svc would not restart after its config was installed — see: compose logs $svc"

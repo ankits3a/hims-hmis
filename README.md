@@ -645,6 +645,104 @@ human-facing surface: it polls `GET /alerts` (`refetchInterval: 15_000`) and tre
 frame on `alerts:<userId>` as an invalidate hint only — the frame carries no title and no patient
 identity (§14), so nothing is ever rendered from the frame itself, only from the poll it triggers.
 
+## Operating modes and the downtime protocol (Plan 11c)
+
+A hospital is never simply "up". It is being commissioned, or ramping, or running, or limping, or
+writing on paper — and everybody on the floor needs to know which, because the right thing to do at
+a registration desk is a different thing in each. Plan 11c makes that state **a declared fact with
+a name, an author, a timestamp and a note**, rather than something each person infers from whether
+their own screen is loading.
+
+### The five modes
+
+| mode | what it means | who declares it |
+|---|---|---|
+| `commissioning` | Not a running hospital yet. **This is what an empty ledger reads as**, so a freshly migrated deployment is in it by construction — nobody has to remember to set it. | nobody — it is the initial state and can never be a transition *target* |
+| `ramp` | Live, but deliberately limited: one department, a capped list, staff shadowing paper. | duty manager |
+| `normal` | Running. | duty manager |
+| `degraded` | Partly working — one interface down, one module unreliable — and staff must know which. **A note is mandatory.** | duty manager |
+| `downtime` | The screens are not to be trusted; the hospital is on paper. **A note is mandatory.** | duty manager |
+
+The mode is an **append-only ledger** (`operating_mode_changes`), not a row somebody updates. The
+current mode is the row with the highest `seq` — so the history comes free, cannot be edited away,
+and is what an incident review reads back. `GET /ops/mode` is authenticated-only (every screen's
+banner reads it); changing it needs the `ops.mode.set` permission at hospital scope.
+
+### Leaving `commissioning` IS the go-live gate (D3)
+
+`commissioning` is not left by asserting that things are fine. The only way out is through a
+**persisted, all-green configuration validation report no older than 24 hours**:
+
+1. `pnpm validate:config` on the box, or `POST /ops/config-validation` from the mode desk. Both
+   call the same function — a runbook step and a button that disagreed about what "validated"
+   means would be worse than having only one.
+2. Read the per-scope lines. The run returns `200` with `ok: false` when the *configuration* is
+   bad: the run succeeded, the configuration did not, and the errors are the response.
+3. Fix what is red, re-run until `ok: true`, then declare `ramp` or `normal`.
+
+A refusal names *why*: `no_report` (never run), `stale_report` (older than 24h), or
+`report_not_ok` (the latest run was red). The gate rides **every** exit from `commissioning`, not
+only the exits to `ramp`/`normal` — otherwise `commissioning → downtime → normal` would be a
+two-step way around it.
+
+### Declaring and recovering
+
+- **Declare**: the mode desk at `/ops/mode`, or `POST /ops/mode` with
+  `{ "to": "...", "note": "..." }`. Entering `degraded` or `downtime` **without a note is refused**
+  (`mode_note_required`); the note is what the banner shows every user on every screen, and what
+  the incident review reads.
+- **Recover**: declare the mode you are actually in — usually `degraded` first, then `normal` when
+  the last interface is back. There is no "undo": recovery is another appended row, with its own
+  note. A no-op transition (`downtime → downtime`) is refused, so re-declaring cannot quietly
+  re-alert everybody.
+- **What the owner receives**: a mode change raises an alert through the shipped alerts fabric
+  (`ops.mode_changed` → `kernel.alerts`), so every holder of the `owner` role gets an in-app alert
+  and the bell lights up. It is idempotent on redelivery — one alert per holder per change, however
+  many times the event is delivered. Mode alerts carry **mode words and the note only**; no patient
+  identity, ever (GC6).
+- **`ops.mode.set` is duty-manager authority.** The seeded `admin` role holds every manifest
+  permission in dev; at go-live the `duty_manager` and `owner` roles are created as role data and
+  granted deliberately. Do not run a hospital in which everybody can declare downtime.
+
+### The downtime protocol, and the kit
+
+When the screens go dark the hospital does not stop; it writes on paper. The kit is what makes that
+paper **reconcilable afterwards** rather than a stack of anonymous sheets.
+
+1. **Generate** — `/ops/downtime-kit`, or `POST /ops/downtime-kits`, with a count per form kind
+   (`registration`, `consultation`, `receipt`). Needs `ops.downtime.generate`. Each kind draws a
+   **reserved, disjoint serial range** from its own counter under a row lock, so two people
+   generating at the same moment can never be handed overlapping paper.
+2. **Print** — `GET /ops/downtime-kits/:id` renders one entry per SHEET, each carrying a **signed
+   QR** (`dtk1.<kitId>.<formKind>.<serial>.<hmac>`). Print it, on paper, **before** you need it.
+   The screen replaces itself with the print surface (`.print-doc`), so what comes out of the
+   printer is the form and nothing else.
+3. **Seal** — put the printed kit in the drawer at each desk it serves, sealed, with the kit id
+   written on the outside. A kit generated during an outage is a kit generated on a system that is
+   down; that is the whole reason step 2 says *before*.
+4. **Use** — during downtime each desk writes on the next sheet in its own kit. The serial on the
+   sheet is a reconciliation key; it is not an invoice number and never becomes one.
+5. **Recover and reconcile** — when the system is back, backfill each used sheet through the normal
+   lane (registration, consultation, billing). Billing allocates a **real** invoice number from
+   `document_series` at that moment. Scan or type the QR: a serial somebody invented, or wrote on
+   the wrong form kind, **fails verification** rather than merely looking plausible. Then account
+   for the unused blanks — the ranges are enumerable, so "which sheets exist, which were used,
+   which are still blank" is a question with an answer.
+
+**Why the kit does not draw from billing's `document_series`**: a `document_series` number is a
+GST-consecutive document number. If a kit drew from it, every unused blank left in a drawer would
+have consumed a number that no document will ever carry, and the consecutiveness the series exists
+to guarantee would be broken by stationery.
+
+### Interfaces and the heartbeat registry
+
+Registered interfaces (`ops.interface.manage`) send heartbeats; a sweep job downs any that has gone
+stale past its own `stale_after_ms` and appends `interface.down`, and the next heartbeat restores it
+with `interface.restored`. An interface that has **never** sent a heartbeat stays `unknown` and is
+never "downed" — a thing that has not started is a different fact from a thing that has stopped, and
+conflating them is how a monitoring stack teaches people to ignore it. `degraded` mode plus the
+interface list is how the floor finds out which half is broken.
+
 ## Deployment (Plan 11a)
 
 Stage 1 (spec v4.7 §1, roadmap "Deployment topology"): ONE Hetzner cloud box, no standby, running
@@ -706,8 +804,21 @@ database password → run the **SECRET_KEY ceremony** below → put R2 credentia
   backup unreadable ciphertext, including to the owner; changing it orphans everything already
   written** while every new backup keeps succeeding — the single most dangerous secret in this
   deployment to mishandle, because the failure is silent until the day of a restore.
-- Neither value is ever written to this file, a report, a commit, or a chat message (GC2) — this
-  section names the procedure, never a value.
+- **A THIRD SECRET JOINS THE CEREMONY (Plan 11c / D10): THE SMTP CREDENTIAL.** The six keys in
+  `/opt/hmis-prod/.env.smtp` (`chmod 600`) are what let a critical alert reach a human being at
+  all, and `SMTP_PASSWORD` — a mailbox password, or an app password minted for this purpose
+  alone on a provider with 2-step verification — is the credential among them. **Escrow it the
+  same way, at the same time, in the same place** as `SECRET_KEY` and the pgBackRest cipher
+  passphrase, and read it back from wherever it now lives before calling the step done.
+  - Losing it is the mildest of the three: the alert path goes silent and is repaired by
+    minting a new app password, filling `.env.smtp`, and re-running `deploy.sh`. **But it goes
+    silent WITHOUT SAYING SO** — nothing pages you to tell you that paging has stopped — which
+    is why it belongs in the ceremony rather than in somebody's memory. Re-run the synthetic
+    alert drill in the alert-path section after any rotation, and confirm the mail arrived.
+  - `ALERT_EMAIL_TO` is not a secret but it is just as load-bearing: it is **who is woken up**.
+    A distribution list is fine; an unattended mailbox defeats the entire stack.
+- None of the three values is ever written to this file, a report, a commit, or a chat message
+  (GC2) — this section names the procedure, never a value.
 
 ### R2 credentials procedure
 
@@ -923,6 +1034,92 @@ loop, and the shape is written into the comment above it.
   way `deploy.sh` reloads Caddy: `curl -X POST http://127.0.0.1:9090/-/reload` over the tunnel.
 - **Loki is deliberately not here.** On one box, `docker compose -p hmis-prod logs <service>` and
   `journalctl` are the log story; aggregation earns its cost with a second machine (stage 2).
+
+### The alert path (Plan 11c / D10) — what reaches the inbox, and what to do at 03:00
+
+Until Plan 11c there was no alert *path*. Every rule in `prometheus/alerts.yml` evaluated
+correctly, turned red on a page nobody had open, and reached **no human being** — which on a single
+box with no on-call rotation is the same as having no alerting at all. The ninth compose service
+closes it.
+
+- **Alertmanager (`prom/alertmanager:v0.27.0`, `127.0.0.1:9093`)** joins the `hmis-prod` project.
+  Prometheus reaches it by service name over the compose network (`alerting:` in
+  `prometheus.yml`); the loopback publication is for `amtool` on the box and for an SSH tunnel, and
+  no public port ships.
+- **`severity: critical` is dispatched immediately** (`group_wait: 0s`) and **re-sent every 4
+  hours** until it resolves — so a page slept through at 03:00 is still on the screen at 07:00.
+  **`severity: warning` is batched** (`group_wait: 5m`, `group_interval: 4h`), so a bad afternoon
+  produces one mail rather than forty. Both receivers send a resolved notice.
+- **The credentials never enter git (GC2).** `docker/prod/alertmanager/alertmanager.yml.tpl` is a
+  template carrying `__PLACEHOLDER__` tokens; `deploy.sh` step 2 renders it into
+  `/opt/hmis-prod/alertmanager/alertmanager.yml` from the owner's `/opt/hmis-prod/.env.smtp` (six
+  keys, chmod 600). **The password is not even in the rendered file** — it is written to a separate
+  `smtp_password` file that `smtp_auth_password_file` points at. Both derived files are 600 and
+  owned by the container's own uid.
+- **Port 587 with STARTTLS, and this is measured rather than conventional.** On this box **465 and
+  25 are blocked outbound** — a silent timeout with no output at all, the drop signature rather
+  than a refusal (11c spike, two providers, IPv4 and IPv6). 465 is not a fallback; a provider that
+  offers only implicit TLS on 465 needs a relay in front of it.
+- **A missing or incomplete `.env.smtp` refuses the deploy**, with the six-key shape printed. That
+  is deliberate: a deploy that "succeeded" with no alert path is the worst outcome available here,
+  because an inert alert stack is indistinguishable from a quiet night right up until it isn't.
+- **Re-pointing the mailbox is an edit to `.env.smtp` and a re-run of `deploy.sh`.** The script
+  restarts alertmanager unconditionally after rendering, because Alertmanager reads its config only
+  at startup and `compose up -d` does not recreate a service whose *definition* is unchanged — the
+  same trap that left grafana and prometheus running on empty config for 35 minutes in Plan 11a.
+
+#### What actually reaches the inbox today
+
+| alert | severity | means |
+|---|---|---|
+| `HmisSchedulerJobStaleInterval` | critical | one of the five `every(ms)` jobs has not ticked in 5 minutes |
+| `HmisSchedulerJobMissing` | critical | a job has **never** reported a heartbeat — the blind spot a staleness threshold cannot see |
+| `HmisSchedulerJobStaleDaily` | warning | a daily job missed its run (26h threshold) |
+| `HmisBackupDrillOverdue` | critical | no restore drill has passed in over 8 days |
+| `HmisBackupDrillFailed` | critical | the most recent restore drill **failed** |
+| *(mode changes)* | — | not email: `ops.mode_changed` reaches the owner as an in-app alert through the alerts bell |
+
+#### At 03:00, in order
+
+1. **Read the subject line.** `[HMIS CRITICAL]` is a page; `[HMIS]` is a digest and can wait for
+   morning.
+2. **Is the hospital serving?** `curl -fsS https://<site>/health` from anywhere. If that is green,
+   the floor is working and you are debugging a background job, not an outage — the answer is
+   probably morning.
+3. **If it is not green**, tunnel in and look:
+   `ssh -L 3001:127.0.0.1:3001 -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 root@<box>`, then
+   Grafana on `http://127.0.0.1:3001` and Prometheus's own `/alerts` on `http://127.0.0.1:9090`.
+4. **`docker compose -p hmis-prod ps`** and **`… logs --tail 100 <service>`**. A service in
+   `Restarting` is the answer; there is no cluster to fail over to and no standby to promote.
+5. **If the floor cannot work, declare `downtime` from the mode desk with a note.** That is what
+   the banner and the paper kit are for, and it is a faster path back to a working hospital than
+   any repair you will attempt at 03:00. Declare `degraded`/`normal` on the way back out.
+6. **Backup drill alerts are never an emergency at 03:00** — they are an emergency *this week*.
+   Read `/opt/hmis-prod/log/restore-drill.log`, then
+   `docker exec --user postgres hmis-prod-db-1 pgbackrest --stanza=hmis check`, and run the drill
+   by hand once you understand why it stopped passing. Until it passes, treat the backups as
+   unproven.
+
+#### Silences, and testing the path
+
+- **Silence a known-noisy alert while you fix it**, rather than muting the mailbox:
+  `docker exec hmis-prod-alertmanager-1 amtool --alertmanager.url=http://127.0.0.1:9093 silence add alertname=HmisBackupDrillOverdue --duration=24h --comment="drill re-run scheduled"`.
+  Silences survive a redeploy because Alertmanager's state is on a **named volume**
+  (`alertmanager_data`) — without one, every recreate would forget every silence and strand an
+  anonymous volume on the box.
+- **Prove the path end to end** after any change to the mailbox:
+  ```
+  docker exec hmis-prod-alertmanager-1 amtool --alertmanager.url=http://127.0.0.1:9093 \
+    alert add alertname=HmisAlertPathDrill severity=critical \
+    --annotation=summary="synthetic drill — ignore"
+  docker exec hmis-prod-alertmanager-1 amtool --alertmanager.url=http://127.0.0.1:9093 alert --output=extended
+  docker compose -p hmis-prod logs --tail 50 alertmanager
+  ```
+  The alert's `receivers` field is where you read that it routed to `owner-immediate`;
+  **Alertmanager redacts the receiver URL in its own notify log** (`Post "<redacted>"`), so do not
+  expect the log to name the SMTP endpoint. Then check the inbox — the log saying the notify
+  succeeded and a human seeing the mail are two different facts, and only the second one is the
+  thing this stack exists to deliver.
 
 ### Production run commands (§2.58 correction)
 

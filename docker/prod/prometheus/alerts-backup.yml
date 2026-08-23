@@ -1,0 +1,87 @@
+# Plan 11c / D11 — THE RESTORE DRILL IS WATCHED. The negative-space rule applied to the one story
+# a single-box deployment cannot afford to get wrong.
+#
+# Nothing before this file noticed a restore drill that STOPPED PASSING. The weekly drill
+# (`/opt/hmis-prod/drill/restore-drill.sh`, cron 22:00 UTC Saturday) appends
+# `backup.drill_passed` or `backup.drill_failed` to `events`
+# (apps/core/src/kernel/retention/events.ts:105-106) and then... nothing read them. A drill that
+# silently stopped running, or started failing every week, looked exactly like a drill that was
+# passing: both are silence. On one server the drill IS the disaster-recovery story, so silence
+# is the failure this file exists to convert into a page.
+#
+# ═══ WHY THIS IS A SECOND RULE FILE AND NOT THREE MORE RULES IN `alerts.yml` ═══
+#
+# `alerts.yml` is pinned three ways by `apps/core/test/alerts-parity.test.ts`, which reads exactly
+# ONE hardcoded path (`docker/prod/prometheus/alerts.yml`, its `ALERTS_YML` constant) and parses
+# it with matchers that THROW on shapes they do not recognise — its own §2.49 defence against
+# going stale. Its `job=~"…"` parser matches FILE-WIDE and asserts `legs.toHaveLength(2)`, so a
+# backup rule carrying any `job=~` matcher placed inside that file would break a green test that
+# is about something else entirely. Separation is both correct and cheaper: `alerts.yml` is the
+# SCHEDULER-parity surface, this file is the BACKUP surface, and `prometheus.yml`'s `rule_files`
+# list grows by one line to load both.
+#
+# ═══ THE TWO SERIES, AND WHERE THEY COME FROM ═══
+#
+# Both are served by one custom query in `docker/prod/postgres-exporter/queries.yml`
+# (`hmis_backup_last_drill`), a SELECT over the shipped `events` table using the shipped
+# `events_name_idx`. NO NEW INSTRUMENTATION — the same discipline as D9's heartbeat gauge.
+#
+#   hmis_backup_last_drill_pass_age_seconds   seconds since the newest `backup.drill_passed`
+#   hmis_backup_last_drill_failed_after_pass  1 when the newest `backup.drill_failed` is NEWER
+#                                             than the newest `backup.drill_passed`, else 0
+#
+# NEITHER SERIES CARRIES A `job` LABEL, deliberately: the query returns no LABEL column, so these
+# metrics keep the scrape's own `job="postgres"`. That is what keeps them outside every matcher in
+# `alerts.yml` even if the two files were ever loaded into one group namespace.
+#
+# ═══ THE NEVER-PASSED CASE, STATED OUT LOUD ═══
+#
+# When NO `backup.drill_passed` row exists at all, the query returns an age measured from the UNIX
+# EPOCH rather than no row, so `HmisBackupDrillOverdue` fires immediately on a deployment where the
+# drill has never once passed. That is the intended reading and it is the same choice `alerts.yml`
+# makes with its `absent()` leg: "we have never proven we can restore" is not a quieter fact than
+# "we could restore nine days ago". The alert text says which case it is looking at.
+groups:
+  - name: hmis-backup-drill
+    rules:
+      # 8 DAYS, AND THE EXTRA DAY IS THE POINT. The drill runs weekly (Saturday 22:00 UTC =
+      # 03:30 IST Sunday). A 7-day threshold would fire every week in the hours before the drill
+      # ran, on a perfectly healthy system, and an alert that cries wolf weekly is an alert
+      # nobody reads. 8 days = one missed drill plus a day of slack for a late start or a long
+      # restore. 691200 = 8 * 24 * 3600.
+      #
+      # CRITICAL, not warning: an untested backup is indistinguishable from no backup, and this
+      # is the only signal that distinguishes them.
+      - alert: HmisBackupDrillOverdue
+        expr: hmis_backup_last_drill_pass_age_seconds > 691200
+        # A slow scrape or a single missed evaluation must not page anybody; nothing about this
+        # metric changes in under a week, so 15m of confirmation costs nothing at all.
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No restore drill has passed in over 8 days"
+          description: >-
+            The newest `backup.drill_passed` event is {{ $value | humanizeDuration }} old (a value
+            measured in decades means NO drill has EVER passed on this deployment). The weekly
+            drill is cron 22:00 UTC Saturday, `/opt/hmis-prod/drill/restore-drill.sh` — read
+            `/opt/hmis-prod/log/restore-drill.log`, then run the drill by hand. Until it passes,
+            the backups in the object store are unproven.
+
+      # THE OTHER HALF OF THE NEGATIVE SPACE. A drill that runs every week and FAILS every week
+      # keeps `pass_age_seconds` climbing, so the rule above would eventually catch it — eight
+      # days late. This one catches it on the next scrape after the first failure, which is the
+      # difference between finding out on Sunday morning and finding out the following Monday.
+      - alert: HmisBackupDrillFailed
+        expr: hmis_backup_last_drill_failed_after_pass == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The most recent restore drill FAILED"
+          description: >-
+            A `backup.drill_failed` event is newer than the newest `backup.drill_passed` — the last
+            attempt to restore this hospital's backup did not succeed. Read
+            `/opt/hmis-prod/log/restore-drill.log` for the verdict and the stanza check
+            (`docker exec --user postgres hmis-prod-db-1 pgbackrest --stanza=hmis check`). Treat
+            this as "there is currently no proven backup" until a drill passes.

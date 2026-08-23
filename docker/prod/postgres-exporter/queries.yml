@@ -15,7 +15,7 @@
 # through `last_error`/`last_ok_at`, which this query also exposes rather than folds away.
 #
 # THIS QUERY RETURNS A ROW ONLY FOR A JOB THAT HAS STARTED AT LEAST ONCE (spike finding 6): the
-# worker registers NINE jobs (`kernel/worker/jobs.ts`'s `registerAllJobs`) but
+# worker registers TEN jobs (`kernel/worker/jobs.ts`'s `registerAllJobs`) but
 # `scheduler_heartbeats` gains a row only on that job's first tick. A job that has NEVER started
 # is therefore invisible to this gauge — which is exactly why `alerts.yml`'s missing-series leg
 # cannot be built from this query alone and checks each expected job name with `absent()` instead.
@@ -36,3 +36,56 @@ hmis_scheduler_heartbeat:
     - failing:
         usage: "GAUGE"
         description: "1 if this job's most recent run recorded an error (scheduler_heartbeats.last_error), else 0"
+
+# ------------------------------------------------------------------------------------------------
+# Plan 11c / D11 — THE RESTORE-DRILL WATCHER. Same discipline as the gauge above: NO NEW
+# INSTRUMENTATION. This is a SELECT against the shipped `events` table
+# (apps/core/src/kernel/db/schema/events.ts) for the two event names the weekly drill already
+# appends (`kernel/retention/events.ts:105-106`), read through the shipped `events_name_idx`.
+#
+# TWO COLUMNS, TWO ALERT RULES (docker/prod/prometheus/alerts-backup.yml):
+#
+#   pass_age_seconds    → hmis_backup_last_drill_pass_age_seconds
+#   failed_after_pass   → hmis_backup_last_drill_failed_after_pass
+#
+# NO LABEL COLUMN, DELIBERATELY. With `honor_labels: true` on the postgres scrape job
+# (prometheus.yml — load-bearing for the heartbeat query above, which DOES return a `job` label),
+# a query that returns no `job` column keeps the scrape's own `job="postgres"`. That is what keeps
+# these two series outside every `job=~` matcher in `alerts.yml`, which is the parity-pinned
+# scheduler surface and has nothing to do with backups.
+#
+# THE EPOCH SENTINEL IS THE "NEVER PASSED" CASE AND IT IS INTENDED (see alerts-backup.yml's
+# header). `coalesce(..., to_timestamp(0))` means a deployment on which no drill has EVER passed
+# reports an age of decades rather than reporting nothing — a missing series would read GREEN,
+# which is precisely the blind spot D9's `absent()` leg exists to close for the scheduler. The
+# same failure shape gets the same answer here.
+#
+# `events` IS RANGE-PARTITIONED BY MONTH on `recorded_at` (migration 0016). `max(recorded_at)`
+# filtered by `name` is answered from `events_name_idx` on each partition; the drill writes two
+# rows a week, so there is nothing here for a query cost to grow with.
+hmis_backup_last_drill:
+  query: |
+    select
+      extract(epoch from (
+        now() - coalesce(
+          (select max(recorded_at) from events where name = 'backup.drill_passed'),
+          to_timestamp(0)
+        )
+      ))::float8 as pass_age_seconds,
+      case
+        when coalesce(
+               (select max(recorded_at) from events where name = 'backup.drill_failed'),
+               to_timestamp(0)
+             ) > coalesce(
+               (select max(recorded_at) from events where name = 'backup.drill_passed'),
+               to_timestamp(0)
+             )
+        then 1 else 0
+      end as failed_after_pass
+  metrics:
+    - pass_age_seconds:
+        usage: "GAUGE"
+        description: "Seconds since the newest backup.drill_passed event (measured from the UNIX epoch when no drill has ever passed)"
+    - failed_after_pass:
+        usage: "GAUGE"
+        description: "1 if the newest backup.drill_failed event is newer than the newest backup.drill_passed, else 0"

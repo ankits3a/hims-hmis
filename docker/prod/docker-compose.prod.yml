@@ -323,6 +323,54 @@ services:
         reservations:
           memory: "64m"
 
+  # ------------------------------------------------------------------------------------------
+  # alertmanager — Plan 11c / D10. THE NINTH SERVICE, and the one that makes the other eight
+  # worth running: until it existed, every rule in prometheus/alerts.yml evaluated correctly,
+  # turned red on a page nobody had open, and reached NO HUMAN BEING. `severity: critical` now
+  # leaves the box as email, immediately; `warning` is batched. The routing lives in
+  # alertmanager/alertmanager.yml.tpl (placeholders — GC2, the repo is public) and deploy.sh
+  # renders it into $DEPLOY_DIR/alertmanager/ from the owner's /opt/hmis-prod/.env.smtp.
+  #
+  # `127.0.0.1` ONLY, like prometheus and grafana above (D13's port map). The published port is
+  # for `amtool` on the box and for an SSH tunnel; Prometheus reaches this service by NAME over
+  # the compose network and does not use the publication at all.
+  #
+  # THE NAMED VOLUME IS NOT OPTIONAL AND IT IS NOT TIDINESS — it was MEASURED (11c spike):
+  # `prom/alertmanager:v0.27.0` declares `VOLUME /alertmanager` in its own image. Without a named
+  # volume here, docker creates a fresh ANONYMOUS volume on every recreate — the silence log and
+  # the notification log are lost each time (so a silenced 03:00 alert un-silences itself on the
+  # next deploy, and a notification already sent is sent again), and the box accumulates one
+  # orphaned volume per deploy for ever. Plan 11a's gate report §7.8 rejected a task over exactly
+  # this specimen with prometheus. `alertmanager_data` below is the ONE new entry the production
+  # volume roster gains.
+  #
+  # `--cluster.listen-address=` (EMPTY, deliberately) disables the gossip listener. There is one
+  # replica on one box; leaving the cluster port listening would be a service nobody uses and a
+  # startup log full of peer-discovery noise on every boot.
+  # ------------------------------------------------------------------------------------------
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--cluster.listen-address="
+    volumes:
+      # A DIRECTORY, the same lesson as caddy/, pgbackrest/ and prometheus/ (T3-1's measured
+      # inode trap): alertmanager.yml AND the smtp_password file both live under it, and
+      # deploy.sh's install(1)/write replaces their inodes on every run.
+      - ./alertmanager:/etc/alertmanager:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: "256m"
+        reservations:
+          memory: "64m"
+
 volumes:
   # Named inside the `hmis-prod` project, so the real volume is `hmis-prod_hmis_prod_pgdata` —
   # a different object from dev's `hmis_hmis_pgdata`, which nothing here may touch (rule 7).
@@ -336,3 +384,8 @@ volumes:
   # year of history and every hand-tweak to the provisioned dashboard alike.
   prometheus_data:
   grafana_data:
+  # Plan 11c / D10 — the silence log and the notification log. MEASURED, not stylistic: the
+  # v0.27.0 image declares `VOLUME /alertmanager`, so with no named volume here every recreate
+  # strands a fresh anonymous volume AND forgets which alerts it has already sent and which the
+  # operator silenced. See the service's own comment above.
+  alertmanager_data:

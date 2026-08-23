@@ -19,6 +19,28 @@ global:
 
 rule_files:
   - /etc/prometheus/alerts.yml
+  # Plan 11c / D11 — the restore-drill watcher, a SECOND file on purpose. `alerts.yml` is pinned
+  # three ways by `apps/core/test/alerts-parity.test.ts`, which reads that ONE hardcoded path and
+  # parses it with matchers that throw on shapes they do not recognise; its `job=~` parser matches
+  # FILE-WIDE and asserts exactly two legs. Backup rules do not belong inside the scheduler-parity
+  # surface, so they are loaded beside it instead. See alerts-backup.yml's own header.
+  - /etc/prometheus/alerts-backup.yml
+
+# Plan 11c / D10 — WHERE A FIRING RULE ACTUALLY GOES. Until this block existed, every rule in
+# `alerts.yml` evaluated correctly, turned red on Prometheus's own /alerts page, and reached
+# NOBODY: an alert nothing is configured to deliver is a dashboard widget. Alertmanager is the
+# ninth service in `docker-compose.prod.yml`, reached by SERVICE NAME over the `hmis-prod` compose
+# network — it publishes 127.0.0.1:9093 for `amtool` and for a tunnel, and Prometheus does not use
+# that publication.
+#
+# NO `depends_on` WAS ADDED TO THE PROMETHEUS SERVICE for this. Prometheus retries an
+# alertmanager it cannot resolve, indefinitely and harmlessly, and a hard dependency would mean a
+# broken alert sink could stop metrics being collected at all — the wrong trade for a stack whose
+# whole point is to keep observing while something is wrong.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
 
 scrape_configs:
   - job_name: prometheus
