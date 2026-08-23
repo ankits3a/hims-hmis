@@ -25,6 +25,8 @@ import { BillingDues } from "./screens/billing-dues";
 import { BillingSession } from "./screens/billing-session";
 import { BillingOffice } from "./screens/billing-office";
 import { OpsMode } from "./screens/ops-mode";
+import { AdminUsers } from "./screens/admin-users";
+import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 
 function Shell(): React.ReactElement {
@@ -52,6 +54,7 @@ function Shell(): React.ReactElement {
             <a href="/billing/office" className="hover:underline">{t("nav.billingOffice")}</a>
             <a href="/ops/mode" className="hover:underline">{t("nav.opsMode")}</a>
             <a href="/ops/downtime-kit" className="hover:underline">{t("nav.opsDowntimeKit")}</a>
+            <a href="/admin/users" className="hover:underline">{t("nav.adminUsers")}</a>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <AlertsBell />
@@ -81,6 +84,24 @@ function Shell(): React.ReactElement {
 const rootRoute = createRootRoute({ component: () => <Outlet /> });
 
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: LoginScreen });
+
+/**
+ * PLAN 11e T6 / D6 — `/change-password` IS A SIBLING OF `/login`, NOT A CHILD OF THE SHELL.
+ *
+ * A person in the forced-change state (11e D1) is refused 403 on every route except this one and
+ * logout, so rendering the authed layout around them would fire the alerts bell and the mode
+ * banner into a wall of refusals and put a nav bar in front of somebody who cannot use any of it.
+ * It still requires a TOKEN — the change travels on the session the login issued — which is why it
+ * carries its own `beforeLoad` rather than inheriting `authedRoute`'s.
+ */
+const changePasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/change-password",
+  beforeLoad: () => {
+    if (getToken() === null) throw redirect({ to: "/login" });
+  },
+  component: ChangePassword,
+});
 
 const authedRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -219,13 +240,23 @@ const opsDowntimeKitRoute = createRoute({
   component: OpsDowntimeKit,
 });
 
+// PLAN 11e T6: the user-administration desk. Inside the shell, unlike `/change-password` — an
+// administrator is an ordinary authenticated user with an extra permission, and the server decides
+// whether they may act (`auth.users.manage`), not this route.
+const adminUsersRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/admin/users",
+  component: AdminUsers,
+});
+
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
+    changePasswordRoute,
     authedRoute.addChildren([
       indexRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
-      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute,
+      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
     ]),
   ]),
 });
