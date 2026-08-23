@@ -444,6 +444,14 @@ async function main(): Promise<void> {
   try {
     const report = await seedRoles(db);
     for (const line of formatReport(report)) console.log(line);
+    // THE EXIT CODE FOLLOWS THE VERDICT, because a caller that cannot see the transcript still has
+    // to be told. This script previously exited 0 unconditionally — while reporting orphaned
+    // permissions, undeclared strings, or that no user holds any role — and `seed-staff.ts` (11d
+    // T2) already does the right thing, so the two disagreed about what one printed verdict meant.
+    // 11d's discovery review measured the disagreement and named the cost: the deploy checklist
+    // asks an operator to "confirm it exits 0", which was a check that could not fail, and
+    // `seed:roles && ...` under `set -e` went green on a run that had named real problems.
+    process.exitCode = report.ready ? 0 : 1;
   } finally {
     await pool.end();
   }

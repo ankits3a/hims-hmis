@@ -252,6 +252,10 @@ async function handleModeChanged(db: Db, e: DispatchedEvent): Promise<void> {
         : payload.note,
     refType: OPERATING_MODE_REF_TYPE,
     // THE CHANGE ROW, not the mode word (11d D6) — see the header on OPERATING_MODE_REF_TYPE.
-    refId: payload.changeId,
+    // `?? payload.to` is the PRE-11d value, so the `operating_mode` bucket stays readable by one
+    // rule rather than two: every row carries either the change id or the mode word it always
+    // carried, and never nothing. Drop the fallback only once no consumer's window can still
+    // reach a pre-11d row — which is a fact about live data, not about this file.
+    refId: payload.changeId ?? payload.to,
   });
 }

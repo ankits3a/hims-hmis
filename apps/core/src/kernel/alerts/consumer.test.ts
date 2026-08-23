@@ -665,6 +665,48 @@ describe("kernel alerts consumer", () => {
       expect(raised).toHaveLength(2);
     });
 
+    it("11d remediation — a PRE-11d payload with NO `changeId` still delivers, and `refId` falls back to the mode word", async () => {
+      // THE DEFECT THIS PINS, found by 11d's discovery review with executed evidence. T3 shipped
+      // `changeId` as a REQUIRED field with no default and no version bump, and `handleModeChanged`
+      // opens with `modeChanged.payloadSchema.parse(e.payload)`. Every `ops.mode_changed` row
+      // already in a live `events` table lacks that field, so each one failed the parse, burned
+      // five attempts and 30s of backoff, BLOCKED its consumer's whole in-order stream, and
+      // dead-lettered — measured: 0 alerts raised, `status=parked`, `attempts=5`.
+      //
+      // AND NOTHING WOULD HAVE NOTICED: `consumer.poisoned` has zero subscribers in the tree,
+      // `event_dead_letters` is read only by the retention sweep (which DELETES from it, and is
+      // inert under RETENTION_ENABLED=false), and a dispatch cycle that parks an event is a
+      // SUCCESSFUL run to `HmisSchedulerJobStale*`. A silent loss by construction.
+      //
+      // The sharpest arming path is not the deploy: it is that any NEW consumer of this event
+      // starts at cursor 0 and replays every historical mode change.
+      const { ownerOne, ownerTwo } = await seedOwners();
+      await seedFreshOkReport();
+      await declare("normal", null);
+      const event = await declare("downtime", DOWNTIME_NOTE);
+
+      // The legacy row is reproduced by removing EXACTLY the field T3 added and nothing else, so
+      // the fixture differs from a real pre-11d row in no other respect (§3.14's fixture proof).
+      const shipped = event.payload as Record<string, unknown>;
+      const legacyPayload: Record<string, unknown> = { ...shipped };
+      delete legacyPayload.changeId;
+      expect(shipped).toHaveProperty("changeId"); // the shipped shape really does carry it
+      expect(legacyPayload).not.toHaveProperty("changeId"); // and the fixture really does not
+      expect(Object.keys(legacyPayload).sort()).toEqual(["from", "note", "reportId", "to"]);
+
+      await handler({ ...event, payload: legacyPayload });
+
+      const rows = await db.select().from(alerts);
+      expect(rows).toHaveLength(2);
+      expect(rows.map((r) => r.userId).sort()).toEqual([ownerOne, ownerTwo].sort());
+      const row = rows[0]!;
+      expect(row.refType).toBe("operating_mode");
+      // The fallback IS the old value, which is what every pre-11d alert already carries — so the
+      // `operating_mode` bucket stays readable by one rule rather than two.
+      expect(row.refId).toBe("downtime");
+      expect(row.title).toBe("Operating mode: normal → downtime");
+    });
+
     it("V6: LEAVING downtime alerts too — coming back is as much news as going dark", async () => {
       const { ownerOne, ownerTwo } = await seedOwners();
       await seedFreshOkReport();

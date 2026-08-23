@@ -39,7 +39,23 @@ export const modeChanged = defineEvent(
   "ops.mode_changed",
   OPS,
   z.object({
-    changeId: z.string().min(1),
+    // OPTIONAL, DELIBERATELY, AND NOT BECAUSE THE FIELD IS OPTIONAL FOR NEW EVENTS — it is always
+    // written (see `changeOperatingMode`, which mints the id and appends the event in ONE
+    // transaction). It is optional because THIS SCHEMA IS ALSO APPLIED TO ROWS THAT WERE APPENDED
+    // BEFORE THE FIELD EXISTED. 11d T3 shipped it REQUIRED with no default and no version bump,
+    // and 11d's discovery review measured the cost: every pre-11d `ops.mode_changed` row failed
+    // `handleModeChanged`'s parse, burned five attempts and 30s of backoff, BLOCKED its consumer's
+    // whole in-order stream, and dead-lettered — 0 alerts raised, `status=parked`, `attempts=5`.
+    //
+    // The loss was silent BY CONSTRUCTION: `consumer.poisoned` has no subscriber, dead letters are
+    // read only by the retention sweep that deletes them, and a cycle that parks an event is a
+    // SUCCESSFUL run to the scheduler's staleness rules. The sharpest arming path is not a deploy
+    // but a NEW consumer, whose cursor starts at 0 and replays every historical mode change.
+    //
+    // A schema change to an APPENDED, IMMUTABLE event stream is a change to history, not to a
+    // message contract: widening a required field is the only cheap direction, and the consumer
+    // carries the fallback.
+    changeId: z.string().min(1).optional(),
     from: z.enum(OPERATING_MODES),
     to: z.enum(OPERATING_MODES),
     note: z.string().nullable(),
