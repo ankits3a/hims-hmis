@@ -700,9 +700,42 @@ two-step way around it.
   and the bell lights up. It is idempotent on redelivery — one alert per holder per change, however
   many times the event is delivered. Mode alerts carry **mode words and the note only**; no patient
   identity, ever (GC6).
-- **`ops.mode.set` is duty-manager authority.** The seeded `admin` role holds every manifest
-  permission in dev; at go-live the `duty_manager` and `owner` roles are created as role data and
-  granted deliberately. Do not run a hospital in which everybody can declare downtime.
+- **`ops.mode.set` is duty-manager authority, and NOTHING GRANTS IT UNTIL YOU RUN `pnpm seed:ops`.**
+
+  > **CORRECTED 2026-08-23.** This paragraph used to read *"the seeded `admin` role holds every
+  > manifest permission in dev"*. **That was false, and it was the dangerous kind of false**, because
+  > it told the operator a grant had already happened. `scripts/seed-admin.ts` installs
+  > `authManifest` ALONE, so it grants six `auth.*` strings and nothing else — and it returns early
+  > on any deployment that already has an admin user, so on a live box it grants nothing at all.
+  > `syncPermissions` mirrors permission NAMES into `permissions` at boot; it is a catalog and it
+  > authorises no one. Found by Plan 11c's discovery review (gate report MAJOR 4): every `/ops` route
+  > would have answered **403 to every user**, with the mode desk and downtime-kit links leading to
+  > screens whose every action is refused — the emergency path, unreachable.
+
+  **The go-live step, and it is idempotent so it belongs in the re-deploy path forever:**
+
+  ```sh
+  # 1. roles + grants only — safe to run any time, changes nothing on a second run
+  pnpm --filter @hmis/core seed:ops
+
+  # 2. appoint the actual humans (comma-separated usernames), and say who is woken at 03:00
+  OPS_DUTY_MANAGERS=asha,ravi OPS_OWNERS=ankit pnpm --filter @hmis/core seed:ops
+  ```
+
+  It creates the `duty_manager` and `owner` roles if absent, grants all three `ops.*` permissions to
+  `duty_manager` (and to `admin` if that role exists), assigns any usernames you name, and **prints a
+  readiness verdict as its last line**. A username that does not exist is a hard error with exit 1,
+  never a silent skip — believing you appointed a duty manager when you did not is the failure this
+  guards.
+
+  Two states it will refuse to call READY, both of which look like a working system until the night
+  they matter: **no `duty_manager` holder** means nobody can declare downtime or print a kit, and
+  **no `owner` holder** means a downtime declaration raises an alert for nobody, because the fan-out
+  is `usersHoldingRole(owner)`.
+
+  `owner` is granted no `ops.*` permission deliberately — map 1's rule is that the owner is *alerted*
+  and never *required to act*, and receiving an alert needs no permission. **Do not run a hospital in
+  which everybody can declare downtime.**
 
 ### The downtime protocol, and the kit
 
