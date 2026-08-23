@@ -147,7 +147,7 @@ export async function changeOperatingMode(
    * the actual bug: it would drop the lock while the transaction still holds what it was taken to
    * protect.
    *
-   * FIRST — AHEAD OF THE `commissioning` REFUSAL AND AHEAD OF `getOperatingMode(tx)`, BOTH. A lock
+   * FIRST — AND WHAT IS LOAD-BEARING IS THAT IT PRECEDES `getOperatingMode(tx)`. A lock
    * taken after the read serialises the WRITES and not the DECISIONS, so the second measured case
    * survives it completely intact: both callers read `normal`, both decide on it, and one of them
    * is told a transition the ledger then contradicts. Book V11 is a row of its own for exactly

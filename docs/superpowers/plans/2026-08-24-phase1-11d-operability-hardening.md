@@ -1037,7 +1037,8 @@ session lock, a `FOR UPDATE`, or a retry loop on your own authority.**
 > out under AGENT-RULES §3(a) and shipped D6's payload half alone. **That is the behaviour
 > EXECUTE-METHOD §6 says not to touch.**
 >
-> **So T4 lands two lines, and they must land in ONE commit or the suite is red between them:**
+> **So T4 lands ~~two lines~~ THREE lines across THREE files, and they must land in ONE commit or
+> the suite is red between them:**
 > 1. `src/kernel/alerts/consumer.ts` — `refId: payload.to` → `refId: payload.changeId`. **That
 >    branch ONLY; `raiseAlerts` is untouched.** T3 left a signpost in `OPERATING_MODE_REF_TYPE`'s
 >    header naming this blocker — **delete the signpost as you land the fix**, or it becomes a
@@ -1045,6 +1046,17 @@ session lock, a `FOR UPDATE`, or a retry loop on your own authority.**
 > 2. `test/ops-lifecycle.e2e.test.ts` leg 4 — `refId: "downtime"` → the `operating_mode_changes`
 >    row id, asserted by **whole-string equality against the id read back from the table**, never
 >    against a hardcoded ULID.
+> 3. **`src/kernel/alerts/consumer.test.ts:659` — `expect(row.refId).toBe("downtime")`, plus the
+>    four-line comment above it that says "when the two-line repoint lands".** FOUND BY T3'S GATE,
+>    which built the repoint and ran it: it breaks **TWO** assertions, not one. This file's other
+>    signpost undercounts for the same reason `consumer.ts`'s does.
+>
+> **THE UNDERCOUNT IS THIS SESSION'S DEFECT, TWICE OVER, AND IT IS THE SAME DEFECT BOTH TIMES.**
+> The compile sweep walked the payload's readers; T3's halt taught it to walk the *assert-on* graph
+> as well; and the first amendment then walked that graph **one hop and stopped**, missing a reader
+> that sits in the widening task's OWN file. **The assert-on graph must be walked transitively and
+> to a fixpoint, and it must include assertions the widening task ADDED IN THE SAME COMMIT** — the
+> third reader here did not exist when the sweep ran, because T3 wrote it while raising the halt.
 >
 > **This also completes Book row V13**, whose Book mutant ("revert `refId` to the mode word") could
 > not fail while the halt stood — the shipped code WAS that mutant. Build it after the repoint.

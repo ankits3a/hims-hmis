@@ -655,7 +655,8 @@ describe("kernel alerts consumer", () => {
       // `consumer.ts` carry an entity id. Repointing it at `change.id` was BUILT AND RUN in 11d T3
       // and broke `test/ops-lifecycle.e2e.test.ts`, which pins this same word and which T3 may not
       // touch. This line is therefore pinned as it IS, not as it should be — see the header on
-      // `OPERATING_MODE_REF_TYPE`. When the two-line repoint lands, this becomes `change.id`.
+      // `OPERATING_MODE_REF_TYPE`. When the THREE-line repoint lands, this becomes `change.id` —
+      // and THIS line is the third of the three, which T3 did not count and its gate measured.
       expect(row.refId).toBe("downtime");
       expect(row.sourceEventId).toBe(event.eventId);
 

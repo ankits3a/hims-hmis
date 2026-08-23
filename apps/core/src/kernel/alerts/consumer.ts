@@ -50,7 +50,9 @@ const ALERT_KIND_OPERATING_MODE = "operating_mode";
  * `test/ops-lifecycle.e2e.test.ts` pins `refId: "downtime"` inside its leg-4 `toMatchObject`, and
  * that file belongs to a later task. MEASURED, not predicted: the repoint was built and run, and
  * that one e2e test failed on exactly that line while every other suite stayed green. The
- * remaining change is TWO lines — this one and that one — and they must land in the same commit.
+ * remaining change is THREE lines across three files — this one, that one, and
+ * `consumer.test.ts`'s own `refId` pin — and they must all land in the same commit. (T3 wrote
+ * TWO here; T3's gate built the repoint, ran it, and measured the third.)
  */
 const OPERATING_MODE_REF_TYPE = "operating_mode";
 /** The two modes whose entry or exit is worth waking somebody for (D4). */
