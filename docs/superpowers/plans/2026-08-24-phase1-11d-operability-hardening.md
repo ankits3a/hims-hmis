@@ -632,6 +632,23 @@ fact about the harness and no bound changes that.
 Phase 0 rather than a task, because it changes what every later CI red in this run MEANS and must
 land before the first task commits.
 
+**SHIPPED AT `e88b5db`, and the number is derived rather than chosen: `CENSUS_TIMEOUT_MS =
+120_000`.** The arithmetic, measured on the build host at `58e0e61` in isolation: the census walk
+costs **3 082 ms** here · §2.80's own pair puts CI at **12.97×** the build host (37.6 s against
+2.9 s) · so the walk projects to **~40 s on CI today** · one `settleUntil` turn costs **1.11 ms**
+(measured from a 20 000-turn scratch copy: 25 348 ms total − 3 082 ms walk), so a full 5 000-turn
+bound hit costs **~5.6 s** · worst case the budget must clear is therefore **~46 s**, and 120 000 ms
+clears it by **2.6×**. `jest.config.cjs` was NOT touched.
+
+**The sibling M-S2 test deliberately did NOT get one, and that is a stated decision rather than an
+omission** (§3.44's not-over-broad discipline applied to a harness). It measures **483 ms** isolated
+against the census's 3 082 ms, its wait is a 400-iteration REAL-timer poll rather than a fake-clock
+walk over a compressed 9 h 5 min, and — the reason that actually decides it — **it already fails
+with a diagnosis**: the poll exhausts by iteration count at ~2 s and its assertion names what did
+and did not run. It needs no larger budget to turn a timeout into a diagnosis. **Disclosed residual:
+at 12.97× it projects to ~6.3 s of a 15 s budget, so if CI degrades past ~2.4× its observed worst,
+M-S2 is the next bare-timeout candidate** — the second place a future census red should look.
+
 ### D12. What this plan deliberately does NOT build, and where each thing went
 
 | deferred | why | where it goes |
@@ -915,10 +932,32 @@ over ≥15 rounds reproducing the gate report's three cases, V11 proves the lock
 merely its presence, V12b kills the commissioning-bypass prediction 11c's inbox left standing, and
 V13 pins the new `refId`.
 
-**Halt condition.** If the spike's Question A shows `withTx` does not hold one client for the
+**THE PAYLOAD-SHAPE READERS, ENUMERATED AT COMPILE (§2.72 — never "change nothing else"), because
+adding `changeId` BREAKS TWO SHIPPED ASSERTIONS AND STALES A TEST NAME.** Measured at `e88b5db` by
+grepping every reader of the payload across `apps/core`, `apps/web` and `packages`:
+
+- **`kernel/ops/mode.test.ts:350-351` pins the payload with STRICT `toEqual`** —
+  `toEqual({ from: "commissioning", to: "normal", note: null, reportId })` and its `downtime`
+  sibling. **Both fail the moment `changeId` exists.** T3 owns this file: EXTEND both to carry the
+  new field. This is a required edit, not collateral damage.
+- **That test's own NAME goes stale** — *"carrying from/to/note/reportId and no patient"*. Correct
+  it in the same commit (§2.60: a stale sentence beside correct code is how MAJOR 4 shipped).
+- **`kernel/alerts/consumer.ts:250` is the single line to repoint** — it currently reads
+  `refId: payload.to`, which is the mode WORD where its two neighbours carry an entity id.
+- **`apps/web` reads this payload NOWHERE — grep returns zero hits**, so GC4's full freeze survives
+  T3's widening. Confirmed rather than assumed; a payload widened under a frozen consumer would have
+  been a HALT.
+- `kernel/ops/manifest.ts:18` and `db/schema/ops.ts:33` mention `ops.mode_changed` in COMMENTS only,
+  and `kernel/ops/validate.test.ts:437` asserts `opsManifest.subscriptions` is empty — none reads
+  the payload, none is affected, none is in T3's Files list.
+
+**Halt condition.** ~~If the spike's Question A shows `withTx` does not hold one client for the
 transaction, or that the loser does not block, **STOP**: the fix named here is wrong and the plan
-needs a different one. Do not substitute a session lock, a `FOR UPDATE`, or a retry loop on your
-own authority.
+needs a different one.~~ **DISCHARGED 2026-08-24 — Question A MEASURED, all five sub-questions, each
+against a control (see D5). `withTx` holds one backend, the loser blocks ~203 ms where the no-lock
+control waits 0 ms, and a thrown error releases the lock. The fix named here is correct and T3
+proceeds at full size.** The standing prohibition survives the discharge: **do not substitute a
+session lock, a `FOR UPDATE`, or a retry loop on your own authority.**
 
 ### Task 4: The ops permission MAP — §3.42's four legs *(CRITICAL, opus coder + opus gate)*
 
@@ -981,7 +1020,7 @@ Rows marked **P** carry inputs the task must confirm by building the mutant and 
 
 | # | task | assertion | killing mutant | discriminating input | P/M |
 |---|---|---|---|---|---|
-| R1 | R0-1 | A `settleUntil` bound hit produces the SET assertion naming the missing jobs, not a bare timeout | force the bound to 1 turn in a scratch copy | shipped + forced bound → failure text contains the missing job NAMES; the same forced bound under the OLD 15 s budget → `Exceeded timeout of 15000 ms`. **The mutant is the BOUND, not the machine — starvation cannot be manufactured on a box serving a hospital** | **P** |
+| R1 | R0-1 | A `settleUntil` bound hit produces the SET assertion naming the missing jobs, not a bare timeout | ~~force the bound to 1 turn in a scratch copy~~ **CORRECTED AT PHASE 0 — that mutant is a NO-OP and SURVIVES.** The mutant that discriminates is TWO-PART: **(a) make the census UNSATISFIABLE** so the poll actually reaches its bound, **and (b) force the bound ABOVE the old 15 000 ms budget** (20 000 turns ≈ 22 s) | **MEASURED at `e88b5db`, both arms, exit VALUE 1 each.** OLD 15 s budget → `Exceeded timeout of 15000 ms` at `(15406 ms)` with **no job name anywhere in the failure** (the `console.warn` does print, but AFTER teardown, beside `ReferenceError: … after it has been torn down`). NEW 120 s budget → `(25348 ms)` and the SET assertion runs: `- "runNotifyPump"` / `- "sweepExpiredTempRoles"` — **the two jobs CI actually lost.** · **Why the Book's version is a no-op:** on a healthy box every job is already recorded by the time `settleUntil` is reached, so `done()` is true on turn 0, the bound is never touched, and the test PASSES at exit 0 under BOTH budgets (measured: `3069 ms` old, `2967 ms` new). A mutant that cannot fail is not a mutant. **The mutant is still the BOUND, not the machine** — starvation cannot be manufactured on a box serving a hospital, which is exactly why (a) is needed to reach the bound at all | **P** |
 | V1 | T1 | Every granted string is DECLARED by an installed manifest | one typo'd cell in the role model | `"billing.invoice.isue"` in `cashier` → shipped: the test names the undeclared string; unmutated control: nine roles green | |
 | V2 | T1 | Every declared permission is held by at least one role or NAMED in the exceptions list | delete `cashier`'s `billing.receipt.record` grant | shipped: the census names the orphaned permission; control: the three real exceptions (`auth.users.manage`, `auth.roles.manage`, `billing.credit.extend`) pass — **and their REASONS are asserted present, not merely their names** | **P** |
 | V3 | T1 | The README's two tables and the role model agree, cell for cell, both directions | flip one tick in the seed's table | shipped: parity fails naming the (role, permission) cell; a second mutant on the PARSER (return `[]` instead of throwing) → the census pin fails first, which is the §2.49 leg | **P** |
