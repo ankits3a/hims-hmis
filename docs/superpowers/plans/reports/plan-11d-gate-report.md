@@ -584,3 +584,73 @@ recorded in `workflow_transitions` with the acting user, which is the audit trai
    until runbook step 5 enters schedules. **Rooms: 0.**
 2. The residuals of ADDENDUM 3 stand unchanged: the burned roster, `admin`'s password, MAJOR 1,
    and runbook steps 5-7.
+
+---
+
+## ADDENDUM 5 — 2026-08-23 night: MAJOR 1 IS FIXED. The census is a measurement.
+
+**The defect, precisely.** `seedRoles` computed `held` — and therefore its READY verdict — as
+`new Set(heldPermissions())`, a pure function of `ROLE_MODEL` and `GRANTED_BY_OTHER_SEEDS`. It
+reported a permission as held because the constants said `seed:admin` grants it. But
+`seed-admin.ts` **returns early on any deployment that already has an admin**, so a permission
+declared AFTER first boot is never granted there — and re-running the seed cannot fix it. The
+census would call that permission reachable for ever while no role held it. **MAJOR 4's mechanism,
+living inside the artefact built to abolish it.**
+
+**The fix.** `held` is now read back out of `role_permissions` after the run, via a new
+`heldInDatabase(db)`. Deliberately **unfiltered by `ROLE_MODEL`**: a permission is reachable if ANY
+role holds it, including a role this file has never heard of — and production carried exactly such
+a role for the whole of 11d (`owner`, created by `seed:opd`, holding nothing), which a model-scoped
+query could not have seen.
+
+`heldPermissions()` survives as what it always honestly was — **the model's CLAIM** — and is now
+COMPARED against the measurement rather than substituted for it. A new leg reports where they
+diverge, names the seed that should have granted the difference, and warns in as many words that
+re-running `seed:admin` will not help.
+
+**The census now reconciles or says why not:**
+`59 declared = held + not-yet-modelled + expected-elsewhere-but-absent`, with any remainder printed
+as `UNACCOUNTED`. **Before this, those numbers ALWAYS summed — because two of them were computed
+from the same constants. The sum proved arithmetic, not a deployment.**
+
+### Proven by execution, and by a mutant
+
+- On a test database where only `seed:roles` has run, **`held` is 37 against a model claiming 46.**
+  That nine-permission gap IS MAJOR 1, and the old code returned 46 there.
+- **Granting one of the nine moves the census by exactly one** (37 → 38, absent 9 → 8) with no
+  constant changed — the discriminating input, since the old computation returned 46 both times and
+  could not have told the two states apart.
+- **The mutant was BUILT, not predicted** (rule 21): the pre-fix line restored verbatim. It **DIED**
+  — it failed both the V5 census pin and the new MAJOR 1 test. Restored, 14/14 green.
+
+`pnpm verify` **exit VALUE 0** — `apps/core` **148 suites / 1110 tests** (+1), `packages/contracts`
+3/7, `apps/web` 34/175.
+
+### On the live box, deployed and re-run
+
+```
+census (MEASURED from role_permissions): 59 declared · 46 held by a role in THIS database ·
+13 not yet modelled
+READY: … and every role in the model has at least one holder.          exit 0
+```
+
+**Independently confirmed by query rather than by the script's own report** — the discipline that
+found this defect in the first place:
+
+```
+SELECT count(DISTINCT permission) FROM role_permissions;  ->  46
+SELECT count(*) FROM permissions;                         ->  59      46 + 13 = 59
+```
+
+The number is the same 46 the old code claimed. **It is now EARNED rather than asserted**, and on
+the next box — or the next permission declared after first boot — the two would differ, which is the
+entire point.
+
+### What this closes and what it does not
+
+**CLOSES:** MAJOR 1, in full. `seed:roles` can no longer report READY over a deployment that is not.
+
+**DOES NOT CLOSE:** `seed-admin.ts`'s early return is still there. The census now *detects* the
+state it produces and names it; it does not repair it. Granting an `auth.*` permission declared
+after first boot remains a manual act, and **that repair belongs to Plan 11e** with the user-
+administration surface — where `auth.users.manage` and `auth.roles.manage` finally guard routes.
