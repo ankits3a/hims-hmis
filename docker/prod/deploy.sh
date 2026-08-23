@@ -415,7 +415,21 @@ fi
 # and it is worse here: the failure is silent until the first alert nobody receives. Alertmanager
 # keeps its silence and notification logs on a NAMED volume (see the compose file), so a restart
 # costs nothing but a second of gossip-free startup.
-for svc in prometheus grafana alertmanager; do
+# POSTGRES-EXPORTER IS IN THIS LIST AND IT WAS MISSING, FOUND BY DEPLOYING (2026-08-23).
+# Plan 11c T6 added `alertmanager` here and correctly cited §2.77 for it — and left out the
+# other service whose config THIS PLAN ALSO CHANGED. D11's drill-age query is installed into
+# postgres-exporter/queries.yml, that process parses queries.yml ONCE at startup, and
+# `compose up -d` does not recreate a service whose DEFINITION is unchanged. So after a clean
+# deploy the file was correct on disk, correct INSIDE the container (the mount is a directory),
+# and not being served: `hmis_backup_last_drill_pass_age_seconds` had NO SERIES, which means
+# `HmisBackupDrillOverdue` could never fire and the backup-drill watcher D11 exists to provide
+# was INERT — the precise silence D11's own header says it was written to abolish.
+#
+# This is §2.77's third specimen (grafana, prometheus, now postgres-exporter) and the rule it
+# teaches is not "remember this service": it is **every service whose config directory step 2
+# installs must appear in this loop.** Adding a config file to a service is what puts it here.
+# caddy is absent deliberately — it gets an explicit `reload` above, which is stronger.
+for svc in prometheus grafana alertmanager postgres-exporter; do
   if [ -n "$(compose ps -q "$svc" 2>/dev/null)" ]; then
     compose restart "$svc" >/dev/null 2>&1 \
       || die "$svc would not restart after its config was installed — see: compose logs $svc"
