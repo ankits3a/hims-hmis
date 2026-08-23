@@ -137,7 +137,17 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   },
   {
     roleKey: "opd_admin",
-    permissions: ["opd.masters.read", "opd.masters.manage", "opd.config.manage", "opd.appointments.read"],
+    permissions: [
+      "opd.masters.read",
+      "opd.masters.manage",
+      "opd.config.manage",
+      "opd.appointments.read",
+      // Owner ruling 2026-08-23: the OPD masters administrator DRAFTS workflow definitions.
+      // Drafting only — the SoD pair `workflow_drafter_activator` forbids the same person
+      // activating what they drafted, so `.activate` deliberately lives on `owner` instead.
+      "workflow.definitions.draft",
+      "workflow.definitions.read",
+    ],
   },
   { roleKey: "display", permissions: ["opd.display.read"] },
   { roleKey: "pharmacy", permissions: ["opd.prescriptions.verify"] },
@@ -171,25 +181,61 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "approvals.requests.decide",
     ],
   },
+  // ------------------------------------------------------------------------------------------
+  // THE TWO GOVERNANCE ROLES (owner ruling 2026-08-23). Both keys are ALREADY declared by
+  // `OPD_ROLE_KEYS` — the `opd_visit` definition names them in its Class A policy
+  // (`definitions.ts` CHANGE_CLASS_POLICY.A) — and `seed:opd` creates them holding nothing.
+  // Until this ruling they were role keys with no permission column anywhere, which is why
+  // production carried an `owner` role with ZERO grants and no `medical_superintendent` at all,
+  // and why runbook step 4 could not be performed by any account that existed.
+  //
+  // They grant DEFINITION-GOVERNANCE only, never `workflow.instances.*`: approving a change to
+  // the OPD state machine and driving a patient through it are different authorities, and the
+  // second one the OPD module exercises in-process rather than over HTTP.
+  // ------------------------------------------------------------------------------------------
+  {
+    roleKey: "owner",
+    permissions: [
+      "workflow.definitions.approve",
+      // The ACTIVATOR half of the two-key ceremony. `opd_admin` drafts; whoever holds `owner`
+      // activates; `sod.ts`'s `workflow_drafter_activator` pair means they cannot be one person.
+      "workflow.definitions.activate",
+      "workflow.definitions.read",
+    ],
+  },
+  {
+    roleKey: "medical_superintendent",
+    permissions: [
+      // The clinical half of Class A. CHANGE_CLASS_POLICY.A requires an approval from THIS role
+      // as well as from `owner`, so a patient-journey flow cannot be activated on the strength of
+      // administrative sign-off alone. No `.activate`: approving and activating stay separate.
+      "workflow.definitions.approve",
+      "workflow.definitions.read",
+    ],
+  },
 ];
 
 /**
- * THE SEVENTEEN DECLARED PERMISSIONS NO ROLE HOLDS YET, EACH WITH ITS REASON.
+ * THE THIRTEEN DECLARED PERMISSIONS NO ROLE HOLDS YET, EACH WITH ITS REASON.
+ *
+ * SEVENTEEN until 2026-08-23, when the owner ruled the four `workflow.definitions.*` strings onto
+ * roles and this list shrank by four — exactly the mechanism the last paragraph below predicted.
  *
  * THIS IS NOT AN EXCEPTIONS LIST AND MUST NOT BE READ AS ONE. An exception says "unreachable on
- * purpose"; every string below says "no owner ruling exists yet". All seventeen guard a real
- * route today, so each is a decision waiting to be made rather than a door deliberately nailed
- * shut — and writing the second as the first is how a gap becomes a decision nobody made.
+ * purpose". Nine of the thirteen still say "no owner ruling exists yet" — a decision waiting to be
+ * made rather than a door deliberately nailed shut, and writing the second as the first is how a
+ * gap becomes a decision nobody made. The four `workflow.instances.*` strings are now the OTHER
+ * kind and say so in their reason: they guard a controller no live path traverses.
  *
  * The day any of them gains a holder this list shrinks by one, the census in
  * `test/seed-roles.test.ts` fails, and the commit that grants it has to say so.
  */
 export const NOT_YET_MODELLED: readonly NotYetModelled[] = [
+  // The four `workflow.definitions.*` strings LEFT this list on 2026-08-23: the owner ruled the
+  // Class A ceremony onto `opd_admin` (draft), `owner` (approve + activate) and
+  // `medical_superintendent` (approve). See ROLE_MODEL above and the README paragraph beneath the
+  // OPD permission table. The four below stay, and the reason is now specific rather than pending.
   ...[
-    "workflow.definitions.draft",
-    "workflow.definitions.approve",
-    "workflow.definitions.activate",
-    "workflow.definitions.read",
     "workflow.instances.start",
     "workflow.instances.transition",
     "workflow.instances.read",
@@ -197,9 +243,9 @@ export const NOT_YET_MODELLED: readonly NotYetModelled[] = [
   ].map((permission) => ({
     permission,
     reason:
-      "workflow activation is a two-key Class A ceremony (README, OPD runbook step 3) whose " +
-      "assignment is per-definition and per-environment; no published table models it and no " +
-      "owner ruling assigns it to a role key yet",
+      "the generic workflow-instance controller is not on any live path: `modules/opd/encounters.ts` " +
+      "calls `startInstance` and `transition` in-process, so the OPD flow never traverses these " +
+      "routes; granting them would mint authority no role needs (owner ruling 2026-08-23)",
   })),
   ...[
     "tariff.read",

@@ -68,6 +68,29 @@ const RULING_7_PAIRS: readonly string[] = [
   "vitals_desk/patients.update",
 ];
 
+/** The README prose line that authorises the 2026-08-23 workflow ruling. Quoted, not paraphrased. */
+const WORKFLOW_RULING_README_PROSE =
+  "Owner ruling of 2026-08-23 assigns the four `workflow.definitions.*` strings, which appear in no";
+
+/**
+ * The seven (role, permission) pairs the 2026-08-23 workflow ruling added, which appear in NEITHER
+ * README table. The SECOND set of non-table rows, and the reason V3's last leg compares against a
+ * union rather than a single constant: `workflow.*` is declared by the workflow manifest and has no
+ * permission column anywhere, exactly as ruling 7's `patients.*` pairs do not.
+ */
+const WORKFLOW_RULING_PAIRS: readonly string[] = [
+  "medical_superintendent/workflow.definitions.approve",
+  "medical_superintendent/workflow.definitions.read",
+  "opd_admin/workflow.definitions.draft",
+  "opd_admin/workflow.definitions.read",
+  "owner/workflow.definitions.activate",
+  "owner/workflow.definitions.approve",
+  "owner/workflow.definitions.read",
+];
+
+/** Both non-table sets. A model row outside this union fails V3's last leg. */
+const NON_TABLE_PAIRS: readonly string[] = [...RULING_7_PAIRS, ...WORKFLOW_RULING_PAIRS];
+
 type GrantTable = {
   roles: string[];
   /** permission -> the roles ticked for it */
@@ -228,7 +251,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     expect(installedRegistry().allPermissions()).toHaveLength(59);
   });
 
-  it("the role model is nine roles, fifty-four grants, thirty-three distinct permissions", () => {
+  it("the role model is eleven roles, sixty-one grants, thirty-seven distinct permissions", () => {
     expect(ROLE_MODEL.map((r) => r.roleKey)).toEqual([
       "front_office",
       "front_office_supervisor",
@@ -239,20 +262,25 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       "pharmacy",
       "cashier",
       "billing_manager",
+      // The two governance roles, added by the 2026-08-23 workflow ruling.
+      "owner",
+      "medical_superintendent",
     ]);
     expect(Object.fromEntries(ROLE_MODEL.map((r) => [r.roleKey, r.permissions.length]))).toEqual({
       front_office: 9,
       front_office_supervisor: 10,
       vitals_desk: 5,
       doctor: 7,
-      opd_admin: 4,
+      opd_admin: 6,
       display: 1,
       pharmacy: 1,
       cashier: 8,
       billing_manager: 9,
+      owner: 3,
+      medical_superintendent: 2,
     });
-    expect(modelPairs()).toHaveLength(54);
-    expect(modelPermissions()).toHaveLength(33);
+    expect(modelPairs()).toHaveLength(61);
+    expect(modelPermissions()).toHaveLength(37);
     // No role lists the same permission twice — a duplicate would inflate the counts above
     // without changing a single row of `role_permissions`.
     for (const role of ROLE_MODEL) {
@@ -260,10 +288,11 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     }
   });
 
-  it("the reachability census closes: 59 declared = 42 held + 17 not yet modelled", () => {
+  it("the reachability census closes: 59 declared = 46 held + 13 not yet modelled", () => {
     expect(installedRegistry().allPermissions()).toHaveLength(59);
-    expect(heldPermissions()).toHaveLength(42);
-    expect(NOT_YET_MODELLED).toHaveLength(17);
+    // 42 + 13 until the 2026-08-23 ruling moved the four `workflow.definitions.*` strings across.
+    expect(heldPermissions()).toHaveLength(46);
+    expect(NOT_YET_MODELLED).toHaveLength(13);
     expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(59);
   });
 
@@ -330,14 +359,14 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       "doctor",
       "opd_admin",
       "display",
-    ]);
-    expect(modelKeys.filter((k) => !opdKeys.includes(k))).toEqual(["pharmacy", "cashier", "billing_manager"]);
-    expect(opdKeys.filter((k) => !modelKeys.includes(k))).toEqual([
-      "nurse",
-      "duty_manager",
+      // `OPD_ROLE_KEYS` declared these two all along — the `opd_visit` Class A policy names them.
+      // Before the 2026-08-23 ruling they were the third and fourth entries of the list below:
+      // role keys with a title and no permission column anywhere.
       "owner",
       "medical_superintendent",
     ]);
+    expect(modelKeys.filter((k) => !opdKeys.includes(k))).toEqual(["pharmacy", "cashier", "billing_manager"]);
+    expect(opdKeys.filter((k) => !modelKeys.includes(k))).toEqual(["nurse", "duty_manager"]);
     // The UNION covers the model exactly, and neither source shadows the other.
     expect(Object.keys(LOCAL_ROLE_TITLES).sort()).toEqual(["billing_manager", "cashier", "pharmacy"]);
     expect(Object.keys(LOCAL_ROLE_TITLES).filter((k) => opdKeys.includes(k))).toEqual([]);
@@ -400,10 +429,9 @@ describe("seed:roles — the reachability invariant (V1, V2)", () => {
       "tariff.services.manage",
       "tariff.versions.activate",
       "tariff.versions.draft",
-      "workflow.definitions.activate",
-      "workflow.definitions.approve",
-      "workflow.definitions.draft",
-      "workflow.definitions.read",
+      // The four `workflow.definitions.*` strings left this list on 2026-08-23 — see
+      // WORKFLOW_RULING_PAIRS. The four instance strings below stay, and their reason is now
+      // "no live path traverses that controller" rather than "no ruling exists yet".
       "workflow.instances.read",
       "workflow.instances.remediate",
       "workflow.instances.start",
@@ -415,7 +443,7 @@ describe("seed:roles — the reachability invariant (V1, V2)", () => {
 describe("seed:roles — README parity, cell for cell (V3)", () => {
   it("V3: the two tables and the model agree over the table-derived subset, both directions", () => {
     const fromReadme = [...tablePairs(opdTable), ...tablePairs(billingTable)].sort();
-    const fromModel = modelPairs().filter((pair) => !RULING_7_PAIRS.includes(pair));
+    const fromModel = modelPairs().filter((pair) => !NON_TABLE_PAIRS.includes(pair));
     expect(fromReadme).toHaveLength(46);
     // Direction 1: nothing the README ticks is missing from the model.
     expect(fromReadme.filter((p) => !fromModel.includes(p))).toEqual([]);
@@ -424,12 +452,15 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(fromModel).toEqual(fromReadme);
   });
 
-  it("V3: the eight patients.* pairs are exactly the model's non-table rows, with the README prose quoted", () => {
+  it("V3: ruling 7's eight and the workflow ruling's seven are exactly the model's non-table rows, with both README prose lines quoted", () => {
     const fromReadme = new Set([...tablePairs(opdTable), ...tablePairs(billingTable)]);
     const nonTable = modelPairs().filter((pair) => !fromReadme.has(pair));
     // This is the leg that stops the subset scoping above becoming a hole: a model row that is
-    // neither table-derived nor one of owner ruling 7's eight pairs fails HERE.
-    expect(nonTable).toEqual([...RULING_7_PAIRS].sort());
+    // neither table-derived nor one of the two rulings' fifteen pairs fails HERE.
+    expect(nonTable).toEqual([...NON_TABLE_PAIRS].sort());
+    expect(NON_TABLE_PAIRS).toHaveLength(15);
+    // The workflow ruling's own source sentence, held to the same standard as ruling 7's below.
+    expect(readme).toContain(WORKFLOW_RULING_README_PROSE);
     // The reason those eight exist, located in the shipped README rather than paraphrased. The
     // ruling transcribes a stated intent; if the sentence goes, the transcription is unsourced.
     expect(readme).toContain(RULING_7_README_PROSE);
@@ -454,19 +485,21 @@ describe("seed:roles — executed against a database (V5)", () => {
 
   it("V5: is idempotent — the second run creates nothing, grants nothing, and still reports the census", async () => {
     const first = await seedRoles(db);
-    expect(first.roles.map((r) => r.created)).toEqual(Array(9).fill(true));
-    expect(first.roles.map((r) => r.granted.length)).toEqual([9, 10, 5, 7, 4, 1, 1, 8, 9]);
+    expect(first.roles.map((r) => r.created)).toEqual(Array(11).fill(true));
+    // The last two are the governance roles the 2026-08-23 ruling added: `owner` 3, `medical_
+    // superintendent` 2. `opd_admin` went 4 -> 6 with the two definition-drafting strings.
+    expect(first.roles.map((r) => r.granted.length)).toEqual([9, 10, 5, 7, 6, 1, 1, 8, 9, 3, 2]);
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
     expect(first.declared).toBe(59);
-    expect(first.held).toBe(42);
-    expect(first.notYetModelled).toBe(17);
+    expect(first.held).toBe(46);
+    expect(first.notYetModelled).toBe(13);
 
     // `createRole` is a BARE INSERT and is not idempotent; the guard around it is what makes this
     // run exit rather than die on a duplicate key.
     const second = await seedRoles(db);
-    expect(second.roles.map((r) => r.created)).toEqual(Array(9).fill(false));
+    expect(second.roles.map((r) => r.created)).toEqual(Array(11).fill(false));
     expect(second.roles.every((r) => r.granted.length === 0)).toBe(true);
-    expect(second.roles.map((r) => r.already.length)).toEqual([9, 10, 5, 7, 4, 1, 1, 8, 9]);
+    expect(second.roles.map((r) => r.already.length)).toEqual([9, 10, 5, 7, 6, 1, 1, 8, 9, 3, 2]);
 
     // And the database holds the model exactly once.
     const written = await db
@@ -481,6 +514,6 @@ describe("seed:roles — executed against a database (V5)", () => {
     // A role with no holder is REPORTED rather than silently absent — grants without holders are
     // still 403 for every user on the deployment, and the verdict line has to say so.
     expect(report.ready).toBe(false);
-    expect(report.problems.join(" ")).toContain("NO USER HOLDS ANY OF THE 9 ROLES");
+    expect(report.problems.join(" ")).toContain("NO USER HOLDS ANY OF THE 11 ROLES");
   });
 });

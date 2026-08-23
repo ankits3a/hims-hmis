@@ -226,6 +226,15 @@ permission and the role.
 Plan 05's `patients.register` / `patients.read` (and `patients.update` for quick allergies) stay
 with the desk and vitals roles — the OPD screens read demographics through the patients module.
 
+Owner ruling of 2026-08-23 assigns the four `workflow.definitions.*` strings, which appear in no
+table above: `opd_admin` DRAFTS (`workflow.definitions.draft`), an `owner`-role user and a
+`medical_superintendent`-role user each APPROVE (`workflow.definitions.approve`), and the `owner`
+role ACTIVATES (`workflow.definitions.activate`); all three roles may `workflow.definitions.read`.
+Drafter and activator are therefore different people, which is what the `workflow_drafter_activator`
+SoD pair requires. The four `workflow.instances.*` strings stay deliberately ungranted: the OPD
+flow calls `startInstance` and `transition` in-process from `modules/opd/encounters.ts`, never
+through that controller, so granting them would mint authority nobody needs.
+
 ### Go-live runbook — OPD (owner steps, once per environment)
 1. `pnpm --filter @hmis/core seed:opd` — the `opd_config` row (slot length, follow-up defaults,
    danger ranges, letterhead, skip cap; perk hook off), the OPD role keys and the placeholder
