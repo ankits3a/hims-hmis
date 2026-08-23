@@ -226,3 +226,105 @@ Landed here, as 11c's gate report is the precedent.
    credential-reset flow, `auth.users.manage`/`auth.roles.manage` finally guarding routes, and
    §3.42's four legs from day one. **Its trigger has arrived**: the pilot gets staff the moment flag
    ③ runs. It also inherits **MAJOR 1**, the password-policy gap, and the `workflow.*` ruling.
+
+---
+
+## ADDENDUM — 2026-08-24 evening: THE DEPLOY RAN, and flag ③'s ROLES HALF IS DISCHARGED
+
+Written by the executing session on the owner's explicit authorization, naming the operation:
+*"run the deploy, I authorize the docker compose operation."* **The body above is left exactly as
+written** (the 11a/11c discipline). This says what changed.
+
+### A PHASE-6 ORDERING DEFECT, found by checking rather than assuming
+
+**The execute prompt lists `deploy.sh` as step 5, AFTER `seed:roles` and `seed:staff`. That order
+cannot work.** Measured before touching anything: the running production image contained
+`seed-admin.js` and `seed-ops.js` but **not `seed-roles.js` or `seed-staff.js`** — those scripts did
+not exist in the deployed bytes. `deploy.sh` builds images **from the checkout**, so it must run
+FIRST or every seed step fails on a missing file.
+
+**The corrected order, and the one that ran:** `deploy.sh` → `seed:roles` → read the join back →
+`seed:staff` → re-run → verify monitoring through the service's own API → a real login.
+
+### The deploy — exit VALUE 0, read from a FILE
+
+Run detached (rule 18 — a dropped link mid-deploy destroys the evidence). **Exit VALUE `0`.**
+
+```
+==> 6b/8 every declared service is up
+    all 9 declared services running: db worker node-exporter postgres-exporter
+                                     prometheus grafana alertmanager api caddy
+==> 8/8 /health through Caddy over HTTPS
+    HTTP 200 {"status":"ok","db":"ok","worker":"ok"}
+==> hmis-prod is up: https://hmis.crkmch.com
+```
+
+**Rule 7 roster, read before and after: 10 containers / 8 volumes, UNCHANGED.** `hmis-db-1` **Up 12
+days** throughout — the dev database was never touched. `api`, `worker` and `caddy` were rebuilt from
+the checkout; `prometheus`, `grafana`, `alertmanager` and `postgres-exporter` were **restarted so
+they re-read their configs** — §2.77's rule, now in the script, doing exactly its job.
+
+### T5's monitoring changes are LIVE, confirmed through the services' own APIs (§2.77)
+
+**Not by `ls` inside a container** — a file visible in a container is not evidence that the process
+read it.
+
+- **`/api/v1/targets`: `alertmanager -> up`.** D7's new scrape job is live and healthy, alongside
+  `node`, `postgres` and `prometheus`.
+- **`/api/v1/rules`: THREE rule files, EIGHT rules** — `alerts.yml` 3, `alerts-backup.yml` 2,
+  **`alerts-meta.yml` 3** (`HmisAlertmanagerDown`, `HmisAlertNotificationsFailing`,
+  `HmisPrometheusCannotReachAlertmanager`). Exactly the census the plan predicted.
+- **Zero alerts firing.** A healthy system, and now one that can say so about its own alert path.
+
+**MAJOR 3's email half is closed on the live box.** Its in-app half is not — see the discovery
+review's out-of-brief finding.
+
+### Flag ③, ROLES HALF — DISCHARGED, and verified at the level `PermissionGuard` reads
+
+`seed:roles` through the shipped image, **exit VALUE 1**, and **that is the CORRECT outcome**: the
+remediation the owner approved makes the exit code follow the verdict, and the verdict is
+`!! NOT READY — roles with zero holders` until humans hold them. **Before that fix this run would
+have exited 0 while naming eight unreachable roles.** MINOR 3 closing itself on its first live use.
+
+**Every role reported `0 granted, N already`.** The owner confirmed, asked rather than inferred
+(rule 8), that **they had run `seed:roles` against production earlier** and had assigned
+`front_office_supervisor` to `admin` by hand. So **this run is the INDEPENDENT SECOND RUN, and
+idempotence is proven on the live system** rather than in a drill — which is what step 4 exists for,
+arriving one step early.
+
+**The join read back — `users → role_assignments → role_permissions`, NOT the script's own report.**
+This is the check MAJOR 1 makes non-optional, since `seed:roles` computes its census from source
+constants:
+
+| role | granted on production |
+|---|---|
+| `front_office` | `opd.appointments.manage/read` · `opd.masters.read` · `opd.queue.read` · `opd.visits.open/read` · **`patients.read` · `patients.register` · `patients.update`** |
+| `vitals_desk` | `opd.queue.read` · `opd.visits.read` · `opd.vitals.record` · **`patients.read` · `patients.update`** — and **NO `patients.register`** |
+| `billing_manager` | 7 × `billing.*` · **`approvals.requests.read` · `approvals.requests.decide`** |
+| `pharmacy` · `display` | `opd.prescriptions.verify` · `opd.display.read` |
+
+**66 grant rows = 54 (the nine model roles) + 9 (`admin`'s `auth.*`) + 3 (`duty_manager`'s `ops.*`).**
+Catalog: 59 across eight modules.
+
+**Owner ruling 7 is LIVE on the hospital's box**: `front_office` can register a patient and
+`vitals_desk` deliberately cannot. **The billing table's shorthand cell expanded into TWO
+permissions** rather than being silently skipped — D3's third transcription trap, handled.
+
+**Before 11d, `admin` held nine of fifty-nine and fifty were held by nobody. That is now fifty-four
+grants across nine roles that a human can be given.**
+
+### What is STILL open after this addendum
+
+1. **`seed:staff` HAS NOT RUN — the owner's roster is not yet supplied.** Production still has
+   **ONE user (`admin`), with NO PIN**. Nothing can log in as a front-office clerk, a cashier or a
+   doctor, so **the roles above are authority nobody holds.**
+2. **Flag ③'s STAFF half is UNDISCHARGED, and step 6 — a real login reaching one granted route and
+   one refused — with it.** That login is the only evidence the whole chain works, and no test in
+   the pipeline can produce it.
+3. **The go-live runbook still cannot be completed end to end.** `workflow.definitions.approve` is
+   not-yet-modelled under ruling 7, so no account can perform the two-key `opd_visit` activation
+   that runbook step 4 demands. **Needs an owner ruling; it is the shortest remaining path from
+   "operable" to "a patient can be seen".**
+4. **MAJOR 1 stays booked.** `seed:roles`'s census is computed from source constants — on this box
+   the numbers are right because `seed:admin` and `seed:ops` have both run, which is luck rather
+   than design. The join above is what makes this addendum's claim evidence.
