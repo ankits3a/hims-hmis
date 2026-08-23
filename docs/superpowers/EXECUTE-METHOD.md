@@ -1,5 +1,11 @@
 # Execute method v2 — how a plan becomes shipped code
 
+> **2026-08-23 — v3 adopted for phases after Plan 11d** ([`EXECUTE-METHOD-V3.md`](EXECUTE-METHOD-V3.md),
+> evidence in [`plans/reports/METHOD-REVIEW-2026-08-23.md`](plans/reports/METHOD-REVIEW-2026-08-23.md)).
+> **Plan 11d runs to completion under this document, unchanged** — it was compiled under v2, and a
+> method never changes under a running pipeline. From the first post-11d phase, this document
+> remains in force as the HEAVY-lane pipeline manual that v3 §2 invokes.
+
 Adopted 2026-08-19 after the method review
 ([`plans/reports/METHOD-REVIEW-2026-08-19.md`](plans/reports/METHOD-REVIEW-2026-08-19.md)),
 which measured cost per agent tripling from 75k (Plan 04) to 204k (Plan 08) with no
