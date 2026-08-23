@@ -1108,10 +1108,23 @@ Rows marked **P** carry inputs the task must confirm by building the mutant and 
 | V20 | T6 | A heartbeat landing mid-sweep is not overwritten by a false `interface.down` | drop the `lastSeenAt` predicate | ≥15 rounds (a floor): a heartbeat interleaved between the sweep's read and its claim → shipped: status stays `up`, **zero** `interface.down` events; mutant: the 14/15 false-down window reappears and is quoted | **P/M** |
 | V21 | T6 | The legitimate path is unharmed — a genuinely stale interface is STILL downed | (none — §3.44's not-over-broad control, and it must stay GREEN) | a stale `up` interface whose `lastSeenAt` does not move → downed, exactly one `interface.down`. **A predicate one term too wide passes every other row in this Book** | |
 
-**Required-DIED mutant count: ~~26~~ 27** — R1 (1, Phase 0) · T1 (6: V1, V2, V3×2, V4, V5) ·
-T2 (4) · T3 (4) · T4 (5: V14, V15×2, V16, V17) · **T5 (6: V18a×3, V18b×2, V19)** · T6 (1).
-**The 27th is the spike's** — V18a's third mutant, which exists because `promtool` reports SUCCESS
-at exit VALUE 0 for a healthy file that simply omits the series a rule reads. **Two measured races**
+**Required-DIED mutant count: ~~26~~ ~~27~~ 29** — R1 (1, Phase 0) · **T1 (8: V1, V2×2, V3×3, V4,
+V5)** · T2 (4) · T3 (4) · T4 (5: V14, V15×2, V16, V17) · **T5 (6: V18a×3, V18b×2, V19)** · T6 (1).
+**The count moved TWICE after the plan was written, both times because something was measured rather
+than reasoned about, and §2.68 says the target moves with the Book:**
+
+- **26 → 27, the spike's.** V18a's third mutant exists because `promtool` reports SUCCESS at exit
+  VALUE 0 for a healthy file that simply omits the series a rule reads — so an `exp_alerts: []` leg
+  proves a rule did not FIRE, never that it was EVALUATED.
+- **27 → 29, owner ruling 7's.** V2 gains the mutant that moves one string into the
+  not-yet-modelled list (the census counts must fail before any reason is read, or that list becomes
+  a place to hide an orphan), and V3 gains the one that deletes a `patients.*` pair (proving the
+  table-parity leg and the ruling-7 leg are independent rather than one leg wearing two hats).
+
+**Budget consequence, stated rather than absorbed:** the plan derived ≤3.4M from 26 mutants and
+16-18 agents. Three more mutants land on two tasks that were already the plan's most expensive, so
+**the honest target is ≤3.6M** — and Plan 10's §2.68 lesson was precisely that inheriting a number
+instead of re-deriving it is the mistake, not overspending against a re-derived one. **Two measured races**
 (V10, V20) at a floor of 15 rounds each. **Two drills**: the `promtool` run in both directions, and
 the spike's read-only production query. **V21 is a required-GREEN control, not a mutant**, and a
 task that reports it as a kill has misread it.
