@@ -179,3 +179,82 @@ two commits as never-dispatched on exactly this basis.
 **The rule: always query CI by FULL SHA, and treat an empty result as "the query was wrong" until the
 full SHA has been tried.** The execute prompt already says "CI green by FULL SHA" — this is the
 measurement that shows the word FULL is load-bearing rather than stylistic.
+
+## 2026-08-24 · T5's gate · `deploy.sh` still carries a FOURTH hand-maintained copy of the rule-file census
+
+**MEASURED, and it is the highest-value follow-up this run produced.** `deploy.sh:216` reads
+`note "prometheus/{prometheus,alerts,alerts-backup,alerts-meta}.yml, …"` — the deploy's on-screen
+manifest of what step 2 copied. **T5 had to hand-edit that brace-list precisely because nothing
+enforces it**, in the very file whose "two hand-maintained lists" D8 was written to unify. Next time
+it will be forgotten and the deploy will print a manifest omitting a file it just installed —
+§2.77's shape surviving one level out.
+
+**The fix is about six lines**: a fourth leg in `deploy-parity.test.ts` asserting the brace-list
+equals `installedPrometheusFiles(stepTwo)`. **Deliberately NOT done in this run** — `deploy-parity.
+test.ts` is T5's shipped file and its gate has already passed; adding a test leg to it after the
+fact, with no task owning the work, is precisely the unowned scope creep this method exists to
+prevent. **Booked for the next infra plan.**
+
+## 2026-08-24 · T5's gate · flag ④ is evidenced but NOT reproducible from a checkout
+
+**MEASURED.** The `promtool` drill files (`rules_test_fire.yml`, `rules_test_healthy.yml`) were
+scratch and are gone, because the Files list is locked to five paths. So the alert rules were proven
+once and **nothing re-runs that proof**. T5's phrase is the right name for it: *"the difference
+between was-proven-once and stays-proven."*
+
+**Deleting them was correct, and the gate found a second, executable reason beyond scope:**
+`ruleFilesOnDisk()` globs `*.yml` in `docker/prod/prometheus/` excluding only `prometheus.yml`, so a
+`rules_test_*.yml` committed beside the rules would have **failed leg 2 of the very test that commit
+ships.** Not merely out of scope — self-defeating.
+
+**What a later plan should ship, concretely** (from T5's gate): the drill files in a
+**subdirectory** (`readdirSync` is non-recursive, so a subdir is invisible to the shipped parser —
+verify that before shipping) · the healthy file carrying its `promql_expr_test` presence legs, as a
+stated convention for every future rule file · a CI step running `promtool test rules` in the pinned
+`prom/prometheus:v2.53.0` — **which is an OWNER action, because rule 10 forbids the build host
+pushing `.github/workflows/*`** · and if that stalls, a fallback leg in `deploy-parity.test.ts`
+asserting the drill file pins every series each rule's `expr` names.
+
+## 2026-08-24 · T6's gate · V21 is the ONLY assertion standing between D10's fix and a total loss of interface-down detection
+
+**MEASURED, and it is the cleanest §3.44 discharge this project has produced.** The gate built the
+over-wide predicate — truncating the compared instant to whole seconds, so any sighting with
+sub-second digits can never match and **every stale interface stays `up` for ever**:
+
+| run | verdict |
+|---|---|
+| over-wide mutant vs **V21** | **DIED** — `- Array [ "01M0QSMW…" ] / + Array []` |
+| over-wide mutant vs **V20** | **SURVIVED**, exit 0, `falseDown: 0` |
+| over-wide mutant vs **the whole file** | **11 of 12 PASS** — V21 the sole failure |
+
+**Every other assertion in the file, including V20 and the four pre-existing rows, passes against a
+predicate that has disabled the feature entirely.** That is §3.44's claim — *a guard one term too
+wide is invisible to every mutant in the set, because they only exercise the defect's own path* —
+demonstrated rather than argued.
+
+**And the reason V21 could catch it at all is a fixture decision:** the sighting is written by the
+shipped `recordHeartbeat` and round-trips through Postgres, carrying sub-second digits, rather than
+being hand-set. A hand-set whole-second fixture would have hidden the precision bug completely.
+
+## 2026-08-24 · T6's gate · the anti-vacuity leg is what stops V20 becoming a green that means nothing
+
+**MEASURED.** The gate built a probe that removes the race without touching any assertion —
+awaiting the sweep fully *before* the heartbeat. Result: the **primary assertion PASSED**
+(`falseDown: 0, unclassified: 0`) and only `expect(observed.heartbeatKeptItUp).toBeGreaterThan(0)`
+failed, `Expected: > 0 / Received: 0`. A race test that has stopped racing looks exactly like a race
+test that passes. **Every measured-race row in this project should carry an anti-vacuity leg naming
+the interleaving it requires**; V10's and V20's now do, and the pattern is worth generalising.
+
+## 2026-08-24 · minor, routed forward from the final corrections
+
+- **`interfaces.ts`'s file header** was non-exhaustive after D10 (it described the sweep's claim as
+  `WHERE status = 'up'`). **Corrected in place.** T6 was right to flag rather than fix it in-task —
+  the sentence was TRUE for the property it argues and merely narrower, and a false statement must
+  be fixed in-task while a true-but-narrower one is a finding to route.
+- **`ops.controller.ts`'s provenance tag** attributed the 42/17 split to §B-MEASURED, which cannot
+  contain it — production has never run `seed:roles`. **Corrected** to cite the shipped test that
+  pins it. Every number was right; only the citation was wrong. Worth the fix precisely because that
+  comment exists because a reader trusted its predecessor's provenance.
+- **`deploy-parity.test.ts` cited `deploy.sh:432` and `:386`**, both invalidated by the five lines
+  its own commit added to step 2 (actual `:437` and `:391`). **Corrected.** §2.60 arriving on the day
+  a file was written, which is the fastest this project has seen it.

@@ -197,7 +197,11 @@ export class OpsController {
    * into grants some role actually holds, and a deployment that has not run it has an `admin` who
    * can declare a mode and administer users and nothing else.
    *
-   * MEASURED against the live database, 2026-08-24 (§B-MEASURED): the catalog declares 59
+   * MEASURED, 2026-08-24. The nine above and the fifty orphans are from the LIVE DATABASE
+   * (plan §B-MEASURED). The 42/17 split below is from the SHIPPED TEST that pins it,
+   * `test/seed-roles.test.ts` — §B-MEASURED could not contain it, because `seed:roles` has never
+   * run against production. Provenance matters here more than usual: this comment exists
+   * because a reader trusted its predecessor's. The catalog declares 59
    * permissions; after `seed:roles` 42 are held by some role and 17 are BOOKED as not-yet-modelled
    * (owner ruling 7). Before 11d, `admin` held nine and the other fifty were held by nobody.
    *

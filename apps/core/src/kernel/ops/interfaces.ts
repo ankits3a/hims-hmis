@@ -33,7 +33,9 @@ import type { Db, Tx } from "../db/client";
 // The scheduler's advisory lock is noise-reduction ONLY (`kernel/worker/scheduler.ts` D3) — no
 // sweep's correctness may depend on it — so two workers running this sweep in the same second must
 // not both append `interface.down` for the same device. `UPDATE … WHERE status = 'up' RETURNING`
-// is the shipped single-winner shape: the loser updates zero rows, gets an empty array back and
+// is the shipped single-winner shape (and since 11d D10 the SWEEP's own claim additionally names
+// `last_seen_at` — this sentence describes the property, not the whole WHERE clause):
+// the loser updates zero rows, gets an empty array back and
 // appends nothing.
 
 /** The three statuses `interfaces.status` may hold. `unknown` is what a fresh registration is. */

@@ -11,7 +11,7 @@ import { resolve } from "node:path";
  * Plan 11c, which left the backup-drill watcher D11 exists to provide INERT — a watcher that
  * cannot fire is indistinguishable from a system that is fine.
  *
- * The rule that was earned was written into a source comment above the loop at `deploy.sh:432`:
+ * The rule that was earned was written into a source comment above the loop at `deploy.sh:437`:
  *
  *     "every service whose config directory step 2 installs must appear in this loop"
  *
@@ -50,13 +50,13 @@ const PROMETHEUS_YML = resolve(PROMETHEUS_DIR, "prometheus.yml");
 
 /**
  * The one declared exception to leg 1, and its reason. `caddy` gets an explicit
- * `caddy reload --config …` at `deploy.sh:386`, which is strictly stronger than a container
+ * `caddy reload --config …` at `deploy.sh:391`, which is strictly stronger than a container
  * restart: it re-reads the config with no dropped connection at all. An exemption is only honest
  * if the thing it exempts is real, so the leg below asserts BOTH that caddy is genuinely a
  * populated service AND that the reload it is exempted for is actually in the script.
  */
 const RESTART_EXEMPT = new Map<string, string>([
-  ["caddy", "gets an explicit `caddy reload` at deploy.sh:386, which is stronger than a restart"],
+  ["caddy", "gets an explicit `caddy reload` at deploy.sh:391, which is stronger than a restart"],
 ]);
 
 /** `prometheus.yml` is Prometheus's CONFIG file, not one of its rule files. */
