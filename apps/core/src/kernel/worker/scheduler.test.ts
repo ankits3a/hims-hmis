@@ -115,8 +115,45 @@ async function settleRealTurns(turns: number): Promise<void> {
  * stated rather than papered over: **on a container so starved that the WALK alone exceeds 15 s,
  * nothing in this test can produce a clean failure** — the timeout is then a fact about the
  * harness, not about the census, and no bound here changes that.
+ *
+ * THE "~10 s FOR THE WALK" HALF OF THAT PARAGRAPH IS NO LONGER THE ARITHMETIC — Plan 11d, D11,
+ * 2026-08-24. The bound was right; the BUDGET was not. `jest.config.cjs`'s `testTimeout: 15000`
+ * is one workspace-wide number, and the census is the single test in 144 suites that drives real
+ * database round-trips through a 9 h 5 min fake-clock walk. So it now carries a budget of its own
+ * as jest's THIRD ARGUMENT to `it(...)` — `CENSUS_TIMEOUT_MS` below — and `jest.config.cjs` is
+ * deliberately untouched: raising the global would stretch every genuine hang across all 144
+ * suites from 15 s to two minutes and buy nothing anywhere else.
+ *
+ * WHERE 120 000 COMES FROM — measured, not chosen (build host, isolated, at `58e0e61`):
+ *   · the census walk costs 3 082 ms on this box, and CI has measured 37.6 s for the same walk
+ *     against this box's 2.9 s — a 12.97x ratio, so today's walk projects to ~40 s on CI;
+ *   · one settle turn costs 1.11 ms — a scratch copy with the bound forced to 20 000 turns took
+ *     25 348 ms against the 3 082 ms walk, so the extra 20 000 turns bought 22 266 ms — which
+ *     puts a FULL 5 000-turn bound hit at ~5.6 s;
+ *   · walk plus full bound hit is therefore ~46 s at CI's measured worst, and 120 000 ms clears
+ *     that by 2.6x. CI has to get 2.6x slower than the slowest this census has ever been
+ *     measured before the budget is the binding constraint again.
+ *
+ * WHAT A BOUND HIT NOW PRODUCES, which is the entire point of the number. Measured BOTH ways
+ * against a scratch copy that reproduces `e31538b`: its census is made UNSATISFIABLE (two of the
+ * ten jobs never recorded, the same two CI lost) and its bound forced to 20 000 turns so the poll
+ * actually runs to it.
+ *   · under the OLD 15 s budget — `thrown: "Exceeded timeout of 15000 ms for a test."`, pointing
+ *     at the `it(...)` line and naming NOTHING. The `console.warn` further down does eventually
+ *     print, but only after teardown, next to a `Jest environment ... torn down` ReferenceError;
+ *   · under this budget — `settleUntil` returns on the bound hit, the set assertion runs, and the
+ *     failure is `expect(received).toEqual(expected)` listing `"runNotifyPump"` and
+ *     `"sweepExpiredTempRoles"` by name. A diagnosis instead of a stopwatch.
+ * A 1-turn bound, which is how the Assertion Book first wrote this mutant, discriminates nothing
+ * and in fact fails nothing: on a healthy box every job has already been recorded by the time
+ * `settleUntil` is reached, so `done()` is true on turn 0 and the bound is never touched.
+ *
+ * The honest limit above survives all of this, restated at the new number: on a container so
+ * starved that the WALK ALONE exceeds 120 s, the timeout is still a fact about the harness and
+ * not about the census, and no budget here changes that either.
  */
 const SETTLE_BOUND_TURNS = 5_000;
+const CENSUS_TIMEOUT_MS = 120_000;
 
 async function settleUntil(done: () => boolean, maxTurns = SETTLE_BOUND_TURNS): Promise<boolean> {
   for (let i = 0; i < maxTurns; i += 1) {
@@ -546,7 +583,7 @@ describe("Scheduler", () => {
         for (const s of spies) s.mockRestore();
         await fresh.close();
       }
-    });
+    }, CENSUS_TIMEOUT_MS);
 
     /**
      * M-S2's GRAVE — the mutant that survived the census above, and the reason this second test
