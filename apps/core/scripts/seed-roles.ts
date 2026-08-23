@@ -333,7 +333,7 @@ export async function seedRoles(db: Db): Promise<SeedRolesReport> {
     .select({ roleKey: rolePermissions.roleKey, permission: rolePermissions.permission })
     .from(rolePermissions)
     .where(inArray(rolePermissions.roleKey, modelKeys));
-  const alreadyGranted = new Set(existingGrants.map((g) => `${g.roleKey} ${g.permission}`));
+  const alreadyGranted = new Set(existingGrants.map((g) => `${g.roleKey}\u0000${g.permission}`));
 
   const outcomes: RoleOutcome[] = [];
   for (const { roleKey, permissions } of ROLE_MODEL) {
@@ -342,7 +342,7 @@ export async function seedRoles(db: Db): Promise<SeedRolesReport> {
     const granted: string[] = [];
     const already: string[] = [];
     for (const permission of permissions) {
-      if (alreadyGranted.has(`${roleKey} ${permission}`)) {
+      if (alreadyGranted.has(`${roleKey}\u0000${permission}`)) {
         already.push(permission);
         continue;
       }
