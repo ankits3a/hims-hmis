@@ -11,6 +11,7 @@ import { assignRole, grantPermissionToRole, syncPermissions } from "../src/kerne
 import { authManifest } from "../src/kernel/auth/manifest";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { USERS_MANAGE } from "../src/kernel/auth/users-admin.controller";
+import { ROLES_MANAGE } from "../src/kernel/auth/roles-admin.controller";
 import type { Db } from "../src/kernel/db/client";
 
 /**
@@ -38,6 +39,7 @@ import type { Db } from "../src/kernel/db/client";
  */
 
 const NO_SUCH_USER = "01JZZZZZZZZZZZZZZZZZZZZZZZ";
+const NO_SUCH_ASSIGNMENT = "01JYYYYYYYYYYYYYYYYYYYYYYY";
 
 /**
  * THE ROUTE → PERMISSION TABLE, TRANSCRIBED FROM THE DECORATORS. Every row is guarded: unlike
@@ -57,6 +59,12 @@ const ADMIN_ROUTES: [method: "get" | "post" | "delete", path: string, permission
   ["post", `/admin/users/${NO_SUCH_USER}/reactivate`, USERS_MANAGE],
   ["post", `/admin/users/${NO_SUCH_USER}/password-reset`, USERS_MANAGE],
   ["post", `/admin/users/${NO_SUCH_USER}/pin-reset`, USERS_MANAGE],
+  // ── T4's two role routes. A DIFFERENT permission on the SAME base path, which is the whole
+  // reason the two controllers are split: `auth.roles.manage` guards changing who holds what,
+  // `auth.users.manage` guards the accounts themselves, and leg 4 can now tell them apart with a
+  // real actor rather than a hypothetical one.
+  ["post", `/admin/users/${NO_SUCH_USER}/roles`, ROLES_MANAGE],
+  ["delete", `/admin/users/${NO_SUCH_USER}/roles/${NO_SUCH_ASSIGNMENT}`, ROLES_MANAGE],
 ];
 
 type AdminUserView = {
@@ -165,7 +173,7 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
     expect({
       routes: ADMIN_ROUTES.length,
       distinctPermissions: new Set(ADMIN_ROUTES.map(([, , p]) => p)).size,
-    }).toEqual({ routes: 6, distinctPermissions: 1 });
+    }).toEqual({ routes: 8, distinctPermissions: 2 });
 
     const { token: roleLess } = await mkUser("holds_nothing", null);
     for (const [method, path, permission] of ADMIN_ROUTES) {
@@ -189,7 +197,7 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
     const guarded = [...new Set(ADMIN_ROUTES.map(([, , permission]) => permission))].sort();
     const declared = [...authManifest.permissions].sort();
 
-    expect(guarded).toHaveLength(1); // T4 makes this 2, and this line is where it says so
+    expect(guarded).toHaveLength(2); // T4 made this 2 — users.manage and roles.manage
 
     // A route demanding a permission NO manifest declares is a route `syncPermissions` leaves
     // ungrantable forever — and leg 1 answers 403 for it exactly as it does for a correct route.
@@ -204,29 +212,40 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
       "auth.break_glass.use",    // auth.controller.ts POST /auth/break-glass
       "auth.break_glass.review", // auth.controller.ts GET/POST /auth/break-glass*
       "auth.temp_role.grant",    // auth.controller.ts POST /auth/temp-roles
-      // STILL GUARDING NOTHING AT T3, and named here rather than hidden so that the state is
-      // VISIBLE for exactly one commit. T4 ships `roles-admin.controller.ts` and DELETES this line;
-      // if it is ever deleted without the routes arriving, this leg fails.
-      "auth.roles.manage",
     ];
     expect(declared.filter((p) => !guarded.includes(p)).sort()).toEqual([...guardedElsewhere].sort());
   });
 
-  it("leg 4 (R8) — THE REPOINT MUTANT'S TARGET: the 403 names auth.users.manage and not some other real string", async () => {
-    // R8's mutant repoints ONE route's decorator at `auth.roles.manage` — a REAL, DECLARED
-    // permission. It cannot be caught by a status code, by a role-less sweep that reads only the
-    // status, or by manifest closure. It is caught HERE, and only here, by the string.
-    const { token: wrongPermission } = await mkUser("holds_roles_manage", ["auth.roles.manage"]);
+  it("leg 4 (R8/R12) — TWO REAL GRANT SETS, each refused on the OTHER's routes BY NAME", async () => {
+    // THE LEG THE REPOINT MUTANT DIES ON, and the only one that can distinguish two real,
+    // DECLARED permission strings from one another. A role-less sweep, a status-only assertion and
+    // manifest closure all pass against a decorator repointed from `auth.users.manage` to
+    // `auth.roles.manage` — both are real, both are declared, and both produce a bare 403.
+    //
+    // Each route is driven by the holder of the OTHER permission, which is what makes the refusal
+    // attributable to the STRING rather than to the actor holding nothing.
+    const holders: Record<string, string> = {
+      [USERS_MANAGE]: (await mkUser("holds_roles_manage", [ROLES_MANAGE])).token,
+      [ROLES_MANAGE]: adminToken, // holds USERS_MANAGE and nothing else
+    };
+
     for (const [method, path, permission] of ADMIN_ROUTES) {
-      const res = await drive(method, path, wrongPermission);
+      const res = await drive(method, path, holders[permission]!);
       expect({ method, path, status: res.status, message: res.body.message }).toEqual({
         method, path, status: 403, message: `missing permission ${permission}`,
       });
     }
-    // …and the control: the RIGHT permission is admitted on the same routes. Without this the leg
-    // above would pass against a controller that refused everybody.
-    const list = await asAdmin("get", "/admin/users");
-    expect(list.status).toBe(200);
+
+    // THE CONTROLS, both directions — without them the sweep above would pass against a controller
+    // that refused everybody. Each permission's own holder is ADMITTED on a route it guards: 200
+    // for the list, and a 404 for a role revoke means the guard let it through and the handler
+    // could not find the assignment, which is admission just as surely.
+    expect((await asAdmin("get", "/admin/users")).status).toBe(200);
+    const roleAdmin = holders[USERS_MANAGE]!;
+    const admitted = await drive(
+      "delete", `/admin/users/${NO_SUCH_USER}/roles/${NO_SUCH_ASSIGNMENT}`, roleAdmin,
+    );
+    expect([admitted.status, admitted.body.code]).toEqual([404, "assignment_not_found"]);
   });
 
   // ═══════════════════════════ THE SURFACE ITSELF ═══════════════════════════
@@ -391,5 +410,134 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
 
     const refused = await asAdmin("post", `/admin/users/${adminId}/deactivate`);
     expect([refused.status, refused.body.code]).toEqual([409, "admin_lockout"]);
+  });
+
+  // ═══════════════ T4 — role assign and revoke, under auth.roles.manage ═══════════════
+
+  it("assigns a role over HTTP, and the target gains the permission on their NEXT request", async () => {
+    const { token: roleAdminToken } = await mkUser("role_admin", [ROLES_MANAGE]);
+    const { token: staffToken, id: staffId } = await mkUser("staff", null);
+    // The role this test hands out carries a REAL permission, so "gained authority" is observable
+    // as a route that starts answering rather than as a row in a table.
+    await db.insert(roles).values({ key: "user_manager", title: "User Manager" }).onConflictDoNothing();
+    await grantPermissionToRole(db, registry, "user_manager", USERS_MANAGE);
+
+    await request(server()).get("/admin/users").set("Authorization", `Bearer ${staffToken}`).expect(403);
+
+    const before = await eventHighWater();
+    const assigned = await request(server())
+      .post(`/admin/users/${staffId}/roles`).set("Authorization", `Bearer ${roleAdminToken}`)
+      .send({ roleKey: "user_manager", scopeType: "hospital" });
+    expect(assigned.status).toBe(201);
+
+    // THE SAME TOKEN. No re-login, no new session — `hasPermission` reads the live rows.
+    await request(server()).get("/admin/users").set("Authorization", `Bearer ${staffToken}`).expect(200);
+
+    const appended = await eventsSince(before);
+    expect(appended.map((e) => e.name)).toEqual(["role.assigned"]);
+    expect(appended[0]!.payload).toEqual({
+      assignmentId: assigned.body.assignmentId, userId: staffId, roleKey: "user_manager",
+      scopeType: "hospital", scopeId: null,
+    });
+  });
+
+  it("R11 — a REVOKED assignment is effective on the target's next request, with no session work", async () => {
+    const { token: roleAdminToken } = await mkUser("role_admin", [ROLES_MANAGE]);
+    await db.insert(roles).values({ key: "user_manager", title: "User Manager" }).onConflictDoNothing();
+    await grantPermissionToRole(db, registry, "user_manager", USERS_MANAGE);
+    const { token: staffToken, id: staffId } = await mkUser("staff", null);
+    const assigned = await request(server())
+      .post(`/admin/users/${staffId}/roles`).set("Authorization", `Bearer ${roleAdminToken}`)
+      .send({ roleKey: "user_manager", scopeType: "hospital" }).expect(201);
+    const assignmentId = assigned.body.assignmentId as string;
+
+    // Non-vacuity: they really do hold it right now.
+    await request(server()).get("/admin/users").set("Authorization", `Bearer ${staffToken}`).expect(200);
+    const sessionsBefore = await liveSessions(staffId);
+
+    const before = await eventHighWater();
+    await request(server())
+      .delete(`/admin/users/${staffId}/roles/${assignmentId}`)
+      .set("Authorization", `Bearer ${roleAdminToken}`).expect(204);
+
+    // THE DISCRIMINATING INPUT: the SAME token, replayed. Shipped 403; R11's mutant — a revoke
+    // that deletes nothing and returns success — answers 200 here.
+    const replay = await request(server()).get("/admin/users").set("Authorization", `Bearer ${staffToken}`);
+    expect([replay.status, replay.body.message]).toEqual([403, `missing permission ${USERS_MANAGE}`]);
+
+    // "WITH NO SESSION WORK" is the other half of the claim, and it is asserted rather than
+    // implied: the session is untouched, so what changed is the authority and nothing else.
+    expect(await liveSessions(staffId)).toBe(sessionsBefore);
+    await request(server()).get("/auth/me").set("Authorization", `Bearer ${staffToken}`).expect(200);
+
+    expect((await eventsSince(before)).map((e) => e.name)).toEqual(["role.revoked"]);
+  });
+
+  it("R10 at the OTHER route — revoking the last auth.users.manage assignment is refused 409", async () => {
+    // The lockout invariant's second enforcement point. `root_admin` holds USERS_MANAGE through
+    // exactly one assignment, and `assertNoAdminLockout` is the same function `deactivate` calls.
+    const { token: roleAdminToken } = await mkUser("role_admin", [ROLES_MANAGE]);
+    const list = await asAdmin("get", "/admin/users").expect(200);
+    const rootAdmin = (list.body.users as AdminUserView[]).find((u) => u.id === adminId)!;
+    expect(rootAdmin.roles).toHaveLength(1);
+    const assignmentId = rootAdmin.roles[0]!.assignmentId;
+
+    const refused = await request(server())
+      .delete(`/admin/users/${adminId}/roles/${assignmentId}`)
+      .set("Authorization", `Bearer ${roleAdminToken}`);
+    expect([refused.status, refused.body.code]).toEqual([409, "admin_lockout"]);
+
+    // NOTHING MOVED: the assignment is still there and still works.
+    await asAdmin("get", "/admin/users").expect(200);
+
+    // …and the control — a SECOND holder's assignment revokes cleanly through the same route, so
+    // this row cannot pass by refusing everything.
+    const { id: secondId } = await mkUser("second_admin", [USERS_MANAGE]);
+    const list2 = await asAdmin("get", "/admin/users").expect(200);
+    const second = (list2.body.users as AdminUserView[]).find((u) => u.id === secondId)!;
+    await request(server())
+      .delete(`/admin/users/${secondId}/roles/${second.roles[0]!.assignmentId}`)
+      .set("Authorization", `Bearer ${roleAdminToken}`).expect(204);
+  });
+
+  it("an assignment revoked through the WRONG user's path is a 404, and nothing is removed", async () => {
+    const { token: roleAdminToken } = await mkUser("role_admin", [ROLES_MANAGE]);
+    const { id: staffId } = await mkUser("staff", null);
+    const { id: otherId } = await mkUser("other", null);
+    await db.insert(roles).values({ key: "vitals_desk", title: "Vitals" }).onConflictDoNothing();
+    const assigned = await request(server())
+      .post(`/admin/users/${staffId}/roles`).set("Authorization", `Bearer ${roleAdminToken}`)
+      .send({ roleKey: "vitals_desk", scopeType: "hospital" }).expect(201);
+
+    const wrong = await request(server())
+      .delete(`/admin/users/${otherId}/roles/${assigned.body.assignmentId as string}`)
+      .set("Authorization", `Bearer ${roleAdminToken}`);
+    expect([wrong.status, wrong.body.code]).toEqual([404, "assignment_not_found"]);
+
+    const list = await asAdmin("get", "/admin/users").expect(200);
+    const staff = (list.body.users as AdminUserView[]).find((u) => u.id === staffId)!;
+    expect(staff.roles.map((r) => r.roleKey)).toEqual(["vitals_desk"]); // still there
+  });
+
+  it("the scope rules are assignRole's, unchanged: a department scope without a scopeId is refused", async () => {
+    const { token: roleAdminToken } = await mkUser("role_admin", [ROLES_MANAGE]);
+    const { id: staffId } = await mkUser("staff", null);
+    await db.insert(roles).values({ key: "vitals_desk", title: "Vitals" }).onConflictDoNothing();
+
+    const refused = await request(server())
+      .post(`/admin/users/${staffId}/roles`).set("Authorization", `Bearer ${roleAdminToken}`)
+      .send({ roleKey: "vitals_desk", scopeType: "department" });
+    expect([refused.status, refused.body.code]).toEqual([400, "scope_id_required"]);
+
+    const scoped = await request(server())
+      .post(`/admin/users/${staffId}/roles`).set("Authorization", `Bearer ${roleAdminToken}`)
+      .send({ roleKey: "vitals_desk", scopeType: "department", scopeId: "DEPT-GEN" });
+    expect(scoped.status).toBe(201);
+
+    // …and a role key this deployment has never seeded is a sentence, not a foreign-key crash.
+    const unknown = await request(server())
+      .post(`/admin/users/${staffId}/roles`).set("Authorization", `Bearer ${roleAdminToken}`)
+      .send({ roleKey: "no_such_role", scopeType: "hospital" });
+    expect([unknown.status, unknown.body.code]).toEqual([404, "role_not_found"]);
   });
 });

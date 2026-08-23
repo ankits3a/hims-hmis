@@ -3,6 +3,7 @@ import { APP_GUARD } from "@nestjs/core";
 import { DB, MODULE_REGISTRY } from "../tokens";
 import { AuthController } from "./auth.controller";
 import { UsersAdminController } from "./users-admin.controller";
+import { RolesAdminController } from "./roles-admin.controller";
 import { AuthGuard, PermissionGuard } from "./guards";
 import { syncPermissions } from "./permissions";
 import { seedSodPairs } from "./sod";
@@ -15,7 +16,7 @@ import type { Db } from "../db/client";
   // name claims: `auth.users.manage` on `/admin/users*`, `auth.roles.manage` on the role routes.
   // One controller carrying both would make the route→permission map a matter of reading
   // decorators one at a time, which is the shape §3.42's defect hid in.
-  controllers: [AuthController, UsersAdminController],
+  controllers: [AuthController, UsersAdminController, RolesAdminController],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },       // runs first: identity
     { provide: APP_GUARD, useClass: PermissionGuard }, // runs second: RBAC

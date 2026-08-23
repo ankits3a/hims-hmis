@@ -58,6 +58,46 @@ export async function assignRole(
   return { id };
 }
 
+export type RevokedAssignment = {
+  id: string;
+  userId: string;
+  roleKey: string;
+  scopeType: ScopeType;
+  scopeId: string | null;
+};
+
+/**
+ * PLAN 11e T4 — the inverse of `assignRole`, and the LAST of Plan 02's dormant authority functions
+ * to gain a caller.
+ *
+ * IT IS A DELETE, NOT A FLAG, and that is the decision. `hasPermission` reads `role_assignments`
+ * live on every request, so a deleted row is effective on the target's NEXT call with no session
+ * work of any kind — no revocation, no re-login, no waiting out a TTL. A `revoked_at` column would
+ * have added a filter to the hottest read in the system to preserve a history the EVENT STREAM
+ * already keeps: `role.assigned` and `role.revoked` are the record of who held what and when, and
+ * they are append-only.
+ *
+ * Returns the row it removed so the caller can event it, or null when there was nothing to remove
+ * — which the route turns into a 404 rather than a cheerful 204 over an id that never existed.
+ */
+export async function revokeRoleAssignment(
+  db: Db,
+  assignmentId: string,
+): Promise<RevokedAssignment | null> {
+  const rows = await db
+    .delete(roleAssignments)
+    .where(eq(roleAssignments.id, assignmentId))
+    .returning({
+      id: roleAssignments.id,
+      userId: roleAssignments.userId,
+      roleKey: roleAssignments.roleKey,
+      scopeType: roleAssignments.scopeType,
+      scopeId: roleAssignments.scopeId,
+    });
+  const row = rows[0];
+  return row === undefined ? null : { ...row, scopeType: row.scopeType as ScopeType };
+}
+
 type Holding = { roleKey: string; scopeType: ScopeType; scopeId: string | null };
 
 export async function hasPermission(
