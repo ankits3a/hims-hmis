@@ -41,7 +41,7 @@ have cost a rung. This one is one concurrency measurement, one read-only query, 
 ## Question A — does `pg_advisory_xact_lock` actually serialise `changeOperatingMode`? *(resolves plan D5 / Book V10, V11; blocks T3)*
 
 **Why this is asked.** `pg_advisory_xact_lock` appears **nowhere in this repository.**
-`kernel/worker/scheduler.ts:43` uses `pg_try_advisory_lock` — the *session*-scoped, *non-blocking*
+`kernel/worker/scheduler.ts:43` (at `78b0a3d`) uses `pg_try_advisory_lock` — the *session*-scoped, *non-blocking*
 variant — and its own header says a session lock pins one pooled client for the lock's lifetime and
 must be explicitly unlocked. D5 asserts the transaction-scoped blocking variant behaves differently
 in three ways this plan depends on, and **all three are currently predictions**.

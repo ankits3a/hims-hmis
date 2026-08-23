@@ -2,7 +2,20 @@
 
 **Written 2026-08-24 by the next-phase brainstorm session** (prompt:
 [`reports/NEXT-PHASE-BRAINSTORM-PROMPT-2026-08-24.md`](reports/NEXT-PHASE-BRAINSTORM-PROMPT-2026-08-24.md)),
-against the tree at **`c65c26b`** (== `origin/main` at writing).
+against the tree at **`78b0a3d`**.
+
+> **SHA CORRECTION, made the same day and left visible rather than tidied away (§2.80's
+> corollary).** This document first said `c65c26b`. **Two commits landed from another session
+> while I was reading** — `3104041` (`test(core): the settle bound must sit BELOW jest's
+> testTimeout`) and `78b0a3d` (the prompt update) — and `3104041` is the commit that gives
+> `scheduler.test.ts` its `SETTLE_BOUND_TURNS = 5_000` at `:119` and its honest-limit comment at
+> `:115-117`. **Those lines do not exist at `c65c26b`**, so every reference this plan makes to
+> that file is against `78b0a3d` and is quoted correctly only under that SHA. `3104041` touched
+> **one file** and `78b0a3d` touched **one document**, so every OTHER consumed surface below is
+> byte-identical at both SHAs — verified by `--stat`, not assumed. **This is §2.78 happening to
+> the session that wrote about §2.78: a coordinate is a claim with no expiry date on it, and
+> mine expired under me.** D11's premise is unaffected and re-checked: `jest.config.cjs:14`
+> still reads `testTimeout: 15000` and the census still carries no per-test override.
 Spike brief: [`reports/PLAN-11D-SPIKE-BRIEF-2026-08-24.md`](reports/PLAN-11D-SPIKE-BRIEF-2026-08-24.md) ·
 execute prompt: [`reports/PLAN-11D-EXECUTE-PROMPT-2026-08-24.md`](reports/PLAN-11D-EXECUTE-PROMPT-2026-08-24.md).
 
@@ -106,7 +119,7 @@ flow (booked into 11e with the screen that needs it).
 
 ### D1. The grant gap is one defect with nine doors, and the fix is a REACHABILITY INVARIANT
 
-**The measured facts, from source at `c65c26b`:**
+**The measured facts, from source at `78b0a3d`:**
 
 - `syncPermissions(db, registry)` (`kernel/auth/permissions.ts:11`) upserts one `permissions` row
   per manifest permission. **It grants nothing to any role.** It is a catalog.
@@ -455,7 +468,7 @@ permission-map defect on THIS controller is a privilege-escalation defect rather
 
 ---
 
-## Consumed shipped surfaces (transcribed from source at `c65c26b`, 2026-08-24, this session)
+## Consumed shipped surfaces (transcribed from source at `78b0a3d`, 2026-08-24, this session)
 
 Every line below was read from the tree, not recalled. **Line numbers expire the moment Phase 0
 lands (§2.73/§2.78) — Phase 0 touches `scheduler.test.ts` only, so every reference here except that
@@ -947,7 +960,7 @@ target moves with it — in the execute prompt, before the run.**
    not: `seed-admin.ts`'s one-manifest registry **is** the mechanism of MAJOR 4, and without D2's
    V4 assertion the tenth manifest repeats it. §2.54 is the entry; the fix is one list plus one
    test, and the test is the half that matters.
-4. **Every consumed surface was re-read from the tree at `c65c26b`, and one recollection was
+4. **Every consumed surface was re-read from the tree at `78b0a3d`, and one recollection was
    wrong.** I expected `seed-ops.ts` to be able to create users; it explicitly refuses
    (`:96-101`) — which is correct behaviour and which is why the gap is real rather than a
    workaround away.

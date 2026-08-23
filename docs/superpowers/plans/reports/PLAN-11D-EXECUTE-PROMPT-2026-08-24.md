@@ -50,7 +50,9 @@ blocked twice — by a safety classifier and by the owner's own
 The plan states a baseline and a set of source coordinates. **Both expire.** Before you compile:
 
 - `git pull --rebase origin main` and record the SHA you are actually at. The plan was written at
-  **`c65c26b`**; docs commits land from the owner's machine while you work.
+  **`78b0a3d`** — and see its own SHA-correction note: it first said `c65c26b`, and two commits
+  landed from another session mid-writing. **Docs AND test commits land while you work**, which is
+  this project's fourth specimen of §2.78 and the reason this step is not optional.
 - **Re-measure the baseline** on the build host, detached, exit VALUE from a file: `apps/core`,
   `apps/web`, `packages/contracts` suite and test counts. The plan says 144/1049 · 34/173 · 3/7.
   **If they differ, the measurement wins and you say so in the gate report.**
