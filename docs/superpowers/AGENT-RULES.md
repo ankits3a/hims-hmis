@@ -5,9 +5,18 @@ before you touch anything. Where this file and a task brief disagree about PROCE
 wins; where they disagree about CODE, the plan document wins.
 
 Version 2 (2026-08-19; rule 22 amended 2026-08-20 and 2026-08-21; rules 20 and 21 amended 2026-08-21; **rule 6 RETIRED and rules 7 and 9 AMENDED 2026-08-22 — the InsForge co-tenant was removed and the build host is now dedicated to this project; read rule 7's new boundary before you create any container**). Supersedes the inlined tripwire
-block used through Plan 08 pipeline A. Rule 22 (the local mirror) is new and changes how you read
+block used through Plan 08 pipeline A. ~~Rule 22 (the local mirror) is new and changes how you read
 and author files — read it first. **22(a) now requires a mirror directory unique to YOU, and 22(g)
-forbids concluding anything about the server's tree from a mirror; both were bought by §2.40.**
+forbids concluding anything about the server's tree from a mirror; both were bought by §2.40.**~~
+
+**AMENDED 2026-08-23 — the topology ruling ([`EXECUTE-METHOD-V3.md`](EXECUTE-METHOD-V3.md) §8):
+authoring moved ONTO the build host, effective with the v3 pilot phase (11e).** Rules 1–3 restate
+to one sentence, rule 13 and all of rule 22 are STRUCK, and rule 18 narrows — each marked in
+place below, the rule-6 pattern. Privileges, rules 7 and 14–21, and the evidence standard are
+unchanged: evidence still comes only from this host — it is simply no longer remote. One
+vigilance note from the ruling, recorded so it is watched rather than discovered: production
+paths are now reachable by native file tools instead of visible SSH calls, so rule 3/7
+discipline carries the weight the SSH boundary used to make conspicuous.
 
 ---
 
@@ -16,6 +25,12 @@ forbids concluding anything about the server's tree from a mirror; both were bou
 Violating any one of these fails the task regardless of code quality.
 
 **Hosts and paths**
+
+> **RESTATED 2026-08-23 (v3 §8) — rules 1–3 compress to one sentence: you are ON the build
+> host; `/opt/hmis` and `/opt/hmis-prod` are the only writable paths; the owner's Windows
+> checkout is not reachable from any session and stays out of scope.** The bodies below stand
+> as the record and their boundaries are unchanged; where they speak of SSH round-trips or a
+> remote server, read "this host".
 
 1. **The build host is the server: `root@62.238.106.231`, checkout `/opt/hmis`.** Everything
    that produces EVIDENCE — migrations, tests, `pnpm verify`, git, commits, pushes — runs
@@ -86,10 +101,11 @@ Violating any one of these fails the task regardless of code quality.
 12. **Evidence over assertion.** Never report a test as passing without having run it in that
     state. Commit with the plan's exact message; include `pnpm-lock.yaml` on any dependency
     change.
-13. **NEVER pass a POSIX absolute path (`/opt/...`) to the Write or Edit tools** — you run on a
-    Windows host, so that silently creates `C:\opt\...`. Write and Edit are for your LOCAL
-    MIRROR (rule 22), which has a Windows path. Files reach the server by sync, never by
-    Write/Edit.
+13. **STRUCK 2026-08-23 (v3 §8) — sessions run on the build host, so Write and Edit target
+    `/opt/hmis` natively and there is no Windows path to mangle.** ~~NEVER pass a POSIX
+    absolute path (`/opt/...`) to the Write or Edit tools — you run on a Windows host, so that
+    silently creates `C:\opt\...`. Write and Edit are for your LOCAL MIRROR (rule 22), which
+    has a Windows path. Files reach the server by sync, never by Write/Edit.~~
 14. **NEVER weaken, strip, or disable security-relevant code** (a guard, a permission check, an
     auth path) to produce a test result — not even temporarily, not even to satisfy a reviewer
     asking for a failing run. If evidence requires that, say it is impossible and explain why.
@@ -111,7 +127,10 @@ Violating any one of these fails the task regardless of code quality.
 17. **NEVER take a WRAPPER's exit status as the COMMAND's verdict.** Appending `; echo "exit: $?"`
     makes the shell exit 0 because the *echo* succeeded. Read the echoed VALUE, or a captured
     exit file. This is rule 16 one level out, and it fails silently green.
-18. **Run any LONG remote command DETACHED** with its own exit code written to a file — never
+18. **NARROWED 2026-08-23 (v3 §8): the dropped-SSH-channel failure mode is gone — the
+    detached-with-exit-file discipline stays, for genuinely long runs, on this host.**
+    Original text, whose mechanism survives without the `ssh` wrapper:
+    **Run any LONG remote command DETACHED** with its own exit code written to a file — never
     held open on a foreground SSH channel, which exits 255 on a dropped link and destroys the
     evidence mid-run:
     ```
@@ -156,7 +175,13 @@ Violating any one of these fails the task regardless of code quality.
 
 **The local mirror**
 
-22. **Author and navigate LOCALLY; run and commit REMOTELY.** Reading and grepping the codebase
+22. **STRUCK IN FULL — all of (a)–(g) — 2026-08-23 (v3 §8): the reading surface and the
+    evidence host are the same machine. No mirror, no `scp` sync, no md5 confirmation; §2.40's
+    entire class is structurally impossible. Every reference to "your local mirror" elsewhere
+    in this file (§2, §5 step 0) is struck with it; server-side scratch discipline — plain
+    `rm -f` before committing — is unchanged.** The struck text stands below as the record:
+
+    ~~**Author and navigate LOCALLY; run and commit REMOTELY.**~~ Reading and grepping the codebase
     one SSH call at a time was 70% of all coder shell calls in Plan 08 pipeline A — ~42
     round-trips per agent against 30 native tool calls in total. Do this instead, in order:
 
