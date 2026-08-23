@@ -129,6 +129,17 @@ flow (booked into 11e with the screen that needs it).
 6. Standing rulings inherited and untouched: retention stays INERT (`RETENTION_ENABLED=false`) ·
    staged deployment (spec v4.7) · production shares the build host under the `hmis-prod` project
    (rules 3 and 7 as amended) · **the deploy is authorized only when the owner names it**.
+7. **NEW, RULED AT COMPILE 2026-08-24 — `patients.*` joins the role model, and the other seventeen
+   unheld permissions are booked as NOT YET MODELLED.** The compile sweep measured that D3's two
+   README tables leave **twenty of the fifty-nine declared permissions held by nobody**, and that
+   D1's three named "exceptions" were each justified by *guards no route* — a different property
+   from *held by a role*, and all three are in fact held. The owner ruled: **grant
+   `patients.register`/`read`/`update` to `front_office` and `front_office_supervisor`, and
+   `patients.read`/`update` to `vitals_desk`**, because the README's own OPD prose already says
+   those permissions "stay with the desk and vitals roles" and because a `front_office` that cannot
+   register a patient makes the OPD flow unrunnable — which is the exact failure 11d exists to fix.
+   **The remaining seventeen are listed as not-yet-modelled with a reason each, and no grant is
+   invented for any of them.** D1, D3, V2 and V3 are amended in place accordingly.
 
 ---
 
@@ -163,9 +174,27 @@ is the mistake §3.43 exists to name, committed once already by MAJOR 4's closur
 
 That assertion fails the build the day a module adds a permission and forgets the role model, which
 is the failure mode that produced this defect twice. **The exceptions list is what keeps it honest
-rather than merely green** — it is where `auth.users.manage` and `auth.roles.manage` (declared,
-guarding no route, waiting for 11e) and `billing.credit.extend` (checked inside the issue
-transaction, never at a route — `README.md:424`) are written down with their reasons.
+rather than merely green.**
+
+> **CORRECTED AT COMPILE 2026-08-24 (owner ruling 7), and the correction is load-bearing: THIS
+> PARAGRAPH ORIGINALLY CONFLATED TWO DIFFERENT PROPERTIES.** It read: *"it is where
+> `auth.users.manage` and `auth.roles.manage` (declared, guarding no route, waiting for 11e) and
+> `billing.credit.extend` (checked inside the issue transaction, never at a route — `README.md:424`)
+> are written down with their reasons."* **Every one of those three reasons is about GUARDING A
+> ROUTE, and the invariant above is about being HELD BY A ROLE.** They are not the same claim, and
+> under the invariant as stated **none of those three is an exception at all**: `admin` holds both
+> `auth.*` strings via `seed:admin`, and the README's own billing table grants
+> `billing.credit.extend` to `cashier`. "Declared but guarding no route" is a real and useful fact —
+> it is what `billing.e2e.test.ts` and T4's leg 2 assert, per module — but it belongs to those
+> tests, **not to this one**.
+>
+> **What the exceptions list actually holds, measured at `1764aec`: the TWENTY declared permissions
+> that NO role holds.** Held = 39 of 59 (`opd.*` 14 and `billing.*` 14 from the two README tables,
+> `approvals.requests.read`/`.decide` from the billing table, `auth.*` 6 from `seed:admin`, `ops.*`
+> 3 from `seed:ops`). **Unheld = `workflow.*` 8 · `tariff.*` 5 · `patients.*` 5 ·
+> `approvals.types.manage` and `approvals.requests.create`.** Confirmed exhaustive:
+> `grantPermissionToRole` still has exactly two non-test callers, so there is no other grant source
+> in the tree.
 
 
 ### §B-MEASURED — what production actually holds (2026-08-24, read-only, owner-authorized)
@@ -269,6 +298,36 @@ Owner ruling 2 puts nine roles in the repository:
 | `README.md:209` (OPD) | `front_office` · `front_office_supervisor` · `vitals_desk` · `doctor` · `opd_admin` · `display` · `pharmacy` |
 | `README.md:428` (billing) | `cashier` · `billing_manager` |
 
+**AND `patients.*` JOINS THE MODEL — owner ruling 7, 2026-08-24, taken at compile because the two
+tables alone ship a role model that cannot run an OPD visit.** The README's OPD section already
+states the intent in prose immediately under its table: *"Plan 05's `patients.register` /
+`patients.read` (and `patients.update` for quick allergies) stay with the desk and vitals roles —
+the OPD screens read demographics through the patients module."* Shipping the tables ALONE would
+give `front_office` fourteen `opd.*` permissions and **still no way to register a patient**, so the
+pilot would die at step one of the flow this plan exists to enable. That is transcription of a
+stated intent, not invention of authority:
+
+| role | gains |
+|---|---|
+| `front_office` | `patients.register` · `patients.read` · `patients.update` |
+| `front_office_supervisor` | `patients.register` · `patients.read` · `patients.update` |
+| `vitals_desk` | `patients.read` · `patients.update` |
+
+**`vitals_desk` does NOT get `patients.register`** — the prose says registration is the desk's work
+and vitals records against a patient who already exists, and a narrower grant is the one that can be
+widened later without anybody being locked out in the meantime.
+
+**THE REMAINING SEVENTEEN ARE `NOT YET MODELLED`, WHICH IS A DIFFERENT THING FROM AN EXCEPTION AND
+MUST SAY SO IN ITS OWN WORDS.** An exception says *"unreachable on purpose"*; these say *"no owner
+ruling exists yet"*, and writing the second as the first is how a gap becomes a decision nobody
+made. `workflow.*` 8 (activation is a two-key Class A ceremony — `README.md` OPD runbook step 3 —
+whose assignment is per-definition and per-environment, and no table models it) · `tariff.*` 5 (no
+role model published; the pilot's tariff is seeded by script) · `patients.merge` and
+`patients.confidential.read` (a supervised correction and §14 VIP visibility — both want an owner
+ruling this plan does not have) · `approvals.types.manage` and `approvals.requests.create`.
+**Each is listed with that reason, and the day any of them gains a holder the list shrinks by one
+and the test says so.**
+
 `scripts/seed-roles.ts` holds the model as a typed table and is the **source of truth**. Two
 independent legs stop it being a transcription nobody checks:
 
@@ -276,7 +335,12 @@ independent legs stop it being a transcription nobody checks:
   every declared permission is held or excepted (D1's invariant). This catches a typo
   (`billing.invoice.isue`) and an orphan (a permission no role can hold).
 - **(b) against the README** — the two markdown tables are parsed and compared cell for cell, both
-  directions. `caddyfile-parity.test.ts` is the precedent for parsing a non-TypeScript artefact
+  directions, **over the TABLE-DERIVED subset of the model only**. Owner ruling 7 adds `patients.*`
+  grants that appear in NEITHER table, so an unscoped "both directions" would fail against the
+  correct model. **The `patients.*` additions get their own leg**: asserted as exactly the eight
+  (role, permission) pairs above, with the README prose line located and quoted as their reason, and
+  their own census pinned first. A model row that is neither table-derived nor in that explicit set
+  **fails** — which is what stops the subset scoping from becoming a hole. `caddyfile-parity.test.ts` is the precedent for parsing a non-TypeScript artefact
   from a test, and it carries the discipline this leg must copy: **both parsers THROW rather than
   return `[]` on a shape they do not recognise, and the test pins a census — nine roles, and the
   exact permission count per role — BEFORE anything is compared**, because two parsers that both
@@ -1022,8 +1086,8 @@ Rows marked **P** carry inputs the task must confirm by building the mutant and 
 |---|---|---|---|---|---|
 | R1 | R0-1 | A `settleUntil` bound hit produces the SET assertion naming the missing jobs, not a bare timeout | ~~force the bound to 1 turn in a scratch copy~~ **CORRECTED AT PHASE 0 — that mutant is a NO-OP and SURVIVES.** The mutant that discriminates is TWO-PART: **(a) make the census UNSATISFIABLE** so the poll actually reaches its bound, **and (b) force the bound ABOVE the old 15 000 ms budget** (20 000 turns ≈ 22 s) | **MEASURED at `e88b5db`, both arms, exit VALUE 1 each.** OLD 15 s budget → `Exceeded timeout of 15000 ms` at `(15406 ms)` with **no job name anywhere in the failure** (the `console.warn` does print, but AFTER teardown, beside `ReferenceError: … after it has been torn down`). NEW 120 s budget → `(25348 ms)` and the SET assertion runs: `- "runNotifyPump"` / `- "sweepExpiredTempRoles"` — **the two jobs CI actually lost.** · **Why the Book's version is a no-op:** on a healthy box every job is already recorded by the time `settleUntil` is reached, so `done()` is true on turn 0, the bound is never touched, and the test PASSES at exit 0 under BOTH budgets (measured: `3069 ms` old, `2967 ms` new). A mutant that cannot fail is not a mutant. **The mutant is still the BOUND, not the machine** — starvation cannot be manufactured on a box serving a hospital, which is exactly why (a) is needed to reach the bound at all | **P** |
 | V1 | T1 | Every granted string is DECLARED by an installed manifest | one typo'd cell in the role model | `"billing.invoice.isue"` in `cashier` → shipped: the test names the undeclared string; unmutated control: nine roles green | |
-| V2 | T1 | Every declared permission is held by at least one role or NAMED in the exceptions list | delete `cashier`'s `billing.receipt.record` grant | shipped: the census names the orphaned permission; control: the three real exceptions (`auth.users.manage`, `auth.roles.manage`, `billing.credit.extend`) pass — **and their REASONS are asserted present, not merely their names** | **P** |
-| V3 | T1 | The README's two tables and the role model agree, cell for cell, both directions | flip one tick in the seed's table | shipped: parity fails naming the (role, permission) cell; a second mutant on the PARSER (return `[]` instead of throwing) → the census pin fails first, which is the §2.49 leg | **P** |
+| V2 | T1 | Every declared permission is held by at least one role or NAMED in the not-yet-modelled list | delete `cashier`'s `billing.receipt.record` grant | shipped: the census names the orphaned permission; control: **the SEVENTEEN not-yet-modelled strings pass — `workflow.*` 8, `tariff.*` 5, `patients.merge`, `patients.confidential.read`, `approvals.types.manage`, `approvals.requests.create` — and their REASONS are asserted present, not merely their names.** ~~the three real exceptions (`auth.users.manage`, `auth.roles.manage`, `billing.credit.extend`)~~ **CORRECTED AT COMPILE: those three are all HELD (admin holds both `auth.*`; the billing table grants `credit.extend` to `cashier`), so as controls they proved nothing — they were justified by "guards no route", which is a DIFFERENT property from the one this row asserts.** Second mutant, and it is the one that matters: **move one string from the model into the not-yet-modelled list** → the census counts (39 held / 17 not-yet-modelled) fail before any reason is read, which is the §2.49 leg that stops the list becoming a place to hide an orphan | **P** |
+| V3 | T1 | The README's two tables and the role model agree, cell for cell, both directions, **over the table-derived subset** — and the eight `patients.*` pairs of owner ruling 7 are pinned by their own leg with the README prose quoted as their reason | flip one tick in the seed's table; **and separately, delete one `patients.*` pair** → the ruling-7 leg names it while the table-parity leg stays green, proving the two legs are independent | shipped: parity fails naming the (role, permission) cell; a second mutant on the PARSER (return `[]` instead of throwing) → the census pin fails first, which is the §2.49 leg | **P** |
 | V4 | T1 | `ALL_MANIFESTS` equals what `app.module.ts` installs | add a tenth install to `app.module.ts` only | shipped: the parity test names the extra manifest; control: the worker's smaller set is asserted a SUBSET and does not fail | |
 | V5 | T1 | `seed:roles` is idempotent | drop `ensureRole`'s existence guard | run twice against one database → shipped: the second run exits 0 reporting `already`; mutant: duplicate-key error on `roles` | |
 | V6 | T2 | A roster row yields a working password AND a working PIN | drop the `pin` from the `createUser` call | shipped: `verifyPassword` true and `verifyPin` true; mutant: `verifyPin` false with `verifyPassword` still true — so the control isolates the PIN leg rather than the row | |
@@ -1172,9 +1236,15 @@ target moves with it — in the execute prompt, before the run.**
 
 ## Decisions for the owner (with what stalls without each)
 
-1. **None new — this plan's five were ruled in the brainstorm** (script now with 11e booked · ship
-   the role model · confirm D2's commissioning reading · per-test timeout · read-only production
-   query authorized).
+1. ~~**None new — this plan's five were ruled in the brainstorm**~~ **ONE NEW, and it was taken at
+   compile rather than in the brainstorm because only the compile sweep surfaced it: owner ruling 7
+   above.** The brainstorm's five stand unchanged (script now with 11e booked · ship the role
+   model · confirm D2's commissioning reading · per-test timeout · read-only production query
+   authorized). Ruling 7 exists because *"ship the ACTUAL role model"* turned out to be
+   under-determined: the two README tables cover 39 of 59 declared permissions, and the twenty-
+   permission gap was invisible until someone counted. **The lesson is §2.49's, in its positive
+   direction: the question "what does this plan assert about the things it does NOT mention?" is
+   worth asking of a role model exactly as much as of a test fixture.**
 2. **One thing the owner should decide but which blocks nothing here:** D7's honest limit means a
    dead Alertmanager is *visible* to Prometheus and *not emailable*. The out-of-band answer is
    E-16's watchdog in 11b. **If the owner wants coverage before that hardware lands, the option is a
