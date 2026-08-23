@@ -236,6 +236,16 @@ flow calls `startInstance` and `transition` in-process from `modules/opd/encount
 through that controller, so granting them would mint authority nobody needs.
 
 ### Go-live runbook — OPD (owner steps, once per environment)
+0. `UHID_PREFIX=<PREFIX> pnpm --filter @hmis/core seed:registration` — **the `registration_config`
+   row.** Numbered ZERO because it belongs to Plan 05 rather than to OPD, and because the steps
+   below are cited by number elsewhere in this repository; it is listed here anyway because
+   **without it `POST /patients` answers 400 (`registration_config row 'main' is missing`) and no
+   OPD visit can be opened for a patient who cannot be registered.** Omitting it from this list
+   cost a live go-live run one round trip on 2026-08-23. `UHID_PREFIX` is 2–5 uppercase letters,
+   it prefixes every UHID the hospital ever issues, and it is an **owner-gated Class A decision** —
+   the script refuses anything else and does not guess. Idempotent (it updates on conflict), so a
+   prefix chosen in error can be corrected while few UHIDs exist; already-issued ones keep the old
+   prefix.
 1. `pnpm --filter @hmis/core seed:opd` — the `opd_config` row (slot length, follow-up defaults,
    danger ranges, letterhead, skip cap; perk hook off), the OPD role keys and the placeholder
    departments. Idempotent.

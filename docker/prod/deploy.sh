@@ -213,7 +213,13 @@ install -D -m 0644 "$SRC_DIR/grafana/provisioning/dashboards/dashboards.yml" \
 install -D -m 0644 "$SRC_DIR/grafana/provisioning/dashboards/hmis.json" \
   "$DEPLOY_DIR/grafana/provisioning/dashboards/hmis.json"
 note "docker-compose.prod.yml, caddy/Caddyfile, pgbackrest/pgbackrest.conf, drill/restore-drill.sh"
-note "prometheus/{prometheus,alerts,alerts-backup,alerts-meta}.yml, postgres-exporter/queries.yml, grafana/provisioning/**"
+# D8 / §2.54. This line CARRIED A FOURTH hand-maintained copy of the rule-file census —
+# `prometheus/{prometheus,alerts,alerts-backup,alerts-meta}.yml` — inside the very file written to
+# unify the other two, and a brace-list is exactly the shape that goes stale in silence: a fifth
+# rule file would be installed above and still be missing from this sentence. It is now DERIVED
+# from what the block above actually put on disk, the same principle the backup credentials below
+# are written to, so the census cannot disagree with the deploy.
+note "prometheus/$(cd "$DEPLOY_DIR/prometheus" && echo *.yml | tr ' ' ',' ), postgres-exporter/queries.yml, grafana/provisioning/**"
 
 # --- the backup credentials, derived rather than duplicated --------------------------------------
 # GC2: the five owner-supplied values live in $R2_ENV and ONLY there. They are translated here into
