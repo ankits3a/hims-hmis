@@ -331,11 +331,37 @@ export function modelPermissions(): string[] {
   return [...new Set(ROLE_MODEL.flatMap((r) => r.permissions))].sort();
 }
 
-/** Every permission held by SOME role once every seed script has run, deduped and sorted. */
+/**
+ * THE MODEL'S CLAIM about what is held once every seed script has run — deduped and sorted.
+ *
+ * **This is a PREDICTION, not a measurement, and MAJOR 1 was what happens when the two are
+ * confused.** Until 2026-08-23 `seedRoles` computed its census and its READY verdict from this
+ * function, so it reported permissions as held on the strength of `GRANTED_BY_OTHER_SEEDS` saying
+ * `seed:admin` grants them — on a box where `seed-admin.ts` RETURNS EARLY because an admin already
+ * exists, and therefore never granted a newly declared `auth.*` string at all. The census counted
+ * 42 held where 33 were granted, which is MAJOR 4's mechanism living inside the artefact built to
+ * abolish it.
+ *
+ * It is still the right thing to state — the model SHOULD be able to say what it expects — but it
+ * is now compared against `heldInDatabase()` rather than substituted for it.
+ */
 export function heldPermissions(): string[] {
   return [
     ...new Set([...modelPermissions(), ...GRANTED_BY_OTHER_SEEDS.flatMap((g) => g.permissions)]),
   ].sort();
+}
+
+/**
+ * Every permission ACTUALLY held by some role in THIS database, deduped and sorted.
+ *
+ * Deliberately unfiltered by `ROLE_MODEL`: a permission is reachable if ANY role holds it, and a
+ * role this file has never heard of still makes its routes reachable to whoever holds that role.
+ * Production carried exactly such a role — `owner`, created by `seed:opd`, holding nothing — for
+ * the whole of Plan 11d, and a model-scoped query could not have seen it.
+ */
+export async function heldInDatabase(db: Db): Promise<string[]> {
+  const rows = await db.select({ permission: rolePermissions.permission }).from(rolePermissions);
+  return [...new Set(rows.map((r) => r.permission))].sort();
 }
 
 export type RoleOutcome = {
@@ -349,8 +375,11 @@ export type RoleOutcome = {
 
 export type SeedRolesReport = {
   declared: number;
+  /** MEASURED from `role_permissions`, never derived from the model (MAJOR 1). */
   held: number;
   notYetModelled: number;
+  /** Permissions the model EXPECTS another seed to have granted, which this database does not hold. */
+  expectedElsewhereAbsent: number;
   roles: RoleOutcome[];
   problems: string[];
   ready: boolean;
@@ -402,7 +431,10 @@ export async function seedRoles(db: Db): Promise<SeedRolesReport> {
   }
 
   const declared = registry.allPermissions();
-  const held = new Set(heldPermissions());
+  // MAJOR 1's fix. This was `new Set(heldPermissions())` — the model describing itself. It is now
+  // read back out of the database this run just wrote to, so every verdict below is about THIS
+  // deployment rather than about the constants at the top of this file.
+  const held = new Set(await heldInDatabase(db));
   const notYetModelled = new Set(NOT_YET_MODELLED.map((n) => n.permission));
 
   const problems: string[] = [];
@@ -428,6 +460,23 @@ export async function seedRoles(db: Db): Promise<SeedRolesReport> {
         `by NO installed manifest: ${undeclared.join(", ")}.`,
     );
   }
+  // The leg MAJOR 1 was missing. `GRANTED_BY_OTHER_SEEDS` asserts that `seed:admin` and `seed:ops`
+  // have granted their manifests' permissions; this is where that assertion meets the database.
+  // `seed-admin.ts` returns early on any deployment that already has an admin, so a permission
+  // declared AFTER first boot is never granted there and nothing else would ever notice.
+  const expectedElsewhere = heldPermissions().filter((p) => !modelPermissions().includes(p));
+  const expectedElsewhereAbsent = expectedElsewhere.filter((p) => !held.has(p)).sort();
+  if (expectedElsewhereAbsent.length > 0) {
+    problems.push(
+      `${expectedElsewhereAbsent.length} permission(s) the role model EXPECTS another seed to have ` +
+        `granted are not held by any role in this database: ${expectedElsewhereAbsent.join(", ")}. ` +
+        `GRANTED_BY_OTHER_SEEDS names ${GRANTED_BY_OTHER_SEEDS.map((g) => g.seed).join(" and ")}; ` +
+        `run the missing one. NOTE that seed:admin RETURNS EARLY on a deployment that already has ` +
+        `an admin, so a permission declared after first boot will never be granted by re-running it ` +
+        `— it needs granting explicitly.`,
+    );
+  }
+
   const unheld = outcomes.filter((o) => o.holders === 0).map((o) => o.roleKey);
   if (unheld.length === outcomes.length) {
     problems.push(
@@ -443,6 +492,7 @@ export async function seedRoles(db: Db): Promise<SeedRolesReport> {
     declared: declared.length,
     held: held.size,
     notYetModelled: notYetModelled.size,
+    expectedElsewhereAbsent: expectedElsewhereAbsent.length,
     roles: outcomes,
     problems,
     ready: problems.length === 0,
@@ -461,9 +511,18 @@ export function formatReport(report: SeedRolesReport): string[] {
     );
   }
   lines.push("");
+  // The census RECONCILES or it says why it does not. Before MAJOR 1's fix these three numbers
+  // always summed, because two of them were computed from the same constants — a sum that proved
+  // arithmetic rather than a deployment.
+  const unaccounted =
+    report.declared - report.held - report.notYetModelled - report.expectedElsewhereAbsent;
   lines.push(
-    `census: ${report.declared} declared · ${report.held} held by a role · ` +
-      `${report.notYetModelled} not yet modelled`,
+    `census (MEASURED from role_permissions): ${report.declared} declared · ${report.held} held by ` +
+      `a role in THIS database · ${report.notYetModelled} not yet modelled` +
+      (report.expectedElsewhereAbsent > 0
+        ? ` · ${report.expectedElsewhereAbsent} expected from another seed but ABSENT here`
+        : "") +
+      (unaccounted !== 0 ? ` · ${unaccounted} UNACCOUNTED` : ""),
   );
   lines.push(
     "the model is checked against the MANIFESTS, never against the README: grantPermissionToRole " +

@@ -10,11 +10,13 @@ import {
   LOCAL_ROLE_TITLES,
   NOT_YET_MODELLED,
   ROLE_MODEL,
+  heldInDatabase,
   heldPermissions,
   modelPermissions,
   roleTitle,
   seedRoles,
 } from "../scripts/seed-roles";
+import { createRole, grantPermissionToRole } from "../src/kernel/auth/permissions";
 import { rolePermissions } from "../src/kernel/db/schema";
 
 /**
@@ -491,8 +493,17 @@ describe("seed:roles — executed against a database (V5)", () => {
     expect(first.roles.map((r) => r.granted.length)).toEqual([9, 10, 5, 7, 6, 1, 1, 8, 9, 3, 2]);
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
     expect(first.declared).toBe(59);
-    expect(first.held).toBe(46);
+    // MEASURED from role_permissions, not derived from the model. On this database only seed:roles
+    // has run, so what is held is exactly what the model granted — 37, not the 46 the model CLAIMS
+    // once seed:admin and seed:ops have also run. That nine-permission gap IS MAJOR 1, and before
+    // the 2026-08-23 fix this line read 46 against a database holding 37.
+    expect(first.held).toBe(37);
+    expect(first.held).toBe(modelPermissions().length);
+    expect(heldPermissions()).toHaveLength(46);
     expect(first.notYetModelled).toBe(13);
+    expect(first.expectedElsewhereAbsent).toBe(9);
+    // And the census RECONCILES against the catalog, which is the property that makes it evidence.
+    expect(first.held + first.notYetModelled + first.expectedElsewhereAbsent).toBe(first.declared);
 
     // `createRole` is a BARE INSERT and is not idempotent; the guard around it is what makes this
     // run exit rather than die on a duplicate key.
@@ -506,6 +517,44 @@ describe("seed:roles — executed against a database (V5)", () => {
       .select({ roleKey: rolePermissions.roleKey, permission: rolePermissions.permission })
       .from(rolePermissions);
     expect(written.map((r) => `${r.roleKey}/${r.permission}`).sort()).toEqual(modelPairs());
+  });
+
+  it("MAJOR 1: the census is READ BACK OUT OF THE DATABASE, so granting a permission moves it", async () => {
+    const first = await seedRoles(db);
+
+    // The model CLAIMS nine permissions it does not itself grant — seed:admin's six auth.* and
+    // seed:ops's three ops.*. Neither script has run here, so none of the nine is held.
+    const claimedElsewhere = heldPermissions().filter((p) => !modelPermissions().includes(p));
+    expect(claimedElsewhere).toHaveLength(9);
+    const measured = await heldInDatabase(db);
+    expect(claimedElsewhere.filter((p) => measured.includes(p))).toEqual([]);
+    expect(first.expectedElsewhereAbsent).toBe(9);
+
+    // NOT READY, and the problem NAMES seed:admin's early return rather than merely counting.
+    expect(first.ready).toBe(false);
+    const problem = first.problems.find((t) => t.includes("EXPECTS another seed"));
+    expect(problem).toBeDefined();
+    expect(problem).toContain("seed:admin");
+    expect(problem).toContain("RETURNS EARLY");
+    for (const permission of claimedElsewhere) expect(problem).toContain(permission);
+
+    // NOW GRANT ONE OF THEM, the way the missing seed would have. Nothing about the constants at
+    // the top of seed-roles.ts changes — only the database does.
+    const registry = new ModuleRegistry();
+    for (const manifest of ALL_MANIFESTS) registry.install(manifest);
+    const [moved] = claimedElsewhere;
+    // `admin` is seed:admin's role and does not exist here — creating it is exactly what the
+    // missing seed would have done before granting.
+    await createRole(db, "admin", "Administrator");
+    await grantPermissionToRole(db, registry, "admin", moved!);
+
+    const second = await seedRoles(db);
+    // The census MOVED. Under the old model-derived computation both runs returned 46 and this
+    // assertion could not have distinguished them — which is precisely why the defect survived.
+    expect(second.held).toBe(first.held + 1);
+    expect(second.expectedElsewhereAbsent).toBe(8);
+    expect(await heldInDatabase(db)).toContain(moved);
+    expect(second.held + second.notYetModelled + second.expectedElsewhereAbsent).toBe(second.declared);
   });
 
   it("reports zero holders per role, because seed:roles mints authority and assigns nobody", async () => {
