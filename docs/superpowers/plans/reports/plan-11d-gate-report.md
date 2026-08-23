@@ -510,3 +510,77 @@ refused to let the session mint an `owner`-role account for its own convenience,
 further attempts to reach production with credentials. Every refusal was reported and none was
 worked around; the owner then authorised explicitly and supplied what was needed. §6's instruction —
 *do not work around it; ask* — cost three round-trips and was correct each time.
+
+---
+
+## ADDENDUM 4 — 2026-08-23 night: THE SMOKE TEST. A patient was registered, seen into a queue, and closed out.
+
+Owner authorised an end-to-end run against production with a synthetic patient. It found a THIRD
+missing go-live prerequisite before it found anything else.
+
+### `seed:registration` had never run either
+
+`POST /patients` answered **400**: `registration_config row 'main' is missing`. `seed:opd` and
+`seed:roles` were the two the handoff prompt named; this is a third, and nothing in the runbook's
+OPD section mentions it — it belongs to Plan 05, so the OPD runbook never listed it.
+
+**`UHID_PREFIX` is an owner-gated Class A decision** and the script says so in its own header. The
+session refused to pick it and asked. **Owner ruled `CRK`** (2026-08-23), matching `hmis.crkmch.com`.
+`registration_config.uhid_prefix = CRK`, seeded, exit 0.
+
+**Runbook consequence: the OPD go-live sequence is incomplete as written.** `seed:registration` must
+precede any registration, and it is not step 0 of the OPD runbook. Worth folding in.
+
+### The chain, end to end, each hop verified in the database
+
+| # | call | actor | role | result |
+|---|---|---|---|---|
+| 1 | `POST /opd/doctors` | `ramesh.kulkarni` | `opd_admin` | **201** · Dr. Anand Rao → General Medicine |
+| 2 | `POST /patients` | `asha.reddy` | `front_office` | **201** · **UHID `CRK-00000001-7`** |
+| 3 | `POST /opd/visits` | `asha.reddy` | `front_office` | **201** · encounter + **`workflowInstanceId`** + queue token **1** |
+| 4 | `POST /opd/visits/:id/vitals` | `priya.sharma` | `vitals_desk` | **201** · `registered → waiting` |
+| 5 | `POST /opd/visits/:id/abandon` | `asha.reddy` | `front_office` | **201** · `waiting → abandoned` |
+
+**Call 3 is the one that mattered.** It is the call that threw `no_active_definition` until
+ADDENDUM 3's activation. It now returns an encounter carrying a workflow instance, a queue session,
+and token 1 — the first token this hospital has ever issued.
+
+**Measured after each hop:**
+
+```
+ wf_state  | encounter | queue      transitions:
+-----------+-----------+---------    registered -> waiting   by priya.sharma
+ abandoned | abandoned | cancelled   waiting    -> abandoned by asha.reddy
+
+ timers:  registered  due 20:41  CANCELLED 20:22:20.47   (at the transition instant)
+          waiting     due 21:07  cancelled on abandon
+          still pending: 0
+```
+
+**The SLA timer lifecycle is correct**, and this is the part no unit test proves on live
+infrastructure: entering `registered` scheduled a 20-minute timer matching the definition's
+`{minutes:20}`; the transition CANCELLED it and opened `waiting`'s 45-minute one; the abandon closed
+that. **Zero pending timers** — no phantom SLA breach will fire against a visit that ended.
+
+**Role enforcement held on the way through.** The `registered → waiting` transition declares
+`["vitals_desk","nurse","doctor"]` and was performed by a `vitals_desk` holder; `waiting → abandoned`
+declares `["front_office","front_office_supervisor"]` and was performed by `front_office`. Both were
+recorded in `workflow_transitions` with the acting user, which is the audit trail §10.2 promises.
+
+### What this run LEFT in production, stated plainly
+
+- **One patient, `CRK-00000001-7`, named `ZZ SMOKE TEST — do not use`.** Patients cannot be deleted
+  — only merged or marked — so it stays. Its only encounter is `abandoned` and its queue entry is
+  `cancelled`, so it appears on no board and in no live queue.
+- **One doctor masters record** (Dr. Anand Rao, General Medicine). Legitimate data the hospital
+  wants anyway, and runbook step 5 will add the rest.
+- **`registration_config.uhid_prefix = CRK`.** Changeable by re-running the seed; only already-issued
+  UHIDs keep the old prefix, and there is exactly one.
+
+### What is STILL open after this addendum
+
+1. **`doctorScheduledToday: false`** on the opened visit — no `opd_doctor_schedules` rows exist.
+   The visit opened anyway, which is correct for walk-in gap-fill, but appointments cannot be booked
+   until runbook step 5 enters schedules. **Rooms: 0.**
+2. The residuals of ADDENDUM 3 stand unchanged: the burned roster, `admin`'s password, MAJOR 1,
+   and runbook steps 5-7.
