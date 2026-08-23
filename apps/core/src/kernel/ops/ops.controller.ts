@@ -4,30 +4,39 @@ import {
 } from "@nestjs/common";
 import { desc } from "drizzle-orm";
 import { z } from "zod";
-import { DB } from "../tokens";
+import { CONFIG, DB } from "../tokens";
 import { CurrentActor, RequirePermission } from "../auth/decorators";
 import { withTx } from "../db/client";
 import { operatingModeChanges } from "../db/schema";
 import { OPERATING_MODES, ModeError, changeOperatingMode, getOperatingMode } from "./mode";
-import { OPS_INTERFACE_MANAGE, OPS_MODE_SET } from "./manifest";
+import { OPS_DOWNTIME_GENERATE, OPS_INTERFACE_MANAGE, OPS_MODE_SET } from "./manifest";
 import { getLatestValidationReport, runConfigValidation } from "./validate";
 import {
   InterfaceError, deactivateInterface, interfaceRegistrationSchema, listInterfaces,
   recordHeartbeat, registerInterface,
 } from "./interfaces";
+import {
+  DowntimeKitError, downtimeKitRequestSchema, generateDowntimeKit, getKitPrintPayload,
+  listDowntimeKits,
+} from "./downtime-kit";
 import type { Actor } from "@hmis/contracts";
+import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 import type { ModeErrorCode, OperatingMode } from "./mode";
 import type { ConfigValidationReport, LatestValidationReport } from "./validate";
 import type { HeartbeatResult, InterfaceView } from "./interfaces";
+import type {
+  DowntimeKitErrorCode, DowntimeKitView, GenerateDowntimeKitResult, KitPrintPayload,
+} from "./downtime-kit";
 
 // PLAN 11c — THE OPS HTTP SURFACE.
 //
 // FOUR ROUTES SHIPPED WITH T2 and their permission shape is argued below; T3 HAS SINCE ADDED FOUR
 // MORE (the interface registry, in its own section further down, with its own permission
-// argument), and T4 adds the downtime-kit routes to THIS FILE in a later wave of this plan — the
-// sections are marked so each wave adds its own block and touches nothing else (§2.72: enumerated
-// additions, not "change nothing else").
+// argument), and T4 HAS ADDED THE THREE DOWNTIME-KIT ROUTES (the last section, with the argument
+// for why ITS reads are permissioned when the two above are not) — the sections are marked so each
+// wave adds its own block and touches nothing else (§2.72: enumerated additions, not "change
+// nothing else"). Eleven routes, three permission shapes, one controller.
 //
 // THE PERMISSION SHAPE, and it is a decision rather than a default:
 //
@@ -92,6 +101,28 @@ function interfaceToHttp(e: unknown): never {
   throw e; // anything unrecognised is a genuine bug: 500, loudly
 }
 
+/**
+ * T4's mapper, kept separate from both of the above for the reason `interfaceToHttp`'s own comment
+ * gives. `DowntimeKitError` is the first of the three refusal classes to span TWO statuses:
+ * `downtime_kit_not_found` is a 404 like the interface case, while the two request refusals are
+ * 400s — a kit that reserves nothing, or one that names the same desk twice, is a body a caller
+ * can fix. Neither is a 409: nothing about the STATE of the world refuses these, which is what
+ * separates them from `mode_unchanged` and `golive_gate_unsatisfied`.
+ */
+const KIT_BAD_REQUEST_CODES = new Set<DowntimeKitErrorCode>([
+  "downtime_kit_empty",
+  "downtime_kit_duplicate_desk",
+]);
+
+function kitToHttp(e: unknown): never {
+  if (e instanceof DowntimeKitError) {
+    const body = { code: e.code, message: e.message };
+    if (KIT_BAD_REQUEST_CODES.has(e.code)) throw new BadRequestException(body);
+    throw new NotFoundException(body); // downtime_kit_not_found
+  }
+  throw e; // anything unrecognised is a genuine bug: 500, loudly
+}
+
 function parsed<T>(schema: z.ZodType<T>, body: unknown): T {
   const r = schema.safeParse(body);
   if (!r.success) throw new BadRequestException(r.error.issues);
@@ -113,7 +144,15 @@ export type ModeView = {
 
 @Controller("ops")
 export class OpsController {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  /**
+   * `CONFIG` joins the constructor with T4: `GET /ops/downtime-kits/:id` signs every form's QR with
+   * the kernel `secretKey` (D9), and the `auth.controller.ts` / `billing.controller.ts` precedent
+   * is to take it by injection rather than re-parse the environment on a request path.
+   */
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    @Inject(CONFIG) private readonly cfg: AppConfig,
+  ) {}
 
   // ───────────────────────────────── operating mode (T2 / D1-D3) ─────────────────────────────────
 
@@ -265,5 +304,72 @@ export class OpsController {
     }
   }
 
-  // ─────────────────────────── T4 adds the downtime-kit routes here ───────────────────────────
+  // ───────────────────── downtime kits — the paper protocol (T4 / D7, D9) ─────────────────────
+  //
+  // THE PERMISSION SHAPE HERE IS UNIFORM, AND THAT IS THE DECISION — all three routes require
+  // `ops.downtime.generate` at hospital scope, INCLUDING the two reads:
+  //
+  //   POST /ops/downtime-kits      ops.downtime.generate (hospital)
+  //   GET  /ops/downtime-kits      ops.downtime.generate (hospital)
+  //   GET  /ops/downtime-kits/:id  ops.downtime.generate (hospital)
+  //
+  // The mode and interface reads above mint no permission because EVERY screen renders them — the
+  // banner and the ops desk — and a read permission would have to be held by every seeded role
+  // (the `alerts/manifest.ts` trap). NOTHING ABOUT THE KIT IS LIKE THAT. There is exactly one
+  // audience for a kit: the person generating it and the person carrying it to a desk, and they
+  // are the same person. `GET /ops/downtime-kits/:id` in particular returns EVERY SIGNED QR IN THE
+  // KIT — the thing that makes a printed sheet verifiable at backfill time. Handing that to any
+  // authenticated session would let anybody who can log in mint a valid-looking form for a kit
+  // they were never given, which is precisely the forgery D9's signature exists to prevent. A
+  // signature is only worth anything if the material it signs is not public.
+  //
+  // The plan names one permission for the whole surface (Task 4) and this is why one is enough:
+  // generating and reading a kit are one act performed by one role.
+
+  /**
+   * Reserve the paper. The counters, the kit row, every range and the event are ONE transaction
+   * inside `generateDowntimeKit`; this handler parses, delegates and maps.
+   *
+   * `now` is NOT accepted from the body — the `POST /ops/mode` rule, for the same reason: an
+   * instant a caller chose is an instant a caller can lie about, and `generated_at` is what an
+   * incident review reads to place a kit against the outage it was issued for.
+   */
+  @RequirePermission(OPS_DOWNTIME_GENERATE, "hospital")
+  @Post("downtime-kits")
+  async generateKit(
+    @CurrentActor() actor: Actor,
+    @Body() body: unknown,
+  ): Promise<GenerateDowntimeKitResult> {
+    const input = parsed(downtimeKitRequestSchema, body);
+    try {
+      return await withTx(this.db, (tx) => generateDowntimeKit(tx, actor, input));
+    } catch (e) {
+      kitToHttp(e);
+    }
+  }
+
+  /** Newest kit first, ranges included, bounded by construction (`DOWNTIME_KIT_PAGE_LIMIT`). */
+  @RequirePermission(OPS_DOWNTIME_GENERATE, "hospital")
+  @Get("downtime-kits")
+  async listKits(): Promise<{ kits: DowntimeKitView[] }> {
+    return { kits: await listDowntimeKits(this.db) };
+  }
+
+  /**
+   * THE PRINT PAYLOAD — one entry per SHEET, each carrying its signed QR (D9). This is what T5's
+   * `.print-doc` screen renders, and the serials on it are the ones a recovery desk scans back.
+   *
+   * The signing key is the kernel's `secretKey` (`CONFIG`), the same key `makeBadgeToken` uses.
+   * It reaches this handler by injection rather than by a module-level read so that nothing in the
+   * request path re-parses the environment.
+   */
+  @RequirePermission(OPS_DOWNTIME_GENERATE, "hospital")
+  @Get("downtime-kits/:id")
+  async kitPrintPayload(@Param("id") id: string): Promise<KitPrintPayload> {
+    try {
+      return await getKitPrintPayload(this.db, this.cfg.secretKey, id);
+    } catch (e) {
+      kitToHttp(e);
+    }
+  }
 }

@@ -142,3 +142,49 @@ export const interfaceRestored = defineEvent(
     downSince: z.string().nullable(),
   }),
 );
+
+/**
+ * PAPER WITH NUMBERS ON IT WAS HANDED TO A DESK (D7, T4, Book V13/V14).
+ *
+ * Appended by `generateDowntimeKit` inside the same transaction as the counter advance, the kit
+ * row and every range row. It is the only trace of a generation that leaves the database, and it
+ * exists so that an incident review can answer "who reserved which serials, and when" without
+ * reading two tables.
+ *
+ * THE PAYLOAD CARRIES THE PER-KIND BLOCKS, NOT THE PER-DESK RANGES, and the bound is the reason.
+ * `configValidated` above records the rule this follows: the payload is a NOTIFICATION and the
+ * record is the row. A kit for twenty desks holds sixty range rows, and inlining them would put a
+ * list that grows with the hospital into a partitioned append-only table; the three blocks below
+ * are capped at the number of form kinds — three, forever, until a drill demands a fourth — and
+ * they are the numbers a reconciliation actually starts from. The desk-by-desk carve-up is
+ * `downtime_kit_ranges`, one join away.
+ *
+ * `formKind` is a plain string rather than a `z.enum` over `DOWNTIME_FORM_KINDS`: the constant
+ * lives in `downtime-kit.ts`, which imports THIS file for the definition below, and naming it here
+ * would make the two files import each other — the same cycle `OPERATING_MODES` is kept in
+ * `db/schema/ops.ts` to avoid (see `modeChanged`). The enum is enforced where the value is
+ * produced, and `downtime-kit.test.ts` asserts the appended payload against the constant.
+ *
+ * NO PATIENT IDENTITY, EVER (GC6): a kit is issued to a DESK. The forms are blank when they are
+ * reserved — there is not a patient in the world associated with one yet.
+ */
+export const kitGenerated = defineEvent(
+  "downtime.kit_generated",
+  OPS,
+  z.object({
+    kitId: z.string().min(1),
+    note: z.string().nullable(),
+    deskCount: z.number().int().positive(),
+    totalForms: z.number().int().positive(),
+    blocks: z
+      .array(
+        z.object({
+          formKind: z.string().min(1),
+          startSerial: z.number().int().positive(),
+          endSerial: z.number().int().positive(),
+          count: z.number().int().positive(),
+        }),
+      )
+      .min(1),
+  }),
+);
