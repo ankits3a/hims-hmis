@@ -95,10 +95,13 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         "sweepAppointmentNoShows",
         "sweepGuardianMajority",
         "sweepExpiredTempRoles",
+        // Plan 11c D6 — the TENTH job. It is an INTERVAL job, so it joins leg 1a's `job=~`
+        // alternation and leg 2's `absent()` chain in `alerts.yml`; the DAILY leg does not move.
+        "sweepInterfaceHeartbeats",
       ].sort(),
     );
-    expect(registered).toHaveLength(9);
-    expect(new Set(registered).size).toBe(9); // no job registered twice
+    expect(registered).toHaveLength(10);
+    expect(new Set(registered).size).toBe(10); // no job registered twice
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

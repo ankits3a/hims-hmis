@@ -1,7 +1,13 @@
 import { eq } from "drizzle-orm";
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { buildSubscriptionBus, registerAllJobs, type JobIntervals } from "./jobs";
+import { Scheduler, type Locks } from "./scheduler";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
+import { requireEnv } from "../config";
+import * as schema from "../db/schema";
 import { notifications, patients, events } from "../db/schema";
+import * as interfacesMod from "../ops/interfaces";
 import { ModuleRegistry } from "../modules/loader";
 import { authManifest } from "../auth/manifest";
 import { workflowManifest } from "../workflow/manifest";
@@ -12,7 +18,7 @@ import { opdManifest } from "../../modules/opd";
 import { billingManifest } from "../../modules/billing";
 import type { Handler, SubscriptionBus } from "../events/subscriptions";
 import type { ModuleManifest } from "../modules/manifest";
-import type { JobSpec, Scheduler } from "./scheduler";
+import type { JobSpec } from "./scheduler";
 import type { Db } from "../db/client";
 
 // Flattens a bus into (consumer, event) pairs for comparison. A consumer may in principle
@@ -147,6 +153,11 @@ describe("registerAllJobs threads NOTIFY_STUCK_AFTER_MS to the pump (Book R2)", 
     retentionEnabled: false,
     retentionEventsMonths: 120,
     notifyRetainDays: 180,
+    // Plan 11c D6, and the type event fired one more time: widening the `Pick` with
+    // `workerInterfaceSweepIntervalMs` stopped THIS literal compiling until it carried the key.
+    // THE SHIPPED DEFAULT, PASSED EXPLICITLY — this block is about the pump; where a DISTINCT
+    // value is asserted to reach the tenth job is the V12 block at the bottom of this file.
+    workerInterfaceSweepIntervalMs: 60_000,
   };
 
   let db: Db;
@@ -205,5 +216,153 @@ describe("registerAllJobs threads NOTIFY_STUCK_AFTER_MS to the pump (Book R2)", 
   it("registers the pump on its own cadence — the widened Pick did not disturb the seventh job", () => {
     const pump = registeredPump();
     expect(pump).toEqual(expect.objectContaining({ name: "runNotifyPump", every: 5000 }));
+  });
+});
+
+/**
+ * ASSERTION BOOK V12 (Plan 11c D6, Global Constraint 10) — `WORKER_INTERFACE_SWEEP_INTERVAL_MS`
+ * REACHES THE TENTH JOB, and it reaches it THROUGH THE PRODUCTION REGISTRATION.
+ *
+ * This is the `NOTIFY_STUCK_AFTER_MS` scar one surface over (Book R2 above). `config.test.ts`
+ * asserting that a key PARSES is not protection — that is precisely the shape under which a key
+ * parsed, was exposed on `AppConfig`, and reached nothing at all for a whole plan. So the claim
+ * here is not "the value parses" and not even "the value is stored": it is that the SCHEDULER
+ * ACTUALLY INVOKES THE SWEEP ON THE CADENCE THE OPERATOR SET.
+ *
+ * THE DISCRIMINATOR IS ARITHMETIC, NOT A WAIT (GC8/GC10 — nothing below sleeps or measures a
+ * clock). The registered cadence is 7 000 ms and the whole advance is 28 000 fake ms — LESS than
+ * the shipped 60 000 default. A registration that hardcoded the default, or that reached for the
+ * environment instead of its parameter, fires ZERO times inside that window; the shipped one fires
+ * on every 7 000 ms boundary in it. No fallback could produce a non-empty `invoked`.
+ *
+ * The four OTHER interval cadences are set to nine hours and the daily ticker to nine hours too,
+ * so this window belongs to the tenth job alone — the census in `scheduler.test.ts` is where all
+ * ten firing together is asserted, and a second copy of that here would only add flake surface.
+ * `sweepInterfaceHeartbeats` itself is SPIED OUT (Global Constraint 3: jest runs sweeps directly,
+ * never through the scheduler; its behaviour is asserted in `kernel/ops/interfaces.test.ts`).
+ */
+describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tenth job (Book V12, GC10)", () => {
+  /** 7 000 ms — distinct from the shipped 60 000 default and smaller than the advance below. */
+  const INTERFACE_SWEEP_EVERY_MS = 7_000;
+  const NINE_HOURS_MS = 9 * 60 * 60 * 1000;
+  /** 4 x 7 000 = 28 000 fake ms — deliberately SHORTER than the 60 000 default. */
+  const ADVANCE_STEPS = 4;
+
+  const V12_PIN = new Date("2026-08-21T12:00:00.000Z");
+
+  /** D3/halt condition 7: no test here observes the advisory lock — the census's own stub. */
+  const stubLocks = (): Locks => ({ tryLock: async () => true, unlock: async () => {} });
+
+  /**
+   * A dedicated pool on the SAME per-worker database `setupTestDb()` already migrated, with
+   * `idleTimeoutMillis: 0`. This test fakes ALL timers, and `pg`'s Pool runs its idle-connection
+   * eviction on a real `setTimeout` that the fake clock would intercept — advancing 28 fake
+   * seconds in a few real milliseconds makes that eviction close live connections. Verbatim the
+   * reason `scheduler.test.ts`'s census carries the same helper.
+   */
+  function freshWorkerDb(): { db: Db; pool: Pool; close: () => Promise<void> } {
+    const baseUrl = requireEnv("TEST_DATABASE_URL");
+    const workerId = process.env.JEST_WORKER_ID ?? "1";
+    const parsed = new URL(baseUrl);
+    const baseDbName = parsed.pathname.replace(/^\//, "");
+    const workerUrl = new URL(parsed.toString());
+    workerUrl.pathname = `/${baseDbName}_${workerId}`;
+    const dedicatedPool = new Pool({ connectionString: workerUrl.toString(), idleTimeoutMillis: 0 });
+    return { db: drizzle(dedicatedPool, { schema }), pool: dedicatedPool, close: () => dedicatedPool.end() };
+  }
+
+  /** A handle to the REAL event loop, captured while the timers in this file are still real. */
+  const realSetTimeout = setTimeout;
+
+  /**
+   * Yields `turns` REAL event-loop turns so the heartbeat writes each tick issues can actually
+   * finish while fake time stands still. It asserts nothing and cannot fail — a sequencing wait,
+   * not a timing assertion (GC8/GC10).
+   */
+  async function settleRealTurns(turns: number): Promise<void> {
+    for (let i = 0; i < turns; i += 1) {
+      await new Promise<void>((resolve) => {
+        realSetTimeout(() => { resolve(); }, 0);
+      });
+    }
+  }
+
+  /** Every other cadence pushed out of the window; only the tenth job can fire in 28 seconds. */
+  const V12_INTERVALS: JobIntervals = {
+    workerDispatchIntervalMs: NINE_HOURS_MS,
+    workerTimersIntervalMs: NINE_HOURS_MS,
+    workerTempRolesIntervalMs: NINE_HOURS_MS,
+    workerNotifyIntervalMs: NINE_HOURS_MS,
+    notifyStuckAfterMs: 300_000,
+    retentionEnabled: false,
+    retentionEventsMonths: 120,
+    notifyRetainDays: 180,
+    workerInterfaceSweepIntervalMs: INTERFACE_SWEEP_EVERY_MS,
+  };
+
+  let db: Db;
+  let teardown: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, teardown } = await setupTestDb());
+  });
+  afterAll(async () => {
+    await teardown();
+  });
+  beforeEach(async () => {
+    await truncateAll(db);
+  });
+
+  it("registers the sweep as the TENTH job, on the cadence it was handed — not on the 60 000 default", () => {
+    const specs: JobSpec[] = [];
+    registerAllJobs(
+      { register: (spec: JobSpec): void => { specs.push(spec); } } as unknown as Scheduler,
+      db,
+      new ModuleRegistry(),
+      {},
+      V12_INTERVALS,
+    );
+
+    expect(specs).toHaveLength(10);
+    expect(specs[9]).toEqual(
+      expect.objectContaining({ name: "sweepInterfaceHeartbeats", every: INTERFACE_SWEEP_EVERY_MS }),
+    );
+  });
+
+  it("V12: the REAL Scheduler invokes it inside a window shorter than the default — the operator's key takes effect", async () => {
+    const invoked: string[] = [];
+    const spy = jest
+      .spyOn(interfacesMod, "sweepInterfaceHeartbeats")
+      .mockImplementation(async () => {
+        invoked.push("sweepInterfaceHeartbeats");
+        return [];
+      });
+    const fresh = freshWorkerDb();
+    jest.useFakeTimers({ now: V12_PIN });
+    try {
+      // The daily ticker is pushed out of the window too: this test is about ONE cadence.
+      const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), NINE_HOURS_MS);
+      registerAllJobs(scheduler, fresh.db, new ModuleRegistry(), {}, V12_INTERVALS);
+      expect(scheduler.jobs()).toContain("sweepInterfaceHeartbeats");
+
+      scheduler.start();
+      for (let i = 0; i < ADVANCE_STEPS; i += 1) {
+        await jest.advanceTimersByTimeAsync(INTERFACE_SWEEP_EVERY_MS);
+        await settleRealTurns(50);
+      }
+      await scheduler.stop();
+
+      // At the 60 000 default this window contains NO tick at all, so a single invocation is only
+      // reachable through the registered value. The bound is `>= 1` rather than `=== 4`
+      // deliberately: a starved container may not drain every tick's real database round-trips,
+      // and this assertion is about WHICH CADENCE fired, not about how many times it did.
+      expect(invoked.length).toBeGreaterThanOrEqual(1);
+      expect(new Set(invoked)).toEqual(new Set(["sweepInterfaceHeartbeats"]));
+      expect(scheduler.leakedErrors()).toEqual([]);
+    } finally {
+      jest.useRealTimers();
+      spy.mockRestore();
+      await fresh.close();
+    }
   });
 });

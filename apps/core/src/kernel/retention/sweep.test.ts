@@ -707,6 +707,12 @@ describe("retentionSweep", () => {
       workerTempRolesIntervalMs: 60_000,
       workerNotifyIntervalMs: 5000,
       notifyStuckAfterMs: 300_000,
+      // Plan 11c D6: the TENTH job's cadence. Present here for one reason and no other — widening
+      // the `JobIntervals` Pick in `worker/jobs.ts` stopped this literal compiling until it carried
+      // the key, exactly as that Pick's own comment promises. THE SHIPPED DEFAULT, PASSED
+      // EXPLICITLY: nothing in this file registers, runs or observes the interface sweep, and
+      // nothing about retention's semantics changes because of it (plan GC4).
+      workerInterfaceSweepIntervalMs: 60_000,
       ...retention,
     });
 

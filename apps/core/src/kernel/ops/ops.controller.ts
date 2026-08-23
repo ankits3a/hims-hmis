@@ -1,5 +1,6 @@
 import {
-  BadRequestException, Body, ConflictException, Controller, Get, Inject, Post,
+  BadRequestException, Body, ConflictException, Controller, Get, Inject, NotFoundException, Param,
+  Post,
 } from "@nestjs/common";
 import { desc } from "drizzle-orm";
 import { z } from "zod";
@@ -8,18 +9,25 @@ import { CurrentActor, RequirePermission } from "../auth/decorators";
 import { withTx } from "../db/client";
 import { operatingModeChanges } from "../db/schema";
 import { OPERATING_MODES, ModeError, changeOperatingMode, getOperatingMode } from "./mode";
-import { OPS_MODE_SET } from "./manifest";
+import { OPS_INTERFACE_MANAGE, OPS_MODE_SET } from "./manifest";
 import { getLatestValidationReport, runConfigValidation } from "./validate";
+import {
+  InterfaceError, deactivateInterface, interfaceRegistrationSchema, listInterfaces,
+  recordHeartbeat, registerInterface,
+} from "./interfaces";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
 import type { ModeErrorCode, OperatingMode } from "./mode";
 import type { ConfigValidationReport, LatestValidationReport } from "./validate";
+import type { HeartbeatResult, InterfaceView } from "./interfaces";
 
 // PLAN 11c — THE OPS HTTP SURFACE.
 //
-// FOUR ROUTES SHIP HERE (T2). T3 adds the interface routes and T4 adds the downtime-kit routes to
-// THIS FILE in later waves of this plan — the sections are marked below so each wave adds its own
-// block and touches nothing else (§2.72: enumerated additions, not "change nothing else").
+// FOUR ROUTES SHIPPED WITH T2 and their permission shape is argued below; T3 HAS SINCE ADDED FOUR
+// MORE (the interface registry, in its own section further down, with its own permission
+// argument), and T4 adds the downtime-kit routes to THIS FILE in a later wave of this plan — the
+// sections are marked so each wave adds its own block and touches nothing else (§2.72: enumerated
+// additions, not "change nothing else").
 //
 // THE PERMISSION SHAPE, and it is a decision rather than a default:
 //
@@ -65,6 +73,21 @@ function toHttp(e: unknown): never {
     const body = { code: e.code, detail: e.detail ?? null, message: e.message };
     if (BAD_REQUEST_CODES.has(e.code)) throw new BadRequestException(body);
     throw new ConflictException(body); // mode_unchanged · golive_gate_unsatisfied
+  }
+  throw e; // anything unrecognised is a genuine bug: 500, loudly
+}
+
+/**
+ * T3's own mapper, kept SEPARATE from `toHttp` above rather than folded into it.
+ *
+ * `ModeError` is a refusal about STATE — a transition the matrix or the go-live gate will not
+ * allow — and its whole vocabulary maps to 400/409. `InterfaceError` has exactly one code and it
+ * means "no such row", which is a 404 and nothing else. Widening `toHttp` with a second error
+ * class and a third status would make T2's four routes depend on a branch none of them can reach.
+ */
+function interfaceToHttp(e: unknown): never {
+  if (e instanceof InterfaceError) {
+    throw new NotFoundException({ code: e.code, message: e.message });
   }
   throw e; // anything unrecognised is a genuine bug: 500, loudly
 }
@@ -172,6 +195,75 @@ export class OpsController {
     return { report: await getLatestValidationReport(this.db) };
   }
 
-  // ─────────────────────────── T3 adds the interface routes here ───────────────────────────
+  // ────────────────────── interfaces — the heartbeat registry (T3 / D6) ──────────────────────
+  //
+  // THE PERMISSION SHAPE HERE IS SPLIT, and the split is the decision:
+  //
+  //   GET  /ops/interfaces                 AUTHENTICATED-ONLY — no permission
+  //   POST /ops/interfaces                 ops.interface.manage (hospital)
+  //   POST /ops/interfaces/:id/deactivate  ops.interface.manage (hospital)
+  //   POST /ops/interfaces/:id/heartbeat   AUTHENTICATED-ONLY — no permission
+  //
+  // MANAGING the registry is administration: who owns a printer and how long it may stay quiet
+  // before somebody is woken up is a configuration act, and `ops.interface.manage` is the
+  // manifest permission that guards it.
+  //
+  // A HEARTBEAT IS NOT. It is a liveness WRITE from a DEVICE IDENTITY — an agent actor saying "I
+  // am still here", once a minute, forever. Minting a permission for it would oblige every device
+  // agent to hold a grant before it could report at all, which turns a monitoring surface into a
+  // provisioning problem and makes SILENCE the default failure mode of the thing whose entire job
+  // is to notice silence. It is authenticated-only today, and PLAN 12a's AGENT GRANTS ARE ITS
+  // FUTURE TIGHTENING: when an agent identity can hold scoped grants, this route takes one.
+  //
+  // The read mints no permission for the same reason `GET /ops/mode` does not (see the header):
+  // the interface list is what the ops desk looks at to see whether the hospital's devices are
+  // alive, and a read permission would have to be granted to every role that ever looks.
+
+  /** The registry as the ops desk renders it, in `seq` order. Authenticated-only — see above. */
+  @Get("interfaces")
+  async interfaces(): Promise<{ interfaces: InterfaceView[] }> {
+    return { interfaces: await listInterfaces(this.db) };
+  }
+
+  /**
+   * Register a device. The body is parsed by the DOMAIN's own schema
+   * (`interfaceRegistrationSchema`), not by one restated here, so the 30 s floor and the 180 000
+   * default cannot drift between the HTTP edge and the sweep that reads the column.
+   */
+  @RequirePermission(OPS_INTERFACE_MANAGE, "hospital")
+  @Post("interfaces")
+  async createInterface(@Body() body: unknown): Promise<InterfaceView> {
+    // `safeParse` inline rather than through `parsed()` above: this schema carries a `.default()`,
+    // so its INPUT type is not its OUTPUT type and `z.ZodType<T>` (which equates the two) cannot
+    // describe it. Same refusal shape — the issue list, as a 400.
+    const r = interfaceRegistrationSchema.safeParse(body);
+    if (!r.success) throw new BadRequestException(r.error.issues);
+    return registerInterface(this.db, r.data);
+  }
+
+  /** Retire a device: it leaves the SWEEP's population and its status column is left as it stands. */
+  @RequirePermission(OPS_INTERFACE_MANAGE, "hospital")
+  @Post("interfaces/:id/deactivate")
+  async deactivate(@Param("id") id: string): Promise<InterfaceView> {
+    try {
+      return await deactivateInterface(this.db, id);
+    } catch (e) {
+      interfaceToHttp(e);
+    }
+  }
+
+  /**
+   * "I am alive." `now` is NOT accepted from the body — a device that could choose its own instant
+   * could report a heartbeat from the future and never be swept again.
+   */
+  @Post("interfaces/:id/heartbeat")
+  async heartbeat(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<HeartbeatResult> {
+    try {
+      return await recordHeartbeat(this.db, actor, id);
+    } catch (e) {
+      interfaceToHttp(e);
+    }
+  }
+
   // ─────────────────────────── T4 adds the downtime-kit routes here ───────────────────────────
 }

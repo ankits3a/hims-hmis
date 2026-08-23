@@ -78,6 +78,23 @@ const configSchema = z.object({
     .transform((v) => v === "true"),
   RETENTION_EVENTS_MONTHS: z.coerce.number().int().positive().default(120),
   NOTIFY_RETAIN_DAYS: z.coerce.number().int().positive().default(180),
+  // Plan 11c D6 — the TENTH job's cadence: how often `sweepInterfaceHeartbeats` looks for a device
+  // that has gone quiet. Defaulted, like every `WORKER_*_INTERVAL_MS` above and for the same B1
+  // scar: this schema is parsed through the WHOLE environment by every caller of `loadConfig()`,
+  // so a key that required a value would break every deployment and every CI job that has no .env
+  // entry for it. NO .env CHANGE IS NEEDED ANYWHERE for this plan.
+  //
+  // A PLAIN POSITIVE INT, deliberately NOT the `RETENTION_ENABLED` two-string-enum shape. That
+  // spelling exists because `z.coerce.boolean()` reads "false" as TRUE; there is no analogous trap
+  // in a number, and copying the enum here would be cargo cult. 60 000 is one minute: the smallest
+  // per-device window an operator may set is 30 s (`INTERFACE_STALE_AFTER_MIN_MS`), so a slower
+  // grid than this would make the shortest legal window unobservable, and a faster one would spend
+  // reads on a registry that changes at human speed.
+  //
+  // WHERE THIS KEY DEMONSTRABLY TAKES EFFECT (GC10, the NOTIFY_STUCK_AFTER_MS scar) is
+  // `kernel/worker/jobs.ts`'s registration, asserted in `worker/jobs.test.ts` (Book V12) with a
+  // value that is NOT this default. Asserting that it PARSES would discharge nothing.
+  WORKER_INTERFACE_SWEEP_INTERVAL_MS: z.coerce.number().int().positive().default(60000),
 });
 
 export type AppConfig = {
@@ -102,6 +119,9 @@ export type AppConfig = {
   retentionEnabled: boolean;
   retentionEventsMonths: number;
   notifyRetainDays: number;
+  // Plan 11c D6. Reaches `sweepInterfaceHeartbeats` — the tenth job — through `worker/jobs.ts`'s
+  // registration and nowhere else, which is where GC10 is discharged rather than at the parse.
+  workerInterfaceSweepIntervalMs: number;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -126,5 +146,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     retentionEnabled: parsed.RETENTION_ENABLED,
     retentionEventsMonths: parsed.RETENTION_EVENTS_MONTHS,
     notifyRetainDays: parsed.NOTIFY_RETAIN_DAYS,
+    workerInterfaceSweepIntervalMs: parsed.WORKER_INTERFACE_SWEEP_INTERVAL_MS,
   };
 }

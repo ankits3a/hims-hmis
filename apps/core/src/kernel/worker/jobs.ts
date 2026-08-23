@@ -11,6 +11,7 @@ import { runDailyClose } from "../../modules/billing/daily-close";
 import { runNotifyPump } from "../notify/pump";
 import { createEventPartitions } from "./partitions";
 import { retentionSweep } from "../retention/sweep";
+import { sweepInterfaceHeartbeats } from "../ops/interfaces";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
 
@@ -66,8 +67,8 @@ export function buildSubscriptionBus(
 }
 
 /**
- * The FOUR interval cadences (D9, + Plan 10's pump) AND ONE WINDOW — and nothing else
- * `registerAllJobs` needs from config.
+ * The FIVE interval cadences (D9, + Plan 10's pump, + Plan 11c's interface sweep), ONE WINDOW and
+ * the retention trio — and nothing else `registerAllJobs` needs from config.
  *
  * IT IS A `Pick` OF `AppConfig`, DELIBERATELY, AND IT IS THE NARROWEST THING THAT WORKS.
  * `worker.ts` already holds the whole `AppConfig` (`app.get<AppConfig>(CONFIG)`) and passes it
@@ -107,17 +108,26 @@ export type JobIntervals = Pick<
   | "retentionEnabled"
   | "retentionEventsMonths"
   | "notifyRetainDays"
+  // Plan 11c D6: the TENTH job's cadence (`WORKER_INTERFACE_SWEEP_INTERVAL_MS`, default 60 000).
+  // A real `every` cadence this time, not a window and not a flag — so amendment 7's warning
+  // above applies in its original form: adding this key stopped all THREE `JobIntervals` object
+  // literals in the suite compiling until each carried it (`CENSUS_INTERVALS` in
+  // `scheduler.test.ts`, `INTERVALS` in `jobs.test.ts`, and the builder in
+  // `retention/sweep.test.ts`). That is the typechecker announcing a new job to every census
+  // literal, which is exactly what a widened `Pick` is for.
+  | "workerInterfaceSweepIntervalMs"
 >;
 
 /**
- * The NINE jobs on the clock (D2/D9/step 2 + Plan 10 D3 + Plan 11a D5/D6), transcribed exactly —
- * do not invent cadences.
+ * The TEN jobs on the clock (D2/D9/step 2 + Plan 10 D3 + Plan 11a D5/D6 + Plan 11c D6),
+ * transcribed exactly — do not invent cadences.
  * `runDispatchCycle` every `workerDispatchIntervalMs` · `runDueTimers` every
  * `workerTimersIntervalMs` · `sweepExpiredTempRoles` every `workerTempRolesIntervalMs` ·
  * `sweepGuardianMajority` daily 00:05 IST · `sweepAppointmentNoShows` daily 23:55 IST ·
  * `runDailyClose` daily 23:59 IST, called as `runDailyClose(db, undefined, now)` ·
  * `runNotifyPump` every `workerNotifyIntervalMs` (Plan 10 D3) · `createEventPartitions` daily
- * 00:15 IST (Plan 11a D5) · `retentionSweep` daily 01:15 IST (Plan 11a D6/D7).
+ * 00:15 IST (Plan 11a D5) · `retentionSweep` daily 01:15 IST (Plan 11a D6/D7) ·
+ * `sweepInterfaceHeartbeats` every `workerInterfaceSweepIntervalMs` (Plan 11c D6).
  *
  * `runDispatchCycle` takes T3's SHIPPED signature — `(db, bus, opts?: { batchSize?, lookback?,
  * maxAttempts?, now? })` since `39e520d` — and this registration THREADS `now` through it, the
@@ -226,5 +236,23 @@ export function registerAllJobs(
         notifyRetainDays: intervals.notifyRetainDays,
       });
     },
+  });
+  // Plan 11c D6: THE TENTH JOB, and it is an `every` job whose cadence is a real operator key —
+  // so unlike the eighth it widened `JobIntervals` (see the Pick above), and unlike the ninth the
+  // key it added is an actual CADENCE rather than a value the run body reads. All three
+  // `JobIntervals` object literals therefore stopped compiling until each admitted it, and the
+  // three CENSUSES still had to move by hand: 9 → 10 in `scheduler.test.ts`, in
+  // `test/worker-runtime.e2e.test.ts`, and in `test/alerts-parity.test.ts`'s count pin — the last
+  // of which also mirrors this registration into `docker/prod/prometheus/alerts.yml`, so a tenth
+  // job that nobody added to the alert rules is a RED TEST rather than a silent monitoring hole.
+  //
+  // `intervals.workerInterfaceSweepIntervalMs` is passed as `every` and NOT as an argument to the
+  // sweep: the cadence is how often the registry is inspected, while how long each device may stay
+  // quiet is that device's OWN `stale_after_ms` column (D6). Confusing the two would replace a
+  // per-device window with a global one, which is the mutant Book V9 kills.
+  scheduler.register({
+    name: "sweepInterfaceHeartbeats",
+    every: intervals.workerInterfaceSweepIntervalMs,
+    run: async (now) => { await sweepInterfaceHeartbeats(db, now); },
   });
 }

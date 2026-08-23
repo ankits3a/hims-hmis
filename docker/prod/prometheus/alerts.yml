@@ -11,18 +11,23 @@
 # HmisSchedulerJobMissing while the staleness legs stay silent for it — they have no series to
 # threshold against, which is exactly the blind spot this rule exists to close.
 #
-# The nine job names and their cadences are transcribed verbatim from `registerAllJobs`
-# (apps/core/src/kernel/worker/jobs.ts) — this file invents no cadence of its own.
+# The TEN job names and their cadences are transcribed verbatim from `registerAllJobs`
+# (apps/core/src/kernel/worker/jobs.ts) — this file invents no cadence of its own. The tenth,
+# `sweepInterfaceHeartbeats` (Plan 11c D6), is an INTERVAL job, so it joins leg 1a and leg 2 and
+# leaves leg 1b alone. `apps/core/test/alerts-parity.test.ts` fails if this file and that registry
+# ever disagree, which is why a count in a comment here is worth keeping honest.
 groups:
   - name: hmis-scheduler
     rules:
-      # Leg 1a — the four `every(ms)` jobs. The slowest shipped cadence is 60s
-      # (WORKER_TEMP_ROLES_INTERVAL_MS); 5 minutes is a wide margin over one missed tick before
-      # paging anyone, while still catching a genuinely stuck loop inside the same shift.
+      # Leg 1a — the FIVE `every(ms)` jobs. The slowest shipped cadence is still 60s
+      # (WORKER_TEMP_ROLES_INTERVAL_MS, and now WORKER_INTERFACE_SWEEP_INTERVAL_MS beside it at the
+      # same 60s default), so the 300s threshold is unchanged: 5 minutes is a wide margin over one
+      # missed tick before paging anyone, while still catching a genuinely stuck loop inside the
+      # same shift.
       - alert: HmisSchedulerJobStaleInterval
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump"
+            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|sweepInterfaceHeartbeats"
           } > 300
         for: 2m
         labels:
@@ -53,7 +58,7 @@ groups:
 
       # Leg 2 — THE BLIND SPOT (spike finding 6, flag ⑨). A job that has NEVER started has no row
       # in scheduler_heartbeats at all, so it has no series for leg 1 to threshold against — that
-      # is precisely what leg 1 cannot see. `absent()` over each of the nine expected job names
+      # is precisely what leg 1 cannot see. `absent()` over each of the ten expected job names
       # closes it: every term that matches carries that job's own name as $labels.job (from the
       # positive equality matcher inside it), so `or` fires one alert instance PER missing job
       # rather than one alert for all of them together.
@@ -68,6 +73,7 @@ groups:
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="runDailyClose"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="createEventPartitions"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="retentionSweep"})
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepInterfaceHeartbeats"})
         for: 5m
         labels:
           severity: critical

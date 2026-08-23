@@ -81,3 +81,64 @@ export const configValidated = defineEvent(
       .min(1),
   }),
 );
+
+/**
+ * A DEVICE THE HOSPITAL RELIES ON HAS GONE QUIET (D6, T3, Book V9).
+ *
+ * Appended by `sweepInterfaceHeartbeats` when an ACTIVE interface that was `up` has not been seen
+ * for longer than ITS OWN `stale_after_ms` — per device, never a global constant, because a label
+ * printer and a lab analyser do not go quiet on the same schedule.
+ *
+ * A REGISTERED-BUT-NEVER-SEEN INTERFACE NEVER PRODUCES THIS EVENT (Book V10). `last_seen_at` is
+ * NULL for such a row and `unknown` is a distinct state from `down`: there is nothing to lose, and
+ * the event would be noise on every deployment that ever registered a device it has not plugged in
+ * yet. So `lastSeenAt` below is NON-NULLABLE — an `interface.down` that could not name when the
+ * device was last alive would be an event about a device this sweep must never have touched.
+ *
+ * THE NAME BREAKS THE `verb_past` GRAMMAR AND IS KEPT VERBATIM ANYWAY. `interface.down` is spec
+ * §11.14's own name (D6 records the deviation); `defineEvent`'s `NAME_RE` enforces dotted lowercase
+ * segments, not tense, so design law wins and nothing throws. Its partner below is `restored`,
+ * which does read as a past participle — the pair is deliberately asymmetric because the SPEC's
+ * pair is.
+ *
+ * NO PATIENT IDENTITY, EVER (GC6): a device's liveness is a hospital-wide fact.
+ */
+export const interfaceDown = defineEvent(
+  "interface.down",
+  OPS,
+  z.object({
+    interfaceId: z.string().min(1),
+    kind: z.string().min(1), // printer | scanner | other
+    name: z.string().min(1),
+    /** ISO instant — the last heartbeat this device ever sent. Never null: see the header. */
+    lastSeenAt: z.string().min(1),
+    /** The row's OWN window, carried so the alert can say what it was measured against. */
+    staleAfterMs: z.number().int().positive(),
+  }),
+);
+
+/**
+ * THE DEVICE IS BACK (D6, T3, Book V11).
+ *
+ * Appended by `recordHeartbeat` ONLY on the `down → up` edge. `unknown → up` — the first heartbeat
+ * a freshly-registered device ever sends — is SILENT, because nothing was ever wrong and an event
+ * per commissioned printer is exactly the per-run noise `kernel/retention/events.ts`'s header
+ * refuses. `up → up`, the ordinary case that happens every 60 s per device forever, appends
+ * nothing at all for the same reason.
+ *
+ * `downSince` is the `last_seen_at` the row carried while it was down — the instant the outage is
+ * measured FROM. It is nullable because a row can be `down` with no prior sighting only if
+ * something outside this file put it there; the sweep never can (see `interfaceDown`).
+ */
+export const interfaceRestored = defineEvent(
+  "interface.restored",
+  OPS,
+  z.object({
+    interfaceId: z.string().min(1),
+    kind: z.string().min(1),
+    name: z.string().min(1),
+    /** ISO instant of the heartbeat that restored it — the injected `now`, never the wall clock. */
+    seenAt: z.string().min(1),
+    downSince: z.string().nullable(),
+  }),
+);

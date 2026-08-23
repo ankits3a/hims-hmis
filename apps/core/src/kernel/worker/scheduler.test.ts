@@ -24,6 +24,7 @@ import * as dailyCloseMod from "../../modules/billing/daily-close";
 import * as notifyPumpMod from "../notify/pump";
 import * as partitionsMod from "./partitions";
 import * as retentionMod from "../retention/sweep";
+import * as interfacesMod from "../ops/interfaces";
 import type { Db } from "../db/client";
 
 // D3/halt condition 7: no test in this file ever observes the advisory lock. Every test below
@@ -96,7 +97,7 @@ async function settleRealTurns(turns: number): Promise<void> {
  * Global Constraint 3: jest runs sweeps DIRECTLY, never through the scheduler. Both census
  * tests below call the REAL `registerAllJobs` (so the job names, the D9 cadences, the IST
  * daily semantics and the amendment-6 bus-building are all real and unmodified) but replace
- * the eight underlying sweep functions with recording stubs on their own modules — so no real
+ * the TEN underlying sweep functions with recording stubs on their own modules — so no real
  * sweep body ever runs inside jest, only the scheduling machinery around it.
  *
  * THE SEVENTH SPY IS NOT BOOKKEEPING (Plan 10, amendment 7). `runNotifyPump` is the send path:
@@ -120,7 +121,7 @@ async function settleRealTurns(turns: number): Promise<void> {
  * Names are pushed in invocation ORDER, and duplicates are kept: "fired exactly once across
  * five ticks" is a claim a `Set` cannot make.
  */
-function spyOnTheNine(invoked: string[]): jest.SpyInstance[] {
+function spyOnTheTen(invoked: string[]): jest.SpyInstance[] {
   return [
     jest.spyOn(dispatcherMod, "runDispatchCycle").mockImplementation(async () => {
       invoked.push("runDispatchCycle");
@@ -162,10 +163,18 @@ function spyOnTheNine(invoked: string[]): jest.SpyInstance[] {
         idempotencyDeleted: 0, deliveriesDeleted: 0, deadLettersDeleted: 0,
       };
     }),
+    // THE TENTH (Plan 11c D6) IS THE ONLY SPY HERE THAT GUARDS AN EVENT APPEND. Un-stubbed,
+    // `sweepInterfaceHeartbeats` would read the `interfaces` registry and, for any row a previous
+    // test left `up` and stale, flip it and append `interface.down` — inside a fake-clock unit
+    // test that is about the CLOCK. Its behaviour is asserted DIRECTLY in `kernel/ops/interfaces.test.ts`.
+    jest.spyOn(interfacesMod, "sweepInterfaceHeartbeats").mockImplementation(async () => {
+      invoked.push("sweepInterfaceHeartbeats");
+      return [];
+    }),
   ];
 }
 
-const THE_NINE = [
+const THE_TEN = [
   "runDispatchCycle",
   "runDueTimers",
   "sweepExpiredTempRoles",
@@ -175,6 +184,7 @@ const THE_NINE = [
   "runNotifyPump",
   "createEventPartitions",
   "retentionSweep",
+  "sweepInterfaceHeartbeats",
 ];
 
 /**
@@ -233,7 +243,7 @@ describe("Scheduler", () => {
     expect(scheduler.leakedErrors()).toEqual([]);
   });
 
-  // L14 — the registration census. Two tests, because there are two claims: that all nine jobs
+  // L14 — the registration census. Two tests, because there are two claims: that all ten jobs
   // are registered and reached at their cadences, and that the DAILY four are keyed on the IST
   // calendar rather than the UTC one. The first cannot make the second — see M-S2 below.
   describe("the registration census (L14)", () => {
@@ -273,6 +283,14 @@ describe("Scheduler", () => {
       retentionEnabled: false,
       retentionEventsMonths: 120,
       notifyRetainDays: 180,
+      // PLAN 11c D6 — THE TENTH JOB, and this value is BINDING rather than arbitrary (the spike's
+      // question-A measurement, written into D6). It is a real `every` cadence, so unlike its five
+      // predecessors above it must actually FIRE inside this census: `CENSUS_SPAN_MS` below is
+      // 9 h 05 m, so a cadence at or above that span would never be reached and the set-equality
+      // assertion would go red naming this job. 7 h sits inside the span and, like its four
+      // interval neighbours, is hours rather than the shipped 60 s default — at 60 s a nine-hour
+      // advance would tick this sweep ~545 times, each doing a REAL heartbeat write.
+      workerInterfaceSweepIntervalMs: 7 * 60 * 60 * 1000,
     };
 
     // The SHIPPED default (D9), passed explicitly. `isDailyDue()` gates its (only) DB read
@@ -374,17 +392,17 @@ describe("Scheduler", () => {
     /** Real turns at an instant, where a window is open and a run must reach its spy. */
     const INSTANT_SETTLE_TURNS = 50;
 
-    it("invokes all nine jobs across a stepwise advance from a pinned instant", async () => {
+    it("invokes all ten jobs across a stepwise advance from a pinned instant", async () => {
       expect(process.env.DATABASE_URL).toBeUndefined(); // CI's environment, reproduced here
       const invoked: string[] = [];
-      const spies = spyOnTheNine(invoked);
+      const spies = spyOnTheTen(invoked);
       const registry = censusRegistry();
       const fresh = freshWorkerDb();
       jest.useFakeTimers({ now: CENSUS_PIN });
       try {
         const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), CENSUS_DAILY_TICK_MS);
         registerAllJobs(scheduler, fresh.db, registry, {}, CENSUS_INTERVALS);
-        expect(scheduler.jobs()).toEqual(THE_NINE);
+        expect(scheduler.jobs()).toEqual(THE_TEN);
 
         // Fake milliseconds advanced so far, measured from the pin. The walk only moves forward,
         // so a target already behind the cursor is a no-op rather than a rewind.
@@ -412,7 +430,7 @@ describe("Scheduler", () => {
         await settleRealTurns(INSTANT_SETTLE_TURNS);
         await scheduler.stop();
 
-        expect(new Set(invoked)).toEqual(new Set(THE_NINE));
+        expect(new Set(invoked)).toEqual(new Set(THE_TEN));
         expect(scheduler.leakedErrors()).toEqual([]);
       } finally {
         jest.useRealTimers();
@@ -462,7 +480,7 @@ describe("Scheduler", () => {
       const NOW = new Date("2026-08-21T19:00:00.000Z"); // IST 2026-08-22 00:30
       const LAST_OK = new Date("2026-08-21T10:00:00.000Z"); // IST 2026-08-21 15:30 — same UTC day
       const invoked: string[] = [];
-      const spies = spyOnTheNine(invoked);
+      const spies = spyOnTheTen(invoked);
       const registry = censusRegistry();
       const fresh = freshWorkerDb();
       try {
