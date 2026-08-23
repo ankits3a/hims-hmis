@@ -258,3 +258,146 @@ the interleaving it requires**; V10's and V20's now do, and the pattern is worth
 - **`deploy-parity.test.ts` cited `deploy.sh:432` and `:386`**, both invalidated by the five lines
   its own commit added to step 2 (actual `:437` and `:391`). **Corrected.** §2.60 arriving on the day
   a file was written, which is the fastest this project has seen it.
+
+---
+
+# Discovery review — the cross-task findings no per-task gate could see
+
+One agent, reading all of 11d's commits together, `58e0e61..4f0685f`. Four findings, two MAJOR, all
+executed. **None had been found by six coders and six gates.**
+
+## MAJOR 1 · `seed:roles`'s census and its READY verdict assert database facts they never read
+
+**Shipped by T1 (`fd24235`). Armed by `seed-admin.ts`'s early return, and by any deployment that is
+not this one.**
+
+`seedRoles()` computes its whole invariant from **source constants**: `held = modelPermissions()` union
+`GRANTED_BY_OTHER_SEEDS.flatMap(...)`. It reads `role_permissions` **only** to decide `granted` vs
+`already` per role. **MEASURED** on a database where only `seed:roles` had run:
+
+```
+report.declared=59  report.held=42  report.notYetModelled=17
+role_permissions rows=54   distinct permissions ACTUALLY granted=33
+claimed HELD but held by NOBODY: auth.agents.manage, auth.break_glass.review,
+  auth.break_glass.use, auth.roles.manage, auth.temp_role.grant, auth.users.manage,
+  ops.downtime.generate, ops.interface.manage, ops.mode.set
+```
+
+And the verdict follows the fiction — giving every model role a holder was the ONLY thing needed to
+get `ready=true` on that box, while nine of the claimed forty-two were held by nobody.
+
+**Why it is not academic.** `seed-admin.ts:18-22` returns **before** every `grantPermissionToRole` on
+any deployment that already has an admin. So the day `authManifest` grows a permission, production's
+`seed:admin` can never grant it — while `heldPermissions()` counts it held immediately, **and V2's
+orphan leg stays green because it reads the same constant.** That is **MAJOR 4's exact mechanism
+reproduced inside the artefact built to abolish it**, and Plan 11e is booked to work on `auth.*`.
+(`seed-ops.ts` is safe by contrast: it re-grants unconditionally on every run.)
+
+**On production TODAY the numbers happen to be right**, because `seed:admin` and `seed:ops` have both
+run there. That is luck, not design — and §B-MEASURED is the proof that "which seeds have run" is not
+knowable a priori: it found `seed:opd` had **never** run despite the README instructing it.
+
+**What closes it, cheaply:** `seedRoles` already issues an `existingGrants` query. Widen it from
+`inArray(rolePermissions.roleKey, modelKeys)` to every row, derive `held` from the **intersection** of
+the static model and what the database actually holds, and report both numbers when they differ — so
+`GRANTED_BY_OTHER_SEEDS` becomes a claim the run VERIFIES rather than one it repeats.
+
+**Consequence for flag 3:** the execute prompt already requires reading the
+`users -> role_assignments -> role_permissions` join back and comparing it **against the role model, not
+against the script's own report.** This finding is why that instruction is load-bearing.
+
+## MAJOR 2 · a pre-11d `ops.mode_changed` row is now POISON, and the loss is silent by construction
+
+**Shipped by T3 (`4daacf4`). Armed by the next deploy, and certainly by the next consumer.**
+
+`events.ts` gained `changeId: z.string().min(1)` — **required, no default, no version bump** — and
+`handleModeChanged` opens with `modeChanged.payloadSchema.parse(e.payload)`. Every `ops.mode_changed`
+row already in a live `events` table lacks that field. **MEASURED**, old-shaped payload through five
+dispatch cycles:
+
+```
+alerts raised = 0
+event_deliveries: status=parked  attempts=5
+  last_error: invalid_type  path:["changeId"]  expected string, received undefined
+event_dead_letters: 1        consumer.poisoned events: 1
+```
+
+**Control**, identical payload plus `changeId`: **1 alert raised, delivered in one cycle.**
+
+**Three arming paths**, from the dispatcher's own query (`status is null or status = 'retrying'`):
+a mode change appended but not yet dispatched when the worker restarts — **and a deploy runs inside a
+maintenance window, exactly when somebody declares `downtime`** · a delivery sitting at `retrying`
+when the image changes · **any new consumer**, whose cursor starts at 0 and replays every historical
+mode change with no delivery row. Each costs 5 attempts plus 30 s of backoff and **blocks that
+consumer's whole in-order stream**, then dead-letters.
+
+**And nothing anywhere notices.** Enumerated: `consumer.poisoned` has **zero subscribers** in the
+tree; `event_dead_letters` is read by exactly one thing — `retention/sweep.ts:388`, which **deletes**
+from it; no rule in `alerts.yml`, `alerts-backup.yml` or the new `alerts-meta.yml` reads either; no
+metric, no screen, no email. **A dispatch cycle that parks an event is a SUCCESSFUL run to
+`HmisSchedulerJobStale*`.** Retention is inert, so dead letters accumulate silently and for ever.
+
+**What closes it:** `changeId: z.string().min(1).optional()` with `refId: payload.changeId ?? payload.to`
+in the consumer, until the last legacy row is out of every consumer's window — or an explicit version
+bump with a legacy branch. **Separately and larger: something has to watch `consumer.poisoned`.**
+
+## MINOR 3 · the two new seed scripts disagree about what `!! NOT READY` means to the shell
+
+**T1 vs T2 — the convention several files honour that no test protects (3.34/3.45), caught in the
+act.** Measured on one database, exit VALUE from a file:
+
+| script | verdict printed | exit VALUE |
+|---|---|---|
+| `seed:roles` | `!! NOT READY / !! NO USER HOLDS ANY OF THE 9 ROLES` | **0** |
+| `seed:staff` | `!! NOT READY / !! role(s) holding ZERO permissions` | **1** |
+
+`seed-ops.ts` — the precedent both were told to copy — also exits 0. **T2 improved on the convention
+and T1 inherited it, and nothing tests either.**
+
+**The consequence is in the deploy path.** The execute prompt's phase-6 step 4 says *"re-run
+`seed:roles` and confirm it reports `already` and exits 0"*. **`seed:roles` exits 0 unconditionally** —
+while reporting orphaned permissions, undeclared strings, or that no user holds any role. The
+machine-readable half of that check carries no information, and an operator chaining
+`seed:roles && ...` under `set -e` gets a green light from a run that named real problems.
+
+## MINOR 4 · `refType: "operating_mode"` now holds two incompatible kinds of `refId`
+
+**T3 wrote the field, T4 repointed the consumer, and the plan never mentions the existing rows** — the
+compile sweep walked the payload's readers and then the assert-on graph, but never the **persisted
+data**. After the deploy, pre-11d alerts carry the mode WORD and post-11d alerts carry a ULID, with no
+migration and no discriminator.
+
+**2.49 in its positive direction, which is the sharper half:** grepping `apps/web/src` for every use
+of `refId`/`refType` returns **three hits — two type fields and one word in a comment. No component
+reads either value.** Nothing in `apps/core` reads `alerts.refId` back either. **So the capability D6
+exists for has no consumer anywhere** — while T4's commit message says "the mode alert can finally
+deep-link" and two source headers say the same. The risk is that 11e's screens read those sentences,
+assume every `operating_mode` row carries a ULID, and produce a dead link for every pre-deploy alert.
+
+## Outside the brief · D7 watches the email path; the alert the README promises for a mode change does not travel it
+
+The README's own table says mode changes reach the owner **"not email — as an in-app alert through
+the alerts bell"**. T5's three rules watch Alertmanager, its notification failures, and the
+Prometheus-to-Alertmanager link. **Nothing watches the in-app path** — outbox, dispatcher,
+`kernel.alerts`, the `alerts` row, the bell — which is the path a mode alert actually takes, and which
+MAJOR 2 shows can drop an alert into a dead-letter table nobody reads. **MAJOR 3's headline was
+"nothing watches the alert path itself"; 11d closed the half that carries five rules to an inbox and
+left the half that carries the sixth to a browser.**
+
+## What the reviewer looked for and did NOT find (method stated, so the clean answers count)
+
+- **Advisory-lock key-space collision** between T3's `pg_advisory_xact_lock(hashtext('hmis.operating_mode'))`
+  and the scheduler's session-scoped `pg_try_advisory_lock(hashtext($1))` — they share one key space,
+  and a collision would block a mode declaration behind a job or silently skip a job tick. Computed in
+  Postgres over all eleven keys: **DISTINCT_KEYS = 11 OF 11, no collision**, and
+  `hashtext('hmis.operating_mode') = 774876239` independently corroborates D5.
+- **A second door on the mode ledger** — `changeOperatingMode` is the only non-test writer of
+  `operating_mode_changes` in the tree. One door, and T3 closed it.
+- **The three closure invariants' different exception policies** — principled, each anti-vacuity-checked
+  appropriately to what it exempts.
+- **Wrong-order seed run** — executed `seed:opd` then `seed:staff` before `seed:roles`: the verify leg
+  catches it, names the fix and exits 1.
+- **SoD bypass via `seed:staff`** — `assertNotSodPair` is enforced at ACT time, never at assignment
+  time, so there is nothing for a roster to bypass.
+- **`zod` reachable in the production image** and **`compose run` stdin** (`-T` defaults true) — both
+  fine, and the stdin failure mode is loud rather than silent.
