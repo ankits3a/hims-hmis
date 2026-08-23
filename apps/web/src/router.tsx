@@ -8,6 +8,7 @@ import { KeyboardProvider, ShortcutLegend } from "./lib/keyboard";
 import { switchLanguage } from "./lib/i18n";
 import i18next from "./lib/i18n";
 import { AlertsBell } from "./components/alerts-bell";
+import { ModeBanner } from "./components/mode-banner";
 import { LoginScreen } from "./screens/login";
 import { RegistrationDesk } from "./screens/registration-desk";
 import { PatientDetail } from "./screens/patient-detail";
@@ -23,6 +24,8 @@ import { BillingCounter } from "./screens/billing-counter";
 import { BillingDues } from "./screens/billing-dues";
 import { BillingSession } from "./screens/billing-session";
 import { BillingOffice } from "./screens/billing-office";
+import { OpsMode } from "./screens/ops-mode";
+import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 
 function Shell(): React.ReactElement {
   const { t } = useTranslation();
@@ -47,6 +50,8 @@ function Shell(): React.ReactElement {
             <a href="/billing/dues" className="hover:underline">{t("nav.billingDues")}</a>
             <a href="/billing/session" className="hover:underline">{t("nav.billingSession")}</a>
             <a href="/billing/office" className="hover:underline">{t("nav.billingOffice")}</a>
+            <a href="/ops/mode" className="hover:underline">{t("nav.opsMode")}</a>
+            <a href="/ops/downtime-kit" className="hover:underline">{t("nav.opsDowntimeKit")}</a>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <AlertsBell />
@@ -63,6 +68,7 @@ function Shell(): React.ReactElement {
             </button>
           </div>
         </header>
+        <ModeBanner />
         <div className="flex-1">
           <Outlet />
         </div>
@@ -192,13 +198,28 @@ const billingOfficeRoute = createRoute({
   component: BillingOffice,
 });
 
+// PLAN 11c T5 / D8: the mode desk and the downtime kit screen — paths match `opsManifest`'s own
+// menu entries (`kernel/ops/manifest.ts`) exactly, so a permission-gated menu link and this
+// route never drift apart.
+const opsModeRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ops/mode",
+  component: OpsMode,
+});
+
+const opsDowntimeKitRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ops/downtime-kit",
+  component: OpsDowntimeKit,
+});
+
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
     authedRoute.addChildren([
       indexRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
-      billingSessionRoute, billingOfficeRoute,
+      billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute,
     ]),
   ]),
 });
