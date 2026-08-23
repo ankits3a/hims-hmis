@@ -328,3 +328,98 @@ grants across nine roles that a human can be given.**
 4. **MAJOR 1 stays booked.** `seed:roles`'s census is computed from source constants — on this box
    the numbers are right because `seed:admin` and `seed:ops` have both run, which is luck rather
    than design. The join above is what makes this addendum's claim evidence.
+
+---
+
+## ADDENDUM 2 — 2026-08-23 evening: FLAG ③ IS FULLY DISCHARGED, and the runbook's real blocker is named
+
+> Written by the session that picked up
+> [`NEXT-PHASE-PROMPT-2026-08-24-POST-11D.md`](NEXT-PHASE-PROMPT-2026-08-24-POST-11D.md) and did
+> what its §1 demands: re-measured before trusting. **Three of that document's own coordinates were
+> stale** — §2.78 again, in the document written to warn about §2.78.
+
+### The staff half — 15 accounts, and the login no test can produce
+
+A **synthetic** roster of 15 was generated on the build host (real names come at UAT), validated
+against the shipped `parseRoster` before it went near production, and piped to
+`seed:staff` on stdin. It covers all nine model roles plus `duty_manager`.
+**No password or PIN appears in this repository, in any transcript, or anywhere on the box outside
+one mode-600 git-ignored file the owner downloads and the session then deletes** — D4's stated cost,
+honoured.
+
+Script report: `15 created · 0 already present · 14 of 15 can use the <2 s PIN fast-switch`, exit 0.
+The display account carries no PIN deliberately: a PIN is the fast-switch credential for a *shared*
+terminal, and a lobby screen has nobody to switch to.
+
+**Verified by reading the join, never the script's own report** — MAJOR 1 is exactly the reason:
+
+| | before | after |
+|---|---|---|
+| `users` | 1 | **16** |
+| users with a PIN | 0 | **14** |
+| `role_assignments` | 4 | **19** |
+| roles with ZERO holders | 9 | **0** |
+
+### Step 6 — the live login, GRANTED and REFUSED
+
+Against `https://hmis.crkmch.com`, as `asha.reddy` (`front_office`):
+
+- `POST /auth/login` → **201**, real token.
+- `GET /patients/search` — `front_office` HOLDS `patients.read` → **200** `{"items":[]}`.
+- `POST /patients/merge-requests` — `front_office` LACKS `patients.merge` → **403**
+  `missing permission patients.merge`.
+
+**The empty body on the refusal probe was the discriminating input.** A guard that had failed open
+would have fallen through to zod and answered **400** without writing; a guard that fires answers
+**403** before the handler is reached. It answered 403. **Flag ③ is discharged in both halves, and
+the whole chain — password → token → `PermissionGuard` → route — is proven on the live box.**
+
+### THE RUNBOOK'S BLOCKER IS BIGGER THAN "AN OWNER RULING"
+
+Residual 3 above said `workflow.definitions.approve` is not-yet-modelled and needs a ruling. **That
+understates it, and the understatement was worth finding:**
+
+- **`workflow_definitions` has ZERO ROWS in production.** `instances.ts:44` throws
+  `no_active_definition` when none is active, and `encounters.ts:76` calls `startInstance` on every
+  OPD encounter open. **Opening an OPD visit fails today.** (Inferred from two measured facts, not
+  executed — executing it would mean creating a real encounter in a live hospital. Patients: 0,
+  encounters: 0, instances: 0.)
+- **`definitions.ts:90` hard-codes Class A as `requiredRoles: ["owner", "medical_superintendent"]`**,
+  with the E-5 emergency path `["duty_manager", "medical_superintendent"]`. **`medical_superintendent`
+  does not exist as a role** — not in `ROLE_MODEL`, not in the database. So the ceremony is
+  unreachable on the normal path AND on the emergency path, and no grant alone fixes that.
+
+### A ROLE THE SOURCE MODEL CANNOT SEE — MAJOR 1, in live data
+
+**Production carries a twelfth role, `owner`: ZERO permissions, ONE holder (the `admin` user).** It
+appears nowhere in `ROLE_MODEL`, nowhere in `GRANTED_BY_OTHER_SEEDS`, and in no migration. Because
+`seed:roles` computes `held` from source constants (`heldPermissions()`, called at
+`seed-roles.ts:359`), **a role that exists only in the database is invisible to the census and to the
+READY verdict.** MAJOR 1 predicted this shape; here it is in the hospital's own data.
+
+### Corrections to the handoff prompt, measured 2026-08-23
+
+1. It records itself as written at **`e4604d6`**; `origin/main` was **`ecfd25b`** when it was read.
+2. Its `apps/web` "34/175 against a 173 baseline, four uncommitted files in the build checkout"
+   anomaly is **resolved, not outstanding** — those four files were an F2 deep-link fix, committed
+   as `25a6340`. **175 is the baseline.** Re-measured at that SHA: `apps/core` **148 suites / 1109
+   tests**, `packages/contracts` **3 / 7**, `apps/web` **34 / 175**, all exit 0.
+3. Its §4.2 proposes granting `workflow.*` to "`owner` and `medical_superintendent`". One of those
+   exists only in the database with no permissions; the other does not exist at all.
+
+### Owner rulings taken on this addendum's findings, 2026-08-23
+
+- **`medical_superintendent` is created as a real role** and granted `workflow.definitions.approve`;
+  D-15's Class A two-key stands as written rather than being re-pointed at whoever happens to be
+  staffed.
+- **`opd_admin` drafts, `owner` activates** — two distinct humans, satisfying the
+  `workflow_drafter_activator` SoD pair.
+- The four `workflow.instances.*` strings **stay not-yet-modelled**: `encounters.ts` calls
+  `startInstance`/`transition` in-process, so the OPD flow does not traverse that controller, and
+  granting them would be authority nobody needs.
+
+### Process note
+
+One **rule 3 violation by this session**, disclosed rather than quietly cleaned: a probe wrote
+`/tmp/x` via `curl -o`. Removed. Rule 3 admits no exception and the scratch belonged under
+`/opt/hmis`.
