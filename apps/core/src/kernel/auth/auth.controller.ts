@@ -16,6 +16,9 @@ import { useBreakGlass, pendingReviews, recordReview } from "./break-glass";
 import { grantTempRole, emergencyElevate } from "./temp-roles";
 import { CurrentActor, Public, RequirePermission, AuthedRequest } from "./decorators";
 import { users } from "../db/schema";
+import { withTx } from "../db/client";
+import { appendEvent } from "../events/append";
+import { userPasswordChanged } from "./events";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 
@@ -145,8 +148,17 @@ export class AuthController {
       throw new BadRequestException({ code: "password_policy", problems });
     }
 
-    await setPassword(this.db, actor.id, parsed.data.newPassword, { mustChangePassword: false });
-    await revokeOtherUserSessions(this.db, actor.id, session.sessionId);
+    // ONE TRANSACTION for the write, the revoke and the audit row (11e T3/D2): a
+    // `user.password_changed` that could be appended without the password having changed, or a
+    // change with no audit row, are both states nobody could later reason about.
+    await withTx(this.db, async (tx) => {
+      await setPassword(tx, actor.id, parsed.data.newPassword, { mustChangePassword: false });
+      const otherSessionsRevoked = await revokeOtherUserSessions(tx, actor.id, session.sessionId);
+      await appendEvent(
+        tx,
+        userPasswordChanged.make({ actor, payload: { userId: actor.id, username, otherSessionsRevoked } }),
+      );
+    });
   }
 
   @Get("me")
