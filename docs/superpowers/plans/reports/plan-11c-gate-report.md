@@ -411,14 +411,14 @@ it appears in no transcript, no log, no memory file, and is held by the owner (p
 paper instructed). The script's fail-path was proven before the real run (FATAL on an empty
 source key, rc=1, before any prompt).
 
-**The bundle:** `hmis-escrow-2026-08-23.enc`, 1552 bytes, sha256
-`3bbb3f3b0c2b656bd31dfcc9bf40ebb1c66fc66f6b01f16a2a4a25dfb418dae2` — on the box at `/root/` AND
-fetched to the owner's out-of-git escrow directory (`C:\Users\ankit\hmis-context\escrow\`),
-**hashes matching byte for byte on both sides**. Still owed by the owner, disclosed: a second
-off-machine copy (cloud/USB), and the decrypt-verify hash confirmation. One known staleness,
-also disclosed: the bundle was sealed BEFORE the SMTP account correction below, so its kit names
-the superseded `SMTP_USER` — the two irreplaceables are unaffected, and one re-run of the
-ceremony script refreshes it.
+**The bundle:** `hmis-escrow-2026-08-23.enc` — on the box at `/root/` AND fetched to the
+owner's out-of-git escrow directory (`C:\Users\ankit\hmis-context\escrow\`), **hashes matching
+byte for byte on both sides**. ~~One known staleness: sealed BEFORE the SMTP account correction
+below (1552 B, sha256 `3bbb3f3b0c2b…b418dae2`)~~ — **RESOLVED the same afternoon: the owner
+re-ran the ceremony after the correction; the current bundle is 1536 bytes, sha256
+`55287b847e5c2daa96967ec15d1002b6f62e4dbcc53bc4ddef09b8b8727fc958`, re-fetched and re-matched.**
+Still owed by the owner, disclosed: a second off-machine copy (cloud/USB — from the CURRENT
+bundle), and the decrypt-verify hash confirmation.
 
 ### §9 owner action 2 / §5a blocker 1 — the SMTP credential is IN PLACE and VALIDATED end to end
 
