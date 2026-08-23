@@ -442,3 +442,132 @@ Alertmanager itself firing through it.
 MAJOR 4's mechanism; its behaviour is the deploying session's to verify). The deploy checklist
 above therefore reads: `seed:ops` as a deploy step · MAJORs 1–3 unchanged · the deny-rule/
 classifier gate on the production deploy unchanged.
+
+---
+
+## ADDENDUM 2 — 2026-08-23 (evening): THE DEPLOY RAN. 11c IS LIVE. Flag ④ discharged, ⑤ half-discharged, and one more §2.77 specimen found by deploying.
+
+Written by the deploying session on the owner's explicit authorization, naming the operation:
+*"run the deploy, I authorize the docker compose operation."* **The body above and ADDENDUM 1 are
+left exactly as written.** This says what changed.
+
+### The deploy — flag ④ DISCHARGED
+
+`deploy.sh` from the checkout at `90c0e6c`, run **detached with the exit VALUE read from a file**
+(rule 18 — a dropped link mid-deploy destroys the evidence). **Exit VALUE `0`.**
+
+```
+==> 6b/8 every declared service is up
+    all 9 declared services running: alertmanager db api node-exporter postgres-exporter
+                                     prometheus grafana worker caddy
+==> 8/8 /health through Caddy over HTTPS
+    site hostname hmis.crkmch.com
+    HTTP 200 {"status":"ok","db":"ok","worker":"ok"}
+==> hmis-prod is up: https://hmis.crkmch.com
+```
+
+**Rule 7 roster, read and compared before and after:** 9 containers → **10** (the 9 `hmis-prod`
+services + dev `hmis-db-1`), volumes 7 → **8**. The single new volume is
+**`hmis-prod_alertmanager_data`**, the NAMED volume the spike required, confirmed by `docker
+inspect` to be what `/alertmanager` mounts. **Zero anonymous volumes** — gate report §7.8's exact
+specimen, avoided. **`hmis-db-1` Up 11 days throughout**, and the `hmis-prod` db service was not
+recreated (its image is unchanged by this plan).
+
+### Flag ⑤ — the machine half is PROVEN; the inbox half is the owner's to confirm
+
+Alertmanager `/-/ready` and `/-/healthy` both **200** on loopback. `amtool config routes test
+severity=critical` → **`owner-immediate`**. A synthetic `severity: critical` alert
+(`HmisDeployDrill`) was fired via `amtool` and Alertmanager itself reports it matched that
+receiver (`"receivers": ["owner-immediate"]`, state `active`).
+
+**The evidence is the counters, not the log** — the spike measured that Alertmanager REDACTS the
+receiver URL in its notify log, so the log cannot be the proof:
+
+| metric | before | after |
+|---|---|---|
+| `alertmanager_notifications_total{integration="email"}` | 0 | **1** |
+| `alertmanager_notifications_failed_total{...}` (all five reasons) | 0 | **0** |
+
+One email notification was delivered to the SMTP server and **nothing failed**. No notify error
+appears in the log for the window.
+
+**Flag ⑤ IS THEREFORE HALF-DISCHARGED AND SAYS SO.** What is proven: Alertmanager accepted the
+alert, routed it correctly, and handed it to Gmail without error. What is NOT proven by anything
+in this report: that the message arrived in a human's inbox. **The owner's receipt ack remains
+OUTSTANDING**, exactly as the plan requires it to be recorded when it cannot be obtained during
+the run.
+
+**No secret entered git.** The derived `/opt/hmis-prod/alertmanager/alertmanager.yml` uses
+`smtp_auth_password_file` and never carries the password inline; both derived files are `600`; and
+the committed template `docker/prod/alertmanager/alertmanager.yml.tpl` greps to **zero**
+real-looking values. GC2 held.
+
+### MAJOR 4's fix, verified IN PRODUCTION — and it proves the defect was real there
+
+ADDENDUM 1 correctly left `seed:ops`'s *behaviour* to this session. Run against the production
+database through the shipped image (`compose run --rm api node dist/scripts/seed-ops.js`):
+
+```
+role "duty_manager": CREATED
+role "owner": CREATED
+granted 3 ops permissions to "duty_manager"
+granted 3 ops permissions to "admin"
+duty_manager holders: 0
+owner holders:        0
+!! NOT READY
+```
+
+**Both roles were CREATED, not "already present" — so on the live system neither role existed and
+MAJOR 4 was real there, not merely a reading of the code.** The grants landed. The script then
+refused to report READY because **no human holds either role**, which is the honest state: until
+the owner names duty managers, every `/ops` route still answers 403, and a downtime declaration
+would still alert nobody. **That assignment is an owner action and is the last step to a usable
+ops surface.**
+
+### NEW FINDING, MAJOR — §2.77's THIRD specimen, and D11's watcher was INERT after a clean deploy
+
+**Found by deploying, which is the only way this class is ever found.** After the first successful
+deploy, `hmis_backup_last_drill_pass_age_seconds` had **NO SERIES** — so `HmisBackupDrillOverdue`
+could never fire and **the backup-drill watcher D11 exists to provide was inert.** That is the
+precise silence D11's own header says it was written to abolish, reproduced by the plan that wrote
+it.
+
+Cause: T6 added `alertmanager` to the config-at-startup restart loop and cited §2.77 for it — and
+omitted **`postgres-exporter`, whose config THIS SAME PLAN also changed** (D11's query goes into
+`postgres-exporter/queries.yml`). That process parses `queries.yml` once at startup, and
+`compose up -d` does not recreate a service whose definition is unchanged. Measured: the file was
+correct on disk, correct **inside** the container (the mount is a directory; `grep` found the query
+there), and not being served.
+
+Restarting the exporter made both series appear at once — **age `36781 s` (~10.2 h, so the weekly
+drill IS passing) and `failed_after_pass 0`**. Fixed at the root in **`ea4da87`**, which puts the
+service in the loop, and **the rule is written beside it: every service whose config directory step
+2 installs must appear in this loop** — not "remember postgres-exporter", because this is the third
+specimen after grafana and prometheus and the pattern kept being rediscovered per service. `caddy`
+stays out deliberately; it gets an explicit reload, which is stronger.
+
+**Re-verified by running the whole deploy again** (it is designed to be idempotent): exit VALUE 0,
+all four services report *"restarted so it re-reads"*, 9/9 running, `/health` 200 over HTTPS.
+
+### Live monitoring state, measured after the second deploy
+
+- Prometheus → Alertmanager link **ACTIVE** (`http://alertmanager:9093/api/v2/alerts`), **zero
+  dropped**.
+- **Five rules loaded across two files**: `HmisSchedulerJobStaleInterval`,
+  `HmisSchedulerJobStaleDaily`, `HmisSchedulerJobMissing` · `HmisBackupDrillOverdue`,
+  `HmisBackupDrillFailed`.
+- **10 `hmis_scheduler_heartbeat_staleness_seconds` series — the TENTH job live in production**,
+  which is flag ② confirmed on the real box rather than in a test.
+- **Zero alerts firing.** A healthy system, and now one that can say so.
+
+### What is STILL open after this addendum
+
+1. **Flag ⑤'s inbox ack** — owner action, outstanding.
+2. **Nobody holds `duty_manager` or `owner`** — owner action; re-run `seed:ops` with
+   `OPS_DUTY_MANAGERS=` / `OPS_OWNERS=`. Until then the ops surface is deployed and unusable.
+3. **MAJORs 1, 2 and 3 are UNCHANGED and none is fixed** — the mode-ledger race (measured 14/15),
+   `ops.interface.manage` unpinned (mutant survived), and nothing watching the alert path itself.
+   MAJOR 3 is now *more* pointed, not less: the alert path is live, so its silent failure modes are
+   live too.
+4. **The L14 census fix (`7e38b28`) is NOT confirmed** — §2.80's bar is several consecutive greens
+   across commits touching unrelated files, and it has not been met.
