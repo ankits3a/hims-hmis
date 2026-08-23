@@ -138,3 +138,44 @@ PREDICTIONS about what will discriminate, and this run refuted six of them. Rule
 never claim an assertion discriminates without building the mutant — **the corollary is that a
 plan's stated mutant is itself a prediction, and a task that finds it cannot fail has discovered
 something worth more than the kill it was asked for.**
+
+## 2026-08-24 · T4's gate · leg 10 is provably NOT independently load-bearing
+
+**PROVED, not hand-walked.** D9 says of its four legs that "no three of them catch what the fourth
+catches". **That is FALSE for leg 10.** The gate's proof: leg 8 green implies the table agrees with
+the decorators on all eleven rows; leg 9 green implies the table's guarded set equals `opsManifest`'s
+three declared permissions; together, every guarded route demands one of the three, and the actor in
+leg 10 holds all three — so **leg 10 cannot fail whenever legs 8 and 9 pass.** Leg 10 ⊆ (leg 8 ∧
+leg 9): cheap redundancy, not a fourth independent leg.
+
+The other three ARE independent and it is measured, each firing alone: **leg 8 alone** (a route
+silently gains a decorator), **leg 9 alone** (a fourth declared permission guarding no route), **leg
+11 alone** (the decorator groups swapped *and the table swapped with them*). Leg 11's uniqueness —
+D9's central justification — holds only in that strong form, because 11c's original mutant dies on
+leg 8 as well.
+
+## 2026-08-24 · T4's gate · an ops decorator's SCOPE argument is unobservable in production
+
+**MEASURED.** `permissions.ts:100` reads `if (h.scopeType === "hospital") return true;` **before**
+`:101`'s `if (h.scopeType !== requiredScope) return false;`. A mutant changing **all seven** guarded
+ops decorators from `"hospital"` to `"department"` SURVIVED 15/15 — R1's shape, a mutant that cannot
+fail. The behaviour is intended (`:101`'s comment: *"no cross-level inference until org masters
+exist"*) and the mechanism is covered elsewhere by `permissions.test.ts` and `rbac.e2e.test.ts`,
+which use department and floor scopes.
+
+**Why it is still worth recording:** all three seed paths — `seed-admin`, `seed-ops`, `seed-staff` —
+assign **hospital scope only**. So on the live deployment an ops decorator's scope argument could be
+wrong and **nothing would fail**. That is fine today and stops being fine the moment a
+department-scoped grant exists.
+
+## 2026-08-24 · main session · `gh run list --commit <SHORT-SHA>` returns `[]`, which reads exactly like §2.59's DID-NOT-RUN
+
+**MEASURED, on myself.** §2.59 warns that a CI result has three states — green, red, and DID NOT RUN
+— and that the third reports identically to the second. **There is a fourth thing that reports
+identically to the third: an abbreviated SHA.** `gh run list --commit 03d4e90` returns `[]` silently;
+`gh run list --commit 03d4e903a22ef281e26149fdcee2232c25f6b556` returns the green run. I briefly read
+two commits as never-dispatched on exactly this basis.
+
+**The rule: always query CI by FULL SHA, and treat an empty result as "the query was wrong" until the
+full SHA has been tried.** The execute prompt already says "CI green by FULL SHA" — this is the
+measurement that shows the word FULL is load-bearing rather than stylistic.

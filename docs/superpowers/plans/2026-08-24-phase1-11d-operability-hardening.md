@@ -908,7 +908,8 @@ apps/core/
   src/kernel/ops/events.ts                      T3 (modeChanged payload gains changeId — that field ONLY)
   src/kernel/alerts/consumer.ts                 T3 (changeId on the payload — SHIPPED) ·
                                                 T4 (the refId repoint — CHAIN-HALTED out of T3, see below)
-  src/kernel/alerts/consumer.test.ts            T3 (V13)
+  src/kernel/alerts/consumer.test.ts            T3 (V13's payload leg) ·
+                                                T4 (the refId pin — line 3 of the halted repoint)
   test/ops-lifecycle.e2e.test.ts                T4 (the ROUTES table and D9's four legs, PLUS
                                                 leg 4's `refId` assertion — the other half of D6)
   test/deploy-parity.test.ts                    T5 create (D8's three legs)
