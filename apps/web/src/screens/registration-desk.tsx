@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -261,10 +261,25 @@ function NewPatientForm({
 
 export function RegistrationDesk(): React.ReactElement {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const routeSearch = useSearch({ strict: false }) as { new?: boolean };
   const [q, setQ] = useState("");
   const debounced = useDebounced(q, 250);
   const [attach, setAttach] = useState<SearchHit | null>(null);
-  const [view, setView] = useState<{ kind: "search" } | { kind: "new"; prefillPhone: string } | { kind: "card"; patientId: string }>({ kind: "search" });
+  const [view, setView] = useState<{ kind: "search" } | { kind: "new"; prefillPhone: string } | { kind: "card"; patientId: string }>(
+    routeSearch.new === true ? { kind: "new", prefillPhone: "" } : { kind: "search" },
+  );
+
+  // F2 (keyboard.tsx) always navigates here with ?new=true, even when already on this route — the
+  // initial useState above only fires on mount, so this effect is what makes a same-page F2 press
+  // (search view -> new-patient form) work. Clearing the flag afterward lets a second F2 press
+  // (undefined -> true again) retrigger it, resetting an in-progress draft.
+  useEffect(() => {
+    if (routeSearch.new === true) {
+      setView({ kind: "new", prefillPhone: "" });
+      void navigate({ to: "/registration", search: {}, replace: true });
+    }
+  }, [routeSearch.new, navigate]);
 
   const search = useQuery({
     queryKey: ["patient-search", debounced],

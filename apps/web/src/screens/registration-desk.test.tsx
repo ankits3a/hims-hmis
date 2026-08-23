@@ -1,6 +1,8 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
+import { AuthProvider } from "../lib/auth";
 import { renderWithProviders, stubFetch } from "../test-utils";
 import { RegistrationDesk } from "./registration-desk";
 
@@ -8,7 +10,11 @@ import { RegistrationDesk } from "./registration-desk";
 // <RouterProvider>. A component test mounts no router, so the module is mocked down to
 // the single hook this screen consumes.
 const navigate = vi.hoisted(() => vi.fn());
-vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }));
+const routeSearch = vi.hoisted(() => ({ current: {} as { new?: boolean } }));
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => navigate,
+  useSearch: () => routeSearch.current,
+}));
 
 const HIT = {
   id: "p-1",
@@ -41,10 +47,48 @@ describe("RegistrationDesk", () => {
     setToken(null);
     localStorage.clear();
     navigate.mockClear();
+    routeSearch.current = {};
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("F2 (?new=true, keyboard.tsx): landing here from elsewhere in the app opens the new-patient form directly", async () => {
+    routeSearch.current = { new: true };
+    renderWithProviders(<RegistrationDesk />);
+
+    expect(await screen.findByRole("heading", { name: "New patient" })).toBeInTheDocument();
+    // The flag is one-shot: consuming it clears the URL via a replace-navigate so a later F2
+    // press (undefined -> true again) can retrigger the form instead of being a same-value no-op.
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith({ to: "/registration", search: {}, replace: true }),
+    );
+  });
+
+  it("F2 pressed again while already on the search view still opens the form (search.new: undefined -> true)", async () => {
+    // Built by hand (rather than renderWithProviders) so `rerender` can replay the SAME wrapped
+    // component tree onto the SAME instance — the bug this covers is specifically the
+    // already-mounted case, where the mount-time useState initializer never re-runs and only a
+    // live effect can react to the new search value.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const renderTree = (): React.ReactElement => (
+      <QueryClientProvider client={qc}>
+        <AuthProvider>
+          <RegistrationDesk />
+        </AuthProvider>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(renderTree());
+    expect(screen.queryByRole("heading", { name: "New patient" })).toBeNull();
+
+    // Simulates keyboard.tsx's navigate({ to: "/registration", search: { new: true } }) landing
+    // while RegistrationDesk is already mounted — this is exactly the bug reported ("F2 does
+    // nothing on this page").
+    routeSearch.current = { new: true };
+    rerender(renderTree());
+
+    expect(await screen.findByRole("heading", { name: "New patient" })).toBeInTheDocument();
   });
 
   it("search-first: typed digits fire GET /patients/search and the hit renders as a row", async () => {

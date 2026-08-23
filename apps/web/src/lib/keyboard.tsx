@@ -25,7 +25,9 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }): R
         document.querySelector<HTMLInputElement>("[data-search-input]")?.focus();
       } else if (e.key === "F2") {
         e.preventDefault();
-        void navigate({ to: "/registration" });
+        // ?new=true (read by RegistrationDesk) opens the new-patient form directly, matching the
+        // "F2 New patient" legend — navigating to the bare route was a no-op when already there.
+        void navigate({ to: "/registration", search: { new: true } });
       } else if (e.altKey && (e.key === "m" || e.key === "M")) {
         e.preventDefault();
         void navigate({ to: "/merge" });
