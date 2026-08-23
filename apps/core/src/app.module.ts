@@ -4,22 +4,18 @@ import { createDb, Db } from "./kernel/db/client";
 import { loadConfig, AppConfig } from "./kernel/config";
 import { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "./kernel/tokens";
 import { ModuleRegistry } from "./kernel/modules/loader";
-import { authManifest } from "./kernel/auth/manifest";
-import { workflowManifest } from "./kernel/workflow/manifest";
-import { approvalsManifest } from "./kernel/approvals/manifest";
-import { patientsManifest, PatientsModule } from "./modules/patients"; // ← added (imports the module's index — spec §4)
-import { tariffManifest, TariffModule } from "./modules/tariff";
-import { opdManifest, OpdModule } from "./modules/opd";
-import { billingManifest, BillingModule } from "./modules/billing";
+import { ALL_MANIFESTS } from "./kernel/modules/manifests"; // ← PLAN 11d D2: the ONE manifest list
+import { PatientsModule } from "./modules/patients"; // ← imports the module's index — spec §4
+import { TariffModule } from "./modules/tariff";
+import { OpdModule } from "./modules/opd";
+import { BillingModule } from "./modules/billing";
 import { HealthController } from "./health/health.controller";
 import { AuthModule } from "./kernel/auth/auth.module";
 import { WorkflowModule } from "./kernel/workflow/workflow.module";
 import { ApprovalsModule } from "./kernel/approvals/approvals.module";
 import { RealtimeModule } from "./kernel/realtime/realtime.module";
 import { AlertsModule } from "./kernel/alerts/alerts.module";
-import { alertsManifest } from "./kernel/alerts/manifest";
 import { OpsModule } from "./kernel/ops/ops.module";
-import { opsManifest } from "./kernel/ops/manifest";
 
 export { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "./kernel/tokens";
 
@@ -43,23 +39,20 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
       provide: MODULE_REGISTRY,
       useFactory: (): ModuleRegistry => {
         const registry = new ModuleRegistry();
-        registry.install(authManifest);
-        registry.install(workflowManifest);
-        registry.install(approvalsManifest);
-        registry.install(patientsManifest); // ← added; syncPermissions mirrors it at boot — no new boot-time DB call
-        registry.install(tariffManifest);
-        registry.install(opdManifest);
-        registry.install(billingManifest);
-        // kernel/alerts is kernel code, but it carries a manifest for one reason: the §4
-        // subscriptions seam. This is the first non-empty `subscriptions` declaration in the
-        // repo. It mints NO permission (D6 — access is identity-scoped).
-        registry.install(alertsManifest);
-        // PLAN 11c T2 — kernel/ops carries a manifest for the same §4 reason kernel/alerts does:
-        // a route guarding on a permission NO manifest declares is a route syncPermissions leaves
-        // unreachable by every role forever. All three ops permissions are declared here now,
-        // including the two whose routes arrive in later waves of this plan (see manifest.ts).
-        registry.install(opsManifest);
-        // Later plans install their module manifests here.
+        // PLAN 11d D2 — THE NINE `registry.install(...)` CALLS THAT STOOD HERE ARE NOW
+        // `ALL_MANIFESTS` (kernel/modules/manifests.ts). They were one of FOUR hand-maintained
+        // copies of 'which manifests exist' — this file, worker.module.ts, seed-admin.ts and
+        // seed-ops.ts — and §2.54 is the ledger entry that says two copies of one fact drift by
+        // construction. The drift between THIS list (nine) and `scripts/seed-admin.ts`'s
+        // ONE-manifest registry IS the mechanism of MAJOR 4: that script grants
+        // `registry.allPermissions()` to `admin`, which meant six strings, so on the live box
+        // `admin` held 9 of the 59 declared permissions and fifty were held by nobody at all.
+        //
+        // A LATER PLAN ADDS ITS MANIFEST TO THAT LIST, NEVER TO THIS FILE.
+        // `kernel/modules/manifests.test.ts` (V4) fails the build on a manifest installed here
+        // and absent there, and it states the worker's deliberately different set in as many
+        // words so that difference can never be read as drift.
+        for (const manifest of ALL_MANIFESTS) registry.install(manifest);
         return registry;
       },
     },

@@ -230,8 +230,13 @@ with the desk and vitals roles — the OPD screens read demographics through the
 1. `pnpm --filter @hmis/core seed:opd` — the `opd_config` row (slot length, follow-up defaults,
    danger ranges, letterhead, skip cap; perk hook off), the OPD role keys and the placeholder
    departments. Idempotent.
-2. Assign the roles: the seed CREATES role keys, never grants them. Grant the `opd.*` permissions
-   per the table above and assign each user their role(s) at hospital scope.
+2. `pnpm --filter @hmis/core seed:roles` — the seed above CREATES role keys and grants NOTHING;
+   this one writes the `role_permissions` rows for the table above, cell for cell, and creates
+   `pharmacy` (which `seed:opd` does not carry) along with the billing section's `cashier` and
+   `billing_manager`. Idempotent, and it follows the MANIFESTS rather than this table: a string no
+   module manifest declares is refused outright, never granted quietly. `seed-roles.test.ts`
+   parses this table and compares it against the seed both ways, so a transcription error here
+   fails the build. Assigning each user their role(s) at hospital scope is still a separate step.
 3. Activate the `opd_visit` definition (Class A, two-key): `GET /opd/definition` → post that exact
    JSON to `POST /workflow/definitions` as a user with `workflow.definitions.draft` →
    `POST /workflow/definitions/:id/approve` by an `owner`-role user AND by a
@@ -420,6 +425,13 @@ patients/tariff keep their own ratified `code: message` string bodies — neithe
 realigned).
 
 ### Recommended permission grants
+
+**`pnpm --filter @hmis/core seed:roles` WRITES this table** — it stopped being a recommendation
+an operator transcribes by hand in Plan 11d. `apps/core/test/seed-roles.test.ts` parses the table
+below and the OPD table above and compares them, cell for cell and in both directions, against
+the seed's role model, so a transcription error fails the build rather than the pilot. The last
+row's `/ .decide` shorthand is EXPANDED by that parser into two `approvals.*` permissions; a
+parser that skipped it would agree with the seed vacuously.
 
 `billing.credit.extend` guards no route of its own — it is checked INSIDE the issue transaction,
 on the same `POST /billing/invoices` a plain issue uses. Every other permission below maps
