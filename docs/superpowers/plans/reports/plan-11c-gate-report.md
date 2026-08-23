@@ -560,11 +560,48 @@ all four services report *"restarted so it re-reads"*, 9/9 running, `/health` 20
   which is flag ② confirmed on the real box rather than in a test.
 - **Zero alerts firing.** A healthy system, and now one that can say so.
 
+### CLOSED THE SAME EVENING — flag ⑤ is FULLY DISCHARGED and the ops surface is USABLE
+
+**Flag ⑤ — DISCHARGED IN FULL.** The owner confirmed receipt of the `HmisDeployDrill` message in
+their inbox (2026-08-23, in conversation). Both halves are now evidenced: the machine half by
+Alertmanager's own counters (0 → 1 delivered, all five failure counters 0) and the human half by
+the owner's ack. **A `severity: critical` alert raised on this box reaches a human being.** That is
+the sentence this entire plan existed to be able to write, and it is now true.
+
+**The role assignment — done, and the ops surface is READY.** `seed:ops` re-run against production
+with `OPS_DUTY_MANAGERS=admin OPS_OWNERS=admin`; the deployment has exactly one user (`admin`).
+Exit **VALUE 0** read from a file. A second re-run reported `already held` for both roles and
+`READY` again — **idempotence proven on the live system, not merely in the drill.**
+
+```
+duty_manager holders: 1
+owner holders:        1
+READY: duty managers can declare downtime and generate kits; owners will be alerted.
+```
+
+Verified at the level the `PermissionGuard` actually reads — the `users → role_assignments →
+role_permissions` join, not the script's own report:
+
+| username | role_key | scope_type | permission |
+|---|---|---|---|
+| admin | admin | hospital | ops.downtime.generate · ops.interface.manage · ops.mode.set |
+| admin | duty_manager | hospital | ops.downtime.generate · ops.interface.manage · ops.mode.set |
+
+`owner` carries **no** `ops.*` permission, exactly as designed — map 1's rule is that the owner is
+alerted and never required to act, and the role exists so `usersHoldingRole(owner)` has somewhere
+to land.
+
+**One honest note on the shape of this deployment:** `admin` is the only user, so it now holds the
+declaring authority, the kit authority and the alert-recipient role simultaneously. That is correct
+for a single-operator UAT box and it is **not** the go-live shape — D2's separation (duty managers
+declare, the owner is alerted and does not act) only becomes real when there are distinct humans.
+Re-run `seed:ops` with the real names when staff accounts exist; it is idempotent and additive.
+
 ### What is STILL open after this addendum
 
-1. **Flag ⑤'s inbox ack** — owner action, outstanding.
-2. **Nobody holds `duty_manager` or `owner`** — owner action; re-run `seed:ops` with
-   `OPS_DUTY_MANAGERS=` / `OPS_OWNERS=`. Until then the ops surface is deployed and unusable.
+1. ~~**Flag ⑤'s inbox ack**~~ — **DISCHARGED**, see above.
+2. ~~**Nobody holds `duty_manager` or `owner`**~~ — **DONE**, see above. The separation-of-duty
+   shape remains a go-live task, not a defect.
 3. **MAJORs 1, 2 and 3 are UNCHANGED and none is fixed** — the mode-ledger race (measured 14/15),
    `ops.interface.manage` unpinned (mutant survived), and nothing watching the alert path itself.
    MAJOR 3 is now *more* pointed, not less: the alert path is live, so its silent failure modes are
