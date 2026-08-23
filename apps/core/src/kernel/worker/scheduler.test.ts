@@ -101,7 +101,24 @@ async function settleRealTurns(turns: number): Promise<void> {
  * as many as the machine needs when it is not. It cannot hang the suite (`maxTurns` bounds it)
  * and it cannot make a broken census pass, because the assertion that follows is unchanged.
  */
-async function settleUntil(done: () => boolean, maxTurns = 20_000): Promise<boolean> {
+/**
+ * THE BOUND MUST SIT BELOW jest's `testTimeout`, AND MINE DID NOT — corrected 2026-08-23 after CI
+ * showed the cost. `jest.config.cjs` sets `testTimeout: 15000`, node clamps a 0 ms timeout to 1 ms,
+ * so a 20 000-turn bound is ~20 s and can only ever be reached by blowing the test timeout first.
+ * That defeated this helper's whole point: `settleUntil` is written to RETURN on a bound hit so the
+ * set-equality assertion below runs and fails NAMING THE MISSING JOBS, which is a far better
+ * failure than a bare "Exceeded timeout of 15000 ms". Commit `e31538b` on CI is the specimen — the
+ * census reported a timeout rather than a diagnosis.
+ *
+ * 5 000 turns is ~5 s, leaving ~10 s of the budget for the walk itself. It is generous for what is
+ * actually being waited on (a handful of real heartbeat round-trips), and the honest limit is
+ * stated rather than papered over: **on a container so starved that the WALK alone exceeds 15 s,
+ * nothing in this test can produce a clean failure** — the timeout is then a fact about the
+ * harness, not about the census, and no bound here changes that.
+ */
+const SETTLE_BOUND_TURNS = 5_000;
+
+async function settleUntil(done: () => boolean, maxTurns = SETTLE_BOUND_TURNS): Promise<boolean> {
   for (let i = 0; i < maxTurns; i += 1) {
     if (done()) return true;
     await new Promise<void>((resolve) => {
