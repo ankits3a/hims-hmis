@@ -14,13 +14,19 @@
 to any role**, so a hospital cannot be run on it — and three MAJOR defects from 11c stand in code
 that is already serving. 11d closes all of that and makes the alert path watch itself.
 
+**That sentence is MEASURED, not argued.** Four read-only SELECTs against `hmis-prod` on 2026-08-24
+(plan §B-MEASURED): one user, **no PIN**, `admin` holding **nine** permissions against a catalog of
+**59**. **Fifty declared permissions are held by nobody**, so a patient cannot be registered and an
+invoice cannot be issued on the live box today. Read that section before anything else in the plan;
+it is the reason this plan exists and it is two minutes.
+
 ---
 
 ## 0. What you are doing — six phases, strictly in order
 
 | phase | who | gate before moving on |
 |---|---|---|
-| **1. SPIKE** | one agent | Questions A and B answered by MEASUREMENT, and their consequences written **into the plan document, in place** |
+| **1. SPIKE** | one agent | **Question A** answered by MEASUREMENT and its consequences written **into the plan document, in place**. **B is already DISCHARGED** — measured 2026-08-24, transcript in the plan's §B-MEASURED; the spike must NOT re-run it |
 | **2. PHASE 0** | one opus agent, one commit | `pnpm verify` exit VALUE 0 **and CI GREEN by FULL SHA** |
 | **3. COMPILE** | you, main session | the EXECUTE-METHOD §3 sweep plus the plan's own list, all of it mechanical, none of it by reading |
 | **4. RUN** | six sequential waves | every wave's commit CI-green by full SHA before the next dispatches |
@@ -158,6 +164,17 @@ The main session verifies and never trusts a self-report:
 **Only when the owner names the operation.** Then, in this order, each with its exit VALUE read from
 a file (rule 18 — a dropped link mid-run destroys the evidence):
 
+0. **The commissioning seeds FIRST, and check each rather than assuming it** — §B-MEASURED found
+   that **`seed:opd` has never run on this box** (only three roles exist; the ten `OPD_ROLE_KEYS` are
+   absent, so there is no `opd_config` row and no placeholder departments either). Before `seed:roles`
+   can grant OPD permissions to roles that mean anything, run — and CHECK, do not assume — the module
+   seeds the README's runbooks name: `seed:opd`, `seed:tariff`, `seed:billing`, `seed:registration`.
+   **Each is idempotent and each reports what it did; quote all four transcripts.** If any turns out
+   already-run, say so; if any fails, that is a finding and not a step to skip. **This is why D-17's
+   gate is correctly holding the box in `commissioning`** — the system already knows it is not
+   configured. **Promote this ordered list into the README as ONE commissioning checklist** in the
+   gate report; its absence is what let a module go unseeded on a live deployment without anyone
+   noticing.
 1. **`seed:roles` against production**, through the shipped image the way 11c ran `seed-ops`
    (`compose run --rm api node dist/scripts/seed-roles.js`). Quote the whole transcript: roles
    created versus already present, grants per role, and the readiness verdict.

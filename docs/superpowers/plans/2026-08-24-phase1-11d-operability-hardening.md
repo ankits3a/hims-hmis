@@ -22,12 +22,17 @@ execute prompt: [`reports/PLAN-11D-EXECUTE-PROMPT-2026-08-24.md`](reports/PLAN-1
 **The writer of this plan does not execute it.** A different session does, and that separation has
 now paid four times.
 
-> **ONE FORK IS OPEN AND IT IS THE PLAN'S OWN PREMISE.** D1's central claim — that on the live box
-> the `admin` role holds only `auth.*` and `ops.*`, so every billing, patients, OPD, tariff,
-> workflow and approvals route answers 403 to the only user who exists — is **MEASURED FROM SOURCE
-> and PREDICTED ABOUT PRODUCTION**. The spike's Question B settles it with a read-only query the
-> owner has authorized. **If the prediction is wrong, T1 shrinks and this document must be amended
-> before compile, in place, per §2.48.** Nothing else here is fork-open.
+> **~~ONE FORK IS OPEN AND IT IS THE PLAN'S OWN PREMISE.~~ CLOSED 2026-08-24 BY MEASUREMENT, THE
+> SAME DAY, AGAINST THE LIVE DATABASE.** D1's central claim was written as MEASURED FROM SOURCE and
+> PREDICTED ABOUT PRODUCTION. **The prediction was exactly right**, and the four read-only SELECTs of
+> spike Question B were run against `hmis-prod` on the owner's explicit authorization before any
+> brief was compiled — see **§B-MEASURED** below for the transcript. `admin` holds **nine**
+> permissions: six `auth.*` and three `ops.*`, and **nothing else**. The catalog holds **59**. **Fifty
+> declared permissions are held by nobody.**
+>
+> **Spike Question B is therefore DISCHARGED and the spike agent must not repeat it** (its brief is
+> amended to match). **Question A remains open and still blocks compile.** Nothing else in this
+> document is fork-open.
 
 **Baseline at writing** (gate-report addendum 2, re-measure at compile): `apps/core` **144 suites /
 1049 tests** · `apps/web` **34 / 173** · `packages/contracts` **3 / 7**, exit 0. Latest migration
@@ -108,7 +113,10 @@ flow (booked into 11e with the screen that needs it).
    than a bare `Exceeded timeout of 15000 ms`.
 5. **The spike may run READ-ONLY queries against the production database.** SELECT only; no INSERT,
    no UPDATE, no container action, no schema change. This converts the plan's central premise from
-   a prediction into a measurement before a single brief is written.
+   a prediction into a measurement before a single brief is written. **EXERCISED 2026-08-24, in the
+   planning session rather than the spike, on a second explicit authorization — four SELECTs, exit
+   VALUE 0, transcript in §B-MEASURED.** Doing it before the spike rather than inside it cost one
+   minute and removed the risk of a 100-200k spike measuring a premise that had already collapsed.
 6. Standing rulings inherited and untouched: retention stays INERT (`RETENTION_ENABLED=false`) ·
    staged deployment (spec v4.7) · production shares the build host under the `hmis-prod` project
    (rules 3 and 7 as amended) · **the deploy is authorized only when the owner names it**.
@@ -149,6 +157,82 @@ is the failure mode that produced this defect twice. **The exceptions list is wh
 rather than merely green** — it is where `auth.users.manage` and `auth.roles.manage` (declared,
 guarding no route, waiting for 11e) and `billing.credit.extend` (checked inside the issue
 transaction, never at a route — `README.md:424`) are written down with their reasons.
+
+
+### §B-MEASURED — what production actually holds (2026-08-24, read-only, owner-authorized)
+
+Four SELECTs, no writes of any kind, run through `docker exec hmis-prod-db-1` with the credentials
+evaluated INSIDE the container so no secret entered any transcript. **`psql` exit VALUE 0.**
+
+```
+=== who exists, and can any of them fast-switch? ===
+ username | active | has_pin
+----------+--------+---------
+ admin    | t      | f
+(1 row)
+
+=== the join PermissionGuard actually reads ===
+ username |   role_key   | scope_type |       permission
+----------+--------------+------------+-------------------------
+ admin    | admin        | hospital   | auth.agents.manage
+ admin    | admin        | hospital   | auth.break_glass.review
+ admin    | admin        | hospital   | auth.break_glass.use
+ admin    | admin        | hospital   | auth.roles.manage
+ admin    | admin        | hospital   | auth.temp_role.grant
+ admin    | admin        | hospital   | auth.users.manage
+ admin    | admin        | hospital   | ops.downtime.generate
+ admin    | admin        | hospital   | ops.interface.manage
+ admin    | admin        | hospital   | ops.mode.set
+ admin    | duty_manager | hospital   | ops.downtime.generate
+ admin    | duty_manager | hospital   | ops.interface.manage
+ admin    | duty_manager | hospital   | ops.mode.set
+ admin    | owner        | hospital   |
+(13 rows)
+
+=== is the CATALOG complete? ===          === which roles exist, and how many grants? ===
+  module   | count                             key      | granted
+-----------+-------                        --------------+---------
+ approvals |     4                          admin        |       9
+ auth      |     6                          duty_manager |       3
+ billing   |    14                          owner        |       0
+ opd       |    14                         (3 rows)
+ ops       |     3
+ patients  |     5
+ tariff    |     5
+ workflow  |     8
+(8 rows)
+```
+
+**The premise HOLDS, and D1 is now MEASURED rather than predicted.** `admin` holds nine
+permissions. The catalog holds **59** (4+6+14+14+3+5+5+8 — alerts and notify declare zero, so eight
+module rows for nine installed manifests is exactly right). **Fifty declared permissions are held by
+no role at all**, so every `billing.*`, `patients.*`, `opd.*`, `tariff.*`, `workflow.*` and
+`approvals.*` route on `https://hmis.crkmch.com` answers **403 to the only user who exists.** A
+patient cannot be registered and an invoice cannot be issued on the live system today.
+
+**THREE THINGS THE QUERIES FOUND THAT THIS PLAN DID NOT PREDICT:**
+
+1. **`admin` HAS NO PIN** (`has_pin = f`). Plan 02 built and perf-tested a sub-2-second PIN
+   fast-switch precisely so ward terminals would not end up sharing a session, and **not one user
+   can use it** — because `setPin` has zero non-test callers and nothing can set one. This is the
+   staff-account gap arriving a second way, and it makes **T2's `pin` handling load-bearing rather
+   than a convenience.** Book V6 already covers it; it is now covering a measured defect.
+2. **ONLY THREE ROLES EXIST** — `admin`, `duty_manager`, `owner`. The **ten** `OPD_ROLE_KEYS` that
+   `seed:opd` inserts are absent, which means **`seed:opd` has NEVER been run against production**,
+   which in turn means no `opd_config` row and no placeholder departments. That is not a permission
+   defect and it is not 11d's to fix — **it is a commissioning gap**, booked in Carried forward and
+   named in the execute prompt's deploy checklist. D3's `ensureRole` guard already handles finding
+   those roles absent; what changes is that it will CREATE most of them rather than find them.
+3. **EVERY PER-MANIFEST PERMISSION COUNT IN THE CONSUMED SURFACES SECTION IS INDEPENDENTLY
+   CONFIRMED** by the live catalog — auth 6, workflow 8, approvals 4, patients 5, tariff 5, opd 14,
+   billing 14, ops 3. That transcription was read from source and is now corroborated by a source
+   that cannot have copied it. **This is the one place where a census got a free second witness**,
+   and it is worth recording because §2.73 usually only tells you when a count has gone stale.
+
+**What did NOT need changing as a result:** T1's scope, D1's argument, D3's role model, the Book,
+the task list, or the budget. **The measurement confirmed the plan rather than moving it** — which
+is the outcome that costs nothing and is worth exactly as much as the one that saves a rung.
+
 
 ### D2. ONE manifest list, consumed by every registry — §2.54 closed before it fires a third time
 
@@ -685,9 +769,10 @@ closure both directions with the exceptions list and its reasons (V1, V2), READM
 cell with both parsers throwing and the census pinned first (V3), and idempotence by executing the
 seed twice (V5). `manifests.test.ts` carries V4.
 
-**Halt conditions.** If the spike's Question B shows production's `admin` already holds more than
-`auth.*` + `ops.*`, **STOP and report** — the premise moved and the plan is amended before this task
-runs, not around it. If any README cell names a permission no manifest declares, that is a
+**Halt conditions.** ~~If the spike's Question B shows production's `admin` already holds more than
+`auth.*` + `ops.*`, STOP and report.~~ **DISCHARGED 2026-08-24 by measurement (§B-MEASURED): `admin`
+holds exactly nine — six `auth.*`, three `ops.*` — and fifty declared permissions are held by
+nobody. The premise held; this task ships at full size.** If any README cell names a permission no manifest declares, that is a
 **finding about the README**, routed to the inbox with the cell quoted; the seed follows the
 manifests and says so in its report.
 
@@ -914,9 +999,10 @@ target moves with it — in the execute prompt, before the run.**
 
 ## Execute-prerequisites (owner actions; the pipeline halts where noted)
 
-1. **The spike has run and its Questions A and B are written into this document** (blocks compile).
-   A decides whether T3's named fix is correct; B decides whether T1 is the size stated here.
-   **Nothing else in this plan is fork-open.**
+1. **The spike has run and its Question A is written into this document** (blocks compile). A
+   decides whether T3's named fix is correct. ~~B decides whether T1 is the size stated here.~~
+   **B is DISCHARGED — measured 2026-08-24, §B-MEASURED, premise held.** **Nothing else in this plan
+   is fork-open.**
 2. **The staff roster** — usernames, full names, initial passwords, PINs, and the role each person
    holds, from D3's nine. **Needed for flag ③, NOT for the pipeline**: every task tests with
    fixtures it makes itself. The owner can produce this while the pipeline runs.
@@ -983,11 +1069,16 @@ target moves with it — in the execute prompt, before the run.**
    owner decisions: **an alert about a broken Alertmanager cannot be delivered by that
    Alertmanager.** A hardening plan that quietly implied otherwise would be the same failure it
    exists to fix, one level up.
-9. **What I could NOT check and have marked as prediction rather than fact:** the production grant
-   state (spike Question B), `pg_advisory_xact_lock`'s behaviour under this repo's `withTx` (spike
-   Question A), whether Alertmanager exports its notification counters before the first
-   notification (spike Question C), and whether `promtool` can unit-test a rule over `up{}` (spike
-   Question D). **Four predictions, four spike questions, no fifth.**
+9. **What I could NOT check and marked as prediction rather than fact:** the production grant state
+   (Question B), `pg_advisory_xact_lock` under this repo's `withTx` (A), whether Alertmanager
+   exports its notification counters before the first notification (C), and whether `promtool` can
+   unit-test a rule over `up{}` (D). **Four predictions, four spike questions, no fifth.**
+10. **B was then MEASURED the same day and the prediction was exactly right** (§B-MEASURED) — and it
+   found three things the plan had not predicted, of which two matter: **`admin` has no PIN**, so the
+   fast-switch Plan 02 perf-tested is unusable by anyone, and **`seed:opd` has never run against
+   production**, so ten role keys and the `opd_config` row are simply absent. **The lesson is the
+   cheap one: a measurement that CONFIRMS a premise still pays, because the queries you write to
+   test one claim return facts about four others.** §2.49's rule in its positive direction.
 
 ## Carried forward
 
@@ -995,6 +1086,14 @@ target moves with it — in the execute prompt, before the run.**
   owner needs to add, disable or re-role one without an ssh session.
 - **`scheduler.test.ts`'s design.** Seven ledger entries. Owner ruled the timeout for now; the
   trigger for the redesign is the next census red that is a **set mismatch** rather than a timeout.
+- **PRODUCTION IS NOT COMMISSIONED BEYOND OPS, and 11d does not fix that** (found by §B-MEASURED).
+  `seed:opd` has never run there — no `opd_config` row, no placeholder departments, ten missing role
+  keys — and by the same reasoning `seed:tariff`, `seed:billing` and `seed:registration` are worth
+  checking. **This is why D-17's gate is correctly refusing to let the box leave `commissioning`**:
+  the system already knows it is not configured, which is the gate working as designed rather than a
+  defect. What is missing is **one written commissioning checklist** naming every seed in order; the
+  execute prompt's phase 6 carries it as a deploy step, and the gate report should promote it to the
+  README.
 - **The deadman's switch / E-16 watchdog** — 11b, and the portability decision in owner-decision 2.
 - **§7.7's stale `/opt/hmis/apps/core/dist/`** on the build host — gitignored, cannot shadow the
   suite, but `start:prod` would run stale bytes. A one-line cleanup for the execute session, booked

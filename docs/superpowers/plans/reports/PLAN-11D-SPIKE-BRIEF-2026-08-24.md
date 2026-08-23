@@ -4,16 +4,18 @@
 BEFORE Phase 0 and before any brief is compiled. The plan this serves:
 [`../2026-08-24-phase1-11d-operability-hardening.md`](../2026-08-24-phase1-11d-operability-hardening.md).
 
-**Its central premise is fork-open until Question B answers it**, and **T3's named fix is unproven
-until Question A does**. Everything this spike builds is THROWAWAY; the deliverable is a report,
-committed as `plan-11d-spike-report.md` beside this brief, and the resolutions written into the plan
-document **in place** (§2.48: mark a losing shape dead where it stands, never merely record a
-verdict in a summary block).
+**Its central premise was fork-open and is now CLOSED by measurement** — Question B was discharged
+in the planning session, before this brief reached you (see below). **T3's named fix is still
+unproven until Question A answers it, and that is what blocks compile.** Everything this spike
+builds is THROWAWAY; the deliverable is a report, committed as `plan-11d-spike-report.md` beside
+this brief, and the resolutions written into the plan document **in place** (§2.48: mark a losing
+shape dead where it stands, never merely record a verdict in a summary block).
 
-**Budget: ~100k target, honest range to 200k.** 11c's spike targeted 80k and cost 172k — closing a
-fork, measuring a blocked port nobody expected, and finding two Alertmanager facts that would each
-have cost a rung. This one is one concurrency measurement, one read-only query, and two smokes.
-**Wall clock: expect 30–45 minutes**, dominated by Question A's concurrent runs.
+**Budget: ~70k target, honest range to 150k** — reduced because Question B is already answered.
+11c's spike targeted 80k and cost 172k, closing a fork, measuring a blocked port nobody expected,
+and finding two Alertmanager facts that would each have cost a rung. This one is **one concurrency
+measurement and two smokes**. **Wall clock: expect 20–35 minutes**, dominated by Question A's
+concurrent runs.
 
 ## Ground rules (AGENT-RULES.md binds in full; these are the spike-specific edges)
 
@@ -78,7 +80,24 @@ worked. **If (1), (2), (3) or (4) fails, say so plainly and STOP — the plan ne
 and it is not the spike's job to invent one.** Name what you observed; the plan-amending session
 decides.
 
-## Question B — what does production's grant state ACTUALLY look like? *(resolves plan D1; decides T1's size)*
+## ~~Question B~~ — DISCHARGED 2026-08-24, BEFORE THIS SPIKE. **DO NOT RUN IT AGAIN.**
+
+> **Answered in the planning session** on a second explicit owner authorization: one minute of
+> read-only SELECTs, `psql` exit VALUE **0**. The full transcript is **§B-MEASURED** in the plan
+> document. **The premise HELD** — `admin` holds nine permissions (six `auth.*`, three `ops.*`), the
+> catalog holds **59**, and **fifty declared permissions are held by no role at all**.
+>
+> Three unpredicted facts came with it, all now written into the plan: **`admin` has no PIN**, so
+> the fast-switch Plan 02 perf-tested is unusable by anyone · **only three roles exist**, so
+> `seed:opd` has never run against production · and every per-manifest permission count in the
+> plan's Consumed Surfaces section is **independently corroborated** by the live catalog.
+>
+> **Do not re-run these queries.** Production has been read once for this purpose and there is
+> nothing further to learn by reading it again. The section below is kept as the record and as the
+> shape a future rotation would reuse: **it is history, not a task** (§2.48 — mark the dead branch
+> dead where it stands rather than deleting it, so the next reader sees what happened).
+
+### The question as it was written, kept as history
 
 **READ-ONLY. SELECT ONLY. Re-read the ground rules above before you connect.**
 
