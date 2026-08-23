@@ -1,0 +1,327 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+/**
+ * Plan 11d / D8 — `deploy.sh`'s two hand-maintained lists become ONE tested invariant.
+ *
+ * §2.77 has three specimens, all the same shape: a config file was installed for a service and the
+ * service was never restarted, so the file was correct on disk, correct INSIDE the container (the
+ * mounts are directories), and NOT BEING SERVED. Grafana and Prometheus ran on empty config for 35
+ * minutes in Plan 11a; postgres-exporter served no `hmis_backup_last_drill_pass_age_seconds` after
+ * Plan 11c, which left the backup-drill watcher D11 exists to provide INERT — a watcher that
+ * cannot fire is indistinguishable from a system that is fine.
+ *
+ * The rule that was earned was written into a source comment above the loop at `deploy.sh:432`:
+ *
+ *     "every service whose config directory step 2 installs must appear in this loop"
+ *
+ * §3.46 is the ledger entry that says a hand-off written in a source comment reaches nobody. This
+ * file is that comment promoted to an executable invariant, plus its rule-file twin (MINOR 6):
+ * `prometheus.yml`'s `rule_files`, the rule files on disk, and `deploy.sh`'s installs are ONE set,
+ * and a rule file that is loaded but never installed evaluates nothing while `deploy.sh` exits 0.
+ *
+ * §2.49 — THIS TEST CAN PASS VACUOUSLY AND MUST NOT: two parsers that both return [] agree with
+ * each other forever. Three things prevent it, exactly as `caddyfile-parity.test.ts` does it.
+ * EVERY parser below THROWS rather than returns empty on a shape it does not recognise; the census
+ * block pins all six counts BEFORE anything is compared; and every leg parses SHIPPED BYTES —
+ * `docker/prod/deploy.sh`, `docker/prod/docker-compose.prod.yml` and
+ * `docker/prod/prometheus/prometheus.yml` read from disk — never a TypeScript restatement of them,
+ * which would be a fourth copy of the fact rather than a check on the first three.
+ *
+ * The counts are deliberate friction. Adding a service with a config directory, or a rule file,
+ * edits three places in one commit — and the number here is the third one.
+ *
+ * WHY THE SERVICE LIST COMES FROM THE COMPOSE FILE AND NOT FROM `deploy.sh`: the script reads
+ * `compose config --services` at `:453`, which a jest test cannot run. The compose file is the
+ * same fact one step earlier.
+ *
+ * WHY "POPULATES" AND NOT "INSTALLS" — measured at compile, and it is load-bearing. `install -D`
+ * also targets `$DEPLOY_DIR/pgbackrest/` and `$DEPLOY_DIR/drill/`, NEITHER of which is a compose
+ * service; and `alertmanager`'s config is RENDERED from `.env.smtp` rather than installed (it
+ * carries an SMTP password and is never committed), so a parser keyed on `install -D` would miss
+ * it and read the loop's own `alertmanager` entry as an extra. The property that closes exactly is
+ * "step 2 writes a file under `$DEPLOY_DIR/<dir>/`", whichever command writes it.
+ */
+const REPO_ROOT = resolve(__dirname, "..", "..", "..");
+const DEPLOY_SH = resolve(REPO_ROOT, "docker", "prod", "deploy.sh");
+const COMPOSE_YML = resolve(REPO_ROOT, "docker", "prod", "docker-compose.prod.yml");
+const PROMETHEUS_DIR = resolve(REPO_ROOT, "docker", "prod", "prometheus");
+const PROMETHEUS_YML = resolve(PROMETHEUS_DIR, "prometheus.yml");
+
+/**
+ * The one declared exception to leg 1, and its reason. `caddy` gets an explicit
+ * `caddy reload --config …` at `deploy.sh:386`, which is strictly stronger than a container
+ * restart: it re-reads the config with no dropped connection at all. An exemption is only honest
+ * if the thing it exempts is real, so the leg below asserts BOTH that caddy is genuinely a
+ * populated service AND that the reload it is exempted for is actually in the script.
+ */
+const RESTART_EXEMPT = new Map<string, string>([
+  ["caddy", "gets an explicit `caddy reload` at deploy.sh:386, which is stronger than a restart"],
+]);
+
+/** `prometheus.yml` is Prometheus's CONFIG file, not one of its rule files. */
+const PROMETHEUS_CONFIG_BASENAME = "prometheus.yml";
+
+/** Every service `docker-compose.prod.yml` declares, sorted. Throws if the block is unreadable. */
+function composeServices(source: string): string[] {
+  const lines = source.split("\n");
+  const start = lines.findIndex((line) => /^services:[ \t]*$/.test(line));
+  if (start < 0) {
+    throw new Error("docker-compose.prod.yml: no top-level `services:` key — this parser is stale");
+  }
+  const services: string[] = [];
+  for (let i = start + 1; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    if (/^[A-Za-z_]/.test(line)) break; // the next top-level key ends the services block
+    const match = /^ {2}([a-z][a-z0-9_-]*):[ \t]*$/.exec(line);
+    const name = match?.[1];
+    if (name !== undefined) services.push(name);
+  }
+  if (services.length === 0) {
+    throw new Error("docker-compose.prod.yml: the `services:` block declares nothing — stale parser");
+  }
+  return services.sort();
+}
+
+/** `deploy.sh`'s step 2 block, verbatim. Throws if the step markers have moved or been renamed. */
+function stepTwoBlock(source: string): string {
+  const start = source.indexOf('step "2/8');
+  const end = source.indexOf('step "3/8');
+  if (start < 0 || end < 0 || end <= start) {
+    throw new Error('deploy.sh: could not bracket step "2/8" … step "3/8" — this parser is stale');
+  }
+  return source.slice(start, end);
+}
+
+/** Logical shell lines: backslash-continuations joined, whole-line comments dropped. */
+function commandLines(block: string): string[] {
+  return block
+    .replace(/\\\n[ \t]*/g, " ")
+    .split("\n")
+    .filter((line) => !/^[ \t]*#/.test(line));
+}
+
+/**
+ * Every `<dir>` under `$DEPLOY_DIR` that step 2 writes a FILE into — by `install -D`, by a
+ * rendering block, or by anything else. `$DEPLOY_DIR/docker-compose.prod.yml` (a file at the top
+ * level) and `$DEPLOY_DIR/log` (a directory nothing is written into) are correctly excluded: both
+ * lack the second path segment that makes a directory a CONFIG directory.
+ */
+function populatedConfigDirs(block: string): string[] {
+  const dirs = new Set<string>();
+  for (const line of commandLines(block)) {
+    for (const match of line.matchAll(/\$DEPLOY_DIR\/([A-Za-z0-9._-]+)\/[A-Za-z0-9._-]/g)) {
+      const dir = match[1];
+      if (dir !== undefined) dirs.add(dir);
+    }
+  }
+  if (dirs.size === 0) {
+    throw new Error("deploy.sh step 2: no `$DEPLOY_DIR/<dir>/<file>` path found — stale parser");
+  }
+  return [...dirs].sort();
+}
+
+/**
+ * The services named in the ONE literal `for svc in …; do` restart loop. The script has three
+ * other `for svc in …` loops and every one of them iterates a `$VARIABLE`, so the `[^;$\n]+`
+ * class is what distinguishes the hand-maintained list from the enumerated ones. Anything but
+ * exactly one literal loop throws.
+ */
+function restartLoopServices(source: string): string[] {
+  const matches = [...source.matchAll(/^[ \t]*for svc in ([^;$\n]+); do[ \t]*$/gm)];
+  if (matches.length !== 1) {
+    throw new Error(
+      `deploy.sh: expected exactly one literal \`for svc in …; do\` loop, found ${matches.length} — this parser is stale`,
+    );
+  }
+  const services = (matches[0]?.[1] ?? "").trim().split(/[ \t]+/).filter((token) => token !== "");
+  if (services.length === 0) {
+    throw new Error("deploy.sh: the restart loop lists no services — this parser is stale");
+  }
+  for (const service of services) {
+    if (!/^[a-z][a-z0-9_-]*$/.test(service)) {
+      throw new Error(`deploy.sh: restart-loop token ${service} is not a service name`);
+    }
+  }
+  return services.sort();
+}
+
+/** The BASENAMES `prometheus.yml`'s `rule_files` loads. Throws on any path shape it cannot read. */
+function declaredRuleFiles(source: string): string[] {
+  const lines = source.split("\n");
+  const start = lines.findIndex((line) => /^rule_files:[ \t]*$/.test(line));
+  if (start < 0) {
+    throw new Error("prometheus.yml: no top-level `rule_files:` key — this parser is stale");
+  }
+  const files: string[] = [];
+  for (let i = start + 1; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    if (/^[A-Za-z_]/.test(line)) break; // the next top-level key ends the block
+    if (line.trim() === "" || /^[ \t]*#/.test(line)) continue;
+    const item = /^[ \t]*-[ \t]*(\S+)[ \t]*$/.exec(line);
+    const path = item?.[1];
+    if (path === undefined) {
+      throw new Error(
+        `prometheus.yml: unrecognised line inside rule_files: ${JSON.stringify(line)} — stale parser`,
+      );
+    }
+    const named = /^\/etc\/prometheus\/([A-Za-z0-9._-]+\.yml)$/.exec(path);
+    const basename = named?.[1];
+    if (basename === undefined) {
+      throw new Error(`prometheus.yml: rule_files entry ${path} is not an /etc/prometheus/*.yml path`);
+    }
+    files.push(basename);
+  }
+  if (files.length === 0) {
+    throw new Error("prometheus.yml: rule_files loads nothing — this parser is stale");
+  }
+  return files.sort();
+}
+
+/** Every `*.yml` in `docker/prod/prometheus/` that is a RULE file (i.e. not Prometheus's config). */
+function ruleFilesOnDisk(dir: string): string[] {
+  const entries = readdirSync(dir).filter(
+    (name) => name.endsWith(".yml") && name !== PROMETHEUS_CONFIG_BASENAME,
+  );
+  if (entries.length === 0) {
+    throw new Error(`${dir}: no rule files on disk beside ${PROMETHEUS_CONFIG_BASENAME} — stale parser`);
+  }
+  return entries.sort();
+}
+
+/** The `prometheus/` basenames step 2's `install` lines copy into `$DEPLOY_DIR`. */
+function installedPrometheusFiles(block: string): string[] {
+  const files = new Set<string>();
+  for (const line of commandLines(block)) {
+    if (!/^[ \t]*install\b/.test(line)) continue;
+    for (const match of line.matchAll(/\$DEPLOY_DIR\/prometheus\/([A-Za-z0-9._-]+\.yml)/g)) {
+      const file = match[1];
+      if (file !== undefined) files.add(file);
+    }
+  }
+  if (files.size === 0) {
+    throw new Error("deploy.sh step 2: no `$DEPLOY_DIR/prometheus/*.yml` install found — stale parser");
+  }
+  return [...files].sort();
+}
+
+describe("deploy.sh / compose / prometheus.yml parity (Plan 11d D8)", () => {
+  const deploySource = readFileSync(DEPLOY_SH, "utf8");
+  const composeSource = readFileSync(COMPOSE_YML, "utf8");
+  const prometheusSource = readFileSync(PROMETHEUS_YML, "utf8");
+  const stepTwo = stepTwoBlock(deploySource);
+
+  const services = composeServices(composeSource);
+  const populatedDirs = populatedConfigDirs(stepTwo);
+  const populatedServices = populatedDirs.filter((dir) => services.includes(dir));
+  const loopServices = restartLoopServices(deploySource);
+  const declaredRules = declaredRuleFiles(prometheusSource);
+  const diskRules = ruleFilesOnDisk(PROMETHEUS_DIR);
+  const installedRules = installedPrometheusFiles(stepTwo).filter(
+    (file) => file !== PROMETHEUS_CONFIG_BASENAME,
+  );
+
+  // ---------------------------------------------------------------------------------------------
+  // LEG 3 — the census, stated BEFORE anything is compared (§2.49 / GC15). Two parsers that both
+  // return [] agree forever; these numbers are what stops that being a green run.
+  // ---------------------------------------------------------------------------------------------
+  describe("leg 3 — the census, pinned before anything is compared", () => {
+    it("reads nine services out of docker-compose.prod.yml", () => {
+      expect(services).toHaveLength(9);
+      expect(services).toContain("alertmanager");
+      expect(services).toContain("postgres-exporter");
+      expect(services).toContain("caddy");
+    });
+
+    it("reads seven populated config directories out of deploy.sh step 2", () => {
+      expect(populatedDirs).toHaveLength(7);
+      // The two that are populated and are NOT services — the reason this leg says "populates"
+      // rather than "installs", and the reason it intersects with the compose file at all.
+      expect(populatedDirs).toContain("pgbackrest");
+      expect(populatedDirs).toContain("drill");
+      // The one that is RENDERED rather than installed.
+      expect(populatedDirs).toContain("alertmanager");
+    });
+
+    it("intersects those to exactly five services that own a config directory", () => {
+      expect(populatedServices).toEqual([
+        "alertmanager",
+        "caddy",
+        "grafana",
+        "postgres-exporter",
+        "prometheus",
+      ]);
+    });
+
+    it("reads four services out of deploy.sh's restart loop", () => {
+      expect(loopServices).toEqual(["alertmanager", "grafana", "postgres-exporter", "prometheus"]);
+    });
+
+    it("reads three rule files from rule_files, from disk, and from deploy.sh's installs", () => {
+      expect(declaredRules).toHaveLength(3);
+      expect(diskRules).toHaveLength(3);
+      expect(installedRules).toHaveLength(3);
+      expect(declaredRules).toContain("alerts-meta.yml");
+    });
+  });
+
+  // ---------------------------------------------------------------------------------------------
+  // LEG 1 — restart-loop closure. §2.77's rule, promoted out of a source comment.
+  // ---------------------------------------------------------------------------------------------
+  describe("leg 1 — every service whose config step 2 populates is restarted", () => {
+    it("leaves no populated service out of the restart loop, except the declared exception", () => {
+      const missing = populatedServices.filter(
+        (service) => !loopServices.includes(service) && !RESTART_EXEMPT.has(service),
+      );
+      expect(missing).toEqual([]);
+    });
+
+    it("restarts nothing whose config step 2 does not populate", () => {
+      const extra = loopServices.filter((service) => !populatedServices.includes(service));
+      expect(extra).toEqual([]);
+    });
+
+    it("restarts nothing the compose file does not declare", () => {
+      const undeclared = loopServices.filter((service) => !services.includes(service));
+      expect(undeclared).toEqual([]);
+    });
+
+    it("exempts caddy for a real reason — it is populated, absent from the loop, and reloaded", () => {
+      expect([...RESTART_EXEMPT.keys()]).toEqual(["caddy"]);
+      // A vacuous exemption would be the worst outcome here: it would hide a real omission.
+      expect(populatedServices).toContain("caddy");
+      expect(loopServices).not.toContain("caddy");
+      expect(deploySource).toMatch(
+        /compose exec -T caddy caddy reload --config \/etc\/caddy\/Caddyfile/,
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------------------------------
+  // LEG 2 — rule-file closure, both directions (MINOR 6). A rule file that prometheus.yml loads
+  // and deploy.sh never installs makes Prometheus refuse to start; one that exists and is loaded
+  // by nobody evaluates nothing while every green light stays green.
+  // ---------------------------------------------------------------------------------------------
+  describe("leg 2 — rule_files, the files on disk and deploy.sh's installs are one set", () => {
+    it("names no rule file that does not exist on disk", () => {
+      expect(declaredRules.filter((file) => !diskRules.includes(file))).toEqual([]);
+    });
+
+    it("leaves no rule file on disk out of rule_files", () => {
+      expect(diskRules.filter((file) => !declaredRules.includes(file))).toEqual([]);
+    });
+
+    it("installs every rule file it loads", () => {
+      expect(declaredRules.filter((file) => !installedRules.includes(file))).toEqual([]);
+    });
+
+    it("installs nothing it does not load", () => {
+      expect(installedRules.filter((file) => !declaredRules.includes(file))).toEqual([]);
+    });
+
+    it("installs prometheus.yml itself, which is the config and not a rule file", () => {
+      expect(installedPrometheusFiles(stepTwo)).toContain(PROMETHEUS_CONFIG_BASENAME);
+      expect(installedRules).not.toContain(PROMETHEUS_CONFIG_BASENAME);
+    });
+  });
+});

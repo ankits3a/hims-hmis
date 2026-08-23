@@ -1,0 +1,135 @@
+# Plan 11d / D7 — THE ALERT PATH WATCHES ITSELF. MAJOR 3, and Plan 11c is what armed it.
+#
+# Before this file, a rotated app password, a bouncing mailbox and a crash-looping Alertmanager
+# were all INDISTINGUISHABLE FROM A QUIET NIGHT. `alerts.yml` and `alerts-backup.yml` watch the
+# hospital; nothing watched the thing that carries their verdicts to a human. Alertmanager was not
+# even a scrape target, so `up{job="alertmanager"}` did not exist on this box, and no rule read
+# `prometheus_notifications_errors_total`.
+#
+# ═══ WHY A THIRD RULE FILE AND NOT THREE MORE RULES IN `alerts.yml` ═══
+#
+# The same reason `alerts-backup.yml` is a second one, now a pattern rather than an accident.
+# `apps/core/test/alerts-parity.test.ts` reads exactly ONE hardcoded path (its `ALERTS_YML`
+# constant, `docker/prod/prometheus/alerts.yml`) and parses it with matchers that THROW on shapes
+# they do not recognise; its `job=~` parser matches FILE-WIDE and asserts exactly two legs. A rule
+# carrying any `job=~` matcher dropped into that file would break a green test that is about
+# something else entirely. So: `alerts.yml` is the SCHEDULER-parity surface, `alerts-backup.yml`
+# is the BACKUP surface, and this file is the ALERT-PATH surface. `prometheus.yml`'s `rule_files`
+# list grows by one line, `deploy.sh` step 2 grows by one `install` line, and
+# `apps/core/test/deploy-parity.test.ts` (Plan 11d / D8) is what stops either being forgotten —
+# the §7.1 failure in miniature is a rule file that exists, is never installed, and evaluates
+# nothing while `deploy.sh` exits 0.
+#
+# ═══ THE SERIES WERE MEASURED BEFORE THESE RULES WERE WRITTEN (11d spike, Question C) ═══
+#
+# A `prom/alertmanager:v0.27.0` that has NEVER sent a notification already exports
+# `alertmanager_notifications_failed_total` at 0 for all 13 integrations x all 5 reasons — 65
+# series, registered at start-up, not lazily on first use, and not restricted to the integrations
+# the config names. So `increase(...) > 0` is ARMED ON A FRESH DEPLOYMENT: no `or on() vector(0)`
+# term and no `absent()` leg are needed here. (Contrast `alerts.yml`'s scheduler leg and
+# `alerts-backup.yml`, where the series genuinely can be absent — the difference is which process
+# owns the metric.)
+#
+# `prometheus_notifications_dropped_total` is UNLABELLED and present at 0 from boot,
+# unconditionally. `prometheus_notifications_errors_total` is per-alertmanager-endpoint and exists
+# only because `prometheus.yml` carries an `alerting:` block — it does, so the series is there at 0
+# for the configured endpoint and climbs to 1 on the endpoint that fails. The `or` is what makes
+# the third rule robust either way: the `dropped_total` leg is always evaluable, so the rule can
+# never be silently non-evaluable as a whole.
+#
+# ═══ THE LIMIT, STATED RATHER THAN HIDDEN ═══
+#
+# AN ALERT ABOUT A BROKEN ALERTMANAGER CANNOT BE DELIVERED BY THAT ALERTMANAGER. On one box that
+# is arithmetic, not a design flaw to be argued away. What these three rules genuinely buy:
+#
+#   * `HmisAlertNotificationsFailing` covers the far more likely failure by a wide margin — the
+#     sink is UP and the credential or the mailbox is broken. That alert CAN be delivered: a
+#     failing email receiver does not stop Alertmanager evaluating or routing.
+#   * `HmisPrometheusCannotReachAlertmanager` is evaluated by PROMETHEUS, a different process,
+#     from its own self-scrape. A dead Alertmanager is therefore observable by a healthy
+#     Prometheus — on `/alerts` and in Grafana — even when it cannot be emailed.
+#   * `HmisAlertmanagerDown` is the same fact from the scrape side, and it is what makes the
+#     first two legible: "no mail arrived" plus this rule red is a sink problem, not a quiet week.
+#
+# The genuinely out-of-band answer is a watchdog on a SECOND machine plus a deadman's switch, and
+# both belong to Plan 11b where a second machine exists. Booked there rather than half-built here.
+#
+# ═══ NO `reason` FILTER, AND THAT IS A DECISION ═══
+#
+# A refused SMTP dial — the single likeliest real failure, a smarthost that stops answering — is
+# bucketed by Alertmanager as `reason="other"`, NOT `serverError` and NOT `clientError` (spike
+# Question C.2: 6 failures in ~60 s of continuous refusal, every one of them `other`). A rule
+# filtered to the error-looking reasons would miss it entirely. These rules filter on nothing.
+#
+# ═══ `for: 5m` ON ALL THREE ═══
+#
+# `up` is genuinely ABSENT until a target's first scrape COMPLETES, and for an unreachable target
+# that costs a full `scrape_timeout` (10 s) after a scrape offset anywhere in [0, scrape_interval)
+# — up to ~25 s of no series at all after any Prometheus restart (spike Question C.3). `for: 5m`
+# covers that window with two orders of magnitude to spare, and it keeps a single missed scrape or
+# one slow evaluation from waking anybody at 03:00.
+groups:
+  - name: hmis-alert-path
+    rules:
+      # THE SINK IS GONE. Alertmanager is a scrape target as of this plan (`job_name: alertmanager`
+      # in prometheus.yml, reached by service name over the hmis-prod compose network) purely so
+      # this rule can exist — nothing else reads that job.
+      #
+      # CRITICAL, not warning: while this is true, EVERY other critical rule in this stack is mute.
+      - alert: HmisAlertmanagerDown
+        expr: up{job="alertmanager"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alertmanager is DOWN — no alert can reach anybody by email"
+          description: >-
+            Prometheus has not been able to scrape {{ $labels.instance }} for 5 minutes. Every
+            other critical rule in this stack is currently mute: they will still turn red on
+            Prometheus's own /alerts page and in Grafana, and they will reach no inbox. Tunnel in
+            and run `docker compose -p hmis-prod ps` — a container in `Restarting` is the answer —
+            then `docker compose -p hmis-prod logs --tail 100 alertmanager`.
+
+      # THE SINK IS UP AND THE MAIL IS NOT GOING OUT. A rotated app password, a bouncing mailbox,
+      # a smarthost that stopped answering. This is the failure this file most expects to see, and
+      # the one it can actually deliver a warning about.
+      #
+      # `$value` IS PIPED THROUGH `printf "%.0f"` ON PURPOSE: `increase()` extrapolates, and an
+      # un-piped render is a long float in an email a human reads at 03:00. It also makes the text
+      # stable enough to assert by exact string in `promtool test rules`.
+      - alert: HmisAlertNotificationsFailing
+        expr: increase(alertmanager_notifications_failed_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alertmanager cannot deliver notifications — alerts are being raised and lost"
+          description: >-
+            {{ $value | printf "%.0f" }} notification failures in the last 15 minutes on
+            integration {{ $labels.integration }} (reason {{ $labels.reason }}). The alert path is
+            evaluating and routing correctly and the last hop is failing, so the hospital may be
+            raising alerts nobody is receiving. Check the credentials in /opt/hmis-prod/.env.smtp,
+            then `docker compose -p hmis-prod logs --tail 50 alertmanager` for the SMTP error.
+
+      # THE LINK BETWEEN THE TWO, WHICH NEITHER ENDPOINT'S OWN HEALTH REPORTS. Prometheus can be
+      # healthy and Alertmanager can be healthy while the alerts between them are dropped or
+      # erroring — a DNS failure, a network policy, a queue that overflowed.
+      #
+      # TWO LEGS JOINED BY `or`, and it is not decoration: `prometheus_notifications_dropped_total`
+      # is unlabelled and always present, so this rule is never silently non-evaluable, while
+      # `prometheus_notifications_errors_total` is the per-endpoint leg that names WHICH
+      # alertmanager failed. Their label sets differ, so `or` returns both when both are non-zero.
+      - alert: HmisPrometheusCannotReachAlertmanager
+        expr: >-
+          increase(prometheus_notifications_errors_total[15m]) > 0
+          or increase(prometheus_notifications_dropped_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus cannot hand its alerts to Alertmanager"
+          description: >-
+            {{ $value | printf "%.0f" }} alert notifications errored or were dropped by Prometheus
+            in the last 15 minutes. Both processes may look healthy on their own pages; the link
+            between them is not. This rule is evaluated by Prometheus, so it is visible on
+            http://127.0.0.1:9090/alerts even when no mail can be sent at all.

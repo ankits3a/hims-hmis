@@ -25,6 +25,17 @@ rule_files:
   # FILE-WIDE and asserts exactly two legs. Backup rules do not belong inside the scheduler-parity
   # surface, so they are loaded beside it instead. See alerts-backup.yml's own header.
   - /etc/prometheus/alerts-backup.yml
+  # Plan 11d / D7 — the THIRD rule file, and the ALERT-PATH surface. The same
+  # reasoning as the second one, one more time: `alerts.yml` is the SCHEDULER-parity surface
+  # that alerts-parity.test.ts pins FILE-WIDE, `alerts-backup.yml` is the BACKUP surface, and
+  # this file watches the thing that carries every other rule's verdict to a human being.
+  # Before it, a crash-looping alertmanager and a rotated app password were both
+  # indistinguishable from a quiet night. See alerts-meta.yml's own header for the limit.
+  #
+  # apps/core/test/deploy-parity.test.ts (Plan 11d / D8) is what now stops this line, the file
+  # on disk and deploy.sh's install of it from drifting apart: all three are ONE set, checked
+  # in both directions, with the count of them pinned before anything is compared.
+  - /etc/prometheus/alerts-meta.yml
 
 # Plan 11c / D10 — WHERE A FIRING RULE ACTUALLY GOES. Until this block existed, every rule in
 # `alerts.yml` evaluated correctly, turned red on Prometheus's own /alerts page, and reached
@@ -62,3 +73,17 @@ scrape_configs:
     honor_labels: true
     static_configs:
       - targets: ["postgres-exporter:9187"]
+
+  # Plan 11d / D7 — ALERTMANAGER BECOMES A SCRAPE TARGET, and this job exists for
+  # exactly one reason: so that `up{job="alertmanager"}` and the
+  # `alertmanager_notifications_*` families exist on this box AT ALL. Nothing else reads
+  # job="alertmanager". Until this line, the alert sink was the one process in the stack
+  # that nothing observed — and it is the process every other rule depends on to be
+  # heard.
+  #
+  # Reached by SERVICE NAME over the hmis-prod compose network, the same reach the
+  # `alerting:` block above already uses. The 127.0.0.1:9093 publication is for `amtool` on
+  # the box and for an SSH tunnel; Prometheus does not use it.
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["alertmanager:9093"]

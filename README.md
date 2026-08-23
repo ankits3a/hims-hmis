@@ -1125,6 +1125,9 @@ closes it.
   restarts alertmanager unconditionally after rendering, because Alertmanager reads its config only
   at startup and `compose up -d` does not recreate a service whose *definition* is unchanged — the
   same trap that left grafana and prometheus running on empty config for 35 minutes in Plan 11a.
+- **Alertmanager is itself a scrape target as of Plan 11d** (`job_name: alertmanager` in
+  `prometheus.yml`, reached by service name like everything else). It exists for exactly one
+  reason: so the three rules in *When the alert path itself breaks* below can be written at all.
 
 #### What actually reaches the inbox today
 
@@ -1135,7 +1138,48 @@ closes it.
 | `HmisSchedulerJobStaleDaily` | warning | a daily job missed its run (26h threshold) |
 | `HmisBackupDrillOverdue` | critical | no restore drill has passed in over 8 days |
 | `HmisBackupDrillFailed` | critical | the most recent restore drill **failed** |
+| `HmisAlertmanagerDown` | critical | the alert sink itself is gone or crash-looping — **read the limit below before trusting this one** |
+| `HmisAlertNotificationsFailing` | critical | Alertmanager is up and the mail is not going out: a rotated app password, a bouncing mailbox, an SMTP host that stopped answering |
+| `HmisPrometheusCannotReachAlertmanager` | critical | Prometheus cannot hand its alerts over — the link between the two, which neither one's own health page reports |
 | *(mode changes)* | — | not email: `ops.mode_changed` reaches the owner as an in-app alert through the alerts bell |
+
+#### When the alert path itself breaks (Plan 11d / D7)
+
+Until Plan 11d, **nothing watched the thing that carries every other alert.** A rotated app
+password, a bouncing mailbox and a crash-looping Alertmanager all looked exactly like a quiet
+night. Three rules in `docker/prod/prometheus/alerts-meta.yml` — a third rule file beside
+`alerts.yml` and `alerts-backup.yml` — close that, and Alertmanager became a scrape target purely
+so they could be written.
+
+**What you WILL be told, by email:**
+
+- **The mail is failing** (`HmisAlertNotificationsFailing`). This is the likeliest real failure by
+  a wide margin — the sink is up, and the credential or the mailbox is broken — and Alertmanager
+  can still deliver an alert *about* it, because a failing email receiver does not stop it
+  evaluating or routing. The counter behind the rule climbs about six times a minute for as long
+  as the failure lasts (measured against a refused SMTP dial), so the alert keeps being re-sent
+  rather than appearing once and going quiet.
+
+**What you will NOT be told, and it is arithmetic rather than an oversight:**
+
+- **An alert about a broken Alertmanager cannot be delivered by that Alertmanager.** On one box
+  there is no second sink and no on-call rotation to fall back to. If Alertmanager is dead,
+  `HmisAlertmanagerDown` and `HmisPrometheusCannotReachAlertmanager` turn red where you can SEE
+  them — Prometheus's own `/alerts` on `http://127.0.0.1:9090` and Grafana on
+  `http://127.0.0.1:3001`, both through the tunnel in step 3 below — and **no mail arrives.**
+  `HmisPrometheusCannotReachAlertmanager` is at least evaluated by a *different process* than the
+  one that is broken, which is why it is worth having even when it cannot be posted.
+- **So the practical rule is that a silent week is not proof.** If nothing at all has arrived for
+  an unusually long stretch, run the synthetic drill under *Silences, and testing the path* below.
+  That one action is what distinguishes "nothing is wrong" from "nothing is being delivered", and
+  it takes under a minute.
+- The genuinely out-of-band answer — a watchdog on a **second machine** plus a deadman's switch —
+  is Plan 11b's, where a second machine exists to host it. It is not half-built here.
+
+**A rule file is only as real as its install.** `apps/core/test/deploy-parity.test.ts` fails the
+build if `prometheus.yml` loads a rule file `deploy.sh` does not install, if `deploy.sh` installs
+one nothing loads, or if a service whose config directory `deploy.sh` populates is left out of the
+restart loop — the three ways a monitoring change has silently shipped INERT on this box before.
 
 #### At 03:00, in order
 

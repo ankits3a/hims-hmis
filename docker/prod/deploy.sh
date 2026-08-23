@@ -200,6 +200,11 @@ install -D -m 0644 "$SRC_DIR/prometheus/alerts.yml" "$DEPLOY_DIR/prometheus/aler
 # miniature: prometheus would load one rule file, evaluate three rules, and the drill would go on
 # rotting unwatched while this script exited 0.
 install -D -m 0644 "$SRC_DIR/prometheus/alerts-backup.yml" "$DEPLOY_DIR/prometheus/alerts-backup.yml"
+# Plan 11d / D7 — the THIRD rule file (the alert path watching itself). The lesson of
+# the two lines above, for the third time — and this time it is enforced rather than
+# written down: apps/core/test/deploy-parity.test.ts fails the build if prometheus.yml loads a
+# rule file this block does not install, or if this block installs one nothing loads.
+install -D -m 0644 "$SRC_DIR/prometheus/alerts-meta.yml" "$DEPLOY_DIR/prometheus/alerts-meta.yml"
 install -D -m 0644 "$SRC_DIR/postgres-exporter/queries.yml" "$DEPLOY_DIR/postgres-exporter/queries.yml"
 install -D -m 0644 "$SRC_DIR/grafana/provisioning/datasources/prometheus.yml" \
   "$DEPLOY_DIR/grafana/provisioning/datasources/prometheus.yml"
@@ -208,7 +213,7 @@ install -D -m 0644 "$SRC_DIR/grafana/provisioning/dashboards/dashboards.yml" \
 install -D -m 0644 "$SRC_DIR/grafana/provisioning/dashboards/hmis.json" \
   "$DEPLOY_DIR/grafana/provisioning/dashboards/hmis.json"
 note "docker-compose.prod.yml, caddy/Caddyfile, pgbackrest/pgbackrest.conf, drill/restore-drill.sh"
-note "prometheus/{prometheus,alerts,alerts-backup}.yml, postgres-exporter/queries.yml, grafana/provisioning/**"
+note "prometheus/{prometheus,alerts,alerts-backup,alerts-meta}.yml, postgres-exporter/queries.yml, grafana/provisioning/**"
 
 # --- the backup credentials, derived rather than duplicated --------------------------------------
 # GC2: the five owner-supplied values live in $R2_ENV and ONLY there. They are translated here into
