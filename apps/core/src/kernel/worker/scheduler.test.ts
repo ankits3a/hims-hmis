@@ -83,6 +83,35 @@ async function settleRealTurns(turns: number): Promise<void> {
 }
 
 /**
+ * Yields REAL event-loop turns UNTIL `done()` is true, or until `maxTurns` have passed. Returns
+ * whether the condition was met.
+ *
+ * THIS REPLACES A FIXED TURN COUNT AS THE INSTRUMENT, AND THE REASON IS MEASURED. R0-2 settled a
+ * fixed 50 turns at each instant and argued that "on a starved container each turn takes LONGER,
+ * so the same count buys proportionally more real time". THAT IS FALSE when the thing being
+ * waited on is ONE database round-trip rather than accumulated event-loop work: 50 turns of an
+ * otherwise idle loop is ~50 ms whatever the load, while a heartbeat write on a contended CI
+ * container can take several times that. CI proved it TWICE - `e81219d` and `de668ad` both came
+ * back with `runNotifyPump` and `sweepExpiredTempRoles` missing, the two LAST jobs to fire, and
+ * the census took 37.6 s there against 2.9 s on the build host. The 2026-08-23 remediation that
+ * walked every interval instant with a 50-turn settle did NOT fix it; it went green on CI once,
+ * which is what a 25%-ish failure rate looks like when you read one run as confirmation.
+ *
+ * Waiting on the CONDITION is self-scaling: it costs one turn when the work is already done and
+ * as many as the machine needs when it is not. It cannot hang the suite (`maxTurns` bounds it)
+ * and it cannot make a broken census pass, because the assertion that follows is unchanged.
+ */
+async function settleUntil(done: () => boolean, maxTurns = 20_000): Promise<boolean> {
+  for (let i = 0; i < maxTurns; i += 1) {
+    if (done()) return true;
+    await new Promise<void>((resolve) => {
+      realSetTimeout(() => { resolve(); }, 0);
+    });
+  }
+  return done();
+}
+
+/**
  * A dedicated connection to the SAME per-worker test database `setupTestDb()` already
  * migrated, but with `idleTimeoutMillis: 0`. The L14 census test below fakes ALL timers
  * (`setInterval` included, to compress 25 h into a fast advance) — and `pg`'s own Pool runs
@@ -474,9 +503,24 @@ describe("Scheduler", () => {
             }
           }
         }
-        await walkTo(CENSUS_SPAN_MS); // the tail — nothing daily is left, the interval cadences need it
-        await settleRealTurns(INSTANT_SETTLE_TURNS);
+        await walkTo(CENSUS_SPAN_MS); // the tail: nothing daily is left, the interval cadences need it
+
+        // WAIT FOR THE CONDITION, NOT FOR A COUNT. Every job's timer has fired under fake time by
+        // now; what remains is REAL async work - a heartbeat write per invocation - and how long
+        // that takes is a property of the machine, not of this test. `stop()` latches `stopped`,
+        // and the post-await re-check then correctly drops any run whose read had not come back,
+        // so calling it too early is exactly how this census came back short on CI twice while
+        // being green on the build host every single time.
+        const settled = await settleUntil(() => new Set(invoked).size >= THE_TEN.length);
         await scheduler.stop();
+        // Reported, not asserted: on a bound hit the assertion below fails on its own SET and
+        // names the missing jobs, which is a better failure message than a bare timeout.
+        if (!settled) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `census: settleUntil hit its bound with ${new Set(invoked).size}/${THE_TEN.length} invoked`,
+          );
+        }
 
         expect(new Set(invoked)).toEqual(new Set(THE_TEN));
         expect(scheduler.leakedErrors()).toEqual([]);
