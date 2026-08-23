@@ -75,10 +75,28 @@ because it is the only user, which is fine for UAT and **is not the go-live shap
 
 ## Things that are true and will bite you if you assume otherwise
 
-- **The L14 census flake is NOT confirmed fixed.** `7e38b28` replaced a fixed settle count with a
-  wait-on-condition and has **one** green CI run. §2.80's bar is several consecutive greens across
-  commits touching unrelated files. The build host reproduces the failure in **no** shape. If you
-  see a census red, read §2.80 and §3a before you re-run anything.
+- **The L14 census flake is NOT confirmed fixed, and the file has a live open question.** `7e38b28`
+  replaced a fixed settle count with a wait-on-condition. Since then: **five green CI runs and one
+  failure** — and the failure (`e31538b`) was **not** the old set-mismatch (grepped: zero
+  `Expected -2`, zero `runNotifyPump`) but a **15 s jest timeout** on a starved container that took
+  **101.98 s** for an 11 s suite, with four unrelated `setupTestDb()` hook timeouts beside it.
+  §2.80's bar is several consecutive greens across commits touching unrelated files, and **the
+  honest verdict is "not yet confirmed", not "fixed"**. The build host reproduces the failure in
+  **no** shape. If you see a census red, read §2.80 and §3a before you re-run anything.
+
+  **The open question, and it is a genuine one for a hardening plan to answer.** That run exposed a
+  defect in the fix itself, corrected in `3104041`: `settleUntil`'s bound was 20 000 turns (~20 s)
+  against `jest.config.cjs`'s `testTimeout: 15000`, so it could only ever be reached by blowing the
+  test timeout first — defeating the helper's whole purpose, which is to RETURN on a bound hit so
+  the set assertion fails **naming the missing jobs** instead of reporting a bare timeout. The bound
+  is now 5 000 turns (~5 s), leaving ~10 s for the walk. **What remains unanswered:** on a container
+  so starved that the WALK alone exceeds 15 s, nothing in this test can produce a clean failure —
+  the timeout is then a fact about the harness, not the census. Whether that is acceptable, or
+  whether this test needs its own longer `testTimeout`, or whether the census should stop driving
+  real database round-trips under fake timers at all, is a real design question. **`scheduler.test.ts`
+  has now produced SEVEN ledger entries** (§2.57, §2.60, §2.64, twice in 11a's §7.9/§3a, and §2.78
+  and §2.80 here). A file that keeps earning entries is telling you something about its design, not
+  about the sessions that touch it.
 - **The repo is PUBLIC.** No secret, SMTP host or owner email in any commit, ever (GC2).
 - **`RETENTION_ENABLED` is still false** and retention semantics are still frozen pending counsel.
 - **Rules 3 and 7 as amended** govern every path and container decision; production shares the build
