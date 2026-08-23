@@ -391,3 +391,54 @@ delivering nothing.
 production breaks at 03:00, and **as of this report, nobody would** — not because the code is wrong,
 but because it was never deployed and, had it been, nobody could have logged in to act on it
 (MAJOR 4). That is the honest state, and the fix list above is short and named.
+
+---
+
+## ADDENDUM 2026-08-23 (afternoon) — the two owner-action blockers are CLEARED, and the escrow debt is PAID
+
+Written by the plan-writing/owner-ops session, on the owner's explicit authorization ("do the
+needful related to escrow ceremony and those six keys"), after this report was committed. **The
+body above is left exactly as written** — the 11a discipline. This addendum says what changed.
+
+### §9 owner action 1 — the escrow ceremony was PERFORMED 2026-08-23
+
+Open since 11a's §9; closed today. The shape, so a future reader can trust it: a ceremony script
+(`/root/hmis-escrow-ceremony.sh`, kept for rotations) assembled the continuity kit **in process
+memory only** — `SECRET_KEY` and the pgBackRest repo cipher passphrase (the two irreplaceables),
+the five R2 values, the SMTP credential, and a one-paragraph recovery procedure — and encrypted
+it with AES-256-CBC/PBKDF2 (600k iterations) under a passphrase **typed by the owner on a TTY**:
+it appears in no transcript, no log, no memory file, and is held by the owner (password manager +
+paper instructed). The script's fail-path was proven before the real run (FATAL on an empty
+source key, rc=1, before any prompt).
+
+**The bundle:** `hmis-escrow-2026-08-23.enc`, 1552 bytes, sha256
+`3bbb3f3b0c2b656bd31dfcc9bf40ebb1c66fc66f6b01f16a2a4a25dfb418dae2` — on the box at `/root/` AND
+fetched to the owner's out-of-git escrow directory (`C:\Users\ankit\hmis-context\escrow\`),
+**hashes matching byte for byte on both sides**. Still owed by the owner, disclosed: a second
+off-machine copy (cloud/USB), and the decrypt-verify hash confirmation. One known staleness,
+also disclosed: the bundle was sealed BEFORE the SMTP account correction below, so its kit names
+the superseded `SMTP_USER` — the two irreplaceables are unaffected, and one re-run of the
+ceremony script refreshes it.
+
+### §9 owner action 2 / §5a blocker 1 — the SMTP credential is IN PLACE and VALIDATED end to end
+
+`SMTP_PASSWORD` is no longer empty. The first credential FAILED validation — `curl` exit 67
+`Login denied` under both AUTH=PLAIN and AUTH=LOGIN, stopped after two attempts deliberately —
+and the cause was an account mismatch: the app password was minted on **`ankit.sa3@gmail.com`**,
+not the address the file named. `SMTP_USER`/`ALERT_EMAIL_FROM`/`ALERT_EMAIL_TO` were corrected
+to the minting account (owner-supplied), and a **real message was then accepted by Gmail from
+the box, credentials sourced server-side** (`SMTP send OK`; TLS 1.3 on 587 — which also
+re-confirms the spike's question B on the live path). A validation failing first and passing
+after a NAMED correction is worth more than one that passed immediately.
+
+**Flags ④ and ⑤ remain UNDISCHARGED and this addendum does not claim otherwise:** Alertmanager
+still does not exist in production, and only the deploy discharges them. What changed is that
+the SMTP→inbox leg of ⑤ is now proven with the production credential — the remaining leg is
+Alertmanager itself firing through it.
+
+### §9 residual 1 / MAJOR 4 — closed after this report, by `90c0e6c`
+
+`seed:ops` and the README correction landed (commit verified to exist and to state exactly
+MAJOR 4's mechanism; its behaviour is the deploying session's to verify). The deploy checklist
+above therefore reads: `seed:ops` as a deploy step · MAJORs 1–3 unchanged · the deny-rule/
+classifier gate on the production deploy unchanged.
