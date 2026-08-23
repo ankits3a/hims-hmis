@@ -644,20 +644,20 @@ describe("kernel alerts consumer", () => {
       expect(row.title).toBe("Operating mode: normal → downtime");
       expect(row.body).toBe(DOWNTIME_NOTE);
       expect(row.refType).toBe("operating_mode");
-      // ───────────────────── 11d D6 / Book V13 — the HALF that shipped ─────────────────────
-      // The payload now carries `changeId`, and this asserts it IS the `operating_mode_changes`
-      // row — read from the TABLE, never from the payload, so the two sides are independent.
+      // ───────────────────── 11d D6 / Book V13 — BOTH HALVES, now landed ─────────────────────
+      // The payload carries `changeId` (T3), and the alert's `refId` IS that id (T4). Both are
+      // asserted against the `operating_mode_changes` row read from the TABLE, never from the
+      // payload and never a literal, so the two sides of each equality are independent.
       const change = await latestChange();
       expect(change.toMode).toBe("downtime"); // fixture proof: the row this alert is actually about
       expect(change.id).toHaveLength(26); // a ULID from newId(), not a mode word
       expect(event.payload).toMatchObject({ changeId: change.id });
-      // AND THE HALF THAT DID NOT. `refId` is still the mode WORD where both other ref types in
-      // `consumer.ts` carry an entity id. Repointing it at `change.id` was BUILT AND RUN in 11d T3
-      // and broke `test/ops-lifecycle.e2e.test.ts`, which pins this same word and which T3 may not
-      // touch. This line is therefore pinned as it IS, not as it should be — see the header on
-      // `OPERATING_MODE_REF_TYPE`. When the THREE-line repoint lands, this becomes `change.id` —
-      // and THIS line is the third of the three, which T3 did not count and its gate measured.
-      expect(row.refId).toBe("downtime");
+      // THE SECOND HALF, chain-halted out of T3 and landed by T4 in one commit with the two other
+      // readers (`alerts/consumer.ts` and `test/ops-lifecycle.e2e.test.ts` leg 4). `refId` was the
+      // mode WORD in 11c where both other ref types in `consumer.ts` carry an entity id; Book
+      // V13's mutant ("revert `refId` to the mode word") could not fail while the shipped code WAS
+      // that mutant, and this whole-string equality is what makes it fail now.
+      expect(row.refId).toBe(change.id);
       expect(row.sourceEventId).toBe(event.eventId);
 
       // The won-insert-only rule: the SECOND delivery appended nothing.

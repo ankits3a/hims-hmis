@@ -35,24 +35,14 @@ const ALERT_KIND_MANUAL_NOTIFY = "manual_notify";
 const MANUAL_NOTIFY_REF_TYPE = "patient";
 const ALERT_KIND_OPERATING_MODE = "operating_mode";
 /**
- * Plan 11c D4. The mode service has exactly ONE hospital-wide subject and no per-subject
- * instances (D2), so 11c made the "id" this alert refers to the mode WORD, with the full history
- * one screen away at `/ops/mode`. `sourceEventId` already carries the exact `ops.mode_changed`
- * row.
+ * Plan 11c D4, CORRECTED BY 11d D6. The mode service has exactly ONE hospital-wide subject and no
+ * per-subject instances (D2), so 11c made the "id" this alert refers to the mode WORD. That named
+ * a STATE rather than the fact the owner was woken for, and it was the odd one out: both other ref
+ * types in this file carry an entity id (a workflow instance, a patient).
  *
- * 11d D6 SET OUT TO CORRECT THAT AND GOT HALF WAY, AND THE HALF THAT IS MISSING IS THIS LINE.
  * `ops.mode_changed` now carries `changeId` — the `operating_mode_changes` row written in the same
- * transaction as the event (see `kernel/ops/events.ts`) — so `refId` below can and should become
- * `payload.changeId`: that is what both of this file's other ref types carry (an instance id, a
- * patient id), and a mode word names a STATE rather than the fact the owner was woken for.
- *
- * IT IS NOT REPOINTED HERE BECAUSE THE REPOINT BREAKS AN ASSERTION IN A FILE 11d T3 MAY NOT TOUCH.
- * `test/ops-lifecycle.e2e.test.ts` pins `refId: "downtime"` inside its leg-4 `toMatchObject`, and
- * that file belongs to a later task. MEASURED, not predicted: the repoint was built and run, and
- * that one e2e test failed on exactly that line while every other suite stayed green. The
- * remaining change is THREE lines across three files — this one, that one, and
- * `consumer.test.ts`'s own `refId` pin — and they must all land in the same commit. (T3 wrote
- * TWO here; T3's gate built the repoint, ran it, and measured the third.)
+ * transaction as the event (`kernel/ops/events.ts`) — so `refId` below IS that row, and the alert
+ * deep-links to the exact history entry instead of to a mode word the ledger holds many of.
  */
 const OPERATING_MODE_REF_TYPE = "operating_mode";
 /** The two modes whose entry or exit is worth waking somebody for (D4). */
@@ -261,8 +251,7 @@ async function handleModeChanged(db: Db, e: DispatchedEvent): Promise<void> {
         ? `The hospital moved from ${payload.from} to ${payload.to}. No note was recorded.`
         : payload.note,
     refType: OPERATING_MODE_REF_TYPE,
-    // STILL THE MODE WORD, AND `payload.changeId` IS SITTING RIGHT THERE. See the header on
-    // OPERATING_MODE_REF_TYPE for why this line did not move in 11d T3 and what has to move with it.
-    refId: payload.to,
+    // THE CHANGE ROW, not the mode word (11d D6) — see the header on OPERATING_MODE_REF_TYPE.
+    refId: payload.changeId,
   });
 }
