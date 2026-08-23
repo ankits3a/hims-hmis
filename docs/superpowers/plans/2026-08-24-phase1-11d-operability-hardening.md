@@ -1110,7 +1110,7 @@ and `seed:ops` grant, and `seed:roles` is what makes the module permissions real
 | T1 | `feat(core): seed:roles and ALL_MANIFESTS — every declared permission is now reachable by some role, and a test says so` |
 | T2 | `feat(core): seed:staff — a deployment can be given its humans, from stdin, with no credential left on the box` |
 | T3 | `fix(core): the mode ledger takes an advisory lock before it reads — two concurrent declarations can no longer both win` |
-| T4 | `test(core): the ops permission map, all four legs — the mutant that survived Plan 11c now dies` |
+| T4 | `test(core): the ops permission map, all four legs — the mutant that survived Plan 11c now dies, and the mode alert can finally deep-link` |
 | T5 | `feat(infra): the alert path is watched, and deploy.sh's two lists become one tested invariant` |
 | T6 | `fix(core): a heartbeat landing mid-sweep no longer loses to a false interface.down` |
 
