@@ -279,6 +279,16 @@ export type InterfaceDowned = {
  * The update is conditional on `status = 'up'` for the reason the file header gives: correctness
  * must not rest on the scheduler's advisory lock. One row per transaction, like
  * `sweepExpiredTempRoles` — a device that fails to flip does not hold back the others.
+ *
+ * AND IT IS CONDITIONAL ON `last_seen_at` TOO (11d D10), because the candidate read above happens
+ * OUTSIDE any transaction: a heartbeat landing between that read and this claim moves the sighting
+ * and leaves the status at `up`, so a claim that named only the status still matched and a WORKING
+ * device was marked down with a false `interface.down`. `recordHeartbeat` already takes
+ * `FOR UPDATE`, so the two DO serialise — they were simply serialising on a predicate that could
+ * not see the update that mattered. Requiring the sighting to still be the one the read saw makes a
+ * moved timestamp lose the claim exactly as a moved status already does; the loser updates zero
+ * rows and appends nothing, which is the same shape the paragraph above describes. `interfaces.test.ts`
+ * measures it over a floor of rounds (V20) and asserts the legitimate path is untouched (V21).
  */
 export async function sweepInterfaceHeartbeats(
   db: Db,
@@ -306,7 +316,13 @@ export async function sweepInterfaceHeartbeats(
       const won = await tx
         .update(interfaces)
         .set({ status: "down" })
-        .where(and(eq(interfaces.id, row.id), eq(interfaces.status, "up")))
+        .where(
+          and(
+            eq(interfaces.id, row.id),
+            eq(interfaces.status, "up"),
+            eq(interfaces.lastSeenAt, lastSeenAt),
+          ),
+        )
         .returning({ id: interfaces.id });
       if (won.length === 0) return null; // another worker downed it this tick — append nothing
 

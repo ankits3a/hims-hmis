@@ -186,8 +186,20 @@ export class OpsController {
 
   /**
    * Declare, degrade, recover. `ops.mode.set` at hospital scope is map 1's declare/recover
-   * authority — duty-manager role data at go-live; the seeded `admin` holds every manifest
-   * permission in dev.
+   * authority — duty-manager role data at go-live.
+   *
+   * WHAT THE SEEDED `admin` ACTUALLY HOLDS (11d T6, §2.60). The sentence that stood here said it
+   * "holds every manifest permission in dev", and that was never true. A downstream reader believed
+   * this sentence's README twin, and that is how MAJOR 4 shipped — a live box whose only account
+   * could open nothing. `admin` holds exactly what `seed:admin` and `seed:ops` grant it: the six
+   * `auth.*` strings and the three `ops.*` strings, NINE in total. Every other module's permissions
+   * are made real by `seed:roles` (11d T1 / D3) — that script is what turns the manifest catalog
+   * into grants some role actually holds, and a deployment that has not run it has an `admin` who
+   * can declare a mode and administer users and nothing else.
+   *
+   * MEASURED against the live database, 2026-08-24 (§B-MEASURED): the catalog declares 59
+   * permissions; after `seed:roles` 42 are held by some role and 17 are BOOKED as not-yet-modelled
+   * (owner ruling 7). Before 11d, `admin` held nine and the other fifty were held by nobody.
    *
    * The transaction, the matrix, D3's gate and the event all live in `changeOperatingMode`; this
    * handler parses, delegates and maps. `now` is NOT accepted from the body: a caller who could

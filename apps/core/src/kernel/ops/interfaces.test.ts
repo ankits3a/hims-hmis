@@ -299,4 +299,165 @@ describe("kernel ops — interface heartbeats, the tenth job (11c D6)", () => {
     expect(await eventsNamed("interface.restored")).toHaveLength(1);
     expect((await rowOf(printer.id)).status).toBe("up");
   });
+
+  // ───────── V20 / V21 (11d T6, D10) — the heartbeat/sweep race, and §3.44's control ─────────
+  //
+  // THE DEFECT THE NEW TERM CLOSES. `sweepInterfaceHeartbeats` chooses its candidates OUTSIDE any
+  // transaction and then claims each one INSIDE its own, and between those two moments a live
+  // device can say "I am here". `recordHeartbeat` takes `FOR UPDATE`, so the two DO serialise —
+  // they simply serialised on a predicate (`status = 'up'`) that a heartbeat does not disturb, so
+  // the claim still matched after the wait and a WORKING printer was marked `down` with a false
+  // `interface.down`. The fix is one term: `last_seen_at` must still be the instant the candidate
+  // read saw, so a moved sighting loses the claim exactly as a moved status already does.
+  //
+  // The two tests below are the pair §3.44 asks for, and they are not interchangeable:
+  //   V20 — the refusal HAPPENS (measured, a floor of rounds, never an engineered window).
+  //   V21 — the refusal happens to NOTHING ELSE. It is a REQUIRED GREEN, not a mutant: a
+  //         predicate one term too wide would leave every stale printer `up` for ever and would
+  //         still pass every other row in this file, because they exercise the defect's own path.
+  //
+  // MINOR only for as long as `interface.down` has no subscriber. Plan 11b puts real printers on
+  // this seam, which is why the fix lands now rather than on a deferred list.
+
+  const downsFor = async (id: string): Promise<{ payload: Record<string, unknown> }[]> =>
+    (await eventsNamed("interface.down")).filter((e) => e.payload.interfaceId === id);
+
+  const restoresFor = async (id: string): Promise<{ payload: Record<string, unknown> }[]> =>
+    (await eventsNamed("interface.restored")).filter((e) => e.payload.interfaceId === id);
+
+  it("V20: a heartbeat landing mid-sweep is never overwritten by a false interface.down", async () => {
+    // A FLOOR, NOT A TARGET (§3.22 / GC8). THE WINDOW IS NOT ENGINEERED: the sweep is started and
+    // the heartbeat is started, in that order, in the same tick, on two pool connections, and
+    // whatever those two then do to each other is what is measured. No barrier, no injected
+    // delay, no instrumented seam. Each round's outcome is CLASSIFIED and the split is printed,
+    // because "zero false downs" over a race that never raced would be a green worth nothing.
+    const ROUNDS = 15;
+    const outcomes: string[] = [];
+
+    for (let i = 0; i < ROUNDS; i += 1) {
+      const target = await seed({
+        name: `Racing printer ${i}`,
+        staleAfterMs: 3 * MINUTE,
+        status: "up",
+        lastSeenAt: before(10 * MINUTE),
+      });
+      // The row nobody heard from — same sweep, same arithmetic, no heartbeat. §3.44's control,
+      // carried by EVERY round rather than by one test at the end.
+      const silent = await seed({
+        name: `Silent printer ${i}`,
+        staleAfterMs: 3 * MINUTE,
+        status: "up",
+        lastSeenAt: before(10 * MINUTE),
+      });
+
+      const seenAt = new Date(NOW.getTime() + 1);
+      const sweeping = sweepInterfaceHeartbeats(db, NOW);
+      const beating = recordHeartbeat(db, DEVICE, target.id, seenAt);
+      const [downed] = await Promise.all([sweeping, beating]);
+
+      // The legitimate path, asserted inside the race rather than beside it: a predicate one
+      // term too wide fails HERE, on round 1, and no mutant in the Book would have caught it.
+      expect(downed.map((d) => d.interfaceId)).toContain(silent.id);
+      expect((await rowOf(silent.id)).status).toBe("down");
+      expect(await downsFor(silent.id)).toHaveLength(1);
+
+      // §2.6 — the field that would make a false down APPEAR is confirmed present: the heartbeat
+      // really landed, and it really moved the sighting. Without this the round could be green
+      // because nothing happened at all.
+      const row = await rowOf(target.id);
+      expect(row.lastSeenAt).toEqual(seenAt);
+
+      const downs = await downsFor(target.id);
+      const restores = await restoresFor(target.id);
+      if (row.status === "down") {
+        // Alive, heard from, and marked down anyway. This is the defect and it is the only
+        // outcome the fix forbids.
+        outcomes.push("FALSE-DOWN");
+      } else if (downs.length === 0 && restores.length === 0) {
+        outcomes.push("heartbeat-kept-it-up");
+      } else if (downs.length === 1 && restores.length === 1) {
+        // The sweep genuinely won the ordering: at the instant it claimed, nothing had been heard
+        // from this device for ten minutes, so `interface.down` was TRUE when it was appended and
+        // the heartbeat that followed restored it and said so. Correct, not a defect — which is
+        // why this test asserts the row is never LEFT down rather than that no event ever appends.
+        outcomes.push("sweep-won-then-restored");
+      } else {
+        outcomes.push(`UNCLASSIFIED status=${row.status} downs=${downs.length} restores=${restores.length}`);
+      }
+    }
+
+    const tally = (label: string): number => outcomes.filter((o) => o.startsWith(label)).length;
+    const observed = {
+      rounds: outcomes.length,
+      falseDown: tally("FALSE-DOWN"),
+      heartbeatKeptItUp: tally("heartbeat-kept-it-up"),
+      sweepWonThenRestored: tally("sweep-won-then-restored"),
+      unclassified: tally("UNCLASSIFIED"),
+    };
+    // The OBSERVED rate, printed on green as well as red — a measured row whose measurement is
+    // only visible when it fails is not a measurement (the perf suites' convention).
+    console.log(`V20 heartbeat/sweep race: ${JSON.stringify(observed)}`);
+
+    expect({ rounds: observed.rounds, falseDown: observed.falseDown, unclassified: observed.unclassified })
+      .toEqual({ rounds: ROUNDS, falseDown: 0, unclassified: 0 });
+
+    // ANTI-VACUITY, and it is not an assertion about the fix: if the heartbeat never once got
+    // ahead of the sweep's claim, this test has stopped racing and its green means nothing.
+    expect(observed.heartbeatKeptItUp).toBeGreaterThan(0);
+    // A PER-TEST BUDGET, DERIVED RATHER THAN CHOSEN (D11's discipline, not its number, and NEVER a
+    // change to `jest.config.cjs`): fifteen rounds MEASURED at 864 ms on the build host, and D11
+    // measured CI running the same kind of database walk ~13× slower — so the workspace default of
+    // 15 000 ms would leave this row with almost no margin on CI, and every round here additionally
+    // waits on a real row lock. 60 s is ~5× the CI-extrapolated figure and still short enough that
+    // a genuine hang is a minute, not two.
+  }, 60_000);
+
+  it("V21 (§3.44's not-over-broad control — a REQUIRED GREEN, not a mutant): a device whose sighting has NOT moved is still downed, exactly once", async () => {
+    // ADJACENT TO THE REFUSAL ON PURPOSE, on the three axes that could make one term too many
+    // refuse legitimate work. A comfortably distant fixture — a hand-set timestamp on a lonely
+    // row — would pass under a predicate that can never match anything, which is the failure
+    // mode this control exists to catch.
+    //
+    //   1. THE SIGHTING WAS WRITTEN BY THE SHIPPED HEARTBEAT PATH and round-tripped through
+    //      Postgres, not set by the fixture's own UPDATE. A term that cannot match a stored
+    //      `timestamptz` — precision, timezone, the wrong column — leaves every stale printer
+    //      `up` for ever, and a hand-set fixture is the one shape that would hide it. The instant
+    //      carries sub-second digits for exactly that reason.
+    //   2. THE ROW IS WRITTEN AGAIN IMMEDIATELY BEFORE THE SWEEP — a device agent's retry at the
+    //      SAME instant. The row is touched; the SIGHTING is not. The new term keys on the
+    //      sighting, so this must STILL be downed: "something wrote the row" is not the question.
+    //   3. A NEIGHBOUR IS GENUINELY ALIVE in the same sweep, so the decision is being made across
+    //      a real candidate set rather than on one row in isolation.
+    const staleSeenAt = new Date(NOW.getTime() - 10 * MINUTE + 123);
+
+    const quiet = await seed({ name: "Ward printer", staleAfterMs: 3 * MINUTE });
+    await recordHeartbeat(db, DEVICE, quiet.id, staleSeenAt);
+    await recordHeartbeat(db, DEVICE, quiet.id, staleSeenAt); // the retry: same instant, again
+    expect((await rowOf(quiet.id)).lastSeenAt).toEqual(staleSeenAt);
+    expect((await rowOf(quiet.id)).status).toBe("up");
+
+    const alive = await seed({ name: "Front-desk printer", staleAfterMs: 3 * MINUTE });
+    await recordHeartbeat(db, DEVICE, alive.id, NOW);
+
+    const downed = await sweepInterfaceHeartbeats(db, NOW);
+
+    expect(downed.map((d) => d.interfaceId)).toEqual([quiet.id]);
+    expect((await rowOf(quiet.id)).status).toBe("down");
+    expect((await rowOf(alive.id)).status).toBe("up");
+
+    const appended = await eventsNamed("interface.down");
+    expect(appended).toHaveLength(1);
+    expect(appended[0]!.payload).toEqual({
+      interfaceId: quiet.id,
+      kind: "printer",
+      name: "Ward printer",
+      lastSeenAt: staleSeenAt.toISOString(),
+      staleAfterMs: 3 * MINUTE,
+    });
+
+    // And the refusal did not turn into a re-alert loop on the other side: the next tick finds it
+    // already `down` and says nothing more.
+    expect(await sweepInterfaceHeartbeats(db, NOW)).toEqual([]);
+    expect(await eventsNamed("interface.down")).toHaveLength(1);
+  });
 });
