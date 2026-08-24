@@ -323,13 +323,13 @@ follow-up correcting it is not itself a row, which is the only sane place to sto
   the poller against the known-red sha and reading *what it told the operator to type* is what
   found it. Switched to `/actions/runs?head_sha=`, which returns the workflow-run id `gh` accepts
   and which O4 names. **Ledger §3.55.**
-- **F4 — MEASURED, and it is a gap in this document's own runbook.** O1 says create the second
-  administrator "then verify T2's detector goes quiet". **The detector is on `main` and is NOT in
-  production**: this phase ships no deploy task, and deploys are owner-authorised in as many words
-  (v3 §3.6). So O1's verification step cannot run until an owner-authorised deploy carries T2
-  there. O1's *first* half — creating the second administrator through `/admin/users` — needs
-  nothing new and can be done today; the takeover rule and the screen are already live from 11e.
-  *Read O1 as: create the second admin now; verify the detector after the next deploy.*
+- **F4 — MEASURED, and it is a gap in this document's own runbook. RESOLVED at close by the
+  owner-authorised deploy (above).** O1 says create the second administrator "then verify T2's
+  detector goes quiet", but the detector was on `main` and not in production — this phase ships no
+  deploy task, and deploys are owner-authorised in as many words (v3 §3.6) — so O1's verification
+  step could not run. *The authoring lesson stands even though the blocker is gone: a runbook item
+  whose evidence depends on code the phase does not deploy must say so at authoring, or it reads as
+  actionable when it is not.* **O1 is now doable end to end.**
 - **F5 — MEASURED (read-only production SELECTs, this session).** Production is unchanged from §2
   on every axis this phase can see: still exactly ONE holder of the full `auth.*` set (`admin`,
   6/6, measured by a query written for this check and NOT by the shipped helper, which is not
@@ -364,6 +364,33 @@ follow-up correcting it is not itself a row, which is the only sane place to sto
   now §3.54's second and better specimen, and it converted that entry's rule into a mechanical one:
   **grep the whole repository for the retired behaviour's name before closing — not the files you
   edited, not the files you listed, all of them.**
+
+### Deployment — OWNER-AUTHORISED AND DONE, 2026-08-24 (after close, at `16e11e6`)
+
+**The phase shipped no deploy task, deliberately (v3 §3.6). The owner authorised one in as many
+words at close, and it ran.** `docker/prod/deploy.sh`, detached, **exit VALUE 0**.
+
+- **Pre-flight, measured before touching anything:** 9 containers up, db and api healthy, **0 live
+  sessions** — so nobody was signed in and no consultation was interrupted — 19 migrations applied.
+- **After:** all 9 declared services up · `/health` **200** through Caddy over HTTPS on
+  `hmis.crkmch.com` (`{"status":"ok","db":"ok","worker":"ok"}`) · `/admin/users` answers **401**
+  unauthenticated through the edge, so the route is live and still guarded.
+- **Nothing moved that should not have.** Migrations still **19** — this phase generated none, and
+  the count proves it rather than the plan asserting it. 16 users, all 16 active,
+  `must_change_password` **0**: no lockout, the 11e deploy's property preserved.
+  `operating_mode_changes` still **0** — deploying is not operating, and this phase's whole thesis
+  is that those are different things.
+- **The change is verifiably IN the running images, not merely on `main`** — checked in the
+  containers rather than inferred from the build: `fullAdministrators` in the API's compiled
+  `users-admin.controller.js`, the `ACT ON THIS` warnings block (M1's fix) in
+  `dist/scripts/seed-roles.js`, and the banner string in the SPA bundle Caddy is serving. That
+  check exists because §2.88 is the standing proof that "it deployed" and "it is reachable" are
+  different claims.
+
+**So F4's blocker is gone: O1 is now doable end to end.** The detector is live and it is currently
+WARNING — production holds one full administrator, so `/admin/users` shows the banner today. That
+is the phase working: the thing that was invisible is now on the screen of the person who can fix
+it.
 
 ### Independent review (v3 §3.4)
 
@@ -515,8 +542,11 @@ manufactured. Said here rather than left to inference,** per AGENT-RULES §3.
 
 ### The runbook chase (§5.5)
 
-- **O1 — NOT DONE, and now the most valuable hour available.** Still one full administrator. See
-  F4 for the sequencing correction: the creation half needs nothing from this phase.
+- **O1 — NOT DONE, and now the most valuable hour available, with nothing left in its way.** Still
+  one full administrator, and the detector is now LIVE and saying so on `/admin/users`. F4's
+  blocker is gone (see Deployment): create the second admin through the screen, assign it the
+  `admin` role, and the banner goes quiet. The provisional password is forced-change at first
+  sign-in, which is why this is a five-minute job for a human and still not an agent's.
 - **O2 — NOT DONE.** D5's rotation is owner-only by construction; the burned roster is still
   unrotated (F5's counters are the evidence, and they have not moved).
 - **O3 — NOT DONE.** 11e's token total is still unrecorded, so v3 §7's cost claim stays
