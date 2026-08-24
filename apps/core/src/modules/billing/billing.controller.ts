@@ -85,6 +85,33 @@ function tariffStatus(code: string): number {
   return 409;
 }
 
+/**
+ * PLAN 11g / DD3 — THE ONE FOREIGN KEY WHOSE VIOLATION IS A CLIENT'S MISTAKE, NOT A BUG.
+ *
+ * `issueInvoice` does not check that `patientId` names a row; the `invoices` FK catches it at
+ * INSERT and, until this mapping existed, nothing turned SQLSTATE 23503 into a status — so an
+ * unknown patient id produced `500 {"message":"Internal server error"}`. The 2026-08-24 synthetic
+ * smoke test measured it (report D3); every other unknown-id path in the system answers a clean
+ * coded 404, and a cashier holding a stale patient id on screen cannot tell an outage from a typo.
+ *
+ * IT KEYS ON THE CONSTRAINT NAME, NOT THE SQLSTATE, AND THAT IS THE POINT. `invoices` can violate
+ * more than one foreign key. A blanket `23503 → patient_not_found` would answer some OTHER missing
+ * row with a confidently wrong sentence — which is worse than a 500, because it sends the person
+ * at the desk looking for the wrong thing. Every other 23503 keeps falling through to a loud 500,
+ * where it belongs: that one really is a bug.
+ *
+ * The narrowness is the `users-admin.controller.ts:104` precedent (`isUniqueViolation`, "narrow on
+ * purpose: any other error is a bug and must stay a 500"), taken one notch further because this
+ * error class carries a discriminator that one does not.
+ */
+const INVOICE_PATIENT_FK = "invoices_patient_id_patients_id_fk";
+
+function isInvoicePatientFkViolation(e: unknown): boolean {
+  if (typeof e !== "object" || e === null) return false;
+  const err = e as { code?: unknown; constraint?: unknown };
+  return err.code === "23503" && err.constraint === INVOICE_PATIENT_FK;
+}
+
 function httpError(statusCode: number, message: string, code: string, detail?: unknown): HttpException {
   const body: { statusCode: number; message: string; code: string; detail?: unknown } = { statusCode, message, code };
   if (detail !== undefined) body.detail = detail;
@@ -106,6 +133,18 @@ function toHttp(e: unknown): never {
   // Files list, so the mapping lands HERE rather than as an unratified union extension: a bad
   // body is a 400 in the ratified shape, never a 500.
   if (e instanceof z.ZodError) throw httpError(400, "request body failed validation", "invalid_request", e.issues);
+  // DD3. Last in the ladder deliberately: every typed refusal above is a decision the code MADE,
+  // and this one is a decision the DATABASE made on the code's behalf. The detail carries the id
+  // that was not found, so the body is worth reading rather than an echoed code.
+  if (isInvoicePatientFkViolation(e)) {
+    const id = String((e as { detail?: unknown }).detail ?? "").match(/\(patient_id\)=\(([^)]*)\)/)?.[1];
+    throw httpError(
+      404,
+      `patient ${id ?? "(unknown)"} does not exist`,
+      "patient_not_found",
+      id === undefined ? undefined : { patientId: id },
+    );
+  }
   throw e;
 }
 

@@ -676,6 +676,41 @@ describe("billing e2e", () => {
     expect(Array.isArray(badPatch.body.detail)).toBe(true);
   });
 
+  /**
+   * PLAN 11g / T-D3, DD3 — AN UNKNOWN patientId IS A CODED 404, NOT AN INTERNAL SERVER ERROR.
+   *
+   * The 2026-08-24 synthetic smoke test posted an invoice for a well-formed ULID that names no
+   * patient and got `500 {"message":"Internal server error"}`. `issueInvoice` never checks the
+   * patient exists; the FK caught it at INSERT and nothing mapped 23503 onto a status. Every other
+   * unknown-id path in the system answers a clean coded 404. A cashier whose screen holds a stale
+   * patient id cannot tell an outage from a typo.
+   *
+   * The mapping keys on the CONSTRAINT NAME rather than the SQLSTATE, and that is the design
+   * decision: `invoices` can violate more than one foreign key, and a blanket 23503 →
+   * patient_not_found would answer a DIFFERENT missing row with a confidently wrong sentence —
+   * worse than a 500, because it sends the cashier looking for the wrong thing.
+   */
+  it("an unknown patientId on POST /billing/invoices is a coded 404, and the receipt is never taken", async () => {
+    await openSession(cashier.token);
+    const ghost = "01M0NOTAREALPATIENTXXXXXXX"; // the smoke test's own id, shape-valid, no row
+
+    const refused = await http().post("/billing/invoices").set(...auth(cashier.token)).send({
+      draftId: "draft-ghost-1", patientId: ghost,
+      lines: [{ lineId: "l1", serviceId: base.consultNewServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] },
+    }).expect(404);
+
+    expect(refused.body.statusCode).toBe(404);
+    expect(refused.body.code).toBe("patient_not_found");
+    expect(typeof refused.body.message).toBe("string");
+    expect(refused.body.message).not.toBe(refused.body.code); // it must be worth reading
+    expect(refused.body.message).toContain(ghost);
+
+    // The refusal is the whole transaction's: no invoice, and — the half that matters at a cash
+    // counter — no receipt banked against a patient who does not exist.
+    expect(await db.select().from(receipts)).toHaveLength(0);
+  });
+
   it("recon: a card statement outside tolerance mismatches the tender and lands on the worklist", async () => {
     const patientId = await registerPatient("Farida Khan", "9876543216");
     await openSession(cashier.token);
