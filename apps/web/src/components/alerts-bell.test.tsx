@@ -98,9 +98,9 @@ describe("AlertsBell", () => {
     let unreadCount = 1;
     let readAt: string | null = null;
     mockRoutes({
-      "GET /auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
-      "GET /alerts": () => ({ status: 200, body: { items: [alertRow({ readAt })], unreadCount } }),
-      "POST /alerts/al-1/read": () => {
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
+      "GET /api/alerts": () => ({ status: 200, body: { items: [alertRow({ readAt })], unreadCount } }),
+      "POST /api/alerts/al-1/read": () => {
         readAt = NOW_ISO;
         unreadCount = 0;
         return { status: 201, body: { alertId: "al-1", readAt: NOW_ISO, alreadyRead: false } };
@@ -122,7 +122,7 @@ describe("AlertsBell", () => {
     await user.click(screen.getByTestId("alerts-mark-read-al-1"));
     await waitFor(() => expect(screen.queryByTestId("alerts-unread-badge")).not.toBeInTheDocument());
 
-    const posts = callsTo("POST", "/alerts/al-1/read");
+    const posts = callsTo("POST", "/api/alerts/al-1/read");
     expect(posts).toHaveLength(1);
     // SubmitButton's minted key travels to the server even though the route ignores it (D6) — the
     // convention is about the CLIENT being single-flight, not about the server needing the key.
@@ -155,17 +155,17 @@ describe("AlertsBell", () => {
     vi.stubGlobal("WebSocket", FakeWebSocket);
     setToken("tok-1");
     mockRoutes({
-      "GET /auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
-      "GET /alerts": { status: 200, body: { items: [], unreadCount: 0 } },
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
+      "GET /api/alerts": { status: 200, body: { items: [], unreadCount: 0 } },
     });
 
     renderWithProviders(<AlertsBell />);
     await flush();
     await flush();
-    const before = callsTo("GET", "/alerts").length;
+    const before = callsTo("GET", "/api/alerts").length;
     expect(before).toBeGreaterThan(0);
 
     await flush(15_000);
-    expect(callsTo("GET", "/alerts").length).toBeGreaterThan(before);
+    expect(callsTo("GET", "/api/alerts").length).toBeGreaterThan(before);
   });
 });

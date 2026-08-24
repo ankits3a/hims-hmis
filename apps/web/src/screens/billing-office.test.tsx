@@ -268,8 +268,8 @@ describe("BillingOffice", () => {
 
   it("files a refund request with INTEGER PAISE and the guard flags the server computed, then issues the voucher against the granted approval", async () => {
     mockRoutes({
-      "GET /billing/refunds": { status: 200, body: { items: [] } },
-      "POST /billing/refunds/request": {
+      "GET /api/billing/refunds": { status: 200, body: { items: [] } },
+      "POST /api/billing/refunds/request": {
         status: 201,
         body: {
           approvalId: "apr-31", instanceId: "wfi-31", patientId: "p-1",
@@ -277,7 +277,7 @@ describe("BillingOffice", () => {
           guardFlags: ["terminal_encounter"],
         },
       },
-      "POST /billing/refunds": {
+      "POST /api/billing/refunds": {
         status: 201,
         body: {
           voucherId: "rv-31", voucherNo: "RV/26-27/000031", patientId: "p-1",
@@ -296,16 +296,16 @@ describe("BillingOffice", () => {
     await user.type(screen.getByLabelText("Reason"), "patient discharged, advance unused");
     await user.click(screen.getByTestId("refund-request-submit"));
 
-    await waitFor(() => expect(callsTo("POST", "/billing/refunds/request")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/billing/refunds/request")).toHaveLength(1));
     // §3.19 — the control types a rupee STRING; the body carries integer paise.
-    expect(bodiesOf("POST", "/billing/refunds/request")[0]).toEqual({
+    expect(bodiesOf("POST", "/api/billing/refunds/request")[0]).toEqual({
       kind: "advance_refund",
       patientId: "p-1",
       amountPaise: 250_000,
       reasonClass: "genuine",
       reason: "patient discharged, advance unused",
     });
-    const requestBody = bodiesOf("POST", "/billing/refunds/request")[0] as { amountPaise: unknown };
+    const requestBody = bodiesOf("POST", "/api/billing/refunds/request")[0] as { amountPaise: unknown };
     expect(typeof requestBody.amountPaise).toBe("number");
 
     // The approval is named, and the flags the server computed ride the request — the approver is
@@ -316,8 +316,8 @@ describe("BillingOffice", () => {
     // …and the issue lane carries that approval id through, with the method the manager chose.
     await user.selectOptions(screen.getByLabelText("Refund method"), "bank_transfer");
     await user.click(screen.getByTestId("issue-submit"));
-    await waitFor(() => expect(callsTo("POST", "/billing/refunds")).toHaveLength(1));
-    expect(bodiesOf("POST", "/billing/refunds")[0]).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/billing/refunds")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/billing/refunds")[0]).toEqual({
       kind: "advance_refund",
       patientId: "p-1",
       amountPaise: 250_000,
@@ -330,7 +330,7 @@ describe("BillingOffice", () => {
   });
 
   it("the worklist renders guard flags as WARNINGS, renders no payee identity reference even though the fixture carries one, and looks up no patient name (no N+1)", async () => {
-    mockRoutes({ "GET /billing/refunds": { status: 200, body: VOUCHERS } });
+    mockRoutes({ "GET /api/billing/refunds": { status: 200, body: VOUCHERS } });
     renderWithProviders(<BillingOffice />);
 
     const row = await screen.findByTestId("voucher-row-rv-1");
@@ -365,14 +365,14 @@ describe("BillingOffice", () => {
      * id is rendered as the identifier it is.
      */
     expect(within(row).getByTestId("voucher-patient-rv-1")).toHaveTextContent("p-1");
-    expect(fetchCalls().filter((c) => c.path.startsWith("/patients"))).toHaveLength(0);
-    expect(fetchCalls().filter((c) => c.path.startsWith("/billing/patients"))).toHaveLength(0);
+    expect(fetchCalls().filter((c) => c.path.startsWith("/api/patients"))).toHaveLength(0);
+    expect(fetchCalls().filter((c) => c.path.startsWith("/api/billing/patients"))).toHaveLength(0);
   });
 
   it("NOT OVER-BROAD: a guard-flagged voucher is still fully actionable — the pay lane opens on the flagged row and the payment posts", async () => {
     mockRoutes({
-      "GET /billing/refunds": { status: 200, body: VOUCHERS },
-      "POST /billing/refunds/rv-1/pay": {
+      "GET /api/billing/refunds": { status: 200, body: VOUCHERS },
+      "POST /api/billing/refunds/rv-1/pay": {
         status: 201,
         body: {
           voucherId: "rv-1", voucherNo: "RV/26-27/000004", patientId: "p-1",
@@ -394,8 +394,8 @@ describe("BillingOffice", () => {
     await user.type(screen.getByLabelText("Payee ID reference"), "1234-5678-9012");
     await user.click(screen.getByTestId("pay-submit"));
 
-    await waitFor(() => expect(callsTo("POST", "/billing/refunds/rv-1/pay")).toHaveLength(1));
-    expect(bodiesOf("POST", "/billing/refunds/rv-1/pay")[0]).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/billing/refunds/rv-1/pay")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/billing/refunds/rv-1/pay")[0]).toEqual({
       payeeName: "Ramesh Kumar",
       payeeIdType: "aadhaar",
       payeeIdRef: "1234-5678-9012",
@@ -405,8 +405,8 @@ describe("BillingOffice", () => {
 
   it("the pay lane mirrors the server's mandatory payee identity in the browser and renders a bank_transfer_required refusal inline", async () => {
     mockRoutes({
-      "GET /billing/refunds": { status: 200, body: VOUCHERS },
-      "POST /billing/refunds/rv-1/pay": {
+      "GET /api/billing/refunds": { status: 200, body: VOUCHERS },
+      "POST /api/billing/refunds/rv-1/pay": {
         status: 400,
         body: {
           statusCode: 400,
@@ -424,7 +424,7 @@ describe("BillingOffice", () => {
     // Empty payee identity is refused in the browser, before anything leaves it. The server is the
     // authority (`payRefundBody` requires all three); this is a mirror, and it is stated as one.
     await user.click(screen.getByTestId("pay-submit"));
-    expect(callsTo("POST", "/billing/refunds/rv-1/pay")).toHaveLength(0);
+    expect(callsTo("POST", "/api/billing/refunds/rv-1/pay")).toHaveLength(0);
     expect(screen.getByTestId("pay-error")).toHaveTextContent(
       "The payee's name, identity document type and reference are all required",
     );
@@ -434,7 +434,7 @@ describe("BillingOffice", () => {
     await user.type(screen.getByLabelText("Payee ID reference"), "1234-5678-9012");
     await user.click(screen.getByTestId("pay-submit"));
 
-    await waitFor(() => expect(callsTo("POST", "/billing/refunds/rv-1/pay")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/billing/refunds/rv-1/pay")).toHaveLength(1));
     const refusal = await screen.findByTestId("pay-error");
     expect(refusal).toHaveAttribute("role", "alert");
     expect(refusal).toHaveTextContent("must be paid by bank transfer");
@@ -442,9 +442,9 @@ describe("BillingOffice", () => {
 
   it("K47/W-11: the recon upload posts the CSV WRAPPED as { csv, source } and renders matched / mismatched / unmatched counts plus the mismatch worklist with BOTH numbers", async () => {
     mockRoutes({
-      "GET /billing/refunds": { status: 200, body: { items: [] } },
-      "GET /billing/recon/mismatches": { status: 200, body: MISMATCHES },
-      "POST /billing/recon/upload": { status: 201, body: UPLOAD_RESULT },
+      "GET /api/billing/refunds": { status: 200, body: { items: [] } },
+      "GET /api/billing/recon/mismatches": { status: 200, body: MISMATCHES },
+      "POST /api/billing/recon/upload": { status: 201, body: UPLOAD_RESULT },
     });
     renderWithProviders(<BillingOffice />);
     const user = userEvent.setup();
@@ -454,14 +454,14 @@ describe("BillingOffice", () => {
     await user.selectOptions(screen.getByLabelText("Statement source"), "card");
     await user.click(screen.getByTestId("recon-submit"));
 
-    await waitFor(() => expect(callsTo("POST", "/billing/recon/upload")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/billing/recon/upload")).toHaveLength(1));
     /**
      * THE BODY IS THE ASSERTION (W-11 posts the raw textarea string with no wrapper). `source` is
      * part of the shape because `reconUploadBody` requires it — a bare `{ csv }` is a 400 at the
      * shipped route — but the discriminating half is that the CSV is a NAMED FIELD of an object,
      * not the body itself.
      */
-    const body = bodiesOf("POST", "/billing/recon/upload")[0];
+    const body = bodiesOf("POST", "/api/billing/recon/upload")[0];
     expect(body).toEqual({ csv: CSV, source: "card" });
     expect(typeof body).toBe("object");
     expect((body as { csv: string }).csv).toBe(CSV);
@@ -483,8 +483,8 @@ describe("BillingOffice", () => {
 
   it("K46/W-10: the day book renders the API's numbers VERBATIM — the fixture's mode figures deliberately do not add up to its total, and the total that renders is the API's", async () => {
     mockRoutes({
-      "GET /billing/refunds": { status: 200, body: { items: [] } },
-      "GET /billing/day-book": { status: 200, body: DAY_BOOK_INCONSISTENT },
+      "GET /api/billing/refunds": { status: 200, body: { items: [] } },
+      "GET /api/billing/day-book": { status: 200, body: DAY_BOOK_INCONSISTENT },
     });
     renderWithProviders(<BillingOffice />);
     const user = userEvent.setup();
@@ -525,8 +525,8 @@ describe("BillingOffice", () => {
 
   it("NOT OVER-BROAD: the ordinary day, whose mode figures DO add up, renders exactly the same way", async () => {
     mockRoutes({
-      "GET /billing/refunds": { status: 200, body: { items: [] } },
-      "GET /billing/day-book": { status: 200, body: DAY_BOOK_CONSISTENT },
+      "GET /api/billing/refunds": { status: 200, body: { items: [] } },
+      "GET /api/billing/day-book": { status: 200, body: DAY_BOOK_CONSISTENT },
     });
     renderWithProviders(<BillingOffice />);
     const user = userEvent.setup();
@@ -549,18 +549,18 @@ describe("BillingOffice", () => {
 
   it("the day book's day defaults to todayIst() — the IST calendar day, not the UTC one", async () => {
     mockRoutes({
-      "GET /billing/refunds": { status: 200, body: { items: [] } },
-      "GET /billing/day-book": { status: 200, body: DAY_BOOK_INCONSISTENT },
+      "GET /api/billing/refunds": { status: 200, body: { items: [] } },
+      "GET /api/billing/day-book": { status: 200, body: DAY_BOOK_INCONSISTENT },
     });
     renderWithProviders(<BillingOffice />);
     const user = userEvent.setup();
 
     await openTab(user, "Day book");
-    await waitFor(() => expect(callsTo("GET", "/billing/day-book").length).toBeGreaterThan(0));
+    await waitFor(() => expect(callsTo("GET", "/api/billing/day-book").length).toBeGreaterThan(0));
 
     // The pinned instant is 19:30Z on the 19th — 01:00 IST on the 20th. The day asked for is the
     // IST one, checked against BOTH the shipped `todayIst()` and the literal it must produce here.
-    const url = callsTo("GET", "/billing/day-book")[0]!.url;
+    const url = callsTo("GET", "/api/billing/day-book")[0]!.url;
     expect(url).toContain(`day=${TODAY_IST}`);
     expect(url).toContain(`day=${todayIst()}`);
     expect(todayIst()).toBe(TODAY_IST);
@@ -571,8 +571,8 @@ describe("BillingOffice", () => {
 
   it("GSTR-1 groups B2C and B2B by GSTIN over the typed range and renders the stored head sums VERBATIM — never re-derived from the merged base", async () => {
     mockRoutes({
-      "GET /billing/refunds": { status: 200, body: { items: [] } },
-      "GET /billing/gstr1": { status: 200, body: GSTR1 },
+      "GET /api/billing/refunds": { status: 200, body: { items: [] } },
+      "GET /api/billing/gstr1": { status: 200, body: GSTR1 },
     });
     renderWithProviders(<BillingOffice />);
     const user = userEvent.setup();
@@ -585,7 +585,7 @@ describe("BillingOffice", () => {
     await user.click(screen.getByTestId("gstr1-run"));
 
     await waitFor(() =>
-      expect(callsTo("GET", "/billing/gstr1").some((c) => c.url.includes("from=2026-08-01&to=2026-08-31"))).toBe(true),
+      expect(callsTo("GET", "/api/billing/gstr1").some((c) => c.url.includes("from=2026-08-01&to=2026-08-31"))).toBe(true),
     );
 
     // B2C first (a null GSTIN), then the GSTIN's own rows — the order the server sorted them into.
@@ -619,8 +619,8 @@ describe("BillingOffice", () => {
 
   it("the entered-in-error lane asks before it acts, names the cascade, and posts { receiptId, reason }", async () => {
     mockRoutes({
-      "GET /billing/refunds": { status: 200, body: { items: [] } },
-      "POST /billing/eie": {
+      "GET /api/billing/refunds": { status: 200, body: { items: [] } },
+      "POST /api/billing/eie": {
         status: 201,
         body: { markId: "eie-1", reversedAllocationIds: ["alc-1", "alc-2"] },
       },
@@ -634,15 +634,15 @@ describe("BillingOffice", () => {
 
     // Nothing has left the browser yet: voiding a receipt reverses its allocations, and the
     // operator is told that before she confirms, not after.
-    expect(callsTo("POST", "/billing/eie")).toHaveLength(0);
+    expect(callsTo("POST", "/api/billing/eie")).toHaveLength(0);
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByTestId("eie-cascade")).toHaveTextContent(
       "Every allocation this receipt made will be reversed",
     );
 
     await user.click(within(dialog).getByTestId("eie-confirm-submit"));
-    await waitFor(() => expect(callsTo("POST", "/billing/eie")).toHaveLength(1));
-    expect(bodiesOf("POST", "/billing/eie")[0]).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/billing/eie")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/billing/eie")[0]).toEqual({
       receiptId: "rcp-7",
       reason: "keyed against the wrong patient",
     });
@@ -651,7 +651,7 @@ describe("BillingOffice", () => {
 
   it("a 403 on any tab's read renders the SHARED error state, and the screen assumes nothing about which permission guards which route", async () => {
     mockRoutes({
-      "GET /billing/refunds": {
+      "GET /api/billing/refunds": {
         status: 403,
         body: {
           statusCode: 403,
@@ -659,7 +659,7 @@ describe("BillingOffice", () => {
           code: "forbidden",
         },
       },
-      "GET /billing/day-book": {
+      "GET /api/billing/day-book": {
         status: 403,
         body: {
           statusCode: 403,

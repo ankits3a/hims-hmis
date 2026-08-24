@@ -19,7 +19,8 @@
 #      carries history does not replay it through the dispatcher
 #   6. api, worker and caddy up
 #   7. the backup and restore-drill cron entries
-#   8. /health green THROUGH Caddy over HTTPS on the real hostname
+#   8. the EDGE gate: /api/health green THROUGH Caddy over HTTPS on the real hostname, AND a
+#      screen path served as HTML — both halves of the /api/* split proved, not assumed
 #
 # Production runs from the DEPLOY DIRECTORY, never from this checkout. The images are built here
 # and then run from the daemon by tag, and compose is invoked against the copied files — so a
@@ -90,7 +91,7 @@ our_caddy_running() {
 step "0/8 pre-flight"
 # ----------------------------------------------------------------------------------------------
 command -v docker >/dev/null 2>&1 || die "docker is not installed"
-command -v curl >/dev/null 2>&1 || die "curl is required for the /health gate"
+command -v curl >/dev/null 2>&1 || die "curl is required for the /api/health gate"
 command -v ss >/dev/null 2>&1 || die "ss (iproute2) is required for the 80/443 pre-flight"
 
 # Deliberately NOT created here. The production .env and the backup credentials live in this
@@ -528,7 +529,7 @@ note "cron installed at $CRON_FILE (nightly full 02:30 IST · restore drill 03:3
 note "logs append to $DEPLOY_DIR/log/ — the runbook owns their rotation"
 
 # ----------------------------------------------------------------------------------------------
-step "8/8 /health through Caddy over HTTPS"
+step "8/8 the edge gate: /api/health as JSON, and a screen path as HTML"
 # ----------------------------------------------------------------------------------------------
 # The hostname is read out of the Caddyfile rather than configured twice — one source of truth,
 # and re-pointing the stack at another name stays a one-file change (GC1).
@@ -537,14 +538,40 @@ SITE_HOST="$(awk 'NF == 2 && $2 == "{" && $1 ~ /^[A-Za-z0-9][A-Za-z0-9.-]*$/ && 
 [ -n "$SITE_HOST" ] || die "could not read the site hostname out of $DEPLOY_DIR/caddy/Caddyfile"
 note "site hostname $SITE_HOST"
 
+# PLAN 11g / DD1 — THE API MOVED TO /api/*, AND THIS GATE HAD TO MOVE WITH IT OR BECOME A LIE.
+#
+# `/health` is no longer proxied: it falls to the SPA handler and comes back as index.html with
+# HTTP 200, which `curl -fsS` reports as success. A gate that cannot tell the API from the SPA is
+# the exact defect this phase exists to close, so it now checks BOTH halves of the split and
+# checks the BODY rather than only the status.
 deadline=$(( $(date +%s) + EDGE_HEALTH_TIMEOUT ))
-until body="$(curl -fsS --max-time 10 "https://$SITE_HOST/health" 2>/dev/null)"; do
+until body="$(curl -fsS --max-time 10 "https://$SITE_HOST/api/health" 2>/dev/null)"; do
   [ "$(date +%s)" -lt "$deadline" ] \
-    || die "https://$SITE_HOST/health did not answer within ${EDGE_HEALTH_TIMEOUT}s.
+    || die "https://$SITE_HOST/api/health did not answer within ${EDGE_HEALTH_TIMEOUT}s.
     On a first deploy this is usually ACME: read the caddy container log and confirm the hostname
     resolves to this box unproxied."
   sleep 3
 done
-note "HTTP 200 $body"
+# The API half must be the API. A 200 whose body is a document is the SPA handler answering, which
+# means the @api matcher or its strip_prefix is wrong — and it would otherwise report as healthy.
+case "$body" in
+  '{'*) : ;;
+  *) die "https://$SITE_HOST/api/health answered 200 with a NON-JSON body — the edge is serving the
+    SPA where the API should be. First 200 bytes: $(printf '%.200s' "$body")" ;;
+esac
+note "api through the edge: HTTP 200 $body"
+
+# The APPLICATION half must be the application, and this is the leg that would have caught the
+# 2026-08-24 smoke test's D1: fifteen screens answered the API's JSON to a browser for a whole
+# plan cycle while every test and every deploy gate was green. `/admin/users` is chosen because it
+# is the exact URL the owner opened when the outage was found.
+screen="$(curl -fsS --max-time 10 -H 'Accept: text/html' "https://$SITE_HOST/admin/users" 2>/dev/null)" \
+  || die "https://$SITE_HOST/admin/users did not answer at all"
+case "$screen" in
+  *'<!doctype html>'*|*'<!DOCTYPE html>'*) : ;;
+  *) die "https://$SITE_HOST/admin/users did not serve the SPA — a browser asking for a SCREEN is
+    being handed something else (smoke-test D1). First 200 bytes: $(printf '%.200s' "$screen")" ;;
+esac
+note "screen through the edge: /admin/users serves the SPA document"
 
 printf '\n==> hmis-prod is up: https://%s\n' "$SITE_HOST"

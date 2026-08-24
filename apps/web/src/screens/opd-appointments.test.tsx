@@ -85,19 +85,19 @@ describe("OpdAppointments", () => {
 
   it("loads GET /opd/slots for the picked department+doctor+date and renders IST-labelled buttons, booked disabled, past dimmed", async () => {
     stubFetch({
-      "GET /opd/departments": { items: DEPARTMENTS },
-      "GET /opd/doctors": { items: [DOCTOR_1] },
-      "GET /opd/rooms": { items: ROOMS },
-      "GET /opd/slots": { slots: SLOTS },
-      "GET /opd/appointments": { items: [] },
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/doctors": { items: [DOCTOR_1] },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/slots": { slots: SLOTS },
+      "GET /api/opd/appointments": { items: [] },
     });
     renderWithProviders(<OpdAppointments />);
     const user = userEvent.setup();
 
     await pickDeptAndDoctor(user);
 
-    await waitFor(() => expect(callsTo("GET", "/opd/slots")).toHaveLength(1));
-    expect(callsTo("GET", "/opd/slots")[0]!.url).toBe("/opd/slots?doctorId=doc-1&date=2026-08-18");
+    await waitFor(() => expect(callsTo("GET", "/api/opd/slots")).toHaveLength(1));
+    expect(callsTo("GET", "/api/opd/slots")[0]!.url).toBe("/api/opd/slots?doctorId=doc-1&date=2026-08-18");
 
     const onTheHour = screen.getByTestId("slot-2026-08-18T03:30:00.000Z");
     expect(onTheHour).toHaveTextContent("09:00"); // 03:30Z → 09:00 IST
@@ -121,13 +121,13 @@ describe("OpdAppointments", () => {
 
   it("picking a patient then clicking a slot posts { patientId, doctorId, slotStart } and refreshes the day list", async () => {
     stubFetch({
-      "GET /opd/departments": { items: DEPARTMENTS },
-      "GET /opd/doctors": { items: [DOCTOR_1] },
-      "GET /opd/rooms": { items: ROOMS },
-      "GET /opd/slots": { slots: SLOTS },
-      "GET /opd/appointments": { items: [] },
-      "GET /patients/search": { items: [SEARCH_HIT] },
-      "POST /opd/appointments": { appointment: apt({ id: "ap-9" }) },
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/doctors": { items: [DOCTOR_1] },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/slots": { slots: SLOTS },
+      "GET /api/opd/appointments": { items: [] },
+      "GET /api/patients/search": { items: [SEARCH_HIT] },
+      "POST /api/opd/appointments": { appointment: apt({ id: "ap-9" }) },
     });
     renderWithProviders(<OpdAppointments />);
     const user = userEvent.setup();
@@ -139,28 +139,28 @@ describe("OpdAppointments", () => {
     await user.click(await screen.findByRole("button", { name: /Asha Devi/ }));
     expect(await screen.findByText(/Selected patient: Asha Devi/)).toBeInTheDocument();
 
-    await waitFor(() => expect(callsTo("GET", "/opd/appointments").length).toBeGreaterThanOrEqual(1));
-    const before = callsTo("GET", "/opd/appointments").length;
+    await waitFor(() => expect(callsTo("GET", "/api/opd/appointments").length).toBeGreaterThanOrEqual(1));
+    const before = callsTo("GET", "/api/opd/appointments").length;
 
     await user.click(screen.getByTestId("slot-2026-08-18T03:30:00.000Z"));
 
-    await waitFor(() => expect(callsTo("POST", "/opd/appointments")).toHaveLength(1));
-    expect(bodyOf("POST", "/opd/appointments")).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/opd/appointments")).toHaveLength(1));
+    expect(bodyOf("POST", "/api/opd/appointments")).toEqual({
       patientId: "p-1", doctorId: "doc-1", slotStart: "2026-08-18T03:30:00.000Z",
     });
-    await waitFor(() => expect(callsTo("GET", "/opd/appointments").length).toBeGreaterThan(before));
+    await waitFor(() => expect(callsTo("GET", "/api/opd/appointments").length).toBeGreaterThan(before));
   });
 
   it("the day list renders patient/time/status, Reschedule posts a new slot, and Cancel requires a reason", async () => {
     const booked = apt({ id: "ap-1" });
     stubFetch({
-      "GET /opd/departments": { items: DEPARTMENTS },
-      "GET /opd/doctors": { items: [DOCTOR_1] },
-      "GET /opd/rooms": { items: ROOMS },
-      "GET /opd/slots": { slots: SLOTS },
-      "GET /opd/appointments": { items: [booked] },
-      "POST /opd/appointments/ap-1/reschedule": { from: booked, to: apt({ id: "ap-10", slotStart: "2026-08-18T04:10:00.000Z" }) },
-      "POST /opd/appointments/ap-1/cancel": { appointment: apt({ id: "ap-1", status: "cancelled" }) },
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/doctors": { items: [DOCTOR_1] },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/slots": { slots: SLOTS },
+      "GET /api/opd/appointments": { items: [booked] },
+      "POST /api/opd/appointments/ap-1/reschedule": { from: booked, to: apt({ id: "ap-10", slotStart: "2026-08-18T04:10:00.000Z" }) },
+      "POST /api/opd/appointments/ap-1/cancel": { appointment: apt({ id: "ap-1", status: "cancelled" }) },
     });
     renderWithProviders(<OpdAppointments />);
     const user = userEvent.setup();
@@ -179,8 +179,8 @@ describe("OpdAppointments", () => {
     const newSlot = await within(dialog).findByTestId("slot-2026-08-18T04:10:00.000Z");
     await user.click(newSlot);
 
-    await waitFor(() => expect(callsTo("POST", "/opd/appointments/ap-1/reschedule")).toHaveLength(1));
-    expect(bodyOf("POST", "/opd/appointments/ap-1/reschedule")).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/opd/appointments/ap-1/reschedule")).toHaveLength(1));
+    expect(bodyOf("POST", "/api/opd/appointments/ap-1/reschedule")).toEqual({
       slotStart: "2026-08-18T04:10:00.000Z", doctorId: "doc-1",
     });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -190,8 +190,8 @@ describe("OpdAppointments", () => {
     await user.type(within(cancelDialog).getByLabelText("Reason"), "Patient requested");
     await user.click(within(cancelDialog).getByRole("button", { name: "Confirm cancel" }));
 
-    await waitFor(() => expect(callsTo("POST", "/opd/appointments/ap-1/cancel")).toHaveLength(1));
-    expect(bodyOf("POST", "/opd/appointments/ap-1/cancel")).toEqual({ reason: "Patient requested" });
+    await waitFor(() => expect(callsTo("POST", "/api/opd/appointments/ap-1/cancel")).toHaveLength(1));
+    expect(bodyOf("POST", "/api/opd/appointments/ap-1/cancel")).toEqual({ reason: "Patient requested" });
   });
 
   it("the needs-rebooking tab lists across doctors from GET /opd/appointments?needsRebooking=true with a one-tap Reschedule", async () => {
@@ -201,20 +201,20 @@ describe("OpdAppointments", () => {
       patient: { requestedId: "p-3", id: "p-3", uhid: "HMS0000009999", name: "Sunita Kumar", alias: null, restricted: false, sex: "female", dob: null },
     });
     stubFetch({
-      "GET /opd/departments": { items: DEPARTMENTS },
-      "GET /opd/doctors": { items: [DOCTOR_2] }, // the unfiltered "all doctors" lookup (departmentId never selected in this test)
-      "GET /opd/rooms": { items: [] },
-      "GET /opd/appointments": { items: [needsRebooking] },
-      "GET /opd/slots": { slots: SLOTS },
-      "POST /opd/appointments/ap-3/reschedule": { from: needsRebooking, to: apt({ id: "ap-11" }) },
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/doctors": { items: [DOCTOR_2] }, // the unfiltered "all doctors" lookup (departmentId never selected in this test)
+      "GET /api/opd/rooms": { items: [] },
+      "GET /api/opd/appointments": { items: [needsRebooking] },
+      "GET /api/opd/slots": { slots: SLOTS },
+      "POST /api/opd/appointments/ap-3/reschedule": { from: needsRebooking, to: apt({ id: "ap-11" }) },
     });
     renderWithProviders(<OpdAppointments />);
     const user = userEvent.setup();
 
     await user.click(screen.getByRole("tab", { name: "Needs rebooking" }));
 
-    await waitFor(() => expect(callsTo("GET", "/opd/appointments")).toHaveLength(1));
-    expect(callsTo("GET", "/opd/appointments")[0]!.url).toBe("/opd/appointments?needsRebooking=true");
+    await waitFor(() => expect(callsTo("GET", "/api/opd/appointments")).toHaveLength(1));
+    expect(callsTo("GET", "/api/opd/appointments")[0]!.url).toBe("/api/opd/appointments?needsRebooking=true");
 
     expect(await screen.findByText("Sunita Kumar")).toBeInTheDocument();
     expect(screen.getByText("HMS0000009999")).toBeInTheDocument();
@@ -225,8 +225,8 @@ describe("OpdAppointments", () => {
     const slotBtn = await within(dialog).findByTestId("slot-2026-08-18T03:30:00.000Z");
     await user.click(slotBtn);
 
-    await waitFor(() => expect(callsTo("POST", "/opd/appointments/ap-3/reschedule")).toHaveLength(1));
-    expect(bodyOf("POST", "/opd/appointments/ap-3/reschedule")).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/opd/appointments/ap-3/reschedule")).toHaveLength(1));
+    expect(bodyOf("POST", "/api/opd/appointments/ap-3/reschedule")).toEqual({
       slotStart: "2026-08-18T03:30:00.000Z", doctorId: "doc-2",
     });
   });
@@ -238,13 +238,13 @@ describe("OpdAppointments", () => {
       patient: { requestedId: "p-4", id: "p-4", uhid: "HMS0000005678", name: "Ravi Kumar", alias: null, restricted: false, sex: "male", dob: null },
     });
     stubFetch({
-      "GET /opd/departments": { items: DEPARTMENTS },
-      "GET /opd/doctors": { items: [DOCTOR_1] },
-      "GET /opd/rooms": { items: ROOMS },
-      "GET /opd/slots": { slots: SLOTS },
-      "GET /opd/appointments": { items: [todayRow, otherDayRow] },
-      "POST /opd/appointments/ap-1/check-in": { tokenNo: 7, roomId: "room-1", visitType: "new" },
-      "GET /patients/p-1/qr": { payload: "1.p-1.HMS0000001234.3.6f2a9c", uhid: "HMS0000001234", name: "Asha Devi", sex: "female", dob: null },
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/doctors": { items: [DOCTOR_1] },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/slots": { slots: SLOTS },
+      "GET /api/opd/appointments": { items: [todayRow, otherDayRow] },
+      "POST /api/opd/appointments/ap-1/check-in": { tokenNo: 7, roomId: "room-1", visitType: "new" },
+      "GET /api/patients/p-1/qr": { payload: "1.p-1.HMS0000001234.3.6f2a9c", uhid: "HMS0000001234", name: "Asha Devi", sex: "female", dob: null },
     });
     const { container } = renderWithProviders(<OpdAppointments />);
     const user = userEvent.setup();
@@ -260,8 +260,8 @@ describe("OpdAppointments", () => {
 
     await user.click(todayCheckIn);
 
-    await waitFor(() => expect(callsTo("POST", "/opd/appointments/ap-1/check-in")).toHaveLength(1));
-    await waitFor(() => expect(callsTo("GET", "/patients/p-1/qr")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/opd/appointments/ap-1/check-in")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("GET", "/api/patients/p-1/qr")).toHaveLength(1));
 
     expect(await screen.findByTestId("token-no")).toHaveTextContent("7");
     // Scoped to the slip itself: the header's own Doctor <select> also contains "Dr Meera Rao".

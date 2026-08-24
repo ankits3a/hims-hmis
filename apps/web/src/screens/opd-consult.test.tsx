@@ -200,16 +200,16 @@ function mockRoutes(handlers: Record<string, Handler>): void {
 /** Every read the screen makes on the happy path, so each test only declares what it is about. */
 function baseRoutes(): Record<string, Handler> {
   return {
-    "GET /auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
-    "GET /opd/me/doctor": { status: 200, body: DOCTOR },
-    "GET /opd/config": { status: 200, body: CONFIG },
-    "GET /opd/queues": { status: 200, body: QUEUE_VIEW },
-    "GET /opd/visits/enc-1": { status: 200, body: VISIT },
-    "GET /patients/p-1": { status: 200, body: PATIENT_DETAIL },
-    "GET /patients/p-1/allergies": { status: 200, body: { items: ALLERGIES } },
-    "GET /opd/patients/p-1/timeline": { status: 200, body: { items: TIMELINE } },
+    "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
+    "GET /api/opd/me/doctor": { status: 200, body: DOCTOR },
+    "GET /api/opd/config": { status: 200, body: CONFIG },
+    "GET /api/opd/queues": { status: 200, body: QUEUE_VIEW },
+    "GET /api/opd/visits/enc-1": { status: 200, body: VISIT },
+    "GET /api/patients/p-1": { status: 200, body: PATIENT_DETAIL },
+    "GET /api/patients/p-1/allergies": { status: 200, body: { items: ALLERGIES } },
+    "GET /api/opd/patients/p-1/timeline": { status: 200, body: { items: TIMELINE } },
     // Nest's DEFAULT 201 — the erratum-E5 status the real controller returns (stubFetch cannot make one).
-    "POST /opd/visits/enc-1/consult/start": { status: 201, body: { encounter: ENCOUNTER, queueEntry: CURRENT } },
+    "POST /api/opd/visits/enc-1/consult/start": { status: 201, body: { encounter: ENCOUNTER, queueEntry: CURRENT } },
   };
 }
 
@@ -259,16 +259,16 @@ describe("OpdConsult", () => {
 
     // (a) erratum E3: 404 from /opd/me/doctor is a DOMAIN answer, not a transport failure.
     mockRoutes({
-      "GET /opd/me/doctor": {
+      "GET /api/opd/me/doctor": {
         status: 404,
         body: { statusCode: 404, message: "no OPD doctor profile for this user", code: "not_a_doctor" },
       },
-      "GET /opd/config": { status: 200, body: CONFIG },
+      "GET /api/opd/config": { status: 200, body: CONFIG },
     });
     renderWithProviders(<OpdConsult />);
     expect(await screen.findByTestId("not-a-doctor")).toBeInTheDocument();
     // the mechanism: the queue read is GATED on having a doctor profile — not merely hidden from view.
-    expect(callsTo("GET", "/opd/queues")).toHaveLength(0);
+    expect(callsTo("GET", "/api/opd/queues")).toHaveLength(0);
     expect(screen.queryByTestId("consult-queue")?.textContent ?? "").toBe("");
     cleanup();
     vi.unstubAllGlobals();
@@ -278,10 +278,10 @@ describe("OpdConsult", () => {
     setToken("tok-1");
     let queueCalls = 0;
     stubFetch({
-      "GET /auth/me": { actor: { type: "user", id: "u-1" } },
-      "GET /opd/me/doctor": DOCTOR,
-      "GET /opd/config": CONFIG,
-      "GET /opd/queues": () => {
+      "GET /api/auth/me": { actor: { type: "user", id: "u-1" } },
+      "GET /api/opd/me/doctor": DOCTOR,
+      "GET /api/opd/config": CONFIG,
+      "GET /api/opd/queues": () => {
         queueCalls += 1;
         return QUEUE_VIEW;
       },
@@ -289,7 +289,7 @@ describe("OpdConsult", () => {
     renderWithProviders(<OpdConsult />);
 
     const currentRow = await screen.findByTestId("queue-row-qe-cur");
-    const url = callsTo("GET", "/opd/queues").at(-1)!.url;
+    const url = callsTo("GET", "/api/opd/queues").at(-1)!.url;
     expect(url).toContain("doctorId=doc-1");
     expect(url).toContain(`serviceDate=${TODAY}`);
 
@@ -338,7 +338,7 @@ describe("OpdConsult", () => {
     let callNextCalls = 0;
     mockRoutes({
       ...baseRoutes(),
-      "POST /opd/queues/sess-1/call-next": () => {
+      "POST /api/opd/queues/sess-1/call-next": () => {
         callNextCalls += 1;
         return callNextCalls === 1
           ? { status: 201, body: { entry: CURRENT, encounter: ENCOUNTER } }
@@ -347,29 +347,29 @@ describe("OpdConsult", () => {
             body: { statusCode: 409, message: "another patient is already called", code: "call_conflict" },
           };
       },
-      "POST /opd/queues/entries/qe-cur/skip": { status: 201, body: { entry: { ...CURRENT, status: "waiting" } } },
+      "POST /api/opd/queues/entries/qe-cur/skip": { status: 201, body: { entry: { ...CURRENT, status: "waiting" } } },
     });
     renderWithProviders(<OpdConsult />);
     const user = userEvent.setup();
     await screen.findByTestId("queue-row-qe-cur");
 
     await user.click(screen.getByRole("button", { name: "Call next" }));
-    await waitFor(() => expect(callsTo("POST", "/opd/queues/sess-1/call-next")).toHaveLength(1));
-    expect(callsTo("POST", "/opd/queues/sess-1/call-next")[0]!.body).toBe("");
+    await waitFor(() => expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(1));
+    expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")[0]!.body).toBe("");
 
     await user.click(screen.getByRole("button", { name: "Skip" }));
-    await waitFor(() => expect(callsTo("POST", "/opd/queues/entries/qe-cur/skip")).toHaveLength(1));
-    expect(callsTo("POST", "/opd/queues/entries/qe-cur/skip")[0]!.body).toBe("");
+    await waitFor(() => expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")).toHaveLength(1));
+    expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")[0]!.body).toBe("");
 
     await user.click(screen.getByRole("button", { name: "Start consultation" }));
-    await waitFor(() => expect(callsTo("POST", "/opd/visits/enc-1/consult/start")).toHaveLength(1));
-    expect(callsTo("POST", "/opd/visits/enc-1/consult/start")[0]!.body).toBe("");
+    await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-1/consult/start")).toHaveLength(1));
+    expect(callsTo("POST", "/api/opd/visits/enc-1/consult/start")[0]!.body).toBe("");
     expect(await screen.findByTestId("patient-panel")).toBeInTheDocument();
 
     // the screen's OWN Alt+N (a local useEffect handler — lib/keyboard.tsx is not touched) calls next
     // again, and this time the server refuses: a 409 call_conflict is rendered where the doctor reads it.
     await user.keyboard("{Alt>}n{/Alt}");
-    await waitFor(() => expect(callsTo("POST", "/opd/queues/sess-1/call-next")).toHaveLength(2));
+    await waitFor(() => expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(2));
     const refusal = await screen.findByText("another patient is already called");
     expect(refusal).toHaveAttribute("role", "alert");
   });
@@ -411,11 +411,11 @@ describe("OpdConsult", () => {
     // §14 / D-37: a hidden confidential record answers 404 — restricted mode, UHID only, no crash.
     mockRoutes({
       ...baseRoutes(),
-      "GET /opd/queues": { status: 200, body: QUEUE_VIEW_HIDDEN },
-      "GET /patients/p-1": {
+      "GET /api/opd/queues": { status: 200, body: QUEUE_VIEW_HIDDEN },
+      "GET /api/patients/p-1": {
         status: 404, body: { statusCode: 404, message: "unknown patient p-1", error: "Not Found" },
       },
-      "GET /patients/p-1/allergies": {
+      "GET /api/patients/p-1/allergies": {
         status: 404, body: { statusCode: 404, message: "unknown patient p-1", error: "Not Found" },
       },
     });
@@ -430,10 +430,10 @@ describe("OpdConsult", () => {
   });
 
   it("the note autosaves with PUT /opd/visits/:id/consult/note on BLUR — never on keystroke — and a blur that changed nothing sends nothing", async () => {
-    mockRoutes({ ...baseRoutes(), "PUT /opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } } });
+    mockRoutes({ ...baseRoutes(), "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } } });
     const user = userEvent.setup();
     await openPanel(user);
-    const path = "/opd/visits/enc-1/consult/note";
+    const path = "/api/opd/visits/enc-1/consult/note";
 
     const diagnosis = await screen.findByLabelText("Diagnosis");
     await user.click(diagnosis);
@@ -472,7 +472,7 @@ describe("OpdConsult", () => {
     let rxCalls = 0;
     mockRoutes({
       ...baseRoutes(),
-      "POST /opd/visits/enc-1/prescriptions": () => {
+      "POST /api/opd/visits/enc-1/prescriptions": () => {
         rxCalls += 1;
         return rxCalls === 1
           ? { status: 409, body: ALLERGY_CONFLICT }
@@ -481,11 +481,11 @@ describe("OpdConsult", () => {
             body: { prescriptionId: "rx-1", version: 1, qrPayload: PRINT_DATA.qrPayload, allergyOverrideCount: 1 },
           };
       },
-      "GET /opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
+      "GET /api/opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
     });
     const user = userEvent.setup();
     await openPanel(user);
-    const path = "/opd/visits/enc-1/prescriptions";
+    const path = "/api/opd/visits/enc-1/prescriptions";
 
     await user.click(screen.getByRole("tab", { name: "Prescription" }));
     await user.type(await screen.findByLabelText("Drug"), "Tab Penicillin V");
@@ -532,7 +532,7 @@ describe("OpdConsult", () => {
     expect(second.lines).toEqual(first.lines);
 
     // the e-Rx is fetched and printed — and exactly ONE .print-doc is mounted anywhere in the document
-    await waitFor(() => expect(callsTo("GET", "/opd/prescriptions/rx-1/print")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("GET", "/api/opd/prescriptions/rx-1/print")).toHaveLength(1));
     await waitFor(() => expect(document.querySelectorAll(".print-doc")).toHaveLength(1));
     expect(document.querySelector(".print-doc")).toHaveTextContent("CRK MEDICAL COLLEGE & HOSPITAL");
     expect(screen.getByRole("button", { name: "Print prescription" })).toBeInTheDocument();
@@ -543,11 +543,11 @@ describe("OpdConsult", () => {
     let queueCalls = 0;
     mockRoutes({
       ...baseRoutes(),
-      "GET /opd/queues": () => {
+      "GET /api/opd/queues": () => {
         queueCalls += 1;
         return { status: 200, body: QUEUE_VIEW };
       },
-      "POST /opd/visits/enc-1/consult/complete": () => {
+      "POST /api/opd/visits/enc-1/consult/complete": () => {
         completeCalls += 1;
         return completeCalls === 1
           ? {
@@ -563,7 +563,7 @@ describe("OpdConsult", () => {
     });
     const user = userEvent.setup();
     await openPanel(user);
-    const path = "/opd/visits/enc-1/consult/complete";
+    const path = "/api/opd/visits/enc-1/consult/complete";
 
     // (a) an extension plus the outcome controls — refused by the server, and the form survives it
     await user.selectOptions(screen.getByLabelText("Follow-up"), "15");
@@ -621,7 +621,7 @@ describe("OpdConsult", () => {
   it("K44: Alt+K skips the called patient — the POSTED skip, and nothing else on the queue moves", async () => {
     mockRoutes({
       ...baseRoutes(),
-      "POST /opd/queues/entries/qe-cur/skip": { status: 201, body: { entry: { ...CURRENT, status: "waiting" } } },
+      "POST /api/opd/queues/entries/qe-cur/skip": { status: 201, body: { entry: { ...CURRENT, status: "waiting" } } },
     });
     const user = userEvent.setup();
     renderWithProviders(<OpdConsult />);
@@ -629,11 +629,11 @@ describe("OpdConsult", () => {
 
     await user.keyboard("{Alt>}k{/Alt}");
 
-    await waitFor(() => expect(callsTo("POST", "/opd/queues/entries/qe-cur/skip")).toHaveLength(1));
-    expect(callsTo("POST", "/opd/queues/entries/qe-cur/skip")[0]!.body).toBe("");
+    await waitFor(() => expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")).toHaveLength(1));
+    expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")[0]!.body).toBe("");
     // one key, one lane: Alt+K is not a general "do the next thing"
-    expect(callsTo("POST", "/opd/visits/enc-1/consult/start")).toHaveLength(0);
-    expect(callsTo("POST", "/opd/queues/sess-1/call-next")).toHaveLength(0);
+    expect(callsTo("POST", "/api/opd/visits/enc-1/consult/start")).toHaveLength(0);
+    expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(0);
   });
 
   it("K44: Alt+S with no consultation in progress posts consult/start and opens the panel", async () => {
@@ -644,22 +644,22 @@ describe("OpdConsult", () => {
 
     await user.keyboard("{Alt>}s{/Alt}");
 
-    await waitFor(() => expect(callsTo("POST", "/opd/visits/enc-1/consult/start")).toHaveLength(1));
-    expect(callsTo("POST", "/opd/visits/enc-1/consult/start")[0]!.body).toBe("");
+    await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-1/consult/start")).toHaveLength(1));
+    expect(callsTo("POST", "/api/opd/visits/enc-1/consult/start")[0]!.body).toBe("");
     expect(await screen.findByTestId("patient-panel")).toBeInTheDocument();
-    expect(callsTo("POST", "/opd/queues/entries/qe-cur/skip")).toHaveLength(0);
+    expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")).toHaveLength(0);
   });
 
   it("K44: Alt+Enter completes the open consultation — the same body the button posts, with the default follow-up window OMITTED", async () => {
     mockRoutes({
       ...baseRoutes(),
-      "POST /opd/visits/enc-1/consult/complete": {
+      "POST /api/opd/visits/enc-1/consult/complete": {
         status: 201, body: { encounter: { ...ENCOUNTER, status: "completed" } },
       },
     });
     const user = userEvent.setup();
     await openPanel(user);
-    const path = "/opd/visits/enc-1/consult/complete";
+    const path = "/api/opd/visits/enc-1/consult/complete";
 
     await user.keyboard("{Alt>}{Enter}{/Alt}");
 
@@ -675,14 +675,14 @@ describe("OpdConsult", () => {
   it("NOT OVER-BROAD (§3.44): a key this screen does not bind fires nothing, the same letters typed WITHOUT Alt into the note fire nothing, and Alt+S inside the prescription FORM is that form's own submit alone — never a second one from this screen", async () => {
     mockRoutes({
       ...baseRoutes(),
-      "PUT /opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
-      "POST /opd/queues/entries/qe-cur/skip": { status: 201, body: { entry: CURRENT } },
-      "POST /opd/visits/enc-1/consult/complete": { status: 201, body: { encounter: ENCOUNTER } },
-      "POST /opd/visits/enc-1/prescriptions": {
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+      "POST /api/opd/queues/entries/qe-cur/skip": { status: 201, body: { entry: CURRENT } },
+      "POST /api/opd/visits/enc-1/consult/complete": { status: 201, body: { encounter: ENCOUNTER } },
+      "POST /api/opd/visits/enc-1/prescriptions": {
         status: 201,
         body: { prescriptionId: "rx-1", version: 1, qrPayload: PRINT_DATA.qrPayload, allergyOverrideCount: 0 },
       },
-      "GET /opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
+      "GET /api/opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
     });
     const user = userEvent.setup();
     renderWithProviders(<OpdConsult />);
@@ -693,9 +693,9 @@ describe("OpdConsult", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(callsTo("POST", "/opd/queues/entries/qe-cur/skip")).toHaveLength(0);
-    expect(callsTo("POST", "/opd/visits/enc-1/consult/start")).toHaveLength(0);
-    expect(callsTo("POST", "/opd/queues/sess-1/call-next")).toHaveLength(0);
+    expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")).toHaveLength(0);
+    expect(callsTo("POST", "/api/opd/visits/enc-1/consult/start")).toHaveLength(0);
+    expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(0);
 
     // (b) the SAME letters, without Alt, typed where a doctor actually types them: `k`, `s` and
     // Enter inside the note are text, not commands (`if (!e.altKey) return`).
@@ -706,8 +706,8 @@ describe("OpdConsult", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(callsTo("POST", "/opd/queues/entries/qe-cur/skip")).toHaveLength(0);
-    expect(callsTo("POST", "/opd/visits/enc-1/consult/complete")).toHaveLength(0);
+    expect(callsTo("POST", "/api/opd/queues/entries/qe-cur/skip")).toHaveLength(0);
+    expect(callsTo("POST", "/api/opd/visits/enc-1/consult/complete")).toHaveLength(0);
     // Enter landed in the note as a NEWLINE — the keystroke was text, exactly as it should be.
     expect(screen.getByLabelText("Chief complaint")).toHaveValue("ks\n");
 
@@ -723,6 +723,6 @@ describe("OpdConsult", () => {
     await user.keyboard("{Alt>}s{/Alt}");
 
     await waitFor(() => expect(document.querySelectorAll(".print-doc")).toHaveLength(1));
-    expect(callsTo("POST", "/opd/visits/enc-1/prescriptions")).toHaveLength(1);
+    expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions")).toHaveLength(1);
   });
 });

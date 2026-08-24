@@ -35,7 +35,7 @@ function qrVerifyCalls(): { path: string; body: string }[] {
       method: init?.method ?? "GET",
       body: typeof init?.body === "string" ? init.body : "",
     }))
-    .filter((c) => c.method === "POST" && c.path === "/patients/qr/verify")
+    .filter((c) => c.method === "POST" && c.path === "/api/patients/qr/verify")
     .map(({ path, body }) => ({ path, body }));
 }
 
@@ -46,7 +46,7 @@ describe("PatientPicker", () => {
   });
 
   it("typing digits fires GET /patients/search and a click calls onPick with the hit", async () => {
-    stubFetch({ "GET /patients/search": { items: [HIT] } });
+    stubFetch({ "GET /api/patients/search": { items: [HIT] } });
     const onPick = vi.fn();
     renderWithProviders(<PatientPicker onPick={onPick} />);
     const user = userEvent.setup();
@@ -58,13 +58,13 @@ describe("PatientPicker", () => {
 
     expect(onPick).toHaveBeenCalledWith({ id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", sex: "female", dob: "1990-04-02T00:00:00.000Z" });
     await waitFor(() =>
-      expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).startsWith("/patients/search?q=98765"))).toBe(true),
+      expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).startsWith("/api/patients/search?q=98765"))).toBe(true),
     );
   });
 
   it("pasting a QR payload posts /patients/qr/verify and picks on ok:true, shows the bad-scan message on ok:false", async () => {
     stubFetch({
-      "POST /patients/qr/verify": (init?: RequestInit) => {
+      "POST /api/patients/qr/verify": (init?: RequestInit) => {
         const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as { payload: string };
         return body.payload === "GOOD-QR"
           ? { ok: true, patient: { id: "p-2", uhid: "HMS0000005678", name: "Ravi Kumar", sex: "male", dob: null } }
@@ -88,7 +88,7 @@ describe("PatientPicker", () => {
   it("K37: wedge keystrokes under 30 ms apart, ended by Enter, fire the SAME verify call the paste lane fires — and the 500 ms window is not the trigger", async () => {
     vi.useFakeTimers();
     stubFetch({
-      "POST /patients/qr/verify": {
+      "POST /api/patients/qr/verify": {
         ok: true, patient: { id: "p-3", uhid: "HMS0000009012", name: "Sita Kumari", sex: "female", dob: null },
       },
     });
@@ -129,7 +129,7 @@ describe("PatientPicker", () => {
   it("K37: slow human typing + Enter fires the same lane, and the 500 ms window only DISCARDS a stale buffer", async () => {
     vi.useFakeTimers();
     stubFetch({
-      "POST /patients/qr/verify": (init?: RequestInit) => {
+      "POST /api/patients/qr/verify": (init?: RequestInit) => {
         const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as { payload: string };
         return body.payload === "HMS0000001234"
           ? { ok: true, patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", sex: "female", dob: null } }
@@ -184,7 +184,7 @@ describe("PatientPicker", () => {
   });
 
   it("the picker's OWN search input carries data-search-input — the `/` hotkey's only contract", () => {
-    stubFetch({ "GET /patients/search": { items: [] } });
+    stubFetch({ "GET /api/patients/search": { items: [] } });
     renderWithProviders(<PatientPicker onPick={vi.fn()} />);
 
     /**

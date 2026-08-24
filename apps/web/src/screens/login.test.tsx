@@ -33,12 +33,12 @@ describe("LoginScreen", () => {
   it("stores the token and loads the actor on a successful sign-in", async () => {
     const calls: string[] = [];
     stubFetch({
-      "POST /auth/login": (init?: RequestInit) => {
-        calls.push(`POST /auth/login ${init?.body as string}`);
+      "POST /api/auth/login": (init?: RequestInit) => {
+        calls.push(`POST /api/auth/login ${init?.body as string}`);
         return { token: "tok-abc" };
       },
-      "GET /auth/me": () => {
-        calls.push("GET /auth/me");
+      "GET /api/auth/me": () => {
+        calls.push("GET /api/auth/me");
         return { actor: { type: "user", id: "u1" } };
       },
     });
@@ -51,8 +51,8 @@ describe("LoginScreen", () => {
 
     await waitFor(() => expect(getToken()).toBe("tok-abc"));
     expect(localStorage.getItem("hmis.token")).toBe("tok-abc");
-    expect(calls.some((c) => c.startsWith("POST /auth/login"))).toBe(true);
-    expect(calls).toContain("GET /auth/me");
+    expect(calls.some((c) => c.startsWith("POST /api/auth/login"))).toBe(true);
+    expect(calls).toContain("GET /api/auth/me");
     expect(calls[0]).toContain('"username":"clerk1"');
   });
 
@@ -84,7 +84,7 @@ describe("LoginScreen", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-        if (raw.includes("/auth/login")) {
+        if (raw.includes("/api/auth/login")) {
           return new Response(JSON.stringify({ token: "tok-forced" }), {
             status: 201, headers: { "Content-Type": "application/json" },
           });
@@ -112,8 +112,8 @@ describe("LoginScreen", () => {
     // to save. What is asserted is that the REQUEST IS MADE.
     const sent: string[] = [];
     stubFetch({
-      "POST /auth/login": (init?: RequestInit) => { sent.push(init?.body as string); return { token: "tok-short" }; },
-      "GET /auth/me": () => ({ actor: { type: "user", id: "u1" } }),
+      "POST /api/auth/login": (init?: RequestInit) => { sent.push(init?.body as string); return { token: "tok-short" }; },
+      "GET /api/auth/me": () => ({ actor: { type: "user", id: "u1" } }),
     });
     renderWithProviders(<LoginScreen />);
     const user = userEvent.setup();

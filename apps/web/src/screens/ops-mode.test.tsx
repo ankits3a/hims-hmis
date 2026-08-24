@@ -58,11 +58,11 @@ describe("OpsMode", () => {
 
   it("renders the current mode, its since instant and its note from GET /ops/mode", async () => {
     mockRoutes({
-      "GET /ops/mode": {
+      "GET /api/ops/mode": {
         status: 200,
         body: { mode: "degraded", since: "2026-08-23T02:00:00.000Z", note: "printer offline at desk 3", reportId: null },
       },
-      "GET /ops/config-validation/latest": { status: 200, body: { report: null } },
+      "GET /api/ops/config-validation/latest": { status: 200, body: { report: null } },
     });
     renderWithProviders(<OpsMode />);
 
@@ -73,8 +73,8 @@ describe("OpsMode", () => {
 
   it("renders the no-report gate state when nothing has been validated yet", async () => {
     mockRoutes({
-      "GET /ops/mode": { status: 200, body: { mode: "commissioning", since: null, note: null, reportId: null } },
-      "GET /ops/config-validation/latest": { status: 200, body: { report: null } },
+      "GET /api/ops/mode": { status: 200, body: { mode: "commissioning", since: null, note: null, reportId: null } },
+      "GET /api/ops/config-validation/latest": { status: 200, body: { report: null } },
     });
     renderWithProviders(<OpsMode />);
     expect(await screen.findByTestId("mode-gate-none")).toBeInTheDocument();
@@ -83,8 +83,8 @@ describe("OpsMode", () => {
 
   it("renders the gate verdict and a scope's errors when a report exists", async () => {
     mockRoutes({
-      "GET /ops/mode": { status: 200, body: { mode: "commissioning", since: null, note: null, reportId: null } },
-      "GET /ops/config-validation/latest": {
+      "GET /api/ops/mode": { status: 200, body: { mode: "commissioning", since: null, note: null, reportId: null } },
+      "GET /api/ops/config-validation/latest": {
         status: 200,
         body: {
           report: {
@@ -109,12 +109,12 @@ describe("OpsMode", () => {
   it("Run validation POSTs /ops/config-validation with no body and the gate re-reads afterwards", async () => {
     let ran = false;
     mockRoutes({
-      "GET /ops/mode": { status: 200, body: { mode: "commissioning", since: null, note: null, reportId: null } },
-      "GET /ops/config-validation/latest": () => ({
+      "GET /api/ops/mode": { status: 200, body: { mode: "commissioning", since: null, note: null, reportId: null } },
+      "GET /api/ops/config-validation/latest": () => ({
         status: 200,
         body: { report: ran ? { id: "rep-1", ok: true, at: "2026-08-23T01:00:00.000Z", scopes: [] } : null },
       }),
-      "POST /ops/config-validation": () => {
+      "POST /api/ops/config-validation": () => {
         ran = true;
         return { status: 201, body: { reportId: "rep-1", ok: true, at: "2026-08-23T01:00:00.000Z", scopes: [], eventId: "ev-1" } };
       },
@@ -125,7 +125,7 @@ describe("OpsMode", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Run validation" }));
 
-    await waitFor(() => expect(callsTo("POST", "/ops/config-validation")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/ops/config-validation")).toHaveLength(1));
     expect(await screen.findByTestId("mode-gate-verdict")).toBeInTheDocument();
   });
 
@@ -134,9 +134,9 @@ describe("OpsMode", () => {
       mode: "commissioning", since: null, note: null, reportId: null,
     };
     mockRoutes({
-      "GET /ops/mode": () => ({ status: 200, body: current }),
-      "GET /ops/config-validation/latest": { status: 200, body: { report: null } },
-      "POST /ops/mode": () => {
+      "GET /api/ops/mode": () => ({ status: 200, body: current }),
+      "GET /api/ops/config-validation/latest": { status: 200, body: { report: null } },
+      "POST /api/ops/mode": () => {
         current = { mode: "downtime", since: "2026-08-23T03:00:00.000Z", note: "power cut, generator starting", reportId: null };
         return { status: 201, body: { id: "chg-1", from: "commissioning", to: "downtime", note: "power cut, generator starting", reportId: null } };
       },
@@ -149,8 +149,8 @@ describe("OpsMode", () => {
     await user.type(screen.getByLabelText("Note"), "power cut, generator starting");
     await user.click(screen.getByRole("button", { name: "Change mode (Alt+S)" }));
 
-    await waitFor(() => expect(callsTo("POST", "/ops/mode")).toHaveLength(1));
-    expect(callsTo("POST", "/ops/mode")[0]!.body).toEqual({ to: "downtime", note: "power cut, generator starting" });
+    await waitFor(() => expect(callsTo("POST", "/api/ops/mode")).toHaveLength(1));
+    expect(callsTo("POST", "/api/ops/mode")[0]!.body).toEqual({ to: "downtime", note: "power cut, generator starting" });
     expect(await screen.findByText("Mode changed")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId("mode-current-word")).toHaveTextContent("Downtime"));
   });
@@ -163,14 +163,14 @@ describe("OpsMode", () => {
         const path = raw.split("?")[0]!;
         const json = (body: unknown, status: number): Response =>
           new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-        if (init?.method === "POST" && path === "/ops/mode") {
+        if (init?.method === "POST" && path === "/api/ops/mode") {
           return json(
             { code: "golive_gate_unsatisfied", detail: "stale_report", message: "golive_gate_unsatisfied: stale_report" },
             409,
           );
         }
-        if (path === "/ops/mode") return json({ mode: "commissioning", since: null, note: null, reportId: null }, 200);
-        if (path === "/ops/config-validation/latest") return json({ report: null }, 200);
+        if (path === "/api/ops/mode") return json({ mode: "commissioning", since: null, note: null, reportId: null }, 200);
+        if (path === "/api/ops/config-validation/latest") return json({ report: null }, 200);
         return new Response("{}", { status: 404 });
       }),
     );
@@ -195,11 +195,11 @@ describe("OpsMode", () => {
         const path = raw.split("?")[0]!;
         const json = (body: unknown, status: number): Response =>
           new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-        if (init?.method === "POST" && path === "/ops/mode") {
+        if (init?.method === "POST" && path === "/api/ops/mode") {
           return json({ statusCode: 403, message: "missing permission ops.mode.set", error: "Forbidden" }, 403);
         }
-        if (path === "/ops/mode") return json({ mode: "commissioning", since: null, note: null, reportId: null }, 200);
-        if (path === "/ops/config-validation/latest") return json({ report: null }, 200);
+        if (path === "/api/ops/mode") return json({ mode: "commissioning", since: null, note: null, reportId: null }, 200);
+        if (path === "/api/ops/config-validation/latest") return json({ report: null }, 200);
         return new Response("{}", { status: 404 });
       }),
     );

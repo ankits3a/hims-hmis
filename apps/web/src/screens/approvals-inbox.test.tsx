@@ -33,7 +33,7 @@ describe("ApprovalsInbox", () => {
   });
 
   it("renders the stubbed pending rows from GET /approvals with an urgency badge", async () => {
-    stubFetch({ "GET /approvals": { items: [PENDING_ROW], total: 1 } });
+    stubFetch({ "GET /api/approvals": { items: [PENDING_ROW], total: 1 } });
     renderWithProviders(<ApprovalsInbox />);
 
     expect(await screen.findByText("patient_merge")).toBeInTheDocument();
@@ -42,7 +42,7 @@ describe("ApprovalsInbox", () => {
   });
 
   it("shows the empty state when there is nothing pending", async () => {
-    stubFetch({ "GET /approvals": { items: [], total: 0 } });
+    stubFetch({ "GET /api/approvals": { items: [], total: 0 } });
     renderWithProviders(<ApprovalsInbox />);
 
     expect(await screen.findByText("Nothing pending for your roles")).toBeInTheDocument();
@@ -50,8 +50,8 @@ describe("ApprovalsInbox", () => {
 
   it("the approve dialog blocks an empty note and posts the typed note on confirm", async () => {
     stubFetch({
-      "GET /approvals": { items: [PENDING_ROW], total: 1 },
-      "POST /approvals/ap-1/approve": { status: "granted" },
+      "GET /api/approvals": { items: [PENDING_ROW], total: 1 },
+      "POST /api/approvals/ap-1/approve": { status: "granted" },
     });
     renderWithProviders(<ApprovalsInbox />);
     const user = userEvent.setup();

@@ -149,17 +149,17 @@ describe("OpdDesk", () => {
 
   it("the doctor board renders GET /opd/queues/summary rows with room, status badge, waiting count, and the not-scheduled warning only where scheduledToday is false", async () => {
     stubFetch({
-      "GET /opd/departments": { items: DEPARTMENTS },
-      "GET /opd/rooms": { items: ROOMS },
-      "GET /opd/queues/summary": { items: SUMMARY },
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/queues/summary": { items: SUMMARY },
     });
     renderWithProviders(<OpdDesk />);
     const user = userEvent.setup();
 
     await pickDepartment(user);
 
-    await waitFor(() => expect(callsTo("GET", "/opd/queues/summary").length).toBeGreaterThanOrEqual(1));
-    expect(callsTo("GET", "/opd/queues/summary")[0]!.url).toBe(`/opd/queues/summary?departmentId=dep-1&serviceDate=${TODAY}`);
+    await waitFor(() => expect(callsTo("GET", "/api/opd/queues/summary").length).toBeGreaterThanOrEqual(1));
+    expect(callsTo("GET", "/api/opd/queues/summary")[0]!.url).toBe(`/api/opd/queues/summary?departmentId=dep-1&serviceDate=${TODAY}`);
 
     const rowIn = await screen.findByTestId("board-row-doc-1");
     expect(within(rowIn).getByText("Dr Meera Rao")).toBeInTheDocument();
@@ -189,14 +189,14 @@ describe("OpdDesk", () => {
 
   it("Open visit posts { patientId, departmentId, doctorId, intendedPayer } — referral source only when chosen — and renders the slip with the returned token, room and visit type", async () => {
     stubFetch({
-      "GET /opd/departments": { items: DEPARTMENTS },
-      "GET /opd/rooms": { items: ROOMS },
-      "GET /opd/queues/summary": { items: SUMMARY },
-      "GET /patients/search": { items: [SEARCH_HIT] },
-      "GET /opd/appointments": { items: [] },
-      "GET /opd/patients/p-1/timeline": { items: [] },
-      "POST /opd/visits": OPEN_RESULT,
-      "GET /patients/p-1/qr": QR,
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/queues/summary": { items: SUMMARY },
+      "GET /api/patients/search": { items: [SEARCH_HIT] },
+      "GET /api/opd/appointments": { items: [] },
+      "GET /api/opd/patients/p-1/timeline": { items: [] },
+      "POST /api/opd/visits": OPEN_RESULT,
+      "GET /api/patients/p-1/qr": QR,
     });
     const { container } = renderWithProviders(<OpdDesk />);
     const user = userEvent.setup();
@@ -207,13 +207,13 @@ describe("OpdDesk", () => {
 
     await user.click(screen.getByTestId("open-visit-doc-1"));
 
-    await waitFor(() => expect(callsTo("POST", "/opd/visits")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/opd/visits")).toHaveLength(1));
     // The default lane: payer defaults to self and NO referral key travels at all.
-    expect(bodiesOf("POST", "/opd/visits")[0]).toEqual({
+    expect(bodiesOf("POST", "/api/opd/visits")[0]).toEqual({
       patientId: "p-1", departmentId: "dep-1", doctorId: "doc-1", intendedPayer: "self",
     });
 
-    await waitFor(() => expect(callsTo("GET", "/patients/p-1/qr")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("GET", "/api/patients/p-1/qr")).toHaveLength(1));
     const slip = container.querySelector(".print-doc") as HTMLElement;
     expect(slip).not.toBeNull();
     expect(within(slip).getByTestId("token-no")).toHaveTextContent("11");
@@ -232,8 +232,8 @@ describe("OpdDesk", () => {
     await user.type(screen.getByLabelText("Referrer name"), "Ward camp");
     await user.click(screen.getByTestId("open-visit-doc-1"));
 
-    await waitFor(() => expect(callsTo("POST", "/opd/visits")).toHaveLength(2));
-    expect(bodiesOf("POST", "/opd/visits")[1]).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/opd/visits")).toHaveLength(2));
+    expect(bodiesOf("POST", "/api/opd/visits")[1]).toEqual({
       patientId: "p-1", departmentId: "dep-1", doctorId: "doc-1", intendedPayer: "self",
       referralSource: "camp", referrerName: "Ward camp",
     });
@@ -248,20 +248,20 @@ describe("OpdDesk", () => {
       patient: { requestedId: "p-1", id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", alias: null, restricted: false, sex: "female", dob: null },
     };
     stubFetch({
-      "GET /opd/departments": { items: DEPARTMENTS },
-      "GET /opd/rooms": { items: ROOMS },
-      "GET /opd/queues/summary": { items: SUMMARY },
-      "GET /patients/search": { items: [SEARCH_HIT] },
-      "GET /opd/appointments": { items: [appointment] },
-      "GET /opd/patients/p-1/timeline": {
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/queues/summary": { items: SUMMARY },
+      "GET /api/patients/search": { items: [SEARCH_HIT] },
+      "GET /api/opd/appointments": { items: [appointment] },
+      "GET /api/opd/patients/p-1/timeline": {
         items: [{
           encounterId: "enc-0", serviceDate: "2026-08-04", openedAt: "2026-08-04T04:00:00.000Z", status: "completed",
           visitType: "new", doctorId: "doc-1", doctorName: "Dr Meera Rao", departmentId: "dep-1",
           departmentName: "General medicine", diagnosis: "Fever", icd10Code: null, prescriptionLineCount: 2, dangerFlagged: false,
         }],
       },
-      "POST /opd/appointments/ap-1/check-in": { ...OPEN_RESULT, tokenNo: 9, roomId: "room-2", visitType: "new" },
-      "GET /patients/p-1/qr": QR,
+      "POST /api/opd/appointments/ap-1/check-in": { ...OPEN_RESULT, tokenNo: 9, roomId: "room-2", visitType: "new" },
+      "GET /api/patients/p-1/qr": QR,
     });
     const { container } = renderWithProviders(<OpdDesk />);
     const user = userEvent.setup();
@@ -269,8 +269,8 @@ describe("OpdDesk", () => {
     await pickDepartment(user);
     await pickPatient(user);
 
-    await waitFor(() => expect(callsTo("GET", "/opd/appointments")).toHaveLength(1));
-    expect(callsTo("GET", "/opd/appointments")[0]!.url).toBe(`/opd/appointments?patientId=p-1&serviceDate=${TODAY}`);
+    await waitFor(() => expect(callsTo("GET", "/api/opd/appointments")).toHaveLength(1));
+    expect(callsTo("GET", "/api/opd/appointments")[0]!.url).toBe(`/api/opd/appointments?patientId=p-1&serviceDate=${TODAY}`);
     expect(await screen.findByText("Last seen 2026-08-04 · General medicine")).toBeInTheDocument();
 
     const arrivals = await screen.findByTestId("arrivals");
@@ -279,7 +279,7 @@ describe("OpdDesk", () => {
 
     await user.click(within(arrivals).getByTestId("checkin-ap-1"));
 
-    await waitFor(() => expect(callsTo("POST", "/opd/appointments/ap-1/check-in")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/opd/appointments/ap-1/check-in")).toHaveLength(1));
     const slip = container.querySelector(".print-doc") as HTMLElement;
     expect(slip).not.toBeNull();
     expect(within(slip).getByTestId("token-no")).toHaveTextContent("9");
@@ -300,11 +300,11 @@ describe("OpdDesk", () => {
     vi.stubGlobal("WebSocket", FakeWebSocket);
     setToken("tok-1");
     stubFetch({
-      "GET /auth/me": { actor: { type: "user", id: "u-1" } },
-      "GET /opd/departments": { items: DEPARTMENTS },
-      "GET /opd/rooms": { items: ROOMS },
-      "GET /opd/queues/summary": { items: SUMMARY },
-      "GET /opd/queues": QUEUE_VIEW,
+      "GET /api/auth/me": { actor: { type: "user", id: "u-1" } },
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/queues/summary": { items: SUMMARY },
+      "GET /api/opd/queues": QUEUE_VIEW,
     });
 
     // @testing-library's waitFor cannot drive vitest's fake timers (it gates its clock-advance on a
@@ -328,13 +328,13 @@ describe("OpdDesk", () => {
     await flush();
     await flush();
 
-    expect(callsTo("GET", "/opd/queues")).toHaveLength(1);
-    expect(callsTo("GET", "/opd/queues")[0]!.url).toBe(`/opd/queues?doctorId=doc-1&serviceDate=${TODAY}`);
+    expect(callsTo("GET", "/api/opd/queues")).toHaveLength(1);
+    expect(callsTo("GET", "/api/opd/queues")[0]!.url).toBe(`/api/opd/queues?doctorId=doc-1&serviceDate=${TODAY}`);
     expect(screen.getByTestId("queue-row-qe-1")).toHaveTextContent("4");
     expect(within(screen.getByTestId("queue-row-qe-2")).getByText("Returned with results")).toBeInTheDocument();
 
     const ws = FakeWebSocket.instances[0]!;
-    expect(ws.url).toContain("/ws");
+    expect(ws.url).toContain("/api/ws");
     await act(async () => {
       ws.simulateOpen();
     });
@@ -343,7 +343,7 @@ describe("OpdDesk", () => {
     });
     await flush();
     // Negative control: auth + the connected re-render on their own refetch NOTHING.
-    expect(callsTo("GET", "/opd/queues")).toHaveLength(1);
+    expect(callsTo("GET", "/api/opd/queues")).toHaveLength(1);
 
     await act(async () => {
       ws.simulateMessage({
@@ -353,18 +353,18 @@ describe("OpdDesk", () => {
     });
     await flush();
 
-    expect(callsTo("GET", "/opd/queues")).toHaveLength(2);
+    expect(callsTo("GET", "/api/opd/queues")).toHaveLength(2);
     // The poll is 15 000 ms; this whole test advanced the (frozen) clock by well under a second.
     expect(Date.now() - startedAt).toBeLessThan(1_000);
   });
 
   it("K45: Abandon sends NO request while the reason is empty, and posts { reason } once it is not", async () => {
     stubFetch({
-      "GET /opd/departments": { items: DEPARTMENTS },
-      "GET /opd/rooms": { items: ROOMS },
-      "GET /opd/queues/summary": { items: SUMMARY },
-      "GET /opd/queues": QUEUE_VIEW,
-      "POST /opd/visits/enc-1/abandon": { encounter: { id: "enc-1", status: "abandoned" } },
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/queues/summary": { items: SUMMARY },
+      "GET /api/opd/queues": QUEUE_VIEW,
+      "POST /api/opd/visits/enc-1/abandon": { encounter: { id: "enc-1", status: "abandoned" } },
     });
     renderWithProviders(<OpdDesk />);
     const user = userEvent.setup();
@@ -383,15 +383,15 @@ describe("OpdDesk", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(callsTo("POST", "/opd/visits/enc-1/abandon")).toHaveLength(0);
+    expect(callsTo("POST", "/api/opd/visits/enc-1/abandon")).toHaveLength(0);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(within(dialog).getByRole("alert")).toHaveTextContent("A reason is required");
 
     await user.type(within(dialog).getByLabelText("Reason"), "Patient left");
     await user.click(within(dialog).getByRole("button", { name: "Confirm abandon" }));
 
-    await waitFor(() => expect(callsTo("POST", "/opd/visits/enc-1/abandon")).toHaveLength(1));
-    expect(bodiesOf("POST", "/opd/visits/enc-1/abandon")[0]).toEqual({ reason: "Patient left" });
+    await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-1/abandon")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/opd/visits/enc-1/abandon")[0]).toEqual({ reason: "Patient left" });
   });
 
   it("K44: Transfer queue is always rendered, sends NO request until consent is ticked, then posts consented: true — and the server's 403 renders inline", async () => {
@@ -404,13 +404,13 @@ describe("OpdDesk", () => {
         const path = raw.split("?")[0]!;
         const json = (body: unknown, status: number): Response =>
           new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-        if (init?.method === "POST" && path === "/opd/queues/transfer") {
+        if (init?.method === "POST" && path === "/api/opd/queues/transfer") {
           return json({ statusCode: 403, message: "queue transfer needs a front-office supervisor", code: "forbidden" }, 403);
         }
-        if (path === "/opd/departments") return json({ items: DEPARTMENTS }, 200);
-        if (path === "/opd/rooms") return json({ items: ROOMS }, 200);
-        if (path === "/opd/queues/summary") return json({ items: SUMMARY }, 200);
-        if (path === "/opd/queues") return json(QUEUE_VIEW, 200);
+        if (path === "/api/opd/departments") return json({ items: DEPARTMENTS }, 200);
+        if (path === "/api/opd/rooms") return json({ items: ROOMS }, 200);
+        if (path === "/api/opd/queues/summary") return json({ items: SUMMARY }, 200);
+        if (path === "/api/opd/queues") return json(QUEUE_VIEW, 200);
         return new Response("{}", { status: 404 });
       }),
     );
@@ -434,15 +434,15 @@ describe("OpdDesk", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(callsTo("POST", "/opd/queues/transfer")).toHaveLength(0);
+    expect(callsTo("POST", "/api/opd/queues/transfer")).toHaveLength(0);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(within(dialog).getByRole("alert")).toHaveTextContent("Consent is required");
 
     await user.click(within(dialog).getByLabelText(/consented to the transfer/));
     await user.click(within(dialog).getByRole("button", { name: "Confirm transfer" }));
 
-    await waitFor(() => expect(callsTo("POST", "/opd/queues/transfer")).toHaveLength(1));
-    expect(bodiesOf("POST", "/opd/queues/transfer")[0]).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/opd/queues/transfer")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/opd/queues/transfer")[0]).toEqual({
       fromDoctorId: "doc-1", toDoctorId: "doc-2", serviceDate: TODAY, consented: true, reason: "Doctor called to ward",
     });
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("queue transfer needs a front-office supervisor");

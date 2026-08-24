@@ -10,30 +10,24 @@ export default defineConfig({
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
   server: {
-    // Dev-only convenience; production serving is Caddy (Plan 11). Same-origin '/…' paths in code.
+    // PLAN 11g / DD1 — ONE KEY, BECAUSE THE ORIGIN NOW HAS ONE RULE.
+    //
+    // This block held twelve prefixes mirrored from the production Caddyfile — `/auth`,
+    // `/patients`, `/billing`, `/admin`, `/ops` … — the same paths `src/router.tsx` declares
+    // SCREENS on. In dev the vite server resolved that collision in the SPA's favour and
+    // everything worked; in production Caddy resolved it in the API's favour and 15 of 20 screens
+    // were dark (the smoke test's D1). The fix is path-space separation, so there is exactly one
+    // prefix here for ever and adding an API module no longer edits this file at all.
+    //
+    // `rewrite` strips `/api` so the dev server hands the API its own unprefixed path, which is
+    // precisely what `uri strip_prefix /api` does at the production edge. `ws: true` carries the
+    // realtime gateway on the same key — vite applies `rewrite` to the upgrade URL too.
     proxy: {
-      "/auth": "http://localhost:3000",
-      "/patients": "http://localhost:3000",
-      "/approvals": "http://localhost:3000",
-      "/workflow": "http://localhost:3000",
-      "/health": "http://localhost:3000",
-      "/opd": "http://localhost:3000",
-      "/billing": "http://localhost:3000",
-      "/alerts": "http://localhost:3000",
-      // PLAN 11e CLOSE — THREE PREFIXES THE SPA CALLED AND NOTHING PROXIED.
-      //
-      // `/admin` is 11e's own (the user-administration surface). `/ops` and `/tariff` are OLDER
-      // and were live defects: `/ops` is Plan 11c's operating-mode and downtime-kit surface — one
-      // letter away from `/opd`, which is why it survived review — and `/tariff` feeds the billing
-      // counter's service picker. In production all three fell through to the SPA handler and came
-      // back as index.html with HTTP 200, exactly as this file's parity pin warned.
-      //
-      // The parity test now reads a THIRD source — the prefixes `src/lib/*.ts` actually calls —
-      // because two lists compared only to each other agree forever about a prefix in neither.
-      "/admin": "http://localhost:3000",
-      "/ops": "http://localhost:3000",
-      "/tariff": "http://localhost:3000",
-      "/ws": { target: "ws://localhost:3000", ws: true },
+      "/api": {
+        target: "http://localhost:3000",
+        ws: true,
+        rewrite: (path: string) => path.replace(/^\/api/, ""),
+      },
     },
   },
   test: {

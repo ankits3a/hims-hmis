@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { getToken } from "./api";
+import { API_BASE, getToken } from "./api";
 
 export type EventFrame = { type: "event"; topic: string; name: string; seq: number; occurredAt: string; payload: unknown };
 type ServerFrame = EventFrame | { type: "authed"; userId: string } | { type: "subscribed" | "unsubscribed"; topics: string[] } | { type: "pong" } | { type: "error"; code: string; topics?: string[] };
@@ -71,7 +71,9 @@ let singleton: RealtimeClient | null = null;
 export function realtimeClient(): RealtimeClient {
   if (singleton === null) {
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    singleton = new RealtimeClient(`${proto}://${location.host}/ws`, getToken);
+    // The socket rides the same origin rule as every fetch (DD1): `/api/ws`, stripped back to
+    // `/ws` by the edge, so the gateway's own path is untouched.
+    singleton = new RealtimeClient(`${proto}://${location.host}${API_BASE}/ws`, getToken);
   }
   return singleton;
 }

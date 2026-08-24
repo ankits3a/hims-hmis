@@ -8,6 +8,22 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * PLAN 11g / DD1 — THE ORIGIN'S ONE RULE: `/api/*` IS THE API, EVERYTHING ELSE IS THE APPLICATION.
+ *
+ * Until this constant existed the SPA requested `/patients`, `/billing`, `/admin/users` … — the
+ * same paths its own ROUTER declares screens on. The production edge matches API traffic by PATH
+ * alone (no method, no `Accept`), so a browser asking for the `/admin/users` SCREEN was handed the
+ * API's `{"statusCode":401}`, and 15 of the 20 screens did not load at all: the smoke test's D1.
+ *
+ * Every request the app makes goes through `api()` below and therefore through this prefix — that
+ * "one door" property is what makes the rule total, and `caddyfile-parity.test.ts` pins it, along
+ * with the fact that no SPA route may fall inside the proxied space. The API's OWN path space is
+ * unchanged: Caddy strips the prefix (`uri strip_prefix /api`) and the vite dev proxy rewrites it
+ * away, so `@Controller("billing")` and every supertest e2e suite still speak `/billing`.
+ */
+export const API_BASE = "/api";
+
 const TOKEN_KEY = "hmis.token";
 let token: string | null = localStorage.getItem(TOKEN_KEY);
 
@@ -41,7 +57,7 @@ export async function api<T>(method: string, path: string, body?: unknown, idemp
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (token !== null) headers.Authorization = `Bearer ${token}`;
   if (idempotencyKey !== undefined) headers["Idempotency-Key"] = idempotencyKey;
-  const res = await fetch(path, {
+  const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,

@@ -855,7 +855,10 @@ say, `alerts.yml` recreates nothing; see **Monitoring** below for how such an ed
    Caddy's edge config is then explicitly RELOADED (its directory-mounted Caddyfile does not
    itself trigger a container recreate on a content-only change).
 7. **Cron installed**: the nightly full backup and the weekly restore drill (below).
-8. **`/health` verified GREEN through Caddy, over HTTPS, on the real hostname.**
+8. **The EDGE gate, both halves** (Plan 11g / DD1): **`/api/health` verified GREEN through
+   Caddy, over HTTPS, on the real hostname AND its body verified to be JSON**, plus a screen
+   path (`/admin/users`) verified to serve the SPA document. The API lives under `/api/*`;
+   a bare `https://<site>/health` now returns the SPA with HTTP 200 and proves nothing.
 
 First bring-up, in order: create `/opt/hmis-prod` (`mkdir -p /opt/hmis-prod && chmod 700
 /opt/hmis-prod`) → copy `docker/prod/.env.prod.example` to `/opt/hmis-prod/.env` and fill the
@@ -1204,9 +1207,12 @@ restart loop — the three ways a monitoring change has silently shipped INERT o
 
 1. **Read the subject line.** `[HMIS CRITICAL]` is a page; `[HMIS]` is a digest and can wait for
    morning.
-2. **Is the hospital serving?** `curl -fsS https://<site>/health` from anywhere. If that is green,
-   the floor is working and you are debugging a background job, not an outage — the answer is
-   probably morning.
+2. **Is the hospital serving?** `curl -fsS https://<site>/api/health` from anywhere — **`/api`, and
+   it matters**: since Plan 11g the API lives under `/api/*` and a bare `https://<site>/health`
+   is served by the SPA handler, so it answers HTTP 200 with an HTML page whether or not the API
+   is alive. A green answer here is JSON (`{"status":"ok",…}`). If it is green, the floor is
+   working and you are debugging a background job, not an outage — the answer is probably
+   morning.
 3. **If it is not green**, tunnel in and look:
    `ssh -L 3001:127.0.0.1:3001 -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 root@<box>`, then
    Grafana on `http://127.0.0.1:3001` and Prometheus's own `/alerts` on `http://127.0.0.1:9090`.

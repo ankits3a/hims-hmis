@@ -114,8 +114,8 @@ const CREDIT_NOTE = {
 };
 
 const BASE_ROUTES: Record<string, Handler> = {
-  "GET /patients/search": { status: 200, body: { items: [SEARCH_HIT] } },
-  "GET /billing/patients/p-1/balance": { status: 200, body: BALANCE },
+  "GET /api/patients/search": { status: 200, body: { items: [SEARCH_HIT] } },
+  "GET /api/billing/patients/p-1/balance": { status: 200, body: BALANCE },
 };
 
 async function pickPatient(user: ReturnType<typeof userEvent.setup>): Promise<void> {
@@ -145,7 +145,7 @@ describe("BillingDues", () => {
     const user = userEvent.setup();
 
     await pickPatient(user);
-    await waitFor(() => expect(callsTo("GET", "/billing/patients/p-1/balance")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("GET", "/api/billing/patients/p-1/balance")).toHaveLength(1));
 
     expect(await screen.findByTestId("advance-balance")).toHaveTextContent("₹250.00");
     expect(screen.getByTestId("outstanding-total")).toHaveTextContent("₹1,250.00");
@@ -171,8 +171,8 @@ describe("BillingDues", () => {
   it("K41: clearing a due posts the receipt and then allocates THE PARTIAL AMOUNT THE CASHIER TYPED — and the ordinary full clear still posts the full figure", async () => {
     mockRoutes({
       ...BASE_ROUTES,
-      "POST /billing/receipts": { status: 201, body: RECEIPT_TAKEN },
-      "POST /billing/receipts/rcp-new/allocations": { status: 201, body: ALLOCATED },
+      "POST /api/billing/receipts": { status: 201, body: RECEIPT_TAKEN },
+      "POST /api/billing/receipts/rcp-new/allocations": { status: 201, body: ALLOCATED },
     });
     renderWithProviders(<BillingDues />);
     const user = userEvent.setup();
@@ -188,14 +188,14 @@ describe("BillingDues", () => {
     await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "300");
     await user.click(screen.getByTestId("clear-submit"));
 
-    await waitFor(() => expect(callsTo("POST", "/billing/receipts/rcp-new/allocations")).toHaveLength(1));
-    expect(bodiesOf("POST", "/billing/receipts")[0]).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/billing/receipts/rcp-new/allocations")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/billing/receipts")[0]).toEqual({
       patientId: "p-1",
       tenders: [{ mode: "cash", amountPaise: 30000 }],
     });
     // THE LOAD-BEARING ASSERTION — on the POSTED BODY, and on an amount that is NOT the
     // outstanding. W-5 posts `due.outstandingPaise` and dies exactly here.
-    expect(bodiesOf("POST", "/billing/receipts/rcp-new/allocations")[0]).toEqual({
+    expect(bodiesOf("POST", "/api/billing/receipts/rcp-new/allocations")[0]).toEqual({
       invoiceId: "inv-7",
       amountPaise: 30000,
     });
@@ -208,8 +208,8 @@ describe("BillingDues", () => {
     await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "800");
     await user.click(screen.getByTestId("clear-submit"));
 
-    await waitFor(() => expect(callsTo("POST", "/billing/receipts/rcp-new/allocations")).toHaveLength(2));
-    expect(bodiesOf("POST", "/billing/receipts/rcp-new/allocations")[1]).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/billing/receipts/rcp-new/allocations")).toHaveLength(2));
+    expect(bodiesOf("POST", "/api/billing/receipts/rcp-new/allocations")[1]).toEqual({
       invoiceId: "inv-9",
       amountPaise: 80000,
     });
@@ -218,7 +218,7 @@ describe("BillingDues", () => {
   it("K42: the clearance lane refuses to post without a category AND without a reason, then posts kind clearance_discount carrying both", async () => {
     mockRoutes({
       ...BASE_ROUTES,
-      "POST /billing/invoices/inv-7/credit-notes": { status: 201, body: CREDIT_NOTE },
+      "POST /api/billing/invoices/inv-7/credit-notes": { status: 201, body: CREDIT_NOTE },
     });
     renderWithProviders(<BillingDues />);
     const user = userEvent.setup();
@@ -231,7 +231,7 @@ describe("BillingDues", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(callsTo("POST", "/billing/invoices/inv-7/credit-notes")).toHaveLength(0);
+    expect(callsTo("POST", "/api/billing/invoices/inv-7/credit-notes")).toHaveLength(0);
     expect(screen.getByTestId("lane-error")).toHaveTextContent("Pick a discount category");
 
     // category but no reason: still refused (D4 — a clearance discount without a reason is an
@@ -241,15 +241,15 @@ describe("BillingDues", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(callsTo("POST", "/billing/invoices/inv-7/credit-notes")).toHaveLength(0);
+    expect(callsTo("POST", "/api/billing/invoices/inv-7/credit-notes")).toHaveLength(0);
     expect(screen.getByTestId("lane-error")).toHaveTextContent("A reason is required for a clearance discount");
 
     await user.type(screen.getByLabelText("Reason"), "written off at the outreach camp");
     await user.click(screen.getByTestId("clearance-submit"));
 
-    await waitFor(() => expect(callsTo("POST", "/billing/invoices/inv-7/credit-notes")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/billing/invoices/inv-7/credit-notes")).toHaveLength(1));
     // W-6 drops `discountCategory` from this body and dies on the `toEqual`.
-    expect(bodiesOf("POST", "/billing/invoices/inv-7/credit-notes")[0]).toEqual({
+    expect(bodiesOf("POST", "/api/billing/invoices/inv-7/credit-notes")[0]).toEqual({
       kind: "clearance_discount",
       discountCategory: "scheme",
       askPaise: 45000,
@@ -260,7 +260,7 @@ describe("BillingDues", () => {
   it("an over_cap refusal whose cap is ZERO is a CONFIGURATION message naming the category — and one with a real cap is still the ordinary asked-vs-cap money refusal", async () => {
     mockRoutes({
       ...BASE_ROUTES,
-      "POST /billing/invoices/inv-7/credit-notes": (init, callIndex) =>
+      "POST /api/billing/invoices/inv-7/credit-notes": (init, callIndex) =>
         callIndex === 0
           ? {
             status: 409,
@@ -311,11 +311,11 @@ describe("BillingDues", () => {
   it("taking an advance posts a receipt with NO allocation, and the balance re-reads", async () => {
     mockRoutes({
       ...BASE_ROUTES,
-      "GET /billing/patients/p-1/balance": (init, callIndex) =>
+      "GET /api/billing/patients/p-1/balance": (init, callIndex) =>
         callIndex === 0
           ? { status: 200, body: BALANCE }
           : { status: 200, body: { ...BALANCE, advancePaise: 75000 } },
-      "POST /billing/receipts": { status: 201, body: { ...RECEIPT_TAKEN, totalPaise: 50000 } },
+      "POST /api/billing/receipts": { status: 201, body: { ...RECEIPT_TAKEN, totalPaise: 50000 } },
     });
     renderWithProviders(<BillingDues />);
     const user = userEvent.setup();
@@ -325,8 +325,8 @@ describe("BillingDues", () => {
     await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "500");
     await user.click(screen.getByTestId("take-advance-submit"));
 
-    await waitFor(() => expect(callsTo("POST", "/billing/receipts")).toHaveLength(1));
-    expect(bodiesOf("POST", "/billing/receipts")[0]).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/billing/receipts")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/billing/receipts")[0]).toEqual({
       patientId: "p-1",
       tenders: [{ mode: "cash", amountPaise: 50000 }],
     });
@@ -335,15 +335,15 @@ describe("BillingDues", () => {
     expect(fetchCalls().filter((c) => c.method === "POST" && c.path.endsWith("/allocations"))).toEqual([]);
 
     await waitFor(() => expect(screen.getByTestId("advance-balance")).toHaveTextContent("₹750.00"));
-    expect(callsTo("GET", "/billing/patients/p-1/balance").length).toBeGreaterThan(1);
+    expect(callsTo("GET", "/api/billing/patients/p-1/balance").length).toBeGreaterThan(1);
   });
 
   it("applying an advance allocates from an EXISTING receipt and posts NO receipt — proven on a fixture whose receipt route is live and does fire for the take-advance lane", async () => {
     mockRoutes({
       ...BASE_ROUTES,
-      "GET /billing/receipts": { status: 200, body: RECEIPTS },
-      "POST /billing/receipts": { status: 201, body: RECEIPT_TAKEN },
-      "POST /billing/receipts/rcp-adv/allocations": { status: 201, body: { ...ALLOCATED, amountPaise: 20000 } },
+      "GET /api/billing/receipts": { status: 200, body: RECEIPTS },
+      "POST /api/billing/receipts": { status: 201, body: RECEIPT_TAKEN },
+      "POST /api/billing/receipts/rcp-adv/allocations": { status: 201, body: { ...ALLOCATED, amountPaise: 20000 } },
     });
     renderWithProviders(<BillingDues />);
     const user = userEvent.setup();
@@ -360,8 +360,8 @@ describe("BillingDues", () => {
     await typeAmount(user, "Advance to allocate", "#apply-amount", "200");
     await user.click(screen.getByTestId("apply-submit"));
 
-    await waitFor(() => expect(callsTo("POST", "/billing/receipts/rcp-adv/allocations")).toHaveLength(1));
-    expect(bodiesOf("POST", "/billing/receipts/rcp-adv/allocations")[0]).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/billing/receipts/rcp-adv/allocations")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/billing/receipts/rcp-adv/allocations")[0]).toEqual({
       invoiceId: "inv-7",
       amountPaise: 20000,
     });
@@ -370,19 +370,19 @@ describe("BillingDues", () => {
     // field that would have made it appear is this very handler table's `POST /billing/receipts`
     // entry — it is registered, it answers 201, and the take-advance lane below proves it fires,
     // so the zero above is a real absence and not a route that could never have been hit.
-    expect(callsTo("POST", "/billing/receipts")).toHaveLength(0);
+    expect(callsTo("POST", "/api/billing/receipts")).toHaveLength(0);
 
     await user.click(screen.getByTestId("take-advance-open"));
     await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "100");
     await user.click(screen.getByTestId("take-advance-submit"));
-    await waitFor(() => expect(callsTo("POST", "/billing/receipts")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/billing/receipts")).toHaveLength(1));
   });
 
   it("allocation_exceeds_advance is a DEAD END — the reason with no remedial action — while an ordinary over_allocation leaves the lane open to correct", async () => {
     mockRoutes({
       ...BASE_ROUTES,
-      "GET /billing/receipts": { status: 200, body: RECEIPTS },
-      "POST /billing/receipts/rcp-adv/allocations": {
+      "GET /api/billing/receipts": { status: 200, body: RECEIPTS },
+      "POST /api/billing/receipts/rcp-adv/allocations": {
         status: 409,
         body: {
           statusCode: 409, code: "allocation_exceeds_advance",
@@ -414,8 +414,8 @@ describe("BillingDues", () => {
     // — the cashier retypes a smaller figure and tries again.
     mockRoutes({
       ...BASE_ROUTES,
-      "GET /billing/receipts": { status: 200, body: RECEIPTS },
-      "POST /billing/receipts/rcp-adv/allocations": {
+      "GET /api/billing/receipts": { status: 200, body: RECEIPTS },
+      "POST /api/billing/receipts/rcp-adv/allocations": {
         status: 409,
         body: {
           statusCode: 409, code: "over_allocation",
@@ -450,7 +450,7 @@ describe("BillingDues", () => {
     // form at the dues counter is exactly the duplication pipeline B's §3.3 warns about.
     expect(screen.queryByLabelText("Payee name")).toBeNull();
     expect(screen.queryByLabelText("Reason class")).toBeNull();
-    expect(fetchCalls().filter((c) => c.path.startsWith("/billing/refunds"))).toEqual([]);
+    expect(fetchCalls().filter((c) => c.path.startsWith("/api/billing/refunds"))).toEqual([]);
   });
 
   it("the balance read carries refetchInterval 15_000", async () => {
@@ -464,11 +464,11 @@ describe("BillingDues", () => {
      */
     vi.useFakeTimers();
     mockRoutes({
-      "POST /patients/qr/verify": {
+      "POST /api/patients/qr/verify": {
         status: 200,
         body: { ok: true, patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", sex: "female", dob: null } },
       },
-      "GET /billing/patients/p-1/balance": { status: 200, body: BALANCE },
+      "GET /api/billing/patients/p-1/balance": { status: 200, body: BALANCE },
     });
 
     // `waitFor` cannot drive vitest's fake clock (it gates on a global `jest`) — hand-flush instead.
@@ -489,11 +489,11 @@ describe("BillingDues", () => {
     await flush();
     await flush();
 
-    expect(callsTo("GET", "/billing/patients/p-1/balance")).toHaveLength(1);
+    expect(callsTo("GET", "/api/billing/patients/p-1/balance")).toHaveLength(1);
 
     await flush(15_500);
     await flush();
-    expect(callsTo("GET", "/billing/patients/p-1/balance").length).toBeGreaterThan(1);
+    expect(callsTo("GET", "/api/billing/patients/p-1/balance").length).toBeGreaterThan(1);
   });
 
   /**
@@ -513,8 +513,8 @@ describe("BillingDues", () => {
   it("REGRESSION: a double click on the clear lane posts ONE receipt and ONE allocation, not two — the money write is not re-entrant", async () => {
     mockRoutes({
       ...BASE_ROUTES,
-      "POST /billing/receipts": { status: 201, body: RECEIPT_TAKEN },
-      "POST /billing/receipts/rcp-new/allocations": { status: 201, body: ALLOCATED },
+      "POST /api/billing/receipts": { status: 201, body: RECEIPT_TAKEN },
+      "POST /api/billing/receipts/rcp-new/allocations": { status: 201, body: ALLOCATED },
     });
     renderWithProviders(<BillingDues />);
     const user = userEvent.setup();
@@ -528,15 +528,15 @@ describe("BillingDues", () => {
     fireEvent.click(submit);
     fireEvent.click(submit);
 
-    await waitFor(() => expect(callsTo("POST", "/billing/receipts/rcp-new/allocations")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/billing/receipts/rcp-new/allocations")).toHaveLength(1));
     // let anything a second handler call would have issued actually land before counting
     await act(async () => {
       await Promise.resolve();
     });
 
-    expect(callsTo("POST", "/billing/receipts")).toHaveLength(1);
-    expect(callsTo("POST", "/billing/receipts/rcp-new/allocations")).toHaveLength(1);
-    expect(bodiesOf("POST", "/billing/receipts")[0]).toEqual({
+    expect(callsTo("POST", "/api/billing/receipts")).toHaveLength(1);
+    expect(callsTo("POST", "/api/billing/receipts/rcp-new/allocations")).toHaveLength(1);
+    expect(bodiesOf("POST", "/api/billing/receipts")[0]).toEqual({
       patientId: "p-1",
       tenders: [{ mode: "cash", amountPaise: 30000 }],
     });
@@ -548,8 +548,8 @@ describe("BillingDues", () => {
      * uniqueness is per (actor, route, key), so a receipt and an allocation under one key are two
      * distinct claims rather than a collision.
      */
-    const receiptKey = keysOf("POST", "/billing/receipts")[0];
-    const allocationKey = keysOf("POST", "/billing/receipts/rcp-new/allocations")[0];
+    const receiptKey = keysOf("POST", "/api/billing/receipts")[0];
+    const allocationKey = keysOf("POST", "/api/billing/receipts/rcp-new/allocations")[0];
     expect(receiptKey).toMatch(/\S/);
     expect(allocationKey).toBe(receiptKey);
   });

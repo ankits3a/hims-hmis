@@ -78,11 +78,11 @@ describe("RealtimeClient", () => {
     localStorage.clear();
   });
 
-  it("opens /ws and sends auth as the FIRST frame — nothing is sent before it", () => {
+  it("opens /api/ws and sends auth as the FIRST frame — nothing is sent before it", () => {
     realtimeClient().subscribe(["queue:doc-1:2026-08-17"], vi.fn());
 
     expect(FakeWebSocket.instances).toHaveLength(1);
-    expect(socket(0).url).toBe(`ws://${location.host}/ws`);
+    expect(socket(0).url).toBe(`ws://${location.host}/api/ws`);
     // Teeth for K39: the socket exists but has carried NOTHING before open.
     expect(socket(0).sent).toEqual([]);
 

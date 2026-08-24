@@ -30,9 +30,9 @@ const SCHEDULED_LEAVE = {
 };
 
 const MASTERS = {
-  "GET /opd/departments": { items: DEPARTMENTS },
-  "GET /opd/rooms": { items: ROOMS },
-  "GET /opd/doctors": { items: DOCTORS },
+  "GET /api/opd/departments": { items: DEPARTMENTS },
+  "GET /api/opd/rooms": { items: ROOMS },
+  "GET /api/opd/doctors": { items: DOCTORS },
 };
 
 function fetchCalls(): { url: string; method: string; body: string }[] {
@@ -65,7 +65,7 @@ describe("OpdAdmin", () => {
   });
 
   it("lists the departments from GET /opd/departments and posts { code, name } for a new one", async () => {
-    stubFetch({ ...MASTERS, "POST /opd/departments": { departmentId: "dep-3" } });
+    stubFetch({ ...MASTERS, "POST /api/opd/departments": { departmentId: "dep-3" } });
     renderWithProviders(<OpdAdmin />);
     const user = userEvent.setup();
 
@@ -76,8 +76,8 @@ describe("OpdAdmin", () => {
     await user.type(screen.getByLabelText("Name"), "Orthopaedics");
     await user.click(screen.getByRole("button", { name: "Add department" }));
 
-    await waitFor(() => expect(callsTo("POST", "/opd/departments")).toHaveLength(1));
-    expect(bodyOf("POST", "/opd/departments")).toEqual({ code: "ORT", name: "Orthopaedics" });
+    await waitFor(() => expect(callsTo("POST", "/api/opd/departments")).toHaveLength(1));
+    expect(bodyOf("POST", "/api/opd/departments")).toEqual({ code: "ORT", name: "Orthopaedics" });
   });
 
   it("the doctors tab posts the doctor body and renders the server's unknown_user refusal inline", async () => {
@@ -90,12 +90,12 @@ describe("OpdAdmin", () => {
         const path = raw.split("?")[0]!;
         const json = (body: unknown, status: number): Response =>
           new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-        if (init?.method === "POST" && path === "/opd/doctors") {
+        if (init?.method === "POST" && path === "/api/opd/doctors") {
           return json({ statusCode: 404, message: 'no user named "dr.ramesh"', code: "unknown_user" }, 404);
         }
-        if (path === "/opd/departments") return json({ items: DEPARTMENTS }, 200);
-        if (path === "/opd/rooms") return json({ items: ROOMS }, 200);
-        if (path === "/opd/doctors") return json({ items: DOCTORS }, 200);
+        if (path === "/api/opd/departments") return json({ items: DEPARTMENTS }, 200);
+        if (path === "/api/opd/rooms") return json({ items: ROOMS }, 200);
+        if (path === "/api/opd/doctors") return json({ items: DOCTORS }, 200);
         return new Response("{}", { status: 404 });
       }),
     );
@@ -110,8 +110,8 @@ describe("OpdAdmin", () => {
     await user.type(screen.getByLabelText("Specialty"), "Paediatrics");
     await user.click(screen.getByRole("button", { name: "Add doctor" }));
 
-    await waitFor(() => expect(callsTo("POST", "/opd/doctors")).toHaveLength(1));
-    expect(bodyOf("POST", "/opd/doctors")).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/opd/doctors")).toHaveLength(1));
+    expect(bodyOf("POST", "/api/opd/doctors")).toEqual({
       username: "dr.ramesh", displayName: "Dr Ramesh Iyer", registrationNo: "NMC-9002",
       departmentId: "dep-2", specialty: "Paediatrics",
     });
@@ -122,9 +122,9 @@ describe("OpdAdmin", () => {
   it("the schedules editor PUTs weekday as a NUMBER and slotMinutes as null when the field is blank", async () => {
     stubFetch({
       ...MASTERS,
-      "GET /opd/doctors/doc-1/schedules": { items: [EXISTING_SCHEDULE] },
-      "GET /opd/leaves": { items: [] },
-      "PUT /opd/doctors/doc-1/schedules": { scheduleIds: ["sch-1", "sch-2"] },
+      "GET /api/opd/doctors/doc-1/schedules": { items: [EXISTING_SCHEDULE] },
+      "GET /api/opd/leaves": { items: [] },
+      "PUT /api/opd/doctors/doc-1/schedules": { scheduleIds: ["sch-1", "sch-2"] },
     });
     renderWithProviders(<OpdAdmin />);
     const user = userEvent.setup();
@@ -143,8 +143,8 @@ describe("OpdAdmin", () => {
     // Slot minutes deliberately LEFT BLANK — it must reach the server as null, not "" and not 0.
     await user.click(screen.getByRole("button", { name: "Save schedules" }));
 
-    await waitFor(() => expect(callsTo("PUT", "/opd/doctors/doc-1/schedules")).toHaveLength(1));
-    const body = bodyOf("PUT", "/opd/doctors/doc-1/schedules") as { items: Record<string, unknown>[] };
+    await waitFor(() => expect(callsTo("PUT", "/api/opd/doctors/doc-1/schedules")).toHaveLength(1));
+    const body = bodyOf("PUT", "/api/opd/doctors/doc-1/schedules") as { items: Record<string, unknown>[] };
     expect(body.items).toHaveLength(2);
 
     const added = body.items[1]!;
@@ -164,10 +164,10 @@ describe("OpdAdmin", () => {
   it("scheduling a leave posts the range, reports the affected appointments, and cancels an existing leave", async () => {
     stubFetch({
       ...MASTERS,
-      "GET /opd/doctors/doc-1/schedules": { items: [] },
-      "GET /opd/leaves": { items: [SCHEDULED_LEAVE] },
-      "POST /opd/leaves": { leaveId: "lv-2", affectedAppointmentIds: ["ap-1", "ap-2"] },
-      "POST /opd/leaves/lv-1/cancel": { restored: 2 },
+      "GET /api/opd/doctors/doc-1/schedules": { items: [] },
+      "GET /api/opd/leaves": { items: [SCHEDULED_LEAVE] },
+      "POST /api/opd/leaves": { leaveId: "lv-2", affectedAppointmentIds: ["ap-1", "ap-2"] },
+      "POST /api/opd/leaves/lv-1/cancel": { restored: 2 },
     });
     renderWithProviders(<OpdAdmin />);
     const user = userEvent.setup();
@@ -182,8 +182,8 @@ describe("OpdAdmin", () => {
     await user.type(screen.getByLabelText("Reason"), "Conference");
     await user.click(screen.getByRole("button", { name: "Add leave" }));
 
-    await waitFor(() => expect(callsTo("POST", "/opd/leaves")).toHaveLength(1));
-    expect(bodyOf("POST", "/opd/leaves")).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/opd/leaves")).toHaveLength(1));
+    expect(bodyOf("POST", "/api/opd/leaves")).toEqual({
       doctorId: "doc-1", fromDate: "2026-09-01", toDate: "2026-09-03", reason: "Conference",
     });
     expect(
@@ -192,7 +192,7 @@ describe("OpdAdmin", () => {
 
     await user.click(screen.getByRole("button", { name: "Cancel leave" }));
 
-    await waitFor(() => expect(callsTo("POST", "/opd/leaves/lv-1/cancel")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/opd/leaves/lv-1/cancel")).toHaveLength(1));
   });
 });
 

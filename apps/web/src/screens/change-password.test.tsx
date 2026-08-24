@@ -58,30 +58,30 @@ describe("ChangePassword", () => {
   }
 
   it("sends the current and new password, and leaves for the app on success", async () => {
-    mockRoutes({ "POST /auth/change-password": { status: 204, body: null } });
+    mockRoutes({ "POST /api/auth/change-password": { status: 204, body: null } });
     renderWithProviders(<ChangePassword />);
     await fill("issued-by-admin", "the-one-i-chose", "the-one-i-chose");
 
     await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: "/registration" }));
-    expect(bodyOf("/auth/change-password")).toEqual({
+    expect(bodyOf("/api/auth/change-password")).toEqual({
       currentPassword: "issued-by-admin", newPassword: "the-one-i-chose",
     });
   });
 
   it("catches a mistyped confirmation WITHOUT calling the server — the typo guard this screen owns", async () => {
-    mockRoutes({ "POST /auth/change-password": { status: 204, body: null } });
+    mockRoutes({ "POST /api/auth/change-password": { status: 204, body: null } });
     renderWithProviders(<ChangePassword />);
     await fill("issued-by-admin", "the-one-i-chose", "the-one-i-typo'd");
 
     expect(await screen.findByTestId("change-password-mismatch")).toBeInTheDocument();
     // NOT A ROUND TRIP: the server has no business knowing a password was typed twice.
-    expect(bodyOf("/auth/change-password")).toBeUndefined();
+    expect(bodyOf("/api/auth/change-password")).toBeUndefined();
     expect(navigate).not.toHaveBeenCalled();
   });
 
   it("renders the server's POLICY refusal, every clause of it, and stays put", async () => {
     mockRoutes({
-      "POST /auth/change-password": {
+      "POST /api/auth/change-password": {
         status: 400,
         body: {
           code: "password_policy",
@@ -108,8 +108,8 @@ describe("ChangePassword", () => {
     // mount effect calls `GET /auth/me` and gets a 403. Before the fix that `catch` cleared the
     // token, and this submit went out with no Authorization header.
     mockRoutes({
-      "GET /auth/me": { status: 403, body: { statusCode: 403, message: "password_change_required" } },
-      "POST /auth/change-password": { status: 204, body: null },
+      "GET /api/auth/me": { status: 403, body: { statusCode: 403, message: "password_change_required" } },
+      "POST /api/auth/change-password": { status: 204, body: null },
     });
     renderWithProviders(<ChangePassword />);
     await fill("issued-by-admin", "the-one-i-chose", "the-one-i-chose");
@@ -117,7 +117,7 @@ describe("ChangePassword", () => {
     await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: "/registration" }));
     const call = vi.mocked(fetch).mock.calls.find(([input]) => {
       const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      return raw.split("?")[0] === "/auth/change-password";
+      return raw.split("?")[0] === "/api/auth/change-password";
     });
     const headers = call?.[1]?.headers as Record<string, string> | undefined;
     // THE HEADER IS THE ASSERTION. A status-only check passes against a request with no token,
@@ -127,8 +127,8 @@ describe("ChangePassword", () => {
 
   it("CLOSE M5 — any OTHER /auth/me failure still clears the token, which is what that line is for", async () => {
     mockRoutes({
-      "GET /auth/me": { status: 401, body: { statusCode: 401, message: "Unauthorized" } },
-      "POST /auth/change-password": { status: 204, body: null },
+      "GET /api/auth/me": { status: 401, body: { statusCode: 401, message: "Unauthorized" } },
+      "POST /api/auth/change-password": { status: 204, body: null },
     });
     renderWithProviders(<ChangePassword />);
     await waitFor(() => expect(getToken()).toBeNull());
@@ -136,7 +136,7 @@ describe("ChangePassword", () => {
 
   it("renders a wrong CURRENT password as its own refusal", async () => {
     mockRoutes({
-      "POST /auth/change-password": {
+      "POST /api/auth/change-password": {
         status: 403, body: { statusCode: 403, message: "current_password_incorrect" },
       },
     });

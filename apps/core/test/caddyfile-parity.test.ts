@@ -4,6 +4,11 @@ import { resolve } from "node:path";
 /**
  * Plan 11a / D14 — the drift pin between the SPA's dev proxy and the production edge.
  *
+ * **READ THE 11g BLOCK AT THE FOOT OF THIS COMMENT FIRST.** The two paragraphs below describe the
+ * world as it was until 2026-08-25 — twelve API prefixes mirrored between two files — and they are
+ * kept because the legs they explain are still here and still doing that job. There is one prefix
+ * now, and the reason is the whole point.
+ *
  * The API path prefixes exist in exactly one place today: `apps/web/vite.config.ts`'s dev proxy.
  * Production serves the same origin through Caddy, so `docker/prod/Caddyfile` has to mirror that
  * list forever. Without a pin the drift is silent and one-directional — a module adds a prefix to
@@ -16,8 +21,10 @@ import { resolve } from "node:path";
  * prefixes, `/ws` among them) BEFORE anything is compared; and the last test proves the matcher
  * the Caddyfile declares is actually the one it proxies, so a matcher nothing uses cannot pass.
  *
- * The count in the first test is deliberate friction. A module that adds a prefix edits three
- * places in one commit: vite.config.ts, the Caddyfile, and that number.
+ * ~~The count in the first test is deliberate friction. A module that adds a prefix edits three
+ * places in one commit: vite.config.ts, the Caddyfile, and that number.~~ **AMENDED 2026-08-25
+ * (Plan 11g / DD1): there is exactly ONE prefix now and a new API module edits neither file, so
+ * the friction has nothing left to buy. The count stays as a non-vacuity pin, not as friction.**
  *
  * ═══ PLAN 11e CLOSE — A THIRD SOURCE, BECAUSE TWO LISTS AGREED ABOUT NOTHING ═══
  *
@@ -34,11 +41,31 @@ import { resolve } from "node:path";
  * read something that is not the thing under test. Direction is deliberate — called ⊆ proxied. A
  * proxied prefix nothing calls yet is harmless (`/approvals`, `/workflow`, `/health` are proxied
  * and reached by no `src/lib` client today); a called prefix nothing proxies is an outage.
+ *
+ * ═══ PLAN 11g / DD1 — THE COLLISION NEITHER LIST COULD EVER HAVE SHOWN ═══
+ *
+ * Every leg above compares things that route API CALLS. The 2026-08-24 synthetic smoke test found
+ * that 15 of the SPA's 20 screens did not load in a browser at all, because `router.tsx` declares
+ * those screens on the SAME paths the `@api` matcher proxied — and the matcher is path-only, so a
+ * browser GET of `/admin/users` was answered with the API's `{"statusCode":401}`. Three lists in
+ * perfect agreement, one production outage, and this file green throughout.
+ *
+ * The fix is path-space separation: `/api/*` is the API, everything else is the application. That
+ * changes what the legs below can honestly assert:
+ *
+ *   - the 11e leg's class — "a called prefix nothing proxies" — is now STRUCTURALLY IMPOSSIBLE,
+ *     because every call goes through `lib/api.ts`'s single `fetch` under `API_BASE`, and
+ *     `API_BASE` is the proxied prefix. So that leg is re-pointed: it pins the ONE DOOR (nothing
+ *     else in `apps/web/src` calls `fetch`) and pins `API_BASE` against the Caddy matcher, which
+ *     is what makes the impossibility true rather than asserted.
+ *   - a NEW leg pins the SPA's own route table against the proxied prefixes. It is the leg that
+ *     would have caught D1, and it fails on the pre-fix tree naming all fifteen dark screens.
  */
 const REPO_ROOT = resolve(__dirname, "..", "..", "..");
 const VITE_CONFIG = resolve(REPO_ROOT, "apps", "web", "vite.config.ts");
 const CADDYFILE = resolve(REPO_ROOT, "docker", "prod", "Caddyfile");
 const WEB_SRC = resolve(REPO_ROOT, "apps", "web", "src");
+const ROUTER_TSX = resolve(WEB_SRC, "router.tsx");
 
 /** The keys of vite's `server.proxy` object, sorted. Throws if the block cannot be found. */
 function viteProxyPrefixes(source: string): string[] {
@@ -137,15 +164,76 @@ function spaCalledPrefixes(): string[] {
   return [...prefixes].sort();
 }
 
+/**
+ * Every path the SPA's own route table declares, deduped and sorted. THROWS rather than returning
+ * empty on a shape it does not recognise (§2.49) — a parser that finds no routes agrees with every
+ * matcher ever written, which is the exact way this file's earlier legs could have passed
+ * vacuously.
+ *
+ * The shape read is TanStack's `path: "/…"` property inside a `createRoute({ … })` call, which is
+ * the single way a route path is declared anywhere in this app. `redirect({ to: "/…" })` uses
+ * `to:` and is deliberately NOT matched: a redirect target is always itself a declared route.
+ */
+/**
+ * `API_BASE`'s value, read out of `apps/web/src/lib/api.ts`. THROWS if the declaration is not
+ * there in the shape this parser knows (§2.49) — a base path this file could not read is a base
+ * path it must not silently treat as `""`.
+ */
+function spaApiBase(): string {
+  const source = readFileSync(resolve(WEB_SRC, "lib", "api.ts"), "utf8");
+  const match = /export const API_BASE = "(\/[^"]*)";/.exec(source);
+  if (match?.[1] === undefined) {
+    throw new Error('lib/api.ts: no `export const API_BASE = "/…";` found — this parser is stale');
+  }
+  return match[1];
+}
+
+/**
+ * Every non-test module under `apps/web/src` that calls `fetch(` directly, repo-relative to
+ * `src/`. Exactly one is expected and it is the client itself; anything else has stepped around
+ * `API_BASE`, the bearer token and the 401 handling at the same time.
+ */
+function fetchCallingModules(): string[] {
+  const hits: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = resolve(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
+        if (/(?<![.\w])fetch\(/.test(readFileSync(full, "utf8"))) {
+          hits.push(full.slice(WEB_SRC.length + 1).split("\\").join("/"));
+        }
+      }
+    }
+  };
+  walk(WEB_SRC);
+  return hits.sort();
+}
+
+function spaRoutePaths(source: string): string[] {
+  const paths: string[] = [];
+  for (const match of source.matchAll(/\bpath:\s*"(\/[^"]*)"/g)) {
+    const path = match[1];
+    if (path !== undefined) paths.push(path);
+  }
+  if (paths.length === 0) {
+    throw new Error('router.tsx: no `path: "/…"` route declaration found — this parser is stale');
+  }
+  return [...new Set(paths)].sort();
+}
+
 describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
   const viteSource = readFileSync(VITE_CONFIG, "utf8");
   const caddySource = readFileSync(CADDYFILE, "utf8");
+  const routerSource = readFileSync(ROUTER_TSX, "utf8");
 
   it("reads a non-vacuous prefix census out of the vite dev proxy", () => {
     const vite = viteProxyPrefixes(viteSource);
     expect(vite.length).toBeGreaterThan(0);
-    expect(vite).toHaveLength(12);
-    expect(vite).toContain("/ws");
+    // ONE key since Plan 11g / DD1 (it was twelve). `/ws` is no longer its own entry: the realtime
+    // gateway rides `/api/ws` on the same key, with `ws: true`.
+    expect(vite).toHaveLength(1);
+    expect(vite).toEqual(["/api"]);
   });
 
   it("routes exactly those prefixes through Caddy — no more, no fewer", () => {
@@ -156,18 +244,61 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     expect(caddySource).toMatch(/handle\s+@api\s*\{[^}]*\breverse_proxy\s+api:3000\b/);
   });
 
-  it("PLAN 11e — every prefix the SPA actually CALLS is proxied, which two lists could not see", () => {
+  it("PLAN 11g — STRIPS the prefix it matched, so the API's own path space is unchanged", () => {
+    // Without this the api container would receive `/api/billing` and answer 404 to everything,
+    // while `/health`, the compose healthcheck, the Prometheus scrape and ~30 supertest e2e
+    // suites would all still be written against the unprefixed path. The strip is what keeps the
+    // prefix a fact about the ORIGIN rather than about the API.
+    const [prefix] = caddyProxyPrefixes(caddySource);
+    expect(caddySource).toMatch(
+      new RegExp(`handle\\s+@api\\s*\\{[^}]*\\buri\\s+strip_prefix\\s+${prefix}\\b`),
+    );
+  });
+
+  it("PLAN 11e/11g — every call goes through ONE door, and that door is what Caddy proxies", () => {
     const called = spaCalledPrefixes();
     // The census FIRST, before anything is compared (§2.49): a parser that found nothing would
-    // satisfy the subset check vacuously and for ever.
-    expect(called).toHaveLength(9);
-    expect(called).toContain("/admin"); // 11e's surface — absent from both lists until this commit
+    // satisfy every check below vacuously and for ever. `toBeGreaterThanOrEqual` rather than an
+    // exact count since 11g — the exact number existed to force a Caddyfile edit, and there is no
+    // longer a Caddyfile edit to force (DD1). It still fails on a parser that has gone silent.
+    expect(called.length).toBeGreaterThanOrEqual(9);
+    expect(called).toContain("/admin"); // 11e's surface — absent from both lists until 11e's close
     expect(called).toContain("/ops");   // Plan 11c's, absent since 11c shipped
     expect(called).toContain("/tariff");
 
-    const proxied = viteProxyPrefixes(viteSource);
-    // NAME the offenders rather than comparing lengths: "3 !== 0" does not tell an operator which
-    // screen is dark in production.
-    expect(called.filter((prefix) => !proxied.includes(prefix))).toEqual([]);
+    // THE ONE DOOR. `lib/api.ts` is the only module in the whole SPA that calls `fetch`, which is
+    // what makes `API_BASE` total rather than a convention: a screen that reached for `fetch`
+    // directly would bypass the prefix, the token header and the 401 handling in one line, and
+    // in production its request would land on the SPA handler and come back as index.html/200.
+    expect(fetchCallingModules()).toEqual(["lib/api.ts"]);
+
+    // …and the door opens onto exactly what the edge proxies. Read from `lib/api.ts` — a third
+    // source, independent of both the vite block and the Caddyfile (§3.42).
+    expect(caddyProxyPrefixes(caddySource)).toContain(spaApiBase());
+    expect(viteProxyPrefixes(viteSource)).toContain(spaApiBase());
+  });
+  /**
+   * ═══ PLAN 11g / DD1 — THE LEG THAT WOULD HAVE CAUGHT THE SMOKE TEST'S D1 ═══
+   *
+   * Every leg above compares things that route API calls to each other. NONE of them can see the
+   * collision that actually stopped the hospital: the SPA declares its SCREENS on the same paths
+   * the edge proxies to the API. The matcher is path-only — no method, no `Accept` — so a browser
+   * asking for `/admin/users` was handed the API's `{"statusCode":401}` and 15 of 20 screens were
+   * dark in production while every test in this file was green.
+   *
+   * It cannot reproduce in dev, which is why it survived: the vite server resolves the same
+   * collision the other way. So the pin has to be over the two FILES, not over a running system.
+   */
+  it("PLAN 11g — no SPA route falls inside a Caddy-proxied prefix (smoke-test D1)", () => {
+    const routes = spaRoutePaths(routerSource);
+    // The census FIRST, before anything is compared (§2.49).
+    expect(routes).toHaveLength(20);
+    expect(routes).toContain("/admin/users");
+
+    const proxied = caddyProxyPrefixes(caddySource);
+    // NAME the shadowed routes rather than comparing lengths: "15 !== 0" does not tell an operator
+    // which screens are dark.
+    const shadowed = routes.filter((route) => proxied.some((p) => route === p || route.startsWith(p)));
+    expect(shadowed).toEqual([]);
   });
 });

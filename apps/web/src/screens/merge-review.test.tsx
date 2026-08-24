@@ -48,11 +48,11 @@ async function pickBoth(user: ReturnType<typeof userEvent.setup>): Promise<void>
 }
 
 const baseRoutes = {
-  "GET /patients/search": { items: [LEFT_HIT, RIGHT_HIT] },
-  "GET /patients/p-1": { patient: LEFT_PATIENT, resolvedFrom: null },
-  "GET /patients/p-2": { patient: RIGHT_PATIENT, resolvedFrom: null },
-  "GET /patients/p-1/allergies": { items: [] },
-  "GET /patients/p-2/allergies": { items: [] },
+  "GET /api/patients/search": { items: [LEFT_HIT, RIGHT_HIT] },
+  "GET /api/patients/p-1": { patient: LEFT_PATIENT, resolvedFrom: null },
+  "GET /api/patients/p-2": { patient: RIGHT_PATIENT, resolvedFrom: null },
+  "GET /api/patients/p-1/allergies": { items: [] },
+  "GET /api/patients/p-2/allergies": { items: [] },
 };
 
 describe("MergeReview", () => {
@@ -86,8 +86,8 @@ describe("MergeReview", () => {
   it("submitting the merge request posts winnerId, loserId, and the typed note", async () => {
     stubFetch({
       ...baseRoutes,
-      "POST /patients/merge-requests": { mergeRequestId: "mr-1", approvalId: "ap-1", instanceId: "wi-1" },
-      "GET /patients/merge-requests/mr-1": {
+      "POST /api/patients/merge-requests": { mergeRequestId: "mr-1", approvalId: "ap-1", instanceId: "wi-1" },
+      "GET /api/patients/merge-requests/mr-1": {
         request: {
           id: "mr-1", winnerId: "p-1", loserId: "p-2", status: "requested",
           requestNote: "same person, double registration",
@@ -106,9 +106,9 @@ describe("MergeReview", () => {
     await user.click(screen.getByRole("button", { name: "Request merge" }));
 
     await waitFor(() =>
-      expect(fetchCalls().some((c) => c.method === "POST" && c.url === "/patients/merge-requests")).toBe(true),
+      expect(fetchCalls().some((c) => c.method === "POST" && c.url === "/api/patients/merge-requests")).toBe(true),
     );
-    const posted = fetchCalls().find((c) => c.method === "POST" && c.url === "/patients/merge-requests");
+    const posted = fetchCalls().find((c) => c.method === "POST" && c.url === "/api/patients/merge-requests");
     const body = JSON.parse(posted?.body ?? "{}") as Record<string, unknown>;
     expect(body).toEqual({ winnerId: "p-1", loserId: "p-2", note: "same person, double registration" });
   });
@@ -116,8 +116,8 @@ describe("MergeReview", () => {
   it("the tracker shows the polled approvalStatus and disables Execute while it is pending", async () => {
     stubFetch({
       ...baseRoutes,
-      "POST /patients/merge-requests": { mergeRequestId: "mr-1", approvalId: "ap-1", instanceId: "wi-1" },
-      "GET /patients/merge-requests/mr-1": {
+      "POST /api/patients/merge-requests": { mergeRequestId: "mr-1", approvalId: "ap-1", instanceId: "wi-1" },
+      "GET /api/patients/merge-requests/mr-1": {
         request: {
           id: "mr-1", winnerId: "p-1", loserId: "p-2", status: "requested",
           requestNote: "same person, double registration",

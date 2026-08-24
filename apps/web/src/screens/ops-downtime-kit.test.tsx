@@ -80,14 +80,14 @@ describe("OpsDowntimeKit", () => {
   });
 
   it("renders the empty-list state when no kit has been generated", async () => {
-    mockRoutes({ "GET /ops/downtime-kits": { status: 200, body: { kits: [] } } });
+    mockRoutes({ "GET /api/ops/downtime-kits": { status: 200, body: { kits: [] } } });
     renderWithProviders(<OpsDowntimeKit />);
     expect(await screen.findByTestId("kit-list-empty")).toBeInTheDocument();
   });
 
   it("lists a previously-generated kit from GET /ops/downtime-kits", async () => {
     mockRoutes({
-      "GET /ops/downtime-kits": {
+      "GET /api/ops/downtime-kits": {
         status: 200,
         body: {
           kits: [
@@ -107,12 +107,12 @@ describe("OpsDowntimeKit", () => {
 
   it("generating a kit POSTs desks with only the non-zero counts, then the print view REPLACES the screen showing exactly one .print-doc", async () => {
     mockRoutes({
-      "GET /ops/downtime-kits": { status: 200, body: { kits: [] } },
-      "POST /ops/downtime-kits": {
+      "GET /api/ops/downtime-kits": { status: 200, body: { kits: [] } },
+      "POST /api/ops/downtime-kits": {
         status: 201,
         body: { id: "kit-1", note: "power cut, block A", generatedBy: "u-1", generatedAt: "2026-08-23T03:00:00.000Z", totalForms: 2, ranges: PRINT_PAYLOAD.ranges, eventId: "ev-1" },
       },
-      "GET /ops/downtime-kits/kit-1": { status: 200, body: PRINT_PAYLOAD },
+      "GET /api/ops/downtime-kits/kit-1": { status: 200, body: PRINT_PAYLOAD },
     });
     const { container } = renderWithProviders(<OpsDowntimeKit />);
     const user = userEvent.setup();
@@ -123,8 +123,8 @@ describe("OpsDowntimeKit", () => {
     await user.type(screen.getByLabelText("Note"), "power cut, block A");
     await user.click(screen.getByRole("button", { name: "Generate kit (Alt+S)" }));
 
-    await waitFor(() => expect(callsTo("POST", "/ops/downtime-kits")).toHaveLength(1));
-    expect(callsTo("POST", "/ops/downtime-kits")[0]!.body).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/ops/downtime-kits")).toHaveLength(1));
+    expect(callsTo("POST", "/api/ops/downtime-kits")[0]!.body).toEqual({
       note: "power cut, block A",
       desks: [{ desk: "Front desk", counts: { registration: 2 } }],
     });
@@ -145,11 +145,11 @@ describe("OpsDowntimeKit", () => {
 
   it("printing an EXISTING kit from the list also replaces the screen, and Back returns to the generator", async () => {
     mockRoutes({
-      "GET /ops/downtime-kits": {
+      "GET /api/ops/downtime-kits": {
         status: 200,
         body: { kits: [{ id: "kit-1", note: "power cut, block A", generatedBy: "u-1", generatedAt: "2026-08-23T03:00:00.000Z", totalForms: 2, ranges: PRINT_PAYLOAD.ranges }] },
       },
-      "GET /ops/downtime-kits/kit-1": { status: 200, body: PRINT_PAYLOAD },
+      "GET /api/ops/downtime-kits/kit-1": { status: 200, body: PRINT_PAYLOAD },
     });
     const { container } = renderWithProviders(<OpsDowntimeKit />);
     const user = userEvent.setup();
@@ -173,10 +173,10 @@ describe("OpsDowntimeKit", () => {
         const path = raw.split("?")[0]!;
         const json = (body: unknown, status: number): Response =>
           new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-        if (init?.method === "POST" && path === "/ops/downtime-kits") {
+        if (init?.method === "POST" && path === "/api/ops/downtime-kits") {
           return json({ code: "downtime_kit_empty", message: "a kit that reserves no forms is not a kit" }, 400);
         }
-        if (path === "/ops/downtime-kits") return json({ kits: [] }, 200);
+        if (path === "/api/ops/downtime-kits") return json({ kits: [] }, 200);
         return new Response("{}", { status: 404 });
       }),
     );
@@ -200,10 +200,10 @@ describe("OpsDowntimeKit", () => {
         const path = raw.split("?")[0]!;
         const json = (body: unknown, status: number): Response =>
           new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-        if (init?.method === "POST" && path === "/ops/downtime-kits") {
+        if (init?.method === "POST" && path === "/api/ops/downtime-kits") {
           return json({ code: "downtime_kit_duplicate_desk", message: 'desk "Front desk" appears more than once in one kit' }, 400);
         }
-        if (path === "/ops/downtime-kits") return json({ kits: [] }, 200);
+        if (path === "/api/ops/downtime-kits") return json({ kits: [] }, 200);
         return new Response("{}", { status: 404 });
       }),
     );

@@ -93,8 +93,8 @@ describe("RegistrationDesk", () => {
 
   it("search-first: typed digits fire GET /patients/search and the hit renders as a row", async () => {
     stubFetch({
-      "GET /patients/search": { items: [HIT] },
-      "GET /patients/p-1/photo": { mimeType: "image/jpeg", imageBase64: "QUFB" },
+      "GET /api/patients/search": { items: [HIT] },
+      "GET /api/patients/p-1/photo": { mimeType: "image/jpeg", imageBase64: "QUFB" },
     });
     renderWithProviders(<RegistrationDesk />);
     const user = userEvent.setup();
@@ -104,14 +104,14 @@ describe("RegistrationDesk", () => {
     expect(await screen.findByText("Asha Devi")).toBeInTheDocument();
     expect(screen.getByText(/HMS0000001234/)).toBeInTheDocument();
     await waitFor(() =>
-      expect(fetchCalls().some((c) => c.url === "/patients/search?q=98765")).toBe(true),
+      expect(fetchCalls().some((c) => c.url === "/api/patients/search?q=98765")).toBe(true),
     );
   });
 
   it("C-18: choosing a hit opens the attach dialog with the stored photo large and both choices", async () => {
     stubFetch({
-      "GET /patients/search": { items: [HIT] },
-      "GET /patients/p-1/photo": { mimeType: "image/jpeg", imageBase64: "QUFB" },
+      "GET /api/patients/search": { items: [HIT] },
+      "GET /api/patients/p-1/photo": { mimeType: "image/jpeg", imageBase64: "QUFB" },
     });
     renderWithProviders(<RegistrationDesk />);
     const user = userEvent.setup();
@@ -132,8 +132,8 @@ describe("RegistrationDesk", () => {
 
   it("C-18: 'No — register new' switches to the form with the searched phone prefilled", async () => {
     stubFetch({
-      "GET /patients/search": { items: [HIT] },
-      "GET /patients/p-1/photo": { mimeType: "image/jpeg", imageBase64: "QUFB" },
+      "GET /api/patients/search": { items: [HIT] },
+      "GET /api/patients/p-1/photo": { mimeType: "image/jpeg", imageBase64: "QUFB" },
     });
     renderWithProviders(<RegistrationDesk />);
     const user = userEvent.setup();
@@ -149,8 +149,8 @@ describe("RegistrationDesk", () => {
 
   it("D-31: age under 18 reveals a REQUIRED guardian section and blocks submit without it", async () => {
     stubFetch({
-      "POST /patients": { patient: { id: "p-new" }, guardianId: "g-1" },
-      "GET /patients/p-new/qr": {
+      "POST /api/patients": { patient: { id: "p-new" }, guardianId: "g-1" },
+      "GET /api/patients/p-new/qr": {
         payload: "1.p-new.3.6f2a9c", uhid: "HMS0000009998", name: "Bal Kumar", sex: "unknown", dob: null,
       },
     });
@@ -182,7 +182,7 @@ describe("RegistrationDesk", () => {
     await user.click(screen.getByRole("button", { name: "Register (Alt+S)" }));
 
     await waitFor(() => expect(fetchCalls().some((c) => c.method === "POST")).toBe(true));
-    const posted = fetchCalls().find((c) => c.method === "POST" && c.url === "/patients");
+    const posted = fetchCalls().find((c) => c.method === "POST" && c.url === "/api/patients");
     const body = JSON.parse(posted?.body ?? "{}") as Record<string, unknown>;
     expect(body.ageYears).toBe(10);
     expect(body.guardian).toEqual({ name: "Sunita Kumar", relationship: "father" });
@@ -190,8 +190,8 @@ describe("RegistrationDesk", () => {
 
   it("D9: the promotional opt-in checkbox is unchecked by default and posts false when left alone", async () => {
     stubFetch({
-      "POST /patients": { patient: { id: "p-new" }, guardianId: null },
-      "GET /patients/p-new/qr": {
+      "POST /api/patients": { patient: { id: "p-new" }, guardianId: null },
+      "GET /api/patients/p-new/qr": {
         payload: "1.p-new.3.6f2a9c", uhid: "HMS0000009997", name: "Leela Bai", sex: "unknown", dob: null,
       },
     });
@@ -205,16 +205,16 @@ describe("RegistrationDesk", () => {
     await user.type(screen.getByLabelText("Full name"), "Leela Bai");
     await user.click(screen.getByRole("button", { name: "Register (Alt+S)" }));
 
-    await waitFor(() => expect(fetchCalls().some((c) => c.method === "POST" && c.url === "/patients")).toBe(true));
-    const posted = fetchCalls().find((c) => c.method === "POST" && c.url === "/patients")!;
+    await waitFor(() => expect(fetchCalls().some((c) => c.method === "POST" && c.url === "/api/patients")).toBe(true));
+    const posted = fetchCalls().find((c) => c.method === "POST" && c.url === "/api/patients")!;
     const body = JSON.parse(posted.body) as Record<string, unknown>;
     expect(body.promotionalOptIn).toBe(false);
   });
 
   it("D9: checking the promotional opt-in box posts promotionalOptIn: true", async () => {
     stubFetch({
-      "POST /patients": { patient: { id: "p-new" }, guardianId: null },
-      "GET /patients/p-new/qr": {
+      "POST /api/patients": { patient: { id: "p-new" }, guardianId: null },
+      "GET /api/patients/p-new/qr": {
         payload: "1.p-new.3.6f2a9c", uhid: "HMS0000009996", name: "Meena Rao", sex: "unknown", dob: null,
       },
     });
@@ -226,16 +226,16 @@ describe("RegistrationDesk", () => {
     await user.click(screen.getByLabelText("Promotional messages: opted in"));
     await user.click(screen.getByRole("button", { name: "Register (Alt+S)" }));
 
-    await waitFor(() => expect(fetchCalls().some((c) => c.method === "POST" && c.url === "/patients")).toBe(true));
-    const posted = fetchCalls().find((c) => c.method === "POST" && c.url === "/patients")!;
+    await waitFor(() => expect(fetchCalls().some((c) => c.method === "POST" && c.url === "/api/patients")).toBe(true));
+    const posted = fetchCalls().find((c) => c.method === "POST" && c.url === "/api/patients")!;
     const body = JSON.parse(posted.body) as Record<string, unknown>;
     expect(body.promotionalOptIn).toBe(true);
   });
 
   it("a valid submit posts /patients and advances to the printed card view", async () => {
     stubFetch({
-      "POST /patients": { patient: { id: "p-new" }, guardianId: null },
-      "GET /patients/p-new/qr": {
+      "POST /api/patients": { patient: { id: "p-new" }, guardianId: null },
+      "GET /api/patients/p-new/qr": {
         payload: "1.p-new.3.6f2a9c",
         uhid: "HMS0000009999",
         name: "Ravi Sharma",
@@ -255,7 +255,7 @@ describe("RegistrationDesk", () => {
     expect(await screen.findByText("HMS0000009999")).toBeInTheDocument();
     expect(document.querySelector(".qr-card svg")).not.toBeNull();
 
-    const posted = fetchCalls().find((c) => c.method === "POST" && c.url === "/patients");
+    const posted = fetchCalls().find((c) => c.method === "POST" && c.url === "/api/patients");
     expect(posted).toBeDefined();
     const body = JSON.parse(posted?.body ?? "{}") as Record<string, unknown>;
     expect(body.name).toBe("Ravi Sharma");

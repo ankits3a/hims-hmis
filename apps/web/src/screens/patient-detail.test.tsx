@@ -95,10 +95,10 @@ describe("PatientDetail", () => {
 
   it("renders demographics, UHID, a struck-through corrected allergy (still present), and the guardian's SERVER-COMPUTED effective authority", async () => {
     stubFetch({
-      "GET /patients/p-1": { patient: PATIENT, resolvedFrom: null },
-      "GET /patients/p-1/allergies": { items: ALLERGIES },
-      "GET /patients/p-1/guardians": GUARDIANS,
-      "GET /patients/p-1/qr": QR,
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: ALLERGIES },
+      "GET /api/patients/p-1/guardians": GUARDIANS,
+      "GET /api/patients/p-1/qr": QR,
     });
     renderWithProviders(<PatientDetail />);
 
@@ -123,10 +123,10 @@ describe("PatientDetail", () => {
 
   it("D-31: shows the sealed-guardian-messages banner when the patient has sensitiveContext", async () => {
     stubFetch({
-      "GET /patients/p-1": { patient: { ...PATIENT, sensitiveContext: true }, resolvedFrom: null },
-      "GET /patients/p-1/allergies": { items: [] },
-      "GET /patients/p-1/guardians": { items: [] },
-      "GET /patients/p-1/qr": QR,
+      "GET /api/patients/p-1": { patient: { ...PATIENT, sensitiveContext: true }, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+      "GET /api/patients/p-1/qr": QR,
     });
     renderWithProviders(<PatientDetail />);
 
@@ -137,11 +137,11 @@ describe("PatientDetail", () => {
 
   it("dirty-field PATCH: editing only the phone number sends a body with exactly that one key", async () => {
     stubFetch({
-      "GET /patients/p-1": { patient: PATIENT, resolvedFrom: null },
-      "GET /patients/p-1/allergies": { items: [] },
-      "GET /patients/p-1/guardians": { items: [] },
-      "GET /patients/p-1/qr": QR,
-      "PATCH /patients/p-1": { patient: { ...PATIENT, phone: "9998887766" }, changed: ["phone"] },
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+      "GET /api/patients/p-1/qr": QR,
+      "PATCH /api/patients/p-1": { patient: { ...PATIENT, phone: "9998887766" }, changed: ["phone"] },
     });
     renderWithProviders(<PatientDetail />);
     const user = userEvent.setup();
@@ -160,11 +160,11 @@ describe("PatientDetail", () => {
 
   it("D9: the promotional opt-in toggle posts an exact single-field PATCH", async () => {
     stubFetch({
-      "GET /patients/p-1": { patient: PATIENT, resolvedFrom: null },
-      "GET /patients/p-1/allergies": { items: [] },
-      "GET /patients/p-1/guardians": { items: [] },
-      "GET /patients/p-1/qr": QR,
-      "PATCH /patients/p-1": { patient: { ...PATIENT, promotionalOptIn: true }, changed: ["promotionalOptIn"] },
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+      "GET /api/patients/p-1/qr": QR,
+      "PATCH /api/patients/p-1": { patient: { ...PATIENT, promotionalOptIn: true }, changed: ["promotionalOptIn"] },
     });
     renderWithProviders(<PatientDetail />);
     const user = userEvent.setup();
@@ -182,11 +182,11 @@ describe("PatientDetail", () => {
 
   it("D10/D-33: marking deceased with a date posts an exact single-field PATCH", async () => {
     stubFetch({
-      "GET /patients/p-1": { patient: PATIENT, resolvedFrom: null },
-      "GET /patients/p-1/allergies": { items: [] },
-      "GET /patients/p-1/guardians": { items: [] },
-      "GET /patients/p-1/qr": QR,
-      "PATCH /patients/p-1": {
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+      "GET /api/patients/p-1/qr": QR,
+      "PATCH /api/patients/p-1": {
         patient: { ...PATIENT, deceasedAt: "2026-08-20T00:00:00.000Z" },
         changed: ["deceasedAt"],
       },
@@ -208,11 +208,11 @@ describe("PatientDetail", () => {
   it("D10/D-33: the deceased banner shows the date and clearing posts an exact PATCH of null", async () => {
     const deceasedPatient = { ...PATIENT, deceasedAt: "2026-08-15T00:00:00.000Z" };
     stubFetch({
-      "GET /patients/p-1": { patient: deceasedPatient, resolvedFrom: null },
-      "GET /patients/p-1/allergies": { items: [] },
-      "GET /patients/p-1/guardians": { items: [] },
-      "GET /patients/p-1/qr": QR,
-      "PATCH /patients/p-1": { patient: PATIENT, changed: ["deceasedAt"] },
+      "GET /api/patients/p-1": { patient: deceasedPatient, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+      "GET /api/patients/p-1/qr": QR,
+      "PATCH /api/patients/p-1": { patient: PATIENT, changed: ["deceasedAt"] },
     });
     renderWithProviders(<PatientDetail />);
     const user = userEvent.setup();
@@ -230,11 +230,11 @@ describe("PatientDetail", () => {
 
   it("E-8: a correction posts to entered-in-error with the typed reason, and is blocked without one", async () => {
     stubFetch({
-      "GET /patients/p-1": { patient: PATIENT, resolvedFrom: null },
-      "GET /patients/p-1/allergies": { items: [ALLERGIES[1]] }, // the still-active one
-      "GET /patients/p-1/guardians": { items: [] },
-      "GET /patients/p-1/qr": QR,
-      "POST /patients/p-1/allergies/al-1/entered-in-error": { ok: true },
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [ALLERGIES[1]] }, // the still-active one
+      "GET /api/patients/p-1/guardians": { items: [] },
+      "GET /api/patients/p-1/qr": QR,
+      "POST /api/patients/p-1/allergies/al-1/entered-in-error": { ok: true },
     });
     renderWithProviders(<PatientDetail />);
     const user = userEvent.setup();
@@ -260,10 +260,10 @@ describe("PatientDetail", () => {
 
   it("shows the merged-record banner when the server resolved the URL id to a different canonical patient", async () => {
     stubFetch({
-      "GET /patients/p-1": { patient: { ...PATIENT, id: "p-2" }, resolvedFrom: "p-1" },
-      "GET /patients/p-2/allergies": { items: [] },
-      "GET /patients/p-2/guardians": { items: [] },
-      "GET /patients/p-2/qr": QR,
+      "GET /api/patients/p-1": { patient: { ...PATIENT, id: "p-2" }, resolvedFrom: "p-1" },
+      "GET /api/patients/p-2/allergies": { items: [] },
+      "GET /api/patients/p-2/guardians": { items: [] },
+      "GET /api/patients/p-2/qr": QR,
     });
     renderWithProviders(<PatientDetail />);
 
@@ -272,11 +272,11 @@ describe("PatientDetail", () => {
 
   it("card reissue calls POST /patients/:id/qr/reissue and renders the new payload", async () => {
     stubFetch({
-      "GET /patients/p-1": { patient: PATIENT, resolvedFrom: null },
-      "GET /patients/p-1/allergies": { items: [] },
-      "GET /patients/p-1/guardians": { items: [] },
-      "GET /patients/p-1/qr": QR,
-      "POST /patients/p-1/qr/reissue": { qrVersion: 2, payload: "2.p-1.2.def456" },
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+      "GET /api/patients/p-1/qr": QR,
+      "POST /api/patients/p-1/qr/reissue": { qrVersion: 2, payload: "2.p-1.2.def456" },
     });
     renderWithProviders(<PatientDetail />);
     const user = userEvent.setup();

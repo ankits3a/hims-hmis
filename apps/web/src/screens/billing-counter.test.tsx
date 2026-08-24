@@ -157,10 +157,10 @@ async function pickPatient(user: ReturnType<typeof userEvent.setup>): Promise<vo
 
 /** The two routes every write test needs before it can post anything. */
 const BASE_ROUTES: Record<string, Handler> = {
-  "GET /patients/search": { status: 200, body: { items: [SEARCH_HIT] } },
-  "GET /billing/visits/enc-1/fee-quote": { status: 200, body: QUOTE_NEW },
-  "POST /billing/invoices/preview": { status: 200, body: FEE_DRAFT },
-  "GET /billing/patients/p-1/dues": { status: 200, body: { items: [] } },
+  "GET /api/patients/search": { status: 200, body: { items: [SEARCH_HIT] } },
+  "GET /api/billing/visits/enc-1/fee-quote": { status: 200, body: QUOTE_NEW },
+  "POST /api/billing/invoices/preview": { status: 200, body: FEE_DRAFT },
+  "GET /api/billing/patients/p-1/dues": { status: 200, body: { items: [] } },
 };
 
 describe("BillingCounter", () => {
@@ -176,14 +176,14 @@ describe("BillingCounter", () => {
   it("the visit context comes from GET /billing/visits/:encounterId/fee-quote — typed at the counter or deep-linked — and the branch badge shows the fee or FREE", async () => {
     mockRoutes({
       ...BASE_ROUTES,
-      "GET /billing/visits/enc-2/fee-quote": { status: 200, body: QUOTE_REVISIT },
+      "GET /api/billing/visits/enc-2/fee-quote": { status: 200, body: QUOTE_REVISIT },
     });
     const { unmount } = renderWithProviders(<BillingCounter />);
 
     // typed at the counter (fireEvent: the whole id at once, as a wedge-scanned or pasted id arrives)
     fireEvent.change(screen.getByLabelText("Encounter"), { target: { value: "enc-1" } });
 
-    await waitFor(() => expect(callsTo("GET", "/billing/visits/enc-1/fee-quote")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("GET", "/api/billing/visits/enc-1/fee-quote")).toHaveLength(1));
     expect(await screen.findByTestId("fee-branch")).toHaveTextContent("New");
     expect(screen.getByTestId("fee-amount")).toHaveTextContent("₹560.00");
     // the quote's fee line is PRE-FILLED into the draft (step 3 item 2)
@@ -195,7 +195,7 @@ describe("BillingCounter", () => {
     searchState.current = { encounterId: "enc-2" };
     renderWithProviders(<BillingCounter />);
 
-    await waitFor(() => expect(callsTo("GET", "/billing/visits/enc-2/fee-quote")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("GET", "/api/billing/visits/enc-2/fee-quote")).toHaveLength(1));
     expect(await screen.findByTestId("fee-branch")).toHaveTextContent("Revisit");
     expect(screen.getByTestId("fee-free")).toHaveTextContent("Free follow-up");
     expect(screen.queryByTestId("fee-amount")).toBeNull();
@@ -229,8 +229,8 @@ describe("BillingCounter", () => {
     };
     mockRoutes({
       ...BASE_ROUTES,
-      "GET /tariff/services": { status: 200, body: SERVICES },
-      "POST /billing/invoices/preview": (init) => {
+      "GET /api/tariff/services": { status: 200, body: SERVICES },
+      "POST /api/billing/invoices/preview": (init) => {
         const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as { lines: unknown[] };
         return { status: 200, body: body.lines.length > 1 ? twoLineDraft : FEE_DRAFT };
       },
@@ -239,7 +239,7 @@ describe("BillingCounter", () => {
     const user = userEvent.setup();
 
     await screen.findByTestId("line-row-fee");
-    await waitFor(() => expect(bodiesOf("POST", "/billing/invoices/preview")[0]).toEqual({
+    await waitFor(() => expect(bodiesOf("POST", "/api/billing/invoices/preview")[0]).toEqual({
       encounterId: "enc-1",
       lines: [{ lineId: "fee", serviceId: "svc-consult", qty: 1 }],
     }));
@@ -256,7 +256,7 @@ describe("BillingCounter", () => {
     await user.type(screen.getByLabelText("Discount reason"), "camp patient");
 
     await waitFor(() => {
-      const bodies = bodiesOf("POST", "/billing/invoices/preview");
+      const bodies = bodiesOf("POST", "/api/billing/invoices/preview");
       expect(bodies[bodies.length - 1]).toEqual({
         encounterId: "enc-1",
         lines: [
@@ -287,11 +287,11 @@ describe("BillingCounter", () => {
   it("K39: the dues sidebar polls on refetchInterval 15_000 — a SECOND GET arrives after 15 s of fake time", async () => {
     vi.useFakeTimers();
     mockRoutes({
-      "POST /patients/qr/verify": {
+      "POST /api/patients/qr/verify": {
         status: 200,
         body: { ok: true, patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", sex: "female", dob: null } },
       },
-      "GET /billing/patients/p-1/dues": { status: 200, body: DUES },
+      "GET /api/billing/patients/p-1/dues": { status: 200, body: DUES },
     });
 
     // waitFor cannot drive vitest's fake clock (it gates on a global `jest`) — hand-flush instead.
@@ -312,24 +312,24 @@ describe("BillingCounter", () => {
     await flush();
     await flush();
 
-    expect(callsTo("GET", "/billing/patients/p-1/dues")).toHaveLength(1);
+    expect(callsTo("GET", "/api/billing/patients/p-1/dues")).toHaveLength(1);
     expect(screen.getByTestId("dues-row-inv-9")).toHaveTextContent("₹450.00");
 
     // NEGATIVE CONTROL: well inside the window, nothing refetches — so the second GET below is the
     // interval firing and not a re-render, a remount or a query invalidation.
     await flush(14_000);
-    expect(callsTo("GET", "/billing/patients/p-1/dues")).toHaveLength(1);
+    expect(callsTo("GET", "/api/billing/patients/p-1/dues")).toHaveLength(1);
 
     await flush(1_500);
     await flush();
-    expect(callsTo("GET", "/billing/patients/p-1/dues").length).toBeGreaterThan(1);
+    expect(callsTo("GET", "/api/billing/patients/p-1/dues").length).toBeGreaterThan(1);
   });
 
   it("K38: the invoice POST carries INTEGER PAISE throughout, and a 400 pan_required reveals the PAN / Form 60 fields for the retry", async () => {
     searchState.current = { encounterId: "enc-1" };
     mockRoutes({
       ...BASE_ROUTES,
-      "POST /billing/invoices": (init, callIndex) => {
+      "POST /api/billing/invoices": (init, callIndex) => {
         if (callIndex === 0) {
           return {
             status: 400,
@@ -342,7 +342,7 @@ describe("BillingCounter", () => {
         }
         return { status: 201, body: ISSUED };
       },
-      "GET /billing/invoices/inv-1/print": { status: 200, body: PRINT },
+      "GET /api/billing/invoices/inv-1/print": { status: 200, body: PRINT },
     });
     renderWithProviders(<BillingCounter />);
     const user = userEvent.setup();
@@ -354,8 +354,8 @@ describe("BillingCounter", () => {
     await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "560");
     await user.click(screen.getByTestId("submit-invoice"));
 
-    await waitFor(() => expect(callsTo("POST", "/billing/invoices")).toHaveLength(1));
-    const first = bodiesOf("POST", "/billing/invoices")[0]!;
+    await waitFor(() => expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(1));
+    const first = bodiesOf("POST", "/api/billing/invoices")[0]!;
     const { draftId, ...rest } = first as { draftId: string };
     expect(typeof draftId).toBe("string");
     expect(draftId).not.toBe("");
@@ -377,8 +377,8 @@ describe("BillingCounter", () => {
     await user.type(screen.getByLabelText("PAN"), "ABCDE1234F");
     await user.click(screen.getByTestId("submit-invoice"));
 
-    await waitFor(() => expect(callsTo("POST", "/billing/invoices")).toHaveLength(2));
-    const second = bodiesOf("POST", "/billing/invoices")[1]!;
+    await waitFor(() => expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(2));
+    const second = bodiesOf("POST", "/api/billing/invoices")[1]!;
     expect(second.receipt).toEqual({ tenders: [{ mode: "cash", amountPaise: 56000 }], panNumber: "ABCDE1234F" });
     expect(nonIntegerNumbers(second)).toEqual([]);
   });
@@ -387,7 +387,7 @@ describe("BillingCounter", () => {
     searchState.current = { encounterId: "enc-1" };
     mockRoutes({
       ...BASE_ROUTES,
-      "POST /billing/invoices": {
+      "POST /api/billing/invoices": {
         status: 409,
         body: {
           statusCode: 409, code: "cash_threshold_blocked",
@@ -404,7 +404,7 @@ describe("BillingCounter", () => {
     await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "560");
     await user.click(screen.getByTestId("submit-invoice"));
 
-    await waitFor(() => expect(callsTo("POST", "/billing/invoices")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(1));
     expect(await screen.findByTestId("counter-error")).toHaveTextContent(
       "cash episode 20000000p reaches the block threshold 20000000p",
     );
@@ -419,7 +419,7 @@ describe("BillingCounter", () => {
     searchState.current = { encounterId: "enc-1" };
     mockRoutes({
       ...BASE_ROUTES,
-      "POST /billing/invoices": (init, callIndex) => {
+      "POST /api/billing/invoices": (init, callIndex) => {
         if (callIndex === 0) {
           return {
             status: 409,
@@ -432,7 +432,7 @@ describe("BillingCounter", () => {
         }
         return { status: 201, body: { ...ISSUED, allocatedPaise: 20000, creditExtended: true, settlement: { state: "partial", outstandingPaise: 36000 } } };
       },
-      "GET /billing/invoices/inv-1/print": { status: 200, body: PRINT },
+      "GET /api/billing/invoices/inv-1/print": { status: 200, body: PRINT },
     });
     renderWithProviders(<BillingCounter />);
     const user = userEvent.setup();
@@ -450,14 +450,14 @@ describe("BillingCounter", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(callsTo("POST", "/billing/invoices")).toHaveLength(0);
+    expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(0);
     expect(screen.getByTestId("counter-error")).toHaveTextContent("A reason is required to extend credit");
 
     await user.type(screen.getByLabelText("Credit reason"), "camp patient, dues cleared Friday");
     await user.click(screen.getByTestId("submit-invoice"));
 
-    await waitFor(() => expect(callsTo("POST", "/billing/invoices")).toHaveLength(1));
-    expect(bodiesOf("POST", "/billing/invoices")[0]!.credit).toEqual({ reason: "camp patient, dues cleared Friday" });
+    await waitFor(() => expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/billing/invoices")[0]!.credit).toEqual({ reason: "camp patient, dues cleared Friday" });
 
     // above the cap the server asks for a granted approval; the screen opens the lane for its id
     // (the server's body carries the CAP, never an approval id — the cashier brings that from the
@@ -468,8 +468,8 @@ describe("BillingCounter", () => {
     await user.type(screen.getByLabelText("Approval id", { selector: "#counter-credit-approval" }), "ap-7");
     await user.click(screen.getByTestId("submit-invoice"));
 
-    await waitFor(() => expect(callsTo("POST", "/billing/invoices")).toHaveLength(2));
-    expect(bodiesOf("POST", "/billing/invoices")[1]!.credit).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/billing/invoices")).toHaveLength(2));
+    expect(bodiesOf("POST", "/api/billing/invoices")[1]!.credit).toEqual({
       reason: "camp patient, dues cleared Friday",
       approvalId: "ap-7",
     });
@@ -480,8 +480,8 @@ describe("BillingCounter", () => {
     const printSpy = vi.fn();
     mockRoutes({
       ...BASE_ROUTES,
-      "POST /billing/invoices": { status: 201, body: { ...ISSUED, allocatedPaise: 56000, unallocatedPaise: 4000 } },
-      "GET /billing/invoices/inv-1/print": { status: 200, body: PRINT },
+      "POST /api/billing/invoices": { status: 201, body: { ...ISSUED, allocatedPaise: 56000, unallocatedPaise: 4000 } },
+      "GET /api/billing/invoices/inv-1/print": { status: 200, body: PRINT },
     });
     const { container } = renderWithProviders(<BillingCounter />);
     vi.stubGlobal("print", printSpy);
@@ -495,7 +495,7 @@ describe("BillingCounter", () => {
     expect(screen.getByTestId("tender-state")).toHaveTextContent("Over by ₹40.00");
     await user.click(screen.getByTestId("submit-invoice"));
 
-    await waitFor(() => expect(callsTo("GET", "/billing/invoices/inv-1/print")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("GET", "/api/billing/invoices/inv-1/print")).toHaveLength(1));
 
     expect(await screen.findByTestId("issued-invoice-no")).toHaveTextContent("INV/26-27/000042");
     // D2 step 5: the surplus is change due / a banked advance, never a refusal.

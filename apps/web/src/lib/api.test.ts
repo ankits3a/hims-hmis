@@ -1,8 +1,30 @@
-import { ApiError, api, getToken, setToken } from "./api";
+import { API_BASE, ApiError, api, getToken, setToken } from "./api";
 
 describe("api()", () => {
   beforeEach(() => {
     setToken(null);
+  });
+
+  /**
+   * PLAN 11g / DD1 — THE PREFIX IS THE CLIENT'S CONTRACT, SO IT IS ASSERTED HERE.
+   *
+   * Callers pass the API's OWN path (`/patients/search`); what leaves the browser is
+   * `/api/patients/search`. That separation is what stops a browser GET of a SCREEN path being
+   * answered by the API — the smoke test's D1, where 15 of 20 screens were dark — and
+   * `apps/core/test/caddyfile-parity.test.ts` pins the other end of it against the Caddy matcher.
+   */
+  it("prepends the API base path to every request, leaving the caller's path unchanged", async () => {
+    let capturedUrl: unknown;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        capturedUrl = input;
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }),
+    );
+    await api("GET", "/patients/search?q=abc");
+    expect(API_BASE).toBe("/api");
+    expect(capturedUrl).toBe("/api/patients/search?q=abc");
   });
 
   it("attaches the bearer header when a token is stored", async () => {

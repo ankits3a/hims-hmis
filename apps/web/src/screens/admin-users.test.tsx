@@ -59,7 +59,7 @@ describe("AdminUsers", () => {
   afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 
   it("renders the whole roster — including deactivated people, whose row offers REACTIVATE", async () => {
-    mockRoutes({ "GET /admin/users": { status: 200, body: { users: [ASHA, RETIRED] } } });
+    mockRoutes({ "GET /api/admin/users": { status: 200, body: { users: [ASHA, RETIRED] } } });
     renderWithProviders(<AdminUsers />);
 
     const ashaRow = await screen.findByTestId("admin-user-asha");
@@ -82,7 +82,7 @@ describe("AdminUsers", () => {
    * rendering decision this screen actually makes: below two, say it; at two, do not.
    */
   it("11f D2 — banners the takeover rule's mitigation when fewer than two people hold the full auth.* set", async () => {
-    mockRoutes({ "GET /admin/users": { status: 200, body: { users: [ASHA], fullAdministrators: 1 } } });
+    mockRoutes({ "GET /api/admin/users": { status: 200, body: { users: [ASHA], fullAdministrators: 1 } } });
     renderWithProviders(<AdminUsers />);
 
     const warning = await screen.findByTestId("admin-two-admin-warning");
@@ -95,7 +95,7 @@ describe("AdminUsers", () => {
     // The count the first draft's wording rendered as "Only 0 person". Zero is not hypothetical:
     // it is every deployment before an admin role is assigned, and it is what the e2e fixture's
     // baseline measures.
-    mockRoutes({ "GET /admin/users": { status: 200, body: { users: [ASHA], fullAdministrators: 0 } } });
+    mockRoutes({ "GET /api/admin/users": { status: 200, body: { users: [ASHA], fullAdministrators: 0 } } });
     renderWithProviders(<AdminUsers />);
 
     const warning = await screen.findByTestId("admin-two-admin-warning");
@@ -105,7 +105,7 @@ describe("AdminUsers", () => {
   });
 
   it("11f D2 — the banner is gone at two, and absent while the list is still in flight", async () => {
-    mockRoutes({ "GET /admin/users": { status: 200, body: { users: [ASHA], fullAdministrators: 2 } } });
+    mockRoutes({ "GET /api/admin/users": { status: 200, body: { users: [ASHA], fullAdministrators: 2 } } });
     renderWithProviders(<AdminUsers />);
 
     // Wait for the list to have ARRIVED before concluding the banner is absent — asserting on an
@@ -116,8 +116,8 @@ describe("AdminUsers", () => {
 
   it("creates a person, sending exactly what was typed and omitting an empty PIN", async () => {
     mockRoutes({
-      "GET /admin/users": { status: 200, body: { users: [] } },
-      "POST /admin/users": { status: 201, body: { id: "u-new" } },
+      "GET /api/admin/users": { status: 200, body: { users: [] } },
+      "POST /api/admin/users": { status: 201, body: { id: "u-new" } },
     });
     renderWithProviders(<AdminUsers />);
     const user = userEvent.setup();
@@ -126,10 +126,10 @@ describe("AdminUsers", () => {
     await user.type(screen.getByLabelText("Password"), "a-good-password");
     await user.click(screen.getByRole("button", { name: /Add person/ }));
 
-    await waitFor(() => expect(callsTo("POST", "/admin/users")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/admin/users")).toHaveLength(1));
     // NO `pin` KEY AT ALL, rather than an empty string: `pin: ""` would fail the server's policy
     // (4-6 digits) and refuse a perfectly ordinary account with no PIN.
-    expect(callsTo("POST", "/admin/users")[0]!.body).toEqual({
+    expect(callsTo("POST", "/api/admin/users")[0]!.body).toEqual({
       username: "ravi", fullName: "Ravi Kumar", password: "a-good-password",
     });
     expect(await screen.findByTestId("admin-notice")).toHaveTextContent("ravi was added");
@@ -137,8 +137,8 @@ describe("AdminUsers", () => {
 
   it("renders the POLICY refusal from the server rather than minting a floor of its own", async () => {
     mockRoutes({
-      "GET /admin/users": { status: 200, body: { users: [] } },
-      "POST /admin/users": {
+      "GET /api/admin/users": { status: 200, body: { users: [] } },
+      "POST /api/admin/users": {
         status: 400,
         body: {
           code: "password_policy",
@@ -155,14 +155,14 @@ describe("AdminUsers", () => {
 
     // THE REQUEST WAS MADE. That is the point of this test: a client-side copy of the floor would
     // have refused it here, and would then drift from the rule that actually decides.
-    await waitFor(() => expect(callsTo("POST", "/admin/users")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/admin/users")).toHaveLength(1));
     expect(await screen.findByTestId("admin-create-error")).toHaveTextContent("at least 10 characters");
   });
 
   it("gives admin_lockout its own sentence — a 409 with a bare number is a person staring at it", async () => {
     mockRoutes({
-      "GET /admin/users": { status: 200, body: { users: [ASHA] } },
-      "POST /admin/users/u-asha/deactivate": {
+      "GET /api/admin/users": { status: 200, body: { users: [ASHA] } },
+      "POST /api/admin/users/u-asha/deactivate": {
         status: 409, body: { code: "admin_lockout", message: "refused: this would leave NOBODY holding auth.users.manage" },
       },
     });
@@ -177,9 +177,9 @@ describe("AdminUsers", () => {
 
   it("a password reset says the sessions were signed out; a PIN reset says only the PIN changed", async () => {
     mockRoutes({
-      "GET /admin/users": { status: 200, body: { users: [ASHA] } },
-      "POST /admin/users/u-asha/password-reset": { status: 200, body: { sessionsRevoked: 2 } },
-      "POST /admin/users/u-asha/pin-reset": { status: 204, body: null },
+      "GET /api/admin/users": { status: 200, body: { users: [ASHA] } },
+      "POST /api/admin/users/u-asha/password-reset": { status: 200, body: { sessionsRevoked: 2 } },
+      "POST /api/admin/users/u-asha/pin-reset": { status: 204, body: null },
     });
     renderWithProviders(<AdminUsers />);
     const user = userEvent.setup();
@@ -190,8 +190,8 @@ describe("AdminUsers", () => {
     await user.type(within(panel).getByLabelText("Password"), "issued-at-the-desk");
     await user.click(within(panel).getByRole("button", { name: "Reset" }));
 
-    await waitFor(() => expect(callsTo("POST", "/admin/users/u-asha/password-reset")).toHaveLength(1));
-    expect(callsTo("POST", "/admin/users/u-asha/password-reset")[0]!.body)
+    await waitFor(() => expect(callsTo("POST", "/api/admin/users/u-asha/password-reset")).toHaveLength(1));
+    expect(callsTo("POST", "/api/admin/users/u-asha/password-reset")[0]!.body)
       .toEqual({ newPassword: "issued-at-the-desk" });
     expect(await screen.findByTestId("admin-notice")).toHaveTextContent("sessions were signed out");
 
@@ -202,8 +202,8 @@ describe("AdminUsers", () => {
     await user.type(within(pinPanel).getByLabelText("PIN (optional)"), "417293");
     await user.click(within(pinPanel).getByRole("button", { name: "Reset" }));
 
-    await waitFor(() => expect(callsTo("POST", "/admin/users/u-asha/pin-reset")).toHaveLength(1));
-    expect(callsTo("POST", "/admin/users/u-asha/pin-reset")[0]!.body).toEqual({ newPin: "417293" });
+    await waitFor(() => expect(callsTo("POST", "/api/admin/users/u-asha/pin-reset")).toHaveLength(1));
+    expect(callsTo("POST", "/api/admin/users/u-asha/pin-reset")[0]!.body).toEqual({ newPin: "417293" });
   });
 
   it("CLOSE — a double click on a row action fires ONE request, not two", async () => {
@@ -212,8 +212,8 @@ describe("AdminUsers", () => {
     // synchronously, which is the whole reason that component exists.
     let resolveDeactivate: (() => void) | undefined;
     mockRoutes({
-      "GET /admin/users": { status: 200, body: { users: [ASHA] } },
-      "POST /admin/users/u-asha/deactivate": () => ({ status: 200, body: { sessionsRevoked: 1 } }),
+      "GET /api/admin/users": { status: 200, body: { users: [ASHA] } },
+      "POST /api/admin/users/u-asha/deactivate": () => ({ status: 200, body: { sessionsRevoked: 1 } }),
     });
     // Hold the request open so the second click lands while the first is genuinely in flight.
     const realFetch = vi.mocked(fetch).getMockImplementation()!;
@@ -232,22 +232,22 @@ describe("AdminUsers", () => {
     await user.click(button);
     resolveDeactivate?.();
 
-    await waitFor(() => expect(callsTo("POST", "/admin/users/u-asha/deactivate")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/admin/users/u-asha/deactivate")).toHaveLength(1));
     // …and it stays one after everything settles, rather than merely being one at the instant
     // the assertion first passed.
-    expect(callsTo("POST", "/admin/users/u-asha/deactivate")).toHaveLength(1);
+    expect(callsTo("POST", "/api/admin/users/u-asha/deactivate")).toHaveLength(1);
   });
 
   it("revokes one role assignment and says which", async () => {
     mockRoutes({
-      "GET /admin/users": { status: 200, body: { users: [ASHA] } },
-      "DELETE /admin/users/u-asha/roles/a-1": { status: 204, body: null },
+      "GET /api/admin/users": { status: 200, body: { users: [ASHA] } },
+      "DELETE /api/admin/users/u-asha/roles/a-1": { status: 204, body: null },
     });
     renderWithProviders(<AdminUsers />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Revoke" }));
 
-    await waitFor(() => expect(callsTo("DELETE", "/admin/users/u-asha/roles/a-1")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("DELETE", "/api/admin/users/u-asha/roles/a-1")).toHaveLength(1));
     expect(await screen.findByTestId("admin-notice"))
       .toHaveTextContent("front_office was revoked from asha");
   });

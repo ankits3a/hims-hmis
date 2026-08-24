@@ -47,18 +47,32 @@ hmis.crkmch.com {
 	}
 
 	# ---------------------------------------------------------------------------------------
-	# THE PARITY LINE. These nine prefixes are mirrored from apps/web/vite.config.ts's dev proxy
-	# and pinned by apps/core/test/caddyfile-parity.test.ts (D14): a module that adds a prefix
-	# there and forgets it here breaks that test rather than shipping an SPA whose calls work in
-	# dev and 404 into index.html in production. Change both files, in one commit.
+	# THE PARITY LINE — PLAN 11g / DD1. ONE PREFIX, AND THE ORIGIN NOW HAS ONE RULE:
+	# `/api/*` IS THE API, EVERYTHING ELSE IS THE APPLICATION.
+	#
+	# This line used to list twelve prefixes mirrored from the SPA's dev proxy — /auth /patients
+	# /approvals /workflow /health /opd /billing /alerts /admin /ops /tariff /ws — and every one
+	# of them was ALSO a path apps/web/src/router.tsx declares a SCREEN on. This matcher is
+	# path-only (no method, no Accept), and it is evaluated FIRST, so a browser asking for the
+	# /admin/users SCREEN was handed the API's {"statusCode":401} and 15 of the 20 screens did not
+	# load at all. That is the 2026-08-24 synthetic smoke test's D1, and it could not reproduce in
+	# dev because the vite server resolved the same collision the other way.
+	#
+	# Still pinned by apps/core/test/caddyfile-parity.test.ts, which now also asserts that NO SPA
+	# route falls inside the proxied space — the leg that would have caught it.
 	# ---------------------------------------------------------------------------------------
-	@api path /auth* /patients* /approvals* /workflow* /health* /opd* /billing* /alerts* /admin* /ops* /tariff* /ws*
+	@api path /api*
 
 	# `handle` blocks are mutually exclusive and evaluated in the order written, which is what
 	# this site needs: without them Caddy's directive ordering would run `try_files` (a rewrite)
-	# BEFORE `reverse_proxy`, rewrite /health to /index.html because no such file exists under
+	# BEFORE `reverse_proxy`, rewrite /api/health to /index.html because no such file exists under
 	# the static root, and quietly stop the api from ever being reached.
 	handle @api {
+		# The prefix is a fact about the ORIGIN, not about the API: it is stripped here so the
+		# api container keeps its own path space (`@Controller("billing")`, the compose
+		# healthcheck on /health, the Prometheus scrape, and ~30 supertest e2e suites all still
+		# speak the unprefixed path). `uri` runs in the rewrite phase, before `reverse_proxy`.
+		uri strip_prefix /api
 		reverse_proxy api:3000
 	}
 

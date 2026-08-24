@@ -59,11 +59,11 @@ describe("ModeBanner", () => {
   it("renders NOTHING when the mode is normal", async () => {
     setToken("tok-1");
     mockRoutes({
-      "GET /auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
-      "GET /ops/mode": { status: 200, body: { mode: "normal", since: "2026-08-23T00:00:00.000Z", note: null, reportId: "r-1" } },
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
+      "GET /api/ops/mode": { status: 200, body: { mode: "normal", since: "2026-08-23T00:00:00.000Z", note: null, reportId: "r-1" } },
     });
     renderWithProviders(<ModeBanner />);
-    await waitFor(() => expect(callsTo("GET", "/ops/mode")).toBeGreaterThan(0));
+    await waitFor(() => expect(callsTo("GET", "/api/ops/mode")).toBeGreaterThan(0));
     expect(screen.queryByTestId("mode-banner")).not.toBeInTheDocument();
   });
 
@@ -72,8 +72,8 @@ describe("ModeBanner", () => {
     async (mode) => {
       setToken("tok-1");
       mockRoutes({
-        "GET /auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
-        "GET /ops/mode": { status: 200, body: { mode, since: "2026-08-23T00:00:00.000Z", note: "generator on B feed", reportId: null } },
+        "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
+        "GET /api/ops/mode": { status: 200, body: { mode, since: "2026-08-23T00:00:00.000Z", note: "generator on B feed", reportId: null } },
       });
       renderWithProviders(<ModeBanner />);
 
@@ -86,8 +86,8 @@ describe("ModeBanner", () => {
   it("renders no note span when the mode change carried none", async () => {
     setToken("tok-1");
     mockRoutes({
-      "GET /auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
-      "GET /ops/mode": { status: 200, body: { mode: "ramp", since: "2026-08-23T00:00:00.000Z", note: null, reportId: null } },
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
+      "GET /api/ops/mode": { status: 200, body: { mode: "ramp", since: "2026-08-23T00:00:00.000Z", note: null, reportId: null } },
     });
     renderWithProviders(<ModeBanner />);
     await screen.findByTestId("mode-banner");
@@ -110,17 +110,17 @@ describe("ModeBanner", () => {
     };
     setToken("tok-1");
     mockRoutes({
-      "GET /auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
-      "GET /ops/mode": { status: 200, body: { mode: "downtime", since: null, note: null, reportId: null } },
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
+      "GET /api/ops/mode": { status: 200, body: { mode: "downtime", since: null, note: null, reportId: null } },
     });
 
     renderWithProviders(<ModeBanner />);
     await flush();
     await flush();
-    const before = callsTo("GET", "/ops/mode");
+    const before = callsTo("GET", "/api/ops/mode");
     expect(before).toBeGreaterThan(0);
 
     await flush(15_000);
-    expect(callsTo("GET", "/ops/mode")).toBeGreaterThan(before);
+    expect(callsTo("GET", "/api/ops/mode")).toBeGreaterThan(before);
   });
 });

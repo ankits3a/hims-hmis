@@ -169,14 +169,14 @@ describe("OpdVitals", () => {
     setToken("tok-1");
     let visitsCalls = 0;
     stubFetch({
-      "GET /auth/me": { actor: { type: "user", id: "u-1" } },
-      "GET /opd/departments": { items: DEPARTMENTS },
-      "GET /opd/doctors": { items: DOCTORS },
-      "GET /opd/config": CONFIG,
-      "GET /opd/queues/summary": {
+      "GET /api/auth/me": { actor: { type: "user", id: "u-1" } },
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/doctors": { items: DOCTORS },
+      "GET /api/opd/config": CONFIG,
+      "GET /api/opd/queues/summary": {
         items: [{ doctor: DOCTORS[0], sessionId: "sess-1", status: "in", waitingCount: 0, waitingVitalsCount: 1, nowServing: null, scheduledToday: true, roomCode: "12" }],
       },
-      "GET /opd/visits": () => {
+      "GET /api/opd/visits": () => {
         visitsCalls += 1;
         return { items: visitsCalls === 1 ? [ENC_ADULT, ENC_CHILD] : [ENC_ADULT] };
       },
@@ -204,7 +204,7 @@ describe("OpdVitals", () => {
     await user.selectOptions(screen.getByLabelText("Department"), "dep-1");
     await waitFor(() => expect(screen.queryByTestId(`worklist-row-${ENC_CHILD.id as string}`)).toBeNull());
     expect(screen.getByTestId(`worklist-row-${ENC_ADULT.id as string}`)).toBeInTheDocument();
-    const lastVisitsUrl = callsTo("GET", "/opd/visits").at(-1)!.url;
+    const lastVisitsUrl = callsTo("GET", "/api/opd/visits").at(-1)!.url;
     expect(lastVisitsUrl).toContain("departmentId=dep-1");
 
     // a visit.opened frame on the department's doctors' queue topic is a HINT to re-read (D6).
@@ -227,17 +227,17 @@ describe("OpdVitals", () => {
 
   it("selecting a row loads the patient (age from dob; a 404 renders 'restricted record' and falls back to the adult band) and marks the required fields with * for that band", async () => {
     mockRoutes({
-      "GET /opd/departments": { status: 200, body: { items: DEPARTMENTS } },
-      "GET /opd/doctors": { status: 200, body: { items: DOCTORS } },
-      "GET /opd/config": { status: 200, body: CONFIG },
-      "GET /opd/visits": { status: 200, body: { items: [ENC_ADULT, ENC_CHILD, ENC_HIDDEN] } },
-      "GET /patients/p-adult": { status: 200, body: patientDetail("HMS0000000020", "Ravi Kumar", "1990-01-01", "male") },
-      "GET /patients/p-adult/allergies": { status: 200, body: { items: [] } },
+      "GET /api/opd/departments": { status: 200, body: { items: DEPARTMENTS } },
+      "GET /api/opd/doctors": { status: 200, body: { items: DOCTORS } },
+      "GET /api/opd/config": { status: 200, body: CONFIG },
+      "GET /api/opd/visits": { status: 200, body: { items: [ENC_ADULT, ENC_CHILD, ENC_HIDDEN] } },
+      "GET /api/patients/p-adult": { status: 200, body: patientDetail("HMS0000000020", "Ravi Kumar", "1990-01-01", "male") },
+      "GET /api/patients/p-adult/allergies": { status: 200, body: { items: [] } },
       // 3 years old at NOW_ISO (2026-08-18): dob 2023-05-10, birthday already passed this year.
-      "GET /patients/p-child": { status: 200, body: patientDetail("HMS0000000010", "Baby Naina", "2023-05-10", "female") },
-      "GET /patients/p-child/allergies": { status: 200, body: { items: [] } },
-      "GET /patients/p-hidden": { status: 404, body: { statusCode: 404, message: "unknown patient p-hidden", error: "Not Found" } },
-      "GET /patients/p-hidden/allergies": { status: 404, body: { statusCode: 404, message: "unknown patient p-hidden", error: "Not Found" } },
+      "GET /api/patients/p-child": { status: 200, body: patientDetail("HMS0000000010", "Baby Naina", "2023-05-10", "female") },
+      "GET /api/patients/p-child/allergies": { status: 200, body: { items: [] } },
+      "GET /api/patients/p-hidden": { status: 404, body: { statusCode: 404, message: "unknown patient p-hidden", error: "Not Found" } },
+      "GET /api/patients/p-hidden/allergies": { status: 404, body: { statusCode: 404, message: "unknown patient p-hidden", error: "Not Found" } },
     });
     renderWithProviders(<OpdVitals />);
     const user = userEvent.setup();
@@ -288,13 +288,13 @@ describe("OpdVitals", () => {
 
   it("submitting posts NUMBERS (weightKg: 60, tempC: 37.2) and OMITS blank optional fields entirely — not '', not null (K46)", async () => {
     stubFetch({
-      "GET /opd/departments": { items: DEPARTMENTS },
-      "GET /opd/doctors": { items: DOCTORS },
-      "GET /opd/config": CONFIG,
-      "GET /opd/visits": { items: [ENC_ADULT] },
-      "GET /patients/p-adult": patientDetail("HMS0000000020", "Ravi Kumar", "1990-01-01", "male"),
-      "GET /patients/p-adult/allergies": { items: [] },
-      [`POST /opd/visits/${ENC_ADULT.id as string}/vitals`]: {
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/doctors": { items: DOCTORS },
+      "GET /api/opd/config": CONFIG,
+      "GET /api/opd/visits": { items: [ENC_ADULT] },
+      "GET /api/patients/p-adult": patientDetail("HMS0000000020", "Ravi Kumar", "1990-01-01", "male"),
+      "GET /api/patients/p-adult/allergies": { items: [] },
+      [`POST /api/opd/visits/${ENC_ADULT.id as string}/vitals`]: {
         vitals: { id: "vit-1" }, flags: [], encounter: { ...ENC_ADULT, status: "waiting" },
       },
     });
@@ -314,7 +314,7 @@ describe("OpdVitals", () => {
 
     await user.click(screen.getByRole("button", { name: "Save vitals" }));
 
-    const path = `/opd/visits/${ENC_ADULT.id as string}/vitals`;
+    const path = `/api/opd/visits/${ENC_ADULT.id as string}/vitals`;
     await waitFor(() => expect(callsTo("POST", path)).toHaveLength(1));
     const body = bodiesOf("POST", path)[0]!;
 
@@ -335,25 +335,25 @@ describe("OpdVitals", () => {
   it("a 201 with flags renders a red role=alert banner naming the vital and the limit and the row leaves the worklist; a 400 vitals_incomplete renders the missing field list inline", async () => {
     let visitsCalls = 0;
     mockRoutes({
-      "GET /opd/departments": { status: 200, body: { items: DEPARTMENTS } },
-      "GET /opd/doctors": { status: 200, body: { items: DOCTORS } },
-      "GET /opd/config": { status: 200, body: CONFIG },
-      "GET /opd/visits": () => {
+      "GET /api/opd/departments": { status: 200, body: { items: DEPARTMENTS } },
+      "GET /api/opd/doctors": { status: 200, body: { items: DOCTORS } },
+      "GET /api/opd/config": { status: 200, body: CONFIG },
+      "GET /api/opd/visits": () => {
         visitsCalls += 1;
         return { status: 200, body: { items: visitsCalls === 1 ? [ENC_ADULT, ENC_ADULT2] : [ENC_ADULT2] } };
       },
-      "GET /patients/p-adult": { status: 200, body: patientDetail("HMS0000000020", "Ravi Kumar", "1990-01-01", "male") },
-      "GET /patients/p-adult/allergies": { status: 200, body: { items: [] } },
-      "GET /patients/p-adult2": { status: 200, body: patientDetail("HMS0000000040", "Suresh Yadav", "1985-02-02", "male") },
-      "GET /patients/p-adult2/allergies": { status: 200, body: { items: [] } },
-      [`POST /opd/visits/${ENC_ADULT.id as string}/vitals`]: {
+      "GET /api/patients/p-adult": { status: 200, body: patientDetail("HMS0000000020", "Ravi Kumar", "1990-01-01", "male") },
+      "GET /api/patients/p-adult/allergies": { status: 200, body: { items: [] } },
+      "GET /api/patients/p-adult2": { status: 200, body: patientDetail("HMS0000000040", "Suresh Yadav", "1985-02-02", "male") },
+      "GET /api/patients/p-adult2/allergies": { status: 200, body: { items: [] } },
+      [`POST /api/opd/visits/${ENC_ADULT.id as string}/vitals`]: {
         status: 201,
         body: {
           vitals: { id: "vit-1" }, flags: [{ vital: "sbp", value: 190, bound: "max", limit: 180 }],
           encounter: { ...ENC_ADULT, status: "waiting" },
         },
       },
-      [`POST /opd/visits/${ENC_ADULT2.id as string}/vitals`]: {
+      [`POST /api/opd/visits/${ENC_ADULT2.id as string}/vitals`]: {
         status: 400,
         body: { statusCode: 400, message: "missing: weightKg", code: "vitals_incomplete", detail: { missing: ["weightKg"] } },
       },
@@ -392,16 +392,16 @@ describe("OpdVitals", () => {
   it("Quick allergy posts { substance, severity?, source: 'vitals' } and the new allergy appears in the patient panel's list", async () => {
     let allergyCalls = 0;
     stubFetch({
-      "GET /opd/departments": { items: DEPARTMENTS },
-      "GET /opd/doctors": { items: DOCTORS },
-      "GET /opd/config": CONFIG,
-      "GET /opd/visits": { items: [ENC_ADULT] },
-      "GET /patients/p-adult": patientDetail("HMS0000000020", "Ravi Kumar", "1990-01-01", "male"),
-      "GET /patients/p-adult/allergies": () => {
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/doctors": { items: DOCTORS },
+      "GET /api/opd/config": CONFIG,
+      "GET /api/opd/visits": { items: [ENC_ADULT] },
+      "GET /api/patients/p-adult": patientDetail("HMS0000000020", "Ravi Kumar", "1990-01-01", "male"),
+      "GET /api/patients/p-adult/allergies": () => {
         allergyCalls += 1;
         return { items: allergyCalls === 1 ? [] : [{ id: "al-1", substance: "Penicillin", severity: "moderate", status: "active" }] };
       },
-      "POST /patients/p-adult/allergies": { allergyId: "al-1" },
+      "POST /api/patients/p-adult/allergies": { allergyId: "al-1" },
     });
     renderWithProviders(<OpdVitals />);
     const user = userEvent.setup();
@@ -413,8 +413,8 @@ describe("OpdVitals", () => {
     await user.selectOptions(screen.getByLabelText("Severity"), "moderate");
     await user.click(screen.getByRole("button", { name: "Add allergy" }));
 
-    await waitFor(() => expect(callsTo("POST", "/patients/p-adult/allergies")).toHaveLength(1));
-    expect(bodiesOf("POST", "/patients/p-adult/allergies")[0]).toEqual({
+    await waitFor(() => expect(callsTo("POST", "/api/patients/p-adult/allergies")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/patients/p-adult/allergies")[0]).toEqual({
       substance: "Penicillin", severity: "moderate", source: "vitals",
     });
     await waitFor(() => expect(screen.getByTestId("allergy-list")).toHaveTextContent("Penicillin"));

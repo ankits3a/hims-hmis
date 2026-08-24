@@ -1,5 +1,5 @@
 import {
-  Outlet, createRootRoute, createRoute, createRouter, redirect, useNavigate,
+  Link, Outlet, createRootRoute, createRoute, createRouter, redirect, useNavigate,
 } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { getToken } from "./lib/api";
@@ -38,23 +38,33 @@ function Shell(): React.ReactElement {
       <div className="flex min-h-screen flex-col">
         <header className="no-print flex items-center gap-6 border-b px-4 py-2">
           <span className="font-semibold">{t("app.title")}</span>
+          {/*
+            PLAN 11g / DD1 — `<Link>`, NOT `<a href>`, AND THIS IS THE UX HALF RATHER THAN THE FIX.
+            A raw anchor is a full browser page load. Before the `/api/*` split that meant every
+            one of these sixteen links went to the edge and came back as the API's JSON — 14 of
+            them dead, with no in-app escape hatch from Registration and Merge. The SPLIT is what
+            fixed that, and a raw anchor would be CORRECT again today: it would simply reload the
+            whole bundle on every click, all day, on a desk machine. `<Link>` is client-side
+            navigation. Delete every one of these and the parity test that guards D1 still passes;
+            restore the old edge matcher and it fails. The two are deliberately independent.
+          */}
           <nav className="flex gap-4 text-sm">
-            <a href="/registration" className="hover:underline">{t("nav.registration")}</a>
-            <a href="/merge" className="hover:underline">{t("nav.merge")}</a>
-            <a href="/approvals" className="hover:underline">{t("nav.approvals")}</a>
-            <a href="/opd/admin" className="hover:underline">{t("nav.opdAdmin")}</a>
-            <a href="/opd/appointments" className="hover:underline">{t("nav.opdAppointments")}</a>
-            <a href="/opd/desk" className="hover:underline">{t("nav.opdDesk")}</a>
-            <a href="/opd/vitals" className="hover:underline">{t("nav.opdVitals")}</a>
-            <a href="/opd/consult" className="hover:underline">{t("nav.opdConsult")}</a>
-            <a href="/opd/display" className="hover:underline">{t("nav.opdDisplay")}</a>
-            <a href="/billing" className="hover:underline">{t("nav.billing")}</a>
-            <a href="/billing/dues" className="hover:underline">{t("nav.billingDues")}</a>
-            <a href="/billing/session" className="hover:underline">{t("nav.billingSession")}</a>
-            <a href="/billing/office" className="hover:underline">{t("nav.billingOffice")}</a>
-            <a href="/ops/mode" className="hover:underline">{t("nav.opsMode")}</a>
-            <a href="/ops/downtime-kit" className="hover:underline">{t("nav.opsDowntimeKit")}</a>
-            <a href="/admin/users" className="hover:underline">{t("nav.adminUsers")}</a>
+            <Link to="/registration" className="hover:underline">{t("nav.registration")}</Link>
+            <Link to="/merge" className="hover:underline">{t("nav.merge")}</Link>
+            <Link to="/approvals" className="hover:underline">{t("nav.approvals")}</Link>
+            <Link to="/opd/admin" className="hover:underline">{t("nav.opdAdmin")}</Link>
+            <Link to="/opd/appointments" className="hover:underline">{t("nav.opdAppointments")}</Link>
+            <Link to="/opd/desk" className="hover:underline">{t("nav.opdDesk")}</Link>
+            <Link to="/opd/vitals" className="hover:underline">{t("nav.opdVitals")}</Link>
+            <Link to="/opd/consult" className="hover:underline">{t("nav.opdConsult")}</Link>
+            <Link to="/opd/display" className="hover:underline">{t("nav.opdDisplay")}</Link>
+            <Link to="/billing" className="hover:underline">{t("nav.billing")}</Link>
+            <Link to="/billing/dues" className="hover:underline">{t("nav.billingDues")}</Link>
+            <Link to="/billing/session" className="hover:underline">{t("nav.billingSession")}</Link>
+            <Link to="/billing/office" className="hover:underline">{t("nav.billingOffice")}</Link>
+            <Link to="/ops/mode" className="hover:underline">{t("nav.opsMode")}</Link>
+            <Link to="/ops/downtime-kit" className="hover:underline">{t("nav.opsDowntimeKit")}</Link>
+            <Link to="/admin/users" className="hover:underline">{t("nav.adminUsers")}</Link>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <AlertsBell />

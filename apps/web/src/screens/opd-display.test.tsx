@@ -123,8 +123,8 @@ describe("OpdDisplay", () => {
     vi.stubGlobal("WebSocket", FakeWebSocket);
     setToken("tok-1");
     mockRoutes({
-      "GET /auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
-      "GET /opd/queues/board": { status: 200, body: { items: [ITEM_A, ITEM_B] } },
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
+      "GET /api/opd/queues/board": { status: 200, body: { items: [ITEM_A, ITEM_B] } },
     });
     const user = userEvent.setup();
 
@@ -134,14 +134,14 @@ describe("OpdDisplay", () => {
     // languages ("शुरू करें / Start" — the bilingual-label correction), so the accessible name is
     // no longer the exact string "Start"; match it as a substring instead.
     const startButton = screen.getByRole("button", { name: /Start/ });
-    expect(callsTo("GET", "/opd/queues/board")).toHaveLength(0);
+    expect(callsTo("GET", "/api/opd/queues/board")).toHaveLength(0);
     expect(FakeWebSocket.instances).toHaveLength(0);
 
     await user.click(startButton);
 
     await screen.findByTestId("board-card-sess-1");
-    const url = callsTo("GET", "/opd/queues/board").at(-1)!.url;
-    expect(url).toBe(`/opd/queues/board?serviceDate=${TODAY}&roomIds=room-1,room-2`);
+    const url = callsTo("GET", "/api/opd/queues/board").at(-1)!.url;
+    expect(url).toBe(`/api/opd/queues/board?serviceDate=${TODAY}&roomIds=room-1,room-2`);
 
     // after Start: the subscription is made — a WebSocket instance now exists.
     expect(FakeWebSocket.instances.length).toBeGreaterThan(0);
@@ -175,8 +175,8 @@ describe("OpdDisplay", () => {
     );
     setToken("tok-1");
     mockRoutes({
-      "GET /auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
-      "GET /opd/queues/board": { status: 200, body: { items: [ITEM_A] } },
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
+      "GET /api/opd/queues/board": { status: 200, body: { items: [ITEM_A] } },
     });
     const user = userEvent.setup();
 
@@ -192,7 +192,7 @@ describe("OpdDisplay", () => {
       ws.simulateMessage({ type: "authed", userId: "u-1" });
     });
 
-    const callsBeforeFrame = callsTo("GET", "/opd/queues/board").length;
+    const callsBeforeFrame = callsTo("GET", "/api/opd/queues/board").length;
     await act(async () => {
       ws.simulateMessage({
         type: "event", topic: "display:room-1", name: "queue.called", seq: 41, occurredAt: NOW_ISO,
@@ -204,7 +204,7 @@ describe("OpdDisplay", () => {
     // write is synchronous but react-query's notifyManager flushes the resulting re-render on a
     // microtask, so this reads through `waitFor` rather than asserting the instant `act()` returns.
     await waitFor(() => expect(screen.getByTestId("now-serving-sess-1")).toHaveTextContent("37"));
-    expect(callsTo("GET", "/opd/queues/board")).toHaveLength(callsBeforeFrame);
+    expect(callsTo("GET", "/api/opd/queues/board")).toHaveLength(callsBeforeFrame);
 
     expect(speak).toHaveBeenCalledTimes(2);
     const [first, second] = speak.mock.calls.map(([u]) => u as { text: string; lang: string });
@@ -231,8 +231,8 @@ describe("OpdDisplay", () => {
     vi.stubGlobal("WebSocket", FakeWebSocket);
     setToken("tok-1");
     mockRoutes({
-      "GET /auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
-      "GET /opd/queues/board": { status: 200, body: { items: [ITEM_A] } },
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
+      "GET /api/opd/queues/board": { status: 200, body: { items: [ITEM_A] } },
     });
 
     const flush = async (ms = 5): Promise<void> => {
@@ -249,14 +249,14 @@ describe("OpdDisplay", () => {
     await flush();
     await flush();
 
-    expect(callsTo("GET", "/opd/queues/board")).toHaveLength(1);
+    expect(callsTo("GET", "/api/opd/queues/board")).toHaveLength(1);
 
     await flush(15_000);
     await flush();
 
     // `waitFor` cannot drive vitest's fake timers (it gates on a global `jest`, which vitest does
     // not define — probed on this harness), so the count is read directly after the hand-flush.
-    expect(callsTo("GET", "/opd/queues/board").length).toBeGreaterThan(1);
+    expect(callsTo("GET", "/api/opd/queues/board").length).toBeGreaterThan(1);
   });
 
   it("shows no patient identifier and calls no /patients route — only /opd/queues/board is fetched", async () => {
@@ -266,7 +266,7 @@ describe("OpdDisplay", () => {
 
     // No token: AuthProvider makes no /auth/me call either, so the ONLY possible fetch is the
     // component's own board read — the strongest form of "fetch keys are only the board route".
-    mockRoutes({ "GET /opd/queues/board": { status: 200, body: { items: [ITEM_A, ITEM_B] } } });
+    mockRoutes({ "GET /api/opd/queues/board": { status: 200, body: { items: [ITEM_A, ITEM_B] } } });
     const user = userEvent.setup();
 
     renderWithProviders(<OpdDisplay />);
@@ -278,7 +278,7 @@ describe("OpdDisplay", () => {
     expect(screen.queryByText("HMS0000001234")).toBeNull();
 
     const paths = new Set(fetchCalls().map((c) => c.path));
-    expect(paths).toEqual(new Set(["/opd/queues/board"]));
+    expect(paths).toEqual(new Set(["/api/opd/queues/board"]));
     expect(fetchCalls().some((c) => c.path.includes("/patients"))).toBe(false);
   });
 });

@@ -148,9 +148,9 @@ describe("BillingSession", () => {
 
     let current: SessionRow | null = null;
     mockRoutes({
-      "GET /billing/sessions/current": () => ({ status: 200, body: { session: current } }),
+      "GET /api/billing/sessions/current": () => ({ status: 200, body: { session: current } }),
       // Unannotated POST — Nest's default 201 (Plan 07 E5). Never branch on an exact 2xx.
-      "POST /billing/sessions": () => {
+      "POST /api/billing/sessions": () => {
         current = OPEN;
         return { status: 201, body: OPEN };
       },
@@ -168,27 +168,27 @@ describe("BillingSession", () => {
     await flush();
     await flush();
 
-    expect(callsTo("POST", "/billing/sessions")).toHaveLength(1);
+    expect(callsTo("POST", "/api/billing/sessions")).toHaveLength(1);
     // §3.19 — the control hands back a string; the BODY carries integer paise.
-    expect(bodiesOf("POST", "/billing/sessions")[0]).toEqual({ floatPaise: FLOAT_PAISE });
-    expect(typeof bodiesOf("POST", "/billing/sessions")[0]!.floatPaise).toBe("number");
+    expect(bodiesOf("POST", "/api/billing/sessions")[0]).toEqual({ floatPaise: FLOAT_PAISE });
+    expect(typeof bodiesOf("POST", "/api/billing/sessions")[0]!.floatPaise).toBe("number");
 
     expect(screen.getByTestId("session-status")).toHaveTextContent("OPEN");
     expect(screen.getByTestId("session-opened-at")).toHaveTextContent("09:42");
     expect(screen.getByTestId("session-float")).toHaveTextContent("₹1,000.00");
     expect(screen.queryByTestId("no-session")).toBeNull();
 
-    const before = callsTo("GET", "/billing/sessions/current").length;
+    const before = callsTo("GET", "/api/billing/sessions/current").length;
     await flush(15_500);
     await flush();
-    expect(callsTo("GET", "/billing/sessions/current").length).toBeGreaterThan(before);
+    expect(callsTo("GET", "/api/billing/sessions/current").length).toBeGreaterThan(before);
   });
 
   it("K43: the denomination grid carries the server's ten PAISE keys and the counted total is the ×100 fold — the figure the cashier reads equals `sumDenominations` over the body that is posted", async () => {
     let current: SessionRow | null = OPEN;
     mockRoutes({
-      "GET /billing/sessions/current": () => ({ status: 200, body: { session: current } }),
-      "POST /billing/sessions/cs-1/close": () => {
+      "GET /api/billing/sessions/current": () => ({ status: 200, body: { session: current } }),
+      "POST /api/billing/sessions/cs-1/close": () => {
         current = CLOSING;
         return { status: 201, body: CLOSING };
       },
@@ -214,9 +214,9 @@ describe("BillingSession", () => {
     expect(screen.getByTestId("counted-total")).toHaveTextContent("₹7,100.00");
 
     await user.click(screen.getByTestId("close-submit"));
-    await waitFor(() => expect(callsTo("POST", "/billing/sessions/cs-1/close")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/billing/sessions/cs-1/close")).toHaveLength(1));
 
-    const body = bodiesOf("POST", "/billing/sessions/cs-1/close")[0]!;
+    const body = bodiesOf("POST", "/api/billing/sessions/cs-1/close")[0]!;
     expect(body).toEqual({ denominations: COUNTED_DENOMINATIONS, note: "counted twice" });
     // The keys are PAISE — face value × 100 — and only the counted rows travel. (Sorted high to
     // low here because `Object.keys` returns integer-like keys in ASCENDING numeric order — that
@@ -236,8 +236,8 @@ describe("BillingSession", () => {
     });
     let current: SessionRow | null = OPEN;
     mockRoutes({
-      "GET /billing/sessions/current": () => ({ status: 200, body: { session: current } }),
-      "POST /billing/sessions/cs-1/close": () => {
+      "GET /api/billing/sessions/current": () => ({ status: 200, body: { session: current } }),
+      "POST /api/billing/sessions/cs-1/close": () => {
         current = null; // `GET /sessions/current` serves only open|closing rows — a closed drawer is gone
         return { status: 201, body: closedRow };
       },
@@ -250,9 +250,9 @@ describe("BillingSession", () => {
     expect(screen.getByTestId("counted-total")).toHaveTextContent("₹1,000.00");
     await user.click(screen.getByTestId("close-submit"));
 
-    await waitFor(() => expect(callsTo("POST", "/billing/sessions/cs-1/close")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/billing/sessions/cs-1/close")).toHaveLength(1));
     // A blank note is ABSENT from the key set, never `""` or null — the K49 convention.
-    const body = bodiesOf("POST", "/billing/sessions/cs-1/close")[0]!;
+    const body = bodiesOf("POST", "/api/billing/sessions/cs-1/close")[0]!;
     expect(Object.keys(body)).toEqual(["denominations"]);
 
     const summary = await screen.findByTestId("day-summary");
@@ -272,8 +272,8 @@ describe("BillingSession", () => {
   it("a non-zero variance moves the drawer to `closing`: the variance renders SIGNED, the approval-pending banner names the approval, the lockout is spelled out, and there is no day summary yet", async () => {
     let current: SessionRow | null = OPEN;
     mockRoutes({
-      "GET /billing/sessions/current": () => ({ status: 200, body: { session: current } }),
-      "POST /billing/sessions/cs-1/close": () => {
+      "GET /api/billing/sessions/current": () => ({ status: 200, body: { session: current } }),
+      "POST /api/billing/sessions/cs-1/close": () => {
         current = CLOSING;
         return { status: 201, body: CLOSING };
       },
@@ -315,8 +315,8 @@ describe("BillingSession", () => {
   it("confirm-close after the approval is granted finalizes the drawer and renders the day summary with the variance still signed", async () => {
     let current: SessionRow | null = CLOSING;
     mockRoutes({
-      "GET /billing/sessions/current": () => ({ status: 200, body: { session: current } }),
-      "POST /billing/sessions/cs-1/confirm-close": () => {
+      "GET /api/billing/sessions/current": () => ({ status: 200, body: { session: current } }),
+      "POST /api/billing/sessions/cs-1/confirm-close": () => {
         current = null;
         return { status: 201, body: CONFIRMED };
       },
@@ -325,9 +325,9 @@ describe("BillingSession", () => {
     const user = userEvent.setup();
 
     await user.click(await screen.findByTestId("confirm-close"));
-    await waitFor(() => expect(callsTo("POST", "/billing/sessions/cs-1/confirm-close")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/billing/sessions/cs-1/confirm-close")).toHaveLength(1));
     // check-on-execute lives at the server; the screen sends no body of its own.
-    expect(callsTo("POST", "/billing/sessions/cs-1/confirm-close")[0]!.body).toBe("");
+    expect(callsTo("POST", "/api/billing/sessions/cs-1/confirm-close")[0]!.body).toBe("");
 
     const summary = await screen.findByTestId("day-summary");
     expect(summary).toBeInTheDocument();
@@ -341,8 +341,8 @@ describe("BillingSession", () => {
 
   it("opening a second drawer while the first is still `closing` renders the server's refusal inline — the lockout is real and the screen does not pretend otherwise", async () => {
     mockRoutes({
-      "GET /billing/sessions/current": { status: 200, body: { session: CLOSING } },
-      "POST /billing/sessions": {
+      "GET /api/billing/sessions/current": { status: 200, body: { session: CLOSING } },
+      "POST /api/billing/sessions": {
         status: 409,
         body: {
           statusCode: 409,
@@ -358,7 +358,7 @@ describe("BillingSession", () => {
     await user.type(screen.getByLabelText("Opening float"), "500");
     await user.click(screen.getByTestId("open-submit"));
 
-    await waitFor(() => expect(callsTo("POST", "/billing/sessions")).toHaveLength(1));
+    await waitFor(() => expect(callsTo("POST", "/api/billing/sessions")).toHaveLength(1));
     const refusal = await screen.findByTestId("open-error");
     expect(refusal).toHaveAttribute("role", "alert");
     expect(refusal).toHaveTextContent("session cs-1 is already closing");
@@ -389,14 +389,14 @@ describe("BillingSession", () => {
     });
     let current: SessionRow | null = null;
     mockRoutes({
-      "GET /billing/sessions/current": () => ({ status: 200, body: { session: current } }),
-      "POST /billing/sessions": (init) => {
+      "GET /api/billing/sessions/current": () => ({ status: 200, body: { session: current } }),
+      "POST /api/billing/sessions": (init) => {
         // the drawer the server opens carries whatever float it was actually sent
         const sent = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as { floatPaise?: number };
         current = session({ openingFloatPaise: sent.floatPaise ?? 0 });
         return { status: 201, body: current };
       },
-      "POST /billing/sessions/cs-1/close": () => {
+      "POST /api/billing/sessions/cs-1/close": () => {
         current = null;
         return { status: 201, body: closedRow };
       },
@@ -407,8 +407,8 @@ describe("BillingSession", () => {
     // 1 — open the first drawer with ₹1,000
     await user.type(await screen.findByLabelText("Opening float"), "1000");
     await user.click(screen.getByTestId("open-submit"));
-    await waitFor(() => expect(callsTo("POST", "/billing/sessions")).toHaveLength(1));
-    expect(bodiesOf("POST", "/billing/sessions")[0]).toEqual({ floatPaise: FLOAT_PAISE });
+    await waitFor(() => expect(callsTo("POST", "/api/billing/sessions")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/billing/sessions")[0]).toEqual({ floatPaise: FLOAT_PAISE });
 
     // 2 — close it at zero variance; the drawer is gone and the open form is back
     await user.click(await screen.findByTestId("close-open"));
@@ -422,13 +422,13 @@ describe("BillingSession", () => {
     await user.click(screen.getByTestId("open-submit"));
     const refusal = await screen.findByTestId("open-error");
     expect(refusal).toHaveAttribute("role", "alert");
-    expect(callsTo("POST", "/billing/sessions")).toHaveLength(1);
+    expect(callsTo("POST", "/api/billing/sessions")).toHaveLength(1);
 
     // 4 — NOT-OVER-BROAD (§3.44): the legitimate next drawer still opens, at the NEW float.
     await user.type(screen.getByLabelText("Opening float"), "2500");
     await user.click(screen.getByTestId("open-submit"));
-    await waitFor(() => expect(callsTo("POST", "/billing/sessions")).toHaveLength(2));
-    expect(bodiesOf("POST", "/billing/sessions")[1]).toEqual({ floatPaise: NEXT_FLOAT_PAISE });
+    await waitFor(() => expect(callsTo("POST", "/api/billing/sessions")).toHaveLength(2));
+    expect(bodiesOf("POST", "/api/billing/sessions")[1]).toEqual({ floatPaise: NEXT_FLOAT_PAISE });
     expect(screen.getByTestId("session-float")).toHaveTextContent("₹2,500.00");
   });
 
@@ -443,12 +443,12 @@ describe("BillingSession", () => {
   it("REGRESSION: confirming a drawer out of `closing` clears the open form too — the form stays MOUNTED across that transition, so the visible box and the value behind it must still agree", async () => {
     let current: SessionRow | null = CLOSING;
     mockRoutes({
-      "GET /billing/sessions/current": () => ({ status: 200, body: { session: current } }),
-      "POST /billing/sessions/cs-1/confirm-close": () => {
+      "GET /api/billing/sessions/current": () => ({ status: 200, body: { session: current } }),
+      "POST /api/billing/sessions/cs-1/confirm-close": () => {
         current = null;
         return { status: 201, body: CONFIRMED };
       },
-      "POST /billing/sessions": { status: 201, body: session() },
+      "POST /api/billing/sessions": { status: 201, body: session() },
     });
     renderWithProviders(<BillingSession />);
     const user = userEvent.setup();
@@ -461,6 +461,6 @@ describe("BillingSession", () => {
     expect(screen.getByLabelText("Opening float")).toHaveValue("");
     await user.click(screen.getByTestId("open-submit"));
     expect(await screen.findByTestId("open-error")).toHaveAttribute("role", "alert");
-    expect(callsTo("POST", "/billing/sessions")).toHaveLength(0);
+    expect(callsTo("POST", "/api/billing/sessions")).toHaveLength(0);
   });
 });
