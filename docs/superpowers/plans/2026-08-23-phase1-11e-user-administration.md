@@ -442,6 +442,13 @@ owner-authorised by name — and **the deployed edge still routes none of this**
 | T5 `seed-admin` reconciles — MAJOR 1's residual | `05f6d75` | green |
 | T6 the screen and the forced-change flow | `14b66aa` | green |
 | CLOSE remediation — the reviewer's C1/C2 and five MAJORs | `00c3747` | green |
+| CLOSE — this gate report and ledger 2.87–2.91 | `932b803` | green |
+
+*Every row in the CI column was read from `/commits/{FULL-SHA}/check-runs` after the run reached
+`completed` (§2.84: by FULL SHA, never a short one). The `00c3747` cell was first written while
+its run was still `in_progress` and corrected here once the conclusion existed — recorded because
+a verdict written ahead of its evidence is the thing rule 12 forbids, and it does not stop being
+that by turning out true.*
 
 ### Findings
 
