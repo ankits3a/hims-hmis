@@ -1,4 +1,5 @@
 import type { ModuleManifest } from "../../kernel/modules/manifest";
+import { opdSearchProviders } from "./search-providers";
 
 /**
  * The OPD module's declared surface (spec §4): the fourteen `opd.*` permissions every route in the three
@@ -23,5 +24,8 @@ export const opdManifest: ModuleManifest = {
     "opd.queue.read", "opd.queue.operate", "opd.queue.transfer",
     "opd.consult", "opd.prescriptions.verify", "opd.display.read",
   ],
+  // PLAN 11h T3 — doctors and departments on `opd.masters.read`, appointments on
+  // `opd.appointments.read`. Patient confidentiality is NOT re-implemented here (DD1/DD3).
+  search: opdSearchProviders,
   subscriptions: [], // no dispatcher consumers in this plan; realtime rides the gateway's tail
 };

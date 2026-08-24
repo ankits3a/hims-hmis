@@ -3,6 +3,7 @@ import type { SQL } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { patientPhotos, patients } from "../../kernel/db/schema";
+import { escapeLike } from "../../kernel/search/text";
 import { PatientError } from "./uhid";
 import type { Db } from "../../kernel/db/client";
 
@@ -19,11 +20,6 @@ export type PatientSearchResult = {
 
 const PHONE_RE = /^\d{3,14}$/;
 const UHID_SHAPE_RE = /^[A-Za-z]{2,5}-\d{8}-\d$/; // shape, not validity: a typo'd check digit must still be searchable
-
-/** Escape LIKE metacharacters so user text is always literal. Postgres default escape is backslash. */
-function escapeLike(s: string): string {
-  return s.replace(/[\\%_]/g, (c) => `\\${c}`);
-}
 
 /**
  * PLAN 11h T2 — THE THREE BRANCHES, EXTRACTED SO THERE IS ONE COPY OF THEM.
