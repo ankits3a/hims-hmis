@@ -20,7 +20,7 @@ single change is mechanical (one path prefix threaded through the SPA's client, 
 the production edge and 22 test files). Two of the five touch seams v3 §0 calls untouchable —
 the auth credential path (T-D4) and the production deploy path (T-D2) — and **depth is not set
 by the lane**: those carry rule-21 executed mutants and the independent close reviewer exactly
-as a HEAVY task would. *(Dissent recorded and overruled: T-D1's blast radius is wide — 27 files
+as a HEAVY task would. *(Dissent recorded and overruled: T-D1's blast radius is wide — 32 files
 — but wide is not deep. Every one of those edits is the same edit, and a single test decides
 whether all of them are right.)*
 
@@ -88,7 +88,7 @@ Everything the report left to an owner ruling is named in §6 and left there.
 
 - **HEAD `e9ffe6a`**, clean tree. Baseline `pnpm verify` exit **0** at that SHA:
   `apps/core` **152 suites / 1175 tests** · `apps/web` **36 files / 193 tests** ·
-  `packages/contracts` **3 / 7**. Migrations applied: **19**; this phase generates **0020**.
+  `packages/contracts` **3 / 7**. Migrations applied: **19** (`0000`–`0018`), so the next tag is **`0019`**; this phase generates it.
 - **The SPA declares 20 routes** (`apps/web/src/router.tsx`) and the production edge
   (`docker/prod/Caddyfile`) proxies **12 path prefixes** to the API. Fifteen of the twenty routes
   fall inside a proxied prefix. That is D1, stated as an intersection rather than as a symptom.
@@ -101,7 +101,7 @@ Everything the report left to an owner ruling is named in §6 and left there.
   own headers (`seed-roles.ts`, `seed-ops.ts`: *"all of it idempotent, so it belongs in the
   re-deploy path forever"*; `seed-opd.ts` and `seed-billing.ts`: `onConflictDoNothing`).
   **`seed-tariff.ts` is the exception** — `upsertGstSettings` and `upsertGstCategory` are
-  `onConflictDoUpdate` (`gst-config.ts:45`, `:96`), so a re-deploy would overwrite corrected
+  `onConflictDoUpdate` (`gst-config.ts:96` and `:45` respectively), so a re-deploy would overwrite corrected
   money and tax values with DEV PLACEHOLDERS. See Q2.
 - **`POST /billing/invoices` has no patient existence check.** `billing.controller.ts:95-110`'s
   `toHttp` maps `BillingError`, `TariffError`, `OpdError`, `PatientError`, `ApprovalError`,
@@ -174,7 +174,8 @@ which the container healthcheck, the Prometheus scrape, `apps/core`'s ~30 supert
 every `@Controller()` route string are all written against. Caddy's `uri strip_prefix /api` and
 vite's `rewrite` move the *origin* path space and leave the API's own untouched. **Blast radius
 measured:** SPA client + WS URL + dev proxy + Caddyfile + parity test + the route-key strings in
-22 web test files (362 `"METHOD /path"` handler keys, 145 `callsTo(…)` arguments).
+22 web test files (362 `"METHOD /path"` handler keys, and 148 `callsTo(…)` call sites of which 137 carry a
+literal path — the count corrected at close, see F4).
 
 **Q5 — Is per-account or per-IP throttling correct here?** **Per-account, and per SUBMITTED
 username rather than per existing user.** Per-IP is wrong twice over: every request arrives from
@@ -306,7 +307,7 @@ read it.
 
 ### DD4 — D4 is fixed by per-account self-healing BACKOFF, persisted, never a lockout (RULED)
 
-**The mechanism.** One new table (migration 0020), keyed by `(kind, subject)` where `kind` is
+**The mechanism.** One new table (migration `0019`), keyed by `(kind, subject)` where `kind` is
 `login` or `pin` and `subject` is the **submitted username, normalised** (Q5). Consecutive
 failures inside a rolling one-hour window are counted; from the 5th failure the credential path
 refuses with **429 and `Retry-After`** for a window that doubles from 60 s to a 15-minute cap; any
@@ -454,7 +455,8 @@ returns 500 to the same request. Quoted in CLOSE.
 
 ### T-D4 — CRITICAL — the auth path gets per-account backoff
 
-**Files:** `apps/core/drizzle/0020_*.sql` + `apps/core/drizzle/meta/*` (generated) ·
+**Files:** `apps/core/drizzle/0019_mysterious_shadowcat.sql` + `apps/core/drizzle/meta/*`
+(generated) ·
 `apps/core/src/kernel/db/schema/auth.ts` · `apps/core/src/kernel/auth/throttle.ts` (new) ·
 `apps/core/src/kernel/auth/throttle.test.ts` (new) · `apps/core/src/kernel/auth/auth.controller.ts` ·
 `apps/core/test/helpers/db.ts` (the truncate group) · `apps/core/test/auth.e2e.test.ts`.
@@ -463,7 +465,7 @@ returns 500 to the same request. Quoted in CLOSE.
 failures on one submitted username produce a **429 with `Retry-After`**; a success before the
 threshold clears the counter; the window is rolling and self-healing; an unknown username is
 throttled identically to a known one (no oracle); the two kinds do not share a counter. **No guard
-is weakened and no verification path is changed** (rule 14). Migration `0020` is carried to the
+is weakened and no verification path is changed** (rule 14). Migration `0019` is carried to the
 commit that needs it (AGENT-RULES §6).
 
 **Book rows:**
@@ -488,7 +490,8 @@ commit that needs it (AGENT-RULES §6).
 
 ### T-D6 — ROUTINE — the registration desk stops offering a checkbox that orphans a patient
 
-**Files:** `apps/web/src/screens/registration-desk.tsx` ·
+**Files:** `apps/web/src/lib/confidential-capture.ts` (new — the named constant DD5 requires;
+omitted from this list at write time, F5) · `apps/web/src/screens/registration-desk.tsx` ·
 `apps/web/src/screens/registration-desk.test.tsx` · `apps/web/src/screens/patient-detail.tsx` ·
 `apps/web/src/screens/patient-detail.test.tsx`.
 
@@ -530,4 +533,212 @@ required, fail-first not owed — **stated, not inferred.** No server change of 
 
 ## 7. CLOSE — appended as the phase runs (v3 §1.5)
 
-*(appended below during execution)*
+**Executed 2026-08-24/25 in one session, on the build host, LIGHT lane. Five tasks, six commits,
+one owner-authorised production deploy.** Every task's `pnpm verify` was exit 0 before its push
+(§2.87) and every commit is CI-GREEN BY FULL SHA, read from `pipelines/ci-watch-host.sh`'s exit
+VALUE, never a pipeline's status.
+
+| task | commit | tier | CI (run id) |
+|---|---|---|---|
+| — the phase document | `aa4baec` | — | (no run of its own — pushed with `f67c9fc`, whose run judged both) |
+| T-D1 — the API moves under `/api/*` | `f67c9fc` | CRITICAL | **GREEN** 32766436144 |
+| T-D2 — the deploy seeds and refuses | `9b680f0` | CRITICAL | **GREEN** 32767698599 |
+| T-D3 — the FK becomes a coded 404 | `dbd46d3` | ROUTINE | **GREEN** 32768222971 |
+| T-D4 — the credential paths get backoff | `c5cc224` | CRITICAL | **GREEN** 32769341226 |
+| T-D6 — the confidential checkbox leaves the desk | `7893a83` | ROUTINE | **GREEN** 32770137370 |
+| close review remediation — three MAJORs and five minors | `314f3d4` | — | **GREEN** 32773079683 |
+
+*`e9ffe6a..HEAD` is EIGHT commits, not six: `894eebf` and `6620864` are the owner's own docs
+commits, landed from another session while this one ran and carried in by `git pull --rebase`.
+Verified docs-only by `git show --numstat`; neither is this phase's and neither is claimed as
+such (rule 8).*
+
+**Counts.** `apps/core` 152 suites / 1175 tests → **155 suites / 1209 tests**; `apps/web` 36 files
+/ 193 tests → **36 files / 196 tests**; `packages/contracts` **3 / 7**, unchanged. The workspace total never decreased and no diff in this
+phase deletes a test. One migration: **`0019_mysterious_shadowcat.sql`**, carried to the commit
+that needed it.
+
+### Findings — this session's own, in the order they were found
+
+- **F1 — MEASURED, and it is the 11f-F1 class again: T-D1's Files list could not carry T-D1's
+  acceptance.** The task changes where the API lives ON THE ORIGIN, and TWO things outside
+  `apps/` consume that origin: `deploy.sh`'s step-8 gate and the README's 03:00 runbook line, both
+  of which `curl https://<site>/health`. After the split that path is answered by the SPA handler
+  with **HTTP 200 and an HTML body**, which `curl -fsS` reports as success — so the deploy's own
+  health gate would have passed over a dead API, which is the exact defect class this phase
+  exists to close, introduced BY this phase. Found while executing, before the document was
+  committed, so the Files list as published is correct; recorded because the omission was real.
+  **The lesson: a task that moves a PATH SPACE must name every consumer of that space, and the
+  consumers are rarely all in the same package.** The gate was not merely re-pointed — it now
+  checks the BODY (a 200 carrying a document is a `die`) and gained a second leg asserting a
+  SCREEN path serves the SPA, so the deploy itself is now the D1 regression test. **Ledger §3.58.**
+- **F2 — MEASURED. The document said the phase would generate migration `0020`; the tree
+  generated `0019`.** Nineteen migrations were APPLIED (`0000`–`0018`), which is why the next tag
+  is `0019` — the document read its own correct "19 applied" as "next is 0020". Corrected at close
+  in all four places the close reviewer found it (§2, DD4, T-D4's Files list, T-D4's acceptance),
+  which is one place more than I had found myself. §2.90's rule, on this document.
+- **F3 — DISCLOSED, AND IT IS MINE. `git add -A`, twice.** The first time it swept T-D1's 31 code
+  files into a commit whose message was the phase document's; caught before any push, corrected by
+  `git reset --soft` on a commit `origin/main` had never seen, and re-split into `aa4baec` +
+  `f67c9fc`. **The second time it swept a 457-line file that is not mine** —
+  `docs/superpowers/plans/2026-08-25-phase1-11h-global-search-command-palette.md`, the owner's
+  Plan 11h draft, which appeared in the tree while `pnpm verify` ran — into `314f3d4`, and that
+  one WAS pushed. It is not touched: rule 15 forbids rewriting pushed history, and the file is not
+  mine to delete (rule 2's boundary, rule 8's caution). It is intact in git under a commit message
+  that does not mention it, and this paragraph is the record. **AGENT-RULES §5 step 0 already says
+  "never run `git add -A` over a status you have not read" — and I read the status BOTH times.
+  That is what makes this a new lesson rather than a rule I ignored:** reading a status tells you
+  what is there NOW; `-A` stages what is there AT COMMIT TIME, and on a host the owner also works
+  on (rule 8) those are different sets. **Ledger §2.92.**
+- **F4 — MEASURED, mine, disclosed. AGENT-RULES rule 3 violated once.** The first run of the D1
+  reproduction matrix used `curl -o /tmp/x` to discard response bodies. Rule 3 forbids any write
+  to `/tmp`, for any reason. Deleted with `rm -f`, and the matrix re-run with `-o /dev/null`
+  before anything was recorded — same result, 5 SPA / 15 API. Every other scratch this phase
+  produced lived under `/opt/hmis` and is removed. *(The smoke-test session made the identical
+  slip four hours earlier and recorded it in its own §10; that a second session repeated it inside
+  one day is the finding, not the individual lapse.)*
+- **F5 — MEASURED, caught by `pnpm verify` and not by the narrow run.** Three `await import(…)`
+  calls in the new T-D2 tests passed jest (ts-jest transpiles) and FAILED `tsc --noEmit` under
+  `moduleResolution: node16` with TS2834/TS2835. Hoisted to static imports. This is §2.87's rule
+  earning its keep for the second phase running: the narrow suite is not the evidence, `pnpm
+  verify` is.
+
+### The independent close reviewer (v3 §3.4) — findings and their fates
+
+One fresh-context reviewer over all six commits read together, ~1.2M ms, 107 tool calls. **No
+CRITICAL. Three MAJOR, nine MINOR.** Every one of the three MAJORs is a defect I could not have
+found by writing another test to my own understanding, which is the claim v3 §3.4 makes about this
+instrument — discharged with specimens for the second phase running.
+
+| # | finding | fate |
+|---|---|---|
+| **MAJOR 1** | **The new seed step could hard-abort `deploy.sh`, on exactly the case DD2 built the gate for.** `seed-roles`'s census checks a reachability invariant that includes the three `ops.*` grants `seed-ops` writes — so running `seed-roles` FIRST reports NOT READY on a fresh box, and 11d deliberately made that verdict `process.exitCode = 1`, which under `set -euo pipefail` kills the deploy AFTER migrations and BEFORE the containers are recreated. `seed-roles.test.ts:545,578` already asserted `ready === false` in that exact state; nothing connected that fact to the script | **FIXED** in `314f3d4`. `seed-ops` runs first; `seed-roles`'s VERDICT is decoupled from the deploy's exit status (its grants land either way, and the verdict stays loud in the transcript); `check-config-present` remains the hard gate; `seed:admin`'s exclusion is now written down. **Five new legs in `deploy-parity.test.ts` pin the order, the five seeds' presence on disk, the gate's position, and the wrapping** — static, because the failure is an ORDERING between programs a jest run cannot execute, which is the gap it fell through |
+| **MAJOR 2** | **The throttle key was unbounded and the table was never reaped.** `loginSchema` puts no ceiling on `username` and the body limit is 1 MB; `subject` is half a composite PRIMARY KEY and Postgres refuses a btree tuple over ~2704 bytes — so **an anonymous `POST /auth/login` with a long enough username turned a clean 401 into a 500**. Below that, every failure against a NEW string wrote a permanent row and only a SUCCESSFUL authentication for that exact subject ever removed one | **FIXED** in `314f3d4`. `throttleSubject` truncates at 64 — one place, both credential paths, and nothing changes about what login ACCEPTS; `recordThrottleFailure` prunes rows whose window has passed, keyed on `last_failed_at` so a steadily-failing subject is never forgotten. Two regression legs, including that live rows survive the prune |
+| **MAJOR 3** | **Every open browser tab breaks across the `/api/*` cut, opaquely.** A stale bundle requests the bare paths, gets `index.html` where it expects JSON, and `lib/api.ts`'s `JSON.parse` throws a bare `SyntaxError` no screen recognises. No data risk — the API never sees those requests — but a cashier mid-shift or the display board left on `/opd/display` overnight fails unexplained | **FIXED** in `314f3d4`. `deploy.sh` prints the hard-reload reminder as its last line and the README carries it. Verified in the live deploy transcript below |
+| MINOR ×9 | the T-D3 test could not tell DD3's mapping from the blanket one DD3 rejects · DD3's justification was factually wrong about the schema (`invoices` has exactly ONE foreign key) · the migration number was wrong in **four** places, not the one I had found · "27 files" → 32 · Q4's `callsTo` count → 148 sites / 137 literal · T-D6's Files list omitted `confidential-capture.ts` · `docker-compose.prod.yml:162`'s stale "/health through Caddy" · `gst-config.ts:45`/`:96` transposed · no test drove the five seeds in `deploy.sh`'s order | **ALL TAKEN.** The first is the most valuable: `isInvoicePatientFkViolation` is now exported and pinned directly, because the e2e passed against the blanket `23503` mapping DD3 argues against. The last is MAJOR 1's root and is what the new parity legs close |
+
+**What the reviewer checked and found clean, recorded so the close states COVERAGE and not only
+defects:** `pnpm verify` at HEAD re-run independently (exit 0); the ~591 mechanical test-line edits
+in `f67c9fc` proved mechanical by matching every `-` line against the multiset of `+` lines with
+`/api` removed — **exactly one had no counterpart, the `API_BASE` import, so no test was deleted
+and no assertion altered beyond the prefix**; every negative/absence assertion in those 22 files
+enumerated individually and none turned vacuous; vite's dev-proxy rewrite confirmed to apply to
+the WebSocket upgrade, byte-identical to Caddy's `strip_prefix`; no service worker; the QR payload
+is not a URL; Prometheus scrapes containers directly; all five `dist/scripts/*.js` will exist;
+`compose run --rm` propagates its exit code; every seed's non-destructiveness read rather than
+trusted; the badge path correctly left unthrottled (an HMAC, not a guessable keyspace); no
+inescapable lockout state; the lock not held across argon2; the unknown-username sequence
+byte-identical to the known one; and nothing in the SPA sends `isConfidential: true` any more.
+
+### The deploy — owner-authorised in conversation, 2026-08-25
+
+`bash docker/prod/deploy.sh`, detached, **exit value 0** read from a file. Both new steps ran and
+passed on the first live execution: *"seed:roles complete and READY"* and *"every configuration
+row the modules require is present"*. The new edge gate passed **both** halves — *"api through the
+edge: HTTP 200 `{"status":"ok","db":"ok","worker":"ok"}"*` and *"screen through the edge:
+/admin/users serves the SPA document"* — and the hard-reload reminder printed as the last line.
+
+**D1's reproduction matrix, the report's own §3 table, re-run across all 20 routes with a browser
+`User-Agent` and `Accept: text/html`:**
+
+| | SPA served (200 `text/html`) | screen dark (API JSON) |
+|---|---|---|
+| **before** (pre-11g image, measured this session) | **5** / 20 | **15** / 20 |
+| **after** | **20** / 20 | **0** / 20 |
+
+**Everything the brief required to stay put, verified after:**
+
+- **`operating_mode_changes` is 0 rows.** Production has still never left `commissioning`.
+- **The money and tax values are untouched** — `cash_warn 15000000`, `cash_block 20000000`,
+  `pan_threshold 5000000`, `ca_signed false`, and all five `gst_config` rates byte-identical to
+  their pre-deploy values. That is DD2's non-destructive property proven in production rather than
+  asserted: five seeds ran over existing configuration and changed none of it.
+- **`role_permissions` is 73**, unchanged — `seed:roles` granted nothing new because nothing was
+  missing. **`approval_types` is 6** with `tariff_revision` present, correctly skipped.
+- **Migrations 19 → 20 applied.** `auth_throttle` exists and holds **0 rows**.
+- **`/app/syn-tariff.js` is GONE** from `hmis-prod-api-1` — the report's one left-behind artefact,
+  removed by the container recreation exactly as it predicted.
+- **The running images carry the fixes**, read from inside the containers rather than inferred:
+  `dist/scripts/check-config-present.js` present · `auth_throttle` in the compiled schema ·
+  `MAX_SUBJECT_LENGTH = 64` in the compiled throttle (so the close review's MAJOR 2 fix is what is
+  live) · `isInvoicePatientFkViolation` in the compiled controller · and the served bundle under
+  `/srv/assets/` contains `"/api"`.
+- **The API is still guarded**: `/api/admin/users` answers **401** unauthenticated — and this
+  time that is evidence about the API route only, which is the reading 11f got wrong and the
+  reason the matrix above exists.
+
+**What the deploy does NOT prove, and it is the same sentence the smoke test ended on:** no human
+has touched a screen. Twenty routes serving `text/html` is twenty documents, not twenty working
+screens. **The owner clicking through `/admin/users`, `/registration`, `/opd/desk`, `/billing`,
+`/ops/mode` and `/opd/display` is the acceptance test, and it is theirs.**
+
+### The soak list
+
+Run at PREFLIGHT and recorded once, in **§2.1** — the fact rule; this section points rather than
+restates. Headline: **`runDailyClose` succeeded at 18:29:26Z with `last_error` NULL, its first
+successful run ever, so D2's repair TOOK**; `daily_closes` carries its first row; `dead_letters`
+stayed 0; `createEventPartitions` and `retentionSweep` both fired on schedule; and soak item 3's
+stated failure condition is **not** met — the two `expired` rows are `expireByRef`'s deliberate
+supersession of a cancelled and a rescheduled appointment, not the pump aging anything out.
+
+**Three soak items remain genuinely undue and are the owner's to read tomorrow**: the 20 queued
+notifications resume at 08:00 IST (02:30 UTC) and must go `sent`, not `expired`; the two live
+2026-08-25 appointments must be marked no-show after their 09:30/10:30 IST slots pass; and both
+are unaffected by this deploy.
+
+### One NEW production observation, measured, not a defect
+
+**The escalation ladder fired in production for the first time, unprompted, and behaved exactly as
+designed.** Two OPD workflow instances the smoke test left in `waiting` escalated at rung 0
+(19:00 UTC) and rung 1 (19:30 UTC), fanning out to the three `front_office_supervisor` holders:
+**12 in-app alerts** and **12 notifications marked `undeliverable / no_phone`**. That is D-34's
+designed degrade path — *"a phoneless staff member degrades to exactly the in-app alert that
+already ships"* — working end to end, and the ladder has exhausted and stopped (nothing since
+19:30:28). `event_dead_letters` is still 0 through those 12 extra deliveries.
+
+**It is an owner note, not a task.** Those two instances will sit in `waiting` for ever, and two
+further approval-SLA timers from the smoke test come due at 22:19 UTC tonight. The synthetic-data
+manifest in the smoke report §6 is the wipe list; nothing here needs code.
+
+### Actuals
+
+| | |
+|---|---|
+| tokens, all sessions | **UNMEASURED — the owner's `/cost`.** A session cannot read its own total. This is runbook item **O3's class for the THIRD phase running** and it is now the longest-standing undischarged claim in the method |
+| stop-loss | 1.5M. **Not observably crossed**, and — as in 11f — that is an assertion this session cannot discharge. Nothing in the run's shape suggested it: five tasks, one reviewer, six mutants built and run, one deploy, and rework confined to F5's three import lines and the reviewer's three MAJORs |
+| agents | **1** — the independent close reviewer (254,782 subagent tokens, 107 tool calls). No subagent wrote any code |
+| wall clock | ~3h15m end to end, dominated by **seven full `pnpm verify` runs**, five CI waits and the image build |
+| mutants | **6 built and executed**, all DIED with expected-vs-received quoted, every control passing: T-D1 R1 (the twelve-prefix matcher restored — named all 15 dark screens) and R2 (the route parser throws rather than returning `[]`) · T-D2 R1 (the pre-11g unconditional upserts — restored a corrected 500 to 1800) and R2 (the `billing_config` leg removed) · T-D4 R1 (the throttle check deleted — **reproduced the smoke test's own measured signature**, 401×6 then 201) and R2 (the clear-on-success deleted). Plus one non-required vacuity control on T-D6's label strings |
+| catches | **5 by the session** (F1–F5) · **3 MAJOR + 9 MINOR by the independent reviewer**, every one real, none CRITICAL |
+
+**v3 §7's measurements.** Transcription-class incidents: **zero** — structurally, there is one
+document. Defects reaching production from this phase: **none** — the three MAJORs were found and
+fixed BEFORE the deploy, which is the entire purpose of putting the reviewer in front of the
+deploy checkpoint rather than after it. Defects of a class v2's per-task apparatus has a named
+prior catch for: **none** — MAJOR 1 is a cross-program ordering that no per-task gate has ever
+been shaped to see, MAJOR 2 is a schema-key bound, MAJOR 3 is an operational note. The reversal
+conditions recorded in v3 §7 are therefore **not** triggered; the next phase stays LIGHT-eligible.
+
+### Ledger — the archive pass (v3 §5)
+
+Four new entries: **§2.92, §3.58, §3.59, §3.60**.
+
+**ARCHIVE PASS RUN, NOTHING QUALIFIES THIS CYCLE, and that is a finding rather than a skipped
+step.** The obvious candidate was **§2.88** — the parity pin between two hand-maintained lists —
+because this phase deleted the twelve-prefix mirror those two lists WERE. But §2.88's rule is
+*"a parity pin over N hand-maintained copies needs an N+1th source DERIVED FROM USE"*, and this
+phase's own new leg is another instance of exactly that rule rather than its retirement. **An
+entry whose SPECIMEN's machinery is gone but whose RULE still binds is not archivable** — the
+archive rule says *enabling mechanism*, and the mechanism here is hand-maintained parity, which
+this repository still has three of.
+
+### Routed to the owner
+
+§6's list stands unchanged and unclosed: **D5**, **D6's permission half**, **D7 gap 1**,
+**O1/O2**, **O4**, **O6**. Two items move:
+
+- **D7 gap 2 is CLOSED** — `seed:tariff` registers `tariff_revision` on every deploy, and the
+  README's go-live runbook step 1, which told the owner to do it by hand, is struck in place.
+- **O5 — one real day through the system — is now POSSIBLE for the first time.** It was blocked by
+  D1 for the whole of Plan 11f and the smoke test. Twenty screens serve. The hospital has still
+  never operated on this system, and `operating_mode_changes` is still empty.
