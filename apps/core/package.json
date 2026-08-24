@@ -23,7 +23,8 @@
     "seed:roles": "tsx scripts/seed-roles.ts",
     "seed:staff": "tsx scripts/seed-staff.ts",
     "validate:billing": "tsx scripts/validate-billing-config.ts",
-    "validate:config": "tsx scripts/validate-config.ts"
+    "validate:config": "tsx scripts/validate-config.ts",
+    "check:config-present": "tsx scripts/check-config-present.ts"
   },
   "dependencies": {
     "@hmis/contracts": "workspace:*",

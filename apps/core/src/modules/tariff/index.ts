@@ -13,6 +13,7 @@ export {
   setTariffItem, submitVersion, TARIFF_REVISION_APPROVAL_TYPE,
 } from "./versions";
 export { listAdjustmentRules, loadRuleConfig, upsertAdjustmentRule } from "./rules";
+export { TARIFF_APPROVAL_TYPES, registerTariffApprovalTypes } from "./approval-types";
 export { getGstSettings, listGstCategories, upsertGstCategory, upsertGstSettings } from "./gst-config";
 export { assertPaise, divHalfUp, percentAmount, roundTotalToRupee, taxHead } from "./money";
 export { TariffError } from "./errors";

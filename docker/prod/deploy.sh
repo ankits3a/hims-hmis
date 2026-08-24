@@ -16,7 +16,9 @@
 #   4. pgBackRest: stanza created, archiving CHECKED end to end (D8)
 #   5. migrations FROM INSIDE THE IMAGE (D2), then CURSOR SEEDING (D10) — every production
 #      consumer's cursor seeded at max(seq), so a first boot against a database that already
-#      carries history does not replay it through the dispatcher
+#      carries history does not replay it through the dispatcher — then CONFIGURATION SEEDING and
+#      the CONFIGURATION GATE (Plan 11g / DD2): the deploy establishes the rows its own modules
+#      throw without, and then refuses to continue if they are not there
 #   6. api, worker and caddy up
 #   7. the backup and restore-drill cron entries
 #   8. the EDGE gate: /api/health green THROUGH Caddy over HTTPS on the real hostname, AND a
@@ -378,6 +380,54 @@ step "cursor seeding, before any consumer's first cycle (D10)"
 # and NEVER LOWERS an existing cursor (V11), so it stays in the re-deploy path forever: a consumer
 # already caught up is left exactly where it is.
 compose run --rm api node dist/scripts/seed-cursors.js
+
+# ----------------------------------------------------------------------------------------------
+step "configuration seeding — the rows the modules throw without (Plan 11g / DD2)"
+# ----------------------------------------------------------------------------------------------
+# WHY THIS EXISTS. Until 2026-08-25 this script ran exactly ONE seed — the cursor seed above — and
+# production was consequently deployed with `billing_config` EMPTY, `gst_settings` empty, zero
+# approval types and zero role grants. Every invoice threw `billing_not_configured`; the nightly
+# `runDailyClose` had been failing for a day with `billing_config row 'main' is missing`; and a
+# doctor could not start a consultation, because the consult gate asks billing to price the fee.
+# The 2026-08-24 synthetic smoke test found all of it, and the deploy reported healthy throughout.
+# That is the report's D2, and its cause was this gap.
+#
+# ALL FIVE ARE NON-DESTRUCTIVE ON RE-RUN, and that property is what lets them live in the
+# re-deploy path for ever rather than in a one-time bootstrap:
+#   seed:roles   grants role permissions, skipping rows that exist   (its own header: "belongs in
+#                the re-deploy path forever")
+#   seed:ops     the three ops.* grants + the duty_manager/owner roles      (same)
+#   seed:opd     opd_config, the OPD role keys, the departments      (onConflictDoNothing)
+#   seed:billing billing_config, cashier/billing_manager, the two consult services, the five
+#                billing approval types                             (onConflictDoNothing)
+#   seed:tariff  gst_settings, five gst_config rows, four discount caps, the tariff_revision
+#                approval type                                      (skip-if-present — it was the
+#                ONE exception and Plan 11g brought it to the house convention, because it wrote
+#                through onConflictDoUpdate and would have restored DEV PLACEHOLDER tax rates over
+#                a CA's corrections on every deploy)
+#
+# `set -euo pipefail` is the gate half of this step: a seed that exits non-zero is a deploy that
+# stops, at the line that names it.
+compose run --rm api node dist/scripts/seed-roles.js
+compose run --rm api node dist/scripts/seed-ops.js
+compose run --rm api node dist/scripts/seed-opd.js
+compose run --rm api node dist/scripts/seed-billing.js
+compose run --rm api node dist/scripts/seed-tariff.js
+note "configuration seeds complete"
+
+# ----------------------------------------------------------------------------------------------
+step "configuration gate — refuse to continue without the rows the modules require (DD2)"
+# ----------------------------------------------------------------------------------------------
+# The seeds above ESTABLISH; this REFUSES, and the two catch different failures. A seed that was
+# never added for a new module, a row deleted by hand, a restore from a backup taken before the
+# configuration existed: none of those is a failing seed, and all of them are a hospital that
+# cannot issue an invoice. This asks the question positively, through the modules' OWN loaders.
+#
+# It is NOT `validate:config`. That one is the GO-LIVE gate and refuses without a CA signature and
+# an active tariff version — both correctly false today, both the owner's runbook items (O6). A
+# deploy gate demanding them would refuse every deploy between now and the CA's signature.
+compose run --rm api node dist/scripts/check-config-present.js
+note "every configuration row the modules require is present"
 
 # ----------------------------------------------------------------------------------------------
 step "6/8 api, worker and caddy up"
