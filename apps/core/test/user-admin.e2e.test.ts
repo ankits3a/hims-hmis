@@ -340,6 +340,50 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
     expect(JSON.stringify(appended)).not.toContain("482913");
   });
 
+  /**
+   * PLAN 11f T2 / D2 — THE TWO-ADMIN DETECTOR, at the surface that can meet the mitigation.
+   *
+   * ROUTINE tier: tests required, mutants NOT required and fail-first NOT owed — stated rather
+   * than inferred. What these two legs are FOR is the property §2.89 cost us to learn: the count
+   * must agree with the takeover rule about who is a full administrator, and the two ways a
+   * lookalike join gets it wrong are counting deactivated accounts and counting holdings at a
+   * scope the guards refuse. Both are asserted, and both would pass under a naive
+   * `select … join role_permissions` that ignores `users.active` and `scopeType`.
+   */
+  it("11f D2 — the list carries the full-administrator count, and it tracks reality", async () => {
+    const ALL_AUTH = [...authManifest.permissions];
+
+    // `root_admin` holds USERS_MANAGE ALONE, so at baseline NOBODY holds the whole set — which is
+    // also what makes the increments below non-vacuous.
+    expect((await asAdmin("get", "/admin/users").expect(200)).body.fullAdministrators).toBe(0);
+
+    await mkUser("owner_one", ALL_AUTH);
+    expect((await asAdmin("get", "/admin/users").expect(200)).body.fullAdministrators).toBe(1);
+
+    const { id: ownerTwoId } = await mkUser("owner_two", ALL_AUTH);
+    expect((await asAdmin("get", "/admin/users").expect(200)).body.fullAdministrators).toBe(2);
+
+    // A DEACTIVATED holder cannot reset anybody, so they are not one of the two the mitigation
+    // asks for. The count says so.
+    await asAdmin("post", `/admin/users/${ownerTwoId}/deactivate`).expect(200);
+    expect((await asAdmin("get", "/admin/users").expect(200)).body.fullAdministrators).toBe(1);
+  });
+
+  it("11f D2 — a DEPARTMENT-scoped holder of every auth.* permission is not a full administrator (C2's scope, one door over)", async () => {
+    const { id } = await mkUser("dept_owner", null);
+    const roleKey = "dept_owner_role";
+    await db.insert(roles).values({ key: roleKey, title: roleKey }).onConflictDoNothing();
+    for (const permission of authManifest.permissions) {
+      await grantPermissionToRole(db, registry, roleKey, permission);
+    }
+    await assignRole(db, { userId: id, roleKey, scopeType: "department", scopeId: "cardiology" });
+
+    // They hold every auth.* string in `role_permissions` — a counter that forgot the scope
+    // predicate would say 1 — but `hasPermission` refuses a department holding against the
+    // hospital requirement every admin route carries, so they can administer NOBODY.
+    expect((await asAdmin("get", "/admin/users").expect(200)).body.fullAdministrators).toBe(0);
+  });
+
   it("R4 at THIS path — the policy is applied to both credentials at creation", async () => {
     const short = await asAdmin("post", "/admin/users")
       .send({ username: "ravi", fullName: "Ravi", password: "abcdefghi" });

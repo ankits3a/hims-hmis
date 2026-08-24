@@ -32,7 +32,12 @@ export type WireAdminUser = {
   roles: WireUserRole[];
 };
 
-export function listUsers(): Promise<{ users: WireAdminUser[] }> {
+/**
+ * `fullAdministrators` is the count of active users holding the WHOLE `auth.*` set at hospital
+ * scope, computed by the server from the takeover rule's own helper (11f D2). The client never
+ * derives it: a second derivation here would be the §2.89 defect in a second language.
+ */
+export function listUsers(): Promise<{ users: WireAdminUser[]; fullAdministrators: number }> {
   return api("GET", "/admin/users");
 }
 

@@ -233,6 +233,35 @@ export async function assertMayTakeOver(tx: Tx, actorId: string, targetId: strin
   }
 }
 
+/**
+ * ═══ THE TAKEOVER RULE'S MITIGATION, MADE VISIBLE — PLAN 11f D2 ═══
+ *
+ * The active users who hold the WHOLE `auth.*` set at hospital scope. Two or more of them is the
+ * state the takeover rule's refusal message asks a deployment to keep; below two, the top account
+ * has no repair but direct database access.
+ *
+ * **ENFORCEMENT IS MARKED DEAD IN PLACE, and this is a ruling rather than an omission (11f D2).**
+ * An invariant refusing every state with fewer than two full administrators is UNSATISFIABLE at
+ * bootstrap — `seed:admin` mints exactly one — and unsatisfiable in today's production, where the
+ * count is one. It would refuse the very mutations that repair the state, or it would carry escape
+ * hatches that gut it. So what ships is VISIBILITY: this function, `seed:roles`'s census, and the
+ * admin screen's banner. Creating the second administrator is an operational act (runbook O1).
+ *
+ * ═══ IT DERIVES FROM THE DECIDING FUNCTIONS, WHICH IS §2.89's RULE ═══
+ *
+ * The candidates come from `hospitalScopeHolders` (active, hospital-scoped — so a deactivated
+ * account cannot pad the count) and the SET COMPARISON comes from `authPermissionsHeld`, the same
+ * function `assertMayTakeOver` reads. A counter with its own join is how C2 happened: two pieces of
+ * code answering one question, each correct alone, exploitable together. Every full administrator
+ * necessarily holds `auth.users.manage` — it is in `authManifest.permissions` — so narrowing the
+ * candidates that way loses nobody.
+ */
+export async function fullAdministrators(tx: Tx): Promise<string[]> {
+  const candidates = await hospitalScopeHolders(tx, USERS_MANAGE);
+  const held = await Promise.all(candidates.map((userId) => authPermissionsHeld(tx, userId)));
+  return candidates.filter((_, i) => held[i]!.length === authManifest.permissions.length).sort();
+}
+
 /** Refuses when the named removal would leave nobody able to administer users. */
 export async function assertNoAdminLockout(
   tx: Tx,
@@ -326,10 +355,16 @@ export class UsersAdminController {
    * The whole roster, including deactivated accounts — a list that hid them would make
    * "reactivate" a route with no way to reach it. No credential material of any kind: `hasPin` is
    * a boolean about whether one EXISTS.
+   *
+   * `fullAdministrators` rides along because the screen that renders this list is the screen where
+   * the mitigation is MET (11f D2): a count below two is the takeover rule's cost, live, and the
+   * one place a person can act on it is the surface that creates and assigns. It is a COUNT and
+   * not a roster — who they are is already visible in `users`, and a second list of names would be
+   * a second copy of a fact.
    */
   @RequirePermission(USERS_MANAGE, "hospital")
   @Get()
-  async list(): Promise<{ users: AdminUserView[] }> {
+  async list(): Promise<{ users: AdminUserView[]; fullAdministrators: number }> {
     const rows = await this.db
       .select({
         id: users.id,
@@ -355,7 +390,10 @@ export class UsersAdminController {
         .from(roleAssignments)
         .where(inArray(roleAssignments.userId, ids));
 
+    const admins = await withTx(this.db, (tx) => fullAdministrators(tx));
+
     return {
+      fullAdministrators: admins.length,
       users: rows.map((r) => ({
         id: r.id,
         username: r.username,

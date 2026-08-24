@@ -13,10 +13,13 @@ import {
   heldInDatabase,
   heldPermissions,
   modelPermissions,
+  formatReport,
   roleTitle,
   seedRoles,
 } from "../scripts/seed-roles";
-import { createRole, grantPermissionToRole } from "../src/kernel/auth/permissions";
+import { assignRole, createRole, grantPermissionToRole } from "../src/kernel/auth/permissions";
+import { createUser } from "../src/kernel/auth/identity";
+import { authManifest } from "../src/kernel/auth/manifest";
 import { rolePermissions } from "../src/kernel/db/schema";
 
 /**
@@ -574,5 +577,50 @@ describe("seed:roles — executed against a database (V5)", () => {
     // still 403 for every user on the deployment, and the verdict line has to say so.
     expect(report.ready).toBe(false);
     expect(report.problems.join(" ")).toContain("NO USER HOLDS ANY OF THE 11 ROLES");
+  });
+
+  /**
+   * PLAN 11f T2 / D2 — THE CENSUS SEES THE TAKEOVER RULE'S MITIGATION UNMET.
+   *
+   * ROUTINE tier: tests required, mutants NOT required and fail-first NOT owed. The count is
+   * `fullAdministrators`' — the takeover rule's own helper — and these legs assert the two
+   * transitions an operator lives through: nobody, then the bootstrap admin alone, then two.
+   */
+  it("11f D2 — the census names the full-administrator shortfall and goes quiet at two", async () => {
+    const registry = new ModuleRegistry();
+    for (const manifest of ALL_MANIFESTS) registry.install(manifest);
+
+    const none = await seedRoles(db);
+    expect(none.fullAdministrators).toEqual([]);
+    expect(none.problems.join(" ")).toContain("0 user(s) hold the FULL auth.* set");
+    expect(none.problems.join(" ")).toContain("takeover rule");
+    expect(formatReport(none).join("\n")).toContain("full administrators");
+
+    // One — the bootstrap state, and the state production is in. Named, so the operator knows
+    // WHICH account has no repair.
+    await createRole(db, "full_admin", "Full administrator");
+    for (const permission of authManifest.permissions) {
+      await grantPermissionToRole(db, registry, "full_admin", permission);
+    }
+    const { id: firstId } = await createUser(db, {
+      username: "admin", fullName: "The Administrator", password: "bootstrap-secret",
+    });
+    await assignRole(db, { userId: firstId, roleKey: "full_admin", scopeType: "hospital" });
+
+    const one = await seedRoles(db);
+    expect(one.fullAdministrators).toEqual(["admin"]);
+    expect(one.problems.join(" ")).toContain("1 user(s) hold the FULL auth.* set at hospital scope: admin");
+
+    // Two — runbook O1 performed. The line goes quiet, which is what "the detector goes quiet"
+    // means and is the half that stops this row passing by warning about everything.
+    const { id: secondId } = await createUser(db, {
+      username: "second_admin", fullName: "The Second", password: "bootstrap-secret",
+    });
+    await assignRole(db, { userId: secondId, roleKey: "full_admin", scopeType: "hospital" });
+
+    const two = await seedRoles(db);
+    expect(two.fullAdministrators).toEqual(["admin", "second_admin"]);
+    expect(two.problems.join(" ")).not.toContain("hold the FULL auth.* set");
+    expect(formatReport(two).join("\n")).toContain("full administrators (whole auth.* set, hospital scope, active): 2");
   });
 });

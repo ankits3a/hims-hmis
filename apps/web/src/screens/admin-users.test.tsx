@@ -76,6 +76,30 @@ describe("AdminUsers", () => {
     expect(within(goneRow).getByText(/this person can reach nothing/)).toBeInTheDocument();
   });
 
+  /**
+   * PLAN 11f T2 / D2. The screen renders the SERVER's count and mints no arithmetic of its own —
+   * the same rule that keeps the password policy off this file. So what is asserted here is the
+   * rendering decision this screen actually makes: below two, say it; at two, do not.
+   */
+  it("11f D2 — banners the takeover rule's mitigation when fewer than two people hold the full auth.* set", async () => {
+    mockRoutes({ "GET /admin/users": { status: 200, body: { users: [ASHA], fullAdministrators: 1 } } });
+    renderWithProviders(<AdminUsers />);
+
+    const warning = await screen.findByTestId("admin-two-admin-warning");
+    expect(warning).toHaveTextContent("Only 1 person");
+    expect(warning).toHaveTextContent(/no repair but direct database access/);
+  });
+
+  it("11f D2 — the banner is gone at two, and absent while the list is still in flight", async () => {
+    mockRoutes({ "GET /admin/users": { status: 200, body: { users: [ASHA], fullAdministrators: 2 } } });
+    renderWithProviders(<AdminUsers />);
+
+    // Wait for the list to have ARRIVED before concluding the banner is absent — asserting on an
+    // unresolved query would pass for the wrong reason, and would pass just as well at one.
+    await screen.findByTestId("admin-user-asha");
+    expect(screen.queryByTestId("admin-two-admin-warning")).not.toBeInTheDocument();
+  });
+
   it("creates a person, sending exactly what was typed and omitting an empty PIN", async () => {
     mockRoutes({
       "GET /admin/users": { status: 200, body: { users: [] } },

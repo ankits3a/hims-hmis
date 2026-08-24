@@ -129,10 +129,27 @@ export function AdminUsers(): React.ReactElement {
   };
 
   const rows = users.data?.users ?? [];
+  /** `undefined` while the list is in flight: an unloaded screen must not accuse a deployment. */
+  const fullAdmins = users.data?.fullAdministrators;
 
   return (
     <div className="space-y-6 p-6">
       <h1 className="text-xl font-semibold">{t("adminUsers.title")}</h1>
+
+      {/*
+        PLAN 11f D2 — the takeover rule's mitigation, unmet, said out loud on the one surface that
+        can meet it. The COUNT is the server's (`fullAdministrators`, derived from the same helper
+        the takeover check reads); this screen renders it and mints no arithmetic of its own — the
+        same rule that keeps the password policy off this file.
+       */}
+      {fullAdmins !== undefined && fullAdmins < 2 && (
+        <p role="alert" data-testid="admin-two-admin-warning"
+          className="rounded border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900">
+          {/* `n`, not `count`: i18next reads `count` as a plural selector and would look for
+              `_one`/`_other` variants this catalogue does not carry. */}
+          {t("adminUsers.twoAdminWarning", { n: fullAdmins })}
+        </p>
+      )}
 
       <section className="space-y-3 rounded border p-4">
         <h2 className="text-sm font-semibold">{t("adminUsers.createTitle")}</h2>

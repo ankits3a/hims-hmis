@@ -7,8 +7,9 @@ import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import { authManifest } from "../src/kernel/auth/manifest";
 import { opsManifest } from "../src/kernel/ops/manifest";
 import { usersHoldingRole } from "../src/kernel/workflow/roles";
+import { fullAdministrators } from "../src/kernel/auth/users-admin.controller";
 import { OPD_ROLE_KEYS } from "../src/modules/opd/config";
-import { rolePermissions, roles } from "../src/kernel/db/schema";
+import { rolePermissions, roles, users } from "../src/kernel/db/schema";
 
 /**
  * `pnpm --filter @hmis/core seed:roles` — the go-live step that makes EVERY module's permissions
@@ -382,6 +383,12 @@ export type SeedRolesReport = {
   notYetModelled: number;
   /** Permissions the model EXPECTS another seed to have granted, which this database does not hold. */
   expectedElsewhereAbsent: number;
+  /**
+   * The takeover rule's mitigation, MEASURED (11f D2): usernames of the active users holding the
+   * whole `auth.*` set at hospital scope. Usernames rather than ids because this is a transcript a
+   * person reads — and a username is not credential material, which is why it may appear here.
+   */
+  fullAdministrators: string[];
   roles: RoleOutcome[];
   problems: string[];
   ready: boolean;
@@ -481,6 +488,28 @@ export async function seedRoles(db: Db): Promise<SeedRolesReport> {
     );
   }
 
+  /**
+   * PLAN 11f D2 — THE TWO-ADMIN DETECTOR. The count comes from `fullAdministrators`, the helper
+   * `assertMayTakeOver` reads, and NOT from a join written here: §2.89's rule, and C2 was the price
+   * of ignoring it. This census is the surface an operator runs before go-live, so it is where an
+   * unmet operational mitigation belongs.
+   */
+  const adminIds = await withTx(db, (tx) => fullAdministrators(tx));
+  const adminNames = adminIds.length === 0
+    ? []
+    : (await db.select({ username: users.username, id: users.id }).from(users)
+        .where(inArray(users.id, adminIds))).map((u) => u.username).sort();
+  if (adminNames.length < 2) {
+    problems.push(
+      `${adminNames.length} user(s) hold the FULL auth.* set at hospital scope` +
+        (adminNames.length === 0 ? "" : `: ${adminNames.join(", ")}`) +
+        `. The takeover rule (2026-08-24) lets a credential reset be performed only by somebody ` +
+        `whose auth.* set is a SUPERSET of the target's — so below TWO holders, a forgotten ` +
+        `password at the top has no repair but direct database access. Create a second one and ` +
+        `assign it the admin role; this line goes quiet at two.`,
+    );
+  }
+
   const unheld = outcomes.filter((o) => o.holders === 0).map((o) => o.roleKey);
   if (unheld.length === outcomes.length) {
     problems.push(
@@ -497,6 +526,7 @@ export async function seedRoles(db: Db): Promise<SeedRolesReport> {
     held: held.size,
     notYetModelled: notYetModelled.size,
     expectedElsewhereAbsent: expectedElsewhereAbsent.length,
+    fullAdministrators: adminNames,
     roles: outcomes,
     problems,
     ready: problems.length === 0,
@@ -531,6 +561,13 @@ export function formatReport(report: SeedRolesReport): string[] {
   lines.push(
     "the model is checked against the MANIFESTS, never against the README: grantPermissionToRole " +
       "refuses any string no installed manifest declares.",
+  );
+  // Printed on EVERY run, green or not (11f D2). A detector that speaks only when it is unhappy
+  // cannot be told apart from a detector that has stopped looking — §2.63(b)'s heartbeat lesson,
+  // one surface over.
+  lines.push(
+    `full administrators (whole auth.* set, hospital scope, active): ${report.fullAdministrators.length}` +
+      (report.fullAdministrators.length === 0 ? "" : ` — ${report.fullAdministrators.join(", ")}`),
   );
   lines.push("");
   if (report.problems.length > 0) {
