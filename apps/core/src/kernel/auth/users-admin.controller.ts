@@ -13,6 +13,7 @@ import { createUser, deactivateUser, reactivateUser, setPassword, setPin } from 
 import { revokeUserSessions } from "./sessions";
 import { checkPassword, checkPin } from "./password-policy";
 import { userCreated, userCredentialReset, userDeactivated, userReactivated } from "./events";
+import { authManifest } from "./manifest";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../db/client";
 
@@ -153,6 +154,83 @@ export async function hospitalScopeHolders(
     .innerJoin(users, eq(users.id, roleAssignments.userId))
     .where(and(...conditions));
   return [...new Set(rows.map((r) => r.userId))].sort();
+}
+
+/**
+ * The `auth.*` permissions this user actually holds AT HOSPITAL SCOPE — the scope every admin
+ * route demands, so this set is what they could really USE. Hospital scope for the same reason
+ * `hospitalScopeHolders` uses it (C2): a counter that disagrees with the guard is exploitable.
+ */
+export async function authPermissionsHeld(tx: Tx, userId: string): Promise<string[]> {
+  const rows = await tx
+    .select({ permission: rolePermissions.permission })
+    .from(roleAssignments)
+    .innerJoin(rolePermissions, eq(rolePermissions.roleKey, roleAssignments.roleKey))
+    .where(
+      and(
+        eq(roleAssignments.userId, userId),
+        eq(roleAssignments.scopeType, "hospital"),
+        inArray(rolePermissions.permission, [...authManifest.permissions]),
+      ),
+    );
+  return [...new Set(rows.map((r) => r.permission))].sort();
+}
+
+/**
+ * ═══ THE TAKEOVER RULE — OWNER RULING 2026-08-24 ═══
+ *
+ * **An actor may reset a credential only if the `auth.*` permissions they hold are a SUPERSET of
+ * the target's.**
+ *
+ * THE DEFECT IT CLOSES (11e CLOSE, the independent reviewer's M6). A credential reset is a
+ * TAKEOVER: the actor chooses the password, so they can then sign in as the target and wield
+ * everything the target holds. That made `auth.users.manage` a complete escalation to
+ * `auth.roles.manage` — and worse, it fired at exactly the moment this phase exists to enable.
+ * The whole point of building this surface is that the owner can DELEGATE password resets to a
+ * front-office supervisor; the moment they did, that supervisor silently became a superuser.
+ *
+ * WHY `auth.*` AND NOT EVERY PERMISSION. The naive rule — "refuse if the target holds anything the
+ * actor lacks" — is unworkable and would have killed the feature: a supervisor holding only
+ * `auth.users.manage` could not reset a CASHIER, because the cashier holds `billing.*`. What makes
+ * a takeover dangerous is authority over ACCESS, not authority over billing or OPD. The set is
+ * read from `authManifest.permissions` rather than hand-listed, so a seventh `auth.*` permission
+ * is protected the day it is declared (§2.54: one copy of a fact).
+ *
+ * THE CASES, and the third is the one the naive rule got wrong:
+ *   supervisor {users.manage} → cashier {}            ALLOWED — the feature works
+ *   supervisor {users.manage} → owner {all six}       REFUSED — the escalation, closed
+ *   owner {all six}           → supervisor            ALLOWED
+ *   owner {all six}           → another full owner    ALLOWED — this is the recovery path
+ *   peer {users.manage}       → peer {users.manage}   ALLOWED — equal authority gains nothing
+ *
+ * ═══ THE COST, STATED RATHER THAN DISCOVERED ═══
+ *
+ * A deployment whose top administrator is the ONLY holder of the full `auth.*` set has nobody who
+ * may reset them. If they forget their password, the repair is direct database access — the thing
+ * this phase exists to stop needing. **THE MITIGATION IS OPERATIONAL AND IT IS NAMED IN THE
+ * REFUSAL ITSELF: keep two people holding the full set.** That is cheap, it is the same discipline
+ * the lockout invariant already assumes, and it is far better than the alternative — leaving every
+ * delegate a silent superuser so that one recovery case stays convenient.
+ *
+ * SCOPE: the two CREDENTIAL routes only. Deactivate and role-revoke do not confer takeover — you
+ * cannot become somebody by switching them off — and the lockout invariant already guards those.
+ */
+export async function assertMayTakeOver(tx: Tx, actorId: string, targetId: string): Promise<void> {
+  const [actorHolds, targetHolds] = await Promise.all([
+    authPermissionsHeld(tx, actorId),
+    authPermissionsHeld(tx, targetId),
+  ]);
+  const missing = targetHolds.filter((permission) => !actorHolds.includes(permission));
+  if (missing.length > 0) {
+    throw new ConflictException({
+      code: "admin_target_protected",
+      message:
+        `refused: resetting a credential means being able to sign in as that person, and they ` +
+        `hold ${missing.join(", ")}, which you do not. Ask somebody who holds everything they do. ` +
+        `If nobody does, that is the state to fix: keep TWO people holding the full auth.* set, ` +
+        `or a forgotten password at the top has no repair but direct database access.`,
+    });
+  }
 }
 
 /** Refuses when the named removal would leave nobody able to administer users. */
@@ -349,6 +427,7 @@ export class UsersAdminController {
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
     return withTx(this.db, async (tx) => {
       const user = await this.requireUser(tx, id);
+      await assertMayTakeOver(tx, actor.id, id);
       const problems = checkPassword(parsed.data.newPassword, { username: user.username });
       if (problems.length > 0) throw new BadRequestException({ code: "password_policy", problems });
 
@@ -392,6 +471,7 @@ export class UsersAdminController {
       // disagree: a bad PIN for a user who does not exist answered 400 here and 404 there. Same
       // question, same order, so a caller can rely on the answer.
       const user = await this.requireUser(tx, id);
+      await assertMayTakeOver(tx, actor.id, id);
       const problems = checkPin(parsed.data.newPin);
       if (problems.length > 0) throw new BadRequestException({ code: "password_policy", problems });
       await setPin(tx, id, parsed.data.newPin);

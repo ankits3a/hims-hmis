@@ -26,24 +26,24 @@ import type { Db } from "../db/client";
  * route→permission map back where §3.42's defect hid — in a column of decorators nobody reads
  * together. `test/user-admin.e2e.test.ts` legs 1-4 read them together, by execution.
  *
- * ═══ THE SPLIT IS A SEPARATION OF CONCERNS. IT IS **NOT** A SECURITY BOUNDARY. ═══
+ * ═══ THE SPLIT IS A BOUNDARY AGAIN — IT WAS NOT ONE FOR SIX COMMITS ═══
  *
  * This header used to say a hospital could "reasonably give the front-office supervisor the first
- * and keep the second with the owner". THAT SENTENCE WAS WRONG and it is retracted (11e CLOSE, the
- * independent reviewer's M6). `auth.users.manage` is a COMPLETE ESCALATION to `auth.roles.manage`:
- * its holder may `POST /admin/users/{owner}/password-reset` with a password of their choosing, and
- * then sign in as the owner. Nothing refuses a credential reset against a target who holds
- * permissions the actor does not, and there is no second factor on that route (production has zero
- * TOTP enrolments — `users-admin.controller.ts` states that seam).
+ * and keep the second with the owner". THAT SENTENCE WAS WRONG WHEN IT WAS WRITTEN and it is
+ * retracted (11e CLOSE, the independent reviewer's M6). As shipped, `auth.users.manage` WAS a
+ * complete escalation to `auth.roles.manage`: its holder could `POST
+ * /admin/users/{owner}/password-reset` with a password of their choosing and then sign in as the
+ * owner. Nothing refused a credential reset against a target holding permissions the actor lacked,
+ * and there is still no second factor on that route (production has zero TOTP enrolments —
+ * `users-admin.controller.ts` states that seam).
  *
- * So: grant `auth.users.manage` only to people you would grant everything to. The two permissions
- * partition the WORK, not the trust.
- *
- * Closing it is an OWNER RULING, not an executing session's call, because the obvious fix — refuse
- * a reset against a higher-privileged target — creates a new lockout: the one person who can
- * repair the owner's forgotten password is exactly the person that rule would stop. The audit
- * trail exists in the meantime: every reset appends `user.credential_reset` naming the acting
- * admin.
+ * **RULED AND CLOSED, 2026-08-24.** `users-admin.controller.ts`'s `assertMayTakeOver` refuses a
+ * credential reset unless the actor's `auth.*` set is a SUPERSET of the target's, so a delegate
+ * holding `auth.users.manage` can no longer take over an administrator. The split is a real
+ * boundary again — but read that function's header before relying on it: the line is drawn at
+ * `auth.*` rather than at every permission, and it carries an operational cost. **Keep TWO people
+ * holding the full `auth.*` set**, or a forgotten password at the top has no repair but direct
+ * database access.
  *
  * ═══ NO SoD CALL HERE, AND IT IS MEASURED RATHER THAN ASSUMED (§3 Q4) ═══
  *

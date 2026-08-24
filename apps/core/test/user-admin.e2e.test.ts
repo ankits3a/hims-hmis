@@ -716,4 +716,98 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
     await asAdmin("post", `/admin/users/${victimId}/pin-reset`).send({ newPin: "417293" }).expect(204);
     expect(await verifyPin(db, victimId, "417293")).toBe(true);
   });
+
+  // ═══════════ THE TAKEOVER RULE — owner ruling 2026-08-24, closing the reviewer's M6 ═══════════
+  //
+  // A credential reset is a TAKEOVER: the actor picks the password, so they can sign in as the
+  // target. The rule is that an actor's `auth.*` set must be a SUPERSET of the target's. The five
+  // legs below are the whole case matrix, and the first is the one a naive "refuse if the target
+  // holds anything you lack" rule would have got wrong — it would have killed the feature.
+
+  it("M6 — a delegate resets ordinary staff freely; the line is drawn at auth.*, not at 'anything I lack'", async () => {
+    const { token: supervisor } = await mkUser("supervisor", [USERS_MANAGE]);
+
+    // (a) THE FEATURE. A person holding NO auth.* permission is resettable by the delegate, even
+    // though this is the whole case a naive "refuse if the target holds anything you lack" rule
+    // would have broken — ordinary staff hold billing and OPD permissions the supervisor does not,
+    // and authority over billing is not authority over access.
+    const { id: plainId } = await mkUser("plain_staff", null);
+    await request(server())
+      .post(`/admin/users/${plainId}/password-reset`).set("Authorization", `Bearer ${supervisor}`)
+      .send({ newPassword: "issued-at-the-desk" }).expect(200);
+    expect(await verifyPassword(db, "plain_staff", "issued-at-the-desk")).not.toBeNull();
+
+    // (b) THE LINE. The protected set is the whole `auth.*` manifest, not just the admin two: a
+    // target holding `auth.break_glass.use` — real authority over ACCESS to patient data — is
+    // refused to a supervisor who does not hold it. The pair (a)/(b) is what pins WHERE the line
+    // sits; either leg alone would be satisfied by a rule drawn in the wrong place.
+    const { id: breakGlassId } = await mkUser("nurse_on_call", ["auth.break_glass.use"]);
+    const res = await request(server())
+      .post(`/admin/users/${breakGlassId}/password-reset`).set("Authorization", `Bearer ${supervisor}`)
+      .send({ newPassword: "issued-at-the-desk" });
+    expect([res.status, res.body.code]).toEqual([409, "admin_target_protected"]);
+    expect(await verifyPassword(db, "nurse_on_call", "s3cret-pass")).not.toBeNull(); // untouched
+  });
+
+  it("M6 — a delegate CANNOT take over an administrator: the escalation, closed", async () => {
+    const { token: supervisor } = await mkUser("supervisor", [USERS_MANAGE]);
+    // The owner holds both admin permissions. `adminId` from beforeEach holds USERS_MANAGE only,
+    // so a distinct richer actor is minted here.
+    const { id: ownerId } = await mkUser("the_owner", [USERS_MANAGE, ROLES_MANAGE]);
+
+    const res = await request(server())
+      .post(`/admin/users/${ownerId}/password-reset`).set("Authorization", `Bearer ${supervisor}`)
+      .send({ newPassword: "i-would-become-the-owner" });
+    expect([res.status, res.body.code]).toEqual([409, "admin_target_protected"]);
+    expect(res.body.message).toContain(ROLES_MANAGE); // it NAMES what the actor lacks
+    expect(res.body.message).toContain("keep TWO people"); // …and the recovery discipline
+
+    // NOTHING MOVED — the owner's credential is untouched, so the takeover really failed.
+    expect(await verifyPassword(db, "the_owner", "s3cret-pass")).not.toBeNull();
+    expect(await verifyPassword(db, "the_owner", "i-would-become-the-owner")).toBeNull();
+
+    // …and the PIN route is closed too, or the escalation just moves one door over.
+    const pin = await request(server())
+      .post(`/admin/users/${ownerId}/pin-reset`).set("Authorization", `Bearer ${supervisor}`)
+      .send({ newPin: "417293" });
+    expect([pin.status, pin.body.code]).toEqual([409, "admin_target_protected"]);
+  });
+
+  it("M6 — a full administrator CAN reset a delegate, and a PEER can reset a peer", async () => {
+    // Direction matters: the rule is a subset test, not a "no admin may touch an admin" ban.
+    const { token: ownerToken } = await mkUser("the_owner", [USERS_MANAGE, ROLES_MANAGE]);
+    const { id: supervisorId } = await mkUser("supervisor", [USERS_MANAGE]);
+    await request(server())
+      .post(`/admin/users/${supervisorId}/password-reset`).set("Authorization", `Bearer ${ownerToken}`)
+      .send({ newPassword: "issued-by-the-owner" }).expect(200);
+
+    // EQUAL authority: nothing is gained by the takeover, so it is allowed. Without this leg the
+    // rule could have shipped as "no admin may ever reset an admin", which locks the recovery path.
+    const { token: peerA } = await mkUser("peer_a", [USERS_MANAGE]);
+    const { id: peerBId } = await mkUser("peer_b", [USERS_MANAGE]);
+    await request(server())
+      .post(`/admin/users/${peerBId}/password-reset`).set("Authorization", `Bearer ${peerA}`)
+      .send({ newPassword: "issued-by-a-peer" }).expect(200);
+  });
+
+  it("M6 — the recovery path: two full administrators can reset each other", async () => {
+    // THE COST OF THE RULE, asserted rather than assumed. A deployment with ONE full admin has
+    // nobody who may reset them; with TWO it is self-repairing, which is why the refusal message
+    // names that discipline.
+    const { token: ownerA } = await mkUser("owner_a", [USERS_MANAGE, ROLES_MANAGE]);
+    const { id: ownerBId } = await mkUser("owner_b", [USERS_MANAGE, ROLES_MANAGE]);
+    await request(server())
+      .post(`/admin/users/${ownerBId}/password-reset`).set("Authorization", `Bearer ${ownerA}`)
+      .send({ newPassword: "repaired-by-the-other" }).expect(200);
+    expect(await verifyPassword(db, "owner_b", "repaired-by-the-other")).not.toBeNull();
+  });
+
+  it("M6 — the protected set is READ FROM THE MANIFEST, so a seventh auth.* is covered on arrival", () => {
+    // §2.54: one copy of the fact. A hand-listed set would silently stop protecting the next
+    // permission somebody declares.
+    expect([...authManifest.permissions].sort()).toEqual([
+      "auth.agents.manage", "auth.break_glass.review", "auth.break_glass.use",
+      "auth.roles.manage", "auth.temp_role.grant", "auth.users.manage",
+    ]);
+  });
 });

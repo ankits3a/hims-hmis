@@ -539,10 +539,19 @@ the forced-change 403, breaking a reload of `/change-password`).
   the table is invisible to all four §3.42 legs. Real, and the reviewer is right that the billing
   precedent is stronger. The fix (enumerate Nest's router via `DiscoveryService`) is a testing-
   apparatus change of its own size and belongs to a phase that can verify it, not to a close.
-- **M6 — `auth.users.manage` is a complete escalation to `auth.roles.manage`.** A holder of the
-  first can password-reset a holder of the second and log in as them. The controller header
-  describes the split as if it were a boundary. **This needs an owner ruling** — refuse a reset
-  against a target holding permissions the actor lacks, or state it as a seam. Not a silent fix.
+- **M6 — RULED AND CLOSED 2026-08-24** (owner delegated the ruling to the executing session).
+  A credential reset is a TAKEOVER — the actor picks the password, so they can sign in as the
+  target — which made `auth.users.manage` a complete escalation to `auth.roles.manage`, firing at
+  exactly the moment this phase exists to enable: delegating password resets to a supervisor made
+  that supervisor a silent superuser. **The rule: an actor may reset a credential only if the
+  `auth.*` permissions they hold are a SUPERSET of the target's.** Drawn at `auth.*` rather than
+  at every permission, because the naive form is unworkable — a supervisor holding only
+  `auth.users.manage` could not reset a CASHIER, since the cashier holds `billing.*`, and that
+  kills the feature. The protected set is read from `authManifest.permissions`, so a seventh
+  `auth.*` is covered the day it is declared. **The stated cost:** a deployment with ONE full
+  administrator has nobody who may reset them; the mitigation is named in the refusal itself —
+  keep two. Mutant DIED (ungated handler PERMITS the takeover; shipped REFUSES; owner→supervisor
+  still PERMITTED, so the rule is not refusing everything).
 - **M7 — the gateway's must-change refusal has no executing test.** The plan's T1 acceptance
   sanctioned unit-level coverage of `findLiveSession`'s contract, which is what shipped; the
   gateway's own branch is unasserted. Plan-level, not execution-level.
