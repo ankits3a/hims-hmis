@@ -282,16 +282,255 @@ read the roadmap's re-shaped Plan 09 entry plus this document's §1.
 
 ## 6. CLOSE — appended as the phase runs (v3 §1.5)
 
-*Empty at authoring, by design. This section is the findings inbox and the gate report.*
+**Executed 2026-08-24 in one session, on the build host, LIGHT lane. Four tasks, four commits,
+plus one close-remediation commit.**
 
-- **Findings** as they arrive, each MEASURED or PREDICTION.
-- **Independent review** (v3 §3.4): one fresh-context reviewer agent, restricted by
-  instruction, reads every commit of the phase together; CRITICAL findings block close.
-- **Mechanical close** (v3 §3.5): detached `pnpm verify` exit VALUE from a file · per-commit
-  `git show --stat` against Files lists · frozen-path audit · clean tree · CI green by FULL
-  SHA for every commit — read through T4's own poller, which is fitting.
-- **Ledger archive-rule pass** (v3 §5), and any new lessons.
-- **The runbook chase**: O1–O5's evidence, or the honest note that an item is still the
-  owner's.
-- **The actuals row** (tokens all-sessions, agents, wall clock, catches) against the 1.0M
-  stop-loss, and the v3 §7 measurements — noting whether O3 has landed 11e's number.
+| task | commit | tier | CI |
+|---|---|---|---|
+| T1 | `22a5e3b` | CRITICAL | GREEN |
+| T2 | `f98cfa5` | ROUTINE | GREEN |
+| T3 | `b88a8bb` | ROUTINE | GREEN |
+| T4 | `39af9a2` | ROUTINE | GREEN |
+| close sweep — F2's remediation | `1bae1d0` | — | GREEN |
+| review remediation — M1–M4 and seven minors | `30227e6` | — | GREEN |
+
+### Findings
+
+- **F1 — MEASURED. T2's Files list cannot carry T2's acceptance.** The acceptance requires the
+  admin screen to render a count the SERVER computes; the screen reads it through
+  `apps/web/src/lib/admin-api.ts`, which is the file that describes the wire contract — and T2's
+  Files list does not name it. The alternative was to derive the count client-side, which is the
+  §2.89 defect this very task exists to avoid, in a second language. Fixed minimally (the return
+  type widened, one docblock) and disclosed rather than silently absorbed. *The authoring lesson:
+  a Files list for a task that widens a RESPONSE must include the client's transcription of that
+  response.*
+- **F2 — MEASURED, and it is this phase's own defect. T1's acceptance under-scoped the §2.90 sweep
+  it invoked.** The criterion named ONE location (the script header); §2.90's rule is *every*
+  claim. Three live claims survived T1 — `password-policy.ts`'s "FIVE call sites" (in the module
+  that owns the fact), `seed-staff.ts`'s "four other paths", and `password-policy.test.ts`'s
+  account of the per-call-site coverage — plus the roadmap's 11e "still open" line. Found at close
+  by grepping for the retired claim, which is what §2.90's own closing sentence says to do.
+  Remediated in `1bae1d0` as a NEW commit, never an amend (rule 15). **Ledger §3.54.**
+- **F3 — MEASURED, caught before its commit, at zero cost.** `ci-watch-host.sh`'s first draft read
+  `/commits/{sha}/check-runs` — the endpoint §2.91 names — and got every verdict and exit value
+  right, while printing `gh run view <CHECK-RUN id>`, a command that does not resolve. Executing
+  the poller against the known-red sha and reading *what it told the operator to type* is what
+  found it. Switched to `/actions/runs?head_sha=`, which returns the workflow-run id `gh` accepts
+  and which O4 names. **Ledger §3.55.**
+- **F4 — MEASURED, and it is a gap in this document's own runbook.** O1 says create the second
+  administrator "then verify T2's detector goes quiet". **The detector is on `main` and is NOT in
+  production**: this phase ships no deploy task, and deploys are owner-authorised in as many words
+  (v3 §3.6). So O1's verification step cannot run until an owner-authorised deploy carries T2
+  there. O1's *first* half — creating the second administrator through `/admin/users` — needs
+  nothing new and can be done today; the takeover rule and the screen are already live from 11e.
+  *Read O1 as: create the second admin now; verify the detector after the next deploy.*
+- **F5 — MEASURED (read-only production SELECTs, this session).** Production is unchanged from §2
+  on every axis this phase can see: still exactly ONE holder of the full `auth.*` set (`admin`,
+  6/6, measured by a query written for this check and NOT by the shipped helper, which is not
+  deployed), `operating_mode_changes` still empty, 16 users all active, `must_change_password` 0,
+  live sessions 0. **The mitigation D2 makes visible is still unmet, and D5's rotation has not
+  happened.** Both are owner work by construction; neither is a defect in this phase.
+- **F6 — PREDICTION, unchanged and deliberately so.** Whether `auth.e2e.test.ts`'s former
+  single-sample assertion caused F2-of-11e is still unsettled; T3 makes no claim about it, in code
+  or in its commit message, exactly as D3 requires. The disposition lands when O4's log line does.
+- **F7 — MEASURED, process, minor, and it happened TWICE.** The finish-block `git pull --rebase`
+  refused ("Please commit or stash them") at T3, because this session had already begun T4's edits
+  in the same tree, and again at the review-remediation commit, with the CLOSE documentation
+  uncommitted. Both pushes succeeded as fast-forwards and `origin/main` was confirmed equal to
+  `HEAD` immediately after each, so nothing was missed and no history was rewritten — but
+  AGENT-RULES §5's finish block assumes a clean tree, and **under v3's LIGHT lane one session holds
+  every task in sequence, so the next task's edits (or the phase's own CLOSE) are exactly what will
+  be sitting there.** Recurrence is what makes it worth writing down rather than shrugging at: the
+  guard silently degrades from "rebase onto anything that landed" to "nothing landed, luckily".
+  Still no ledger entry — the cost was zero both times and §5 already implies the clean tree — but
+  the discipline is *finish the block before touching the next thing*, and the honest note is that
+  I did not, twice.
+
+### Independent review (v3 §3.4)
+
+**VERDICT: does not block close. No CRITICAL.** One fresh-context reviewer agent, read-only by
+instruction, read all five commits together. **It cleared the two properties the phase most risked
+getting wrong, both by tracing rather than by assertion:** T1's hoist of the existence check is
+safe (nothing between the new and old positions touches `users`; the pre-existing TOCTOU against a
+concurrent `seed:admin` widens but its outcome is unchanged, `users_username_ux` still arbitrating),
+and **T2 genuinely satisfies §2.89** — it could construct no input where the count says ≥2 while no
+repair is possible, and it checked the six cases the brief named plus a seventh `auth.*` permission
+declared later. It confirmed the counter is strictly STRICTER than the guard (temporary grants
+count for `hasPermission` and for neither `fullAdministrators` nor `assertMayTakeOver`), which is
+§2.89's safe direction.
+
+**It also went past its brief and found four MAJORs. All four were real. All four are fixed in
+`30227e6`, with their tests.**
+
+- **M1 — the detector was enforcing D2 through the exit code, and D2 marks enforcement DEAD.** The
+  shortfall went into `problems`, `problems` feeds `ready`, `ready` feeds `process.exitCode`. So
+  **every deployment with one administrator — every bootstrap, and production today — would have
+  exited 1 for ever**, on the one channel 11d built to mean "the roles and grants are wrong", under
+  a deploy checklist that says *"confirm it exits 0"*. That is §2.63(b)'s dead-watchdog problem
+  arriving backwards: teach an operator that exit 1 is normal and they stop reading it. **This was
+  my error and it was a misreading of the ruling I was implementing** — D2 says the census *prints*
+  and *warns*, and I reached for `problems` because that was the census's existing loud channel.
+  Fixed with a `warnings` channel that prints above the verdict and changes no exit code, plus a
+  leg asserting `ready` is identical with and without the shortfall.
+- **M2 — MEASURED: the poller passed the API body through the environment, and at scale that made
+  the plumbing mint a verdict.** `execve` on this host refuses an env string at ~131 KB (fails at
+  132 000 bytes, succeeds at 131 000); one `workflow_run` object is ~17 KB; the request asked for
+  `per_page=20`. **At eight runs on one sha the probe dies with "Argument list too long" on stderr
+  — which `$(probe …)` does not capture — and the empty stdout fell through to the conclusion
+  branch and printed "CI DID NOT RUN … almost always billing" about a commit that may be RED.** Not
+  a false green, but a wrong statement about somebody's commit, blamed on GitHub. Fixed three ways:
+  the body goes on stdin (re-measured: the old form dies on a 324 KB body, the new one parses all
+  20 runs), `per_page` dropped to 10, and — the durable half — **the conclusion arms are now an
+  exhaustive allowlist and `*)` means "the plumbing broke, retry", so no unrecognised token can
+  ever become a verdict again.**
+- **M3 — the one construction in which the poller could say GREEN about a RED commit.** It grouped
+  runs by `workflow_id` alone and took the latest. `.github/workflows/ci.yml` is
+  `on: [push, pull_request]`: the two events share a `workflow_id`, report the same `head_sha`, and
+  **test different trees** — a `pull_request` run checks out `refs/pull/N/merge`. A green
+  merge-result run scheduled second would therefore mask a red push run. Not reachable today (this
+  repo pushes straight to main) which is why it was MAJOR, but it is the exact failure the whole
+  script exists to prevent. Fixed: the key is `(workflow_id, event)` and the WORST across events
+  wins. The reviewer also correctly noted my header's re-run justification was weaker than it read
+  — GitHub re-runs increment `run_attempt` on the same run object — and the comment now says what
+  the grouping actually buys.
+- **M4 — the GC3 leg on the CRITICAL task could not see the leak that actually happens.**
+  `not.toMatch(/"admin"/)` is blind to an implementation interpolating the credential *unquoted*
+  (`ADMIN_PASSWORD (admin) must be at least 10 characters`). The shipped transcript contains no
+  lowercase `admin` at all, so the strong form passes against shipped code and kills both leak
+  mutants. Fixed to a bare, case-sensitive `not.toMatch(/admin/)`. *This one stings: the same file
+  already used the strong form four lines away (`not.toContain("bootstrap-secret")`).*
+
+**Minors, all nine accepted; seven fixed, two accepted-with-reason.** Fixed: the `seed-admin.ts`
+comment that was factually wrong about its own scope (it claimed `ADMIN_PASSWORD` was "in scope one
+frame up"; it is read inside `main()` and is not in scope there at all) · the census sentence that
+over-claimed "no repair but direct database access" when two mutual-superset holders of the same
+five-of-six *can* reset each other · **"Only 0 person"**, reworded in both locales to read
+correctly at zero, with a screen leg at `fullAdministrators: 0` — the count a bare deployment
+actually has · the rate-budget line that announced a ceiling of 60 while the threshold that fired
+was 40 · a permanent 404/401 now fails fast instead of burning a 30-minute timeout and a third of
+an hourly budget · a duplicated sha argument no longer hangs the script for the full timeout
+(measured: 0.19 s, was 1800 s) · the header now says the script needs `python3` and is
+credential-free rather than "curl-only". **Accepted with reason:** T3 inlines `Math.min(...times)`
+rather than a shared `fastest()` helper, which is a third copy of a three-line idea (§2.54's own
+class) — extracting it spans three test files in two suites and belongs to whichever phase next
+touches the perf suites, not to a close remediation. And the reviewer's minor 8 — **a FOURTH
+surviving claim of the retired seam, in 11e's own CLOSE F8 record** — is fixed here, and is the
+best evidence for §3.54 that the phase produced: my close sweep found three and stopped.
+
+**One correction to the reviewer, for the record:** its report describes the CLOSE section as empty
+and `1bae1d0` as still running in CI. That was true when it started reading and not when it
+finished — it reviewed a close that was in flight around it. All five commits are green (below),
+and its own §2.89 trace, its execution of the poller's three exit values, and its `execve`
+measurement are unaffected by that.
+
+### Mechanical close (v3 §3.5)
+
+- **`pnpm verify` exit VALUE `0`**, read from a file after a detached run, **before every push** —
+  six times, once per commit. That is §2.87's rule, which this phase's own T4 poller then
+  watches; the phase deliberately did not economise here.
+- **Counts at HEAD**, quoted from the runners' own summary lines: `apps/core` **152 suites /
+  1175 tests** · `apps/web` **36 files / 193 tests** · `packages/contracts` **3 / 7**. Against §2's
+  baseline that is **+8 core** (T1's four legs, T2's three, M1's verdict leg) and **+3 web** (T2's
+  two, plus the zero-count banner leg). The workspace total did not decrease and no test was
+  deleted.
+- **Per-commit `git show --stat` against Files lists**: every commit matches, with F1's single
+  disclosed addition.
+- **Frozen-path audit**: this phase declares no frozen path (unlike 11d, which froze `apps/web` in
+  full) and T2 names `apps/web` files explicitly. No violation. No `*.mutant.*` residue and no
+  scratch in the phase diff.
+- **Clean tree** at each commit, `git status --porcelain` read before every `git add`.
+- **One risk closed by execution rather than by reading.** T2 makes `seed-roles.ts` — a script —
+  import from `users-admin.controller.ts`, which drags the Nest decorator graph in behind it. The
+  suite proves the function works but runs under jest with the test environment already set, so it
+  could not see a module-load-time `requireEnv` anywhere in that new import chain. Loading the
+  script under `tsx` with **no `DATABASE_URL` in the environment** succeeds, so the import is inert
+  until `main()` runs and `seed:roles` still starts on a box where the variable is supplied late.
+- **CI green by FULL SHA for all six commits, read through `ci-watch-host.sh` itself** — the
+  poller T4 shipped, in three detached runs reporting exit VALUE `0` each time. Which is the
+  fitting proof: the instrument built to close §2.91's gap discharged §2.55's criterion for the
+  phase that built it, from the build host, with no credential — including for `30227e6`, the
+  commit that fixed the poller. Its rate-limit guard fired on the two multi-sha runs and raised the
+  interval rather than burning a shared 60/hour budget.
+- **The poller was re-proven by execution after M1–M4's rewrite**, not assumed to have survived it:
+  `3eec860` → RED, exit VALUE 1, still naming run `32668118868` · `00c3747` → GREEN, exit VALUE 0 ·
+  an all-zeros sha → UNRESOLVED, exit VALUE 2 · a duplicated sha argument → correct verdict in
+  **0.19 s**, where the old code slept out the full 1800 s timeout · a wrong `CI_WATCH_REPO` → named
+  as PERMANENT and not retried. M2's ceiling was re-measured directly: a 324 KB body kills the old
+  environment-variable form with "Argument list too long" and parses cleanly on stdin.
+
+### Mutants (rule 21)
+
+**T1/R1 — DIED.** The mutant is the shipped script with the step-0 policy call removed, built as
+`scripts/seed-admin.mutant.ts` beside the source with its own scratch spec, run isolated
+(`1 failed, 1 passed, 2 total`), both deleted before the commit. Expected a `SeedAdminRefusal`;
+received `seedAdmin RESOLVED — it did not refuse`. **The control leg passed on the mutant**, so the
+row cannot pass by refusing everything. §2.81's tell was checked as the plan asked: the
+discriminating input measurably succeeded against shipped code before the fix — that same output
+is T1's fail-first red, staged per §2.5 so the red was semantic rather than an unresolved import
+(the `SeedAdminRefusal` import was added back after the implementation landed).
+
+**R2 needed no mutant and got none**, as the plan states: the wrong implementation is a placement
+(validate at env-read), and the row's own leg asserts the placement by executing a reconcile-only
+re-run with a policy-violating `ADMIN_PASSWORD`.
+
+**T2/T3/T4 are ROUTINE: mutants not required and none built; fail-first not owed and not
+manufactured. Said here rather than left to inference,** per AGENT-RULES §3.
+
+### Ledger (v3 §5)
+
+- **Archive rule, first pass ever run.** No `ARCHIVE` section existed; one now stands at the
+  ledger's foot. **§2.40** (shared-scratchpad mirror contamination) and **§2.79** (CRLF from
+  Windows-side writes) are archived — both were bought by the two-host topology, which §8's ruling
+  retired on 2026-08-23, and neither has a mechanism left to recur through. Entries are struck IN
+  PLACE and listed in `ARCHIVE` rather than physically moved; the reasoning is recorded there, and
+  it is the rule-6 rationale: earlier documents cite these by number. **§2.70 was considered and
+  KEPT** — its lesson ("a removal verified against the inventory you knew about misses the layer
+  you did not") is general and does not depend on the InsForge stack it was found in.
+- **New entries, four, each with a specimen from this phase: §3.54** (an acceptance that names one
+  location for a sweep whose rule says every location — and the reviewer's fourth surviving claim
+  is now part of its evidence, because my sweep found three and stopped) · **§3.55**
+  (verify-by-execution includes reading the guidance the program prints) · **§3.56** (a ruling that
+  says warn-not-enforce is enforced anyway if the warning channel is wired to an exit code — M1) ·
+  **§3.57** (a parser's silence must not be a value; a `case` default must mean "the plumbing
+  broke", which is what exposed the missing `startup_failure` arm — M2).
+
+### The runbook chase (§5.5)
+
+- **O1 — NOT DONE, and now the most valuable hour available.** Still one full administrator. See
+  F4 for the sequencing correction: the creation half needs nothing from this phase.
+- **O2 — NOT DONE.** D5's rotation is owner-only by construction; the burned roster is still
+  unrotated (F5's counters are the evidence, and they have not moved).
+- **O3 — NOT DONE.** 11e's token total is still unrecorded, so v3 §7's cost claim stays
+  UNDISCHARGED in both directions. **This phase adds a second undischarged number**, for the same
+  reason: a session cannot read its own token total, so 11f's actual is the owner's `/cost` too.
+- **O4 — NOT DONE.** Needs the owner's authenticated `gh`. `ci-watch-host.sh` narrows nothing
+  further here: it confirms the verdict and states plainly that logs are 403 from this host.
+- **O5 — NOT DONE.** `operating_mode_changes` is still empty; the hospital has still never
+  operated on this system. **This remains the phase's whole point, and no code in it substitutes
+  for the day.**
+- **O6 — not this phase's to close**, unchanged.
+
+### Actuals
+
+| | |
+|---|---|
+| tokens, all sessions | **UNMEASURED — the owner's `/cost`.** A session cannot read its own total (O3's class, now twice) |
+| stop-loss | 1.0M. **Not observably crossed**, but that is an assertion this session cannot discharge — see above. Nothing in the run's shape suggested it: four tasks, one mutant, one reviewer, no rework beyond F2's sweep |
+| agents | **1** — the independent reviewer. No subagent did any of the coding |
+| wall clock | ~2 hours end to end, dominated by six full `pnpm verify` runs and one reviewer pass |
+| catches | **3 by the session** (F1, F2, F3 — F3 by executing its own artefact rather than reading it) · **4 MAJOR + 9 minor by the independent reviewer**, every one real, none CRITICAL |
+
+**The reviewer earned its place, and the shape of what it found is the finding.** Three of its four
+MAJORs (M1, M2, M3) are defects in which the code did exactly what I intended and my intent was
+wrong — a visibility ruling implemented as enforcement, a probe whose failure mode mints a verdict,
+a grouping key missing the field that makes two runs incomparable. None is the kind of mistake a
+test I would have written could catch, because I would have written the test to the same
+misunderstanding. **That is v3 §3.4's whole claim — "the session that wrote the code must not be
+the only judge of it" — discharged with specimens rather than asserted**, and it is the strongest
+evidence this phase produced about the method itself.
+
+**v3 §7's measurements:** transcription-class incidents **zero** — structurally, there was one
+document and nothing to transcribe between. Defects reaching production: **none from this phase**,
+which ships no deploy. F2 is a defect of the phase document itself, found and remediated inside the
+phase, which is the class v3 predicts one document should make cheaper to find rather than
+impossible to make.

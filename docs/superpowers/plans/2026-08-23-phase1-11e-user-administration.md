@@ -510,10 +510,14 @@ authoring.** Nineteen of the twenty entries are shorter than the ten-character f
 by its test, so neither can drift. Not a defect; recorded so nobody reads the list as more
 protection than it is.
 
-**F8 — `seed:admin` applies no password policy. MEASURED, stated seam.** D3 enumerates the five
-paths the policy guards and the bootstrap path is not among them, so `ADMIN_PASSWORD` can still be
-four characters. Left open deliberately rather than closed on an executing session's authority;
-written into the script's header. **Owner ruling wanted.**
+**F8 — `seed:admin` applies no password policy. MEASURED, stated seam. — CLOSED 2026-08-24 by Plan
+11f D1/T1 (`22a5e3b`).** D3 enumerates the five paths the policy guards and the bootstrap path is
+not among them, so `ADMIN_PASSWORD` can still be four characters. Left open deliberately rather
+than closed on an executing session's authority; written into the script's header. ~~**Owner ruling
+wanted.**~~ **The ruling came, and it made `ADMIN_PASSWORD` the SIXTH guarded path** — validated at
+the create path only, so a reconcile-only re-run still performs the repair D4 built it to be. This
+line was the fourth surviving claim of the retired behaviour, found by 11f's independent reviewer
+after 11f's own close sweep had retired the other three; it is evidence for ledger §3.54.
 
 ### Independent review (v3 §3.4)
 
