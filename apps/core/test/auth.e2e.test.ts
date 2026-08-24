@@ -67,14 +67,34 @@ describe("auth e2e", () => {
     const s1 = await request(app.getHttpServer())
       .post("/auth/login").send({ username: "first", password: "s3cret-pass", terminalId: "counter-1" }).expect(201);
 
-    // warm-up switch (JIT, pool) then the measured one — budget guards the steady state
-    await request(app.getHttpServer())
+    // warm-up switch (JIT, pool) then the measured ones — budget guards the steady state
+    let switched = await request(app.getHttpServer())
       .post("/auth/switch/pin").send({ username: "second", pin: "482913", terminalId: "counter-1" }).expect(201);
-    const started = Date.now();
-    const switched = await request(app.getHttpServer())
-      .post("/auth/switch/pin").send({ username: "second", pin: "482913", terminalId: "counter-1" }).expect(201);
-    const elapsed = Date.now() - started;
-    expect(elapsed).toBeLessThan(1000); // server share of the <2 s spec budget (roadmap trap)
+
+    /**
+     * PLAN 11f T3 — BEST-OF-N, the idiom `perf-opd-queue.test.ts` measures with, and for its
+     * reason. What stood here was a SINGLE sample, and a single sample conflates the code's speed
+     * with the runner's mood: this budget covers an argon2id verify (memoryCost 19456) on a shared
+     * 4-core CI runner, where contention can only ever ADD time and nothing can make a verify look
+     * faster than it is. The minimum is therefore the least-noisy estimator of the thing being
+     * gated, while a genuine regression raises the floor and still fails — the property that makes
+     * the change safe rather than merely quieter. The BUDGET is unchanged; what changed is which
+     * number is compared against it.
+     *
+     * Until this task this was the suite's ONLY single-sample wall-clock assertion; the two perf
+     * suites had already been converted, and the reasoning there (measured, with the swing that
+     * bought it) is not restated here.
+     */
+    const times: number[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      const started = Date.now();
+      switched = await request(app.getHttpServer())
+        .post("/auth/switch/pin").send({ username: "second", pin: "482913", terminalId: "counter-1" }).expect(201);
+      times.push(Date.now() - started);
+    }
+    const fastest = Math.min(...times);
+    console.log(`pin switch timings ms: ${times.join(", ")} (fastest ${fastest})`);
+    expect(fastest).toBeLessThan(1000); // server share of the <2 s spec budget (roadmap trap)
 
     const me = await request(app.getHttpServer())
       .get("/auth/me").set("Authorization", `Bearer ${switched.body.token}`).expect(200);
