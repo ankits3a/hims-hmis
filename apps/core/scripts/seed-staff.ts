@@ -122,7 +122,8 @@ export const ROSTER_ROW_SCHEMA = z.strictObject({
   // What stood here was `min(8)` under a comment admitting it was "a seed-time floor, not an auth
   // policy", because in August 2026 this script was the ONLY thing in the system with an opinion
   // about password length. `kernel/auth/password-policy.ts` is now that opinion, owner-ruled, and
-  // the four other paths that set a credential apply the same one. The clauses that need the ROW
+  // the FIVE other paths that set a credential apply the same one — four from 11e D3, plus
+  // `seed:admin`'s `ADMIN_PASSWORD`, which 11f D1 added on 2026-08-24. The clauses that need the ROW
   // rather than the field — the username comparison, and the PIN's shape — are applied in the
   // row-level refinement below, which is also why these two are plain strings here: ONE place
   // decides, and it is not this file.

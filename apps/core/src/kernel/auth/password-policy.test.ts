@@ -5,9 +5,11 @@ import {
 
 /**
  * PLAN 11e T2 — the policy's own unit. Every leg here is one clause of the owner's 2026-08-23
- * ruling, executed. The per-CALL-SITE coverage (R4's real point — that the five paths which set a
- * credential all reach this module) lives in `test/user-admin.e2e.test.ts`, `test/seed-staff.test.ts`
- * and `test/credential-lifecycle.e2e.test.ts`: a policy nobody calls would pass this file entirely.
+ * ruling, executed. The per-CALL-SITE coverage (R4's real point — that the SIX paths which set a
+ * credential all reach this module; five from 11e D3, plus `seed:admin`'s `ADMIN_PASSWORD` from
+ * 11f D1) lives in `test/user-admin.e2e.test.ts`, `test/seed-staff.test.ts`,
+ * `test/credential-lifecycle.e2e.test.ts` and `test/seed-admin.test.ts`: a policy nobody calls
+ * would pass this file entirely.
  */
 describe("password policy (11e D3, owner ruled 2026-08-23)", () => {
   const ctx = { username: "asha" };

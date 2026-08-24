@@ -15,9 +15,15 @@
  *   - **A PIN is 4-6 DIGITS, exactly.**
  *
  * WHERE IT IS ENFORCED (D3): admin user creation, admin password reset, admin PIN reset,
- * self-service change-password, and `seed:staff`'s roster validation. FIVE call sites, and R4
- * asserts the floor at every one of them — a policy module nobody calls is the defect this phase
- * exists to close, restated.
+ * self-service change-password, and `seed:staff`'s roster validation. ~~FIVE call sites~~ — **SIX
+ * since Plan 11f D1 (2026-08-24) added `seed:admin`'s `ADMIN_PASSWORD`**, which 11e recorded as a
+ * stated seam rather than closing on an executing session's own authority. R4 asserts the floor at
+ * every one of them — a policy module nobody calls is the defect 11e exists to close, restated.
+ *
+ * The sixth is guarded AT THE POINT OF USE, not at the environment read, and that placement is the
+ * ruling rather than an accident: `seed:admin` is also the documented repair for a permission
+ * declared after first boot, so a reconcile-only re-run must not refuse on a stale `ADMIN_PASSWORD`
+ * it will never write. See `scripts/seed-admin.ts`'s header.
  *
  * WHERE IT IS DELIBERATELY **NOT** ENFORCED, and this is a decision rather than an omission:
  *
