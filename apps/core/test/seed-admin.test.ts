@@ -1,10 +1,10 @@
 import { setupTestDb, truncateAll } from "./helpers/db";
-import { seedAdmin, formatReport } from "../scripts/seed-admin";
+import { seedAdmin, formatReport, formatRefusal, SeedAdminRefusal } from "../scripts/seed-admin";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { authManifest } from "../src/kernel/auth/manifest";
 import { hasPermission } from "../src/kernel/auth/permissions";
 import { verifyPassword } from "../src/kernel/auth/identity";
-import { roleAssignments, rolePermissions, roles } from "../src/kernel/db/schema";
+import { permissions, roleAssignments, rolePermissions, roles, users } from "../src/kernel/db/schema";
 import { eq } from "drizzle-orm";
 import type { ModuleManifest } from "../src/kernel/modules/manifest";
 import type { Db } from "../src/kernel/db/client";
@@ -141,5 +141,84 @@ describe("seed:admin — reconciles instead of returning early (11e T5, D4)", ()
     expect(lines).toContain("nothing new to grant");
     expect(lines).toContain("no longer returns early");
     expect(lines).not.toContain("bootstrap-secret");
+  });
+});
+
+describe("seed:admin — ADMIN_PASSWORD is judged by the shared policy (11f T1, D1)", () => {
+  let db: Db; let teardown: () => Promise<void>;
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  beforeEach(async () => { await truncateAll(db); });
+  afterAll(async () => { await teardown(); });
+
+  const authOnly = (): ModuleRegistry => {
+    const r = new ModuleRegistry();
+    r.install(authManifest);
+    return r;
+  };
+
+  const rowCounts = async () => ({
+    users: (await db.select({ id: users.id }).from(users)).length,
+    roles: (await db.select({ key: roles.key }).from(roles)).length,
+    grants: (await db.select({ permission: rolePermissions.permission }).from(rolePermissions)).length,
+    catalog: (await db.select({ permission: permissions.permission }).from(permissions)).length,
+  });
+
+  const refusalOf = async (password: string): Promise<SeedAdminRefusal> => {
+    const caught: unknown = await seedAdmin(db, authOnly(), { ...INPUT, password }).then(
+      () => { throw new Error("seedAdmin RESOLVED — it did not refuse"); },
+      (e: unknown) => e,
+    );
+    expect(caught).toBeInstanceOf(SeedAdminRefusal);
+    return caught as SeedAdminRefusal;
+  };
+
+  it("R1 — a four-character ADMIN_PASSWORD is refused BEFORE ANY WRITE, naming the floor", async () => {
+    const before = await rowCounts();
+    expect(before).toEqual({ users: 0, roles: 0, grants: 0, catalog: 0 });
+
+    const refusal = await refusalOf("abcd");
+    expect(refusal.message).toMatch(/ADMIN_PASSWORD/);
+    expect(refusal.reasons.join("\n")).toMatch(/at least 10 characters/);
+
+    // BEFORE ANY WRITE, and this is the half a "refuse at step 4" implementation fails: the
+    // catalog, the role and its grants would all be on disk by then.
+    expect(await rowCounts()).toEqual(before);
+  });
+
+  it("R1 control — a compliant password seeds the admin, so the gate cannot pass by refusing everything", async () => {
+    const report = await seedAdmin(db, authOnly(), { ...INPUT, password: "keel-haul-42" });
+    expect(report.userCreated).toBe(true);
+    expect(await verifyPassword(db, "admin", "keel-haul-42")).toEqual({ userId: report.userId });
+  });
+
+  it("R1 — the refusal is WHOLE, and no credential reaches any message", async () => {
+    // "admin" breaks three clauses at once: too short, equal to the username, and on the top-20
+    // list. A first-failure implementation reports one; the seed:staff pattern reports all three.
+    const refusal = await refusalOf("admin");
+    expect(refusal.reasons).toHaveLength(3);
+    expect(refusal.reasons.join("\n")).toMatch(/at least 10 characters/);
+    expect(refusal.reasons.join("\n")).toMatch(/must not be the username/);
+    expect(refusal.reasons.join("\n")).toMatch(/twenty most-used passwords/);
+    // GC3: the transcript the operator actually reads speaks about rules, never about the value.
+    const transcript = formatRefusal(refusal).join("\n");
+    expect(transcript).toMatch(/Nothing was written/);
+    expect(transcript).not.toMatch(/"admin"/);
+    expect(await rowCounts()).toEqual({ users: 0, roles: 0, grants: 0, catalog: 0 });
+  });
+
+  it("R2 — a reconcile-only re-run never evaluates the policy (Q2: the value is judged where it is USED)", async () => {
+    const first = await seedAdmin(db, authOnly(), INPUT);
+    expect(first.userCreated).toBe(true);
+
+    // The same deployment, re-run with a stale, policy-violating ADMIN_PASSWORD in the environment.
+    // An implementation that validated at env-read would refuse HERE — and would break exactly the
+    // repair path 11e D4 built, on the deployment that needs it.
+    const second = await seedAdmin(db, authOnly(), { ...INPUT, password: "abcd" });
+    expect(second.userCreated).toBe(false);
+    expect(second.userId).toBe(first.userId);
+    expect(second.already).toEqual([...authManifest.permissions].sort());
+    // …and the stale value did not become the admin's password either.
+    expect(await verifyPassword(db, "admin", "bootstrap-secret")).toEqual({ userId: first.userId });
+    expect(await verifyPassword(db, "admin", "abcd")).toBeNull();
   });
 });

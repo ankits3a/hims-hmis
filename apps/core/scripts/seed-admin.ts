@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { createDb, type Db } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import { createUser } from "../src/kernel/auth/identity";
+import { checkPassword } from "../src/kernel/auth/password-policy";
 import { createRole, grantPermissionToRole, assignRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { authManifest } from "../src/kernel/auth/manifest";
@@ -56,13 +57,24 @@ import { roleAssignments, rolePermissions, roles, users } from "../src/kernel/db
  * every future module invents. The other fifty-three permissions are handed to purpose-built roles
  * by `seed:roles`, which is the script that owns the role model.
  *
- * ═══ ONE STATED SEAM: THIS SCRIPT APPLIES NO PASSWORD POLICY ═══
+ * ═══ THE SIXTH POLICY-GUARDED PATH — PLAN 11f D1, RULED 2026-08-24 ═══
  *
- * `ADMIN_PASSWORD` is not checked against `kernel/auth/password-policy.ts`. Plan 11e D3 enumerates
- * the five paths the policy guards and this bootstrap path is not among them — so it is NOT added
- * here, and the gap is written down instead of closed by an executing session on its own authority.
- * It is a real gap: the first account on a hospital's box can still be given a four-character
- * password by an environment variable. The one-line fix belongs to whoever rules it.
+ * This script used to carry a STATED SEAM in this header: `ADMIN_PASSWORD` was not checked against
+ * `kernel/auth/password-policy.ts`, because 11e D3 enumerated five guarded paths and this bootstrap
+ * path was not among them. The gap was real — the FIRST account on a hospital's box could be given
+ * a four-character password by an environment variable — and it was written down rather than closed
+ * by an executing session on its own authority. Plan 11f D1 is that ruling, and the seam is closed:
+ * `ADMIN_PASSWORD` is the SIXTH path the one policy guards.
+ *
+ * WHERE THE CHECK LANDS, AND WHY IT IS NOT AT THE ENV READ (11f Q2). Step 0 below reads whether the
+ * username exists and validates the password ONLY when this run will CREATE it. Validating in
+ * `main()`, where the variable is read, would make a RECONCILE-ONLY re-run refuse on a stale or
+ * irrelevant `ADMIN_PASSWORD` — and a reconcile-only re-run is precisely the repair 11e D4 built
+ * this script to be (MAJOR 1, above). The policy guards the value where the value is USED.
+ *
+ * The refusal is WHOLE and BEFORE THE FIRST WRITE, the `seed:staff` pattern: every policy problem
+ * at once, no credential in any message (GC3), and not one row written — not the catalog, not the
+ * role, not a grant. Step 0 is a READ, so there is nothing to unwind.
  */
 
 export type SeedAdminReport = {
@@ -79,6 +91,32 @@ export type SeedAdminReport = {
 const ADMIN_ROLE_KEY = "admin";
 
 /**
+ * A loud, structured refusal carrying EVERY reason at once — `seed-staff.ts`'s `SeedStaffRefusal`,
+ * same contract. Every reason is a sentence about a RULE, composed from `password-policy.ts`;
+ * `ADMIN_PASSWORD`'s value never reaches one, because an error path is the easiest place in a
+ * program to leak a credential.
+ */
+export class SeedAdminRefusal extends Error {
+  readonly reasons: readonly string[];
+  constructor(headline: string, reasons: readonly string[]) {
+    super(headline);
+    this.name = "SeedAdminRefusal";
+    this.reasons = reasons;
+  }
+}
+
+/** The refusal transcript. Loud, ordered, and carrying no credential. */
+export function formatRefusal(refusal: SeedAdminRefusal): string[] {
+  return [
+    "!! REFUSED".padEnd(72, " "),
+    `!! ${refusal.message}`,
+    ...refusal.reasons.map((reason) => `!! ${reason}`),
+    "",
+    "Nothing was written. Set a compliant ADMIN_PASSWORD and run this again.",
+  ];
+}
+
+/**
  * Exported so the suite can run it TWICE against one database, and once with a registry carrying a
  * permission that was not declared on the first run — which is MAJOR 1's discriminating input, and
  * the one the fix could previously only NAME (Book R13).
@@ -88,6 +126,24 @@ export async function seedAdmin(
   registry: ModuleRegistry,
   input: { username: string; fullName: string; password: string },
 ): Promise<SeedAdminReport> {
+  // 0 — THE POLICY GATE (11f D1/Q2). A READ, then a refusal that precedes every write below.
+  //
+  // The existence check that used to live at step 4 is hoisted here and its result carried down,
+  // because the answer decides whether the policy applies at all: this run only judges the password
+  // when this run is the one that will SET it. Steps 1-3 do not touch `users`, so hoisting the read
+  // changes nothing about what step 4 sees — it only moves the refusal in front of the first write.
+  const existing = await db.select({ id: users.id }).from(users).where(eq(users.username, input.username));
+  const userCreated = existing.length === 0;
+  if (userCreated) {
+    const problems = checkPassword(input.password, { username: input.username });
+    if (problems.length > 0) {
+      throw new SeedAdminRefusal(
+        "ADMIN_PASSWORD does not meet the password policy — NOTHING was written",
+        problems.map((problem) => `ADMIN_PASSWORD ${problem.message}`),
+      );
+    }
+  }
+
   // 1 — the catalog.
   await syncPermissions(db, registry);
 
@@ -112,9 +168,8 @@ export async function seedAdmin(
     (heldBefore.has(permission) ? already : granted).push(permission);
   }
 
-  // 4 — the user, and this is the ONLY conditional.
-  const existing = await db.select({ id: users.id }).from(users).where(eq(users.username, input.username));
-  const userCreated = existing.length === 0;
+  // 4 — the user, and this is the ONLY conditional. Decided at step 0, above, because the policy
+  // gate needs the same answer and the tree must not be asked the same question twice (§2.89).
   const userId = userCreated
     ? (await createUser(db, { username: input.username, fullName: input.fullName, password: input.password })).id
     : existing[0]!.id;
@@ -162,11 +217,19 @@ async function main(): Promise<void> {
       password: requireEnv("ADMIN_PASSWORD"),
     });
     for (const line of formatReport(username, report)) console.log(line);
+  } catch (error) {
+    // The refusal is an OPERATOR-FACING transcript, not a stack trace: whoever is bootstrapping a
+    // hospital's box needs to read what is wrong with the variable, not where the throw happened.
+    if (!(error instanceof SeedAdminRefusal)) throw error;
+    for (const line of formatRefusal(error)) console.error(line);
+    process.exitCode = 1;
   } finally {
     await pool.end();
   }
 }
 
 if (require.main === module) {
+  // Deliberately no value from the environment: an error path is the easiest place in a program to
+  // leak a credential, and `ADMIN_PASSWORD` is in scope one frame up.
   main().catch((e) => { console.error(e); process.exit(1); });
 }
