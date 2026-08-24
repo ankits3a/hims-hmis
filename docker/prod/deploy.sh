@@ -408,11 +408,39 @@ step "configuration seeding — the rows the modules throw without (Plan 11g / D
 #
 # `set -euo pipefail` is the gate half of this step: a seed that exits non-zero is a deploy that
 # stops, at the line that names it.
-compose run --rm api node dist/scripts/seed-roles.js
+# ORDER IS LOAD-BEARING, and it was wrong in this script's first version — caught by the Plan 11g
+# close reviewer before it ever ran. `seed-roles`'s census checks a REACHABILITY INVARIANT that
+# includes the nine permissions the model expects OTHER seeds to have granted: six `auth.*` from
+# `seed:admin` and three `ops.*` from `seed:ops`. Run `seed-roles` first and those three `ops.*`
+# grants cannot exist yet, so on a fresh box its verdict is NOT READY.
+#
+# `seed:admin` is deliberately NOT in this list: it mints the bootstrap administrator from
+# `ADMIN_PASSWORD` and is an owner step, run once per environment by a human who holds that
+# password (README's first-bring-up sequence). A deploy that created an administrator would be
+# creating a credential nobody asked it for.
 compose run --rm api node dist/scripts/seed-ops.js
 compose run --rm api node dist/scripts/seed-opd.js
 compose run --rm api node dist/scripts/seed-billing.js
 compose run --rm api node dist/scripts/seed-tariff.js
+
+# `seed-roles` IS RUN, AND ITS EXIT STATUS IS DELIBERATELY NOT THIS DEPLOY'S.
+#
+# Its non-zero is a verdict about role ASSIGNMENT — "no user holds role X", "a declared permission
+# is held by nobody" — which is a statement about the hospital's staffing, not about whether the
+# seed worked, and which no deploy can repair. Wiring it to `set -e` means a hospital that has not
+# yet hired a nurse cannot deploy, and — worse — that removing one person's role through
+# /admin/users silently arms a deploy that aborts halfway, after migrations and before the
+# containers are recreated. The GRANTS it writes are what the deploy needs and they land either
+# way; the VERDICT is for a human to read.
+#
+# `check-config-present` below is the deploy's hard gate, and it asks only about rows the modules
+# throw without.
+if compose run --rm api node dist/scripts/seed-roles.js; then
+  note "seed:roles complete and READY"
+else
+  note "seed:roles reported NOT READY (exit $?) — the grants landed; the verdict is about who"
+  note "  HOLDS the roles. Read its census above and fix it through /admin/users. Not fatal here."
+fi
 note "configuration seeds complete"
 
 # ----------------------------------------------------------------------------------------------
@@ -625,3 +653,11 @@ esac
 note "screen through the edge: /admin/users serves the SPA document"
 
 printf '\n==> hmis-prod is up: https://%s\n' "$SITE_HOST"
+# PLAN 11g / DD1 — SAY THIS EVERY TIME, because the one deploy where it mattered is the one where
+# nobody was told. The API moved under /api/*; any browser still holding a pre-11g bundle requests
+# the bare paths, gets the SPA's index.html where it expects JSON, and fails with an unrecognised
+# parse error rather than a refusal any screen knows how to render. Nothing is lost and nothing is
+# double-posted — the API never sees those requests — but a cashier mid-shift, or the waiting-room
+# display board left on /opd/display overnight, will show unexplained failures until reloaded.
+printf '==> AFTER A DEPLOY, HARD-RELOAD EVERY OPEN BROWSER TAB (Ctrl+Shift+R).\n'
+printf '    A stale tab gets HTML where it expects JSON and fails opaquely.\n\n' 

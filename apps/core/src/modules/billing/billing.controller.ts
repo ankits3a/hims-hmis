@@ -94,11 +94,18 @@ function tariffStatus(code: string): number {
  * smoke test measured it (report D3); every other unknown-id path in the system answers a clean
  * coded 404, and a cashier holding a stale patient id on screen cannot tell an outage from a typo.
  *
- * IT KEYS ON THE CONSTRAINT NAME, NOT THE SQLSTATE, AND THAT IS THE POINT. `invoices` can violate
- * more than one foreign key. A blanket `23503 → patient_not_found` would answer some OTHER missing
- * row with a confidently wrong sentence — which is worse than a 500, because it sends the person
- * at the desk looking for the wrong thing. Every other 23503 keeps falling through to a loud 500,
- * where it belongs: that one really is a bug.
+ * IT KEYS ON THE CONSTRAINT NAME, NOT THE SQLSTATE, AND THAT IS THE POINT. This module's `toHttp`
+ * is the ONE refusal ladder for every billing route, and those routes write `receipts`,
+ * `allocations`, `credit_notes`, `refund_vouchers` and `cashier_sessions` as well as `invoices` —
+ * between them a dozen foreign keys, any of which can raise 23503. A blanket
+ * `23503 → patient_not_found` would answer some OTHER missing row with a confidently wrong
+ * sentence, which is worse than a 500 because it sends the person at the desk looking for the
+ * wrong thing. Every other 23503 keeps falling through to a loud 500, where it belongs: that one
+ * really is a bug.
+ *
+ * *(Plan 11g close review, MINOR: the first version of this comment said "`invoices` can violate
+ * more than one foreign key". `invoices` has exactly ONE — `patient_id`. The DESIGN was right and
+ * the sentence was not; the reason is the ladder's reach, not that table's constraint count.)*
  *
  * The narrowness is the `users-admin.controller.ts:104` precedent (`isUniqueViolation`, "narrow on
  * purpose: any other error is a bug and must stay a 500"), taken one notch further because this
@@ -106,7 +113,8 @@ function tariffStatus(code: string): number {
  */
 const INVOICE_PATIENT_FK = "invoices_patient_id_patients_id_fk";
 
-function isInvoicePatientFkViolation(e: unknown): boolean {
+/** Exported so a unit leg can pin the NARROWNESS — see `billing.e2e.test.ts`'s DD3 block. */
+export function isInvoicePatientFkViolation(e: unknown): boolean {
   if (typeof e !== "object" || e === null) return false;
   const err = e as { code?: unknown; constraint?: unknown };
   return err.code === "23503" && err.constraint === INVOICE_PATIENT_FK;

@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
@@ -323,5 +323,90 @@ describe("deploy.sh / compose / prometheus.yml parity (Plan 11d D8)", () => {
       expect(installedPrometheusFiles(stepTwo)).toContain(PROMETHEUS_CONFIG_BASENAME);
       expect(installedRules).not.toContain(PROMETHEUS_CONFIG_BASENAME);
     });
+  });
+});
+
+/**
+ * ═══ PLAN 11g CLOSE REVIEW, MAJOR 1 — THE CONFIGURATION-SEED STEP, PINNED BY ORDER ═══
+ *
+ * Plan 11g put five seeds and a gate into `deploy.sh` (DD2), and the FIRST version ordered them
+ * wrongly in a way no test could see: `seed-roles` checks a reachability invariant that includes
+ * the three `ops.*` grants `seed-ops` writes, so running it first made its verdict NOT READY on a
+ * fresh box — and under `set -euo pipefail` its non-zero exit killed the deploy after migrations
+ * had applied and before the containers were recreated. `test/seed-roles.test.ts:545,578` already
+ * asserted `ready === false` in exactly that state; nothing connected that fact to the script.
+ *
+ * These legs are that connection. They are static — they read the SHIPPED BYTES of `deploy.sh` —
+ * because the failure is an ORDERING between programs a jest run cannot execute.
+ *
+ * §2.49: every parser below THROWS rather than returning empty, and the census is pinned BEFORE
+ * anything is compared.
+ */
+const SEED_STEP_SCRIPTS = [
+  "seed-ops.js", "seed-opd.js", "seed-billing.js", "seed-tariff.js", "seed-roles.js",
+] as const;
+
+/** The `dist/scripts/*.js` names `deploy.sh` runs, in the order it runs them. Throws if none. */
+function deploySeedOrder(source: string): string[] {
+  const names: string[] = [];
+  for (const match of source.matchAll(/compose run --rm api node dist\/scripts\/([A-Za-z0-9-]+\.js)/g)) {
+    const name = match[1];
+    if (name !== undefined) names.push(name);
+  }
+  if (names.length === 0) {
+    throw new Error("deploy.sh: no `compose run --rm api node dist/scripts/*.js` line — this parser is stale");
+  }
+  return names;
+}
+
+describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)", () => {
+  const deploySource = readFileSync(DEPLOY_SH, "utf8");
+  const scriptsDir = resolve(REPO_ROOT, "apps", "core", "scripts");
+
+  it("reads a non-vacuous census of the scripts deploy.sh runs from inside the image", () => {
+    const order = deploySeedOrder(deploySource);
+    // migrate + seed-cursors + the five config seeds + the gate.
+    expect(order).toHaveLength(8);
+    expect(order[0]).toBe("migrate.js");
+    expect(order[1]).toBe("seed-cursors.js");
+  });
+
+  it("runs seed-ops BEFORE seed-roles — the ordering the close review caught", () => {
+    const order = deploySeedOrder(deploySource);
+    const ops = order.indexOf("seed-ops.js");
+    const roles = order.indexOf("seed-roles.js");
+    expect(ops).toBeGreaterThanOrEqual(0);
+    expect(roles).toBeGreaterThanOrEqual(0);
+    // NAME the property rather than comparing two numbers silently: seed-roles' census counts the
+    // three ops.* grants seed-ops writes, so the reverse order reports NOT READY on a fresh box.
+    expect({ seedOpsAt: ops, seedRolesAt: roles, opsFirst: ops < roles })
+      .toEqual({ seedOpsAt: ops, seedRolesAt: roles, opsFirst: true });
+  });
+
+  it("runs every one of the five configuration seeds, and each one exists in scripts/", () => {
+    const order = deploySeedOrder(deploySource);
+    expect(SEED_STEP_SCRIPTS.filter((name) => !order.includes(name))).toEqual([]);
+    // A seed named here but deleted from the tree would make the deploy die at a `node` that
+    // cannot find its file — after migrations, before the containers come up.
+    const missing = SEED_STEP_SCRIPTS.filter(
+      (name) => !existsSync(resolve(scriptsDir, name.replace(/\.js$/, ".ts"))),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it("runs the configuration GATE, and runs it after every seed", () => {
+    const order = deploySeedOrder(deploySource);
+    const gate = order.indexOf("check-config-present.js");
+    expect(gate).toBeGreaterThanOrEqual(0);
+    expect(existsSync(resolve(scriptsDir, "check-config-present.ts"))).toBe(true);
+    for (const seed of SEED_STEP_SCRIPTS) expect(order.indexOf(seed)).toBeLessThan(gate);
+  });
+
+  it("does NOT let seed-roles' readiness verdict abort the deploy, and DOES let the gate", () => {
+    // seed-roles' non-zero is a verdict about who HOLDS the roles — staffing, not configuration —
+    // and no deploy can repair it. It is wrapped in an `if`; the gate is not, so `set -e` still
+    // kills the deploy on a missing configuration row.
+    expect(deploySource).toMatch(/if compose run --rm api node dist\/scripts\/seed-roles\.js; then/);
+    expect(deploySource).toMatch(/^compose run --rm api node dist\/scripts\/check-config-present\.js$/m);
   });
 });

@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, lt, sql } from "drizzle-orm";
 import { authThrottle } from "../db/schema";
 import { withTx } from "../db/client";
 import type { Db, Tx } from "../db/client";
@@ -61,11 +61,27 @@ export const THROTTLE_MAX_MS = 15 * 60 * 1000;
 export type ThrottleKind = "login" | "pin";
 
 /**
- * The key. Trimmed and lower-cased so `Asha `, `asha` and `ASHA` share one counter — otherwise the
- * throttle is bypassed by changing the case of a letter, which is not a defence.
+ * The longest key this table will store. **It is a correctness bound, not tidiness** (Plan 11g
+ * close review, MAJOR 2): `loginSchema` puts no ceiling on `username` — deliberately, because
+ * login VERIFIES a credential rather than choosing one — and the JSON body limit is 1 MB, so an
+ * unauthenticated caller could submit a multi-kilobyte username. `subject` is half of this table's
+ * composite PRIMARY KEY, and a btree index tuple over ~2704 bytes is rejected by Postgres
+ * outright: the INSERT would throw, the throw would escape the login handler, and a route that
+ * used to answer a clean 401 would answer **500** to an anonymous request. Truncating here fixes
+ * it for both credential paths in one place and changes nothing about what login ACCEPTS.
+ *
+ * Two usernames sharing a 64-character prefix share one counter. That is harmless in both
+ * directions: neither can authenticate as the other, and sharing a counter can only make the
+ * throttle stricter, never looser.
+ */
+const MAX_SUBJECT_LENGTH = 64;
+
+/**
+ * The key. Trimmed, lower-cased and bounded so `Asha `, `asha` and `ASHA` share one counter —
+ * otherwise the throttle is bypassed by changing the case of a letter, which is not a defence.
  */
 export function throttleSubject(username: string): string {
-  return username.trim().toLowerCase();
+  return username.trim().toLowerCase().slice(0, MAX_SUBJECT_LENGTH);
 }
 
 /** The backoff for the nth consecutive failure. Below the threshold there is none. */
@@ -111,6 +127,26 @@ export async function recordThrottleFailure(
 ): Promise<{ failures: number; retryAfter: Date | null }> {
   const subject = throttleSubject(username);
   return withTx(db, async (tx: Tx) => {
+    // PRUNE FIRST (Plan 11g close review, MAJOR 2). Every failed attempt against a NEW submitted
+    // string writes a row, and `clearThrottle` only ever removes one on a SUCCESSFUL
+    // authentication for that exact subject — so without this, an attacker spraying invented
+    // usernames grows the production database, and its WAL archive, without limit. Nothing else
+    // reaps this table: it has no retention job and deliberately no place in one, because the
+    // rows are worthless the moment their window passes.
+    //
+    // A row whose LAST failure is older than the window can no longer contribute to any threshold
+    // (`withinWindow` below is false for it) and its `retry_after` is long past, so deleting it is
+    // information-free. Keyed on `last_failed_at`, never `first_failed_at`: a subject failing
+    // steadily for hours has an old first failure and must not be forgotten.
+    //
+    // It runs INSIDE this transaction and BEFORE the lock below, so the subject's own expired row
+    // is deleted and immediately recreated at zero — which is the same state the `!withinWindow`
+    // branch produces, by a shorter road. Growth is bounded by the distinct subjects seen inside
+    // one window rather than by the lifetime of the deployment.
+    await tx
+      .delete(authThrottle)
+      .where(lt(authThrottle.lastFailedAt, new Date(now.getTime() - THROTTLE_WINDOW_MS)));
+
     await tx
       .insert(authThrottle)
       .values({ kind, subject, failures: 0, firstFailedAt: now, lastFailedAt: now, retryAfter: null })

@@ -107,12 +107,19 @@ assertion that passes for the wrong reason). Plan 08 (billing counter) imports
 schema, same `golden.test.ts` count-bump protocol).
 
 ### Go-live runbook (owner steps, once per environment)
-1. Register the `tariff_revision` approval type as data (no code): build the definition with
+1. ~~Register the `tariff_revision` approval type as data (no code): build the definition with
    `approvalFlowDefinition({ typeKey: "tariff_revision", approverRole: "owner", ... })`, draft +
-   activate through `/workflow/definitions` (drafter ≠ activator), then `POST /approvals/types`.
-   The §10.4 Class-A two-key upgrade (owner + Medical Superintendent) is a workflow-definition
-   **data** change at that point, not a code change — v1 registers a single approver role
-   because the shipped flow builder supports exactly one.
+   activate through `/workflow/definitions` (drafter ≠ activator), then `POST /approvals/types`.~~
+   **DONE BY `seed:tariff` SINCE PLAN 11g — this is no longer an owner step.** Nothing registered
+   this type until 2026-08-25, which is why `submitVersion` threw `unknown_type` on the live box
+   and the synthetic smoke test had to register it by hand (report D7, gap 2);
+   `registerTariffApprovalTypes` now does it, idempotently, on every deploy. **The struck text
+   stays as the record of what the step used to be, and because it still describes the SHAPE of
+   the registration.** The §10.4 Class-A two-key upgrade (owner + Medical Superintendent) is a
+   workflow-definition **data** change at that point, not a code change — v1 registers a single
+   approver role because the shipped flow builder supports exactly one.
+   **Still open and still an owner ruling: no role holds any `tariff.*` permission** (report D7,
+   gap 1), so the tariff cannot yet be operated through any screen.
 2. `pnpm --filter @hmis/core seed:tariff` (dev-placeholder GST categories/settings/D-8 caps),
    then load the hospital's real tariffs and regulated prices through the `/tariff/services` and
    `/tariff/versions` API.
@@ -846,11 +853,20 @@ say, `alerts.yml` recreates nothing; see **Monitoring** below for how such an ed
 3. **`db` up**, waited on its own `pg_isready` healthcheck.
 4. **pgBackRest**: stanza created, archiving CHECKED end to end (a forced WAL switch that has to
    actually land in the repository — D8).
-5. **Migrations** from inside the image, then **cursor seeding** (D10, this task): every
-   production consumer (`kernel.alerts`, `kernel.notify`) is seeded at `max(seq)` so a first boot
-   against a database that already carries history does not replay it through the dispatcher.
-   Idempotent — it stays in the re-deploy path forever, and never lowers a cursor a live dispatch
-   cycle has already moved past.
+5. **Migrations** from inside the image, then **cursor seeding** (D10): every production
+   consumer (`kernel.alerts`, `kernel.notify`) is seeded at `max(seq)` so a first boot against a
+   database that already carries history does not replay it through the dispatcher. Idempotent —
+   it stays in the re-deploy path forever, and never lowers a cursor a live dispatch cycle has
+   already moved past. **Then CONFIGURATION SEEDING and the CONFIGURATION GATE (Plan 11g / DD2):**
+   `seed:ops`, `seed:opd`, `seed:billing`, `seed:tariff` and `seed:roles` — all five
+   non-destructive on re-run, so a corrected money or tax value is never overwritten — followed by
+   `check:config-present`, which **fails the deploy** if a row the modules throw without is
+   missing. Until 11g this step ran the cursor seed and nothing else, and production was deployed
+   with `billing_config` empty: every invoice threw, the nightly close failed for a day, and a
+   doctor could not start a consultation. `seed:roles` is run for its GRANTS but its readiness
+   VERDICT is deliberately not the deploy's exit status — that verdict is about who holds which
+   role, which no deploy can repair. `seed:admin` is **not** here: it mints the bootstrap
+   administrator and is an owner step.
 6. **`api`, `worker`, `caddy` and the monitoring stack up** in one whole-project `compose up -d`;
    Caddy's edge config is then explicitly RELOADED (its directory-mounted Caddyfile does not
    itself trigger a container recreate on a content-only change).
@@ -859,6 +875,14 @@ say, `alerts.yml` recreates nothing; see **Monitoring** below for how such an ed
    Caddy, over HTTPS, on the real hostname AND its body verified to be JSON**, plus a screen
    path (`/admin/users`) verified to serve the SPA document. The API lives under `/api/*`;
    a bare `https://<site>/health` now returns the SPA with HTTP 200 and proves nothing.
+
+**AFTER ANY DEPLOY THAT MOVED THE API PATH SPACE — AND PLAN 11g DID — HARD-RELOAD EVERY OPEN
+BROWSER TAB** (Ctrl+Shift+R). A tab still holding a pre-11g bundle requests the bare paths, gets
+the SPA's `index.html` where it expects JSON, and fails with an unrecognised parse error rather
+than a refusal any screen knows how to render. Nothing is lost and nothing is double-posted — the
+API never sees those requests — but a cashier mid-shift, or the waiting-room display board left on
+`/opd/display` overnight, will show unexplained failures until somebody reloads. `deploy.sh` prints
+this reminder as its last line.
 
 First bring-up, in order: create `/opt/hmis-prod` (`mkdir -p /opt/hmis-prod && chmod 700
 /opt/hmis-prod`) → copy `docker/prod/.env.prod.example` to `/opt/hmis-prod/.env` and fill the

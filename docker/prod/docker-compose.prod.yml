@@ -159,7 +159,8 @@ services:
   # tolerates the api restarting under it.
   #
   # No compose healthcheck: caddy:2-alpine carries no HTTP client, and the check that actually
-  # matters is the external one deploy.sh performs — /health through Caddy over HTTPS.
+  # matters is the external one deploy.sh performs — /api/health through Caddy over HTTPS
+  # (the API moved under /api/* in Plan 11g; a bare /health at the edge is now the SPA).
   # ------------------------------------------------------------------------------------------
   caddy:
     image: hmis-prod/web:latest

@@ -3,6 +3,7 @@ import {
   THROTTLE_BASE_MS, THROTTLE_MAX_MS, THROTTLE_THRESHOLD, THROTTLE_WINDOW_MS,
   backoffMs, clearThrottle, recordThrottleFailure, throttleRetryAt, throttleSubject,
 } from "./throttle";
+import { authThrottle } from "../db/schema";
 import type { Db } from "../db/client";
 
 /**
@@ -98,6 +99,59 @@ describe("auth throttle (Plan 11g / DD4)", () => {
     }
     // No `users` row exists and none is needed: there is deliberately no FK.
     expect(await throttleRetryAt(db, "login", "nobody-here-at-all", NOW)).not.toBeNull();
+  });
+
+  /**
+   * PLAN 11g CLOSE REVIEW, MAJOR 2 — the key is BOUNDED, and it is a correctness bound.
+   *
+   * `loginSchema` puts no ceiling on `username` (deliberately — login verifies rather than
+   * chooses) and the JSON body limit is 1 MB, so an unauthenticated caller could submit a
+   * multi-kilobyte username. `subject` is half of a composite PRIMARY KEY, and Postgres rejects a
+   * btree index tuple over ~2704 bytes outright — the INSERT would throw out of the login handler
+   * and a route that answered a clean 401 would answer 500 to an anonymous request.
+   */
+  it("MAJOR 2 — a multi-kilobyte username is bounded, and recording its failure does not throw", async () => {
+    const huge = "x".repeat(4000);
+    expect(throttleSubject(huge)).toHaveLength(64);
+
+    // The proof is that this RESOLVES. Before the bound it threw
+    // `index row size … exceeds btree version 4 maximum 2704`, out of an unauthenticated route.
+    const { failures } = await recordThrottleFailure(db, "login", huge, NOW);
+    expect(failures).toBe(1);
+
+    // …and a DIFFERENT 4000-character username sharing the first 64 characters shares the counter,
+    // which can only make the throttle stricter.
+    const sibling = `${"x".repeat(64)}${"y".repeat(3936)}`;
+    expect((await recordThrottleFailure(db, "login", sibling, NOW)).failures).toBe(2);
+  });
+
+  /**
+   * PLAN 11g CLOSE REVIEW, MAJOR 2 — the table REAPS ITSELF.
+   *
+   * Every failed attempt against a new submitted string writes a row and `clearThrottle` removes
+   * one only on a successful authentication for that exact subject, so without the prune an
+   * attacker spraying invented usernames grows the production database and its WAL archive
+   * without limit. Nothing else reaps this table.
+   */
+  it("MAJOR 2 — rows whose window has passed are pruned, and live rows are NOT", async () => {
+    for (const name of ["sprayed-1", "sprayed-2", "sprayed-3"]) {
+      await recordThrottleFailure(db, "login", name, NOW);
+    }
+    expect(await db.select().from(authThrottle)).toHaveLength(3);
+
+    // A steady attacker on ONE subject: its FIRST failure is ancient but its LAST is recent, so it
+    // must survive. Keying the prune on `first_failed_at` would forget exactly this row.
+    await recordThrottleFailure(db, "login", "steady", NOW);
+    await recordThrottleFailure(db, "login", "steady", later(THROTTLE_WINDOW_MS + 2 * 60 * 1000));
+
+    // One more failure an hour and a minute on. The three stale sprays go; `steady` stays because
+    // it failed two minutes ago; the new subject's own row is written.
+    const rows = await (async (): Promise<string[]> => {
+      await recordThrottleFailure(db, "login", "current", later(THROTTLE_WINDOW_MS + 3 * 60 * 1000));
+      return (await db.select().from(authThrottle)).map((r) => r.subject).sort();
+    })();
+
+    expect(rows).toEqual(["current", "steady"]);
   });
 
   it("CONCURRENCY — ten simultaneous failures count ten, not fewer (the row is locked)", async () => {

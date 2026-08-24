@@ -18,6 +18,7 @@ import { tariffManifest } from "../src/modules/tariff";
 import { opdManifest } from "../src/modules/opd";
 import { billingManifest } from "../src/modules/billing";
 import { istDay } from "../src/modules/billing/time";
+import { isInvoicePatientFkViolation } from "../src/modules/billing/billing.controller";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { requireEnv } from "../src/kernel/config";
 import type { NestExpressApplication } from "@nestjs/platform-express";
@@ -709,6 +710,40 @@ describe("billing e2e", () => {
     // The refusal is the whole transaction's: no invoice, and — the half that matters at a cash
     // counter — no receipt banked against a patient who does not exist.
     expect(await db.select().from(receipts)).toHaveLength(0);
+  });
+
+  /**
+   * PLAN 11g CLOSE REVIEW (MINOR) — THE LEG THAT TELLS DD3 FROM THE THING DD3 REJECTS.
+   *
+   * The e2e above passes against a BLANKET `code === "23503" → patient_not_found`, which is
+   * precisely the mapping DD3 argues against: this module's `toHttp` is the one refusal ladder for
+   * every billing route, and those routes write receipts, allocations, credit notes, refund
+   * vouchers and cashier sessions too. A blanket mapping would answer some other missing row with
+   * a confidently wrong sentence. The narrowness cannot be reached through HTTP — `invoices` has
+   * exactly one foreign key — so it is asserted directly on the predicate.
+   */
+  describe("DD3: the FK mapping is CONSTRAINT-scoped, not SQLSTATE-scoped", () => {
+    it("recognises only the invoices→patients constraint, and nothing else", () => {
+      const detail = "Key (patient_id)=(01M0X) is not present in table \"patients\".";
+      expect(isInvoicePatientFkViolation({
+        code: "23503", constraint: "invoices_patient_id_patients_id_fk", detail,
+      })).toBe(true);
+
+      // A DIFFERENT foreign key, same SQLSTATE: must NOT be claimed. A blanket mapping returns
+      // true here and this leg is the only thing in the suite that fails on it.
+      expect(isInvoicePatientFkViolation({
+        code: "23503", constraint: "receipts_patient_id_patients_id_fk", detail,
+      })).toBe(false);
+      // Right constraint, wrong SQLSTATE; and a unique violation, which has its own mapping.
+      expect(isInvoicePatientFkViolation({
+        code: "23514", constraint: "invoices_patient_id_patients_id_fk",
+      })).toBe(false);
+      expect(isInvoicePatientFkViolation({ code: "23505" })).toBe(false);
+      // Shapes that are not pg errors at all must not throw.
+      expect(isInvoicePatientFkViolation(null)).toBe(false);
+      expect(isInvoicePatientFkViolation(new Error("boom"))).toBe(false);
+      expect(isInvoicePatientFkViolation("23503")).toBe(false);
+    });
   });
 
   it("recon: a card statement outside tolerance mismatches the tender and lands on the worklist", async () => {
