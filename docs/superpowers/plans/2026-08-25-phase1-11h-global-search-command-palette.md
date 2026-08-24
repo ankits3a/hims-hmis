@@ -268,15 +268,25 @@ The design is settled; the build is not in this phase. What is ruled:
    answers at all.
 3. **propose→confirm.** The palette renders the structured action it intends; the human's Enter *is*
    the API call. Plan 04's approval ladders can never be bypassed by an interpretation.
-4. **Where the code lives.** The `InferenceClient` interface belongs to Plan 12a. This phase does not
-   write a second one. When the NL lane is built it consumes 12a's client with an
-   OpenAI-compatible implementation configured by `INFERENCE_BASE_URL` / `INFERENCE_API_KEY` /
-   `INFERENCE_MODEL`, all three **defaulted to empty** per the B1 scar, with the lane inert unless all
-   three are set. **The owner's endpoint URL and key are deliberately NOT recorded in this repository
+4. **Where the code lives — ONE CHOKE MODULE, ruled by the owner 2026-08-25.** Deferred note 5
+   (plan-series) requires that the router and the voice path land behind **a single choke module
+   that becomes 12a's `InferenceClient`** — never scattered call sites. So `kernel/inference/` owns
+   every outbound AI call this project makes, text and speech alike: one config, one audit point,
+   one kill switch, two typed methods. This phase writes no second client. Configuration is
+   `INFERENCE_BASE_URL` / `INFERENCE_API_KEY` / `INFERENCE_MODEL`, all three **defaulted to empty**
+   per the B1 scar, with the lane inert unless all three are set. **The owner's endpoint URL and key are deliberately NOT recorded in this repository
    — it is public.** They live in `/opt/hmis-prod/.env` (gitignored) and were supplied out-of-band.
 5. **What must be true before it activates:** the DPIA amended to describe a router whose
    sub-processor varies per request, a model pinned rather than `auto/*` (Q1: `auto/*` chose a
    different provider on consecutive calls), and a measured p95 under 3 s.
+
+**Required reading, done 2026-08-25 — note 5 names it as a precondition:** deferred notes 13
+(untrusted content is data, never instruction), 14 (abstention, action budgets, tiered halts), 17
+(calibration-gated autonomy — inert here: a read-only palette proposes nothing to calibrate), 18
+(deterministic context assembly — the skeleton this lane sends must be a function of spine position
+and artifact versions, which a template over resolved chips already is), and the DPIA draft v0.1.
+Nothing in them refutes this design; note 5 corrects where the code lives (point 4 above) and note
+18 pins how the skeleton must be built.
 
 **NL → answer synthesis over retrieved records is refused, not deferred.** It requires PHI in the
 prompt; Class 2 is not an inference input under the current law. Revisiting it is a DPIA question,
@@ -312,11 +322,15 @@ as a PRE-PILOT gate (plan-series § staging). Voice adds an utterance to a trans
 has already opened and already gated. It does **not** open a new one — provided the controls below
 hold. What it *does* do is amend the standing design law, which currently reads *identified PHI
 never enters an inference request, any stage, any locus, ever*. That sentence and this decision
-cannot both stand unqualified. **The amendment this plan proposes, for the owner to accept or
-refuse:** the law's absolute form is retained for **text** inference; **speech-to-text is carved out
-as a named exception** — one named processor, no training, no retention, transcript-only output,
-flag-gated, audited per use, and revisited when either an in-region option or the on-prem path
-exists.
+cannot both stand unqualified. **SUPERSEDED 2026-08-25 by the owner's own
+guardrail (deferred note 5), which is stricter and settles it:** *voice audio is **Class 2** until
+the DPIA rules otherwise* — a dictated query carries patient names, so cloud transcription of
+clinical speech sits inside the PHI law's scope. Class 2 never enters an inference request under
+the DPIA's §2, so **T9 shipping inert is not prudence, it is the standing law**, and the gate is a
+**DPIA revision** — a heavier and more appropriate instrument than the plan-level carve-out this
+section originally proposed. Note 5 also fixes the shape of the first release: **dictation into
+read-only search, never a state-mutating command**, until the tool catalog and propose→confirm
+exist. That is exactly T9's scope.
 
 **The controls, and they are the price of the carve-out.**
 
@@ -339,9 +353,9 @@ exists.
 6. **`VOICE_SEARCH_ENABLED = false` until the amendment is recorded.** The 11g DD5 pattern: the code
    ships complete and inert, one constant flips it, and the comment beside the constant names
    exactly what must be true first (§6 item 4). **No mic icon renders while it is false.**
-7. **The implementation is swappable by construction.** A `SpeechClient` interface with a Workers AI
-   implementation now and a `whisper.cpp`-on-the-box implementation later, chosen by config — the
-   same shape `InferenceClient` uses for text. When on-prem ASR arrives, the carve-out closes and
+7. **The implementation is swappable by construction.** A `transcribe()` method with a Workers AI
+   implementation now and a `whisper.cpp`-on-the-box implementation later, chosen by config — on the same choke
+   module `InferenceClient` uses for text (note 5). When on-prem ASR arrives, the carve-out closes and
    nothing above it changes.
 
 **Cost is not a factor in this decision.** `@cf/openai/whisper-large-v3-turbo` is **$0.00051 per
@@ -501,8 +515,8 @@ offers the downtime kit instead of spinning on a dead API.
 
 ### T9 — CRITICAL — voice dictation into the palette, shipped inert
 
-**Files:** `apps/core/src/kernel/speech/types.ts` · `apps/core/src/kernel/speech/workers-ai.ts` ·
-`apps/core/src/kernel/speech/speech.controller.ts` · `apps/core/src/kernel/speech/speech.test.ts` ·
+**Files:** `apps/core/src/kernel/inference/types.ts` · `apps/core/src/kernel/inference/workers-ai.ts` ·
+`apps/core/src/kernel/inference/speech.controller.ts` · `apps/core/src/kernel/inference/speech.test.ts` ·
 `apps/core/src/kernel/config.ts` (three defaulted keys) ·
 `apps/web/src/components/voice-button.tsx` · `apps/web/src/components/voice-button.test.tsx` ·
 `apps/web/src/lib/voice-flag.ts` · `apps/web/src/components/command-palette.tsx`
@@ -510,8 +524,8 @@ offers the downtime kit instead of spinning on a dead API.
 **Acceptance.** `POST /api/speech/transcribe` accepts a ≤15 s audio blob from an authenticated
 actor, proxies to `@cf/openai/whisper-large-v3-turbo` with a server-held token and the caller's
 i18n `language`, returns **text only**, and writes one `search_audit` row flagged `source: 'voice'`.
-The audio buffer is discarded on the same tick the transcript returns. `SpeechClient` is an
-interface with a deterministic offline implementation for tests — **CI never contacts Cloudflare**,
+The audio buffer is discarded on the same tick the transcript returns. `transcribe()` lives on the ONE choke module (`kernel/inference/`, note 5), with a
+deterministic offline implementation for tests — **CI never contacts Cloudflare**,
 the same contract `InferenceClient` carries. Config keys `SPEECH_PROVIDER`, `SPEECH_ACCOUNT_ID`,
 `SPEECH_API_TOKEN` all default to empty (the B1 scar); the route answers a coded 503 when unset.
 `VOICE_SEARCH_ENABLED = false` ships in `voice-flag.ts` with the 11g DD5 comment shape, and **no
