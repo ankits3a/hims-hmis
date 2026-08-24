@@ -23,11 +23,13 @@ import { roles, users } from "../src/kernel/db/schema";
  *   - `syncPermissions` mirrors permission NAMES into `permissions` at api boot and grants
  *     nothing to any role — it is a catalog, not an authorisation.
  *   - Grants are `role_permissions` rows, written only by `grantPermissionToRole`, whose single
- *     non-test caller was `scripts/seed-admin.ts` — which returns early on any deployment that
- *     already has an admin user, and which installs `authManifest` ALONE, so even on a virgin
- *     database it grants six `auth.*` strings and nothing else.
- *   - There is no HTTP surface: `auth.roles.manage` is declared by a manifest and used by no
- *     route anywhere in the tree.
+ *     non-test caller was `scripts/seed-admin.ts` — which, until Plan 11e T5 deleted its early
+ *     return, did nothing at all on a deployment that already had an admin user, and which
+ *     installs `authManifest` ALONE, so even on a virgin database it grants six `auth.*` strings
+ *     and nothing else.
+ *   - There was no HTTP surface when this script was written: `auth.roles.manage` was declared by
+ *     a manifest and used by no route anywhere in the tree. Plan 11e T4 shipped
+ *     `kernel/auth/roles-admin.controller.ts`, which guards role assign and revoke with it.
  *
  * The consequence, had 11c been deployed as it stood: `POST /ops/mode` (declare downtime) and
  * `POST /ops/downtime-kits` (print the paper) would answer 403 to EVERY user, and the mode-desk

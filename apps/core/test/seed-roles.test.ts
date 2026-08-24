@@ -530,12 +530,22 @@ describe("seed:roles — executed against a database (V5)", () => {
     expect(claimedElsewhere.filter((p) => measured.includes(p))).toEqual([]);
     expect(first.expectedElsewhereAbsent).toBe(9);
 
-    // NOT READY, and the problem NAMES seed:admin's early return rather than merely counting.
+    // NOT READY, and the problem NAMES THE REPAIR rather than merely counting.
+    //
+    // PLAN 11e CLOSE (M4) — THIS ASSERTION MOVED, AND WHY IT HAD TO. It used to pin the substring
+    // "RETURNS EARLY", because the guidance told the operator that re-running `seed:admin` could
+    // NOT help. 11e T5 deleted that early return and made re-running it the repair, so the old
+    // wording became emitted text steering a person away from the fix — caught by the phase's
+    // independent reviewer. What is pinned now is the same property one layer up: the message must
+    // name the script AND tell the operator what to do about it, because a census that reports a
+    // gap without naming its repair is the defect this whole check exists to close.
     expect(first.ready).toBe(false);
     const problem = first.problems.find((t) => t.includes("EXPECTS another seed"));
     expect(problem).toBeDefined();
     expect(problem).toContain("seed:admin");
-    expect(problem).toContain("RETURNS EARLY");
+    expect(problem).toContain("RE-RUNNING seed:admin IS the repair");
+    // …and it must NOT resurrect the claim T5 falsified.
+    expect(problem).not.toContain("RETURNS EARLY");
     for (const permission of claimedElsewhere) expect(problem).toContain(permission);
 
     // NOW GRANT ONE OF THEM, the way the missing seed would have. Nothing about the constants at

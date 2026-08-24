@@ -2,7 +2,7 @@ import {
   BadRequestException, Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException,
   Param, Post,
 } from "@nestjs/common";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { DB } from "../tokens";
 import { CurrentActor, RequirePermission } from "../auth/decorators";
@@ -90,43 +90,80 @@ export type AdminUserView = {
  * strength of an authority that evaporates while nobody is looking. `hasPermission` honours temp
  * grants for ACCESS, which is correct; this is a question about who will still be here tomorrow.
  */
-export async function activeHoldersOfPermission(tx: Tx, permission: string): Promise<string[]> {
+/**
+ * ONE ARBITRARY BUT STABLE KEY, so every lockout-checked mutation contends on the same lock.
+ * The value is meaningless; its constancy is the whole property.
+ */
+const ADMIN_LOCKOUT_LOCK_KEY = 811_000_011;
+
+/**
+ * Who would STILL hold `permission` — **at the scope the admin routes actually demand** — once the
+ * named removal had happened.
+ *
+ * ═══ THE SCOPE PREDICATE IS THE CORRECTION, AND ITS ABSENCE WAS A REAL DEFECT ═══
+ *
+ * The first version of this counted every assignment carrying the permission, at ANY scope, while
+ * every route on both admin controllers is `@RequirePermission(…, "hospital")`. `hasPermission`
+ * refuses a `department`- or `floor`-scoped holding against a hospital requirement
+ * (`permissions.ts`), so the counter's holder set was a SUPERSET of the set that can reach the
+ * routes — and the difference was exactly what the invariant exists to protect. Two authorised
+ * requests exploited it: give the sole administrator a second, DEPARTMENT-scoped `admin`
+ * assignment, then revoke their hospital-scoped one. The old counter saw two assignments, said
+ * "they still hold it", and answered 204 — leaving a deployment whose only administrator is
+ * refused 403 on every admin route, repairable only by direct database access. Found by the 11e
+ * independent reviewer (CLOSE, C2).
+ *
+ * ═══ WHY THIS SHAPE — ONE QUERY THAT MODELS THE POST-STATE ═══
+ *
+ * It asks "who holds it AFTER" rather than "who holds it now, minus some set arithmetic". The
+ * arithmetic was where the scope confusion hid. Excluding the user models a deactivation exactly
+ * (a deactivated user is not `active`); excluding the assignment models a revoke exactly. An
+ * assignment id that matches nothing excludes nothing, which is correct: the route then answers
+ * its own 404.
+ *
+ * TEMPORARY GRANTS STILL DO NOT COUNT, deliberately, and the direction is safe. `temp_role_grants`
+ * expire, often within the hour, so counting them would let the last permanent administrator go on
+ * the strength of authority that evaporates unwatched. That makes this counter STRICTER than the
+ * guard, which can only ever refuse a legal removal — never permit a lockout.
+ */
+export async function hospitalScopeHolders(
+  tx: Tx,
+  permission: string,
+  exclude: { userId?: string; assignmentId?: string } = {},
+): Promise<string[]> {
+  const conditions = [
+    eq(rolePermissions.permission, permission),
+    eq(users.active, true),
+    // THE PREDICATE C2 WAS MISSING.
+    eq(roleAssignments.scopeType, "hospital"),
+  ];
+  if (exclude.userId !== undefined) conditions.push(ne(roleAssignments.userId, exclude.userId));
+  if (exclude.assignmentId !== undefined) conditions.push(ne(roleAssignments.id, exclude.assignmentId));
   const rows = await tx
     .select({ userId: roleAssignments.userId })
     .from(roleAssignments)
     .innerJoin(rolePermissions, eq(rolePermissions.roleKey, roleAssignments.roleKey))
     .innerJoin(users, eq(users.id, roleAssignments.userId))
-    .where(and(eq(rolePermissions.permission, permission), eq(users.active, true)));
+    .where(and(...conditions));
   return [...new Set(rows.map((r) => r.userId))].sort();
 }
 
-/** Refuses when the named assignments/users, once removed, would empty the holder set. */
+/** Refuses when the named removal would leave nobody able to administer users. */
 export async function assertNoAdminLockout(
   tx: Tx,
   removal: { userId: string } | { assignmentId: string },
 ): Promise<void> {
-  const holders = await activeHoldersOfPermission(tx, USERS_MANAGE);
-  let remaining: string[];
-  if ("userId" in removal) {
-    remaining = holders.filter((id) => id !== removal.userId);
-  } else {
-    // Which user does this assignment belong to, and does that user still hold the permission by
-    // some OTHER assignment? Asked as a query rather than assumed: a person may hold `admin` twice
-    // at different scopes, and removing one of those must not read as removing the person.
-    const rows = await tx
-      .select({ userId: roleAssignments.userId })
-      .from(roleAssignments)
-      .where(eq(roleAssignments.id, removal.assignmentId));
-    const owner = rows[0]?.userId;
-    if (owner === undefined) return; // nothing to remove; the route answers 404 on its own
-    const others = await tx
-      .select({ id: roleAssignments.id })
-      .from(roleAssignments)
-      .innerJoin(rolePermissions, eq(rolePermissions.roleKey, roleAssignments.roleKey))
-      .where(and(eq(roleAssignments.userId, owner), eq(rolePermissions.permission, USERS_MANAGE)));
-    const stillHolds = others.filter((r) => r.id !== removal.assignmentId).length > 0;
-    remaining = stillHolds ? holders : holders.filter((id) => id !== owner);
-  }
+  /**
+   * THE LOCK IS TAKEN BEFORE THE COUNT, and it closes a real TOCTOU (CLOSE, M1). `withTx` runs at
+   * Postgres's default READ COMMITTED and this check took plain SELECTs, so two overlapping
+   * removals — the last two holders, or one deactivate racing one role revoke — each read a holder
+   * set of two, each computed a non-empty remainder, and both committed: zero holders, no refusal,
+   * no repair short of database access. A transaction-scoped advisory lock serialises them, and
+   * because READ COMMITTED takes a fresh snapshot per statement, the second transaction's count
+   * runs after the first has committed and sees its effect.
+   */
+  await tx.execute(sql`select pg_advisory_xact_lock(${ADMIN_LOCKOUT_LOCK_KEY})`);
+  const remaining = await hospitalScopeHolders(tx, USERS_MANAGE, removal);
   if (remaining.length === 0) {
     throw new ConflictException({
       code: "admin_lockout",

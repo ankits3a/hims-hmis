@@ -16,15 +16,18 @@ import { roleAssignments, rolePermissions, roles, users } from "../src/kernel/db
  * WHY THIS EXISTS, because a script nobody understands is a script nobody runs.
  *
  *   - `createUser` had exactly ONE non-test caller in the whole tree, `scripts/seed-admin.ts`,
- *     and that script RETURNS EARLY on any deployment that already has an admin. So after the
+ *     and that script RETURNED EARLY on any deployment that already had an admin (Plan 11e T5
+ *     deleted that early return). So after the
  *     first boot there was no way, anywhere in this repository, to create a second user.
  *   - `setPin` had ZERO non-test callers. Plan 02 built and perf-tested a sub-2-second PIN
  *     fast-switch precisely so a ward terminal would not end up sharing one session, and nothing
  *     in the tree could put a PIN on anybody.
  *   - `seed:ops` REFUSES a username that does not exist, by design. `seed:roles` mints authority
  *     and assigns nobody, by design. Both were waiting for a tool that did not exist.
- *   - There is no user-administration HTTP surface: `auth.users.manage` is declared by a manifest
- *     and guards no route anywhere in the tree. The screen is booked as Plan 11e.
+ *   - There was no user-administration HTTP surface when this script was written:
+ *     `auth.users.manage` was declared by a manifest and guarded no route anywhere in the tree.
+ *     Plan 11e T3 shipped `kernel/auth/users-admin.controller.ts` and T6 the screen, so a
+ *     forgotten password is now repaired over HTTP rather than by re-running this script.
  *
  * MEASURED AGAINST PRODUCTION ON 2026-08-24 (plan 11d §B-MEASURED, four read-only SELECTs):
  * `https://hmis.crkmch.com` had ONE user, `admin`, with `has_pin = f`. One person, no fast-switch,

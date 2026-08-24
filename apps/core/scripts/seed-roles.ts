@@ -21,9 +21,9 @@ import { rolePermissions, roles } from "../src/kernel/db/schema";
  *     It grants nothing to anybody, and it never has.
  *   - Grants are `role_permissions` rows, written only by `grantPermissionToRole`. Before this
  *     script it had exactly TWO non-test callers in the whole tree: `scripts/seed-admin.ts`,
- *     whose registry holds `authManifest` ALONE (six `auth.*` strings) and which returns early on
- *     any deployment that already has an admin, and `scripts/seed-ops.ts`, which grants three
- *     `ops.*` strings.
+ *     whose registry holds `authManifest` ALONE (six `auth.*` strings) and which — until Plan 11e
+ *     deleted its early return — did nothing at all on a deployment that already had an admin, and
+ *     `scripts/seed-ops.ts`, which grants three `ops.*` strings.
  *   - `app.module.ts` installs NINE manifests declaring FIFTY-NINE permissions.
  *
  * MEASURED AGAINST PRODUCTION ON 2026-08-24 (plan §B-MEASURED, four read-only SELECTs): the
@@ -337,8 +337,10 @@ export function modelPermissions(): string[] {
  * **This is a PREDICTION, not a measurement, and MAJOR 1 was what happens when the two are
  * confused.** Until 2026-08-23 `seedRoles` computed its census and its READY verdict from this
  * function, so it reported permissions as held on the strength of `GRANTED_BY_OTHER_SEEDS` saying
- * `seed:admin` grants them — on a box where `seed-admin.ts` RETURNS EARLY because an admin already
- * exists, and therefore never granted a newly declared `auth.*` string at all. The census counted
+ * `seed:admin` grants them — on a box where `seed-admin.ts` RETURNED EARLY because an admin already
+ * existed, and therefore never granted a newly declared `auth.*` string at all (Plan 11e T5 removed
+ * that early return; the distinction between a PREDICTION and a MEASUREMENT below is why this
+ * function still exists). The census counted
  * 42 held where 33 were granted, which is MAJOR 4's mechanism living inside the artefact built to
  * abolish it.
  *
@@ -462,8 +464,10 @@ export async function seedRoles(db: Db): Promise<SeedRolesReport> {
   }
   // The leg MAJOR 1 was missing. `GRANTED_BY_OTHER_SEEDS` asserts that `seed:admin` and `seed:ops`
   // have granted their manifests' permissions; this is where that assertion meets the database.
-  // `seed-admin.ts` returns early on any deployment that already has an admin, so a permission
-  // declared AFTER first boot is never granted there and nothing else would ever notice.
+  // Before Plan 11e, `seed-admin.ts` returned early on any deployment that already had an admin,
+  // so a permission declared AFTER first boot was never granted there and nothing else would ever
+  // have noticed. T5 deleted that early return; this check stays, because it is what MEASURES
+  // whether the repair was actually run.
   const expectedElsewhere = heldPermissions().filter((p) => !modelPermissions().includes(p));
   const expectedElsewhereAbsent = expectedElsewhere.filter((p) => !held.has(p)).sort();
   if (expectedElsewhereAbsent.length > 0) {
@@ -471,9 +475,9 @@ export async function seedRoles(db: Db): Promise<SeedRolesReport> {
       `${expectedElsewhereAbsent.length} permission(s) the role model EXPECTS another seed to have ` +
         `granted are not held by any role in this database: ${expectedElsewhereAbsent.join(", ")}. ` +
         `GRANTED_BY_OTHER_SEEDS names ${GRANTED_BY_OTHER_SEEDS.map((g) => g.seed).join(" and ")}; ` +
-        `run the missing one. NOTE that seed:admin RETURNS EARLY on a deployment that already has ` +
-        `an admin, so a permission declared after first boot will never be granted by re-running it ` +
-        `— it needs granting explicitly.`,
+        `run the missing one. Since Plan 11e, RE-RUNNING seed:admin IS the repair: it reconciles ` +
+        `its grants on every invocation instead of returning early on a deployment that already ` +
+        `has an admin.`,
     );
   }
 

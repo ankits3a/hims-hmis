@@ -20,6 +20,19 @@ export default defineConfig({
       "/opd": "http://localhost:3000",
       "/billing": "http://localhost:3000",
       "/alerts": "http://localhost:3000",
+      // PLAN 11e CLOSE — THREE PREFIXES THE SPA CALLED AND NOTHING PROXIED.
+      //
+      // `/admin` is 11e's own (the user-administration surface). `/ops` and `/tariff` are OLDER
+      // and were live defects: `/ops` is Plan 11c's operating-mode and downtime-kit surface — one
+      // letter away from `/opd`, which is why it survived review — and `/tariff` feeds the billing
+      // counter's service picker. In production all three fell through to the SPA handler and came
+      // back as index.html with HTTP 200, exactly as this file's parity pin warned.
+      //
+      // The parity test now reads a THIRD source — the prefixes `src/lib/*.ts` actually calls —
+      // because two lists compared only to each other agree forever about a prefix in neither.
+      "/admin": "http://localhost:3000",
+      "/ops": "http://localhost:3000",
+      "/tariff": "http://localhost:3000",
       "/ws": { target: "ws://localhost:3000", ws: true },
     },
   },

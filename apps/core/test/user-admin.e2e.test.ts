@@ -540,4 +540,108 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
       .send({ roleKey: "no_such_role", scopeType: "hospital" });
     expect([unknown.status, unknown.body.code]).toEqual([404, "role_not_found"]);
   });
+
+  // ═════════ CLOSE C2 — the scope hole the reviewer found, executed at BOTH enforcement points ═════════
+  //
+  // Every admin route is `@RequirePermission(…, "hospital")`, and `hasPermission` refuses a
+  // department- or floor-scoped holding against a hospital requirement. The first version of the
+  // invariant counted holders at ANY scope, so its holder set was a SUPERSET of the set that can
+  // actually reach the routes — and two authorised requests turned that difference into a
+  // permanent lockout. These two legs are that scenario, end to end.
+
+  it("C2 — a DEPARTMENT-scoped admin assignment does not keep the hospital-scoped one revocable", async () => {
+    const { token: roleAdminToken } = await mkUser("role_admin", [ROLES_MANAGE]);
+
+    // Step 1 — give the sole administrator a second assignment of the SAME role at department
+    // scope. Entirely legal, and it is what made the old counter see two holdings.
+    const listBefore = await asAdmin("get", "/admin/users").expect(200);
+    const rootBefore = (listBefore.body.users as AdminUserView[]).find((u) => u.id === adminId)!;
+    const hospitalAssignment = rootBefore.roles[0]!.assignmentId;
+    await request(server())
+      .post(`/admin/users/${adminId}/roles`).set("Authorization", `Bearer ${roleAdminToken}`)
+      .send({ roleKey: rootBefore.roles[0]!.roleKey, scopeType: "department", scopeId: "DEPT-GEN" })
+      .expect(201);
+
+    // NON-VACUITY: the department grant is real and it is NOT enough on its own. Asserted by
+    // execution, because the whole defect was the counter believing otherwise.
+    const listMid = await asAdmin("get", "/admin/users").expect(200);
+    expect((listMid.body.users as AdminUserView[]).find((u) => u.id === adminId)!.roles).toHaveLength(2);
+
+    // Step 2 — revoke the HOSPITAL-scoped assignment. The old code answered 204 here.
+    const refused = await request(server())
+      .delete(`/admin/users/${adminId}/roles/${hospitalAssignment}`)
+      .set("Authorization", `Bearer ${roleAdminToken}`);
+    expect([refused.status, refused.body.code]).toEqual([409, "admin_lockout"]);
+
+    // …and the administrator can still administer. Without this the leg would pass against a
+    // controller that refused the revoke and lost the grant anyway.
+    await asAdmin("get", "/admin/users").expect(200);
+  });
+
+  it("C2 — deactivation is judged the same way: a department-scoped holder is not a holder", async () => {
+    const { token: roleAdminToken } = await mkUser("role_admin", [ROLES_MANAGE]);
+    const { id: deputyId } = await mkUser("deputy", null);
+    const rootRole = ((await asAdmin("get", "/admin/users").expect(200)).body.users as AdminUserView[])
+      .find((u) => u.id === adminId)!.roles[0]!.roleKey;
+
+    // A second person holds the admin role — but only over one department.
+    await request(server())
+      .post(`/admin/users/${deputyId}/roles`).set("Authorization", `Bearer ${roleAdminToken}`)
+      .send({ roleKey: rootRole, scopeType: "department", scopeId: "DEPT-GEN" })
+      .expect(201);
+    // NON-VACUITY: that grant does not let them through the door.
+    const deputyLogin = await request(server())
+      .post("/auth/login").send({ username: "deputy", password: "s3cret-pass" }).expect(201);
+    await request(server()).get("/admin/users")
+      .set("Authorization", `Bearer ${deputyLogin.body.token as string}`).expect(403);
+
+    // So deactivating the only hospital-scoped holder must still be refused.
+    const refused = await asAdmin("post", `/admin/users/${adminId}/deactivate`);
+    expect([refused.status, refused.body.code]).toEqual([409, "admin_lockout"]);
+  });
+
+  // ═════════ CLOSE M2 — R4's two missing call sites: the admin reset routes ═════════
+  //
+  // R4's point is that EVERY path which sets a credential asks the policy. Five paths were named
+  // and three were executed; these are the two that were not, and without them `checkPassword` and
+  // `checkPin` could be deleted from both reset handlers with the suite still green.
+
+  it("M2/R4 — password-reset applies the policy, and refuses without writing anything", async () => {
+    const { token: victimToken, id: victimId } = await mkUser("forgetful", null);
+    const short = await asAdmin("post", `/admin/users/${victimId}/password-reset`)
+      .send({ newPassword: "abcdefghi" });
+    expect([short.status, short.body.problems.map((p: { code: string }) => p.code)]).toEqual([
+      400, ["password_too_short"],
+    ]);
+    // NOTHING MOVED: the old credential still works and the session was not revoked — a refusal
+    // that had already reset the password would be worse than no policy at all.
+    expect(await verifyPassword(db, "forgetful", "s3cret-pass")).not.toBeNull();
+    await request(server()).get("/auth/me").set("Authorization", `Bearer ${victimToken}`).expect(200);
+
+    // …and the USERNAME clause reaches this path too, at length ≥ 10 — so the refusal cannot be
+    // the length rule wearing another name. "receptionist" is twelve characters, which is the
+    // whole point of choosing it: the floor cannot produce this refusal.
+    const { id: recepId } = await mkUser("receptionist", null);
+    const asUsername = await asAdmin("post", `/admin/users/${recepId}/password-reset`)
+      .send({ newPassword: "RecePTionIST" });
+    expect([asUsername.status, asUsername.body.problems.map((p: { code: string }) => p.code)])
+      .toEqual([400, ["password_is_username"]]);
+    // The accepting control, same length, same path: the route is not refusing everything.
+    await asAdmin("post", `/admin/users/${recepId}/password-reset`)
+      .send({ newPassword: "a-fine-choice" }).expect(200);
+  });
+
+  it("M2/R4 — pin-reset applies the PIN policy, and refuses without writing anything", async () => {
+    const { id: victimId } = await mkUser("switcher", null);
+    for (const [newPin, code] of [["12ab", "pin_not_digits"], ["123", "pin_wrong_length"], ["1234567", "pin_wrong_length"]]) {
+      const res = await asAdmin("post", `/admin/users/${victimId}/pin-reset`).send({ newPin });
+      expect([newPin, res.status, res.body.problems.map((p: { code: string }) => p.code)])
+        .toEqual([newPin, 400, [code]]);
+    }
+    // Nothing was written by any of the three refusals…
+    expect(await verifyPin(db, victimId, "1234567")).toBe(false);
+    // …and the accepting control proves the route is not simply refusing everything.
+    await asAdmin("post", `/admin/users/${victimId}/pin-reset`).send({ newPin: "417293" }).expect(204);
+    expect(await verifyPin(db, victimId, "417293")).toBe(true);
+  });
 });

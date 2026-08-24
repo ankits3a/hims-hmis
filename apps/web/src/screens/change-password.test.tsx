@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { setToken } from "../lib/api";
+import { getToken, setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
 import { ChangePassword } from "./change-password";
 
@@ -101,6 +101,37 @@ describe("ChangePassword", () => {
     expect(error).toHaveTextContent("at least 10 characters");
     expect(error).toHaveTextContent("must not be the username");
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("CLOSE M5 — a reload of this screen keeps the session: the submit carries the token", async () => {
+    // The realistic entry: the person is ALREADY in the forced-change state, so `AuthProvider`'s
+    // mount effect calls `GET /auth/me` and gets a 403. Before the fix that `catch` cleared the
+    // token, and this submit went out with no Authorization header.
+    mockRoutes({
+      "GET /auth/me": { status: 403, body: { statusCode: 403, message: "password_change_required" } },
+      "POST /auth/change-password": { status: 204, body: null },
+    });
+    renderWithProviders(<ChangePassword />);
+    await fill("issued-by-admin", "the-one-i-chose", "the-one-i-chose");
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: "/registration" }));
+    const call = vi.mocked(fetch).mock.calls.find(([input]) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      return raw.split("?")[0] === "/auth/change-password";
+    });
+    const headers = call?.[1]?.headers as Record<string, string> | undefined;
+    // THE HEADER IS THE ASSERTION. A status-only check passes against a request with no token,
+    // because this test's stub answers 204 either way — which is exactly how the defect hid.
+    expect(headers?.Authorization).toBe("Bearer tok-1");
+  });
+
+  it("CLOSE M5 — any OTHER /auth/me failure still clears the token, which is what that line is for", async () => {
+    mockRoutes({
+      "GET /auth/me": { status: 401, body: { statusCode: 401, message: "Unauthorized" } },
+      "POST /auth/change-password": { status: 204, body: null },
+    });
+    renderWithProviders(<ChangePassword />);
+    await waitFor(() => expect(getToken()).toBeNull());
   });
 
   it("renders a wrong CURRENT password as its own refusal", async () => {

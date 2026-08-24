@@ -52,7 +52,7 @@ hmis.crkmch.com {
 	# there and forgets it here breaks that test rather than shipping an SPA whose calls work in
 	# dev and 404 into index.html in production. Change both files, in one commit.
 	# ---------------------------------------------------------------------------------------
-	@api path /auth* /patients* /approvals* /workflow* /health* /opd* /billing* /alerts* /ws*
+	@api path /auth* /patients* /approvals* /workflow* /health* /opd* /billing* /alerts* /admin* /ops* /tariff* /ws*
 
 	# `handle` blocks are mutually exclusive and evaluated in the order written, which is what
 	# this site needs: without them Caddy's directive ordering would run `try_files` (a rewrite)
