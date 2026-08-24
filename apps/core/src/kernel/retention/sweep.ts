@@ -13,6 +13,8 @@ import type { Db } from "../db/client";
 import { appendEvent } from "../events/append";
 import { EVENTS_DEFAULT_PARTITION, listEventPartitions } from "../worker/partitions";
 import { dropBlocked, notificationsPruned, partitionDropped, sideTablesPruned } from "./events";
+import { SEARCH_AUDIT_RETAIN_DAYS, pruneSearchAudit } from "../search/audit";
+import { searchAuditPruned } from "../search/events";
 
 // RETENTION (Plan 11a D6/D7). THIS FILE DESTROYS CLINICAL RECORDS, and every guard below is
 // therefore written to fail CLOSED — the sweep does nothing at all unless it is switched on, and
@@ -90,6 +92,8 @@ export type RetentionSweepOptions = {
   enabled?: boolean;
   eventsMonths?: number;
   notifyRetainDays?: number;
+  /** PLAN 11h T5 / DD4 — the search access log's own window, independent of the events window. */
+  searchAuditRetainDays?: number;
   batchSize?: number;
   /** Global Constraint 11: the clock is a parameter, never read from the wall inside a branch. */
   now?: Date;
@@ -104,6 +108,7 @@ export type RetentionSweepResult = {
   idempotencyDeleted: number;
   deliveriesDeleted: number;
   deadLettersDeleted: number;
+  searchAuditDeleted: number;
 };
 
 const inert = (): RetentionSweepResult => ({
@@ -113,6 +118,7 @@ const inert = (): RetentionSweepResult => ({
   idempotencyDeleted: 0,
   deliveriesDeleted: 0,
   deadLettersDeleted: 0,
+  searchAuditDeleted: 0,
 });
 
 const pad2 = (n: number): string => String(n).padStart(2, "0");
@@ -405,6 +411,45 @@ export async function retentionSweep(
               // The instant ACTUALLY used, so a hold that moved it is visible in the event
               // stream rather than inferable only from the counts.
               cutoff: sideCutoff.toISOString(),
+            },
+          }),
+        ),
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // 2b. THE SEARCH ACCESS LOG (Plan 11h T5 / DD4) — its own window, and NOT hold-clamped.
+  //
+  // `search_audit` keeps its own retention (90 days by default) because it is telemetry with a
+  // legal purpose, not a clinical record: tying it to `RETENTION_EVENTS_MONTHS` (120 months) would
+  // keep every desk's keystrokes for a decade, and tying the events window to 90 days would
+  // destroy the medico-legal record. Two purposes, two numbers, stated once each.
+  //
+  // IT IS DELIBERATELY NOT CLAMPED BY `companionSweepCutoff`, and that absence is reasoned rather
+  // than forgotten: `retention_legal_holds` is keyed on `patient_id`, and a search-audit row
+  // references no patient — it holds a query STRING and per-entity counts. "Does a hold on patient
+  // X cover the fact that somebody typed 'sharma'?" has no answer this code could compute, so a
+  // hold check here would be one that always passes, which is worse than none because it would
+  // read like protection. If access logs must ever survive a hold, the hold model grows an
+  // actor/time window first — an owner ruling, recorded in the phase document, not invented here.
+  //
+  // Destroying it IS evented, for the reason `partitionDropped` carries: after the delete nothing
+  // else can say how much was in it.
+  // ---------------------------------------------------------------------------------------------
+  {
+    const retainDays = opts.searchAuditRetainDays ?? SEARCH_AUDIT_RETAIN_DAYS;
+    result.searchAuditDeleted = await pruneSearchAudit(db, { retainDays, batchSize, now });
+    if (result.searchAuditDeleted > 0) {
+      await withTx(db, (tx) =>
+        appendEvent(
+          tx,
+          searchAuditPruned.make({
+            actor: RETENTION_ACTOR,
+            payload: {
+              rows: result.searchAuditDeleted,
+              retainDays,
+              cutoff: new Date(now.getTime() - retainDays * 24 * 60 * 60 * 1000).toISOString(),
             },
           }),
         ),

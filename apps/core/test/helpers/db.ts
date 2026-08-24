@@ -70,6 +70,11 @@ export async function truncateAll(db: Db): Promise<void> {
   // existing group's statement. Its own, therefore — and it MUST be here: a leftover backoff row
   // from one test would 429 the next test's perfectly good login.
   await db.execute(sql`truncate table auth_throttle`);
+  // PLAN 11h T5 — `search_audit` holds NO foreign key in either direction (its `actor_id` is plain
+  // text, deliberately — see schema/search.ts), so by §3.35/§3.12 it has no claim on any existing
+  // group's statement and takes its own. It MUST be here: a leftover audit row from one test makes
+  // the next test's "exactly one row was written" assertion read two.
+  await db.execute(sql`truncate table search_audit`);
   await db.execute(sql`truncate table approvals, approval_types`);
   await db.execute(
     sql`truncate table approvals, workflow_timers, workflow_transitions, workflow_instances,

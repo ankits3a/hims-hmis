@@ -180,6 +180,12 @@ describe("retentionSweep", () => {
       expect(result).toEqual({
         dropped: [], blocked: [], notificationsDeleted: 0,
         idempotencyDeleted: 0, deliveriesDeleted: 0, deadLettersDeleted: 0,
+        // Plan 11h T5 — the sweep gained a search-audit leg, and this assertion is the thing that
+        // proves the inert gate still covers it: `if (!enabled) return inert()` is the first
+        // statement in the function, so a new leg added BELOW it cannot delete anything while the
+        // flag is false. Global Constraint 5 holds for the new leg by construction, and this line
+        // is what would notice if a later leg were ever added above the gate.
+        searchAuditDeleted: 0,
       });
       expect(await partitions()).toEqual(before);
       expect(await notificationIds()).toEqual([

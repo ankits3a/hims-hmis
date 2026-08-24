@@ -13,3 +13,4 @@ export * from "./alerts";
 export * from "./notifications";
 export * from "./retention";
 export * from "./ops";
+export * from "./search";

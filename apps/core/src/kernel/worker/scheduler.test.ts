@@ -244,6 +244,7 @@ function spyOnTheTen(invoked: string[]): jest.SpyInstance[] {
       return {
         dropped: [], blocked: [], notificationsDeleted: 0,
         idempotencyDeleted: 0, deliveriesDeleted: 0, deadLettersDeleted: 0,
+        searchAuditDeleted: 0, // Plan 11h T5 — the sweep's result gained a leg
       };
     }),
     // THE TENTH (Plan 11c D6) IS THE ONLY SPY HERE THAT GUARDS AN EVENT APPEND. Un-stubbed,
