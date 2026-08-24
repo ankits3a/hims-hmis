@@ -294,7 +294,11 @@ plus one close-remediation commit.**
 | close sweep — F2's remediation | `1bae1d0` | — | GREEN |
 | review remediation — M1–M4 and seven minors | `30227e6` | — | GREEN |
 | CLOSE, ledger §3.54–§3.57, first ARCHIVE pass | `a35573f` | — | GREEN |
-| the fourth §2.91 claim, in the v2 manual | `<this commit>` | — | *(post-close, see F8)* |
+| the third §2.91 claim, in the v2 manual (F8) | `6db3899` | — | GREEN |
+
+*CLOSE was finalised across two docs commits (`a35573f`, then `6db3899` once the whole-repo sweep
+F8 describes had actually been run). This table lists the phase's substantive commits; the small
+follow-up correcting it is not itself a row, which is the only sane place to stop the regress.*
 
 ### Findings
 
@@ -441,7 +445,7 @@ measurement are unaffected by that.
 ### Mechanical close (v3 §3.5)
 
 - **`pnpm verify` exit VALUE `0`**, read from a file after a detached run, **before every push** —
-  **seven times, once per commit, including the docs-only ones.** That is §2.87's rule, which this
+  **eight times, once per commit, including the docs-only ones.** That is §2.87's rule, which this
   phase's own T4 poller then watches; the phase deliberately did not economise here.
 - **Counts at HEAD**, quoted from the runners' own summary lines: `apps/core` **152 suites /
   1175 tests** · `apps/web` **36 files / 193 tests** · `packages/contracts` **3 / 7**. Against §2's
@@ -460,8 +464,8 @@ measurement are unaffected by that.
   could not see a module-load-time `requireEnv` anywhere in that new import chain. Loading the
   script under `tsx` with **no `DATABASE_URL` in the environment** succeeds, so the import is inert
   until `main()` runs and `seed:roles` still starts on a box where the variable is supplied late.
-- **CI green by FULL SHA for all seven commits, read through `ci-watch-host.sh` itself** — the
-  poller T4 shipped, in four detached runs reporting exit VALUE `0` each time. Which is the
+- **CI green by FULL SHA for all eight commits, read through `ci-watch-host.sh` itself** — the
+  poller T4 shipped, in five detached runs reporting exit VALUE `0` each time. Which is the
   fitting proof: the instrument built to close §2.91's gap discharged §2.55's criterion for the
   phase that built it, from the build host, with no credential — including for `30227e6`, the
   commit that fixed the poller. Its rate-limit guard fired on the two multi-sha runs and raised the
