@@ -6,6 +6,7 @@ import { z } from "zod";
 import { useTranslation } from "react-i18next";
 import { FormKit, TextField } from "../components/form-kit";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "../components/submit-button";
 import {
   adminErrorCode, adminErrorMessage, createUser, deactivateUser, listUsers, reactivateUser,
   resetPassword, resetPin, revokeRole,
@@ -26,6 +27,18 @@ import type { WireAdminUser } from "../lib/admin-api";
  * renders inline like every other refusal. The two refusals worth their own sentence are
  * `admin_lockout` — "this would leave nobody able to administer users" is not a sentence a person
  * should have to infer from a 409 — and `username_taken`.
+ *
+ * ═══ EVERY WRITE IS A `SubmitButton` (§3.45's convention, applied at 11e CLOSE) ═══
+ *
+ * The row actions shipped as bare `<button onClick={() => void run(...)}>` — no in-flight guard,
+ * so a double click fired two requests. The harm here is smaller than the billing screens that
+ * bought this component (a duplicate `user.credential_reset` row, or a confusing 404 after a
+ * revoke that already succeeded) but the LESSON §3.45 records is that the shared idiom is what
+ * propagates, and it had stopped propagating. `SubmitButton`'s ref latch flips synchronously, so
+ * the second click returns before it reaches the network; `disabled` alone would not.
+ *
+ * The idempotency key it mints is unused by these routes — none of them offers one — and that is
+ * stated rather than hidden: what this component buys HERE is the latch, not the key.
  *
  * ═══ WHAT IS DELIBERATELY ABSENT ═══
  *
@@ -171,7 +184,7 @@ export function AdminUsers(): React.ReactElement {
             onChange={(e) => setResetValue(e.target.value)}
           />
           <div className="flex gap-2">
-            <Button type="button" onClick={() => void submitReset()}>{t("adminUsers.confirmReset")}</Button>
+            <SubmitButton type="button" onClick={submitReset}>{t("adminUsers.confirmReset")}</SubmitButton>
             <Button
               type="button"
               variant="outline"
@@ -219,16 +232,17 @@ export function AdminUsers(): React.ReactElement {
                           <li key={r.assignmentId}>
                             {r.roleKey}
                             {r.scopeId !== null && <> ({r.scopeId})</>}{" "}
-                            <button
+                            <SubmitButton
                               type="button"
-                              className="text-xs underline"
-                              onClick={() => void run(
+                              variant="link"
+                              size="xs"
+                              onClick={() => run(
                                 () => revokeRole(u.id, r.assignmentId),
                                 t("adminUsers.roleRevoked", { roleKey: r.roleKey, username: u.username }),
                               )}
                             >
                               {t("adminUsers.revokeRole")}
-                            </button>
+                            </SubmitButton>
                           </li>
                         ))}
                       </ul>
@@ -250,27 +264,29 @@ export function AdminUsers(): React.ReactElement {
                       {t("adminUsers.resetPin")}
                     </button>
                     {u.active ? (
-                      <button
+                      <SubmitButton
                         type="button"
-                        className="text-xs underline"
-                        onClick={() => void run(
+                        variant="link"
+                        size="xs"
+                        onClick={() => run(
                           () => deactivateUser(u.id),
                           t("adminUsers.deactivated", { username: u.username }),
                         )}
                       >
                         {t("adminUsers.deactivate")}
-                      </button>
+                      </SubmitButton>
                     ) : (
-                      <button
+                      <SubmitButton
                         type="button"
-                        className="text-xs underline"
-                        onClick={() => void run(
+                        variant="link"
+                        size="xs"
+                        onClick={() => run(
                           () => reactivateUser(u.id),
                           t("adminUsers.reactivated", { username: u.username }),
                         )}
                       >
                         {t("adminUsers.reactivate")}
-                      </button>
+                      </SubmitButton>
                     )}
                   </td>
                 </tr>

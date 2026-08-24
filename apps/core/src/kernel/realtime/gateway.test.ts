@@ -4,8 +4,8 @@ import { WebSocket } from "ws";
 import { AppModule } from "../../app.module";
 import { configureApp } from "../../app.bootstrap";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { createUser } from "../auth/identity";
-import { createSession } from "../auth/sessions";
+import { createUser, deactivateUser, setPassword } from "../auth/identity";
+import { createSession, findLiveSession } from "../auth/sessions";
 import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "../auth/permissions";
 import { authManifest } from "../auth/manifest";
 import { workflowManifest } from "../workflow/manifest";
@@ -148,6 +148,45 @@ describe("RealtimeGateway", () => {
 
   afterEach(() => {
     while (sockets.length > 0) sockets.pop()!.terminate();
+  });
+
+  it("PLAN 11e (CLOSE M7) — a DEACTIVATED user and a MUST-CHANGE user are both refused at the socket", async () => {
+    /**
+     * D1 makes two claims about this gateway and, until this leg, neither was executed here.
+     * `sessions.test.ts` asserts `findLiveSession`'s CONTRACT — which is where the deactivated
+     * half comes from for free, since the join makes that session resolve to null — but the
+     * must-change branch is this file's own line and a mutant deleting it survived the whole
+     * suite. Found by the 11e independent reviewer (M7).
+     */
+    const { id } = await createUser(db, { username: "socket_user", fullName: "S", password: "s3cret-pass" });
+    const { token } = await createSession(db, cfg, id);
+
+    // NON-VACUITY FIRST: this exact token authenticates today.
+    const ok = await authed(token);
+    expect(ok.frames.some((f) => f.type === "authed")).toBe(true);
+
+    // (a) MUST-CHANGE — the session still RESOLVES (that is D1's design, so the change can be made
+    // on it over HTTP); the socket refuses it anyway, because a person mid-credential-reset has no
+    // business streaming a hospital's event fabric.
+    await setPassword(db, id, "issued-by-the-admin", { mustChangePassword: true });
+    expect(await findLiveSession(db, token)).not.toBeNull();
+    const mustChange = await connect();
+    send(mustChange.ws, { type: "auth", token });
+    expect(await waitFor(mustChange.frames, (f) => f.type === "error")).toEqual({
+      type: "error", code: "unauthorized",
+    });
+    await waitClosed(mustChange.ws);
+
+    // (b) DEACTIVATED — the free half, asserted rather than assumed: the join in `findLiveSession`
+    // is what closes this socket, with no branch in this file at all.
+    await setPassword(db, id, "chosen-by-the-human", { mustChangePassword: false });
+    await deactivateUser(db, id);
+    const gone = await connect();
+    send(gone.ws, { type: "auth", token });
+    expect(await waitFor(gone.frames, (f) => f.type === "error")).toEqual({
+      type: "error", code: "unauthorized",
+    });
+    await waitClosed(gone.ws);
   });
 
   it("refuses a subscribe before auth and a bad token, and closes a socket that never authenticates", async () => {

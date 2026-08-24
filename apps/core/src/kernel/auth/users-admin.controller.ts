@@ -96,6 +96,13 @@ export type AdminUserView = {
  */
 const ADMIN_LOCKOUT_LOCK_KEY = 811_000_011;
 
+/** One refusal body, so the pre-check and the index violation are indistinguishable to a caller. */
+const USERNAME_TAKEN = { code: "username_taken", message: "that username already exists" };
+
+/** Postgres `unique_violation`. Narrow on purpose: any other error is a bug and must stay a 500. */
+const isUniqueViolation = (e: unknown): boolean =>
+  typeof e === "object" && e !== null && "code" in e && (e as { code?: unknown }).code === "23505";
+
 /**
  * Who would STILL hold `permission` — **at the scope the admin routes actually demand** — once the
  * named removal had happened.
@@ -207,22 +214,34 @@ export class UsersAdminController {
     ];
     if (problems.length > 0) throw new BadRequestException({ code: "password_policy", problems });
 
+    /**
+     * THE PRE-CHECK IS COURTESY; THE CATCH IS THE GUARANTEE (CLOSE, minor 4).
+     *
+     * The SELECT gives the common case a clean 409 without burning a transaction. It cannot be
+     * authoritative — it runs outside the insert's transaction, so two simultaneous creates of the
+     * same username both pass it and one hits `users_username_ux`. That used to surface as a 500,
+     * which tells the person at the desk nothing and looks like an outage. The unique index is the
+     * real arbiter; this maps its violation onto the same 409 the pre-check returns.
+     */
     const existing = await this.db.select({ id: users.id }).from(users).where(eq(users.username, username));
-    if (existing.length > 0) {
-      throw new ConflictException({ code: "username_taken", message: "that username already exists" });
-    }
+    if (existing.length > 0) throw new ConflictException(USERNAME_TAKEN);
 
-    return withTx(this.db, async (tx) => {
-      const { id } = await createUser(tx, { username, fullName, password, pin, mustChangePassword: true });
-      await appendEvent(
-        tx,
-        userCreated.make({
-          actor,
-          payload: { userId: id, username, fullName, hasPin: pin !== undefined, mustChangePassword: true },
-        }),
-      );
-      return { id };
-    });
+    try {
+      return await withTx(this.db, async (tx) => {
+        const { id } = await createUser(tx, { username, fullName, password, pin, mustChangePassword: true });
+        await appendEvent(
+          tx,
+          userCreated.make({
+            actor,
+            payload: { userId: id, username, fullName, hasPin: pin !== undefined, mustChangePassword: true },
+          }),
+        );
+        return { id };
+      });
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new ConflictException(USERNAME_TAKEN);
+      throw e; // anything else is a genuine bug: 500, loudly
+    }
   }
 
   /**
@@ -367,11 +386,14 @@ export class UsersAdminController {
   ): Promise<void> {
     const parsed = pinResetSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
-    const problems = checkPin(parsed.data.newPin);
-    if (problems.length > 0) throw new BadRequestException({ code: "password_policy", problems });
 
     await withTx(this.db, async (tx) => {
+      // EXISTENCE BEFORE POLICY, matching `passwordReset` (CLOSE, minor 5). The two routes used to
+      // disagree: a bad PIN for a user who does not exist answered 400 here and 404 there. Same
+      // question, same order, so a caller can rely on the answer.
       const user = await this.requireUser(tx, id);
+      const problems = checkPin(parsed.data.newPin);
+      if (problems.length > 0) throw new BadRequestException({ code: "password_policy", problems });
       await setPin(tx, id, parsed.data.newPin);
       await appendEvent(
         tx,

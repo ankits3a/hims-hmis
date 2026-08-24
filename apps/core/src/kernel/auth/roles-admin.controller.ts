@@ -21,11 +21,29 @@ import type { Db } from "../db/client";
  *
  * `auth.roles.manage` and `auth.users.manage` are two permissions and they mean two different
  * things: one governs the ACCOUNT (does this person exist, can they sign in, what is their
- * credential), the other governs the AUTHORITY (what may this person do). A hospital can
- * reasonably give the front-office supervisor the first and keep the second with the owner. Two
- * controllers make that split legible from the file names; one controller carrying both would put
- * the route→permission map back where §3.42's defect hid — in a column of decorators nobody reads
+ * credential), the other governs the AUTHORITY (what may this person do). Two controllers make
+ * that split legible from the file names; one controller carrying both would put the
+ * route→permission map back where §3.42's defect hid — in a column of decorators nobody reads
  * together. `test/user-admin.e2e.test.ts` legs 1-4 read them together, by execution.
+ *
+ * ═══ THE SPLIT IS A SEPARATION OF CONCERNS. IT IS **NOT** A SECURITY BOUNDARY. ═══
+ *
+ * This header used to say a hospital could "reasonably give the front-office supervisor the first
+ * and keep the second with the owner". THAT SENTENCE WAS WRONG and it is retracted (11e CLOSE, the
+ * independent reviewer's M6). `auth.users.manage` is a COMPLETE ESCALATION to `auth.roles.manage`:
+ * its holder may `POST /admin/users/{owner}/password-reset` with a password of their choosing, and
+ * then sign in as the owner. Nothing refuses a credential reset against a target who holds
+ * permissions the actor does not, and there is no second factor on that route (production has zero
+ * TOTP enrolments — `users-admin.controller.ts` states that seam).
+ *
+ * So: grant `auth.users.manage` only to people you would grant everything to. The two permissions
+ * partition the WORK, not the trust.
+ *
+ * Closing it is an OWNER RULING, not an executing session's call, because the obvious fix — refuse
+ * a reset against a higher-privileged target — creates a new lockout: the one person who can
+ * repair the owner's forgotten password is exactly the person that rule would stop. The audit
+ * trail exists in the meantime: every reset appends `user.credential_reset` naming the acting
+ * admin.
  *
  * ═══ NO SoD CALL HERE, AND IT IS MEASURED RATHER THAN ASSUMED (§3 Q4) ═══
  *

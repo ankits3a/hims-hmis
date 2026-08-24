@@ -10,8 +10,13 @@ import { createUser, verifyPassword, verifyPin } from "../src/kernel/auth/identi
 import { assignRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { authManifest } from "../src/kernel/auth/manifest";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
-import { USERS_MANAGE } from "../src/kernel/auth/users-admin.controller";
-import { ROLES_MANAGE } from "../src/kernel/auth/roles-admin.controller";
+import { RequestMethod } from "@nestjs/common";
+// The routing metadata keys are Nest's own, and they live on the `constants` subpath rather than
+// the package root — this leg reads exactly what the framework routes from.
+import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
+import { PERMISSION_KEY } from "../src/kernel/auth/decorators";
+import { USERS_MANAGE, UsersAdminController } from "../src/kernel/auth/users-admin.controller";
+import { ROLES_MANAGE, RolesAdminController } from "../src/kernel/auth/roles-admin.controller";
 import type { Db } from "../src/kernel/db/client";
 
 /**
@@ -193,6 +198,61 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
     }
   });
 
+  it("leg 3b (CLOSE M3) — THE TABLE IS CHECKED AGAINST THE ROUTER, so a route it omits cannot hide", () => {
+    /**
+     * WHY THIS LEG EXISTS. Legs 1, 2, 3 and 4 all iterate `ADMIN_ROUTES`, so all four are closed
+     * over the TABLE. A route added to a controller and not to the table is invisible to every one
+     * of them: the census still matches, the sweep still passes, closure still passes, and an
+     * undecorated `@Post(":id/badge-rotate")` would be reachable by any authenticated user with
+     * nothing in the suite going red. Found by the 11e independent reviewer (CLOSE, M3).
+     *
+     * The second source is the DECORATOR METADATA Nest itself routes from — not the table, and not
+     * a hand-written list. It answers two questions the table cannot: which routes exist, and
+     * whether each one carries a permission requirement at all.
+     */
+    const scan = (controller: new (...args: never[]) => object): {
+      route: string; permission: string | undefined; scope: string | undefined;
+    }[] => {
+      const base = Reflect.getMetadata(PATH_METADATA, controller) as string;
+      const proto = controller.prototype as object;
+      return Object.getOwnPropertyNames(proto)
+        .filter((name) => name !== "constructor")
+        .map((name) => (proto as Record<string, unknown>)[name])
+        .filter((handler): handler is (...args: never[]) => unknown => typeof handler === "function")
+        .filter((handler) => Reflect.getMetadata(METHOD_METADATA, handler) !== undefined)
+        .map((handler) => {
+          const verb = RequestMethod[Reflect.getMetadata(METHOD_METADATA, handler) as number];
+          const sub = (Reflect.getMetadata(PATH_METADATA, handler) as string) || "";
+          const requirement = Reflect.getMetadata(PERMISSION_KEY, handler) as
+            | { permission: string; scope: string } | undefined;
+          const path = `/${base}${sub === "" || sub === "/" ? "" : `/${sub}`}`;
+          return { route: `${verb} ${path}`, permission: requirement?.permission, scope: requirement?.scope };
+        });
+    };
+
+    const routed = [...scan(UsersAdminController), ...scan(RolesAdminController)];
+
+    // CENSUS FIRST (§2.49): the scanner really did find handlers. A scanner that returned nothing
+    // would satisfy every comparison below for ever.
+    expect(routed).toHaveLength(ADMIN_ROUTES.length);
+
+    // (a) EVERY routed handler carries a permission requirement. This is the leg that catches the
+    // undecorated route — the one shape the table-driven sweep is blind to by construction.
+    expect(routed.filter((r) => r.permission === undefined).map((r) => r.route)).toEqual([]);
+    // (b) …at hospital scope, which is what the lockout invariant's holder count assumes (C2).
+    expect(routed.filter((r) => r.scope !== "hospital").map((r) => r.route)).toEqual([]);
+
+    // (c) The ROUTER's route→permission map equals the TABLE's, both directions. `ADMIN_ROUTES`
+    // carries concrete ids in its paths, so both sides are normalised to Nest's parameter form.
+    const normalise = (path: string): string =>
+      path.replace(NO_SUCH_USER, ":id").replace(NO_SUCH_ASSIGNMENT, ":assignmentId");
+    const fromTable = ADMIN_ROUTES
+      .map(([method, path, permission]) => `${method.toUpperCase()} ${normalise(path)} ${permission}`)
+      .sort();
+    const fromRouter = routed.map((r) => `${r.route} ${r.permission ?? "NONE"}`).sort();
+    expect(fromRouter).toEqual(fromTable);
+  });
+
   it("leg 3 — manifest closure, BOTH directions", () => {
     const guarded = [...new Set(ADMIN_ROUTES.map(([, , permission]) => permission))].sort();
     const declared = [...authManifest.permissions].sort();
@@ -372,6 +432,18 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
     const reset = await asAdmin("post", `/admin/users/${NO_SUCH_USER}/password-reset`)
       .send({ newPassword: "a-fine-password" });
     expect([reset.status, reset.body.code]).toEqual([404, "user_not_found"]);
+
+    // CLOSE (minor 5) — AND THE TWO RESET ROUTES AGREE ON THE ORDER. `pinReset` used to judge the
+    // PIN before looking the user up, so a bad PIN for a user who does not exist answered 400 here
+    // and 404 one route over. Both legs asserted, because a fix that swapped the inconsistency
+    // round would pass either one alone.
+    for (const [path, body] of [
+      [`/admin/users/${NO_SUCH_USER}/pin-reset`, { newPin: "12ab" }],
+      [`/admin/users/${NO_SUCH_USER}/password-reset`, { newPassword: "short" }],
+    ] as const) {
+      const res = await asAdmin("post", path).send(body);
+      expect([path, res.status, res.body.code]).toEqual([path, 404, "user_not_found"]);
+    }
   });
 
   it("a duplicate username is a 409, not a 500 from the unique index", async () => {

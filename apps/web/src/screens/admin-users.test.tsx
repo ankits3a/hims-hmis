@@ -168,6 +168,38 @@ describe("AdminUsers", () => {
     expect(callsTo("POST", "/admin/users/u-asha/pin-reset")[0]!.body).toEqual({ newPin: "417293" });
   });
 
+  it("CLOSE — a double click on a row action fires ONE request, not two", async () => {
+    // §3.45's convention, asserted where it was missing. `disabled` alone cannot do this: two
+    // clicks in the same tick both observe the pre-render state. `SubmitButton`'s ref latch flips
+    // synchronously, which is the whole reason that component exists.
+    let resolveDeactivate: (() => void) | undefined;
+    mockRoutes({
+      "GET /admin/users": { status: 200, body: { users: [ASHA] } },
+      "POST /admin/users/u-asha/deactivate": () => ({ status: 200, body: { sessionsRevoked: 1 } }),
+    });
+    // Hold the request open so the second click lands while the first is genuinely in flight.
+    const realFetch = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (raw.includes("/deactivate")) {
+        await new Promise<void>((resolve) => { resolveDeactivate = resolve; });
+      }
+      return realFetch(input, init);
+    });
+
+    renderWithProviders(<AdminUsers />);
+    const user = userEvent.setup();
+    const button = await screen.findByRole("button", { name: "Deactivate" });
+    await user.click(button);
+    await user.click(button);
+    resolveDeactivate?.();
+
+    await waitFor(() => expect(callsTo("POST", "/admin/users/u-asha/deactivate")).toHaveLength(1));
+    // …and it stays one after everything settles, rather than merely being one at the instant
+    // the assertion first passed.
+    expect(callsTo("POST", "/admin/users/u-asha/deactivate")).toHaveLength(1);
+  });
+
   it("revokes one role assignment and says which", async () => {
     mockRoutes({
       "GET /admin/users": { status: 200, body: { users: [ASHA] } },
