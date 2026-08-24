@@ -134,6 +134,13 @@
       "when": 1787520014075,
       "tag": "0018_bright_hairball",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1787599650758,
+      "tag": "0019_mysterious_shadowcat",
+      "breakpoints": true
     }
   ]
 }

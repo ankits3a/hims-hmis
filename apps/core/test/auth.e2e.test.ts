@@ -109,4 +109,99 @@ describe("auth e2e", () => {
     await request(app.getHttpServer())
       .post("/auth/switch/badge").send({ badgeToken: "b1.x.1.y", terminalId: "t" }).expect(401);
   });
+
+  /**
+   * ═══ PLAN 11g / T-D4, DD4 — THE CREDENTIAL PATHS OVER REAL HTTP ═══
+   *
+   * The 2026-08-24 synthetic smoke test measured five consecutive wrong passwords answering 401,
+   * 401, 401, 401, 401, with the correct one succeeding immediately afterwards. These legs are
+   * that measurement, inverted into an assertion.
+   *
+   * `throttle.test.ts` owns the arithmetic — window, cap, clearing, concurrency — with an injected
+   * clock. What is asserted HERE is only what the WIRE does: the status, the code, the header, and
+   * the two properties a wire test is the only place to see (that the 401 is unchanged for the
+   * first four, and that an unknown username is indistinguishable from a known one).
+   */
+  it("T-D4 R1 — the 6th wrong password is 429 with Retry-After; the first five are the unchanged 401", async () => {
+    await createUser(db, { username: "brute", fullName: "Brute Target", password: "s3cret-pass" });
+
+    for (let i = 1; i <= 5; i += 1) {
+      const refused = await request(app.getHttpServer())
+        .post("/auth/login").send({ username: "brute", password: "nope" }).expect(401);
+      // The throttle must not change what a wrong password LOOKS like until it refuses.
+      expect(refused.headers["retry-after"]).toBeUndefined();
+    }
+
+    const throttled = await request(app.getHttpServer())
+      .post("/auth/login").send({ username: "brute", password: "nope" }).expect(429);
+    expect(throttled.body.code).toBe("too_many_attempts");
+    expect(Number(throttled.headers["retry-after"])).toBeGreaterThan(0);
+    expect(throttled.body.retryAfterSeconds).toBe(Number(throttled.headers["retry-after"]));
+
+    // AND THE CORRECT PASSWORD IS REFUSED TOO, which is the whole point: a throttle that let the
+    // right password through would be no obstacle to somebody who has just guessed it.
+    await request(app.getHttpServer())
+      .post("/auth/login").send({ username: "brute", password: "s3cret-pass" }).expect(429);
+  });
+
+  it("T-D4 R2 — a success inside the threshold clears the counter, so a fumbling user is never locked out", async () => {
+    await createUser(db, { username: "fumbler", fullName: "Fumbling User", password: "s3cret-pass" });
+
+    for (let round = 0; round < 2; round += 1) {
+      for (let i = 1; i <= 4; i += 1) {
+        await request(app.getHttpServer())
+          .post("/auth/login").send({ username: "fumbler", password: "nope" }).expect(401);
+      }
+      // Eight wrong passwords in total across the two rounds — and never a refusal, because each
+      // round ends in a success. A counter that did not clear would 429 the second round's 5th.
+      await request(app.getHttpServer())
+        .post("/auth/login").send({ username: "fumbler", password: "s3cret-pass" }).expect(201);
+    }
+  });
+
+  it("T-D4 R3 — login and pin do not share a counter: the terminal switch survives a poisoned password", async () => {
+    const { id } = await createUser(db, { username: "switcher", fullName: "Switcher", password: "s3cret-pass" });
+    await setPin(db, id, "482913");
+
+    for (let i = 1; i <= 6; i += 1) {
+      await request(app.getHttpServer()).post("/auth/login").send({ username: "switcher", password: "nope" });
+    }
+    await request(app.getHttpServer())
+      .post("/auth/login").send({ username: "switcher", password: "s3cret-pass" }).expect(429);
+
+    // The clinician at the shared desk still gets in with their pin.
+    await request(app.getHttpServer())
+      .post("/auth/switch/pin").send({ username: "switcher", pin: "482913", terminalId: "counter-9" })
+      .expect(201);
+  });
+
+  it("T-D4 R3b — the pin path throttles on its own: a four-digit keyspace is the sharper half", async () => {
+    const { id } = await createUser(db, { username: "pinned", fullName: "Pinned", password: "s3cret-pass" });
+    await setPin(db, id, "482913");
+
+    for (let i = 1; i <= 5; i += 1) {
+      await request(app.getHttpServer())
+        .post("/auth/switch/pin").send({ username: "pinned", pin: "000000", terminalId: "t" }).expect(401);
+    }
+    const throttled = await request(app.getHttpServer())
+      .post("/auth/switch/pin").send({ username: "pinned", pin: "482913", terminalId: "t" }).expect(429);
+    expect(throttled.body.code).toBe("too_many_attempts");
+  });
+
+  it("T-D4 R4 — an UNKNOWN username throttles identically, so the 429 is not a membership oracle", async () => {
+    await createUser(db, { username: "real-person", fullName: "Real Person", password: "s3cret-pass" });
+
+    const attempts = async (username: string): Promise<number[]> => {
+      const statuses: number[] = [];
+      for (let i = 1; i <= 6; i += 1) {
+        const res = await request(app.getHttpServer()).post("/auth/login").send({ username, password: "nope" });
+        statuses.push(res.status);
+      }
+      return statuses;
+    };
+
+    // Byte-identical status sequences for an account that exists and one that never has.
+    expect(await attempts("real-person")).toEqual([401, 401, 401, 401, 401, 429]);
+    expect(await attempts("no-such-person-anywhere")).toEqual([401, 401, 401, 401, 401, 429]);
+  });
 });

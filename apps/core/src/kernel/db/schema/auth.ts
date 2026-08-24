@@ -142,3 +142,43 @@ export const breakGlassGrants = pgTable(
   },
   (t) => [index("break_glass_user_idx").on(t.userId), index("break_glass_review_idx").on(t.reviewedAt)],
 );
+/**
+ * PLAN 11g / DD4 — THE CREDENTIAL PATHS' BACKOFF STATE, AND THE KEY IS THE WHOLE DESIGN.
+ *
+ * The 2026-08-24 synthetic smoke test put five consecutive wrong passwords through
+ * `POST /auth/login` and got 401, 401, 401, 401, 401 — then the correct one, immediately. No
+ * delay, no counter, nothing recorded anywhere. `POST /auth/switch/pin` is the sharper half of
+ * the same hole: a FOUR-DIGIT pin is a 10,000-value keyspace.
+ *
+ * `subject` IS THE SUBMITTED USERNAME, NORMALISED — NOT A `users.id`, AND THERE IS NO FK. Three
+ * things follow from that, and all three are the point:
+ *   - an attempt against a username that does not exist is throttled identically to one against a
+ *     username that does, so the 429 cannot be used to ENUMERATE accounts;
+ *   - spraying invented usernames costs the same as spraying real ones;
+ *   - no row here can be orphaned by a user deletion, and none needs a truncate ordering (it
+ *     joins no existing group in `test/helpers/db.ts` because it points at nothing).
+ *
+ * `kind` separates `login` from `pin` so a poisoned password counter cannot close the terminal
+ * switch, which is the path a clinician uses at a shared desk mid-shift.
+ *
+ * IT IS BACKOFF STATE, NOT LOCKOUT STATE. `retry_after` is an instant that passes on its own;
+ * nothing here requires an administrator to clear it, deliberately — production has exactly ONE
+ * full administrator (runbook O1, open), and a credential state whose only repair is a person who
+ * may be asleep is the failure shape Plan 11e existed to end.
+ */
+export const authThrottle = pgTable(
+  "auth_throttle",
+  {
+    kind: text("kind").notNull(), // 'login' | 'pin'
+    subject: text("subject").notNull(), // the SUBMITTED username, trimmed and lower-cased
+    failures: integer("failures").notNull().default(0),
+    // The rolling window's anchor: failures older than the window do not count toward the
+    // threshold, so a person who fumbles twice a month is never near it.
+    firstFailedAt: timestamp("first_failed_at", { withTimezone: true }).notNull(),
+    lastFailedAt: timestamp("last_failed_at", { withTimezone: true }).notNull(),
+    // NULL until the threshold is crossed. An instant, not a duration: it is what the 429's
+    // Retry-After is derived from, and it expires without anybody acting.
+    retryAfter: timestamp("retry_after", { withTimezone: true }),
+  },
+  (t) => [primaryKey({ columns: [t.kind, t.subject] })],
+);

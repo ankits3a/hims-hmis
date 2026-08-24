@@ -65,6 +65,11 @@ export async function truncateAll(db: Db): Promise<void> {
   await db.execute(sql`truncate table event_idempotency`);
   // No FK and no coupling to any other group: its own statement.
   await db.execute(sql`truncate table scheduler_heartbeats`);
+  // PLAN 11g / DD4 — `auth_throttle` is keyed on the SUBMITTED username, deliberately not on
+  // `users.id`, so it holds no FK in either direction and by §3.35/§3.12 has no claim on any
+  // existing group's statement. Its own, therefore — and it MUST be here: a leftover backoff row
+  // from one test would 429 the next test's perfectly good login.
+  await db.execute(sql`truncate table auth_throttle`);
   await db.execute(sql`truncate table approvals, approval_types`);
   await db.execute(
     sql`truncate table approvals, workflow_timers, workflow_transitions, workflow_instances,

@@ -1,7 +1,8 @@
 import {
-  BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Inject, Param, Post, Req,
-  UnauthorizedException,
+  BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, HttpException, Inject,
+  Param, Post, Req, Res, UnauthorizedException,
 } from "@nestjs/common";
+import type { Response } from "express";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
@@ -11,6 +12,8 @@ import {
 } from "./sessions";
 import { setPassword, verifyPassword } from "./identity";
 import { checkPassword } from "./password-policy";
+import { clearThrottle, recordThrottleFailure, throttleRetryAt } from "./throttle";
+import type { ThrottleKind } from "./throttle";
 import { confirmTotp, enrollTotp, recordSecondFactor, verifyTotpCode } from "./totp";
 import { useBreakGlass, pendingReviews, recordReview } from "./break-glass";
 import { grantTempRole, emergencyElevate } from "./temp-roles";
@@ -63,23 +66,66 @@ export class AuthController {
     @Inject(CONFIG) private readonly cfg: AppConfig,
   ) {}
 
+  /**
+   * PLAN 11g / DD4 — THE GUARD IN FRONT OF THE TWO CREDENTIAL PATHS.
+   *
+   * Consulted BEFORE verification, so a throttled attempt costs no argon2 — which also means the
+   * refusal cannot be timed against a real verification to learn anything.
+   *
+   * `Retry-After` is a real header, not only a body field, because the standard one is what a
+   * browser, a proxy and a future mobile client all already understand. `@Res({ passthrough: true })`
+   * lets the header be set on the response that Nest's own exception filter then writes the body
+   * onto; the handler still RETURNS its value normally.
+   */
+  private async refuseIfThrottled(res: Response, kind: ThrottleKind, username: string): Promise<void> {
+    const retryAt = await throttleRetryAt(this.db, kind, username, new Date());
+    if (retryAt === null) return;
+    const seconds = Math.max(1, Math.ceil((retryAt.getTime() - Date.now()) / 1000));
+    res.setHeader("Retry-After", String(seconds));
+    throw new HttpException(
+      {
+        statusCode: 429,
+        code: "too_many_attempts",
+        message: `too many failed attempts — try again in ${seconds}s`,
+        retryAfterSeconds: seconds,
+      },
+      429,
+    );
+  }
+
   @Public()
   @Post("login")
-  async login(@Body() body: unknown): Promise<{ token: string }> {
+  async login(@Body() body: unknown, @Res({ passthrough: true }) res: Response): Promise<{ token: string }> {
     const parsed = loginSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    await this.refuseIfThrottled(res, "login", parsed.data.username);
     const result = await loginWithPassword(this.db, this.cfg, parsed.data);
-    if (!result) throw new UnauthorizedException();
+    if (!result) {
+      // The failure is counted AFTER the shipped verification has said no, and the 401 it produces
+      // is byte-identical to the one it always produced: the throttle changes what happens on the
+      // SIXTH attempt, never what a wrong password looks like on the first.
+      await recordThrottleFailure(this.db, "login", parsed.data.username, new Date());
+      throw new UnauthorizedException();
+    }
+    await clearThrottle(this.db, "login", parsed.data.username);
     return result;
   }
 
   @Public()
   @Post("switch/pin")
-  async switchPin(@Body() body: unknown): Promise<{ token: string }> {
+  async switchPin(@Body() body: unknown, @Res({ passthrough: true }) res: Response): Promise<{ token: string }> {
     const parsed = pinSwitchSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    // A separate `kind` from `login` on purpose: a poisoned password counter must not be able to
+    // close the terminal switch, which is the path a clinician uses at a shared desk mid-shift.
+    // It is also the sharper of the two keyspaces — a four-digit pin is 10,000 values.
+    await this.refuseIfThrottled(res, "pin", parsed.data.username);
     const result = await switchWithPin(this.db, this.cfg, parsed.data);
-    if (!result) throw new UnauthorizedException();
+    if (!result) {
+      await recordThrottleFailure(this.db, "pin", parsed.data.username, new Date());
+      throw new UnauthorizedException();
+    }
+    await clearThrottle(this.db, "pin", parsed.data.username);
     return result;
   }
 
