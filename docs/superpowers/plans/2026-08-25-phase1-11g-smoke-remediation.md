@@ -533,8 +533,8 @@ required, fail-first not owed — **stated, not inferred.** No server change of 
 
 ## 7. CLOSE — appended as the phase runs (v3 §1.5)
 
-**Executed 2026-08-24/25 in one session, on the build host, LIGHT lane. Five tasks, six commits,
-one owner-authorised production deploy.** Every task's `pnpm verify` was exit 0 before its push
+**Executed 2026-08-24/25 in one session, on the build host, LIGHT lane. Five tasks, EIGHT commits
+(the seven tabled below plus this CLOSE), one owner-authorised production deploy.** Every task's `pnpm verify` was exit 0 before its push
 (§2.87) and every commit is CI-GREEN BY FULL SHA, read from `pipelines/ci-watch-host.sh`'s exit
 VALUE, never a pipeline's status.
 
