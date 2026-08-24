@@ -16,6 +16,7 @@ import { ApprovalsModule } from "./kernel/approvals/approvals.module";
 import { RealtimeModule } from "./kernel/realtime/realtime.module";
 import { AlertsModule } from "./kernel/alerts/alerts.module";
 import { OpsModule } from "./kernel/ops/ops.module";
+import { SearchModule } from "./kernel/search/search.module";
 
 export { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "./kernel/tokens";
 
@@ -24,7 +25,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
 
 @Global()
 @Module({
-  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule, OpdModule, BillingModule, AlertsModule, OpsModule], // ← PatientsModule added; AlertsModule (Plan 08.5 D6); OpsModule (Plan 11c T2)
+  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule, OpdModule, BillingModule, AlertsModule, OpsModule, SearchModule], // ← SearchModule (Plan 11h T1); PatientsModule added; AlertsModule (Plan 08.5 D6); OpsModule (Plan 11c T2)
   controllers: [HealthController],
   providers: [
     { provide: CONFIG, useFactory: (): AppConfig => loadConfig() },
