@@ -667,10 +667,30 @@ edge: HTTP 200 `{"status":"ok","db":"ok","worker":"ok"}"*` and *"screen through 
   time that is evidence about the API route only, which is the reading 11f got wrong and the
   reason the matrix above exists.
 
-**What the deploy does NOT prove, and it is the same sentence the smoke test ended on:** no human
-has touched a screen. Twenty routes serving `text/html` is twenty documents, not twenty working
-screens. **The owner clicking through `/admin/users`, `/registration`, `/opd/desk`, `/billing`,
-`/ops/mode` and `/opd/display` is the acceptance test, and it is theirs.**
+**What the deploy does NOT prove, and it is the same sentence the smoke test ended on:** twenty
+routes serving `text/html` is twenty documents, not twenty working screens. **The owner clicking
+through them is the acceptance test, and it is theirs.**
+
+**PARTIALLY DISCHARGED, 2026-08-25 — the owner reports `/admin/users` and `/registration` both
+render.** The two are NOT equal evidence and the difference is the whole point:
+
+- **`/admin/users` was one of the fifteen dark screens.** It is also the exact URL the owner
+  opened when this defect was found — the smoke-test report's D1 opens with
+  *"the owner opened `/admin/users` and got `{"message":"Unauthorized","statusCode":401}`"*. **A
+  human seeing that screen render is D1's acceptance, discharged at the surface it was found on**,
+  and it is the first thing in this project's history that closes a production defect with a
+  person's eyes rather than a status code.
+- **`/registration` was one of the five that already served before the fix.** It is a
+  NO-REGRESSION check — worth having, because the split moved every API call the screen makes,
+  and worth not confusing with the line above.
+
+**STILL UNSEEN BY A HUMAN: `/opd/desk`, `/billing`, `/ops/mode`, `/opd/display`** — four of the
+fifteen that were dark, each now serving `text/html`, none yet rendered in front of somebody. And
+one limit this session cannot resolve from the outside: *"renders"* is a statement about the
+document. Whether the owner was AUTHENTICATED at the time — and therefore whether the screen drew
+real data through the moved `/api/*` client, or drew the login screen the route's `beforeLoad`
+redirects an anonymous visitor to — is not something a read-only observer can infer, and it is
+not assumed here. The four remaining screens, opened while signed in, would settle both.
 
 ### The soak list
 
