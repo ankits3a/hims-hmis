@@ -3,7 +3,7 @@
 **Written 2026-08-25 (owner brainstorm → stress-tested spec → this plan). Not yet approved for execution.**
 **Spec:** [`../specs/2026-08-25-clinical-copilot-design.md`](../specs/2026-08-25-clinical-copilot-design.md) — this plan implements its §1 (formulary module + deterministic safety layer) and inherits its ten design laws; the plan argues from the spec and does not restate it.
 **Slot:** after Plan 11h closes; before or parallel to Plan 09 — owner rules at kickoff. The roadmap file is **not amended by this document** (the 11h precedent); the one-line roadmap amendment lands at this phase's close. Numbering: 16a because the medicine master is Plan 16 (pharmacy)'s foundation and the DTC-formulary clock (running since 2026-08-23) lands its output here; 16a has **zero dependency on Plans 09/13/14** — it extends shipped OPD prescribing only.
-**Booked, not written here:** **Plan 16b — Context Assembler & snapshot card** (spec §2.1), the second half of clinical-copilot Phase A. Its phase document is written at 16a's close, per the rhythm. Nothing in 16a depends on 16b.
+**Plan 16b — Context Assembler & snapshot card** (spec §2.1), the second half of clinical-copilot Phase A, is **written PROVISIONAL** ([`2026-08-25-phase1-16b-context-assembler-snapshot-card.md`](2026-08-25-phase1-16b-context-assembler-snapshot-card.md), owner-instructed 2026-08-25, ahead of this phase's execution) — its §0 seam list re-bases against THIS phase's CLOSE before it is approved. Nothing in 16a depends on 16b; this phase's CLOSE is 16b's kickoff input.
 
 **Executor seed (v3 §1):** read this document, [`AGENT-RULES.md`](../AGENT-RULES.md), and the ledger's §5 — then execute, on the build host, task by task.
 
