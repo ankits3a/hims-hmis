@@ -6,6 +6,21 @@ import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "
 import { useBreakGlass } from "../../kernel/auth/break-glass";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { loadConfig } from "../../kernel/config";
+
+/**
+ * PLAN 11h T2 FIX — `loadConfig()` WITH NO ARGUMENT IS NOT TEST-SAFE, and this is the line that
+ * turned CI red at `c5aaaad` while `pnpm verify` was exit 0 on the build host.
+ *
+ * `loadEnv()` reads `<cwd>/.env`, and the build host HAS `apps/core/.env` — gitignored, chmod 600,
+ * carrying DATABASE_URL and SECRET_KEY. CI has no such file (it is gitignored, so it is never
+ * checked out) and its workflow sets only TEST_DATABASE_URL, while `test/helpers/env.ts` defaults
+ * SECRET_KEY and nothing else. So the zod schema rejects on DATABASE_URL, in CI only.
+ *
+ * The explicit-override form below is why every shipped helper writes it that way
+ * (`test/helpers/billing.ts`, `test/helpers/opd.ts` — both export exactly this `testCfg`). A test
+ * needs a CONFIG OBJECT, never the deployment's environment.
+ */
+const testCfg = loadConfig({ DATABASE_URL: "postgres://unused", SECRET_KEY: process.env.SECRET_KEY! } as NodeJS.ProcessEnv);
 import { patientsManifest } from "./manifest";
 import { registerPatient } from "./registration";
 import { patientSearchProvider } from "./search-provider";
@@ -131,7 +146,7 @@ describe("patients search provider", () => {
     await seed();
     await seedConfidential();
     const userId = await userHolding(["patients.read"]);
-    await useBreakGlass(db, loadConfig(), { type: "user", id: userId }, { reason: "ED unconscious patient" });
+    await useBreakGlass(db, testCfg, { type: "user", id: userId }, { reason: "ED unconscious patient" });
 
     const res = await run(userId, "asha");
 

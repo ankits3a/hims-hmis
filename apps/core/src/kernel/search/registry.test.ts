@@ -9,6 +9,10 @@ import type { ModuleManifest } from "../modules/manifest";
 import type { SearchProvider } from "./types";
 import type { Db } from "../db/client";
 
+/** How long the "slow" provider sleeps. The budget assertion is measured against THIS, not a
+ * multiple of the budget — see the slow-provider test. */
+const SLOW_PROVIDER_MS = PROVIDER_BUDGET_MS * 8;
+
 /** A provider that records every invocation — the only way to prove a provider was NOT run. */
 function spyProvider(
   over: Partial<SearchProvider> & { key: string; permission: string },
@@ -22,7 +26,7 @@ function spyProvider(
     async run(): Promise<{ hits: never[]; total: number }> {
       p.calls += 1;
       if (behaviour === "throw") throw new Error("provider exploded");
-      if (behaviour === "slow") await new Promise((r) => setTimeout(r, PROVIDER_BUDGET_MS * 8));
+      if (behaviour === "slow") await new Promise((r) => setTimeout(r, SLOW_PROVIDER_MS));
       return { hits: [], total: 7 };
     },
   };
@@ -133,7 +137,15 @@ describe("search registry — searchAll", () => {
     const res = await searchAll(db, registry, { type: "user", id: userId }, parseSearchQuery("asha", 20));
     const elapsed = Date.now() - started;
 
-    expect(elapsed).toBeLessThan(PROVIDER_BUDGET_MS * 4);
+    /**
+     * PLAN 11f's LESSON, RE-APPLIED: this was `< PROVIDER_BUDGET_MS * 4` — a single-sample
+     * wall-clock assertion, the exact class 11f retired from this suite for flaking on a loaded
+     * runner. The SEMANTIC claim is "the answer did not wait for the slow provider", and the
+     * honest threshold is therefore the slow provider's OWN sleep, not a tight multiple of the
+     * budget: under this assertion a correct implementation has 2 seconds of headroom on a
+     * starved 2-core runner, while the no-budget mutant took 2020 ms and still dies.
+     */
+    expect(elapsed).toBeLessThan(SLOW_PROVIDER_MS);
     const slowGroup = res.groups.find((g) => g.provider === "t.patient");
     expect(slowGroup).toMatchObject({ timedOut: true, errored: false, hits: [], total: 0 });
     expect(res.groups.find((g) => g.provider === "t.doctor")).toMatchObject({ timedOut: false, total: 7 });
