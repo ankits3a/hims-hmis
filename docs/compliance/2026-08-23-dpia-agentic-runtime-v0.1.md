@@ -1,6 +1,6 @@
 # Data Protection Impact Assessment — Agentic AI Runtime (Plan 12a)
 
-**Version:** 0.1 DRAFT — internal draft for external DPDP-specialist review. Not yet reviewed, not yet signed. Items marked **[COUNSEL]** need the reviewer's ruling.
+**Version:** 0.2 DRAFT (2026-08-25: §3 router finding + §3-A speech-to-text carve-out added from Plan 11h's measurements) — internal draft for external DPDP-specialist review. Not yet reviewed, not yet signed. Items marked **[COUNSEL]** need the reviewer's ruling.
 **Data Fiduciary:** [Hospital legal name]
 **Scope of this DPIA:** the agentic runtime introduced by Plan 12a (agent grants, tool catalog, `InferenceClient`, prompt/playbook governance) and its first two activations — the Digest Writer (model-backed, tier T0) and the Leakage Auditor (deterministic automation, no inference). Per spec fix 42, this DPIA is re-run before each subsequent agentic phase (each new agent class or data-class change).
 
@@ -26,6 +26,11 @@ Future stages (not activated by this DPIA; each triggers a DPIA revision): T2 cl
 - **L0 (this DPIA):** managed cloud LLM API for Class 0 under a data-processing agreement with a contractual no-training commitment. Provider held as configuration behind the `InferenceClient` interface; the test/dev implementation is deterministic and offline (CI never contacts a provider).
 - Cross-border: Class-0 payloads contain no personal data; transfer analysis is therefore not triggered by them. **[COUNSEL]** confirm this characterization.
 - **L1 (future revision):** before any Class-1 request flows, this section is expanded with re-identification risk analysis, the chosen provider's processing locations, and DPDP §16 transfer analysis (no blacklisted jurisdictions).
+- **Router finding (measured, Plan 11h §3 Q1, 2026-08-25):** the owner-supplied OpenAI-compatible router selects a **third-party inference provider per request** (different providers observed on consecutive calls). A processor that cannot be named in advance cannot be named in this DPIA — therefore the router is usable only for Class-0 payloads, and only with a **pinned model/provider**, until its sub-processor is fixed and contracted. **[COUNSEL]** confirm.
+
+## 3-A. Speech-to-text — a proposed carve-out (2026-08-25, pending owner accept/refuse and counsel review)
+
+Voice search (Plan 11h DD11) transcribes desk utterances via a cloud ASR service (`@cf/openai/whisper-large-v3-turbo`, Cloudflare Workers AI). **Audio cannot be de-identified before transmission** — an utterance carrying a patient name reaches the transcriber intact — so this conflicts with the Class-2 design law and is proposed as the law's **single named exception**, on these terms: one nameable processor (Cloudflare) with published commitments (no training on customer content; no retention unless written to storage — this design writes none; no exposure to other customers) · **cross-border transfer acknowledged, not assumed away** (Workers AI is not region-pinnable to India today) — it joins the transfer class the staged-deployment pilot already opened and gated · server-side proxy only (no browser-held credential) · push-to-talk with a 15-second cap · audio buffer discarded on transcript return, nothing persisted · transcript enters a deterministic parser as data, never chains into a text model · desk-level disable at public counters · **feature-flag inert (`VOICE_SEARCH_ENABLED=false`) until this carve-out is accepted and recorded** · per-use audit (`source:'voice'`) so actual exposure is measurable · carve-out closes when in-region or on-prem ASR arrives. **[COUNSEL]** rule on the carve-out's defensibility under DPDP §16 and the DPA terms needed with Cloudflare.
 
 ## 4. Lawful basis and notices
 
