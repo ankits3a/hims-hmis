@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
+import { CONFIDENTIAL_CAPTURE_ENABLED } from "../lib/confidential-capture";
 import { FormKit, TextField, SelectField, CheckboxField } from "../components/form-kit";
 import { SubmitButton } from "../components/submit-button";
 import { PatientPhoto } from "./registration-desk";
@@ -298,10 +299,17 @@ function DemographicsSection({ patient }: { patient: PatientRow }): React.ReactE
             <TextField name="legacyUhid" label={t("register.legacyUhid")} />
           </div>
           <div className="flex gap-6">
-            <CheckboxField name="isConfidential" label={t("register.confidential")} />
+            {/* DD5 — see lib/confidential-capture.ts. The form still HOLDS the record's current
+                value, so it is never marked dirty and the PATCH omits it: an edit must not
+                silently un-confidential a record that already is one. */}
+            {CONFIDENTIAL_CAPTURE_ENABLED && (
+              <CheckboxField name="isConfidential" label={t("register.confidential")} />
+            )}
             <CheckboxField name="sensitiveContext" label={t("register.sensitive")} />
           </div>
-          {form.watch("isConfidential") && <TextField name="alias" label={t("register.alias")} />}
+          {CONFIDENTIAL_CAPTURE_ENABLED && form.watch("isConfidential") && (
+            <TextField name="alias" label={t("register.alias")} />
+          )}
           <fieldset className="space-y-3 rounded border p-3">
             <legend className="px-1 text-sm font-medium">{t("patient.abha")}</legend>
             <div className="grid grid-cols-2 gap-3">

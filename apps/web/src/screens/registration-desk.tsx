@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
+import { CONFIDENTIAL_CAPTURE_ENABLED } from "../lib/confidential-capture";
 import { FormKit, TextField, SelectField, CheckboxField } from "../components/form-kit";
 import { PhotoCapture } from "../components/photo-capture";
 import { QrCard, type QrCardData } from "../components/qr-card";
@@ -226,11 +227,19 @@ function NewPatientForm({
           <TextField name="legacyUhid" label={t("register.legacyUhid")} />
         </div>
         <div className="flex gap-6">
-          <CheckboxField name="isConfidential" label={t("register.confidential")} />
+          {/* DD5 — the confidential box is off the desk until a role can READ what it creates.
+              `search.ts` and `getPatient` both filter on `patients.confidential.read`, which no
+              role in production holds, so ticking this produced a 201 and a patient nobody could
+              find, open, bill or treat. One constant, one line, and it comes back on the ruling. */}
+          {CONFIDENTIAL_CAPTURE_ENABLED && (
+            <CheckboxField name="isConfidential" label={t("register.confidential")} />
+          )}
           <CheckboxField name="sensitiveContext" label={t("register.sensitive")} />
           <CheckboxField name="promotionalOptIn" label={t("register.promotionalOptIn")} />
         </div>
-        {form.watch("isConfidential") && <TextField name="alias" label={t("register.alias")} />}
+        {CONFIDENTIAL_CAPTURE_ENABLED && form.watch("isConfidential") && (
+          <TextField name="alias" label={t("register.alias")} />
+        )}
         {minor && (
           <fieldset className="space-y-3 rounded border p-3">
             <legend className="px-1 text-sm font-medium">

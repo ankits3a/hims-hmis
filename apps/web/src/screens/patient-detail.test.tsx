@@ -158,6 +158,40 @@ describe("PatientDetail", () => {
     expect(body.phone).toBe("9998887766");
   });
 
+  /**
+   * PLAN 11g / T-D6, DD5 — the edit form's half, and it is the half a plain deletion would have
+   * got wrong. The control is gone, but the record's CURRENT value stays in the form's state and
+   * is never marked dirty, so a PATCH of some other field cannot silently UN-confidential a
+   * patient who already is one. `PATIENT` here is `isConfidential: true` for exactly that reason.
+   */
+  it("DD5: the confidential control is off the edit form, and an unrelated PATCH does not carry the field", async () => {
+    const confidential = { ...PATIENT, isConfidential: true, alias: "VIP-1" };
+    stubFetch({
+      "GET /api/patients/p-1": { patient: confidential, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+      "GET /api/patients/p-1/qr": QR,
+      "PATCH /api/patients/p-1": { patient: { ...confidential, district: "Raipur" }, changed: ["district"] },
+    });
+    renderWithProviders(<PatientDetail />);
+    const user = userEvent.setup();
+
+    const district = await screen.findByLabelText("District");
+    // The neighbour is still rendered, so this asserts the ONE control is gone.
+    expect(screen.getByLabelText("Sensitive context (seals guardian messages)")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Confidential record (VIP/staff)")).toBeNull();
+    expect(screen.queryByLabelText("Public alias")).toBeNull();
+
+    await user.clear(district);
+    await user.type(district, "Raipur");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(fetchCalls().some((c) => c.method === "PATCH")).toBe(true));
+    const body = JSON.parse(fetchCalls().find((c) => c.method === "PATCH")?.body ?? "{}") as Record<string, unknown>;
+    expect(Object.keys(body)).toEqual(["district"]);
+    expect(body).not.toHaveProperty("isConfidential");
+  });
+
   it("D9: the promotional opt-in toggle posts an exact single-field PATCH", async () => {
     stubFetch({
       "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },

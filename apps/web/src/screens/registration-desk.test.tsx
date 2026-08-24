@@ -261,5 +261,29 @@ describe("RegistrationDesk", () => {
     expect(body.name).toBe("Ravi Sharma");
     expect(body.phone).toBe("9876500011");
     expect(body.ageYears).toBe(37); // the preprocess ran: a number, not the raw input string
+    // DD5 — and the field that orphans a record is not in the body, because it is not on the form.
+    expect(body).not.toHaveProperty("isConfidential");
+  });
+
+  /**
+   * PLAN 11g / T-D6, DD5 — the control that produced a patient nobody could find.
+   *
+   * Ticking it in production returned a clean 201 and a fresh UHID, and thereafter every user got
+   * an empty search and a 404 on the direct fetch, because `patients.confidential.read` is granted
+   * to NO role. The feature is not wrong; the grant is missing, and it is an owner ruling
+   * (`seed-roles.ts:270`). Until it lands the desk must not offer the click.
+   */
+  it("DD5: the confidential checkbox and its alias field are off the desk while no role can read such a record", async () => {
+    stubFetch({});
+    renderWithProviders(<RegistrationDesk />);
+    const user = userEvent.setup();
+    await openNewPatientForm(user);
+
+    // The neighbouring boxes are still there, so this asserts the ONE control is gone rather than
+    // that the form failed to render.
+    expect(screen.getByLabelText("Sensitive context (seals guardian messages)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Promotional messages: opted in")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Confidential record (VIP/staff)")).toBeNull();
+    expect(screen.queryByLabelText("Public alias")).toBeNull();
   });
 });
