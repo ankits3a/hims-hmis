@@ -2,7 +2,16 @@
 # ci-watch.sh — watch CI for every new commit on origin/main and SHOUT on red.
 #
 # WHY THIS EXISTS (EXECUTION-LESSONS §2.33, §2.55, §2.59).
-# `gh` cannot authenticate on the build host, so no pipeline agent can check CI — every gate and
+# ~~`gh` cannot authenticate on the build host, so no pipeline agent can check CI~~ — **AMENDED
+# 2026-08-24 (ledger §2.91, Plan 11f T4): the first clause is true and the second does not follow
+# from it.** `gh` cannot authenticate here; CI can still be READ here, because this repository is
+# public and the unauthenticated GitHub API answers over plain `curl`. The struck sentence is left
+# in place rather than deleted because it is quoted by briefs compiled before that date, and
+# because the mistake it records is the durable one: **a capability ruling stated against a TOOL
+# expires the moment another route to the QUESTION exists.** `ci-watch-host.sh` beside this file is
+# that route — green/red per full sha, no credential, from the build host. What genuinely still
+# needs `gh` is job LOGS (403 unauthenticated), which is diagnosis rather than verdict.
+# — every gate and
 # checker is correctly told to report the CI item as "delegated to the main session". That
 # delegation was sound while waves were driven by hand and the main session sat in every gap.
 # Under the Workflow tool the waves run back-to-back and NOBODY is in the gap, so CI goes

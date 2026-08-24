@@ -149,9 +149,22 @@ pilot phase; nothing moves under running 11d. From the pilot on, the working ses
 the host, in the checkout — Claude Code 2.1.241 is installed there (2026-08-23,
 `/usr/local/bin/claude`), tmux is present for session persistence, and the one remaining setup
 step is the owner authenticating it once (`ssh -t root@62.238.106.231 claude`). The Windows
-checkout becomes the owner's read-only copy, and keeps exactly one duty: running
+checkout becomes the owner's read-only copy, and ~~keeps exactly one duty: running
 `pipelines/ci-watch.sh`, which stays off-host until the owner separately decides whether a
-read-only CI credential belongs on an SSH-probed box.
+read-only CI credential belongs on an SSH-probed box.~~
+
+> **AMENDED 2026-08-24 (ledger §2.91, Plan 11f T4) — the struck clause was true of `gh` and false
+> of CI.** `ci-watch.sh` needs `gh`, and `gh` needs a credential this box does not have; but the
+> repository is PUBLIC, so the unauthenticated GitHub API answers `/actions/runs?head_sha=` and
+> `/commits/{sha}/check-runs` over plain `curl` from the build host. §3.3's "CI is watched, not
+> assumed" therefore no longer depends on which machine the session runs on:
+> [`pipelines/ci-watch-host.sh`](pipelines/ci-watch-host.sh) gives green/red **per full sha** with
+> no credential at all, and distinguishes §2.59's third state — did-not-run — by exit value. Job
+> LOGS remain 403 without a credential; that is diagnosis rather than verdict, and it is the one
+> thing still delegated to a machine with `gh`. **The rule this bought, and it is why the clause is
+> struck rather than deleted: when a method records that a host cannot do something, record WHICH
+> TOOL was tried.** A capability ruling stated against a tool expires the moment another route to
+> the question exists.
 
 **What the post-11d session strikes from AGENT-RULES when v3 activates** — in place, the
 rule-6 pattern, citing this section:
