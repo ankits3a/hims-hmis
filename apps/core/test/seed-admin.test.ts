@@ -200,9 +200,15 @@ describe("seed:admin — ADMIN_PASSWORD is judged by the shared policy (11f T1, 
     expect(refusal.reasons.join("\n")).toMatch(/must not be the username/);
     expect(refusal.reasons.join("\n")).toMatch(/twenty most-used passwords/);
     // GC3: the transcript the operator actually reads speaks about rules, never about the value.
+    //
+    // The value is matched BARE, not quoted. A `/"admin"/` form — which this leg first shipped
+    // with — cannot see the leak that actually happens: an implementation interpolating the value
+    // without quotes (`ADMIN_PASSWORD (admin) must be at least 10 characters`) passes it while
+    // putting the credential on an operator's screen. Case-sensitive on purpose, so the variable
+    // NAME `ADMIN_PASSWORD` does not make this vacuous the other way.
     const transcript = formatRefusal(refusal).join("\n");
     expect(transcript).toMatch(/Nothing was written/);
-    expect(transcript).not.toMatch(/"admin"/);
+    expect(transcript).not.toMatch(/admin/);
     expect(await rowCounts()).toEqual({ users: 0, roles: 0, grants: 0, catalog: 0 });
   });
 

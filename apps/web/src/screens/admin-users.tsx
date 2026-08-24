@@ -142,8 +142,13 @@ export function AdminUsers(): React.ReactElement {
         the takeover check reads); this screen renders it and mints no arithmetic of its own — the
         same rule that keeps the password policy off this file.
        */}
+      {/*
+        `status`, not `alert`: this is a standing condition, not an event. The list refetches after
+        every create, reset, deactivate and revoke, and `alert` re-announces assertively on each
+        one — interrupting a screen reader mid-row to repeat something that has not changed.
+       */}
       {fullAdmins !== undefined && fullAdmins < 2 && (
-        <p role="alert" data-testid="admin-two-admin-warning"
+        <p role="status" data-testid="admin-two-admin-warning"
           className="rounded border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900">
           {/* `n`, not `count`: i18next reads `count` as a plural selector and would look for
               `_one`/`_other` variants this catalogue does not carry. */}

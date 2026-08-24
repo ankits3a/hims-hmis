@@ -229,7 +229,9 @@ async function main(): Promise<void> {
 }
 
 if (require.main === module) {
-  // Deliberately no value from the environment: an error path is the easiest place in a program to
-  // leak a credential, and `ADMIN_PASSWORD` is in scope one frame up.
+  // Deliberately prints the error and nothing of its own: an error path is the easiest place in a
+  // program to leak a credential. (`ADMIN_PASSWORD` is read inside `main()` and is not in scope
+  // here at all — an earlier version of this comment claimed otherwise, which was wrong about the
+  // program while being right about the discipline.)
   main().catch((e) => { console.error(e); process.exit(1); });
 }

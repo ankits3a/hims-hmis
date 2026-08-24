@@ -42,6 +42,11 @@
 # Environment: CI_WATCH_REPO · CI_WATCH_INTERVAL (s, default 120) · CI_WATCH_TIMEOUT (s, default
 # 1800 — this repo's `verify` runs ~450-700 s, plus queue time).
 #
+# REQUIRES `curl` AND `python3`. It is "credential-free", not "curl-only": the JSON is parsed by a
+# short inline python program, because parsing it in bash is how a watcher starts lying. python3 is
+# present on the build host (3.14.4, measured 2026-08-24). Said here so a host that lacks it gets an
+# answer instead of a mystery.
+#
 # ═══ THE RATE LIMIT IS A BUDGET, AND IT IS ENFORCED HERE RATHER THAN DISCOVERED ═══
 #
 # Unauthenticated GitHub is 60 requests/hour/IP, SHARED with every other user of this box. One
@@ -70,15 +75,19 @@ for sha in "$@"; do
     echo "!! poller that guessed one would report a verdict about a commit nobody wrote." >&2
     exit 2
   fi
-  shas+=("$sha")
+  # DEDUPE. A sha passed twice is resolved once but counted twice in `${#shas[@]}`, so the
+  # completion test could never be met and the script slept out its whole timeout before printing a
+  # correct verdict (11f reviewer, minor 6).
+  [[ " ${shas[*]-} " == *" $sha "* ]] || shas+=("$sha")
 done
 
 # The budget, applied BEFORE the first request.
 per_hour=$(( ${#shas[@]} * 3600 / INTERVAL ))
 if [[ $per_hour -gt $MAX_REQUESTS_PER_HOUR ]]; then
   INTERVAL=$(( ${#shas[@]} * 3600 / MAX_REQUESTS_PER_HOUR ))
-  echo "ci-watch-host: ${#shas[@]} sha(s) at the requested interval would cost ${per_hour} req/hour" \
-       "against an unauthenticated ceiling of 60 — interval raised to ${INTERVAL}s."
+  echo "ci-watch-host: ${#shas[@]} sha(s) at the requested interval would cost ${per_hour} req/hour," \
+       "over this script's self-imposed ${MAX_REQUESTS_PER_HOUR}/hour (of GitHub's 60/hour/IP," \
+       "left as headroom for anything else on this box) — interval raised to ${INTERVAL}s."
 fi
 
 # Prints "<conclusion> <elapsed_seconds> <run_id>" for a resolved sha; "pending"; "none"; or
@@ -87,13 +96,25 @@ probe() {
   local sha="$1" body code
   body="$(curl -sS -m 30 -w $'\n%{http_code}' \
     -H "Accept: application/vnd.github+json" \
-    "https://api.github.com/repos/${REPO}/actions/runs?head_sha=${sha}&per_page=20" 2>/dev/null)" || {
+    "https://api.github.com/repos/${REPO}/actions/runs?head_sha=${sha}&per_page=10" 2>/dev/null)" || {
       echo "error curl"; return; }
   code="${body##*$'\n'}"
   body="${body%$'\n'*}"
-  if [[ "$code" != "200" ]]; then echo "error $code"; return; fi
-  CI_BODY="$body" python3 - <<'PY'
-import json, os, sys
+  case "$code" in
+    200) ;;
+    # A 404 or 401 is PERMANENT — a wrong CI_WATCH_REPO, or a repo that stopped being public.
+    # Retrying it burns the whole timeout and a third of an hourly budget to reach the same answer.
+    404|401) echo "fatal $code"; return ;;
+    *) echo "error $code"; return ;;   # 403 (rate limit), 5xx, 000: genuinely transient
+  esac
+  # THE BODY GOES ON STDIN, NOT THROUGH THE ENVIRONMENT. It was `CI_BODY="$body" python3` until
+  # 11f's reviewer measured the ceiling: `execve` on this host refuses an env string at ~131 KB,
+  # and one `workflow_run` object from this API is ~17 KB — so eight runs on one sha killed the
+  # probe with "Argument list too long" on stderr, which `$(probe …)` does not capture. The empty
+  # stdout then fell through the case below to `*)` and printed CI DID NOT RUN — a verdict minted
+  # by the poller's own plumbing and blamed on GitHub billing. stdin has no such limit.
+  printf '%s' "$body" | python3 -c '
+import json, sys
 from datetime import datetime
 
 def secs(a, b):
@@ -103,7 +124,7 @@ def secs(a, b):
     return int((datetime.strptime(b, f) - datetime.strptime(a, f)).total_seconds())
 
 try:
-    d = json.loads(os.environ["CI_BODY"])
+    d = json.load(sys.stdin)
 except Exception:
     print("error parse"); sys.exit(0)
 
@@ -111,13 +132,21 @@ runs = d.get("workflow_runs") or []
 if not runs:
     print("none"); sys.exit(0)
 
-# ONE RUN PER WORKFLOW, THE LATEST — a re-run supersedes the run it re-ran, and judging a sha by a
-# superseded attempt would report a verdict somebody has already replaced. Today this repo has a
-# single workflow (`ci`); the grouping is what keeps this correct on the day it has two, rather
-# than silently reading whichever run sorted first.
+# ONE RUN PER (WORKFLOW, EVENT), THE LATEST.
+#
+# THE EVENT IS HALF THE KEY, and leaving it out was the ONE construction in which this script could
+# say GREEN about a RED commit (11f reviewer, M3). `.github/workflows/ci.yml` is
+# `on: [push, pull_request]`, and the two events share a workflow_id while testing DIFFERENT TREES:
+# a pull_request run checks out refs/pull/N/merge, a push run checks out the commit itself, and
+# both report the same head_sha. So "latest run of this workflow wins" picks whichever GitHub
+# happened to schedule second, and a green merge-result run would mask a red push run on the same
+# sha. Grouping by (workflow, event) and taking the WORST across events cannot do that.
+#
+# Within one (workflow, event) the latest still wins, which is the re-run case: there a newer
+# attempt genuinely supersedes the one it re-ran.
 latest = {}
 for r in runs:
-    key = r.get("workflow_id")
+    key = (r.get("workflow_id"), r.get("event"))
     prev = latest.get(key)
     if prev is None or (r.get("run_started_at") or "") > (prev.get("run_started_at") or ""):
         latest[key] = r
@@ -130,10 +159,10 @@ if any(r.get("status") != "completed" for r in runs):
 order = {"failure": 0, "timed_out": 0, "cancelled": 0, "action_required": 0,
          "stale": 1, "neutral": 1, "skipped": 1, "success": 2}
 worst = min(runs, key=lambda r: order.get(r.get("conclusion"), 0))
-print(f"{worst.get('conclusion')} "
-      f"{secs(worst.get('run_started_at'), worst.get('updated_at'))} "
-      f"{worst.get('id')}")
-PY
+print("%s %d %s" % (worst.get("conclusion"),
+                    secs(worst.get("run_started_at"), worst.get("updated_at")),
+                    worst.get("id")))
+'
 }
 
 echo "ci-watch-host: ${REPO}, ${#shas[@]} sha(s), every ${INTERVAL}s, giving up after ${TIMEOUT}s."
@@ -157,11 +186,21 @@ while :; do
         # A transient failure must not become a verdict, and must not kill the watch either.
         echo "  $short  API unreadable (${secs:-?}) — retrying next sweep"
         ;;
+      fatal)
+        # Permanent: a wrong repo, or one that is no longer public. Retrying cannot change it, and
+        # spending the whole timeout to say so wastes a shared hourly budget.
+        echo "  $short  API says ${secs:-?} — PERMANENT (check CI_WATCH_REPO='${REPO}'). Not retried."
+        verdict[$sha]="UNRESOLVED"; resolved=$(( resolved + 1 ))
+        ;;
       success)
         echo "  $short  GREEN (${secs}s, run ${id})"
         verdict[$sha]="GREEN"; resolved=$(( resolved + 1 ))
         ;;
-      *)
+      # EVERY conclusion string GitHub emits, listed exhaustively so the `*)` arm below can mean
+      # "the plumbing broke" rather than "a conclusion I have not met". `startup_failure` belongs
+      # here: it is a real verdict about a run, not a fault in this script, and omitting it would
+      # have sent a genuinely broken workflow to the retry-forever arm.
+      failure|timed_out|cancelled|action_required|stale|neutral|skipped|startup_failure)
         if [[ "${secs:-0}" -lt $DID_NOT_RUN_SECONDS ]]; then
           # §2.59. `conclusion=failure` after three seconds is a job that executed nothing —
           # billing, a spending limit, a blocked dispatch — and it reports IDENTICALLY to a real
@@ -193,10 +232,20 @@ while :; do
         fi
         resolved=$(( resolved + 1 ))
         ;;
+      *)
+        # THE ARM THAT MUST EXIST. Anything the probe emits that is not one of the tokens above —
+        # empty output, a python traceback, a shape this script has never seen — is a failure of
+        # the PLUMBING, and plumbing must never mint a CI verdict. Without this arm every
+        # unrecognised token fell into the conclusion branch above and was reported as
+        # "CI DID NOT RUN … almost always billing", which is a wrong statement about somebody's
+        # commit, attributed to GitHub (11f reviewer, M2).
+        echo "  $short  probe returned something unrecognised (\"${concl}\") — retrying next sweep."
+        echo "           This is a fault in ci-watch-host.sh, NOT a verdict about the commit."
+        ;;
     esac
   done
 
-  [[ $resolved -eq ${#shas[@]} ]] && break
+  [[ $resolved -ge ${#shas[@]} ]] && break
 
   if [[ $(( SECONDS - started )) -ge $TIMEOUT ]]; then
     for sha in "${shas[@]}"; do

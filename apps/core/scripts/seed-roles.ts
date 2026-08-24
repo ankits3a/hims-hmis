@@ -389,6 +389,11 @@ export type SeedRolesReport = {
    * person reads — and a username is not credential material, which is why it may appear here.
    */
   fullAdministrators: string[];
+  /**
+   * States an operator must ACT on that are not verdicts about roles and grants, so they print
+   * loudly and leave `ready` — and therefore the exit code — alone. Today: the two-admin shortfall.
+   */
+  warnings: string[];
   roles: RoleOutcome[];
   problems: string[];
   ready: boolean;
@@ -493,20 +498,34 @@ export async function seedRoles(db: Db): Promise<SeedRolesReport> {
    * `assertMayTakeOver` reads, and NOT from a join written here: §2.89's rule, and C2 was the price
    * of ignoring it. This census is the surface an operator runs before go-live, so it is where an
    * unmet operational mitigation belongs.
+   *
+   * ═══ IT IS A WARNING, NOT A PROBLEM, AND THE DIFFERENCE IS THE EXIT CODE ═══
+   *
+   * CORRECTED at 11f's close, on the independent reviewer's M1. This first shipped in `problems`,
+   * which feeds `ready`, which feeds `process.exitCode` — so a deployment with one administrator
+   * exited 1 for ever, and that is CODE ENFORCEMENT of the very invariant D2 marked dead in place
+   * as unsatisfiable. Worse, it is enforcement through the one channel 11d built to mean something
+   * else: `seed:roles`'s exit value is a verdict about ROLES AND GRANTS, the deploy checklist says
+   * "confirm it exits 0", and a permanently-1 exit teaches an operator to stop reading it — which
+   * is §2.63(b)'s dead-watchdog problem arriving from the other direction.
+   *
+   * `warnings` prints as loudly as `problems` and changes no verdict. That is exactly what D2 says
+   * ships: the census "prints the full-administrator count and warns by name when it is below two".
    */
   const adminIds = await withTx(db, (tx) => fullAdministrators(tx));
   const adminNames = adminIds.length === 0
     ? []
     : (await db.select({ username: users.username, id: users.id }).from(users)
         .where(inArray(users.id, adminIds))).map((u) => u.username).sort();
+  const warnings: string[] = [];
   if (adminNames.length < 2) {
-    problems.push(
+    warnings.push(
       `${adminNames.length} user(s) hold the FULL auth.* set at hospital scope` +
         (adminNames.length === 0 ? "" : `: ${adminNames.join(", ")}`) +
         `. The takeover rule (2026-08-24) lets a credential reset be performed only by somebody ` +
         `whose auth.* set is a SUPERSET of the target's — so below TWO holders, a forgotten ` +
-        `password at the top has no repair but direct database access. Create a second one and ` +
-        `assign it the admin role; this line goes quiet at two.`,
+        `password at the TOP of this deployment may have no repair but direct database access. ` +
+        `Create a second one and assign it the admin role; this line goes quiet at two.`,
     );
   }
 
@@ -529,6 +548,8 @@ export async function seedRoles(db: Db): Promise<SeedRolesReport> {
     fullAdministrators: adminNames,
     roles: outcomes,
     problems,
+    warnings,
+    // `warnings` is DELIBERATELY not part of this: see the two-admin block above.
     ready: problems.length === 0,
   };
 }
@@ -570,6 +591,13 @@ export function formatReport(report: SeedRolesReport): string[] {
       (report.fullAdministrators.length === 0 ? "" : ` — ${report.fullAdministrators.join(", ")}`),
   );
   lines.push("");
+  // Printed BEFORE the verdict and just as loudly, because a warning that scrolls past above a
+  // green READY line is a warning nobody reads. It does not change the verdict below.
+  if (report.warnings.length > 0) {
+    lines.push("** ACT ON THIS — it does not change the verdict below".padEnd(72, " "));
+    for (const warning of report.warnings) lines.push(`** ${warning}`);
+    lines.push("");
+  }
   if (report.problems.length > 0) {
     lines.push("!! NOT READY".padEnd(72, " "));
     for (const problem of report.problems) lines.push(`!! ${problem}`);

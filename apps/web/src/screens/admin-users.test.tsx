@@ -86,8 +86,22 @@ describe("AdminUsers", () => {
     renderWithProviders(<AdminUsers />);
 
     const warning = await screen.findByTestId("admin-two-admin-warning");
-    expect(warning).toHaveTextContent("Only 1 person");
+    expect(warning).toHaveTextContent("Fewer than two people");
+    expect(warning).toHaveTextContent("1 today");
     expect(warning).toHaveTextContent(/no repair but direct database access/);
+  });
+
+  it("11f D2 — the banner reads correctly at ZERO, which is the count a bare deployment has", async () => {
+    // The count the first draft's wording rendered as "Only 0 person". Zero is not hypothetical:
+    // it is every deployment before an admin role is assigned, and it is what the e2e fixture's
+    // baseline measures.
+    mockRoutes({ "GET /admin/users": { status: 200, body: { users: [ASHA], fullAdministrators: 0 } } });
+    renderWithProviders(<AdminUsers />);
+
+    const warning = await screen.findByTestId("admin-two-admin-warning");
+    expect(warning).toHaveTextContent("Fewer than two people");
+    expect(warning).toHaveTextContent("0 today");
+    expect(warning.textContent).not.toMatch(/0 person\b/);
   });
 
   it("11f D2 — the banner is gone at two, and absent while the list is still in flight", async () => {

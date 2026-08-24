@@ -592,9 +592,14 @@ describe("seed:roles — executed against a database (V5)", () => {
 
     const none = await seedRoles(db);
     expect(none.fullAdministrators).toEqual([]);
-    expect(none.problems.join(" ")).toContain("0 user(s) hold the FULL auth.* set");
-    expect(none.problems.join(" ")).toContain("takeover rule");
+    expect(none.warnings.join(" ")).toContain("0 user(s) hold the FULL auth.* set");
+    expect(none.warnings.join(" ")).toContain("takeover rule");
     expect(formatReport(none).join("\n")).toContain("full administrators");
+    // IT IS A WARNING AND NOT A PROBLEM (reviewer M1). The shortfall must never reach `problems`,
+    // because `problems` feeds `ready` and `ready` feeds the exit code — and D2 marked CODE
+    // ENFORCEMENT of the two-admin rule dead. The warning still prints, as loudly.
+    expect(none.problems.join(" ")).not.toContain("auth.* set");
+    expect(formatReport(none).join("\n")).toContain("ACT ON THIS");
 
     // One — the bootstrap state, and the state production is in. Named, so the operator knows
     // WHICH account has no repair.
@@ -609,7 +614,7 @@ describe("seed:roles — executed against a database (V5)", () => {
 
     const one = await seedRoles(db);
     expect(one.fullAdministrators).toEqual(["admin"]);
-    expect(one.problems.join(" ")).toContain("1 user(s) hold the FULL auth.* set at hospital scope: admin");
+    expect(one.warnings.join(" ")).toContain("1 user(s) hold the FULL auth.* set at hospital scope: admin");
 
     // Two — runbook O1 performed. The line goes quiet, which is what "the detector goes quiet"
     // means and is the half that stops this row passing by warning about everything.
@@ -620,7 +625,31 @@ describe("seed:roles — executed against a database (V5)", () => {
 
     const two = await seedRoles(db);
     expect(two.fullAdministrators).toEqual(["admin", "second_admin"]);
-    expect(two.problems.join(" ")).not.toContain("hold the FULL auth.* set");
+    expect(two.warnings).toEqual([]);
     expect(formatReport(two).join("\n")).toContain("full administrators (whole auth.* set, hospital scope, active): 2");
+    expect(formatReport(two).join("\n")).not.toContain("ACT ON THIS");
+  });
+
+  it("11f M1 — the two-admin shortfall never moves the READY verdict, at one admin or none", async () => {
+    // The property the reviewer's M1 is about, asserted directly rather than inferred from where
+    // the string lands: `seed:roles` exits on `ready`, and a deployment with one administrator is
+    // a state D2 calls expected. Whatever `ready` is, it must be the SAME with and without the
+    // shortfall — so it is compared against a verdict computed from `problems` alone.
+    const none = await seedRoles(db);
+    expect(none.warnings).toHaveLength(1);
+    expect(none.ready).toBe(none.problems.length === 0);
+
+    const registry = new ModuleRegistry();
+    for (const manifest of ALL_MANIFESTS) registry.install(manifest);
+    await createRole(db, "full_admin", "Full administrator");
+    for (const permission of authManifest.permissions) {
+      await grantPermissionToRole(db, registry, "full_admin", permission);
+    }
+    const { id } = await createUser(db, { username: "admin", fullName: "A", password: "bootstrap-secret" });
+    await assignRole(db, { userId: id, roleKey: "full_admin", scopeType: "hospital" });
+
+    const one = await seedRoles(db);
+    expect(one.warnings).toHaveLength(1);
+    expect(one.ready).toBe(one.problems.length === 0);
   });
 });
