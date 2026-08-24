@@ -11,6 +11,8 @@ import {
   loginWithPassword, revokeOtherUserSessions, revokeSession, switchWithBadge, switchWithPin,
 } from "./sessions";
 import { setPassword, verifyPassword } from "./identity";
+import { effectivePermissions } from "./permissions";
+import type { EffectivePermissions } from "./permissions";
 import { checkPassword } from "./password-policy";
 import { clearThrottle, recordThrottleFailure, throttleRetryAt } from "./throttle";
 import type { ThrottleKind } from "./throttle";
@@ -207,9 +209,21 @@ export class AuthController {
     });
   }
 
+  /**
+   * PLAN 11h T6 — `permissions` IS ADDITIVE, and the 61 existing consumers of this route keep
+   * working unchanged.
+   *
+   * An AGENT actor gets an empty projection rather than an error: agents hold no permissions at
+   * all (Plan 02 — `PermissionGuard` refuses every agent), so "what may this actor do" has the
+   * answer `nothing`, and returning it is more honest than a 403 on a route whose whole job is to
+   * describe the caller.
+   */
   @Get("me")
-  me(@CurrentActor() actor: Actor): { actor: Actor } {
-    return { actor };
+  async me(@CurrentActor() actor: Actor): Promise<{ actor: Actor; permissions: EffectivePermissions }> {
+    const permissions = actor.type === "user"
+      ? await effectivePermissions(this.db, actor.id)
+      : { hospital: [], scoped: { department: {}, floor: {} } };
+    return { actor, permissions };
   }
 
   @Post("totp/enroll")

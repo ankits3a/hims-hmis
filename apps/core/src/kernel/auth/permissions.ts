@@ -144,6 +144,97 @@ export async function hasPermission(
   });
 }
 
+/**
+ * PLAN 11h T6 — WHAT THIS PERSON MAY DO, computed by the SAME READ `hasPermission` performs.
+ *
+ * ═══ WHY IT IS NOT A FLAT LIST ═══
+ * A permission is not a property of a user; it is a property of a (user, scope) pair.
+ * `hasPermission` grants when a holding's role carries the permission AND either the holding is
+ * HOSPITAL-scoped (which satisfies any required scope) or its scope type and id match the one the
+ * route demands. A single `string[]` cannot express "may record vitals in Paediatrics but nowhere
+ * else", and flattening it would produce exactly the failure this projection exists to prevent —
+ * a client that renders a control the server will refuse, or hides one it would have allowed.
+ *
+ * So: `hospital` is what a menu entry or a palette command may be gated on, and `scoped` carries
+ * the rest, addressed by the scope id it belongs to.
+ *
+ * ═══ IT IS PRESENTATION, NEVER ENFORCEMENT ═══
+ * Every route keeps its `@RequirePermission` guard exactly as before. This list exists so the
+ * shell can stop rendering sixteen navigation links to a cashier — the defect the 2026-08-24
+ * synthetic smoke test found as "dark screens" — and so the palette can offer only actions that
+ * will succeed. A client that trusted this list for authorisation would be trusting a value the
+ * client itself received over the wire.
+ *
+ * The read is deliberately a duplicate of `hasPermission`'s in SHAPE but not in CODE: it answers
+ * "everything" where that answers "this one", and a test asserts the two AGREE for every declared
+ * permission, which is the only thing that keeps them from drifting.
+ */
+export type EffectivePermissions = {
+  /** Held at hospital scope: true wherever the server asks, whatever the route's required scope. */
+  hospital: string[];
+  /** Held only inside a named scope, keyed by that scope's id. */
+  scoped: { department: Record<string, string[]>; floor: Record<string, string[]> };
+};
+
+export async function effectivePermissions(db: Db, userId: string): Promise<EffectivePermissions> {
+  const permanent = await db
+    .select({
+      roleKey: roleAssignments.roleKey,
+      scopeType: roleAssignments.scopeType,
+      scopeId: roleAssignments.scopeId,
+    })
+    .from(roleAssignments)
+    .where(eq(roleAssignments.userId, userId));
+
+  const temp = await db
+    .select({ roleKey: tempRoleGrants.roleKey })
+    .from(tempRoleGrants)
+    .where(and(eq(tempRoleGrants.userId, userId), gt(tempRoleGrants.expiresAt, new Date())));
+
+  const holdings: Holding[] = [
+    ...permanent.map((a) => ({ roleKey: a.roleKey, scopeType: a.scopeType as ScopeType, scopeId: a.scopeId })),
+    // Temp grants act at hospital scope — exceptional, loud and time-boxed (the `hasPermission`
+    // rule, restated here because the two functions must agree and a silent divergence would be
+    // invisible until somebody's emergency grant failed to light up their screen).
+    ...temp.map((t) => ({ roleKey: t.roleKey, scopeType: "hospital" as ScopeType, scopeId: null })),
+  ];
+  const empty: EffectivePermissions = { hospital: [], scoped: { department: {}, floor: {} } };
+  if (holdings.length === 0) return empty;
+
+  const roleKeys = [...new Set(holdings.map((h) => h.roleKey))];
+  const granted = await db
+    .select({ roleKey: rolePermissions.roleKey, permission: rolePermissions.permission })
+    .from(rolePermissions)
+    .where(inArray(rolePermissions.roleKey, roleKeys));
+
+  const byRole = new Map<string, string[]>();
+  for (const g of granted) byRole.set(g.roleKey, [...(byRole.get(g.roleKey) ?? []), g.permission]);
+
+  const hospital = new Set<string>();
+  const department: Record<string, Set<string>> = {};
+  const floor: Record<string, Set<string>> = {};
+
+  for (const h of holdings) {
+    const permissions = byRole.get(h.roleKey) ?? [];
+    if (h.scopeType === "hospital") {
+      for (const p of permissions) hospital.add(p);
+      continue;
+    }
+    if (h.scopeId === null) continue; // a scoped assignment with no id grants nothing (assignRole refuses to make one)
+    const bucket = h.scopeType === "department" ? department : floor;
+    bucket[h.scopeId] ??= new Set<string>();
+    for (const p of permissions) bucket[h.scopeId]!.add(p);
+  }
+
+  const materialise = (r: Record<string, Set<string>>): Record<string, string[]> =>
+    Object.fromEntries(Object.entries(r).map(([id, set]) => [id, [...set].sort()]));
+
+  return {
+    hospital: [...hospital].sort(),
+    scoped: { department: materialise(department), floor: materialise(floor) },
+  };
+}
+
 export function requestParam(req: AuthedRequest, key: string): string | undefined {
   const fromParams = (req.params as Record<string, string | undefined> | undefined)?.[key];
   if (typeof fromParams === "string") return fromParams;

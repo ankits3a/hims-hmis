@@ -29,9 +29,35 @@ import { AdminUsers } from "./screens/admin-users";
 import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 
+/**
+ * PLAN 11h T6 — the shell's navigation, PAIRED WITH THE PERMISSION EACH SCREEN'S ROUTE ACTUALLY
+ * GUARDS ON. The strings match the `menu` entries the server's module manifests declare, which is
+ * where the authoritative pairing lives (`syncPermissions` walks the same list); this table is the
+ * client's copy of that pairing and nothing more. A link rendered here still reaches a guarded
+ * route — hiding it is courtesy, not security.
+ */
+const NAV: readonly { to: string; label: string; permission: string }[] = [
+  { to: "/registration", label: "nav.registration", permission: "patients.register" },
+  { to: "/merge", label: "nav.merge", permission: "patients.merge" },
+  { to: "/approvals", label: "nav.approvals", permission: "approvals.requests.read" },
+  { to: "/opd/admin", label: "nav.opdAdmin", permission: "opd.masters.manage" },
+  { to: "/opd/appointments", label: "nav.opdAppointments", permission: "opd.appointments.read" },
+  { to: "/opd/desk", label: "nav.opdDesk", permission: "opd.visits.open" },
+  { to: "/opd/vitals", label: "nav.opdVitals", permission: "opd.vitals.record" },
+  { to: "/opd/consult", label: "nav.opdConsult", permission: "opd.consult" },
+  { to: "/opd/display", label: "nav.opdDisplay", permission: "opd.display.read" },
+  { to: "/billing", label: "nav.billing", permission: "billing.invoice.issue" },
+  { to: "/billing/dues", label: "nav.billingDues", permission: "billing.invoice.read" },
+  { to: "/billing/session", label: "nav.billingSession", permission: "billing.session.own" },
+  { to: "/billing/office", label: "nav.billingOffice", permission: "billing.reports.read" },
+  { to: "/ops/mode", label: "nav.opsMode", permission: "ops.mode.set" },
+  { to: "/ops/downtime-kit", label: "nav.opsDowntimeKit", permission: "ops.downtime.generate" },
+  { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage" },
+];
+
 function Shell(): React.ReactElement {
   const { t } = useTranslation();
-  const { logout } = useAuth();
+  const { logout, can } = useAuth();
   const navigate = useNavigate();
   return (
     <KeyboardProvider>
@@ -49,22 +75,21 @@ function Shell(): React.ReactElement {
             restore the old edge matcher and it fails. The two are deliberately independent.
           */}
           <nav className="flex gap-4 text-sm">
-            <Link to="/registration" className="hover:underline">{t("nav.registration")}</Link>
-            <Link to="/merge" className="hover:underline">{t("nav.merge")}</Link>
-            <Link to="/approvals" className="hover:underline">{t("nav.approvals")}</Link>
-            <Link to="/opd/admin" className="hover:underline">{t("nav.opdAdmin")}</Link>
-            <Link to="/opd/appointments" className="hover:underline">{t("nav.opdAppointments")}</Link>
-            <Link to="/opd/desk" className="hover:underline">{t("nav.opdDesk")}</Link>
-            <Link to="/opd/vitals" className="hover:underline">{t("nav.opdVitals")}</Link>
-            <Link to="/opd/consult" className="hover:underline">{t("nav.opdConsult")}</Link>
-            <Link to="/opd/display" className="hover:underline">{t("nav.opdDisplay")}</Link>
-            <Link to="/billing" className="hover:underline">{t("nav.billing")}</Link>
-            <Link to="/billing/dues" className="hover:underline">{t("nav.billingDues")}</Link>
-            <Link to="/billing/session" className="hover:underline">{t("nav.billingSession")}</Link>
-            <Link to="/billing/office" className="hover:underline">{t("nav.billingOffice")}</Link>
-            <Link to="/ops/mode" className="hover:underline">{t("nav.opsMode")}</Link>
-            <Link to="/ops/downtime-kit" className="hover:underline">{t("nav.opsDowntimeKit")}</Link>
-            <Link to="/admin/users" className="hover:underline">{t("nav.adminUsers")}</Link>
+            {NAV.filter((entry) => can(entry.permission)).map((entry) => (
+              <Link key={entry.to} to={entry.to} className="hover:underline">{t(entry.label)}</Link>
+            ))}
+            {NAV.every((entry) => !can(entry.permission)) ? (
+              /*
+               * PLAN 11h T6 — AN EMPTY NAV IS A SENTENCE, NOT A BLANK BAR.
+               *
+               * A person whose role holds none of these permissions is the "dark screens" case the
+               * smoke test found, seen from the other side: before this commit they were shown
+               * sixteen links and every one of them refused. Showing nothing at all would be
+               * correct and unusable — they would report "the app is broken" rather than "my
+               * account has no access", and those two go to different people.
+               */
+              <span className="text-neutral-500">{t("nav.noneAvailable")}</span>
+            ) : null}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <AlertsBell />
