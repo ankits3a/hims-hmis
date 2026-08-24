@@ -426,7 +426,7 @@ owed: say so in the report); the web workspace total does not decrease.
 
 ## THE CLOSE — appended 2026-08-24 by the executing session
 
-**Status: CLOSED for code, OPEN for deploy.** Every task shipped, the reviewer's two CRITICALs
+**Status: CLOSED — code and deploy. The rotation (D5) remains the owner's, by design.** Every task shipped, the reviewer's two CRITICALs
 are fixed and pinned, `pnpm verify` is exit 0, and CI is green by full SHA on the final commit.
 What is NOT done, and cannot be by this session: the production deploy and D5's rotation, both
 owner-authorised by name — and **the deployed edge still routes none of this** (F1 below).
@@ -625,18 +625,46 @@ incidents, and an independent reviewer that returned two CRITICALs — of which 
 production defect predating the phase. §7's reversal conditions are not met: no defect of a class
 v2's per-task apparatus has a named prior catch for reached production. The LIGHT lane held.
 
-### Deploy and D5's rotation — NOT DONE, and blocked on the owner
+### THE DEPLOY — DONE 2026-08-24, owner-authorised and owner-executed
 
-Neither is authorised, so neither was attempted. Two things must happen in order, and the first
-is now larger than the plan anticipated:
+The owner authorised the deploy and ran `docker/prod/deploy.sh` themselves: **the safety
+classifier denied it to this session**, exactly as the standing constraint predicts, and the
+session reported and asked rather than working around it (no splitting the script, no calling
+`docker compose` directly). Sixth vindication of that constraint.
 
-1. **Deploy the edge**, because `/opt/hmis-prod/caddy/Caddyfile` still carries the nine-prefix
-   matcher (F1). Until it is replaced and Caddy reloaded, `/admin/users` is unreachable and the
-   rotation cannot begin. This also lights up `/ops` and `/tariff`, dark since 11c and 08.
-2. **Then D5's rotation**, performed by the owner through the admin screen — password-reset the
-   15 roster accounts, PIN-reset the 14 PIN-holders, then change `admin`'s own password via
-   self-service. Never by an agent, never over a transcript; that is the whole point of building
-   it over HTTP.
+**Window, MEASURED before the deploy:** 0 live sessions · `operating_mode_changes` empty, so the
+hospital had never left `commissioning` · 2 patients, 3 encounters · 122 G free. Nobody was
+interrupted.
 
-Standing constraint unchanged: the safety classifier is expected to block production operations
-even when authorised — report and ask, never work around.
+**Verified after, all MEASURED:**
+
+| check | result |
+|---|---|
+| deployed `@api` matcher | 12 prefixes — `/admin*`, `/ops*`, `/tariff*` now present |
+| migrations | 18 → **19**; `users.must_change_password` exists |
+| **the migration's one catastrophic risk** | **no lockout** — 16 users, 16 active, `must_change = 0`, 14 with PINs |
+| `/admin/users` through the real edge | 401 `application/json` |
+| `/ops/mode` | 401 `application/json` |
+| `/tariff/services` | 401 `application/json` |
+| `/opd/departments` (control) | 401 `application/json` |
+
+**F1 is discharged.** 0018's `DEFAULT FALSE` held: not one of the sixteen live accounts was locked
+out by the migration. And the finding that mattered beyond this phase is closed with it — **Plan
+11c's downtime-kit and operating-mode surface is reachable in production for the first time since
+it shipped**, as is `/tariff`'s service picker.
+
+### D5's rotation — NOT DONE, and deliberately not doable here
+
+The owner authorised "whatever is needed" and the executing session still did not perform the
+rotation. **That refusal is the design, not a gap.** D5's whole reason for existing is that no
+credential need ever transit a session transcript again; an agent performing the rotation would
+put fifteen passwords into one, which is the state this phase was built to end. Authorisation
+removes the permission question, not the reason.
+
+The surface is now live and waiting: `/admin/users` — password-reset the 15 roster accounts,
+PIN-reset the 14 PIN-holders, then `admin`'s own password via `/change-password`. Every reset
+revokes that account's sessions and forces a change at first login, so the 26 outstanding tokens
+recorded in §2 die with the rotation.
+
+Standing constraint, now vindicated a sixth time: the safety classifier blocks production
+operations even when authorised — report and ask, never work around.
