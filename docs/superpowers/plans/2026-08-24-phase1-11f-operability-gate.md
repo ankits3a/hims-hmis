@@ -293,6 +293,8 @@ plus one close-remediation commit.**
 | T4 | `39af9a2` | ROUTINE | GREEN |
 | close sweep — F2's remediation | `1bae1d0` | — | GREEN |
 | review remediation — M1–M4 and seven minors | `30227e6` | — | GREEN |
+| CLOSE, ledger §3.54–§3.57, first ARCHIVE pass | `a35573f` | — | GREEN |
+| the fourth §2.91 claim, in the v2 manual | `<this commit>` | — | *(post-close, see F8)* |
 
 ### Findings
 
@@ -345,6 +347,19 @@ plus one close-remediation commit.**
   Still no ledger entry — the cost was zero both times and §5 already implies the clean tree — but
   the discipline is *finish the block before touching the next thing*, and the honest note is that
   I did not, twice.
+
+- **F8 — MEASURED, and it is F2's twin on the OTHER sweep.** After the reviewer's fourth-claim
+  finding, I grepped the whole repository for the §2.91 claim rather than the files T4 named — and
+  found a **third** standing sentence in `EXECUTE-METHOD.md`, the v2 manual still in force as the
+  HEAVY-lane document: *"Run it in the background on the owner's machine."* T4's acceptance named
+  two sentences (V3 §8 and `ci-watch.sh`'s header) and this manual is neither. **So both of this
+  phase's sweeps missed a location, both times a file the Files list did not name, and both times
+  the miss was found by somebody or something other than the sweep itself.** Amended in place with
+  the rule-6 pattern, pointing at `ci-watch-host.sh` and preserving what genuinely still needs the
+  owner's machine (a rolling watch over `origin/main`, because `ci-watch.sh` drives `gh`). This is
+  now §3.54's second and better specimen, and it converted that entry's rule into a mechanical one:
+  **grep the whole repository for the retired behaviour's name before closing — not the files you
+  edited, not the files you listed, all of them.**
 
 ### Independent review (v3 §3.4)
 
@@ -426,8 +441,8 @@ measurement are unaffected by that.
 ### Mechanical close (v3 §3.5)
 
 - **`pnpm verify` exit VALUE `0`**, read from a file after a detached run, **before every push** —
-  six times, once per commit. That is §2.87's rule, which this phase's own T4 poller then
-  watches; the phase deliberately did not economise here.
+  **seven times, once per commit, including the docs-only ones.** That is §2.87's rule, which this
+  phase's own T4 poller then watches; the phase deliberately did not economise here.
 - **Counts at HEAD**, quoted from the runners' own summary lines: `apps/core` **152 suites /
   1175 tests** · `apps/web` **36 files / 193 tests** · `packages/contracts` **3 / 7**. Against §2's
   baseline that is **+8 core** (T1's four legs, T2's three, M1's verdict leg) and **+3 web** (T2's
@@ -445,8 +460,8 @@ measurement are unaffected by that.
   could not see a module-load-time `requireEnv` anywhere in that new import chain. Loading the
   script under `tsx` with **no `DATABASE_URL` in the environment** succeeds, so the import is inert
   until `main()` runs and `seed:roles` still starts on a box where the variable is supplied late.
-- **CI green by FULL SHA for all six commits, read through `ci-watch-host.sh` itself** — the
-  poller T4 shipped, in three detached runs reporting exit VALUE `0` each time. Which is the
+- **CI green by FULL SHA for all seven commits, read through `ci-watch-host.sh` itself** — the
+  poller T4 shipped, in four detached runs reporting exit VALUE `0` each time. Which is the
   fitting proof: the instrument built to close §2.91's gap discharged §2.55's criterion for the
   phase that built it, from the build host, with no credential — including for `30227e6`, the
   commit that fixed the poller. Its rate-limit guard fired on the two multi-sha runs and raised the

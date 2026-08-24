@@ -142,12 +142,27 @@ references exact to the line.
    was not started) before treating red as a fact about the code. And when CI genuinely cannot run,
    say the criterion is UNDISCHARGED and reproduce its condition by hand — do not quietly drop it.
    **The artifact that does all of this: `docs/superpowers/pipelines/ci-watch.sh`.** Run it in the
-   background on the owner's machine for the duration of every pipeline —
+   background ~~on the owner's machine~~ for the duration of every pipeline —
    `bash docs/superpowers/pipelines/ci-watch.sh &` — and it reports each new commit on `origin/main`
    as GREEN, RED (stop the pipeline) or DID-NOT-RUN, exiting 1 if anything went red. It needs no
    credential on the build host, which is why it is preferred to putting a token there: `gh` is now
    installed on the host but deliberately left unauthenticated, and the host takes tens of thousands
    of SSH probe attempts a week.
+
+   > **AMENDED 2026-08-24 (ledger §2.91, Plan 11f close) — "on the owner's machine" was a
+   > constraint of the TOOL, not of the question.** `ci-watch.sh` drives `gh`, and `gh` is
+   > unauthenticated here, so THIS script does still need the owner's machine. But the repository
+   > is public, and the unauthenticated GitHub API answers over plain `curl` — so a build-host
+   > session is no longer blind to CI. **[`pipelines/ci-watch-host.sh`](pipelines/ci-watch-host.sh)
+   > takes FULL shas and reports green / red / unresolved by exit value (0/1/2), from this host,
+   > with no credential.** Prefer it when you already know which commits you are judging, which is
+   > every close; prefer `ci-watch.sh` when you want a rolling watch over `origin/main` and have
+   > the owner's machine to run it on. Job LOGS still need an authenticated `gh` — that is
+   > diagnosis, not verdict.
+   >
+   > **This was the FOURTH place the retired claim was standing**, found after the same phase had
+   > already swept three others (§3.54): T4's Files list named V3 §8 and `ci-watch.sh`'s header, and
+   > this manual is neither. A sweep scoped by a Files list is scoped by what the author remembered.
 
 **Pre-flight, unchanged and still mandatory** — every probe ships with a negative control that
 must be observed to fail in the same run:
