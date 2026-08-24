@@ -1,4 +1,5 @@
 import type { ModuleManifest } from "../../kernel/modules/manifest";
+import { invoiceSearchProvider } from "./search-provider";
 
 /**
  * The billing module's declared surface (spec §4): the fourteen `billing.*` permissions the
@@ -26,6 +27,8 @@ export const billingManifest: ModuleManifest = {
     "billing.session.own", "billing.session.read",
     "billing.recon.upload", "billing.reports.read", "billing.config.write", "billing.eie.mark",
   ],
+  // PLAN 11h T4 — invoices by number or by patient, on `billing.invoice.read`.
+  search: [invoiceSearchProvider],
   // No subscriptions: billing stays check-on-execute BY DESIGN (Global Constraint 1) — Plan 08.5
   // puts the dispatcher on a clock, but no billing route consumes an event; screens poll instead.
   subscriptions: [],
