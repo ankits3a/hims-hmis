@@ -421,3 +421,215 @@ owed: say so in the report); the web workspace total does not decrease.
 - **The actuals row** (tokens all-sessions, agents, wall clock, catches) against the
   stop-loss, and the v3 pilot measurements §7 names: total tokens vs 2.64M/2.49M/3.34M ·
   reviewer/production defects · transcription-class incidents (target zero).
+
+---
+
+## THE CLOSE — appended 2026-08-24 by the executing session
+
+**Status: CLOSED for code, OPEN for deploy.** Every task shipped, the reviewer's two CRITICALs
+are fixed and pinned, `pnpm verify` is exit 0, and CI is green by full SHA on the final commit.
+What is NOT done, and cannot be by this session: the production deploy and D5's rotation, both
+owner-authorised by name — and **the deployed edge still routes none of this** (F1 below).
+
+### The seven commits
+
+| task | SHA | CI |
+|---|---|---|
+| T1 the choke point learns `active` and `must_change_password` | `0b6a06c` | green |
+| T2 the password policy, one floor for every path | `3eec860` | **RED** (F2) |
+| T3 user administration over HTTP | `61ef959` | green |
+| T4 role assign and revoke over HTTP | `c760586` | **RED** (F2) |
+| T5 `seed-admin` reconciles — MAJOR 1's residual | `05f6d75` | green |
+| T6 the screen and the forced-change flow | `14b66aa` | green |
+| CLOSE remediation — the reviewer's C1/C2 and five MAJORs | `00c3747` | green |
+
+### Findings
+
+**F1 — `/admin*`, `/ops*` and `/tariff*` were proxied by nothing. MEASURED.** Found by the
+independent reviewer as C1. `apps/web/vite.config.ts` and `docker/prod/Caddyfile` route nine
+prefixes between them; the SPA calls eight, and three were in neither list. In production those
+calls fall through to the SPA handler and return `index.html` with HTTP 200. `/admin` is this
+phase's; **`/ops` is Plan 11c's operating-mode and downtime-kit surface and has been dark since
+11c shipped** — one letter from the proxied `/opd`, which is why three reviews missed it — and
+`/tariff` feeds the billing counter's service picker. Fixed in `00c3747` and pinned by a third
+source (the prefixes `apps/web/src` actually requests), which is independent of both lists.
+**The DEPLOYED `/opt/hmis-prod/caddy/Caddyfile` is unchanged** — rule 3 forbids this task writing
+there — so all three stay dark in production until the owner authorises a deploy.
+
+**F2 — two intermediate commits went red on `origin/main`. MEASURED; cause PREDICTION.**
+`3eec860` and `c760586` failed CI while every build-host run was green. Both genuinely executed
+(638 s and 365 s inside `pnpm verify`, against a 413–521 s green band), so this is not §2.59's
+did-not-run. Job logs need an authenticated `gh` and returned 403, so the failing test is **not
+identified**. What is established: `05f6d75` contains all of `c760586`'s code and is green, and
+`c760586` → `05f6d75` differ only in `seed-admin.ts`, which nothing else imports — so T4's red
+**cannot be deterministic in T4's code**. The same shape holds for T2. Leading candidate,
+unconfirmed: `test/auth.e2e.test.ts:77` asserts `expect(elapsed).toBeLessThan(1000)` on a
+**single sample** of one PIN switch (an argon2id verify at memoryCost 19456). It is the only
+single-sample wall-clock assertion in the suite — the two perf tests use best-of-N — and this
+phase added roughly a hundred argon2 operations to the same CI run on a 4-core shared runner.
+**Open item for the owner:** `gh run view 32668118868 --log-failed` settles it in one line.
+
+**F3 — the build host CAN read CI, and the method says it cannot. MEASURED.** v3 §8 rules that
+`ci-watch.sh` stays on the owner's Windows machine because `gh` cannot authenticate here. `gh`
+indeed cannot — but **the repository is public**, so the unauthenticated GitHub API answers
+`/commits/{sha}/check-runs` and `/actions/runs/{id}/jobs` from this host. That is how F2 was
+found at all. Job *logs* remain 403. A ~15-line poller using only `curl` would give a build-host
+session green/red per SHA with no credential.
+
+**F4 — `pnpm verify` was not run at T2 or T4, and both are the commits that went red. MEASURED.**
+At T2 the evidence was typecheck, lint and a 14-suite blast radius; at T4, typecheck, lint and the
+full core suite — but never `packages/contracts` or `apps/web`, and never the whole of `pnpm
+verify`. §2.8's "run the full workspace suite ONCE, at the end" is about a phase; on a CRITICAL
+task whose commit is pushed immediately, "the end" is every commit, because each push is what CI
+judges. See L1.
+
+**F5 — the plan's Files lists were short in five places. MEASURED, all disclosed at commit time.**
+`sessions.ts` and `test/seed-staff.test.ts` (T2), `auth.controller.ts` (T3), `auth.module.ts`
+(T4), `locales/en.json` + `hi.json` (T6). Four were forced by the plan's own design decisions;
+`auth.module.ts` is a genuine plan defect — it put both controller registrations in T3 so the file
+would be touched once, but a controller cannot be registered in the commit before it exists. The
+CLOSE remediation touched four more (`seed-ops.ts`, `seed-roles.ts`, `seed-roles.test.ts`,
+`vite.config.ts`, `Caddyfile`, `auth.tsx`, `caddyfile-parity.test.ts`), all consequences of
+reviewer findings.
+
+**F6 — the T6 locale files were reflowed by a pretty-printer. MEASURED.** A 48-key addition
+landed as a 1017-line diff per file, hiding what changed. No semantic change (48 added, 0 removed,
+0 changed, en/hi key sets identical, verified by flattening both revisions). Restored to the
+house one-line-per-section style in `00c3747`.
+
+**F7 — the password policy's common-password list buys exactly one entry. MEASURED, disclosed at
+authoring.** Nineteen of the twenty entries are shorter than the ten-character floor, so only
+`1234567890` is refused by the list rather than by length. Stated in the module header and pinned
+by its test, so neither can drift. Not a defect; recorded so nobody reads the list as more
+protection than it is.
+
+**F8 — `seed:admin` applies no password policy. MEASURED, stated seam.** D3 enumerates the five
+paths the policy guards and the bootstrap path is not among them, so `ADMIN_PASSWORD` can still be
+four characters. Left open deliberately rather than closed on an executing session's authority;
+written into the script's header. **Owner ruling wanted.**
+
+### Independent review (v3 §3.4)
+
+One fresh-context `general-purpose` reviewer, instructed read-only, read all six commits together.
+**Verdict: BLOCK**, on 2 CRITICAL, 7 MAJOR, 14 MINOR. It went past its brief exactly as the
+ledger's §5 asks — C1's twin doors (`/ops`, `/tariff`) are worth more than C1 itself.
+
+*Tool restriction was by instruction, not by tool set* — v3 §3.4 says "restricted tool set"; a
+`general-purpose` agent forbidden from Edit/Write/commit was chosen over the structurally
+read-only `Explore` because review quality was the binding concern. It wrote nothing. Recorded as
+a deviation.
+
+**Fixed in `00c3747`:** C1 (F1 above) · C2 (the lockout invariant counted holders at ANY scope
+while every route demands hospital scope — two authorised requests produced a permanent lockout;
+mutant DIED both ways against the pre-fix code extracted verbatim from `14b66aa`) · M1 (the same
+check was a TOCTOU under READ COMMITTED — advisory lock added) · M2 (R4's two missing call sites)
+· M4 (`seed:roles` emitted guidance T5 had falsified) · M5 (`AuthProvider` cleared the token on
+the forced-change 403, breaking a reload of `/change-password`).
+
+**Accepted, NOT fixed — carried forward with reasons:**
+
+- **M3 — `ADMIN_ROUTES` is its own source of truth**, so a route added to a controller and not to
+  the table is invisible to all four §3.42 legs. Real, and the reviewer is right that the billing
+  precedent is stronger. The fix (enumerate Nest's router via `DiscoveryService`) is a testing-
+  apparatus change of its own size and belongs to a phase that can verify it, not to a close.
+- **M6 — `auth.users.manage` is a complete escalation to `auth.roles.manage`.** A holder of the
+  first can password-reset a holder of the second and log in as them. The controller header
+  describes the split as if it were a boundary. **This needs an owner ruling** — refuse a reset
+  against a target holding permissions the actor lacks, or state it as a seam. Not a silent fix.
+- **M7 — the gateway's must-change refusal has no executing test.** The plan's T1 acceptance
+  sanctioned unit-level coverage of `findLiveSession`'s contract, which is what shipped; the
+  gateway's own branch is unasserted. Plan-level, not execution-level.
+- **MINOR: `create`'s uniqueness pre-check sits outside its transaction** (concurrent duplicate
+  creates give 500, not 409); **policy-vs-existence ordering differs** between `pinReset` and
+  `passwordReset`; **`admin-users.tsx` does not use `SubmitButton`'s in-flight latch** (§3.45's
+  convention has stopped travelling — a class, not a screen).
+
+### Mechanical close (v3 §3.5)
+
+- **`pnpm verify` at `00c3747`: exit 0**, read from `.verify.exit`, detached. `apps/core`
+  **152 suites / 1160 tests** · `packages/contracts` **3 / 7** · `apps/web` **36 files / 189
+  tests**. Baseline at `587a446` was 148/1110 · 3/7 · 34/175. One pre-existing eslint warning
+  (`scheduler.test.ts:573`), untouched.
+- **No test deleted, no assertion weakened.** Across the whole range the only removed
+  `*.test.ts(x)` lines are five: a widened import, the `LiveSession` `toEqual` widened to include
+  `mustChangePassword`, and the PIN sentinel plus its comment.
+- **Per-commit `git show --stat` against Files lists**: every file accounted for; the five
+  extensions are F5.
+- **Frozen-path audit**: the union of touched files equals the Files lists plus disclosed
+  extensions, and every named file was touched. Empty in both directions.
+- **Clean tree**, no `*.mutant.*` residue, all scratch deleted. Scratch databases
+  `hmis_11e_fresh_1..7` created under rule 7's own-name exception and dropped at close.
+- **CI green by full SHA**: `00c3747` green; F2 records the two intermediate reds.
+
+### Ledger archive-rule pass (v3 §5)
+
+Nothing archived. Every entry consulted this phase still attaches to a live mechanism, and the two
+that looked archivable are not: §2.40's class is structurally impossible under v3 §8's topology
+but its entry is already struck in place in AGENT-RULES rather than the ledger, and §2.59's
+did-not-run distinction was *used* this phase (F2) to avoid misreading two real failures.
+
+### Lessons bound for the ledger
+
+- **L1 — a task that PUSHES is a task that must run what CI runs.** §2.8's "full suite once, at
+  the end" is a phase-level economy that silently became a per-commit gap: T2 and T4 pushed on a
+  blast radius and a core-only run, and both went red (F4). The rule needs the clause: *before the
+  finish block's push, run the same command CI runs.* Cost: two red commits on `origin/main` and
+  an unresolved cause.
+- **L2 — a parity pin between two hand-maintained lists cannot see what is in neither.**
+  `caddyfile-parity.test.ts` was written precisely to stop a prefix going dark in production, and
+  three prefixes went dark under it — one of them an emergency surface, for a whole plan cycle.
+  A pin over N copies of a fact needs an N+1th source that is derived from *use*. (§3.42's closing
+  move, generalised: the leg must read something that is not the thing under test.)
+- **L3 — when a guard and a counter answer the same question, they must be the same code.** C2:
+  `hasPermission` refuses a department-scoped holding at hospital scope; the lockout counter
+  accepted it. Both were correct in isolation and the pair was exploitable. Where an invariant
+  counts who may do something, derive it from the function that decides whether they may.
+- **L4 — deleting a defect means retiring its documentation in the same commit.** T5 removed
+  `seed-admin`'s early return and left eight places asserting it still exists, one of them
+  *emitted to an operator at the moment they need the repair* (M4). §2.78's class, in the emitting
+  direction rather than the reading one.
+- **L5 — v3 §8's topology ruling was measured on `gh` alone.** The build host cannot authenticate
+  `gh`, but it can read a public repo's CI over plain `curl` (F3). "The host cannot see CI" was
+  true of the tool and false of the question.
+
+### Actuals (v3 §6) and the v3 pilot measurements (§7)
+
+| | |
+|---|---|
+| tasks | 6, all shipped, plus one CLOSE remediation commit |
+| commits | 7 |
+| agents | **1** (the independent reviewer, 241,019 tokens, 69 tool uses, 12m 55s) |
+| wall clock | ~13h elapsed across two sessions (2026-08-23 21:14 UTC → 2026-08-24 10:30 UTC), including a session resume |
+| mutants built | **13**, all DIED, each with a shipped control through the same harness |
+| reviewer defects | 2 CRITICAL, 7 MAJOR, 14 MINOR — 6 fixed at close, 3 accepted and carried |
+| defects reaching production | **0 from this phase's code.** F1 is a pre-existing production defect this phase's reviewer found (`/ops` dark since 11c) |
+| transcription-class incidents | **0** — the target §7 names, and the one-document structure is why |
+| stop-loss (2.5M tokens) | **NOT MEASURABLE from inside the session.** See below. |
+
+**On the stop-loss, honestly.** §7's headline measurement is total tokens against 2.64M / 2.49M /
+3.34M, and the executing session cannot read its own billed total — the only number it can quote
+is the reviewer subagent's 241,019. Reporting an invented figure would be worse than reporting
+none. **The owner can read the real number** (`/cost`, or the Anthropic console for
+2026-08-23/24) and should record it here; until then §7's cost comparison for the v3 pilot is
+UNDISCHARGED, and no conclusion about v3's cost claim should be drawn in either direction.
+
+What the pilot *can* report: one agent instead of a compiled pipeline, zero transcription
+incidents, and an independent reviewer that returned two CRITICALs — of which one was a live
+production defect predating the phase. §7's reversal conditions are not met: no defect of a class
+v2's per-task apparatus has a named prior catch for reached production. The LIGHT lane held.
+
+### Deploy and D5's rotation — NOT DONE, and blocked on the owner
+
+Neither is authorised, so neither was attempted. Two things must happen in order, and the first
+is now larger than the plan anticipated:
+
+1. **Deploy the edge**, because `/opt/hmis-prod/caddy/Caddyfile` still carries the nine-prefix
+   matcher (F1). Until it is replaced and Caddy reloaded, `/admin/users` is unreachable and the
+   rotation cannot begin. This also lights up `/ops` and `/tariff`, dark since 11c and 08.
+2. **Then D5's rotation**, performed by the owner through the admin screen — password-reset the
+   15 roster accounts, PIN-reset the 14 PIN-holders, then change `admin`'s own password via
+   self-service. Never by an agent, never over a transcript; that is the whole point of building
+   it over HTTP.
+
+Standing constraint unchanged: the safety classifier is expected to block production operations
+even when authorised — report and ask, never work around.
