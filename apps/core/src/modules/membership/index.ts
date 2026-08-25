@@ -48,3 +48,27 @@ export type {
 } from "./recognition";
 export { MEMBERSHIP_APPROVAL_TYPES, registerMembershipApprovalTypes } from "./approval-types";
 export { INSTRUMENT_SEARCH_PROVIDER_KEY, instrumentSearchProvider } from "./search-providers";
+
+/**
+ * T4 — THE ENTITLEMENT LEDGER AND THE COUPON REDEMPTION, both halves of each.
+ *
+ * `billing` composes the two sources onto its own pricing context (DD2), narrows them with the two
+ * pure functions below, and writes through the three writers — the consume inside the invoice's
+ * transaction, the restore inside the credit note's, the release inside whichever of the two
+ * O-4 triggers fired. Nothing outside this module reads `entitlement_movements` or
+ * `coupon_redemptions`, and nothing inside it updates a row of either.
+ */
+export {
+  consumeEntitlements, counterForWinner, counterLiveAt, entitlementCountersOf, entitlementMovementsOf,
+  narrowToUsableEntitlements, restoreEntitlements,
+} from "./entitlements";
+export type {
+  EntitlementConsume, EntitlementCounterState, EntitlementRestore,
+} from "./entitlements";
+export {
+  couponRedemptionStates, couponRedemptionsOf, narrowToRedeemableCoupons, redeemCoupons,
+  releaseRedemptions,
+} from "./redemptions";
+export type {
+  CouponRedemptionRequest, CouponRedemptionState, ReleasedRedemption, ReleaseTrigger,
+} from "./redemptions";

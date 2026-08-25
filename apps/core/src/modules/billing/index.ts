@@ -10,7 +10,7 @@ export { billingManifest } from "./manifest";
 export { BillingModule } from "./billing.module";
 export { BillingError } from "./errors";
 export type { BillingErrorCode } from "./errors";
-export { issueInvoice, previewInvoice, invoiceSettlement, getInvoice, listInvoices } from "./invoices";
+export { issueInvoice, memberBenefitsEnabled, previewInvoice, invoiceSettlement, getInvoice, listInvoices } from "./invoices";
 export type { IssueInvoiceInput, IssueInvoiceResult, InvoiceRow, InvoiceLineRow, PricedDraft } from "./invoices";
 export { recordReceipt, allocateReceipt, reverseAllocation, patientBalance, listDues, markEnteredInError } from "./receipts";
 export type { PatientBalance, DueRow, ReceiptRow, AllocationRow } from "./receipts";
@@ -18,6 +18,14 @@ export { issueCreditNote, listCreditNotes } from "./credit-notes";
 export type { IssueCreditNoteInput, IssueCreditNoteResult, CreditNoteKind } from "./credit-notes";
 export { requestRefund, issueRefundVoucher, payRefundVoucher } from "./refunds";
 export type { RefundKind, RefundMethod, RefundVoucherRow } from "./refunds";
+/**
+ * PLAN 09 / DD19 — the ONE new export this phase opens, and the only way the accrual consumer
+ * (T6, `modules/partners`) reads billing money. `creditedPaiseOf`, `allocatedPaiseOf` and
+ * `enteredInErrorDocIds` stay private and `invoiceSettlement` cannot separate credited from
+ * allocated, so DD12's credit-aware base needs a reader of its own rather than a relaxed lint rule.
+ */
+export { invoiceAccrualView } from "./accrual-view";
+export type { InvoiceAccrualLine, InvoiceAccrualView } from "./accrual-view";
 export { totalInvoice } from "./totals";
 export type { InvoiceTotals, TaxSummaryRow } from "./totals";
 export { creditShare } from "./credit-share";

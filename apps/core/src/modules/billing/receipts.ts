@@ -6,6 +6,7 @@ import {
 } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
+import { releaseRedemptions } from "../membership";
 import { getPatientSummaries } from "../patients";
 import { assertPaise } from "../tariff";
 import { assertCashAccepted } from "./cash-law";
@@ -679,6 +680,7 @@ export async function markEnteredInError(
     const dead = new Set(reversedIds.map((r) => r.reversalOfId));
 
     const reversedAllocationIds: string[] = [];
+    const touchedInvoiceIds = new Set<string>();
     for (const original of applied) {
       if (dead.has(original.id)) continue;
       // Same patient by construction: an allocation can only ever link a receipt and an invoice
@@ -686,6 +688,33 @@ export async function markEnteredInError(
       // single-patient transaction).
       await appendReversal(tx, actor, original, receipt.patientId, `receipt ${receipt.receiptNo} entered in error`, now);
       reversedAllocationIds.push(original.id);
+      touchedInvoiceIds.add(original.invoiceId);
+    }
+
+    // ═══ PLAN 09 / O-4 — THE COUPON COMES BACK WHEN THE SALE DID NOT HAPPEN ═══
+    //
+    // This is one of O-4's exactly two release triggers (the other is a `correction` credit note,
+    // in `credit-notes.ts`), and the reason is the model's own spine: a coupon redemption that
+    // survived the cancellation of the very sale it was consumed against would be the one
+    // asymmetry in it, and it punishes the member for the hospital's own correction. The fraud
+    // loop that invites (redeem → cancel → redeem) is bounded by what already exists — this mark
+    // requires authority and leaves audit — and the release is itself an event.
+    //
+    // Only the invoices whose live money this mark just reversed, in id order so two concurrent
+    // marks take the coupon catalog locks in one order. An entered-in-error ADVANCE reverses no
+    // allocation and therefore releases nothing, which is right: no sale was cancelled.
+    //
+    // The ENTITLEMENT counter is deliberately NOT restored here. Marking the receipt says the money
+    // was never received; it does not say the consultation was not given, and the invoice still
+    // stands. A service that was not delivered is reversed by a credit note against its LINE, which
+    // is where `restoreEntitlements` hangs (C2/DD9).
+    for (const invoiceId of [...touchedInvoiceIds].sort()) {
+      await releaseRedemptions(tx, actor, {
+        invoiceId,
+        trigger: "entered_in_error",
+        at: now,
+        reason: `receipt ${receipt.receiptNo} entered in error`,
+      });
     }
 
     const markId = newId();

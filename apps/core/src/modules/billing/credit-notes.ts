@@ -8,6 +8,7 @@ import {
 import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
 import { getApproval } from "../../kernel/approvals/worklist";
+import { releaseRedemptions, restoreEntitlements } from "../membership";
 import { assertPaise, DISCOUNT_CATEGORIES, loadRuleConfig, percentAmount, roundTotalToRupee } from "../tariff";
 import { loadBillingConfig } from "./config";
 import { creditShare } from "./credit-share";
@@ -475,6 +476,43 @@ export async function issueCreditNote(
         correlationId: invoice.id, // invoice-scoped emission (Global Constraints)
       }),
     );
+
+    // ═══ PLAN 09 / DD9 — THE SYMMETRIC HALF, IN THE SAME TRANSACTION AS THE DOCUMENT ═══
+    //
+    // O-4 and C1/C2 hook onto the two append-shaped mechanisms this module already has, and this
+    // is one of them. Two DIFFERENT rules, and the difference is the whole ruling:
+    //
+    //  · AN ENTITLEMENT COUNTER is restored for the LINES THIS NOTE CREDITS and for no others
+    //    (C2 — "proportional to the reversed line, never to the invoice"). A partial credit note
+    //    therefore hands back one line's free consult and leaves the other line's consumed. Every
+    //    qty-bearing lane does it; a `clearance_discount` names no lines and restores nothing,
+    //    which is right — it discounts VALUE at the dues counter and reverses no service.
+    //
+    //  · A COUPON REDEMPTION is released ONLY on a `correction` (O-4's narrowing). A partial
+    //    refund releases nothing, "because the sale the coupon was consumed against really did
+    //    happen". `correction_must_exhaust` above is what makes "a correction" and "the invoice's
+    //    full value" the same sentence in this codebase: a correction covers the full remaining
+    //    value of every line still carrying one, so after it every line is credited in full.
+    //
+    // NEITHER IS BEHIND `MEMBER_BENEFITS_ENABLED`, deliberately. That flag governs whether new
+    // benefits are CONSUMED; a row already written must reverse whichever way the flag has since
+    // been moved, or an operator turning the lane off would strand every member's counter at the
+    // value it happened to hold that morning. With the lane never armed both calls are two
+    // queries that find nothing.
+    await restoreEntitlements(tx, actor, {
+      invoiceId: invoice.id,
+      invoiceLineIds: steps.map((step) => step.line.id),
+      at: now,
+      reason: `credit note ${creditNoteNo}`,
+    });
+    if (input.kind === "correction") {
+      await releaseRedemptions(tx, actor, {
+        invoiceId: invoice.id,
+        trigger: "correction_credit_note",
+        at: now,
+        reason: `credit note ${creditNoteNo}`,
+      });
+    }
 
     return {
       creditNoteId,
