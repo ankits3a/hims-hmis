@@ -502,6 +502,20 @@ voiding a document (EIE) and reconciling statements are back-office corrections,
 actions, so they sit with `billing_manager` alone; `billing_manager` is also the `approverRole` on
 all five billing approval types (below), so it needs the generic approvals permissions too.
 
+Plan 09's four `membership.*` strings appear in neither table above, and are assigned by that
+plan's DD18. Reading and recognising an instrument (`membership.instrument.read`,
+`membership.instrument.recognise`) and REQUESTING a grace-honor (`membership.grace_honor.request`)
+go to `front_office`, `front_office_supervisor` and `cashier` — the roles that already register the
+patient and issue the invoice, because a member's benefit not applied at the moment of billing
+cannot be applied afterwards without a credit note, an approval and a queue. APPROVING a
+grace-honor (`membership.grace_honor.approve`) sits with `billing_manager` alone, the role that
+already approves every other billing exception, so the desk that asks can never be the desk that
+grants. Everything else that phase declares — the membership catalog, the holder-book import, the
+reconcile queue, and all seven `partners.*` strings — is deliberately ungranted and recorded in
+`NOT_YET_MODELLED` with its reason: no role model for them is published anywhere, the catalogs are
+config rows loaded at commissioning rather than maintained by a human at a route, and every lane
+they guard ships structurally OFF pending the owner's ruling on the CA/counsel register.
+
 ### Go-live runbook (owner steps, once per environment)
 
 1. `pnpm --filter @hmis/core seed:billing` — the `billing_config` row (dev-placeholder

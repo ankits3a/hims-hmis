@@ -37,6 +37,36 @@ export default tseslint.config(
     },
   },
   {
+    /**
+     * PLAN 09 T1 — BARE `loadConfig()` IS BANNED IN TEST FILES, and this rule is here because F1
+     * cost the last phase a red CI commit and about an hour.
+     *
+     * `apps/core/.env` EXISTS on the build host and can NEVER exist in CI. `loadConfig()` with no
+     * argument reads `process.env` (loading that file first), so a test that calls it resolves
+     * here and throws `SECRET_KEY must be 64 lowercase hex chars` — or `DATABASE_URL` missing —
+     * in CI, for ever. It passes locally, on the machine the author is looking at, and fails on
+     * the machine that decides.
+     *
+     * The shipped workaround is one line and every test in this repository already uses it:
+     *
+     *     loadConfig({ DATABASE_URL: "postgres://unused", SECRET_KEY: process.env.SECRET_KEY! })
+     *
+     * v3 §4 is why this is a lint rule rather than another prose checklist line: a check that
+     * cannot execute is not method. It is `no-restricted-syntax` with an argument-count selector
+     * rather than a custom plugin — the repo has no plugin infrastructure and does not need one
+     * for a single call shape — and it is scoped to test files alone because `main.ts`,
+     * `app.module.ts` and `worker.module.ts` are exactly where a bare call is CORRECT.
+     */
+    files: ["**/*.test.ts"],
+    rules: {
+      "no-restricted-syntax": ["error", {
+        selector: "CallExpression[callee.name='loadConfig'][arguments.length=0]",
+        message:
+          "loadConfig() with no argument reads process.env and apps/core/.env — which exists on the build host and NEVER in CI, so this test passes locally and fails in CI for ever (Plan 09 F1). Pass an explicit env: loadConfig({ DATABASE_URL: \"postgres://unused\", SECRET_KEY: process.env.SECRET_KEY! }).",
+      }],
+    },
+  },
+  {
     // Accommodation for pre-existing committed code (Task 4 test helper destructuring):
     // typescript-eslint's recommended no-unused-vars flags `pool` in
     // apps/core/src/kernel/db/schema/events.test.ts, captured from setupTestDb() per the

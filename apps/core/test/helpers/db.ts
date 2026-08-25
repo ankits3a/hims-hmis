@@ -100,14 +100,61 @@ export async function truncateAll(db: Db): Promise<void> {
   // is `patient_id → patients.id`, and by the two rules above the group whose table it points at
   // must carry its name. `created_by` is plain actor text (the approvals.ts precedent), so it has
   // no claim on the users statement.
+  // ────────────── Plan 09 — SIXTEEN of the seventeen new tables join THIS statement ──────────────
+  //
+  // §3.12 AND §3.35 APPLIED, AND GETTING IT WRONG IS NOT A FLAKE: it is every suite that touches a
+  // patient or an invoice failing with `cannot truncate a table referenced in a foreign key
+  // constraint`, from the very first `truncateAll`. The two rules transcribed above hold here
+  // unchanged — constraint EXISTENCE decides, never row counts and never statement order, and a
+  // table that FKs into an existing group must be named in THAT group's OWN statement.
+  //
+  // EIGHT of the new tables point straight into this group: `membership_instances`,
+  // `covered_members`, `patient_match_queue` and `attribution_ids` at `patients`;
+  // `entitlement_movements`, `coupon_redemptions`, `commission_accruals` and
+  // `commission_accrual_subjects` at `invoices` / `invoice_lines`.
+  //
+  // THE OTHER EIGHT ARE DRAGGED IN BY THE SAME RULE ONE HOP OUT, and this is the half that is easy
+  // to get wrong: truncating a table requires every table that POINTS AT IT to be in the same
+  // statement too. `membership_plans`, `coupon_definitions` and `holder_book_imports` are pointed
+  // at by `membership_instances`; `entitlement_counters` by `entitlement_movements`;
+  // `counterparties` by almost everything on the partner side; `partner_agreements` by the two
+  // accrual tables; and `partner_ref_map` and `receivable_expectations` point at `counterparties`
+  // and `attribution_ids`, which are in. The closure is therefore the whole membership + partner
+  // graph minus `import_quarantine` — exactly the shape `billing`'s fourteen names took, and for
+  // exactly the same reason.
+  //
+  // NO `restart identity`, deliberately. This statement has never carried one, the billing tables
+  // in it have `seq` bigserials of their own, and adding it now would silently change what every
+  // shipped test reading a billing `seq` observes. Plan 09's own tests assert seq ORDER, not seq
+  // VALUES, which is what makes that safe rather than merely convenient.
+  //
+  // AND THE `users` STATEMENT ABOVE NEEDS NO CHANGE AT ALL. That is DD17 paying for itself: every
+  // actor column in this phase — `coupon_redemptions.actor_id`, `entitlement_movements.actor_id`,
+  // `patient_match_queue.resolved_by`, `holder_book_imports.imported_by`,
+  // `attribution_ids.issued_by`, `receivable_expectations.updated_by` — is PLAIN TEXT, so no FK
+  // anywhere in these seventeen tables points at `users`, and seventeen tables cost that statement
+  // nothing.
   await db.execute(
-    sql`truncate table retention_legal_holds, notifications, opd_prescriptions, opd_vitals, opd_queue_entries, opd_encounters, opd_appointments,
+    sql`truncate table patient_match_queue, covered_members, entitlement_movements, entitlement_counters,
+        coupon_redemptions, coupon_definitions, membership_instances, membership_plans, holder_book_imports,
+        commission_accruals, commission_accrual_subjects, receivable_expectations, partner_ref_map,
+        attribution_ids, partner_agreements, counterparties,
+        retention_legal_holds, notifications, opd_prescriptions, opd_vitals, opd_queue_entries, opd_encounters, opd_appointments,
         opd_queue_sessions, opd_doctor_leaves, opd_doctor_schedules, opd_doctors, opd_rooms, opd_departments,
         opd_config, allocations, receipt_tenders, receipts, credit_note_lines, credit_notes, invoice_lines,
         invoices, refund_vouchers, cashier_sessions, entered_in_error_marks, recon_batches, daily_closes,
         idempotency_keys, document_series, billing_config, patient_merge_requests, patient_guardians, patient_allergies,
         patient_photos, patients, registration_config`,
   );
+  // PLAN 09 — `import_quarantine` is the SEVENTEENTH table and the only one with no foreign key in
+  // either direction: its `batch_id` is plain text because it names a `holder_book_imports.id`
+  // today and a partner statement's own reference when T7 lands, and a column that must point at
+  // two different parents can carry an FK to neither (see schema/membership.ts). By §3.35/§3.12 it
+  // therefore has no claim on any group's statement and takes its own — the `search_audit` and
+  // `auth_throttle` precedents above, for the same reason. It MUST be here: a leftover quarantined
+  // row from one import test makes the next test's "this drop quarantined exactly two rows"
+  // assertion read four.
+  await db.execute(sql`truncate table import_quarantine`);
   await db.execute(
     sql`truncate table tariff_items, regulated_prices, adjustment_rules, gst_config, gst_settings,
         tariff_versions, services`,

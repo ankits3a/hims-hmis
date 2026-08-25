@@ -13,6 +13,8 @@ import { patientsManifest } from "../../modules/patients";
 import { tariffManifest } from "../../modules/tariff";
 import { opdManifest } from "../../modules/opd";
 import { billingManifest } from "../../modules/billing";
+import { membershipManifest } from "../../modules/membership";
+import { partnersManifest } from "../../modules/partners";
 
 /**
  * Plan 11d / D2, Book row V4 — `ALL_MANIFESTS` is the ONE list, and a manifest installed outside
@@ -27,7 +29,7 @@ import { billingManifest } from "../../modules/billing";
  * §2.49 — THIS TEST CAN PASS VACUOUSLY AND MUST NOT. Three things prevent it: both parsers THROW
  * rather than return `[]` on a shape they do not recognise (a missing `for … of ALL_MANIFESTS`
  * loop, a `registry.install()` argument this file cannot resolve to a manifest, an install block
- * with no calls at all); the first test pins the census — nine manifests, by key, IN ORDER —
+ * with no calls at all); the first test pins the census — eleven manifests, by key, IN ORDER —
  * BEFORE anything is compared; and the identifier→manifest map below is deliberate friction, so
  * a new manifest cannot be installed anywhere without this file being edited in the same commit.
  *
@@ -55,6 +57,8 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   alertsManifest,
   opsManifest,
   notifyManifest,
+  membershipManifest,
+  partnersManifest,
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -99,7 +103,7 @@ function manifestKeys(identifiers: string[], label: string): string[] {
 }
 
 describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
-  it("declares exactly nine manifests, by key, in app.module.ts's original install order", () => {
+  it("declares exactly eleven manifests, by key, in app.module.ts's original install order", () => {
     expect(ALL_MANIFESTS.map((m) => m.key)).toEqual([
       "auth",
       "workflow",
@@ -110,13 +114,16 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "billing",
       "alerts",
       "ops",
+      // PLAN 09 T1 — appended, so the nine above keep the order they were installed in.
+      "membership",
+      "partners",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(9);
+    expect(ALL_MANIFESTS).toHaveLength(11);
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(9);
+    expect(registry.all()).toHaveLength(11);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -129,7 +136,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly two enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly four enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -138,7 +145,20 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
 
     // (1) The worker OMITS `ops`. `opsManifest` declares no subscription and the worker serves no
     //     ops route, so installing it there would catalog nothing new and subscribe to nothing.
-    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops"]);
+    //
+    // (1a) PLAN 09 T1 — the worker also omits `membership`, permanently and for the same reason:
+    //      the module is check-on-execute and declares no subscription at all.
+    //
+    // (1b) PLAN 09 T1 — the worker omits `partners` UNTIL T6, and that omission is temporary and
+    //      dated on purpose (§6.0 S2). DD7 requires the accrual consumer to declare its four
+    //      subscriptions unconditionally, so that a later flag flip replays from a cursor that has
+    //      been advancing all along; but `buildSubscriptionBus` (kernel/worker/jobs.ts) makes a
+    //      declared subscription with no matching handler a BOOT ERROR. `partnersManifest`
+    //      therefore ships with `subscriptions: []` and app-side only, and **T6 adds the four
+    //      subscriptions, the handler, the worker install and this census in ONE commit** — the
+    //      Plan 10 D13 lesson, which is why `notifyManifest` below lives only where its handler is.
+    //      When T6 lands, `partners` moves out of this line and into the shared list at the bottom.
+    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "partners"]);
 
     // (2) The worker ADDS `notify`. It declares five `kernel.notify` subscriptions, and
     //     `buildSubscriptionBus` (kernel/worker/jobs.ts) makes a declared subscription with no

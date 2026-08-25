@@ -75,9 +75,11 @@ export type NotYetModelled = { permission: string; reason: string };
  *
  * `test/seed-roles.test.ts` parses BOTH tables out of `README.md` and compares them against this
  * constant in both directions, so the README cannot drift from it and it cannot drift from the
- * README. The eight `patients.*` pairs are the ONLY rows in this table that appear in neither
- * markdown table, and they are pinned by their own leg of that test against the README prose line
- * that authorises them — a row that is neither table-derived nor one of those eight FAILS.
+ * README. THREE sets of rows appear in NEITHER markdown table — owner ruling 7's eight
+ * `patients.*` pairs, the 2026-08-23 workflow ruling's seven, and Plan 09 / DD18's ten
+ * `membership.*` — and each is pinned by its own named constant in that test against a README
+ * prose line the test quotes VERBATIM. A row that is neither table-derived nor one of those
+ * twenty-five FAILS, which is what stops the subset scoping becoming a hole.
  */
 export const ROLE_MODEL: readonly RoleGrants[] = [
   {
@@ -94,6 +96,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "patients.register",
       "patients.read",
       "patients.update",
+      // PLAN 09 / DD18 — the counter's three. This desk registers the patient who presents a card,
+      // so it is where recognition has to work; requesting a grace-honor goes with it because the
+      // person holding the card is standing there. Approving one does NOT (see billing_manager).
+      "membership.instrument.read",
+      "membership.instrument.recognise",
+      "membership.grace_honor.request",
     ],
   },
   {
@@ -109,6 +117,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "patients.register", // owner ruling 7
       "patients.read",
       "patients.update",
+      // PLAN 09 / DD18 — the same three as `front_office`: a supervisor who cannot do what the
+      // desk does cannot cover it.
+      "membership.instrument.read",
+      "membership.instrument.recognise",
+      "membership.grace_honor.request",
     ],
   },
   {
@@ -163,6 +176,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "billing.refund.request",
       "billing.refund.pay",
       "billing.session.own",
+      // PLAN 09 / DD18 — the counter that ISSUES THE INVOICE is the one that must recognise the
+      // card at the moment of billing, because a benefit not applied then cannot be applied
+      // afterwards without a credit note, an approval and a queue (§1's ordering argument).
+      "membership.instrument.read",
+      "membership.instrument.recognise",
+      "membership.grace_honor.request",
     ],
   },
   {
@@ -180,6 +199,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // `approverRole` on all five billing approval types, so it needs the generic approvals pair.
       "approvals.requests.read",
       "approvals.requests.decide",
+      // PLAN 09 / DD18 — approving a grace-honor belongs with the role that already approves every
+      // other billing exception, and it is the ONLY membership string this role gets. It is not
+      // given `membership.instrument.read`: the approval carries its own subject, and minting a
+      // read of every member's instrument to authorise one exception is authority nobody asked for.
+      "membership.grace_honor.approve",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -217,7 +241,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
 ];
 
 /**
- * THE THIRTEEN DECLARED PERMISSIONS NO ROLE HOLDS YET, EACH WITH ITS REASON.
+ * THE TWENTY-THREE DECLARED PERMISSIONS NO ROLE HOLDS YET, EACH WITH ITS REASON.
  *
  * SEVENTEEN until 2026-08-23, when the owner ruled the four `workflow.definitions.*` strings onto
  * roles and this list shrank by four — exactly the mechanism the last paragraph below predicted.
@@ -285,6 +309,48 @@ export const NOT_YET_MODELLED: readonly NotYetModelled[] = [
       "yet names a human role that creates one directly (the billing table grants only the " +
       "read/decide pair, to billing_manager)",
   },
+  // ──────────────────────────────── PLAN 09 / DD18 — the ten ────────────────────────────────
+  //
+  // DD18 grants the counter's four (see ROLE_MODEL above) and enters everything partner-facing
+  // here, WITH ITS REASON. The reason is the tariff precedent word for word, and it has three
+  // parts that all have to be true at once: no role model for these is published anywhere, the
+  // pilot's catalogs and agreements are seeded by script rather than maintained by a human at a
+  // route (DD3), and every lane they guard ships structurally OFF pending the owner's O-8 ruling
+  // on the CA/counsel register. Granting them now would mint authority nobody has asked for, on a
+  // trust hospital, for routes that refuse to do anything.
+  //
+  // AND THIS LIST IS STILL NOT AN EXCEPTIONS LIST. The day the owner rules O-8, these entries
+  // leave it, the census below fails, and the commit that grants them has to say so. That is the
+  // mechanism working.
+  ...[
+    "membership.catalog.manage",
+    "membership.import.run",
+    "membership.reconcile.operate",
+  ].map((permission) => ({
+    permission,
+    reason:
+      "no membership role model is published anywhere; the pilot's plan and coupon catalogs are " +
+      "CONFIG ROWS loaded at commissioning rather than maintained by a human at a route (Plan 09 " +
+      "DD3), the holder book is imported by an operator command rather than from a screen, and " +
+      "no owner ruling exists yet for who works the reconcile queue (Plan 09 DD18)",
+  })),
+  ...[
+    "partners.counterparty.manage",
+    "partners.agreement.manage",
+    "partners.attribution.issue",
+    "partners.ledger.read",
+    "partners.statement.import",
+    "partners.receivable.operate",
+    "partners.pnl.read",
+  ].map((permission) => ({
+    permission,
+    reason:
+      "every partner-facing lane ships structurally OFF pending the owner's ruling on the " +
+      "CA/counsel register (Plan 09 O-8, deliberately NOT taken this phase): commission accrual, " +
+      "receivable expectations and coupon issuance are each gated by a config flag that defaults " +
+      "false, no role model for partner administration is published anywhere, and the pilot's " +
+      "partners and agreements are seeded at commissioning (Plan 09 DD3/DD18)",
+  })),
 ];
 
 /**

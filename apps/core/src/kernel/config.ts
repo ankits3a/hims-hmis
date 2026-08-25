@@ -116,6 +116,42 @@ const configSchema = z.object({
   SPEECH_PROVIDER: z.enum(["", "workers-ai"]).default(""),
   SPEECH_ACCOUNT_ID: z.string().default(""),
   SPEECH_API_TOKEN: z.string().default(""),
+  /**
+   * PLAN 09 / DD14 — THE FIVE STRUCTURAL-OFF FLAGS. Every one DEFAULTED, every one a two-string
+   * enum, and neither of those is a style choice.
+   *
+   * DEFAULTED because of the B1 scar: this schema is parsed through the WHOLE environment by every
+   * caller of `loadConfig()`, so a key that required a value would break every deployment and every
+   * CI job that has no `.env` entry for it. **No .env change is needed anywhere for this plan.**
+   *
+   * `z.enum(["true","false"])` AND NEVER `z.coerce.boolean()`, which reads the string "false" as
+   * TRUE (a non-empty string is truthy) — so the one value an operator would most plausibly write
+   * to keep a lane OFF would have switched it on. Anything else — "1", "yes", "TRUE" — fails config
+   * parsing loudly at boot rather than being guessed at in either direction. `RETENTION_ENABLED`
+   * above is the shipped precedent and this is the same spelling deliberately.
+   *
+   * WHAT EACH ONE IS OFF FOR, and WHICH GATE LIFTS IT — the mapping is stated once, here, and
+   * nowhere else (DD14/O-8):
+   */
+  /** Selling an instrument at the hospital counter. OFF by the standing ruling that sales open
+   *  NEXT phase; E-32's guardrails ship with this plan regardless. Lifted by the owner when the
+   *  sale lane opens. */
+  MEMBERSHIP_SALES_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  /** Composing the two membership `AdjustmentSource`s into `priceDraft` (DD2). OFF until DD8's
+   *  ORDERED flip has run — recognition deployed, import run, reconcile queue cleared — because a
+   *  counter discount cannot be backfilled, so arming benefits before recognition is live means
+   *  refusing a paying member or honouring off-system. Not a legal gate: an operational ordering. */
+  MEMBER_BENEFITS_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  /** Whether the accrual consumer WRITES payable rows (DD7). The consumer registers and advances
+   *  its cursor either way — that is the whole point — so this flag decides writes, never delivery.
+   *  Lifted only by the owner, on CA/counsel register items 2 and 3 (O-8, NOT ruled this phase). */
+  COMMISSION_ACCRUAL_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  /** Receivable expectation creation and statement matching. Lifted by the owner on CA/counsel
+   *  register item 2 (O-8). */
+  RECEIVABLE_COMMISSION_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  /** Issuing NEW coupon codes (campaign creation). Redeeming an already-issued coupon is ON and
+   *  unflagged. Lifted by the owner on CA/counsel register item 5 and the advertising rules (O-8). */
+  COUPON_ISSUANCE_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
 });
 
 export type AppConfig = {
@@ -148,6 +184,17 @@ export type AppConfig = {
   speechProvider: "" | "workers-ai";
   speechAccountId: string;
   speechApiToken: string;
+  /**
+   * Plan 09 / DD14. All five FALSE unless an operator says otherwise, in as many letters. Where
+   * each one takes effect is its own task's business — `priceDraft` for benefits (T4), the accrual
+   * handler for the two commission flags (T6/T7) — and that is where the take-effect legs live,
+   * not at the parse (GC10, the NOTIFY_STUCK_AFTER_MS scar).
+   */
+  membershipSalesEnabled: boolean;
+  memberBenefitsEnabled: boolean;
+  commissionAccrualEnabled: boolean;
+  receivableCommissionEnabled: boolean;
+  couponIssuanceEnabled: boolean;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -178,5 +225,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     speechProvider: parsed.SPEECH_PROVIDER,
     speechAccountId: parsed.SPEECH_ACCOUNT_ID,
     speechApiToken: parsed.SPEECH_API_TOKEN,
+    membershipSalesEnabled: parsed.MEMBERSHIP_SALES_ENABLED,
+    memberBenefitsEnabled: parsed.MEMBER_BENEFITS_ENABLED,
+    commissionAccrualEnabled: parsed.COMMISSION_ACCRUAL_ENABLED,
+    receivableCommissionEnabled: parsed.RECEIVABLE_COMMISSION_ENABLED,
+    couponIssuanceEnabled: parsed.COUPON_ISSUANCE_ENABLED,
   };
 }

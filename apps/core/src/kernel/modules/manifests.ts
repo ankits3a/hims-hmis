@@ -8,6 +8,8 @@ import { opdManifest } from "../../modules/opd";
 import { billingManifest } from "../../modules/billing";
 import { alertsManifest } from "../alerts/manifest";
 import { opsManifest } from "../ops/manifest";
+import { membershipManifest } from "../../modules/membership";
+import { partnersManifest } from "../../modules/partners";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -56,4 +58,11 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   billingManifest,
   alertsManifest,
   opsManifest,
+  // PLAN 09 T1 — the two new modules, appended so the order above is untouched (see the paragraph
+  // on ORDER). `partnersManifest` ships with `subscriptions: []` and is installed HERE AND NOT IN
+  // THE WORKER until T6 lands its handler in the same commit as its four subscriptions: a declared
+  // subscription with no matching handler is a BOOT ERROR by design (§6.0 S2, DD7).
+  // `membershipManifest` declares no subscription at all — the module is check-on-execute.
+  membershipManifest,
+  partnersManifest,
 ];

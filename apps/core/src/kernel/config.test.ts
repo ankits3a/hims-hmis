@@ -87,4 +87,65 @@ describe("loadConfig", () => {
     expect(cfg.retentionEventsMonths).toBe(24);
     expect(cfg.notifyRetainDays).toBe(30);
   });
+
+  /**
+   * PLAN 09 / DD14 — THE FIVE STRUCTURAL-OFF FLAGS.
+   *
+   * WHAT THIS BLOCK DOES *NOT* DISCHARGE, said here for the same reason the retention block above
+   * says it: a NON-DEFAULT value must change BEHAVIOUR through the production wiring, and parsing
+   * was never the thing in doubt (§2.60(a), the `NOTIFY_STUCK_AFTER_MS` scar). The take-effect legs
+   * belong to the tasks that wire each flag — `priceDraft` for benefits (T4), the accrual handler
+   * for the two commission flags (T6/T7) — and each of those is an Assertion Book row of its own
+   * (D1, F4, G5).
+   *
+   * WHAT IT DOES DISCHARGE is the half that is this task's, and it is load-bearing: the defaults
+   * resolve from an environment containing NONE of the five keys (the B1 scar — nothing new may be
+   * required in any `.env`, on the server or in CI), every one of them is FALSE, and the
+   * `z.coerce.boolean()` trap is refused in both directions.
+   */
+  const FLAGS = [
+    ["MEMBERSHIP_SALES_ENABLED", "membershipSalesEnabled"],
+    ["MEMBER_BENEFITS_ENABLED", "memberBenefitsEnabled"],
+    ["COMMISSION_ACCRUAL_ENABLED", "commissionAccrualEnabled"],
+    ["RECEIVABLE_COMMISSION_ENABLED", "receivableCommissionEnabled"],
+    ["COUPON_ISSUANCE_ENABLED", "couponIssuanceEnabled"],
+  ] as const;
+
+  it("defaults all five Plan 09 flags to FALSE from an env carrying none of them", () => {
+    // `base` is DATABASE_URL + SECRET_KEY and nothing else — which is the whole point.
+    for (const key of FLAGS.map(([envKey]) => envKey)) {
+      expect(Object.keys(base)).not.toContain(key);
+    }
+    const cfg = loadConfig(base);
+    expect(cfg.membershipSalesEnabled).toBe(false); // sales open next phase
+    expect(cfg.memberBenefitsEnabled).toBe(false); // DD8's ordered flip has not run
+    expect(cfg.commissionAccrualEnabled).toBe(false); // CA/counsel register 2+3 — O-8, owner
+    expect(cfg.receivableCommissionEnabled).toBe(false); // CA/counsel register 2 — O-8, owner
+    expect(cfg.couponIssuanceEnabled).toBe(false); // CA/counsel register 5 — O-8, owner
+  });
+
+  it("honours each Plan 09 flag ONLY for the exact strings 'true' and 'false'", () => {
+    for (const [envKey, configKey] of FLAGS) {
+      expect(loadConfig({ ...base, [envKey]: "true" })[configKey]).toBe(true);
+      expect(loadConfig({ ...base, [envKey]: "false" })[configKey]).toBe(false);
+      // The `z.coerce.boolean()` trap, pinned per flag: under coercion "false" is a non-empty
+      // string and therefore TRUE, which would arm a lane for an operator writing the value that
+      // means off — on a trust hospital, for a lane the CA has not signed off. Anything ambiguous
+      // fails loudly instead.
+      expect(() => loadConfig({ ...base, [envKey]: "1" })).toThrow();
+      expect(() => loadConfig({ ...base, [envKey]: "TRUE" })).toThrow();
+      expect(() => loadConfig({ ...base, [envKey]: "" })).toThrow();
+    }
+  });
+
+  it("one flag ON leaves the other four OFF — they are five gates, not one switch", () => {
+    // DD14 maps each flag to a different gate (two of them to different CA/counsel register
+    // items), so a shared `enabled` would be a silent widening of whichever ruling came first.
+    const cfg = loadConfig({ ...base, MEMBER_BENEFITS_ENABLED: "true" });
+    expect(cfg.memberBenefitsEnabled).toBe(true);
+    expect(cfg.membershipSalesEnabled).toBe(false);
+    expect(cfg.commissionAccrualEnabled).toBe(false);
+    expect(cfg.receivableCommissionEnabled).toBe(false);
+    expect(cfg.couponIssuanceEnabled).toBe(false);
+  });
 });
