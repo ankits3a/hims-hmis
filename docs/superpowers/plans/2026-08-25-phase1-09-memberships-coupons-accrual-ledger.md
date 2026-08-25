@@ -1008,6 +1008,21 @@ all resolved into the document below in the same commit that carries the pipelin
   rather than only in DD19 because it is a **Files-list** consequence, and the pre-flight compares
   Files lists.
 
+- **S16 / S17 — found by the PRE-FLIGHT, which is the point of running one.** 101 assertions, and
+  §2.54's probe caught **exactly the drift it exists to catch**: the script's T2 array carried
+  `appsky/core/…/instruments.test.ts` — one transposed character, a path that resolves nowhere.
+  Under §2.25 the generated frozen block would have **forbidden the correct path and permitted a
+  nonexistent one**, and the coder would have obeyed the brief, correctly, while the work did not
+  happen. That is §2.54's specimen reproduced in a new plan, caught before a brief shipped.
+  It also caught **the phase document itself in T8's Files list** — removed, because v3 §1.5 makes
+  CLOSE the main session's: a task agent editing it mid-pipeline collides with the session folding
+  the relay in, and hands the gate report to the thing being gated.
+  **A third failure was the PROBE's own** and is recorded because §2.52 warns about exactly it: the
+  mirror-detector's needle matched the RULES pointer's own sentence saying the mirror is STRUCK, so
+  a correct script failed a broken instrument. Split into two assertions — every prompt must TELL
+  the agent rule 22 is struck, and none may INSTRUCT a mirror — with a negative control that fires
+  on rule 22(a)'s own struck wording.
+
 - **Item 5 — tasks with no in-pipeline verdict (§2.50).** One: T8, the only ROUTINE task. It gets a
   mechanical-check agent so the wave-stall break stays alive for it. T1 applies a migration and is
   CRITICAL, so it already has a gate.
@@ -1022,8 +1037,16 @@ all resolved into the document below in the same commit that carries the pipelin
 - **Item 4 — what the plan asserts about anything the spike proves unused.** Held open until the
   spike reports; §2.49's vacuous-assertion check runs against its answers, and the one already
   identified is T8's export-shape test, which is given a synthetic leg that can fail.
-- **Items 8 and 9 — the script's `files` arrays and CI per commit.** Discharged by the pre-flight
-  and by `ci-watch-host.sh` respectively; both are named in §8's mechanical verification.
+- **Items 8 and 9 — the script's `files` arrays and CI per commit. DISCHARGED BY EXECUTION.** The
+  pre-flight ([`pipelines/plan-09-memberships.preflight.js`](../pipelines/plan-09-memberships.preflight.js))
+  passed **101 assertions, 0 failures**, exit VALUE 0 read unpiped. It parses this document's own
+  §6 fenced Files lists and compares them to the script's `files` arrays **per task, both
+  directions** (§2.54); asserts every one of the seventeen rendered prompts carries the rules
+  pointer, the evidence block, the relay, the baseline and F1 (§2.32 — iterating `spawned`, never
+  `coders.concat(gates)`); confirms one task per wave (§2.62), a judge for every task (§2.50), and
+  that an infrastructure death never promotes the ladder (§2.1); and ships **eight negative
+  controls, every one observed to fail in the same run.** CI is watched per commit by
+  `ci-watch-host.sh`.
 
 ### T1 — CRITICAL — schema, both modules, the flags, and the lint rule F1 asked for
 
@@ -1517,8 +1540,12 @@ apps/core/test/caddyfile-parity.test.ts
 apps/web/src/locales/en.json
 apps/web/src/locales/hi.json
 README.md
-docs/superpowers/plans/2026-08-25-phase1-09-memberships-coupons-accrual-ledger.md
 ```
+**The phase document is NOT in this list, and that is a correction the pre-flight forced.** v3 §1.5
+makes CLOSE the main session's — appended as the phase runs, folding in the relay. A task agent
+editing it mid-pipeline would collide with that and would hand the gate report to the thing being
+gated. §7 and CLOSE are the session's, always.
+
 
 **Acceptance.** No exported field resolves to a patients-table column, proven by walking the row
 SHAPE rather than by reading the code · no counter screen renders a sales figure · the P&L reads
