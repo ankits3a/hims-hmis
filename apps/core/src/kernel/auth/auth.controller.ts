@@ -1,6 +1,6 @@
 import {
-  BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, HttpException, Inject,
-  Param, Post, Req, Res, UnauthorizedException,
+  BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode,
+  HttpException, Inject, NotFoundException, Param, Post, Req, Res, UnauthorizedException,
 } from "@nestjs/common";
 import type { Response } from "express";
 import { eq } from "drizzle-orm";
@@ -18,7 +18,11 @@ import { clearThrottle, recordThrottleFailure, throttleRetryAt } from "./throttl
 import type { ThrottleKind } from "./throttle";
 import { confirmTotp, enrollTotp, recordSecondFactor, verifyTotpCode } from "./totp";
 import { useBreakGlass, pendingReviews, recordReview } from "./break-glass";
-import { grantTempRole, emergencyElevate } from "./temp-roles";
+import {
+  ElevationAlreadyReviewedError, RoleNotTemporarilyGrantableError, UnknownElevationError,
+  UnknownRoleError, emergencyElevate, grantTempRole, pendingElevationReviews,
+  recordElevationReview,
+} from "./temp-roles";
 import { CurrentActor, Public, RequirePermission, AuthedRequest } from "./decorators";
 import { users } from "../db/schema";
 import { withTx } from "../db/client";
@@ -60,6 +64,30 @@ const badgeSwitchSchema = z.object({
   badgeToken: z.string().min(1),
   terminalId: z.string().min(1),
 });
+
+/**
+ * Maps `temp-roles.ts`'s two refusals onto HTTP, in ONE place because both grant routes raise both.
+ *
+ * A refused elevation is a 403 rather than a 400: the request was well-formed and the caller was
+ * authenticated: what failed is authority, and `RoleNotTemporarilyGrantableError`'s message is
+ * written to be read by the person who hit it. An unknown role is a 404 for the reason
+ * `roles-admin.controller.ts` gives for the same case — roles are code-owned, so a key this
+ * deployment has not seeded is a typo or an unrun seed, and both deserve a sentence rather than
+ * the foreign-key 500 this used to be.
+ */
+async function asRefusal<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (e) {
+    if (e instanceof RoleNotTemporarilyGrantableError) {
+      throw new ForbiddenException({ code: "role_not_temporarily_grantable", message: e.message });
+    }
+    if (e instanceof UnknownRoleError) {
+      throw new NotFoundException({ code: "role_not_found", message: e.message });
+    }
+    throw e;
+  }
+}
 
 @Controller("auth")
 export class AuthController {
@@ -295,7 +323,7 @@ export class AuthController {
       reason: z.string().min(3), ttlMinutes: z.number().int().positive(),
     }).safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
-    const { grantId, expiresAt } = await grantTempRole(this.db, this.cfg, actor, parsed.data);
+    const { grantId, expiresAt } = await asRefusal(() => grantTempRole(this.db, this.cfg, actor, parsed.data));
     return { grantId, expiresAt: expiresAt.toISOString() };
   }
 
@@ -306,7 +334,40 @@ export class AuthController {
     }).safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
     if (actor.type !== "user") throw new ForbiddenException("emergency elevation is for human users");
-    const { grantId, expiresAt } = await emergencyElevate(this.db, this.cfg, actor, parsed.data);
+    const { grantId, expiresAt } = await asRefusal(() => emergencyElevate(this.db, this.cfg, actor, parsed.data));
     return { grantId, expiresAt: expiresAt.toISOString() };
+  }
+
+  /**
+   * THE MANDATORY REVIEW, WHICH HAS NOT EXISTED UNTIL NOW.
+   *
+   * `break-glass/pending` above is this route's precedent and its shape is copied exactly. The
+   * permission is NOT copied: `auth.elevation.review` is its own string precisely so that it stays
+   * off `ELEVATABLE_AUTH_PERMISSIONS`, which is what stops a person elevating into the ability to
+   * clear their own elevation (`manifest.ts`, `temp-roles.ts`).
+   */
+  @RequirePermission("auth.elevation.review", "hospital")
+  @Get("emergency-elevations/pending")
+  async elevationsPending(): Promise<{ items: Awaited<ReturnType<typeof pendingElevationReviews>> }> {
+    return { items: await pendingElevationReviews(this.db) };
+  }
+
+  @RequirePermission("auth.elevation.review", "hospital")
+  @Post("emergency-elevations/:id/review")
+  @HttpCode(204)
+  async reviewElevation(
+    @CurrentActor() actor: Actor,
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ): Promise<void> {
+    const parsed = z.object({ note: z.string().min(1) }).safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    try {
+      await recordElevationReview(this.db, id, actor, parsed.data.note);
+    } catch (e) {
+      if (e instanceof UnknownElevationError) throw new NotFoundException({ code: "elevation_not_found", message: e.message });
+      if (e instanceof ElevationAlreadyReviewedError) throw new ConflictException({ code: "already_reviewed", message: e.message });
+      throw e;
+    }
   }
 }

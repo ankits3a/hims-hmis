@@ -30,6 +30,30 @@ export const emergencyElevationUsed = defineEvent(
   z.object({ grantId: z.string(), roleKey: z.string(), reason: z.string(), expiresAt: z.string() }),
 );
 
+/**
+ * THE OTHER HALF OF `emergency_elevation.used`, missing since Plan 02.
+ *
+ * The staffing spec's workforce mechanism 6 names the act as "loudly evented + MANDATORY REVIEW".
+ * `emergency_elevation.used` was the loud half; nothing recorded that a human had ever looked. A
+ * review that leaves no event is indistinguishable from no review at all once the row is updated,
+ * so the disposition is evented like every other decision in this system.
+ *
+ * `roleKey` rides along rather than being joined for at read time: the grant row is swept and the
+ * ROLE could later be deleted, and an audit line that cannot say WHAT authority was taken is not
+ * an audit line.
+ */
+export const emergencyElevationReviewed = defineEvent(
+  "emergency_elevation.reviewed",
+  "auth",
+  z.object({
+    grantId: z.string(),
+    userId: z.string(),
+    roleKey: z.string(),
+    reviewedBy: z.string(),
+    note: z.string(),
+  }),
+);
+
 export const tempRoleGranted = defineEvent(
   "temp_role.granted",
   "auth",

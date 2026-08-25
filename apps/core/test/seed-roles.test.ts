@@ -273,7 +273,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
   it("ALL_MANIFESTS declares seventy-three permissions, by module", () => {
     const byKey = new Map(ALL_MANIFESTS.map((m) => [m.key, m.permissions.length]));
     expect(Object.fromEntries(byKey)).toEqual({
-      auth: 6,
+      auth: 7, // 11e's six + `auth.elevation.review` (the elevation-review queue)
       workflow: 8,
       approvals: 4,
       patients: 5,
@@ -289,7 +289,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       membership: 7,
       partners: 7,
     });
-    expect(installedRegistry().allPermissions()).toHaveLength(73);
+    expect(installedRegistry().allPermissions()).toHaveLength(74);
   });
 
   it("the role model is eleven roles, seventy-one grants, forty-one distinct permissions", () => {
@@ -333,13 +333,16 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     }
   });
 
-  it("the reachability census closes: 73 declared = 50 held + 23 not yet modelled", () => {
-    expect(installedRegistry().allPermissions()).toHaveLength(73);
+  it("the reachability census closes: 74 declared = 51 held + 23 not yet modelled", () => {
+    expect(installedRegistry().allPermissions()).toHaveLength(74);
     // 42 + 13 until the 2026-08-23 ruling moved the four `workflow.definitions.*` strings across;
     // 46 + 13 until Plan 09 declared fourteen and DD18 granted four of them.
-    expect(heldPermissions()).toHaveLength(50);
+    // 50 until `auth.elevation.review` was declared; it is held from the first deploy because
+    // `seed:admin` grants every `authManifest` string to `admin` (GRANTED_BY_OTHER_SEEDS), so it
+    // never passes through NOT_YET_MODELLED.
+    expect(heldPermissions()).toHaveLength(51);
     expect(NOT_YET_MODELLED).toHaveLength(23);
-    expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(73);
+    expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(74);
   });
 
   it("the README carries exactly two permission tables, of the measured shapes", () => {
@@ -568,16 +571,16 @@ describe("seed:roles — executed against a database (V5)", () => {
     // billing_manager 9 -> 10.
     expect(first.roles.map((r) => r.granted.length)).toEqual([12, 13, 5, 7, 6, 1, 1, 11, 10, 3, 2]);
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
-    expect(first.declared).toBe(73);
+    expect(first.declared).toBe(74);
     // MEASURED from role_permissions, not derived from the model. On this database only seed:roles
-    // has run, so what is held is exactly what the model granted — 41, not the 50 the model CLAIMS
-    // once seed:admin and seed:ops have also run. That nine-permission gap IS MAJOR 1, and before
+    // has run, so what is held is exactly what the model granted — 41, not the 51 the model CLAIMS
+    // once seed:admin and seed:ops have also run. That ten-permission gap IS MAJOR 1, and before
     // the 2026-08-23 fix this line read the model's claim against a database holding the grants.
     expect(first.held).toBe(41);
     expect(first.held).toBe(modelPermissions().length);
-    expect(heldPermissions()).toHaveLength(50);
+    expect(heldPermissions()).toHaveLength(51);
     expect(first.notYetModelled).toBe(23);
-    expect(first.expectedElsewhereAbsent).toBe(9);
+    expect(first.expectedElsewhereAbsent).toBe(10);
     // And the census RECONCILES against the catalog, which is the property that makes it evidence.
     expect(first.held + first.notYetModelled + first.expectedElsewhereAbsent).toBe(first.declared);
 
@@ -598,13 +601,14 @@ describe("seed:roles — executed against a database (V5)", () => {
   it("MAJOR 1: the census is READ BACK OUT OF THE DATABASE, so granting a permission moves it", async () => {
     const first = await seedRoles(db);
 
-    // The model CLAIMS nine permissions it does not itself grant — seed:admin's six auth.* and
-    // seed:ops's three ops.*. Neither script has run here, so none of the nine is held.
+    // The model CLAIMS ten permissions it does not itself grant — seed:admin's SEVEN auth.*
+    // (`auth.elevation.review` joined them with the elevation-review queue) and seed:ops's three
+    // ops.*. Neither script has run here, so none of the ten is held.
     const claimedElsewhere = heldPermissions().filter((p) => !modelPermissions().includes(p));
-    expect(claimedElsewhere).toHaveLength(9);
+    expect(claimedElsewhere).toHaveLength(10);
     const measured = await heldInDatabase(db);
     expect(claimedElsewhere.filter((p) => measured.includes(p))).toEqual([]);
-    expect(first.expectedElsewhereAbsent).toBe(9);
+    expect(first.expectedElsewhereAbsent).toBe(10);
 
     // NOT READY, and the problem NAMES THE REPAIR rather than merely counting.
     //
@@ -638,7 +642,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     // The census MOVED. Under the old model-derived computation both runs returned 46 and this
     // assertion could not have distinguished them — which is precisely why the defect survived.
     expect(second.held).toBe(first.held + 1);
-    expect(second.expectedElsewhereAbsent).toBe(8);
+    expect(second.expectedElsewhereAbsent).toBe(9);
     expect(await heldInDatabase(db)).toContain(moved);
     expect(second.held + second.notYetModelled + second.expectedElsewhereAbsent).toBe(second.declared);
   });

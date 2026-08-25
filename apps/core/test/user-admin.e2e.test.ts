@@ -264,14 +264,15 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
     expect(guarded.filter((p) => !declared.includes(p))).toEqual([]);
 
     // THE OTHER DIRECTION carries an EXPLICIT exception list, unlike ops's `toEqual([])`. The auth
-    // manifest declares six permissions and this phase guards two of them; the other four are
-    // guarded elsewhere in the tree and are NAMED here rather than filtered away, so a fifth name
+    // manifest declares seven permissions and this phase guards two of them; the other five are
+    // guarded elsewhere in the tree and are NAMED here rather than filtered away, so a sixth name
     // appearing in this list is a route that lost its decorator rather than a known gap.
     const guardedElsewhere = [
       "auth.agents.manage",      // no HTTP surface yet — agents are minted by `scripts/create-agent.ts`
       "auth.break_glass.use",    // auth.controller.ts POST /auth/break-glass
       "auth.break_glass.review", // auth.controller.ts GET/POST /auth/break-glass*
       "auth.temp_role.grant",    // auth.controller.ts POST /auth/temp-roles
+      "auth.elevation.review",   // auth.controller.ts GET/POST /auth/emergency-elevations*
     ];
     expect(declared.filter((p) => !guarded.includes(p)).sort()).toEqual([...guardedElsewhere].sort());
   });
@@ -849,9 +850,12 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
   it("M6 — the protected set is READ FROM THE MANIFEST, so a seventh auth.* is covered on arrival", () => {
     // §2.54: one copy of the fact. A hand-listed set would silently stop protecting the next
     // permission somebody declares.
+    // The seventh ARRIVED, and this is the assertion that made it a deliberate act rather than a
+    // silent widening: `auth.elevation.review` guards the emergency-elevation review queue, and
+    // `assertMayTakeOver` protected it on the day it was declared without a line changing there.
     expect([...authManifest.permissions].sort()).toEqual([
       "auth.agents.manage", "auth.break_glass.review", "auth.break_glass.use",
-      "auth.roles.manage", "auth.temp_role.grant", "auth.users.manage",
+      "auth.elevation.review", "auth.roles.manage", "auth.temp_role.grant", "auth.users.manage",
     ]);
   });
 });

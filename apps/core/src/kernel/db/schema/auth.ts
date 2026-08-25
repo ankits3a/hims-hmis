@@ -123,8 +123,36 @@ export const tempRoleGrants = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     expiredEventAt: timestamp("expired_event_at", { withTimezone: true }), // set when temp_role.expired emitted
+    /**
+     * THE REVIEW TRIO, AND IT EXISTS BECAUSE THE LOUD EVENT LANDED WHERE NOBODY LOOKS.
+     *
+     * `emergency_elevation.used` has been evented since Plan 02 and the staffing spec's mechanism
+     * 6 names the act as "loudly evented + MANDATORY REVIEW". The review half was never built:
+     * `break_glass_grants` carried `reviewed_at`/`reviewed_by`/`review_note` and a
+     * `GET /auth/break-glass/pending` queue, and this table — the one recording a person handing
+     * THEMSELVES a role — carried nothing. A self-elevation was therefore auditable only by
+     * someone who already knew to go reading the event log.
+     *
+     * NULLABLE, AND EVERY EXISTING ROW STAYS NULL. That is the correct migration state rather
+     * than a convenience: a grant taken before this column existed genuinely has not been
+     * reviewed, so it belongs in the queue the day the queue appears.
+     *
+     * THEY LIVE ON THE WHOLE TABLE, NOT ONLY ON `kind = 'emergency'`. An admin-granted temp role
+     * is a lesser act — somebody else with `auth.temp_role.grant` chose it — but the columns cost
+     * nothing there, and a future ruling that wants those reviewed too needs no migration. What
+     * is scoped to `emergency` is the QUEUE (`pendingElevationReviews`), not the storage.
+     */
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewedBy: text("reviewed_by"), // actor id; no FK, matching break_glass_grants.reviewed_by
+    reviewNote: text("review_note"),
   },
-  (t) => [index("temp_role_grants_user_idx").on(t.userId), index("temp_role_grants_expiry_idx").on(t.expiresAt)],
+  (t) => [
+    index("temp_role_grants_user_idx").on(t.userId),
+    index("temp_role_grants_expiry_idx").on(t.expiresAt),
+    // The pending-review queue's read: `kind = 'emergency' and reviewed_at is null`. Mirrors
+    // `break_glass_review_idx`, widened by `kind` because this table holds both grant kinds.
+    index("temp_role_grants_review_idx").on(t.kind, t.reviewedAt),
+  ],
 );
 
 export const breakGlassGrants = pgTable(
