@@ -85,4 +85,26 @@ describe("billing invoice search provider", () => {
     await openSessionFor(db, cashier, 100000); // a cashier issues from an OPEN session (Plan 08)
     expect(await run(cashier.actor, "a")).toEqual({ hits: [], total: 0 });
   });
+
+
+  it("A @patient CHIP MUST NOT BYPASS THE SEALED CLASS — the id is not a capability", async () => {
+    /**
+     * INDEPENDENT REVIEWER, Plan 11h close — CRITICAL 1. The chip lane took the id verbatim and
+     * queried invoices by it, so a cashier holding `billing.invoice.read` and NOT
+     * `patients.confidential.read` could read a confidential patient's invoice numbers, amounts,
+     * service days and — through `total` — the exact count of their invoices, by passing an id they
+     * had seen before the record was flagged. DD3 requires zero results, ZERO COUNT, no hint.
+     */
+    const base = await seedBillingBase(db);
+    const cashier = await mkCashier(db, "cash1");
+    await openSessionFor(db, cashier, 100000);
+    const vip = await mkPatient(db, cashier.actor, { name: "Asha Confidential", phone: "9111111111", isConfidential: true, alias: "Guest One" });
+    await issuePaidInvoice(db, cashier, { patientId: vip.id, serviceId: base.genericServiceId });
+
+    const chips: SearchChip[] = [{ entity: "patient", id: vip.id, label: "known-id" }];
+    const res = await run(cashier.actor, "", chips);
+
+    expect(res.hits).toEqual([]);
+    expect(res.total).toBe(0);
+  });
 });

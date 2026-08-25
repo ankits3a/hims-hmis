@@ -1,10 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../lib/auth";
 import { useDebounced } from "../lib/format";
 import { api } from "../lib/api";
 import { recordOpened, runSearch } from "../lib/search-api";
+import { getMode } from "../lib/ops-api";
 import type { PaletteResponse } from "../lib/search-api";
 import { VoiceButton } from "./voice-button";
 import type { SearchEntity, SearchHit } from "@hmis/contracts";
@@ -94,7 +96,20 @@ function CommandPalette({ seed, onClose }: { seed: string; onClose: () => void }
   const [scanning, setScanning] = useState(false);
   const debounced = useDebounced(raw, 200);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * PLAN 11h CLOSE (independent reviewer, MINOR 14) — the palette reads the OPERATING MODE.
+   *
+   * In `degraded` or `downtime` the API behind these results is the thing that is struggling, and a
+   * palette that spins silently is worse than one that says so: a desk needs to know it should
+   * reach for the paper kit rather than keep retyping. The same 15 s poll the mode banner uses, so
+   * this costs no new request pattern.
+   */
+  const mode = useQuery({ queryKey: ["ops", "mode"], queryFn: getMode, refetchInterval: 15_000 });
+  const degraded = mode.data !== undefined && mode.data.mode !== "normal" && mode.data.mode !== "commissioning";
   const firstKeyAt = useRef<number | null>(null);
+  /** The burst a verification has already been fired for — see `onChange`. */
+  const scanFiredFor = useRef<number | null>(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -130,10 +145,24 @@ function CommandPalette({ seed, onClose }: { seed: string; onClose: () => void }
    */
   const onChange = (next: string): void => {
     const at = Date.now();
-    if (raw.length === 0) firstKeyAt.current = at;
+    if (raw.length === 0) { firstKeyAt.current = at; scanFiredFor.current = null; }
     setRaw(next);
     const elapsed = at - (firstKeyAt.current ?? at);
+    /**
+     * ONCE PER SCAN, NOT ONCE PER CHARACTER — found by the phase's independent reviewer (MAJOR 7).
+     *
+     * A USB HID wedge delivers characters INDIVIDUALLY, so for a 22-character payload arriving in
+     * ~110 ms every change event from the twelfth character on satisfied `isWedgeInput` — about
+     * eleven POSTs to `qr/verify` per scan, ten of them carrying a TRUNCATED payload, with an early
+     * response's `finally` clearing the scanning indicator while the rest were still in flight.
+     * The shipped test used a single `fireEvent.change`, which is not how a wedge behaves, and its
+     * `calls.some(...)` assertion could not have caught it either.
+     *
+     * The ref is the guard: one verification per burst, reset when the field is cleared.
+     */
+    if (scanFiredFor.current === firstKeyAt.current) return;
     if (isWedgeInput(next.length, elapsed)) {
+      scanFiredFor.current = firstKeyAt.current;
       setScanning(true);
       void api<{ ok: boolean; patient?: { id: string } }>("POST", "/patients/qr/verify", { payload: next })
         .then((res) => {
@@ -146,6 +175,22 @@ function CommandPalette({ seed, onClose }: { seed: string; onClose: () => void }
 
   const onKeyDown = (e: React.KeyboardEvent): void => {
     if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
+    /**
+     * A FOCUS TRAP (MINOR 14). Without it, Tab walks out of a modal dialog into the page behind it,
+     * which for a screen-reader user means the palette is open and unreachable and the page under
+     * it is reachable and invisible.
+     */
+    if (e.key === "Tab") {
+      const focusables = dialogRef.current?.querySelectorAll<HTMLElement>("input, button, [href], [tabindex]:not([tabindex='-1'])");
+      if (focusables !== undefined && focusables.length > 0) {
+        const first = focusables[0]!;
+        const last = focusables[focusables.length - 1]!;
+        const active = document.activeElement;
+        if (e.shiftKey && active === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
+      }
+      return;
+    }
     if (e.key === "ArrowDown") { e.preventDefault(); setCursor((c) => Math.min(c + 1, Math.max(rows.length - 1, 0))); return; }
     if (e.key === "ArrowUp") { e.preventDefault(); setCursor((c) => Math.max(c - 1, 0)); return; }
     if (e.key === "Enter") {
@@ -161,11 +206,23 @@ function CommandPalette({ seed, onClose }: { seed: string; onClose: () => void }
       role="presentation"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div role="dialog" aria-modal="true" aria-label={t("palette.title")} className="w-full max-w-2xl rounded-lg border bg-white shadow-xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("palette.title")}
+        className="w-full max-w-2xl rounded-lg border bg-white shadow-xl"
+        onKeyDown={onKeyDown}
+      >
+        {degraded ? (
+          <div role="status" data-testid="palette-degraded" className="rounded-t-lg border-b bg-orange-100 px-4 py-2 text-sm text-orange-900">
+            {t(`palette.mode.${mode.data?.mode ?? "degraded"}`)}
+          </div>
+        ) : null}
         <input
           ref={inputRef}
           data-palette-input
-          className="w-full rounded-t-lg border-b px-4 py-3 text-lg outline-none"
+          className="w-full border-b px-4 py-3 text-lg outline-none"
           placeholder={t("palette.placeholder")}
           aria-label={t("palette.title")}
           value={raw}

@@ -11,7 +11,7 @@ export { getPatientSummaries, listMergedLoserIds } from "./registration"; // Pla
 export type { PatientSummary } from "./registration";
 export { listAllergies } from "./allergies";
 export type { AllergyRow } from "./allergies";
-export { searchPatients } from "./search";
+export { searchPatients, visiblePatientIds } from "./search";
 export type { PatientSearchResult } from "./search";
 export { NO_AUTHORITY, effectiveGuardianAuthority, sweepGuardianMajority } from "./guardians";
 export type { GuardianAuthority, GuardianRow } from "./guardians";

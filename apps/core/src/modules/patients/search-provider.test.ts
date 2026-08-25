@@ -246,6 +246,23 @@ describe("patients search provider — the approximate branch (Plan 11h T7)", ()
     expect(res.hits[0]?.meta?.match).toBeUndefined();
   });
 
+  it("A DEVANAGARI-STORED PATIENT IS STILL FOUND BY THEIR OWN SPELLING — the T7 regression", async () => {
+    /**
+     * INDEPENDENT REVIEWER, Plan 11h close — MAJOR 4. T7 folded the query and matched the folded
+     * form alone, so a patient stored as `आशा देवी` became unreachable by typing `आशा`: the query
+     * folded to `asha` while the column still held Devanagari, and Latin-vs-Devanagari trigrams
+     * score ~0 so the fuzzy branch could not save it either. It rode the shared
+     * `patientMatchCondition`, so it was the desk route's six screens too, not just the palette.
+     */
+    await withTx(db, (tx) => registerPatient(tx, clerk, { name: "आशा देवी", sex: "female", phone: "9333333333" }));
+    const userId = await userHolding(["patients.read"]);
+
+    const res = await run(userId, "आशा");
+
+    expect(res.hits.map((h) => h.title)).toEqual(["आशा देवी"]);
+    expect(res.hits[0]?.meta?.match).toBeUndefined(); // exact, not a fuzzy rescue
+  });
+
   it("an EXACT hit is never buried among approximate ones", async () => {
     await withTx(db, (tx) => registerPatient(tx, clerk, { name: "Asha Devi", sex: "female", phone: "9876543210" }));
     await withTx(db, (tx) => registerPatient(tx, clerk, { name: "Aasha Kumari", sex: "female", phone: "9876500000" }));

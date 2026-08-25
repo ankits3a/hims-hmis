@@ -54,6 +54,12 @@ export type SearchProviderCtx = {
    * predicates and a hard cap.
    */
   signal: AbortSignal;
+  /**
+   * The clock, as a PARAMETER (Global Constraint 11). A provider that reads the wall clock inside a
+   * branch cannot be tested against a fixed day, and the OPD provider's default window is exactly
+   * that kind of branch.
+   */
+  now?: Date;
 };
 
 export class SearchError extends Error {

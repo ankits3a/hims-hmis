@@ -17,13 +17,13 @@ function hit(over: Record<string, unknown> = {}): Record<string, unknown> {
   return { entity: "patient", id: "p1", title: "Asha Devi", subtitle: "HMS-1 · female", href: "/patients/p1", ...over };
 }
 
-function renderApp(opts: { hospital?: string[]; groups?: unknown[] } = {}): void {
+function renderApp(opts: { hospital?: string[]; groups?: unknown[]; mode?: string } = {}): void {
   stubFetch({
     "GET /api/auth/me": {
       actor: { type: "user", id: "u1" },
       permissions: { hospital: opts.hospital ?? ["patients.register", "patients.read"], scoped: { department: {}, floor: {} } },
     },
-    "GET /api/ops/mode": { mode: "commissioning" },
+    "GET /api/ops/mode": { mode: opts.mode ?? "commissioning", note: null },
     "GET /api/alerts": { items: [] },
     "GET /api/patients/search": { items: [] },
     "GET /api/search": {
@@ -130,12 +130,19 @@ it("A WEDGE SCAN OPENS THE PATIENT; the same payload typed by a human does not",
   fireEvent.keyDown(window, { key: "/" });
   await waitFor(() => expect(paletteInput()).toBeInTheDocument());
 
-  // A wedge delivers the whole payload in one event, faster than fingers can.
-  fireEvent.change(paletteInput()!, { target: { value: "HMISQR0000000000000001" } });
+  /**
+   * A REAL WEDGE DELIVERS CHARACTERS INDIVIDUALLY — the reviewer's MAJOR 7. Typing the payload in
+   * one `fireEvent.change` is not how the hardware behaves, and an at-least-one assertion could
+   * not have caught the eleven-POSTs-per-scan bug it hid.
+   */
+  const payload = "HMISQR0000000000000001";
+  for (let i = 1; i <= payload.length; i += 1) {
+    fireEvent.change(paletteInput()!, { target: { value: payload.slice(0, i) } });
+  }
 
   await waitFor(() => {
     const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
-    expect(calls.some((c) => String(c[0]).includes("/patients/qr/verify"))).toBe(true);
+    expect(calls.filter((c) => String(c[0]).includes("/patients/qr/verify"))).toHaveLength(1);
   });
 });
 
@@ -168,4 +175,22 @@ it("NO MICROPHONE RENDERS while voice is inert — not a disabled one, none at a
   // A visible-but-refusing control is an invitation to ask for it, and the answer would be a
   // compliance lecture at a busy counter. Voice audio is Class 2 until the DPIA rules otherwise.
   expect(screen.queryByRole("button", { name: /voice|mic|बोल/i })).toBeNull();
+});
+
+it("SAYS SO IN DOWNTIME rather than spinning — a desk needs to know to reach for the paper kit", async () => {
+  renderApp({ mode: "downtime", groups: [] });
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
+  fireEvent.keyDown(window, { key: "/" });
+
+  await waitFor(() => expect(screen.getByTestId("palette-degraded")).toBeInTheDocument());
+  expect(screen.getByTestId("palette-degraded")).toHaveTextContent(/paper kit/i);
+});
+
+it("in NORMAL mode it says nothing extra", async () => {
+  renderApp({ mode: "normal", groups: [] });
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
+  fireEvent.keyDown(window, { key: "/" });
+  await waitFor(() => expect(paletteInput()).toBeInTheDocument());
+
+  expect(screen.queryByTestId("palette-degraded")).toBeNull();
 });

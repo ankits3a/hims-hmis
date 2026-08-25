@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import type { SearchHit } from "@hmis/contracts";
 import { opdAppointments, opdDepartments, opdDoctors } from "../../kernel/db/schema";
 import { wordPrefixMatch } from "../../kernel/search/text";
-import { getPatientSummaries, searchPatients } from "../patients";
+import { getPatientSummaries, searchPatients, visiblePatientIds } from "../patients";
 import type { SearchProvider, SearchProviderCtx, SearchProviderResult } from "../../kernel/search/types";
 
 /**
@@ -10,16 +10,27 @@ import type { SearchProvider, SearchProviderCtx, SearchProviderResult } from "..
  *
  * The one rule worth stating up front, because it is the rule a second module is most likely to
  * break: **no provider here re-implements patient confidentiality.** Appointment rows carry a
- * `patient_id`, and rendering a patient's NAME beside one is exactly the surface §14 governs. Both
- * places that need a patient — the candidate search and the label — go through the patients
- * module's own exported helpers (`searchPatients`, `getPatientSummaries`), which apply the gate
- * and return an alias for a restricted row. That is the shipped cross-module pattern (queue.ts,
+ * `patient_id`, and rendering a patient's NAME beside one is exactly the surface §14 governs. All
+ * THREE places that need a patient — the candidate search, the CHIP, and the label — go through
+ * the patients module's own exported helpers (`searchPatients`, `visiblePatientIds`,
+ * `getPatientSummaries`), which apply the gate and return an alias for a restricted row. The chip
+ * lane was missing its gate until the phase's independent review (CRITICAL 1). That is the shipped cross-module pattern (queue.ts,
  * vitals.ts, prescriptions.ts all do it) and it is the whole reason `patients/index.ts` exports
  * them.
  */
 
 const chipId = (ctx: SearchProviderCtx, entity: string): string | undefined =>
   ctx.query.chips.find((c) => c.entity === entity)?.id;
+
+/** IST calendar date, `addDays` away — the hospital's day, not UTC's. */
+function istDate(at: Date, addDays: number): string {
+  return new Date(at.getTime() + 5.5 * 60 * 60 * 1000 + addDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/** The week either side of today: recent enough to be why they are at the desk, near enough to be why they will be. */
+function defaultWindow(now: Date): { from: string; to: string } {
+  return { from: istDate(now, -7), to: istDate(now, 7) };
+}
 
 /** Doctors — by display name, and narrowable to a department chip. */
 export const doctorSearchProvider: SearchProvider = {
@@ -127,7 +138,10 @@ export const appointmentSearchProvider: SearchProvider = {
 
     let patientIds: string[] | undefined;
     if (patientChip !== undefined) {
-      patientIds = [patientChip];
+      // Gated exactly as the text lane is (close, CRITICAL 1): an id is not a capability, and a
+      // sealed patient's appointments must be unreachable by BOTH lanes.
+      patientIds = await visiblePatientIds(ctx.db, ctx.actor, [patientChip]);
+      if (patientIds.length === 0) return { hits: [], total: 0 };
     } else if (text.length >= 2) {
       // The gate lives in the patients module; a sealed patient yields no ids, so their
       // appointments are unreachable here without a second confidentiality rule existing.
@@ -143,10 +157,18 @@ export const appointmentSearchProvider: SearchProvider = {
     if (patientIds !== undefined) conditions.push(inArray(opdAppointments.patientId, patientIds));
     if (doctorId !== undefined) conditions.push(eq(opdAppointments.doctorId, doctorId));
     if (departmentId !== undefined) conditions.push(eq(opdAppointments.departmentId, departmentId));
-    if (range !== undefined) {
-      conditions.push(gte(opdAppointments.serviceDate, range.from));
-      conditions.push(lte(opdAppointments.serviceDate, range.to));
-    }
+    /**
+     * A ±7-DAY DEFAULT WINDOW when the query named no period (T3 acceptance; the first
+     * implementation omitted it and did not disclose the omission — found at close, MINOR 9).
+     *
+     * Without it a bare patient or doctor chip returns the entire appointment history and its full
+     * count, which is a worklist rather than a palette answer: a desk asking about a person is
+     * asking about this week. A date chip — "last week", "today" — replaces the window rather than
+     * narrowing it, so history is one word away.
+     */
+    const window = range ?? defaultWindow(ctx.now ?? new Date());
+    conditions.push(gte(opdAppointments.serviceDate, window.from));
+    conditions.push(lte(opdAppointments.serviceDate, window.to));
     const where = and(...conditions);
 
     const [rows, counted] = await Promise.all([

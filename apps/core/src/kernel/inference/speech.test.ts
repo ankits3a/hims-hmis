@@ -1,4 +1,6 @@
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
+import { SpeechController } from "./speech.controller";
+import { loadConfig } from "../config";
 import { searchAudit } from "../db/schema";
 import { recordVoiceEgress, attachTranscript } from "../search/audit";
 import { offlineSpeechClient } from "./offline";
@@ -28,6 +30,55 @@ describe("speech — the choke module (Plan 11h T9)", () => {
     const all = await rows();
     expect(all).toHaveLength(1);
     expect(all[0]).toMatchObject({ id: auditId, actorId: "user-1", source: "voice", rawQuery: "", totalHits: 0 });
+  });
+
+  /**
+   * PLAN 11h CLOSE (independent reviewer, MAJOR 2) — THE ORDERING IS NOW PINNED BY A SHIPPED TEST.
+   *
+   * The plan's T9 row is "the audit row is written BEFORE the upstream call". A mutant proved it
+   * during the task, but that mutant was scratch and is not in the tree, and NO test constructed
+   * `SpeechController` at all — so swapping the two statements would have left the whole suite
+   * green. The property is only real if CI holds it.
+   */
+  it("THE EGRESS ROW SURVIVES A PROVIDER FAILURE — through the controller, not around it", async () => {
+    const cfg = {
+      ...loadConfig({ DATABASE_URL: "postgres://unused", SECRET_KEY: process.env.SECRET_KEY! } as NodeJS.ProcessEnv),
+      speechProvider: "workers-ai" as const, speechAccountId: "acct", speechApiToken: "tok",
+    };
+    jest.spyOn(globalThis, "fetch").mockResolvedValue(new Response("boom", { status: 500 }));
+    const controller = new SpeechController(db, cfg);
+
+    await expect(
+      controller.transcribe(desk, { audio: Buffer.from("hello").toString("base64"), language: "en" }),
+    ).rejects.toBeTruthy();
+
+    // The clip was sent and the provider died. The log must still say a clip was sent.
+    const all = await rows();
+    expect(all).toHaveLength(1);
+    expect(all[0]).toMatchObject({ source: "voice", actorId: "user-1", rawQuery: "" });
+    jest.restoreAllMocks();
+  });
+
+  it("AN AGENT ACTOR IS REFUSED by the one route that ships bytes off-premises", async () => {
+    const cfg = {
+      ...loadConfig({ DATABASE_URL: "postgres://unused", SECRET_KEY: process.env.SECRET_KEY! } as NodeJS.ProcessEnv),
+      speechProvider: "workers-ai" as const, speechAccountId: "acct", speechApiToken: "tok",
+    };
+    const controller = new SpeechController(db, cfg);
+    await expect(
+      controller.transcribe({ type: "agent", id: "a1" }, { audio: "aGk=", language: "en" }),
+    ).rejects.toMatchObject({ status: 403 });
+    // ...and nothing was recorded, because nothing was sent.
+    expect(await rows()).toHaveLength(0);
+  });
+
+  it("the route is INERT until all three config keys are set", async () => {
+    const cfg = loadConfig({ DATABASE_URL: "postgres://unused", SECRET_KEY: process.env.SECRET_KEY! } as NodeJS.ProcessEnv);
+    const controller = new SpeechController(db, cfg);
+    await expect(
+      controller.transcribe(desk, { audio: "aGk=", language: "en" }),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(await rows()).toHaveLength(0);
   });
 
   it("the transcript is attached afterwards, and the row is the same row", async () => {

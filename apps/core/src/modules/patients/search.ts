@@ -1,4 +1,4 @@
-import { and, asc, eq, like, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, like, or, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
@@ -38,13 +38,55 @@ export function patientMatchCondition(query: string): SQL {
     return or(like(patients.phone, prefix), like(patients.altPhone, prefix))!;
   }
   if (UHID_SHAPE_RE.test(query)) return eq(patients.uhid, query.toUpperCase());
-  // PLAN 11h T7 — the NAME branch folds the query first: case, diacritics and Devanagari all
-  // collapse to the form the index holds (`lower(name)`), so a desk typing `आशा` finds a record
-  // stored as "Asha". The phone and UHID branches above are deliberately untouched — a digit
-  // string and a document number are not names, and folding them would be a change with no
-  // benefit and a blast radius across six screens.
-  const prefix = `${escapeLike(normalizeForSearch(query))}%`;
-  return sql`lower(${patients.name}) like ${prefix}`;
+  /**
+   * PLAN 11h T7, CORRECTED AT CLOSE (independent reviewer, MAJOR 4) — BOTH SPELLINGS ARE TRIED.
+   *
+   * T7 folded the query and matched the folded form ALONE, which quietly BROKE a case that had
+   * worked since Plan 05: a patient stored in Devanagari (`आशा देवी` — `name` has no script
+   * restriction and the app ships a full Hindi locale) was found by typing `आशा` before T7 and was
+   * unreachable after it, because the query folded to `asha` while the column still held
+   * Devanagari. The fuzzy fallback could not save it either: Latin trigrams against Devanagari
+   * ones score ~0. That regression rode `patientMatchCondition`, which the desk route shares — so
+   * it was six screens, not just the palette.
+   *
+   * Matching the folded form OR the raw one keeps what T7 added (a Devanagari query finding a
+   * Latin record) without removing what already worked (a Devanagari query finding a Devanagari
+   * record). The phone and UHID branches above stay untouched: a digit string and a document
+   * number are not names.
+   */
+  const folded = normalizeForSearch(query);
+  const rawLower = query.trim().toLowerCase();
+  const foldedPrefix = `${escapeLike(folded)}%`;
+  if (folded === rawLower) return sql`lower(${patients.name}) like ${foldedPrefix}`;
+  const rawPrefix = `${escapeLike(rawLower)}%`;
+  return sql`(lower(${patients.name}) like ${foldedPrefix} or lower(${patients.name}) like ${rawPrefix})`;
+}
+
+/**
+ * PLAN 11h CLOSE (independent reviewer, CRITICAL 1) — WHICH OF THESE IDS MAY THIS CALLER SEE?
+ *
+ * A PATIENT ID IS NOT A CAPABILITY. T3 and T4 gated their TEXT lanes by resolving names through
+ * `searchPatients`, which seals confidential records — and then took a `@patient:<id>` chip
+ * VERBATIM, with no gate at all. A cashier holding `billing.invoice.read` and not
+ * `patients.confidential.read` could therefore read a confidential patient's invoice numbers,
+ * amounts, service days and exact invoice COUNT by passing an id they had legitimately seen before
+ * the record was flagged; the OPD half leaked appointment dates, doctor, department and status the
+ * same way. Both providers carried a comment claiming the opposite, which is how it survived
+ * review by their author.
+ *
+ * This is the one gate both lanes now share. It lives here, in the module that owns the rule, for
+ * the same reason `searchPatients` does: a confidentiality check written a second time is a
+ * confidentiality check that will drift.
+ */
+export async function visiblePatientIds(db: Db, actor: Actor, ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  if (actor.type !== "user") throw new PatientError("user_actor_required", "search is a desk surface — user actors only");
+  const canSeeConfidential = await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
+  const rows = await db
+    .select({ id: patients.id, isConfidential: patients.isConfidential })
+    .from(patients)
+    .where(and(inArray(patients.id, ids), eq(patients.status, "active")));
+  return rows.filter((r) => canSeeConfidential || !r.isConfidential).map((r) => r.id);
 }
 
 /**

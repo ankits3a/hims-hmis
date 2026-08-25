@@ -439,7 +439,26 @@ export async function retentionSweep(
   // ---------------------------------------------------------------------------------------------
   {
     const retainDays = opts.searchAuditRetainDays ?? SEARCH_AUDIT_RETAIN_DAYS;
-    result.searchAuditDeleted = await pruneSearchAudit(db, { retainDays, batchSize, now });
+    /**
+     * IT LOOPS, LIKE THE NOTIFICATIONS LEG BELOW, AND THE FIRST VERSION DID NOT — found by the
+     * phase's independent reviewer (MAJOR 3).
+     *
+     * A single `batchSize` (500) statement per nightly sweep cannot keep a 90-day window: twenty
+     * desks at sixty palette searches a day is ~1,200 rows, and the palette debounces at 200 ms so
+     * one lookup is often several rows. Deleting 500 while adding 1,200 accumulates ~700/day
+     * FOREVER, and this table holds `raw_query` — typed patient names. The retention promise DD4
+     * makes to DPDP and NABH would have been silently unkept, and the table would have become
+     * exactly the second copy of PHI it was designed not to be.
+     *
+     * The same `MAX_*_BATCHES` ceiling as notifications, for the same reason: a sweep must end.
+     */
+    let searchBatches = 0;
+    while (searchBatches < MAX_NOTIFY_BATCHES) {
+      const removed = await pruneSearchAudit(db, { retainDays, batchSize, now });
+      result.searchAuditDeleted += removed;
+      searchBatches += 1;
+      if (removed < batchSize) break; // the window is clear
+    }
     if (result.searchAuditDeleted > 0) {
       await withTx(db, (tx) =>
         appendEvent(

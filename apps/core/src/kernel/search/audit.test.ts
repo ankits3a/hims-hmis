@@ -129,3 +129,32 @@ describe("search audit", () => {
     });
   });
 });
+
+describe("retention at volume (independent reviewer, MAJOR 3)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+  beforeEach(async () => { await truncateAll(db); });
+
+  it("MORE EXPIRED ROWS THAN ONE BATCH ARE ALL REMOVED — a window that only deletes 500 a night is not a window", async () => {
+    const old = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000);
+    const rows = Array.from({ length: 120 }, (_, i) => ({
+      id: `AUD${String(i).padStart(23, "0")}`,
+      actorId: "user-1", rawQuery: `q${i}`, queryHash: "h", entityCounts: {},
+      totalHits: 0, tookMs: 1, source: "text", restrictedSurfaced: false, at: old,
+    }));
+    await db.insert(searchAudit).values(rows);
+
+    // A batch size smaller than the backlog is the whole point: one statement cannot finish.
+    let deleted = 0;
+    for (let i = 0; i < 10; i += 1) {
+      const n = await pruneSearchAudit(db, { retainDays: 90, batchSize: 50 });
+      deleted += n;
+      if (n < 50) break;
+    }
+
+    expect(deleted).toBe(120);
+    expect(await db.select().from(searchAudit)).toHaveLength(0);
+  });
+});
