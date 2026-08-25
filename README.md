@@ -61,13 +61,78 @@ IST — see **Worker process** below), alongside `runDispatchCycle`, `sweepExpir
 
 ### Go-live runbook (owner steps, once per environment)
 1. Choose the UHID prefix (Class A decision — printed on every card):
-   `UHID_PREFIX=<PREFIX> pnpm --filter @hmis/core seed:registration`
+   `UHID_PREFIX=<PREFIX> pnpm --filter @hmis/core seed:registration` — production runs `U`
+   (owner ruling 2026-08-25), giving UHIDs of the form `U12345013`: the prefix, a 7-digit serial
+   and a Verhoeff check digit, nine characters with no separators. See **UHID format** below.
 2. Register the merge approval types as data (no code): build each definition with
    `approvalFlowDefinition({ typeKey: "patient_merge" | "patient_unmerge", approverRole: <role>, ... })`,
    draft + activate through `/workflow/definitions` (drafter ≠ activator), then `POST /approvals/types`
    (`patient_unmerge` with `urgencyClass: "urgent", actFirstAllowed: true`).
 3. Grant `patients.*` permissions to the registration-desk role; `patients.confidential.read`
    and `patients.merge` only to the roles the owner designates.
+
+### UHID format (owner ruling 2026-08-25 — replaces `<PREFIX>-<8 digits>-<check>`)
+`<PREFIX><7-digit serial><Verhoeff check digit>` — production: `U12345013`. Nine characters, no
+separators, because a UHID is typed into a search box far more often than it is read off a card.
+The check digit is Verhoeff (Aadhaar's algorithm, Plan 05 Q6, retained): it rejects every
+single-digit typo and every adjacent transposition before one can land a desk on a stranger's chart.
+
+**Serials 1–1,234,500 are reserved and carry NO meaning.** The floor exists so the first card reads
+`U12345013` rather than `U00000017`, and so a memorable number can be minted by hand one day. It is
+deliberately **not** a VIP or membership band: a UHID is printed, spoken across a counter and texted,
+so a semantic range would broadcast exactly what `patients.is_confidential` (§14) exists to seal —
+and status is revocable while a UHID is not. VIP is `is_confidential`; membership is Plan 09's
+instrument record. `allocateUhid` refuses any serial inside the band, so a counter reset below the
+floor halts registration loudly instead of quietly issuing a reserved number.
+
+Search accepts `U12345013`, `u12345013`, bare `12345013`, the leading serial without the check digit,
+any trailing run of 4+ digits, and any of those with stray spaces or hyphens.
+
+**Re-minting old-format patients** (commissioning only — this renumbers people, which is normally
+the one thing a UHID exists to prevent). **Re-seed the prefix FIRST**: the script mints through
+`allocateUhid`, which reads `registration_config`, so running it before step 1 above would stamp
+every patient with the OLD prefix and leave nothing for a second run to fix (it is idempotent on
+format, not on prefix). Order: `UHID_PREFIX=U … seed:registration`, then
+`DRY_RUN=1 pnpm --filter @hmis/core remint:uhids` to see the census, then the same command without
+`DRY_RUN` to write. Old ids are parked in `legacy_uhid` and
+`qr_version` is bumped so every card printed under the old format fails verification rather than
+resolving to a number its patient no longer has.
+
+## Episode numbers — V/A/L/S/R/P (owner ruling 2026-08-25)
+`<letter><YYMMDD><4-digit daily serial>`, eleven characters, no separators. The counter resets each
+day and is keyed on the **service date**, never the insert instant.
+
+| Letter | Document | Allocated today? |
+|---|---|---|
+| `V` | Visit / encounter — `V2608250147` | yes, at `openVisit` |
+| `A` | Appointment — `A2608250042` | yes, at booking and at reschedule |
+| `L` | Lab order | reserved — lab module not built |
+| `S` | Lab specimen / accession | reserved |
+| `R` | Radiology order | reserved |
+| `P` | Pharmacy dispense | reserved |
+
+**This is deliberately not the UHID's design and not the invoice's.** A UHID names a person and is
+typed constantly, so it spends nothing on self-description. An episode number names an event and is
+mostly printed, scanned and stuck to a tube or a film jacket, so it carries its own date. An invoice
+number is `INV/2627/000123` because GST demands a per-fiscal-year consecutive serial — tax law, not
+usability — which is why `episode_series` is a **separate table** from `document_series`: the two
+counters answer to different authorities and nobody tidying a clinical counter should be one typo
+from resetting a statutory one. Gaplessness is required of the GST series and **not** of this one.
+
+**One encounter = one visit number, including same-day re-entry.** A patient sent back through the
+queue after results is on the same visit; the token is reused and so is the `V` number. Minting a
+second there would attach results to a visit that never ordered them.
+
+`L`/`S` are two numbers because an *order* ("CBC + LFT") and a *specimen* (the tube) are different
+objects — one order yields several tubes — and a single number cannot express a haemolysed sample
+being redrawn without cancelling the order. A lab or radiology order must also be able to exist
+**without** a parent visit: direct walk-in tests and camp screenings are real, and a number that
+requires a visit forces staff to fake one.
+
+**The date reads YYMMDD, which is ambiguous to an Indian desk** — `260825` is 25-Aug-2026 here and
+26-Aug-2025 under DD-MM-YY. YYMMDD is kept because it makes the id sort chronologically; the
+mitigation is that every artifact prints a human date beside it. The token slip binds them on one
+line (`V2608170001 · 17-Aug-2026`); the e-Rx already carries a four-digit-year date of its own.
 
 ## Web app (Plan 05)
 
@@ -248,7 +313,8 @@ through that controller, so granting them would mint authority nobody needs.
    below are cited by number elsewhere in this repository; it is listed here anyway because
    **without it `POST /patients` answers 400 (`registration_config row 'main' is missing`) and no
    OPD visit can be opened for a patient who cannot be registered.** Omitting it from this list
-   cost a live go-live run one round trip on 2026-08-23. `UHID_PREFIX` is 2–5 uppercase letters,
+   cost a live go-live run one round trip on 2026-08-23. `UHID_PREFIX` is 1–5 uppercase letters
+   (production runs `U`),
    it prefixes every UHID the hospital ever issues, and it is an **owner-gated Class A decision** —
    the script refuses anything else and does not guess. Idempotent (it updates on conflict), so a
    prefix chosen in error can be corrected while few UHIDs exist; already-issued ones keep the old
@@ -650,6 +716,145 @@ so a document that commits in that window is permanently absent from the stored 
 repairs it. The screen renders the API's figures **verbatim** — it folds nothing of its own, and the
 GSTR-1 view likewise prints the stored per-line tax heads summed, never re-derived from a group's
 taxable value (§170/§15.1: heads are summed, never recomputed).
+
+## Membership, coupons and the channel ledger (Plan 09)
+
+Two modules sharing one migration and no source file (DD1): `modules/membership` owns
+instruments — plans, instances, covered members, entitlement counters, coupons, recognition, the
+holder-book import and the reconcile queue; `modules/partners` owns counterparties — partners,
+versioned agreements, the accrual ledger, receivable expectations, statement reconciliation, aging
+and the channel P&L. **Every plan, coupon, partner and agreement term is a CONFIG ROW loaded at
+commissioning; nothing in `apps/` contains a plan code, a partner code, a commission rate, a card
+price or a card number (DD3)** — a freshly migrated database has empty catalogs, checked by
+`catalogs-empty.test.ts`.
+
+### Web app: membership and partners screens (Plan 09)
+
+| Route | Screen | Permission |
+|---|---|---|
+| `/counter/instruments` | Card recognition — lookup by card, phone or holder name; what a card and its coupons grant today; the honouring disclosure, in the server's own words | `membership.instrument.read` |
+| `/counter/reconcile` | Holder-book reconcile queue — fuzzy-match candidates and cap-overflow members from an import, linked one click at a time (never auto-linked, E3); lapsed restores | `membership.reconcile.operate` (NOT_YET_MODELLED) |
+| `/partners/receivables` | Partner receivables — the aging report (outstanding vs. confirmed, DD5), the 11h barcode-wedge slip lookup, statement import | `partners.receivable.operate` / `.ledger.read` / `.statement.import` (NOT_YET_MODELLED) |
+| `/partners/pnl` | Channel P&L — cards active, member spend, commission payable, receivables expected/matched/disputed, net channel margin, one row per partner | `partners.pnl.read` (NOT_YET_MODELLED) |
+
+As elsewhere, the client holds no permission model of its own — every nav link renders for
+everyone and the server's 403 on the underlying route is what actually decides who may use a screen.
+
+### The five structural-OFF flags (DD14) — what each gates, and what authorises the flip
+
+Every one is `z.enum(["true","false"]).default("false")` (never `z.coerce.boolean()`, which reads
+the string `"false"` as `true`) and every one is DEFAULTED, so no `.env` anywhere needs a new key.
+The mapping from flag to CA/counsel register item is stated ONCE, here.
+
+| # | Flag | Default | Gates | Lifted by |
+|---|---|---|---|---|
+| 1 | `MEMBERSHIP_SALES_ENABLED` | `false` | Selling an instrument at the hospital counter. **No code lane exists for it in this phase at all** — E-32's guardrails (no ER/bedside sale path, no sales figure at the counter, the honouring disclosure) ship regardless | Standing ruling: sales open a later phase. CA/counsel register item 4 (cooling-off refunds) attaches to THIS flag when that phase builds the sale lane |
+| 2 | `MEMBER_BENEFITS_ENABLED` | `false` | Composing the membership and coupon `AdjustmentSource`s into `priceDraft` at billing (DD2) | **Not a legal gate** — DD8's operational order, in the runbook below |
+| 3 | `COMMISSION_ACCRUAL_ENABLED` | `false` | The accrual consumer WRITING payable commission rows (it registers and advances its cursor either way, DD7 — this flag decides writes only) | CA/counsel register items 2 and 3 (O-8, owner) |
+| 4 | `RECEIVABLE_COMMISSION_ENABLED` | `false` | Attribution issuance, statement import and matching | CA/counsel register item 2 (O-8, owner) |
+| 5 | `COUPON_ISSUANCE_ENABLED` | `false` | Issuing NEW coupon codes (campaign creation). Redeeming an already-issued coupon is ON and unflagged | CA/counsel register item 5, advertising rules (O-8, owner) |
+
+**ON and unflagged regardless of all five:** recognition, honouring an already-issued instrument,
+entitlement consume/restore, redemption of an already-issued coupon, the holder-book import, the
+reconcile queue, and the channel P&L above — it reads whatever rows exist, which is zero while the
+CA-gated lanes are off, and it does not error.
+
+### Go-live runbook (owner steps, once per environment)
+
+**The order below is DD8's, and it is an order for a reason:** a counter discount cannot be
+backfilled, so arming member benefits before recognition is genuinely live and the import is done
+means either refusing a paying member outright or honouring their card off-system while the queue
+catches up.
+
+1. Deploy with all five flags at their default (`false`). Recognition, honouring, the holder-book
+   import, the reconcile queue and the P&L already work — see the flag table's last line.
+2. Grant `membership.instrument.read` / `.recognise` and `membership.grace_honor.request` to the
+   front-office/cashier roles, and `.approve` to `billing_manager` (`seed:membership` does the role
+   creation; the grants are the table above the billing permissions section). **Also grant
+   `membership.import.run` and `membership.reconcile.operate`** — both ship in `NOT_YET_MODELLED`
+   (DD18) on purpose, so `POST /membership/import/holder-book` and `/counter/reconcile` are
+   reachable by NOBODY until this step. Skipping it does not fail loudly; it leaves an operator
+   looking at an empty screen or a 403 with no obvious cause.
+3. Run the holder-book import (`pnpm --filter @hmis/core import:holder-book`, or the route above
+   once granted) against the owner's real partner book. It is an OPERATOR command, never a deploy
+   step — `docker/prod/deploy.sh` does not run it, deliberately, the same reasoning that keeps
+   `seed:admin` out.
+4. Clear the reconcile queue at `/counter/reconcile` — every fuzzy-match candidate and cap-overflow
+   member the import could not link by itself (E3: nothing here is ever auto-linked; a human names
+   the patient or dismisses the row).
+5. Flip `MEMBER_BENEFITS_ENABLED: true`. From here a member's card is honoured inside the bill
+   itself, not only at the recognition screen.
+6. **When O-8 clears a CA/counsel register item, grant the matching `partners.*` permissions
+   (all seven ship in `NOT_YET_MODELLED`) and flip the matching flag together** —
+   `partners.attribution.issue` / `.statement.import` / `.receivable.operate` / `.ledger.read`
+   before `RECEIVABLE_COMMISSION_ENABLED` (register item 2); nothing extra is needed for
+   `COMMISSION_ACCRUAL_ENABLED` beyond the flag itself (register items 2 and 3), since the accrual
+   consumer has no route of its own. `partners.pnl.read` and `partners.counterparty.manage` /
+   `.agreement.manage` carry no O-8 gate — grant them whenever the owner wants the report visible
+   or is ready to enter real partners and agreements (DD3).
+7. **The FIRST deploy of this phase's code already runs `seed-cursors.js` (`deploy.sh`'s own seed
+   step), and that seeds the new accrual consumer's cursor to the event log's CURRENT head — not to
+   zero.** That is correct for a live delivery (nothing floods the worker at boot), but it means
+   every payment the hospital takes between THAT deploy and the day `COMMISSION_ACCRUAL_ENABLED` is
+   finally flipped is already behind the cursor and will never be picked up by ordinary dispatch.
+   **Flipping the flag must be followed immediately by a `replayAccruals` run** (from the sequence
+   number at or before that first deploy) or those payments never accrue — silently, with a clean
+   exit code, because a backfill that ran with the flag still off reports a clean pass having
+   written nothing (`replayAccruals` refuses outright with the flag off, precisely so this cannot
+   be mistaken for success).
+8. `COUPON_ISSUANCE_ENABLED` carries no ordering constraint of its own — flip it whenever the
+   owner's coupon catalog (real codes, rates and windows — DD3, never in this repository) is ready
+   to load and register item 5 is cleared.
+
+**Watch items — read before trusting a number on any of these screens:**
+
+(a) **DD11's merge-duplicate reconcile reason has no producer.** `patient_match_queue.reason` lists
+    `merge_duplicate`, but detecting it means instrumenting `modules/patients/` at the point a
+    merge executes, which no task in this phase owns. The column and the reconcile screen are
+    ready; nothing writes that reason yet.
+(b) **An imported card's COUNTED entitlements have no writer either.** Nothing this phase ships
+    inserts an `entitlement_counters` row from the holder-book import — an imported card grants its
+    plan's PERCENTAGE benefits (which need no counter) and no counted benefit (e.g. "3 free
+    consults") until a later phase rules the shape of `membership_plans.entitlements`.
+(c) **The E-32 queue perk is CONFIGURABLE and VISIBLE this phase, but not yet ACTED ON.**
+    `membership_plans.queue_perk` is surfaced at recognition and rendered at the counter, but
+    nothing in this phase writes `opd_queue_entries.perk = true` — that write belongs in
+    `modules/opd/queue.ts`, which no task here touches. A plan configured with the perk will say so
+    at the counter and change nothing about queue order until a later phase fills it in.
+(d) **A bill that wins ONE entitlement on MORE lines than the member holds is refused WHOLE** —
+    concretely, a member with one free consult left, billed for two consults on one invoice, cannot
+    be invoiced at all until the clerk splits the bill. That refusal (`entitlement_exhausted`) is a
+    typed 409 carrying its own reason, not a bare 500 — a close remediation to the frozen
+    `billing.controller.ts`, landed outside any one task's Files list because that file is frozen
+    to the whole phase. It is inert until `MEMBER_BENEFITS_ENABLED` is flipped (step 5).
+(e) **An unknown counterparty on a holder-book import surfaces as a raw 500.** The foreign key on
+    `holder_book_imports.counterparty_id` is what refuses it; `MembershipErrorCode`'s closed union
+    carries no typed code for "counterparty not found" this phase.
+(f) **An agreement amendment is a NEW version effective from a FUTURE instant — never an edit to a
+    live version's `terms`, and never a version backdated behind an invoice the ledger has already
+    priced.** Nothing in the schema forbids either mistake today (`partner_agreements` carries no
+    append-only trigger and no `effective_from >= now()` check); both silently reprice or
+    double-accrue money DD6's snapshot already settled. Train whoever enters agreement data on this
+    before the first real amendment.
+(g) **Two operators must not import statements for the same partner at the same time.** The
+    open-claim lookup inside statement import takes no row lock, so two concurrent imports quoting
+    the same referral can each confirm it — a real, measured race with no code-level guard in this
+    phase.
+(h) **Setting `counterparties.status = 'terminated'` alone stops nothing.** O-7's "new accruals
+    stop at the term date" is implemented as CLOSING the active agreement version's
+    `effective_to` — the status column by itself changes no arithmetic. Terminate a partner by
+    closing their agreement window, not only by flipping the status.
+(i) **`cardsActive` and `memberSpendPaise` on the channel P&L are NOT flag-gated and can be
+    non-zero while every CA-gated number on the same row reads zero.** That is not a bug — cards
+    can circulate and members can spend while the hospital and a partner are still waiting on O-8 —
+    but it is worth saying once so nobody reads a partner's "0" commission row as "no activity".
+(j) **When running the replay from step 7, flip the real `COMMISSION_ACCRUAL_ENABLED` environment
+    variable — never rely on `replayAccruals`'s own `{ env }` option to arm it.** The option only
+    gates the refusal at the TOP of the replay; the writer underneath it (`handleAccrualEvent`)
+    reads `process.env` directly, with no argument. A caller who arms the backfill only through the
+    option while the process environment still has the flag off gets exactly the failure the
+    refusal exists to prevent: every row returns `disabled` and the job reports a clean pass having
+    written nothing.
 
 ## Worker process (Plan 08.5)
 

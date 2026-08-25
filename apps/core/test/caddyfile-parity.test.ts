@@ -291,16 +291,18 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
    */
   it("PLAN 11g — no SPA route falls inside a Caddy-proxied prefix (smoke-test D1)", () => {
     const routes = spaRoutePaths(routerSource);
-    // The census FIRST, before anything is compared (§2.49). 23 since Plan 09 T7 added the partner
-    // receivables desk, on top of T5's holder-book reconcile queue and T3's card recognition screen
-    // (§6.0 S11 — this file joins the Files list of every task that moves the number, and the waves
-    // are sequential so four tasks touching one integer cannot collide). MEASURED, not predicted:
-    // the previous value 22 was observed failing with `Received length: 23` before it was moved.
-    expect(routes).toHaveLength(23);
+    // The census FIRST, before anything is compared (§2.49). 24 since Plan 09 T8 added the channel
+    // P&L screen, on top of T7's partner receivables desk, T5's holder-book reconcile queue and
+    // T3's card recognition screen (§6.0 S11 — this file joins the Files list of every task that
+    // moves the number, and the waves are sequential so four tasks touching one integer cannot
+    // collide). MEASURED, not predicted: the previous value 23 was observed failing with
+    // `Received length: 24` before it was moved.
+    expect(routes).toHaveLength(24);
     expect(routes).toContain("/admin/users");
     expect(routes).toContain("/counter/instruments");
     expect(routes).toContain("/counter/reconcile");
     expect(routes).toContain("/partners/receivables");
+    expect(routes).toContain("/partners/pnl");
 
     const proxied = caddyProxyPrefixes(caddySource);
     // NAME the shadowed routes rather than comparing lengths: "15 !== 0" does not tell an operator

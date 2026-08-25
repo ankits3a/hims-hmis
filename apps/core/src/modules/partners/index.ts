@@ -73,3 +73,9 @@ export { listPartnerRefs, mapPartnerRef, resolveStatementRef, writeOffExpectatio
 export type { PartnerRefMapping, RefResolution } from "./reconcile";
 export { AGING_BUCKETS, agingReport, bucketFor, receivableTotalPaise } from "./aging";
 export type { AgingBucket, AgingItem, AgingReport } from "./aging";
+
+// ── T8 — guardrails, identity-free exports, the channel P&L (DD15) ───────────────────────────
+export { partnerPnl, partnerPnlAll } from "./pnl";
+export type { PartnerPnl } from "./pnl";
+export { assertIdentityFree, exportCounterpartyStatement, identityLeaks } from "./exports";
+export type { PartnerExport, PartnerExportRow } from "./exports";

@@ -10,10 +10,12 @@ import {
 import { importStatement, listStatementQuarantine } from "./statements";
 import { mapPartnerRef, writeOffExpectation } from "./reconcile";
 import { agingReport } from "./aging";
+import { partnerPnl, partnerPnlAll } from "./pnl";
 import type { AttributionSlip, ExpirySweepResult, ScannedAttribution, VoidAttributionResult } from "./attribution";
 import type { StatementImportResult } from "./statements";
 import type { PartnerRefMapping } from "./reconcile";
 import type { AgingReport } from "./aging";
+import type { PartnerPnl } from "./pnl";
 import type { PartnersErrorCode } from "./errors";
 import type { Db } from "../../kernel/db/client";
 
@@ -113,6 +115,8 @@ const writeOffBody = z.object({ reason: z.string().min(1).max(1000) });
 const expireBody = z.object({ counterpartyId: z.string().min(1).optional() });
 
 const agingQuery = z.object({ counterpartyId: z.string().min(1).optional() });
+
+const pnlQuery = z.object({ counterpartyId: z.string().min(1).optional() });
 
 @Controller("partners")
 export class PartnersController {
@@ -252,6 +256,28 @@ export class PartnersController {
     const q = parsed(agingQuery, query);
     try {
       return await agingReport(this.db, { counterpartyId: q.counterpartyId, asOf: new Date() });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * THE CHANNEL P&L (T8). One row per partner — every partner if `counterpartyId` is omitted, one
+   * if it is given — always an ARRAY, so the screen renders the same table shape either way. Not
+   * flag-gated, for the same reason the aging report is not: a read model over rows that exist
+   * reads zeros while `COMMISSION_ACCRUAL_ENABLED` / `RECEIVABLE_COMMISSION_ENABLED` are off, and an
+   * operator confirming the lanes really are inert must not be refused the one screen that would
+   * tell them.
+   */
+  @RequirePermission("partners.pnl.read", "hospital")
+  @Get("pnl")
+  async pnl(@Query() query: unknown): Promise<PartnerPnl[]> {
+    const q = parsed(pnlQuery, query);
+    try {
+      if (q.counterpartyId !== undefined) {
+        return [await partnerPnl(this.db, { counterpartyId: q.counterpartyId, asOf: new Date() })];
+      }
+      return await partnerPnlAll(this.db, { asOf: new Date() });
     } catch (e) {
       toHttp(e);
     }

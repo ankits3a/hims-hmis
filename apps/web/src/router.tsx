@@ -32,6 +32,7 @@ import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
 import { InstrumentReconcile } from "./screens/instrument-reconcile";
 import { PartnerReceivables } from "./screens/partner-receivables";
+import { PartnerPnl } from "./screens/partner-pnl";
 
 /**
  * PLAN 11h T6 — the shell's navigation, PAIRED WITH THE PERMISSION EACH SCREEN'S ROUTE ACTUALLY
@@ -68,6 +69,10 @@ const NAV: readonly { to: string; label: string; permission: string }[] = [
   // (DD18) and the lane itself is behind RECEIVABLE_COMMISSION_ENABLED, so this link is invisible
   // to everybody until the owner does both — which is the ordered flip working as ruled.
   { to: "/partners/receivables", label: "nav.partnerReceivables", permission: "partners.receivable.operate" },
+  // PLAN 09 T8 — the channel P&L. `partners.pnl.read` is in NOT_YET_MODELLED (DD18); this link is
+  // invisible to everybody until the owner grants it — the runbook (README.md) names it beside the
+  // other flag-flip permissions.
+  { to: "/partners/pnl", label: "nav.partnerPnl", permission: "partners.pnl.read" },
 ];
 
 function Shell(): React.ReactElement {
@@ -335,6 +340,17 @@ const partnerReceivablesRoute = createRoute({
   component: PartnerReceivables,
 });
 
+/**
+ * PLAN 09 T8 — the channel P&L. Under `/partners/…` beside the receivables desk rather than under
+ * `/billing/…`, for the same reason as its sibling: this is the hospital's OWN view of a channel
+ * relationship, not a patient's bill.
+ */
+const partnerPnlRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/partners/pnl",
+  component: PartnerPnl,
+});
+
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
@@ -343,7 +359,7 @@ export const router = createRouter({
       indexRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
-      counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute,
+      counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
     ]),
   ]),
 });

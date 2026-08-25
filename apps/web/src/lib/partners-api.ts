@@ -106,6 +106,33 @@ export type WireStatementQuarantine = {
   rows: { id: string; rowNo: number; reason: string; line: string }[];
 };
 
+/**
+ * PLAN 09 T8 — THE CHANNEL P&L. One row per partner; every field is a count or a sum (DD15 — there
+ * is no per-patient row here to describe, and none of these fields is a patient's).
+ */
+export type WirePartnerPnl = {
+  counterpartyId: string;
+  counterpartyName: string;
+  /** `'channel_partner' | 'staff_internal' | 'external_rmp'`. */
+  payeeClass: string;
+  asOf: string;
+  cardsActive: number;
+  memberSpendPaise: number;
+  payableCommissionPaise: number;
+  receivableExpectedPaise: number;
+  /** The append-only ledger's own confirmed total — never a sum over claim rows (DD5). */
+  receivableMatchedPaise: number;
+  receivableDisputedPaise: number;
+  netChannelMarginPaise: number;
+};
+
+export function fetchPartnerPnl(counterpartyId?: string): Promise<WirePartnerPnl[]> {
+  const params = new URLSearchParams();
+  if (counterpartyId !== undefined && counterpartyId !== "") params.set("counterpartyId", counterpartyId);
+  const query = params.toString();
+  return api("GET", `/partners/pnl${query === "" ? "" : `?${query}`}`);
+}
+
 export function fetchAging(counterpartyId?: string): Promise<WireAgingReport> {
   const params = new URLSearchParams();
   if (counterpartyId !== undefined && counterpartyId !== "") params.set("counterpartyId", counterpartyId);

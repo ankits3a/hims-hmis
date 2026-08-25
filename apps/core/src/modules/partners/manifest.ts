@@ -30,8 +30,17 @@ import { PARTNERS_ACCRUAL_CONSUMER } from "./consumer";
  * to do anything. They are declared HERE, ahead of T6/T7/T8's routes, because `seed-roles.ts` and
  * its reachability invariant are named in T1's Files list and in no later task's (§6.0 S9).
  *
- * `menu` is filled by the tasks that ship screens — T7's receivables desk, below, and T8's
- * channel P&L.
+ * `menu` is filled by the tasks that ship screens — T7's receivables desk, below.
+ *
+ * **T8's channel P&L does NOT add a THIRD entry here, and that is a disclosed plan defect rather
+ * than an oversight.** This comment (written before T8) says `menu` is T8's to fill too, but the
+ * compiled pipeline's FROZEN list separately forbids T8 from touching
+ * `test/partners-receivables.e2e.test.ts`, "even if your change would be correct" — and that file
+ * pins `expect(manifest.menu).toEqual([...])` to the ONE entry below, so a third entry here fails
+ * a test T8 may not edit. The screen still exists and is still reachable
+ * (`apps/web/src/router.tsx`'s own route + nav entry, guarded server-side by
+ * `partners.pnl.read` on `partners.controller.ts`'s route) — only this manifest's OWN menu
+ * listing does not carry it. A later task that may edit the frozen test can add the entry back.
  */
 export const partnersManifest: ModuleManifest = {
   key: "partners",
