@@ -1,0 +1,63 @@
+{
+  "name": "the same off-peak window is shut at 12:00:00 IST, and only the membership is left on the line",
+  "specRefs": ["K8", "B5"],
+  "config": {
+    "asOf": "2026-09-30T06:30:00.000Z",
+    "tariff": { "versionId": "tv1", "versionNo": 1, "items": { "svc-cons": 50000, "svc-follow": 0, "svc-lab": 20000, "svc-proc": 100000 } },
+    "services": [
+      { "id": "svc-cons", "code": "CONS-GEN", "name": "General consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-follow", "code": "CONS-FOLLOW", "name": "Follow-up consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-lab", "code": "LAB-CBC", "name": "Complete blood count", "category": "lab", "regulated": false, "active": true },
+      { "id": "svc-proc", "code": "PROC-MIN", "name": "Minor procedure", "category": "procedure", "regulated": false, "active": true }
+    ],
+    "regulatedPrices": {},
+    "gstCategories": [
+      { "category": "consultation", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "procedure", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "lab", "sacCode": "999316", "exempt": false, "rateBps": 1800, "specialRule": null, "thresholdPaise": null }
+    ],
+    "gstSettings": { "compositeHealthcareExempt": true, "caSigned": false },
+    "rules": [],
+    "manualCaps": {},
+    "tags": []
+  },
+  "resolved": {
+    "patientId": "pt-invented-04",
+    "billGrossPaise": 50000,
+    "memberships": [
+      {
+        "instanceId": "mi-inv-04", "planId": "mp-inv-02", "planTitle": "Invented senior card",
+        "cardCode": "INV-CARD-100004", "status": "active",
+        "validFrom": "2026-01-01T00:00:00.000Z", "validTo": "2026-12-31T00:00:00.000Z",
+        "benefits": [
+          { "benefitKey": "INV-BEN-OPD5", "title": "Invented OPD benefit", "kind": "percent_bps", "value": 500, "capPaise": null, "scope": { "serviceCategories": ["consultation"], "serviceIds": null } }
+        ]
+      }
+    ],
+    "coupons": [
+      {
+        "couponId": "cd-inv-04", "code": "INV-CPN-OFFPEAK", "title": "Invented off-peak coupon", "instanceId": null,
+        "benefit": { "benefitKey": "INV-CPN-OFFPEAK", "title": "Invented off-peak coupon", "kind": "flat_paise", "value": 6000, "capPaise": null, "scope": { "serviceCategories": null, "serviceIds": null } },
+        "minBillPaise": 0, "validFrom": "2026-09-01T00:00:00.000Z", "validTo": "2026-10-31T00:00:00.000Z",
+        "weekdayMask": 127, "windowStartMinute": 540, "windowEndMinute": 719, "status": "active"
+      }
+    ]
+  },
+  "lines": [{ "lineId": "L1", "serviceId": "svc-cons", "qty": 1 }],
+  "expected": [
+    {
+      "workings": "This is m04 one second later: asOf 2026-09-30T06:30:00Z + 05:30 = 12:00:00 IST, istMinuteOfDay = 12*60 + 0 = 720, and 720 > the window end 719, so couponUnusableReason returns outside_window and the coupon source proposes NOTHING at all - not a zero candidate and not a rejected one, because AdjustmentCandidate.rejected is a closed union of over_cap and unknown_category and neither means 'out of hours'. What is left is the membership: percentAmount(50000, 500) = divHalfUp(25000000, 10000) = floor((50000000 + 10000)/20000) = floor(2500.5) = 2500, which now wins by default. taxableBase 50000 - 2500 = 47500; consultation exempt, so cgst and sgst 0 and net 47500. Against m04 the whole difference is one second of IST wall clock: 44000 there, 47500 here.",
+      "line": {
+        "lineId": "L1", "serviceId": "svc-cons", "serviceName": "General consultation", "category": "consultation",
+        "qty": 1, "unitPaise": 50000, "grossPaise": 50000, "regulatedClamp": null,
+        "candidates": [
+          { "sourceKey": "membership", "ruleKey": "INV-BEN-OPD5", "kind": "percent_bps", "discountCategory": null, "amountPaise": 2500, "reason": "Invented OPD benefit", "requiresApproval": false, "rejected": null }
+        ],
+        "winner": { "sourceKey": "membership", "ruleKey": "INV-BEN-OPD5", "kind": "percent_bps", "discountCategory": null, "amountPaise": 2500, "reason": "Invented OPD benefit", "requiresApproval": false, "rejected": null },
+        "discountPaise": 2500, "taxableBasePaise": 47500,
+        "gst": { "sacCode": "999312", "rateBps": 1800, "exempt": true, "exemptReason": "category_exempt", "cgstPaise": 0, "sgstPaise": 0 },
+        "netPaise": 47500
+      }
+    }
+  ]
+}

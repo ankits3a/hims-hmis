@@ -1,0 +1,54 @@
+{
+  "name": "a coupon on a GST-exempt line: the discount lands, the exemption survives, and no tax appears",
+  "specRefs": ["DD2", "§3 Q3", "D-3 exemption"],
+  "config": {
+    "asOf": "2026-09-30T06:00:00.000Z",
+    "tariff": { "versionId": "tv1", "versionNo": 1, "items": { "svc-cons": 50000, "svc-follow": 0, "svc-lab": 20000, "svc-proc": 100000 } },
+    "services": [
+      { "id": "svc-cons", "code": "CONS-GEN", "name": "General consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-follow", "code": "CONS-FOLLOW", "name": "Follow-up consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-lab", "code": "LAB-CBC", "name": "Complete blood count", "category": "lab", "regulated": false, "active": true },
+      { "id": "svc-proc", "code": "PROC-MIN", "name": "Minor procedure", "category": "procedure", "regulated": false, "active": true }
+    ],
+    "regulatedPrices": {},
+    "gstCategories": [
+      { "category": "consultation", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "procedure", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "lab", "sacCode": "999316", "exempt": false, "rateBps": 1800, "specialRule": null, "thresholdPaise": null }
+    ],
+    "gstSettings": { "compositeHealthcareExempt": true, "caSigned": false },
+    "rules": [],
+    "manualCaps": {},
+    "tags": []
+  },
+  "resolved": {
+    "patientId": "pt-invented-02",
+    "billGrossPaise": 50000,
+    "memberships": [],
+    "coupons": [
+      {
+        "couponId": "cd-inv-02", "code": "INV-CPN-OPD12", "title": "Invented OPD coupon", "instanceId": null,
+        "benefit": { "benefitKey": "INV-CPN-OPD12", "title": "Invented OPD coupon", "kind": "flat_paise", "value": 12000, "capPaise": null, "scope": { "serviceCategories": ["consultation"], "serviceIds": null } },
+        "minBillPaise": 0, "validFrom": "2026-09-01T00:00:00.000Z", "validTo": "2026-10-31T00:00:00.000Z",
+        "weekdayMask": 127, "windowStartMinute": null, "windowEndMinute": null, "status": "active"
+      }
+    ]
+  },
+  "lines": [{ "lineId": "L1", "serviceId": "svc-cons", "qty": 1 }],
+  "expected": [
+    {
+      "workings": "svc-cons unit 50000 x qty 1 -> gross 50000. The coupon is flat 12000 scoped to the consultation category, which svc-cons is in, min bill 0 <= 50000, so amountPaise min(12000, 50000) = 12000. It is the only candidate, so it wins: discountPaise 12000, taxableBase 50000 - 12000 = 38000. The consultation GST category is exempt = true, so computeGst returns the category_exempt branch BEFORE the 1800bps rate is ever applied: cgst 0 and sgst 0, NOT taxHead(38000, 1800) = divHalfUp(68400000, 20000) = floor((136800000+20000)/40000) = floor(3420.5) = 3420 per head. net = 38000 + 0 + 0 = 38000. This is the leg that shows an appended source does not disturb the exemption machinery it flows through.",
+      "line": {
+        "lineId": "L1", "serviceId": "svc-cons", "serviceName": "General consultation", "category": "consultation",
+        "qty": 1, "unitPaise": 50000, "grossPaise": 50000, "regulatedClamp": null,
+        "candidates": [
+          { "sourceKey": "coupon", "ruleKey": "INV-CPN-OPD12", "kind": "flat_paise", "discountCategory": null, "amountPaise": 12000, "reason": "Invented OPD coupon", "requiresApproval": false, "rejected": null }
+        ],
+        "winner": { "sourceKey": "coupon", "ruleKey": "INV-CPN-OPD12", "kind": "flat_paise", "discountCategory": null, "amountPaise": 12000, "reason": "Invented OPD coupon", "requiresApproval": false, "rejected": null },
+        "discountPaise": 12000, "taxableBasePaise": 38000,
+        "gst": { "sacCode": "999312", "rateBps": 1800, "exempt": true, "exemptReason": "category_exempt", "cgstPaise": 0, "sgstPaise": 0 },
+        "netPaise": 38000
+      }
+    }
+  ]
+}

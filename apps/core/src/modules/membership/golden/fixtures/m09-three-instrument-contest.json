@@ -1,0 +1,73 @@
+{
+  "name": "three instruments on one line: one winner, and every rejected candidate kept in the record",
+  "specRefs": ["R7", "B3", "B4", "D-8"],
+  "config": {
+    "asOf": "2026-09-30T06:00:00.000Z",
+    "tariff": { "versionId": "tv1", "versionNo": 1, "items": { "svc-cons": 50000, "svc-follow": 0, "svc-lab": 20000, "svc-proc": 100000 } },
+    "services": [
+      { "id": "svc-cons", "code": "CONS-GEN", "name": "General consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-follow", "code": "CONS-FOLLOW", "name": "Follow-up consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-lab", "code": "LAB-CBC", "name": "Complete blood count", "category": "lab", "regulated": false, "active": true },
+      { "id": "svc-proc", "code": "PROC-MIN", "name": "Minor procedure", "category": "procedure", "regulated": false, "active": true }
+    ],
+    "regulatedPrices": {},
+    "gstCategories": [
+      { "category": "consultation", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "procedure", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "lab", "sacCode": "999316", "exempt": false, "rateBps": 1800, "specialRule": null, "thresholdPaise": null }
+    ],
+    "gstSettings": { "compositeHealthcareExempt": true, "caSigned": false },
+    "rules": [],
+    "manualCaps": {},
+    "tags": []
+  },
+  "resolved": {
+    "patientId": "pt-invented-09",
+    "billGrossPaise": 100000,
+    "memberships": [
+      {
+        "instanceId": "mi-inv-09", "planId": "mp-inv-06", "planTitle": "Invented surgical card",
+        "cardCode": "INV-CARD-100009", "status": "active",
+        "validFrom": "2026-01-01T00:00:00.000Z", "validTo": "2026-12-31T00:00:00.000Z",
+        "benefits": [
+          { "benefitKey": "INV-BEN-SURG", "title": "Invented surgical benefit", "kind": "percent_bps", "value": 1200, "capPaise": 10000, "scope": { "serviceCategories": null, "serviceIds": null } },
+          { "benefitKey": "INV-BEN-OPD6", "title": "Invented general benefit", "kind": "percent_bps", "value": 600, "capPaise": null, "scope": { "serviceCategories": null, "serviceIds": null } }
+        ]
+      }
+    ],
+    "coupons": [
+      {
+        "couponId": "cd-inv-09a", "code": "INV-CPN-FEST", "title": "Invented festival coupon", "instanceId": null,
+        "benefit": { "benefitKey": "INV-CPN-FEST", "title": "Invented festival coupon", "kind": "percent_bps", "value": 900, "capPaise": 20000, "scope": { "serviceCategories": null, "serviceIds": null } },
+        "minBillPaise": 0, "validFrom": "2026-09-01T00:00:00.000Z", "validTo": "2026-10-31T00:00:00.000Z",
+        "weekdayMask": 127, "windowStartMinute": null, "windowEndMinute": null, "status": "active"
+      },
+      {
+        "couponId": "cd-inv-09b", "code": "INV-CPN-BIG", "title": "Invented oversized coupon", "instanceId": null,
+        "benefit": { "benefitKey": "INV-CPN-BIG", "title": "Invented oversized coupon", "kind": "percent_bps", "value": 2500, "capPaise": 20000, "scope": { "serviceCategories": null, "serviceIds": null } },
+        "minBillPaise": 0, "validFrom": "2026-09-01T00:00:00.000Z", "validTo": "2026-10-31T00:00:00.000Z",
+        "weekdayMask": 127, "windowStartMinute": null, "windowEndMinute": null, "status": "active"
+      }
+    ]
+  },
+  "lines": [{ "lineId": "L1", "serviceId": "svc-proc", "qty": 1 }],
+  "expected": [
+    {
+      "workings": "Three instruments are presented against one procedure line: gross = 100000 x 1 = 100000. (1) Membership term INV-BEN-SURG asks 1200bps = divHalfUp(120000000, 10000) = floor((240000000 + 10000)/20000) = floor(12000.5) = 12000 against a 10000 cap; 12000 > 10000, so it is REJECTED as over_cap and the record keeps the ASK, 12000, not the cap and not the gross. (2) Membership term INV-BEN-OPD6 asks 600bps = divHalfUp(60000000, 10000) = floor((120000000 + 10000)/20000) = floor(6000.5) = 6000, uncapped, accepted. (3) Coupon INV-CPN-FEST asks 900bps = divHalfUp(90000000, 10000) = floor((180000000 + 10000)/20000) = floor(9000.5) = 9000 against a 20000 cap, accepted. (4) Coupon INV-CPN-BIG asks 2500bps = divHalfUp(250000000, 10000) = floor((500000000 + 10000)/20000) = floor(25000.5) = 25000 against the same 20000 cap; 25000 > 20000, REJECTED as over_cap carrying the 25000 ask. runContest filters the two rejected candidates out of the sort and picks the larger of the two valid ones, 9000 over 6000, so INV-CPN-FEST wins. All FOUR candidates stay in the record - that is the D-8 audit trail a member can be shown at the counter. discount 9000, taxableBase 100000 - 9000 = 91000; the procedure category is exempt so cgst and sgst are 0 and net is 91000.",
+      "line": {
+        "lineId": "L1", "serviceId": "svc-proc", "serviceName": "Minor procedure", "category": "procedure",
+        "qty": 1, "unitPaise": 100000, "grossPaise": 100000, "regulatedClamp": null,
+        "candidates": [
+          { "sourceKey": "membership", "ruleKey": "INV-BEN-SURG", "kind": "percent_bps", "discountCategory": null, "amountPaise": 12000, "reason": "Invented surgical benefit", "requiresApproval": false, "rejected": { "code": "over_cap", "detail": "12000p exceeds the 10000p cap on \"INV-BEN-SURG\"" } },
+          { "sourceKey": "membership", "ruleKey": "INV-BEN-OPD6", "kind": "percent_bps", "discountCategory": null, "amountPaise": 6000, "reason": "Invented general benefit", "requiresApproval": false, "rejected": null },
+          { "sourceKey": "coupon", "ruleKey": "INV-CPN-FEST", "kind": "percent_bps", "discountCategory": null, "amountPaise": 9000, "reason": "Invented festival coupon", "requiresApproval": false, "rejected": null },
+          { "sourceKey": "coupon", "ruleKey": "INV-CPN-BIG", "kind": "percent_bps", "discountCategory": null, "amountPaise": 25000, "reason": "Invented oversized coupon", "requiresApproval": false, "rejected": { "code": "over_cap", "detail": "25000p exceeds the 20000p cap on \"INV-CPN-BIG\"" } }
+        ],
+        "winner": { "sourceKey": "coupon", "ruleKey": "INV-CPN-FEST", "kind": "percent_bps", "discountCategory": null, "amountPaise": 9000, "reason": "Invented festival coupon", "requiresApproval": false, "rejected": null },
+        "discountPaise": 9000, "taxableBasePaise": 91000,
+        "gst": { "sacCode": "999312", "rateBps": 1800, "exempt": true, "exemptReason": "category_exempt", "cgstPaise": 0, "sgstPaise": 0 },
+        "netPaise": 91000
+      }
+    }
+  ]
+}

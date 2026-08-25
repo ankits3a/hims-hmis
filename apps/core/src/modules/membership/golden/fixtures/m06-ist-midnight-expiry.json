@@ -1,0 +1,64 @@
+{
+  "name": "expiry falls at IST midnight: at 00:01 IST the card that expired yesterday is gone and the one expiring today is not",
+  "specRefs": ["K7", "B6", "O-2"],
+  "config": {
+    "asOf": "2026-09-30T18:31:00.000Z",
+    "tariff": { "versionId": "tv1", "versionNo": 1, "items": { "svc-cons": 50000, "svc-follow": 0, "svc-lab": 20000, "svc-proc": 100000 } },
+    "services": [
+      { "id": "svc-cons", "code": "CONS-GEN", "name": "General consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-follow", "code": "CONS-FOLLOW", "name": "Follow-up consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-lab", "code": "LAB-CBC", "name": "Complete blood count", "category": "lab", "regulated": false, "active": true },
+      { "id": "svc-proc", "code": "PROC-MIN", "name": "Minor procedure", "category": "procedure", "regulated": false, "active": true }
+    ],
+    "regulatedPrices": {},
+    "gstCategories": [
+      { "category": "consultation", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "procedure", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "lab", "sacCode": "999316", "exempt": false, "rateBps": 1800, "specialRule": null, "thresholdPaise": null }
+    ],
+    "gstSettings": { "compositeHealthcareExempt": true, "caSigned": false },
+    "rules": [],
+    "manualCaps": {},
+    "tags": []
+  },
+  "resolved": {
+    "patientId": "pt-invented-06",
+    "billGrossPaise": 50000,
+    "memberships": [
+      {
+        "instanceId": "mi-inv-06a", "planId": "mp-inv-03", "planTitle": "Invented lapsed card",
+        "cardCode": "INV-CARD-100006", "status": "active",
+        "validFrom": "2026-01-01T00:00:00.000Z", "validTo": "2026-09-30T00:00:00.000Z",
+        "benefits": [
+          { "benefitKey": "INV-BEN-LAPSED", "title": "Invented lapsed benefit", "kind": "percent_bps", "value": 2000, "capPaise": null, "scope": { "serviceCategories": null, "serviceIds": null } }
+        ]
+      },
+      {
+        "instanceId": "mi-inv-06b", "planId": "mp-inv-04", "planTitle": "Invented live card",
+        "cardCode": "INV-CARD-100007", "status": "active",
+        "validFrom": "2026-01-01T00:00:00.000Z", "validTo": "2026-10-01T00:00:00.000Z",
+        "benefits": [
+          { "benefitKey": "INV-BEN-LIVE", "title": "Invented live benefit", "kind": "percent_bps", "value": 800, "capPaise": null, "scope": { "serviceCategories": null, "serviceIds": null } }
+        ]
+      }
+    ],
+    "coupons": []
+  },
+  "lines": [{ "lineId": "L1", "serviceId": "svc-cons", "qty": 1 }],
+  "expected": [
+    {
+      "workings": "asOf 2026-09-30T18:31:00Z + 05:30 = 2026-10-01 00:01 IST - the next IST day, on the same UTC calendar day, which is exactly where a UTC comparison and an IST one part company. Card A's valid_to 2026-09-30T00:00:00Z is IST day 2026-09-30, so istDayIndex(asOf) > istDayIndex(validTo) and it prices NOTHING: its 2000bps, which would have been percentAmount(50000, 2000) = divHalfUp(100000000, 10000) = floor((200000000+10000)/20000) = floor(10000.5) = 10000, never appears. Card B's valid_to 2026-10-01T00:00:00Z is IST day 2026-10-01, the same IST day as asOf, so it is still live: percentAmount(50000, 800) = divHalfUp(40000000, 10000) = floor((80000000 + 10000)/20000) = floor(4000.5) = 4000. Note that a raw instant comparison would have called card B expired too (asOf 18:31Z is after 2026-10-01T00:00Z is FALSE - it is before it - so B survives either way, while A is the leg that separates them). discount 4000, taxableBase 46000, consultation exempt, net 46000.",
+      "line": {
+        "lineId": "L1", "serviceId": "svc-cons", "serviceName": "General consultation", "category": "consultation",
+        "qty": 1, "unitPaise": 50000, "grossPaise": 50000, "regulatedClamp": null,
+        "candidates": [
+          { "sourceKey": "membership", "ruleKey": "INV-BEN-LIVE", "kind": "percent_bps", "discountCategory": null, "amountPaise": 4000, "reason": "Invented live benefit", "requiresApproval": false, "rejected": null }
+        ],
+        "winner": { "sourceKey": "membership", "ruleKey": "INV-BEN-LIVE", "kind": "percent_bps", "discountCategory": null, "amountPaise": 4000, "reason": "Invented live benefit", "requiresApproval": false, "rejected": null },
+        "discountPaise": 4000, "taxableBasePaise": 46000,
+        "gst": { "sacCode": "999312", "rateBps": 1800, "exempt": true, "exemptReason": "category_exempt", "cgstPaise": 0, "sgstPaise": 0 },
+        "netPaise": 46000
+      }
+    }
+  ]
+}

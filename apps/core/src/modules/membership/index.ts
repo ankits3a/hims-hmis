@@ -13,3 +13,23 @@ export { MembershipModule } from "./membership.module";
 export { MembershipError } from "./errors";
 export type { MembershipErrorCode } from "./errors";
 export * from "./events";
+
+/**
+ * T2 — the pure benefit surface. `billing` composes the two factories onto the pricing context it
+ * already builds (DD2); nothing outside this module reads a membership table to price anything.
+ *
+ * `ResolvedInstruments` is the seam: T3's `resolveInstruments` produces it, these two factories
+ * close over it, and T4 hands it across. `couponUnusableReason` is exported because the RECOGNITION
+ * surface has to tell a member WHY a coupon did not apply, and the sources deliberately do not —
+ * see its own comment.
+ */
+export { COUPON_SOURCE_KEY, couponSource, MEMBERSHIP_SOURCE_KEY, membershipSource } from "./sources";
+export { benefitCandidate, benefitCoversLine } from "./instruments";
+export type {
+  BenefitScope, BenefitTerm, ResolvedCoupon, ResolvedInstruments, ResolvedMembership,
+} from "./instruments";
+export {
+  couponUnusableReason, IST_OFFSET_MS, istDayIndex, istMinuteOfDay, istWeekdayMondayZero,
+  membershipUsableAt,
+} from "./coupon-rules";
+export type { CouponUnusableReason } from "./coupon-rules";

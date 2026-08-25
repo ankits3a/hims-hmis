@@ -1,0 +1,74 @@
+{
+  "name": "a minimum-bill coupon qualifies on the GROSS bill, and is not disqualified by the discount another instrument then wins",
+  "specRefs": ["K4", "DD2"],
+  "config": {
+    "asOf": "2026-09-30T06:00:00.000Z",
+    "tariff": { "versionId": "tv1", "versionNo": 1, "items": { "svc-cons": 50000, "svc-follow": 0, "svc-lab": 20000, "svc-proc": 100000 } },
+    "services": [
+      { "id": "svc-cons", "code": "CONS-GEN", "name": "General consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-follow", "code": "CONS-FOLLOW", "name": "Follow-up consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-lab", "code": "LAB-CBC", "name": "Complete blood count", "category": "lab", "regulated": false, "active": true },
+      { "id": "svc-proc", "code": "PROC-MIN", "name": "Minor procedure", "category": "procedure", "regulated": false, "active": true }
+    ],
+    "regulatedPrices": {},
+    "gstCategories": [
+      { "category": "consultation", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "procedure", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "lab", "sacCode": "999316", "exempt": false, "rateBps": 1800, "specialRule": null, "thresholdPaise": null }
+    ],
+    "gstSettings": { "compositeHealthcareExempt": true, "caSigned": false },
+    "rules": [
+      { "ruleKey": "R-INV-CAMP10", "title": "Invented camp scheme", "kind": "percent_bps", "value": 1000, "discountCategory": "scheme", "requiredTag": "camp2026", "serviceCategory": null, "serviceId": null }
+    ],
+    "manualCaps": {},
+    "tags": ["camp2026"]
+  },
+  "resolved": {
+    "patientId": "pt-invented-07",
+    "billGrossPaise": 90000,
+    "memberships": [],
+    "coupons": [
+      {
+        "couponId": "cd-inv-07", "code": "INV-CPN-MINBILL", "title": "Invented minimum-bill coupon", "instanceId": null,
+        "benefit": { "benefitKey": "INV-CPN-MINBILL", "title": "Invented minimum-bill coupon", "kind": "flat_paise", "value": 7000, "capPaise": null, "scope": { "serviceCategories": ["consultation"], "serviceIds": null } },
+        "minBillPaise": 85000, "validFrom": "2026-09-01T00:00:00.000Z", "validTo": "2026-10-31T00:00:00.000Z",
+        "weekdayMask": 127, "windowStartMinute": null, "windowEndMinute": null, "status": "active"
+      }
+    ]
+  },
+  "lines": [
+    { "lineId": "L1", "serviceId": "svc-cons", "qty": 1 },
+    { "lineId": "L2", "serviceId": "svc-lab", "qty": 2 }
+  ],
+  "expected": [
+    {
+      "workings": "The draft is two lines: svc-cons 50000 x 1 = 50000 and svc-lab 20000 x 2 = 40000, so billGrossPaise = 90000. The coupon's minimum bill is 85000 and 90000 >= 85000, so it applies. THREE numbers it is deliberately NOT compared against: this line's own gross 50000 (under the threshold), the other line's gross 40000 (under it), and the post-contest total 43000 + 36000 = 79000 (also under it) - the threshold is measured on the GROSS bill, before any instrument or rule takes anything off. On L1: the camp rule needs tag camp2026 which IS present and is unscoped, so percentAmount(50000, 1000) = divHalfUp(50000000, 10000) = floor((100000000 + 10000)/20000) = floor(5000.5) = 5000; the coupon is flat 7000 scoped to consultation, so min(7000, 50000) = 7000. 7000 > 5000, the coupon wins on value. taxableBase 50000 - 7000 = 43000; consultation is exempt so cgst and sgst are 0 and net is 43000.",
+      "line": {
+        "lineId": "L1", "serviceId": "svc-cons", "serviceName": "General consultation", "category": "consultation",
+        "qty": 1, "unitPaise": 50000, "grossPaise": 50000, "regulatedClamp": null,
+        "candidates": [
+          { "sourceKey": "rule", "ruleKey": "R-INV-CAMP10", "kind": "percent_bps", "discountCategory": "scheme", "amountPaise": 5000, "reason": "Invented camp scheme", "requiresApproval": false, "rejected": null },
+          { "sourceKey": "coupon", "ruleKey": "INV-CPN-MINBILL", "kind": "flat_paise", "discountCategory": null, "amountPaise": 7000, "reason": "Invented minimum-bill coupon", "requiresApproval": false, "rejected": null }
+        ],
+        "winner": { "sourceKey": "coupon", "ruleKey": "INV-CPN-MINBILL", "kind": "flat_paise", "discountCategory": null, "amountPaise": 7000, "reason": "Invented minimum-bill coupon", "requiresApproval": false, "rejected": null },
+        "discountPaise": 7000, "taxableBasePaise": 43000,
+        "gst": { "sacCode": "999312", "rateBps": 1800, "exempt": true, "exemptReason": "category_exempt", "cgstPaise": 0, "sgstPaise": 0 },
+        "netPaise": 43000
+      }
+    },
+    {
+      "workings": "L2 is svc-lab 20000 x 2 = gross 40000. The coupon's scope is the consultation category only, so benefitCoversLine is false for a lab line and the coupon proposes nothing here even though it qualified on the bill - a scope is per line, a threshold is per bill, and the two are separate tests. The camp rule is unscoped and applies: percentAmount(40000, 1000) = divHalfUp(40000000, 10000) = floor((80000000 + 10000)/20000) = floor(4000.5) = 4000. taxableBase 40000 - 4000 = 36000. lab is NOT exempt at 1800bps: taxHead(36000, 1800) = divHalfUp(36000*1800, 20000) = divHalfUp(64800000, 20000) = floor((129600000 + 20000)/40000) = floor(3240.5) = 3240 per head, so net = 36000 + 3240 + 3240 = 42480.",
+      "line": {
+        "lineId": "L2", "serviceId": "svc-lab", "serviceName": "Complete blood count", "category": "lab",
+        "qty": 2, "unitPaise": 20000, "grossPaise": 40000, "regulatedClamp": null,
+        "candidates": [
+          { "sourceKey": "rule", "ruleKey": "R-INV-CAMP10", "kind": "percent_bps", "discountCategory": "scheme", "amountPaise": 4000, "reason": "Invented camp scheme", "requiresApproval": false, "rejected": null }
+        ],
+        "winner": { "sourceKey": "rule", "ruleKey": "R-INV-CAMP10", "kind": "percent_bps", "discountCategory": "scheme", "amountPaise": 4000, "reason": "Invented camp scheme", "requiresApproval": false, "rejected": null },
+        "discountPaise": 4000, "taxableBasePaise": 36000,
+        "gst": { "sacCode": "999316", "rateBps": 1800, "exempt": false, "exemptReason": null, "cgstPaise": 3240, "sgstPaise": 3240 },
+        "netPaise": 42480
+      }
+    }
+  ]
+}

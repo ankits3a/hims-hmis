@@ -1,0 +1,64 @@
+{
+  "name": "an off-peak window is still open at 11:59:59 IST, its stated closing second",
+  "specRefs": ["K8", "B5"],
+  "config": {
+    "asOf": "2026-09-30T06:29:59.000Z",
+    "tariff": { "versionId": "tv1", "versionNo": 1, "items": { "svc-cons": 50000, "svc-follow": 0, "svc-lab": 20000, "svc-proc": 100000 } },
+    "services": [
+      { "id": "svc-cons", "code": "CONS-GEN", "name": "General consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-follow", "code": "CONS-FOLLOW", "name": "Follow-up consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-lab", "code": "LAB-CBC", "name": "Complete blood count", "category": "lab", "regulated": false, "active": true },
+      { "id": "svc-proc", "code": "PROC-MIN", "name": "Minor procedure", "category": "procedure", "regulated": false, "active": true }
+    ],
+    "regulatedPrices": {},
+    "gstCategories": [
+      { "category": "consultation", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "procedure", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "lab", "sacCode": "999316", "exempt": false, "rateBps": 1800, "specialRule": null, "thresholdPaise": null }
+    ],
+    "gstSettings": { "compositeHealthcareExempt": true, "caSigned": false },
+    "rules": [],
+    "manualCaps": {},
+    "tags": []
+  },
+  "resolved": {
+    "patientId": "pt-invented-04",
+    "billGrossPaise": 50000,
+    "memberships": [
+      {
+        "instanceId": "mi-inv-04", "planId": "mp-inv-02", "planTitle": "Invented senior card",
+        "cardCode": "INV-CARD-100004", "status": "active",
+        "validFrom": "2026-01-01T00:00:00.000Z", "validTo": "2026-12-31T00:00:00.000Z",
+        "benefits": [
+          { "benefitKey": "INV-BEN-OPD5", "title": "Invented OPD benefit", "kind": "percent_bps", "value": 500, "capPaise": null, "scope": { "serviceCategories": ["consultation"], "serviceIds": null } }
+        ]
+      }
+    ],
+    "coupons": [
+      {
+        "couponId": "cd-inv-04", "code": "INV-CPN-OFFPEAK", "title": "Invented off-peak coupon", "instanceId": null,
+        "benefit": { "benefitKey": "INV-CPN-OFFPEAK", "title": "Invented off-peak coupon", "kind": "flat_paise", "value": 6000, "capPaise": null, "scope": { "serviceCategories": null, "serviceIds": null } },
+        "minBillPaise": 0, "validFrom": "2026-09-01T00:00:00.000Z", "validTo": "2026-10-31T00:00:00.000Z",
+        "weekdayMask": 127, "windowStartMinute": 540, "windowEndMinute": 719, "status": "active"
+      }
+    ]
+  },
+  "lines": [{ "lineId": "L1", "serviceId": "svc-cons", "qty": 1 }],
+  "expected": [
+    {
+      "workings": "asOf 2026-09-30T06:29:59Z + 05:30 = 2026-09-30 11:59:59 IST, a Wednesday. istMinuteOfDay floors to 11*60 + 59 = 719, and the coupon's window is [540, 719] INCLUSIVE, so 719 <= 719 holds and the coupon is live to its last second. Read in UTC the same instant is minute 6*60 + 29 = 389, which is before the 540 start, so a UTC implementation refuses this coupon and this fixture would show an empty coupon leg. Coupon amount = min(flat 6000, gross 50000) = 6000. Membership INV-BEN-OPD5 is 500bps scoped to consultation: percentAmount(50000, 500) = divHalfUp(25000000, 10000) = floor((50000000 + 10000)/20000) = floor(2500.5) = 2500. Contest: 6000 > 2500, so the coupon wins on value. taxableBase 50000 - 6000 = 44000; consultation is exempt so cgst and sgst are 0 and net is 44000.",
+      "line": {
+        "lineId": "L1", "serviceId": "svc-cons", "serviceName": "General consultation", "category": "consultation",
+        "qty": 1, "unitPaise": 50000, "grossPaise": 50000, "regulatedClamp": null,
+        "candidates": [
+          { "sourceKey": "membership", "ruleKey": "INV-BEN-OPD5", "kind": "percent_bps", "discountCategory": null, "amountPaise": 2500, "reason": "Invented OPD benefit", "requiresApproval": false, "rejected": null },
+          { "sourceKey": "coupon", "ruleKey": "INV-CPN-OFFPEAK", "kind": "flat_paise", "discountCategory": null, "amountPaise": 6000, "reason": "Invented off-peak coupon", "requiresApproval": false, "rejected": null }
+        ],
+        "winner": { "sourceKey": "coupon", "ruleKey": "INV-CPN-OFFPEAK", "kind": "flat_paise", "discountCategory": null, "amountPaise": 6000, "reason": "Invented off-peak coupon", "requiresApproval": false, "rejected": null },
+        "discountPaise": 6000, "taxableBasePaise": 44000,
+        "gst": { "sacCode": "999312", "rateBps": 1800, "exempt": true, "exemptReason": "category_exempt", "cgstPaise": 0, "sgstPaise": 0 },
+        "netPaise": 44000
+      }
+    }
+  ]
+}

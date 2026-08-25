@@ -1,0 +1,64 @@
+{
+  "name": "a zero-amount line: both instruments propose a zero candidate, nothing wins, and nothing throws",
+  "specRefs": ["K5", "M3"],
+  "config": {
+    "asOf": "2026-09-30T06:00:00.000Z",
+    "tariff": { "versionId": "tv1", "versionNo": 1, "items": { "svc-cons": 50000, "svc-follow": 0, "svc-lab": 20000, "svc-proc": 100000 } },
+    "services": [
+      { "id": "svc-cons", "code": "CONS-GEN", "name": "General consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-follow", "code": "CONS-FOLLOW", "name": "Follow-up consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-lab", "code": "LAB-CBC", "name": "Complete blood count", "category": "lab", "regulated": false, "active": true },
+      { "id": "svc-proc", "code": "PROC-MIN", "name": "Minor procedure", "category": "procedure", "regulated": false, "active": true }
+    ],
+    "regulatedPrices": {},
+    "gstCategories": [
+      { "category": "consultation", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "procedure", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "lab", "sacCode": "999316", "exempt": false, "rateBps": 1800, "specialRule": null, "thresholdPaise": null }
+    ],
+    "gstSettings": { "compositeHealthcareExempt": true, "caSigned": false },
+    "rules": [],
+    "manualCaps": {},
+    "tags": []
+  },
+  "resolved": {
+    "patientId": "pt-invented-08",
+    "billGrossPaise": 0,
+    "memberships": [
+      {
+        "instanceId": "mi-inv-08", "planId": "mp-inv-05", "planTitle": "Invented follow-up card",
+        "cardCode": "INV-CARD-100008", "status": "active",
+        "validFrom": "2026-01-01T00:00:00.000Z", "validTo": "2026-12-31T00:00:00.000Z",
+        "benefits": [
+          { "benefitKey": "INV-BEN-FOLLOW", "title": "Invented follow-up benefit", "kind": "percent_bps", "value": 1000, "capPaise": null, "scope": { "serviceCategories": null, "serviceIds": null } }
+        ]
+      }
+    ],
+    "coupons": [
+      {
+        "couponId": "cd-inv-08", "code": "INV-CPN-FLAT50", "title": "Invented flat coupon", "instanceId": null,
+        "benefit": { "benefitKey": "INV-CPN-FLAT50", "title": "Invented flat coupon", "kind": "flat_paise", "value": 5000, "capPaise": null, "scope": { "serviceCategories": null, "serviceIds": null } },
+        "minBillPaise": 0, "validFrom": "2026-09-01T00:00:00.000Z", "validTo": "2026-10-31T00:00:00.000Z",
+        "weekdayMask": 127, "windowStartMinute": null, "windowEndMinute": null, "status": "active"
+      }
+    ]
+  },
+  "lines": [{ "lineId": "L1", "serviceId": "svc-follow", "qty": 1 }],
+  "expected": [
+    {
+      "workings": "svc-follow is priced at 0 in this tariff version - a free follow-up - so unit 0 x qty 1 = gross 0, and billGrossPaise is 0 too. The membership asks 1000bps: percentAmount(0, 1000) = divHalfUp(0, 10000) = floor((0 + 10000)/20000) = floor(0.5) = 0. The coupon asks a flat 5000 but candidates are pre-capped at gross, so min(5000, 0) = 0; there is no cap on it, so it is NOT rejected as over_cap - a cap it does not have cannot refuse it. Both candidates are therefore recorded at amountPaise 0 and runContest filters on amountPaise > 0, so NEITHER is valid and winner is null. discountPaise 0, taxableBase 0 - 0 = 0, which assertPaise accepts because 0 is a non-negative safe integer. consultation is exempt so cgst and sgst are 0 and net is 0. Nothing throws and nothing is paid.",
+      "line": {
+        "lineId": "L1", "serviceId": "svc-follow", "serviceName": "Follow-up consultation", "category": "consultation",
+        "qty": 1, "unitPaise": 0, "grossPaise": 0, "regulatedClamp": null,
+        "candidates": [
+          { "sourceKey": "membership", "ruleKey": "INV-BEN-FOLLOW", "kind": "percent_bps", "discountCategory": null, "amountPaise": 0, "reason": "Invented follow-up benefit", "requiresApproval": false, "rejected": null },
+          { "sourceKey": "coupon", "ruleKey": "INV-CPN-FLAT50", "kind": "flat_paise", "discountCategory": null, "amountPaise": 0, "reason": "Invented flat coupon", "requiresApproval": false, "rejected": null }
+        ],
+        "winner": null,
+        "discountPaise": 0, "taxableBasePaise": 0,
+        "gst": { "sacCode": "999312", "rateBps": 1800, "exempt": true, "exemptReason": "category_exempt", "cgstPaise": 0, "sgstPaise": 0 },
+        "netPaise": 0
+      }
+    }
+  ]
+}

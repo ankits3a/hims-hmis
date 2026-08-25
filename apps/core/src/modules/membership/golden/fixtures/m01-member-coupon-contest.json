@@ -1,0 +1,64 @@
+{
+  "name": "member + coupon on one line: the BEST single benefit wins and the loser is still recorded",
+  "specRefs": ["DD2", "B1", "§7 best-single-benefit"],
+  "config": {
+    "asOf": "2026-09-30T06:00:00.000Z",
+    "tariff": { "versionId": "tv1", "versionNo": 1, "items": { "svc-cons": 50000, "svc-follow": 0, "svc-lab": 20000, "svc-proc": 100000 } },
+    "services": [
+      { "id": "svc-cons", "code": "CONS-GEN", "name": "General consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-follow", "code": "CONS-FOLLOW", "name": "Follow-up consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-lab", "code": "LAB-CBC", "name": "Complete blood count", "category": "lab", "regulated": false, "active": true },
+      { "id": "svc-proc", "code": "PROC-MIN", "name": "Minor procedure", "category": "procedure", "regulated": false, "active": true }
+    ],
+    "regulatedPrices": {},
+    "gstCategories": [
+      { "category": "consultation", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "procedure", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "lab", "sacCode": "999316", "exempt": false, "rateBps": 1800, "specialRule": null, "thresholdPaise": null }
+    ],
+    "gstSettings": { "compositeHealthcareExempt": true, "caSigned": false },
+    "rules": [],
+    "manualCaps": {},
+    "tags": []
+  },
+  "resolved": {
+    "patientId": "pt-invented-01",
+    "billGrossPaise": 100000,
+    "memberships": [
+      {
+        "instanceId": "mi-inv-01", "planId": "mp-inv-01", "planTitle": "Invented family health card",
+        "cardCode": "INV-CARD-100001", "status": "active",
+        "validFrom": "2026-01-01T00:00:00.000Z", "validTo": "2026-12-31T00:00:00.000Z",
+        "benefits": [
+          { "benefitKey": "INV-BEN-DIAG", "title": "Invented diagnostics benefit", "kind": "percent_bps", "value": 1000, "capPaise": null, "scope": { "serviceCategories": null, "serviceIds": null } }
+        ]
+      }
+    ],
+    "coupons": [
+      {
+        "couponId": "cd-inv-01", "code": "INV-CPN-MONSOON", "title": "Invented monsoon coupon", "instanceId": null,
+        "benefit": { "benefitKey": "INV-CPN-MONSOON", "title": "Invented monsoon coupon", "kind": "flat_paise", "value": 15000, "capPaise": null, "scope": { "serviceCategories": null, "serviceIds": null } },
+        "minBillPaise": 0, "validFrom": "2026-09-01T00:00:00.000Z", "validTo": "2026-10-31T00:00:00.000Z",
+        "weekdayMask": 127, "windowStartMinute": null, "windowEndMinute": null, "status": "active"
+      }
+    ]
+  },
+  "lines": [{ "lineId": "L1", "serviceId": "svc-lab", "qty": 5 }],
+  "expected": [
+    {
+      "workings": "svc-lab unit 20000 x qty 5 -> gross 100000, and billGrossPaise is the same 100000 because this draft is one line. MEMBERSHIP INV-BEN-DIAG is 1000bps unscoped: percentAmount(100000, 1000) = divHalfUp(100000*1000, 10000) = divHalfUp(100000000, 10000) = floor((2*100000000 + 10000)/20000) = floor(10000.5) = 10000, no cap, so amountPaise 10000. COUPON INV-CPN-MONSOON is flat 15000, no cap, min bill 0 <= 100000, weekday mask 127, no time window -> amountPaise min(15000, 100000) = 15000. runContest sorts by amount DESC: 15000 beats 10000, so the coupon wins on VALUE and the array order never comes into it. The stacked sum 10000 + 15000 = 25000 appears nowhere: discountPaise is 15000, not 25000. taxableBase 100000 - 15000 = 85000. lab is NOT exempt at 1800bps: taxHead(85000, 1800) = divHalfUp(85000*1800, 20000) = divHalfUp(153000000, 20000) = floor((306000000 + 20000)/40000) = floor(7650.5) = 7650 per head. net 85000 + 7650 + 7650 = 100300 (a stacked discount would have produced net 75000 + 6750 + 6750 = 88500).",
+      "line": {
+        "lineId": "L1", "serviceId": "svc-lab", "serviceName": "Complete blood count", "category": "lab",
+        "qty": 5, "unitPaise": 20000, "grossPaise": 100000, "regulatedClamp": null,
+        "candidates": [
+          { "sourceKey": "membership", "ruleKey": "INV-BEN-DIAG", "kind": "percent_bps", "discountCategory": null, "amountPaise": 10000, "reason": "Invented diagnostics benefit", "requiresApproval": false, "rejected": null },
+          { "sourceKey": "coupon", "ruleKey": "INV-CPN-MONSOON", "kind": "flat_paise", "discountCategory": null, "amountPaise": 15000, "reason": "Invented monsoon coupon", "requiresApproval": false, "rejected": null }
+        ],
+        "winner": { "sourceKey": "coupon", "ruleKey": "INV-CPN-MONSOON", "kind": "flat_paise", "discountCategory": null, "amountPaise": 15000, "reason": "Invented monsoon coupon", "requiresApproval": false, "rejected": null },
+        "discountPaise": 15000, "taxableBasePaise": 85000,
+        "gst": { "sacCode": "999316", "rateBps": 1800, "exempt": false, "exemptReason": null, "cgstPaise": 7650, "sgstPaise": 7650 },
+        "netPaise": 100300
+      }
+    }
+  ]
+}

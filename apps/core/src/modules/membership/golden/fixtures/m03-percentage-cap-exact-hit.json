@@ -1,0 +1,54 @@
+{
+  "name": "a percentage cap hit EXACTLY to the paise is paid, not refused (the comparison is > and not >=)",
+  "specRefs": ["K3", "B4"],
+  "config": {
+    "asOf": "2026-09-30T06:00:00.000Z",
+    "tariff": { "versionId": "tv1", "versionNo": 1, "items": { "svc-cons": 50000, "svc-follow": 0, "svc-lab": 20000, "svc-proc": 100000 } },
+    "services": [
+      { "id": "svc-cons", "code": "CONS-GEN", "name": "General consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-follow", "code": "CONS-FOLLOW", "name": "Follow-up consultation", "category": "consultation", "regulated": false, "active": true },
+      { "id": "svc-lab", "code": "LAB-CBC", "name": "Complete blood count", "category": "lab", "regulated": false, "active": true },
+      { "id": "svc-proc", "code": "PROC-MIN", "name": "Minor procedure", "category": "procedure", "regulated": false, "active": true }
+    ],
+    "regulatedPrices": {},
+    "gstCategories": [
+      { "category": "consultation", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "procedure", "sacCode": "999312", "exempt": true, "rateBps": 1800, "specialRule": null, "thresholdPaise": null },
+      { "category": "lab", "sacCode": "999316", "exempt": false, "rateBps": 1800, "specialRule": null, "thresholdPaise": null }
+    ],
+    "gstSettings": { "compositeHealthcareExempt": true, "caSigned": false },
+    "rules": [],
+    "manualCaps": {},
+    "tags": []
+  },
+  "resolved": {
+    "patientId": "pt-invented-03",
+    "billGrossPaise": 100000,
+    "memberships": [],
+    "coupons": [
+      {
+        "couponId": "cd-inv-03", "code": "INV-CPN-CAP15", "title": "Invented capped procedure coupon", "instanceId": null,
+        "benefit": { "benefitKey": "INV-CPN-CAP15", "title": "Invented capped procedure coupon", "kind": "percent_bps", "value": 1500, "capPaise": 15000, "scope": { "serviceCategories": null, "serviceIds": null } },
+        "minBillPaise": 0, "validFrom": "2026-09-01T00:00:00.000Z", "validTo": "2026-10-31T00:00:00.000Z",
+        "weekdayMask": 127, "windowStartMinute": null, "windowEndMinute": null, "status": "active"
+      }
+    ]
+  },
+  "lines": [{ "lineId": "L1", "serviceId": "svc-proc", "qty": 1 }],
+  "expected": [
+    {
+      "workings": "svc-proc unit 100000 x qty 1 -> gross 100000. The coupon asks 1500bps: percentAmount(100000, 1500) = divHalfUp(100000*1500, 10000) = divHalfUp(150000000, 10000) = floor((300000000 + 10000)/20000) = floor(15000.5) = 15000. The cap is 15000, so the ask lands EXACTLY on it. The test is raw > capPaise, i.e. 15000 > 15000, which is FALSE, so the candidate is ACCEPTED for min(15000, 100000) = 15000 rather than rejected as over_cap. A >= comparison would have refused a coupon written 'up to 150 rupees' at exactly 150 rupees. discountPaise 15000, taxableBase 100000 - 15000 = 85000; the procedure category is exempt so cgst and sgst are 0 and net is 85000.",
+      "line": {
+        "lineId": "L1", "serviceId": "svc-proc", "serviceName": "Minor procedure", "category": "procedure",
+        "qty": 1, "unitPaise": 100000, "grossPaise": 100000, "regulatedClamp": null,
+        "candidates": [
+          { "sourceKey": "coupon", "ruleKey": "INV-CPN-CAP15", "kind": "percent_bps", "discountCategory": null, "amountPaise": 15000, "reason": "Invented capped procedure coupon", "requiresApproval": false, "rejected": null }
+        ],
+        "winner": { "sourceKey": "coupon", "ruleKey": "INV-CPN-CAP15", "kind": "percent_bps", "discountCategory": null, "amountPaise": 15000, "reason": "Invented capped procedure coupon", "requiresApproval": false, "rejected": null },
+        "discountPaise": 15000, "taxableBasePaise": 85000,
+        "gst": { "sacCode": "999312", "rateBps": 1800, "exempt": true, "exemptReason": "category_exempt", "cgstPaise": 0, "sgstPaise": 0 },
+        "netPaise": 85000
+      }
+    }
+  ]
+}
