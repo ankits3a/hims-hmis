@@ -158,3 +158,14 @@ describe("the two decisions, asserted directly", () => {
     expect(isWedgeInput(4, 20)).toBe(false);      // a fast typist on a short query
   });
 });
+
+it("NO MICROPHONE RENDERS while voice is inert — not a disabled one, none at all", async () => {
+  renderApp();
+  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
+  fireEvent.keyDown(window, { key: "/" });
+  await waitFor(() => expect(paletteInput()).toBeInTheDocument());
+
+  // A visible-but-refusing control is an invitation to ask for it, and the answer would be a
+  // compliance lecture at a busy counter. Voice audio is Class 2 until the DPIA rules otherwise.
+  expect(screen.queryByRole("button", { name: /voice|mic|बोल/i })).toBeNull();
+});

@@ -95,6 +95,21 @@ const configSchema = z.object({
   // `kernel/worker/jobs.ts`'s registration, asserted in `worker/jobs.test.ts` (Book V12) with a
   // value that is NOT this default. Asserting that it PARSES would discharge nothing.
   WORKER_INTERFACE_SWEEP_INTERVAL_MS: z.coerce.number().int().positive().default(60000),
+  /**
+   * PLAN 11h T9 — THE ONE CHOKE MODULE'S CONFIGURATION (deferred note 5, owner ruling 2026-08-25).
+   *
+   * All three default to EMPTY and the path is inert unless all three are set — the B1 scar again:
+   * this schema is parsed through the whole environment by every caller of `loadConfig()`, so a key
+   * that required a value would break every deployment and every CI job at once. CI sets none of
+   * them, which is exactly the intent: **CI must never contact a provider.**
+   *
+   * These name a PROVIDER, not an architecture. Note 5 requires the router and the voice path to
+   * land behind a single choke module that becomes 12a's `InferenceClient`, so this is the only
+   * place in the codebase that will ever hold an outbound AI credential.
+   */
+  SPEECH_PROVIDER: z.enum(["", "workers-ai"]).default(""),
+  SPEECH_ACCOUNT_ID: z.string().default(""),
+  SPEECH_API_TOKEN: z.string().default(""),
 });
 
 export type AppConfig = {
@@ -122,6 +137,9 @@ export type AppConfig = {
   // Plan 11c D6. Reaches `sweepInterfaceHeartbeats` — the tenth job — through `worker/jobs.ts`'s
   // registration and nowhere else, which is where GC10 is discharged rather than at the parse.
   workerInterfaceSweepIntervalMs: number;
+  speechProvider: "" | "workers-ai";
+  speechAccountId: string;
+  speechApiToken: string;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -147,5 +165,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     retentionEventsMonths: parsed.RETENTION_EVENTS_MONTHS,
     notifyRetainDays: parsed.NOTIFY_RETAIN_DAYS,
     workerInterfaceSweepIntervalMs: parsed.WORKER_INTERFACE_SWEEP_INTERVAL_MS,
+    speechProvider: parsed.SPEECH_PROVIDER,
+    speechAccountId: parsed.SPEECH_ACCOUNT_ID,
+    speechApiToken: parsed.SPEECH_API_TOKEN,
   };
 }

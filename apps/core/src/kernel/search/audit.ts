@@ -131,3 +131,39 @@ export async function pruneSearchAudit(
     .returning({ id: searchAudit.id });
   return deleted.length;
 }
+
+/**
+ * PLAN 11h T9 — RECORD THAT AUDIO LEFT THE BUILDING, BEFORE IT LEAVES.
+ *
+ * Written BEFORE the transcription call, not after, and that ordering is the whole assertion: a log
+ * that records only successful transcriptions cannot answer "what left the building" — the failures
+ * are exactly the cases an enquiry would care about. If the provider errors, times out, or the
+ * process dies mid-call, this row still says that a clip was sent, by whom, and when.
+ *
+ * `rawQuery` is empty at this point because the transcript does not exist yet; `attachTranscript`
+ * fills it in afterwards, best-effort. The row's EXISTENCE is the record; its text is a convenience.
+ */
+export async function recordVoiceEgress(
+  db: Db,
+  input: { actor: Actor; audioBytes: number; now?: Date },
+): Promise<{ auditId: string }> {
+  const auditId = newId();
+  await db.insert(searchAudit).values({
+    id: auditId,
+    actorId: input.actor.id,
+    rawQuery: "",
+    queryHash: hashQuery(`voice:${input.audioBytes}`),
+    entityCounts: {},
+    totalHits: 0,
+    tookMs: 0,
+    source: "voice",
+    restrictedSurfaced: false,
+    at: input.now ?? new Date(),
+  });
+  return { auditId };
+}
+
+/** Fill in what the audio turned out to say. Best-effort: the egress row is already the record. */
+export async function attachTranscript(db: Db, auditId: string, text: string): Promise<void> {
+  await db.update(searchAudit).set({ rawQuery: text, queryHash: hashQuery(text) }).where(eq(searchAudit.id, auditId));
+}

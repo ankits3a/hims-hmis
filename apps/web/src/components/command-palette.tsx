@@ -6,6 +6,7 @@ import { useDebounced } from "../lib/format";
 import { api } from "../lib/api";
 import { recordOpened, runSearch } from "../lib/search-api";
 import type { PaletteResponse } from "../lib/search-api";
+import { VoiceButton } from "./voice-button";
 import type { SearchEntity, SearchHit } from "@hmis/contracts";
 
 type PaletteState = { isOpen: boolean; open: (seed?: string) => void; close: () => void };
@@ -171,6 +172,7 @@ function CommandPalette({ seed, onClose }: { seed: string; onClose: () => void }
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
         />
+        <VoiceButton />
         <div aria-live="polite" className="px-4 py-1 text-xs text-neutral-500">
           {scanning ? t("palette.scanning") : t("palette.count", { count: rows.length })}
         </div>
