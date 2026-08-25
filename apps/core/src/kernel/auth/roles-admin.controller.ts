@@ -1,14 +1,17 @@
 import {
-  BadRequestException, Body, Controller, Delete, HttpCode, Inject, NotFoundException, Param, Post,
+  BadRequestException, Body, Controller, Delete, Get, HttpCode, Inject, NotFoundException, Param,
+  Post,
 } from "@nestjs/common";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { DB } from "../tokens";
 import { CurrentActor, RequirePermission } from "./decorators";
 import { withTx } from "../db/client";
 import { appendEvent } from "../events/append";
-import { roles, users } from "../db/schema";
+import { roleAssignments, rolePermissions, roles, users } from "../db/schema";
 import { assignRole, revokeRoleAssignment } from "./permissions";
+import { authManifest } from "./manifest";
+import type { ScopeType } from "./permissions";
 import { assertNoAdminLockout } from "./users-admin.controller";
 import { roleAssigned, roleRevoked } from "./events";
 import type { Actor } from "@hmis/contracts";
@@ -73,6 +76,123 @@ const assignSchema = z.object({
   scopeType: z.enum(["hospital", "floor", "department"]),
   scopeId: z.string().min(1).optional(),
 });
+
+/**
+ * ═══ THE SCOPES AN ASSIGNMENT MAY USEFULLY CARRY, MEASURED RATHER THAN ASSUMED ═══
+ *
+ * **`hospital` ONLY, and this is a MEASUREMENT of the tree as it stands — not a preference.**
+ *
+ * `role_assignments.scope_type` has accepted `hospital | floor | department` since Plan 02 and
+ * `assignRole` still does; this constant does not change that seam and no route was narrowed. What
+ * it records is what a non-hospital assignment BUYS today, which is nothing:
+ *
+ *   - every one of the 156 `@RequirePermission` decorators in this tree demands `"hospital"`
+ *     (asserted by execution in `test/roles-catalog.e2e.test.ts`, which parses the source);
+ *   - `hasPermission` refuses a non-hospital holding against a hospital requirement outright —
+ *     `if (h.scopeType !== requiredScope) return false`, with no cross-level inference "until org
+ *     masters exist" (`permissions.ts`).
+ *
+ * So a department-scoped `doctor` assignment grants the holder EXACTLY NOTHING, on every route, and
+ * the person would meet a 403 everywhere while the admin screen showed them holding a role. That is
+ * the "dark screens" failure the 2026-08-24 smoke test found, manufactured by the very control
+ * meant to fix it — and it is the same confusion that made `hospitalScopeHolders` exploitable
+ * before C2 (`users-admin.controller.ts`).
+ *
+ * A PICKER OFFERING FLOOR AND DEPARTMENT WOULD THEREFORE BE A TRAP. The client reads this list
+ * instead of hard-coding one, so the day a genuinely department-scoped route lands the parser test
+ * fails, this constant widens, and the picker gains the option in the same commit. There is no
+ * second copy of the fact anywhere in the web app.
+ */
+export const ASSIGNABLE_SCOPES: readonly ScopeType[] = ["hospital"];
+
+/** One row of the picker's catalogue. */
+export type AdminRoleView = {
+  key: string;
+  title: string;
+  /** Every permission the role carries, sorted. The person assigning it is granting these. */
+  permissions: string[];
+  /** Active users holding it at hospital scope — the only holding that grants anything (above). */
+  holders: number;
+  /**
+   * The role carries at least one `auth.*` string, so assigning it hands over authority over
+   * ACCESS: who exists, who may do what, whose credential can be reset. The screen says so before
+   * the click rather than after it. DERIVED from `authManifest`, never listed — the same rule
+   * `assertMayTakeOver` and the elevation ceiling follow, so a seventh `auth.*` is covered on
+   * arrival.
+   */
+  grantsAccessAuthority: boolean;
+};
+
+/**
+ * PLAN 11e's MISSING HALF — the roles catalogue, and why it took until now.
+ *
+ * `admin-users.tsx` shipped able to REVOKE a role and not to assign one, and its header said
+ * exactly why: "Assigning from here needs a role picker fed by a roles list the server does not
+ * yet expose — a route this phase deliberately did not add." This is that route. The owner's
+ * report — "I created users but can't assign roles" — is that sentence, met in production.
+ *
+ * ═══ IT IS A SEPARATE CONTROLLER BECAUSE IT IS A SEPARATE PATH, NOT A SEPARATE AUTHORITY ═══
+ *
+ * `RolesAdminController` is mounted on `admin/users` and every route it owns is `:id/roles…`; a
+ * `GET` for the CATALOGUE is not about a user at all, so it cannot live under that prefix without
+ * becoming `/admin/users/roles` and colliding with `:id`. Same permission, same file, different
+ * base path.
+ *
+ * ═══ IT READS, IT NEVER WRITES ═══
+ *
+ * No create, no edit, no delete — the vocabulary stays code-owned (`scripts/seed-roles.ts`), for
+ * the reason `users-admin.controller.ts` gives: an HTTP-minted role is invisible to the model, and
+ * production's permissionless `owner` role is what that looks like. Governed role AUTHORING — draft
+ * → approve → activate through the approvals engine — is the owner's ruling of 2026-08-25 and is
+ * the next slice, not this one.
+ */
+@Controller("admin/roles")
+export class RolesCatalogController {
+  constructor(@Inject(DB) private readonly db: Db) {}
+
+  @RequirePermission(ROLES_MANAGE, "hospital")
+  @Get()
+  async list(): Promise<{ roles: AdminRoleView[]; assignableScopes: readonly ScopeType[] }> {
+    const rows = await this.db
+      .select({ key: roles.key, title: roles.title })
+      .from(roles)
+      .orderBy(roles.key);
+
+    const grants = await this.db
+      .select({ roleKey: rolePermissions.roleKey, permission: rolePermissions.permission })
+      .from(rolePermissions);
+
+    /**
+     * HOSPITAL SCOPE AND ACTIVE USERS ONLY, matching `hospitalScopeHolders`'s predicate exactly.
+     * A count that included deactivated accounts or inert department holdings would report a role
+     * as covered when nobody can actually exercise it — which is the 403-with-extra-steps state
+     * `seed:roles`'s own holder census exists to surface.
+     */
+    const holdings = await this.db
+      .select({ roleKey: roleAssignments.roleKey, userId: roleAssignments.userId })
+      .from(roleAssignments)
+      .innerJoin(users, eq(users.id, roleAssignments.userId))
+      .where(and(eq(roleAssignments.scopeType, "hospital"), eq(users.active, true)));
+
+    const authPermissions = new Set<string>(authManifest.permissions);
+    return {
+      assignableScopes: ASSIGNABLE_SCOPES,
+      roles: rows.map((r) => {
+        const permissions = grants
+          .filter((g) => g.roleKey === r.key)
+          .map((g) => g.permission)
+          .sort();
+        return {
+          key: r.key,
+          title: r.title,
+          permissions,
+          holders: new Set(holdings.filter((h) => h.roleKey === r.key).map((h) => h.userId)).size,
+          grantsAccessAuthority: permissions.some((p) => authPermissions.has(p)),
+        };
+      }),
+    };
+  }
+}
 
 @Controller("admin/users")
 export class RolesAdminController {

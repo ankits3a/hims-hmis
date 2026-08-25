@@ -3,7 +3,7 @@ import { APP_GUARD } from "@nestjs/core";
 import { DB, MODULE_REGISTRY } from "../tokens";
 import { AuthController } from "./auth.controller";
 import { UsersAdminController } from "./users-admin.controller";
-import { RolesAdminController } from "./roles-admin.controller";
+import { RolesAdminController, RolesCatalogController } from "./roles-admin.controller";
 import { AuthGuard, PermissionGuard } from "./guards";
 import { syncPermissions } from "./permissions";
 import { seedSodPairs } from "./sod";
@@ -16,7 +16,10 @@ import type { Db } from "../db/client";
   // name claims: `auth.users.manage` on `/admin/users*`, `auth.roles.manage` on the role routes.
   // One controller carrying both would make the route→permission map a matter of reading
   // decorators one at a time, which is the shape §3.42's defect hid in.
-  controllers: [AuthController, UsersAdminController, RolesAdminController],
+  // `RolesCatalogController` is the same authority (`auth.roles.manage`) on a different base
+  // path: `GET /admin/roles` is about the VOCABULARY, not about a user, so it cannot sit under
+  // `admin/users` without colliding with that controller's `:id`.
+  controllers: [AuthController, UsersAdminController, RolesAdminController, RolesCatalogController],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },       // runs first: identity
     { provide: APP_GUARD, useClass: PermissionGuard }, // runs second: RBAC

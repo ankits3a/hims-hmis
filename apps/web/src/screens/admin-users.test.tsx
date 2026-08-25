@@ -251,4 +251,94 @@ describe("AdminUsers", () => {
     expect(await screen.findByTestId("admin-notice"))
       .toHaveTextContent("front_office was revoked from asha");
   });
+
+  // ═══════════════════════ THE ROLE PICKER (the "can't assign roles" report) ═══════════════════════
+
+  const CATALOGUE = {
+    assignableScopes: ["hospital"],
+    roles: [
+      { key: "front_office", title: "Front office", permissions: ["patients.read"], holders: 1, grantsAccessAuthority: false },
+      { key: "cashier", title: "Cashier", permissions: ["billing.invoice.issue", "billing.receipt.record"], holders: 0, grantsAccessAuthority: false },
+      { key: "admin", title: "Administrator", permissions: ["auth.users.manage", "auth.roles.manage"], holders: 1, grantsAccessAuthority: true },
+    ],
+  };
+
+  it("offers the roles this person does NOT hold, and assigns at the scope the SERVER named", async () => {
+    mockRoutes({
+      "GET /api/admin/users": { status: 200, body: { users: [ASHA], fullAdministrators: 2 } },
+      "GET /api/admin/roles": { status: 200, body: CATALOGUE },
+      "POST /api/admin/users/u-asha/roles": { status: 201, body: { assignmentId: "a-2" } },
+    });
+    renderWithProviders(<AdminUsers />);
+
+    const select = await screen.findByTestId("admin-role-select-asha");
+    // `front_office` is absent: Asha already holds it, and `assignRole` mints a fresh row per call
+    // rather than refusing, so an unfiltered list would let one stack duplicates.
+    expect(within(select).queryByRole("option", { name: /front_office/ })).not.toBeInTheDocument();
+    expect(within(select).getByRole("option", { name: /cashier — Cashier \(2 permissions\)/ })).toBeInTheDocument();
+
+    await userEvent.selectOptions(select, "cashier");
+    await userEvent.click(screen.getByRole("button", { name: "Assign" }));
+
+    await waitFor(() => expect(callsTo("POST", "/api/admin/users/u-asha/roles")).toHaveLength(1));
+    // `hospital` comes from the catalogue's `assignableScopes`, NOT from a constant in this file:
+    // every route in the tree requires hospital scope, and a department-scoped row would grant the
+    // holder nothing at all.
+    expect(callsTo("POST", "/api/admin/users/u-asha/roles")[0]!.body)
+      .toEqual({ roleKey: "cashier", scopeType: "hospital" });
+    expect(await screen.findByTestId("admin-notice")).toHaveTextContent("cashier was assigned to asha");
+  });
+
+  it("warns BEFORE the click when the picked role carries authority over access", async () => {
+    mockRoutes({
+      "GET /api/admin/users": { status: 200, body: { users: [ASHA], fullAdministrators: 2 } },
+      "GET /api/admin/roles": { status: 200, body: CATALOGUE },
+    });
+    renderWithProviders(<AdminUsers />);
+
+    const select = await screen.findByTestId("admin-role-select-asha");
+    expect(screen.queryByTestId("admin-authority-warning-asha")).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(select, "admin");
+    // The flag is the SERVER's derivation from authManifest; this screen re-computes nothing, so a
+    // seventh `auth.*` string lights this warning without a line changing here.
+    expect(await screen.findByTestId("admin-authority-warning-asha"))
+      .toHaveTextContent("authority over access itself");
+
+    await userEvent.selectOptions(select, "cashier");
+    await waitFor(() => expect(screen.queryByTestId("admin-authority-warning-asha")).not.toBeInTheDocument());
+  });
+
+  it("renders NO picker when the catalogue refuses — auth.users.manage opens this screen, auth.roles.manage opens the picker", async () => {
+    mockRoutes({
+      "GET /api/admin/users": { status: 200, body: { users: [ASHA], fullAdministrators: 2 } },
+      "GET /api/admin/roles": { status: 403, body: { code: "forbidden", message: "no" } },
+    });
+    renderWithProviders(<AdminUsers />);
+
+    // The roster still loads, and the refusal is the boundary working rather than an error to show.
+    await screen.findByTestId("admin-user-asha");
+    expect(screen.getByRole("button", { name: "Revoke" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId("admin-role-select-asha")).not.toBeInTheDocument());
+    expect(screen.queryByTestId("admin-row-error")).not.toBeInTheDocument();
+  });
+
+  it("flags an existing non-hospital assignment as granting nothing", async () => {
+    const scoped = {
+      ...ASHA,
+      roles: [{ assignmentId: "a-9", roleKey: "doctor", scopeType: "department", scopeId: "PAEDS" }],
+    };
+    mockRoutes({
+      "GET /api/admin/users": { status: 200, body: { users: [scoped], fullAdministrators: 2 } },
+      "GET /api/admin/roles": { status: 200, body: CATALOGUE },
+    });
+    renderWithProviders(<AdminUsers />);
+
+    // The picker cannot create one of these, but the API can and Plan 02 rows may already exist.
+    // A person meeting 403 everywhere while this screen shows them holding a role is the worst
+    // version of the bug this slice exists to fix, so the row says so.
+    const inert = await screen.findByTestId("admin-inert-a-9");
+    expect(inert).toHaveTextContent("department: PAEDS");
+    expect(inert).toHaveTextContent("grants nothing today");
+  });
 });

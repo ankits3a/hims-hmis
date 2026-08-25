@@ -8,8 +8,8 @@ import { FormKit, TextField } from "../components/form-kit";
 import { Button } from "@/components/ui/button";
 import { SubmitButton } from "../components/submit-button";
 import {
-  adminErrorCode, adminErrorMessage, createUser, deactivateUser, listUsers, reactivateUser,
-  resetPassword, resetPin, revokeRole,
+  adminErrorCode, adminErrorMessage, assignRole, createUser, deactivateUser, listRoles, listUsers,
+  reactivateUser, resetPassword, resetPin, revokeRole,
 } from "../lib/admin-api";
 import type { WireAdminUser } from "../lib/admin-api";
 
@@ -43,11 +43,31 @@ import type { WireAdminUser } from "../lib/admin-api";
  * ═══ WHAT IS DELIBERATELY ABSENT ═══
  *
  * No role CREATION: the vocabulary is code-owned (`seed:roles`), and an HTTP-minted role would be
- * invisible to the model — production's permissionless `owner` role is what that looks like. Role
- * ASSIGNMENT is the server's `POST /admin/users/:id/roles`; this screen renders what each person
- * holds and can revoke one, because revoking is the half a hospital needs in a hurry. Assigning
- * from here needs a role picker fed by a roles list the server does not yet expose — a route this
- * phase deliberately did not add.
+ * invisible to the model — production's permissionless `owner` role is what that looks like.
+ * Governed AUTHORING — draft → approve → activate through the approvals engine — is the owner's
+ * ruling of 2026-08-25 and is a later slice.
+ *
+ * ═══ THE PICKER, AND WHAT THIS PARAGRAPH USED TO SAY ═══
+ *
+ * It used to read: "Assigning from here needs a role picker fed by a roles list the server does
+ * not yet expose — a route this phase deliberately did not add." That sentence was met in
+ * production as a bug report — *"I created users but can't assign roles"* — because a screen that
+ * can only REVOKE is a screen that can only ever take authority away. `GET /admin/roles`
+ * (`RolesCatalogController`) is that route, and this file is its consumer.
+ *
+ * THREE THINGS THE PICKER REFUSES TO GUESS, all of them read from the server:
+ *   - WHICH SCOPES it may offer (`assignableScopes`). Every `@RequirePermission` in the tree
+ *     demands `hospital`, and `hasPermission` refuses a department holding against a hospital
+ *     requirement — so a "doctor, Paediatrics" option would mint an assignment granting NOTHING
+ *     and a person meeting 403 everywhere. The list is the server's measurement, not a constant
+ *     here.
+ *   - WHAT A ROLE HANDS OVER (`permissions`), shown before the click rather than discovered after.
+ *   - WHETHER IT CONFERS AUTHORITY OVER ACCESS (`grantsAccessAuthority`), derived server-side from
+ *     `authManifest` so a seventh `auth.*` string is covered on arrival.
+ *
+ * A 403 ON THE CATALOGUE IS NOT AN ERROR HERE. `auth.users.manage` opens this screen;
+ * `auth.roles.manage` opens the picker. A delegate holding only the first sees the roster and no
+ * assign control, which is the boundary 11e CLOSE restored, rendering itself.
  */
 const createSchema = z.object({
   username: z.string().min(1),
@@ -70,13 +90,29 @@ export function AdminUsers(): React.ReactElement {
   const [resetValue, setResetValue] = useState("");
 
   const users = useQuery({ queryKey: ["admin", "users"], queryFn: listUsers });
+  /**
+   * `retry: false` because the expected failure here is a 403 — a delegate holding
+   * `auth.users.manage` and not `auth.roles.manage` — and retrying a refusal three times just
+   * delays the screen for the person it is correctly refusing.
+   */
+  const catalogue = useQuery({ queryKey: ["admin", "roles"], queryFn: listRoles, retry: false });
+  /** Picked role per user id. Per-row because the control is per-row. */
+  const [picked, setPicked] = useState<Record<string, string>>({});
 
   const form = useForm<CreateValues>({
     resolver: zodResolver(createSchema),
     defaultValues: { username: "", fullName: "", password: "", pin: "" },
   });
 
-  const refresh = (): Promise<void> => qc.invalidateQueries({ queryKey: ["admin", "users"] });
+  /**
+   * BOTH lists. `holders` on the catalogue moves on every assign, revoke, deactivate and
+   * reactivate, so refreshing only the roster would leave the picker quoting a stale count — the
+   * kind of small lie that makes an operator distrust the screen.
+   */
+  const refresh = async (): Promise<void> => {
+    await qc.invalidateQueries({ queryKey: ["admin", "users"] });
+    await qc.invalidateQueries({ queryKey: ["admin", "roles"] });
+  };
 
   const submitCreate = form.handleSubmit(async (v) => {
     setCreateError(null);
@@ -102,6 +138,7 @@ export function AdminUsers(): React.ReactElement {
     if (code === "admin_lockout") return t("adminUsers.error.admin_lockout");
     if (code === "username_taken") return t("adminUsers.error.username_taken");
     if (code === "user_not_found") return t("adminUsers.error.user_not_found");
+    if (code === "role_not_found") return t("adminUsers.error.role_not_found");
     return adminErrorMessage(e);
   };
 
@@ -245,7 +282,7 @@ export function AdminUsers(): React.ReactElement {
                     {u.hasPin && <> · {t("adminUsers.hasPin")}</>}
                     {u.mustChangePassword && <> · {t("adminUsers.mustChange")}</>}
                   </td>
-                  <td>
+                  <td className="min-w-64">
                     {u.roles.length === 0 ? (
                       <span className="text-neutral-500">{t("adminUsers.noRoles")}</span>
                     ) : (
@@ -253,7 +290,20 @@ export function AdminUsers(): React.ReactElement {
                         {u.roles.map((r) => (
                           <li key={r.assignmentId}>
                             {r.roleKey}
-                            {r.scopeId !== null && <> ({r.scopeId})</>}{" "}
+                            {r.scopeType !== "hospital" && (
+                              /*
+                                AN INERT ASSIGNMENT, SAID ON ITS FACE. `hasPermission` refuses a
+                                non-hospital holding against a hospital requirement and every route
+                                in the tree requires hospital — so this row grants its holder
+                                nothing at all. The picker cannot create one (it offers only
+                                `assignableScopes`), but the API can and Plan 02 rows may already
+                                exist, and a person meeting 403 everywhere while the screen shows
+                                them holding a role is the worst version of this bug.
+                               */
+                              <span className="ml-1 text-xs text-amber-700" data-testid={`admin-inert-${r.assignmentId}`}>
+                                ({r.scopeType}{r.scopeId !== null && `: ${r.scopeId}`}) {t("adminUsers.inertScope")}
+                              </span>
+                            )}{" "}
                             <SubmitButton
                               type="button"
                               variant="link"
@@ -269,6 +319,63 @@ export function AdminUsers(): React.ReactElement {
                         ))}
                       </ul>
                     )}
+                    {catalogue.data !== undefined && (() => {
+                      /*
+                        Roles this person does not already hold. `assignRole` mints a fresh id per
+                        call and refuses nothing, so an unfiltered list would let a double-click
+                        pattern stack duplicate rows that each need their own revoke.
+                       */
+                      const held = new Set(u.roles.map((r) => r.roleKey));
+                      const options = catalogue.data.roles.filter((r) => !held.has(r.key));
+                      const chosen = picked[u.id] ?? "";
+                      const scope = catalogue.data.assignableScopes[0] ?? "hospital";
+                      const warns = options.find((r) => r.key === chosen)?.grantsAccessAuthority === true;
+                      if (options.length === 0) {
+                        return <p className="mt-1 text-xs text-neutral-500">{t("adminUsers.allRolesHeld")}</p>;
+                      }
+                      return (
+                        <div className="mt-1 space-y-1">
+                          <label className="sr-only" htmlFor={`assign-${u.id}`}>
+                            {t("adminUsers.assignRoleFor", { username: u.username })}
+                          </label>
+                          <select
+                            id={`assign-${u.id}`}
+                            data-testid={`admin-role-select-${u.username}`}
+                            className="w-full rounded border px-1 py-0.5 text-xs"
+                            value={chosen}
+                            onChange={(e) => setPicked((p) => ({ ...p, [u.id]: e.target.value }))}
+                          >
+                            <option value="">{t("adminUsers.pickRole")}</option>
+                            {options.map((r) => (
+                              <option key={r.key} value={r.key}>
+                                {r.key} — {r.title} ({t("adminUsers.nPermissions", { n: r.permissions.length })})
+                              </option>
+                            ))}
+                          </select>
+                          {warns && (
+                            <p role="status" data-testid={`admin-authority-warning-${u.username}`}
+                              className="text-xs text-amber-800">
+                              {t("adminUsers.grantsAccessAuthority")}
+                            </p>
+                          )}
+                          <SubmitButton
+                            type="button"
+                            variant="outline"
+                            size="xs"
+                            disabled={chosen === ""}
+                            onClick={() => run(
+                              async () => {
+                                await assignRole(u.id, { roleKey: chosen, scopeType: scope as "hospital" });
+                                setPicked((p) => ({ ...p, [u.id]: "" }));
+                              },
+                              t("adminUsers.roleAssigned", { roleKey: chosen, username: u.username }),
+                            )}
+                          >
+                            {t("adminUsers.assignRole")}
+                          </SubmitButton>
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="space-x-2 whitespace-nowrap">
                     <button

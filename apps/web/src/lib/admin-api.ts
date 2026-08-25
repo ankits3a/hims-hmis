@@ -68,6 +68,34 @@ export function resetPin(id: string, newPin: string): Promise<void> {
 
 // ───────────────────────────── roles (T4) ─────────────────────────────
 
+/**
+ * `GET /admin/roles`'s row. `permissions` is what assigning this role actually hands over, so the
+ * screen can show it before the click; `grantsAccessAuthority` is the server's own derivation from
+ * `authManifest` and the client never re-computes it — a second copy would drift from the set that
+ * decides, which is `§2.54`'s rule and the reason `fullAdministrators` is a server count too.
+ */
+export type WireRole = {
+  key: string;
+  title: string;
+  permissions: string[];
+  holders: number;
+  grantsAccessAuthority: boolean;
+};
+
+/**
+ * `auth.roles.manage`, NOT `auth.users.manage` — so a delegate who may create accounts but not
+ * confer authority gets a 403 here while `/admin/users` still loads. The screen treats that as
+ * "no picker", not as an error: it is the boundary working.
+ *
+ * `assignableScopes` comes from the server because it is a MEASUREMENT of which scopes any route
+ * can actually be satisfied by (`ASSIGNABLE_SCOPES`, `roles-admin.controller.ts`). Hard-coding
+ * `["hospital"]` here would put the picker one deploy away from silently offering a scope that
+ * grants nothing — a person assigned "doctor, Paediatrics" who meets 403 everywhere.
+ */
+export function listRoles(): Promise<{ roles: WireRole[]; assignableScopes: string[] }> {
+  return api("GET", "/admin/roles");
+}
+
 export function assignRole(
   id: string,
   body: { roleKey: string; scopeType: "hospital" | "floor" | "department"; scopeId?: string },
