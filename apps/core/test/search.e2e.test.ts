@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { AppModule } from "../src/app.module";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { withTx } from "../src/kernel/db/client";
-import { registrationConfig, searchAudit } from "../src/kernel/db/schema";
+import { events, registrationConfig, searchAudit } from "../src/kernel/db/schema";
 import { loadConfig, requireEnv } from "../src/kernel/config";
 import { createUser } from "../src/kernel/auth/identity";
 import { createSession } from "../src/kernel/auth/sessions";
@@ -117,6 +117,32 @@ describe("search over HTTP", () => {
   it("a bad limit is a 400, not a 500", async () => {
     const token = await deskUser(["patients.read"]);
     await request(server()).get("/search?q=asha&limit=999").set("Authorization", `Bearer ${token}`).expect(400);
+  });
+
+  it("DD8 — THE RATE LIMIT REFUSES WITH A 429 AND EVENTS IT, without writing an audit row", async () => {
+    const token = await deskUser(["patients.read"]);
+    // Fill the window. `SEARCH_RATE_LIMIT` defaults to 120; seed exactly that many recent rows for
+    // this actor by searching, then assert the next one is refused.
+    const me = await request(server()).get("/search?q=asha").set("Authorization", `Bearer ${token}`).expect(200);
+    const actorId = (await db.select().from(searchAudit).where(eq(searchAudit.id, me.body.auditId as string)))[0]!.actorId;
+    const now = new Date();
+    await db.insert(searchAudit).values(
+      Array.from({ length: 130 }, (_, i) => ({
+        id: `RL${String(i).padStart(24, "0")}`,
+        actorId, rawQuery: "flood", queryHash: "h", entityCounts: {}, totalHits: 0, tookMs: 1,
+        source: "text", restrictedSurfaced: false, at: now,
+      })),
+    );
+
+    const before = (await db.select().from(searchAudit)).length;
+    const refused = await request(server()).get("/search?q=asha").set("Authorization", `Bearer ${token}`).expect(429);
+
+    expect(refused.body.retryAfterSec).toBeGreaterThanOrEqual(1);
+    // A refusal is an EVENT, never an audit row — counting refusals in the table the limiter reads
+    // would make every retry extend the block.
+    expect((await db.select().from(searchAudit)).length).toBe(before);
+    const names = (await db.select({ name: events.name }).from(events)).map((e) => e.name);
+    expect(names).toContain("search.rate_limited");
   });
 
   describe("POST /search/opened", () => {

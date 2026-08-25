@@ -1,15 +1,21 @@
 import {
-  BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Post, Query,
+  BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, HttpException, HttpStatus, Inject,
+  NotFoundException, Post, Query,
 } from "@nestjs/common";
 import { z } from "zod";
 import { parseSearchQuery } from "@hmis/contracts";
 import type { Actor, SearchEntity, SearchResponse } from "@hmis/contracts";
-import { DB, MODULE_REGISTRY } from "../tokens";
+import { CONFIG, DB, MODULE_REGISTRY } from "../tokens";
 import { CurrentActor } from "../auth/decorators";
 import { searchAll } from "./registry";
 import { recordOpen, recordSearch } from "./audit";
+import { checkSearchRate } from "./rate-limit";
+import { searchRateLimited } from "./events";
+import { appendEvent } from "../events/append";
+import { withTx } from "../db/client";
 import { SearchError } from "./types";
 import type { ModuleRegistry } from "../modules/loader";
+import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 
 const openedBody = z.object({
@@ -44,6 +50,7 @@ export class SearchController {
   constructor(
     @Inject(DB) private readonly db: Db,
     @Inject(MODULE_REGISTRY) private readonly registry: ModuleRegistry,
+    @Inject(CONFIG) private readonly cfg: AppConfig,
   ) {}
 
   @Get()
@@ -51,6 +58,33 @@ export class SearchController {
     const parsedInput = searchQuery.safeParse(queryParams);
     if (!parsedInput.success) throw new BadRequestException(parsedInput.error.issues[0]?.message ?? "invalid query");
     const { q, limit, entities } = parsedInput.data;
+
+    /**
+     * DD8 — THE RATE CHECK COMES BEFORE THE QUERY, not after it. A refusal that still ran the
+     * search would have already read the rows it was refusing to return.
+     */
+    const rate = await checkSearchRate(this.db, actor, {
+      limit: this.cfg.searchRateLimit,
+      windowSec: this.cfg.searchRateWindowSec,
+    });
+    if (!rate.allowed) {
+      await withTx(this.db, (tx) =>
+        appendEvent(tx, searchRateLimited.make({
+          actor,
+          payload: {
+            windowSec: this.cfg.searchRateWindowSec,
+            limit: this.cfg.searchRateLimit,
+            used: rate.used,
+            retryAfterSec: rate.retryAfterSec,
+          },
+        })),
+      );
+      throw new HttpException(
+        { statusCode: HttpStatus.TOO_MANY_REQUESTS, message: "search_rate_limited", retryAfterSec: rate.retryAfterSec },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     const query = parseSearchQuery(q, limit ?? 20);
     try {
       /**

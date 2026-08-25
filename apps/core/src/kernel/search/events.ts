@@ -47,3 +47,20 @@ export const searchAuditPruned = defineEvent(
     cutoff: z.string().min(1),
   }),
 );
+
+/**
+ * An actor was refused for rate (DD8). It is an EVENT rather than a row in `search_audit` for two
+ * reasons: it must be RARE — a desk cannot reach the limit by typing — and counting refusals in the
+ * table the limiter reads would make every retry extend the block. If this name starts appearing in
+ * volume, that is the signal it exists to give.
+ */
+export const searchRateLimited = defineEvent(
+  "search.rate_limited",
+  "search",
+  z.object({
+    windowSec: z.number().int().positive(),
+    limit: z.number().int().positive(),
+    used: z.number().int().nonnegative(),
+    retryAfterSec: z.number().int().positive(),
+  }),
+);

@@ -107,6 +107,12 @@ const configSchema = z.object({
    * land behind a single choke module that becomes 12a's `InferenceClient`, so this is the only
    * place in the codebase that will ever hold an outbound AI credential.
    */
+  /**
+   * PLAN 11h CLOSE / DD8 — the per-actor search rate limit. Both defaulted (the B1 scar), so no
+   * .env changes anywhere. See `kernel/search/rate-limit.ts` for why these numbers.
+   */
+  SEARCH_RATE_LIMIT: z.coerce.number().int().positive().default(120),
+  SEARCH_RATE_WINDOW_SEC: z.coerce.number().int().positive().default(60),
   SPEECH_PROVIDER: z.enum(["", "workers-ai"]).default(""),
   SPEECH_ACCOUNT_ID: z.string().default(""),
   SPEECH_API_TOKEN: z.string().default(""),
@@ -137,6 +143,8 @@ export type AppConfig = {
   // Plan 11c D6. Reaches `sweepInterfaceHeartbeats` — the tenth job — through `worker/jobs.ts`'s
   // registration and nowhere else, which is where GC10 is discharged rather than at the parse.
   workerInterfaceSweepIntervalMs: number;
+  searchRateLimit: number;
+  searchRateWindowSec: number;
   speechProvider: "" | "workers-ai";
   speechAccountId: string;
   speechApiToken: string;
@@ -165,6 +173,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     retentionEventsMonths: parsed.RETENTION_EVENTS_MONTHS,
     notifyRetainDays: parsed.NOTIFY_RETAIN_DAYS,
     workerInterfaceSweepIntervalMs: parsed.WORKER_INTERFACE_SWEEP_INTERVAL_MS,
+    searchRateLimit: parsed.SEARCH_RATE_LIMIT,
+    searchRateWindowSec: parsed.SEARCH_RATE_WINDOW_SEC,
     speechProvider: parsed.SPEECH_PROVIDER,
     speechAccountId: parsed.SPEECH_ACCOUNT_ID,
     speechApiToken: parsed.SPEECH_API_TOKEN,
