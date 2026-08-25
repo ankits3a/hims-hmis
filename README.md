@@ -61,78 +61,13 @@ IST — see **Worker process** below), alongside `runDispatchCycle`, `sweepExpir
 
 ### Go-live runbook (owner steps, once per environment)
 1. Choose the UHID prefix (Class A decision — printed on every card):
-   `UHID_PREFIX=<PREFIX> pnpm --filter @hmis/core seed:registration` — production runs `U`
-   (owner ruling 2026-08-25), giving UHIDs of the form `U12345013`: the prefix, a 7-digit serial
-   and a Verhoeff check digit, nine characters with no separators. See **UHID format** below.
+   `UHID_PREFIX=<PREFIX> pnpm --filter @hmis/core seed:registration`
 2. Register the merge approval types as data (no code): build each definition with
    `approvalFlowDefinition({ typeKey: "patient_merge" | "patient_unmerge", approverRole: <role>, ... })`,
    draft + activate through `/workflow/definitions` (drafter ≠ activator), then `POST /approvals/types`
    (`patient_unmerge` with `urgencyClass: "urgent", actFirstAllowed: true`).
 3. Grant `patients.*` permissions to the registration-desk role; `patients.confidential.read`
    and `patients.merge` only to the roles the owner designates.
-
-### UHID format (owner ruling 2026-08-25 — replaces `<PREFIX>-<8 digits>-<check>`)
-`<PREFIX><7-digit serial><Verhoeff check digit>` — production: `U12345013`. Nine characters, no
-separators, because a UHID is typed into a search box far more often than it is read off a card.
-The check digit is Verhoeff (Aadhaar's algorithm, Plan 05 Q6, retained): it rejects every
-single-digit typo and every adjacent transposition before one can land a desk on a stranger's chart.
-
-**Serials 1–1,234,500 are reserved and carry NO meaning.** The floor exists so the first card reads
-`U12345013` rather than `U00000017`, and so a memorable number can be minted by hand one day. It is
-deliberately **not** a VIP or membership band: a UHID is printed, spoken across a counter and texted,
-so a semantic range would broadcast exactly what `patients.is_confidential` (§14) exists to seal —
-and status is revocable while a UHID is not. VIP is `is_confidential`; membership is Plan 09's
-instrument record. `allocateUhid` refuses any serial inside the band, so a counter reset below the
-floor halts registration loudly instead of quietly issuing a reserved number.
-
-Search accepts `U12345013`, `u12345013`, bare `12345013`, the leading serial without the check digit,
-any trailing run of 4+ digits, and any of those with stray spaces or hyphens.
-
-**Re-minting old-format patients** (commissioning only — this renumbers people, which is normally
-the one thing a UHID exists to prevent). **Re-seed the prefix FIRST**: the script mints through
-`allocateUhid`, which reads `registration_config`, so running it before step 1 above would stamp
-every patient with the OLD prefix and leave nothing for a second run to fix (it is idempotent on
-format, not on prefix). Order: `UHID_PREFIX=U … seed:registration`, then
-`DRY_RUN=1 pnpm --filter @hmis/core remint:uhids` to see the census, then the same command without
-`DRY_RUN` to write. Old ids are parked in `legacy_uhid` and
-`qr_version` is bumped so every card printed under the old format fails verification rather than
-resolving to a number its patient no longer has.
-
-## Episode numbers — V/A/L/S/R/P (owner ruling 2026-08-25)
-`<letter><YYMMDD><4-digit daily serial>`, eleven characters, no separators. The counter resets each
-day and is keyed on the **service date**, never the insert instant.
-
-| Letter | Document | Allocated today? |
-|---|---|---|
-| `V` | Visit / encounter — `V2608250147` | yes, at `openVisit` |
-| `A` | Appointment — `A2608250042` | yes, at booking and at reschedule |
-| `L` | Lab order | reserved — lab module not built |
-| `S` | Lab specimen / accession | reserved |
-| `R` | Radiology order | reserved |
-| `P` | Pharmacy dispense | reserved |
-
-**This is deliberately not the UHID's design and not the invoice's.** A UHID names a person and is
-typed constantly, so it spends nothing on self-description. An episode number names an event and is
-mostly printed, scanned and stuck to a tube or a film jacket, so it carries its own date. An invoice
-number is `INV/2627/000123` because GST demands a per-fiscal-year consecutive serial — tax law, not
-usability — which is why `episode_series` is a **separate table** from `document_series`: the two
-counters answer to different authorities and nobody tidying a clinical counter should be one typo
-from resetting a statutory one. Gaplessness is required of the GST series and **not** of this one.
-
-**One encounter = one visit number, including same-day re-entry.** A patient sent back through the
-queue after results is on the same visit; the token is reused and so is the `V` number. Minting a
-second there would attach results to a visit that never ordered them.
-
-`L`/`S` are two numbers because an *order* ("CBC + LFT") and a *specimen* (the tube) are different
-objects — one order yields several tubes — and a single number cannot express a haemolysed sample
-being redrawn without cancelling the order. A lab or radiology order must also be able to exist
-**without** a parent visit: direct walk-in tests and camp screenings are real, and a number that
-requires a visit forces staff to fake one.
-
-**The date reads YYMMDD, which is ambiguous to an Indian desk** — `260825` is 25-Aug-2026 here and
-26-Aug-2025 under DD-MM-YY. YYMMDD is kept because it makes the id sort chronologically; the
-mitigation is that every artifact prints a human date beside it. The token slip binds them on one
-line (`V2608170001 · 17-Aug-2026`); the e-Rx already carries a four-digit-year date of its own.
 
 ## Web app (Plan 05)
 
@@ -313,8 +248,7 @@ through that controller, so granting them would mint authority nobody needs.
    below are cited by number elsewhere in this repository; it is listed here anyway because
    **without it `POST /patients` answers 400 (`registration_config row 'main' is missing`) and no
    OPD visit can be opened for a patient who cannot be registered.** Omitting it from this list
-   cost a live go-live run one round trip on 2026-08-23. `UHID_PREFIX` is 1–5 uppercase letters
-   (production runs `U`),
+   cost a live go-live run one round trip on 2026-08-23. `UHID_PREFIX` is 2–5 uppercase letters,
    it prefixes every UHID the hospital ever issues, and it is an **owner-gated Class A decision** —
    the script refuses anything else and does not guess. Idempotent (it updates on conflict), so a
    prefix chosen in error can be corrected while few UHIDs exist; already-issued ones keep the old
