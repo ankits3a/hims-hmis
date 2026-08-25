@@ -1,0 +1,5 @@
+partner_sale_ref,card_code,plan_code,holder_name,holder_phone,valid_from,valid_to,members
+S-8001,QR-920,PL-INV-SOLO,Manohar Talwalkar,9820100801,2026-01-01,2026-12-31,
+S-8002,QR-921,PL-INV-SOLO,Sarita Talwalkar,9820100801,2026-01-01,2026-12-31,
+S-8003,QR-922,PL-INV-SOLO,Nikhil Talwalkar,9820100801,2026-01-01,2026-12-31,
+S-8004,QR-923,PL-INV-SOLO,Aparna Talwalkar,9820100801,2026-01-01,2026-12-31,

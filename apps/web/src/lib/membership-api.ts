@@ -119,3 +119,85 @@ export function retryAfterSec(e: unknown): number | null {
   const value = (detail as { retryAfterSec?: unknown }).retryAfterSec;
   return typeof value === "number" ? value : null;
 }
+
+// ──────────────────── PLAN 09 T5 — the import and the reconcile queue ────────────────────
+//
+// Transcribed from `membership.controller.ts`, the same way the recognition half above is: this
+// file DESCRIBES the shape those routes ship and never re-derives or widens it.
+//
+// THE QUEUE IS THE ONLY PLACE A CARD IS EVER LINKED TO A PATIENT, and the client cannot do it on
+// its own: `resolveMatch` names a queue item and one of ITS OWN candidates, and the server refuses
+// any other patient. There is deliberately no "link this card to whoever I typed" call to make.
+
+export type WireMatchCandidate = {
+  patientId: string;
+  /** 0..1, the server's own `similarity()` — rendered as a number a human can weigh, never a band. */
+  score: number;
+  why: string;
+  patientName: string;
+  uhid: string;
+};
+
+export type WireMatchQueueItem = {
+  id: string;
+  instanceId: string;
+  memberId: string | null;
+  /** `'fuzzy_match' | 'merge_duplicate' | 'cap_overflow' | 'lapsed_restore'`. */
+  reason: string;
+  state: string;
+  cardCode: string;
+  holderName: string;
+  planTitle: string;
+  candidates: WireMatchCandidate[];
+  note: string | null;
+  at: string;
+};
+
+/** DD9/C5 — a restore against a counter whose validity had lapsed. A FLAG, never a queue row. */
+export type WireLapsedRestore = {
+  movementId: string;
+  instanceId: string;
+  cardCode: string;
+  holderName: string;
+  benefitKey: string;
+  invoiceId: string | null;
+  at: string;
+};
+
+export type WireReconcileQueue = { items: WireMatchQueueItem[]; lapsedRestores: WireLapsedRestore[] };
+
+export function fetchReconcileQueue(): Promise<WireReconcileQueue> {
+  return api("GET", "/membership/reconcile/queue");
+}
+
+export function resolveMatchItem(body: { queueItemId: string; patientId: string; note?: string }): Promise<{
+  queueItemId: string; instanceId: string; patientId: string;
+}> {
+  return api("POST", "/membership/reconcile/resolve", body);
+}
+
+export function dismissMatchItem(body: { queueItemId: string; note: string }): Promise<{ queueItemId: string }> {
+  return api("POST", "/membership/reconcile/dismiss", body);
+}
+
+export type WireHolderBookImport = {
+  importId: string;
+  counterpartyId: string;
+  fileName: string;
+  fileHash: string;
+  columnMapVersion: string;
+  alreadyImported: boolean;
+  rowsTotal: number;
+  rowsAccepted: number;
+  rowsQuarantined: number;
+  rowsAlreadyApplied: number;
+  instanceIds: string[];
+  quarantined: { rowNo: number; reason: string }[];
+  queued: { rowNo: number; instanceId: string; reason: string }[];
+};
+
+export function importHolderBookDrop(body: {
+  counterpartyId: string; fileName: string; csv: string; columnMapVersion?: string;
+}): Promise<WireHolderBookImport> {
+  return api("POST", "/membership/import/holder-book", body);
+}

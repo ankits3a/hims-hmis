@@ -30,6 +30,7 @@ import { AdminUsers } from "./screens/admin-users";
 import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
+import { InstrumentReconcile } from "./screens/instrument-reconcile";
 
 /**
  * PLAN 11h T6 — the shell's navigation, PAIRED WITH THE PERMISSION EACH SCREEN'S ROUTE ACTUALLY
@@ -58,6 +59,10 @@ const NAV: readonly { to: string; label: string; permission: string }[] = [
   // PLAN 09 T3 — the path and the permission match `membershipManifest.menu`'s own entry exactly,
   // which is where the authoritative pairing lives.
   { to: "/counter/instruments", label: "nav.counterInstruments", permission: "membership.instrument.read" },
+  // PLAN 09 T5 — the reconcile queue. `membership.reconcile.operate` is in NOT_YET_MODELLED
+  // (DD18), so this link is invisible to everybody until the owner grants it — which is the flag
+  // flip working as ruled, not an oversight, and T8's runbook names it beside the others.
+  { to: "/counter/reconcile", label: "nav.counterReconcile", permission: "membership.reconcile.operate" },
 ];
 
 function Shell(): React.ReactElement {
@@ -303,6 +308,16 @@ const counterInstrumentsRoute = createRoute({
   component: CounterInstruments,
 });
 
+/**
+ * PLAN 09 T5 — the holder-book reconcile queue, beside recognition rather than under `/admin/…`
+ * because it is COUNTER work: the person who clears it is the person who will be handed the card.
+ */
+const instrumentReconcileRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/counter/reconcile",
+  component: InstrumentReconcile,
+});
+
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
@@ -311,7 +326,7 @@ export const router = createRouter({
       indexRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
-      counterInstrumentsRoute,
+      counterInstrumentsRoute, instrumentReconcileRoute,
     ]),
   ]),
 });

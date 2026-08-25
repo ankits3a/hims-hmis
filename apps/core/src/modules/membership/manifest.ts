@@ -20,8 +20,8 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * by a human at a route (DD3), and granting them now would mint authority nobody has asked for on
  * a trust hospital.
  *
- * `menu` is filled by the tasks that ship screens — T3's counter surface below, T5's reconcile
- * queue next — and `search` likewise: T3 registers the `membership.instrument` provider on the 11h
+ * `menu` is filled by the tasks that ship screens — T3's counter surface and T5's reconcile queue,
+ * both below — and `search` likewise: T3 registers the `membership.instrument` provider on the 11h
  * seam, which is why `membership.instrument.read` was declared before anything read it.
  *
  * `subscriptions` is empty and stays empty: this module is check-on-execute. The dispatcher
@@ -34,6 +34,10 @@ export const membershipManifest: ModuleManifest = {
     // The path matches `apps/web/src/router.tsx`'s own route exactly, so a permission-gated menu
     // link and the screen it opens can never drift apart (the `opsManifest` convention).
     { label: "Card recognition", path: "/counter/instruments", permission: "membership.instrument.read" },
+    // PLAN 09 T5 — the holder-book reconcile queue. `membership.reconcile.operate` is in
+    // NOT_YET_MODELLED (DD18), so this entry is reachable by NOBODY until the owner grants the
+    // permission: minimum authority, exactly as ruled, and T8's runbook names it beside the flags.
+    { label: "Card reconcile", path: "/counter/reconcile", permission: "membership.reconcile.operate" },
   ],
   permissions: [
     // Granted by DD18 — the counter cannot function without these.

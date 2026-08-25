@@ -1,0 +1,4 @@
+partner_sale_ref,card_code,plan_code,holder_name,holder_phone,valid_from,valid_to,members
+S-1001,KM-70,PL-INV-SOLO,Vasanti Kher,9820100101,2026-01-01,2026-12-31,
+S-1002,KM-71,PL-INV-SOLO,Ilango Marar,9820100102,2026-02-01,2027-01-31,
+S-1003,KM-72,PL-INV-SOLO,Bhargavi Nadkarni,9820100103,2026-03-01,2027-02-28,

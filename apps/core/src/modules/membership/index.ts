@@ -72,3 +72,31 @@ export {
 export type {
   CouponRedemptionRequest, CouponRedemptionState, ReleasedRedemption, ReleaseTrigger,
 } from "./redemptions";
+
+/**
+ * T5 — THE HOLDER-BOOK IMPORT AND THE RECONCILE QUEUE.
+ *
+ * `importHolderBook` is the commissioning path DD3 leaves open: every plan, card, coupon and
+ * partner is DATA, and this is how the data arrives. It is an OPERATOR command — `pnpm --filter
+ * @hmis/core import:holder-book` and one guarded route — and deliberately NOT part of any deploy,
+ * because a deploy that imported a holder book would be importing data nobody asked it for.
+ *
+ * The queue is exported beside it because the two are one lane: the importer refuses to guess, and
+ * everything it refused to guess is what the queue holds.
+ */
+export { importHolderBook, holderBookFileHash, inDropDuplicateRowNos, parseHolderBook } from "./import/importer";
+export type {
+  HolderBookImportInput, HolderBookImportResult, ImportQuarantineReport, ImportQueueReport,
+  ParsedHolderBook, ParsedMember, ParsedRow,
+} from "./import/importer";
+export { COLUMN_MAP_VERSIONS, HOLDER_BOOK_COLUMN_MAPS, resolveColumnMap } from "./import/column-maps";
+export type { ColumnMap, HolderBookField } from "./import/column-maps";
+export { listQuarantine, primaryReason, QUARANTINE_REASONS, quarantineRows } from "./import/quarantine";
+export type { QuarantineReason, QuarantineRow } from "./import/quarantine";
+export {
+  dismissMatch, findPatientCandidates, listLapsedRestores, listMatchQueue, MATCH_QUEUE_REASONS,
+  MATCH_TRIGRAM_THRESHOLD, resolveMatch,
+} from "./import/match-queue";
+export type {
+  LapsedRestoreItem, MatchCandidate, MatchQueueItem, MatchQueueReason, ResolveMatchInput,
+} from "./import/match-queue";

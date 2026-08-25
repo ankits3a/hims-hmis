@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpException, HttpStatus, Inject, Post, Query, Res } from "@nestjs/common";
+import { Body, Controller, Get, HttpException, HttpStatus, Inject, Param, Post, Query, Res } from "@nestjs/common";
 import { z } from "zod";
 import type { Response } from "express";
 import type { Actor, SearchResponse } from "@hmis/contracts";
@@ -13,9 +13,15 @@ import { PatientError } from "../patients";
 import { MembershipError } from "./errors";
 import { instrumentLookupRefused } from "./events";
 import { graceHonor, recogniseForActor } from "./recognition";
+import { importHolderBook } from "./import/importer";
+import { listQuarantine } from "./import/quarantine";
+import { dismissMatch, listLapsedRestores, listMatchQueue, resolveMatch } from "./import/match-queue";
 import { INSTRUMENT_SEARCH_PROVIDER_KEY, instrumentSearchProvider } from "./search-providers";
 import type { MembershipErrorCode } from "./errors";
 import type { GraceHonorResult, RecognitionResult } from "./recognition";
+import type { HolderBookImportResult } from "./import/importer";
+import type { QuarantineRow } from "./import/quarantine";
+import type { LapsedRestoreItem, MatchQueueItem } from "./import/match-queue";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
 
@@ -81,6 +87,31 @@ const lookupQuery = z.object({
 const recognitionQuery = z.object({
   patientId: z.string().min(1).optional(),
   codes: z.string().optional(),
+});
+
+/**
+ * PLAN 09 T5 — the drop arrives as TEXT IN A JSON BODY, the `reconUploadBody` precedent.
+ *
+ * No multipart, no upload directory, no file on disk anywhere: a holder book is a few hundred
+ * kilobytes of CSV and the alternative is a second storage surface to secure, back up and clean
+ * up. `csv` is capped so a mis-sent file cannot become a memory incident.
+ */
+const importHolderBookBody = z.object({
+  counterpartyId: z.string().min(1),
+  fileName: z.string().min(1).max(255),
+  csv: z.string().min(1).max(4_000_000),
+  columnMapVersion: z.string().min(1).optional(),
+});
+
+const resolveMatchBody = z.object({
+  queueItemId: z.string().min(1),
+  patientId: z.string().min(1),
+  note: z.string().max(1000).optional(),
+});
+
+const dismissMatchBody = z.object({
+  queueItemId: z.string().min(1),
+  note: z.string().min(1).max(1000),
 });
 
 const graceHonorBody = z.object({
@@ -229,6 +260,84 @@ export class MembershipController {
     const b = parsed(graceHonorBody, body);
     try {
       return await graceHonor(this.db, actor, { ...b, at: new Date() });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * THE HOLDER-BOOK IMPORT — an OPERATOR command, and deliberately not part of any deploy.
+   *
+   * `docker/prod/deploy.sh` runs the seed scripts on every deploy and this is NOT among them
+   * (§6.0 S14): a deploy that imported a holder book would be importing data nobody asked it for.
+   * The same reasoning keeps `seed:admin` out. It reaches a real hospital two ways — this route,
+   * and `pnpm --filter @hmis/core import:holder-book` at a terminal — and both are guarded by
+   * `membership.import.run`, which DD18 leaves ungranted until the owner grants it.
+   */
+  @RequirePermission("membership.import.run", "hospital")
+  @Post("import/holder-book")
+  async importDrop(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<HolderBookImportResult> {
+    const b = parsed(importHolderBookBody, body);
+    try {
+      return await importHolderBook(this.db, actor, b, new Date());
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** The lines one drop refused, verbatim — the answer to "we sent you that member". */
+  @RequirePermission("membership.import.run", "hospital")
+  @Get("import/:importId/quarantine")
+  async quarantine(@Param("importId") importId: string): Promise<{ rows: QuarantineRow[] }> {
+    return { rows: await listQuarantine(this.db, importId) };
+  }
+
+  /**
+   * THE RECONCILE QUEUE. The candidate gate is inside `listMatchQueue` — `visiblePatientIds`, the
+   * patients module's own — rather than here, because a confidentiality check written a second
+   * time is a confidentiality check that will drift.
+   */
+  @RequirePermission("membership.reconcile.operate", "hospital")
+  @Get("reconcile/queue")
+  async reconcileQueue(
+    @CurrentActor() actor: Actor,
+  ): Promise<{ items: MatchQueueItem[]; lapsedRestores: LapsedRestoreItem[] }> {
+    try {
+      return {
+        items: await listMatchQueue(this.db, actor),
+        lapsedRestores: await listLapsedRestores(this.db),
+      };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * A HUMAN LINKS THE HOLDER. The body names a queue item and one of ITS OWN candidates; there is
+   * deliberately no route that takes a card and a patient and links them, because that route would
+   * be the auto-link E3 exists to forbid, arriving through a client instead of through the importer.
+   */
+  @RequirePermission("membership.reconcile.operate", "hospital")
+  @Post("reconcile/resolve")
+  async reconcileResolve(
+    @CurrentActor() actor: Actor,
+    @Body() body: unknown,
+  ): Promise<{ queueItemId: string; instanceId: string; patientId: string }> {
+    const b = parsed(resolveMatchBody, body);
+    try {
+      return await resolveMatch(this.db, actor, b, new Date());
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** A note is REQUIRED: deciding a resemblance is a coincidence is as much a decision as linking. */
+  @RequirePermission("membership.reconcile.operate", "hospital")
+  @Post("reconcile/dismiss")
+  async reconcileDismiss(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ queueItemId: string }> {
+    const b = parsed(dismissMatchBody, body);
+    try {
+      return await dismissMatch(this.db, actor, b, new Date());
     } catch (e) {
       toHttp(e);
     }

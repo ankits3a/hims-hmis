@@ -62,9 +62,46 @@ export const instrumentLookupRefused = defineEvent(
   }),
 );
 
+/**
+ * PLAN 09 T5 — one drop of a partner's holder book, read and decided.
+ *
+ * The counts are the whole payload: how many rows arrived, how many became cards, how many were
+ * refused and how many the hospital already had. A dispute about a partner's book starts here and
+ * then goes to `import_quarantine` and `holder_book_imports` for the lines themselves — the event
+ * carries no holder name, no card code and no person, because a spine that carried the book would
+ * be a second copy of it.
+ */
+export const holderBookImported = defineEvent(
+  "holder_book.imported",
+  MODULE,
+  z.object({
+    importId: id, counterpartyId: id, fileName: z.string().min(1), columnMapVersion: z.string().min(1),
+    rowsTotal: z.number().int().nonnegative(),
+    rowsAccepted: z.number().int().nonnegative(),
+    rowsQuarantined: z.number().int().nonnegative(),
+    rowsAlreadyApplied: z.number().int().nonnegative(),
+  }),
+);
+
+/**
+ * T5/E3 — A HUMAN decided which patient an imported holder is. The importer never links, whatever
+ * the similarity score, so this event is the ONLY record that a card changed hands from "nobody" to
+ * a named person — and it is the record a later dispute about a wrong link is settled from.
+ */
+export const instrumentHolderLinked = defineEvent(
+  "instrument.holder_linked",
+  MODULE,
+  z.object({
+    queueItemId: id, instanceId: id, patientId: id,
+    reason: z.enum(["fuzzy_match", "merge_duplicate", "cap_overflow", "lapsed_restore"]),
+  }),
+);
+
 /** The catalog `events.test.ts` pins. Later tasks in this phase APPEND to it. */
 export const MEMBERSHIP_EVENTS = [
   instrumentGraceHonored,
   couponRedemptionReleased,
   instrumentLookupRefused,
+  holderBookImported,
+  instrumentHolderLinked,
 ] as const;
