@@ -34,6 +34,18 @@ gate report), **checks are scripts** (§4 — T1 ships the `loadConfig()` lint r
 rather than another prose checklist line), and **actuals with a stop-loss, never a predicted
 budget** (§6).
 
+> **AMENDED 2026-08-25 BY OWNER RULING, mid-phase, after pipeline A's actual landed.** The stop-loss
+> below **fired on pipeline B's projection**, and the phase halted for the owner decision v3 §6
+> requires. **Ruled: finish the phase, and correct the number.** The tripwire is re-baselined to
+> **6.9M subagent tokens** — 1.5 × the last comparable phase's **per-task** rate (576,975) × **this**
+> phase's task count (8). The original 4.5M was 1.5 × a five-task phase's TOTAL applied to an
+> eight-task phase, and was arithmetically incapable of covering the work; pipeline A's measured
+> 583,827/task agrees with Plan 11d's 576,975/task to within 1.2%, so there was no overspend to
+> find. **The rule this bought, and it is the ledger entry: set a stop-loss from the last comparable
+> phase's PER-TASK rate times THIS phase's task count, never from its total.** The original number
+> and its reasoning stand below unstruck, because a tripwire that was set wrong is worth reading
+> next to the arithmetic that shows how.
+
 **Stop-loss (v3 §6): 4.5M subagent tokens.** Set at 1.5× the last comparable HEAVY phase's measured
 actual — Plan 11d, **2,884,873 subagent tokens across 15 agents**. It is stated in SUBAGENT tokens
 deliberately: three phases running, the all-sessions total has been unmeasurable from inside the
@@ -1666,6 +1678,14 @@ first attempt.** No wave stalled, no chain halted, no infrastructure death.
   until the clerk splits the bill. Inert while `MEMBER_BENEFITS_ENABLED` is false. **The fix is one
   line in `billing.controller.ts`, which this phase froze** — so it is routed rather than taken, and
   it is the strongest candidate for a small remediation commit before the flag is ever flipped.
+- **F10 — RULED 2026-08-25 (owner): the fix is TAKEN, as a close remediation.** The
+  `entitlement_exhausted` refusal becomes a typed 409 carrying its reason instead of a bare 500. It
+  touches `billing.controller.ts`, which this phase froze — so it lands **after** pipeline B, in its
+  own commit, disclosed as a deliberate one-file exception to the freeze rather than smuggled into a
+  task. The reason it is worth the exception: a member with one free consult, billed for two on one
+  invoice, cannot be invoiced at all, and an unexplained 500 at a counter is the failure the owner's
+  UX priority exists to prevent. `MEMBER_BENEFITS_ENABLED` is what arms it, so the fix precedes any
+  flip.
 - **F4 — a leftover scratch database from an earlier plan is still in the dev cluster:
   `hmis_spike85_1`.** Not this phase's, not created or dropped by anyone here, and reported rather
   than touched (rule 8). AGENT-RULES rule 7 requires a scratch database to be dropped in the task
