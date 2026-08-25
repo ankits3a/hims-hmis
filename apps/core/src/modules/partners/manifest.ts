@@ -30,12 +30,20 @@ import { PARTNERS_ACCRUAL_CONSUMER } from "./consumer";
  * to do anything. They are declared HERE, ahead of T6/T7/T8's routes, because `seed-roles.ts` and
  * its reachability invariant are named in T1's Files list and in no later task's (§6.0 S9).
  *
- * `menu` is filled by the tasks that ship screens (T7's receivables, T8's channel P&L).
+ * `menu` is filled by the tasks that ship screens — T7's receivables desk, below, and T8's
+ * channel P&L.
  */
 export const partnersManifest: ModuleManifest = {
   key: "partners",
   title: "Channel partners — agreements, commissions and receivables",
-  menu: [],
+  menu: [
+    // PLAN 09 T7 — the receivables desk. The path matches `apps/web/src/router.tsx`'s own route
+    // exactly, so a permission-gated menu link and the screen it opens can never drift apart (the
+    // `opsManifest` convention). `partners.receivable.operate` is in NOT_YET_MODELLED (DD18), so
+    // this entry is reachable by NOBODY until the owner grants the permission: minimum authority
+    // on a lane that also ships behind RECEIVABLE_COMMISSION_ENABLED, exactly as ruled.
+    { label: "Partner receivables", path: "/partners/receivables", permission: "partners.receivable.operate" },
+  ],
   permissions: [
     "partners.counterparty.manage",
     "partners.agreement.manage",

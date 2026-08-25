@@ -47,3 +47,29 @@ export {
   countActivations, kickerBonusPaise, periodBounds, periodKeyFor, periodSettled, recomputeKicker,
 } from "./kicker";
 export type { KickerRecomputeInput, KickerRecomputeResult, PeriodKind } from "./kicker";
+
+// ── T7 — the receivable instrument (DD13, DD15, V1-V7) ────────────────────────────────────────
+//
+// Attribution at referral time, the statement import and its only join, the expectation lifecycle
+// and the aging read model. `partners.controller.ts` is the wire contract over exactly these.
+export {
+  attributionCodeFor, expireUnclaimed, findAttributionByCode, issueAttribution, openExpectations,
+  receivableCommissionEnabled, receivableSnapshotOf, receivableTermsOf, receivableTermsSchema,
+  requireReceivableLane, voidAttribution,
+} from "./attribution";
+export type {
+  AttributionSlip, ExpirySweepResult, IssueAttributionInput, ReceivableTerms, ScannedAttribution,
+  VoidAttributionResult,
+} from "./attribution";
+export {
+  STATEMENT_COLUMN_MAPS, STATEMENT_MAP_VERSIONS, STATEMENT_QUARANTINE_REASONS, importStatement,
+  listStatementQuarantine, parseStatement, resolveStatementColumnMap,
+} from "./statements";
+export type {
+  ImportStatementInput, ParsedStatement, ParsedStatementRow, StatementColumnMap, StatementField,
+  StatementImportResult, StatementLineOutcome, StatementQuarantineReason,
+} from "./statements";
+export { listPartnerRefs, mapPartnerRef, resolveStatementRef, writeOffExpectation } from "./reconcile";
+export type { PartnerRefMapping, RefResolution } from "./reconcile";
+export { AGING_BUCKETS, agingReport, bucketFor, receivableTotalPaise } from "./aging";
+export type { AgingBucket, AgingItem, AgingReport } from "./aging";

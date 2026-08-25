@@ -31,6 +31,7 @@ import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
 import { InstrumentReconcile } from "./screens/instrument-reconcile";
+import { PartnerReceivables } from "./screens/partner-receivables";
 
 /**
  * PLAN 11h T6 — the shell's navigation, PAIRED WITH THE PERMISSION EACH SCREEN'S ROUTE ACTUALLY
@@ -63,6 +64,10 @@ const NAV: readonly { to: string; label: string; permission: string }[] = [
   // (DD18), so this link is invisible to everybody until the owner grants it — which is the flag
   // flip working as ruled, not an oversight, and T8's runbook names it beside the others.
   { to: "/counter/reconcile", label: "nav.counterReconcile", permission: "membership.reconcile.operate" },
+  // PLAN 09 T7 — the receivables desk. `partners.receivable.operate` is in NOT_YET_MODELLED
+  // (DD18) and the lane itself is behind RECEIVABLE_COMMISSION_ENABLED, so this link is invisible
+  // to everybody until the owner does both — which is the ordered flip working as ruled.
+  { to: "/partners/receivables", label: "nav.partnerReceivables", permission: "partners.receivable.operate" },
 ];
 
 function Shell(): React.ReactElement {
@@ -318,6 +323,18 @@ const instrumentReconcileRoute = createRoute({
   component: InstrumentReconcile,
 });
 
+/**
+ * PLAN 09 T7 — the receivables desk. It is under `/partners/…` rather than `/billing/…` because it
+ * is not the hospital's own money: it is what a CHANNEL PARTNER owes us against referrals we made,
+ * reconciled from that partner's statement. Filing it under the money path would put a screen whose
+ * subject is a counterparty's arithmetic beside the screens that bill a patient.
+ */
+const partnerReceivablesRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/partners/receivables",
+  component: PartnerReceivables,
+});
+
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
@@ -326,7 +343,7 @@ export const router = createRouter({
       indexRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
-      counterInstrumentsRoute, instrumentReconcileRoute,
+      counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute,
     ]),
   ]),
 });
