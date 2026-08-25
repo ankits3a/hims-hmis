@@ -4,6 +4,7 @@ import type { Actor } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { patientPhotos, patients } from "../../kernel/db/schema";
 import { escapeLike } from "../../kernel/search/text";
+import { normalizeForSearch } from "../../kernel/search/normalize";
 import { PatientError } from "./uhid";
 import type { Db } from "../../kernel/db/client";
 
@@ -37,8 +38,47 @@ export function patientMatchCondition(query: string): SQL {
     return or(like(patients.phone, prefix), like(patients.altPhone, prefix))!;
   }
   if (UHID_SHAPE_RE.test(query)) return eq(patients.uhid, query.toUpperCase());
-  const prefix = `${escapeLike(query.toLowerCase())}%`;
+  // PLAN 11h T7 — the NAME branch folds the query first: case, diacritics and Devanagari all
+  // collapse to the form the index holds (`lower(name)`), so a desk typing `आशा` finds a record
+  // stored as "Asha". The phone and UHID branches above are deliberately untouched — a digit
+  // string and a document number are not names, and folding them would be a change with no
+  // benefit and a blast radius across six screens.
+  const prefix = `${escapeLike(normalizeForSearch(query))}%`;
   return sql`lower(${patients.name}) like ${prefix}`;
+}
+
+/**
+ * PLAN 11h T7 — THE APPROXIMATE BRANCH, used only when the exact one found nobody.
+ *
+ * `pg_trgm` similarity over the GIN index migration 0021 creates. The threshold is a deliberate
+ * constant rather than a tunable: at 0.3 "Aasha" finds "Asha" and "Bina" does not find "Meena",
+ * which is the trade a desk wants — a few extra rows beats a confident empty result. Raising it
+ * hides real people; lowering it turns the palette into a random name generator.
+ *
+ * IT IS NEVER THE FIRST BRANCH. An exact prefix hit is what the desk asked for, it is served by a
+ * btree index, and burying it among approximate matches would make the common case worse to serve
+ * the rare one.
+ */
+export const TRIGRAM_THRESHOLD = 0.3;
+
+/**
+ * IT USES `%`, NOT `similarity(...) > t`, AND THE DIFFERENCE IS THE WHOLE INDEX.
+ *
+ * MEASURED (T7, `test/perf-search.test.ts`): `similarity(lower(name), $1) > 0.3` plans as a
+ * **Seq Scan** over every row. `pg_trgm`'s GIN index serves the `%` OPERATOR; the function form is
+ * not indexable, and Postgres silently reads the whole table instead — the exact failure migration
+ * 0021's comment warns about, where the query still returns correct rows and nothing complains
+ * until a desk waits four seconds at 200,000 patients.
+ *
+ * Both terms are present on purpose. `%` is what the index can serve, and it honours the server's
+ * `pg_trgm.similarity_threshold` GUC; the explicit `similarity(...)` pins OUR threshold so the
+ * behaviour does not drift with a server setting. The effective bar is therefore
+ * `max(GUC, TRIGRAM_THRESHOLD)`, and a test asserts the GUC sits at its 0.3 default so the two
+ * coincide — if somebody raises it, that test says so rather than patients quietly going missing.
+ */
+export function patientFuzzyCondition(query: string): SQL {
+  const folded = normalizeForSearch(query);
+  return sql`lower(${patients.name}) % ${folded} and similarity(lower(${patients.name}), ${folded}) > ${TRIGRAM_THRESHOLD}`;
 }
 
 /**

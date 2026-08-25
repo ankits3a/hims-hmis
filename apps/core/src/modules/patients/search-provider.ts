@@ -1,8 +1,9 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { SearchHit } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { patients } from "../../kernel/db/schema";
-import { patientMatchCondition } from "./search";
+import { normalizeForSearch } from "../../kernel/search/normalize";
+import { patientFuzzyCondition, patientMatchCondition } from "./search";
 import type { SearchProvider, SearchProviderCtx, SearchProviderResult } from "../../kernel/search/types";
 
 /**
@@ -48,9 +49,8 @@ export const patientSearchProvider: SearchProvider = {
 
     const canSeeConfidential = await hasPermission(ctx.db, ctx.actor.id, "patients.confidential.read", "hospital");
 
-    const conditions = [eq(patients.status, "active"), patientMatchCondition(text)];
-    if (!canSeeConfidential) conditions.push(eq(patients.isConfidential, false));
-    const where = and(...conditions);
+    const sealed = canSeeConfidential ? [] : [eq(patients.isConfidential, false)];
+    const where = and(eq(patients.status, "active"), patientMatchCondition(text), ...sealed);
 
     const [rows, counted] = await Promise.all([
       ctx.db
@@ -71,7 +71,48 @@ export const patientSearchProvider: SearchProvider = {
       ctx.db.select({ n: sql<number>`count(*)::int` }).from(patients).where(where),
     ]);
 
-    return { hits: rows.map((r) => toHit(r, canSeeConfidential)), total: counted[0]?.n ?? 0 };
+    if (rows.length > 0) {
+      return { hits: rows.map((r) => toHit(r, canSeeConfidential)), total: counted[0]?.n ?? 0 };
+    }
+
+    /**
+     * PLAN 11h T7 — THE APPROXIMATE BRANCH, and it runs only when the exact one found nobody.
+     *
+     * A second query against an empty result costs one round trip on the rarest path, and it is
+     * what turns "no such patient" into "did you mean Asha Devi" for a desk that spelled it
+     * Aasha. The RBAC predicate is repeated verbatim rather than reused from a variable, because
+     * a sealed record must be sealed on BOTH branches and a future edit to one must be visibly
+     * absent from the other.
+     */
+    const fuzzyWhere = and(eq(patients.status, "active"), patientFuzzyCondition(text), ...sealed);
+    const [fuzzyRows, fuzzyCount] = await Promise.all([
+      ctx.db
+        .select({
+          id: patients.id,
+          uhid: patients.uhid,
+          name: patients.name,
+          alias: patients.alias,
+          phone: patients.phone,
+          sex: patients.sex,
+          dob: patients.dob,
+          isConfidential: patients.isConfidential,
+        })
+        .from(patients)
+        .where(fuzzyWhere)
+        .orderBy(desc(sql`similarity(lower(${patients.name}), ${normalizeForSearch(text)})`))
+        .limit(ctx.limit),
+      ctx.db.select({ n: sql<number>`count(*)::int` }).from(patients).where(fuzzyWhere),
+    ]);
+
+    return {
+      // LABELLED, always. A desk must be able to see that the system guessed — an approximate
+      // match presented as an exact one is how the wrong patient gets opened.
+      hits: fuzzyRows.map((r) => {
+        const h = toHit(r, canSeeConfidential);
+        return { ...h, meta: { ...h.meta, match: "approximate" } };
+      }),
+      total: fuzzyCount[0]?.n ?? 0,
+    };
   },
 };
 

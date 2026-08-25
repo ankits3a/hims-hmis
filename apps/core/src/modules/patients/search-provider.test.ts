@@ -192,3 +192,89 @@ describe("patients search provider", () => {
     expect(await run(userId, "a")).toEqual({ hits: [], total: 0 });
   });
 });
+
+describe("patients search provider — the approximate branch (Plan 11h T7)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+  beforeEach(async () => {
+    await truncateAll(db);
+    await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "test" });
+  });
+
+  async function userHolding(permissions: string[]): Promise<string> {
+    const reg = new ModuleRegistry();
+    reg.install(patientsManifest);
+    await syncPermissions(db, reg);
+    const suffix = Math.random().toString(36).slice(2, 9);
+    const { id } = await createUser(db, { username: `u${suffix}`, fullName: "Desk", password: "correct horse battery" });
+    const roleKey = `r${suffix}`;
+    await createRole(db, roleKey, "Test role");
+    for (const p of permissions) await grantPermissionToRole(db, reg, roleKey, p);
+    await assignRole(db, { userId: id, roleKey, scopeType: "hospital" });
+    return id;
+  }
+
+  async function run(userId: string, text: string, limit = 5): Promise<SearchProviderResult> {
+    return patientSearchProvider.run({
+      db, actor: { type: "user", id: userId }, query: parseSearchQuery(text, limit), limit,
+      signal: new AbortController().signal,
+    });
+  }
+
+  it("A MISSPELLING FINDS THE PERSON — the whole point of the phase", async () => {
+    await withTx(db, (tx) => registerPatient(tx, clerk, { name: "Asha Devi", sex: "female", phone: "9876543210" }));
+    const userId = await userHolding(["patients.read"]);
+
+    const res = await run(userId, "Aasha");
+
+    expect(res.hits.map((h) => h.title)).toEqual(["Asha Devi"]);
+    // LABELLED: an approximate match presented as an exact one is how the wrong patient is opened.
+    expect(res.hits[0]?.meta?.match).toBe("approximate");
+  });
+
+  it("A DEVANAGARI QUERY FINDS A LATIN-STORED RECORD, on the EXACT branch", async () => {
+    await withTx(db, (tx) => registerPatient(tx, clerk, { name: "Asha Devi", sex: "female", phone: "9876543210" }));
+    const userId = await userHolding(["patients.read"]);
+
+    const res = await run(userId, "आशा");
+
+    expect(res.hits.map((h) => h.title)).toEqual(["Asha Devi"]);
+    // Not approximate: the query folded to "asha", which is a real prefix of the stored name.
+    expect(res.hits[0]?.meta?.match).toBeUndefined();
+  });
+
+  it("an EXACT hit is never buried among approximate ones", async () => {
+    await withTx(db, (tx) => registerPatient(tx, clerk, { name: "Asha Devi", sex: "female", phone: "9876543210" }));
+    await withTx(db, (tx) => registerPatient(tx, clerk, { name: "Aasha Kumari", sex: "female", phone: "9876500000" }));
+    const userId = await userHolding(["patients.read"]);
+
+    const res = await run(userId, "asha");
+
+    // "Asha Devi" prefixes the query; "Aasha Kumari" only resembles it. The exact branch answers
+    // and the approximate one never runs.
+    expect(res.hits.map((h) => h.title)).toEqual(["Asha Devi"]);
+    expect(res.hits.every((h) => h.meta?.match === undefined)).toBe(true);
+  });
+
+  it("THE SEALED CLASS HOLDS ON THE APPROXIMATE BRANCH TOO", async () => {
+    await withTx(db, (tx) =>
+      registerPatient(tx, clerk, { name: "Asha Confidential", sex: "female", phone: "9111111111", isConfidential: true, alias: "Guest One" }));
+    const userId = await userHolding(["patients.read"]);
+
+    // No exact hit, so the fuzzy branch runs — and a sealed record must be sealed on BOTH.
+    const res = await run(userId, "Aasha");
+
+    expect(res.hits).toEqual([]);
+    expect(res.total).toBe(0);
+  });
+
+  it("a query that resembles nobody stays empty rather than guessing", async () => {
+    await withTx(db, (tx) => registerPatient(tx, clerk, { name: "Asha Devi", sex: "female", phone: "9876543210" }));
+    const userId = await userHolding(["patients.read"]);
+
+    expect((await run(userId, "Zzyzxq")).hits).toEqual([]);
+  });
+});

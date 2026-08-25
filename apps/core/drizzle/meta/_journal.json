@@ -148,6 +148,13 @@
       "when": 1787608697026,
       "tag": "0020_handy_loki",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1787638102211,
+      "tag": "0021_search_trigram",
+      "breakpoints": true
     }
   ]
 }
