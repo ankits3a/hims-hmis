@@ -53,9 +53,17 @@ export class SearchController {
     const { q, limit, entities } = parsedInput.data;
     const query = parseSearchQuery(q, limit ?? 20);
     try {
+      /**
+       * PLAN 11h T8 — the GRAMMAR's narrowing wins over the query parameter.
+       *
+       * A bare `@invoice` in the typed string is the user narrowing in front of their own eyes;
+       * `?entities=` is the palette's "show all in this group" affordance. When both are present
+       * the typed one is the more recent intent, and it is the one the user can see.
+       */
+      const fromParam = entities === undefined ? undefined : entities.split(",").map((e) => e.trim()).filter(Boolean);
       const response = await searchAll(this.db, this.registry, actor, query, {
         perEntity: limit,
-        entities: entities === undefined ? undefined : entities.split(",").map((e) => e.trim()).filter(Boolean),
+        entities: query.entities ?? fromParam,
       });
       /**
        * THE AUDIT IS AWAITED, NOT FIRED AND FORGOTTEN (T5/DD4). It costs one INSERT against the

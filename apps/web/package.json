@@ -27,6 +27,7 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@hmis/contracts": "workspace:*",
     "@tailwindcss/vite": "^4.0.0",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.1.0",

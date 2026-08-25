@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { getToken } from "./lib/api";
 import { useAuth } from "./lib/auth";
 import { KeyboardProvider, ShortcutLegend } from "./lib/keyboard";
+import { PaletteProvider } from "./components/command-palette";
 import { switchLanguage } from "./lib/i18n";
 import i18next from "./lib/i18n";
 import { AlertsBell } from "./components/alerts-bell";
@@ -60,7 +61,8 @@ function Shell(): React.ReactElement {
   const { logout, can } = useAuth();
   const navigate = useNavigate();
   return (
-    <KeyboardProvider>
+    <PaletteProvider>
+      <KeyboardProvider>
       <div className="flex min-h-screen flex-col">
         <header className="no-print flex items-center gap-6 border-b px-4 py-2">
           <span className="font-semibold">{t("app.title")}</span>
@@ -112,7 +114,8 @@ function Shell(): React.ReactElement {
         </div>
         <ShortcutLegend />
       </div>
-    </KeyboardProvider>
+      </KeyboardProvider>
+    </PaletteProvider>
   );
 }
 

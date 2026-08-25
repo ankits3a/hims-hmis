@@ -1,14 +1,35 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
+import { usePalette } from "../components/command-palette";
 
 function isTypingTarget(el: EventTarget | null): boolean {
   return el instanceof HTMLElement && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
 }
 
+/**
+ * PLAN 11h T8 / DD7 — the palette-open DECISION, extracted so it can be asserted and mutated on
+ * its own rather than only through a mounted router.
+ *
+ * The guard is the whole of it: `/` and `Ctrl+K` open the palette from anywhere EXCEPT while
+ * somebody is typing, where a `/` is a character in a consultation note and `Ctrl+K` may belong to
+ * the field. Dropping that check is the obvious wrong implementation, and it is silent — the
+ * palette opens, the keystroke vanishes from the note, and the clinician retypes it.
+ */
+export function shouldOpenPalette(
+  e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey">,
+  target: EventTarget | null,
+): boolean {
+  const wants =
+    (e.key === "/" && !e.ctrlKey && !e.metaKey) ||
+    ((e.key === "k" || e.key === "K") && (e.ctrlKey || e.metaKey));
+  return wants && !isTypingTarget(target);
+}
+
 /** Global desk shortcuts (§15 keyboard-first). Mounted once in the authed layout. */
 export function KeyboardProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const navigate = useNavigate();
+  const { open } = usePalette();
   useEffect(() => {
     /**
      * `/opd/vitals` and `/opd/consult` are registered by later tasks, but their shortcuts live here
@@ -20,9 +41,10 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }): R
       void navigate({ to } as unknown as Parameters<typeof navigate>[0]);
     };
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "/" && !isTypingTarget(e.target)) {
+      // The decision lives in `shouldOpenPalette` (above) so it can be mutated in isolation.
+      if (shouldOpenPalette(e, e.target)) {
         e.preventDefault();
-        document.querySelector<HTMLInputElement>("[data-search-input]")?.focus();
+        open();
       } else if (e.key === "F2") {
         e.preventDefault();
         // ?new=true (read by RegistrationDesk) opens the new-patient form directly, matching the
@@ -53,7 +75,7 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }): R
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [navigate]);
+  }, [navigate, open]);
   return <>{children}</>;
 }
 

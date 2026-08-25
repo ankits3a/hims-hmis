@@ -183,25 +183,30 @@ describe("PatientPicker", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Could not read that QR code");
   });
 
-  it("the picker's OWN search input carries data-search-input — the `/` hotkey's only contract", () => {
+  it("the picker's own search input is still directly reachable, WITHOUT owning the `/` hotkey", () => {
     stubFetch({ "GET /api/patients/search": { items: [] } });
     renderWithProviders(<PatientPicker onPick={vi.fn()} />);
 
     /**
-     * BEFORE THIS TASK NOTHING ASSERTED THIS. The attribute was stamped on from outside by
-     * `opd-desk.tsx`'s wrapper effect; `opd-desk.test.tsx` never referenced it, and
-     * `lib/keyboard.tsx:25` — its only consumer, via `document.querySelector("[data-search-input]")`
-     * — has no test file at all. The attribute could have vanished with every suite still green.
+     * PLAN 11h T8 / DD7 — THE CONTRACT THIS TEST PINS HAS CHANGED, DELIBERATELY, AND THE OLD ONE
+     * IS DESCRIBED HERE RATHER THAN DELETED.
      *
-     * It is asserted on the INPUT ELEMENT ITSELF, because that is what `querySelector(…)?.focus()`
-     * needs: on a wrapper the hotkey would focus a div and the desk's `/` would do nothing.
+     * It used to assert that this input carried `data-search-input`, because `lib/keyboard.tsx`
+     * focused `document.querySelector("[data-search-input]")` when `/` was pressed. That attribute
+     * existed on SIX of sixteen screens, so on the other ten the hotkey did nothing at all — and
+     * a hotkey that works on some screens is worse than one that works on none, because staff stop
+     * trusting it. `/` now opens the command palette from anywhere, and the palette searches more
+     * than patients.
+     *
+     * What this picker still owes is the half that never depended on the hotkey: its search box is
+     * a real, labelled input, focusable by click and by Tab, and it is NOT the scan box. Those are
+     * the properties the six screens embedding it actually rely on.
      */
     const search = screen.getByLabelText("Search");
     expect(search.tagName).toBe("INPUT");
-    expect(search).toHaveAttribute("data-search-input");
-    expect(document.querySelector("[data-search-input]")).toBe(search);
+    expect(search).not.toBeDisabled();
 
-    // and it is on the free-text box, not on the scan box — `/` must land where a name is typed
-    expect(screen.getByLabelText("Scan QR")).not.toHaveAttribute("data-search-input");
+    // Still two distinct boxes: a name goes in one, a scanned payload in the other.
+    expect(screen.getByLabelText("Scan QR")).not.toBe(search);
   });
 });
