@@ -405,6 +405,13 @@ step "configuration seeding — the rows the modules throw without (Plan 11g / D
 #                ONE exception and Plan 11g brought it to the house convention, because it wrote
 #                through onConflictDoUpdate and would have restored DEV PLACEHOLDER tax rates over
 #                a CA's corrections on every deploy)
+#   seed:membership  the O-1 grace-honor approval type              (skip-if-present). It seeds NO
+#                catalog: every plan, card, coupon, partner and rate is a commissioning row loaded
+#                from the owner's own files (Plan 09 / DD3), and a seed that wrote one would put
+#                partner data into a public repository. Plan 09's `import-holder-book` is
+#                DELIBERATELY NOT here for the same reason `seed:admin` is not: it is an operator
+#                command run against a partner drop, and a deploy that imported a holder book would
+#                be importing data nobody asked it for.
 #
 # `set -euo pipefail` is the gate half of this step: a seed that exits non-zero is a deploy that
 # stops, at the line that names it.
@@ -422,6 +429,7 @@ compose run --rm api node dist/scripts/seed-ops.js
 compose run --rm api node dist/scripts/seed-opd.js
 compose run --rm api node dist/scripts/seed-billing.js
 compose run --rm api node dist/scripts/seed-tariff.js
+compose run --rm api node dist/scripts/seed-membership.js
 
 # `seed-roles` IS RUN, AND ITS EXIT STATUS IS DELIBERATELY NOT THIS DEPLOY'S.
 #

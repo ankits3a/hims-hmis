@@ -20,7 +20,14 @@ export type SearchEntity =
   | "approval"
   | "user"
   | "room"
-  | "command";
+  | "command"
+  /**
+   * PLAN 09 T3 — a membership card, package or discount card the counter recognises. It is
+   * ADDED here rather than in the core because `SearchProvider.entity` is typed against this
+   * union and the union is closed; the membership module registers its provider on its own
+   * manifest and edits no route (the rule above, applied).
+   */
+  | "instrument";
 
 /** A resolved entity scope — `@doctor Mehra` once it has become an id rather than text (DD2). */
 export type SearchChip = { entity: SearchEntity; id: string; label: string };
@@ -122,6 +129,10 @@ const ENTITY_ALIASES: Record<string, SearchEntity> = {
   approval: "approval",
   staff: "user", user: "user",
   room: "room",
+  // PLAN 09 T3. `card` rather than `instrument`, because `@card` is what a desk holding one
+  // actually types — and `chipToken` renders the FIRST alias that names the entity, so the token
+  // the palette shows and the token the parser reads are the same word.
+  card: "instrument",
 };
 
 /** IST calendar date for an instant — the hospital's day, not UTC's. */

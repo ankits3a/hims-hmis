@@ -1,16 +1,17 @@
 import { Module } from "@nestjs/common";
+import { MembershipController } from "./membership.controller";
 
 /**
  * The membership module.
  *
- * NO CONTROLLER YET, and that is deliberate rather than unfinished: T3 creates
- * `membership.controller.ts` (recognition, grace-honor) and T5 extends it with the import and
- * reconcile routes, and both name this file in their own Files lists so the controller joins the
- * decorator in the same commit as the routes it serves. Shipping an empty controller now would put
- * a route surface into a deployment before anything guards it.
+ * THE CONTROLLER JOINS THE DECORATOR IN THE SAME COMMIT AS THE ROUTES IT SERVES (T1's own note):
+ * T3 mounts recognition, card lookup and the O-1 grace-honor path; T5 extends the same controller
+ * with the import and reconcile routes. Shipping an empty controller earlier would have put a route
+ * surface into a deployment before anything guarded it.
  *
  * AuthGuard/PermissionGuard are global APP_GUARDs from AuthModule (order load-bearing, Plan 02),
- * so a module that mounts a controller mounts its permission checks with it.
+ * so a module that mounts a controller mounts its permission checks with it — which is why every
+ * route below carries `@RequirePermission` and none carries a permission check of its own.
  */
-@Module({})
+@Module({ controllers: [MembershipController] })
 export class MembershipModule {}

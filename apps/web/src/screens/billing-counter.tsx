@@ -304,7 +304,22 @@ export function BillingCounter(): React.ReactElement {
 
   return (
     <div className="space-y-4 p-6">
-      <h1 className="text-xl font-semibold">{t("billing.counter.title")}</h1>
+      <div className="no-print flex items-baseline gap-3">
+        <h1 className="text-xl font-semibold">{t("billing.counter.title")}</h1>
+        {/*
+          PLAN 09 T3 / DD8 — THE ONE THING THE COUNTER NEEDS BEFORE BENEFITS ARE ARMED.
+          Recognition deploys BEFORE `MEMBER_BENEFITS_ENABLED`, so for the whole of that window a
+          cashier who is handed a card has to be able to look it up somewhere; without this link
+          that somewhere is the partner's WhatsApp group. It shows NO figure of any kind (E-32).
+
+          A PLAIN ANCHOR, NOT `<Link>`, AND THAT IS A TEST CONSTRAINT RATHER THAN A PREFERENCE:
+          this screen's own suite renders it outside a `RouterProvider` (it mocks only `useSearch`),
+          so a router-aware component here would throw in a file this task may not edit. The cost is
+          one full page load on a click that leaves the counter anyway; `/api/*` path separation
+          (11g DD1) is what makes the plain href land on the SPA rather than on the API.
+        */}
+        <a className="text-sm underline" href="/counter/instruments">{t("nav.counterInstruments")}</a>
+      </div>
       <div className="grid gap-6 lg:grid-cols-3">
         {/* (a) who is paying, for which visit, and what they already owe */}
         <div className="space-y-3">

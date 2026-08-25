@@ -291,9 +291,12 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
    */
   it("PLAN 11g — no SPA route falls inside a Caddy-proxied prefix (smoke-test D1)", () => {
     const routes = spaRoutePaths(routerSource);
-    // The census FIRST, before anything is compared (§2.49).
-    expect(routes).toHaveLength(20);
+    // The census FIRST, before anything is compared (§2.49). 21 since Plan 09 T3 added the card
+    // recognition screen (§6.0 S11 — this file joins the Files list of every task that moves the
+    // number, and the waves are sequential so four tasks touching one integer cannot collide).
+    expect(routes).toHaveLength(21);
     expect(routes).toContain("/admin/users");
+    expect(routes).toContain("/counter/instruments");
 
     const proxied = caddyProxyPrefixes(caddySource);
     // NAME the shadowed routes rather than comparing lengths: "15 !== 0" does not tell an operator

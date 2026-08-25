@@ -33,3 +33,18 @@ export {
   membershipUsableAt,
 } from "./coupon-rules";
 export type { CouponUnusableReason } from "./coupon-rules";
+
+/**
+ * T3 — RECOGNITION. `resolveInstruments` is the seam DD8 orders the phase around: T4's composer
+ * calls it from HERE (never a table, never an internal), which is why the billing integration
+ * cannot ship before recognition exists. `recogniseForActor` and `graceHonor` are the counter's
+ * own surfaces, sealed-gated through `modules/patients`' single helper.
+ */
+export { MEMBERSHIP_DISCLOSURE, RECOGNITION_PERK_NOTE, resolveInstruments } from "./recognition";
+export { GRACE_HONOR_APPROVAL_TYPE, GRACE_HONOR_SUBJECT_TYPE, graceHonor, recogniseForActor } from "./recognition";
+export type {
+  GraceHonorInput, GraceHonorResult, RecognisedCoupon, RecognisedMembership, RecognitionResult,
+  ResolveInstrumentsInput,
+} from "./recognition";
+export { MEMBERSHIP_APPROVAL_TYPES, registerMembershipApprovalTypes } from "./approval-types";
+export { INSTRUMENT_SEARCH_PROVIDER_KEY, instrumentSearchProvider } from "./search-providers";

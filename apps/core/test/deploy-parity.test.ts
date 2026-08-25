@@ -365,8 +365,20 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
 
   it("reads a non-vacuous census of the scripts deploy.sh runs from inside the image", () => {
     const order = deploySeedOrder(deploySource);
-    // migrate + seed-cursors + the five config seeds + the gate.
-    expect(order).toHaveLength(8);
+    /**
+     * migrate + seed-cursors + the SIX config seeds + the gate.
+     *
+     * PLAN 09 T3 — SIX SINCE 2026-08-25, and this line is a DISCLOSED PLAN DEFECT rather than a
+     * routine bump. Plan 09's §6.0 S14 rules that `seed:membership` joins `deploy.sh` (an approval
+     * type reaches a deployment only through a seed script, and a grace-honor lane nobody can
+     * approve is the §6.0 S3 gap), and the same sweep recorded this file as "checked and clear"
+     * on the grounds that the phase changes no compose service, no config directory and no restart
+     * loop — which is true, and which misses the SEED CENSUS three paragraphs below it. The sweep's
+     * own remedy for exactly this shape elsewhere (S11, the SPA route census) is that the file
+     * pinning the number joins the Files list of the task that moves it; this one was not, so the
+     * integer is corrected here and the omission is reported as a plan defect.
+     */
+    expect(order).toHaveLength(9);
     expect(order[0]).toBe("migrate.js");
     expect(order[1]).toBe("seed-cursors.js");
   });

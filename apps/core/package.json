@@ -19,6 +19,7 @@
     "validate:tariff": "tsx scripts/validate-tariff-config.ts",
     "seed:opd": "tsx scripts/seed-opd.ts",
     "seed:billing": "tsx scripts/seed-billing.ts",
+    "seed:membership": "tsx scripts/seed-membership.ts",
     "seed:ops": "tsx scripts/seed-ops.ts",
     "seed:roles": "tsx scripts/seed-roles.ts",
     "seed:staff": "tsx scripts/seed-staff.ts",

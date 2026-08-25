@@ -67,6 +67,17 @@ describe("parseSearchQuery", () => {
     });
   });
 
+  it("PLAN 09 T3 — `@card:` is the membership instrument, and it round-trips as the token it renders", () => {
+    // The union gained one member and the alias table one word. Both halves are asserted here
+    // because a member with no alias is unreachable from the box a desk types into, and an alias
+    // whose entity the union does not carry would not compile.
+    expect(parseSearchQuery("@card:01CARD", 20).chips).toEqual([
+      { entity: "instrument", id: "01CARD", label: "01CARD" },
+    ]);
+    expect(chipToken("instrument", "01CARD")).toBe("@card:01CARD");
+    expect(parseSearchQuery("@card sharma", 20).entities).toEqual(["instrument"]);
+  });
+
   it("chipToken round-trips through the parser", () => {
     const token = chipToken("patient", "01XYZ");
     expect(parseSearchQuery(`${token} bills`, 20).chips).toEqual([{ entity: "patient", id: "01XYZ", label: "01XYZ" }]);

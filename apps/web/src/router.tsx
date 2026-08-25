@@ -29,6 +29,7 @@ import { OpsMode } from "./screens/ops-mode";
 import { AdminUsers } from "./screens/admin-users";
 import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
+import { CounterInstruments } from "./screens/counter-instruments";
 
 /**
  * PLAN 11h T6 — the shell's navigation, PAIRED WITH THE PERMISSION EACH SCREEN'S ROUTE ACTUALLY
@@ -54,6 +55,9 @@ const NAV: readonly { to: string; label: string; permission: string }[] = [
   { to: "/ops/mode", label: "nav.opsMode", permission: "ops.mode.set" },
   { to: "/ops/downtime-kit", label: "nav.opsDowntimeKit", permission: "ops.downtime.generate" },
   { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage" },
+  // PLAN 09 T3 — the path and the permission match `membershipManifest.menu`'s own entry exactly,
+  // which is where the authoritative pairing lives.
+  { to: "/counter/instruments", label: "nav.counterInstruments", permission: "membership.instrument.read" },
 ];
 
 function Shell(): React.ReactElement {
@@ -287,6 +291,18 @@ const adminUsersRoute = createRoute({
   component: AdminUsers,
 });
 
+/**
+ * PLAN 09 T3 / DD8 — card recognition. It is under `/counter/…` rather than `/billing/…` because
+ * recognition DEPLOYS BEFORE the billing integration is armed: the counter has to be able to look a
+ * card up, and the reconcile queue has to be cleared, while `MEMBER_BENEFITS_ENABLED` is still
+ * false. A screen filed under the money path would have read as part of the lane it precedes.
+ */
+const counterInstrumentsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/counter/instruments",
+  component: CounterInstruments,
+});
+
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
@@ -295,6 +311,7 @@ export const router = createRouter({
       indexRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
+      counterInstrumentsRoute,
     ]),
   ]),
 });

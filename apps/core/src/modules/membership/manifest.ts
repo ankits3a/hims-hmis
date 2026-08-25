@@ -1,3 +1,4 @@
+import { instrumentSearchProvider } from "./search-providers";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -19,9 +20,9 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * by a human at a route (DD3), and granting them now would mint authority nobody has asked for on
  * a trust hospital.
  *
- * `menu` is EMPTY here and filled by the tasks that ship screens (T3's counter surface, T5's
- * reconcile queue). `search` likewise: T3 registers the `membership.instrument` provider on the
- * 11h seam, which is why `membership.instrument.read` exists before anything reads it.
+ * `menu` is filled by the tasks that ship screens — T3's counter surface below, T5's reconcile
+ * queue next — and `search` likewise: T3 registers the `membership.instrument` provider on the 11h
+ * seam, which is why `membership.instrument.read` was declared before anything read it.
  *
  * `subscriptions` is empty and stays empty: this module is check-on-execute. The dispatcher
  * consumer in this phase belongs to `partners` (DD7).
@@ -29,7 +30,11 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
 export const membershipManifest: ModuleManifest = {
   key: "membership",
   title: "Memberships, packages and coupons",
-  menu: [],
+  menu: [
+    // The path matches `apps/web/src/router.tsx`'s own route exactly, so a permission-gated menu
+    // link and the screen it opens can never drift apart (the `opsManifest` convention).
+    { label: "Card recognition", path: "/counter/instruments", permission: "membership.instrument.read" },
+  ],
   permissions: [
     // Granted by DD18 — the counter cannot function without these.
     "membership.instrument.read",
@@ -41,5 +46,8 @@ export const membershipManifest: ModuleManifest = {
     "membership.import.run",
     "membership.reconcile.operate",
   ],
+  // PLAN 09 T3 — cards by code, holder phone, holder name (both scripts) or linked patient, on
+  // `membership.instrument.read`. The sealed gate lives in the provider's own SQL (C1).
+  search: [instrumentSearchProvider],
   subscriptions: [],
 };
