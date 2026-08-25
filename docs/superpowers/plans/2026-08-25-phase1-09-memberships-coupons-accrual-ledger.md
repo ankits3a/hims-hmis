@@ -1590,8 +1590,15 @@ _This section is the findings inbox and the gate report. Nothing below is writte
 ### Task ledger
 | task | commit | tier | verdict |
 |---|---|---|---|
-| phase document | `e7a6f05` | — | CI **GREEN** by full SHA (`ci-watch-host.sh`, exit 0) |
-| _appended as each task lands_ | | | |
+| phase document | `e7a6f05` · `a4144c1` | — | CI **GREEN** by full SHA |
+| pipeline compiled | `7c7bee1` | — | pre-flight 101 assertions / 0 failures; CI **GREEN** |
+| T1 — schema, modules, flags, lint rule | `15eedcc` | CRITICAL | gate PASS, attempt 1. A1/A2/A4/A5/A6 built, **5 DIED**; A3 struck by the plan and asserted instead. CI **GREEN** (581 s) |
+| T2 — the two AdjustmentSources + golden harness | `1cd6917` | CRITICAL | gate PASS, attempt 1. B1–B7 built, **all DIED**. `modules/tariff/` **untouched — zero files in the stat**. CI **GREEN** (605 s) |
+| T3 — recognition at the counter | `a6b7ddb` | CRITICAL | gate PASS, attempt 1. C1–C5 built, all DIED. **Disclosed one plan defect and edited one file outside its Files list — correctly** (F6 below). CI **GREEN** (638 s) |
+| T4 — billing integration, consume/restore, DD19's seam | `fbebc66` | CRITICAL | gate PASS, attempt 1. D1–D6 built (D3 as two mutants), all DIED; **the gate rebuilt all seven independently and added one of its own — all eight died**. CI **GREEN** (712 s) |
+
+**Pipeline A: 4/4 tasks, 8 agents, ZERO ladder rungs consumed — every task passed its gate on the
+first attempt.** No wave stalled, no chain halted, no infrastructure death.
 
 ### Findings — this session's own, in the order they were found
 
@@ -1614,6 +1621,51 @@ _This section is the findings inbox and the gate report. Nothing below is writte
   a correct 45 000, measured on the spike's own fixture), and DD7 was subscribed to two of the
   **three** events that carry collected money off an invoice. Both were rewritten before a line of
   T6 existed. §3 Q4 holds the measurement.
+- **F5 — MY OWN SWEEP WAS WRONG, AND A CODER CAUGHT IT.** §6.0 recorded *"Checked and clear:
+  `deploy-parity.test.ts`"* on the grounds that this phase changes no compose service, no config
+  directory and no restart loop. All three are true. **The file also pins a SEED CENSUS three
+  paragraphs further down**, and S14 moves it — so T3's `seed:membership` line broke a test whose
+  file no Files list named. T3 corrected the integer, **disclosed it as a plan defect, and wrote the
+  reason into the source in place** rather than bumping a number quietly. That is the behaviour the
+  process asks for, and it is the only out-of-Files-list edit in the whole pipeline.
+  **The lesson is mine and it generalises: a "checked and clear" verdict is scoped to the assertions
+  you looked at, not to the file.** S11 had already found this exact shape (the SPA route census) and
+  its remedy — the file pinning a number joins the Files list of the task that moves it — was not
+  applied to this second census in the same sweep. Ledger-bound.
+- **F6 — the plan's own Assertion Book row B6 named a discriminating input that DOES NOT
+  DISCRIMINATE**, found by T2 and confirmed independently by T2's gate against a fresh mutant. At
+  `18:31Z` on the expiry date the correct IST-calendar-day predicate and the UTC-instant mutant both
+  answer *expired* — the stated instant kills nothing. T2 substituted `13:00Z` (18:30 IST, the same
+  IST day), where the mutant DIED (`Expected: true / Received: false`). **§2.81 exactly: a plan's
+  stated mutant is itself a prediction**, and this is the phase's first specimen of it.
+- **F7 — three CHECK constraints ship with no assertion anywhere, contradicting T1's own §2.67
+  note.** T1 reported that every constraint it did not mutate "IS exercised by a shipped test"; its
+  gate measured that claim by grepping every `toThrow(/…/)` in both schema tests and found thirteen
+  asserted and three not: `commission_accruals_direction_ck`,
+  `commission_accrual_subjects_direction_ck`, `counterparties_status_ck`. **The constraints are
+  present and correct in the migration** — this is a test-coverage gap, and it matters because the
+  first of them is what stops a third `direction` value evading the payable-class CHECK. Routed to
+  T6/T7 through the relay. **This is §2.67's own rule catching a reassurance routed forward, one
+  wave after the rule was quoted into the brief.**
+- **F8 — `catalogs-empty.test.ts` truncates before it measures**, so its "a freshly migrated
+  database has empty catalogs" leg is really "an empty database is empty". The leg that carries
+  DD3's weight is the `scripts/` scanner, which the A6 mutant kills correctly. No live defect —
+  nothing in Plan 09 seeds a catalog from a migration — but the test would not catch one that did.
+- **F9 — DD16's `perk` write has NO OWNER in this phase, and T3 said so instead of reaching for
+  it.** DD16 says Plan 09 writes `opd_queue_entries.perk` "through the OPD module's index". Measured:
+  that index exports no writer for it, the write belongs in `modules/opd/queue.ts`, and **no task in
+  Plan 09 names any file under `modules/opd/`.** T3 shipped the READ half — the plan's queue-perk
+  flag is surfaced on the recognition response and rendered at the counter — and left
+  `RECOGNITION_PERK_NOTE` in place saying so. **A real scope gap in my DD, correctly refused rather
+  than silently widened.** T8's runbook names it: the perk is configurable and visible this phase,
+  and not yet acted on.
+- **F10 — an operability hazard the flag arms, and it will reach a counter before a screen does.**
+  A bill that wins ONE entitlement on MORE lines than the counter still holds is refused WHOLE
+  (`entitlement_exhausted`), and over HTTP that is a **500**, not a typed 409. Concretely: a member
+  with one free consult left, billed for two consults on one invoice, cannot be invoiced at all
+  until the clerk splits the bill. Inert while `MEMBER_BENEFITS_ENABLED` is false. **The fix is one
+  line in `billing.controller.ts`, which this phase froze** — so it is routed rather than taken, and
+  it is the strongest candidate for a small remediation commit before the flag is ever flipped.
 - **F4 — a leftover scratch database from an earlier plan is still in the dev cluster:
   `hmis_spike85_1`.** Not this phase's, not created or dropped by anyone here, and reported rather
   than touched (rule 8). AGENT-RULES rule 7 requires a scratch database to be dropped in the task
@@ -1629,15 +1681,52 @@ from a file (rules 16–18): exit 0.** `apps/core` **166 suites / 1310 tests** �
 **38 files / 210 tests** · `packages/contracts` **4 suites / 20 tests**. AGENT-RULES §4 governs
 what happens to these: the workspace total must not decrease and no task's diff may delete a test.
 
+**After pipeline A (T1–T4), verified by the MAIN SESSION independently of every agent's
+self-report** — detached `pnpm verify`, exit VALUE **0** read from a file:
+
+| | baseline | after T1–T4 |
+|---|---|---|
+| `apps/core` | 166 suites / 1310 tests | **183 / 1475** |
+| `apps/web` | 38 files / 210 tests | **39 / 218** |
+| `packages/contracts` | 4 suites / 20 tests | **4 / 21** |
+| workspace total | 1540 | **1714 (+174)** |
+
+- **CI GREEN by FULL SHA on all four commits** — `15eedcc` 581 s, `1cd6917` 605 s, `a6b7ddb` 638 s,
+  `fbebc66` 712 s. Read with `ci-watch-host.sh`, exit VALUE 0, durations in minutes not seconds
+  (§2.59's third state excluded by construction).
+- **Per-commit `git show --stat` against the Files lists: 87 file-changes across four commits, ONE
+  outside its list** — T3's `deploy-parity.test.ts`, disclosed as a plan defect (F5). Nothing else.
+- **Frozen-path audit over the whole range `7c7bee1..fbebc66`: CLEAN.** No hit on
+  `modules/tariff/`, `dispatcher.ts`, `schema/billing.ts`, `docker/prod/Caddyfile`,
+  `docker-compose.prod.yml`, `.github/workflows/` or `pnpm-lock.yaml`.
+- **No test deleted anywhere in the range.**
+
 ### Actuals (v3 §6)
 
 | | |
 |---|---|
 | stop-loss | 4.5M subagent tokens (§ THE LANE) |
-| spent so far | **188,357 subagent tokens** — one agent, the spike (55 tool calls, 14 m 49 s) |
-| tasks landed | 0 of 8 |
-| mutants | 8 built by the spike against scratch schema/tests, all DIED |
+| spent, spike | 188,357 (1 agent, 55 tool calls, 14 m 49 s) |
+| spent, pipeline A | **2,335,307** (8 agents, 807 tool calls, 4 h 17 m) |
+| **spent, total** | **2,523,664 — 56% of the stop-loss, with half the phase built** |
+| tasks landed | **4 of 8**, zero ladder rungs consumed |
+| mutants | 8 (spike) + 5 (T1) + 7 (T2) + 5 (T3) + 7 (T4, D3 split in two) + 8 rebuilt independently by T4's gate = **40 built, 40 DIED, 0 survived** |
 | tokens, all sessions | **owner-held** (`/cost`) — runbook O3, outstanding for four phases |
+
+**THE STOP-LOSS WILL FIRE ON PIPELINE B, AND THE HONEST READING IS THAT THE NUMBER WAS WRONG, NOT
+THE SPEND.** Pipeline A cost **583,827 subagent tokens per task**. The last comparable HEAVY phase,
+Plan 11d, cost **576,975 per task** (2,884,873 / 5). **The two rates agree to within 1.2%** — there
+is no waste to find. The tripwire fires because I set it as *1.5 × a five-task phase's TOTAL* and
+then applied it to an eight-task phase: 1.5 × 2.88M = 4.33M, while 8 tasks at the measured rate is
+~4.67M **before the reviewer**. The ceiling was arithmetically incapable of covering the phase.
+
+THE LANE block's caveat predicted the failure mode in words — *"the tripwire may fire on SCOPE
+rather than on waste"* — and then did not do the multiplication that would have caught it.
+**Ledger-bound, and the rule generalises: a stop-loss is set from the last comparable phase's
+PER-TASK rate times THIS phase's task count, never from its total.** The honest tripwire for Plan 09
+was 1.5 × 577k × 8 ≈ **6.9M**. This is §2.68's class — *check the token target against the Assertion
+Book's own row count at compile time* — one level out: I counted the Book rows and then set the
+ceiling from the wrong denominator.
 
 ### Ledger entries this phase earned
 
