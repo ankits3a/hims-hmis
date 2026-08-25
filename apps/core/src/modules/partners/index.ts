@@ -18,3 +18,32 @@ export { PartnersModule } from "./partners.module";
 export { PartnersError } from "./errors";
 export type { PartnersErrorCode } from "./errors";
 export * from "./events";
+
+// ── T6 — the accrual lane (DD6, DD7, DD12, O-6, O-7) ──────────────────────────────────────────
+//
+// `accrualConsumer` is exported for `kernel/worker/worker.module.ts`'s `workerConsumers(db)`, and
+// it is the ONE importable place the production handler exists — the same discipline Plan 10 T5
+// bought for `notifyConsumer`, and the reason `worker-runtime.e2e.test.ts` can assert the wire at
+// all rather than trusting a literal typed out in an entry point nothing may import.
+export {
+  accrualBasis, accrualLedger, appendAccrualDelta, attributeInvoice, escrowedTotalPaise,
+  payableTotalPaise,
+} from "./accrual";
+export type {
+  AccrualAttribution, AccrualBasis, AccrualLedgerRow, AppendAccrualInput, AppendAccrualResult,
+} from "./accrual";
+export {
+  accrualTermsSchema, counterpartyFacts, rateSnapshotOf, requireAgreementAt, resolveAgreementAt,
+} from "./agreements";
+export type { AccrualTerms, CounterpartyFacts, ResolvedAgreement } from "./agreements";
+export {
+  ACCRUAL_EVENT_NAMES, PARTNERS_ACCRUAL_CONSUMER, accrualConsumer, commissionAccrualEnabled,
+  handleAccrualEvent,
+} from "./consumer";
+export type { AccrualOutcome } from "./consumer";
+export { replayAccruals } from "./replay";
+export type { ReplayCounts, ReplayOptions } from "./replay";
+export {
+  countActivations, kickerBonusPaise, periodBounds, periodKeyFor, periodSettled, recomputeKicker,
+} from "./kicker";
+export type { KickerRecomputeInput, KickerRecomputeResult, PeriodKind } from "./kicker";

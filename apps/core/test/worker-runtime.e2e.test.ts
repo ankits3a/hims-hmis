@@ -332,6 +332,17 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
             "patient.registered",
           ],
         ],
+        // PLAN 09 T6 / DD7 — THE THIRD WIRE, and the one whose absence would be invisible for the
+        // longest. `COMMISSION_ACCRUAL_ENABLED` defaults to false, so a partners consumer that was
+        // declared and never wired would look exactly like a partners consumer that was wired and
+        // correctly writing nothing — right up until the day the CA gate opened and the hospital
+        // discovered its commission history started at `now`. FOUR names, because §3 Q4 measured
+        // that `reverseAllocation` and `markEnteredInError` both emit `allocation.reversed` and
+        // neither emits a refund event, and that a credit note moves what is settleable.
+        [
+          "partners.accrual",
+          ["allocation.reversed", "credit_note.issued", "payment.received", "payment.refunded"],
+        ],
       ]);
 
       // AND HALF THE EDIT WOULD NOT BOOT — on THIS registry, not a synthetic one. Installing a
@@ -346,6 +357,15 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       expect(() =>
         buildSubscriptionBus(registry, { [NOTIFY_CONSUMER]: notifyConsumer(workerDb) }),
       ).toThrow(/kernel\.alerts/);
+      // PLAN 09 T6: the same both-directions proof for the third wire. Pass the two kernel
+      // handlers and omit `partners.accrual` and the worker refuses to boot — which is what makes
+      // "declare the subscriptions and the handler in ONE commit" a mechanism rather than a habit.
+      expect(() =>
+        buildSubscriptionBus(registry, {
+          [ALERTS_CONSUMER]: alertsConsumer(workerDb),
+          [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
+        }),
+      ).toThrow(/partners\.accrual/);
     } finally {
       await ctx.close();
     }

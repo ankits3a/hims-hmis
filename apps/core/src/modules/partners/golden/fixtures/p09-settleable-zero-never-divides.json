@@ -1,0 +1,27 @@
+{
+  "name": "a fully credited invoice has settleable 0 and the ratio is NEVER evaluated -- the base is 0 by branch, not by division",
+  "specRefs": ["DD12"],
+  "terms": { "payableRateBps": 1000, "eligibleCategories": ["consultation"] },
+  "view": {
+    "invoiceId": "inv-p09",
+    "issuedAt": "2026-07-22T04:00:00.000Z",
+    "enteredInError": false,
+    "netPayablePaise": 100000,
+    "creditedPaise": 100000,
+    "allocatedPaise": 100000,
+    "refundedPaise": 0,
+    "lines": [
+      { "lineId": "l1", "category": "consultation", "taxableBasePaise": 100000, "creditedBasePaise": 60000 }
+    ]
+  },
+  "priorPaise": 4000,
+  "expected": {
+    "workings": "60000 of the line was credited by a note carrying lines and a further 40000 by a clearance note carrying none, so creditedPaise reaches the whole 100000 while creditedBasePaise reaches only 60000. eligibleBase = 100000 - 60000 = 40000, which is NOT zero -- so the zero below is the branch and not the numerator. settleable = 100000 - 100000 = 0. collected = 100000 - 0 = 100000, and the patient's money has not been given back yet. targetBase = 0 by the settleable === 0 branch; divHalfUp would have REFUSED d = 0 outright (it throws invalid_paise), which is what makes the branch load-bearing rather than defensive. target = 0. delta = 0 - 4000 = -4000.",
+    "eligibleBasePaise": 40000,
+    "settleablePaise": 0,
+    "collectedPaise": 100000,
+    "targetBasePaise": 0,
+    "targetPaise": 0,
+    "deltaPaise": -4000
+  }
+}

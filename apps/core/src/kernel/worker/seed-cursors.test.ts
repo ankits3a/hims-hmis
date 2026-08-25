@@ -6,6 +6,7 @@ import { runDispatchCycle } from "../events/dispatcher";
 import { withTx, Db } from "../db/client";
 import { ALERTS_CONSUMER } from "../alerts/consumer";
 import { NOTIFY_CONSUMER } from "../notify/consumer";
+import { PARTNERS_ACCRUAL_CONSUMER } from "../../modules/partners";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -28,9 +29,28 @@ describe("seedCursors", () => {
   beforeEach(async () => { await truncateAll(db); });
   afterAll(async () => { await teardown(); });
 
-  it("enumerates workerConsumers(db)'s keys — kernel.alerts and kernel.notify, and no others", async () => {
+  /**
+   * PLAN 09 T6 — THE CENSUS MOVED, AND THE THIRD ENTRY IS NOT JUST A NUMBER.
+   *
+   * `workerConsumers(db)` gained `partners.accrual` (DD7: four subscriptions, one handler, and a
+   * flag that decides only whether it WRITES), so this list is three. The bump is disclosed in
+   * T6's task report as a Files-list deviation — this file is named in no task's Files list and
+   * §6.0's sweep did not find it, which is the same shape as S2, S9, S11 and S14 and the same
+   * remedy the phase already applied once (T3 / `deploy-parity.test.ts`): correct the census in
+   * place, with the reason, rather than push a red tree or drop the wire that moved it.
+   *
+   * WHAT SEEDING THE NEW CONSUMER ACTUALLY DOES, because it looks like it contradicts DD7 and does
+   * not. `seedCursors` sets a brand-new consumer's cursor to `max(seq)` — i.e. it SKIPS the history
+   * that existed at deployment time, which is the flood D10 exists to prevent. DD7's promise is
+   * that a later flag flip does not lose that history; the mechanism that keeps that promise is
+   * `replayAccruals`, which walks the `events` TABLE directly and reads no cursor at all. So the
+   * two are complementary: the live lane starts at the head and writes nothing until the flag is
+   * on, and the backfill fills the ledger in from event history when it is.
+   */
+  it("enumerates workerConsumers(db)'s keys — kernel.alerts, kernel.notify and partners.accrual, and no others", async () => {
     const seeded = await seedCursors(db);
-    expect(seeded.map((s) => s.consumer).sort()).toEqual([ALERTS_CONSUMER, NOTIFY_CONSUMER].sort());
+    expect(seeded.map((s) => s.consumer).sort())
+      .toEqual([ALERTS_CONSUMER, NOTIFY_CONSUMER, PARTNERS_ACCRUAL_CONSUMER].sort());
   });
 
   /**

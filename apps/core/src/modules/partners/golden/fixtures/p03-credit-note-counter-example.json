@@ -1,0 +1,28 @@
+{
+  "name": "the SPIKE's own counter-example: a settled invoice carrying a credit note on an eligible line -- 45000 correct, 63543 refuted",
+  "specRefs": ["Q4", "DD12", "F3b"],
+  "terms": { "payableRateBps": 1000, "eligibleCategories": ["consultation"] },
+  "view": {
+    "invoiceId": "inv-p03",
+    "issuedAt": "2026-07-16T04:00:00.000Z",
+    "enteredInError": false,
+    "netPayablePaise": 151000,
+    "creditedPaise": 50000,
+    "allocatedPaise": 101000,
+    "refundedPaise": 0,
+    "lines": [
+      { "lineId": "l1", "category": "consultation", "taxableBasePaise": 95000, "creditedBasePaise": 50000 },
+      { "lineId": "l2", "category": "pharmacy", "taxableBasePaise": 50000, "creditedBasePaise": 0 }
+    ]
+  },
+  "priorPaise": 0,
+  "expected": {
+    "workings": "This is the fixture that refuted the FIRST version of DD12, measured in spike Q4. The invoice row never moved (151000 before the credit note and 151000 after) and all three line rows were byte-identical after it, because `invoices` and `invoice_lines` are immutable under migration 0012 -- so a base built on the STORED numbers is pre-credit while the money is post-credit. CREDIT-AWARE: eligibleBase = 95000 - 50000 = 45000. settleable = 151000 - 50000 = 101000. collected = 101000 - 0 = 101000. targetBase = divHalfUp(45000 x 101000, 101000) = 45000. target = percentAmount(45000, 1000) = divHalfUp(45000000, 10000) = floor(90010000 / 20000) = 4500. THE REFUTED VERSION, which ignores creditedPaise and creditedBasePaise and scales by netPayable: divHalfUp(95000 x 101000, 151000) = floor((2 x 9595000000 + 151000) / 302000) = floor(19190151000 / 302000) = 63543 (302000 x 63543 = 19189986000, remainder 165000). 45000 against 63543 is what this fixture exists to say.",
+    "eligibleBasePaise": 45000,
+    "settleablePaise": 101000,
+    "collectedPaise": 101000,
+    "targetBasePaise": 45000,
+    "targetPaise": 4500,
+    "deltaPaise": 4500
+  }
+}

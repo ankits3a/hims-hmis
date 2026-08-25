@@ -1,0 +1,28 @@
+{
+  "name": "with no credit note and no reversal, targetBase reduces EXACTLY to the eligible base (DD12 property 2)",
+  "specRefs": ["DD12", "F3"],
+  "terms": { "payableRateBps": 1250, "eligibleCategories": ["consultation"] },
+  "view": {
+    "invoiceId": "inv-p01",
+    "issuedAt": "2026-07-14T06:30:00.000Z",
+    "enteredInError": false,
+    "netPayablePaise": 209600,
+    "creditedPaise": 0,
+    "allocatedPaise": 209600,
+    "refundedPaise": 0,
+    "lines": [
+      { "lineId": "l1", "category": "consultation", "taxableBasePaise": 120000, "creditedBasePaise": 0 },
+      { "lineId": "l2", "category": "pharmacy", "taxableBasePaise": 80000, "creditedBasePaise": 0 }
+    ]
+  },
+  "priorPaise": 0,
+  "expected": {
+    "workings": "An exempt consultation line of 120000 and a taxable pharmacy line of 80000 + 9600 GST -> netPayable 209600. eligibleBase = 120000 - 0 = 120000 (pharmacy is not eligible). settleable = 209600 - 0 = 209600. collected = 209600 - 0 = 209600. targetBase = divHalfUp(120000 x 209600, 209600) = floor((2 x 25152000000 + 209600) / 419200) = floor(50304209600 / 419200) = 120000 -- i.e. collected == settleable makes the ratio 1 and the base is the eligible base itself. target = percentAmount(120000, 1250) = divHalfUp(150000000, 10000) = floor(300010000 / 20000) = 15000. delta = 15000 - 0 = 15000.",
+    "eligibleBasePaise": 120000,
+    "settleablePaise": 209600,
+    "collectedPaise": 209600,
+    "targetBasePaise": 120000,
+    "targetPaise": 15000,
+    "deltaPaise": 15000
+  }
+}

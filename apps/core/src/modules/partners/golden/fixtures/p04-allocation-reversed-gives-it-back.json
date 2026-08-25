@@ -1,0 +1,27 @@
+{
+  "name": "an allocation reversal takes collected back to zero and the delta is the whole accrual, negative",
+  "specRefs": ["Q4", "DD12", "F3c"],
+  "terms": { "payableRateBps": 1000, "eligibleCategories": ["consultation"] },
+  "view": {
+    "invoiceId": "inv-p04",
+    "issuedAt": "2026-07-17T04:00:00.000Z",
+    "enteredInError": false,
+    "netPayablePaise": 100000,
+    "creditedPaise": 0,
+    "allocatedPaise": 0,
+    "refundedPaise": 0,
+    "lines": [
+      { "lineId": "l1", "category": "consultation", "taxableBasePaise": 100000, "creditedBasePaise": 0 }
+    ]
+  },
+  "priorPaise": 10000,
+  "expected": {
+    "workings": "allocatedPaise is SIGMA(apply) - SIGMA(reverse), so a 100000 apply followed by its reversal reads 0 -- and it must not be subtracted a second time. eligibleBase = 100000. settleable = 100000 - 0 = 100000. collected = 0 - 0 = 0. targetBase = divHalfUp(100000 x 0, 100000) = floor((0 + 100000) / 200000) = 0. target = percentAmount(0, 1000) = 0. delta = 0 - 10000 = -10000, which is the whole accrual given back through the SAME line of code that made it. A consumer subscribed only to payment.received / payment.refunded never sees this event at all and keeps the 10000.",
+    "eligibleBasePaise": 100000,
+    "settleablePaise": 100000,
+    "collectedPaise": 0,
+    "targetBasePaise": 0,
+    "targetPaise": 0,
+    "deltaPaise": -10000
+  }
+}

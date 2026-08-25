@@ -1,0 +1,27 @@
+{
+  "name": "an entered-in-error invoice has target 0, so everything reverses through the same delta",
+  "specRefs": ["DD12", "DD19"],
+  "terms": { "payableRateBps": 1000, "eligibleCategories": ["consultation"] },
+  "view": {
+    "invoiceId": "inv-p06",
+    "issuedAt": "2026-07-19T04:00:00.000Z",
+    "enteredInError": true,
+    "netPayablePaise": 100000,
+    "creditedPaise": 0,
+    "allocatedPaise": 100000,
+    "refundedPaise": 0,
+    "lines": [
+      { "lineId": "l1", "category": "consultation", "taxableBasePaise": 100000, "creditedBasePaise": 0 }
+    ]
+  },
+  "priorPaise": 10000,
+  "expected": {
+    "workings": "The money is all still there -- eligibleBase = 100000, settleable = 100000 - 0 = 100000, collected = 100000 - 0 = 100000 -- and every one of those numbers is reported so the row can explain itself. But the invoice carries an entered_in_error mark, so DD12's target is 0 REGARDLESS of the ratio: targetBase = 0 and target = 0. delta = 0 - 10000 = -10000. This is the one branch in the base that is not arithmetic, and it is the branch that makes a whole bill undoable.",
+    "eligibleBasePaise": 100000,
+    "settleablePaise": 100000,
+    "collectedPaise": 100000,
+    "targetBasePaise": 0,
+    "targetPaise": 0,
+    "deltaPaise": -10000
+  }
+}

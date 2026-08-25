@@ -1,0 +1,28 @@
+{
+  "name": "the base is COLLECTED, not invoiced: a part payment of a mixed invoice earns its share and no more",
+  "specRefs": ["DD12", "F3"],
+  "terms": { "payableRateBps": 1000, "eligibleCategories": ["consultation"] },
+  "view": {
+    "invoiceId": "inv-p02",
+    "issuedAt": "2026-07-15T05:00:00.000Z",
+    "enteredInError": false,
+    "netPayablePaise": 156000,
+    "creditedPaise": 0,
+    "allocatedPaise": 60000,
+    "refundedPaise": 0,
+    "lines": [
+      { "lineId": "l1", "category": "consultation", "taxableBasePaise": 100000, "creditedBasePaise": 0 },
+      { "lineId": "l2", "category": "pharmacy", "taxableBasePaise": 50000, "creditedBasePaise": 0 }
+    ]
+  },
+  "priorPaise": 0,
+  "expected": {
+    "workings": "eligibleBase = 100000 (the consultation line only). settleable = 156000 - 0 = 156000. collected = 60000 - 0 = 60000. targetBase = divHalfUp(100000 x 60000, 156000) = floor((2 x 6000000000 + 156000) / 312000) = floor(12000156000 / 312000) = 38462 (312000 x 38462 = 12000144000, remainder 12000). target = percentAmount(38462, 1000) = divHalfUp(38462000, 10000) = floor(76934000 / 20000) = 3846. delta = 3846 - 0 = 3846. A base that ignored `collected` would answer percentAmount(100000, 1000) = 10000.",
+    "eligibleBasePaise": 100000,
+    "settleablePaise": 156000,
+    "collectedPaise": 60000,
+    "targetBasePaise": 38462,
+    "targetPaise": 3846,
+    "deltaPaise": 3846
+  }
+}

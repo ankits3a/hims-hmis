@@ -1,0 +1,27 @@
+{
+  "name": "a 40% refund of a fully paid invoice produces a proportional NEGATIVE delta, not a full reversal",
+  "specRefs": ["DD12", "F8"],
+  "terms": { "payableRateBps": 1000, "eligibleCategories": ["consultation"] },
+  "view": {
+    "invoiceId": "inv-p05",
+    "issuedAt": "2026-07-18T04:00:00.000Z",
+    "enteredInError": false,
+    "netPayablePaise": 250000,
+    "creditedPaise": 100000,
+    "allocatedPaise": 250000,
+    "refundedPaise": 100000,
+    "lines": [
+      { "lineId": "l1", "category": "consultation", "taxableBasePaise": 250000, "creditedBasePaise": 100000 }
+    ]
+  },
+  "priorPaise": 25000,
+  "expected": {
+    "workings": "Five consultations at 50000 were billed and paid in full: SIGMA deltas so far = percentAmount(250000, 1000) = 25000. Two of the five are then credited (40%) and the 100000 refund voucher is PAID. eligibleBase = 250000 - 100000 = 150000. settleable = 250000 - 100000 = 150000. collected = 250000 - 100000 = 150000. targetBase = divHalfUp(150000 x 150000, 150000) = 150000. target = percentAmount(150000, 1000) = divHalfUp(150000000, 10000) = floor(300010000 / 20000) = 15000, which is 60% of 25000 -- exactly the share of the sale that survived. delta = 15000 - 25000 = -10000. An implementation that reversed the FULL accrual on any refund would append -25000 and leave the ledger at 0.",
+    "eligibleBasePaise": 150000,
+    "settleablePaise": 150000,
+    "collectedPaise": 150000,
+    "targetBasePaise": 150000,
+    "targetPaise": 15000,
+    "deltaPaise": -10000
+  }
+}

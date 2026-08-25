@@ -16,6 +16,7 @@ import { patientsManifest } from "../../modules/patients";
 import { tariffManifest } from "../../modules/tariff";
 import { opdManifest } from "../../modules/opd";
 import { billingManifest } from "../../modules/billing";
+import { PARTNERS_ACCRUAL_CONSUMER, accrualConsumer, partnersManifest } from "../../modules/partners";
 import type { Handler } from "../events/subscriptions";
 import type { Scheduler } from "./scheduler";
 
@@ -76,6 +77,21 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // startup (`buildSubscriptionBus`); pass the entry without installing and the gateway
         // hears nothing at all. Both halves live in this file now, which is the point.
         registry.install(notifyManifest);
+        // PLAN 09 T6 / DD7, AND IT IS THE SAME ONE EDIT A THIRD TIME. `partnersManifest` declares
+        // FOUR billing subscriptions to `partners.accrual`, and `workerConsumers` below is the only
+        // place that key's handler is produced. T1 shipped this manifest APP-SIDE ONLY, with
+        // `subscriptions: []`, precisely so that no commit ever existed in which a declared
+        // subscription had no handler — `buildSubscriptionBus` makes that a BOOT ERROR by design.
+        // The four names, this install, the `workerConsumers` entry and
+        // `kernel/modules/manifests.test.ts`'s census are ONE commit (§6.0 S2, Plan 10 D13).
+        //
+        // IT IS INSTALLED UNCONDITIONALLY, AND THAT IS DD7's INVERSION. The obvious reading of
+        // "the commission lane ships OFF" is to install this only when COMMISSION_ACCRUAL_ENABLED
+        // is set — which is check-on-execute wearing a manifest's clothes and is silently LOSSY: a
+        // subscription that never registered has no `event_cursors` row, so flipping the flag
+        // later starts from `now` and every earlier payment is gone. The flag decides only whether
+        // the handler WRITES; the cursor advances either way.
+        registry.install(partnersManifest);
         return registry;
       },
     },
@@ -117,6 +133,9 @@ export function workerConsumers(db: Db): Record<string, Handler> {
   return {
     [ALERTS_CONSUMER]: alertsConsumer(db),
     [NOTIFY_CONSUMER]: notifyConsumer(db),
+    // PLAN 09 T6 — the other half of the install above. Deleting either fails
+    // `worker-runtime.e2e.test.ts`'s whole-equality assertion instead of a hospital's ledger.
+    [PARTNERS_ACCRUAL_CONSUMER]: accrualConsumer(db),
   };
 }
 

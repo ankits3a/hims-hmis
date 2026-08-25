@@ -1,0 +1,27 @@
+{
+  "name": "a clearance_discount note carries NO lines: it moves creditedPaise and no line's creditedBasePaise",
+  "specRefs": ["DD19", "DD12"],
+  "terms": { "payableRateBps": 1000, "eligibleCategories": ["consultation"] },
+  "view": {
+    "invoiceId": "inv-p07",
+    "issuedAt": "2026-07-20T04:00:00.000Z",
+    "enteredInError": false,
+    "netPayablePaise": 100000,
+    "creditedPaise": 20000,
+    "allocatedPaise": 80000,
+    "refundedPaise": 0,
+    "lines": [
+      { "lineId": "l1", "category": "consultation", "taxableBasePaise": 100000, "creditedBasePaise": 0 }
+    ]
+  },
+  "priorPaise": 0,
+  "expected": {
+    "workings": "A 20000 clearance discount closes the bill at 80000. The note carries no lines, so creditedPaise moves and creditedBasePaise does NOT -- the receivable shrank, the eligible SERVICE base did not, and the ratio between them is what the accrual base measures. eligibleBase = 100000 - 0 = 100000. settleable = 100000 - 20000 = 80000. collected = 80000 - 0 = 80000. targetBase = divHalfUp(100000 x 80000, 80000) = 100000. target = percentAmount(100000, 1000) = divHalfUp(100000000, 10000) = floor(200010000 / 20000) = 10000. delta = 10000. The partner earns on the whole service the hospital delivered, even though the hospital chose to collect less for it -- which is the asymmetry DD19's reader exists to preserve.",
+    "eligibleBasePaise": 100000,
+    "settleablePaise": 80000,
+    "collectedPaise": 80000,
+    "targetBasePaise": 100000,
+    "targetPaise": 10000,
+    "deltaPaise": 10000
+  }
+}

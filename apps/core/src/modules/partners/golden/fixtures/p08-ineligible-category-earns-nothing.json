@@ -1,0 +1,28 @@
+{
+  "name": "a fully paid invoice whose every line is OUTSIDE the agreement's eligible categories earns nothing",
+  "specRefs": ["DD6", "DD12"],
+  "terms": { "payableRateBps": 1500, "eligibleCategories": ["procedure"] },
+  "view": {
+    "invoiceId": "inv-p08",
+    "issuedAt": "2026-07-21T04:00:00.000Z",
+    "enteredInError": false,
+    "netPayablePaise": 156000,
+    "creditedPaise": 0,
+    "allocatedPaise": 156000,
+    "refundedPaise": 0,
+    "lines": [
+      { "lineId": "l1", "category": "consultation", "taxableBasePaise": 100000, "creditedBasePaise": 0 },
+      { "lineId": "l2", "category": "pharmacy", "taxableBasePaise": 50000, "creditedBasePaise": 0 }
+    ]
+  },
+  "priorPaise": 0,
+  "expected": {
+    "workings": "The agreement's eligibleCategories is ['procedure'] and neither line is one, so eligibleBase = 0 even though the invoice was paid in full. settleable = 156000 - 0 = 156000. collected = 156000 - 0 = 156000. targetBase = divHalfUp(0 x 156000, 156000) = floor((0 + 156000) / 312000) = 0. target = percentAmount(0, 1500) = 0. delta = 0 - 0 = 0, and a zero delta appends NO row at all -- the ledger stays empty rather than filling with zeroes.",
+    "eligibleBasePaise": 0,
+    "settleablePaise": 156000,
+    "collectedPaise": 156000,
+    "targetBasePaise": 0,
+    "targetPaise": 0,
+    "deltaPaise": 0
+  }
+}

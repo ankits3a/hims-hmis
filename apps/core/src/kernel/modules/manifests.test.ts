@@ -136,7 +136,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly four enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly three enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -149,16 +149,16 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     // (1a) PLAN 09 T1 — the worker also omits `membership`, permanently and for the same reason:
     //      the module is check-on-execute and declares no subscription at all.
     //
-    // (1b) PLAN 09 T1 — the worker omits `partners` UNTIL T6, and that omission is temporary and
-    //      dated on purpose (§6.0 S2). DD7 requires the accrual consumer to declare its four
-    //      subscriptions unconditionally, so that a later flag flip replays from a cursor that has
-    //      been advancing all along; but `buildSubscriptionBus` (kernel/worker/jobs.ts) makes a
-    //      declared subscription with no matching handler a BOOT ERROR. `partnersManifest`
-    //      therefore ships with `subscriptions: []` and app-side only, and **T6 adds the four
-    //      subscriptions, the handler, the worker install and this census in ONE commit** — the
-    //      Plan 10 D13 lesson, which is why `notifyManifest` below lives only where its handler is.
-    //      When T6 lands, `partners` moves out of this line and into the shared list at the bottom.
-    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "partners"]);
+    // (1b) PLAN 09 T6 — `partners` HAS NOW MOVED OUT OF THIS LINE and into the shared list at the
+    //      bottom, which is what the one-commit rule below looks like once it has been discharged.
+    //      T1 shipped `partnersManifest` with `subscriptions: []` and app-side only precisely so
+    //      that no commit ever existed in which a declared subscription had no handler — that is a
+    //      BOOT ERROR by design (`buildSubscriptionBus`, kernel/worker/jobs.ts). T6 landed the four
+    //      DD7 names, `accrualConsumer` in `workerConsumers(db)`, the worker's install and THIS
+    //      census as ONE commit (§6.0 S2, Plan 10 D13). The install is unconditional: DD7's whole
+    //      inversion is that the consumer registers always and advances its cursor always, and the
+    //      COMMISSION_ACCRUAL_ENABLED flag decides only whether the handler writes.
+    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership"]);
 
     // (2) The worker ADDS `notify`. It declares five `kernel.notify` subscriptions, and
     //     `buildSubscriptionBus` (kernel/worker/jobs.ts) makes a declared subscription with no
@@ -178,7 +178,10 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "opd",
       "billing",
       "alerts",
+      // PLAN 09 T6 — see (1b). It is LAST because the worker installs it last, and this array is
+      // the worker's own source order rather than `ALL_MANIFESTS`'.
+      "partners",
     ]);
-    expect(workerKeys).toHaveLength(9);
+    expect(workerKeys).toHaveLength(10);
   });
 });
