@@ -565,4 +565,126 @@ mic renders while it is false**.
 
 ## 7. CLOSE — appended as the phase runs (v3 §1.5)
 
-*(empty until execution is authorised)*
+**Executed 2026-08-25 in one session, on the build host, LIGHT lane. Nine tasks, twelve commits,
+one CI red diagnosed to root cause, one independent review that found a CRITICAL.** Every task's
+`pnpm verify` was exit 0 before its push (§2.87).
+
+| task | commit | tier | CI |
+|---|---|---|---|
+| T1 — the registry and one federated route | `ba7c402` | CRITICAL | judged with `c5aaaad` (one push) |
+| T2 — the patients provider, sealed class | `c5aaaad` | CRITICAL | **RED** → see F1 |
+| — the fix for that red | `9188f1e` | — | judged with `6e4f200` |
+| T3 — OPD providers | `931d2b3` | ROUTINE | judged with `6e4f200` |
+| T4 — billing and tariff providers | `6e4f200` | ROUTINE | **GREEN** 32781401012 |
+| T5 — the search audit table | `ddf3fac` | CRITICAL | **GREEN** 32783497002 |
+| T6 — effective permissions, nav gating | `73fd8f9` | CRITICAL | **GREEN** 32784758254 |
+| T7 — trigram and normalisation | `0fc7a9f` | ROUTINE | **GREEN** 32816494917 |
+| T8 — the palette and the grammar | `191a5ee` | CRITICAL | **GREEN** 32817634171 |
+| T9 — voice, inert | `087a4ad` | CRITICAL | **GREEN** |
+| close — the review's CRITICAL + five MAJORs | `27fb412` | CRITICAL | **GREEN** |
+| close — DD8's rate limit | `ba59ea3` | CRITICAL | at close |
+
+**Counts.** `apps/core` 155 suites / 1209 tests → **166 / 1310**; `apps/web` 36 files / 193 tests →
+**38 / 208**; `packages/contracts` 3 / 7 → **3 / 20**. Two migrations: `0020` (search_audit),
+`0021` (pg_trgm + unaccent + four GIN indexes). No diff in this phase deletes a test.
+
+**Mutants: fourteen built, fourteen DIED.** A1 run-everything-then-filter · A2 no-budget await ·
+A3 post-filter-the-rows (leaked only `total`) · A4 escapeLike no-op · A5 log-only-fruitful-searches ·
+A6 event-every-search · A7 flat role join · A8 typing guard dropped · A9 speed-blind wedge ·
+T9 egress-row-after-success · DD8 window removed. Three of those kills are recorded here because the
+mutant survived the *response* and died only on a second assertion — A1 (identical JSON, caught by
+an invocation spy), A3 (`hits` exactly right, `total` leaked 2 for 1), and DD8 (a permanent lockout
+that looks like a working limiter until an hour has passed).
+
+### Findings — this session's own, in the order they were found
+
+- **F1 — MEASURED. A green build-host `pnpm verify` and a red CI, with a named cause.**
+  `apps/core/.env` EXISTS on the build host and can never exist in CI: it is gitignored, so it is
+  never checked out. `loadEnv()` reads `<cwd>/.env`, so bare `loadConfig()` resolves here and throws
+  there. T2's test called it. **Any test that touches `loadConfig()` will pass locally and fail
+  remotely, forever, until something stops it** — both shipped helpers already encode the
+  workaround (`loadConfig({ DATABASE_URL: "postgres://unused", … })`) and this session walked past
+  that pattern in two files without asking why it was written that way. A lint rule banning bare
+  `loadConfig()` under `**/*.test.ts` would turn a nine-minute CI round trip into an editor error.
+- **F2 — the wrong suspect cost an hour, and refuting it was worth it.** The prime suspect was T1's
+  `expect(elapsed).toBeLessThan(PROVIDER_BUDGET_MS * 4)` — a single-sample wall-clock assertion, the
+  exact class 11f retired, on a 2-core CI runner against this box's 8. It was REFUTED by execution:
+  the full core suite pinned to two cores (`taskset -c 0,1`) passed 160 suites / 1250 tests. The
+  assertion was hardened anyway, because it is a defect by this project's own standard whatever
+  turned CI red.
+- **F3 — narrow jest runs verify BEHAVIOUR, not TYPES.** `ts-jest` compiles only the files under
+  test, so a duplicate identifier in a controller and a stale mock in `scheduler.test.ts` — in files
+  this session had not touched — passed three green narrow runs and surfaced only in `pnpm verify`.
+  Widening a shared result type has a blast radius narrow runs cannot show.
+- **F4 — editing the tree during a verify VOIDS that verify.** Files written mid-run were compiled
+  against a stale sibling; five suites failed on one `TS2305` while 1211/1211 tests passed. The run
+  was void, not red-for-cause, and the cycle was wasted.
+- **F5 — reading the commit STAT caught four things the tests could not.** A 989-line locale
+  reformat to add one key (`json.dump` destroying a deliberate compact style); a drizzle meta
+  snapshot missing from the commit that carried its migration; and twice, files landing in the
+  wrong commit. Checking what a commit CONTAINS is a step, not a habit.
+- **F6 — MEASURED, and it changed T9's code.** A three-second PURE TONE transcribed as `"झाल झाल"`
+  — two words invented from a sine wave — and returned EMPTY with `vad_filter: true`. A microphone
+  at a counter hears trolleys and announcements; without that flag, noise becomes a query against
+  real patient data attributed to whoever held the button.
+- **F7 — `\b` IS ASCII-ONLY.** `/\b(today|आज)\b/` never matches the Hindi word, silently, because
+  the English half still works. Only the bilingual test caught it. **Anywhere else in this codebase
+  that regexes user text with `\b` has the same latent bug for every Hindi input** — worth a grep
+  independent of this plan.
+
+### The independent reviewer (v3 §3.4) — one CRITICAL, six MAJORs, eight MINOR/NIT
+
+It read the ten commits cold and was right about the thing that mattered most.
+
+- **CRITICAL — a `@patient:<id>` chip bypassed the sealed class.** Both the invoice and appointment
+  providers gated their TEXT lane through `searchPatients` and then took a chip id VERBATIM with no
+  gate. A cashier without `patients.confidential.read` could read a confidential patient's invoice
+  numbers, amounts, service days and exact invoice COUNT from an id they had legitimately seen
+  before the record was flagged. `SearchHit.restricted` was never set, so the leak was invisible to
+  the audit built to catch it. **Both files carried a comment asserting the opposite** — true of the
+  text lane, generalised to a chip lane written in the same function, with every test scoped to "by
+  the text lane" in its own title. FIXED (`27fb412`) with one shared gate, `visiblePatientIds`,
+  reproduced by a failing test first.
+- **MAJORs 2–7, all real, all FIXED in `27fb412`:** T9's ordering assertion proven only by a scratch
+  mutant with no shipped test constructing the controller · the 90-day retention window running as a
+  single 500-row batch (net +700 rows/day forever, on a table of typed patient names) · a T7
+  REGRESSION making a Devanagari-stored patient unfindable by their own spelling, on the desk
+  route's six screens · `GET /api/search` having no HTTP test at all · a real USB wedge firing ~11
+  QR lookups per scan, ten with truncated payloads · `MAX_AUDIO_BYTES` claiming to enforce a
+  duration it cannot express across encodings.
+- **MINORs FIXED:** the ±7-day appointment default window (silently dropped, undisclosed) · the
+  speech route accepting agent actors · a palette focus trap · a degraded/downtime notice ·
+  **DD8's per-actor rate limit, built as its own piece (`ba59ea3`).**
+- **NOT FIXED, disclosed:** T8's acceptance names closing the palette on the **session idle timer**
+  — there is no session idle timer in this web app; that line referenced machinery never built.
+  Escape, backdrop click and navigation all close it. Also standing: the reviewer's NIT 18, that
+  each fan-out runs `hasPermission` per provider (three queries each) on every debounced keystroke —
+  fine at measured volume, and the part of the 300 ms budget that scales with DESKS rather than data.
+
+### What T8 shipped without, and why it is stated rather than implied
+
+Visual chip rendering. `apps/web` had never depended on `@hmis/contracts`; it now does FOR TYPES
+ONLY, so nothing needs a runtime alias in vite or vitest. A runtime dependency would have meant
+build-config changes whose failure mode is exactly F1. The palette sends the raw string and the
+SERVER parses the grammar; the parser, the token format and both sides' contract are shipped.
+
+### Actuals (v3 §6)
+
+| | |
+|---|---|
+| tasks | 9, plus two close commits |
+| agents | **1** — the independent reviewer. Every task was coded in-session (LIGHT lane). |
+| mutants | 14 built, 14 died |
+| CI runs | 12 commits, 1 red (F1), diagnosed without job logs (§2.91 — `gh` credential still absent) |
+| tokens | **not readable by the session about itself** — the 11e precedent; owner-held |
+
+### Routed to the owner — unchanged by this phase, and now load-bearing for it
+
+1. **D6 — who may read a confidential record.** The sealed class is correct and COMPLETELY
+   UNEXERCISED in production: no role holds `patients.confidential.read`, so a confidential patient
+   is invisible to everyone, which is why `CONFIDENTIAL_CAPTURE_ENABLED` is still false.
+2. **The voice DPIA revision.** `VOICE_SEARCH_ENABLED` cannot flip without it. F6 gives it one hard
+   fact to record: the model invents words from noise unless `vad_filter` is set.
+3. **Three real Hinglish recordings.** Spike Q6's accuracy half is still unmeasured and no synthetic
+   clip can stand in for it. If transcription is poor, the honest outcome is that voice stays off.
+4. **The `gh` credential** (O4). F1 cost about an hour that one log line would have answered.
