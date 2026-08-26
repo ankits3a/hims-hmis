@@ -12,18 +12,22 @@
 # IT IS IDEMPOTENT. One stamp per commit sha under .git/, so a re-push, a retry, or three pushes in
 # one close do not ask three times.
 #
-# KNOWN LIMITATION, MEASURED BY THIS HOOK FIRING ON ITS OWN TEST HARNESS — and it is EXECUTION-
-# LESSONS §2.53 recurring in a new place. That entry says `pgrep -af jest` matches the compound
-# shell that CONTAINS the string "jest"; the same is true here. The hook receives the WHOLE outer
-# command, so a compound shell that merely quotes "deploy.sh" inside a heredoc or an echo — a test
-# harness, exactly like the one that proved this hook works — reads as a deploy. The blocklist below
-# catches the common read shapes (grep, cat, git log …) but cannot catch a python3 heredoc that
-# happens to contain the string.
+# ~~KNOWN LIMITATION~~ — FIXED 2026-08-26 (Plan 16a), after it misfired THREE TIMES in one session.
+# The old matcher asked `case "$cmd" in *deploy.sh*)`, which is true of `git add -- …/deploy.sh`, of
+# `sed -n '400,440p' …/deploy.sh`, and of any heredoc whose PROSE contains the filename — all three
+# of which happened while Plan 16a edited the deploy script and wrote about having done so.
 #
-# It is left as a limitation rather than solved with a cleverer matcher, for two reasons. The
-# per-(sha, kind) stamp bounds the blast radius to ONE spurious nudge, which a session can read and
-# dismiss in a sentence. And a matcher smart enough to parse compound shells is a matcher nobody can
-# audit at a glance — which, for a hook whose whole job is to save money, is the worse trade.
+# The old comment argued the limitation was the better trade: a per-(sha,kind) stamp bounds it to one
+# spurious nudge, and "a matcher smart enough to parse compound shells is a matcher nobody can audit
+# at a glance". The first half held. The second was answered by asking a SIMPLER question instead of
+# a cleverer one: not "does this string appear" but "is deploy.sh the word in COMMAND POSITION".
+# `is-deploy-execution.py` beside this file strips heredoc bodies, tokenises with `shlex` so a quoted
+# string stays one token, steps over interpreters and env assignments, and checks the command word.
+# Forty lines, one question, and `test-deploy-trigger.sh` pins it against 24 cases including the
+# three that actually misfired.
+#
+# A parse failure returns NOT-A-DEPLOY on purpose: a missed audit costs one skipped measurement, a
+# spurious one costs tokens — which is the defect the audit exists to prevent, in miniature.
 #
 # It reads stdin (the PostToolUse payload) but does not require it — run it by hand to test:
 #   echo '{"tool_input":{"command":"git push origin main"}}' | bash .claude/hooks/token-audit-trigger.sh
@@ -55,23 +59,22 @@ case "$cmd" in
   *) exit 0 ;;
 esac
 
-# ...AND IT MUST BE AN EXECUTION, NOT A MENTION. Found by this hook's own first live test, which
-# fired on a command that merely CONTAINED the string "deploy.sh" inside a test harness. A spurious
-# audit is not harmless here: the whole point of the audit is that tokens cost money, so an audit
-# nobody asked for is the defect it exists to prevent, in miniature. Reading ABOUT a deploy is not
-# deploying. This is a short blocklist rather than a clever matcher on purpose — it is auditable at
-# a glance, and a false NEGATIVE here costs one skipped audit while a false POSITIVE costs tokens.
-case "$cmd" in
-  grep*|rg*|cat*|less*|head*|tail*|wc*|ls*|echo*|find*|sed*|awk*|"git log"*|"git show"*|"git diff"*|"#"*)
-    exit 0 ;;
-esac
+# ...AND IT MUST BE AN EXECUTION, NOT A MENTION. Reading ABOUT a deploy is not deploying, and
+# neither is `git add`-ing the script. The blocklist that used to live here (grep|cat|sed|…) was a
+# guess at the read shapes; this asks the question directly.
+is_deploy=0
+if printf '%s' "$cmd" | python3 "$REPO/.claude/hooks/is-deploy-execution.py" 2>/dev/null; then
+  is_deploy=1
+fi
+
+
 
 sha=$(git rev-parse HEAD 2>/dev/null) || exit 0
 subject=$(git log -1 --format=%s 2>/dev/null || echo "")
 files=$(git show --name-only --format= HEAD 2>/dev/null || echo "")
 reason=""
 
-case "$cmd" in *deploy.sh*) reason="a DEPLOY just ran";; esac
+[ "$is_deploy" = 1 ] && reason="a DEPLOY just ran"
 if [ -z "$reason" ]; then
   # A phase closes when a plans/ document changes and the subject says so.
   if printf '%s' "$files" | grep -q "docs/superpowers/plans/"; then
@@ -89,6 +92,14 @@ case "$reason" in *DEPLOY*) kind=deploy;; *) kind=close;; esac
 stamp="$REPO/.git/.token-audit-$kind-$sha"
 [ -e "$stamp" ] && exit 0
 : > "$stamp" 2>/dev/null || true
+
+# EVERY FIRING IS LOGGED WITH THE COMMAND THAT CAUSED IT. A hook that fires wrongly is otherwise
+# un-diagnosable: the model never sees the payload, and this session proved that reconstructing the
+# command from memory produces a confident wrong answer. Firings are rare by construction (one per
+# sha per kind), so the log stays small; `tail -20 .git/.token-audit-hook.log` is the whole
+# investigation the next time somebody says "why did that fire?".
+{ printf '%s  %s  %s\n    %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$kind" "$sha" "$cmd"; } \
+  >> "$REPO/.git/.token-audit-hook.log" 2>/dev/null || true
 
 cat <<JSON
 {"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"TOKEN AUDIT DUE — $reason ($sha).\n\nThe owner's standing instruction: every time a plan is committed and deployed, audit where the tokens went and whether they were an investment or an expense, then amend the method so the next phase costs less for the same result.\n\nInvoke the 'token-audit' skill now. It runs docs/superpowers/pipelines/token-audit.js (zero model tokens), reads the verdict, weighs what the spend bought against the phase's CLOSE, writes the lessons into EXECUTION-LESSONS.md, amends EXECUTE-METHOD-V3.md, and appends this phase to token-baselines.json.\n\nDo not skip it because the phase is finally green. That is precisely when it gets skipped, which is why it is a hook and not a habit."}}
