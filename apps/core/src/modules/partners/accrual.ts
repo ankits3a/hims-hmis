@@ -1,9 +1,11 @@
 import { and, asc, eq, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
 import { commissionAccruals, invoices, membershipInstances } from "../../kernel/db/schema";
+import { IST_OFFSET_MS, istDayIndex } from "../membership";
 import { divHalfUp, percentAmount } from "../tariff";
 import { rateSnapshotOf } from "./agreements";
 import { payoutClassBlocked } from "./events";
@@ -81,6 +83,26 @@ export type AccrualBasis = {
 
 const floorAtZero = (n: number): number => (n > 0 ? n : 0);
 
+/** Plan 09a DD3 — one IST day in ms, used only to invert `istDayIndex` back into instant bounds. */
+const IST_DAY_MS = 86_400_000;
+
+/**
+ * `istDayIndex`, TRANSLITERATED INTO SQL, for readers that compare a row's instant against ANOTHER
+ * ROW's instant and so cannot precompute a bound in TS (`pnl.ts`'s member-spend `exists (...)` is
+ * the one such reader).
+ *
+ * **Why two forms of one rule are allowed to exist here, and what keeps them honest.**
+ * `attributeInvoice` above precomputes `[dayStart, dayEnd)` in TS because it compares a COLUMN to a
+ * CONSTANT, and that form can use an index; wrapping the column in `floor(extract(...))` would make
+ * the predicate unsargable for no gain. A set-based reader has no constant to compare against, so
+ * it must compute the index on both sides. **Both forms take their two constants from this file and
+ * nowhere else**, and `accrual.test.ts` pins this expression equal to the TS `istDayIndex` at the
+ * boundary instants that matter — which is the guard §2.54 actually asks for: not "never write it
+ * twice", but "if it is written twice, make a test fail when the copies disagree".
+ */
+export const istDayIndexSql = (instant: SQL): SQL =>
+  sql`floor((extract(epoch from ${instant}) * 1000 + ${IST_OFFSET_MS}) / ${IST_DAY_MS})`;
+
 /**
  * DD12, pure. No I/O, no clock, no database — which is what lets `golden/` hand-compute it.
  *
@@ -145,9 +167,21 @@ export function accrualBasis(view: InvoiceAccrualView, terms: Pick<AccrualTerms,
  *    (`origin = 'grace'`) is HONOURED at the counter and **accrues nothing** until a real book row
  *    arrives and matches it, because there is no partner sale reference to attribute to.
  *  - `counterparty_id is not null` — a counter-sold or grace card names no partner.
- *  - the instance's validity window contains the invoice's `issued_at`. The window is immutable;
- *    `membership_instances.status` deliberately is NOT read, because it moves after the fact and
- *    a status flipped next month must not change what last month's commission was.
+ *  - the instance's validity window contains the invoice's **IST CALENDAR DAY** (Plan 09a DD3).
+ *    The window is immutable; `membership_instances.status` deliberately is NOT read, because it
+ *    moves after the fact and a status flipped next month must not change what last month's
+ *    commission was.
+ *
+ *    **This compared raw INSTANTS until Plan 09a, and the counter never did.** B6/K7 rule validity
+ *    as an IST calendar day and `membershipUsableAt` honours it, while the holder-book importer
+ *    writes a date-only column as `T00:00:00.000Z` — which is 05:30 IST. So on the final day of
+ *    every imported card, from 05:30 IST to midnight, the counter honoured the discount and the
+ *    partner was credited nothing: ~18.5 hours, an entire working day, on every card.
+ *
+ *    The day is computed HERE, in TS, with the SAME `istDayIndex` the counter uses, and only its
+ *    two bounds go to SQL. Duplicating the day arithmetic in SQL would have made a third copy of a
+ *    clock this system already has two agreeing copies of (§2.54), and the copy that drifts is
+ *    always the one nobody tests at the boundary.
  *  - arrival order (`seq`) breaks a tie, so DD11's merge duplicate — two rows for one holder —
  *    resolves deterministically rather than by whichever row the planner returned first.
  */
@@ -167,6 +201,13 @@ export async function attributeInvoice(exec: Db | Tx, invoiceId: string): Promis
   const invoice = invoiceRows[0];
   if (!invoice) return null;
 
+  // The invoice's IST calendar day, as the half-open instant range `[dayStart, dayEnd)`. This is
+  // the exact inverse of `istDayIndex`, built from the same offset constant, so the two cannot
+  // drift: `istDayIndex(t) === day  ⟺  dayStart <= t < dayEnd`.
+  const day = istDayIndex(invoice.issuedAt);
+  const dayStart = new Date(day * IST_DAY_MS - IST_OFFSET_MS);
+  const dayEnd = new Date((day + 1) * IST_DAY_MS - IST_OFFSET_MS);
+
   const instruments = await exec
     .select({ id: membershipInstances.id, counterpartyId: membershipInstances.counterpartyId })
     .from(membershipInstances)
@@ -175,8 +216,10 @@ export async function attributeInvoice(exec: Db | Tx, invoiceId: string): Promis
         eq(membershipInstances.patientId, invoice.patientId),
         eq(membershipInstances.verified, true),
         sql`${membershipInstances.counterpartyId} is not null`,
-        sql`${membershipInstances.validFrom} <= ${invoice.issuedAt}`,
-        sql`${membershipInstances.validTo} >= ${invoice.issuedAt}`,
+        // `istDayIndex(validFrom) <= day`, rearranged: the card starts before this day ends.
+        sql`${membershipInstances.validFrom} < ${dayEnd}`,
+        // `istDayIndex(validTo) >= day`, rearranged: the card ends on or after this day starts.
+        sql`${membershipInstances.validTo} >= ${dayStart}`,
       ),
     )
     .orderBy(asc(membershipInstances.seq))

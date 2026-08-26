@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
@@ -12,12 +12,14 @@ import {
   commissionAccrualSubjects, commissionAccruals, counterparties, events, membershipInstances,
   membershipPlans, partnerAgreements, registrationConfig,
 } from "../../kernel/db/schema";
+import { istDayIndex, membershipUsableAt } from "../membership";
 import { registerPatient } from "../patients";
 import {
   allocateReceipt, getInvoice, invoiceAccrualView, issueCreditNote, issueInvoice, issueRefundVoucher,
   payRefundVoucher, recordReceipt, requestRefund, reverseAllocation,
 } from "../billing";
-import { accrualLedger, appendAccrualDelta, attributeInvoice, escrowedTotalPaise, payableTotalPaise } from "./accrual";
+import { accrualLedger, appendAccrualDelta, attributeInvoice, escrowedTotalPaise, istDayIndexSql, payableTotalPaise } from "./accrual";
+import { partnerPnl } from "./pnl";
 import { counterpartyFacts, resolveAgreementAt } from "./agreements";
 import { ACCRUAL_EVENT_NAMES, handleAccrualEvent } from "./consumer";
 import type { AccrualLedgerRow } from "./accrual";
@@ -109,6 +111,9 @@ describe("the commission ledger: DD12's delta-to-target on real invoices", () =>
     effectiveTo?: Date | null;
     verified?: boolean;
     forPatientId?: string;
+    /** 09a T3 — the card's own window, so a boundary fixture can sit inside the 05:30 IST gap. */
+    cardFrom?: Date;
+    cardTo?: Date;
   }): Promise<PartnerFixture> {
     const counterpartyId = newId();
     const agreementId = newId();
@@ -130,7 +135,7 @@ describe("the commission ledger: DD12's delta-to-target on real invoices", () =>
     await db.insert(membershipInstances).values({
       id: instanceId, planId, counterpartyId, cardCode: `IC-${instanceId.slice(-6)}`,
       holderName: "Vimal Rao", patientId: args.forPatientId ?? patientId,
-      validFrom: CARD_FROM, validTo: CARD_TO, status: "active", origin: "import",
+      validFrom: args.cardFrom ?? CARD_FROM, validTo: args.cardTo ?? CARD_TO, status: "active", origin: "import",
       verified: args.verified ?? true, partnerSaleRef: `INV-SALE-${instanceId.slice(-6)}`,
     });
     return { counterpartyId, agreementId, instanceId };
@@ -756,5 +761,155 @@ describe("the commission ledger: DD12's delta-to-target on real invoices", () =>
     // agreement id, exactly as DD6 intends.
     const ledger = await ledgerOf(partner.counterpartyId);
     expect(ledger.map((r) => r.agreementId)).toEqual([partner.agreementId, v2Id]);
+  });
+  // ──────────── PLAN 09a T3 — DD3: the ledger and the counter must agree what day it is ────────────
+
+  /**
+   * THE ~18.5-HOUR WINDOW, AND WHY IT IS AN ORDINARY WORKING DAY RATHER THAN AN EDGE CASE.
+   *
+   * Plan 09's B6/K7 rule membership validity as an **IST calendar-day** comparison, and
+   * `membershipUsableAt` — the predicate the COUNTER runs — honours it. `attributeInvoice` compared
+   * raw instants in SQL. The holder-book importer writes a date-only column as `T00:00:00.000Z`,
+   * which is **05:30 IST**. So for every imported card, on the final day of its validity, from
+   * 05:30 IST until midnight — the whole of a working day — the counter honoured the discount and
+   * the partner was credited NOTHING.
+   *
+   * No test anywhere pinned the boundary because every partners fixture used a December expiry
+   * against an August clock: `CARD_TO` and the invoice instant were never near each other, so the
+   * two clocks could not be caught disagreeing. That is §2.102's rule — a fixture whose fields
+   * cannot differ hides the defect that distinguishes them — and the fix is a leg where they do.
+   *
+   * The assertion is deliberately not "attribution happens". It is **the two predicates return the
+   * same answer for the same instant**, which is the property DD3 actually rules; asserting only
+   * the attribution would pass against a predicate that had been widened too far in the other
+   * direction, and the negative legs below are what close that door.
+   */
+  const usable = (validFrom: Date, validTo: Date, at: Date): boolean =>
+    membershipUsableAt(
+      { instanceId: "x", planId: "p", planTitle: "t", cardCode: "c", status: "active", validFrom, validTo, benefits: [] },
+      at,
+    );
+
+  it("DD3 — a card expiring at 05:30 IST is HONOURED all day, and the partner is credited all day", async () => {
+    // 2026-08-19T00:00:00Z is 05:30 IST on the 19th — exactly what the importer writes for a card
+    // whose book row says it runs to the 19th. The invoice is at 11:30 IST on the SAME IST day.
+    const CARD_TO_BOUNDARY = new Date("2026-08-19T00:00:00Z");
+    expect(NOW.getTime()).toBeGreaterThan(CARD_TO_BOUNDARY.getTime()); // raw instants DISAGREE...
+    expect(usable(CARD_FROM, CARD_TO_BOUNDARY, NOW)).toBe(true);      // ...and the COUNTER honours it
+
+    const partner = await partnerFor({
+      rateBps: 1000, eligibleCategories: ["consultation"], cardTo: CARD_TO_BOUNDARY,
+    });
+    const issued = await issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId,
+      lines: [{ lineId: newId(), serviceId: base.consultNewServiceId, qty: 2 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 100_000 }] },
+    }, NOW);
+
+    // The ledger's own clock must reach the counter's answer. Comparing raw instants it did not.
+    const attribution = await attributeInvoice(db, issued.invoiceId);
+    expect(attribution).not.toBeNull();
+    expect(attribution!.instrumentId).toBe(partner.instanceId);
+  });
+
+  it("DD3 — a card STARTING at 05:30 IST covers a bill earlier the same IST day", async () => {
+    // 00:30 IST on the 19th is 2026-08-18T19:00:00Z — the PREVIOUS UTC day, the SAME IST day.
+    const EARLY = new Date("2026-08-18T19:00:00Z");
+    const CARD_FROM_BOUNDARY = new Date("2026-08-19T00:00:00Z");
+    expect(EARLY.getTime()).toBeLessThan(CARD_FROM_BOUNDARY.getTime()); // raw instants DISAGREE
+    expect(usable(CARD_FROM_BOUNDARY, CARD_TO, EARLY)).toBe(true);
+
+    const partner = await partnerFor({
+      rateBps: 1000, eligibleCategories: ["consultation"], cardFrom: CARD_FROM_BOUNDARY,
+    });
+    const issued = await issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId,
+      lines: [{ lineId: newId(), serviceId: base.consultNewServiceId, qty: 2 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 100_000 }] },
+    }, EARLY);
+    const attribution = await attributeInvoice(db, issued.invoiceId);
+    expect(attribution).not.toBeNull();
+    expect(attribution!.instrumentId).toBe(partner.instanceId);
+  });
+
+  /**
+   * THE DOOR THE FIX MUST NOT OPEN. A day-based predicate is WIDER than an instant-based one, so
+   * the risk it introduces is over-attribution: a card that lapsed yesterday earning on today's
+   * bill. Both legs below fail against a predicate widened past the calendar day, and both agree
+   * with the counter — which is the point: the two clocks match on the NO answers too.
+   */
+  it("DD3 — a card that lapsed the PREVIOUS IST day still attributes to nobody", async () => {
+    const LAPSED = new Date("2026-08-18T00:00:00Z"); // 05:30 IST on the 18th; the bill is the 19th
+    expect(usable(CARD_FROM, LAPSED, NOW)).toBe(false);
+
+    await partnerFor({ rateBps: 1000, eligibleCategories: ["consultation"], cardTo: LAPSED });
+    const issued = await issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId,
+      lines: [{ lineId: newId(), serviceId: base.consultNewServiceId, qty: 2 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 100_000 }] },
+    }, NOW);
+    expect(await attributeInvoice(db, issued.invoiceId)).toBeNull();
+  });
+
+  it("DD3 — a card that starts the NEXT IST day attributes to nobody", async () => {
+    const TOMORROW = new Date("2026-08-20T00:00:00Z"); // 05:30 IST on the 20th; the bill is the 19th
+    expect(usable(TOMORROW, CARD_TO, NOW)).toBe(false);
+
+    await partnerFor({ rateBps: 1000, eligibleCategories: ["consultation"], cardFrom: TOMORROW });
+    const issued = await issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId,
+      lines: [{ lineId: newId(), serviceId: base.consultNewServiceId, qty: 2 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 100_000 }] },
+    }, NOW);
+    expect(await attributeInvoice(db, issued.invoiceId)).toBeNull();
+  });
+  /**
+   * THE ANTI-DRIFT PIN (§2.54). `istDayIndexSql` is the SQL transliteration of `istDayIndex`, and
+   * two expressions of one rule drift by construction unless something fails when they disagree.
+   * This is that something. The instants are chosen to sit ON the boundaries where a wrong offset
+   * or a wrong rounding direction shows up: 05:29:59.999 IST and 05:30:00.000 IST are on opposite
+   * sides of the UTC midnight that the holder-book importer writes, and 23:59 IST is the far end of
+   * the same IST day.
+   */
+  it("DD3 — the SQL day index and the TS `istDayIndex` agree at every boundary that matters", async () => {
+    const instants = [
+      new Date("2026-08-18T18:29:59.999Z"), // 23:59:59.999 IST on the 18th — last ms of that day
+      new Date("2026-08-18T18:30:00.000Z"), // 00:00:00.000 IST on the 19th — first ms of the next
+      new Date("2026-08-19T00:00:00.000Z"), // 05:30 IST on the 19th — what the importer writes
+      new Date("2026-08-19T06:00:00.000Z"), // 11:30 IST on the 19th — a working-hours bill
+      new Date("2026-08-19T18:29:59.999Z"), // 23:59:59.999 IST on the 19th
+      new Date("1970-01-01T00:00:00.000Z"), // the epoch, where a floor-toward-zero bug would show
+    ];
+    for (const at of instants) {
+      const rows = (await db.execute(
+        sql`select ${istDayIndexSql(sql`${at}::timestamptz`)} as d`,
+      )).rows as { d: string | number }[];
+      expect({ at: at.toISOString(), sql: Number(rows[0]!.d) })
+        .toEqual({ at: at.toISOString(), sql: istDayIndex(at) });
+    }
+  });
+
+  /**
+   * AND THE BEHAVIOURAL HALF: the P&L must count the very invoice the ledger credits. Same card,
+   * same 05:30-IST expiry, same bill — read through `partnerPnl` rather than `attributeInvoice`.
+   * Before this task the two answered differently, and the file's own header promised they could not.
+   */
+  it("DD3 — the channel P&L counts the boundary bill the ledger credits (the second copy)", async () => {
+    const CARD_TO_BOUNDARY = new Date("2026-08-19T00:00:00Z");
+    const partner = await partnerFor({
+      rateBps: 1000, eligibleCategories: ["consultation"], cardTo: CARD_TO_BOUNDARY,
+    });
+    const issued = await issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId,
+      lines: [{ lineId: newId(), serviceId: base.consultNewServiceId, qty: 2 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 100_000 }] },
+    }, NOW);
+    expect(issued.totals.netPayablePaise).toBe(100_000);
+
+    // The ledger's answer.
+    expect(await attributeInvoice(db, issued.invoiceId)).not.toBeNull();
+    // The P&L's answer, which must be the SAME answer.
+    const pnl = await partnerPnl(db, { counterpartyId: partner.counterpartyId, asOf: NOW });
+    expect({ memberSpendPaise: pnl.memberSpendPaise }).toEqual({ memberSpendPaise: 100_000 });
   });
 });

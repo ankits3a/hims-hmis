@@ -1,6 +1,6 @@
 import { asc, eq, sql } from "drizzle-orm";
 import { counterparties } from "../../kernel/db/schema";
-import { payableTotalPaise } from "./accrual";
+import { istDayIndexSql, payableTotalPaise } from "./accrual";
 import { agingReport } from "./aging";
 import { assertIdentityFree } from "./exports";
 import { PartnersError } from "./errors";
@@ -77,7 +77,17 @@ async function cardsActiveFor(exec: Db | Tx, counterpartyId: string): Promise<nu
   return rows[0]!.n;
 }
 
-/** See the header's "member spend" section for why this is `attributeInvoice`'s own predicate. */
+/**
+ * See the header's "member spend" section for why this is `attributeInvoice`'s own predicate.
+ *
+ * **PLAN 09a T3 — THIS WAS THE SECOND COPY OF MAJOR 3, AND THE REVIEWER NAMED ONLY THE FIRST.**
+ * Plan 09's reviewer found the raw-instant validity comparison in `attributeInvoice`. The identical
+ * two lines lived here, in a function whose own docstring declares it to BE that predicate — so
+ * fixing only the one the reviewer named would have made this file's stated invariant false and
+ * left the P&L crediting a different set of invoices than the ledger for the same ~18.5 hours of
+ * every imported card's last day. The header says two formulas answering "whose bill is this"
+ * "could quietly drift apart"; that is exactly what a one-sided fix would have caused.
+ */
 async function memberSpendFor(exec: Db | Tx, counterpartyId: string): Promise<number> {
   const rows = (await exec.execute(sql`
     select coalesce(sum(i.net_payable_paise), 0) as total
@@ -87,8 +97,8 @@ async function memberSpendFor(exec: Db | Tx, counterpartyId: string): Promise<nu
       where mi.counterparty_id = ${counterpartyId}
         and mi.verified = true
         and mi.patient_id = i.patient_id
-        and mi.valid_from <= i.issued_at
-        and mi.valid_to >= i.issued_at
+        and ${istDayIndexSql(sql`mi.valid_from`)} <= ${istDayIndexSql(sql`i.issued_at`)}
+        and ${istDayIndexSql(sql`mi.valid_to`)} >= ${istDayIndexSql(sql`i.issued_at`)}
     )
   `)).rows as { total: string | number }[];
   return Number(rows[0]!.total);
