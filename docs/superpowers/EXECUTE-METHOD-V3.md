@@ -124,6 +124,24 @@ Instead:
   > to **1.2%**. Normalise the comparable, then scale it. The phase document had even predicted the
   > failure mode in prose and then not done the multiplication: **a caveat is not a calculation.**
 
+  > **AMENDED AGAIN 2026-08-26 (ledger §2.107, Plan 09a's audit) — THE STOP-LOSS NEEDS A SECOND TERM,
+  > AND IT IS THE REVIEW BUDGET.** The formula above scales with TASKS. The review-and-remediate
+  > cycle does not: it scales with what the tasks got wrong, which is unknowable at kickoff. Plan 09a
+  > set 340k from four tasks and spent **474,771 on two reviewer passes** — 40% over — and those two
+  > passes are the only reason the phase is correct. Its four tasks produced five dead mutants, five
+  > green verifies and four green CI runs over a tree carrying a MAJOR.
+  >
+  > **The formula is therefore:**
+  > `stop-loss = 1.5 × (per-task rate × task count) + one full reviewer pass per remediation cycle`,
+  > the second term taken from actuals — **16a: 181k for one pass. 09a: 475k for two.** Budget one
+  > cycle by default and say so; a phase whose reviewer finds nothing simply comes in under.
+  >
+  > **And the rule the number exists to protect:** when a reviewer's findings force a fix, that fix
+  > is UNREVIEWED CODE ON THE SAME PATH. Send the reviewer back. On 09a the second pass cost more
+  > than the first and found a race test sitting nine seconds inside a fifteen-second budget — green
+  > on an idle host, red on a busy runner, i.e. §2.99 about to repeat. **A stop-loss that halts the
+  > second pass is a stop-loss that ships the defect the first pass created.**
+
 ## 7. The pilot, and what refutes it
 
 **The first post-11d phase runs under v3.** Its lane is ruled by §2 honestly — if the
@@ -259,6 +277,24 @@ call. The ARCHIVE pass §5 created has retired three entries in two runs while t
 one session — accretion is winning about 10:1 (ledger §2.101). **The audit now reports the number
 beside the phase's spend**, so the trend is visible while it is still cheap to act on. §9.1's
 cite-by-number rule is what acts on it; this is the measurement that says what obeying it is worth.
+
+### 9.5 A RESUMED agent starts full — added 2026-08-26 (ledger §2.108)
+
+**§9's metric is what an agent CARRIES, never what its brief POINTS AT**, and a resumed agent
+carries everything its previous pass read.
+
+Measured on Plan 09a's reviewer: same agent, same pointers, a SMALLER diff — **pass 1 ~2,480 tokens
+per call, pass 2 ~8,950**, nearly four times, over 36% of the calls. Nothing about the brief changed;
+the agent had simply already read four source files, run a dozen probes and written a report, and it
+paid for all of that on each of its 30 remaining calls.
+
+**Two consequences for compiling:**
+
+- **Budget a resumed agent at its predecessor's high-water mark**, not as a cheap follow-up. The
+  pointer-trimming rules in §9.1 govern a FRESH agent and are close to irrelevant to a resumed one.
+- **Resume for CONTINUITY, not for economy.** It is often the right call — 09a's second pass knew
+  exactly what it had already proven and re-verified none of it, which a fresh reviewer would have
+  had to redo — but choose it for that reason and price it honestly.
 
 ### 9.2 The measurement, before compiling and after closing
 

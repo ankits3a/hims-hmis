@@ -556,6 +556,32 @@ GitHub creates a workflow run for the HEAD of a push, not for each commit inside
 **The rule: one push per task commit, or write the weaker sentence.** And when a commit shows no run at all, check the provider's status page BEFORE diagnosing the repository — this phase ran through a GitHub Actions major outage during which a pushed commit sat with zero check runs for forty minutes, which looks exactly like a workflow that is not configured. That is §2.64 one level out: **a CI observation the diff cannot explain is a candidate for the provider's status page before it is a candidate for diagnosis.**
 
 
+**2.107 — THE REVIEW BUDGET IS NOT OVERHEAD ON A PHASE, IT IS THE PART OF THE PHASE THAT FINDS THE DEFECTS — AND ON THIS ONE IT BREACHED THE STOP-LOSS BY 40% WHILE BEING THE ONLY THING THAT WORKED.** *(Plan 09a token audit, 2026-08-26 — measured)*
+Four tasks, coded in-session under the LIGHT lane. Five Assertion Book mutants required, five built, **five died**. Five `pnpm verify` runs, every one exit 0. Four CI runs, every one green. **That tree carried a MAJOR** — T2's own re-key had dropped counterparty separation, so a second partner attributed to one invoice summed the first partner's rows as its own prior and was short-paid by exactly that amount.
+**The instrument ledger, and it is the whole argument:**
+
+| instrument | cost | what it found |
+|---|---|---|
+| four coding tasks + 5 required mutants | in-session (unmeasured) | 5 kills — all CONFIRMATIONS of assertions already right |
+| reviewer pass 1 | 206,146 (83 calls) | **1 MAJOR introduced by the phase**, 1 MAJOR inherited, 3 MINOR, 3 NOTE |
+| reviewer pass 2 (over the remediation) | 268,625 (30 calls) | **a 9-second test inside a 15-second budget**, a mutant that SURVIVED, an unenforced invariant, 4 more |
+| **stop-loss** | **340,000** | breached by 40%, entirely on the two passes |
+
+**The rule: a stop-loss computed from task count alone will halt a phase precisely when its gate starts working**, because the review-and-remediate cycle is not proportional to the tasks — it is proportional to what the tasks got wrong, which is unknowable at kickoff. Enforced at 340k, this phase would have stopped before the counterparty defect was found and shipped it. **Mechanical form:** `stop-loss = 1.5 × per-task rate × task count` **+ one full reviewer pass per remediation cycle**, the second term from actuals (16a 181k for one pass; 09a 475k for two). And the sharper half, which is free: **when the reviewer's findings force a fix, that fix is unreviewed code on the same path — send the reviewer back.** Pass 2 cost more than pass 1 and found the thing that would have turned `main` red.
+
+**2.108 — A RESUMED AGENT STARTS FULL, SO §9's METRIC IS WHAT AN AGENT CARRIES AND NEVER WHAT ITS BRIEF POINTS AT.** *(Plan 09a token audit, 2026-08-26 — measured, and it refutes the naïve reading of §2.101)*
+Same agent, same pointers, a SMALLER diff — and pass 2 cost **~8,950 tokens per call against pass 1's ~2,480**, nearly four times, for 36% of the calls. Nothing about the brief changed. **It is a resumed agent: it carried pass 1's entire context — every file read, every probe run, every finding written — into all 30 of its calls.**
+**Why this matters beyond arithmetic:** §2.101 and §9 are usually read as *"point briefs at less"*, and that is right for a FRESH agent. For a resumed one the pointer set is irrelevant — the cost is already paid and compounds per call. **Mechanical form: budget a resumed agent at its predecessor's high-water mark, not as a cheap follow-up**, and prefer a resume when the CONTINUITY is worth it (it is — pass 2 knew exactly what it had already proven and re-verified none of it) rather than because it looks cheaper. It does not.
+
+**2.109 — `drizzle-kit` EMITS A COMPOSITE FOREIGN KEY BEFORE THE UNIQUE CONSTRAINT IT REFERENCES, AND THE MIGRATION IS UNRUNNABLE AS GENERATED.** *(Plan 09a close, 2026-08-26 — measured, four suites and 69 tests red on one line)*
+`0030` needed `unique (id, counterparty_id)` on one table and a `FOREIGN KEY (subject_id, counterparty_id)` referencing it from another. `pnpm db:generate` emitted the FK first: `ERROR: there is no unique constraint matching given keys for referenced table "commission_accrual_subjects"`. Every suite that calls `setupTestDb` failed, on that line, before a single assertion ran.
+**Generated is not the same as correct, and nothing but running it says so.** The statement order was hand-corrected in the `.sql` — which is permitted; **`_journal.json` is what AGENT-RULES §6 forbids editing, not the SQL** — with the reason written at the top of the file so a later reader does not "tidy" it back. **Mechanical form: any migration that adds a composite FK must be RUN before it is committed, and if its generator produced the statements in dependency order by luck, say so in the file.** The generator orders by table, not by dependency.
+
+**2.110 — A MUTANT THAT SURVIVES IS WORTH MORE THAN ONE THAT DIES, AND THIS PHASE PAID FOR THE PROOF TWICE.** *(Plan 09a, 2026-08-26)*
+Five required mutants, five kills — and the phase still shipped a MAJOR, because **a dead mutant confirms that an assertion discriminates and can say nothing about whether it is aimed at the right thing** (§2.102's shape, restated from the mutant side). The two mutants that taught this phase something were both unrequested: the `pnl.ts` copy, which DIED and thereby found a second site nobody had looked for; and the differing-amounts contention leg, which **SURVIVED** and thereby proved my own comment — *"the assertion that would fail against a lock-less implementation"* — was a hand-walked prediction stated as a property. Rule 21's exact prohibition, written by the session that had just cited rule 21 twice in the same file.
+**Mechanical form:** when a comment claims a test discriminates a particular wrong implementation, that claim is a MUTANT SPECIFICATION and must be executed like one. **Any sentence of the form "this would fail against X" is either an executed result or it must be deleted.**
+
+
 
 
 ## 3. Plan-authoring defects
