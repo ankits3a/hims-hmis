@@ -11,8 +11,10 @@ import {
   updateInteraction, updateMedicine, updateSalt,
 } from "./masters";
 import { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./staging";
+import { getCoverage, getPairOverrideRates } from "./curation";
 import type { InteractionRow, MedicineWithSalts, SaltRow } from "./masters";
 import type { StagingRow } from "./staging";
+import type { Coverage, PairUsage } from "./curation";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -183,6 +185,31 @@ export class FormularyController {
     } catch (e) {
       toHttp(e);
     }
+  }
+
+  // ─────────────────── T8: the curation surfaces ───────────────────
+
+  /**
+   * DD5 — `formulary.read`, NOT `formulary.manage`, and the reason is a real caller: the CONSULT
+   * screen reads this to decide whether the per-line "not in formulary" hint may render, and a
+   * doctor holds `formulary.read` alone (DD10). Guarding it on `manage` would make the hint
+   * invisible to exactly the people it is for.
+   *
+   * The response carries the raw `coverage` number as well as the boolean because a curator wants
+   * to see how close the formulary is; the consult screen reads `noticeEnabled` and nothing else,
+   * so the threshold lives in one place (`curation.ts`) and the client never re-derives it.
+   */
+  @RequirePermission("formulary.read", "hospital")
+  @Get("coverage")
+  async coverage(): Promise<Coverage> {
+    return getCoverage(this.db);
+  }
+
+  /** The curator's view: which pairs are being clicked through. `manage`, not `read`. */
+  @RequirePermission("formulary.manage", "hospital")
+  @Get("pair-rates")
+  async pairRates(): Promise<{ items: PairUsage[] }> {
+    return { items: await getPairOverrideRates(this.db) };
   }
 
   // ─────────────────── T7: staging admission, pharmacist-gated ───────────────────

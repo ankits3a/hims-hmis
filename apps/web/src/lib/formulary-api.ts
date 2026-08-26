@@ -98,6 +98,24 @@ export async function fetchCoverage(): Promise<WireCoverage | null> {
   }
 }
 
+export type WirePairUsage = {
+  saltAId: string; saltBId: string;
+  severity: "severe" | "moderate";
+  note: string;
+  timesOnIssued: number;
+  timesOverridden: number;
+  /**
+   * FOR A SEVERE PAIR THIS IS 1 BY CONSTRUCTION — the issue gate refuses a severe hit no override
+   * covers, so every occurrence on a stored prescription was clicked through. The screen shows the
+   * COUNT as the headline for that reason; the share alone would look like a rate and is not one.
+   */
+  overriddenShare: number;
+};
+
+export async function fetchPairRates(): Promise<WirePairUsage[]> {
+  return (await api<{ items: WirePairUsage[] }>("GET", "/formulary/pair-rates")).items;
+}
+
 /** The module's refusals, rendered as the message the server sent rather than re-worded here. */
 export function formularyErrorMessage(e: unknown): string {
   if (e instanceof ApiError) {

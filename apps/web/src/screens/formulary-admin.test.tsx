@@ -220,6 +220,84 @@ describe("FormularyAdmin", () => {
       .toEqual({ reason: "withdrawn from the Indian market" });
   });
 
+  /**
+   * PLAN 16a T8 — the curation loop, and the assertion that matters is the CLOSING of it: a row on
+   * the worklist names a drug the hospital prescribes and the formulary cannot resolve, and one
+   * click puts that name into the entry search on the same screen. Curation happens where the gap
+   * is visible, not on a different page somebody has to remember to open.
+   */
+  const COVERAGE = {
+    coverage: 0.6667,
+    noticeEnabled: false,
+    unresolvedTop: [
+      { drug: "Some Ayurvedic Tonic", count: 3 },
+      { drug: "Another Herbal Thing", count: 1 },
+    ],
+  };
+
+  it("16a T8: the worklist closes the loop — a click lands the unresolved name in the entry search", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/formulary/coverage": { status: 200, body: COVERAGE },
+      "GET /api/formulary/staging/search": { status: 200, body: { items: [] } },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<FormularyAdmin />);
+
+    const worklist = await screen.findByTestId("formulary-worklist");
+    expect(within(worklist).getByTestId("worklist-Some Ayurvedic Tonic")).toHaveTextContent("Some Ayurvedic Tonic — 3");
+    // Ranked by how often the hospital actually writes it.
+    const rows = within(worklist).getAllByRole("button");
+    expect(rows[0]!.textContent).toContain("Some Ayurvedic Tonic");
+
+    // The figure is shown, and so is the fact that the consult hint is OFF below the threshold.
+    expect(screen.getByTestId("formulary-coverage-figure")).toHaveTextContent("67%");
+    expect(screen.getByTestId("formulary-coverage-figure")).toHaveTextContent("stays off below 80%");
+
+    await user.click(within(worklist).getByTestId("worklist-Some Ayurvedic Tonic"));
+    expect(screen.getByTestId("formulary-search")).toHaveValue("Some Ayurvedic Tonic");
+    await waitFor(() => expect(callsTo("GET", "/formulary/staging/search")).not.toHaveLength(0));
+  });
+
+  it("16a T8: the pair table reports COUNTS, flags a heavily overridden severe pair, and states the caveat", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/formulary/coverage": { status: 200, body: { ...COVERAGE, unresolvedTop: [] } },
+      "GET /api/formulary/pair-rates": {
+        status: 200,
+        body: {
+          items: [
+            {
+              saltAId: "s-asa", saltBId: "s-warf", severity: "severe",
+              note: "bleeding risk — avoid or monitor INR closely",
+              timesOnIssued: 12, timesOverridden: 12, overriddenShare: 1,
+            },
+            {
+              saltAId: "s-para", saltBId: "s-warf", severity: "moderate",
+              note: "INR rise on sustained use",
+              timesOnIssued: 2, timesOverridden: 0, overriddenShare: 0,
+            },
+          ],
+        },
+      },
+    });
+    renderWithProviders(<FormularyAdmin />);
+
+    const pairs = await screen.findByTestId("formulary-pairs");
+    expect(within(pairs).getByTestId("pair-s-asa-s-warf")).toHaveTextContent("on 12 issued prescription(s)");
+    // Twelve click-throughs on a severe pair is the §1.4 signal: the grading needs a curator's eye.
+    expect(within(pairs).getByTestId("pair-review-s-asa-s-warf")).toBeInTheDocument();
+    // A moderate pair is a notice and is never overridden, so it is never flagged for review.
+    expect(within(pairs).queryByTestId("pair-review-s-para-s-warf")).toBeNull();
+
+    /**
+     * THE CAVEAT IS ON THE SCREEN, not only in the code. A curator reading "12" must know that the
+     * times a warning fired and the doctor changed the prescription instead are NOT counted —
+     * otherwise 12 looks like a complete picture of how that pair behaves.
+     */
+    expect(within(pairs).getByText(/is not recorded/)).toBeInTheDocument();
+  });
+
   it("a name the crawl never saw says so, and offers no queue as a consolation", async () => {
     mockRoutes({ ...baseRoutes(), "GET /api/formulary/staging/search": { status: 200, body: { items: [] } } });
     const user = userEvent.setup();

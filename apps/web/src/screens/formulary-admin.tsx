@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  admitStaging, fetchMedicines, fetchSalts, formularyErrorMessage, rejectStaging, searchStaging,
+  admitStaging, fetchCoverage, fetchMedicines, fetchPairRates, fetchSalts, formularyErrorMessage,
+  rejectStaging, searchStaging,
 } from "../lib/formulary-api";
 import { Button } from "@/components/ui/button";
 import type { AdmitInput, WireStagingRow } from "../lib/formulary-api";
@@ -50,6 +51,14 @@ export function FormularyAdmin(): React.ReactElement {
 
   const salts = useQuery({ queryKey: ["formulary", "salts"], queryFn: fetchSalts });
   const medicines = useQuery({ queryKey: ["formulary", "medicines"], queryFn: fetchMedicines });
+  /**
+   * PLAN 16a T8 — the two curation surfaces. The worklist closes the loop on this very screen: a
+   * row names a drug the hospital prescribes and the formulary cannot resolve, and clicking it
+   * puts that name straight into the entry search above.
+   */
+  const coverage = useQuery({ queryKey: ["formulary", "coverage"], queryFn: fetchCoverage });
+  const pairRates = useQuery({ queryKey: ["formulary", "pair-rates"], queryFn: fetchPairRates });
+
   const staging = useQuery({
     queryKey: ["formulary", "staging", submitted],
     queryFn: () => searchStaging(submitted),
@@ -249,6 +258,74 @@ export function FormularyAdmin(): React.ReactElement {
               {t("formularyAdmin.reject")}
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* ——— T8: the curation worklist — the prescribing stream IS the queue ——— */}
+      {coverage.data !== null && coverage.data !== undefined && (
+        <div data-testid="formulary-coverage" className="space-y-2 rounded border p-3">
+          <h2 className="font-medium">{t("formularyAdmin.coverageTitle")}</h2>
+          <p className="text-sm" data-testid="formulary-coverage-figure">
+            {t("formularyAdmin.coverageFigure", { pct: Math.round(coverage.data.coverage * 100) })}
+            {" "}
+            <span className="text-neutral-600">
+              {coverage.data.noticeEnabled
+                ? t("formularyAdmin.noticeOn")
+                : t("formularyAdmin.noticeOff")}
+            </span>
+          </p>
+          {coverage.data.unresolvedTop.length === 0
+            ? <p className="text-sm text-neutral-600">{t("formularyAdmin.worklistEmpty")}</p>
+            : (
+              <ul data-testid="formulary-worklist" className="space-y-1 text-sm">
+                {coverage.data.unresolvedTop.map((row) => (
+                  <li key={row.drug}>
+                    <Button
+                      type="button" size="sm" variant="outline"
+                      data-testid={`worklist-${row.drug}`}
+                      onClick={() => {
+                        // The loop closes here: the unresolved name becomes the entry search.
+                        setQuery(row.drug);
+                        setSubmitted(row.drug);
+                        setPicked(null);
+                        setError(null);
+                        setDone(null);
+                      }}
+                    >
+                      {row.drug} — {row.count}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+        </div>
+      )}
+
+      {/* ——— T8: which warnings are being clicked through (spec §1.4) ——— */}
+      {(pairRates.data ?? []).length > 0 && (
+        <div data-testid="formulary-pairs" className="space-y-2 rounded border p-3">
+          <h2 className="font-medium">{t("formularyAdmin.pairsTitle")}</h2>
+          <p className="text-xs text-neutral-600">{t("formularyAdmin.pairsCaveat")}</p>
+          <ul className="space-y-1 text-sm">
+            {(pairRates.data ?? []).map((p) => (
+              <li key={`${p.saltAId}-${p.saltBId}`} data-testid={`pair-${p.saltAId}-${p.saltBId}`}>
+                <span className={p.severity === "severe" ? "font-medium text-red-700" : ""}>
+                  {t(`formularyAdmin.severity.${p.severity}`)}
+                </span>
+                {" — "}
+                {p.note}
+                {" "}
+                <span className="text-neutral-600">
+                  {t("formularyAdmin.pairCount", { n: p.timesOnIssued })}
+                </span>
+                {p.severity === "severe" && p.timesOnIssued >= 10 && (
+                  <span data-testid={`pair-review-${p.saltAId}-${p.saltBId}`} className="ml-1 text-amber-700">
+                    {t("formularyAdmin.pairNeedsReview")}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

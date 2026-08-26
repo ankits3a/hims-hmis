@@ -254,8 +254,9 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
 | T3 — resolution, exact | _pending push_ | **12/12** in `resolve.test.ts`, isolated; **fail-first quoted** (staged subset, semantic red); **four mutants built, four DIED** — M3 only on the shipped assertion, see F10 |
 | T4 — the check suite | _pending push_ | **17/17** in `rx-checks.test.ts`, isolated, no database; **seven mutants built, SEVEN DIED**, all quoted |
 | T5 — the pipeline | _pending push_ | **15/15** `prescriptions.test.ts` (7 shipped legs unmodified), **7/7** `opd.e2e.test.ts`; **three mutants built, THREE DIED** |
-| T6 — the consult UI | _pending push_ | **12/12** `opd-consult.test.tsx` (10 shipped legs unmodified); picker, three-kind override dialog, soft-notice panel, coverage-gated hint |
-| T7 — staging admission | _pending push_ | **7/7** `staging.test.ts`, **6/6** `formulary-admin.test.tsx`, **3/3** `shell-nav.test.tsx`; XSS fixture asserted inert |
+| T6 — the consult UI | `cf63cb5` **CI RED — see F25** | **12/12** `opd-consult.test.tsx` (10 shipped legs unmodified); picker, three-kind override dialog, soft-notice panel, coverage-gated hint |
+| T7 — staging admission | `ef32c59` **CI GREEN** (649s) | **7/7** `staging.test.ts`, **6/6** `formulary-admin.test.tsx`, **3/3** `shell-nav.test.tsx`; XSS fixture asserted inert |
+| T8 — curation surfaces | _pending push_ | **7/7** `curation.test.ts`, **8/8** `formulary-admin.test.tsx`; coverage worklist closes the loop on-screen |
 | _appended as each lands_ | | |
 
 ### Findings
@@ -312,6 +313,63 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
   that last pair is what proves the second run grants nothing, which is the property `seed:roles`
   exists to have. **DD10 predicted 77 = 63 + 14 and the measurement agreed exactly** — recorded
   because AGENT-RULES §4 says report the difference, and the honest report is that there was none.
+- **F22 — §1.4 ASKS FOR AN OVERRIDE *RATE*, AND THE DENOMINATOR IS RECORDED NOWHERE. The plan
+  also names a source column that does not exist.** Two problems in one task, and both are about
+  the same missing fact.
+  **(a) The named source.** §5 T8 says the rates come *"from `opd_prescriptions.interactionOverrides`"*.
+  That column was never created: T5 persists `allergy_overrides` and puts the interaction and
+  duplicate counts on the `prescription.issued` EVENT. The plan assumed a T5 that did not ship.
+  **(b) Adding the column would not have helped, which is why none was added.** A SEVERE hit cannot
+  appear on a stored prescription unless an override cleared it — the gate refuses otherwise — so
+  every recomputed severe occurrence was, necessarily, overridden. The rate would be 1.0 by
+  construction. A MODERATE hit is a notice and is never overridden, so its rate is 0.0 by
+  construction. **Both numbers are arithmetic about the gate, not about the doctors.**
+  **What §1.4 actually wants** is *alerts shown* over *alerts overridden* — and the times a warning
+  fired and the doctor CHANGED THE PRESCRIPTION instead are recorded nowhere: a refused issue writes
+  no row and emits no event, and the pre-check writes nothing by design.
+  **So the function reports what is real and names it honestly:** `timesOnIssued`,
+  `timesOverridden`, and an `overriddenShare` whose doc-comment says it is 1 for severe pairs by
+  construction. The screen leads with the COUNT — twelve click-throughs on a severe pair is the
+  §1.4 signal a curator can act on — and **carries the caveat in the UI, not just in the code**,
+  so nobody reads "12" as a complete picture. **The missing mechanism, named for whoever builds it:
+  an event appended when a hard warning REFUSES an issue. It costs one `appendEvent` in the gate
+  and it is the whole denominator.** The alternative — shipping a ratio that is structurally 1.0 —
+  would have looked like the feature and measured nothing.
+- **F25 — T6'S CI RUN IS RED, THE FAILING TEST IS NOT IDENTIFIABLE FROM THIS HOST, AND WHAT
+  FOLLOWS IS EVIDENCE RATHER THAN A VERDICT.** Run `32959218495` on `cf63cb5` finished
+  **`failure`**, in step 7, `pnpm verify`. §2.91 stands: job LOGS need a credential this box does
+  not have, so the failing test cannot be named from here. **What IS readable, all of it measured:**
+  · the same code plus T7's additions is **GREEN at `ef32c59`** — a strict superset of the red tree;
+  · the red run took **1760 s** against **778 s** (T5) and **649 s** (T7) for its neighbours — 2.3×;
+  · local `pnpm verify` on that exact tree was **exit 0**, twice (once before the locale restore and
+  once after).
+  **The hypothesis those three support is F9's class** — a load-dependent per-test timeout, and
+  `billing/series.test.ts`'s race leg (ten rounds of six concurrent transactions against a 15 s
+  budget) has already flaked once on this box under nothing worse than a parallel jest. A runner
+  taking 2.3× its usual wall clock is exactly that condition. **It is a hypothesis. It is not a
+  verdict, and this phase does not get to close it.**
+  **OWNER ACTION, one command:** `gh run view 32959218495 --log-failed`. If it names the series
+  race, F9's entry gains its second data point and the fix is that test's budget. If it names
+  anything else, this phase shipped a defect that only CI can see and the CLOSE is wrong.
+- **F24 — THE CROSS-MODULE LINT FIRED A SECOND TIME, on a TEST this time, and the answer was the
+  same shape as F13's.** `curation.test.ts` needs a real OPD encounter (its own finding: the
+  prescription table has a foreign key, so an invented id is refused by the database — correctly),
+  and it reached for `../opd/encounters`. Refused: **modules may import only another module's
+  `index.ts`**. The fix was NOT to widen OPD's public interface for a test's convenience, and not to
+  hand-insert encounter rows either. The rule's own config names the way through: it applies to
+  `apps/core/src/modules/**`, and `test/helpers/opd.ts` — which already imports OPD internals for
+  exactly this purpose — is the sanctioned place for cross-module test wiring. One helper,
+  `openOpdVisit`, and the suite reads it from there. **Twice now the structural rule has been right
+  and my first instinct wrong** (F13 was the other), which is the pattern worth naming: the reflex
+  is to route around the rule, and the rule is a decision somebody already made.
+- **F23 — THE SAME `await import()` TYPECHECK TRAP, TWICE IN ONE PHASE.** T3 hit it and T8 hit it
+  again: a dynamic relative import needs an explicit `.js` extension under `node16` resolution, and
+  jest runs the test fine either way — only `tsc --noEmit` refuses. Both times the fix was to hoist
+  the import to the top of the file, where it belonged anyway. Recorded because the second
+  occurrence is the interesting one: knowing a trap exists did not stop it, because the reflex that
+  produces it (*"I need one more function, here, mid-test"*) fires before the memory does. The
+  durable fix is the one that already exists — `pnpm verify` before every push (§2.87) — and it
+  caught both.
 - **F21 — THE SPA-ROUTE CENSUS CAUGHT `/formulary/admin`, AND THE COLLISION IT GUARDS AGAINST IS
   EXACTLY THE ONE THIS ROUTE COULD HAVE BEEN.** `caddyfile-parity.test.ts` pins how many screens the
   router declares and asserts none of them falls inside a Caddy-proxied prefix — the leg written
