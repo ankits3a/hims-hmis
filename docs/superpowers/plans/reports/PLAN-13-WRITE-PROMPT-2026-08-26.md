@@ -4,9 +4,12 @@
 Claude Code session on the build host. It is a PLANNING prompt: the session it starts writes one
 phase document and executes nothing.
 
-**Its ground-truth block is written to be RE-MEASURED, not trusted.** Those numbers were true at
-16a's close; Plan 09a is still open at T2–T4 and will move at least the migration head when it
-lands. Plan 16a's first two findings were both stale ground truth in a plan document written nine
+**Its ground-truth block is written to be RE-MEASURED, not trusted, and it has ALREADY DRIFTED
+TWICE.** The numbers were true at 16a's close. Plan 09a then closed (2026-08-26) and took **three**
+migrations — `0028`, `0029`, `0030` — so the head is now `0030_charming_the_hood` and Plan 13
+generates `0031`. **Read it yourself anyway** (`ls apps/core/drizzle/*.sql | tail -1` plus
+`git status`): this file has been wrong about that number within an hour of being written, once
+already. Plan 16a's first two findings were both stale ground truth in a plan document written nine
 days before it ran — this file is deliberately shaped so the same thing cannot happen quietly.
 
 ---
@@ -41,16 +44,16 @@ you need one, grep for it. The ones that bear on this plan: §2.54 (two copies o
 
 ═══ MEASURED GROUND TRUTH, 2026-08-26 (re-measure before you trust any of it) ═══
 
-  · Migration head: 0027_perfect_korg.sql — AND 0028 IS ALREADY TAKEN. A concurrent session was
-    executing Plan 09a T2 (the accrual-subject re-key, DD2) at the time of writing and had
-    generated 0028_overjoyed_havok.sql in this working tree, uncommitted. READ THE HEAD YOURSELF
+  · Migration head: 0030_charming_the_hood.sql — Plan 13 generates 0031. Plan 09a took THREE
+    (0028 the accrual-subject re-key, 0029 its correction after the close review, 0030 the composite
+    FK), and this line said "0027, and 0028 is taken" an hour earlier. READ THE HEAD YOURSELF
     (`ls apps/core/drizzle/*.sql | tail -1`) and check for uncommitted ones (`git status`) before
     you write a number into the plan. AGENT-RULES §6.
   · ALL_MANIFESTS holds TWELVE manifests; manifests.test.ts pins the census by key, in order, and
     app.module.ts must agree. A thirteenth is a deliberate three-file change.
   · Permission census: 77 declared = 63 held + 14 not-yet-modelled (test/seed-roles.test.ts). Any
     new permission moves this number AND the README's cell-for-cell parity table.
-  · Suite: apps/core 212 suites / 1847 tests; apps/web 43 files; packages/contracts 4/21.
+  · Suite: apps/core 213 suites / 1860 tests; apps/web 43 files / 259; packages/contracts 4/21.
   · There is NO `resources` table anywhere. OPD has privatised what Plan 13 is meant to own:
     opdRooms, opdDoctors, opdDoctorSchedules, opdDoctorLeaves in kernel/db/schema/opd.ts.
   · The SPA route census is pinned at 25 in test/caddyfile-parity.test.ts; the deploy seed census
@@ -76,9 +79,11 @@ all reference it.
 
 ═══ QUESTIONS THAT ARE THE OWNER'S, NOT YOURS — ASK THEM, DO NOT ASSUME ═══
 
-  1. SEQUENCING. The ruling says "immediately after Plan 09". Plan 09 is LIVE-BUT-NOT-CLOSED (its
-     independent review is still pending) and Plan 09a is open at T2–T4. Plan 16a set the precedent
-     of running in parallel with 09. Does 13 start now, or wait?
+  1. SEQUENCING. RESOLVED 2026-08-26 — Plan 09 is CLOSED on a clean review, and Plan 09a (its four
+     MAJORs) is CLOSED too. Nothing in the partner lane blocks Plan 13. What DOES remain is an owner
+     ruling gating `RECEIVABLE_COMMISSION_ENABLED` (09a open item 1) and one gating
+     `COMMISSION_ACCRUAL_ENABLED` on a system with imported cards (09a open item 3) — neither is
+     Plan 13's to answer, and neither blocks it.
   2. THE OPD MIGRATION. The roadmap says OPD rooms migrate onto the registry and doctor availability
      stays in OPD "until the roster module — the seam is named, not moved". Does Plan 13 actually
      move opd_rooms (a data migration on a LIVE deployment with real rooms), or only establish the

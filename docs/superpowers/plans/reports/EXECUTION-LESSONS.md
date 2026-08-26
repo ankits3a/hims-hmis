@@ -527,6 +527,34 @@ Plan 16a ran nine tasks with zero subagents and one reviewer. **The reviewer cos
 **And the budgeting consequence:** a LIGHT phase's saving is not a saving until its reviewer has run. Nine tasks of in-session coding produced a tree that looked finished, was green everywhere, and carried three patient-safety defects. The 181k was the cheapest part of the phase.
 
 
+**2.103 — A MIGRATION THAT ADDS A UNIQUENESS CONSTRAINT CAN FAIL ON DATA THAT ALREADY EXISTS, AND THE FIRST DATABASE IT BREAKS IS YOUR OWN TEST WORKER.** *(Plan 09a T2, 2026-08-26 — measured, nineteen suites red)*
+`0028` drops `commission_accrual_subjects_ux` and recreates it on a NARROWER key. The fail-first run that proved the defect — a backdated agreement opening a second subject for one invoice — left those two rows in worker database `hmis_test_1`. The migration then could not apply: **nineteen suites failed, every one with `error: could not create unique index`**, plus a `TypeError: teardown is not a function` where `setupTestDb` threw before returning. The code was correct; the DATABASE was carrying what the migration now forbids.
+**Three things follow, and the third is the one that generalises.**
+(a) **Narrowing a unique key is not a schema-only change.** Ask what rows the constraint would reject and go COUNT them — in production and in every worker database — before the migration is written, not after it goes red.
+(b) **A fail-first that exercises a data defect POISONS the fixture for the fix.** The evidence run and the migration are in tension by construction: the better your red run, the more certainly it leaves behind exactly what the green run cannot tolerate. Truncate the affected tables between them (`TRUNCATE`, not `DELETE` — an append-only trigger correctly refuses the latter).
+(c) **Do NOT make the migration self-healing.** The tempting fix is a dedupe before the index. A migration that silently deletes accrual subjects so that it can apply is worse than one that refuses: the refusal is legible and recoverable, the deletion is neither. Production was measured at zero rows, so the deploy is safe — **and the honest sentence is "safe BECAUSE the lane was never armed", not "safe".**
+
+**2.104 — A LOCK MODE THAT DISCRIMINATED IN ONE SUITE CAN PROVE NOTHING IN THE NEXT, AND ONLY THE MATRIX TELLS YOU WHICH.** *(Plan 09a T4, 2026-08-26 — measured on a scratch database before the test was written)*
+§2.6 already says: name the lock AND its mode, and confirm no OTHER lock the implementation takes produces the same wait. `entitlements.contention.test.ts` discharged that by holding **`FOR NO KEY UPDATE`** — the weakest mode conflicting with the writer's `FOR UPDATE` that does not also conflict with an FK's `FOR KEY SHARE`. Reusing that choice for the receivable lane would have been silently wrong:
+
+| held mode | shipped (`SELECT … FOR UPDATE`) | lock-less (bare `UPDATE`) | discriminates |
+|---|---|---|---|
+| `FOR KEY SHARE` | BLOCKED (3125 ms) | proceeded (211 ms) | **yes** |
+| `FOR NO KEY UPDATE` | BLOCKED (3117 ms) | BLOCKED (3116 ms) | **no** |
+
+The lock-less mutant reaches an `UPDATE` next, and an `UPDATE` takes `FOR NO KEY UPDATE` — so it would have "blocked" convincingly and the mutant would have looked killed while proving nothing. **The mode is a property of the STATEMENT THE MUTANT REACHES NEXT, not of the suite that last needed one.** Same rule, opposite answer, one table apart.
+**A second fact the probe settled, worth having:** the `UPDATE` writes `statement_ref`, a column of a PARTIAL unique index, and still took only a no-key lock — **a partial unique index is excluded from Postgres's key-attribute set.** If you need to know whether an `UPDATE` takes a key lock, two psql sessions answer it in ninety seconds; reasoning from the docs does not.
+
+**2.105 — A COMMENT THAT SAYS "THIS IS THE SAME AS X" IS A LOAD-BEARING CLAIM THAT NOTHING EXECUTES, AND IT GOES FALSE THE DAY SOMEBODY FIXES X.** *(Plan 09a T3, 2026-08-26 — the sharper form of §2.54)*
+Plan 09's independent reviewer found a raw-instant validity comparison in `attributeInvoice` and named it MAJOR 3. The identical two lines lived in `pnl.ts`'s `memberSpendFor`, whose own docstring reads *"why this is `attributeInvoice`'s own predicate"* and whose file header promises that reusing the identical predicate *"is what stops 'whose bill is this' from being answered twice by two formulas that could quietly drift apart."* **Fixing only the copy the reviewer named would have made the file's own stated invariant false**, and the comment would have gone on asserting it. Mutant: `memberSpendPaise 0` against `100 000`. DIED.
+**Two rules, and they are separable.**
+(a) **A REVIEWER'S FINDING NAMES THE SITE IT FOUND, NOT THE DEFECT'S EXTENT.** Before calling any review finding fixed, grep the pattern across the repository. One `grep -rn` over `validFrom|validTo` found the second copy in seconds; nobody had run it in the nine days the first copy was known.
+(b) **§2.54 says two copies of one fact drift. The addition: the copies are often a FACT and a COMMENT ABOUT THE FACT**, and the comment is the copy nothing tests. The repair is not "never write it twice" — sometimes you must, as here, where one form must be sargable against a constant and the other must compare two columns. The repair is **one exported expression plus a test that goes red when the forms disagree at the boundaries.** If it must be written twice, make something fail when the copies diverge.
+
+**2.106 — "EVERY TASK COMMIT GREEN BY FULL SHA" IS FALSE FOR ANY TASK YOU DID NOT PUSH ON ITS OWN.** *(Plan 09a close, 2026-08-26 — observed while writing the close that would have claimed it)*
+GitHub creates a workflow run for the HEAD of a push, not for each commit inside it. Plan 09a's T1 was committed and pushed alongside later commits and therefore has **no check run at its own SHA** — `total_count: 0` — while T2, T3 and T4, each pushed alone, are green by full SHA. T1's code is covered transitively (every green descendant contains it), which is a weaker guarantee than the sentence this project's close reports make routinely.
+**The rule: one push per task commit, or write the weaker sentence.** And when a commit shows no run at all, check the provider's status page BEFORE diagnosing the repository — this phase ran through a GitHub Actions major outage during which a pushed commit sat with zero check runs for forty minutes, which looks exactly like a workflow that is not configured. That is §2.64 one level out: **a CI observation the diff cannot explain is a candidate for the provider's status page before it is a candidate for diagnosis.**
+
 
 
 
