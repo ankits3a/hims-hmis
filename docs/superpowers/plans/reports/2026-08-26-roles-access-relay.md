@@ -5,14 +5,23 @@
 **Migration:** `0023_elevation_review`. **Next free migration: 0026** — the identifier-grammar lane took 0024/0025.
 **New seed:** `seed:patients`, in `deploy.sh` between `seed-opd` and `seed-billing`.
 
-> ## ⚠ STATUS: PUSHED, **NOT DEPLOYED** — and one of the undeployed fixes is clinical
+> ## STATUS: SHIPPED AND LIVE — deployed 2026-08-26 03:13 UTC, verified against the database
 >
-> `fc9e49a` and `0b26b61` went live as ancestors of the identifier-grammar lane's deploy. **The four
-> role-model commits have NOT.** Measured against production at the time of writing: 14 roles,
-> `doctor has patients.read: false`, `patient_merge registered: false`, `owner` holds 3 permissions.
+> `deploy.sh` exit 0; edge gate green (`{"status":"ok","db":"ok","worker":"ok"}` through Caddy, and
+> `/admin/users` serving the SPA document). **No migration ran** — 0023–0025 were already applied,
+> so this deploy was image + seed only.
 >
-> **Until `seed:roles` runs on the box, every doctor in consultation is still refused the allergy
-> register.** That is the reason to deploy, and it is not a tidy-up.
+> **The clinical fix is live.** All three active doctors — `anand.rao`, `meera.iyer`,
+> `vikram.desai` — measured `patients.read: false` before and `true` after. Doctors can see the
+> allergy register during consultation.
+>
+> **ONE THING IS STILL OUTSTANDING AND IT IS NOT A CODE CHANGE:** `seed:roles` exited 1 with
+> `NOT READY — roles with zero holders: tariff_editor, membership_admin, mrd_officer,
+> biomedical_engineer`. That is the census working, not a failure: `seed:roles` mints authority and
+> ASSIGNS NOBODY, by design, and `deploy.sh` treats the verdict as non-fatal. **Those four roles
+> exist with correct grants and no people in them.** Assign at `/admin/users` — `mrd_officer` is the
+> one with immediate effect, because it opens the duplicate-patient repair path that has never
+> worked on this deployment. Its approver, `medical_superintendent`, already has a holder.
 
 Companion note: `2026-08-26-identifier-grammar-relay.md`. That lane and this one ran in the **same
 checkout at the same time**; read §7 before you run a broad test suite or stage a commit.
@@ -158,18 +167,24 @@ string was already held by some role. A green census is not a working system.
 
 ---
 
-## 6. Production state, and what deploying will do
+## 6. Production state — measured before and after the 2026-08-26 deploy
 
-| | now (measured) | after `seed:roles` runs |
+| | before | after (verified) |
 |---|---|---|
-| Roles in `roles` | 14 | 16 model roles ensured |
-| `doctor` → `patients.read` | **false** | true — the consultation panel stops 403ing |
-| `pharmacy` permissions | 1 | 2 |
-| `owner` permissions | 3 | 10 |
-| `patient_merge` registered | **false** | true (via `seed:patients`, now in `deploy.sh`) |
-| `auth.elevation.review` | granted to `admin` ✅ | unchanged |
-| `fullAdministrators` | 1 ✅ | unchanged |
-| Unreviewed emergency elevations | 0 | unchanged |
+| Roles in `roles` | 14 | **18** |
+| `doctor` → `patients.read` / `.update` | **false** | **true / true** — all three active doctors |
+| `pharmacy` permissions | 1 | **2** |
+| `owner` permissions | 3 | **10** |
+| `medical_superintendent` permissions | 2 | **7** |
+| `duty_manager` permissions | 3 | **4** |
+| `patient_merge` / `patient_unmerge` | **unregistered** | **both registered**, approver `medical_superintendent` |
+| `auth.elevation.review` holders | `admin` | **`admin`, `medical_superintendent`** |
+| `fullAdministrators` | 1 | 1 |
+| Unreviewed emergency elevations | 0 | 0 |
+| Holders of the four new roles | — | **ZERO — assign them** (see the banner) |
+
+**Hard-reload every open browser tab after a deploy** (Ctrl+Shift+R). `deploy.sh` prints this
+itself: a stale tab gets HTML where it expects JSON and fails opaquely.
 
 The operator command for any future `auth.*` permission — idempotent, password never used on a box
 that already has an admin:
@@ -248,8 +263,9 @@ and "confidential stays sealed" in direct tension, which only the owner can reso
 override for the duty manager · a screen for `membership.catalog.manage` · `display` as a device
 identity rather than a role.
 
-**Suggested order.** **Deploy first** — the doctor/allergy fix is sitting in the repo doing nobody
-any good. Then Group D, because it is small and 12a wants it. Then the break-glass ruling, because
-it is the only remaining item with a clinical edge. The composer ceremony and the agent design doc
-are both large and independent; the agent doc touches no shipped code and can run in parallel with
-anything.
+**Suggested order.** **Assign the four empty roles first** — it is a two-click job at
+`/admin/users` and until it is done, four correct grants reach nobody (the banner names them).
+Then **Group D**, because it is small and 12a wants the shape. Then the **break-glass ruling**,
+which is the only remaining item with a clinical edge — and note it is a §2 item, so expect wiring
+plus a ruling rather than a role row. The composer ceremony and the agent design doc are both large
+and independent; the agent doc touches no shipped code and can run in parallel with anything.
