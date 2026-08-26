@@ -25,3 +25,8 @@ export * from "./membership";
 // pairs the OPD check suite reads. `modules/opd` reaches it only through read helpers (the
 // `listAllergies` precedent), never by importing these tables.
 export * from "./formulary";
+// PLAN 13 T1 — the resource registry, LAST because of dependency order and it is about to matter:
+// `opd.ts` above declares two foreign keys into `opd_rooms` today, and T6 repoints both of them at
+// `resources.id`. From that commit on, `opd.ts` depends on THIS file and not the other way round,
+// so the registry must be readable before the module tables that point into it.
+export * from "./resources";

@@ -142,6 +142,17 @@ export async function truncateAll(db: Db): Promise<void> {
   // graph minus `import_quarantine` — exactly the shape `billing`'s fourteen names took, and for
   // exactly the same reason.
   //
+  // PLAN 13 T1 — `resources` and `resource_status_history` join THIS statement now rather than in
+  // T6, and joining early is the correct call at BOTH moments rather than a convenience at one.
+  // §3.35/§3.12 govern which group a new table joins and 16a's F2 adds the island case: a table
+  // absent from this function altogether is NEVER EMPTIED AT ALL, and the suite that discovers it
+  // is a later phase's. At T1 `resources` points nowhere and nothing points in — an island, which
+  // by F2 would take a statement of its own. But at T6 it becomes the PARENT of
+  // `opd_queue_sessions.room_id` and `opd_doctor_schedules.room_id`, and truncating a parent
+  // requires every table that points at it in the SAME statement. Putting both names here today
+  // costs one edit instead of two and is never wrong in between. They sit adjacent to `opd_rooms`,
+  // which is the table they are about to replace.
+  //
   // NO `restart identity`, deliberately. This statement has never carried one, the billing tables
   // in it have `seq` bigserials of their own, and adding it now would silently change what every
   // shipped test reading a billing `seq` observes. Plan 09's own tests assert seq ORDER, not seq
@@ -160,6 +171,7 @@ export async function truncateAll(db: Db): Promise<void> {
         attribution_ids, partner_agreements, counterparties,
         retention_legal_holds, notifications, opd_prescriptions, opd_vitals, opd_queue_entries, opd_encounters, opd_appointments,
         opd_queue_sessions, opd_doctor_leaves, opd_doctor_schedules, opd_doctors, opd_rooms, opd_departments,
+        resource_status_history, resources,
         opd_config, allocations, receipt_tenders, receipts, credit_note_lines, credit_notes, invoice_lines,
         invoices, refund_vouchers, cashier_sessions, entered_in_error_marks, recon_batches, daily_closes,
         idempotency_keys, document_series, billing_config, patient_merge_requests, patient_guardians, patient_allergies,
