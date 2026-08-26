@@ -256,8 +256,9 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
 | T5 — the pipeline | _pending push_ | **15/15** `prescriptions.test.ts` (7 shipped legs unmodified), **7/7** `opd.e2e.test.ts`; **three mutants built, THREE DIED** |
 | T6 — the consult UI | `cf63cb5` **CI RED — see F25** | **12/12** `opd-consult.test.tsx` (10 shipped legs unmodified); picker, three-kind override dialog, soft-notice panel, coverage-gated hint |
 | T7 — staging admission | `ef32c59` **CI GREEN** (649s) | **7/7** `staging.test.ts`, **6/6** `formulary-admin.test.tsx`, **3/3** `shell-nav.test.tsx`; XSS fixture asserted inert |
-| T8 — curation surfaces | _pending push_ | **7/7** `curation.test.ts`, **8/8** `formulary-admin.test.tsx`; coverage worklist closes the loop on-screen |
-| _appended as each lands_ | | |
+| T8 — curation surfaces | `f4ccf95` | **7/7** `curation.test.ts`, **8/8** `formulary-admin.test.tsx`; coverage worklist closes the loop on-screen |
+| — the CI fix (not a task) | `c3a2647` **CI GREEN** (770s) | four race legs given an explicit 60s budget; ledger §2.91 amended — see F26 |
+| T9 — the severe-pair seed | _pending push_ | **6/6** `seed-formulary-interactions.test.ts`; 26 pairs, 29 moieties, `source: seed-2026-08`; joins `deploy.sh` (census 10 → 11) |
 
 ### Findings
 
@@ -335,6 +336,16 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
   an event appended when a hard warning REFUSES an issue. It costs one `appendEvent` in the gate
   and it is the whole denominator.** The alternative — shipping a ratio that is structurally 1.0 —
   would have looked like the feature and measured nothing.
+- **F27 — T9's SEED IS IN THE DEPLOY PATH, WHICH MAKES ITS IDEMPOTENCE A CLINICAL PROPERTY RATHER
+  THAN A TIDINESS ONE.** Every other seed in `deploy.sh` writes configuration; this one writes
+  **severities a doctor is shown at the point of prescribing**. §1.4's calibration loop exists so the
+  DTC can DOWNGRADE a pair the hospital finds mis-graded — and this script runs again on the next
+  deployment. A seed that "restored" its own `severe` would undo a clinical ruling silently, on a
+  Tuesday, with nobody in the room. So an existing pair is left **exactly** as it is, severity and
+  active flag included, and two tests assert it by making the edit first and re-running the seed.
+  **The deploy census moved 10 → 11 and `deploy-parity.test.ts` joined the Files list**, which is the
+  same S11 rule the SPA-route census invoked in F21 — a file that pins a number joins the list of the
+  task that moves it.
 - **F26 — THE LEDGER SAID THIS HOST COULD NOT READ CI LOGS. IT CAN, AND BELIEVING THE LEDGER
   NEARLY LEFT A REAL FLAKE ON `main`.** F25 below was written under §2.91's standing claim that
   *"job logs remain 403"* — so the red was reported as un-diagnosable and handed to the owner. Then

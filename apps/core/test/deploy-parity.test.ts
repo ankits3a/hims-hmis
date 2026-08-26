@@ -348,6 +348,8 @@ const SEED_STEP_SCRIPTS = [
   // from Plan 05 and registered by nothing, so every merge request threw `unknown_type` on the
   // live box until somebody went looking.
   "seed-ops.js", "seed-opd.js", "seed-patients.js", "seed-billing.js", "seed-tariff.js",
+  // Plan 16a T9 — the severe-pair floor, after seed-membership and before the seed-roles gate.
+  "seed-formulary-interactions.js",
   "seed-roles.js",
 ] as const;
 
@@ -386,7 +388,14 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
     // 9 until 2026-08-26, when `seed-patients.js` joined between seed-opd and seed-billing with the
     // patients approval types — the registration whose ABSENCE left every merge request throwing
     // `unknown_type` from Plan 05 onward.
-    expect(order).toHaveLength(10);
+    // 11 since Plan 16a T9 added `seed-formulary-interactions.js` after seed-membership: the severe
+    // -pair starter FLOOR. It joins the deploy path for the same reason `seed-patients` did — a
+    // check suite with an empty pair table is a check suite that finds nothing, silently — and it
+    // is the first seed here that writes CLINICAL content, so its idempotence is stricter than the
+    // others': an existing pair is left alone, severity and all, because §1.4 lets the DTC
+    // downgrade one and a deploy must not restore it. (This file joins the Files list of the task
+    // that moves the integer — the S11 rule the paragraph above invokes, applied to itself.)
+    expect(order).toHaveLength(11);
     expect(order[0]).toBe("migrate.js");
     expect(order[1]).toBe("seed-cursors.js");
   });

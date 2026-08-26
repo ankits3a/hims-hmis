@@ -22,6 +22,7 @@
     "seed:patients": "tsx scripts/seed-patients.ts",
     "seed:billing": "tsx scripts/seed-billing.ts",
     "seed:membership": "tsx scripts/seed-membership.ts",
+    "seed:formulary": "tsx scripts/seed-formulary-interactions.ts",
     "import:holder-book": "tsx scripts/import-holder-book.ts",
     "seed:ops": "tsx scripts/seed-ops.ts",
     "seed:roles": "tsx scripts/seed-roles.ts",

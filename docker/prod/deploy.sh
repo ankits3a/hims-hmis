@@ -412,6 +412,14 @@ step "configuration seeding — the rows the modules throw without (Plan 11g / D
 #                DELIBERATELY NOT here for the same reason `seed:admin` is not: it is an operator
 #                command run against a partner drop, and a deploy that imported a holder book would
 #                be importing data nobody asked it for.
+#   seed:formulary   ~26 classically severe interaction pairs and the moieties they name
+#                (skip-if-present, Plan 16a T9). Unlike every seed above it, this one writes
+#                CLINICAL content, so its idempotence rule is stricter than "do not duplicate":
+#                a pair that already exists is LEFT ALONE, severity and all. §1.4's calibration
+#                loop lets the DTC downgrade a pair the hospital finds mis-graded, and a deploy
+#                that restored `severe` over that decision would undo a clinical ruling silently.
+#                Its own test asserts exactly that, twice — a downgrade and a deactivation both
+#                survive a re-run.
 #
 # `set -euo pipefail` is the gate half of this step: a seed that exits non-zero is a deploy that
 # stops, at the line that names it.
@@ -437,6 +445,9 @@ compose run --rm api node dist/scripts/seed-patients.js
 compose run --rm api node dist/scripts/seed-billing.js
 compose run --rm api node dist/scripts/seed-tariff.js
 compose run --rm api node dist/scripts/seed-membership.js
+# PLAN 16a T9 — the severe-pair starter floor. It is a FLOOR, not a formulary: the DTC owns
+# expansion and a licensed dataset arrives through `formulary_staging`, never as a bulk load.
+compose run --rm api node dist/scripts/seed-formulary-interactions.js
 
 # `seed-roles` IS RUN, AND ITS EXIT STATUS IS DELIBERATELY NOT THIS DEPLOY'S.
 #
