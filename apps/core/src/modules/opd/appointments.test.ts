@@ -109,6 +109,26 @@ describe("opd appointments (book / reschedule / cancel / check-in / no-show swee
     ).rejects.toMatchObject({ code: "slot_taken" });
   });
 
+  it("an appointment is numbered on the SLOT's date, not the booking instant", async () => {
+    // Booked on Sunday the 16th for a slot on Monday the 17th: the number reads 260817, so the
+    // day's list numbers 1..N in the order the desk will actually work it.
+    const { appointment } = await bookAppointment(db, clerk.actor, { patientId: p1.id, doctorId: dra.doctorId, slotStart: S0930 }, NOW_SUN);
+    expect(appointment.appointmentNo).toBe("A2608170001");
+    const second = await bookAppointment(db, clerk.actor, { patientId: p2.id, doctorId: dra.doctorId, slotStart: S1000 }, NOW_SUN);
+    expect(second.appointment.appointmentNo).toBe("A2608170002");
+  });
+
+  it("a reschedule mints a NEW number and leaves the old row holding its own", async () => {
+    // A reschedule is a new appointment row (rescheduledFromId/ToId), so it takes a new number
+    // rather than carrying one across — which is what keeps the paper trail readable when a
+    // patient quotes the number they were given on the phone.
+    const { appointment } = await bookAppointment(db, clerk.actor, { patientId: p1.id, doctorId: dra.doctorId, slotStart: S0930 }, NOW_SUN);
+    const { from, to } = await rescheduleAppointment(db, clerk.actor, appointment.id, { slotStart: S1000 }, NOW_SUN);
+    expect(from.appointmentNo).toBe(appointment.appointmentNo);
+    expect(to.appointmentNo).not.toBe(appointment.appointmentNo);
+    expect(to.appointmentNo).toMatch(/^A260817\d{4}$/);
+  });
+
   it("reschedules atomically: cancel-as-rescheduled + a new booked row; a slot conflict rolls the whole tx back; can move doctors; a cancelled one refuses", async () => {
     const { appointment: original } = await bookAppointment(db, clerk.actor, { patientId: p1.id, doctorId: dra.doctorId, slotStart: S0930 }, NOW_SUN);
 

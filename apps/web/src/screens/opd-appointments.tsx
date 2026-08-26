@@ -192,6 +192,7 @@ function CheckInCell({
       const qr = await api<QrCardData>("GET", `/patients/${appointment.patientId}/qr`);
       onSlip({
         tokenNo: result.tokenNo,
+        visitNo: result.encounter.visitNo,
         roomCode: roomCodeOf(result.roomId),
         doctorName,
         departmentCode,

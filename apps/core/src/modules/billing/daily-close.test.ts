@@ -108,7 +108,7 @@ describe("the daily close: claim, day book, orphan scan and GSTR-1 (D9, §11.11)
   async function shapeEncounter(input: { patientId: string; visitType: string; serviceDate?: string }): Promise<string> {
     const id = newId();
     await db.insert(opdEncounters).values({
-      id, patientId: input.patientId, workflowInstanceId: newId(),
+      id, visitNo: `VFX-${id}`, patientId: input.patientId, workflowInstanceId: newId(),
       serviceDate: input.serviceDate ?? DAY, visitType: input.visitType, status: "waiting",
       intendedPayer: "self", openedBy: "shaped", updatedBy: "shaped", openedAt: NOW,
     });

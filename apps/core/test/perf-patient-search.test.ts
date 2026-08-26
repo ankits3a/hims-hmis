@@ -73,7 +73,7 @@ describe("patient search performance budget (CI-gated — owner decision Q7)", (
       insert into patients (id, uhid, name, phone, sex, language, status, created_by, updated_by)
       select
         'PERF' || lpad(gs::text, 22, '0'),
-        'PRF-' || lpad(gs::text, 8, '0') || '-0',
+        'PRF' || lpad(gs::text, 7, '0') || '0',
         'Perf Patient ' || gs::text,
         '9' || lpad((100000000 + gs)::text, 9, '0'),
         'other', 'hi', 'active', 'perf-seed', 'perf-seed'

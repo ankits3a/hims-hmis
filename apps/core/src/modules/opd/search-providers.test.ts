@@ -89,7 +89,7 @@ describe("OPD search providers", () => {
     async function book(patientId: string, doctorId: string, departmentId: string, serviceDate: string): Promise<string> {
       const id = newId();
       await db.insert(opdAppointments).values({
-        id, patientId, doctorId, departmentId, serviceDate,
+        id, appointmentNo: `AFX-${id}`, patientId, doctorId, departmentId, serviceDate,
         slotStart: new Date(`${serviceDate}T09:00:00Z`), slotEnd: new Date(`${serviceDate}T09:15:00Z`),
         status: "booked", source: "desk", bookedBy: "t", updatedBy: "t",
       });

@@ -69,6 +69,13 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
           <p className="font-mono text-xs">{t("rx.uhid")}: {p.uhid}</p>
           <p data-testid="rx-patient-age">{t("rx.age")}: {p.ageYears ?? "—"} · {t("rx.sex")}: {p.sex}</p>
           <p data-testid="rx-date">{t("rx.date")}: {data.encounter.serviceDate}</p>
+          {/*
+            The visit number is the cross-reference a lab requisition or a pharmacy slip will quote
+            back. It needs no spelled-month partner here the way the token slip's does: this
+            document already carries an unambiguous four-digit-year date in the cell above, so the
+            YYMMDD inside the id cannot be the only date a reader has.
+          */}
+          <p data-testid="rx-visit-no" className="font-mono text-xs">{t("rx.visitNo")}: {data.encounter.visitNo}</p>
         </section>
 
         {data.encounter.diagnosis !== null && (

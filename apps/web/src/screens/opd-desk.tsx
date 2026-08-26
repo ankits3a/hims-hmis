@@ -310,6 +310,7 @@ export function OpdDesk(): React.ReactElement {
   const slipFor = (result: WireOpenVisitResult, qr: QrCardData, doctorId: string): Opened => ({
     slip: {
       tokenNo: result.tokenNo,
+      visitNo: result.encounter.visitNo,
       roomCode: roomCodeOf(result.roomId),
       doctorName: doctorNameOf(doctorId),
       departmentCode: department?.code ?? "",

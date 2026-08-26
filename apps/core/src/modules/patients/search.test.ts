@@ -53,6 +53,50 @@ describe("searchPatients", () => {
     expect(hits[0]!.uhid).toBe(ashaUhid);
   });
 
+  /**
+   * THE 2026-08-25 FORMAT'S SEARCH LANES. The format change (nine characters, no separators) only
+   * pays off if the box forgives how a desk actually types an id, so each of these is a way a real
+   * lookup arrives rather than a permutation for its own sake. The UHIDs are sliced out of the
+   * allocated value instead of being written as literals: `truncateAll` does not reset `uhid_seq`,
+   * so the serial differs between runs and any hard-coded id here would be a time bomb.
+   */
+  it("finds a patient by a UHID typed WITHOUT the prefix letter — the numeric-keypad path", async () => {
+    const { ashaUhid } = await seedThree();
+    const bare = ashaUhid.slice(3); // 8 digits: the 7-digit serial and its check digit, no "HMS"
+    expect((await searchPatients(db, clerk, bare)).map((r) => r.uhid)).toEqual([ashaUhid]);
+  });
+
+  it("finds a patient by the LEADING serial digits, with the check digit not yet typed", async () => {
+    // A serial copied out of a report, or off an older system that never carried a check digit —
+    // a trailing-anchored match would miss every one of these.
+    const { ashaUhid } = await seedThree();
+    const serial = ashaUhid.slice(3, 10);
+    expect((await searchPatients(db, clerk, serial)).map((r) => r.uhid)).toEqual([ashaUhid]);
+    expect((await searchPatients(db, clerk, `hms${serial}`)).map((r) => r.uhid)).toEqual([ashaUhid]);
+  });
+
+  it("finds a patient by the TRAILING digits read off a card", async () => {
+    // The other half of the desk, and the reason the lane is a substring rather than a prefix:
+    // the leading `U123` is shared by every patient for the hospital's first 55,000 registrations.
+    const { ashaUhid } = await seedThree();
+    expect((await searchPatients(db, clerk, ashaUhid.slice(-4))).map((r) => r.uhid)).toContain(ashaUhid);
+  });
+
+  it("treats spaces and hyphens inside an ID as punctuation", async () => {
+    const { ashaUhid } = await seedThree();
+    const spaced = `${ashaUhid.slice(0, 3)} ${ashaUhid.slice(3, 7)}-${ashaUhid.slice(7)}`;
+    expect((await searchPatients(db, clerk, spaced)).map((r) => r.uhid)).toEqual([ashaUhid]);
+  });
+
+  it("a digit run inside the UHID window still searches PHONES — the lanes are OR'd, not chosen between", async () => {
+    // Guards the regression where the UHID lane returns early and swallows the phone lane: five
+    // digits are both a plausible phone prefix and a plausible UHID fragment, and a desk that
+    // typed a phone prefix must not be told there is no such patient.
+    await seedThree();
+    const hits = await searchPatients(db, clerk, "98765");
+    expect(hits.map((r) => r.name).sort()).toEqual(["Asha Devi", "Ashok Kumar"]);
+  });
+
   it("text queries search name by case-insensitive prefix, with LIKE metacharacters inert", async () => {
     await seedThree();
     const hits = await searchPatients(db, clerk, "ash");

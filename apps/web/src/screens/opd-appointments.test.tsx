@@ -243,7 +243,7 @@ describe("OpdAppointments", () => {
       "GET /api/opd/rooms": { items: ROOMS },
       "GET /api/opd/slots": { slots: SLOTS },
       "GET /api/opd/appointments": { items: [todayRow, otherDayRow] },
-      "POST /api/opd/appointments/ap-1/check-in": { tokenNo: 7, roomId: "room-1", visitType: "new" },
+      "POST /api/opd/appointments/ap-1/check-in": { tokenNo: 7, roomId: "room-1", visitType: "new", encounter: { id: "enc-7", visitNo: "V2608180007" } },
       "GET /api/patients/p-1/qr": { payload: "1.p-1.HMS0000001234.3.6f2a9c", uhid: "HMS0000001234", name: "Asha Devi", sex: "female", dob: null },
     });
     const { container } = renderWithProviders(<OpdAppointments />);
@@ -261,6 +261,7 @@ describe("OpdAppointments", () => {
     await user.click(todayCheckIn);
 
     await waitFor(() => expect(callsTo("POST", "/api/opd/appointments/ap-1/check-in")).toHaveLength(1));
+    await waitFor(() => expect(screen.getByTestId("visit-no")).toHaveTextContent("V2608180007"));
     await waitFor(() => expect(callsTo("GET", "/api/patients/p-1/qr")).toHaveLength(1));
 
     expect(await screen.findByTestId("token-no")).toHaveTextContent("7");

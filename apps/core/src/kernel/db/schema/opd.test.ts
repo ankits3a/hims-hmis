@@ -39,12 +39,12 @@ describe("opd schema (migration 0010)", () => {
     await seedPatient("P1"); await seedPatient("P2"); await seedPatient("P3");
     const slot = new Date("2026-08-17T05:00:00.000Z"); // 10:30 IST
     const base = { doctorId, departmentId: deptId, serviceDate: "2026-08-17", slotStart: slot, slotEnd: new Date(slot.getTime() + 600_000), bookedBy: "t", updatedBy: "t" };
-    await db.insert(opdAppointments).values({ id: "A1", patientId: "P1", status: "cancelled", ...base });
-    await db.insert(opdAppointments).values({ id: "A2", patientId: "P2", status: "booked", ...base }); // cancelled A1 does not block
+    await db.insert(opdAppointments).values({ id: "A1", appointmentNo: "AFX-A1", patientId: "P1", status: "cancelled", ...base });
+    await db.insert(opdAppointments).values({ id: "A2", appointmentNo: "AFX-A2", patientId: "P2", status: "booked", ...base }); // cancelled A1 does not block
     await expect(
-      db.insert(opdAppointments).values({ id: "A3", patientId: "P3", status: "booked", ...base }),
+      db.insert(opdAppointments).values({ id: "A3", appointmentNo: "AFX-A3", patientId: "P3", status: "booked", ...base }),
     ).rejects.toMatchObject({ code: "23505" });
-    const claimed = await db.insert(opdAppointments).values({ id: "A4", patientId: "P3", status: "needs_rebooking", ...base }).onConflictDoNothing().returning({ id: opdAppointments.id });
+    const claimed = await db.insert(opdAppointments).values({ id: "A4", appointmentNo: "AFX-A4", patientId: "P3", status: "needs_rebooking", ...base }).onConflictDoNothing().returning({ id: opdAppointments.id });
     expect(claimed).toEqual([]); // needs_rebooking is inside the live set
   });
 
@@ -52,7 +52,7 @@ describe("opd schema (migration 0010)", () => {
     const { doctorId } = await seedDoctor();
     await seedPatient("P1");
     await db.insert(opdQueueSessions).values({ id: "S1", doctorId, serviceDate: "2026-08-15", status: "in" });
-    await db.insert(opdEncounters).values({ id: "E1", patientId: "P1", workflowInstanceId: "WI1", doctorId, serviceDate: "2026-08-15", visitType: "new", openedBy: "t", updatedBy: "t" });
+    await db.insert(opdEncounters).values({ id: "E1", visitNo: "VFX-E1", patientId: "P1", workflowInstanceId: "WI1", doctorId, serviceDate: "2026-08-15", visitType: "new", openedBy: "t", updatedBy: "t" });
     const seqs = await withTx(db, async (tx) => {
       const out: number[] = [];
       for (const [id, token] of [["Q1", 1], ["Q2", 2], ["Q3", 3]] as const) {
@@ -69,7 +69,7 @@ describe("opd schema (migration 0010)", () => {
   it("vitals doubles round-trip exactly (38.4, 12.5) and jsonb flags survive", async () => {
     const { doctorId } = await seedDoctor();
     await seedPatient("P1");
-    await db.insert(opdEncounters).values({ id: "E1", patientId: "P1", workflowInstanceId: "WI1", doctorId, serviceDate: "2026-08-15", visitType: "new", openedBy: "t", updatedBy: "t" });
+    await db.insert(opdEncounters).values({ id: "E1", visitNo: "VFX-E1", patientId: "P1", workflowInstanceId: "WI1", doctorId, serviceDate: "2026-08-15", visitType: "new", openedBy: "t", updatedBy: "t" });
     await db.insert(opdVitals).values({ id: "V1", encounterId: "E1", patientId: "P1", tempC: 38.4, weightKg: 12.5, dangerFlags: [{ vital: "tempC", value: 38.4, bound: "max", limit: 38.0 }], band: "child_1_5", recordedBy: "t" });
     const rows = await db.select().from(opdVitals).where(eq(opdVitals.id, "V1"));
     expect(rows[0]!.tempC).toBe(38.4);
@@ -81,7 +81,7 @@ describe("opd schema (migration 0010)", () => {
     const { doctorId } = await seedDoctor();
     await seedPatient("P1");
     await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "t" });
-    await db.insert(opdEncounters).values({ id: "E1", patientId: "P1", workflowInstanceId: "WI1", doctorId, serviceDate: "2026-08-15", visitType: "new", openedBy: "t", updatedBy: "t" });
+    await db.insert(opdEncounters).values({ id: "E1", visitNo: "VFX-E1", patientId: "P1", workflowInstanceId: "WI1", doctorId, serviceDate: "2026-08-15", visitType: "new", openedBy: "t", updatedBy: "t" });
     await db.insert(opdConfig).values({ id: "main", followUpExtensionDays: [15, 21, 30], dangerRanges: { bands: [] }, letterhead: { name: "X", addressLines: [] }, updatedBy: "t" });
     await truncateAll(db); // throws "cannot truncate a table referenced in a foreign key constraint" if the statement is wrong
     const [{ n }] = (await db.execute(sql`select count(*)::int as n from opd_encounters`)).rows as [{ n: number }];

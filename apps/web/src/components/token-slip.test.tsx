@@ -5,6 +5,7 @@ import { TokenSlip } from "./token-slip";
 
 const PROPS = {
   tokenNo: 7,
+  visitNo: "V2608180001",
   roomCode: "12",
   doctorName: "Dr Meera Rao",
   departmentCode: "MED",
@@ -28,12 +29,23 @@ describe("TokenSlip", () => {
     expect(screen.getByText("Dr Meera Rao")).toBeInTheDocument();
     expect(screen.getByText("Room: 12")).toBeInTheDocument();
     expect(screen.getByTestId("token-no")).toHaveTextContent("7");
-    expect(screen.getByText("2026-08-18")).toBeInTheDocument();
+    expect(screen.getByTestId("visit-no")).toHaveTextContent("V2608180001");
     expect(screen.getByText("HMS0000001234")).toBeInTheDocument();
 
     const doc = container.querySelector(".print-doc");
     expect(doc).not.toBeNull();
     expect(doc?.querySelector("svg")).not.toBeNull();
+  });
+
+  it("prints the visit number WITH a spelled-month date, never the bare id", async () => {
+    // The number encodes its date as YYMMDD, which an Indian desk reading DD-MM-YY would take for
+    // 18-Aug-2020. This pairing is the agreed resolution, so it is asserted rather than assumed —
+    // and it is asserted on ONE element, because two would let a layout change split them apart.
+    renderWithProviders(<TokenSlip {...PROPS} />);
+    const line = screen.getByTestId("visit-no");
+    expect(line).toHaveTextContent("V2608180001");
+    expect(line).toHaveTextContent("18-Aug-2026");
+    expect(screen.queryByText("2026-08-18")).toBeNull(); // the raw ISO date does not reach paper
   });
 
   it("print isolation: the root carries .print-doc and the .no-print button calls window.print", async () => {

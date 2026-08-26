@@ -2,6 +2,7 @@ import { and, asc, eq, gte, inArray, lt, lte } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
+import { nextEpisodeNo } from "../../kernel/episodes/series";
 import { withTx } from "../../kernel/db/client";
 import { opdAppointments, opdDoctorLeaves, opdDoctors } from "../../kernel/db/schema";
 import { listMergedLoserIds, resolvePatientId } from "../patients";
@@ -56,8 +57,12 @@ export async function bookAppointment(
     if (!slot) throw new OpdError("invalid_slot", `${input.slotStart.toISOString()} is not a slot for doctor ${doctor.id}`);
 
     const appointmentId = newId();
+    // Allocated BEFORE the insert, because it is a column of it — so a lost slot race (the
+    // onConflictDoNothing below) burns a number. Deliberate: this series is not gapless, and the
+    // alternative is a second round trip to keep a counter tidy that nothing audits.
+    const appointmentNo = await nextEpisodeNo(tx, "appointment", serviceDate);
     const inserted = await tx.insert(opdAppointments).values({
-      id: appointmentId, patientId: canonical, doctorId: doctor.id, departmentId: doctor.departmentId,
+      id: appointmentId, appointmentNo, patientId: canonical, doctorId: doctor.id, departmentId: doctor.departmentId,
       serviceDate, slotStart: input.slotStart, slotEnd: slot.end, status: "booked",
       source: input.source ?? "desk", note: input.note ?? null,
       bookedBy: actor.id, updatedBy: actor.id,
@@ -113,8 +118,12 @@ export async function rescheduleAppointment(
     if (flipped.length === 0) throw new OpdError("appointment_state_conflict", "moved concurrently");
     const from = flipped[0]!;
 
+    // A reschedule is a NEW appointment, so it takes a new number on its new service date rather
+    // than carrying the old one across — the old row keeps its number and its 'rescheduled' status,
+    // which is what makes the paper trail readable when a patient quotes the number they were given.
+    const appointmentNo = await nextEpisodeNo(tx, "appointment", serviceDate);
     const inserted = await tx.insert(opdAppointments).values({
-      id: toId, patientId: loaded.patientId, doctorId: doctor.id, departmentId: doctor.departmentId,
+      id: toId, appointmentNo, patientId: loaded.patientId, doctorId: doctor.id, departmentId: doctor.departmentId,
       serviceDate, slotStart: input.slotStart, slotEnd: slot.end, status: "booked",
       source: loaded.source, note: loaded.note, rescheduledFromId: appointmentId,
       bookedBy: actor.id, updatedBy: actor.id,

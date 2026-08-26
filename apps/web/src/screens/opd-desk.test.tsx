@@ -75,7 +75,10 @@ const SEARCH_HIT = {
 const QR = { payload: "1.p-1.HMS0000001234.3.6f2a9c", uhid: "HMS0000001234", name: "Asha Devi", sex: "female", dob: null };
 
 /** POST /opd/visits answers OpenVisitResult; the desk reads tokenNo / roomId / visitType off it. */
-const OPEN_RESULT = { tokenNo: 11, sessionId: "sess-1", roomId: "room-1", visitType: "revisit", doctorScheduledToday: true };
+const OPEN_RESULT = { tokenNo: 11, sessionId: "sess-1", roomId: "room-1", visitType: "revisit", doctorScheduledToday: true,
+  // The open-visit response has always carried the encounter; the slip started READING it when
+  // the visit number landed on it, which is why this key appears here and not before.
+  encounter: { id: "enc-1", visitNo: "V2608180011" } };
 
 function entry(overrides: Record<string, unknown>): Record<string, unknown> {
   return {
@@ -217,6 +220,9 @@ describe("OpdDesk", () => {
     const slip = container.querySelector(".print-doc") as HTMLElement;
     expect(slip).not.toBeNull();
     expect(within(slip).getByTestId("token-no")).toHaveTextContent("11");
+    // The wiring, not the rendering (token-slip.test.tsx owns that): the number the API returned
+    // on the encounter is the number that reaches the paper.
+    expect(within(slip).getByTestId("visit-no")).toHaveTextContent("V2608180011");
     expect(within(slip).getByText("Room: 12")).toBeInTheDocument(); // roomId room-1 → code 12
     expect(within(slip).getByText("MED · General medicine")).toBeInTheDocument();
     expect(within(slip).getByText("Dr Meera Rao")).toBeInTheDocument();
@@ -260,7 +266,7 @@ describe("OpdDesk", () => {
           departmentName: "General medicine", diagnosis: "Fever", icd10Code: null, prescriptionLineCount: 2, dangerFlagged: false,
         }],
       },
-      "POST /api/opd/appointments/ap-1/check-in": { ...OPEN_RESULT, tokenNo: 9, roomId: "room-2", visitType: "new" },
+      "POST /api/opd/appointments/ap-1/check-in": { ...OPEN_RESULT, tokenNo: 9, roomId: "room-2", visitType: "new", encounter: { id: "enc-9", visitNo: "V2608180009" } },
       "GET /api/patients/p-1/qr": QR,
     });
     const { container } = renderWithProviders(<OpdDesk />);
@@ -283,6 +289,7 @@ describe("OpdDesk", () => {
     const slip = container.querySelector(".print-doc") as HTMLElement;
     expect(slip).not.toBeNull();
     expect(within(slip).getByTestId("token-no")).toHaveTextContent("9");
+    expect(within(slip).getByTestId("visit-no")).toHaveTextContent("V2608180009");
     expect(within(slip).getByText("Room: 14")).toBeInTheDocument(); // roomId room-2 → code 14
     expect(screen.getByTestId("visit-type-badge")).toHaveTextContent("New");
   });

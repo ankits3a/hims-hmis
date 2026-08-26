@@ -68,7 +68,7 @@ describe("the pay-before-consult gate: billing's verdict (D8)", () => {
   async function shapeEncounter(input: { patientId: string; visitType: string }): Promise<string> {
     const id = newId();
     await db.insert(opdEncounters).values({
-      id, patientId: input.patientId, workflowInstanceId: newId(), serviceDate: SERVICE_DAY,
+      id, visitNo: `VFX-${id}`, patientId: input.patientId, workflowInstanceId: newId(), serviceDate: SERVICE_DAY,
       visitType: input.visitType, status: "waiting", intendedPayer: "self",
       openedBy: "shaped", updatedBy: "shaped", openedAt: NOW,
     });

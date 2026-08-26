@@ -75,6 +75,13 @@ export async function truncateAll(db: Db): Promise<void> {
   // group's statement and takes its own. It MUST be here: a leftover audit row from one test makes
   // the next test's "exactly one row was written" assertion read two.
   await db.execute(sql`truncate table search_audit`);
+  // The V/A/L/S/R/P daily counters. NO foreign key in either direction — the table is keyed by a
+  // series-key STRING and a date, precisely so lab, radiology and pharmacy need no schema change
+  // to join the grammar — so by §3.35/§3.12 it has no claim on any existing group's statement and
+  // takes its own. It MUST be here, and the failure it prevents is not subtle: a counter left
+  // standing from one test makes the next test's first visit `V2608250006` instead of
+  // `V2608250001`, which is exactly how this line came to be written.
+  await db.execute(sql`truncate table episode_series`);
   await db.execute(sql`truncate table approvals, approval_types`);
   await db.execute(
     sql`truncate table approvals, workflow_timers, workflow_transitions, workflow_instances,

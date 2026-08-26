@@ -92,7 +92,42 @@ function verhoeffValidates(digitsWithCheck: string): boolean {
   return c === 0;
 }
 
-const UHID_RE = /^([A-Z]{2,5})-(\d{8})-(\d)$/;
+/**
+ * THE UHID FORMAT — owner ruling 2026-08-25, REPLACING Plan 05's `<PREFIX>-<8 digits>-<check>`.
+ *
+ * `U` + a 7-digit serial + a Verhoeff check digit → `U12345013`. Nine characters, no separators.
+ *
+ * WHY THE HYPHENS WENT. A UHID is typed into a search box far more often than it is read off a
+ * card, and `CRK-00000001-7` cost fourteen keystrokes with two of them breaking numeric-keypad
+ * flow entirely. The separators carried no information the fixed width did not already carry.
+ *
+ * WHY THE CHECK DIGIT STAYED (owner ruling, same date — Plan 05's Q6 choice of Verhoeff, kept).
+ * It costs one of the nine characters and rejects EVERY single-digit substitution and EVERY
+ * adjacent transposition, which is the typo class that would otherwise land a desk on a
+ * stranger's chart in a densely-allocated band. The serial paid for it by losing a digit:
+ * seven, not eight. Consequence, accepted at the ruling: consecutive registrations no longer
+ * READ as consecutive (…013, …021, …032) because the check digit moves independently.
+ *
+ * WHY THE FLOOR IS NOT A VIP BAND — the part most likely to be "helpfully" re-added later.
+ * Serials 1..1,234,500 are reserved and carry NO MEANING. The reservation exists for exactly two
+ * reasons: the first patient's card should read U12345013 rather than U00000017, and a memorable
+ * number can be minted by hand out of that band one day. It is deliberately NOT a VIP or
+ * membership range, and encoding status here would be a defect, not a feature:
+ *   - A UHID is printed on the card, the prescription and the receipt, spoken across a crowded
+ *     counter and sent by SMS. A semantic low band would broadcast to a ward boy or a competitor
+ *     precisely the fact that `patients.is_confidential` (§14) exists to SEAL.
+ *   - Status is revocable and a UHID is not. Memberships lapse, VIPs stop being VIPs, ordinary
+ *     patients buy a membership next year. Status in the number forces either renumbering a
+ *     living patient — the one thing a UHID exists to prevent, since it breaks every historical
+ *     record and every card already printed — or a band that is a standing lie.
+ *   - The revocable mechanisms already exist and are auditable: `is_confidential` for VIP,
+ *     Plan 09's membership instrument for membership.
+ */
+export const UHID_SERIAL_DIGITS = 7;
+export const UHID_RESERVED_THROUGH = 1_234_500;
+export const UHID_MAX_SERIAL = 9_999_999; // 8,765,499 issuable serials above the floor
+
+const UHID_RE = /^([A-Z]{1,5})(\d{7})(\d)$/;
 
 export function isValidUhid(uhid: string): boolean {
   const m = UHID_RE.exec(uhid);
@@ -100,9 +135,19 @@ export function isValidUhid(uhid: string): boolean {
   return verhoeffValidates(m[2]! + m[3]!);
 }
 
+/**
+ * The one place that can mint a UHID string, and therefore the one place that guards the width.
+ * Out of range throws rather than truncating or over-padding: a serial of 10,000,000 would
+ * silently produce an EIGHT-digit body and a UHID that `isValidUhid` rejects forever after.
+ */
 export function formatUhid(prefix: string, n: number): string {
-  const body = String(n).padStart(8, "0");
-  return `${prefix}-${body}-${verhoeffCheckDigit(body)}`;
+  if (!Number.isSafeInteger(n) || n < 1 || n > UHID_MAX_SERIAL) {
+    throw new Error(
+      `formatUhid: serial ${String(n)} is outside 1..${UHID_MAX_SERIAL} — the ${UHID_SERIAL_DIGITS}-digit body has no room for it`,
+    );
+  }
+  const body = String(n).padStart(UHID_SERIAL_DIGITS, "0");
+  return `${prefix}${body}${verhoeffCheckDigit(body)}`;
 }
 
 /** Allocates the next UHID on the caller's transaction. Sequence = concurrency-safe by construction. */
@@ -120,5 +165,17 @@ export async function allocateUhid(tx: Tx): Promise<string> {
   const res = await tx.execute(sql`select nextval('uhid_seq') as n`);
   const n = Number(res.rows[0]!.n); // nextval returns bigint → TEXT through pg; force a real number
   if (!Number.isSafeInteger(n) || n < 1) throw new Error(`uhid_seq returned unusable value: ${String(res.rows[0]!.n)}`);
+  // THE FLOOR IS ENFORCED HERE, not merely configured on the sequence. `startWith` is a property
+  // of the sequence object, and a restore, a `RESTART`, or a hand-rolled dev reset can put the
+  // counter back below it — at which point registration would quietly start issuing out of the
+  // reserved band. Failing at the counter is the correct outcome: the band is a promise the
+  // hospital made about numbers it will never auto-issue, and a promise nothing checks is not one.
+  if (n <= UHID_RESERVED_THROUGH) {
+    throw new Error(
+      `uhid_seq handed out ${n}, inside the reserved band 1..${UHID_RESERVED_THROUGH}. ` +
+        `Registration is halted rather than issuing a reserved UHID. Fix the counter with: ` +
+        `ALTER SEQUENCE uhid_seq RESTART WITH ${UHID_RESERVED_THROUGH + 1};`,
+    );
+  }
   return formatUhid(cfg[0]!.uhidPrefix, n);
 }

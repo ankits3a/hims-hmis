@@ -20,7 +20,44 @@ export type PatientSearchResult = {
 };
 
 const PHONE_RE = /^\d{3,14}$/;
-const UHID_SHAPE_RE = /^[A-Za-z]{2,5}-\d{8}-\d$/; // shape, not validity: a typo'd check digit must still be searchable
+
+/**
+ * UHID LANES — the 2026-08-25 format (`<PREFIX><7-digit serial><check digit>`, e.g. `U12345013`).
+ *
+ * Both regexes match SHAPE, not validity: a typo'd check digit must still be searchable, because
+ * the desk that mistyped one digit is exactly the desk that needs the search to say "no such
+ * patient" rather than to silently fall through to a name search that finds nobody either way.
+ */
+const UHID_FULL_RE = /^[A-Za-z]{1,5}\d{8}$/;
+const UHID_PREFIXED_PARTIAL_RE = /^[A-Za-z]{1,5}(\d{4,7})$/;
+
+/**
+ * THE PARTIAL LANE EXISTS BECAUSE THE LEADING DIGITS ARE DEAD WEIGHT FOR A DECADE.
+ *
+ * The serial floor (1,234,501) means every patient the hospital registers before its 55,000th
+ * shares the leading `U123`, and every one before its 655,000th shares `U12`. Three to four of
+ * the nine characters therefore carry ZERO information at the search box, every single lookup —
+ * which would have quietly undone the keystroke saving the format change was made to win.
+ * Four digits is the floor: fewer is not a lookup, it is a listing.
+ */
+const UHID_PARTIAL_MIN = 4;
+const UHID_DIGITS = 8; // 7-digit serial + 1 check digit
+
+/**
+ * Substring, NOT prefix — the one predicate in patient search that pays for a leading wildcard,
+ * and it is served by `patients_uhid_trgm_idx` (migration 0024) rather than by a btree.
+ *
+ * Two different partials arrive at a desk and a prefix match would serve only one of them: the
+ * last few characters read aloud off a card or a token slip, and the LEADING serial digits copied
+ * out of a report or an older system that never carried the check digit. Anchoring either end
+ * loses the other half of the desk.
+ *
+ * `digits` is guaranteed digits-only by the callers' regexes, so it carries no LIKE metacharacter
+ * and needs no `escapeLike`.
+ */
+function uhidContains(digits: string): SQL {
+  return sql`${patients.uhid} like ${`%${digits}%`}`;
+}
 
 /**
  * PLAN 11h T2 — THE THREE BRANCHES, EXTRACTED SO THERE IS ONE COPY OF THEM.
@@ -33,11 +70,38 @@ const UHID_SHAPE_RE = /^[A-Za-z]{2,5}-\d{8}-\d$/; // shape, not validity: a typo
  * silently carried a confidentiality rule would be the worse kind of reuse.
  */
 export function patientMatchCondition(query: string): SQL {
-  if (PHONE_RE.test(query)) {
-    const prefix = `${query}%`;
-    return or(like(patients.phone, prefix), like(patients.altPhone, prefix))!;
+  /**
+   * Separators are punctuation ON AN ID, never data: a desk reading a card aloud types
+   * "U 1234 5013" as readily as "U12345013", and the old hyphenated format trained everyone's
+   * fingers for a year. Only the ID lanes below look at the compacted form — the NAME lanes keep
+   * the raw query, because "Anne-Marie" is a name with a hyphen in it and compacting it would
+   * hide her.
+   */
+  const compact = query.replace(/[\s-]/g, "");
+
+  if (UHID_FULL_RE.test(compact)) return eq(patients.uhid, compact.toUpperCase());
+
+  const prefixed = UHID_PREFIXED_PARTIAL_RE.exec(compact);
+  if (prefixed) return uhidContains(prefixed[1]!);
+
+  if (PHONE_RE.test(compact)) {
+    const prefix = `${compact}%`;
+    const phone = or(like(patients.phone, prefix), like(patients.altPhone, prefix))!;
+    /**
+     * A BARE DIGIT RUN IS AMBIGUOUS AND IS THEREFORE TRIED AS BOTH.
+     *
+     * A phone is a phone (the Plan 05 split, kept) — but a desk that types `12345013` off a card
+     * without the leading `U` means a UHID, and routing that to the phone lane alone returned
+     * nothing at all. Both lanes OR together instead of one guessing: the caller caps results and
+     * the picker renders name, photo and UHID before anyone can act, so a superset costs a glance
+     * and the alternative cost the lookup entirely. Digit runs longer than a UHID's eight skip the
+     * UHID lane because no substring of an 8-digit body can be nine digits long.
+     */
+    if (compact.length >= UHID_PARTIAL_MIN && compact.length <= UHID_DIGITS) {
+      return or(phone, uhidContains(compact))!;
+    }
+    return phone;
   }
-  if (UHID_SHAPE_RE.test(query)) return eq(patients.uhid, query.toUpperCase());
   /**
    * PLAN 11h T7, CORRECTED AT CLOSE (independent reviewer, MAJOR 4) — BOTH SPELLINGS ARE TRIED.
    *
@@ -125,8 +189,10 @@ export function patientFuzzyCondition(query: string): SQL {
 
 /**
  * Phone-first patient search (§11.1 entry lanes; §15 <300 ms budget — CI-enforced by
- * test/perf-patient-search.test.ts). Prefix-only by design: every branch is served by a
- * text_pattern_ops btree index; substring/fuzzy search arrives with MRD (pg_trgm), not here.
+ * test/perf-patient-search.test.ts). The phone and name lanes stay PREFIX-only, each served by a
+ * text_pattern_ops btree index. The two exceptions both earned their leading wildcard and both
+ * carry a GIN index to pay for it: name similarity (Plan 11h, `patients_name_trgm_idx`) and the
+ * partial-UHID lane (2026-08-25 format change, `patients_uhid_trgm_idx`).
  */
 export async function searchPatients(
   db: Db,

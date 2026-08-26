@@ -251,8 +251,11 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
     expect(print.letterhead).toEqual({ name: "CRK MEDICAL COLLEGE & HOSPITAL", addressLines: ["CHAURASIA CHOWK, HAJIPUR, BIHAR 844101"] });
     expect(print.patient).toEqual({ uhid: patient.uhid, name: "Asha Devi", alias: null, restricted: false, ageYears: 30, sex: "female" });
     expect(print.doctor).toEqual({ displayName: "Dr dra", registrationNo: "BMC/12345", departmentName: "General Medicine" });
+    // The visit number reaches the printed e-Rx: it is the cross-reference a lab requisition or a
+    // pharmacy slip quotes back, so its absence from this payload would be silent until it wasn't.
+    expect(enc.visitNo).toMatch(/^V260817\d{4}$/);
     expect(print.encounter).toEqual({
-      id: enc.id, serviceDate: "2026-08-17", diagnosis: "Acute pharyngitis", icd10Code: "J02.9",
+      id: enc.id, visitNo: enc.visitNo, serviceDate: "2026-08-17", diagnosis: "Acute pharyngitis", icd10Code: "J02.9",
       advice: "fluids", followUpDays: null, chiefComplaint: "fever 3d",
     });
     expect(print.vitals).toMatchObject({ sbp: 120, band: "adult", dangerFlags: [] });

@@ -114,6 +114,7 @@ describe("opd schedules", () => {
 
     await db.insert(opdAppointments).values({
       id: newId(),
+      appointmentNo: `AFX-${newId()}`,
       patientId: patient.id,
       doctorId: doc.doctorId,
       departmentId: deptId,

@@ -135,14 +135,14 @@ describe("patients lifecycle e2e (registration → merge → unmerge → sweep)"
       .send({ name: "Asha Devi", sex: "female", phone: "9876543210", language: "hi" })
       .expect(201);
     const winnerId = regA.body.patient.id as string;
-    expect(regA.body.patient.uhid).toMatch(/^HMS-\d{8}-\d$/);
+    expect(regA.body.patient.uhid).toMatch(/^HMS\d{8}$/);
 
     const regB = await request(app.getHttpServer())
       .post("/patients").set(...auth(clerkToken))
       .send({ name: "Asha Debi", sex: "female", phone: "9876543210", language: "hi" })
       .expect(201);
     const loserId = regB.body.patient.id as string;
-    expect(regB.body.patient.uhid).toMatch(/^HMS-\d{8}-\d$/);
+    expect(regB.body.patient.uhid).toMatch(/^HMS\d{8}$/);
 
     const dupSearch = await request(app.getHttpServer())
       .get("/patients/search").query({ q: "98765" }).set(...auth(clerkToken)).expect(200);

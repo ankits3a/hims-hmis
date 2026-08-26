@@ -11,8 +11,16 @@ export const bytea = customType<{ data: Buffer }>({
   },
 });
 
-/** UHID allocation counter. Gaplessness is NOT required (a rolled-back registration may skip a number). */
-export const uhidSeq = pgSequence("uhid_seq", { startWith: 1, increment: 1 });
+/**
+ * UHID allocation counter. Gaplessness is NOT required (a rolled-back registration may skip a number).
+ *
+ * IT STARTS AT 1,234,501, NOT AT 1 (owner ruling 2026-08-25). Serials 1..1,234,500 are reserved
+ * and carry NO meaning — see the long note in modules/patients/uhid.ts for why that band is
+ * deliberately not a VIP or membership range. `allocateUhid` refuses any serial inside it, so a
+ * sequence reset below the floor fails loudly at the counter instead of quietly minting a UHID
+ * that the hospital has promised itself it would never issue.
+ */
+export const uhidSeq = pgSequence("uhid_seq", { startWith: 1234501, increment: 1 });
 
 /**
  * Registration configuration — a single audited row (id = 'main'). The UHID prefix is
@@ -38,7 +46,7 @@ export const patients = pgTable(
   "patients",
   {
     id: text("id").primaryKey(), // ULID via newId() — entity ids share the event-id grammar
-    uhid: text("uhid").notNull(), // <PREFIX>-<8 digits>-<Verhoeff check digit>
+    uhid: text("uhid").notNull(), // <PREFIX><7-digit serial><Verhoeff check digit> — e.g. U12345013
     name: text("name").notNull(),
     phone: text("phone"), // normalized 10-digit Indian mobile; NULLABLE — phoneless patients are a designed path (D-34)
     altPhone: text("alt_phone"),

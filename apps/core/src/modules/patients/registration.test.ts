@@ -31,7 +31,7 @@ describe("registration service", () => {
   it("registers a patient: UHID allocated, row inserted, patient.registered with full envelope", async () => {
     const { patient } = await withTx(db, (tx) => registerPatient(tx, clerk, baseInput));
     expect(isValidUhid(patient.uhid)).toBe(true);
-    expect(patient.uhid.startsWith("HMS-")).toBe(true);
+    expect(patient.uhid.startsWith("HMS")).toBe(true);
     expect(patient.language).toBe("hi");
     expect(patient.status).toBe("active");
     expect(patient.createdBy).toBe("clerk-1");

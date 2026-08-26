@@ -201,6 +201,27 @@ describe("opd encounters (the spine: open / abandon / re-enter / transfer / time
     expect((await getEncounter(db, r.encounter.id))!.status).toBe("registered");
   });
 
+  it("a visit is numbered V<YYMMDD><0001>, counting up per IST day", async () => {
+    const first = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    expect(first.encounter.visitNo).toBe("V2608170001");
+    const other = await mkPatient(db, clerk.actor, { name: "Second Patient", phone: "9811100011" });
+    const second = await openVisit(db, clerk.actor, { patientId: other.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    expect(second.encounter.visitNo).toBe("V2608170002");
+  });
+
+  it("A SAME-DAY RE-ENTRY KEEPS THE VISIT NUMBER — the rule the whole grammar rests on", async () => {
+    // A patient sent back through the queue after results is still on the SAME visit. Minting a
+    // second V number here would attach those results to a visit that never ordered them, and
+    // would put two numbers on one episode of care. The token is reused; so is this.
+    const r = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    let enc = await withTx(db, (tx) => moveEncounter(tx, vd.actor, r.encounter, "waiting", {}, MON));
+    enc = await withTx(db, (tx) => moveEncounter(tx, dra.actor, enc, "in_consultation", {}, MON));
+    enc = await withTx(db, (tx) => moveEncounter(tx, dra.actor, enc, "awaiting_results", {}, MON));
+    const re = await reEnterVisit(db, clerk.actor, enc.id, new Date(MON.getTime() + 3 * 3_600_000));
+    expect(re.encounter.visitNo).toBe(r.encounter.visitNo);
+    expect(re.queueEntry.reEntry).toBe(true); // it really is the re-entry path, not a fresh visit
+  });
+
   it("a same-day re-entry keeps the token, retires the old entry and checks in again as re_entry", async () => {
     const r = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
     let enc = await withTx(db, (tx) => moveEncounter(tx, vd.actor, r.encounter, "waiting", {}, MON));

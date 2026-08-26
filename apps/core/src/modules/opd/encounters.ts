@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
+import { nextEpisodeNo } from "../../kernel/episodes/series";
 import { withTx } from "../../kernel/db/client";
 import {
   opdDepartments, opdDoctors, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions, opdVitals,
@@ -73,13 +74,17 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
   const visitType = classifyVisit(a && a.consultCompletedAt ? { consultCompletedAt: a.consultCompletedAt, followUpDays: a.followUpDays ?? 7 } : null, now);
 
   const encounterId = newId();
+  // The visit number, allocated once per encounter. A same-day re-entry after results does NOT
+  // come back through here — it appends an opd_queue_entries row against THIS encounter — so
+  // there is exactly one V number per visit, which is what makes it safe to print on a lab form.
+  const visitNo = await nextEpisodeNo(tx, "visit", serviceDate);
   const { instanceId } = await startInstance(tx, OPD_VISIT_DEF_KEY, { type: "opd_encounter", id: encounterId, patientId: input.patientId, encounterId });
   const roomId = await roomForDoctorDay(tx, doctor.id, serviceDate);
   const session = await getOrCreateSession(tx, doctor.id, serviceDate, roomId);
   const tokenNo = await allocateToken(tx, session.id);
 
   const [encounter] = await tx.insert(opdEncounters).values({
-    id: encounterId, patientId: input.patientId, workflowInstanceId: instanceId, departmentId: dept.id, doctorId: doctor.id,
+    id: encounterId, visitNo, patientId: input.patientId, workflowInstanceId: instanceId, departmentId: dept.id, doctorId: doctor.id,
     appointmentId: input.appointment?.id ?? null, serviceDate, visitType,
     intendedPayer: input.intendedPayer ?? "self", referralSource: input.referralSource ?? null, referrerName: input.referrerName ?? null,
     openedBy: actor.id, openedAt: now, updatedBy: actor.id, updatedAt: now,

@@ -81,7 +81,7 @@ describe("patients e2e", () => {
       .send({ name: "Asha Devi", sex: "female", phone: "9876543210", language: "hi" })
       .expect(201);
     const patientId = reg.body.patient.id as string;
-    expect(reg.body.patient.uhid).toMatch(/^HMS-\d{8}-\d$/);
+    expect(reg.body.patient.uhid).toMatch(/^HMS\d{8}$/);
 
     const found = await request(app.getHttpServer())
       .get("/patients/search").query({ q: "98765" }).set(...auth(clerkToken)).expect(200);

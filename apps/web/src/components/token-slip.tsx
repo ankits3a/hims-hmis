@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 
 export type TokenSlipProps = {
   tokenNo: number;
+  visitNo: string;
   roomCode: string | null;
   doctorName: string;
   departmentCode: string;
@@ -13,6 +14,16 @@ export type TokenSlipProps = {
   qrPayload: string;
   visitType: string;
 };
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** `2026-08-17` → `17-Aug-2026`. Pure string work on an IST calendar date — constructing a Date
+ *  here would re-introduce the timezone question the server already answered. */
+function humanDate(serviceDate: string): string {
+  const [y, m, d] = serviceDate.split("-");
+  const month = MONTHS[Number(m) - 1];
+  return month === undefined ? serviceDate : `${d}-${month}-${y}`;
+}
 
 /**
  * The printed token slip (D7 / §11.5): token + doctor + room only — no signature line, no more of
@@ -31,7 +42,13 @@ export function TokenSlip(props: TokenSlipProps): React.ReactElement {
         <p className="text-sm">{props.doctorName}</p>
         <p className="text-sm">{t("slip.room")}: {props.roomCode ?? "—"}</p>
         <p data-testid="token-no" className="text-4xl font-bold tabular-nums">{props.tokenNo}</p>
-        <p className="text-sm text-neutral-600">{props.serviceDate}</p>
+        {/*
+          THE VISIT NUMBER, AND ITS DATE, TOGETHER — never the number alone. `V2608170001` carries
+          its date as YYMMDD so the id sorts chronologically, but a desk reading DD-MM-YY sees
+          260817 as 26-Aug-2017. The spelled month beside it is the resolution, and it is why this
+          pairing is a single line rather than two that a later layout change could separate.
+        */}
+        <p data-testid="visit-no" className="font-mono text-sm">{props.visitNo} · {humanDate(props.serviceDate)}</p>
         <p className="font-mono text-sm">{props.patient.uhid}</p>
         {props.patient.name !== null && <p className="text-sm">{props.patient.name}</p>}
         <p className="text-sm">{t(`opd.visitType.${props.visitType}`)}</p>

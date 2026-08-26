@@ -77,7 +77,7 @@ export type WireAppointment = {
 // ——— the encounter spine, the queue, vitals and the e-Rx ———
 
 export type WireEncounter = {
-  id: string; patientId: string; type: string; status: OpdVisitStatus; workflowInstanceId: string;
+  id: string; visitNo: string; patientId: string; type: string; status: OpdVisitStatus; workflowInstanceId: string;
   departmentId: string | null; doctorId: string | null; appointmentId: string | null; serviceDate: string;
   visitType: OpdVisitType; intendedPayer: string; referralSource: string | null; referrerName: string | null;
   chiefComplaint: string | null; diagnosis: string | null; icd10Code: string | null; advice: string | null;
@@ -160,7 +160,7 @@ export type WireRxPrint = {
   patient: { uhid: string; name: string | null; alias: string | null; restricted: boolean; ageYears: number | null; sex: string };
   doctor: { displayName: string; registrationNo: string | null; departmentName: string | null };
   encounter: {
-    id: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
+    id: string; visitNo: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
     advice: string | null; followUpDays: number | null; chiefComplaint: string | null;
   };
   vitals: WireVitals | null; lines: WireRxLine[]; qrPayload: string; version: number; issuedAt: string;

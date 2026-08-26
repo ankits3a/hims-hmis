@@ -67,7 +67,7 @@ describe("federated search performance (Plan 11h T7)", () => {
       insert into patients (id, uhid, name, phone, sex, language, status, created_by, updated_by)
       select
         'PERF' || lpad(gs::text, 22, '0'),
-        'PRF-' || lpad(gs::text, 8, '0') || '-0',
+        'PRF' || lpad(gs::text, 7, '0') || '0',
         'Perf Patient ' || gs::text,
         '9' || lpad((100000000 + gs)::text, 9, '0'),
         'other', 'hi', 'active', 'perf-seed', 'perf-seed'
@@ -83,8 +83,8 @@ describe("federated search performance (Plan 11h T7)", () => {
     await db.execute(sql`
       insert into patients (id, uhid, name, phone, sex, language, status, created_by, updated_by)
       values
-        ('PERFNAME0000000000000001', 'PRF-90000001-0', 'Zephyrine Qadir', '9200000001', 'other', 'hi', 'active', 'perf-seed', 'perf-seed'),
-        ('PERFNAME0000000000000002', 'PRF-90000002-0', 'Anantharaman Balasubramanian', '9200000002', 'other', 'hi', 'active', 'perf-seed', 'perf-seed')
+        ('PERFNAME0000000000000001', 'PRF90000010', 'Zephyrine Qadir', '9200000001', 'other', 'hi', 'active', 'perf-seed', 'perf-seed'),
+        ('PERFNAME0000000000000002', 'PRF90000020', 'Anantharaman Balasubramanian', '9200000002', 'other', 'hi', 'active', 'perf-seed', 'perf-seed')
     `);
     await db.execute(sql`analyze patients`);
     await searchAll(db, registry, { type: "user", id: userId }, parseSearchQuery("9100050", 20)); // warm

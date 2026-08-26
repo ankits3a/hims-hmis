@@ -118,7 +118,7 @@ describe("issueInvoice: the one-transaction issue (D2)", () => {
   async function shapeEncounter(patientId: string, intendedPayer: string): Promise<string> {
     const id = newId();
     await db.insert(opdEncounters).values({
-      id, patientId, workflowInstanceId: newId(), serviceDate: SERVICE_DAY, visitType: "new",
+      id, visitNo: `VFX-${id}`, patientId, workflowInstanceId: newId(), serviceDate: SERVICE_DAY, visitType: "new",
       intendedPayer, openedBy: "shaped", updatedBy: "shaped",
     });
     return id;

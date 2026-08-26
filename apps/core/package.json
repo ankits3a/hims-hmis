@@ -15,6 +15,7 @@
     "seed:admin": "tsx scripts/seed-admin.ts",
     "agent:create": "tsx scripts/create-agent.ts",
     "seed:registration": "tsx scripts/seed-registration.ts",
+    "remint:uhids": "tsx scripts/remint-uhids.ts",
     "seed:tariff": "tsx scripts/seed-tariff.ts",
     "validate:tariff": "tsx scripts/validate-tariff-config.ts",
     "seed:opd": "tsx scripts/seed-opd.ts",

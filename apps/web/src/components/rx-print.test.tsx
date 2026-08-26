@@ -14,7 +14,7 @@ const DATA: WireRxPrint = {
   patient: { uhid: "HMS0000000020", name: "Asha Devi", alias: null, restricted: false, ageYears: 34, sex: "female" },
   doctor: { displayName: "Dr Meera Rao", registrationNo: "BMC/12345", departmentName: "General Medicine" },
   encounter: {
-    id: "enc-1", serviceDate: "2026-08-18", diagnosis: "Acute pharyngitis", icd10Code: "J02.9",
+    id: "enc-1", visitNo: "V2608180001", serviceDate: "2026-08-18", diagnosis: "Acute pharyngitis", icd10Code: "J02.9",
     advice: "warm fluids", followUpDays: 7, chiefComplaint: "fever 3d",
   },
   vitals: {
@@ -61,6 +61,7 @@ describe("RxPrint", () => {
     expect(screen.getByText("UHID: HMS0000000020")).toBeInTheDocument();
     expect(screen.getByTestId("rx-patient-age")).toHaveTextContent("Age: 34 · Sex: female");
     expect(screen.getByTestId("rx-date")).toHaveTextContent("Date: 2026-08-18");
+    expect(screen.getByTestId("rx-visit-no")).toHaveTextContent("V2608180001");
 
     // diagnosis + ICD-10 in parentheses
     expect(screen.getByTestId("rx-diagnosis")).toHaveTextContent("Diagnosis: Acute pharyngitis (J02.9)");

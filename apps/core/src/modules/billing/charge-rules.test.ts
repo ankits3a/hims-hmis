@@ -52,7 +52,7 @@ describe("the OPD fee branch: feeServiceFor and the fee quote (D8)", () => {
   async function shapeEncounter(visitType: string): Promise<string> {
     const id = newId();
     await db.insert(opdEncounters).values({
-      id, patientId: await mkTestPatient(), workflowInstanceId: newId(), serviceDate: SERVICE_DAY,
+      id, visitNo: `VFX-${id}`, patientId: await mkTestPatient(), workflowInstanceId: newId(), serviceDate: SERVICE_DAY,
       visitType, status: "waiting", intendedPayer: "self", openedBy: "shaped", updatedBy: "shaped", openedAt: NOW,
     });
     return id;

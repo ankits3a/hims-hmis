@@ -105,7 +105,7 @@ describe("refund vouchers: the four guards, approval-gated always, refund-to-pay
   ): Promise<string> {
     const id = newId();
     await db.insert(opdEncounters).values({
-      id, patientId, workflowInstanceId: newId(), serviceDate: SERVICE_DAY,
+      id, visitNo: `VFX-${id}`, patientId, workflowInstanceId: newId(), serviceDate: SERVICE_DAY,
       visitType: over.visitType ?? "new",
       status: over.status ?? "completed",
       consultCompletedAt: over.consultCompletedAt === undefined ? NOW : over.consultCompletedAt,

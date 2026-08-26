@@ -123,6 +123,11 @@ export const opdAppointments = pgTable(
   "opd_appointments",
   {
     id: text("id").primaryKey(),
+    // `A2608250042` — numbered on the SLOT's date, not the booking instant, so the day's list
+    // reads 1..N in the order the desk will work it. A reschedule mints a NEW appointment row
+    // (rescheduledToId/rescheduledFromId), which therefore takes a fresh number on its new date;
+    // the old number is burned, which is fine because this series is not gapless.
+    appointmentNo: text("appointment_no").notNull(),
     patientId: text("patient_id").notNull().references(() => patients.id),
     doctorId: text("doctor_id").notNull().references(() => opdDoctors.id),
     departmentId: text("department_id").notNull().references(() => opdDepartments.id),
@@ -147,6 +152,7 @@ export const opdAppointments = pgTable(
     uniqueIndex("opd_appointments_slot_ux")
       .on(t.doctorId, t.slotStart)
       .where(sql`${t.status} in ('booked', 'checked_in', 'needs_rebooking')`),
+    uniqueIndex("opd_appointments_appointment_no_ux").on(t.appointmentNo),
     index("opd_appointments_doctor_date_idx").on(t.doctorId, t.serviceDate),
     index("opd_appointments_patient_idx").on(t.patientId),
     index("opd_appointments_status_idx").on(t.status),
@@ -181,6 +187,12 @@ export const opdEncounters = pgTable(
   "opd_encounters",
   {
     id: text("id").primaryKey(),
+    // The human-facing visit number — `V2608250147` (kernel/episodes/series.ts). ONE PER
+    // ENCOUNTER, INCLUDING SAME-DAY RE-ENTRY: a patient sent back through the queue after lab
+    // results re-enters on a new opd_queue_entries row that REUSES the token, and this encounter
+    // — with this number — is still the visit those results belong to. Minting a second number
+    // there would attach the result to a visit that never ordered it.
+    visitNo: text("visit_no").notNull(),
     patientId: text("patient_id").notNull().references(() => patients.id), // canonical id at open; merged-loser history is found via listMergedLoserIds
     type: text("type").notNull().default("opd"),
     status: text("status").notNull().default("registered"), // opd_visit states: registered | waiting | in_consultation | awaiting_results | completed | abandoned
@@ -215,6 +227,7 @@ export const opdEncounters = pgTable(
   },
   (t) => [
     // Visit-type detection: newest completed consult of this patient in this department.
+    uniqueIndex("opd_encounters_visit_no_ux").on(t.visitNo),
     index("opd_encounters_patient_dept_completed_idx").on(t.patientId, t.departmentId, t.consultCompletedAt),
     // Extension cap: this doctor's extended completions in an IST month.
     index("opd_encounters_doctor_completed_idx").on(t.doctorId, t.consultCompletedAt),

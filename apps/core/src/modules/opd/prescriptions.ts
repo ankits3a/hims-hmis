@@ -200,7 +200,7 @@ export type RxPrintData = {
   patient: { uhid: string; name: string | null; alias: string | null; restricted: boolean; ageYears: number | null; sex: string };
   doctor: { displayName: string; registrationNo: string | null; departmentName: string | null };
   encounter: {
-    id: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
+    id: string; visitNo: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
     advice: string | null; followUpDays: number | null; chiefComplaint: string | null;
   };
   vitals: VitalsRow | null;
@@ -239,7 +239,7 @@ export async function getPrescriptionPrint(db: Db, cfg: AppConfig, actor: Actor,
     },
     doctor: { displayName: doctor!.displayName, registrationNo: doctor!.registrationNo, departmentName: department?.name ?? null },
     encounter: {
-      id: encounter.id, serviceDate: encounter.serviceDate, diagnosis: encounter.diagnosis, icd10Code: encounter.icd10Code,
+      id: encounter.id, visitNo: encounter.visitNo, serviceDate: encounter.serviceDate, diagnosis: encounter.diagnosis, icd10Code: encounter.icd10Code,
       advice: encounter.advice, followUpDays: encounter.followUpDays, chiefComplaint: encounter.chiefComplaint,
     },
     vitals: vitals[vitals.length - 1] ?? null, // the LATEST reading — a danger flag never auto-clears (D4)

@@ -129,11 +129,14 @@ describe("OPD queue and visit-type performance budgets (CI-gated — §15)", () 
     // Today's live encounters: 60 per doctor-day, all waiting for their doctor.
     await db.execute(sql`
       insert into opd_encounters (
-        id, patient_id, status, workflow_instance_id, department_id, doctor_id, service_date, visit_type,
+        id, visit_no, patient_id, status, workflow_instance_id, department_id, doctor_id, service_date, visit_type,
         opened_by, opened_at, updated_by
       )
       select
         'PERFENC' || lpad(d::text, 5, '0') || lpad(k::text, 3, '0'),
+        -- Unique, and a dummy: the perf suite measures query paths and never parses a visit
+        -- number, exactly as it never validates the UHID check digits it seeds.
+        'PERFV' || lpad(d::text, 5, '0') || lpad(k::text, 3, '0'),
         'OPDP' || lpad(((((d - 1) * ${sql.raw(String(ENTRIES_PER_SESSION))} + k - 1) % ${sql.raw(String(PATIENTS))}) + 1)::text, 22, '0'),
         'waiting',
         'PERFWFI' || lpad(d::text, 5, '0') || lpad(k::text, 3, '0'),
@@ -159,11 +162,12 @@ describe("OPD queue and visit-type performance budgets (CI-gated — §15)", () 
     // The history the visit-type anchor searches: completed consultations spread over the last 400 days.
     await db.execute(sql`
       insert into opd_encounters (
-        id, patient_id, status, workflow_instance_id, department_id, doctor_id, service_date, visit_type,
+        id, visit_no, patient_id, status, workflow_instance_id, department_id, doctor_id, service_date, visit_type,
         consult_completed_at, follow_up_days, opened_by, opened_at, updated_by
       )
       select
         'PERFHIS' || lpad(gs::text, 18, '0'),
+        'PERFVH' || lpad(gs::text, 18, '0'),
         'OPDP' || lpad(((gs % ${sql.raw(String(PATIENTS))}) + 1)::text, 22, '0'),
         'completed',
         'PERFHWI' || lpad(gs::text, 18, '0'),
