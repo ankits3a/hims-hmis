@@ -260,6 +260,68 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
 | — the CI fix (not a task) | `c3a2647` **CI GREEN** (770s) | four race legs given an explicit 60s budget; ledger §2.91 amended — see F26 |
 | T9 — the severe-pair seed | _pending push_ | **6/6** `seed-formulary-interactions.test.ts`; 26 pairs, 29 moieties, `source: seed-2026-08`; joins `deploy.sh` (census 10 → 11) |
 
+### Mechanical verification (v3 §1.5)
+
+**`pnpm verify` exit 0 before EVERY push (§2.87), detached, exit value read from a file — never a
+pipeline's status (rules 16-18).** Eleven runs across nine tasks; the extra runs are the four reds
+verify caught before they could reach CI (F8, F13, F21, and T9's unused import) plus the locale
+re-run in T6. **Counts, first to last:** `apps/core` **205 suites / 1758 tests → 212 / 1840**
+(+7 suites, +82 tests); `apps/web` **42 files → 43**; `packages/contracts` 4 / 21, unchanged.
+
+**Per-commit `git show --stat` against each task's Files list:** nine task commits, every file in
+each one named by its task's list or by an amendment recorded in the findings above (F1, F2, F11,
+F15, F17, F18, F21, F27). No commit touched a file no task named.
+
+**No diff deletes a test (AGENT-RULES §4) — and the mechanical check needed a second look.** A
+`grep -c '^-\s*it('` over the task commits reports **four removals in T2**, which is a FALSE
+POSITIVE: all four are RENAMES of the same tests with corrected censuses in their names
+(`eleven`→`twelve`, `seventy-three`→`seventy-seven`, `ninety-six`→`one hundred`, `74`→`77`),
+against seventeen blocks added in the same commit. **A count of removed lines cannot tell a rename
+from a deletion; the check has to pair them or read them.** Recorded because the check is run at
+every close and the next reader will see the same four.
+
+**Clean tree at close:** `git status --porcelain` carries no tracked modification; the untracked
+remainder is three other sessions' scratch (`.ci-skill2.*`, `.ciwatch-skill.exit`,
+`.plan-09-relay.md`) which this phase did not create and does not own (rule 8).
+
+**CI, by full SHA, read with `ci-watch-host.sh` and — after F26 — with `gh`:**
+`b1c9db8` GREEN (773s) · `07fd9fa` GREEN (768s) · `9ba6842` GREEN (595s) · `43d3a9b` GREEN (773s) ·
+`ae53035` GREEN (778s) · **`cf63cb5` RED (1760s) — F25/F26, diagnosed and fixed** · `ef32c59` GREEN
+(649s) · `c3a2647` GREEN (770s, the fix). `f4ccf95`, `166f22f` and `2994a0e` were pushed in sequence
+and are judged by the head run.
+
+### Actuals (v3 §6)
+
+| | |
+|---|---|
+| tasks | 9, plus one CI-fix commit and one method commit |
+| agents | **0** — every task coded in-session. The LIGHT lane taken to its limit. |
+| mutants | **14 built, 14 died** (T3 four, T4 seven, T5 three). One needed the plan's input corrected first — F10. |
+| stop-loss | 2.5M (the fallback; 11h's token cell is owner-held). **Not comparable to the actual, which is main-session and unmeasured.** |
+| tokens | **subagent: 0. Main session: UNMEASURED** — runbook O3, open since 11e. This is NOT a saving against Plan 09's 6.37M and the baselines row says so. |
+| catches | 27 findings. Five reds caught by verify before push; one live CI flake diagnosed and fixed; one stale ledger capability claim retired. |
+
+**What the phase bought, stated so it can be argued with:** the Augmentin gap is closed — an allergy
+recorded as "penicillin" now catches amoxicillin through its drug class, which was **impossible**
+before this phase because nothing in the system knew what any drug was. Drug-drug interaction and
+duplicate-therapy checks exist at all for the same reason. **And the honest other half: production
+has ONE prescription in it (§3 Q1), so nothing above has yet protected a patient.** The value is
+forward-looking and the measurement that would prove it does not exist yet.
+
+### STILL OPEN — the phase is NOT closed
+
+1. **THE INDEPENDENT REVIEW HAS NOT RUN.** Under v3 §3.4 that review IS the gate report, and its
+   CRITICAL findings block close. Everything above is this session auditing its own work, which is
+   exactly what §3.4 exists because nobody should trust.
+2. **The `unresolvedLineIndexes`/`RxPrecheckResult` shape landed in T6 but is T5's surface** (F17) —
+   a reviewer should look at whether the pre-check now carries more than the screen needs.
+3. **F22's missing denominator** — the override-rate mechanism (one `appendEvent` on a hard-warning
+   refusal) is specified and unbuilt.
+4. **The fixture cascade** (F26) — a timed-out race leg still poisons its neighbours' fixtures. The
+   trigger is gone; the repair is not.
+5. **Roadmap amendment, one line, lands at close** (§ Slot): 16a between 11h and 09 in the
+   sequencing note, and 16b's phase document is re-based against this CLOSE before it is approved.
+
 ### Findings
 
 - **F1 — A TASK THAT DECLARES A PERMISSION MUST BE ALLOWED TO GRANT IT, AND T2 WAS NOT.** Recorded
