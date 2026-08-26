@@ -621,9 +621,10 @@ returned **PAYABLE SAFE TO ARM, PHASE SAFE TO CLOSE** after three corrections, a
 
 **Every one of Plan 09's four MAJORs is fixed, and so is the fifth that T2's own fix created.**
 `pnpm verify` exit 0 at close: core **213 suites / 1,860 tests**, web 43 / 259, contracts 4 / 21.
-Counts across the phase **212 / 1,847 → 213 / 1,860**, nothing deleted. Six commits:
-`0f77004` · `54ab73b` · `a092ecc` · `79afbf6` · `4b92d24` · this CLOSE. Three migrations —
-`0028` the re-key, `0029` its correction, `0030` the composite FK.
+Counts across the phase **212 / 1,847 → 213 / 1,860**, nothing deleted. Seven commits: four tasks
+`0f77004` · `54ab73b` · `a092ecc` · `79afbf6`, two review remediations `4b92d24` · `ff79eb9`, and the
+CLOSE `9f9ec96` (with the token audit at `0fba3ae`). Three migrations — `0028` the re-key, `0029` its
+correction after the first review, `0030` the composite FK from the second.
 
 **`COMMISSION_ACCRUAL_ENABLED` is safe to arm** on a system with no accrual history, subject to open
 item 3 being ruled first on any system where cards are imported and matched.
@@ -705,6 +706,18 @@ the partner it displaces.
   because GitHub runs the push's HEAD and not each commit inside it. Plus: a CI observation the diff
   cannot explain is a candidate for the provider's status page before it is a candidate for
   diagnosis.
+
+**And four more from the close audit, which are about the METHOD rather than the code:**
+
+- **§2.107** — the review budget is not overhead on a phase, it is the part of the phase that finds
+  the defects. Carries the instrument ledger that is this phase's whole argument: five dead mutants,
+  five green verifies and four green CI runs over a tree carrying a MAJOR.
+- **§2.108** — a RESUMED agent starts full, so §9's metric is what an agent CARRIES and never what
+  its brief POINTS AT. Same agent, same pointers, smaller diff, 3.6× the per-call cost.
+- **§2.109** — `drizzle-kit` emits a composite foreign key before the unique constraint it
+  references, and the migration is unrunnable as generated. Generated is not the same as correct.
+- **§2.110** — a mutant that SURVIVES is worth more than one that dies. Any sentence of the form
+  *"this would fail against X"* is either an executed result or it must be deleted.
 
 ### Production — MEASURED 2026-08-26 17:36 UTC, read-only, against `hmis-prod-db-1`
 
