@@ -163,6 +163,15 @@ export function resolveStatementColumnMap(headerCells: readonly string[], reques
 export const STATEMENT_QUARANTINE_REASONS = [
   "short_row", "long_row", "missing_required", "bad_amount", "bad_period",
   "unknown_attribution", "attribution_partner_mismatch", "amount_mismatch",
+  /**
+   * PLAN 09a CLOSE (review MAJOR 2) — a V3 correction whose figure disagrees with the hospital's
+   * OWN expectation. It is NOT a refusal: the correction is applied and the ledger moves, because
+   * V3 rules that a later statement amends an earlier settlement and `G4/V3` pins that deliberately
+   * in the upward direction while `V3 — a DOWNWARD correction` pins it in the other. **What this
+   * reason buys is the thing that was missing: the line lands on the desk an operator already
+   * works, verbatim, instead of being absorbed in silence.**
+   */
+  "correction_differs_from_expectation",
 ] as const;
 
 export type StatementQuarantineReason = (typeof STATEMENT_QUARANTINE_REASONS)[number];
@@ -250,7 +259,7 @@ export function parseStatement(csv: string, requestedVersion?: string): ParsedSt
 export type StatementLineOutcome =
   | { rowNo: number; outcome: "quarantined"; reason: StatementQuarantineReason }
   | { rowNo: number; outcome: "matched"; expectationId: string; attributionId: string; accrualId: string; amountPaise: number }
-  | { rowNo: number; outcome: "corrected"; expectationId: string; attributionId: string; accrualId: string | null; correctsPeriod: string; deltaPaise: number }
+  | { rowNo: number; outcome: "corrected"; expectationId: string; attributionId: string; accrualId: string | null; correctsPeriod: string; deltaPaise: number; underReview: boolean }
   | { rowNo: number; outcome: "disputed"; expectationId: string; attributionId: string | null; reason: StatementQuarantineReason };
 
 export type StatementImportResult = {
@@ -262,6 +271,12 @@ export type StatementImportResult = {
   linesMatched: number;
   linesDisputed: number;
   linesCorrected: number;
+  /**
+   * PLAN 09a CLOSE — the subset of `linesCorrected` that disagreed with our own expectation, and
+   * therefore the number a reconciliation desk actually reads. `linesCorrected` says how much was
+   * amended; this says how much of it nobody has agreed to yet.
+   */
+  linesCorrectedUnderReview: number;
   linesQuarantined: number;
   /** The money this statement CONFIRMED — the sum of the ledger rows it wrote, corrections included. */
   confirmedPaise: number;
@@ -463,10 +478,16 @@ export async function importStatement(
           statementLineNo: row.rowNo, linePeriod: row.period, actorId: actor.id,
         });
         confirmedPaise += correction.deltaPaise;
+        // MAJOR 2 — applied, and no longer silent. The partner's line is kept VERBATIM, exactly as
+        // a disputed line is, so "we billed you for that referral" has an answer either way.
+        if (correction.underReview) {
+          quarantine.push({ rowNo: row.rowNo, reason: "correction_differs_from_expectation", line: row.line });
+        }
         outcomes.push({
           rowNo: row.rowNo, outcome: "corrected", expectationId: correction.expectationId,
           attributionId: resolution.attributionId, accrualId: correction.accrualId,
           correctsPeriod: correction.correctsPeriod, deltaPaise: correction.deltaPaise,
+          underReview: correction.underReview,
         });
         continue;
       }
@@ -534,6 +555,7 @@ export async function importStatement(
     const linesMatched = outcomes.filter((o) => o.outcome === "matched").length;
     const linesDisputed = outcomes.filter((o) => o.outcome === "disputed").length;
     const linesCorrected = outcomes.filter((o) => o.outcome === "corrected").length;
+    const linesCorrectedUnderReview = outcomes.filter((o) => o.outcome === "corrected" && o.underReview).length;
     const linesQuarantined = outcomes.filter((o) => o.outcome === "quarantined").length;
 
     await appendEvent(tx, statementImported.make({
@@ -544,6 +566,7 @@ export async function importStatement(
         counterpartyId: input.counterpartyId, statementRef, statementPeriod: input.statementPeriod,
         columnMapVersion: parsed.map.version,
         linesTotal: parsed.rows.length, linesMatched, linesDisputed, linesCorrected, linesQuarantined,
+        linesCorrectedUnderReview,
         // SIGNED, and never clamped: a statement that is net a downward correction really did
         // confirm a negative total, and an event that said 0 would disagree with the ledger row it
         // is describing.
@@ -554,7 +577,8 @@ export async function importStatement(
     return {
       counterpartyId: input.counterpartyId, statementRef, statementPeriod: input.statementPeriod,
       columnMapVersion: parsed.map.version,
-      linesTotal: parsed.rows.length, linesMatched, linesDisputed, linesCorrected, linesQuarantined,
+      linesTotal: parsed.rows.length, linesMatched, linesDisputed, linesCorrected,
+      linesCorrectedUnderReview, linesQuarantined,
       confirmedPaise, lines: outcomes,
     };
   }).catch((e: unknown) => {
@@ -714,7 +738,7 @@ async function appendCorrection(
     statementRef: string; statementPeriod: string; statementLineNo: number;
     linePeriod: string | null; actorId: string;
   },
-): Promise<{ expectationId: string; accrualId: string | null; correctsPeriod: string; deltaPaise: number }> {
+): Promise<{ expectationId: string; accrualId: string | null; correctsPeriod: string; deltaPaise: number; underReview: boolean }> {
   // What the ledger already confirmed for this attribution. `rate_snapshot->>'attributionId'` is
   // the link because `commission_accruals` carries no attribution column — the seventeen-table
   // budget, recorded in the phase relay — and the slice is one counterparty's receivable rows.
@@ -730,7 +754,7 @@ async function appendCorrection(
   // The period this correction amends: the line's own, else the one the prior settlement was
   // recorded in, else this statement's.
   const prior = await tx
-    .select({ statementPeriod: receivableExpectations.statementPeriod, agreementId: receivableExpectations.agreementId, expectedAt: receivableExpectations.expectedAt })
+    .select({ statementPeriod: receivableExpectations.statementPeriod, agreementId: receivableExpectations.agreementId, expectedAt: receivableExpectations.expectedAt, amountPaise: receivableExpectations.amountPaise })
     .from(receivableExpectations)
     .where(
       and(
@@ -742,6 +766,31 @@ async function appendCorrection(
     .limit(1);
   const priorRow = prior[0];
   const correctsPeriod = input.linePeriod ?? priorRow?.statementPeriod ?? input.statementPeriod;
+
+  /**
+   * PLAN 09a CLOSE — REVIEW MAJOR 2. **The one anchor this path never had.**
+   *
+   * The MATCHED path compares the partner's figure against `claim.amountPaise` — the hospital's own
+   * expectation, computed from the referred value at issuance — and DISPUTES any difference. This
+   * path had no comparison at all: `deltaPaise` is measured against what the LEDGER already
+   * confirmed, so the partner's number was authoritative by default. The same disagreement was
+   * therefore disputed or absorbed depending only on WHICH STATEMENT ARRIVED FIRST — and once T4
+   * put a row lock here, "first" became whichever import won a race. **Non-deterministic money.**
+   *
+   * The fix is NOT a refusal, and that is deliberate. V3's whole purpose is that a later statement
+   * amends an earlier settlement: `G4/V3` pins an upward correction to 75 000 over a 60 000
+   * expectation, and `V3 — a DOWNWARD correction` pins the other direction. Refusing a differing
+   * figure would delete the feature, and overturning a ruled behaviour is not a reviewer's finding
+   * to spend. **What was actually wrong is that the disagreement was SILENT** — `linesDisputed: 0`,
+   * no quarantine row, nothing on any desk. So the correction still lands and the ledger still
+   * moves; it simply stops being invisible.
+   *
+   * `priorRow` is the FIRST expectation for this attribution by `seq` — the one `issueAttribution`
+   * wrote — so this compares against what the hospital computed it was owed, never against a figure
+   * a previous statement talked us into.
+   */
+  const ourExpectationPaise = priorRow?.amountPaise ?? null;
+  const underReview = ourExpectationPaise !== null && ourExpectationPaise !== input.amountPaise;
 
   const expectationId = newId();
   await tx.insert(receivableExpectations).values({
@@ -790,7 +839,7 @@ async function appendCorrection(
     }));
   }
 
-  return { expectationId, accrualId, correctsPeriod, deltaPaise };
+  return { expectationId, accrualId, correctsPeriod, deltaPaise, underReview };
 }
 
 /** Every line one statement refused, verbatim — the answer to "we billed you for that referral". */

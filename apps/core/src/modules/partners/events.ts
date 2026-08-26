@@ -99,6 +99,13 @@ export const statementImported = defineEvent(
     linesDisputed: z.number().int().nonnegative(),
     linesCorrected: z.number().int().nonnegative(),
     linesQuarantined: z.number().int().nonnegative(),
+    /**
+     * PLAN 09a CLOSE — how many of `linesCorrected` disagreed with the hospital's OWN expectation.
+     * A subset of `linesCorrected`, never a separate outcome: the money still moved (V3 rules that
+     * a later statement amends an earlier settlement), and this is the count that says a human
+     * should look. `.optional()` because events already on the spine do not carry it.
+     */
+    linesCorrectedUnderReview: z.number().int().nonnegative().optional(),
     /** SIGNED — a statement that is net a downward correction confirms a NEGATIVE total (V3). */
     confirmedPaise: signedPaise,
   }),

@@ -333,7 +333,13 @@ describe("the partner statement: matched, disputed, corrected (DD13, V1/V3/V6)",
     expect(correction).toMatchObject({
       columnMapVersion: "partner-statement-v2",
       linesMatched: 0, linesDisputed: 0, linesCorrected: 1, confirmedPaise: 15_000,
+      // PLAN 09a CLOSE (review MAJOR 2) — the correction is APPLIED, exactly as V3 rules, and it is
+      // no longer SILENT. We computed 60 000 from the referred value; the partner now says 75 000.
+      // That is a legitimate amendment and it is also a disagreement nobody has signed off, so it
+      // lands on the desk instead of only in the ledger.
+      linesCorrectedUnderReview: 1,
     });
+    expect(correction.lines[0]).toMatchObject({ outcome: "corrected", underReview: true });
     expect(correction.lines[0]).toMatchObject({
       outcome: "corrected", correctsPeriod: "2026-M08", deltaPaise: 15_000,
     });
@@ -357,11 +363,19 @@ describe("the partner statement: matched, disputed, corrected (DD13, V1/V3/V6)",
       state: "matched", amountPaise: 75_000, statementPeriod: "2026-M09", attributionId: slip.attributionId,
     });
 
+    // The line is kept VERBATIM, which is the whole point of quarantining rather than counting.
+    const held = await db.select().from(importQuarantine);
+    expect(held).toHaveLength(1);
+    expect(held[0]).toMatchObject({ reason: "correction_differs_from_expectation", rowNo: 2 });
+    expect(JSON.stringify(held[0]!.raw)).toContain("75000");
+
     const spine = await db.select().from(events).orderBy(asc(events.seq));
     expect(spine.map((e) => e.name)).toEqual([
       "attribution.issued", "statement.imported", "expectation.corrected", "statement.imported",
     ]);
     expect(spine[2]!.payload).toMatchObject({ correctsPeriod: "2026-M08", deltaPaise: 15_000 });
+    // The count reaches the SPINE too — a signal nobody counts is not a signal.
+    expect(spine[3]!.payload).toMatchObject({ linesCorrected: 1, linesCorrectedUnderReview: 1 });
   });
 
   it("V3 — a DOWNWARD correction is a NEGATIVE row, never a smaller number written over the old one", async () => {
@@ -377,8 +391,17 @@ describe("the partner statement: matched, disputed, corrected (DD13, V1/V3/V6)",
       csv: csv(V2_HEADER, `${slip.code},,50000,2026-M08`),
     }, new Date("2026-10-19T06:00:00Z"));
 
-    expect(correction.lines[0]).toMatchObject({ outcome: "corrected", deltaPaise: -10_000 });
+    expect(correction.lines[0]).toMatchObject({ outcome: "corrected", deltaPaise: -10_000, underReview: true });
     expect(correction.confirmedPaise).toBe(-10_000);
+    /**
+     * PLAN 09a CLOSE — and THIS is the direction that costs the hospital money. A partner writing
+     * down what they owe us is precisely the class of thing this system disputes everywhere else,
+     * and until now it was the one place a partner's own figure was authoritative in silence. V3
+     * still allows it — the negative row is right there — but it is now COUNTED and QUARANTINED.
+     */
+    expect(correction).toMatchObject({ linesCorrectedUnderReview: 1 });
+    expect(await listStatementQuarantine(db, "INV-STMT-SEP"))
+      .toMatchObject([{ reason: "correction_differs_from_expectation" }]);
     const ledger = await db.select().from(commissionAccruals).orderBy(asc(commissionAccruals.seq));
     expect(ledger.map((r) => r.amountPaise)).toEqual([60_000, -10_000]);
     expect(ledger.reduce((n, r) => n + r.amountPaise, 0)).toBe(50_000);
@@ -406,6 +429,16 @@ describe("the partner statement: matched, disputed, corrected (DD13, V1/V3/V6)",
 
     expect(repeat.lines[0]).toMatchObject({ outcome: "corrected", deltaPaise: 0, accrualId: null });
     expect(await db.select().from(commissionAccruals)).toHaveLength(1);
+    /**
+     * PLAN 09a CLOSE — **THE LEG THAT MAKES THE FLAG MEAN SOMETHING.** This statement quotes 60 000,
+     * which is exactly what the hospital computed it was owed, so there is nothing for anybody to
+     * review and nothing is quarantined. Without this assertion `underReview` could be hard-wired
+     * true and every test above would still pass — which is §2.110's rule applied to a flag instead
+     * of to a comment: an assertion that cannot come out false does not discriminate.
+     */
+    expect(repeat).toMatchObject({ linesCorrected: 1, linesCorrectedUnderReview: 0 });
+    expect(repeat.lines[0]).toMatchObject({ underReview: false });
+    expect(await db.select().from(importQuarantine)).toHaveLength(0);
   });
 
   it("V3 — under v1 (no period column) a correction names the period the prior settlement was in", async () => {

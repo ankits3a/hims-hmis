@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { commissionAccruals, counterparties, partnerAgreements } from "../../kernel/db/schema";
+import { commissionAccruals, counterparties, importQuarantine, partnerAgreements } from "../../kernel/db/schema";
 import { issueAttribution } from "./attribution";
 import { PartnersError } from "./errors";
 import { importStatement } from "./statements";
@@ -213,11 +213,18 @@ describe("the receivable lane gets the serializer the payable lane already had (
    * never counted twice, and the surviving total is always one of the two quoted figures and never
    * their sum — and records in its own name that the choice between them is order-dependent.
    *
-   * That order-dependence is NOT fixed here. Absorbing a differing later statement is Plan 09's
-   * ruled V3 behaviour, pinned deliberately by `G4/V3` (an upward correction to 75 000 over a 60 000
-   * expectation); what concurrency adds is that "later" is decided by a lock. Overturning V3 is the
-   * owner's ruling to make. **The CLOSE names it as an open item gating
-   * `RECEIVABLE_COMMISSION_ENABLED`, and this test is what will go red when it is settled.**
+   * **RESOLVED 2026-08-26, and NOT by changing which figure wins.** Absorbing a differing later
+   * statement is Plan 09's ruled V3 behaviour, pinned deliberately by `G4/V3` (an upward correction
+   * to 75 000 over a 60 000 expectation) and by `V3 — a DOWNWARD correction` in the other direction.
+   * Refusing a differing figure would delete the feature. What was actually wrong was that the
+   * disagreement was SILENT — so a correction whose figure disagrees with the hospital's OWN
+   * expectation is now COUNTED (`linesCorrectedUnderReview`) and QUARANTINED VERBATIM, in both
+   * directions, while still being applied.
+   *
+   * **Which makes the order-dependence below survivable rather than invisible:** whichever figure
+   * wins the lock, the disagreement reaches the desk an operator already works. The leg asserts
+   * that below, so a future change that re-silences it goes red here as well as in
+   * `statements.test.ts`.
    */
   it("two statements quoting DIFFERENT amounts for one slip: never both, but which one is order-dependent", async () => {
     const seen = new Set<number>();
@@ -253,6 +260,20 @@ describe("the receivable lane gets the serializer the payable lane already had (
     // Every observed total is one of the two figures a partner actually quoted.
     expect({ outsideTheQuotedFigures: totals.filter((t) => t !== 60_000 && t !== 90_000) })
       .toEqual({ outsideTheQuotedFigures: [] });
+
+    // MAJOR 2's resolution, asserted where the race actually happens: the loser's figure disagrees
+    // with our 60 000 expectation, so whichever way each race went, the disagreement is ON THE DESK
+    // rather than absorbed in silence. Before this, every one of these produced nothing to review.
+    const held = await db.select().from(importQuarantine);
+    // EXACTLY one reviewable row per race — never zero, which is what "absorbed in silence" was.
+    expect({ quarantineRows: held.length, trials: TRIALS }).toEqual({ quarantineRows: TRIALS, trials: TRIALS });
+    // Each is one of the two ways this disagreement can surface, depending on which figure won the
+    // lock: the 90 000 met the still-open claim and was DISPUTED (`amount_mismatch`), or it arrived
+    // second and was applied as a correction disagreeing with our 60 000. The expected set is
+    // WRITTEN OUT rather than derived from `held` — an expectation computed from the observation
+    // asserts nothing, which is the same defect MINOR A was.
+    const unexpected = held.filter((q) => q.reason !== "amount_mismatch" && q.reason !== "correction_differs_from_expectation");
+    expect({ unexpectedReasons: unexpected.map((q) => q.reason) }).toEqual({ unexpectedReasons: [] });
   }, RACE_TIMEOUT_MS);
 
   /**
