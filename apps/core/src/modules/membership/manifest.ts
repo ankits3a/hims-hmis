@@ -45,6 +45,28 @@ export const membershipManifest: ModuleManifest = {
     "membership.instrument.recognise",
     "membership.grace_honor.request",
     "membership.grace_honor.approve",
+    /**
+     * PLAN 09 CLOSE, 2026-08-26 — TWO OF THESE GUARD NO ROUTE, AND THAT IS RECORDED RATHER THAN
+     * QUIETLY TIDIED.
+     *
+     * Found by the roles/access lane's standing check (its relay §2: *a permission is the last
+     * mile of something, and four times it was the only mile*). Measured here by grepping each
+     * string across `apps/core/src` excluding this file and tests:
+     *
+     *   · `membership.catalog.manage`     — 0 occurrences. There is no catalog-management route in
+     *     Plan 09 AT ALL, and that is DD3 working as intended: plans, coupons, partners and
+     *     agreements are DATA seeded at commissioning, not a screen. The permission names a
+     *     surface a later phase builds. It sits in NOT_YET_MODELLED, so nobody holds it.
+     *   · `membership.grace_honor.approve` — 0 occurrences, and this one is GRANTED by DD18. The
+     *     grace-honor decision is actually gated by the approvals engine, whose
+     *     `membership_grace_honor` type names `billing_manager` as `approverRole` — so this string
+     *     is a second gate that no route consults. **It mints authority that unlocks nothing.**
+     *
+     * NEITHER IS REMOVED HERE. Removing a declared permission moves seven censuses, the README
+     * parity pairs and the role model, and this phase's independent review has not run yet — a
+     * close remediation is not the moment to churn the thing the reviewer is about to read.
+     * Both are named in the phase document's CLOSE as routed work.
+     */
     // Entered in NOT_YET_MODELLED with their reasons — see scripts/seed-roles.ts.
     "membership.catalog.manage",
     "membership.import.run",

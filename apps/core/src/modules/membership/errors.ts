@@ -33,6 +33,38 @@ export type MembershipErrorCode =
   // ── the structural-OFF lanes (DD14) ─────────────────────────────────────────────────────────
   | "sales_disabled" | "benefits_disabled" | "coupon_issuance_disabled";
 
+/**
+ * PLAN 09 CLOSE REMEDIATION (owner-authorised 2026-08-26) — THE WIRE STATUS FOR A MEMBERSHIP
+ * REFUSAL, AND IT LIVES HERE BECAUSE TWO CONTROLLERS NEED IT.
+ *
+ * T3 wrote this mapping privately inside `membership.controller.ts`, which was right while
+ * membership was the only module that could raise one. T4 then wired `resolveInstruments`,
+ * `consumeEntitlements` and `redeemCoupon` into `issueInvoice` — so a `MembershipError` now
+ * escapes through `billing.controller.ts` too, and THAT controller's `toHttp` had no clause for
+ * it. Every one of this union's codes reached the counter as a **500**.
+ *
+ * The one that will actually happen: a member with one free consult, billed for two consults on a
+ * single invoice, is refused whole with `entitlement_exhausted` — correct behaviour, and the clerk
+ * saw an unexplained server error instead of "split the bill". `MEMBER_BENEFITS_ENABLED` is what
+ * arms it, so this landed before any flip.
+ *
+ * It is EXPORTED and shared rather than copied because a second hand-maintained copy of one fact
+ * is §2.54's defect exactly: the two would drift, and the drift would be invisible until a code
+ * answered 404 on one route and 409 on the other.
+ */
+export function membershipHttpStatus(code: MembershipErrorCode): number {
+  if (code === "lookup_rate_limited") return 429;
+  if (NOT_FOUND_CODES.has(code)) return 404;
+  if (VALIDATION_CODES.has(code)) return 400;
+  return 409;
+}
+
+const NOT_FOUND_CODES = new Set<MembershipErrorCode>([
+  "unknown_instrument", "unknown_plan", "unknown_member", "unknown_counter", "unknown_coupon",
+  "redemption_not_found", "match_candidate_unknown",
+]);
+const VALIDATION_CODES = new Set<MembershipErrorCode>(["import_columns_unknown", "import_range_inverted"]);
+
 export class MembershipError extends Error {
   constructor(
     readonly code: MembershipErrorCode,

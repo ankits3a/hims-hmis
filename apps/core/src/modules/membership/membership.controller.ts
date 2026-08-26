@@ -10,14 +10,13 @@ import { withTx } from "../../kernel/db/client";
 import { recordSearch } from "../../kernel/search/audit";
 import { checkSearchRate } from "../../kernel/search/rate-limit";
 import { PatientError } from "../patients";
-import { MembershipError } from "./errors";
+import { MembershipError, membershipHttpStatus } from "./errors";
 import { instrumentLookupRefused } from "./events";
 import { graceHonor, recogniseForActor } from "./recognition";
 import { importHolderBook } from "./import/importer";
 import { listQuarantine } from "./import/quarantine";
 import { dismissMatch, listLapsedRestores, listMatchQueue, resolveMatch } from "./import/match-queue";
 import { INSTRUMENT_SEARCH_PROVIDER_KEY, instrumentSearchProvider } from "./search-providers";
-import type { MembershipErrorCode } from "./errors";
 import type { GraceHonorResult, RecognitionResult } from "./recognition";
 import type { HolderBookImportResult } from "./import/importer";
 import type { QuarantineRow } from "./import/quarantine";
@@ -41,19 +40,11 @@ import type { Db } from "../../kernel/db/client";
  * you cannot clear a reconcile queue through a route that refuses.
  */
 
-const NOT_FOUND_CODES = new Set<MembershipErrorCode>([
-  "unknown_instrument", "unknown_plan", "unknown_member", "unknown_counter", "unknown_coupon",
-  "redemption_not_found", "match_candidate_unknown",
-]);
-const VALIDATION_CODES = new Set<MembershipErrorCode>(["import_columns_unknown", "import_range_inverted"]);
-
-function membershipStatus(code: MembershipErrorCode): number {
-  if (code === "lookup_rate_limited") return HttpStatus.TOO_MANY_REQUESTS;
-  if (NOT_FOUND_CODES.has(code)) return 404;
-  if (VALIDATION_CODES.has(code)) return 400;
-  return 409;
-}
-
+/**
+ * PLAN 09 CLOSE REMEDIATION — the mapping MOVED to `errors.ts`, beside the union it maps, because
+ * `billing.controller.ts` needs the identical answer (a `MembershipError` escapes `issueInvoice`
+ * since T4). One copy, imported by both; the alternative was two that drift.
+ */
 function httpError(statusCode: number, message: string, code: string, detail?: unknown): HttpException {
   const body: { statusCode: number; message: string; code: string; detail?: unknown } = { statusCode, message, code };
   if (detail !== undefined) body.detail = detail;
@@ -62,7 +53,7 @@ function httpError(statusCode: number, message: string, code: string, detail?: u
 
 /** Unrecognized errors rethrow — a 500 is a genuine bug, loudly (the billing/OPD `toHttp` convention). */
 function toHttp(e: unknown): never {
-  if (e instanceof MembershipError) throw httpError(membershipStatus(e.code), e.message, e.code, e.detail);
+  if (e instanceof MembershipError) throw httpError(membershipHttpStatus(e.code), e.message, e.code, e.detail);
   if (e instanceof PatientError) throw httpError(e.code === "patient_not_found" ? 404 : 400, e.message, e.code);
   if (e instanceof ApprovalError) throw httpError(409, e.message, e.code);
   if (e instanceof z.ZodError) throw httpError(400, "request body failed validation", "invalid_request", e.issues);

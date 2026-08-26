@@ -17,6 +17,7 @@ import { feeQuote } from "./charge-rules";
 import { loadBillingConfig, updateBillingConfig } from "./config";
 import { dayBook, gstr1Summary } from "./daily-close";
 import { issueCreditNote, listCreditNotes } from "./credit-notes";
+import { MembershipError, membershipHttpStatus } from "../membership";
 import { BillingError } from "./errors";
 import { withIdempotency } from "./idempotency";
 import { getInvoice, invoiceSettlement, issueInvoice, listInvoices, previewInvoice } from "./invoices";
@@ -130,6 +131,14 @@ function httpError(statusCode: number, message: string, code: string, detail?: u
 function toHttp(e: unknown): never {
   if (e instanceof BillingError) throw httpError(billingStatus(e.code), e.message, e.code, e.detail);
   if (e instanceof TariffError) throw httpError(tariffStatus(e.code), e.message, e.code);
+  /**
+   * PLAN 09 CLOSE REMEDIATION (owner-authorised 2026-08-26). T4 wired `resolveInstruments`,
+   * `consumeEntitlements` and `redeemCoupon` into `issueInvoice`, so a `MembershipError` reaches
+   * this controller — and without this clause every one of them fell through to the rethrow below
+   * and answered **500**. The status function is imported from the membership module's index
+   * rather than copied, so the two controllers cannot drift (§2.54).
+   */
+  if (e instanceof MembershipError) throw httpError(membershipHttpStatus(e.code), e.message, e.code, e.detail);
   if (e instanceof OpdError) throw httpError(e.code.startsWith("unknown_") ? 404 : 409, e.message, e.code, e.detail);
   if (e instanceof PatientError) throw httpError(e.code === "patient_not_found" ? 404 : 400, e.message, e.code);
   if (e instanceof ApprovalError) throw httpError(409, e.message, e.code);

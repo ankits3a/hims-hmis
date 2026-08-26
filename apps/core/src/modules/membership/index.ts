@@ -10,7 +10,7 @@
  */
 export { membershipManifest } from "./manifest";
 export { MembershipModule } from "./membership.module";
-export { MembershipError } from "./errors";
+export { MembershipError, membershipHttpStatus } from "./errors";
 export type { MembershipErrorCode } from "./errors";
 export * from "./events";
 

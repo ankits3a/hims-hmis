@@ -1597,6 +1597,12 @@ deliberately carrying a patient field, asserted to be refused.
 
 ## 8. CLOSE — appended as the phase runs (v3 §1.5)
 
+> **THE PHASE'S DURABLE RELAY NOTE IS [`reports/2026-08-26-plan-09-relay.md`](reports/2026-08-26-plan-09-relay.md).**
+> Written under [`reports/2026-08-26-parallel-session-protocol.md`](reports/2026-08-26-parallel-session-protocol.md)
+> §10, which rules that every lane landing anything writes one, because it is the only channel
+> between sessions that survives. Read it before touching this module.
+
+
 _This section is the findings inbox and the gate report. Nothing below is written in advance._
 
 ### Task ledger
@@ -1737,6 +1743,31 @@ first attempt.** No wave stalled, no chain halted, no infrastructure death.
   Files-list audit, the frozen-path audit over `e0f0b41..b0d046b` (**CLEAN** — no
   `modules/tariff/`, no `dispatcher.ts`, no `schema/billing.ts`, no Caddyfile, no compose, no
   workflow, no lockfile), and **CI by full SHA on all five commits**.
+- **F15 — THE PARALLEL-SESSION PROTOCOL IS NOW WRITTEN DOWN, AND IT SUPERSEDES MY F12.** Three
+  lanes ran in this checkout on 2026-08-26 and collided four ways. The second session wrote
+  [`reports/2026-08-26-parallel-session-protocol.md`](reports/2026-08-26-parallel-session-protocol.md);
+  its §3 rule 1 is F12's lesson generalised, and its §5 is the mode this phase discovered the
+  expensive way. **This phase adopts it in full.** Two of its rules bind Plan 09's remaining work:
+  *stage explicitly, never `git add -A`*, and *a commit that needs an operator step is a defect on a
+  shared branch* — which is why T3 putting `seed:membership` into `deploy.sh` (S14) turned out to be
+  the right call rather than a nicety: the approval type is registered in production because of it.
+  **The identifier lane recovered its ~90 swept lines from `927afc6` and re-landed them in
+  `1bff417`. They are back on purpose and must not be re-reverted.**
+- **F16 — TWO DECLARED PERMISSIONS GUARD NO ROUTE, one of them GRANTED.** Found by the roles/access
+  lane's standing check and confirmed here by grepping each string across `apps/core/src` excluding
+  the manifest and tests. `membership.catalog.manage` → **0 occurrences**, which is DD3 working as
+  intended (catalogs are commissioning data, so this phase built no management screen); it sits in
+  `NOT_YET_MODELLED` and nobody holds it. `membership.grace_honor.approve` → **0 occurrences, and
+  DD18 GRANTS it** — the grace-honor decision is actually gated by the approvals engine, whose
+  `membership_grace_honor` type names `billing_manager`, so this string is a second gate no route
+  consults. **It mints authority that unlocks nothing.** Both are annotated in the manifest with
+  this measurement; neither is removed, because removing a declared permission moves seven censuses,
+  the README parity pairs and the role model, and the independent review has not run yet. Routed.
+- **F17 — I WALKED INTO MY OWN F4.** I launched a `pnpm verify`, then edited five files while it
+  ran. It exited 1, compiled against a stale sibling — void, not red-for-cause — and was discarded
+  and re-run on a quiet host. Recorded because the lesson was in this document's own evidence block,
+  quoted into every brief this phase compiled, and I still did it. **A rule you have written down is
+  not a rule you have internalised.**
 - **F4 — a leftover scratch database from an earlier plan is still in the dev cluster:
   `hmis_spike85_1`.** Not this phase's, not created or dropped by anyone here, and reported rather
   than touched (rule 8). AGENT-RULES rule 7 requires a scratch database to be dropped in the task
@@ -1752,6 +1783,62 @@ together plus the relay, and it has been pointed at the two highest-risk pairs b
 resolvable), and **the new way this phase opens to reach a patient — by instrument** — where the
 question is whether every lane that can name one goes through `visiblePatientIds()`. That is the
 shape of 11h's CRITICAL: two halves individually correct, jointly blind.
+
+### The close remediation — `MembershipError` was answering 500 (owner-authorised, taken 2026-08-26)
+
+**It was bigger than F10 described.** `billing.controller.ts`'s `toHttp` carried clauses for
+`BillingError`, `TariffError`, `OpdError`, `PatientError`, `ApprovalError`, `WorkflowError` and
+`SodViolationError` — and none for `MembershipError`. Since T4 wired `resolveInstruments`,
+`consumeEntitlements` and `redeemCoupon` into `issueInvoice`, **every one of the ~30 codes in that
+closed union reached the counter as a 500**, not just `entitlement_exhausted`.
+
+T3 had written the status mapper privately inside `membership.controller.ts`, which was right while
+membership was the only module that could raise one. The fix **moves it to `errors.ts`, beside the
+union it maps**, exports it, and points both controllers at the one copy — a second hand-maintained
+status table is §2.54's defect exactly, and the drift would be invisible until one code answered 404
+on one route and 409 on the other.
+
+**Mutant (rule 21), and it is the reason the structural leg exists at all.** The mapping can be
+perfect while the controller has no clause that calls it — which is the state that shipped. Removing
+the `MembershipError` clause from the shipped file and re-running:
+`Tests: 1 failed, 4 passed, 5 total`, isolation line
+`Ran all test suites matching /src\/modules\/billing\/membership-refusal.test.ts/i.`, killed at
+its own assertion — `expect(body).toContain("e instanceof MembershipError")`. **DIED.** The file was
+then restored from a byte-exact backup, `md5sum` confirmed, and the control re-run green
+(`Tests: 5 passed, 5 total`). The committed diff is +9 insertions, which is the fix.
+
+### Production — MEASURED 2026-08-26, read-only, against `hmis-prod-db-1`
+
+**PLAN 09 IS LIVE IN PRODUCTION, AND NOBODY DECIDED THAT.** It reached the hospital inside another
+lane's deploy on 2026-08-26: this phase's commits are ancestors of `1bff417`, `deploy.sh` builds
+from whatever `HEAD` is, and so the identifier-grammar lane's authorised deploy carried eight tasks
+of membership and partner code with it. That is contamination mode 2 in
+[`reports/2026-08-26-parallel-session-protocol.md`](reports/2026-08-26-parallel-session-protocol.md)
+§5, and it is the single most important thing in this section. **The phase's own rule — nothing
+deploys without owner authorisation — was not broken by anyone; it was bypassed by the topology.**
+
+**The good news, and it is the whole reason the structural-OFF pattern exists: it went out INERT,
+exactly as designed.** Measured, not inferred:
+
+| | measured in production |
+|---|---|
+| migrations applied | **26** — `0022` (this phase's) among them |
+| Plan 09 tables present | **17 of 17** |
+| `membership_plans` · `coupon_definitions` · `counterparties` · `partner_agreements` | **0 · 0 · 0 · 0** — DD3's "every catalog is data" holds on a live box |
+| `membership_instances` · `commission_accruals` | **0 · 0** |
+| the five flags in the running `api` container | **none set** — all five default `false` |
+| `membership_grace_honor` approval type | **registered**, approver `billing_manager` — T3's `deploy.sh` line ran |
+| `membership.*` / `partners.*` in the permission catalog | **7 / 7** |
+| `membership_admin` role | exists, 2 permissions, **0 holders** |
+
+**DD7 IS CONFIRMED AGAINST A LIVE HOSPITAL DATABASE, and this is the finding worth keeping.**
+`event_cursors` reads `kernel.alerts 287 · kernel.notify 287 · partners.accrual 287`. The accrual
+consumer is **registered and tracking the stream at parity with the two shipped consumers**, while
+`commission_accruals` holds zero rows because `COMMISSION_ACCRUAL_ENABLED` is false. That is exactly
+what DD7 promised and what the obvious implementation would have destroyed: a conditionally
+registered subscription would have no cursor at all, and flipping the flag later would silently
+start from *now*. The flip is now a two-step the owner can take against tested code — set the flag,
+run the replay — and the ledger fills in from event history.
 
 ### Mechanical verification
 
@@ -1769,6 +1856,12 @@ self-report** — detached `pnpm verify`, exit VALUE **0** read from a file:
 | `apps/web` | 38 files / 210 tests | **39 / 218** |
 | `packages/contracts` | 4 suites / 20 tests | **4 / 21** |
 | workspace total | 1540 | **1714 (+174)** |
+
+**AFTER THE CLOSE REMEDIATION, on a quiet host, detached, exit VALUE 0 read from a file:**
+`apps/core` **205 suites / 1757 tests** · `apps/web` **42 files / 247 tests** ·
+`packages/contracts` **4 / 21**. Workspace total **2,025** against the 1,540 baseline — **+485**,
+no decrease at any point, no test deleted. **This discharges F14**, which stood undischarged while
+another lane's uncommitted migrations were in the tree.
 
 - **CI GREEN by FULL SHA on all four commits** — `15eedcc` 581 s, `1cd6917` 605 s, `a6b7ddb` 638 s,
   `fbebc66` 712 s. Read with `ci-watch-host.sh`, exit VALUE 0, durations in minutes not seconds
