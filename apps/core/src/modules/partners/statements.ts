@@ -580,6 +580,13 @@ export async function importStatement(
  *    `statementRef` racing. The legible pre-check at the top of `importStatement` runs on `db`
  *    OUTSIDE the transaction, so it cannot see an in-flight twin; the loser collides on the partial
  *    unique index instead. It means exactly what the pre-check means, so it answers the same code.
+ *    **Known masking risk, named rather than left to be discovered:** this branch keys on the
+ *    CONSTRAINT NAME, not on evidence that a race occurred. If `appendCorrection` ever produced a
+ *    genuine duplicate `(counterparty_id, statement_ref, statement_line_no)` through a logic error,
+ *    the operator would read "already imported" instead of the loud 500 a logic error deserves.
+ *    Only reachable through the race today — `appendCorrection` writes one row per statement line
+ *    and the line number is the file's own — so it is a risk this comment carries rather than a
+ *    defect this code has.
  */
 function mapImportConflict(e: unknown, statementRef: string, counterpartyId: string): unknown {
   const err = e as { code?: unknown; constraint?: unknown };

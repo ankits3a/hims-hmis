@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  bigint, bigserial, check, foreignKey, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex,
+  bigint, bigserial, check, foreignKey, index, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { invoices } from "./billing";
 import { patients } from "./patients";
@@ -224,6 +224,12 @@ export const commissionAccrualSubjects = pgTable(
   (t) => [
     uniqueIndex("commission_accrual_subjects_ux").on(t.invoiceId, t.direction, t.counterpartyId),
     check("commission_accrual_subjects_direction_ck", sql`${t.direction} in ('payable', 'receivable')`),
+    /**
+     * The target of `commission_accruals_subject_counterparty_fk` below — see there for why this
+     * exists. `id` is already the primary key, so this adds no new uniqueness; it exists only so a
+     * composite foreign key has something to reference.
+     */
+    unique("commission_accrual_subjects_id_counterparty_ux").on(t.id, t.counterpartyId),
   ],
 );
 
@@ -278,6 +284,26 @@ export const commissionAccruals = pgTable(
       name: "commission_accruals_counterparty_class_fk",
       columns: [t.counterpartyId, t.payeeClass],
       foreignColumns: [counterparties.id, counterparties.payeeClass],
+    }),
+    /**
+     * PLAN 09a CLOSE — **A LEDGER ROW MAY NOT NAME A SUBJECT BELONGING TO ANOTHER COUNTERPARTY.**
+     *
+     * `appendAccrualDelta` sums the prior with `where subject_id = …` and NO counterparty predicate.
+     * That is correct only because `counterparty_id` is in the subject's unique key, so `subject_id`
+     * determines it — and "correct only because" is precisely the kind of invariant this phase just
+     * proved a comment cannot hold. The first version of DD2's re-key dropped `counterparty_id` from
+     * that key, and the unqualified `Σ` then silently summed one partner's rows as another's.
+     *
+     * This is the same shape as `commission_accruals_counterparty_class_fk` directly above, which
+     * already stops a denormalised `payee_class` disagreeing with its parent — the table carried the
+     * pattern and this column pair had simply not been given it. **`MATCH SIMPLE` is the default, so
+     * kicker and statement rows (`subject_id` null) are unaffected**, which is what lets an
+     * append-only ledger carry both invoice-scoped and period-scoped rows under one constraint.
+     */
+    foreignKey({
+      name: "commission_accruals_subject_counterparty_fk",
+      columns: [t.subjectId, t.counterpartyId],
+      foreignColumns: [commissionAccrualSubjects.id, commissionAccrualSubjects.counterpartyId],
     }),
     // DD4 (3) — nothing is ever PAYABLE to an external RMP. A receivable from one is legitimate.
     check(

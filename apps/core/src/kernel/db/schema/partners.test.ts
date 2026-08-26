@@ -246,6 +246,28 @@ describe("the partner tables (Plan 09 T1)", () => {
     });
     expect(await db.select().from(commissionAccrualSubjects)).toHaveLength(3);
 
+    // ── AND THE STRUCTURAL HALF — `commission_accruals_subject_counterparty_fk`. ──
+    // `appendAccrualDelta` sums the prior with `where subject_id = …` and NO counterparty
+    // predicate. That is sound only because `counterparty_id` is in the key above, and this phase
+    // proved a comment cannot hold that invariant: the first version of the re-key dropped the
+    // column and the unqualified sum silently read one partner's rows as another's. A ledger row
+    // may therefore not name a subject belonging to somebody else, and the DATABASE says so.
+    await expect(
+      db.insert(commissionAccruals).values({
+        ...accrual({ id: "01HACC0000000000000000009" }),
+        subjectId: "01HSUB0000000000000000005", // RMP's subject…
+        counterpartyId: PARTNER,                // …under PARTNER's name
+      }),
+    ).rejects.toThrow(/commission_accruals_subject_counterparty_fk/);
+
+    // The same row naming its OWN subject is accepted, so the constraint refuses the mismatch and
+    // not the shape — without this leg the assertion above passes for a column that simply broke.
+    await db.insert(commissionAccruals).values({
+      ...accrual({ id: "01HACC0000000000000000010" }),
+      subjectId: "01HSUB0000000000000000001",
+      counterpartyId: PARTNER,
+    });
+
     // DD12's second guard: one delta per basis event per subject, so a redelivered event finds its
     // own row already there instead of appending a second one.
     const withBasis = accrual({ id: "01HACC00000000000000BAS01", subjectId: subject.id, basisEventId: "01HEVT0000000000000000001" });

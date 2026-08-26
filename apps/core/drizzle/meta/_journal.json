@@ -211,6 +211,13 @@
       "when": 1787766563397,
       "tag": "0029_faithful_sphinx",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1787768460222,
+      "tag": "0030_charming_the_hood",
+      "breakpoints": true
     }
   ]
 }

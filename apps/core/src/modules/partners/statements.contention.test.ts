@@ -63,6 +63,15 @@ const V1_HEADER = "attribution_ref,partner_ref,amount_paise";
 const TRIALS = 8;
 /** How long the external session holds the row. The import must not settle before this elapses. */
 const HOLD_MS = 400;
+/**
+ * MINOR B from the close review — the per-test budget for the race legs, the idiom `c3a2647`
+ * established for exactly this. The deadlock leg measured **8,887 / 9,028 / 9,069 ms** on an IDLE
+ * host against jest's global `testTimeout: 15000`, and the cost is structural: `deadlock_timeout`
+ * is 1 s here and the leg runs 8 trials. On a contended CI runner that is a red `main` — and the
+ * leg's own "cannot flake in either direction" note reasoned only about assertion outcomes and
+ * missed the timeout dimension entirely. **The global budget is what fails, not the property.**
+ */
+const RACE_TIMEOUT_MS = 60_000;
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const csv = (header: string, ...rows: string[]): string => [header, ...rows].join("\n");
@@ -100,6 +109,7 @@ describe("the receivable lane gets the serializer the payable lane already had (
     const holder = await pool.connect();
     let stateAt400: string;
     let settledAfterMs = 0;
+    let releasedAfterMs = 0;
     try {
       await holder.query("begin");
       // FOR KEY SHARE, and the mode is the whole experiment — see this file's header.
@@ -113,22 +123,31 @@ describe("the receivable lane gets the serializer the payable lane already had (
       stateAt400 = await Promise.race([p.then(() => "settled", () => "settled"), delay(HOLD_MS).then(() => "pending")]);
 
       await holder.query("commit");
+      releasedAfterMs = Number((process.hrtime.bigint() - started) / 1_000_000n);
       await p; // and it must actually finish once the holder lets go
       settledAfterMs = Number((process.hrtime.bigint() - started) / 1_000_000n);
     } finally {
       holder.release();
     }
 
+    // THE DISCRIMINATOR. A lock-less implementation settles in single-digit milliseconds.
     expect({ afterHold: stateAt400 }).toEqual({ afterHold: "pending" });
+
     /**
-     * NOTE 6 from the close review — a bare "still pending at 400 ms" ALSO passes for an
-     * implementation that is merely slow on a loaded box, so on its own it fails vacuously in the
-     * unsafe direction. The discriminating statement is that the import finished only AFTER the
-     * holder let go: it waited on the LOCK, not on the machine. The lock-less mutant settles in
-     * single-digit milliseconds, three orders of magnitude below this bound.
+     * NOTE E from the close review — my first attempt at strengthening this asserted
+     * `settledAfterMs >= HOLD_MS`, which is ENTAILED by the line above (the race already proved `p`
+     * had not settled at `HOLD_MS`, and `settledAfterMs` is only read after `await p`). An assertion
+     * that cannot fail independently of another is not a second check; it is a longer way of writing
+     * the first one.
+     *
+     * The independent fact is on the OTHER side of the release: having waited, the import finished
+     * PROMPTLY once the row was let go. Together with the line above that says *blocked, then
+     * resumed by the commit* — which is what "waited on the lock" means, and what "merely slow on a
+     * loaded box" would not produce. The bound is deliberately loose because this must not flake;
+     * the observed resume is single-digit to low-tens of milliseconds.
      */
-    expect({ settledOnlyAfterTheHolderCommitted: settledAfterMs >= HOLD_MS })
-      .toEqual({ settledOnlyAfterTheHolderCommitted: true });
+    expect({ resumedAfterReleaseWithinMs: settledAfterMs - releasedAfterMs < 5_000 })
+      .toEqual({ resumedAfterReleaseWithinMs: true });
 
     // Having waited, it did the ordinary right thing: one confirmed claim, one ledger row.
     const ledger = await db.select().from(commissionAccruals).where(eq(commissionAccruals.counterpartyId, counterpartyId));
@@ -160,7 +179,7 @@ describe("the receivable lane gets the serializer the payable lane already had (
     // 60 000 once, however the two imports interleave.
     const wrong = observed.filter((o) => o.total !== 60_000);
     expect({ trials: TRIALS, doubleCounted: wrong.length, wrong }).toEqual({ trials: TRIALS, doubleCounted: 0, wrong: [] });
-  });
+  }, RACE_TIMEOUT_MS);
 
   /**
    * THE LEG THE FIRST VERSION OF THIS FILE COULD NOT SEE, AND §2.102 IS EXACTLY WHY.
@@ -197,14 +216,25 @@ describe("the receivable lane gets the serializer the payable lane already had (
       seen.add(ledger.reduce((s, r) => s + r.amountPaise, 0));
     }
 
-    // NEVER 150 000 — that is the double count T4 exists to prevent, and it is the assertion that
-    // would fail against a lock-less implementation.
+    /**
+     * MINOR A from the close review — an earlier version of this comment claimed 150 000 "is the
+     * assertion that would fail against a lock-less implementation". **That was a hand-walked
+     * prediction stated as a property, and it is false: the mutant was built and this leg SURVIVED**,
+     * with byte-identical output. 150 000 is unreachable either way, because with DIFFERING amounts
+     * the loser meets the still-`expected` 60 000 claim and takes the `amount_mismatch` DISPUTE
+     * branch, which records no money at all.
+     *
+     * The leg still earns its place — it is what closes §2.102 by making the deciding field differ,
+     * and it is what will go red when the owner rules on MAJOR 2. **What kills the lock is the
+     * equal-amounts leg above**, and saying so here is the difference between a suite a reader can
+     * trust and one that quietly over-claims its own coverage (rule 21).
+     */
     const totals = [...seen].sort((x, y) => x - y);
     expect({ everDoubleCounted: totals.includes(150_000) }).toEqual({ everDoubleCounted: false });
     // Every observed total is one of the two figures a partner actually quoted.
     expect({ outsideTheQuotedFigures: totals.filter((t) => t !== 60_000 && t !== 90_000) })
       .toEqual({ outsideTheQuotedFigures: [] });
-  });
+  }, RACE_TIMEOUT_MS);
 
   /**
    * MINOR 4 FROM THE CLOSE REVIEW — T4's row lock introduced an ABBA DEADLOCK, and the point of
@@ -252,5 +282,51 @@ describe("the receivable lane gets the serializer the payable lane already had (
     // And whatever did escape is retryable, or the already-imported refusal — never anything else.
     const unexpected = escaped.filter((x) => x !== "typed:statement_import_conflict" && x !== "typed:statement_already_imported");
     expect({ unexpectedCodes: unexpected }).toEqual({ unexpectedCodes: [] });
-  });
+  }, RACE_TIMEOUT_MS);
+
+  /**
+   * NOTE F from the close review — MINOR 3's fix WORKS and nothing required it to.
+   *
+   * The `23505` → `statement_already_imported` branch was measured green (8/8) but no test drove
+   * it: `statements.test.ts` covers only the SEQUENTIAL pre-check, and the deadlock leg above uses
+   * different statement references so it never reaches this constraint. **A branch with no test is
+   * a branch the next refactor deletes with a green suite** — which is the whole reason this file
+   * exists, one layer up.
+   *
+   * The legible pre-check runs on `db` OUTSIDE the transaction and therefore cannot see an
+   * in-flight twin; the partial unique index is what actually catches this, and before the mapping
+   * it surfaced as a raw `23505` falling through `toHttp` to a 500.
+   */
+  it("two imports of the SAME statementRef race to the index, and the loser gets a sentence not a 23505", async () => {
+    const escaped: string[] = [];
+
+    for (let trial = 1; trial <= TRIALS; trial++) {
+      const { counterpartyId } = await partnerFor();
+      const slip = await issueAttribution(db, CLERK, { counterpartyId, referredValuePaise: 400_000 }, NOW);
+      const line = csv(V1_HEADER, `${slip.code},,60000`);
+      const sameRef = `SAME-${String(trial)}`;
+
+      const settled = await Promise.allSettled([
+        importStatement(db, CLERK, { counterpartyId, statementRef: sameRef, statementPeriod: "2026-M08", csv: line }, LATER),
+        importStatement(db, CLERK, { counterpartyId, statementRef: sameRef, statementPeriod: "2026-M08", csv: line }, LATER),
+      ]);
+      for (const outcome of settled) {
+        if (outcome.status === "rejected") {
+          const e: unknown = outcome.reason;
+          escaped.push(e instanceof PartnersError ? `typed:${e.code}` : `RAW:${String((e as { code?: unknown }).code)}`);
+        }
+      }
+
+      // And the money is single regardless of which one lost.
+      const ledger = await db.select().from(commissionAccruals).where(eq(commissionAccruals.counterpartyId, counterpartyId));
+      expect({ trial, total: ledger.reduce((n, r) => n + r.amountPaise, 0) }).toEqual({ trial, total: 60_000 });
+    }
+
+    expect({ rawDriverErrors: escaped.filter((x) => x.startsWith("RAW:")) })
+      .toEqual({ rawDriverErrors: [] });
+    // Exactly one of each pair may lose, and it loses with the same sentence the sequential
+    // pre-check gives — that is the point of mapping it rather than inventing a new code.
+    expect({ unexpected: escaped.filter((x) => x !== "typed:statement_already_imported") })
+      .toEqual({ unexpected: [] });
+  }, RACE_TIMEOUT_MS);
 });
