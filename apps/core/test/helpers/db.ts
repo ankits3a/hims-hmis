@@ -82,6 +82,18 @@ export async function truncateAll(db: Db): Promise<void> {
   // standing from one test makes the next test's first visit `V2608250006` instead of
   // `V2608250001`, which is exactly how this line came to be written.
   await db.execute(sql`truncate table episode_series`);
+  // PLAN 16a T1 — the formulary is a CLOSED ISLAND in the FK graph, and that is what makes ONE
+  // statement both necessary and sufficient. `formulary_medicine_salts` and `formulary_interactions`
+  // point at `formulary_medicines` / `formulary_salts` and at nothing outside the module; NOTHING
+  // outside points in, because `formulary_staging.medicine_id` and `formulary_medicines.staging_id`
+  // are deliberately plain text rather than a mutual FK pair (schema/formulary.ts says why). So by
+  // §3.35 the whole island must ride one statement — constraint EXISTENCE decides — and by §3.12 it
+  // makes no claim on the users or patients groups. It MUST be here rather than in the formulary
+  // suite alone: a moiety left standing from one test is a moiety the next test's resolver finds.
+  await db.execute(
+    sql`truncate table formulary_medicine_salts, formulary_interactions, formulary_medicines,
+        formulary_salts, formulary_staging`,
+  );
   await db.execute(sql`truncate table approvals, approval_types`);
   await db.execute(
     sql`truncate table approvals, workflow_timers, workflow_transitions, workflow_instances,

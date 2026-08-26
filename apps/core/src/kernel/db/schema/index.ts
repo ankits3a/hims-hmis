@@ -21,3 +21,7 @@ export * from "./episodes";
 // reverse (DD1), and reading them in dependency order is the cheapest way to keep it that way.
 export * from "./partners";
 export * from "./membership";
+// PLAN 16a — the formulary: brand → active moiety → drug class, and the moiety-level interaction
+// pairs the OPD check suite reads. `modules/opd` reaches it only through read helpers (the
+// `listAllergies` precedent), never by importing these tables.
+export * from "./formulary";

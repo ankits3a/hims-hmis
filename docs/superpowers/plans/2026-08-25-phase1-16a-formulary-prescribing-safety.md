@@ -87,7 +87,7 @@ Tiers per AGENT-RULES §3. CRITICAL tasks carry their Assertion Book rows inline
 
 ### T1 — Formulary schema: five tables, moiety-canonical salts — **ROUTINE**
 
-**Files:** Create `apps/core/src/kernel/db/schema/formulary.ts`, `apps/core/src/kernel/db/schema/formulary.test.ts`; Modify `apps/core/src/kernel/db/schema/index.ts` (export); Generate ~~`0011_*.sql`~~ **`apps/core/drizzle/0026_*.sql`** (+ meta) via `pnpm db:generate` — the head is `0025_episode_numbers`, re-measured at kickoff (§2).
+**Files:** Create `apps/core/src/kernel/db/schema/formulary.ts`, `apps/core/src/kernel/db/schema/formulary.test.ts`; Modify `apps/core/src/kernel/db/schema/index.ts` (export); **AMENDED AT EXECUTION (F2):** Modify `apps/core/test/helpers/db.ts` (the formulary island's `truncateAll` statement — without it every other suite leaves formulary rows standing for the next one); Generate ~~`0011_*.sql`~~ **`apps/core/drizzle/0026_*.sql`** (+ meta) via `pnpm db:generate` — the head is `0025_episode_numbers`, re-measured at kickoff (§2).
 
 **Produces (exact, later tasks depend on these names):**
 - `formularySalts`: `id` PK · `name` (canonical **active moiety**, unique on lower) · `aliases` jsonb `string[]` default `[]` · `drugClass` text nullable · `atcCode` text nullable · `active` bool default true · `createdBy/createdAt/updatedBy/updatedAt` (the `opd_departments` audit shape).
@@ -241,3 +241,46 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
 ## 6. CLOSE — appended as the phase runs
 
 *(Findings as they arrive · the independent reviewer's report · mechanical verification: detached `pnpm verify` exit value, per-commit `git show --stat` vs Files lists, frozen-path audit, clean tree · the actuals row: tokens / agents / wall clock / catches · lessons bound for the ledger · the one-line roadmap amendment · the 16b phase document is written after this section closes.)*
+
+**Executed from 2026-08-26 on the build host, LIGHT lane, main session coding task by task.**
+
+### Task ledger
+
+| task | commit | verdict |
+|---|---|---|
+| kickoff — spike answered, §2 re-based, DD10 ruled | `be9134f` | four spike answers measured against production; two stale counters corrected; one plan defect caught before code |
+| T1 — the five tables | _pending push_ | migration `0026_true_malcolm_colcord`; **12/12** in `formulary.test.ts`, isolated (`Test Suites: 1 passed, 1 total`) |
+| _appended as each lands_ | | |
+
+### Findings
+
+- **F1 — A TASK THAT DECLARES A PERMISSION MUST BE ALLOWED TO GRANT IT, AND T2 WAS NOT.** Recorded
+  in full as DD10 above: the reachability invariant, the census pin (`74 declared = 60 held + 14 not
+  yet modelled`) and the README's cell-for-cell parity all live in files T2's Files list did not
+  name. **Found by reading `membership/manifest.ts`'s own header at kickoff**, which says the same
+  thing about Plan 09 in as many words — the lesson was already written down, one phase earlier, by
+  a session that had paid for it. What made it cheap this time is that it was read BEFORE the task
+  ran rather than after a red suite; what makes it a finding anyway is that the plan-authoring pass
+  had the same file available and did not check it. **The general form is §2.54's** (two copies of
+  one fact drift by construction) **with a twist worth naming: here the second copy is a TEST, and
+  a test that pins a census is a file every permission-declaring task must be allowed to edit.**
+- **F2 — THE FORMULARY IS A CLOSED ISLAND IN THE FK GRAPH, AND THAT IS EXACTLY WHY IT NEEDED A
+  `truncateAll` STATEMENT OF ITS OWN.** Ledger §3.35/§3.12 govern which truncate group a new table
+  joins; both are about tables that point INTO an existing group. The formulary points nowhere
+  outside itself and nothing points in, so it joins no group — and the tempting conclusion from
+  that, that no change is needed, is wrong in the one direction that matters: `truncateAll` is a
+  hand-maintained list, and a table absent from it is never emptied at all. A moiety left standing
+  from one test is a moiety the next test's resolver finds. **The rule the ledger does not yet
+  state: an island needs its own statement precisely BECAUSE no group's rule drags it in.**
+- **F3 — the enum values the plan named in prose ship as CHECK constraints, and the reason is a
+  failure direction rather than a house style.** `route_class`, `severity`, `route_scope`,
+  `schedule_flag`, `status` and `kind` are closed sets in §5's own text. Stored unconstrained, a
+  value outside the set is one every downstream reader — the check engine, the curation rollup,
+  the admission screen — silently treats as *not systemic* / *not severe*: the safe-LOOKING
+  direction, and the wrong one, because a severe pair that reads as not-severe raises no warning.
+  The `counterparties_payee_class_ck` precedent (Plan 09) is the same decision made once already.
+- **F4 — the ordered-pair CHECK is the constraint this schema exists for, and it is tested by the
+  reversed insert rather than by reading the DDL.** A×B and B×A are one clinical fact; stored
+  unordered, how many hits a prescription raises depends on which order a curator typed. The
+  suite's leg inserts the reversed row and quotes the refusal (`formulary_interactions_ordered_ck`),
+  which is what makes T2's `addInteraction` normalization CHECKABLE rather than trusted.
