@@ -308,7 +308,62 @@ duplicate-therapy checks exist at all for the same reason. **And the honest othe
 has ONE prescription in it (§3 Q1), so nothing above has yet protected a patient.** The value is
 forward-looking and the measurement that would prove it does not exist yet.
 
-### STILL OPEN — the phase is NOT closed
+### THE INDEPENDENT REVIEW (v3 §3.4) — RAN 2026-08-26, AND IT FOUND WHAT THIS SESSION COULD NOT
+
+**Three CRITICAL, five MAJOR, six MINOR. Every CRITICAL reproduced against the live database with
+quoted output before it was reported.** The reviewer re-ran its whole set after an interference
+warning (the coordinator's `pkill` matched the command shape it had been told to use) and reported
+identical results both times.
+
+**The three CRITICALs share one root, and it is not in the code this phase tested hardest.** T4's
+pure check suite is correct — seventeen legs, seven dead mutants, `purity.test.ts` holding it to no
+database. **T5 fed it wrong inputs**, and none of the three defects is visible from `rx-checks.test.ts`
+or from `prescriptions.test.ts`, whose fixtures made all three invisible by construction: drug text
+always equal to brand name, formulary always freshly seeded and fully active.
+
+| # | what was wrong | why the shipped tests could not see it |
+|---|---|---|
+| **C1** | A `medicineId` set by the picker was **never cleared when the doctor typed over the drug name** — the schema comment claimed it was and nothing implemented it — and the server preferred the id unconditionally. A line reading "Paracetamol 500" carrying warfarin's id warned about warfarin; pick a drug, type over it with a real interacting one, and **the real drug's moieties were never looked at.** DD2's named failure arriving through the id path, where `resolve.ts`'s exactness cannot see it. | `opd-consult.test.tsx` picks and never types afterwards. |
+| **C2** | Prior prescriptions resolved **by text only**. `"Warf 5mg OD"` — a picked line a doctor then annotated — resolved to nothing, so the check against what the patient is already taking silently did not fire. Same blindness after any brand rename. | every prior fixture set `drug` exactly equal to `brandName`, so it passes whether the id is read or ignored. |
+| **C3** | Deactivating a moiety **emptied the composition of every live medicine containing it**, and the line still reported `resolution !== null` — so every salt check went quiet, `unresolvedLineIndexes` stayed empty, and coverage counted the line as covered. The system reported that it had checked and found nothing, having stopped checking. Trigger: an ordinary curation act. | the shipped test asserts only that the salt's own NAME stops resolving. |
+
+**C1 and C2 are the same defect from opposite ends, and the obvious fix for each breaks the other.**
+"Trust the id" loses C1. "Trust the text when they disagree" loses C2 — an annotated pick is exactly
+a line whose text no longer equals its brand. **Choosing either picks which patient to fail.** So
+the resolver now UNIONS both readings: where the two disagree the line might be either drug, and
+both are checked. A check that over-warns costs one reasoned override; every failure mode above was
+a MISS. An earlier attempt also stripped a disagreeing id before storing the row — that was reverted:
+it deleted the very evidence C2 depends on. **What the prescriber selected and what they wrote are
+both facts; a disagreement is a data-quality signal, never a licence to discard one.**
+
+**The MAJORs, all fixed:** C4 — override reasons were validated, counted and **written nowhere**, so
+a doctor's justification for prescribing through a severe interaction had no medico-legal record
+(two columns, migration `0027`). C5 — one override cleared **every** hard hit on its line, including
+one that arrived between the pre-check and the submit; overrides now name the pair or moiety they
+clear, and one that names nothing clears nothing. C6 — `updateMedicine` walked straight past DD8's
+intra-FDC gate that `addMedicine` enforces: **two doors, one lock.** C7 — seven pieces of 16a state
+outlived the patient they belonged to, and because the dialog's `open` reads the interaction hits,
+nulling `matches` alone left it OPEN across a patient change, where confirming would have posted
+patient A's overrides against patient B's lines. C8 — `getPairOverrideRates` was N+1 over a 90-day
+window.
+
+**MINORs fixed:** M1 (the short-string guard belongs to the substance side; applying it to the drug
+side lost `"ASA"` against `"Tab ASA75"`), M2 (one pair across two FDCs warned twice), M3 (superseded
+versions counted as separate click-throughs), M4 (`addMedicine` would mint a composition-less
+medicine), M5 (stale hint indexes after a failed pre-check), M6 (a non-numeric `durationDays`
+silently skipped a prior).
+
+**Regression tests added for every CRITICAL and MAJOR**, each written to fail against the defect it
+names. The reviewer's own list of tests-whose-name-exceeds-their-assertion is the reason each one
+drives the specific shape the old fixtures could not reach.
+
+**What the reviewer checked and found clean** is in its report and is worth reading beside the
+findings: DD2 exactness, DD8's same-line skip in both consumers, hard/soft grading, route
+suppression, the 90-day fallback and its labelling, design law 1 end to end, design law 3, design
+law 10's honesty line, staging isolation, permission wiring, the 409 mapping, and T9's 26 pairs
+read as pharmacology.
+
+### STILL OPEN
 
 1. **THE INDEPENDENT REVIEW HAS NOT RUN.** Under v3 §3.4 that review IS the gate report, and its
    CRITICAL findings block close. Everything above is this session auditing its own work, which is

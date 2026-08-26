@@ -67,11 +67,15 @@ const prescriptionBody = z.object({
   // PLAN 16a T5 / DD3 — one array per hard-warning kind, each in `overrides`' own grammar. A reason
   // shorter than the shipped minimum is refused by `issuePrescription`, not by zod, so the client
   // gets `override_reason_required` and not a schema error it cannot map to a field.
+  // C5 — an override NAMES the hit it clears. Without the identity it clears nothing, which is the
+  // fail-safe direction: a doctor sees a warning twice rather than never seeing the second one.
   interactionOverrides: z.array(z.object({
     lineIndex: z.number().int().nonnegative(), reason: z.string().max(500),
+    saltPair: z.tuple([z.string().min(1), z.string().min(1)]).optional(),
   })).optional(),
   duplicateOverrides: z.array(z.object({
     lineIndex: z.number().int().nonnegative(), reason: z.string().max(500),
+    moiety: z.string().min(1).max(200).optional(),
   })).optional(),
 });
 /** The pre-check takes the lines alone: nothing is written, so nothing else is needed. */

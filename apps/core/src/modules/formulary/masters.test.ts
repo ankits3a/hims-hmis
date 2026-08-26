@@ -187,6 +187,54 @@ describe("formulary masters (Plan 16a T2)", () => {
       .toMatchObject({ medicineId, intraFdcAcknowledged: true });
   });
 
+  /**
+   * C6 (independent review) — DD8's GATE HAS TWO DOORS AND ONLY ONE HAD A LOCK.
+   *
+   * The test above exercises `addMedicine` only, and passed throughout. `updateMedicine` accepts a
+   * composition too, so creating the medicine single-salt and PATCHing the interacting pair in
+   * walked straight past the acknowledgement — and the `medicine.corrected` event recorded no
+   * acknowledgement, so nothing downstream could tell either.
+   */
+  it("updateMedicine refuses to build an interacting FDC without the same acknowledgement", async () => {
+    const { saltId: a } = await withTx(db, (tx) => addSalt(tx, PHARMACIST, { name: "ciprofloxacin" }));
+    const { saltId: b } = await withTx(db, (tx) => addSalt(tx, PHARMACIST, { name: "theophylline" }));
+    await withTx(db, (tx) => addInteraction(tx, PHARMACIST, {
+      saltAId: a, saltBId: b, severity: "severe",
+      note: "ciprofloxacin raises theophylline levels — toxicity risk", source: "seed-2026-08",
+    }));
+    // Created single-salt, which is legitimate and un-gated.
+    const { medicineId } = await withTx(db, (tx) => addMedicine(tx, PHARMACIST, {
+      brandName: "Invented Combination", form: "tablet", routeClass: "systemic", salts: [{ saltId: a }],
+    }));
+
+    // PATCHing the pair in is the SAME act as creating it, and meets the same gate.
+    await expect(
+      withTx(db, (tx) => updateMedicine(tx, PHARMACIST, medicineId, {
+        salts: [{ saltId: a }, { saltId: b }],
+      })),
+    ).rejects.toMatchObject({ code: "intra_fdc_interaction" });
+
+    // The composition did not move.
+    expect((await listMedicines(db))[0]!.salts.map((s) => s.saltId)).toEqual([a]);
+
+    // Acknowledged, it lands — and the correction is evented.
+    await withTx(db, (tx) => updateMedicine(tx, PHARMACIST, medicineId, {
+      salts: [{ saltId: a }, { saltId: b }], acknowledgeIntraFdc: true,
+    }));
+    expect((await listMedicines(db))[0]!.salts.map((s) => s.saltId).sort()).toEqual([a, b].sort());
+    expect(await eventsNamed(db, "medicine.corrected")).toHaveLength(1);
+  });
+
+  /** M4 — a medicine with no composition is the "known, and contains nothing" row C3 showed is invisible. */
+  it("a medicine with no moieties is refused at the domain function, not only by zod", async () => {
+    await expect(
+      withTx(db, (tx) => addMedicine(tx, PHARMACIST, {
+        brandName: "Empty Thing", form: "tablet", routeClass: "systemic", salts: [],
+      })),
+    ).rejects.toMatchObject({ code: "unknown_salt" });
+    expect(await listMedicines(db)).toHaveLength(0);
+  });
+
   it("a single-moiety medicine never consults the pair table at all", async () => {
     const { saltId } = await withTx(db, (tx) => addSalt(tx, PHARMACIST, { name: "paracetamol" }));
     await withTx(db, (tx) => addMedicine(tx, PHARMACIST, {

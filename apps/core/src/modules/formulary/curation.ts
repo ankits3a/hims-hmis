@@ -1,4 +1,4 @@
-import { and, gte, sql } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 import { opdPrescriptions } from "../../kernel/db/schema";
 import { listInteractionsAmong, resolveDrugTexts, resolveMedicines } from "./resolve";
 import type { ResolvedDrug } from "./resolve";
@@ -64,7 +64,7 @@ export async function getCoverage(db: Db, now: Date = new Date()): Promise<Cover
   const rows = await db
     .select({ lines: opdPrescriptions.lines })
     .from(opdPrescriptions)
-    .where(gte(opdPrescriptions.issuedAt, since));
+    .where(and(gte(opdPrescriptions.issuedAt, since), eq(opdPrescriptions.status, "active")));
 
   const lines = rows.flatMap((row) => row.lines as StoredLine[]);
   if (lines.length === 0) {
@@ -135,21 +135,36 @@ export type PairUsage = {
  */
 export async function getPairOverrideRates(db: Db, now: Date = new Date()): Promise<PairUsage[]> {
   const since = new Date(now.getTime() - PAIR_WINDOW_DAYS * DAY_MS);
+  /**
+   * M3 (independent review) — `status = 'active'` only. A doctor correcting a typo three times
+   * leaves three rows for ONE prescription, and counting all of them reported three click-throughs
+   * of the same pair and inflated the coverage denominator. The surviving version is the decision.
+   */
   const rows = await db
-    .select({ lines: opdPrescriptions.lines, allergyOverrides: opdPrescriptions.allergyOverrides })
+    .select({ lines: opdPrescriptions.lines })
     .from(opdPrescriptions)
-    .where(and(gte(opdPrescriptions.issuedAt, since), sql`true`));
+    .where(and(gte(opdPrescriptions.issuedAt, since), eq(opdPrescriptions.status, "active")));
+
+  /**
+   * C8 (independent review) — ONE resolution pass and ONE pair load for the whole window.
+   *
+   * This used to call `resolveStoredLines` (two full formulary scans) and `listInteractionsAmong`
+   * PER ROW. The 0.122 ms measurement quoted in this file belongs to `getCoverage`, which batches;
+   * this function did not, and was O(rows x formulary) — about 45 000 rows x 3 queries at 500
+   * prescriptions a day.
+   */
+  const allLines = rows.flatMap((row) => row.lines as StoredLine[]);
+  const resolutions = await resolveStoredLines(db, allLines);
+  const allSaltIds = [...new Set(allLines.flatMap((l) => resolutions.get(l)?.salts.map((s) => s.saltId) ?? []))];
+  const allPairs = await listInteractionsAmong(db, allSaltIds);
+  if (allPairs.length === 0) return [];
+  const byKey = new Map(allPairs.map((p) => [`${p.saltAId}|${p.saltBId}`, p]));
 
   const counts = new Map<string, number>();
   for (const row of rows) {
     const lines = row.lines as StoredLine[];
-    const resolutions = await resolveStoredLines(db, lines);
     const perLineSalts = lines.map((line) => resolutions.get(line)?.salts.map((s) => s.saltId) ?? []);
-    const saltIds = perLineSalts.flat();
-    if (saltIds.length < 2) continue;
-    const pairs = await listInteractionsAmong(db, saltIds);
-    if (pairs.length === 0) continue;
-    const byKey = new Map(pairs.map((p) => [`${p.saltAId}|${p.saltBId}`, p]));
+    if (perLineSalts.flat().length < 2) continue;
 
     // IN-RX pairs only. A prior-scope hit depended on what else the patient was taking THAT DAY,
     // which is not reconstructable from a stored prescription, and guessing at it would put a
@@ -169,9 +184,7 @@ export async function getPairOverrideRates(db: Db, now: Date = new Date()): Prom
   }
 
   if (counts.size === 0) return [];
-  const allSalts = [...counts.keys()].flatMap((k) => k.split("|"));
-  const pairs = await listInteractionsAmong(db, allSalts);
-  return pairs
+  return allPairs
     .map((pair) => {
       const timesOnIssued = counts.get(`${pair.saltAId}|${pair.saltBId}`) ?? 0;
       // Severe: it could not be here without an override. Moderate: it was never gated.

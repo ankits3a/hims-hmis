@@ -148,6 +148,33 @@ describe("formulary resolution (Plan 16a T3)", () => {
     expect((await resolveDrugTexts(db, ["amoxycillin"])).get("amoxycillin")).toBeNull();
   });
 
+  /**
+   * C3 (independent review, CRITICAL) — DEACTIVATING A MOIETY MUST NOT EMPTY THE COMPOSITION OF
+   * EVERY MEDICINE CONTAINING IT.
+   *
+   * The shipped test above asserts only that the SALT'S OWN NAME stops resolving, and passed
+   * throughout. What it could not see: `compositionOf` filtered the composition through the ACTIVE
+   * salts, so a live medicine whose moiety had been deactivated resolved to `salts: []` — "known,
+   * and contains nothing". Every salt-aware check then found nothing and the line reported as
+   * checked and covered. `active` on a salt means NOT STOCKED; it has never meant NOT A SUBSTANCE.
+   */
+  it("a deactivated moiety stays in the composition of the medicines that contain it", async () => {
+    const { amox, clav, augmentin } = await seedAugmentin();
+    await withTx(db, (tx) => updateSalt(tx, PHARMACIST, amox, { active: false }));
+
+    const drug = (await resolveDrugTexts(db, ["Augmentin 625"])).get("Augmentin 625");
+    expect(drug).not.toBeNull();
+    // The composition is COMPLETE. An allergy to amoxicillin still has something to match against.
+    expect(drug!.salts.map((s) => s.saltId).sort()).toEqual([amox, clav].sort());
+    expect(drug!.salts.find((s) => s.saltId === amox)!.drugClass).toBe("penicillin");
+    // Same through the id path, which 16b's dispense will use.
+    expect((await resolveMedicines(db, [augmentin])).get(augmentin)!.salts).toHaveLength(2);
+
+    // And the moiety's own NAME still does not resolve — deactivation means "not offered", which is
+    // the behaviour the test above pins and this one deliberately leaves alone.
+    expect((await resolveDrugTexts(db, ["amoxicillin"])).get("amoxicillin")).toBeNull();
+  });
+
   it("a medicine keeps resolving by id for a line that already carries one", async () => {
     const { amox, clav, augmentin } = await seedAugmentin();
     const byId = await resolveMedicines(db, [augmentin, "01HNOSUCH000000000000000001"]);

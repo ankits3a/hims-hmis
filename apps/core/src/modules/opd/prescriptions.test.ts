@@ -292,6 +292,8 @@ describe("opd prescriptions — interactions, duplicates and their overrides (Pl
   let patient: { id: string; uhid: string };
   let warfarinId: string;
   let aspirinId: string;
+  /** The MOIETY ids, for legs that need to add a second pair against the same drug. */
+  let warfarinSaltId: string;
 
   const PHARMACIST: Actor = { type: "user", id: "01HPHARMACIST0000000000001" };
 
@@ -321,6 +323,7 @@ describe("opd prescriptions — interactions, duplicates and their overrides (Pl
     }));
     warfarinId = warfMed;
     aspirinId = asaMed;
+    warfarinSaltId = warfarin;
   });
 
   async function inConsult(at: Date = MON): Promise<EncounterRow> {
@@ -356,8 +359,14 @@ describe("opd prescriptions — interactions, duplicates and their overrides (Pl
   it("an override with a reason lets it through, and the count lands on the KPI event", async () => {
     const enc = await inConsult();
     const lines = [rx("Warf 5", warfarinId), rx("Ecosprin 75", aspirinId)];
+    // C5 — the override NAMES the pair it clears. `lineIndex` alone used to clear every hard hit
+    // on the line, including one that arrived after the doctor read the dialog.
+    const hit = (await precheckPrescription(db, dra.actor, enc.id, lines, MON2)).interactions[0]!;
     const issued = await issuePrescription(db, dra.actor, testCfg, enc.id, {
-      lines, interactionOverrides: [{ lineIndex: 1, reason: "cardiology advised dual therapy, INR weekly" }],
+      lines,
+      interactionOverrides: [{
+        lineIndex: 1, reason: "cardiology advised dual therapy, INR weekly", saltPair: hit.saltPair,
+      }],
     }, MON2);
     expect(issued.interactionOverrideCount).toBe(1);
 
@@ -371,8 +380,9 @@ describe("opd prescriptions — interactions, duplicates and their overrides (Pl
   it("a reason too short to be a reason is refused, exactly as an allergy override is", async () => {
     const enc = await inConsult();
     const lines = [rx("Warf 5", warfarinId), rx("Ecosprin 75", aspirinId)];
+    const shortHit = (await precheckPrescription(db, dra.actor, enc.id, lines, MON2)).interactions[0]!;
     await expect(issuePrescription(db, dra.actor, testCfg, enc.id, {
-      lines, interactionOverrides: [{ lineIndex: 1, reason: "ok" }],
+      lines, interactionOverrides: [{ lineIndex: 1, reason: "ok", saltPair: shortHit.saltPair }],
     }, MON2)).rejects.toMatchObject({ code: "override_reason_required" });
   });
 
@@ -389,8 +399,12 @@ describe("opd prescriptions — interactions, duplicates and their overrides (Pl
     await expect(issuePrescription(db, dra.actor, testCfg, enc.id, { lines }, MON2))
       .rejects.toMatchObject({ code: "duplicate_salt_conflict" });
 
+    const dup = (await precheckPrescription(db, dra.actor, enc.id, lines, MON2)).duplicates.find((h) => h.hard)!;
     const issued = await issuePrescription(db, dra.actor, testCfg, enc.id, {
-      lines, duplicateOverrides: [{ lineIndex: 1, reason: "SOS dose, patient counselled on the maximum" }],
+      lines,
+      duplicateOverrides: [{
+        lineIndex: dup.lineIndex, reason: "SOS dose, patient counselled on the maximum", moiety: dup.moiety,
+      }],
     }, MON2);
     expect(issued.duplicateOverrideCount).toBe(1);
   });
@@ -434,6 +448,133 @@ describe("opd prescriptions — interactions, duplicates and their overrides (Pl
     const v2 = await issuePrescription(db, dra.actor, testCfg, enc.id, { lines }, MON3);
     expect(v2.version).toBe(2);
     expect(v2.notices).toEqual([]);
+  });
+
+  /**
+   * C1 (independent review, CRITICAL) — A STALE `medicineId` MUST NOT SPEAK FOR A LINE.
+   *
+   * The consult picker sets the id; the doctor may then type over the drug name. Nothing cleared
+   * the id (the screen half is fixed too), and the server preferred it unconditionally — so a line
+   * reading "Paracetamol 500" carrying warfarin's id warned about a warfarin interaction the
+   * prescription does not contain, and the real drug's own moieties were never looked at. DD2's
+   * named failure — another drug's moieties attached to a line — arriving where `resolve.ts`'s
+   * exactness cannot see it.
+   */
+  it("a line whose text disagrees with its medicineId is checked as BOTH, and keeps both facts", async () => {
+    const enc = await inConsult();
+    const { saltId: para } = await withTx(db, (tx) => addSalt(tx, PHARMACIST, { name: "paracetamol" }));
+    await withTx(db, (tx) => addMedicine(tx, PHARMACIST, {
+      brandName: "Crocin 650", form: "tablet", routeClass: "systemic", salts: [{ saltId: para }],
+    }));
+
+    // The id says warfarin. The text says paracetamol. They cannot both be the drug.
+    const lines = [
+      { ...rx("Crocin 650", warfarinId), drug: "Crocin 650" },
+      rx("Ecosprin 75", aspirinId),
+    ];
+    const pre = await precheckPrescription(db, dra.actor, enc.id, lines, MON2);
+
+    /**
+     * THE LINE IS CHECKED AS BOTH, and that is the ruling rather than an accident. Before the fix
+     * the id spoke alone, so paracetamol's own moieties were never looked at — a MISS. Resolving
+     * by text alone would lose the annotated-pick case (C2) — also a miss. So both are checked, and
+     * the cost lands where it belongs: a warning the doctor can dismiss with a reason, instead of a
+     * warning nobody ever sees.
+     */
+    expect(pre.interactions).toHaveLength(1);
+    expect(pre.unresolvedLineIndexes).toEqual([]);
+    // Paracetamol IS among the moieties now — the text is no longer ignored.
+    const resolvedSalts = pre.interactions[0]!.saltPair;
+    expect(resolvedSalts).toHaveLength(2);
+
+    // And the line keeps BOTH facts on the record: what was picked and what was written.
+    const issued = await issuePrescription(db, dra.actor, testCfg, enc.id, {
+      lines,
+      interactionOverrides: [{
+        lineIndex: pre.interactions[0]!.lineIndex, reason: "the id is stale; this line is paracetamol",
+        saltPair: pre.interactions[0]!.saltPair,
+      }],
+    }, MON2);
+    const [row] = await listPrescriptions(db, enc.id);
+    expect((row!.lines as { drug: string; medicineId?: string | null }[])[0])
+      .toMatchObject({ drug: "Crocin 650", medicineId: warfarinId });
+    expect(issued.interactionOverrideCount).toBe(1);
+  });
+
+  /**
+   * C2 (independent review, CRITICAL) — A PRIOR PRESCRIPTION'S `medicineId` IS EVIDENCE TOO.
+   *
+   * Priors used to resolve by TEXT ONLY. "Warf 5mg OD" — what a doctor types after picking — is not
+   * a brand name, so it resolved to nothing and the check against what the patient is already
+   * taking silently did not fire. The shipped prior test could not see this: its fixtures set the
+   * drug text exactly equal to the brand name, so it passes either way.
+   */
+  it("a CURRENT prior whose text is not a brand name still fires, through its stored medicineId", async () => {
+    const first = await inConsult();
+    // The line a real doctor leaves behind: picked from the formulary, then typed on.
+    const priorLine = { ...rx("Warf 5", warfarinId, 30), drug: "Warf 5mg OD" };
+    await issuePrescription(db, dra.actor, testCfg, first.id, { lines: [priorLine] }, MON2);
+
+    const later = new Date(MON.getTime() + 10 * 24 * 60 * 60 * 1000);
+    const second = await inConsult(later);
+    await expect(issuePrescription(db, dra.actor, testCfg, second.id, {
+      lines: [rx("Ecosprin 75", aspirinId)],
+    }, later)).rejects.toMatchObject({ code: "interaction_conflict" });
+  });
+
+  /**
+   * C4 (independent review) — THE REASON IS THE RECORD. It was validated, counted, and dropped.
+   */
+  it("the override reasons are PERSISTED, not merely counted", async () => {
+    const enc = await inConsult();
+    const lines = [rx("Warf 5", warfarinId), rx("Ecosprin 75", aspirinId)];
+    const hits = (await precheckPrescription(db, dra.actor, enc.id, lines, MON2)).interactions;
+    await issuePrescription(db, dra.actor, testCfg, enc.id, {
+      lines,
+      interactionOverrides: [{
+        lineIndex: 1, reason: "cardiology advised dual therapy, INR weekly", saltPair: hits[0]!.saltPair,
+      }],
+    }, MON2);
+
+    const [row] = await listPrescriptions(db, enc.id);
+    expect(row!.interactionOverrides).toEqual([{
+      lineIndex: 1, reason: "cardiology advised dual therapy, INR weekly", saltPair: hits[0]!.saltPair,
+    }]);
+    expect(row!.duplicateOverrides).toEqual([]);
+  });
+
+  /**
+   * C5 (independent review) — AN OVERRIDE CLEARS THE HIT IT NAMES AND NO OTHER.
+   *
+   * One override used to clear every hard hit on its line, including one that arrived between the
+   * pre-check and the submit — so a doctor could never be shown the second warning.
+   */
+  it("an override for one pair does not clear a different pair on the same line", async () => {
+    const enc = await inConsult();
+    // A second severe pair on the SAME line index: warfarin x metronidazole.
+    const { saltId: metro } = await withTx(db, (tx) => addSalt(tx, PHARMACIST, { name: "metronidazole" }));
+    await withTx(db, (tx) => addInteraction(tx, PHARMACIST, {
+      saltAId: warfarinSaltId, saltBId: metro, severity: "severe",
+      note: "metronidazole inhibits warfarin metabolism", source: "seed-2026-08",
+    }));
+    const { medicineId: flagyl } = await withTx(db, (tx) => addMedicine(tx, PHARMACIST, {
+      brandName: "Flagyl 400", form: "tablet", routeClass: "systemic", salts: [{ saltId: metro }],
+    }));
+
+    const lines = [rx("Warf 5", warfarinId), rx("Ecosprin 75", aspirinId), rx("Flagyl 400", flagyl)];
+    const hits = (await precheckPrescription(db, dra.actor, enc.id, lines, MON2)).interactions;
+    const aspirinHit = hits.find((h) => h.note.includes("bleeding"))!;
+
+    // Override ONLY the aspirin pair. The metronidazole pair must still refuse the issue.
+    await expect(issuePrescription(db, dra.actor, testCfg, enc.id, {
+      lines,
+      interactionOverrides: [{ lineIndex: aspirinHit.lineIndex, reason: "cardiology advised", saltPair: aspirinHit.saltPair }],
+    }, MON2)).rejects.toMatchObject({ code: "interaction_conflict" });
+
+    // An override that names NOTHING clears nothing — the fail-safe direction.
+    await expect(issuePrescription(db, dra.actor, testCfg, enc.id, {
+      lines, interactionOverrides: [{ lineIndex: 1, reason: "a reason with no pair named" }],
+    }, MON2)).rejects.toMatchObject({ code: "interaction_conflict" });
   });
 
   it("the pre-check sees the same hits the issue path would, and writes nothing", async () => {

@@ -149,6 +149,13 @@ export async function addMedicine(
   },
 ): Promise<{ medicineId: string }> {
   const saltIds = input.salts.map((s) => s.saltId);
+  // M4 — a medicine with no composition resolves to "known, and contains nothing", which C3 showed
+  // is the shape that makes a check suite go quiet while reporting success. The controller's zod
+  // schema blocks the HTTP path; the domain function must refuse it too, or the next caller
+  // (a seed, a script, 16b) mints one.
+  if (saltIds.length === 0) {
+    throw new FormularyError("unknown_salt", `"${input.brandName}" needs at least one moiety`);
+  }
   await requireSalts(tx, saltIds);
 
   const pairs = await intraFdcPairs(tx, saltIds);
@@ -202,6 +209,8 @@ export async function updateMedicine(
     brandName?: string; form?: string; routeClass?: RouteClass;
     strengthLabel?: string | null; scheduleFlag?: string | null; active?: boolean;
     salts?: { saltId: string; strength?: string | null }[];
+    /** DD8, same acknowledgement `addMedicine` requires — see the gate below (C6). */
+    acknowledgeIntraFdc?: boolean;
   },
 ): Promise<void> {
   const existing = await tx.select().from(formularyMedicines).where(eq(formularyMedicines.id, medicineId));
@@ -217,6 +226,20 @@ export async function updateMedicine(
   if (salts !== undefined) {
     toSaltIds = salts.map((s) => s.saltId);
     await requireSalts(tx, toSaltIds);
+    /**
+     * C6 (independent review) — DD8 HAS TWO DOORS AND ONLY ONE HAD A LOCK. `addMedicine` refuses an
+     * FDC whose own salts interact unless a pharmacist acknowledges it; this path accepted the same
+     * composition silently. Creating the medicine single-salt and PATCHing the interacting pair in
+     * walked straight past the gate, and the `medicine.corrected` event recorded no acknowledgement.
+     */
+    const pairs = await intraFdcPairs(tx, toSaltIds);
+    if (pairs.length > 0 && patch.acknowledgeIntraFdc !== true) {
+      throw new FormularyError(
+        "intra_fdc_interaction",
+        `"${patch.brandName ?? row.brandName}" would contain an interacting pair — admit anyway?`,
+        { pairs },
+      );
+    }
     const current = await tx.select({ saltId: formularyMedicineSalts.saltId })
       .from(formularyMedicineSalts).where(eq(formularyMedicineSalts.medicineId, medicineId));
     fromSaltIds = current.map((r) => r.saltId);

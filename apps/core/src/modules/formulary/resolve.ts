@@ -71,7 +71,24 @@ async function activeSalts(db: Db): Promise<SaltRow[]> {
   return rows.map((r) => ({ ...r, aliases: r.aliases ?? [] }));
 }
 
-/** Composition for a set of medicines, ACTIVE moieties only — an inactive row resolves nowhere. */
+/**
+ * Composition for a set of medicines — **every** moiety, active or not.
+ *
+ * ═══ C3, THE REVIEWER'S THIRD CRITICAL: `active` MEANS "NOT STOCKED", NEVER "NOT A SUBSTANCE" ═══
+ *
+ * This function used to filter the composition through `activeSalts()`. Deactivating one moiety —
+ * an ordinary curation act, e.g. deduping `amoxycillin` into `amoxicillin`, which the `lower(name)`
+ * index does NOT prevent — then emptied the composition of every live medicine containing it. The
+ * medicine still resolved, so `resolution !== null`, so the line read as CHECKED and COVERED: zero
+ * interaction hits, zero duplicate hits, and `unresolvedLineIndexes` empty. **The system reported
+ * that it had checked and found nothing, having stopped checking.** That is the precise state the
+ * header of this file calls "how a check suite silently stops checking", produced one screen below
+ * the warning.
+ *
+ * A moiety's identity does not depend on whether the pharmacy currently stocks it. Standalone
+ * resolution of a salt NAME still honours `active` (a deactivated moiety is not offered as a line
+ * in its own right); what a medicine is MADE OF is not a stocking question.
+ */
 async function compositionOf(
   db: Db,
   medicineIds: string[],
@@ -82,9 +99,20 @@ async function compositionOf(
   const rows = await db.select({
     medicineId: formularyMedicineSalts.medicineId, saltId: formularyMedicineSalts.saltId,
   }).from(formularyMedicineSalts).where(inArray(formularyMedicineSalts.medicineId, medicineIds));
+  // Every referenced moiety, resolved from the WHOLE table rather than the active subset (C3).
+  const referenced = [...new Set(rows.map((r) => r.saltId))];
+  const allSalts = referenced.length === 0
+    ? []
+    : await db.select({
+      id: formularySalts.id, name: formularySalts.name,
+      aliases: formularySalts.aliases, drugClass: formularySalts.drugClass,
+    }).from(formularySalts).where(inArray(formularySalts.id, referenced));
+  const byId = new Map(allSalts.map((s) => [s.id, s]));
   for (const row of rows) {
-    const salt = saltsById.get(row.saltId);
-    if (salt === undefined) continue; // inactive moiety: invisible here exactly as it is everywhere
+    const salt = byId.get(row.saltId) ?? saltsById.get(row.saltId);
+    // A composition row whose salt has been DELETED (not merely deactivated) is a broken reference
+    // the schema's foreign key makes impossible; skipping is unreachable and safe.
+    if (salt === undefined) continue;
     const list = out.get(row.medicineId) ?? [];
     list.push({ saltId: salt.id, moiety: salt.name, drugClass: salt.drugClass });
     out.set(row.medicineId, list);

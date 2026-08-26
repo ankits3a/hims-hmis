@@ -75,7 +75,11 @@ export function isCurrent(
   now: Date,
 ): { current: boolean; assumedCurrent: boolean } {
   const elapsedMs = now.getTime() - issuedAt.getTime();
-  if (durationDays === null) {
+  // M6 — a legacy jsonb line can carry `undefined` where the type says `number | null`, and
+  // `undefined * DAY_MS` is NaN, which compares false and SKIPS the prior silently. Anything that
+  // is not a usable number takes the labelled 90-day path: the failure direction must be a warning
+  // a doctor can dismiss, never a check that quietly did not happen.
+  if (typeof durationDays !== "number" || !Number.isFinite(durationDays)) {
     return { current: elapsedMs <= ASSUMED_CURRENT_DAYS * DAY_MS, assumedCurrent: true };
   }
   return { current: elapsedMs <= durationDays * DAY_MS, assumedCurrent: false };
@@ -99,8 +103,15 @@ function legacySubstringMatch(substanceRaw: string, drugRaw: string): boolean {
   const substance = substanceRaw.trim().toLowerCase();
   const drug = drugRaw.trim().toLowerCase();
   if (substance === "" || drug === "") return false;
-  if (substance.length < MIN_SUBSTRING_LENGTH || drug.length < MIN_SUBSTRING_LENGTH) {
-    return tokens(substance).includes(drug) || tokens(drug).includes(substance);
+  /**
+   * M1 — THE GUARD IS THE SUBSTANCE SIDE'S, and applying it to the DRUG side was a regression.
+   * Its justification is that an allergy recorded as "B" must not warn on every drug containing a
+   * letter b. A short DRUG string carries no such risk: allergy "ASA" against a line reading
+   * "Tab ASA75" matched under the shipped matcher and stopped matching under this one. A miss is
+   * the wrong direction for an allergy check, so the guard now applies only where it was argued for.
+   */
+  if (substance.length < MIN_SUBSTRING_LENGTH) {
+    return tokens(drug).includes(substance) || drug === substance;
   }
   return drug.includes(substance) || substance.includes(drug);
 }
@@ -180,6 +191,8 @@ export function checkInteractions(
     if (line === undefined) continue;
     const lineSalts = saltsOf(line.resolution);
     if (lineSalts.length === 0) continue;
+    const seenInRx = new Set<string>();
+    const seenPrior = new Set<string>();
 
     // ── against earlier lines of this same prescription ──
     for (let i = 0; i < j; i += 1) {
@@ -190,6 +203,12 @@ export function checkInteractions(
           const pair = byKey.get(pairKey(mine.saltId, theirs.saltId));
           if (pair === undefined) continue;
           if (routeSuppresses(pair, line.resolution, other.resolution)) continue;
+          // M2 — two FDCs sharing the pair {A,B} cross-produce it twice (A×B and B×A). One fact,
+          // one warning, one reason to type: emitting it twice means two dialog rows and two KPI
+          // counts for one decision.
+          const seenKey = `${String(other.lineIndex)}|${pairKey(pair.saltAId, pair.saltBId)}`;
+          if (seenInRx.has(seenKey)) continue;
+          seenInRx.add(seenKey);
           hits.push({
             severity: pair.severity, lineIndex: line.lineIndex,
             saltPair: [pair.saltAId, pair.saltBId], note: pair.note,
@@ -209,6 +228,9 @@ export function checkInteractions(
             const pair = byKey.get(pairKey(mine.saltId, theirs.saltId));
             if (pair === undefined) continue;
             if (routeSuppresses(pair, line.resolution, priorLine.resolution)) continue;
+            const priorKey = `${prior.prescriptionId}|${pairKey(pair.saltAId, pair.saltBId)}`;
+            if (seenPrior.has(priorKey)) continue;
+            seenPrior.add(priorKey);
             hits.push({
               severity: pair.severity, lineIndex: line.lineIndex,
               saltPair: [pair.saltAId, pair.saltBId], note: pair.note,

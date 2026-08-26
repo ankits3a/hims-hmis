@@ -556,6 +556,8 @@ describe("OpdConsult", () => {
   };
   const SEVERE_HIT = {
     severity: "severe", lineIndex: 0, note: "bleeding risk — avoid or monitor INR closely",
+    // C5 — the client echoes this on the override so the server knows which hit was cleared.
+    saltPair: ["s-asa", "s-warf"],
     against: { scope: "prior", prescriptionId: "rx-old", issuedAt: "2026-08-08T04:00:00.000Z", assumedCurrent: false },
   };
 
@@ -618,9 +620,67 @@ describe("OpdConsult", () => {
       interactionOverrides: { lineIndex: number; reason: string }[];
     };
     expect(body.lines[0]!.medicineId).toBe("m-warf");
-    expect(body.interactionOverrides).toEqual([{ lineIndex: 0, reason: "cardiology advised dual therapy" }]);
+    expect(body.interactionOverrides).toEqual([{
+      lineIndex: 0, reason: "cardiology advised dual therapy", saltPair: ["s-asa", "s-warf"],
+    }]);
     expect("duplicateOverrides" in body).toBe(false);
     expect(rxCalls).toBe(1);
+  });
+
+  /**
+   * C7 (independent review) — 16a's STATE MUST NOT OUTLIVE THE PATIENT IT BELONGS TO.
+   *
+   * `resetPanel` cleared the shipped allergy state and none of the seven fields T6 added. The
+   * dangerous one is the dialog: its `open` reads `matches !== null || interactionHits.length > 0
+   * || duplicateHits.length > 0`, and nulling `matches` alone left it OPEN across a patient change
+   * — where confirming would post patient A's overrides against patient B's lines.
+   */
+  it("16a: starting the next patient clears every trace of the last one's checks", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/coverage": { status: 200, body: { coverage: 0.92, noticeEnabled: true } },
+      "POST /api/opd/visits/enc-1/rx-precheck": {
+        status: 201,
+        body: {
+          allergyMatches: [], interactions: [SEVERE_HIT], duplicates: [], notices: [],
+          unresolvedLineIndexes: [0],
+        },
+      },
+      "POST /api/opd/visits/enc-1/consult/complete": { status: 201, body: { ok: true } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.selectOptions(await screen.findByTestId("rx-formulary-0"), "m-warf");
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+
+    // Patient A's override dialog is open, holding A's hit.
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/bleeding risk/)).toBeInTheDocument();
+
+    /**
+     * The doctor moves on with the keyboard — Alt+Enter completes the consultation, and the
+     * handler is WINDOW-LEVEL, so it fires while the modal is open. That is not a contrivance to
+     * reach a blocked button: it is the reviewer's actual scenario, and it is why a stale dialog
+     * was dangerous rather than merely untidy. `complete()` calls `resetPanel()`, which is the
+     * function that used to clear the allergy state and none of 16a's.
+     */
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+
+    /**
+     * THE DIALOG IS GONE — not merely emptied of allergy matches. Before the fix `resetPanel` nulled
+     * `matches` and left `interactionHits` populated, so the dialog stayed open with patient A's hit
+     * in it while the panel moved on; confirming there would have posted A's overrides against B's
+     * lines. The panel itself closes on completion, which is why nothing below reaches for the rx
+     * tab: there is no active patient until the next one is started, and that is the point.
+     */
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByTestId("rx-notices")).toBeNull();
+    expect(screen.queryByTestId("rx-uncovered-0")).toBeNull();
+    expect(screen.queryByTestId("patient-panel")).toBeNull();
   });
 
   it("16a: a soft notice never blocks, and the uncovered-line hint stays silent until coverage says otherwise", async () => {

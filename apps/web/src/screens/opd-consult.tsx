@@ -317,6 +317,24 @@ export function OpdConsult(): React.ReactElement {
     setMatches(null);
     setReasons([]);
     setOverrideError(null);
+    /**
+     * C7 (independent review) — SEVEN PIECES OF 16a STATE OUTLIVED THE PATIENT THEY BELONGED TO.
+     *
+     * `resetPanel` cleared the shipped allergy state and none of what T6 added. Two consequences,
+     * and the second is the one that matters: patient A's soft-notice panel rendered under patient
+     * B's empty prescription form; and because the override dialog's `open` is
+     * `matches !== null || interactionHits.length > 0 || duplicateHits.length > 0`, nulling
+     * `matches` alone left the dialog OPEN across the patient change — where `confirmOverride`
+     * would post patient A's overrides with patient B's lines, clearing any of B's hits that
+     * happened to land on the same line index.
+     */
+    setInteractionHits([]);
+    setDuplicateHits([]);
+    setInteractionReasons([]);
+    setDuplicateReasons([]);
+    setNotices([]);
+    setNoticesDismissed(false);
+    setUnresolvedLines([]);
     setFollowUp("");
     setTestsOrdered(false);
     setAdmissionAdvised(false);
@@ -400,8 +418,8 @@ export function OpdConsult(): React.ReactElement {
   const postRx = async (
     rxLines: RxLineValues[],
     overrides?: AllergyOverride[],
-    interactionOverrides?: { lineIndex: number; reason: string }[],
-    duplicateOverrides?: { lineIndex: number; reason: string }[],
+    interactionOverrides?: { lineIndex: number; reason: string; saltPair: [string, string] }[],
+    duplicateOverrides?: { lineIndex: number; reason: string; moiety: string }[],
   ): Promise<void> => {
     if (active === null) return;
     setRxError(null);
@@ -514,6 +532,9 @@ export function OpdConsult(): React.ReactElement {
       }
     } catch {
       // Deliberately swallowed — see the comment above. The server is the gate.
+      // M5 — but the stale hint indexes go: pointing the amber "not in formulary" note at a row
+      // whose line has since changed is worse than showing nothing.
+      setUnresolvedLines([]);
     }
     await postRx(values.lines);
   });
@@ -537,11 +558,13 @@ export function OpdConsult(): React.ReactElement {
     const overrides: AllergyOverride[] = (matches ?? []).map((m, i) => ({
       lineIndex: m.lineIndex, substance: m.substance, reason: (reasons[i] ?? "").trim(),
     }));
+    // C5 — the override names the hit it clears, so it cannot silently clear a second one that
+    // arrived between the pre-check and the submit.
     const interactionOverrides = interactionHits.map((h, i) => ({
-      lineIndex: h.lineIndex, reason: (interactionReasons[i] ?? "").trim(),
+      lineIndex: h.lineIndex, reason: (interactionReasons[i] ?? "").trim(), saltPair: h.saltPair,
     }));
     const duplicateOverrides = duplicateHits.map((h, i) => ({
-      lineIndex: h.lineIndex, reason: (duplicateReasons[i] ?? "").trim(),
+      lineIndex: h.lineIndex, reason: (duplicateReasons[i] ?? "").trim(), moiety: h.moiety,
     }));
     await postRx(
       pendingLines.current,
@@ -824,7 +847,23 @@ export function OpdConsult(): React.ReactElement {
                       {lines.fields.map((f, i) => (
                         <div key={f.id} data-testid={`rx-row-${String(i)}`} className="grid gap-2 md:grid-cols-3">
                           <div className="space-y-1">
-                            <TextField name={`lines.${String(i)}.drug`} label={t("opdConsult.drug")} />
+                            {/*
+                              C1 (independent review) — TYPING OVER A PICKED NAME DROPS THE ID.
+                              The schema comment claimed this ("cleared the moment the doctor
+                              types") and nothing implemented it, so a line could read "Paracetamol
+                              500" while carrying warfarin's id — and the server preferred the id.
+                              The server now cross-checks the brand name too; this is the half that
+                              keeps the two honest in the first place.
+                            */}
+                            <TextField
+                              name={`lines.${String(i)}.drug`}
+                              label={t("opdConsult.drug")}
+                              onChange={() => {
+                                if (rxForm.getValues(`lines.${i}.medicineId`) !== null) {
+                                  rxForm.setValue(`lines.${i}.medicineId`, null);
+                                }
+                              }}
+                            />
                             {/*
                               PLAN 16a T6 — the formulary picker. Free typing in the field above is
                               untouched and always legal (design law 1); picking fills the name AND

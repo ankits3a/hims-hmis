@@ -324,20 +324,35 @@ describe("opd e2e", () => {
     expect(conflict.body.detail.hits).toHaveLength(1);
     expect(conflict.body.detail.hits[0].note).toBe("bleeding risk — avoid or monitor INR closely");
 
-    // A reason too short is refused by the OPD code, not by a schema error the client cannot map.
-    // 400, not 409, and that is the SHIPPED mapping for `override_reason_required` — it is a
-    // malformed request (the reason field is too short), not a state conflict. Asserted at the
-    // status as well as the code so the two new kinds cannot silently drift from the allergy one.
+    /**
+     * TWO DIFFERENT REFUSALS, and the close review (C5) is why they are now distinguishable.
+     *
+     * An override that names no pair clears NOTHING — so the severe hit is still uncovered and the
+     * answer is `interaction_conflict`, not a complaint about the reason. That is the fail-safe
+     * direction: a client that forgets the identity sees the warning again rather than slipping an
+     * unexamined override past the gate.
+     */
+    const noIdentity = await request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/prescriptions`).set(...auth(dra.token))
+      .send({ lines, interactionOverrides: [{ lineIndex: 1, reason: "ok" }] }).expect(409);
+    expect(noIdentity.body.code).toBe("interaction_conflict");
+
+    /**
+     * With the pair named, the override MATCHES — and now the reason gate is what answers. 400, not
+     * 409, and that is the SHIPPED mapping for `override_reason_required`: a malformed request
+     * (the reason is too short), not a state conflict.
+     */
+    const saltPair = pre.body.interactions[0].saltPair as [string, string];
     const shortReason = await request(app.getHttpServer())
       .post(`/opd/visits/${encounterId}/prescriptions`).set(...auth(dra.token))
-      .send({ lines, interactionOverrides: [{ lineIndex: 1, reason: "ok" }] }).expect(400);
+      .send({ lines, interactionOverrides: [{ lineIndex: 1, reason: "ok", saltPair }] }).expect(400);
     expect(shortReason.body.code).toBe("override_reason_required");
 
     const issued = await request(app.getHttpServer())
       .post(`/opd/visits/${encounterId}/prescriptions`).set(...auth(dra.token))
       .send({
         lines,
-        interactionOverrides: [{ lineIndex: 1, reason: "cardiology advised dual therapy, INR weekly" }],
+        interactionOverrides: [{ lineIndex: 1, reason: "cardiology advised dual therapy, INR weekly", saltPair }],
       }).expect(201);
     expect(issued.body.interactionOverrideCount).toBe(1);
     expect(issued.body.allergyOverrideCount).toBe(0);

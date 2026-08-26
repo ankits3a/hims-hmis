@@ -1,0 +1,2 @@
+ALTER TABLE "opd_prescriptions" ADD COLUMN "interaction_overrides" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "opd_prescriptions" ADD COLUMN "duplicate_overrides" jsonb DEFAULT '[]'::jsonb NOT NULL;

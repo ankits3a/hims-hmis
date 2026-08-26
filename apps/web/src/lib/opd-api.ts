@@ -131,6 +131,8 @@ export type WireHitAgainst =
 
 export type WireInteractionHit = {
   severity: "severe" | "moderate"; lineIndex: number; note: string; against: WireHitAgainst;
+  /** The interacting pair. The client echoes it on an override so the server knows WHAT was cleared (C5). */
+  saltPair: [string, string];
 };
 
 export type WireDuplicateHit = {

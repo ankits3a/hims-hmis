@@ -6,7 +6,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
 import { opdDepartments, opdEncounters, opdPrescriptions, opdVitals } from "../../kernel/db/schema";
 import { getPatientSummaries, listAllergies } from "../patients";
-import { listInteractionsAmong, resolveDrugTexts, resolveMedicines } from "../formulary";
+import { listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines } from "../formulary";
 import { checkDuplicateSalt, checkInteractions, matchAllergiesSaltAware } from "./rx-checks";
 import { loadOpdConfig } from "./config";
 import { requireTreatingDoctor } from "./consultation";
@@ -54,8 +54,52 @@ export function buildRxQrPayload(cfg: AppConfig, p: { id: string; encounterId: s
   return `${body}.${hmacSign(cfg.secretKey, body)}`;
 }
 
-/** A hard warning cleared by a reason, for a kind of hit other than an allergy (DD3). */
-export type RxOverride = { lineIndex: number; reason: string };
+/**
+ * A hard warning cleared by a reason, for a kind of hit other than an allergy (DD3).
+ *
+ * ═══ C5 (independent review): AN OVERRIDE NAMES WHAT IT CLEARS ═══
+ *
+ * It used to carry `lineIndex` alone, so one override cleared EVERY hard hit on that line —
+ * including hits the doctor never saw. The sequence is ordinary, not exotic: the pre-check shows
+ * one severe hit on line 2; while the doctor types a reason, another prescriber puts the patient on
+ * a second interacting drug; the issue-time re-run (design law 2, working exactly as intended)
+ * finds a SECOND severe hit on line 2 — and the single override silently cleared it. One
+ * click-through was recorded for two, and the second warning was never shown to anybody.
+ *
+ * `saltPair` (interactions) and `moiety` (duplicates) are the hit's identity. An override that
+ * names neither clears NOTHING: the issue is refused again with the hits attached, which is the
+ * fail-safe direction — a doctor sees a warning twice rather than never.
+ */
+export type RxOverride = {
+  lineIndex: number;
+  reason: string;
+  /** The interacting pair this reason is about, in either order. */
+  saltPair?: [string, string];
+  /** The repeated moiety this reason is about. */
+  moiety?: string;
+};
+
+/** Same pair, whichever order either side names it in. */
+function samePair(a: readonly [string, string], b: readonly [string, string]): boolean {
+  return (a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]);
+}
+
+function interactionCovered(hit: InteractionHit, overrides: RxOverride[]): boolean {
+  return overrides.some((o) => o.lineIndex === hit.lineIndex
+    && o.saltPair !== undefined && samePair(o.saltPair, hit.saltPair));
+}
+
+function duplicateCovered(hit: DuplicateHit, overrides: RxOverride[]): boolean {
+  return overrides.some((o) => o.lineIndex === hit.lineIndex && o.moiety === hit.moiety);
+}
+
+/**
+ * The allergy path had the same hole and the field to close it: `AllergyOverride` has always
+ * carried `substance`, and the match ignored it. Three kinds, one rule now.
+ */
+function allergyCovered(match: AllergyMatch, overrides: AllergyOverride[]): boolean {
+  return overrides.some((o) => o.lineIndex === match.lineIndex && o.substance === match.substance);
+}
 
 /** Soft hits: data the screen shows, never a refusal and never override-gated (DD3). */
 export type RxNotice = InteractionHit | DuplicateHit;
@@ -100,30 +144,85 @@ export async function runRxChecks(
   now: Date,
   opts: { excludeEncounterId?: string } = {},
 ): Promise<RxCheckOutcome> {
-  // ── 1. resolve THIS prescription's lines ──
-  const idCarrying = lines
+  // ── 1. THE PRIOR ROWS FIRST, so this prescription and the priors resolve through ONE resolver ──
+  //
+  // C2 (independent review, CRITICAL): the priors used to resolve by TEXT ONLY, while this
+  // prescription resolved id-first. A prior line carrying a `medicineId` whose free text is not
+  // exactly a brand name — "Warf 5mg OD", which is what a doctor types after picking — therefore
+  // resolved to NOTHING, and the check against what the patient is already taking silently did not
+  // fire. Same blindness the moment a brand is renamed: every historical line's text stops
+  // resolving while its id still would.
+  const priorRows = await db
+    .select({
+      id: opdPrescriptions.id, encounterId: opdPrescriptions.encounterId,
+      issuedAt: opdPrescriptions.issuedAt, lines: opdPrescriptions.lines,
+    })
+    .from(opdPrescriptions)
+    .where(and(eq(opdPrescriptions.patientId, patientId), eq(opdPrescriptions.status, "active")));
+  const priorLines = priorRows
+    .filter((row) => row.encounterId !== opts.excludeEncounterId)
+    .map((row) => ({ ...row, rx: row.lines as RxLine[] }));
+
+  const everyLine: RxLine[] = [...lines, ...priorLines.flatMap((row) => row.rx)];
+  const idCarrying = everyLine
     .map((line) => (typeof line.medicineId === "string" && line.medicineId !== "" ? line.medicineId : null))
     .filter((id): id is string => id !== null);
   const byId = idCarrying.length > 0 ? await resolveMedicines(db, idCarrying) : new Map<string, ResolvedDrug>();
-
-  // A line whose stored `medicineId` no longer resolves (withdrawn, deactivated) falls back to its
-  // TEXT rather than to nothing: the text path is exact too, so this can only restore protection,
-  // never invent it. Spec §1.2's "demotes the line to unresolved" is honoured for the id itself.
-  const needText = lines.filter((line) => {
-    const id = typeof line.medicineId === "string" ? line.medicineId : null;
-    return id === null || id === "" || !byId.has(id);
-  });
-  const byText = needText.length > 0
-    ? await resolveDrugTexts(db, needText.map((line) => line.drug))
+  const byText = everyLine.length > 0
+    ? await resolveDrugTexts(db, everyLine.map((line) => line.drug))
     : new Map<string, ResolvedDrug | null>();
 
+  /**
+   * ONE RESOLVER FOR EVERY LINE THIS FUNCTION LOOKS AT — AND IT UNIONS THE TWO ANSWERS.
+   *
+   * C1 and C2 (independent review, both CRITICAL) are the same defect seen from opposite ends, and
+   * the obvious fix for each BREAKS the other:
+   *
+   *   C1 — a stale `medicineId` used to speak for a line whose text had been typed over, so the
+   *        checks reasoned about a drug the prescription does not name.
+   *   C2 — priors resolved by TEXT ONLY, so `"Warf 5mg OD"` — a picked line a doctor then annotated
+   *        — resolved to nothing and the interaction against it never fired.
+   *
+   * "Trust the id" loses C1. "Trust the text when they disagree" loses C2, because an annotated
+   * pick is EXACTLY a line whose text no longer equals its brand. Choosing either one picks which
+   * patient to fail.
+   *
+   * So neither is dropped: **the moieties are the UNION of what the id resolves to and what the
+   * text resolves to.** A check that over-warns costs one reasoned override; a check that misses
+   * costs a patient, and every failure mode above is a MISS. Where the two disagree the line might
+   * be either drug, and the honest answer is to check both.
+   *
+   * AND THE LINE IS STORED WITH BOTH, unchanged. An earlier attempt at this fix stripped a
+   * disagreeing id before writing the row — which deleted the evidence C2 is about: a doctor who
+   * picks "Warf 5" and types "Warf 5mg OD" has annotated a dose, not changed the drug, and the
+   * pick is the more reliable of the two facts. What the prescriber SELECTED and what they WROTE
+   * are both facts; a disagreement between them is a data-quality signal, never a licence to
+   * discard one. The checks read both, the record keeps both.
+   */
   const resolutionOf = (line: RxLine): ResolvedDrug | null => {
-    const id = typeof line.medicineId === "string" ? line.medicineId : null;
-    if (id !== null && id !== "") {
-      const resolved = byId.get(id);
-      if (resolved !== undefined) return resolved;
+    const id = typeof line.medicineId === "string" && line.medicineId !== "" ? line.medicineId : null;
+    const fromId = id === null ? undefined : byId.get(id);
+    const fromText = byText.get(line.drug) ?? null;
+    if (fromId === undefined) return fromText;
+    if (fromText === null) return fromId;
+
+    const salts = [...fromId.salts];
+    for (const salt of fromText.salts) {
+      if (!salts.some((s) => s.saltId === salt.saltId)) salts.push(salt);
     }
-    return byText.get(line.drug) ?? null;
+    const textNamesTheId = fromId.brandName !== null
+      && normalizeDrugName(line.drug) === normalizeDrugName(fromId.brandName);
+    return {
+      // The identity follows the TEXT when the two disagree: it is what the patient will be handed.
+      medicineId: textNamesTheId ? fromId.medicineId : fromText.medicineId,
+      brandName: textNamesTheId ? fromId.brandName : fromText.brandName,
+      // A route disagreement resolves to `systemic`, because `routeSuppresses` only ever SUPPRESSES
+      // on `topical` — guessing topical would silence a severe pair on a guess.
+      routeClass: fromId.routeClass === "systemic" || fromText.routeClass === "systemic"
+        ? "systemic"
+        : fromId.routeClass ?? fromText.routeClass,
+      salts,
+    };
   };
   const checkLines: RxCheckLine[] = lines.map((line, lineIndex) => ({
     lineIndex, drug: line.drug, resolution: resolutionOf(line),
@@ -140,23 +239,9 @@ export async function runRxChecks(
   }));
 
   // ── 3. what the patient is already taking (DD4: resolved LIVE, against today's formulary) ──
-  const priorRows = await db
-    .select({
-      id: opdPrescriptions.id, encounterId: opdPrescriptions.encounterId,
-      issuedAt: opdPrescriptions.issuedAt, lines: opdPrescriptions.lines,
-    })
-    .from(opdPrescriptions)
-    .where(and(eq(opdPrescriptions.patientId, patientId), eq(opdPrescriptions.status, "active")));
-  const priorLines = priorRows
-    .filter((row) => row.encounterId !== opts.excludeEncounterId)
-    .map((row) => ({ ...row, rx: row.lines as RxLine[] }));
-  const priorTexts = priorLines.flatMap((row) => row.rx.map((line) => line.drug));
-  const priorResolutions = priorTexts.length > 0
-    ? await resolveDrugTexts(db, priorTexts)
-    : new Map<string, ResolvedDrug | null>();
   const priors: PriorRx[] = priorLines.map((row) => ({
     prescriptionId: row.id, issuedAt: row.issuedAt,
-    lines: row.rx.map((line) => ({ line, resolution: priorResolutions.get(line.drug) ?? null })),
+    lines: row.rx.map((line) => ({ line, resolution: resolutionOf(line) })),
   }));
 
   // ── 4. the pairs that could possibly apply, and then the three checks ──
@@ -170,7 +255,15 @@ export async function runRxChecks(
     allergyMatches: matchAllergiesSaltAware(checkLines, allergies),
     interactions: checkInteractions(checkLines, priors, pairs, now),
     duplicates: checkDuplicateSalt(checkLines, priors, now),
-    unresolvedLineIndexes: checkLines.filter((l) => l.resolution === null).map((l) => l.lineIndex),
+    /**
+     * A resolution with NO moieties is not a checked line — it is a line about which nothing can be
+     * said, and reporting it as covered is how the coverage figure and the safety path came to
+     * disagree about the same line in opposite directions (C3). `null` and "resolved to nothing"
+     * are the same answer to the only question this list asks.
+     */
+    unresolvedLineIndexes: checkLines
+      .filter((l) => l.resolution === null || l.resolution.salts.length === 0)
+      .map((l) => l.lineIndex),
   };
 }
 
@@ -261,11 +354,11 @@ export async function issuePrescription(
 
   const matches = checks.allergyMatches;
   const overrides = input.overrides ?? [];
-  const unresolved = matches.filter((m) => !overrides.some((o) => o.lineIndex === m.lineIndex));
+  const unresolved = matches.filter((m) => !allergyCovered(m, overrides));
   if (unresolved.length > 0) {
     throw new OpdError("allergy_conflict", `${unresolved.length} line(s) conflict with an active allergy`, { matches });
   }
-  const matchedOverrides = overrides.filter((o) => matches.some((m) => m.lineIndex === o.lineIndex));
+  const matchedOverrides = overrides.filter((o) => matches.some((m) => allergyCovered(m, [o])));
 
   /**
    * DD3 — the two new hard warnings, in `allergy_conflict`'s exact grammar: only SEVERE
@@ -277,7 +370,7 @@ export async function issuePrescription(
   const interactionOverrides = input.interactionOverrides ?? [];
   const duplicateOverrides = input.duplicateOverrides ?? [];
 
-  const uncoveredInteractions = severeHits.filter((h) => !interactionOverrides.some((o) => o.lineIndex === h.lineIndex));
+  const uncoveredInteractions = severeHits.filter((h) => !interactionCovered(h, interactionOverrides));
   if (uncoveredInteractions.length > 0) {
     throw new OpdError(
       "interaction_conflict",
@@ -285,7 +378,7 @@ export async function issuePrescription(
       { hits: severeHits },
     );
   }
-  const uncoveredDuplicates = hardDuplicates.filter((h) => !duplicateOverrides.some((o) => o.lineIndex === h.lineIndex));
+  const uncoveredDuplicates = hardDuplicates.filter((h) => !duplicateCovered(h, duplicateOverrides));
   if (uncoveredDuplicates.length > 0) {
     throw new OpdError(
       "duplicate_salt_conflict",
@@ -294,8 +387,8 @@ export async function issuePrescription(
     );
   }
 
-  const matchedInteractionOverrides = interactionOverrides.filter((o) => severeHits.some((h) => h.lineIndex === o.lineIndex));
-  const matchedDuplicateOverrides = duplicateOverrides.filter((o) => hardDuplicates.some((h) => h.lineIndex === o.lineIndex));
+  const matchedInteractionOverrides = interactionOverrides.filter((o) => severeHits.some((h) => interactionCovered(h, [o])));
+  const matchedDuplicateOverrides = duplicateOverrides.filter((o) => hardDuplicates.some((h) => duplicateCovered(h, [o])));
 
   // ONE reason gate for all three kinds, reusing the shipped constant and the shipped code (DD3).
   for (const override of [...matchedOverrides, ...matchedInteractionOverrides, ...matchedDuplicateOverrides]) {
@@ -331,7 +424,12 @@ export async function issuePrescription(
     });
     await tx.insert(opdPrescriptions).values({
       id: prescriptionId, encounterId, patientId: encounter.patientId, doctorId: doctor.id, version,
-      lines, document, allergyOverrides: matchedOverrides, status: "active", issuedBy: actor.id, issuedAt: now,
+      lines, document, allergyOverrides: matchedOverrides,
+      // C4 — the justification for prescribing through a severe interaction is a medico-legal
+      // record, not a transient. It used to be validated, counted, and dropped.
+      interactionOverrides: matchedInteractionOverrides,
+      duplicateOverrides: matchedDuplicateOverrides,
+      status: "active", issuedBy: actor.id, issuedAt: now,
     });
     await appendEvent(tx, prescriptionIssued.make({
       actor, patientId: encounter.patientId, encounterId, correlationId: encounter.workflowInstanceId,

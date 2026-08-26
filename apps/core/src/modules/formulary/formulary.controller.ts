@@ -81,6 +81,8 @@ const medicinePatchBody = z.object({
   brandName: name.optional(), form: z.string().min(1).max(100).optional(), routeClass: routeClass.optional(),
   strengthLabel: z.string().min(1).max(100).nullish(), scheduleFlag: scheduleFlag.nullish(),
   active: z.boolean().optional(), salts: composition.min(1).optional(),
+  // C6 — the same acknowledgement the create path takes. DD8's gate has two doors.
+  acknowledgeIntraFdc: z.boolean().optional(),
 });
 const interactionCreateBody = z.object({
   saltAId: z.string().min(1), saltBId: z.string().min(1), severity,

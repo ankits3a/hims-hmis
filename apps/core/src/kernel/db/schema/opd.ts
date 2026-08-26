@@ -301,6 +301,17 @@ export const opdPrescriptions = pgTable(
     lines: jsonb("lines").notNull(), // RxLine[]
     document: jsonb("document").notNull(), // FHIR Bundle
     allergyOverrides: jsonb("allergy_overrides").notNull(), // AllergyOverride[] — [] when none
+    /**
+     * PLAN 16a close remediation (independent review C4) — THE REASONS ARE THE RECORD.
+     *
+     * A doctor who prescribes through a SEVERE interaction is required to type why. Until these two
+     * columns existed that justification lived only in the request body: length-checked, counted on
+     * the KPI event, and then dropped. There was no medico-legal record of the decision and no way
+     * to recover it — while `allergy_overrides` beside it kept exactly that record for the milder
+     * warning. Both default to `[]` for every row written before this migration.
+     */
+    interactionOverrides: jsonb("interaction_overrides").notNull().default(sql`'[]'::jsonb`),
+    duplicateOverrides: jsonb("duplicate_overrides").notNull().default(sql`'[]'::jsonb`),
     status: text("status").notNull().default("active"), // 'active' | 'superseded'
     issuedBy: text("issued_by").notNull(),
     issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),

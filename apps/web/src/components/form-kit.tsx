@@ -62,6 +62,7 @@ export function TextField({
   autoFocus,
   placeholder,
   className,
+  onChange,
 }: {
   name: string;
   label: string;
@@ -69,6 +70,14 @@ export function TextField({
   autoFocus?: boolean;
   placeholder?: string;
   className?: string;
+  /**
+   * Runs BESIDE the form's own change handler, never instead of it — this is react-hook-form's
+   * `register(name, { onChange })` affordance, exposed rather than re-implemented. Added by Plan
+   * 16a's close remediation (C1): a field whose value invalidates a sibling field needs to say so
+   * at the moment it changes, and the alternative was a `watch` subscription that re-renders the
+   * whole form on every keystroke.
+   */
+  onChange?: (event: React.ChangeEvent<HTMLInputElement>) => void;
 }): React.ReactElement {
   const { register, formState } = useFormContext();
   const error = fieldError(formState.errors as Record<string, unknown>, name);
@@ -82,7 +91,7 @@ export function TextField({
         autoFocus={autoFocus}
         placeholder={placeholder}
         className="w-full rounded border px-2 py-1"
-        {...register(name)}
+        {...register(name, onChange === undefined ? {} : { onChange })}
       />
       {error !== undefined && <p role="alert" className="text-sm text-red-600">{error}</p>}
     </div>
