@@ -273,19 +273,36 @@ describe("the commission ledger: DD12's delta-to-target on real invoices", () =>
     await drain(state);
     expect(await deltasOf(partner.counterpartyId)).toEqual([25_000]); // percentAmount(250 000, 1 000)
 
-    // Two of five consultations credited (40%). The money has NOT left the drawer yet, so the
-    // hospital still holds 250 000 of the patient's cash and the target does not move.
+    /**
+     * PLAN 09a / DD1 — AMENDED TO THE OWNER'S RULING, 2026-08-26. The old expectation here was
+     * `[25_000]`, on the reading that the hospital "still holds 250 000 of the patient's cash so
+     * the target does not move". That reading is CASH HELD, and it is defensible for THIS
+     * all-eligible invoice and false for a mixed one — where it let a credit note on an INELIGIBLE
+     * line raise an eligible line's commission (Plan 09 review, MAJOR 1).
+     *
+     * The ruling is SERVICE DELIVERED. Two of five consultations were not given, so 40% of the
+     * service is gone the moment the credit note is issued, whatever the drawer says.
+     * Hand-computed: eligibleBase 250 000 − 100 000 = 150 000 · settleable 250 000 − 100 000 =
+     * 150 000 · collected still 250 000 → scaled = 150 000 × 250 000 / 150 000 = 250 000, CLAMPED
+     * to eligibleBase 150 000 → target 15 000. Σ was 25 000, so the delta is −10 000, and it lands
+     * HERE rather than waiting for the refund to be paid.
+     */
     const note1 = await issueCreditNote(db, cashier.actor, {
       kind: "refund", invoiceId: issued.invoiceId, reason: "two consultations were not given",
       lines: [{ invoiceLineId: lineId, qty: 2 }],
     }, NOW);
     await drain(state);
-    expect(await deltasOf(partner.counterpartyId)).toEqual([25_000]);
+    expect(await deltasOf(partner.counterpartyId)).toEqual([25_000, -10_000]);
+    expect(await payableTotalPaise(db, partner.counterpartyId)).toBe(15_000);
 
-    // ... and now it does leave. refunded 100 000 → collected 150 000 = settleable 150 000 →
-    // targetBase 150 000 → target 15 000, which is 60% of 25 000: exactly the share of the sale
-    // that survived. A "reverse the whole accrual on any refund" implementation would append
-    // −25 000 here and leave the ledger at zero.
+    /**
+     * PAYING THE REFUND ADDS NOTHING, and that is the clamp's real proof. collected falls to
+     * 150 000 and settleable is already 150 000, so the target is STILL 15 000 — the ledger has
+     * already told the truth and there is no second correction to make. Under the old unclamped
+     * code this is where the −10 000 appeared; under the ruling the money moved when the SERVICE
+     * did. 15 000 is 60% of 25 000: exactly the share of the sale that survived, either way.
+     * A "reverse the whole accrual on any refund" implementation still appends −25 000 here.
+     */
     await refundCreditNote(note1.creditNoteId, 100_000, NOW);
     await drain(state);
     expect(await deltasOf(partner.counterpartyId)).toEqual([25_000, -10_000]);

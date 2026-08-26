@@ -125,7 +125,7 @@ Sequential; each is its own commit, its own `pnpm verify` before push, and CI by
 | | task | tier | commit |
 |---|---|---|---|
 | T1 | DD1 — clamp the ratio; amend F8 to the ruling; **golden fixture: `collected > settleable` on a MIXED invoice** | CRITICAL | `fix(core): the accrual ratio is clamped — a credit on an ineligible line no longer raises an eligible line's commission (09a T1)` |
-| T2 | DD2 — re-key the subject; migration `0026` | CRITICAL | `fix(core): one accrual subject per invoice — a backdated agreement version no longer re-accrues the whole bill (09a T2)` |
+| T2 | DD2 — re-key the subject; migration **at the next free number, read at kickoff** — Plan 16a executes in parallel and takes `0026` (AGENT-RULES §6) | CRITICAL | `fix(core): one accrual subject per invoice — a backdated agreement version no longer re-accrues the whole bill (09a T2)` |
 | T3 | DD3 — the IST-day predicate; **fixture: a validity boundary inside the 05:30 IST window** | CRITICAL | `fix(core): the ledger and the counter now agree about what day it is (09a T3)` |
 | T4 | DD4 — `FOR UPDATE` + a contention test that asserts the block | CRITICAL | `fix(core): the receivable lane gets the serializer the payable lane already had (09a T4)` |
 
@@ -133,7 +133,7 @@ Sequential; each is its own commit, its own `pnpm verify` before push, and CI by
 
 | # | assertion | mutant | discriminating input |
 |---|---|---|---|
-| A1 | the ratio is clamped at the live eligible base | remove the `min` | a settled invoice with a credit note on an **ineligible** line — 45,000 correct, 63,543 unclamped |
+| A1 | the ratio is clamped at the live eligible base | remove the `min` | **BUILT AND DIED.** `p10` through a scratch copy of `accrual.ts` with only the clamp removed: `Expected: 100000 / Received: 156000` — the unclamped base becomes the whole invoice, pharmacy included |
 | A2 | the clamp does not change the ordinary regime | clamp to `settleable` instead of `eligibleBase` | any invoice with `collected < settleable` — the partial-payment fixtures must be untouched |
 | A3 | one subject per invoice regardless of agreement version | restore `agreement_id` to the unique key | an invoice accrued under v1, then a **backdated** v2 |
 | A4 | validity is an IST calendar day on BOTH sides | restore the raw-instant comparison | a card expiring `T00:00:00Z`, invoice at `T06:00:00Z` — same IST day, and the counter honours it |
@@ -149,7 +149,51 @@ assertion (rule 21). A mutant that dies at typecheck or by timeout is not a kill
 ### Task ledger
 | task | commit | verdict |
 |---|---|---|
+| phase document | `0f747fe` | ~2,414 tokens against Plan 09's ~37,000 |
+| T1 — the clamp | _pending push_ | **A1 DIED**; 18/18 accrual, 14/14 golden |
 | _appended as each lands_ | | |
+
+### Findings
+
+- **F1 — the hand computation was exact, which is the point of doing it first.** DD1's clamp changes
+  what F8 *should* assert, so the amended values were computed by hand from the ruling
+  (eligibleBase 250 000 − 100 000 = 150 000 · settleable 150 000 · collected still 250 000 → scaled
+  250 000, clamped to 150 000 → target 15 000, Σ was 25 000 → delta −10 000) and the suite then
+  **confirmed** them, 18/18. Writing the assertion to whatever the code happened to emit would have
+  been fitting the test to the code; the ruling decides, the test records.
+- **F3 — A CONSEQUENCE OF THE RULING NOBODY ANTICIPATED, AND IT IS FOR THE OWNER TO CONFIRM.**
+  **Under DD1's clamp, `payment.refunded` can never reduce the accrual.** The reason is a BILLING
+  guard, not an accrual one: `issueRefundVoucher` caps a refund at
+  `min(received, refundableSurplus)` — the surplus of cash held over what is still owed
+  (`refunds.ts:466`). So after **any legal refund** `collected ≥ settleable`, the ratio is ≥ 1, and
+  the clamp has already pinned the target at `eligibleBase`. Every scenario was tried: fully paid,
+  partly paid, mixed-category, larger invoice. **There is no legal refund that drives `collected`
+  below `settleable`.**
+  **It is coherent, and it follows directly from what was ruled:** a credit note is the SERVICE
+  event and a refund is the CASH event, and the ruling says commission follows service. The
+  commission moves when the consultation is withdrawn, not when the money leaves the drawer.
+  **But it is a behavioural change worth stating plainly: under this ruling a REFUND never reduces
+  a partner's commission.** If that is not what the owner meant, DD1 needs revisiting — this
+  session did not treat the consequence as ratification.
+- **F4 — a second shipped test encoded the cash-held reading, and rewriting it honestly cost more
+  than the code did.** `consumer.test.ts`'s refund leg asserted a `−5 000` row on
+  `payment.refunded`. Under the clamp that row cannot exist (F3), so the test's own premise — *"the
+  accrual comes back down"* — describes behaviour that is gone. **The tempting fix was to change the
+  numbers and keep the name.** That would have left a test whose assertion ("no new row") a broken
+  resolver satisfies equally well — §3.14 exactly. It is renamed to what it now proves, and
+  **§2.67's rule is honoured in the file: the class of mutant it CANNOT kill is named, and no claim
+  is made that it would.**
+- **F5 — a neighbouring test looked like MAJOR 1 and is correct.** *"a note on an INELIGIBLE line
+  moves the accrual UP"* passes unchanged, because there `collected` 78 000 < `settleable` 100 000 —
+  the ratio is 0.78 and never reaches the clamp. Crediting the pharmacy legitimately raises the
+  consultation's commission, since the same cash now covers a larger share of eligible service.
+  **The clamp bites only when the hospital holds MORE than is owed.** Recorded so the next reader
+  does not "fix" a correct test on the strength of its alarming name.
+- **F2 — the F8 leg's old comment was not wrong, it was under-scoped**, and that is worth keeping.
+  It read *"the hospital still holds 250 000 of the patient's cash so the target does not move"* —
+  a coherent reading (CASH HELD), correct for the all-eligible invoice it used, and false the moment
+  a line outside `eligibleCategories` is credited. **A comment defending an answer is not evidence
+  the answer generalises**, and this one had survived a gate and forty mutants.
 
 ### Findings
 

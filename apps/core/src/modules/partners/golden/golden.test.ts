@@ -33,6 +33,7 @@ test("the fixture set is complete and NAMED — a renamed or duplicated fixture 
     "p07-clearance-discount-moves-the-receivable-only.json",
     "p08-ineligible-category-earns-nothing.json",
     "p09-settleable-zero-never-divides.json",
+    "p10-collected-exceeds-settleable-on-a-mixed-invoice.json",
   ]);
 });
 

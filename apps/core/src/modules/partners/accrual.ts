@@ -20,7 +20,8 @@ import type { Db, Tx } from "../../kernel/db/client";
  *     eligibleBase = Σ liveBase(L)  for L.category ∈ terms.eligibleCategories
  *     settleable   = max(netPayablePaise − creditedPaise, 0)
  *     collected    = max(allocatedPaise − refundedPaise, 0)
- *     targetBase   = settleable === 0 ? 0 : divHalfUp(eligibleBase × collected, settleable)
+ *     targetBase   = min(settleable === 0 ? 0 : divHalfUp(eligibleBase × collected, settleable),
+ *                        eligibleBase)          <- the clamp is DD1; see below for why
  *     target       = percentAmount(targetBase, payableRateBps)
  *     delta        = target − Σ(rows already appended for this subject)
  *
@@ -92,8 +93,30 @@ export function accrualBasis(view: InvoiceAccrualView, terms: Pick<AccrualTerms,
   if (view.enteredInError) {
     return { eligibleBasePaise, settleablePaise, collectedPaise, targetBasePaise: 0, targetPaise: 0 };
   }
-  const targetBasePaise =
+  /**
+   * PLAN 09a / DD1 — THE CLAMP, AND IT IS A RULING RATHER THAN A ROUNDING FIX.
+   *
+   * `collected > settleable` is ordinary, not exotic: a credit note moves `settleable` IMMEDIATELY
+   * while `collected` does not move until a refund voucher is PAID. Unclamped, the ratio exceeds 1
+   * and the base silently becomes the WHOLE invoice — so a credit note on a line the agreement pays
+   * NOTHING on raised an unrelated line's commission from 10 000 to 15 600, and the pure probe
+   * reached 5x the live eligible base. Plan 09's independent review, MAJOR 1.
+   *
+   * WHY forty mutants missed it: all nine of Plan 09's golden fixtures sat at
+   * `collected == settleable`, the one regime its spike had measured. A mutant tests the
+   * implementation against the fixture; nothing tested the fixture against the input space
+   * (EXECUTION-LESSONS §2.93). The fixture this task adds is the fix that matters.
+   *
+   * THE CLAMP MEANS SERVICE DELIVERED, NOT CASH HELD — owner ruling 2026-08-26. Commission is owed
+   * on what the hospital actually delivered and can still be paid for, so crediting an ineligible
+   * line can never raise an eligible line's commission and the base means what the agreement's
+   * `eligibleCategories` say it means. It is the conservative direction for a trust hospital and
+   * the only one explainable to a partner during reconciliation without reference to the hospital's
+   * cash position.
+   */
+  const scaledBasePaise =
     settleablePaise === 0 ? 0 : divHalfUp(eligibleBasePaise * collectedPaise, settleablePaise);
+  const targetBasePaise = Math.min(scaledBasePaise, eligibleBasePaise);
   return {
     eligibleBasePaise,
     settleablePaise,

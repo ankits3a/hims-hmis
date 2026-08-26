@@ -275,21 +275,50 @@ describe("the accrual consumer: DD7's registration, its flag, and its cursor", (
 
   // ── `payment.refunded` carries no invoice, and the two shapes that follow from that ──────────
 
-  it("`payment.refunded` resolves its invoice through `refund_vouchers`, and the accrual comes back down", async () => {
+  /**
+   * PLAN 09a / DD1 — RENAMED AND RE-SCOPED, BECAUSE THE RULING REMOVED WHAT THIS USED TO PROVE.
+   *
+   * It was `… and the accrual comes back down`, asserting a −5 000 row on `payment.refunded`.
+   * Under the clamp that row CANNOT EXIST, and the reason is a billing guard rather than an
+   * accrual one: `issueRefundVoucher` caps a refund at `min(received, refundableSurplus)`, the
+   * surplus of cash held over what is still owed. So after ANY legal refund `collected >= settleable`,
+   * the ratio is >= 1, and the clamp has already pinned the target at `eligibleBase`. **A refund
+   * moves cash, and under SERVICE DELIVERED the commission followed the SERVICE when the credit
+   * note was issued.** That is the owner's ruling working, not a gap in it.
+   *
+   * WHAT THIS STILL PROVES, and it is the reason the test survives: `payment.refunded` carries
+   * `{voucherId, patientId, amountPaise, method}` and NO invoice, so the consumer must read
+   * `refund_vouchers.invoice_id` and RECOMPUTE — and a recomputation that lands on the same number
+   * must append nothing (`appendAccrualDelta` writes nothing when the delta is zero).
+   *
+   * §2.67 — WHAT THIS DOES NOT DISCRIMINATE, said plainly rather than implied. A consumer that
+   * failed to resolve the voucher and SKIPPED would also append nothing, so this assertion cannot
+   * separate the two. The resolution itself is pinned by the ADVANCE-refund test below (an
+   * unresolvable voucher is skipped rather than erroring) and by the shipped code path; **I have
+   * not built a mutant that removes the resolution, and I make no claim that this test would kill
+   * one.** Restoring a discriminating shape needs a scenario where a refund can drive `collected`
+   * below `settleable`, and the billing cap above means no such scenario exists today.
+   */
+  it("`payment.refunded` is resolved through `refund_vouchers` and correctly appends NOTHING — the credit note already moved it", async () => {
     process.env[FLAG] = "true";
     const invoiceId = await paidConsultation(2);
     const lineId = (await getInvoice(db, invoiceId))!.lines[0]!.id;
     await cycle();
     expect(await payableTotalPaise(db, counterpartyId)).toBe(10_000);
 
-    // The note alone moves NOTHING: the hospital still holds all 100 000 of the patient's money,
-    // and eligibleBase and settleable shrink by the same 50 000, so the ratio is unchanged.
+    /**
+     * ONE OF TWO CONSULTATIONS WAS NOT GIVEN, so half the service is gone the moment the note is
+     * issued — DD1's ruling, and the old comment here ("the note alone moves NOTHING … the ratio
+     * is unchanged") was the CASH-HELD reading whose unchanged ratio of 2.0 was the defect itself.
+     * eligibleBase 100 000 - 50 000 = 50 000 · settleable 100 000 - 50 000 = 50 000 · collected
+     * still 100 000 -> scaled 100 000, CLAMPED to 50 000 -> target 5 000, delta -5 000.
+     */
     const note = await issueCreditNote(db, cashier.actor, {
       kind: "refund", invoiceId, reason: "one consultation was not given",
       lines: [{ invoiceLineId: lineId, qty: 1 }],
     }, NOW);
     await cycle();
-    expect(await payableTotalPaise(db, counterpartyId)).toBe(10_000);
+    expect(await payableTotalPaise(db, counterpartyId)).toBe(5_000);
 
     const asked = await requestRefund(db, cashier.actor, {
       kind: "invoice_refund", creditNoteId: note.creditNoteId, amountPaise: 50_000,
@@ -303,19 +332,21 @@ describe("the accrual consumer: DD7's registration, its flag, and its cursor", (
     }, NOW);
     // ISSUED is not PAID — the money has not left the drawer.
     await cycle();
-    expect(await payableTotalPaise(db, counterpartyId)).toBe(10_000);
+    expect(await payableTotalPaise(db, counterpartyId)).toBe(5_000);
 
     await payRefundVoucher(db, cashier.actor, { voucherId: voucher.voucherId, ...PAYEE }, NOW);
     await cycle();
-    // `payment.refunded` carries {voucherId, patientId, amountPaise, method} and NO invoice, so the
-    // consumer reads `refund_vouchers.invoice_id` for it. collected 50 000 = settleable 50 000 →
-    // targetBase = eligibleBase = 50 000 → target 5 000.
+    /**
+     * collected 100 000 - 50 000 = 50 000 · settleable 50 000 · eligibleBase 50 000 -> scaled
+     * 50 000, target 5 000 — the number it already was. TWO rows, not three.
+     */
     expect((await accrualLedger(db, { counterpartyId })).map((r) => [r.basisEventName, r.amountPaise])).toEqual([
       ["payment.received", 10_000],
-      ["payment.refunded", -5_000],
+      ["credit_note.issued", -5_000],
     ]);
     expect(await payableTotalPaise(db, counterpartyId)).toBe(5_000);
   });
+
 
   it("an ADVANCE refund names no invoice at all, and is a fact the consumer skips rather than an error", async () => {
     process.env[FLAG] = "true";

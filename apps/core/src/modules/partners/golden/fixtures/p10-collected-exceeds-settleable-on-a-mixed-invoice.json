@@ -1,0 +1,28 @@
+{
+  "name": "collected > settleable on a MIXED invoice: a credit on the INELIGIBLE line must not raise the eligible line's commission",
+  "specRefs": ["09a-DD1", "MAJOR-1", "2.93"],
+  "terms": { "payableRateBps": 1000, "eligibleCategories": ["consultation"] },
+  "view": {
+    "invoiceId": "inv-p10",
+    "issuedAt": "2026-08-20T04:00:00.000Z",
+    "enteredInError": false,
+    "netPayablePaise": 156000,
+    "creditedPaise": 56000,
+    "allocatedPaise": 156000,
+    "refundedPaise": 0,
+    "lines": [
+      { "lineId": "l1", "category": "consultation", "taxableBasePaise": 100000, "creditedBasePaise": 0 },
+      { "lineId": "l2", "category": "pharmacy", "taxableBasePaise": 50000, "creditedBasePaise": 50000 }
+    ]
+  },
+  "priorPaise": 10000,
+  "expected": {
+    "workings": "THE REGIME NINE FIXTURES AND FORTY MUTANTS NEVER REACHED. Every earlier partners fixture sits at collected == settleable, because the spike measured only that regime and the fixtures were written from the spike (EXECUTION-LESSONS 2.93). Here they diverge, and the divergence is ORDINARY: a credit note moves `settleable` the instant it is issued, while `collected` does not move until a refund VOUCHER IS PAID. The whole 156000 is still in the drawer. The credit is on the PHARMACY line, a category this agreement pays NOTHING on, so the eligible base must not move at all. CREDIT-AWARE: eligibleBase = 100000 - 0 = 100000 (the pharmacy line is not eligible and contributes nothing either way). settleable = 156000 - 56000 = 100000. collected = 156000 - 0 = 156000. NOTE collected (156000) EXCEEDS settleable (100000) -- the ratio is 1.56, not 1. UNCLAMPED: divHalfUp(100000 x 156000, 100000) = 156000, i.e. the base becomes the WHOLE invoice including the pharmacy the agreement does not pay for, and target = percentAmount(156000, 1000) = 15600 -- a 56% rise in the commission on a consultation nobody touched. CLAMPED (09a DD1, owner ruling SERVICE DELIVERED): targetBase = min(156000, eligibleBase 100000) = 100000, target = percentAmount(100000, 1000) = 10000. The consultation was delivered and is still owed for, so the commission on it is unchanged -- which is the whole point. prior 10000 means the delta is 0: the ledger already says 10000 and crediting an ineligible line gives it no reason to move.",
+    "eligibleBasePaise": 100000,
+    "settleablePaise": 100000,
+    "collectedPaise": 156000,
+    "targetBasePaise": 100000,
+    "targetPaise": 10000,
+    "deltaPaise": 0
+  }
+}
