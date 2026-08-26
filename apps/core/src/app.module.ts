@@ -11,6 +11,7 @@ import { OpdModule } from "./modules/opd";
 import { BillingModule } from "./modules/billing";
 import { MembershipModule } from "./modules/membership";
 import { PartnersModule } from "./modules/partners";
+import { FormularyModule } from "./modules/formulary/formulary.module";
 import { HealthController } from "./health/health.controller";
 import { AuthModule } from "./kernel/auth/auth.module";
 import { WorkflowModule } from "./kernel/workflow/workflow.module";
@@ -28,7 +29,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
 
 @Global()
 @Module({
-  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule, OpdModule, BillingModule, AlertsModule, OpsModule, SearchModule, InferenceModule, MembershipModule, PartnersModule], // ← MembershipModule/PartnersModule (Plan 09 T1 — no controllers yet: T3/T5 and T7/T8 mount them); InferenceModule (Plan 11h T9, inert); SearchModule (Plan 11h T1); PatientsModule added; AlertsModule (Plan 08.5 D6); OpsModule (Plan 11c T2)
+  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule, OpdModule, BillingModule, AlertsModule, OpsModule, SearchModule, InferenceModule, MembershipModule, PartnersModule, FormularyModule], // ← MembershipModule/PartnersModule (Plan 09 T1 — no controllers yet: T3/T5 and T7/T8 mount them); InferenceModule (Plan 11h T9, inert); SearchModule (Plan 11h T1); PatientsModule added; AlertsModule (Plan 08.5 D6); OpsModule (Plan 11c T2)
   controllers: [HealthController],
   providers: [
     { provide: CONFIG, useFactory: (): AppConfig => loadConfig() },

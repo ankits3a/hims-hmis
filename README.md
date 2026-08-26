@@ -907,6 +907,39 @@ catches up.
     refusal exists to prevent: every row returns `disabled` and the job reports a clean pass having
     written nothing.
 
+## Formulary and prescribing safety (Plan 16a)
+
+Five tables — `formulary_salts`, `formulary_medicines`, `formulary_medicine_salts`,
+`formulary_interactions`, `formulary_staging` — and one rule that explains all of them: **identity
+is the active MOIETY, not the salt form.** "diclofenac sodium" and "diclofenac potassium" are one
+row (`diclofenac`), because a patient allergic to one is allergic to the other.
+
+Before this module the allergy guard was a bidirectional substring match over free text, and its
+own doc-comment named its expiry. It catches "Penicillin G" from an allergy to "penicillin" and
+misses **Augmentin**, because nothing in the system knew that Augmentin is amoxicillin +
+clavulanic acid and that amoxicillin is a penicillin. Drug–drug interaction and duplicate-therapy
+checks were not weak — they were impossible.
+
+**Prescribing is never blocked by formulary coverage** (spec design law 1). A free-text line stays
+legal forever; a line the formulary does not recognise simply gets the legacy substring check and
+no more. The formulary earns trust by growing, not by gatekeeping — which is also why the per-line
+"not in formulary" notice stays silent until coverage crosses 80% of the last 30 days' prescribed
+lines.
+
+**Permissions (owner ruling, 2026-08-26): the formulary is curated at the pharmacy and read by every prescriber.**
+`formulary.manage` and `formulary.staging.review` go to `pharmacy` — the spec
+says *pharmacist-gated*, and a mined composition reaches a live table only when a pharmacist admits
+it, one item at a time. `formulary.read` goes to `pharmacy` and `doctor`, because prescribing
+consumes the master that dispensing curates. Note that `pharmacy` is one of the roles `seed:roles`
+creates with grants and no holders, so this mints live authority to nobody until a pharmacist
+account exists.
+
+**Mined data is never authority.** `formulary_staging` is a lookup dictionary, not a review queue:
+the pharmacist types a name, gets the mined record pre-filling composition and schedule, verifies,
+and admits. Nothing is bulk-approved, staging rows are invisible to every resolution path, and the
+review UI renders payloads as text only — scraped content is untrusted and the reviewer is a
+privileged user.
+
 ## Worker process (Plan 08.5)
 
 A second Node process, `apps/core/src/worker.ts`, boots a providers-only Nest application context

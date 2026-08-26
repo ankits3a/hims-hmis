@@ -147,6 +147,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "opd.queue.read",
       "opd.queue.operate",
       "opd.consult",
+      // PLAN 16a / DD10, 2026-08-26. The spec's words are "read for any prescriber": the consult
+      // screen's formulary autocomplete (T6) sets the `medicineId` that turns a free-text line into
+      // a checked one, and a doctor who cannot read the formulary gets the legacy substring allergy
+      // check and nothing else. READ ONLY — the master is curated at the pharmacy, not the desk.
+      "formulary.read",
       // ═══ GROUP B, owner ruling 2026-08-26 — THE SHARPEST ROW IN THIS FILE ═══
       //
       // THE DOCTOR COULD NOT READ A PATIENT RECORD, AND THAT INCLUDED THE ALLERGY LIST.
@@ -201,6 +206,20 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // precedent applies: a narrow grant can be widened later without anybody being locked out in
       // the meantime, and the reverse is not true.
       "patients.read",
+      // ── PLAN 16a / DD10, 2026-08-26 — the formulary is curated HERE and nowhere else ──
+      //
+      // The spec says "pharmacist-gated", twice (§1.1): a mined composition reaches a live table
+      // only when a pharmacist admits it, one item at a time. All three strings therefore land on
+      // this role, and `formulary.read` is on `doctor` as well because prescribing consumes the
+      // master that dispensing curates.
+      //
+      // THIS GRANTS LIVE AUTHORITY TO NOBODY TODAY, and that is measured rather than hoped:
+      // `pharmacy` is one of the three roles this script creates with grants and no holders (see
+      // the header). The grant is a door that opens the day a pharmacist account exists — which is
+      // the right order, because the alternative is a formulary nobody may curate.
+      "formulary.read",
+      "formulary.manage",
+      "formulary.staging.review",
     ],
   },
   {

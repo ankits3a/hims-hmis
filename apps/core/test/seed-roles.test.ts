@@ -232,10 +232,26 @@ const GROUP_B_PAIRS: readonly string[] = [
   "pharmacy/patients.read",
 ];
 
-/** All seven non-table sets. A model row outside this union fails V3's last leg. */
+/** The README prose line that authorises Plan 16a's DD10 grants. Quoted, not paraphrased. */
+const FORMULARY_README_PROSE =
+  "the formulary is curated at the pharmacy and read by every prescriber";
+
+/**
+ * The four (role, permission) pairs Plan 16a / DD10 added. The EIGHTH non-table set, and the first
+ * whose permissions are declared by a module with no README table of its own — `formulary.*` has
+ * three strings and two holders, which is a table with more explanation than cells.
+ */
+const FORMULARY_PAIRS: readonly string[] = [
+  "doctor/formulary.read",
+  "pharmacy/formulary.manage",
+  "pharmacy/formulary.read",
+  "pharmacy/formulary.staging.review",
+];
+
+/** All eight non-table sets. A model row outside this union fails V3's last leg. */
 const NON_TABLE_PAIRS: readonly string[] = [
   ...RULING_7_PAIRS, ...WORKFLOW_RULING_PAIRS, ...PLAN_09_PAIRS, ...GROUP_C_PAIRS, ...GROUP_A_PAIRS,
-  ...MERGE_LANE_PAIRS, ...GROUP_B_PAIRS,
+  ...MERGE_LANE_PAIRS, ...GROUP_B_PAIRS, ...FORMULARY_PAIRS,
 ];
 
 type GrantTable = {
@@ -382,7 +398,7 @@ if (opdTable === undefined || billingTable === undefined) {
 }
 
 describe("seed:roles — the census pins, stated before anything is compared (§2.49)", () => {
-  it("ALL_MANIFESTS declares seventy-three permissions, by module", () => {
+  it("ALL_MANIFESTS declares seventy-seven permissions, by module", () => {
     const byKey = new Map(ALL_MANIFESTS.map((m) => [m.key, m.permissions.length]));
     expect(Object.fromEntries(byKey)).toEqual({
       auth: 7, // 11e's six + `auth.elevation.review` (the elevation-review queue)
@@ -400,11 +416,16 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // that is not allowed to fix it.
       membership: 7,
       partners: 7,
+      // PLAN 16a T2 / DD10. Declared here ahead of the routes that guard on them, for exactly the
+      // reason the paragraph above gives: `seed-roles.ts` and this file are named in T2's Files
+      // list and in no later task's, so a string first declared by T7 or T8 would fail this build
+      // for a task that is not allowed to fix it.
+      formulary: 3,
     });
-    expect(installedRegistry().allPermissions()).toHaveLength(74);
+    expect(installedRegistry().allPermissions()).toHaveLength(77);
   });
 
-  it("the role model is sixteen roles, ninety-six grants, fifty-four distinct permissions", () => {
+  it("the role model is sixteen roles, one hundred grants, fifty-seven distinct permissions", () => {
     expect(ROLE_MODEL.map((r) => r.roleKey)).toEqual([
       "front_office",
       "front_office_supervisor",
@@ -440,11 +461,14 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       front_office_supervisor: 13,
       vitals_desk: 5,
       // Group B, 2026-08-26: +2, the patient record and the allergy register.
-      doctor: 9,
+      // Plan 16a / DD10: +1, the formulary read the consult autocomplete needs.
+      doctor: 10,
       opd_admin: 6,
       display: 1,
       // Group B, 2026-08-26: +1, the allergy register at the dispensing counter.
-      pharmacy: 2,
+      // Plan 16a / DD10: +3, the whole formulary — read, manage, and staging review. The module is
+      // curated at the pharmacy and nowhere else.
+      pharmacy: 5,
       cashier: 11,
       billing_manager: 10,
       // Group A, 2026-08-26: +4 — tariff.read, the activator key, tariff config, and approval-type
@@ -460,8 +484,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       mrd_officer: 3,
       biomedical_engineer: 1,
     });
-    expect(modelPairs()).toHaveLength(96);
-    expect(modelPermissions()).toHaveLength(54);
+    expect(modelPairs()).toHaveLength(100);
+    expect(modelPermissions()).toHaveLength(57);
     // No role lists the same permission twice — a duplicate would inflate the counts above
     // without changing a single row of `role_permissions`.
     for (const role of ROLE_MODEL) {
@@ -469,8 +493,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     }
   });
 
-  it("the reachability census closes: 74 declared = 60 held + 14 not yet modelled", () => {
-    expect(installedRegistry().allPermissions()).toHaveLength(74);
+  it("the reachability census closes: 77 declared = 63 held + 14 not yet modelled", () => {
+    expect(installedRegistry().allPermissions()).toHaveLength(77);
     // 42 + 13 until the 2026-08-23 ruling moved the four `workflow.definitions.*` strings across;
     // 46 + 13 until Plan 09 declared fourteen and DD18 granted four of them.
     // 50 until `auth.elevation.review` was declared; it is held from the first deploy because
@@ -479,9 +503,12 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // 51 + 23 until Group A (2026-08-26) granted eight strings that had guarded live routes with
     // no holder at all; they moved from one side of this sum to the other, which is exactly what
     // NOT_YET_MODELLED's header promises happens the day a gap is closed.
-    expect(heldPermissions()).toHaveLength(60);
+    // 60 + 14 until Plan 16a declared three `formulary.*` strings and DD10 granted ALL THREE —
+    // the first phase in a while whose new permissions pass NOT_YET_MODELLED by entirely, because
+    // the role that holds them (`pharmacy`) already existed and the spec already said who curates.
+    expect(heldPermissions()).toHaveLength(63);
     expect(NOT_YET_MODELLED).toHaveLength(14);
-    expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(74);
+    expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(77);
   });
 
   it("the README carries exactly two permission tables, of the measured shapes", () => {
@@ -668,7 +695,9 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     // This is the leg that stops the subset scoping above becoming a hole: a model row that is
     // neither table-derived nor one of the three rulings' twenty-five pairs fails HERE.
     expect(nonTable).toEqual([...NON_TABLE_PAIRS].sort());
-    expect(NON_TABLE_PAIRS).toHaveLength(50);
+    expect(NON_TABLE_PAIRS).toHaveLength(54);
+    // Plan 16a / DD10's own source sentence, held to exactly the standard of the seven below.
+    expect(readme).toContain(FORMULARY_README_PROSE);
     // Group B's own source sentence, held to the same standard as the six below.
     expect(readme).toContain(GROUP_B_README_PROSE);
     // The merge lane's own source sentence, held to the same standard as the five below.
@@ -726,21 +755,23 @@ describe("seed:roles — executed against a database (V5)", () => {
     // billing_manager 9 -> 10.
     // Group C then moved two more: `medical_superintendent` 2 -> 4 (the two review desks) and a
     // new twelfth entry, `duty_manager`, holding exactly one.
-    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 13, 5, 9, 6, 1, 2, 11, 10, 10, 7, 1, 3, 2, 3, 1]);
+    // Plan 16a / DD10 moved two: `doctor` 9 -> 10 (formulary.read) and `pharmacy` 2 -> 5 (the whole
+    // formulary — the module is curated at the dispensing counter and nowhere else).
+    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 13, 5, 10, 6, 1, 5, 11, 10, 10, 7, 1, 3, 2, 3, 1]);
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
-    expect(first.declared).toBe(74);
+    expect(first.declared).toBe(77);
     // MEASURED from role_permissions, not derived from the model. On this database only seed:roles
-    // has run, so what is held is exactly what the model granted — 54, not the 60 the model CLAIMS
+    // has run, so what is held is exactly what the model granted — 57, not the 63 the model CLAIMS
     // once seed:admin and seed:ops have also run. That SEVEN-permission gap IS MAJOR 1 (it was ten
     // until Group C moved three `auth.*` strings into the model), and before the 2026-08-23 fix
     // this line read the model's claim against a database holding the grants.
-    expect(first.held).toBe(54);
+    expect(first.held).toBe(57);
     expect(first.held).toBe(modelPermissions().length);
-    expect(heldPermissions()).toHaveLength(60);
+    expect(heldPermissions()).toHaveLength(63);
     expect(first.notYetModelled).toBe(14);
     expect(first.expectedElsewhereAbsent).toBe(6);
     // And the census RECONCILES against the catalog, which is the property that makes it evidence:
-    // 54 held + 14 unmodelled + 6 expected-elsewhere = 74 declared.
+    // 57 held + 14 unmodelled + 6 expected-elsewhere = 77 declared.
     expect(first.held + first.notYetModelled + first.expectedElsewhereAbsent).toBe(first.declared);
 
     // `createRole` is a BARE INSERT and is not idempotent; the guard around it is what makes this
@@ -748,7 +779,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     const second = await seedRoles(db);
     expect(second.roles.map((r) => r.created)).toEqual(Array(16).fill(false));
     expect(second.roles.every((r) => r.granted.length === 0)).toBe(true);
-    expect(second.roles.map((r) => r.already.length)).toEqual([12, 13, 5, 9, 6, 1, 2, 11, 10, 10, 7, 1, 3, 2, 3, 1]);
+    expect(second.roles.map((r) => r.already.length)).toEqual([12, 13, 5, 10, 6, 1, 5, 11, 10, 10, 7, 1, 3, 2, 3, 1]);
 
     // And the database holds the model exactly once.
     const written = await db

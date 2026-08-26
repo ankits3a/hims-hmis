@@ -249,7 +249,8 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
 | task | commit | verdict |
 |---|---|---|
 | kickoff — spike answered, §2 re-based, DD10 ruled | `be9134f` | four spike answers measured against production; two stale counters corrected; one plan defect caught before code |
-| T1 — the five tables | _pending push_ | migration `0026_true_malcolm_colcord`; **12/12** in `formulary.test.ts`, isolated (`Test Suites: 1 passed, 1 total`) |
+| T1 — the five tables | `b1c9db8` **CI GREEN** (run 32949762683, 773s) | migration `0026_true_malcolm_colcord`; **12/12** in `formulary.test.ts`, isolated (`Test Suites: 1 passed, 1 total`); `pnpm verify` exit 0 before push (core 205/1758 → **206/1770**) |
+| T2 — the module | _pending push_ | **12/12** in `masters.test.ts`, isolated; census **MEASURED 77 = 63 held + 14 not-yet-modelled**, exactly DD10's prediction; manifest census eleven → twelve; `pnpm verify` exit 0 (core **207/1782**, web 42, contracts 4/21) after two reds — F8 (real, fixed) and F9 (flake, measured) |
 | _appended as each lands_ | | |
 
 ### Findings
@@ -279,6 +280,64 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
   the admission screen — silently treats as *not systemic* / *not severe*: the safe-LOOKING
   direction, and the wrong one, because a severe pair that reads as not-severe raises no warning.
   The `counterparties_payee_class_ck` precedent (Plan 09) is the same decision made once already.
+- **F5 — T2's OWN FUNCTION LIST NEEDED A SIXTH ERROR CODE, and the honest fix was to add it
+  rather than to answer a misleading one.** §5 closes the union at five codes and, in the same
+  paragraph, names `updateInteraction` among the six masters T2 ships. That function's "no such
+  row" refusal has no code among the five. The two ways out were both worse than the third: answer
+  `unknown_salt` when the salts are fine and the PAIR is missing (a curator would chase that for an
+  hour), or leave the function out (it is named in the plan). `unknown_interaction` is added, in
+  the file T2 owns, and the union's closure is otherwise untouched — **the closure rule binds LATER
+  tasks, which is exactly why the task that owns the file has to get the list right.**
+- **F6 — `requireUserActor` IS DELIBERATELY ABSENT, and the reason is that the alternative was to
+  abuse an error code.** `opd/masters.ts` guards every writer with one and throws
+  `user_actor_required`. Writing the same guard here meant either widening the union a second time
+  or throwing something that does not mean it. It is left out because here it would be redundant
+  rather than protective: every writer is reachable only through a route carrying
+  `@RequirePermission("formulary.manage")`, **agents hold no permissions at all** until Plan 12a
+  builds `agent_permissions`, and the module exports no other path. The commit that grants an agent
+  `formulary.manage` is the commit where the guard belongs — and it is named in `masters.ts` so
+  that reader finds it.
+- **F7 — the census pins cost SIX edits in two files, and every one of them was load-bearing.**
+  Adding three permissions moved: the per-module declaration map (`formulary: 3`), the catalog
+  total (74 → 77), the role-model grant total (96 → 100) and distinct-permission count (54 → 57),
+  two per-role counts (`doctor` 9 → 10, `pharmacy` 2 → 5), the reachability census (60 held → 63),
+  the non-table pair set (50 → 54) with its README prose line, and **two separate execution legs
+  in the V5 test that run `seed:roles` against a real database and pin the per-role granted counts
+  twice — once for the first run and once for the idempotent second.** None of it is ceremony:
+  that last pair is what proves the second run grants nothing, which is the property `seed:roles`
+  exists to have. **DD10 predicted 77 = 63 + 14 and the measurement agreed exactly** — recorded
+  because AGENT-RULES §4 says report the difference, and the honest report is that there was none.
+- **F9 — `billing/series.test.ts`'s race leg FLAKED ONCE UNDER FULL-SUITE LOAD, and the honest
+  report includes the hypothesis I could not fully exclude.** The leg runs **ten rounds of six
+  concurrent `nextDocNo` transactions** against a 15-second per-test budget and threw
+  `Exceeded timeout of 15000 ms`. Measured before concluding anything (rule 20: nothing else was
+  running, command lines read rather than counted):
+  · **isolated, three consecutive runs — 7/7 passing every time**, ~17 s per suite;
+  · **the same tree had already passed the full suite twice** — T1's verify (core 206/1770) and
+  T2's first verify, whose only failure was F8's;
+  · **the third full run after F8's fix: 207/1782, exit 0, no failures at all.**
+  So: three passes, one failure, identical machinery — load-dependent, not a regression.
+  **The hypothesis kept on the record rather than argued away:** T1 added a statement to
+  `truncateAll` (F2), and THIS test calls `truncateAll` INSIDE its loop, so the change costs ten
+  extra round-trips in exactly the test that failed. The arithmetic is against it — five empty
+  tables over a local socket is single-digit milliseconds against a 15 000 ms budget — but the cost
+  is real and it landed on shared machinery, so it is written down where the next person to see
+  this test flake will find it. **What is NOT claimed: that the flake is unrelated to this phase.**
+  It is claimed to be load-dependent, on four measurements.
+- **F8 — A COMMENT THAT QUOTES A DECORATOR IS A DECORATOR, AS FAR AS A SOURCE-SCANNING TEST CAN
+  TELL — AND THE FIX FOR IT FAILED THE SAME WAY.** `test/roles-catalog.e2e.test.ts` walks every
+  non-test `.ts` file under `src`, matches the permission decorator's opening token, and requires a
+  scope literal in each match; its own docstring says *"the regex sees what a reviewer sees"*. A
+  reviewer distinguishes code from prose and the regex does not. `masters.ts`'s F6 comment
+  explained the absent actor-guard by quoting the decorator with a permission and no scope, and the
+  full suite went red on a file with no route in it at all. **The second failure is the one worth
+  recording:** the fix was a comment explaining the trap — which quoted the same token again, and
+  failed identically. Only naming the decorator without its parentheses cleared it.
+  **The general form: a test that greps source for a code pattern must expect that pattern in
+  prose, and the cheapest place to absorb that is the test, not every future comment.** This phase
+  paid twice rather than change a shipped test it does not own; the ledger entry is what should
+  stop the third time. *(Cost: one full `pnpm verify` cycle. Caught by verify before the push,
+  which is §2.87 doing exactly the job it was written for.)*
 - **F4 — the ordered-pair CHECK is the constraint this schema exists for, and it is tested by the
   reversed insert rather than by reading the DDL.** A×B and B×A are one clinical fact; stored
   unordered, how many hits a prescription raises depends on which order a curator typed. The

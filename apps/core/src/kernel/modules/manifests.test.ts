@@ -15,6 +15,7 @@ import { opdManifest } from "../../modules/opd";
 import { billingManifest } from "../../modules/billing";
 import { membershipManifest } from "../../modules/membership";
 import { partnersManifest } from "../../modules/partners";
+import { formularyManifest } from "../../modules/formulary";
 
 /**
  * Plan 11d / D2, Book row V4 — `ALL_MANIFESTS` is the ONE list, and a manifest installed outside
@@ -29,7 +30,7 @@ import { partnersManifest } from "../../modules/partners";
  * §2.49 — THIS TEST CAN PASS VACUOUSLY AND MUST NOT. Three things prevent it: both parsers THROW
  * rather than return `[]` on a shape they do not recognise (a missing `for … of ALL_MANIFESTS`
  * loop, a `registry.install()` argument this file cannot resolve to a manifest, an install block
- * with no calls at all); the first test pins the census — eleven manifests, by key, IN ORDER —
+ * with no calls at all); the first test pins the census — TWELVE manifests, by key, IN ORDER —
  * BEFORE anything is compared; and the identifier→manifest map below is deliberate friction, so
  * a new manifest cannot be installed anywhere without this file being edited in the same commit.
  *
@@ -59,6 +60,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   notifyManifest,
   membershipManifest,
   partnersManifest,
+  formularyManifest,
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -103,7 +105,7 @@ function manifestKeys(identifiers: string[], label: string): string[] {
 }
 
 describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
-  it("declares exactly eleven manifests, by key, in app.module.ts's original install order", () => {
+  it("declares exactly twelve manifests, by key, in app.module.ts's original install order", () => {
     expect(ALL_MANIFESTS.map((m) => m.key)).toEqual([
       "auth",
       "workflow",
@@ -117,13 +119,15 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // PLAN 09 T1 — appended, so the nine above keep the order they were installed in.
       "membership",
       "partners",
+      // PLAN 16a T2 — appended, so the eleven above keep the order they were installed in.
+      "formulary",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(11);
+    expect(ALL_MANIFESTS).toHaveLength(12);
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(11);
+    expect(registry.all()).toHaveLength(12);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -158,7 +162,14 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      census as ONE commit (§6.0 S2, Plan 10 D13). The install is unconditional: DD7's whole
     //      inversion is that the consumer registers always and advances its cursor always, and the
     //      COMMISSION_ACCRUAL_ENABLED flag decides only whether the handler writes.
-    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership"]);
+    //
+    // (1c) PLAN 16a T2 — the worker also omits `formulary`, permanently and for the SAME reason as
+    //      (1a): the module is check-on-execute. `resolveDrugTexts` is called by the prescription
+    //      pipeline at issue time; nothing in it is driven by the event stream, so the manifest
+    //      ships `subscriptions: []` and installing it in the worker would catalog nothing new and
+    //      subscribe to nothing. If a later phase gives the formulary a consumer, its subscriptions
+    //      and its worker install land in ONE commit — the (1b) discipline, unchanged.
+    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "formulary"]);
 
     // (2) The worker ADDS `notify`. It declares five `kernel.notify` subscriptions, and
     //     `buildSubscriptionBus` (kernel/worker/jobs.ts) makes a declared subscription with no

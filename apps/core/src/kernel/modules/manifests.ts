@@ -10,6 +10,7 @@ import { alertsManifest } from "../alerts/manifest";
 import { opsManifest } from "../ops/manifest";
 import { membershipManifest } from "../../modules/membership";
 import { partnersManifest } from "../../modules/partners";
+import { formularyManifest } from "../../modules/formulary";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -65,4 +66,8 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // `membershipManifest` declares no subscription at all — the module is check-on-execute.
   membershipManifest,
   partnersManifest,
+  // PLAN 16a T2 — the formulary, appended for the same reason: the eleven above keep the order
+  // they were installed in. It declares no subscription (check-on-execute, like `membership`) and
+  // an empty `search` array, so it is installed in the API and NOT in the worker.
+  formularyManifest,
 ];
