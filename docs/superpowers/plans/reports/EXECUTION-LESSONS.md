@@ -520,6 +520,13 @@ LIGHT phases do not pay it: 16a ran nine tasks with zero subagents and re-billed
 wc -c docs/superpowers/plans/reports/EXECUTION-LESSONS.md   # / 4 = tokens re-billed per agent per call
 ```
 **The rule it suggests and does not yet impose: a brief cites ledger entries BY NUMBER and carries none of the file.** §9.1 already says it; what is new is the measurement of what saying it is now worth.
+**2.102 — THE INDEPENDENT REVIEWER IS THE ONLY INSTRUMENT THAT REFUTES, AND IT FOUND THREE CRITICALS IN CODE THAT HAD PASSED ELEVEN GREEN VERIFIES.** *(Plan 16a close, 2026-08-26 — measured)*
+Plan 16a ran nine tasks with zero subagents and one reviewer. **The reviewer cost 181,605 tokens across 37 tool calls and returned three CRITICAL, five MAJOR and six MINOR findings** — against a tree that had already passed **eleven `pnpm verify` runs and eight green CI runs**, plus fourteen mutants of the phase's own design.
+**The comparison that matters is not cost, it is KIND.** All fourteen mutants DIED. A dead mutant confirms that an assertion discriminates; it cannot tell you the assertion is aimed at the wrong thing. Every one of the three CRITICALs lived in the ONE seam the phase's tests could not see into — the pure check suite was correct and the pipeline fed it wrong inputs — and the fixtures made all three invisible by construction: drug text always equal to brand name, formulary always freshly seeded and fully active.
+**The mechanical form, and it is a fixture rule rather than a review rule:** for every fixture a phase builds, name the field whose value is IDENTICAL to another field's, and write one leg where it differs. Text-equals-brand hid C1 and C2. Fully-active-formulary hid C3. *(Related: §2.93 — a formula verified where a ratio equals 1 has not been verified. Same defect one layer out: a FIXTURE whose fields coincide has not exercised the code that distinguishes them.)*
+**And the budgeting consequence:** a LIGHT phase's saving is not a saving until its reviewer has run. Nine tasks of in-session coding produced a tree that looked finished, was green everywhere, and carried three patient-safety defects. The 181k was the cheapest part of the phase.
+
+
 
 
 

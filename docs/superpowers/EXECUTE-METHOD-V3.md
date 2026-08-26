@@ -219,6 +219,24 @@ agent needed perhaps 15k, re-billed on every call.
 3. **Address relay entries to the task that needs them.** A relay is append-only and compounds; an
    agent in the last wave should not pay for the first wave's findings.
 
+### 9.4 A LIGHT phase's saving is not a saving until its reviewer has run — added 2026-08-26
+
+Measured, Plan 16a: nine tasks in-session, zero subagents, **eleven green `pnpm verify` runs and
+eight green CI runs**, fourteen mutants built and fourteen dead. The tree looked finished. **One
+reviewer, 181,605 tokens, found three CRITICAL patient-safety defects in it** (ledger §2.102), all
+three in the seam between the pure functions the phase tested hardest and the pipeline that feeds
+them.
+
+**The amendment: a phase document may not record an actuals row, and a session may not report a
+phase as cheap, before §3.4's review has returned.** Until then the number is an estimate of the
+work that happened, not of the work required. The three CRITICALs cost a full remediation pass —
+schema migration included — after the phase had already been written up as done.
+
+**And the fixture rule §2.102 leaves behind, because it is the half a reviewer should not have to
+supply:** for every fixture a phase builds, name the field whose value is identical to another
+field's, and write one leg where they differ. Text-equal-to-brand hid two of the three; a
+fully-active formulary hid the third.
+
 ### 9.3 Two amendments Plan 16a's audit bought — added 2026-08-26
 
 **(a) A "this host cannot" claim is checked, never quoted.** §8's topology ruling and ledger §2.91
