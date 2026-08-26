@@ -342,6 +342,20 @@ Plan 05 and registered by nothing, so `requestApproval` threw `unknown_type` for
 `pnpm --filter @hmis/core seed:patients` registers them and now runs on every deploy. One person
 may hold both roles — `assertNotSodPair("requester_approver", …)` still refuses their own merge.
 
+Owner ruling of 2026-08-26 widens three roles that could not do their own jobs, in pairs that
+appear in no table above. The `doctor` role gains `patients.read` and `patients.update`: the
+consultation screen fetches `GET /patients/:id` and `GET /patients/:id/allergies`, both gated on
+`patients.read`, so until this ruling a doctor in consultation was refused the allergy register —
+measured on the live deployment, where every active doctor returned no such permission.
+`patients.update` comes with it because an allergy discovered during a consultation is the best
+moment there is to record one. The `pharmacy` role gains `patients.read` for the same safety
+reason at the dispensing counter, and read-only: the allergy register belongs to the clinicians
+who examine the patient. The `owner` role gains `billing.reports.read`, `billing.invoice.read` and
+`billing.session.read` — it could not open an invoice, a dues ledger or a daybook — and
+deliberately does NOT gain `patients.read`, because the owner is an administrative principal and a
+blanket clinical read is not minimum-necessary; an owner who is also a clinician holds a second
+role, visibly, instead.
+
 ### Go-live runbook — OPD (owner steps, once per environment)
 0. `UHID_PREFIX=<PREFIX> pnpm --filter @hmis/core seed:registration` — **the `registration_config`
    row.** Numbered ZERO because it belongs to Plan 05 rather than to OPD, and because the steps

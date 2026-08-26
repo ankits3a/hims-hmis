@@ -147,6 +147,29 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "opd.queue.read",
       "opd.queue.operate",
       "opd.consult",
+      // ═══ GROUP B, owner ruling 2026-08-26 — THE SHARPEST ROW IN THIS FILE ═══
+      //
+      // THE DOCTOR COULD NOT READ A PATIENT RECORD, AND THAT INCLUDED THE ALLERGY LIST.
+      //
+      // `opd-consult.tsx` fetches `GET /patients/:id` and `GET /patients/:id/allergies` to render
+      // the consultation panel; both are `@RequirePermission("patients.read")`. This role held
+      // seven `opd.*` strings and no `patients.*` at all, so BOTH CALLS ANSWERED 403 — measured
+      // against production 2026-08-26, where all three active doctors returned
+      // `has patients.read: false`. A doctor prescribing without the allergy register is the
+      // failure mode the whole formulary safety layer is being designed to prevent, and it was
+      // live.
+      //
+      // Owner ruling 7 gave `patients.read` + `patients.update` to the two desk roles and to
+      // `vitals_desk` "for quick allergies" and stopped there — the omission is visible in that
+      // ruling's own shape: every role that touches the patient BEFORE the doctor got it, and the
+      // doctor did not.
+      //
+      // `patients.update` rides along for the same reason it went to `vitals_desk`: `POST
+      // /patients/:id/allergies` is gated on it, and an allergy discovered DURING a consultation
+      // is the single most valuable moment to record one. `patients.register` deliberately stays
+      // with the desk — a doctor does not create the record, they act on it.
+      "patients.read",
+      "patients.update",
     ],
   },
   {
@@ -164,7 +187,22 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     ],
   },
   { roleKey: "display", permissions: ["opd.display.read"] },
-  { roleKey: "pharmacy", permissions: ["opd.prescriptions.verify"] },
+  {
+    roleKey: "pharmacy",
+    permissions: [
+      "opd.prescriptions.verify",
+      // GROUP B, 2026-08-26. `verifyPrescriptionQr` hands back the lines and a patient SUMMARY and
+      // no allergies at all, so a pharmacist scanning an e-Rx could read what was prescribed and
+      // never what the patient reacts to. Dispensing is the last gate before the drug reaches the
+      // person; it is the wrong place to be blind.
+      //
+      // READ ONLY, deliberately. The allergy REGISTER belongs to the clinicians who examine the
+      // patient — `patients.update` stays with the desk, vitals and the doctor. The `vitals_desk`
+      // precedent applies: a narrow grant can be widened later without anybody being locked out in
+      // the meantime, and the reverse is not true.
+      "patients.read",
+    ],
+  },
   {
     roleKey: "cashier",
     permissions: [
@@ -248,6 +286,23 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // once — the approvals engine's own governance. It belongs with the role that already holds
       // the activator key, and nowhere below it.
       "approvals.types.manage",
+      // ─── GROUP B, 2026-08-26: the owner can finally see the money ───
+      //
+      // This role held three `workflow.*` strings and could not open a single invoice, dues ledger
+      // or daybook — the person who carries the hospital's financial risk had no read on its
+      // revenue. These three are what the back-office and dues screens are gated on
+      // (`billing.reports.read`, `billing.invoice.read`) plus oversight of cashier sessions
+      // somebody else owns (`billing.session.read`, the same string `billing_manager` holds).
+      //
+      // `patients.read` IS DELIBERATELY ABSENT, and the absence is the ruling. The owner is an
+      // administrative principal, not a clinical one: DPDP minimum-necessary and spec §14's
+      // confidential-record posture both argue against a blanket clinical read for a role whose
+      // job is governance and money. If the owner is ALSO a clinician on this deployment, that is
+      // a second role assignment, visible on the admin screen, rather than a permission quietly
+      // folded into this one.
+      "billing.reports.read",
+      "billing.invoice.read",
+      "billing.session.read",
     ],
   },
   {

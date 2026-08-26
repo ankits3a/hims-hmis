@@ -205,10 +205,37 @@ const MERGE_LANE_PAIRS: readonly string[] = [
   "mrd_officer/patients.update",
 ];
 
-/** All six non-table sets. A model row outside this union fails V3's last leg. */
+/** The README prose line that authorises the 2026-08-26 Group B grants. Quoted, not paraphrased. */
+const GROUP_B_README_PROSE =
+  "Owner ruling of 2026-08-26 widens three roles that could not do their own jobs";
+
+/**
+ * The six (role, permission) pairs Group B added. The SEVENTH non-table set, and the only one that
+ * closed a CLINICAL SAFETY gap rather than an administrative one.
+ *
+ * `doctor/patients.read` is the row that matters: `opd-consult.tsx` fetches `GET /patients/:id` and
+ * `GET /patients/:id/allergies` — both `patients.read` — and the `doctor` role held seven `opd.*`
+ * strings and no `patients.*` at all, so a doctor in consultation was refused the allergy register.
+ * Measured against production 2026-08-26: all three active doctors, `has patients.read: false`.
+ *
+ * The shape of owner ruling 7 is where the omission is visible: every role that touches the patient
+ * BEFORE the doctor got `patients.read`, and the doctor did not.
+ *
+ * `owner/patients.read` is NOT here, and the absence is a ruling too — see the README sentence.
+ */
+const GROUP_B_PAIRS: readonly string[] = [
+  "doctor/patients.read",
+  "doctor/patients.update",
+  "owner/billing.invoice.read",
+  "owner/billing.reports.read",
+  "owner/billing.session.read",
+  "pharmacy/patients.read",
+];
+
+/** All seven non-table sets. A model row outside this union fails V3's last leg. */
 const NON_TABLE_PAIRS: readonly string[] = [
   ...RULING_7_PAIRS, ...WORKFLOW_RULING_PAIRS, ...PLAN_09_PAIRS, ...GROUP_C_PAIRS, ...GROUP_A_PAIRS,
-  ...MERGE_LANE_PAIRS,
+  ...MERGE_LANE_PAIRS, ...GROUP_B_PAIRS,
 ];
 
 type GrantTable = {
@@ -377,7 +404,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     expect(installedRegistry().allPermissions()).toHaveLength(74);
   });
 
-  it("the role model is sixteen roles, ninety grants, fifty-four distinct permissions", () => {
+  it("the role model is sixteen roles, ninety-six grants, fifty-four distinct permissions", () => {
     expect(ROLE_MODEL.map((r) => r.roleKey)).toEqual([
       "front_office",
       "front_office_supervisor",
@@ -412,15 +439,18 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       front_office: 12,
       front_office_supervisor: 13,
       vitals_desk: 5,
-      doctor: 7,
+      // Group B, 2026-08-26: +2, the patient record and the allergy register.
+      doctor: 9,
       opd_admin: 6,
       display: 1,
-      pharmacy: 1,
+      // Group B, 2026-08-26: +1, the allergy register at the dispensing counter.
+      pharmacy: 2,
       cashier: 11,
       billing_manager: 10,
       // Group A, 2026-08-26: +4 — tariff.read, the activator key, tariff config, and approval-type
       // governance. `owner` is now the activator for BOTH ceremonies, workflow and price list.
-      owner: 7,
+      // Group B then added +3: the invoice, the daybook and the cashier sessions. NOT patients.read.
+      owner: 10,
       // Group C, 2026-08-26: +2, the break-glass and elevation review desks. The merge lane then
       // added +3 — the approvals pair it is the approverRole for, and the records it decides about.
       medical_superintendent: 7,
@@ -430,7 +460,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       mrd_officer: 3,
       biomedical_engineer: 1,
     });
-    expect(modelPairs()).toHaveLength(90);
+    expect(modelPairs()).toHaveLength(96);
     expect(modelPermissions()).toHaveLength(54);
     // No role lists the same permission twice — a duplicate would inflate the counts above
     // without changing a single row of `role_permissions`.
@@ -638,7 +668,9 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     // This is the leg that stops the subset scoping above becoming a hole: a model row that is
     // neither table-derived nor one of the three rulings' twenty-five pairs fails HERE.
     expect(nonTable).toEqual([...NON_TABLE_PAIRS].sort());
-    expect(NON_TABLE_PAIRS).toHaveLength(44);
+    expect(NON_TABLE_PAIRS).toHaveLength(50);
+    // Group B's own source sentence, held to the same standard as the six below.
+    expect(readme).toContain(GROUP_B_README_PROSE);
     // The merge lane's own source sentence, held to the same standard as the five below.
     expect(readme).toContain(MERGE_LANE_README_PROSE);
     // The Group A ruling's own source sentence, held to the same standard as the four below.
@@ -694,7 +726,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     // billing_manager 9 -> 10.
     // Group C then moved two more: `medical_superintendent` 2 -> 4 (the two review desks) and a
     // new twelfth entry, `duty_manager`, holding exactly one.
-    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 13, 5, 7, 6, 1, 1, 11, 10, 7, 7, 1, 3, 2, 3, 1]);
+    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 13, 5, 9, 6, 1, 2, 11, 10, 10, 7, 1, 3, 2, 3, 1]);
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
     expect(first.declared).toBe(74);
     // MEASURED from role_permissions, not derived from the model. On this database only seed:roles
@@ -716,7 +748,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     const second = await seedRoles(db);
     expect(second.roles.map((r) => r.created)).toEqual(Array(16).fill(false));
     expect(second.roles.every((r) => r.granted.length === 0)).toBe(true);
-    expect(second.roles.map((r) => r.already.length)).toEqual([12, 13, 5, 7, 6, 1, 1, 11, 10, 7, 7, 1, 3, 2, 3, 1]);
+    expect(second.roles.map((r) => r.already.length)).toEqual([12, 13, 5, 9, 6, 1, 2, 11, 10, 10, 7, 1, 3, 2, 3, 1]);
 
     // And the database holds the model exactly once.
     const written = await db
