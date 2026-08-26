@@ -55,7 +55,7 @@
       "tasks": 9,
       "agents": 0,
       "subagentTokens": 0,
-      "note": "NINE tasks, ZERO subagents — the LIGHT lane taken to its limit, so nothing was re-billed to anyone and no context-per-call figure exists. Main-session cost UNMEASURED (runbook O3, open since 11e): this row is NOT a saving against 09's 6.37M and must not be read as one. What it bought is countable: 14 mutants built / 14 died, 26 CLOSE findings, 5 reds caught by verify before push, 1 live CI flake diagnosed and fixed. Ledger at close: 329,574 bytes = 82k tokens re-billed per agent per call in any HEAVY successor."
+      "note": "NINE tasks, ZERO subagents — the LIGHT lane taken to its limit, so nothing was re-billed to anyone and no context-per-call figure exists. Main-session cost UNMEASURED (runbook O3, open since 11e): this row is NOT a saving against 09's 6.37M and must not be read as one. What it bought, from the CLOSE: 14 mutants built / 14 died, 27 findings, 5 reds caught by verify before push, 1 live CI flake diagnosed and fixed, 1 stale ledger capability claim retired (2.100). Core 205/1758 -> 212/1840. Ledger at close: 329,574 bytes = 82k tokens re-billed per agent per call in any HEAVY successor (2.101)."
     }
   ]
 }
