@@ -319,6 +319,19 @@ granting the key to a door that opens on nothing would manufacture the appearanc
 path. That one needs wiring and an owner ruling on whether a bypass may cross the confidential
 gate, not a role row.
 
+Owner ruling of 2026-08-26 assigns ten pairs that appear in no table above, closing permissions
+that had no holder at all and therefore answered 403 to every account on the deployment. A new
+`tariff_editor` role reads the price list, manages services and DRAFTS a version; the `owner` role
+gains `tariff.read`, `tariff.versions.activate` and `tariff.config.manage`, so the person who
+writes a price is never the person who publishes it, and `tariff_revision` still routes the
+submission through `billing_manager` in between. `owner` also gains `approvals.types.manage` —
+editing an approval type changes who may approve what, for every module at once. A new
+`membership_admin` role gains `membership.import.run` and `membership.reconcile.operate` (the
+holder-book import and the queue that never auto-links); `membership.catalog.manage` is
+deliberately excluded because it guards no route anywhere in the tree. A new `biomedical_engineer`
+role gains `ops.interface.manage` as a SECOND holder — `duty_manager` keeps it, because the night
+shift must be able to silence an interface without waking the engineer.
+
 ### Go-live runbook — OPD (owner steps, once per environment)
 0. `UHID_PREFIX=<PREFIX> pnpm --filter @hmis/core seed:registration` — **the `registration_config`
    row.** Numbered ZERO because it belongs to Plan 05 rather than to OPD, and because the steps

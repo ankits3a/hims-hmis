@@ -226,6 +226,28 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // activates; `sod.ts`'s `workflow_drafter_activator` pair means they cannot be one person.
       "workflow.definitions.activate",
       "workflow.definitions.read",
+      // ─── GROUP A, owner ruling 2026-08-26: the ACTIVATOR half of the tariff, too ───
+      //
+      // The price list had NO holder for any of its five strings: nobody could add a service or
+      // publish a revision from a screen, and the README's own tariff section described a flow no
+      // account could perform. `tariff_editor` below drafts; `owner` activates. That is the
+      // workflow-definition ceremony applied to money, and it is deliberate rather than symmetric
+      // by accident — a price list that one person can both write and publish is the single
+      // control every revenue audit asks about first. `tariff_revision` already routes the
+      // submission through `billing_manager` for approval, so the published version has three
+      // hands on it.
+      //
+      // `tariff.read` rides along because activating a version you cannot open is not a ceremony,
+      // it is a coin flip.
+      "tariff.read",
+      "tariff.versions.activate",
+      // Rounding, GST posture and the pricing knobs. A configuration act over money, which is the
+      // same authority class as activating a version.
+      "tariff.config.manage",
+      // Registering or editing an APPROVAL TYPE changes who may approve what, for every module at
+      // once — the approvals engine's own governance. It belongs with the role that already holds
+      // the activator key, and nowhere below it.
+      "approvals.types.manage",
     ],
   },
   {
@@ -280,6 +302,50 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // role means.
   // ------------------------------------------------------------------------------------------
   { roleKey: "duty_manager", permissions: ["auth.temp_role.grant"] },
+  // ------------------------------------------------------------------------------------------
+  // GROUP A, owner ruling 2026-08-26 — THREE ROLES FOR PERMISSIONS THAT HAD NO HOLDER AT ALL.
+  //
+  // Each of these guarded LIVE ROUTES that answered 403 to every account on the deployment. That
+  // is the state `NOT_YET_MODELLED` exists to make visible rather than to excuse, and the entries
+  // for these strings said "no owner ruling exists yet" — a decision waiting to be made. It has
+  // been made; the eight strings leave that list in this commit and the census moves to prove it.
+  // ------------------------------------------------------------------------------------------
+  {
+    roleKey: "tariff_editor",
+    permissions: [
+      "tariff.read",
+      "tariff.services.manage",
+      // DRAFT ONLY. `tariff.versions.activate` is `owner`'s (above), so the person who writes a
+      // price cannot be the person who publishes it. There is no `tariff_drafter_activator` SoD
+      // pair to enforce that at act time — the separation here is the whole control, which is why
+      // it is a role boundary rather than a convention in a runbook.
+      "tariff.versions.draft",
+    ],
+  },
+  {
+    roleKey: "membership_admin",
+    permissions: [
+      // The holder book arrives as an operator import and lands in quarantine; somebody has to
+      // work the queue that never auto-links (Plan 09 DD5). Both strings guard live routes.
+      "membership.import.run",
+      "membership.reconcile.operate",
+      // `membership.catalog.manage` is NOT here and that is measured, not squeamish: it guards NO
+      // ROUTE ANYWHERE IN THE TREE. Its only occurrence is the manifest. Granting it would hand
+      // somebody a key to a door that does not exist — the same mistake `auth.break_glass.use`
+      // would have been. It stays in `NOT_YET_MODELLED` with that reason.
+    ],
+  },
+  {
+    roleKey: "biomedical_engineer",
+    permissions: [
+      // Card #33. Registering an analyzer or device feed, and deactivating one, is this person's
+      // job — they are the reason the interface exists. `duty_manager` KEEPS it (via `seed:ops`,
+      // untouched): the night shift must be able to silence a screaming interface without waking
+      // the engineer, which is the §10 bundling matrix working as designed. This is a second
+      // holder, not a transfer.
+      "ops.interface.manage",
+    ],
+  },
 ];
 
 /**
@@ -339,35 +405,23 @@ export const NOT_YET_MODELLED: readonly NotYetModelled[] = [
       "calls `startInstance` and `transition` in-process, so the OPD flow never traverses these " +
       "routes; granting them would mint authority no role needs (owner ruling 2026-08-23)",
   })),
-  ...[
-    "tariff.read",
-    "tariff.services.manage",
-    "tariff.versions.draft",
-    "tariff.versions.activate",
-    "tariff.config.manage",
-  ].map((permission) => ({
-    permission,
-    reason:
-      "no tariff role model is published anywhere; the pilot's tariff is seeded by script " +
-      "(seed:tariff) rather than maintained by a human at a route, and no owner ruling exists yet",
-  })),
   {
     permission: "patients.merge",
     reason:
-      "merging two patient records is a supervised correction with its own approval path; owner " +
-      "ruling 7 granted patients.register/read/update deliberately and stopped short of this one",
+      "BLOCKED ON MACHINERY, NOT ON A RULING (measured 2026-08-26). The owner ruled an mrd_officer " +
+      "role in the 2026-08-25 brainstorm, but granting this today would hand somebody a route that " +
+      "cannot work: `createMergeRequest` calls `requestApproval` with type `patient_merge`, and " +
+      "NO SEED REGISTERS `patient_merge` OR `patient_unmerge` — production carries seven approval " +
+      "types, all billing, tariff and membership. `requestApproval` throws `unknown_type`, so the " +
+      "merge lane is dead at step one for every account, permission or no permission. What it needs " +
+      "is a registration seed on the billing/tariff precedent plus an owner ruling naming the " +
+      "approverRole (and the approvals.requests.read/decide pair for whoever that is)",
   },
   {
     permission: "patients.confidential.read",
     reason:
       "spec section 14 confidential/VIP visibility beyond normal RBAC — it wants an owner ruling " +
       "about WHO may see a confidential record, and Plan 11d does not have one",
-  },
-  {
-    permission: "approvals.types.manage",
-    reason:
-      "approval TYPES are registered by seed:billing's registerBillingApprovalTypes, not by a " +
-      "human at the route; who may edit one at runtime is unruled",
   },
   {
     permission: "approvals.requests.create",
@@ -389,18 +443,16 @@ export const NOT_YET_MODELLED: readonly NotYetModelled[] = [
   // AND THIS LIST IS STILL NOT AN EXCEPTIONS LIST. The day the owner rules O-8, these entries
   // leave it, the census below fails, and the commit that grants them has to say so. That is the
   // mechanism working.
-  ...[
-    "membership.catalog.manage",
-    "membership.import.run",
-    "membership.reconcile.operate",
-  ].map((permission) => ({
-    permission,
+  {
+    permission: "membership.catalog.manage",
     reason:
-      "no membership role model is published anywhere; the pilot's plan and coupon catalogs are " +
-      "CONFIG ROWS loaded at commissioning rather than maintained by a human at a route (Plan 09 " +
-      "DD3), the holder book is imported by an operator command rather than from a screen, and " +
-      "no owner ruling exists yet for who works the reconcile queue (Plan 09 DD18)",
-  })),
+      "IT GUARDS NO ROUTE (measured 2026-08-26): its only occurrence in the tree is the membership " +
+      "manifest itself. The pilot's plan and coupon catalogs are CONFIG ROWS loaded at " +
+      "commissioning rather than maintained by a human at a route (Plan 09 DD3), so there is " +
+      "nothing for a holder to reach. Its two siblings — import.run and reconcile.operate — DO " +
+      "guard live routes and left this list on 2026-08-26 with the membership_admin role. This one " +
+      "waits for the screen that would justify it",
+  },
   ...[
     "partners.counterparty.manage",
     "partners.agreement.manage",
@@ -446,6 +498,12 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   pharmacy: "Pharmacy (prescription verification)",
   cashier: "Cashier",
   billing_manager: "Billing Manager",
+  // Group A, 2026-08-26. None of the three is in `OPD_ROLE_KEYS` and none should be: they are not
+  // OPD stations. `tariff_editor` has no staffing card of its own — the price list is maintained by
+  // whoever the owner designates, and the card list is a workforce document rather than an RBAC one.
+  tariff_editor: "Tariff Editor (drafts the price list; the owner activates)",
+  membership_admin: "Membership Administrator (holder-book import and the reconcile queue)",
+  biomedical_engineer: "Biomedical Engineer (device and analyzer interfaces)",
 };
 
 /** The title for a model role key. Throws rather than inventing one — an unresolved role is a defect. */

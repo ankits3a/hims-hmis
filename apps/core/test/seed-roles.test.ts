@@ -149,9 +149,40 @@ const GROUP_C_PAIRS: readonly string[] = [
   "medical_superintendent/auth.elevation.review",
 ];
 
-/** All four non-table sets. A model row outside this union fails V3's last leg. */
+/** The README prose line that authorises the 2026-08-26 Group A grants. Quoted, not paraphrased. */
+const GROUP_A_README_PROSE =
+  "Owner ruling of 2026-08-26 assigns ten pairs that appear in no table above";
+
+/**
+ * The ten (role, permission) pairs the 2026-08-26 Group A ruling added. The FIFTH non-table set.
+ *
+ * These are different in kind from the four sets above, and the difference is the point: every one
+ * of these strings was in `NOT_YET_MODELLED` — declared, guarding a LIVE route, and held by nobody,
+ * so the route answered 403 to every account on the deployment. Eight entries left that list in the
+ * same commit, which is the mechanism its header promises ("the day any of them gains a holder this
+ * list shrinks by one, the census fails, and the commit that grants it has to say so").
+ *
+ * TWO OMISSIONS ARE LOAD-BEARING and both are measurements rather than caution:
+ *   - `membership.catalog.manage` guards NO route in the tree, so a holder could reach nothing;
+ *   - `patients.merge` stays because `patient_merge` is registered by no seed, so `requestApproval`
+ *     throws `unknown_type` and the merge lane is dead at step one for everybody.
+ */
+const GROUP_A_PAIRS: readonly string[] = [
+  "biomedical_engineer/ops.interface.manage",
+  "membership_admin/membership.import.run",
+  "membership_admin/membership.reconcile.operate",
+  "owner/approvals.types.manage",
+  "owner/tariff.config.manage",
+  "owner/tariff.read",
+  "owner/tariff.versions.activate",
+  "tariff_editor/tariff.read",
+  "tariff_editor/tariff.services.manage",
+  "tariff_editor/tariff.versions.draft",
+];
+
+/** All five non-table sets. A model row outside this union fails V3's last leg. */
 const NON_TABLE_PAIRS: readonly string[] = [
-  ...RULING_7_PAIRS, ...WORKFLOW_RULING_PAIRS, ...PLAN_09_PAIRS, ...GROUP_C_PAIRS,
+  ...RULING_7_PAIRS, ...WORKFLOW_RULING_PAIRS, ...PLAN_09_PAIRS, ...GROUP_C_PAIRS, ...GROUP_A_PAIRS,
 ];
 
 type GrantTable = {
@@ -320,7 +351,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     expect(installedRegistry().allPermissions()).toHaveLength(74);
   });
 
-  it("the role model is twelve roles, seventy-four grants, forty-four distinct permissions", () => {
+  it("the role model is fifteen roles, eighty-four grants, fifty-three distinct permissions", () => {
     expect(ROLE_MODEL.map((r) => r.roleKey)).toEqual([
       "front_office",
       "front_office_supervisor",
@@ -338,6 +369,11 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // model row at all. It joins for ONE string — the temp-role mechanism built for the night
       // shift — and that row was unsafe to write before the elevation ceiling landed.
       "duty_manager",
+      // Group A, 2026-08-26: three roles for permissions that previously had NO holder, so their
+      // live routes answered 403 to every account on the deployment.
+      "tariff_editor",
+      "membership_admin",
+      "biomedical_engineer",
     ]);
     expect(Object.fromEntries(ROLE_MODEL.map((r) => [r.roleKey, r.permissions.length]))).toEqual({
       // Plan 09 / DD18 moved four of these: +3 each to the two desk roles and the cashier (read,
@@ -353,13 +389,18 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       pharmacy: 1,
       cashier: 11,
       billing_manager: 10,
-      owner: 3,
+      // Group A, 2026-08-26: +4 — tariff.read, the activator key, tariff config, and approval-type
+      // governance. `owner` is now the activator for BOTH ceremonies, workflow and price list.
+      owner: 7,
       // Group C, 2026-08-26: +2, the break-glass and elevation review desks.
       medical_superintendent: 4,
       duty_manager: 1,
+      tariff_editor: 3,
+      membership_admin: 2,
+      biomedical_engineer: 1,
     });
-    expect(modelPairs()).toHaveLength(74);
-    expect(modelPermissions()).toHaveLength(44);
+    expect(modelPairs()).toHaveLength(84);
+    expect(modelPermissions()).toHaveLength(53);
     // No role lists the same permission twice — a duplicate would inflate the counts above
     // without changing a single row of `role_permissions`.
     for (const role of ROLE_MODEL) {
@@ -367,15 +408,18 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     }
   });
 
-  it("the reachability census closes: 74 declared = 51 held + 23 not yet modelled", () => {
+  it("the reachability census closes: 74 declared = 59 held + 15 not yet modelled", () => {
     expect(installedRegistry().allPermissions()).toHaveLength(74);
     // 42 + 13 until the 2026-08-23 ruling moved the four `workflow.definitions.*` strings across;
     // 46 + 13 until Plan 09 declared fourteen and DD18 granted four of them.
     // 50 until `auth.elevation.review` was declared; it is held from the first deploy because
     // `seed:admin` grants every `authManifest` string to `admin` (GRANTED_BY_OTHER_SEEDS), so it
     // never passes through NOT_YET_MODELLED.
-    expect(heldPermissions()).toHaveLength(51);
-    expect(NOT_YET_MODELLED).toHaveLength(23);
+    // 51 + 23 until Group A (2026-08-26) granted eight strings that had guarded live routes with
+    // no holder at all; they moved from one side of this sum to the other, which is exactly what
+    // NOT_YET_MODELLED's header promises happens the day a gap is closed.
+    expect(heldPermissions()).toHaveLength(59);
+    expect(NOT_YET_MODELLED).toHaveLength(15);
     expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(74);
   });
 
@@ -450,12 +494,17 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // Group C, 2026-08-26. `OPD_ROLE_KEYS` had declared it all along; it simply held no model row.
       "duty_manager",
     ]);
-    expect(modelKeys.filter((k) => !opdKeys.includes(k))).toEqual(["pharmacy", "cashier", "billing_manager"]);
+    // Group A's three are declared locally: none of them is an OPD station.
+    expect(modelKeys.filter((k) => !opdKeys.includes(k))).toEqual([
+      "pharmacy", "cashier", "billing_manager", "tariff_editor", "membership_admin", "biomedical_engineer",
+    ]);
     // `nurse` is now the ONLY constant entry with no permission column anywhere — `duty_manager`
     // left this list on 2026-08-26 when Group C gave it one.
     expect(opdKeys.filter((k) => !modelKeys.includes(k))).toEqual(["nurse"]);
     // The UNION covers the model exactly, and neither source shadows the other.
-    expect(Object.keys(LOCAL_ROLE_TITLES).sort()).toEqual(["billing_manager", "cashier", "pharmacy"]);
+    expect(Object.keys(LOCAL_ROLE_TITLES).sort()).toEqual([
+      "billing_manager", "biomedical_engineer", "cashier", "membership_admin", "pharmacy", "tariff_editor",
+    ]);
     expect(Object.keys(LOCAL_ROLE_TITLES).filter((k) => opdKeys.includes(k))).toEqual([]);
     for (const key of modelKeys) expect(roleTitle(key).length).toBeGreaterThan(0);
     expect(() => roleTitle("no_such_role")).toThrow(/resolves to no title/);
@@ -508,14 +557,15 @@ describe("seed:roles — the reachability invariant (V1, V2)", () => {
     }
     expect(NOT_YET_MODELLED.map((n) => n.permission).sort()).toEqual([
       "approvals.requests.create",
-      "approvals.types.manage",
-      // PLAN 09 / DD18 — the ten. The three membership strings guard the catalog, the operator
-      // import and the reconcile queue; the seven `partners.*` guard lanes that ship structurally
-      // OFF pending the owner's O-8 ruling. Each carries its reason in `seed-roles.ts`, and the
-      // day any of them is granted this list shrinks and the census above fails.
+      // `approvals.types.manage` LEFT on 2026-08-26 (Group A → `owner`), and the five `tariff.*`
+      // strings left with it. That is eight departures in one commit; the census above is what
+      // proves they went somewhere rather than merely stopping being counted.
+      //
+      // Of Plan 09 / DD18's ten, only `membership.catalog.manage` remains — and its reason CHANGED
+      // rather than persisted: it is now "guards no route in the tree", a measurement, where its
+      // two siblings left because they guard live routes and gained `membership_admin`. The seven
+      // `partners.*` still guard lanes that ship structurally OFF pending the owner's O-8 ruling.
       "membership.catalog.manage",
-      "membership.import.run",
-      "membership.reconcile.operate",
       "partners.agreement.manage",
       "partners.attribution.issue",
       "partners.counterparty.manage",
@@ -524,12 +574,10 @@ describe("seed:roles — the reachability invariant (V1, V2)", () => {
       "partners.receivable.operate",
       "partners.statement.import",
       "patients.confidential.read",
+      // STAYS, and its reason changed from "no ruling" to a MEASUREMENT: the owner ruled an
+      // mrd_officer role, but `patient_merge` is registered by no seed, so `requestApproval` throws
+      // `unknown_type` and the merge lane is dead at step one for everybody. Blocked on machinery.
       "patients.merge",
-      "tariff.config.manage",
-      "tariff.read",
-      "tariff.services.manage",
-      "tariff.versions.activate",
-      "tariff.versions.draft",
       // The four `workflow.definitions.*` strings left this list on 2026-08-23 — see
       // WORKFLOW_RULING_PAIRS. The four instance strings below stay, and their reason is now
       // "no live path traverses that controller" rather than "no ruling exists yet".
@@ -559,7 +607,9 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     // This is the leg that stops the subset scoping above becoming a hole: a model row that is
     // neither table-derived nor one of the three rulings' twenty-five pairs fails HERE.
     expect(nonTable).toEqual([...NON_TABLE_PAIRS].sort());
-    expect(NON_TABLE_PAIRS).toHaveLength(28);
+    expect(NON_TABLE_PAIRS).toHaveLength(38);
+    // The Group A ruling's own source sentence, held to the same standard as the four below.
+    expect(readme).toContain(GROUP_A_README_PROSE);
     // The Group C ruling's own source sentence, held to the same standard as the three below.
     expect(readme).toContain(GROUP_C_README_PROSE);
     // The workflow ruling's own source sentence, held to the same standard as ruling 7's below.
@@ -604,36 +654,36 @@ describe("seed:roles — executed against a database (V5)", () => {
 
   it("V5: is idempotent — the second run creates nothing, grants nothing, and still reports the census", async () => {
     const first = await seedRoles(db);
-    expect(first.roles.map((r) => r.created)).toEqual(Array(12).fill(true));
+    expect(first.roles.map((r) => r.created)).toEqual(Array(15).fill(true));
     // The last two are the governance roles the 2026-08-23 ruling added: `owner` 3, `medical_
     // superintendent` 2. `opd_admin` went 4 -> 6 with the two definition-drafting strings. Plan
     // 09 / DD18 then moved four: front_office 9 -> 12, its supervisor 10 -> 13, cashier 8 -> 11,
     // billing_manager 9 -> 10.
     // Group C then moved two more: `medical_superintendent` 2 -> 4 (the two review desks) and a
     // new twelfth entry, `duty_manager`, holding exactly one.
-    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 13, 5, 7, 6, 1, 1, 11, 10, 3, 4, 1]);
+    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 13, 5, 7, 6, 1, 1, 11, 10, 7, 4, 1, 3, 2, 1]);
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
     expect(first.declared).toBe(74);
     // MEASURED from role_permissions, not derived from the model. On this database only seed:roles
-    // has run, so what is held is exactly what the model granted — 44, not the 51 the model CLAIMS
+    // has run, so what is held is exactly what the model granted — 53, not the 59 the model CLAIMS
     // once seed:admin and seed:ops have also run. That SEVEN-permission gap IS MAJOR 1 (it was ten
     // until Group C moved three `auth.*` strings into the model), and before the 2026-08-23 fix
     // this line read the model's claim against a database holding the grants.
-    expect(first.held).toBe(44);
+    expect(first.held).toBe(53);
     expect(first.held).toBe(modelPermissions().length);
-    expect(heldPermissions()).toHaveLength(51);
-    expect(first.notYetModelled).toBe(23);
-    expect(first.expectedElsewhereAbsent).toBe(7);
+    expect(heldPermissions()).toHaveLength(59);
+    expect(first.notYetModelled).toBe(15);
+    expect(first.expectedElsewhereAbsent).toBe(6);
     // And the census RECONCILES against the catalog, which is the property that makes it evidence:
-    // 44 held + 23 unmodelled + 7 expected-elsewhere = 74 declared.
+    // 53 held + 15 unmodelled + 6 expected-elsewhere = 74 declared.
     expect(first.held + first.notYetModelled + first.expectedElsewhereAbsent).toBe(first.declared);
 
     // `createRole` is a BARE INSERT and is not idempotent; the guard around it is what makes this
     // run exit rather than die on a duplicate key.
     const second = await seedRoles(db);
-    expect(second.roles.map((r) => r.created)).toEqual(Array(12).fill(false));
+    expect(second.roles.map((r) => r.created)).toEqual(Array(15).fill(false));
     expect(second.roles.every((r) => r.granted.length === 0)).toBe(true);
-    expect(second.roles.map((r) => r.already.length)).toEqual([12, 13, 5, 7, 6, 1, 1, 11, 10, 3, 4, 1]);
+    expect(second.roles.map((r) => r.already.length)).toEqual([12, 13, 5, 7, 6, 1, 1, 11, 10, 7, 4, 1, 3, 2, 1]);
 
     // And the database holds the model exactly once.
     const written = await db
@@ -652,10 +702,10 @@ describe("seed:roles — executed against a database (V5)", () => {
     // plus `auth.break_glass.use`, which is ungranted for a WIRING reason `seed-roles.ts` states.
     // Neither script has run here, so none of the seven is held.
     const claimedElsewhere = heldPermissions().filter((p) => !modelPermissions().includes(p));
-    expect(claimedElsewhere).toHaveLength(7);
+    expect(claimedElsewhere).toHaveLength(6);
     const measured = await heldInDatabase(db);
     expect(claimedElsewhere.filter((p) => measured.includes(p))).toEqual([]);
-    expect(first.expectedElsewhereAbsent).toBe(7);
+    expect(first.expectedElsewhereAbsent).toBe(6);
 
     // NOT READY, and the problem NAMES THE REPAIR rather than merely counting.
     //
@@ -689,7 +739,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     // The census MOVED. Under the old model-derived computation both runs returned 46 and this
     // assertion could not have distinguished them — which is precisely why the defect survived.
     expect(second.held).toBe(first.held + 1);
-    expect(second.expectedElsewhereAbsent).toBe(6);
+    expect(second.expectedElsewhereAbsent).toBe(5);
     expect(await heldInDatabase(db)).toContain(moved);
     expect(second.held + second.notYetModelled + second.expectedElsewhereAbsent).toBe(second.declared);
   });
@@ -700,7 +750,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     // A role with no holder is REPORTED rather than silently absent — grants without holders are
     // still 403 for every user on the deployment, and the verdict line has to say so.
     expect(report.ready).toBe(false);
-    expect(report.problems.join(" ")).toContain("NO USER HOLDS ANY OF THE 12 ROLES");
+    expect(report.problems.join(" ")).toContain("NO USER HOLDS ANY OF THE 15 ROLES");
   });
 
   /**
