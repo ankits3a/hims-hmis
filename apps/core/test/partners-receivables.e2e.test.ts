@@ -4,6 +4,7 @@ import request from "supertest";
 import { newId } from "@hmis/contracts";
 import { AppModule } from "../src/app.module";
 import { setupTestDb, truncateAll } from "./helpers/db";
+import { differingByOneChar } from "./helpers/mutate";
 import {
   commissionAccruals, counterparties, partnerAgreements, receivableExpectations, registrationConfig,
   roles,
@@ -212,7 +213,9 @@ describe("partner receivables over HTTP", () => {
     });
 
     const missed = await request(server())
-      .get(`/partners/attributions/${code.slice(0, -1)}X`).set("Authorization", `Bearer ${token}`).expect(404);
+      // `differingByOneChar`, not a literal X: one ULID in 32 ends in X and would re-request the
+      // REAL code, turning this 404 assertion into a 200 at random (test/helpers/mutate.ts).
+      .get(`/partners/attributions/${differingByOneChar(code)}`).set("Authorization", `Bearer ${token}`).expect(404);
     expect(missed.body).toMatchObject({ code: "unknown_attribution" });
   });
 

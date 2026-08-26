@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
+import { differingByOneChar } from "../../../test/helpers/mutate";
 import { loadConfig } from "../../kernel/config";
 import {
   attributionIds, counterparties, events, partnerAgreements, receivableExpectations,
@@ -264,7 +265,9 @@ describe("attribution: one referral, one id, one partner (DD13)", () => {
   it("a code differing by ONE CHARACTER resolves to nothing — there is no prefix and no similarity", async () => {
     const { counterpartyId } = await partnerFor();
     const slip = await issueAttribution(db, CLERK, { counterpartyId, referredValuePaise: 400_000 }, NOW);
-    expect(await findAttributionByCode(db, `${slip.code.slice(0, -1)}X`)).toBeNull();
+    // NOT `${…slice(0, -1)}X` — one ULID in 32 already ends in X, and that "mutation" is the
+    // original code. See test/helpers/mutate.ts; it cost this phase a red CI on its own CLOSE.
+    expect(await findAttributionByCode(db, differingByOneChar(slip.code))).toBeNull();
     expect(await findAttributionByCode(db, slip.code.slice(0, -1))).toBeNull();
   });
 

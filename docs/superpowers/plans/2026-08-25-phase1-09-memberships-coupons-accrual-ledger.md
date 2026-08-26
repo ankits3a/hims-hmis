@@ -2056,8 +2056,25 @@ diff cannot explain it is a candidate for re-run BEFORE it is a candidate for di
 **A base rate computed over COMMITS is not evidence about a particular RUN**, and I nearly let an
 aggregate talk me out of the one cheap measurement that settles a specific question. Ledger §2.98.
 
-**The `gh` log is still worth having** — it names WHICH test is nondeterministic, which is the next
-useful fact — but it is no longer blocking, and O4 no longer gates this phase's close.
+**THE `gh` LOG ARRIVED 2026-08-26 AND NAMED THE TEST — AND IT IS NOT A MYSTERY FLAKE, IT IS A DEFECT
+IN THIS PHASE'S OWN FIXTURE.** `partners/attribution.test.ts` asserts *"a code differing by ONE
+CHARACTER resolves to nothing"* and builds that code as `` `${slip.code.slice(0, -1)}X` ``.
+Attribution codes are `RF-` + the last ten characters of a **ULID**, which is Crockford base32 — so
+**one code in thirty-two already ends in `X`**, the "mutation" is byte-identical to the original, and
+the assertion asks whether a record it just created does not exist. The red run's own code was
+`RF-HCFZXVM8EX`. **Two sites carried the pattern** (this test and
+`test/partners-receivables.e2e.test.ts`), giving ~6% chance of an unexplained red per CI run —
+which is precisely the one-in-eighteen that was observed.
+
+**FIXED at close.** `test/helpers/mutate.ts`'s `differingByOneChar` swaps to the other of two
+candidates and **throws if the result equals its input**, so the defect cannot be reintroduced
+silently. Both sites now use it. The old expression was demonstrated to collide (`RF-HCFZXVM8EX` →
+`RF-HCFZXVM8EX`, identical) rather than argued about. Ledger **§2.99**.
+
+**And this is what O4 costs, made concrete.** The build host was `pnpm verify` exit 0 *twice* on the
+red tree; only the job log could name the test, and the job log needs a credential this box does not
+have (§2.91). One log line replaced a controlled re-run, an hour of diagnosis, and a wrong
+intermediate conclusion.
 
 **THE PHASE IS CLOSED.** Reviewer clean, `pnpm verify` exit 0, forty mutants dead, frozen paths
 clean, every task commit green by full SHA, and HEAD green.
