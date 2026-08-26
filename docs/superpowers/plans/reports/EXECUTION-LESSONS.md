@@ -503,6 +503,25 @@ The assertion was *"a code differing by ONE CHARACTER resolves to nothing"*, and
 **Two sites carried it** (the unit test and the e2e), so the phase ran at ~6% chance of an unexplained red per CI run — which is exactly the observed rate: one red in eighteen observations.
 **What made it expensive was not the bug, it was the shape.** A red whose diff cannot explain it, on a build host that is green twice over, with job logs behind a credential — §2.91's diagnosis gap made concrete. It consumed a controlled re-run, an hour, and a wrong intermediate conclusion (§2.98).
 **The mechanical form, and the throw is the point rather than the swap:** [`test/helpers/mutate.ts`](../../../../apps/core/test/helpers/mutate.ts)'s `differingByOneChar` picks the other of two candidates and **THROWS if the result equals its input**. A helper that merely picked a different letter would fix these two sites and be silently re-broken by the next one; this one cannot return its input, so a future alphabet or prefix change fails LOUDLY at the line that built the fixture. **Generalised: any fixture built by perturbing a real value must assert the perturbation changed it.** §3.14's family — an assertion whose fixture cannot separate right from wrong — with a new and very cheap mechanism.
+**2.100 — A CAPABILITY CLAIM IN THIS FILE EXPIRED, AND THE SESSION THAT BELIEVED IT ALMOST LEFT A FIXABLE FLAKE ON `main`.** *(Plan 16a, 2026-08-26 — and the entry it disproves is §2.91, nine entries up)*
+§2.91 ends *"job **logs** remain 403, so the failing test could not be identified"*, and Plan 16a's session quoted it: T6's CI red was written up as un-diagnosable, handed to the owner as a one-command action, and the phase moved on. Then the TOOL was checked instead of the ruling. **`gh auth status` reports an authenticated PAT on the build host** — somebody logged in after §2.91 was written — and `gh run view <id> --log-failed` named the failure in a single call: two race legs in `billing/receipts.test.ts` and one in `sessions.test.ts` hitting `Exceeded timeout of 15000 ms` on a runner taking 1760 s against its neighbours' 649-778 s.
+**§2.91's own rule is what was violated, and §2.91 is what violated it:** *"when a method records that a host cannot do something, record WHICH TOOL was tried — a capability ruling stated against a tool expires the moment another route exists."* A rule that names its own expiry condition is worth nothing if the next reader treats the entry as the fact rather than as a measurement with a date on it.
+**The mechanical form, one line before any "this host cannot" claim is repeated:**
+```
+gh auth status && gh run view <run-id> --log-failed
+```
+**The general rule: an entry asserting an ABSENCE — no credential, no tool, no route — carries an expiry that a positive finding never does.** Cite it with the check, or do not cite it. *(Cost, had it stood: a real flake left on `main` behind an "unfalsifiable" label, and every later phase inheriting a red nobody could read. Cost of the check: one command.)*
+
+**2.101 — THIS LEDGER IS NOW 82,000 TOKENS AND EVERY HEAVY PHASE RE-BILLS IT PER AGENT, PER CALL.** *(Plan 16a token audit, 2026-08-26)*
+Measured: `EXECUTION-LESSONS.md` is **329,574 bytes ≈ 82k tokens**, against the ~81k Plan 09 was billed on every one of its 2,327 tool calls (§9 of the method, and the 871M context re-read that bought that section). The ARCHIVE pass v3 §5 created has run twice and retired **three** entries — §2.40, §2.79, §2.33 — while the file gained two more in this session alone. **Archiving is losing to accretion by roughly 1:10.**
+LIGHT phases do not pay it: 16a ran nine tasks with zero subagents and re-billed nothing to anyone. That is exactly why the liability is invisible until the next HEAVY phase, which is charged 82k × every agent × every call.
+**The mechanical form — the number joins every audit, beside the phase's own spend, so the trend is visible before it is expensive:**
+```
+wc -c docs/superpowers/plans/reports/EXECUTION-LESSONS.md   # / 4 = tokens re-billed per agent per call
+```
+**The rule it suggests and does not yet impose: a brief cites ledger entries BY NUMBER and carries none of the file.** §9.1 already says it; what is new is the measurement of what saying it is now worth.
+
+
 
 ## 3. Plan-authoring defects
 

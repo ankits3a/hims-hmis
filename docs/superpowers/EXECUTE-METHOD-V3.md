@@ -219,6 +219,29 @@ agent needed perhaps 15k, re-billed on every call.
 3. **Address relay entries to the task that needs them.** A relay is append-only and compounds; an
    agent in the last wave should not pay for the first wave's findings.
 
+### 9.3 Two amendments Plan 16a's audit bought — added 2026-08-26
+
+**(a) A "this host cannot" claim is checked, never quoted.** §8's topology ruling and ledger §2.91
+both record that `gh` cannot authenticate on the build host. **That is no longer true** — `gh auth
+status` reports an authenticated PAT there, and `gh run view <id> --log-failed` names a failing test
+in one call. 16a reported a CI red as un-diagnosable on the strength of the stale claim before
+checking, and nearly left a real flake on `main` behind it (ledger §2.100).
+**The amendment: before any session repeats a capability ruling stated against a TOOL, it runs the
+tool.** One line, and it retires the ruling or confirms it:
+```
+gh auth status && gh run view <run-id> --log-failed
+```
+`pipelines/ci-watch-host.sh` stays the default for a VERDICT — it needs no credential and costs one
+`curl` — but the *diagnosis* half of §8's ruling is dead, and a session that cannot name a red test
+should say which command it ran, not which entry it read.
+
+**(b) The ledger's own size is a line item in every audit.** `EXECUTION-LESSONS.md` measured
+**329,574 bytes ≈ 82k tokens** at 16a's close, and every HEAVY phase re-bills that per agent per
+call. The ARCHIVE pass §5 created has retired three entries in two runs while the file gained two in
+one session — accretion is winning about 10:1 (ledger §2.101). **The audit now reports the number
+beside the phase's spend**, so the trend is visible while it is still cheap to act on. §9.1's
+cite-by-number rule is what acts on it; this is the measurement that says what obeying it is worth.
+
 ### 9.2 The measurement, before compiling and after closing
 
 **Before:** `wc -c` every file the briefs point at, divide by four, and write the total into the

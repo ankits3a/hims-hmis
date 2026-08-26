@@ -2,28 +2,60 @@
   "_": "Measured actuals, appended by the token-audit skill at every phase close. SUBAGENT tokens only — the main session has never been measured (runbook O3, open since Plan 11e), which is why a LIGHT phase's number here is NOT comparable to a HEAVY one. Say so rather than comparing them.",
   "phases": [
     {
-      "phase": "10", "lane": "HEAVY", "tasks": 6, "agents": 13, "subagentTokens": 2643332,
+      "phase": "10",
+      "lane": "HEAVY",
+      "tasks": 6,
+      "agents": 13,
+      "subagentTokens": 2643332,
       "note": "2.2x its predicted target — the target was wrong for a 20-mutant Book, not the run overspent (ledger 2.68)"
     },
     {
-      "phase": "11d", "lane": "HEAVY", "tasks": 5, "agents": 15, "subagentTokens": 2884873,
+      "phase": "11d",
+      "lane": "HEAVY",
+      "tasks": 5,
+      "agents": 15,
+      "subagentTokens": 2884873,
       "note": "the comparable Plan 09's stop-loss was set from, and the per-task rate 09 matched to 1.2%"
     },
     {
-      "phase": "11e", "lane": "LIGHT", "tasks": 4, "agents": 1, "subagentTokens": 241019,
+      "phase": "11e",
+      "lane": "LIGHT",
+      "tasks": 4,
+      "agents": 1,
+      "subagentTokens": 241019,
       "note": "reviewer only; the session coded. Main-session cost UNMEASURED"
     },
     {
-      "phase": "11g", "lane": "LIGHT", "tasks": 4, "agents": 1, "subagentTokens": 254782,
+      "phase": "11g",
+      "lane": "LIGHT",
+      "tasks": 4,
+      "agents": 1,
+      "subagentTokens": 254782,
       "note": "reviewer only. Main-session cost UNMEASURED"
     },
     {
-      "phase": "11h", "lane": "LIGHT", "tasks": 9, "agents": 1, "subagentTokens": 500000,
+      "phase": "11h",
+      "lane": "LIGHT",
+      "tasks": 9,
+      "agents": 1,
+      "subagentTokens": 500000,
       "note": "NINE tasks, one reviewer, and it caught a CRITICAL. approx: two agents across close+remediation. Main-session cost UNMEASURED"
     },
     {
-      "phase": "09", "lane": "HEAVY", "tasks": 8, "agents": 21, "subagentTokens": 6367558,
+      "phase": "09",
+      "lane": "HEAVY",
+      "tasks": 8,
+      "agents": 21,
+      "subagentTokens": 6367558,
       "note": "output 2.08M, context re-read 871M = 420x. 374,461 tokens carried into EVERY tool call. 13x 11h's subagent spend for a comparable task count"
+    },
+    {
+      "phase": "16a",
+      "lane": "LIGHT",
+      "tasks": 9,
+      "agents": 0,
+      "subagentTokens": 0,
+      "note": "NINE tasks, ZERO subagents — the LIGHT lane taken to its limit, so nothing was re-billed to anyone and no context-per-call figure exists. Main-session cost UNMEASURED (runbook O3, open since 11e): this row is NOT a saving against 09's 6.37M and must not be read as one. What it bought is countable: 14 mutants built / 14 died, 26 CLOSE findings, 5 reds caught by verify before push, 1 live CI flake diagnosed and fixed. Ledger at close: 329,574 bytes = 82k tokens re-billed per agent per call in any HEAVY successor."
     }
   ]
 }
