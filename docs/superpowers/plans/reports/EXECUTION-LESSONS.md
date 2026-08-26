@@ -582,6 +582,14 @@ Five required mutants, five kills — and the phase still shipped a MAJOR, becau
 **Mechanical form:** when a comment claims a test discriminates a particular wrong implementation, that claim is a MUTANT SPECIFICATION and must be executed like one. **Any sentence of the form "this would fail against X" is either an executed result or it must be deleted.**
 
 
+**2.111 — "NOT MY DEFECT" AND "NOT MY CONTRIBUTION" ARE DIFFERENT CLAIMS, AND A CI RED IN A SUITE YOU NEVER TOUCHED CAN STILL BE LOAD YOU ADDED.** *(Plan 09a close, 2026-08-26 — measured, and the second half was nearly missed)*
+`ff79eb9` went red on `src/kernel/worker/scheduler.test.ts` — a suite the phase does not touch — where one test overran its own 120,000 ms budget to 186 s and cascaded into four hook timeouts after it (§16a's named fixture-cascade item, producing five failures from one timeout).
+**The causation question was settled cheaply and completely.** `gh run view --log-failed` named the test in one call (§2.100 — this host is authenticated, and believing the stale §2.91 nearly cost an hour once already). Then: `git diff --name-only ff79eb9..8eabf45 -- apps/ packages/` came back **EMPTY** — the four commits after the red one were documentation and a hook — so **the test surface was byte-identical across one RED run and FOUR GREEN ones.** Red-then-green on identical code is nondeterminism proven by execution (§2.98).
+**A free trick worth naming:** a phase's close usually produces several docs-only commits after its last code commit. Each one is a CI run over an identical test surface, so **the controlled second observation Plan 09 had to engineer arrives by itself — four times.** Look for it before engineering one.
+**AND THE HALF THAT ALMOST WENT UNASKED.** Having proven the red was not caused by the diff, the tempting conclusion is that the diff is blameless. It is not the same question. The phase's new deadlock leg deliberately deadlocks two transactions per trial, and Postgres resolves a deadlock only after `deadlock_timeout` — **eight trials measured at 9,047 ms of real lock contention** against a database every other suite shares, in a file jest runs in parallel with all of them. That plausibly raises the probability of exactly the timeout that fired.
+**Mechanical form:** after any CI red, ask BOTH questions and answer them separately — *did my diff CAUSE this* (diff the test surface; read the log) and *did my diff make it MORE LIKELY* (time the suites I added; ask what shared resource they hold and for how long). Here the answers were **no** and **yes**, and the second one was cheap to act on: the leg measures a MAPPING rather than a probability, so trials fell 8 → 3, **9,047 ms → 3,839 ms, a 58% cut with the same evidence.**
+
+
 
 
 ## 3. Plan-authoring defects

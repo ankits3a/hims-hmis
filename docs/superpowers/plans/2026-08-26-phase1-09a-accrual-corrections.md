@@ -613,6 +613,41 @@ CI" — would have cost an hour** (§2.64's shape, one level out: a CI observati
 explained by the diff is a candidate for *the provider's status page* before it is a candidate for
 diagnosis).
 
+### ONE COMMIT WENT CI RED, AND FOUR GREEN RUNS ON IDENTICAL CODE SETTLED IT
+
+**`ff79eb9` — the second review remediation — is RED.** Every other commit of the phase is green by
+full SHA, including the four that follow it.
+
+**The log named the failure in one call, and it is in a suite this phase does not touch.**
+`src/kernel/worker/scheduler.test.ts`: *"invokes all ten jobs across a stepwise advance from a pinned
+instant"* overran **its own 120,000 ms budget to 186 s**, and its timeout then cascaded into four
+`Exceeded timeout of 15000 ms for a hook` failures in the tests after it. **That cascade is Plan 16a's
+named open item verbatim** — *"a timed-out race leg still poisons the fixtures of the tests after it
+— which is why ONE timeout produced four failures"* — here producing five.
+
+**THE CONTROLLED OBSERVATION, and this phase got four of them instead of Plan 09's one.**
+`git diff --name-only ff79eb9..8eabf45 -- apps/ packages/` is **EMPTY**. The four commits after the
+red one changed documentation and a hook and nothing else, so **the test surface was byte-identical
+across one RED run and four GREEN ones.** Red then green on identical code is nondeterminism proven
+by execution (§2.98). `pnpm verify` on that exact tree was exit 0 locally as well.
+
+**§2.80 still binds in the other direction: four green runs refute determinism, they do not prove the
+flake is gone.** It is a real flake, it is named, and it belongs to `scheduler.test.ts` rather than to
+this phase.
+
+**AND THE HALF THAT IS MINE, WHICH IS NOT THE SAME QUESTION.** *"Not my defect"* and *"not my
+contribution"* are different claims, and only the first was true. The deadlock leg deliberately
+deadlocks two transactions per trial, and Postgres resolves a deadlock only after `deadlock_timeout`
+— **eight trials measured at 9,047 ms of real lock contention** against a database every other suite
+shares, in a file jest runs in parallel with all of them. It plausibly raises the probability of
+exactly the timeout that fired.
+
+**Cut to three trials: 9,047 ms → 3,839 ms, a 58% reduction with the same evidence.** The leg measures
+a MAPPING (whatever escapes must be typed), not a probability; at the observed 13-of-14 deadlock rate
+three trials still see one with ~99.96% probability, and the assertion never asserts that a deadlock
+happens. **The cheapest honest response to "my load may have contributed" is to stop adding the
+load**, and it cost nothing to verify.
+
 ### CLOSED — 2026-08-26
 
 **The gate is discharged.** Two independent review passes ran (v3 §3.4). The first found a MAJOR this
