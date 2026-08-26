@@ -2009,6 +2009,47 @@ was 1.5 × 577k × 8 ≈ **6.9M**. This is §2.68's class — *check the token t
 Book's own row count at compile time* — one level out: I counted the Book rows and then set the
 ceiling from the wrong denominator.
 
+### THE CLOSE COMMIT IS CI RED, AND THIS SESSION CANNOT DIAGNOSE IT
+
+`6f751f1` — the CLOSE commit — is **RED** (`conclusion=failure`, **744 s**, run 32931445649). Every
+other commit of the phase is green by full SHA, and so is `f797999` immediately before it.
+
+**What is established, by execution:**
+
+- The failing step is **`pnpm verify`** (step 7), not `pnpm install --frozen-lockfile` (step 6, which
+  succeeded). Read from `/actions/runs/{id}/jobs`, which the public API answers unauthenticated —
+  §2.91's route, one level deeper than the verdict it was written for. **That endpoint gives STEP
+  granularity for free and this phase is the first to use it; it belongs in `ci-watch-host.sh`.**
+- **The job LOG is 403**: `{"message": "Must have admin rights to Repository."}`. §2.91 said logs
+  need a credential; this is the measured proof, and it is runbook **O4** costing this phase for the
+  second time.
+- The diff `f797999..6f751f1` is **three markdown files, one string in `match-queue.ts`, and two test
+  assertions.** Nothing else.
+- **My own `pnpm verify` on that exact tree was exit 0, twice** (the first run caught the
+  `importer.test.ts` assertion; the second was clean). The seven suites most plausibly implicated —
+  both parity suites, the route census and the whole import module — pass in isolation: 99 tests,
+  exit 0.
+- CI runs exactly `pnpm install --frozen-lockfile && pnpm verify` against a `postgres:16` service.
+  **There is no extra CI step that could explain the divergence.**
+
+**What the base rate says, and it changed my reading.** Across this phase and the two parallel lanes
+there are **18 CI observations and 2 reds** — `927afc6` (explained: foreign content swept in from
+another session) and this one. **One unexplained red in eighteen is not §2.76's ~1-in-4 flake.**
+That argues *against* nondeterminism and *for* something in this commit that fails only in CI —
+which is F1's shape exactly, and F1 is one phase old.
+
+**THE PHASE IS THEREFORE NOT CLOSED.** Everything the close rests on is independently verified — the
+review is clean, `pnpm verify` is exit 0, forty mutants died, frozen paths are clean, and all eight
+task commits are green by full SHA. What is red is the commit that *records* those facts. Recording
+it here, red, is the honest state; a phase document that called itself closed over a red HEAD would
+be the §2.59 failure in its purest form.
+
+**The next action is a controlled second observation**: this commit is itself a legitimate push, and
+if CI is green on a tree that differs from the red one only by this section, the red was
+nondeterministic (with §2.80's caveat — one green run never confirms a flake fix, it only refutes
+determinism). If it is red again, the cause is deterministic and inside a four-line diff, and the
+bisect is cheap.
+
 ### Ledger entries this phase earned
 
 ### The ARCHIVE pass (v3 §5)
