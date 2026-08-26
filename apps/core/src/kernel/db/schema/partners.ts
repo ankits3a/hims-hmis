@@ -176,11 +176,25 @@ export const partnerRefMap = pgTable(
  * read `Σ` rows already appended, append the difference. Without a serializer both cycles read the
  * same sum and both append.
  *
- * So T6 UPSERTS the row below for `(agreement_id, invoice_id, direction)` and then locks it
- * `FOR UPDATE`, with the sum and the append inside the lock — DD10's shape reused, measured to
- * block in this harness (§3 Q6). Idempotency on `basis_event_id` stays as the second guard,
- * exactly as DD10 keeps its index behind its lock. **This task ships the table and its unique
- * index; T6 writes the locking.**
+ * So T6 UPSERTS the row below for `(invoice_id, direction)` and then locks it `FOR UPDATE`, with
+ * the sum and the append inside the lock — DD10's shape reused, measured to block in this harness
+ * (§3 Q6). Idempotency on `basis_event_id` stays as the second guard, exactly as DD10 keeps its
+ * index behind its lock. **This task ships the table and its unique index; T6 writes the locking.**
+ *
+ * ═══ THE KEY IS `(invoice_id, direction)` AND `agreement_id` IS NOT IN IT — PLAN 09a DD2 ═══
+ *
+ * Plan 09 keyed this `(agreement_id, invoice_id, direction)`, and Plan 09's independent reviewer
+ * measured what that costs: an agreement amendment BACKDATED over an invoice already accrued
+ * resolves to a different agreement id, opens a SECOND subject, finds no prior rows beneath it,
+ * and appends the whole target again — `[5000, 10000]`, total 15 000 where 10 000 is correct.
+ *
+ * `agreement_id` STAYS AS A COLUMN and it is deliberately no longer the identity: it records which
+ * version first opened the subject, which is provenance worth keeping and is not a key. Nothing is
+ * lost by dropping it from the key, because every `commission_accruals` row carries its OWN
+ * `agreement_id` and its own `rate_snapshot` (DD6) — so which terms priced which delta stays
+ * reconstructible per ROW, at the grain where the question is actually asked. What is GAINED is
+ * that DD12's invariant, **Σ deltas = target**, becomes true per INVOICE, which is what it always
+ * meant. A serializer keyed on something that can change mid-life is not a serializer.
  */
 export const commissionAccrualSubjects = pgTable(
   "commission_accrual_subjects",
@@ -193,7 +207,7 @@ export const commissionAccrualSubjects = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("commission_accrual_subjects_ux").on(t.agreementId, t.invoiceId, t.direction),
+    uniqueIndex("commission_accrual_subjects_ux").on(t.invoiceId, t.direction),
     check("commission_accrual_subjects_direction_ck", sql`${t.direction} in ('payable', 'receivable')`),
   ],
 );

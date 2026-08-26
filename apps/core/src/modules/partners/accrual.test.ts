@@ -687,4 +687,74 @@ describe("the commission ledger: DD12's delta-to-target on real invoices", () =>
     expect(await db.select().from(commissionAccrualSubjects)).toHaveLength(1);
     expect(await ledgerOf(partner.counterpartyId)).toEqual([]);
   });
+  /**
+   * PLAN 09a T2 — DD2. A BACKDATED AGREEMENT VERSION MUST NOT RE-ACCRUE THE WHOLE INVOICE.
+   *
+   * Plan 09 keyed the subject `(agreement_id, invoice_id, direction)`. An amendment that is
+   * backdated over an invoice already accrued therefore resolves to a NEW agreement id, opens a
+   * SECOND subject, finds no prior rows under it, and appends the entire target a second time —
+   * measured by Plan 09's independent reviewer as `[5000, 10000]`, total 15 000 where 10 000 is
+   * right.
+   *
+   * The subject is re-keyed on `(invoice_id, direction)`. Nothing is lost: every accrual row
+   * carries its own `agreement_id` column and its own `rate_snapshot` (Plan 09 DD6), so which
+   * terms priced which delta is still reconstructible per ROW. What changes is that DD12's
+   * invariant — **Σ deltas = target** — becomes true PER INVOICE, which is what it always meant.
+   *
+   * The two appends are driven directly rather than through the dispatcher because that is the
+   * level DD2 rules and the level the reviewer measured; `consumer.test.ts` proves the bus carries
+   * it.
+   */
+  it("a BACKDATED agreement version re-prices the invoice, it does not re-accrue it (09a DD2)", async () => {
+    const partner = await partnerFor({ rateBps: 500, eligibleCategories: ["consultation"] });
+    const issued = await issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId,
+      lines: [{ lineId: newId(), serviceId: base.consultNewServiceId, qty: 2 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 100_000 }] },
+    }, NOW);
+    expect(issued.totals.netPayablePaise).toBe(100_000); // consultation is exempt — no tax head
+
+    const view = (await invoiceAccrualView(db, issued.invoiceId))!;
+    const attribution = (await attributeInvoice(db, issued.invoiceId))!;
+    const counterparty = (await counterpartyFacts(db, attribution.counterpartyId))!;
+
+    // ── v1 at 500 bps on a fully-collected 100 000 eligible base → target 5 000. ──
+    const v1 = (await resolveAgreementAt(db, counterparty.counterpartyId, attribution.issuedAt))!;
+    expect(v1.agreementId).toBe(partner.agreementId);
+    await appendAccrualDelta(db, {
+      actor: SYSTEM, attribution, counterparty, agreement: v1, view,
+      basisEventId: newId(), basisEventName: "payment.received", occurredAt: NOW,
+    });
+    expect(await deltasOf(partner.counterpartyId)).toEqual([5_000]);
+
+    // ── The amendment: a SECOND active version, effective from the same day, at twice the rate. ──
+    const v2Id = newId();
+    await db.insert(partnerAgreements).values({
+      id: v2Id, counterpartyId: partner.counterpartyId, versionNo: 2, effectiveFrom: AGREEMENT_FROM,
+      effectiveTo: null, status: "active", createdBy: "test",
+      terms: { payableRateBps: 1000, eligibleCategories: ["consultation"], kicker: null },
+    });
+    const v2 = (await resolveAgreementAt(db, counterparty.counterpartyId, attribution.issuedAt))!;
+    expect(v2.agreementId).toBe(v2Id); // the backdated version now governs this invoice's instant
+
+    await appendAccrualDelta(db, {
+      actor: SYSTEM, attribution, counterparty, agreement: v2, view,
+      basisEventId: newId(), basisEventName: "payment.received", occurredAt: NOW,
+    });
+
+    // The target under v2 is 10 000, and 5 000 of it is already accrued: the delta is the
+    // DIFFERENCE. Keyed on the agreement this read `[5_000, 10_000]` and summed to 15 000.
+    expect(await deltasOf(partner.counterpartyId)).toEqual([5_000, 5_000]);
+    const total = (await ledgerOf(partner.counterpartyId)).reduce((s, r) => s + r.amountPaise, 0);
+    expect({ total }).toEqual({ total: 10_000 });
+
+    // ONE subject for this invoice, whichever agreement version priced it. This is the assertion
+    // the old key could not make, and it is the reason the second append found the first's rows.
+    expect(await db.select().from(commissionAccrualSubjects)).toHaveLength(1);
+
+    // Which terms priced which delta is still reconstructible — per ROW, from the row's own
+    // agreement id, exactly as DD6 intends.
+    const ledger = await ledgerOf(partner.counterpartyId);
+    expect(ledger.map((r) => r.agreementId)).toEqual([partner.agreementId, v2Id]);
+  });
 });

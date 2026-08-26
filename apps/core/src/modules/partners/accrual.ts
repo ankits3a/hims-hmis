@@ -52,9 +52,16 @@ import type { Db, Tx } from "../../kernel/db/client";
  * handling two DIFFERENT events for ONE invoice at the same time is a real, observed shape (the
  * alerts consumer's docstring records it), and without a serializer both read the same sum and
  * both append the same delta. So `commission_accrual_subjects` — unique on
- * `(agreement_id, invoice_id, direction)` — is UPSERTED and then locked `FOR UPDATE`, with the sum
- * and the append inside the lock. DD10's shape reused, measured to block in this harness (§3 Q6),
- * and Assertion Book F11 is the mutant with that lock deleted.
+ * `(invoice_id, direction)` — is UPSERTED and then locked `FOR UPDATE`, with the sum and the append
+ * inside the lock. DD10's shape reused, measured to block in this harness (§3 Q6), and Assertion
+ * Book F11 is the mutant with that lock deleted.
+ *
+ * **The key excludes `agreement_id` on purpose (Plan 09a DD2).** Keyed WITH it, a backdated
+ * agreement amendment opened a second subject over an invoice already accrued and re-appended the
+ * whole target — `[5000, 10000]` where `[5000, 5000]` is right. The `agreement_id` written onto the
+ * subject below is therefore the version that OPENED it, not the version that governs it; the
+ * governing version travels per row, on each accrual's own `agreement_id` and `rate_snapshot`
+ * (DD6). The upsert still writes the column, so the provenance survives; only the identity moved.
  *
  * `commission_accruals_basis_event_ux` on `(subject_id, basis_event_id)` is the SECOND guard, and
  * the first is the in-lock existence check below (F6). Both are needed and neither is redundant:
@@ -229,12 +236,11 @@ export async function appendAccrualDelta(db: Db, input: AppendAccrualInput): Pro
       insert into commission_accrual_subjects (id, agreement_id, invoice_id, direction, counterparty_id)
       values (${newId()}, ${agreement.agreementId}, ${attribution.invoiceId}, ${DIRECTION_PAYABLE},
               ${counterparty.counterpartyId})
-      on conflict (agreement_id, invoice_id, direction) do nothing
+      on conflict (invoice_id, direction) do nothing
     `);
     const subjectRows = (await tx.execute(sql`
       select id from commission_accrual_subjects
-      where agreement_id = ${agreement.agreementId}
-        and invoice_id = ${attribution.invoiceId}
+      where invoice_id = ${attribution.invoiceId}
         and direction = ${DIRECTION_PAYABLE}
       for update
     `)).rows as { id: string }[];

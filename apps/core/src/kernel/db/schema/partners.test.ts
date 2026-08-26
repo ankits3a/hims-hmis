@@ -185,7 +185,7 @@ describe("the partner tables (Plan 09 T1)", () => {
 
   // ──────────────────── DD12 — the subject row, and idempotency on the basis event ────────────────────
 
-  it("one subject per (agreement, invoice, direction), which is what T6 locks FOR UPDATE", async () => {
+  it("one subject per (invoice, direction) — NOT per agreement — which is what T6 locks FOR UPDATE", async () => {
     await db.insert(patients).values({
       id: "01HPAT0000000000000000001", uhid: "HMS-00000001-1", name: "Invented Patient",
       sex: "female", createdBy: "test", updatedBy: "test",
@@ -204,6 +204,27 @@ describe("the partner tables (Plan 09 T1)", () => {
     await expect(
       db.insert(commissionAccrualSubjects).values({ ...subject, id: "01HSUB0000000000000000002" }),
     ).rejects.toThrow(/commission_accrual_subjects_ux/);
+
+    // ── PLAN 09a DD2 — THE LEG THAT DISCRIMINATES, AND THE OLD KEY PASSED WITHOUT IT. ──
+    // A SECOND AGREEMENT VERSION over the SAME invoice and direction is the SAME subject, and the
+    // index must refuse it. Keyed `(agreement_id, invoice_id, direction)` this insert SUCCEEDED,
+    // which is how a backdated amendment opened a second subject and re-accrued the whole bill
+    // (`[5000, 10000]`, total 15 000 where 10 000 is right — Plan 09's reviewer, measured).
+    //
+    // The test above this line cannot see that: it duplicates the SAME agreement, so it is
+    // satisfied by both the old key and the new one. Naming what an assertion cannot distinguish
+    // is §3.14, and this is the leg that closes it.
+    await db.insert(partnerAgreements).values({
+      id: "01HAG0000000000000000AGR02", counterpartyId: PARTNER, versionNo: 2, effectiveFrom: AT,
+      effectiveTo: null, status: "active", createdBy: "test",
+      terms: { payableRateBps: 1_000, eligibleCategories: ["consultation"], kicker: null },
+    });
+    await expect(
+      db.insert(commissionAccrualSubjects).values({
+        ...subject, id: "01HSUB0000000000000000004", agreementId: "01HAG0000000000000000AGR02",
+      }),
+    ).rejects.toThrow(/commission_accrual_subjects_ux/);
+
     // The OTHER direction for the same invoice is a different subject, and must be: one invoice can
     // owe a partner and be owed by them at once.
     await db.insert(commissionAccrualSubjects).values({

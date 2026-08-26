@@ -1,0 +1,2 @@
+DROP INDEX "commission_accrual_subjects_ux";--> statement-breakpoint
+CREATE UNIQUE INDEX "commission_accrual_subjects_ux" ON "commission_accrual_subjects" USING btree ("invoice_id","direction");
