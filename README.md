@@ -940,6 +940,39 @@ and admits. Nothing is bulk-approved, staging rows are invisible to every resolu
 review UI renders payloads as text only — scraped content is untrusted and the reviewer is a
 privileged user.
 
+## Resource registry (Plan 13)
+
+**Every physical place and station in the hospital lives in ONE tree**, `resources`, with
+`resource_status_history` beside it. Floors, wards, halls, rooms and beds are the five KERNEL kinds;
+theatres, stores, benches, analyzers and devices are the five the later modules claim. It is a
+KERNEL subsystem (`src/kernel/resources/`) rather than a module — it owns no journey and is consumed
+by OPD, the mini-OT, pharmacy, lab, housekeeping and IPD alike — and it carries a §4 manifest for
+the same reason `kernel/ops` does: the manifest seam is where permissions are declared.
+
+**`opd_rooms` is gone.** It was a private OPD table, and Plan 13 exists because OPD had privatised
+the part of resource state that existed. The migration preserves every room id (they are ULIDs, so
+`opd_doctor_schedules.room_id` and `opd_queue_sessions.room_id` needed no value rewrite — only their
+foreign key's target changed), and OPD's `listRooms` / `createRoom` / `updateRoom` keep their
+external shape over a mapper: `floor` reads `attributes->>'floor'` and `active` reads
+`status !== retired`.
+
+**There is no `active` boolean and there never will be.** One state column cannot disagree with
+itself; a row that is `active: false` and `status: 'available'` is a row the bed board reads wrong.
+Each kind declares its own vocabulary on its manifest — including `onRelease`, which for a bed is
+**`cleaning` and not `available`**, because that field IS the discharge cascade and a bed that
+returned straight to available would put the next patient in an uncleaned one.
+
+**The tree is cycle-bounded and depth-bounded at the write path** (`MAX_RESOURCE_DEPTH = 6`),
+because Postgres cannot express "not my own ancestor". There is deliberately no legal-parent-kind
+matrix: containment rules belong to the owning module, not to the registry.
+
+**Permissions (Plan 13 / DD14): the registry is read by the role that already reads the room book.**
+`resources.read` guards the three read routes (`tree`, `board`, `history`) and goes to `opd_admin`
+alone. It creates no new authority — that role already holds `opd.masters.read` and
+`opd.masters.manage` over the same rooms. There is no `resources.manage`: registry master writes
+keep going through OPD's existing `opd.masters.manage` routes, and the first module that needs a
+registry write route declares and mounts its own permission with it.
+
 ## Worker process (Plan 08.5)
 
 A second Node process, `apps/core/src/worker.ts`, boots a providers-only Nest application context

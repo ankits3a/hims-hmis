@@ -248,10 +248,32 @@ const FORMULARY_PAIRS: readonly string[] = [
   "pharmacy/formulary.staging.review",
 ];
 
-/** All eight non-table sets. A model row outside this union fails V3's last leg. */
+/** The README prose line that authorises Plan 13's DD14 grant. Quoted, not paraphrased. */
+const RESOURCES_README_PROSE =
+  "the registry is read by the role that already reads the room book";
+
+/**
+ * The ONE (role, permission) pair Plan 13 / DD14 added. The NINTH non-table set, and the smallest
+ * any of them will ever be.
+ *
+ * `resources.*` has exactly one string and one holder, which is a table with more explanation than
+ * cells — the `formulary.*` reasoning one phase later, and the same conclusion. It is a non-table
+ * set for the structural reason all nine are: the permission is declared by a manifest that has no
+ * column in either README table, and restructuring the two shipped tables to carry a third module
+ * would make a role-model ruling look like a documentation refactor in the diff.
+ *
+ * **NO NEW AUTHORITY IS CREATED BY IT**, and that is what makes it a DD14 decision rather than an
+ * owner ruling: `opd_admin` already holds `opd.masters.read` and `opd.masters.manage` over the room
+ * book, and after T6 those rooms ARE the registry rows this permission reads.
+ */
+const RESOURCES_PAIRS: readonly string[] = [
+  "opd_admin/resources.read",
+];
+
+/** All nine non-table sets. A model row outside this union fails V3's last leg. */
 const NON_TABLE_PAIRS: readonly string[] = [
   ...RULING_7_PAIRS, ...WORKFLOW_RULING_PAIRS, ...PLAN_09_PAIRS, ...GROUP_C_PAIRS, ...GROUP_A_PAIRS,
-  ...MERGE_LANE_PAIRS, ...GROUP_B_PAIRS, ...FORMULARY_PAIRS,
+  ...MERGE_LANE_PAIRS, ...GROUP_B_PAIRS, ...FORMULARY_PAIRS, ...RESOURCES_PAIRS,
 ];
 
 type GrantTable = {
@@ -398,7 +420,7 @@ if (opdTable === undefined || billingTable === undefined) {
 }
 
 describe("seed:roles — the census pins, stated before anything is compared (§2.49)", () => {
-  it("ALL_MANIFESTS declares seventy-seven permissions, by module", () => {
+  it("ALL_MANIFESTS declares seventy-eight permissions, by module", () => {
     const byKey = new Map(ALL_MANIFESTS.map((m) => [m.key, m.permissions.length]));
     expect(Object.fromEntries(byKey)).toEqual({
       auth: 7, // 11e's six + `auth.elevation.review` (the elevation-review queue)
@@ -421,11 +443,17 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // list and in no later task's, so a string first declared by T7 or T8 would fail this build
       // for a task that is not allowed to fix it.
       formulary: 3,
+      // PLAN 13 T2 / DD14. ONE string, and the only one this phase can declare: `resources.read`
+      // guards T5's three read routes. There is deliberately no `resources.manage` — registry
+      // master writes keep going through OPD's `opd.masters.manage` routes, which delegate into the
+      // registry from T6 (DD9), and a `manage` string declared here would be a permission held by
+      // somebody and reaching nothing.
+      resources: 1,
     });
-    expect(installedRegistry().allPermissions()).toHaveLength(77);
+    expect(installedRegistry().allPermissions()).toHaveLength(78);
   });
 
-  it("the role model is sixteen roles, one hundred grants, fifty-seven distinct permissions", () => {
+  it("the role model is sixteen roles, one hundred and one grants, fifty-eight distinct permissions", () => {
     expect(ROLE_MODEL.map((r) => r.roleKey)).toEqual([
       "front_office",
       "front_office_supervisor",
@@ -463,7 +491,9 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // Group B, 2026-08-26: +2, the patient record and the allergy register.
       // Plan 16a / DD10: +1, the formulary read the consult autocomplete needs.
       doctor: 10,
-      opd_admin: 6,
+      // Plan 13 / DD14: +1, the registry read — the same room book this role already administers,
+      // now behind a kernel permission. No new authority (see RESOURCES_PAIRS).
+      opd_admin: 7,
       display: 1,
       // Group B, 2026-08-26: +1, the allergy register at the dispensing counter.
       // Plan 16a / DD10: +3, the whole formulary — read, manage, and staging review. The module is
@@ -484,8 +514,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       mrd_officer: 3,
       biomedical_engineer: 1,
     });
-    expect(modelPairs()).toHaveLength(100);
-    expect(modelPermissions()).toHaveLength(57);
+    expect(modelPairs()).toHaveLength(101);
+    expect(modelPermissions()).toHaveLength(58);
     // No role lists the same permission twice — a duplicate would inflate the counts above
     // without changing a single row of `role_permissions`.
     for (const role of ROLE_MODEL) {
@@ -493,8 +523,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     }
   });
 
-  it("the reachability census closes: 77 declared = 63 held + 14 not yet modelled", () => {
-    expect(installedRegistry().allPermissions()).toHaveLength(77);
+  it("the reachability census closes: 78 declared = 64 held + 14 not yet modelled", () => {
+    expect(installedRegistry().allPermissions()).toHaveLength(78);
     // 42 + 13 until the 2026-08-23 ruling moved the four `workflow.definitions.*` strings across;
     // 46 + 13 until Plan 09 declared fourteen and DD18 granted four of them.
     // 50 until `auth.elevation.review` was declared; it is held from the first deploy because
@@ -506,9 +536,14 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // 60 + 14 until Plan 16a declared three `formulary.*` strings and DD10 granted ALL THREE —
     // the first phase in a while whose new permissions pass NOT_YET_MODELLED by entirely, because
     // the role that holds them (`pharmacy`) already existed and the spec already said who curates.
-    expect(heldPermissions()).toHaveLength(63);
+    // 63 + 14 until Plan 13 declared ONE `resources.*` string and DD14 granted it in the same
+    // commit — so, like the formulary before it, it passes NOT_YET_MODELLED by entirely. The list
+    // of fourteen is UNCHANGED by this phase, which is the number worth reading here: a phase that
+    // declares a permission and cannot grant it in the same task is a phase that has to add a row
+    // to that list with a reason, and this one did not have to.
+    expect(heldPermissions()).toHaveLength(64);
     expect(NOT_YET_MODELLED).toHaveLength(14);
-    expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(77);
+    expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(78);
   });
 
   it("the README carries exactly two permission tables, of the measured shapes", () => {
@@ -695,7 +730,9 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     // This is the leg that stops the subset scoping above becoming a hole: a model row that is
     // neither table-derived nor one of the three rulings' twenty-five pairs fails HERE.
     expect(nonTable).toEqual([...NON_TABLE_PAIRS].sort());
-    expect(NON_TABLE_PAIRS).toHaveLength(54);
+    expect(NON_TABLE_PAIRS).toHaveLength(55);
+    // Plan 13 / DD14's own source sentence, held to exactly the standard of the eight below.
+    expect(readme).toContain(RESOURCES_README_PROSE);
     // Plan 16a / DD10's own source sentence, held to exactly the standard of the seven below.
     expect(readme).toContain(FORMULARY_README_PROSE);
     // Group B's own source sentence, held to the same standard as the six below.
@@ -757,21 +794,26 @@ describe("seed:roles — executed against a database (V5)", () => {
     // new twelfth entry, `duty_manager`, holding exactly one.
     // Plan 16a / DD10 moved two: `doctor` 9 -> 10 (formulary.read) and `pharmacy` 2 -> 5 (the whole
     // formulary — the module is curated at the dispensing counter and nowhere else).
-    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 13, 5, 10, 6, 1, 5, 11, 10, 10, 7, 1, 3, 2, 3, 1]);
+    // Plan 13 / DD14 moved ONE: `opd_admin` 6 -> 7 (resources.read). It is the fifth entry, and it
+    // is the only number in this array a registry phase can move — the registry declares one
+    // permission and grants it to the one role that already administers the same rooms.
+    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 13, 5, 10, 7, 1, 5, 11, 10, 10, 7, 1, 3, 2, 3, 1]);
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
-    expect(first.declared).toBe(77);
+    expect(first.declared).toBe(78);
     // MEASURED from role_permissions, not derived from the model. On this database only seed:roles
     // has run, so what is held is exactly what the model granted — 57, not the 63 the model CLAIMS
     // once seed:admin and seed:ops have also run. That SEVEN-permission gap IS MAJOR 1 (it was ten
     // until Group C moved three `auth.*` strings into the model), and before the 2026-08-23 fix
     // this line read the model's claim against a database holding the grants.
-    expect(first.held).toBe(57);
+    expect(first.held).toBe(58);
     expect(first.held).toBe(modelPermissions().length);
-    expect(heldPermissions()).toHaveLength(63);
+    expect(heldPermissions()).toHaveLength(64);
     expect(first.notYetModelled).toBe(14);
     expect(first.expectedElsewhereAbsent).toBe(6);
     // And the census RECONCILES against the catalog, which is the property that makes it evidence:
-    // 57 held + 14 unmodelled + 6 expected-elsewhere = 77 declared.
+    // 58 held + 14 unmodelled + 6 expected-elsewhere = 78 declared. Plan 13 moved the first and the
+    // last of those three by one each and left the middle two alone, which is what a phase whose
+    // one new permission is granted in the same commit looks like from here.
     expect(first.held + first.notYetModelled + first.expectedElsewhereAbsent).toBe(first.declared);
 
     // `createRole` is a BARE INSERT and is not idempotent; the guard around it is what makes this
@@ -779,7 +821,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     const second = await seedRoles(db);
     expect(second.roles.map((r) => r.created)).toEqual(Array(16).fill(false));
     expect(second.roles.every((r) => r.granted.length === 0)).toBe(true);
-    expect(second.roles.map((r) => r.already.length)).toEqual([12, 13, 5, 10, 6, 1, 5, 11, 10, 10, 7, 1, 3, 2, 3, 1]);
+    expect(second.roles.map((r) => r.already.length)).toEqual([12, 13, 5, 10, 7, 1, 5, 11, 10, 10, 7, 1, 3, 2, 3, 1]);
 
     // And the database holds the model exactly once.
     const written = await db

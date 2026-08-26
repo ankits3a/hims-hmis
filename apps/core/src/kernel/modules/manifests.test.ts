@@ -105,7 +105,7 @@ function manifestKeys(identifiers: string[], label: string): string[] {
 }
 
 describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
-  it("declares exactly twelve manifests, by key, in app.module.ts's original install order", () => {
+  it("declares exactly thirteen manifests, by key, in app.module.ts's original install order", () => {
     expect(ALL_MANIFESTS.map((m) => m.key)).toEqual([
       "auth",
       "workflow",
@@ -121,13 +121,15 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "partners",
       // PLAN 16a T2 — appended, so the eleven above keep the order they were installed in.
       "formulary",
+      // PLAN 13 T2 — appended, so the twelve above keep the order they were installed in.
+      "resources",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(12);
+    expect(ALL_MANIFESTS).toHaveLength(13);
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(12);
+    expect(registry.all()).toHaveLength(13);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -140,7 +142,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly three enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly four enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -169,7 +171,17 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      ships `subscriptions: []` and installing it in the worker would catalog nothing new and
     //      subscribe to nothing. If a later phase gives the formulary a consumer, its subscriptions
     //      and its worker install land in ONE commit — the (1b) discipline, unchanged.
-    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "formulary"]);
+    //
+    // (1d) PLAN 13 T2 — the worker also omits `resources`, and this is the (1)/(1a)/(1c) reason a
+    //      fourth time rather than a new one: `resourcesManifest` ships `subscriptions: []` and the
+    //      worker serves no resources route, so installing it there would catalog nothing new and
+    //      subscribe to nothing. **THE TEST'S OWN TITLE MOVED FROM "three" TO "four" WITH THIS
+    //      LINE**, which is the friction working as designed — a thirteenth manifest cannot join
+    //      ALL_MANIFESTS without somebody stating which side of this difference it falls on.
+    //      If a later phase gives the registry a consumer (Plan 15's assignment stream is the
+    //      candidate), its subscriptions and its worker install land in ONE commit — the (1b)
+    //      discipline, unchanged.
+    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "formulary", "resources"]);
 
     // (2) The worker ADDS `notify`. It declares five `kernel.notify` subscriptions, and
     //     `buildSubscriptionBus` (kernel/worker/jobs.ts) makes a declared subscription with no

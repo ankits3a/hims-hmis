@@ -11,6 +11,7 @@ import { opsManifest } from "../ops/manifest";
 import { membershipManifest } from "../../modules/membership";
 import { partnersManifest } from "../../modules/partners";
 import { formularyManifest } from "../../modules/formulary";
+import { resourcesManifest } from "../resources/manifest";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -70,4 +71,16 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // they were installed in. It declares no subscription (check-on-execute, like `membership`) and
   // an empty `search` array, so it is installed in the API and NOT in the worker.
   formularyManifest,
+  // PLAN 13 T2 — the resource registry, appended so the twelve above keep the order they were
+  // installed in. It is KERNEL code carrying a manifest, like `auth`, `workflow`, `approvals`,
+  // `alerts` and `ops` — the §4 seam is where permissions are DECLARED, and `resources.read`
+  // guards T5's three read routes. It declares `subscriptions: []` and is installed in the API and
+  // NOT in the worker: the worker serves no resources route and there is no consumer to feed, so
+  // installing it there would catalog nothing new and subscribe to nothing. That makes the
+  // worker's difference from this list FOUR rather than three — see manifests.test.ts (1d).
+  //
+  // It is also the first manifest to carry `resourceKinds`, and it declares the five STRUCTURAL
+  // kinds (floor, ward, hall, room, bed) because no module owns a floor. Plan 15 declares
+  // `theatre` and `device` on the mini-OT's own manifest without editing kernel code.
+  resourcesManifest,
 ];

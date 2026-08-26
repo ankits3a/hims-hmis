@@ -189,6 +189,21 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // activating what they drafted, so `.activate` deliberately lives on `owner` instead.
       "workflow.definitions.draft",
       "workflow.definitions.read",
+      // ── PLAN 13 / DD14, 2026-08-26 — the registry is read by the role that reads rooms today ──
+      //
+      // `resources.read` guards the three registry read routes (tree, board, history). It lands on
+      // `opd_admin` and NOWHERE ELSE, and that is a minimum-authority choice rather than a
+      // conservative one: this role already holds `opd.masters.read` and `opd.masters.manage`, so
+      // it already reads and writes the room book. After T6 those rooms ARE registry rows. Granting
+      // the registry read to the role that could already see the same data creates NO NEW
+      // AUTHORITY — 16a DD10's posture, and the reason this line needs no owner ruling.
+      //
+      // THERE IS NO `resources.manage`, deliberately (DD14). Master writes for rooms keep going
+      // through the `opd.masters.manage`-guarded OPD routes, which now delegate into the registry;
+      // the first module that needs a registry WRITE route declares and mounts its own permission
+      // with it. A `manage` string declared here would be held by somebody and reach nothing, which
+      // is the trap on line 160 seen from the other side.
+      "resources.read",
     ],
   },
   { roleKey: "display", permissions: ["opd.display.read"] },
