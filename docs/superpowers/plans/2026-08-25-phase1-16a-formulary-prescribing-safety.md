@@ -335,8 +335,32 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
   an event appended when a hard warning REFUSES an issue. It costs one `appendEvent` in the gate
   and it is the whole denominator.** The alternative — shipping a ratio that is structurally 1.0 —
   would have looked like the feature and measured nothing.
-- **F25 — T6'S CI RUN IS RED, THE FAILING TEST IS NOT IDENTIFIABLE FROM THIS HOST, AND WHAT
-  FOLLOWS IS EVIDENCE RATHER THAN A VERDICT.** Run `32959218495` on `cf63cb5` finished
+- **F26 — THE LEDGER SAID THIS HOST COULD NOT READ CI LOGS. IT CAN, AND BELIEVING THE LEDGER
+  NEARLY LEFT A REAL FLAKE ON `main`.** F25 below was written under §2.91's standing claim that
+  *"job logs remain 403"* — so the red was reported as un-diagnosable and handed to the owner. Then
+  the tool was actually checked: **`gh auth status` reports an authenticated PAT on the build
+  host**, and `gh run view 32959218495 --log-failed` named the failures in one command.
+  **§2.91's own rule is the thing that was violated, by §2.91**: *"when a method records that a host
+  cannot do something, record WHICH TOOL was tried — a capability ruling stated against a tool
+  expires the moment another route exists."* The entry is amended in place.
+  **What the log said, and it is F9's family, confirmed rather than hypothesised:**
+  `billing/receipts.test.ts` — TWO race legs, `Exceeded timeout of 15000 ms`, suite wall 136 s;
+  `billing/sessions.test.ts` — one race leg, same timeout, suite wall 80 s. The
+  `users_username_ux` duplicate and `approval type tariff_revision already exists` errors in the
+  same log are CASCADE, not cause: a leg that times out mid-fixture leaves the next one building on
+  half-seeded state.
+  **THE FIX, and why it is not masking:** those legs measure a RACE — exactly one winner, the
+  invariant holds — and the suite-wide `testTimeout: 15000` is incidental to every assertion in
+  them. Four legs across three files now carry an explicit `RACE_TIMEOUT_MS = 60_000`. Nothing
+  asserted changed. A genuine DEADLOCK still fails, one minute later instead of fifteen seconds
+  later, which is the right trade for a lock test. 60 s is ~4× the observed local cost of the whole
+  suite (`receipts` 46 s, `sessions` 30 s, `series` 23 s locally, all green).
+  **What this phase did NOT do:** re-architect the fixtures so a timed-out test cannot poison its
+  neighbours. That cascade is real and it is the reason one timeout produced four failures. It is
+  named here and left, because the trigger is gone and the repair is a fixture-isolation change
+  across three shipped suites that no 16a task owns.
+- **F25 — T6'S CI RUN WAS RED AND THIS IS WHAT WAS KNOWN BEFORE THE LOG WAS READ (superseded by
+  F26, kept because the reasoning is the part worth auditing).** Run `32959218495` on `cf63cb5` finished
   **`failure`**, in step 7, `pnpm verify`. §2.91 stands: job LOGS need a credential this box does
   not have, so the failing test cannot be named from here. **What IS readable, all of it measured:**
   · the same code plus T7's additions is **GREEN at `ef32c59`** — a strict superset of the red tree;

@@ -4,6 +4,13 @@ import { nextDocNo } from "./series";
 import type { BillingConfig } from "./config";
 import type { Db } from "../../kernel/db/client";
 
+/**
+ * PLAN 16a — the per-test budget for the race legs below. Named rather than inlined so the three
+ * suites that need it say the same thing, and so a future reader finds ONE number to reason about.
+ */
+const RACE_TIMEOUT_MS = 60_000;
+
+
 // nextDocNo only ever reads cfg.seriesPrefixes — a minimal fixture avoids seeding billing_config.
 const CFG = {
   seriesPrefixes: { invoice: "INV", receipt: "RCP", credit_note: "CN", voucher: "RFV" },
@@ -76,6 +83,18 @@ describe("series: nextDocNo (D5 — per-FY, row-locked, <=16 chars)", () => {
     await expect(withTx(db, (tx) => nextDocNo(tx, badCfg, "invoice", at))).rejects.toMatchObject({ code: "unknown_series" });
   });
 
+  /**
+   * PLAN 16a — AN EXPLICIT BUDGET, because this leg measures a RACE and not a SPEED.
+   *
+   * It runs ten rounds of concurrent transactions with a full `truncateAll` before each, and the
+   * suite's global `testTimeout: 15000` is incidental to everything it asserts (exactly one wins;
+   * the invariant holds). On a contended CI runner that budget is what fails, not the property:
+   * run 32959218495 timed out HERE at 15 s while the whole job took 1760 s against its
+   * neighbours' 649-778 s, and the same commit's code passed on a quieter runner minutes later.
+   *
+   * 60 s is ~4x the observed local cost of the whole suite, and a genuine DEADLOCK still fails —
+   * it just takes a minute to say so, which is the right trade for a lock test.
+   */
   test("race: 6 concurrent nextDocNo calls in separate transactions -> exactly {1..6}, no duplicate (measured 10x isolated, cold start every run)", async () => {
     const at = new Date("2026-06-01T00:00:00.000Z");
     const RUNS = 10;
@@ -92,5 +111,5 @@ describe("series: nextDocNo (D5 — per-FY, row-locked, <=16 chars)", () => {
       cleanRuns++;
     }
     expect(cleanRuns).toBe(RUNS);
-  });
+  }, RACE_TIMEOUT_MS);
 });

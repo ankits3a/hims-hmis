@@ -18,6 +18,13 @@ import type { CashierSessionRow } from "./sessions";
 import type { Db } from "../../kernel/db/client";
 
 /**
+ * PLAN 16a — the per-test budget for the race legs below. Named rather than inlined so the three
+ * suites that need it say the same thing, and so a future reader finds ONE number to reason about.
+ */
+const RACE_TIMEOUT_MS = 60_000;
+
+
+/**
  * Plan 08 T4, D9. DISCLOSED SHAPING: `receipts` and `receipt_tenders` rows this file inserts
  * directly against T1's schema exist so `beginClose`'s expected-cash fold has something real to
  * read -- no writer for either table ships until T5 (invoices+receipts) and T6 (allocations). The
@@ -98,6 +105,18 @@ describe("sessions: openSession / requireOpenSession / beginClose / confirmClose
     await expect(openSession(db, cashier.actor, 50_000)).rejects.toMatchObject({ code: "session_already_open" });
   });
 
+  /**
+   * PLAN 16a — AN EXPLICIT BUDGET, because this leg measures a RACE and not a SPEED.
+   *
+   * It runs five rounds of concurrent transactions with a full `truncateAll` before each, and the
+   * suite's global `testTimeout: 15000` is incidental to everything it asserts (exactly one wins;
+   * the invariant holds). On a contended CI runner that budget is what fails, not the property:
+   * run 32959218495 timed out HERE at 15 s while the whole job took 1760 s against its
+   * neighbours' 649-778 s, and the same commit's code passed on a quieter runner minutes later.
+   *
+   * 60 s is ~4x the observed local cost of the whole suite, and a genuine DEADLOCK still fails —
+   * it just takes a minute to say so, which is the right trade for a lock test.
+   */
   test("race: two concurrent opens for the same cashier -> exactly one wins, the loser's raw 23505 maps to session_already_open (measured 5x isolated, cold start every run)", async () => {
     const RUNS = 5;
     let cleanRuns = 0;
@@ -118,7 +137,7 @@ describe("sessions: openSession / requireOpenSession / beginClose / confirmClose
       cleanRuns++;
     }
     expect(cleanRuns).toBe(RUNS);
-  });
+  }, RACE_TIMEOUT_MS);
 
   test("requireOpenSession: no_open_session for a cashier without one", async () => {
     const cashier = await mkCashier(db, "cashier-none");
