@@ -363,19 +363,34 @@ suppression, the 90-day fallback and its labelling, design law 1 end to end, des
 law 10's honesty line, staging isolation, permission wiring, the 409 mapping, and T9's 26 pairs
 read as pharmacology.
 
-### STILL OPEN
+### CLOSED — 2026-08-26
 
-1. **THE INDEPENDENT REVIEW HAS NOT RUN.** Under v3 §3.4 that review IS the gate report, and its
-   CRITICAL findings block close. Everything above is this session auditing its own work, which is
-   exactly what §3.4 exists because nobody should trust.
-2. **The `unresolvedLineIndexes`/`RxPrecheckResult` shape landed in T6 but is T5's surface** (F17) —
-   a reviewer should look at whether the pre-check now carries more than the screen needs.
-3. **F22's missing denominator** — the override-rate mechanism (one `appendEvent` on a hard-warning
-   refusal) is specified and unbuilt.
-4. **The fixture cascade** (F26) — a timed-out race leg still poisons its neighbours' fixtures. The
-   trigger is gone; the repair is not.
-5. **Roadmap amendment, one line, lands at close** (§ Slot): 16a between 11h and 09 in the
-   sequencing note, and 16b's phase document is re-based against this CLOSE before it is approved.
+**The gate is discharged.** The independent review ran (v3 §3.4), found three CRITICAL, five MAJOR
+and six MINOR, and **every one is fixed with a regression test written to fail against the defect it
+names** — commit `cf9a9e4`, `pnpm verify` exit 0 (core **212 suites / 1847 tests**, web 43,
+contracts 4/21).
+
+**Counts across the whole phase: 205/1758 → 212/1847.** Fourteen mutants built, fourteen died. Zero
+subagents for the nine tasks; ONE for the review, and it was the best-value token in the phase — it
+found three CRITICALs in code that had passed eleven green verify runs and eight green CI runs.
+
+### What remains, named rather than closed over
+
+1. **F22's missing denominator.** §1.4's override RATE has no denominator anywhere in the system —
+   the times a warning fired and the doctor CHANGED the prescription instead are recorded nowhere.
+   The screen reports counts with the caveat in the UI. **The mechanism is one `appendEvent` in the
+   refusal path**, and it is a small phase of its own rather than a line item here.
+2. **The fixture cascade.** A timed-out race leg still poisons the fixtures of the tests after it —
+   which is why ONE timeout produced four failures in run `32959218495`. The trigger is gone (the
+   four legs carry an explicit budget); the isolation repair is not, and it spans three shipped
+   billing suites that no 16a task owns.
+3. **16b is PROVISIONAL and re-bases against this CLOSE**, per its own §0. Two of its seam
+   assumptions have already moved: the manifest census is **twelve** (not eleven) and the migration
+   head is **`0027`** (not `0011`). Its §0.2 assumes `rx-checks`' exported shapes are stable —
+   `RxOverride` now carries `saltPair`/`moiety`, and `RxCheckOutcome` carries
+   `unresolvedLineIndexes`.
+4. **Production still holds ONE prescription.** Everything this phase built is forward-looking; the
+   measurement that would show it protecting anybody does not exist yet.
 
 ### Findings
 
