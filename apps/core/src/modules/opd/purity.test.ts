@@ -6,7 +6,13 @@ import { join } from "node:path";
  * process access — so every one of them is a total function of its arguments and its tests need no database.
  * T6 adds vitals-rules.ts and T7 adds fhir.ts to this list.
  */
-const PURE_FILES = ["time.ts", "slots.ts", "visit-type.ts", "queue-engine.ts", "vitals-rules.ts", "fhir.ts"];
+// PLAN 16a T4 — `rx-checks.ts` joins the list, and it is the entry that most needs to be on it:
+// the three safety checks take `now` as an ARGUMENT precisely so a test can put a prior
+// prescription 91 days in the past without waiting, and a clock reached for inside them would make
+// the currency arithmetic untestable at exactly the boundary that matters.
+const PURE_FILES = [
+  "time.ts", "slots.ts", "visit-type.ts", "queue-engine.ts", "vitals-rules.ts", "fhir.ts", "rx-checks.ts",
+];
 const FORBIDDEN = ['from "../../kernel', "await ", "new Date()", "Math.random", "process."];
 
 describe("opd pure cores", () => {

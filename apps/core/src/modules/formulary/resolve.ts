@@ -49,7 +49,14 @@ export type InteractionPair = {
  * rather than re-deriving a value.**
  */
 
-/** Lowercase, strip `.,()-/`, collapse whitespace runs, trim. Idempotent. */
+/**
+ * Lowercase, strip `.,()-/`, collapse whitespace runs, trim. Idempotent.
+ *
+ * EXPORTED THROUGH `index.ts` BECAUSE `modules/opd/rx-checks.ts` NEEDS THE SAME ONE (T4). Its class
+ * path compares an allergy substance to a moiety's drug class, and a second normalizer there would
+ * be §2.54's defect in the worst possible place — the two copies that drifted would be the SAFETY
+ * half and the curation half, silently.
+ */
 export function normalizeDrugName(raw: string): string {
   return raw.toLowerCase().replace(/[.,()\-/]/g, "").replace(/\s+/g, " ").trim();
 }

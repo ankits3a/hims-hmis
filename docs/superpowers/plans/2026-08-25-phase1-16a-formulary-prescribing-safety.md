@@ -140,7 +140,7 @@ export type InteractionPair = { saltAId: string; saltBId: string; severity: "sev
 
 ### T4 — The check suite: salt-aware allergies, interactions, duplicates — **CRITICAL**
 
-**Files:** Create `apps/core/src/modules/opd/{rx-checks.ts, rx-checks.test.ts}`. (Pure functions only — no db import; the file is added to `purity.test.ts`'s covered set.)
+**Files:** Create `apps/core/src/modules/opd/{rx-checks.ts, rx-checks.test.ts}`. (Pure functions only — no db import; the file is added to `purity.test.ts`'s covered set.) **AMENDED AT EXECUTION:** Modify `apps/core/src/modules/opd/purity.test.ts` (the parenthetical above authorises it; the Files list did not name it) and `apps/core/src/modules/formulary/{resolve.ts, index.ts}` (the normalizer is published through the module's interface — see F13).
 
 **Produces (exact signatures; T5 consumes all of these):**
 ```ts
@@ -252,6 +252,7 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
 | T1 — the five tables | `b1c9db8` **CI GREEN** (run 32949762683, 773s) | migration `0026_true_malcolm_colcord`; **12/12** in `formulary.test.ts`, isolated (`Test Suites: 1 passed, 1 total`); `pnpm verify` exit 0 before push (core 205/1758 → **206/1770**) |
 | T2 — the module | _pending push_ | **12/12** in `masters.test.ts`, isolated; census **MEASURED 77 = 63 held + 14 not-yet-modelled**, exactly DD10's prediction; manifest census eleven → twelve; `pnpm verify` exit 0 (core **207/1782**, web 42, contracts 4/21) after two reds — F8 (real, fixed) and F9 (flake, measured) |
 | T3 — resolution, exact | _pending push_ | **12/12** in `resolve.test.ts`, isolated; **fail-first quoted** (staged subset, semantic red); **four mutants built, four DIED** — M3 only on the shipped assertion, see F10 |
+| T4 — the check suite | _pending push_ | **17/17** in `rx-checks.test.ts`, isolated, no database; **seven mutants built, SEVEN DIED**, all quoted |
 | _appended as each lands_ | | |
 
 ### Findings
@@ -308,6 +309,47 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
   that last pair is what proves the second run grants nothing, which is the property `seed:roles`
   exists to have. **DD10 predicted 77 = 63 + 14 and the measurement agreed exactly** — recorded
   because AGENT-RULES §4 says report the difference, and the honest report is that there was none.
+- **F13 — I INVENTED A FILE TO SOLVE A PROBLEM THE ARCHITECTURE ALREADY SOLVES, AND A LINT RULE
+  SAID SO.** `rx-checks.ts` is a pure core and needs the formulary's normalizer for its class path.
+  Reasoning from the purity test alone, I extracted `formulary/normalize.ts` — a file importing
+  nothing — so the pure module could take the function without dragging `kernel/db` in
+  transitively. `pnpm lint` refused it: **"Modules may only import another module's index.ts (its
+  declared interface). Cross-module internals are forbidden (spec §4)"**, three errors, one of them
+  on the file I had just created for the purpose.
+  **The rule is right and my reasoning had a false premise.** The premise was that importing
+  `../formulary` would pull a database connection into a pure module. It does not:
+  `kernel/db/client.ts` reads no environment at module load and opens no pool until `createDb` is
+  CALLED, so the index import loads drizzle table *definitions* and nothing else — the suite still
+  needs no database and still runs in milliseconds, which was the property `purity.test.ts` exists
+  to protect. So the normalizer goes back into `resolve.ts`, is published through `index.ts`, and
+  `rx-checks.ts` consumes the module's declared interface exactly as DD1 says it should.
+  **The lesson is not "obey the linter":** it is that a structural rule encodes a decision somebody
+  already made, and an extraction invented to route around one deserves the question *what does
+  this rule know that I don't* before the file is written. Cost: one file created and deleted, and
+  a lint cycle. *(`purity.test.ts` would NOT have caught the mistake in either direction — it greps
+  for `from "../../kernel` and neither import matches. The architectural lint did.)*
+- **F12 — FAIL-FIRST WAS NOT CAPTURED FOR T4, AND THE RULES DO NOT LET ME RECONSTRUCT ONE.**
+  T3's red was staged honestly (a signature-only subset, semantic failure, quoted). T4's
+  implementation was written before its suite, and by the time that was noticed the shipped file
+  existed. AGENT-RULES §2.4 forbids the obvious repair in as many words — *"never manufacture a red
+  by mutating shipped state: no throwaway databases, no relocating or deleting source files"* — and
+  the §2.4 fallback needs a prior attempt's commit SHA, which does not exist. **So it is disclosed
+  rather than fabricated.** What DOES exist for every assertion that matters is stronger than a
+  stub red and was obtained without touching the shipped file: seven mutants, seven separate scratch
+  implementations, each run isolated, each producing a genuine red of the shipped assertion with
+  expected-vs-received quoted. The gap is real and narrow: nothing proves the suite could fail
+  *before the code existed*, and the mutants prove it fails against seven specific wrong
+  implementations after.
+- **F11 — THE PLAN'S T4 SEMANTICS NAME A FIELD ITS OWN T3 TYPE DOES NOT CARRY, and the right
+  answer was to change neither.** §5's allergy semantics say matching runs against each line-salt's
+  `moiety`/`aliases`/`drugClass`; the `SaltRef` type pinned three sections earlier is
+  `{ saltId, moiety, drugClass }` — no aliases. Tracing the cases shows the alias path is
+  REDUNDANT rather than missing: an allergy recorded under an alias (`"amoxycillin"`) already
+  resolves to its moiety through `resolveDrugTexts`, so by the time the matcher runs, aliases have
+  been discharged into moiety ids. And the case that actually bites — an UNRESOLVED line — carries
+  no salts at all, so alias data on the line side could not help it either; that case is the legacy
+  substring layer's, which is why the layer survives. **Widening a pinned type to add work the
+  resolution layer already does would have looked like thoroughness and bought nothing.**
 - **F10 — THE PLAN'S NAMED DISCRIMINATING INPUT FOR MUTANT A3 DOES NOT DISCRIMINATE, AND ONLY
   BUILDING IT SHOWED THAT.** §5's Assertion Book says: *mutant: matching by `includes()` after
   normalization · input: `"Augmentn"` (typo) → expected `null`; mutant → resolves.* Built and run:
