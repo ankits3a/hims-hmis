@@ -84,7 +84,17 @@ if [ -z "$reason" ]; then
   # the trigger FOR an audit — with the word "close" in its own subject. One audit asked for the
   # next. A phase document is `plans/<date>-<name>.md`; the reports directory holds the audit's own
   # output, and an audit's output is never the thing being audited.
-  phase_docs=$(printf '%s' "$files" | grep "^docs/superpowers/plans/[^/]*\.md$" || true)
+  #
+  # AND THE ROADMAP IS EXCLUDED TOO — added 2026-08-26 (Plan 09a), after this hook fired TWICE for
+  # one close. `2026-08-11-phase1-plan-series.md` is the plan SERIES index, not a phase document:
+  # every close updates its status line, and it sorts FIRST by date, so the `head -1` below stamped
+  # the ROADMAP and left the actual phase document unstamped. The next commit touching only that
+  # phase document therefore computed a different key and asked again. Measured: 09a's close
+  # (`9f9ec96`) stamped `…plan-series-md-`, and `b7ae37a` fired a second time an hour later.
+  # A document that changes at EVERY close can never be the thing that identifies ONE close.
+  phase_docs=$(printf '%s' "$files" \
+    | grep "^docs/superpowers/plans/[^/]*\.md$" \
+    | grep -v "phase1-plan-series\.md$" || true)
   if [ -n "$phase_docs" ]; then
     case "$subject" in
       *CLOSE*|*close*|*"gate report"*|*SHIPPED*) reason="a phase document's CLOSE was just pushed";;
@@ -102,13 +112,25 @@ case "$reason" in *DEPLOY*) kind=deploy;; *) kind=close;; esac
 # the roadmap line and the audit's own record all follow it, and a per-sha stamp asked again at
 # every one. A DEPLOY stamp stays per-sha: deploying the same tree twice is genuinely two events.
 if [ "$kind" = close ]; then
-  key=$(printf '%s' "$phase_docs" | head -1 | tr -c 'A-Za-z0-9' '-')
-  stamp="$REPO/.git/.token-audit-close-$key"
+  # STAMP EVERY PHASE DOCUMENT IN THE COMMIT, NOT JUST THE FIRST — added 2026-08-26 (Plan 09a).
+  # `head -1` made the identity of a close depend on which document happened to sort first, which
+  # is exactly how one close asked twice. A commit that closes two phases is two audits; a commit
+  # that re-touches an already-audited phase is none. Fire only if at least one is NEW.
+  fresh=0
+  while IFS= read -r doc; do
+    [ -z "$doc" ] && continue
+    key=$(printf '%s' "$doc" | tr -c 'A-Za-z0-9' '-')
+    st="$REPO/.git/.token-audit-close-$key"
+    [ -e "$st" ] || { fresh=1; : > "$st" 2>/dev/null || true; }
+  done <<EOF
+$phase_docs
+EOF
+  [ "$fresh" = 0 ] && exit 0
 else
   stamp="$REPO/.git/.token-audit-$kind-$sha"
+  [ -e "$stamp" ] && exit 0
+  : > "$stamp" 2>/dev/null || true
 fi
-[ -e "$stamp" ] && exit 0
-: > "$stamp" 2>/dev/null || true
 
 # EVERY FIRING IS LOGGED WITH THE COMMAND THAT CAUSED IT. A hook that fires wrongly is otherwise
 # un-diagnosable: the model never sees the payload, and this session proved that reconstructing the
