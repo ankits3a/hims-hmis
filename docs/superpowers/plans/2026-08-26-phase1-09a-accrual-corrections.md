@@ -301,6 +301,48 @@ well.
   and new predicates treat the same set of rows as candidates, and the only thing that moved is
   where the boundary falls.
 
+- **F12 — THE HOSPITAL CLOCK IS HAND-WRITTEN IN NINE PLACES, NOTHING CHECKED THEY AGREE, AND I HAD
+  ALREADY WAVED PAST THE EVIDENCE ONCE.** T3's sweep for other copies of the validity predicate saw
+  `modules/opd/time.ts` and `kernel/worker/scheduler.ts` carrying their own `istDayIndex` and
+  dismissed them as *"different domains"*. That dismissal was about the PREDICATE and I let it stand
+  for the CONSTANT underneath, which is not the same question. A stranded Plan 09 relay note, read
+  while rescuing a hung session, named a copy in `membership/coupon-rules.ts` and made me look
+  properly.
+  **Measured: NINE sites carry the IST offset**, in two spellings (`5.5 * 60 * 60 * 1000` and
+  `330 * 60_000`) across `kernel/approvals/cumulative.ts`, `kernel/retention/sweep.ts`,
+  `kernel/worker/partitions.ts`, `kernel/worker/scheduler.ts`, `modules/billing/time.ts`,
+  `modules/membership/coupon-rules.ts`, `modules/opd/search-providers.ts`, `modules/opd/time.ts` and
+  `modules/partners/kicker.ts`. **One of them does it correctly** — `cumulative.ts` exports
+  `IST_UTC_OFFSET_MINUTES = 330` and derives from it — **and nothing in the repository imports that
+  constant.**
+  All nine equal 19,800,000 today, so there is no defect. **But this phase exists because two copies
+  of an IST predicate disagreed, and one mistyped digit in any of these nine reproduces MAJOR 3
+  exactly**: a module that believes a different day has begun than the module beside it.
+  **Not consolidated, and that is a decision rather than an omission.** `scheduler.ts` states its
+  reason in as many words — *"kept local here rather than imported so the scheduler carries no
+  dependency on another kernel surface for one constant"* — which is defensible for a design-law
+  constant unchanged since 1947, and rewriting nine files across frozen modules is not a close
+  remediation's work. **What was NOT defensible was that nothing would notice if one drifted.**
+  `test/ist-clock-parity.test.ts` pins all nine verbatim with a census, so a tenth copy is a
+  deliberate change. Drift mutant (`5.3` in one site): **DIED on both value legs** — `19080000`, and
+  the expression no longer present in the file — while the census leg correctly stayed GREEN, since
+  the site COUNT had not changed. Three legs, three different questions. **This is §2.105 applied one
+  level below the predicate it was written about.**
+- **F13 — A 136KB RELAY WAS ONE `git clean` FROM GONE, AND THE CLAIM THAT IT WAS SAFE TO DELETE WAS
+  MADE FROM MEMORY.** `.plan-09-relay.md` sat untracked in the shared tree. The session that wrote it
+  said its substance was committed at `reports/2026-08-26-plan-09-relay.md`. **Measured: 136,348
+  bytes and 127 numbered entries against a 164-line distillation**, and four facts sampled from it —
+  `coupon_redemptions.cycle_no`, why T7's import had to land on `receivable_expectations`, the
+  `coupon-rules` clock copy, the stale `adjustment_rules` column comment — appear **zero** times in
+  the committed file.
+  **A distillation is not an archive.** The committed relay preserves the load-bearing RULES and was
+  right to; what it does not preserve is the 127 measured facts behind them. Committed RAW as
+  `2026-08-26-plan-09-relay-RAW.md` with a header forbidding any brief from pointing at it (§9.1 —
+  34k tokens re-billed per call). **Curating it would have cost judgment and risked dropping the one
+  entry that mattered — F12 came out of entry 16.**
+  **The general form: a file that only one session can vouch for is not archived, it is remembered**,
+  and memory is the thing this project's evidence standard exists to distrust.
+
 ### The independent reviewer (v3 §3.4)
 
 **RAN 2026-08-26. 206,146 tokens, 83 tool calls, 24 minutes. Verdict as delivered: NOT SAFE TO ARM,
@@ -345,7 +387,7 @@ allowed leg one step finer (a second counterparty). **Either leg alone is satisf
 permissive. F6's own lesson was applied preemptively — the worker databases were cleared of the
 fail-first's residue *before* the migration ran, and this time nothing went red.
 
-#### MAJOR 2 — the receivable total is ORDER-DEPENDENT under concurrency. NOT FIXED, and deliberately.
+#### MAJOR 2 — the receivable total is ORDER-DEPENDENT under concurrency. RESOLVED 2026-08-26 — by ending the SILENCE, not by picking a winner.
 
 Two statements quoting one slip at DIFFERENT amounts: the winner's figure stands and the loser's is
 absorbed as a V3 correction. Reviewer's measured legs — honest-then-inflated → **90 000**, with
@@ -369,7 +411,48 @@ leg asserting what IS true — one slip is never counted twice, and the survivin
 of the two quoted figures and never their sum — and naming the order-dependence in its own title.
 **That test is what will go red when the owner rules.**
 
-**THIS GATES `RECEIVABLE_COMMISSION_ENABLED`.** See the open items below.
+**RESOLVED 2026-08-26 (`e9d5433`), on the owner's instruction to take care of it, and the shape of
+the fix is the whole point: the correction path was given THE ANCHOR IT NEVER HAD.**
+
+The MATCHED path compares the partner's figure against `claim.amountPaise` — the hospital's own
+expectation, computed from the referred value at issuance — and disputes any difference. The
+correction path compared against what the LEDGER had already confirmed, so **the partner's number
+was authoritative by default**, and which rule governed was decided by arrival order. `appendCorrection`
+was already reading that expectation row for `agreementId` and `expectedAt`; it simply never looked
+at its amount.
+
+**What changed, and what deliberately did not:**
+
+| | before | now |
+|---|---|---|
+| a correction that AGREES with our expectation | applied, silent | applied, silent — unchanged |
+| a correction that DISAGREES (either direction) | applied, **silent** | **applied, counted and quarantined verbatim** |
+| refusal | — | **none. V3 is untouched.** |
+
+`linesCorrectedUnderReview` is on the import result AND on the `statement.imported` event, and the
+partner's line is kept verbatim in `import_quarantine` under
+`correction_differs_from_expectation` — the desk an operator already works, the same place a
+disputed line lands. **The money still moves exactly as V3 rules it should. It just stops moving
+unobserved.**
+
+**Why not refuse.** `G4/V3` pins an UPWARD correction to 75 000 over a 60 000 expectation and
+asserts `linesDisputed: 0`; `V3 — a DOWNWARD correction` pins the other direction. Both are
+deliberate. Refusing a differing figure deletes the feature, and **a reviewer's finding is not a
+mandate to overturn an owner's ruling** — but neither is "it was ruled" a reason to leave money
+moving where nobody can see it. The third option was there the whole time.
+
+**Mutant (rule 21 / §2.110), because a flag nobody refutes is a comment.** `underReview` hard-wired
+`false`, run against the shipped assertions: **DIED** — `Expected linesCorrectedUnderReview: 1 /
+Received: 0`. And it cannot be hard-wired TRUE either: the *"correction that changes NOTHING"* leg
+quotes exactly our expectation and asserts **0**, with an empty quarantine. **Two legs, opposite
+directions, so the flag has to actually compute something.**
+
+**And the concurrency case is now survivable rather than invisible.** Whichever figure wins the
+lock, the loser's disagreement reaches the desk — asserted in
+`statements.contention.test.ts`, which now pins exactly one reviewable row per race and names the
+two reasons it can carry. **The order-dependence itself is NOT gone** — the confirmed total can
+still be either quoted figure — but it can no longer happen unobserved, which is what made it a
+MAJOR rather than a quirk.
 
 #### MINOR 3 — a concurrent same-`statementRef` import aborted with a raw `23505`. FIXED.
 
@@ -661,8 +744,8 @@ phase had INTRODUCED and returned *not safe to close*; the second reviewed the r
 returned **PAYABLE SAFE TO ARM, PHASE SAFE TO CLOSE** after three corrections, all three taken.
 
 **Every one of Plan 09's four MAJORs is fixed, and so is the fifth that T2's own fix created.**
-`pnpm verify` exit 0 at close: core **213 suites / 1,860 tests**, web 43 / 259, contracts 4 / 21.
-Counts across the phase **212 / 1,847 → 213 / 1,860**, nothing deleted. Seven commits: four tasks
+`pnpm verify` exit 0 at close: core **214 suites / 1,863 tests**, web 43 / 259, contracts 4 / 21.
+Counts across the phase **212 / 1,847 → 214 / 1,863**, nothing deleted. Seven commits: four tasks
 `0f77004` · `54ab73b` · `a092ecc` · `79afbf6`, two review remediations `4b92d24` · `ff79eb9`, the
 CLOSE `9f9ec96` (with the token audit at `0fba3ae`) and the CI-load reduction `24f9272`.
 **`pnpm verify` exit 0 and CI green at HEAD.** Three migrations — `0028` the re-key, `0029` its
@@ -670,7 +753,16 @@ correction after the first review, `0030` the composite FK from the second.
 
 **`COMMISSION_ACCRUAL_ENABLED` is safe to arm** on a system with no accrual history, subject to open
 item 3 being ruled first on any system where cards are imported and matched.
-**`RECEIVABLE_COMMISSION_ENABLED` is NOT**, and open item 1 is why.
+
+**`RECEIVABLE_COMMISSION_ENABLED` is safe to arm too, as of `e9d5433`** — MAJOR 2 is closed. What it
+carries is an OPERATIONAL precondition rather than a code one: **the quarantine queue must be
+somebody's job**, because it is now the only place a partner's unilateral re-statement of what they
+owe becomes visible. Arming this lane without working that queue re-creates the exact exposure the
+fix removed, one layer out.
+
+**Six commits followed the four tasks**, and every one of them came from a reviewer or from a
+stranded note rather than from the plan: two review remediations, the CI-load reduction, MAJOR 2's
+closure, the clock guard, and the relay archive.
 
 **What the phase actually cost, stated plainly: the reviewer found more defects than the tasks did.**
 Four tasks, five required mutants, five kills, five green verifies and four green CI runs produced a
@@ -680,15 +772,17 @@ one of those findings was real.**
 
 ### OPEN ITEMS — what this phase did NOT close, and what each one gates
 
-**1. MAJOR 2 — the V3 correction path absorbs a differing amount, and under concurrency the lock
-decides which figure survives. THIS GATES `RECEIVABLE_COMMISSION_ENABLED`, and it is an OWNER
-RULING, not a code fix.** The question in one sentence: *when a partner's later statement quotes a
-different figure for a slip already settled, should the hospital absorb it as an amendment (today's
-behaviour, pinned by `G4/V3`), dispute it against our own expectation, or require an approval for an
-upward correction?* All three are defensible; the first is what Plan 09 ruled and tested. Until it is
-answered, two operators importing overlapping statements at the same moment can produce two different
-receivable totals from the same pair of files. **`statements.contention.test.ts`'s differing-amount
-leg is written so that it goes red when the ruling lands.**
+**1. ~~MAJOR 2~~ — CLOSED 2026-08-26 (`e9d5433`). It is no longer an open item and no longer gates
+the flag.** A correction that disagrees with the hospital's own expectation is applied, counted and
+quarantined verbatim; V3 is untouched. **What it leaves is an OPERATIONAL duty rather than a code
+defect: the receivable lane may be armed only where somebody actually works the quarantine queue**,
+because that queue is now the only place a partner's unilateral re-statement of what they owe shows
+up. That belongs in the runbook beside the flag flip, not in a plan document.
+**The residual, stated plainly and not smoothed over:** two operators importing overlapping
+statements at the same instant can still produce two different receivable totals from the same pair
+of files. The lock makes the money SINGLE, not DETERMINISTIC. Both outcomes are legitimate V3
+outcomes, and both now leave a row to review — which is the difference between a defect and a
+reconciliation.
 
 **2. The deterministic lock order for `importStatement` (MINOR 4's better repair).** Resolve every
 row, sort by attribution id, then take locks in one order. Not taken in a close remediation because
