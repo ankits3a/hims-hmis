@@ -2009,7 +2009,7 @@ was 1.5 × 577k × 8 ≈ **6.9M**. This is §2.68's class — *check the token t
 Book's own row count at compile time* — one level out: I counted the Book rows and then set the
 ceiling from the wrong denominator.
 
-### THE CLOSE COMMIT IS CI RED, AND THIS SESSION CANNOT DIAGNOSE IT
+### THE CLOSE COMMIT WENT CI RED — AND THE RE-RUN PROVED IT NONDETERMINISTIC
 
 `6f751f1` — the CLOSE commit — is **RED** (`conclusion=failure`, **744 s**, run 32931445649). Every
 other commit of the phase is green by full SHA, and so is `f797999` immediately before it.
@@ -2038,17 +2038,29 @@ another session) and this one. **One unexplained red in eighteen is not §2.76's
 That argues *against* nondeterminism and *for* something in this commit that fails only in CI —
 which is F1's shape exactly, and F1 is one phase old.
 
-**THE PHASE IS THEREFORE NOT CLOSED.** Everything the close rests on is independently verified — the
-review is clean, `pnpm verify` is exit 0, forty mutants died, frozen paths are clean, and all eight
-task commits are green by full SHA. What is red is the commit that *records* those facts. Recording
-it here, red, is the honest state; a phase document that called itself closed over a red HEAD would
-be the §2.59 failure in its purest form.
+**AT THE TIME OF WRITING THE PHASE WAS THEREFORE NOT CLOSED**, and recording it red was the honest
+state: a phase document that called itself closed over a red HEAD would be §2.59 in its purest form.
+The resolution is below.
 
-**The next action is a controlled second observation**: this commit is itself a legitimate push, and
-if CI is green on a tree that differs from the red one only by this section, the red was
-nondeterministic (with §2.80's caveat — one green run never confirms a flake fix, it only refutes
-determinism). If it is red again, the cause is deterministic and inside a four-line diff, and the
-bisect is cheap.
+**RESOLVED 2026-08-26 BY THE CONTROLLED SECOND OBSERVATION — AND IT REFUTED MY OWN HYPOTHESIS.**
+`3ba3505` is **GREEN** (740 s, run 32932673094). `git diff 6f751f1..3ba3505` is **41 lines of
+markdown in this one document and nothing else** — `git diff --name-only … -- apps/ packages/
+docker/` is **EMPTY**. The test surface was byte-identical between the red run and the green one.
+**RED then GREEN on identical code is nondeterminism, proven by execution.** §2.80's caveat still
+binds in the other direction: one green run refutes determinism, it never confirms a flake is fixed.
+
+**The reasoning error is mine and it is the more useful half.** I counted 18 CI observations with 2
+reds, argued that "one unexplained red in eighteen is not a 1-in-4 flake", and concluded the cause
+was probably deterministic and inside my diff. That inference was wrong, and §2.64 — *a CI red whose
+diff cannot explain it is a candidate for re-run BEFORE it is a candidate for diagnosis* — was right.
+**A base rate computed over COMMITS is not evidence about a particular RUN**, and I nearly let an
+aggregate talk me out of the one cheap measurement that settles a specific question. Ledger §2.98.
+
+**The `gh` log is still worth having** — it names WHICH test is nondeterministic, which is the next
+useful fact — but it is no longer blocking, and O4 no longer gates this phase's close.
+
+**THE PHASE IS CLOSED.** Reviewer clean, `pnpm verify` exit 0, forty mutants dead, frozen paths
+clean, every task commit green by full SHA, and HEAD green.
 
 ### Ledger entries this phase earned
 

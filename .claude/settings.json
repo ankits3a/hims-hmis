@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /opt/hmis/.claude/hooks/token-audit-trigger.sh",
+            "timeout": 15,
+            "statusMessage": "checking whether a token audit is due"
+          }
+        ]
+      }
+    ]
+  }
+}

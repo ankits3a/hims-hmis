@@ -112,9 +112,17 @@ Instead:
 
 - **The actuals table** (per phase: tokens, agents, wall clock, catches) continues in CLOSE —
   it is the half of the budgeting apparatus that was ever true.
-- **One stop-loss per phase**, set at kickoff from the actuals of the last comparable phase
-  (e.g. 1.5× its actual): crossing it halts the phase for an owner decision. A stop-loss is a
-  tripwire, not a target, and it is the only forward-looking number a phase carries.
+- **One stop-loss per phase**, set at kickoff **from the last comparable phase's PER-TASK RATE times
+  THIS phase's task count** (e.g. 1.5× that product): crossing it halts the phase for an owner
+  decision. A stop-loss is a tripwire, not a target, and it is the only forward-looking number a
+  phase carries.
+
+  > **AMENDED 2026-08-26 (ledger §2.95) — the arithmetic IS the amendment.** Plan 09 took 1.5× a
+  > FIVE-task phase's TOTAL and applied it to an EIGHT-task phase: a ceiling arithmetically incapable
+  > of covering the work before a single agent ran. It fired mid-phase and halted for an owner
+  > decision that was not about waste — the measured per-task rate agreed with the comparable phase
+  > to **1.2%**. Normalise the comparable, then scale it. The phase document had even predicted the
+  > failure mode in prose and then not done the multiplication: **a caveat is not a calculation.**
 
 ## 7. The pilot, and what refutes it
 
@@ -187,3 +195,55 @@ discovered: production paths are now reachable by native file tools instead of v
 calls, so rule 3/7 discipline carries the weight the SSH boundary used to make conspicuous —
 if the pilot's reviewer ever finds a stray write near `/opt/hmis-prod`, that is a ledger entry
 and grounds to add user-level deny rules to the host's Claude settings.
+
+---
+
+## 9. The context budget — added 2026-08-26, and it is the most expensive lesson this method has bought
+
+**Agent cost is `turns × context`.** An agent pays for its entire context on every tool call, so the
+two terms multiply. Until Plan 09 this method measured neither: the stop-loss watched a *total*, the
+Assertion Book watched *rigour*, and nothing watched the thing that actually sets the bill.
+
+Plan 09, measured from its own journals (ledger §2.97): **output 2.08M, context re-read 871M — 420× —
+at 374,461 tokens carried into every one of 2,327 tool calls.** The pipeline's own rendered prompt
+blocks were 3,695 tokens and were *not* the problem. What the briefs **told agents to read** was
+~152k each — the ledger 81k, the phase document 37k, a relay that grew to 34k — of which any one
+agent needed perhaps 15k, re-billed on every call.
+
+### 9.1 Three rules that bind every compiled brief
+
+1. **Cite ledger entries BY NUMBER. Never point a brief at the ledger file.** `§2.54` in a brief
+   causes a targeted read; `EXECUTION-LESSONS.md` causes an 81k one, on every turn.
+2. **Point at a task's OWN section, not the whole phase document.** §1's one-document rule governs
+   where facts LIVE, not how much of the document a brief makes an agent carry.
+3. **Address relay entries to the task that needs them.** A relay is append-only and compounds; an
+   agent in the last wave should not pay for the first wave's findings.
+
+### 9.2 The measurement, before compiling and after closing
+
+**Before:** `wc -c` every file the briefs point at, divide by four, and write the total into the
+phase document beside the stop-loss. A phase that cannot state its per-agent context budget has not
+been compiled, it has been assembled.
+
+**After, at every close and every deploy, no ruling required** — the same standing as §5's ARCHIVE
+pass: run [`pipelines/token-audit.js`](pipelines/token-audit.js) and follow the `token-audit` skill.
+It measures both terms at zero model cost, weighs what the spend BOUGHT against the phase's CLOSE,
+and appends the phase to [`pipelines/token-baselines.json`](pipelines/token-baselines.json) so the
+next audit is a comparison rather than an anecdote. A **PostToolUse hook fires it automatically**,
+because this is precisely the step a session skips when the phase is finally green.
+
+### 9.3 The lever order, and why agent count is LAST
+
+Attack **context per call** first: it is the largest term, and cutting it verifies nothing less.
+Then **turns** — a mix that is 90%+ Bash means agents reading files through `cat`/`sed`/`grep`, one
+billed turn each. Take **agent count** last, and therefore the LANE last, because it is the only
+lever that can cost verification depth. §2's rule stands unchanged: **the lane sets who codes and how
+work is dispatched; it does not set verification depth.**
+
+### 9.4 The honesty rule this section cannot enforce and the owner must
+
+**A LIGHT phase's subagent tokens are not comparable to a HEAVY phase's.** LIGHT moves cost into the
+main session, which no session can measure from inside — runbook **O3**, open since Plan 11e. Plan 09
+spent **13× Plan 11h's subagent tokens for a comparable task count**, and that comparison is
+suggestive rather than settled until an owner reads `/cost`. Report it that way, in as many words.
+
