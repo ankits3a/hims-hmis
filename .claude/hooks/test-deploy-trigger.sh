@@ -19,6 +19,15 @@ MUST_FIRE = [
     "/opt/hmis/docker/prod/deploy.sh",
     'bash "docker/prod/deploy.sh"',
     "sudo bash docker/prod/deploy.sh",
+    # ── PLAN 09a, 2026-08-26: THE CASE A REAL PRODUCTION DEPLOY HIT. ──
+    # AGENT-RULES rule 18 requires long commands to run DETACHED, and a deploy is the longest command
+    # this project has — so this is the shape a correctly-run deploy actually takes. The matcher
+    # stepped over `setsid`/`nohup`/`sh`, met `-c`, stopped, and never looked inside. The stamp was
+    # never written and the audit was never asked for. Found by deploying and noticing the silence.
+    "setsid nohup sh -c 'bash /opt/hmis/docker/prod/deploy.sh > /opt/hmis/.deploy.log 2>&1; echo $? > /opt/hmis/.deploy.exit' >/dev/null 2>&1 &",
+    "sh -c 'bash docker/prod/deploy.sh'",
+    "setsid sh -c 'bash -c \"bash docker/prod/deploy.sh\"'",
+
 ]
 MUST_NOT_FIRE = [
     # The three that actually misfired, Plan 16a, 2026-08-26.
@@ -38,6 +47,12 @@ MUST_NOT_FIRE = [
     "vim docker/prod/deploy.sh",
     "cp docker/prod/deploy.sh /tmp/backup.sh",
     "git diff docker/prod/deploy.sh | head -20",
+    # PLAN 09a — recursing into a shell's `-c` must NOT reintroduce mention-vs-execution. These are
+    # the cases that would break if the recursion were widened to every interpreter.
+    "sh -c 'cat docker/prod/deploy.sh'",
+    "bash -c 'grep -n compose docker/prod/deploy.sh'",
+    "python3 -c \"open('docker/prod/deploy.sh')\"",
+    "setsid nohup sh -c 'sed -n 1,40p /opt/hmis/docker/prod/deploy.sh > /tmp/x' &",
 ]
 
 def executed(cmd):
