@@ -332,6 +332,16 @@ deliberately excluded because it guards no route anywhere in the tree. A new `bi
 role gains `ops.interface.manage` as a SECOND holder — `duty_manager` keeps it, because the night
 shift must be able to silence an interface without waking the engineer.
 
+Owner ruling of 2026-08-26 opens the patient-merge lane, which had never worked: a new
+`mrd_officer` role gains `patients.read`, `patients.update` and `patients.merge`, and the
+`medical_superintendent` role — named as the `approverRole` on both new approval types — gains
+`approvals.requests.read`, `approvals.requests.decide` and `patients.read`, without which an
+approver cannot reach the worklist or open the two records they are deciding about. The permission
+alone was never the blocker: `patient_merge` and `patient_unmerge` were named by `merge.ts` from
+Plan 05 and registered by nothing, so `requestApproval` threw `unknown_type` for every account.
+`pnpm --filter @hmis/core seed:patients` registers them and now runs on every deploy. One person
+may hold both roles — `assertNotSodPair("requester_approver", …)` still refuses their own merge.
+
 ### Go-live runbook — OPD (owner steps, once per environment)
 0. `UHID_PREFIX=<PREFIX> pnpm --filter @hmis/core seed:registration` — **the `registration_config`
    row.** Numbered ZERO because it belongs to Plan 05 rather than to OPD, and because the steps

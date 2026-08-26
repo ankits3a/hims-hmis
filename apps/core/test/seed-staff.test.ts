@@ -133,7 +133,7 @@ function row(
 }
 
 describe("seed:staff — the census, stated before anything is compared (§2.49)", () => {
-  it("KNOWN_ROLE_KEYS is the seventeen keys some seed script in this tree can create", () => {
+  it("KNOWN_ROLE_KEYS is the eighteen keys some seed script in this tree can create", () => {
     expect(KNOWN_ROLE_KEYS).toEqual([
       "admin",
       "billing_manager",
@@ -146,6 +146,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "front_office_supervisor",
       "medical_superintendent",
       "membership_admin",
+      "mrd_officer",
       "nurse",
       "opd_admin",
       "owner",
@@ -161,7 +162,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
     for (const r of ROLE_MODEL) expect(KNOWN_ROLE_KEYS).toContain(r.roleKey);
     for (const g of GRANTED_BY_OTHER_SEEDS) expect(KNOWN_ROLE_KEYS).toContain(g.roleKey);
     for (const o of OPD_ROLE_KEYS) expect(KNOWN_ROLE_KEYS).toContain(o.key);
-    expect(KNOWN_ROLE_KEYS).toHaveLength(17);
+    expect(KNOWN_ROLE_KEYS).toHaveLength(18);
   });
 
   it("the vocabulary is WIDER than what seed:roles creates, which is what makes two refusals distinct", () => {

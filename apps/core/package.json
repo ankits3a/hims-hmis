@@ -19,6 +19,7 @@
     "seed:tariff": "tsx scripts/seed-tariff.ts",
     "validate:tariff": "tsx scripts/validate-tariff-config.ts",
     "seed:opd": "tsx scripts/seed-opd.ts",
+    "seed:patients": "tsx scripts/seed-patients.ts",
     "seed:billing": "tsx scripts/seed-billing.ts",
     "seed:membership": "tsx scripts/seed-membership.ts",
     "import:holder-book": "tsx scripts/import-holder-book.ts",

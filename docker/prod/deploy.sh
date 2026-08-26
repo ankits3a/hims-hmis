@@ -427,6 +427,13 @@ step "configuration seeding — the rows the modules throw without (Plan 11g / D
 # creating a credential nobody asked it for.
 compose run --rm api node dist/scripts/seed-ops.js
 compose run --rm api node dist/scripts/seed-opd.js
+# The patients module's two approval types (`patient_merge`, `patient_unmerge`) plus the two role
+# KEYS the merge lane names. It is HERE rather than in `seed:registration` — which is runbook step
+# zero, takes UHID_PREFIX and is deliberately NOT in this list — because a registration that has to
+# be remembered per environment is a registration that gets forgotten: `patient_merge` went
+# unregistered from Plan 05 until 2026-08-26, and every merge request on the live box threw
+# `unknown_type` the whole time.
+compose run --rm api node dist/scripts/seed-patients.js
 compose run --rm api node dist/scripts/seed-billing.js
 compose run --rm api node dist/scripts/seed-tariff.js
 compose run --rm api node dist/scripts/seed-membership.js

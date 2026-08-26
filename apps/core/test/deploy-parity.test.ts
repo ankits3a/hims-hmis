@@ -343,7 +343,12 @@ describe("deploy.sh / compose / prometheus.yml parity (Plan 11d D8)", () => {
  * anything is compared.
  */
 const SEED_STEP_SCRIPTS = [
-  "seed-ops.js", "seed-opd.js", "seed-billing.js", "seed-tariff.js", "seed-roles.js",
+  // `seed-patients.js` joined on 2026-08-26 with the patients approval types. It is in the DEPLOY
+  // path rather than the runbook for a measured reason: `patient_merge` was named by `merge.ts`
+  // from Plan 05 and registered by nothing, so every merge request threw `unknown_type` on the
+  // live box until somebody went looking.
+  "seed-ops.js", "seed-opd.js", "seed-patients.js", "seed-billing.js", "seed-tariff.js",
+  "seed-roles.js",
 ] as const;
 
 /** The `dist/scripts/*.js` names `deploy.sh` runs, in the order it runs them. Throws if none. */
@@ -378,7 +383,10 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
      * pinning the number joins the Files list of the task that moves it; this one was not, so the
      * integer is corrected here and the omission is reported as a plan defect.
      */
-    expect(order).toHaveLength(9);
+    // 9 until 2026-08-26, when `seed-patients.js` joined between seed-opd and seed-billing with the
+    // patients approval types — the registration whose ABSENCE left every merge request throwing
+    // `unknown_type` from Plan 05 onward.
+    expect(order).toHaveLength(10);
     expect(order[0]).toBe("migrate.js");
     expect(order[1]).toBe("seed-cursors.js");
   });

@@ -276,6 +276,19 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // desk, and splitting them across two commits would leave a second correction to remember.
       "auth.break_glass.review",
       "auth.elevation.review",
+      // ─── The merge approver's kit, owner ruling 2026-08-26 ───
+      //
+      // `patient_merge` and `patient_unmerge` name THIS role as `approverRole`, and an approver who
+      // cannot reach the worklist is an approval nobody can decide. The pair is generic
+      // (`approvals.*` is one engine for every module), which is the same reason `billing_manager`
+      // holds it.
+      "approvals.requests.read",
+      "approvals.requests.decide",
+      // AND THE RECORDS THEMSELVES, because approving a merge without being able to open the two
+      // patients is not an approval, it is a coin flip. This is also the narrow half of Group B's
+      // "the MS cannot read a patient record": `patients.update` and `.register` stay with the desk
+      // roles — the superintendent decides about records, they do not keep them.
+      "patients.read",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -333,6 +346,24 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // ROUTE ANYWHERE IN THE TREE. Its only occurrence is the manifest. Granting it would hand
       // somebody a key to a door that does not exist — the same mistake `auth.break_glass.use`
       // would have been. It stays in `NOT_YET_MODELLED` with that reason.
+    ],
+  },
+  {
+    roleKey: "mrd_officer",
+    permissions: [
+      // Card #7: "every record findable, releasable only lawfully, retained per schedule". Merging
+      // two records for one person is the sharp end of "findable".
+      "patients.read",
+      "patients.update",
+      // THE PERMISSION GROUP A REFUSED TO GRANT ON ITS OWN. It was not a ruling that was missing —
+      // it was the machinery: `patient_merge` was registered by no seed, so `requestApproval` threw
+      // `unknown_type` and the lane was dead at step one for every account. `seed:patients` closes
+      // that, and the two land in the same commit so the button this grants is a button that works.
+      //
+      // IT IS NOT A UNILATERAL POWER. `executeMerge` refuses anything but a `granted` approval, the
+      // approver is `medical_superintendent`, and `assertNotSodPair("requester_approver", …)` means
+      // one person holding both roles still cannot approve their own merge.
+      "patients.merge",
     ],
   },
   {
@@ -405,18 +436,6 @@ export const NOT_YET_MODELLED: readonly NotYetModelled[] = [
       "calls `startInstance` and `transition` in-process, so the OPD flow never traverses these " +
       "routes; granting them would mint authority no role needs (owner ruling 2026-08-23)",
   })),
-  {
-    permission: "patients.merge",
-    reason:
-      "BLOCKED ON MACHINERY, NOT ON A RULING (measured 2026-08-26). The owner ruled an mrd_officer " +
-      "role in the 2026-08-25 brainstorm, but granting this today would hand somebody a route that " +
-      "cannot work: `createMergeRequest` calls `requestApproval` with type `patient_merge`, and " +
-      "NO SEED REGISTERS `patient_merge` OR `patient_unmerge` — production carries seven approval " +
-      "types, all billing, tariff and membership. `requestApproval` throws `unknown_type`, so the " +
-      "merge lane is dead at step one for every account, permission or no permission. What it needs " +
-      "is a registration seed on the billing/tariff precedent plus an owner ruling naming the " +
-      "approverRole (and the approvals.requests.read/decide pair for whoever that is)",
-  },
   {
     permission: "patients.confidential.read",
     reason:
@@ -504,6 +523,7 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   tariff_editor: "Tariff Editor (drafts the price list; the owner activates)",
   membership_admin: "Membership Administrator (holder-book import and the reconcile queue)",
   biomedical_engineer: "Biomedical Engineer (device and analyzer interfaces)",
+  mrd_officer: "MRD Officer (records; requests merges, never approves one)",
 };
 
 /** The title for a model role key. Throws rather than inventing one — an unresolved role is a defect. */
