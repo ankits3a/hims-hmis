@@ -75,9 +75,17 @@ files=$(git show --name-only --format= HEAD 2>/dev/null || echo "")
 reason=""
 
 [ "$is_deploy" = 1 ] && reason="a DEPLOY just ran"
+phase_docs=""
 if [ -z "$reason" ]; then
-  # A phase closes when a plans/ document changes and the subject says so.
-  if printf '%s' "$files" | grep -q "docs/superpowers/plans/"; then
+  # A phase closes when a PHASE DOCUMENT changes and the subject says so.
+  #
+  # `plans/reports/` IS EXCLUDED, and that is a loop this hook built for itself: the audit writes
+  # its lessons into `plans/reports/EXECUTION-LESSONS.md`, so the commit RECORDING an audit matched
+  # the trigger FOR an audit — with the word "close" in its own subject. One audit asked for the
+  # next. A phase document is `plans/<date>-<name>.md`; the reports directory holds the audit's own
+  # output, and an audit's output is never the thing being audited.
+  phase_docs=$(printf '%s' "$files" | grep "^docs/superpowers/plans/[^/]*\.md$" || true)
+  if [ -n "$phase_docs" ]; then
     case "$subject" in
       *CLOSE*|*close*|*"gate report"*|*SHIPPED*) reason="a phase document's CLOSE was just pushed";;
     esac
@@ -89,7 +97,16 @@ fi
 # commit is TWO events worth auditing — the close asks "was that spend worth it", the deploy asks it
 # again with production in hand. One stamp per sha would have silently swallowed the second.
 case "$reason" in *DEPLOY*) kind=deploy;; *) kind=close;; esac
-stamp="$REPO/.git/.token-audit-$kind-$sha"
+
+# THE CLOSE STAMP IS PER PHASE DOCUMENT, NOT PER SHA. A close is rarely one commit — remediation,
+# the roadmap line and the audit's own record all follow it, and a per-sha stamp asked again at
+# every one. A DEPLOY stamp stays per-sha: deploying the same tree twice is genuinely two events.
+if [ "$kind" = close ]; then
+  key=$(printf '%s' "$phase_docs" | head -1 | tr -c 'A-Za-z0-9' '-')
+  stamp="$REPO/.git/.token-audit-close-$key"
+else
+  stamp="$REPO/.git/.token-audit-$kind-$sha"
+fi
 [ -e "$stamp" ] && exit 0
 : > "$stamp" 2>/dev/null || true
 
