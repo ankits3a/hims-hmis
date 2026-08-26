@@ -5,10 +5,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
-import { opdErrorMessage, todayIst } from "../lib/opd-api";
+import { isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
 import type {
   WireDoctor, WireEncounter, WireOpdConfig, WirePatientSummary, WirePrescription, WireQueueEntry,
   WireQueueEntryView, WireQueueView, WireRxPrint, WireTimelineItem, WireVitals,
+  WireDuplicateHit, WireInteractionHit, WireRxNotice,
 } from "../lib/opd-api";
 import { useRealtime } from "../lib/realtime";
 import { RxPrint } from "../components/rx-print";
@@ -107,6 +108,12 @@ const rxSchema = z.object({
         durationDays: durationDaysField,
         instructions: z.string(),
         noSubstitution: z.boolean(),
+        /**
+         * PLAN 16a T6 / DD9 — set by the formulary picker, cleared the moment the doctor types.
+         * NULLABLE AND NEVER REQUIRED: design law 1 says a free-text line is a legal prescription
+         * for ever, and the screen must not be the place that quietly stops being true.
+         */
+        medicineId: z.string().nullable(),
       }),
     )
     .min(1),
@@ -116,8 +123,26 @@ type RxFormValues = z.output<typeof rxSchema>;
 type RxLineValues = RxFormValues["lines"][number];
 
 const EMPTY_LINE: RxFormInput["lines"][number] = {
-  drug: "", dose: "", route: "oral", frequency: "OD", durationDays: "", instructions: "", noSubstitution: false,
+  drug: "", dose: "", route: "oral", frequency: "OD", durationDays: "", instructions: "",
+  noSubstitution: false, medicineId: null,
 };
+
+// ─────────────────────────── PLAN 16a T6 — the check-suite wire shapes ───────────────────────────
+
+type WirePrecheck = {
+  allergyMatches: AllergyMatch[];
+  interactions: WireInteractionHit[];
+  duplicates: WireDuplicateHit[];
+  notices: WireRxNotice[];
+  unresolvedLineIndexes: number[];
+};
+type WireMedicine = {
+  id: string; brandName: string; routeClass: string;
+  salts: { saltId: string; strength: string | null }[];
+};
+type WireCoverage = { coverage: number; noticeEnabled: boolean };
+
+
 
 type NoteState = { chiefComplaint: string; diagnosis: string; icd10Code: string; advice: string };
 const EMPTY_NOTE: NoteState = { chiefComplaint: "", diagnosis: "", icd10Code: "", advice: "" };
@@ -146,6 +171,16 @@ export function OpdConsult(): React.ReactElement {
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [matches, setMatches] = useState<AllergyMatch[] | null>(null);
   const [reasons, setReasons] = useState<string[]>([]);
+  /** PLAN 16a T6 — the two new hard-warning kinds, each with its own reason per hit (DD3). */
+  const [interactionHits, setInteractionHits] = useState<WireInteractionHit[]>([]);
+  const [duplicateHits, setDuplicateHits] = useState<WireDuplicateHit[]>([]);
+  const [interactionReasons, setInteractionReasons] = useState<string[]>([]);
+  const [duplicateReasons, setDuplicateReasons] = useState<string[]>([]);
+  /** Soft hits. They never gate anything and the panel is dismissible. */
+  const [notices, setNotices] = useState<WireRxNotice[]>([]);
+  const [noticesDismissed, setNoticesDismissed] = useState(false);
+  /** Line indexes the formulary could not resolve — the coverage-gated hint reads this (DD5). */
+  const [unresolvedLines, setUnresolvedLines] = useState<number[]>([]);
   const [overrideError, setOverrideError] = useState<string | null>(null);
   const [rxPrint, setRxPrint] = useState<WireRxPrint | null>(null);
   const [followUp, setFollowUp] = useState("");
@@ -171,6 +206,28 @@ export function OpdConsult(): React.ReactElement {
   const doctorId = me.data?.id ?? "";
 
   const config = useQuery({ queryKey: ["opd", "config"], queryFn: () => api<WireOpdConfig>("GET", "/opd/config") });
+  /**
+   * PLAN 16a T6 — the formulary, for the picker. A doctor holds `formulary.read` (DD10); if this
+   * ever answers 403 the picker is simply empty and free typing is unaffected, which is design
+   * law 1 holding at the transport layer too.
+   */
+  const formulary = useQuery({
+    queryKey: ["formulary", "medicines"],
+    queryFn: () => api<{ items: WireMedicine[] }>("GET", "/formulary/medicines?active=true"),
+    retry: false,
+  });
+  const medicines = formulary.data?.items ?? [];
+  /**
+   * DD5 — the client NEVER re-derives the threshold. It reads `noticeEnabled` and nothing else, and
+   * a 404 (T8 not deployed yet) means OFF, which is also the correct long-term degrade: silence
+   * beats a hint that fires on every line while the formulary is still being filled.
+   */
+  const coverage = useQuery({
+    queryKey: ["formulary", "coverage"],
+    queryFn: () => api<WireCoverage>("GET", "/formulary/coverage"),
+    retry: false,
+  });
+  const noticeEnabled = coverage.data?.noticeEnabled ?? false;
   const queue = useQuery({
     queryKey: ["opd", "queue", doctorId, today],
     queryFn: () => api<WireQueueView | { session: null }>(
@@ -340,7 +397,12 @@ export function OpdConsult(): React.ReactElement {
 
   // ——— the e-Rx ———
 
-  const postRx = async (rxLines: RxLineValues[], overrides?: AllergyOverride[]): Promise<void> => {
+  const postRx = async (
+    rxLines: RxLineValues[],
+    overrides?: AllergyOverride[],
+    interactionOverrides?: { lineIndex: number; reason: string }[],
+    duplicateOverrides?: { lineIndex: number; reason: string }[],
+  ): Promise<void> => {
     if (active === null) return;
     setRxError(null);
     const body: Record<string, unknown> = {
@@ -352,26 +414,58 @@ export function OpdConsult(): React.ReactElement {
         durationDays: l.durationDays,
         instructions: orNull(l.instructions),
         noSubstitution: l.noSubstitution,
+        medicineId: l.medicineId,
       })),
     };
     if (overrides !== undefined) body.overrides = overrides;
+    if (interactionOverrides !== undefined) body.interactionOverrides = interactionOverrides;
+    if (duplicateOverrides !== undefined) body.duplicateOverrides = duplicateOverrides;
     try {
-      const issued = await api<{ prescriptionId: string; version: number }>(
-        "POST", `/opd/visits/${active.encounterId}/prescriptions`, body,
-      );
+      const issued = await api<{
+        prescriptionId: string; version: number;
+        notices?: WireRxNotice[];
+      }>("POST", `/opd/visits/${active.encounterId}/prescriptions`, body);
       setMatches(null);
       setReasons([]);
+      setInteractionHits([]);
+      setDuplicateHits([]);
       setOverrideError(null);
+      // Soft hits survive a successful issue: they are what the doctor should still know about.
+      setNotices(issued.notices ?? []);
+      setNoticesDismissed(false);
       const print = await api<WireRxPrint>("GET", `/opd/prescriptions/${issued.prescriptionId}/print`);
       setRxPrint(print);
       await queryClient.invalidateQueries({ queryKey: ["opd", "visit"] });
     } catch (e) {
       if (e instanceof ApiError) {
-        const errBody = e.body as { code?: string; detail?: { matches?: AllergyMatch[] } } | null;
+        const errBody = e.body as {
+          code?: string;
+          detail?: { matches?: AllergyMatch[]; hits?: WireRxNotice[] };
+        } | null;
         // The allergy hard-warning is a DOMAIN answer carrying the matched lines, not a failure.
         if (errBody?.code === "allergy_conflict" && Array.isArray(errBody.detail?.matches)) {
           setMatches(errBody.detail.matches);
           setReasons(errBody.detail.matches.map(() => ""));
+          setOverrideError(null);
+          return;
+        }
+        /**
+         * PLAN 16a T6 / DD3 — the two new hard warnings arrive in `allergy_conflict`'s exact shape,
+         * so they open the same dialog. THE SERVER IS THE GATE: the pre-check below usually opens
+         * this dialog first, and these branches are what happens when it did not — a formulary
+         * corrected between the pre-check and the submit, or a client that skipped the pre-check.
+         */
+        if (errBody?.code === "interaction_conflict" && Array.isArray(errBody.detail?.hits)) {
+          const hits = errBody.detail.hits.filter(isInteractionHit);
+          setInteractionHits(hits);
+          setInteractionReasons(hits.map(() => ""));
+          setOverrideError(null);
+          return;
+        }
+        if (errBody?.code === "duplicate_salt_conflict" && Array.isArray(errBody.detail?.hits)) {
+          const hits = errBody.detail.hits.filter((h): h is WireDuplicateHit => !isInteractionHit(h));
+          setDuplicateHits(hits);
+          setDuplicateReasons(hits.map(() => ""));
           setOverrideError(null);
           return;
         }
@@ -386,20 +480,86 @@ export function OpdConsult(): React.ReactElement {
 
   const submitRx = rxForm.handleSubmit(async (values) => {
     pendingLines.current = values.lines;
+    if (active === null) return;
+    /**
+     * PLAN 16a T6 — the pre-check runs first so the doctor meets the warning before the refusal.
+     * IT IS A COURTESY, NOT A GATE: the issue path re-runs every check server-side regardless
+     * (design law 2), and `postRx` above still handles both conflict codes. If the pre-check
+     * itself fails — a network blip, a 403 — the submit proceeds and the SERVER decides, because a
+     * screen that refused to submit when its convenience call failed would be inventing a refusal.
+     */
+    try {
+      const pre = await api<WirePrecheck>(
+        "POST", `/opd/visits/${active.encounterId}/rx-precheck`,
+        { lines: values.lines.map((l) => ({
+          drug: l.drug.trim(), dose: l.dose.trim(), route: l.route, frequency: l.frequency,
+          durationDays: l.durationDays, instructions: orNull(l.instructions),
+          noSubstitution: l.noSubstitution, medicineId: l.medicineId,
+        })) },
+      );
+      setNotices(pre.notices);
+      setNoticesDismissed(false);
+      setUnresolvedLines(pre.unresolvedLineIndexes);
+      const severe = pre.interactions.filter((h) => h.severity === "severe");
+      const hardDuplicates = pre.duplicates.filter((h) => h.hard);
+      if (pre.allergyMatches.length > 0 || severe.length > 0 || hardDuplicates.length > 0) {
+        setMatches(pre.allergyMatches.length > 0 ? pre.allergyMatches : null);
+        setReasons(pre.allergyMatches.map(() => ""));
+        setInteractionHits(severe);
+        setInteractionReasons(severe.map(() => ""));
+        setDuplicateHits(hardDuplicates);
+        setDuplicateReasons(hardDuplicates.map(() => ""));
+        setOverrideError(null);
+        return;
+      }
+    } catch {
+      // Deliberately swallowed — see the comment above. The server is the gate.
+    }
     await postRx(values.lines);
   });
 
-  /** K48: the re-post carries `overrides` — one reason per matched line, mirroring the server's rule. */
+  /**
+   * K48, extended by 16a T6: the re-post carries one array per KIND, each with a reason per hit,
+   * mirroring the server's rule exactly. The three-character minimum is checked here so the doctor
+   * is told in the dialog rather than by a round trip — and the server checks it again regardless.
+   */
   const confirmOverride = async (): Promise<void> => {
-    if (matches === null) return;
-    if (reasons.some((r) => r.trim().length < 3)) {
+    const allReasons = [
+      ...(matches === null ? [] : reasons.slice(0, matches.length)),
+      ...interactionReasons.slice(0, interactionHits.length),
+      ...duplicateReasons.slice(0, duplicateHits.length),
+    ];
+    if (allReasons.length === 0) return;
+    if (allReasons.some((r) => r.trim().length < 3)) {
       setOverrideError(t("opdConsult.overrideReasonRequired"));
       return;
     }
-    const overrides: AllergyOverride[] = matches.map((m, i) => ({
+    const overrides: AllergyOverride[] = (matches ?? []).map((m, i) => ({
       lineIndex: m.lineIndex, substance: m.substance, reason: (reasons[i] ?? "").trim(),
     }));
-    await postRx(pendingLines.current, overrides);
+    const interactionOverrides = interactionHits.map((h, i) => ({
+      lineIndex: h.lineIndex, reason: (interactionReasons[i] ?? "").trim(),
+    }));
+    const duplicateOverrides = duplicateHits.map((h, i) => ({
+      lineIndex: h.lineIndex, reason: (duplicateReasons[i] ?? "").trim(),
+    }));
+    await postRx(
+      pendingLines.current,
+      overrides.length > 0 ? overrides : undefined,
+      interactionOverrides.length > 0 ? interactionOverrides : undefined,
+      duplicateOverrides.length > 0 ? duplicateOverrides : undefined,
+    );
+  };
+
+  /** "prescribed N days ago — may no longer be current" (spec §1.3), rendered only when assumed. */
+  const againstLabel = (hit: WireRxNotice): string => {
+    if (hit.against.scope === "in_rx") {
+      return t("opdConsult.hitAgainstLine", { n: hit.against.lineIndex + 1 });
+    }
+    const days = Math.max(0, Math.round((Date.now() - new Date(hit.against.issuedAt).getTime()) / 86_400_000));
+    return hit.against.assumedCurrent
+      ? t("opdConsult.hitAgainstAssumed", { days })
+      : t("opdConsult.hitAgainstPrior", { days });
   };
 
   // ——— completion ———
@@ -663,7 +823,42 @@ export function OpdConsult(): React.ReactElement {
                     <FormKit onSubmit={submitRx}>
                       {lines.fields.map((f, i) => (
                         <div key={f.id} data-testid={`rx-row-${String(i)}`} className="grid gap-2 md:grid-cols-3">
-                          <TextField name={`lines.${String(i)}.drug`} label={t("opdConsult.drug")} />
+                          <div className="space-y-1">
+                            <TextField name={`lines.${String(i)}.drug`} label={t("opdConsult.drug")} />
+                            {/*
+                              PLAN 16a T6 — the formulary picker. Free typing in the field above is
+                              untouched and always legal (design law 1); picking fills the name AND
+                              the id, which is what turns a line into a checked one.
+                            */}
+                            <select
+                              data-testid={`rx-formulary-${String(i)}`}
+                              aria-label={t("opdConsult.pickFromFormulary")}
+                              value={rxForm.watch(`lines.${i}.medicineId`) ?? ""}
+                              onChange={(e) => {
+                                const picked = medicines.find((m) => m.id === e.target.value);
+                                rxForm.setValue(`lines.${i}.medicineId`, picked?.id ?? null);
+                                if (picked !== undefined) rxForm.setValue(`lines.${i}.drug`, picked.brandName);
+                              }}
+                              className="w-full rounded border px-2 py-1 text-sm"
+                            >
+                              <option value="">{t("opdConsult.pickFromFormulary")}</option>
+                              {medicines.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.salts.length > 0 ? `${m.brandName} — ${String(m.salts.length)}` : m.brandName}
+                                </option>
+                              ))}
+                            </select>
+                            {/*
+                              DD5 — the hint renders ONLY when the server says coverage is high
+                              enough. Below the threshold it would fire on almost every line and
+                              become wallpaper, which is worse than silence.
+                            */}
+                            {noticeEnabled && unresolvedLines.includes(i) && (
+                              <p data-testid={`rx-uncovered-${String(i)}`} className="text-xs text-amber-700">
+                                {t("opdConsult.notInFormulary")}
+                              </p>
+                            )}
+                          </div>
                           <TextField name={`lines.${String(i)}.dose`} label={t("opdConsult.dose")} />
                           <SelectField
                             name={`lines.${String(i)}.route`}
@@ -693,6 +888,28 @@ export function OpdConsult(): React.ReactElement {
                       </div>
                     </FormKit>
                   </FormProvider>
+                  {/*
+                    PLAN 16a T6 / DD3 — SOFT hits. Moderate interactions, duplicates against a prior
+                    prescription, duplicates across route classes. They are data: dismissible, never
+                    a gate, and they carry the in-system-only honesty line (design law 10).
+                  */}
+                  {notices.length > 0 && !noticesDismissed && (
+                    <div data-testid="rx-notices" className="mt-2 space-y-1 rounded border border-amber-300 bg-amber-50 p-2 text-sm">
+                      {notices.map((hit, i) => (
+                        <p key={`${String(hit.lineIndex)}-${String(i)}`} data-testid={`rx-notice-${String(i)}`}>
+                          {isInteractionHit(hit)
+                            ? t("opdConsult.noticeInteraction", { n: hit.lineIndex + 1, note: hit.note })
+                            : t("opdConsult.noticeDuplicate", { n: hit.lineIndex + 1, moiety: hit.moiety })}
+                          {" "}
+                          <span className="text-neutral-600">{againstLabel(hit)}</span>
+                        </p>
+                      ))}
+                      <p className="text-xs text-neutral-600">{t("opdConsult.inSystemOnly")}</p>
+                      <Button type="button" size="sm" variant="outline" onClick={() => setNoticesDismissed(true)}>
+                        {t("opdConsult.dismiss")}
+                      </Button>
+                    </div>
+                  )}
                   <ErrorLine message={rxError} />
                 </TabsContent>
 
@@ -756,11 +973,15 @@ export function OpdConsult(): React.ReactElement {
 
       {/* the allergy hard-warning: a reason per matched line, then the re-post carries them (K48) */}
       <Dialog
-        open={matches !== null}
+        open={matches !== null || interactionHits.length > 0 || duplicateHits.length > 0}
         onOpenChange={(open) => {
           if (!open) {
             setMatches(null);
             setReasons([]);
+            setInteractionHits([]);
+            setInteractionReasons([]);
+            setDuplicateHits([]);
+            setDuplicateReasons([]);
             setOverrideError(null);
           }
         }}
@@ -781,6 +1002,44 @@ export function OpdConsult(): React.ReactElement {
               />
             </div>
           ))}
+          {/*
+            PLAN 16a T6 / DD3 — the two new kinds join the SAME dialog with the same reason input,
+            because they are the same act: a clinician deciding to prescribe through a warning, and
+            recording why. A separate dialog per kind would teach three different habits.
+          */}
+          {interactionHits.map((h, i) => (
+            <div key={`ix-${String(h.lineIndex)}-${String(i)}`} className="space-y-1">
+              <label className="block text-sm font-medium" htmlFor={`interaction-reason-${String(i)}`}>
+                {t("opdConsult.interactionHit", { n: h.lineIndex + 1, note: h.note })}{" "}
+                <span className="font-normal text-neutral-600">{againstLabel(h)}</span>
+              </label>
+              <input
+                id={`interaction-reason-${String(i)}`}
+                data-testid={`interaction-reason-${String(i)}`}
+                value={interactionReasons[i] ?? ""}
+                onChange={(e) => setInteractionReasons((rs) => rs.map((r, j) => (j === i ? e.target.value : r)))}
+                className="w-full rounded border px-2 py-1"
+              />
+            </div>
+          ))}
+          {duplicateHits.map((h, i) => (
+            <div key={`dup-${String(h.lineIndex)}-${String(i)}`} className="space-y-1">
+              <label className="block text-sm font-medium" htmlFor={`duplicate-reason-${String(i)}`}>
+                {t("opdConsult.duplicateHit", { n: h.lineIndex + 1, moiety: h.moiety })}{" "}
+                <span className="font-normal text-neutral-600">{againstLabel(h)}</span>
+              </label>
+              <input
+                id={`duplicate-reason-${String(i)}`}
+                data-testid={`duplicate-reason-${String(i)}`}
+                value={duplicateReasons[i] ?? ""}
+                onChange={(e) => setDuplicateReasons((rs) => rs.map((r, j) => (j === i ? e.target.value : r)))}
+                className="w-full rounded border px-2 py-1"
+              />
+            </div>
+          ))}
+          {(interactionHits.length > 0 || duplicateHits.length > 0) && (
+            <p className="text-xs text-neutral-600">{t("opdConsult.inSystemOnly")}</p>
+          )}
           <ErrorLine message={overrideError} />
           <Button type="button" onClick={() => void confirmOverride()}>{t("opdConsult.overrideConfirm")}</Button>
         </DialogContent>

@@ -117,6 +117,34 @@ export type WireQueueView = {
   counts: { waiting: number; called: number; inConsult: number; done: number; left: number };
 };
 
+/**
+ * PLAN 16a T6 — the check-suite shapes the consult screen renders.
+ *
+ * They live here rather than in the screen because every other `Wire*` in this app does, and a
+ * type that describes a server response is the app's shared vocabulary rather than one screen's
+ * private business. `WireMedicine` and the coverage shape deliberately do NOT join them: those are
+ * FORMULARY responses and belong to `formulary-api.ts`, which T7 creates.
+ */
+export type WireHitAgainst =
+  | { scope: "in_rx"; lineIndex: number }
+  | { scope: "prior"; prescriptionId: string; issuedAt: string; assumedCurrent: boolean };
+
+export type WireInteractionHit = {
+  severity: "severe" | "moderate"; lineIndex: number; note: string; against: WireHitAgainst;
+};
+
+export type WireDuplicateHit = {
+  moiety: string; lineIndex: number; hard: boolean; against: WireHitAgainst;
+};
+
+/** A soft hit is either kind: the screen renders them together and never gates on them (DD3). */
+export type WireRxNotice = WireInteractionHit | WireDuplicateHit;
+
+/** `true` for an interaction hit — the discriminant the two kinds actually differ by. */
+export function isInteractionHit(hit: WireRxNotice): hit is WireInteractionHit {
+  return "severity" in hit;
+}
+
 export type WireDoctorSummary = {
   doctor: WireDoctor; sessionId: string | null; status: OpdSessionStatus | "none";
   waitingCount: number; waitingVitalsCount: number; nowServing: number | null;

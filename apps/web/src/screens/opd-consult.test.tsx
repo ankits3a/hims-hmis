@@ -502,6 +502,9 @@ describe("OpdConsult", () => {
       lines: [{
         drug: "Tab Penicillin V", dose: "1 tab", route: "oral", frequency: "TDS",
         durationDays: 5, instructions: "after food", noSubstitution: false,
+        // PLAN 16a T6 / DD9 — a typed line carries `medicineId: null`, and the assertion is
+        // `toEqual` so a field appearing in the body without a decision fails here. It did.
+        medicineId: null,
       }],
     });
     // §3.19: the form hands back "5"; the BODY must carry the number
@@ -536,6 +539,147 @@ describe("OpdConsult", () => {
     await waitFor(() => expect(document.querySelectorAll(".print-doc")).toHaveLength(1));
     expect(document.querySelector(".print-doc")).toHaveTextContent("CRK MEDICAL COLLEGE & HOSPITAL");
     expect(screen.getByRole("button", { name: "Print prescription" })).toBeInTheDocument();
+  });
+
+  /**
+   * PLAN 16a T6 — the formulary picker and the two new hard warnings.
+   *
+   * The four acceptance points, in order: picking sets `medicineId`; a severe interaction needs a
+   * reason before the submit proceeds; a soft notice never blocks; and the "not in formulary" hint
+   * is COVERAGE-GATED, absent even for an unresolved line while coverage is low.
+   */
+  const FORMULARY = {
+    items: [
+      { id: "m-warf", brandName: "Warf 5", routeClass: "systemic", salts: [{ saltId: "s-warf", strength: "5 mg" }] },
+      { id: "m-asa", brandName: "Ecosprin 75", routeClass: "systemic", salts: [{ saltId: "s-asa", strength: "75 mg" }] },
+    ],
+  };
+  const SEVERE_HIT = {
+    severity: "severe", lineIndex: 0, note: "bleeding risk — avoid or monitor INR closely",
+    against: { scope: "prior", prescriptionId: "rx-old", issuedAt: "2026-08-08T04:00:00.000Z", assumedCurrent: false },
+  };
+
+  it("16a: the picker sets medicineId, and a severe interaction needs a reason before it will issue", async () => {
+    let rxCalls = 0;
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      "GET /api/formulary/coverage": { status: 200, body: { coverage: 0.92, noticeEnabled: true } },
+      "POST /api/opd/visits/enc-1/rx-precheck": {
+        status: 201,
+        body: { allergyMatches: [], interactions: [SEVERE_HIT], duplicates: [], notices: [], unresolvedLineIndexes: [] },
+      },
+      "POST /api/opd/visits/enc-1/prescriptions": () => {
+        rxCalls += 1;
+        return {
+          status: 201,
+          body: {
+            prescriptionId: "rx-1", version: 1, qrPayload: PRINT_DATA.qrPayload,
+            allergyOverrideCount: 0, interactionOverrideCount: 1, duplicateOverrideCount: 0, notices: [],
+          },
+        };
+      },
+      "GET /api/opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    const path = "/api/opd/visits/enc-1/prescriptions";
+
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await screen.findByLabelText("Drug");
+
+    // Picking from the formulary fills the NAME and carries the id (DD9).
+    await user.selectOptions(await screen.findByTestId("rx-formulary-0"), "m-warf");
+    expect(screen.getByLabelText("Drug")).toHaveValue("Warf 5");
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+
+    // The pre-check opened the dialog, and NOTHING was posted to the issue route.
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/bleeding risk/)).toBeInTheDocument();
+    // The prior-scope label, which is the honest half: it names when, not just what.
+    expect(within(dialog).getByText(/prescribed \d+ days ago/)).toBeInTheDocument();
+    expect(callsTo("POST", path)).toHaveLength(0);
+
+    // A blank reason sends nothing — the same rule the allergy dialog has always had.
+    await user.click(within(dialog).getByRole("button", { name: "Override and issue" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(callsTo("POST", path)).toHaveLength(0);
+    expect(within(dialog).getByText("A reason is required for every conflict")).toBeInTheDocument();
+
+    await user.type(within(dialog).getByTestId("interaction-reason-0"), "cardiology advised dual therapy");
+    await user.click(within(dialog).getByRole("button", { name: "Override and issue" }));
+
+    await waitFor(() => expect(callsTo("POST", path)).toHaveLength(1));
+    const body = bodiesOf("POST", path)[0]! as {
+      lines: { medicineId: string | null }[];
+      interactionOverrides: { lineIndex: number; reason: string }[];
+    };
+    expect(body.lines[0]!.medicineId).toBe("m-warf");
+    expect(body.interactionOverrides).toEqual([{ lineIndex: 0, reason: "cardiology advised dual therapy" }]);
+    expect("duplicateOverrides" in body).toBe(false);
+    expect(rxCalls).toBe(1);
+  });
+
+  it("16a: a soft notice never blocks, and the uncovered-line hint stays silent until coverage says otherwise", async () => {
+    const SOFT = {
+      moiety: "paracetamol", lineIndex: 0, hard: false,
+      against: { scope: "prior", prescriptionId: "rx-old", issuedAt: "2026-08-08T04:00:00.000Z", assumedCurrent: true },
+    };
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/formulary/medicines": { status: 200, body: FORMULARY },
+      // T8 is not deployed in this scenario: a 404 means the hint stays OFF, which is also the
+      // correct long-term degrade (DD5).
+      "GET /api/formulary/coverage": { status: 404, body: { message: "not found" } },
+      "POST /api/opd/visits/enc-1/rx-precheck": {
+        status: 201,
+        body: {
+          allergyMatches: [], interactions: [], duplicates: [SOFT], notices: [SOFT],
+          unresolvedLineIndexes: [0],
+        },
+      },
+      "POST /api/opd/visits/enc-1/prescriptions": {
+        status: 201,
+        body: {
+          prescriptionId: "rx-1", version: 1, qrPayload: PRINT_DATA.qrPayload,
+          allergyOverrideCount: 0, interactionOverrideCount: 0, duplicateOverrideCount: 0, notices: [SOFT],
+        },
+      },
+      "GET /api/opd/prescriptions/rx-1/print": { status: 200, body: PRINT_DATA },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    const path = "/api/opd/visits/enc-1/prescriptions";
+
+    await user.click(screen.getByRole("tab", { name: "Prescription" }));
+    await user.type(await screen.findByLabelText("Drug"), "Some Ayurvedic Tonic");
+    await user.type(screen.getByLabelText("Dose"), "10 ml");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+
+    // A soft hit posts straight through: no dialog, no gate.
+    await waitFor(() => expect(callsTo("POST", path)).toHaveLength(1));
+    expect(screen.queryByRole("dialog", { name: "Allergy conflict" })).toBeNull();
+
+    const panel = await screen.findByTestId("rx-notices");
+    expect(within(panel).getByTestId("rx-notice-0")).toHaveTextContent("already contains paracetamol");
+    // The assumed-currency label, and the in-system-only honesty line (design law 10).
+    expect(within(panel).getByText(/may no longer be current/)).toBeInTheDocument();
+    expect(within(panel).getByText("Checked against in-system prescriptions only")).toBeInTheDocument();
+
+    // THE COVERAGE GATE. The line is unresolved and the server said so — and the hint is still
+    // absent, because coverage is unknown. Below the threshold it would fire on nearly every line.
+    expect(screen.queryByTestId("rx-uncovered-0")).toBeNull();
+
+    // The e-Rx print dialog is open on top after a successful issue — the notices are BEHIND it,
+    // which is the real order of events: the doctor prints, closes, and then reads what was noted.
+    // Dismissing while a modal is open is not a state a user can reach, so the test does not fake one.
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.click(within(await screen.findByTestId("rx-notices")).getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByTestId("rx-notices")).toBeNull();
   });
 
   it("K49: completing with the DEFAULT follow-up OMITS followUpDays from the posted key set; an extension travels as a number, a stubbed 409 extension_cap_reached renders inline and keeps the form, and a real 201 closes the panel and refetches the queue", async () => {

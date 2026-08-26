@@ -407,6 +407,9 @@ describe("opd prescriptions — interactions, duplicates and their overrides (Pl
     expect(issued.version).toBe(1);
     expect(issued.notices).toEqual([]);
     expect(issued.interactionOverrideCount).toBe(0);
+    // Both lines are unresolved, and the pre-check says so rather than the screen guessing.
+    const pre = await precheckPrescription(db, dra.actor, enc.id, [rx("Some Ayurvedic Tonic", null)], MON2);
+    expect(pre.unresolvedLineIndexes).toEqual([0]);
   });
 
   it("a CURRENT prior prescription is what the second one is checked against", async () => {
@@ -440,6 +443,8 @@ describe("opd prescriptions — interactions, duplicates and their overrides (Pl
     expect(pre.interactions).toHaveLength(1);
     expect(pre.interactions[0]).toMatchObject({ severity: "severe", lineIndex: 1 });
     expect(pre.notices).toEqual([]);
+    // T6 reads this for the coverage-gated hint: the SERVER decides what resolved, never the browser.
+    expect(pre.unresolvedLineIndexes).toEqual([]);
     expect(await listPrescriptions(db, enc.id)).toHaveLength(0);
     expect(await db.select().from(events).where(eq(events.name, "prescription.issued"))).toHaveLength(0);
   });

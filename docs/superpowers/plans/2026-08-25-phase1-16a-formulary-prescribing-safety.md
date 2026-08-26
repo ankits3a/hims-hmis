@@ -254,6 +254,7 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
 | T3 — resolution, exact | _pending push_ | **12/12** in `resolve.test.ts`, isolated; **fail-first quoted** (staged subset, semantic red); **four mutants built, four DIED** — M3 only on the shipped assertion, see F10 |
 | T4 — the check suite | _pending push_ | **17/17** in `rx-checks.test.ts`, isolated, no database; **seven mutants built, SEVEN DIED**, all quoted |
 | T5 — the pipeline | _pending push_ | **15/15** `prescriptions.test.ts` (7 shipped legs unmodified), **7/7** `opd.e2e.test.ts`; **three mutants built, THREE DIED** |
+| T6 — the consult UI | _pending push_ | **12/12** `opd-consult.test.tsx` (10 shipped legs unmodified); picker, three-kind override dialog, soft-notice panel, coverage-gated hint |
 | _appended as each lands_ | | |
 
 ### Findings
@@ -310,6 +311,28 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
   that last pair is what proves the second run grants nothing, which is the property `seed:roles`
   exists to have. **DD10 predicted 77 = 63 + 14 and the measurement agreed exactly** — recorded
   because AGENT-RULES §4 says report the difference, and the honest report is that there was none.
+- **F17 — THE COVERAGE HINT NEEDED THE SERVER TO SAY WHICH LINES ARE UNRESOLVED, or the browser
+  would have grown a second normalizer.** T6's hint renders per line when the formulary does not
+  know that line. The client could only decide that by normalizing drug names against a fetched
+  medicine list — **a second `normalizeDrugName`, in a second language, drifting silently from the
+  first** (§2.54, and F13's lesson one layer out). Instead `RxPrecheckResult` gains
+  `unresolvedLineIndexes`, decided by the side that already knows. **Files-list amendment,
+  disclosed:** T6 touches `modules/opd/prescriptions.ts` and its test, which its list does not name.
+  It is also why the hint can be honest: a line the doctor typed exactly right resolves server-side
+  and shows no hint, where a client-side guess would have flagged it.
+- **F18 — `en.json` AND `hi.json` ARE NOT IN T6's FILES LIST, and every string this screen adds
+  needs both.** Eleven new keys, in both locales, because the app ships Hindi as a first-class
+  language rather than a fallback. A screen that added an English-only string would leave a Hindi
+  user with a raw key on a SAFETY warning.
+- **F19 — "AUTOCOMPLETE" SHIPPED AS A PICKER, and the difference is worth stating rather than
+  glossing.** §5 T6 says *"a formulary autocomplete (existing picker pattern from the OPD
+  doctor/department pickers)"* — the two halves of that sentence describe different controls. What
+  ships is the picker half: a `<select>` beside the drug field listing active medicines, which
+  fills the name and the id. Free typing in the drug field is untouched (design law 1). **The
+  reason is the spec's own promise that the formulary stays "what-we-stock-sized"** — hundreds of
+  rows, which a select renders fine. **The named upgrade, and its trigger:** when T8's coverage
+  worklist shows the master outgrowing a selectable list, the control becomes a type-ahead over the
+  same endpoint. Recorded so nobody reads the plan and assumes a type-ahead shipped.
 - **F14 — A RE-ISSUE WOULD HAVE WARNED THE DOCTOR AGAINST THE PRESCRIPTION IT WAS REPLACING, and
   nothing in the plan mentions it.** T5 loads the patient's `active` prescriptions to check against.
   A re-issue supersedes its own previous version INSIDE the transaction — but that row is still

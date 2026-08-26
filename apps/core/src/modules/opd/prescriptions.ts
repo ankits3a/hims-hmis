@@ -64,6 +64,15 @@ export type RxCheckOutcome = {
   allergyMatches: AllergyMatch[];
   interactions: InteractionHit[];
   duplicates: DuplicateHit[];
+  /**
+   * PLAN 16a T6 — which lines the formulary could not resolve, decided by the SERVER.
+   *
+   * The consult screen needs this for the coverage-gated hint, and the alternative was for the
+   * browser to re-derive it by normalizing drug names against a fetched medicine list — a SECOND
+   * normalizer, in a second language, drifting from `normalizeDrugName` silently (§2.54). The
+   * side that already knows the answer says so.
+   */
+  unresolvedLineIndexes: number[];
 };
 
 /**
@@ -161,6 +170,7 @@ export async function runRxChecks(
     allergyMatches: matchAllergiesSaltAware(checkLines, allergies),
     interactions: checkInteractions(checkLines, priors, pairs, now),
     duplicates: checkDuplicateSalt(checkLines, priors, now),
+    unresolvedLineIndexes: checkLines.filter((l) => l.resolution === null).map((l) => l.lineIndex),
   };
 }
 
@@ -173,6 +183,8 @@ export type RxPrecheckResult = {
   interactions: InteractionHit[];
   duplicates: DuplicateHit[];
   notices: RxNotice[];
+  /** Lines the formulary does not know — the coverage-gated hint's input (T6, DD5). */
+  unresolvedLineIndexes: number[];
 };
 
 /**
@@ -194,6 +206,7 @@ export async function precheckPrescription(
     allergyMatches: checks.allergyMatches,
     interactions: checks.interactions,
     duplicates: checks.duplicates,
+    unresolvedLineIndexes: checks.unresolvedLineIndexes,
     notices: [
       ...checks.interactions.filter((h) => h.severity !== "severe"),
       ...checks.duplicates.filter((h) => !h.hard),
