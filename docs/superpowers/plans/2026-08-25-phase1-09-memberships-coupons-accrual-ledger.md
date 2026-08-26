@@ -1612,6 +1612,15 @@ _This section is the findings inbox and the gate report. Nothing below is writte
 **Pipeline A: 4/4 tasks, 8 agents, ZERO ladder rungs consumed — every task passed its gate on the
 first attempt.** No wave stalled, no chain halted, no infrastructure death.
 
+| T5 — holder-book import, quarantine, reconcile queue | `24aa8e9` | CRITICAL | gate PASS on **attempt 2** — attempt 1 **HALTED CORRECTLY** on the concurrent-lane condition below and shipped nothing. E1–E5 built, all DIED; the gate rebuilt all five and all five died again. CI **GREEN** (676 s) |
+| T6 — the accrual consumer | `6fb10bd` | CRITICAL | gate PASS. Four subscriptions, delta-to-target. **One file outside its list — `seed-cursors.test.ts`, disclosed** (F11). CI **GREEN** (707 s) |
+| T7 — receivable instrument, statements, aging | `dcb637b` | CRITICAL | gate PASS. CI **GREEN** (659 s) |
+| T8 — guardrails, P&L, runbook | `927afc6` | ROUTINE | mechanical check PASS — **but CI RED** (683 s, a real run). Cause: F12 below, not T8's own work |
+| T8 remediation | `b0d046b` | — | reverts the foreign content `927afc6` swept in. CI **GREEN** (746 s). **HEAD is green** |
+
+**Pipeline B: 4/4 tasks, 12 of 13 agents. The thirteenth — THE INDEPENDENT REVIEWER — DID NOT RUN
+(F13), and that is why this section is not yet a gate report.**
+
 ### Findings — this session's own, in the order they were found
 
 - **F1 — the compile-time sweep found THIRTEEN defects before a brief was written, four of which
@@ -1686,6 +1695,48 @@ first attempt.** No wave stalled, no chain halted, no infrastructure death.
   invoice, cannot be invoiced at all, and an unexplained 500 at a counter is the failure the owner's
   UX priority exists to prevent. `MEMBER_BENEFITS_ENABLED` is what arms it, so the fix precedes any
   flip.
+- **F11 — a THIRD census file my sweep did not name, and the pattern is now unmistakable.** T6's
+  consumer count moved `workerConsumers(db)` from two entries to three, and
+  `kernel/worker/seed-cursors.test.ts` pins that census. T6 edited it and disclosed it in place, the
+  same way T3 handled `deploy-parity.test.ts` (F5). **Three instances, one shape:** S11 caught the
+  SPA route census, F5 caught the deploy seed census, F11 caught the consumer census — and the sweep
+  found the first, missed the second, and missed the third. **The rule the ledger gets: sweep for
+  every PINNED COUNT the phase's change can move, by grepping the test tree for `toHaveLength(` and
+  fixed-array equality over anything the phase adds to — not for the files you expect to be
+  affected.** A "checked and clear" verdict about a FILE is worth nothing; the unit is the assertion.
+- **F12 — §2.92 RECURRED, ROUND-TRIPPED, AND THIS TIME IT COST SOMEBODY ELSE'S WORK.** Another
+  session was working in this checkout with an uncommitted tree while pipeline B ran. `927afc6`
+  (T8) swept roughly **70 lines of README content and two locale keys that are not Plan 09's scope**
+  — a UHID-format ruling and episode numbering — into its own commit, because those files are
+  legitimately on T8's Files list and were dirty for a reason T8 had no way to see. **That commit
+  went CI RED.** `b0d046b` removed them and CI went green. Stated precisely, and no further
+  (AGENT-RULES rule 8 — report only what you did, never infer who did what): **that content is not
+  in the working tree now, and it is recoverable in full at `927afc6`.** This session has not
+  touched it and will not — restoring somebody's half-finished work without knowing what they
+  intended is not a repair.
+  **What actually failed is the instruction, not the agent.** The finish block says *"`git add` the
+  paths your Files list names, BY NAME"* — T8 did exactly that, and its Files list named README.md.
+  **A Files list is permission to commit a PATH; on a shared host what is needed is permission to
+  commit a HUNK.** The mechanical form: on a host where another lane may be live, a task diffs the
+  paths it is about to add against the SHA it started from and reports any hunk it did not write.
+  Ledger-bound, and it is the most valuable thing this phase found.
+- **F13 — THE PHASE CANNOT CLOSE, AND THIS IS THE REASON.** The independent reviewer — v3 §3.4's
+  one mandatory instrument, and the one carrying the independence that per-task gates used to
+  provide — **did not run**: `You've hit your weekly limit · resets Aug 28, 6am (UTC)`. Twelve of
+  thirteen agents completed; the thirteenth is the one whose findings ARE the gate report, and whose
+  CRITICAL findings block close. **Everything below the task ledger is therefore an interim record,
+  not a close.** Nothing in this phase deploys, and the flags stay false, until it has run.
+- **F14 — THE MAIN SESSION'S OWN MECHANICAL VERIFICATION OF PIPELINE B IS UNDISCHARGED, DELIBERATELY.**
+  v3 §3.5 and EXECUTE-METHOD §5 require a detached `pnpm verify` from this session. **It has not been
+  run and must not be, in the tree's present state.** Measured, read-only: 40 modified files and two
+  UNTRACKED migrations — `0024_uhid_format.sql` and `0025_episode_numbers.sql` — with
+  `drizzle/meta/_journal.json` modified alongside them. **Running the suite would apply those
+  migrations to every per-worker database, and AGENT-RULES §6 is explicit that `git checkout` does
+  not undo it.** That is somebody else's irreversible decision to make, not this session's. What IS
+  discharged, because it reads history and an external API rather than the tree: the per-commit
+  Files-list audit, the frozen-path audit over `e0f0b41..b0d046b` (**CLEAN** — no
+  `modules/tariff/`, no `dispatcher.ts`, no `schema/billing.ts`, no Caddyfile, no compose, no
+  workflow, no lockfile), and **CI by full SHA on all five commits**.
 - **F4 — a leftover scratch database from an earlier plan is still in the dev cluster:
   `hmis_spike85_1`.** Not this phase's, not created or dropped by anyone here, and reported rather
   than touched (rule 8). AGENT-RULES rule 7 requires a scratch database to be dropped in the task
@@ -1693,6 +1744,14 @@ first attempt.** No wave stalled, no chain halted, no infrastructure death.
   nobody's.
 
 ### The independent reviewer (v3 §3.4 / EXECUTE-METHOD §4's discovery review)
+
+**NOT RUN — `You've hit your weekly limit · resets Aug 28, 6am (UTC)`.** This is the phase's one
+outstanding gate and it is a hard block on close (F13). When it runs it reads all eight task commits
+together plus the relay, and it has been pointed at the two highest-risk pairs by construction:
+**T4's `invoiceAccrualView` seam, which had no caller until T6** (§2.49's vacuity risk, now
+resolvable), and **the new way this phase opens to reach a patient — by instrument** — where the
+question is whether every lane that can name one goes through `visiblePatientIds()`. That is the
+shape of 11h's CRITICAL: two halves individually correct, jointly blind.
 
 ### Mechanical verification
 
@@ -1728,8 +1787,9 @@ self-report** — detached `pnpm verify`, exit VALUE **0** read from a file:
 | stop-loss | 4.5M subagent tokens (§ THE LANE) |
 | spent, spike | 188,357 (1 agent, 55 tool calls, 14 m 49 s) |
 | spent, pipeline A | **2,335,307** (8 agents, 807 tool calls, 4 h 17 m) |
-| **spent, total** | **2,523,664 — 56% of the stop-loss, with half the phase built** |
-| tasks landed | **4 of 8**, zero ladder rungs consumed |
+| spent, pipeline B | **3,508,024** (13 agents, 1,520 tool calls, 6 h 53 m — one agent errored) |
+| **spent, total** | **6,031,688 — 87% of the CORRECTED 6.9M stop-loss** |
+| tasks landed | **8 of 8**; one ladder rung consumed (T5 attempt 1 halted correctly) |
 | mutants | 8 (spike) + 5 (T1) + 7 (T2) + 5 (T3) + 7 (T4, D3 split in two) + 8 rebuilt independently by T4's gate = **40 built, 40 DIED, 0 survived** |
 | tokens, all sessions | **owner-held** (`/cost`) — runbook O3, outstanding for four phases |
 
