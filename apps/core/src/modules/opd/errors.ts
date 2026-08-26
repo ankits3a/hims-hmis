@@ -12,7 +12,11 @@ export type OpdErrorCode =
   | "call_conflict" | "unknown_queue_entry" | "queue_entry_state_conflict" | "invalid_transfer"
   | "invalid_vitals" | "vitals_incomplete"
   | "invalid_follow_up_days" | "extension_cap_reached" | "reason_required"
-  | "allergy_conflict" | "override_reason_required" | "empty_prescription" | "unknown_prescription";
+  | "allergy_conflict" | "override_reason_required" | "empty_prescription" | "unknown_prescription"
+  // PLAN 16a T5 — the hard-warning grammar EXTENDS rather than forks (DD3): these two carry their
+  // hits in `detail` and are cleared by an override with a reason, exactly as `allergy_conflict` is.
+  // A severe interaction, and the same moiety twice on one slip under two brand names.
+  | "interaction_conflict" | "duplicate_salt_conflict";
 
 export class OpdError extends Error {
   constructor(

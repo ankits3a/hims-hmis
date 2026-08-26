@@ -36,6 +36,11 @@ const OPD_CONFLICT_CODES = new Set<OpdErrorCode>([
   "slot_taken", "call_conflict", "doctor_out", "session_closed", "doctor_on_leave", "appointment_not_today",
   "extension_cap_reached", "allergy_conflict", "user_already_doctor", "opd_not_configured", "opd_config_invalid",
   "not_your_patient", "consult_gate_refused",
+  // PLAN 16a T5 — the two new hard warnings answer 409 exactly as `allergy_conflict` does, and this
+  // line is functional rather than cosmetic: without it `opdStatus` falls through to its 400
+  // default, and a clinical refusal the client must render with an override dialog would arrive
+  // looking like a malformed request. Plan 09's counter-side 500 is the same lesson one step milder.
+  "interaction_conflict", "duplicate_salt_conflict",
 ]);
 
 function opdStatus(code: OpdErrorCode): number {

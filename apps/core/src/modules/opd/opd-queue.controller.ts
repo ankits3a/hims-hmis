@@ -7,12 +7,14 @@ import { withTx } from "../../kernel/db/client";
 import { completeConsultation, saveConsultNote, startConsultation } from "./consultation";
 import { transferQueue } from "./encounters";
 import { parsed, toHttp } from "./opd-masters.controller";
-import { getPrescriptionPrint, issuePrescription, listPrescriptions, verifyPrescriptionQr } from "./prescriptions";
+import {
+  getPrescriptionPrint, issuePrescription, listPrescriptions, precheckPrescription, verifyPrescriptionQr,
+} from "./prescriptions";
 import { boardSnapshot, callNext, listQueue, skipCalled, summaryByDoctor } from "./queue";
 import { setSessionStatus } from "./sessions";
 import { istDate } from "./time";
 import type { EncounterRow, PrescriptionRow, QueueEntryRow } from "./encounters";
-import type { IssuedPrescription, RxPrintData, RxVerifyResult } from "./prescriptions";
+import type { IssuedPrescription, RxPrecheckResult, RxPrintData, RxVerifyResult } from "./prescriptions";
 import type { BoardItem, DoctorSummary, QueueView } from "./queue";
 import type { SessionRow } from "./sessions";
 import type { AppConfig } from "../../kernel/config";
@@ -52,6 +54,9 @@ const rxLineBody = z.object({
   durationDays: z.number().int().positive().nullable(),
   instructions: z.string().max(2000).nullable(),
   noSubstitution: z.boolean(),
+  // PLAN 16a T5 / DD9 — optional and nullable: the autocomplete sets it, free typing does not, and
+  // design law 1 says a line without one is a perfectly legal prescription for ever.
+  medicineId: z.string().min(1).max(64).nullish(),
 });
 // No .min(1) on lines: an empty prescription answers empty_prescription with its OPD code, not a zod 400.
 const prescriptionBody = z.object({
@@ -59,7 +64,18 @@ const prescriptionBody = z.object({
   overrides: z.array(z.object({
     lineIndex: z.number().int().nonnegative(), substance: z.string().max(200), reason: z.string().max(500),
   })).optional(),
+  // PLAN 16a T5 / DD3 — one array per hard-warning kind, each in `overrides`' own grammar. A reason
+  // shorter than the shipped minimum is refused by `issuePrescription`, not by zod, so the client
+  // gets `override_reason_required` and not a schema error it cannot map to a field.
+  interactionOverrides: z.array(z.object({
+    lineIndex: z.number().int().nonnegative(), reason: z.string().max(500),
+  })).optional(),
+  duplicateOverrides: z.array(z.object({
+    lineIndex: z.number().int().nonnegative(), reason: z.string().max(500),
+  })).optional(),
 });
+/** The pre-check takes the lines alone: nothing is written, so nothing else is needed. */
+const precheckBody = z.object({ lines: z.array(rxLineBody) });
 const verifyBody = z.object({ payload: z.string().min(1).max(500) });
 
 @Controller("opd")
@@ -195,6 +211,28 @@ export class OpdQueueController {
     const b = parsed(prescriptionBody, body);
     try {
       return await issuePrescription(this.db, actor, this.cfg, id, b);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * PLAN 16a T5 — the same checks, while the doctor is still typing.
+   *
+   * IT WRITES NOTHING AND IT DECIDES NOTHING. The issue path re-runs every check regardless
+   * (design law 2: checks evaluate at issue time), so this route is a courtesy to the screen and
+   * never a substitute for the gate. Guarded on `opd.consult` — the permission that already means
+   * "may write a prescription for this patient" — because the response carries what the patient is
+   * currently taking, which is clinical information about them.
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/rx-precheck")
+  async rxPrecheck(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<RxPrecheckResult> {
+    const b = parsed(precheckBody, body);
+    try {
+      return await precheckPrescription(this.db, actor, id, b.lines);
     } catch (e) {
       toHttp(e);
     }

@@ -8,8 +8,19 @@
  * claim "this field is known to be empty" where the shape means "this field does not apply".
  */
 
+/** The identifier system for this hospital's own formulary — a local code system, not a public one. */
+export const FORMULARY_CODE_SYSTEM = "urn:hmis:formulary:medicine";
+
 export type RxLine = {
   drug: string;
+  /**
+   * PLAN 16a T5 / DD9 — the formulary medicine this line resolved to, when the prescriber picked
+   * one. OPTIONAL AND STAYING OPTIONAL: every `lines` jsonb row written before this phase lacks the
+   * key for ever, so every reader tolerates its absence and no migration rewrites a stored
+   * document. It rides the FHIR bundle as an IDENTIFIER, never as a replacement for what the
+   * doctor typed — `medicationCodeableConcept.text` is unchanged below.
+   */
+  medicineId?: string | null;
   dose: string;
   route: string;
   frequency: string;
@@ -107,7 +118,11 @@ export function toFhirBundle(input: FhirDocumentInput): FhirBundle {
     const resource: Record<string, unknown> = {
       resourceType: "MedicationRequest", status: "active", intent: "order", authoredOn: issued,
       subject, encounter, requester,
-      medicationCodeableConcept: { text: line.drug },
+      medicationCodeableConcept: line.medicineId === undefined || line.medicineId === null
+        ? { text: line.drug }
+        // The display text is what the prescriber wrote and is never rewritten; the coding is an
+        // extra fact about it. Absence stays an ABSENT KEY, per this file's own rule.
+        : { text: line.drug, coding: [{ system: FORMULARY_CODE_SYSTEM, code: line.medicineId }] },
       dosageInstruction: [dosageInstruction(line)],
     };
     const instructions = text(line.instructions);

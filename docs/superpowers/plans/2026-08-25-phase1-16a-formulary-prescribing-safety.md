@@ -253,6 +253,7 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
 | T2 — the module | _pending push_ | **12/12** in `masters.test.ts`, isolated; census **MEASURED 77 = 63 held + 14 not-yet-modelled**, exactly DD10's prediction; manifest census eleven → twelve; `pnpm verify` exit 0 (core **207/1782**, web 42, contracts 4/21) after two reds — F8 (real, fixed) and F9 (flake, measured) |
 | T3 — resolution, exact | _pending push_ | **12/12** in `resolve.test.ts`, isolated; **fail-first quoted** (staged subset, semantic red); **four mutants built, four DIED** — M3 only on the shipped assertion, see F10 |
 | T4 — the check suite | _pending push_ | **17/17** in `rx-checks.test.ts`, isolated, no database; **seven mutants built, SEVEN DIED**, all quoted |
+| T5 — the pipeline | _pending push_ | **15/15** `prescriptions.test.ts` (7 shipped legs unmodified), **7/7** `opd.e2e.test.ts`; **three mutants built, THREE DIED** |
 | _appended as each lands_ | | |
 
 ### Findings
@@ -309,6 +310,35 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
   that last pair is what proves the second run grants nothing, which is the property `seed:roles`
   exists to have. **DD10 predicted 77 = 63 + 14 and the measurement agreed exactly** — recorded
   because AGENT-RULES §4 says report the difference, and the honest report is that there was none.
+- **F14 — A RE-ISSUE WOULD HAVE WARNED THE DOCTOR AGAINST THE PRESCRIPTION IT WAS REPLACING, and
+  nothing in the plan mentions it.** T5 loads the patient's `active` prescriptions to check against.
+  A re-issue supersedes its own previous version INSIDE the transaction — but that row is still
+  `active` while the pre-transaction reads run. So correcting a typo on a two-line prescription
+  would have told the doctor the patient is already taking both drugs, and a severe pair would have
+  REFUSED the correction outright, against itself. `runRxChecks` takes `excludeEncounterId` and the
+  issue path passes the encounter it is writing to. **It is a shipped test of its own** — *"a
+  re-issue is not checked against the version it supersedes"* — because the failure would look
+  exactly like the feature working.
+- **F15 — THE PLAN'S T5 FILES LIST NAMES THE WRONG CONTROLLER, AND UNDERSTATES WHAT THE OTHER ONE
+  NEEDED.** It says to modify `opd-visits.controller.ts`; the prescription routes have always lived
+  in `opd-queue.controller.ts` (`POST visits/:id/prescriptions` is declared there), and there is no
+  `opd-visits.controller.ts` in the tree at all. And it says `opd-masters.controller.ts` changes
+  *"for its error-code union comment only"* — but that file owns `OPD_CONFLICT_CODES`, the set
+  `opdStatus` reads, and without `interaction_conflict` in it a clinical refusal answers **400
+  instead of 409**: a client that must render an override dialog receives something shaped like a
+  malformed request. That is Plan 09's counter-side 500 one step milder, and the e2e now pins the
+  status as well as the code. *(`duplicate_salt_conflict` would have reached 409 anyway through the
+  `startsWith("duplicate_")` rule — which is worth knowing precisely because it means one of the
+  two would have been right by accident and the other wrong.)*
+- **F16 — `matchAllergies` IS NOW A FOUR-LINE WRAPPER, so the substring layer exists ONCE.** T4's
+  engine had to re-implement the shipped bidirectional substring match to add the short-string
+  guard, which would have left two copies of one rule — §2.54 in the safety path. The shipped
+  export keeps its name and signature (its callers and its tests are untouched) and delegates to
+  `matchAllergiesSaltAware` with null resolutions. **The three shipped assertions survive the new
+  guard unchanged and were checked before the change, not after:** `"sulfa"` × `"Sulfamethoxazole"`
+  and `"Penicillin G"` × `"penicillin"` are both ≥ 4 characters on both sides, and the negative
+  case shares no substring in either direction. Had any of them used a short token, the guard would
+  have been the wrong shape rather than the tests being wrong.
 - **F13 — I INVENTED A FILE TO SOLVE A PROBLEM THE ARCHITECTURE ALREADY SOLVES, AND A LINT RULE
   SAID SO.** `rx-checks.ts` is a pure core and needs the formulary's normalizer for its class path.
   Reasoning from the purity test alone, I extracted `formulary/normalize.ts` — a file importing

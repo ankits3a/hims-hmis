@@ -13,6 +13,7 @@ import { approvalsManifest } from "../src/kernel/approvals/manifest";
 import { patientsManifest } from "../src/modules/patients";
 import { tariffManifest } from "../src/modules/tariff";
 import { OPD_VISIT_DEFINITION_JSON, opdManifest } from "../src/modules/opd";
+import { formularyManifest } from "../src/modules/formulary";
 import { addDays, istDate } from "../src/modules/opd/time";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { requireEnv } from "../src/kernel/config";
@@ -42,6 +43,10 @@ describe("opd e2e", () => {
   registry.install(patientsManifest);
   registry.install(tariffManifest);
   registry.install(opdManifest);
+  // PLAN 16a T5 — this suite grants `formulary.*` to a curator role, and `grantPermissionToRole`
+  // refuses any string no INSTALLED manifest declares (spec §4). The refusal is the point: it is
+  // what stops a permission being invented in a test that no module actually publishes.
+  registry.install(formularyManifest);
 
   let deptId: string;
   let roomId: string;
@@ -51,6 +56,7 @@ describe("opd e2e", () => {
   let supervisor: { id: string; token: string };
   let display: { id: string; token: string };
   let pharmacy: { id: string; token: string };
+  let formularyAdmin: { id: string; token: string };
   let rando: { id: string; token: string };
   let dra: { doctorId: string; userId: string; token: string };
   let drb: { doctorId: string; userId: string; token: string };
@@ -90,16 +96,25 @@ describe("opd e2e", () => {
       "opd.queue.read", "opd.vitals.record", "patients.register", "patients.read", "patients.update",
     ];
     await mkRole("desk", deskPermissions);
-    await mkRole("doc", ["opd.consult", "opd.queue.read", "opd.queue.operate", "opd.visits.read", "patients.read"]);
+    // `formulary.read` mirrors DD10's production grant: a prescriber reads the formulary (the
+    // consult autocomplete needs it) and curates nothing. The 403 leg below is what pins the second
+    // half of that sentence.
+    await mkRole("doc", [
+      "opd.consult", "opd.queue.read", "opd.queue.operate", "opd.visits.read", "patients.read", "formulary.read",
+    ]);
     await mkRole("sup", [...deskPermissions, "opd.queue.transfer", "opd.masters.read", "opd.masters.manage", "opd.config.manage"]);
     await mkRole("disp", ["opd.display.read"]);
     await mkRole("pharm", ["opd.prescriptions.verify"]);
+    // PLAN 16a T5 — the formulary is curated at the pharmacy (DD10), and this e2e curates it over
+    // HTTP rather than by inserting rows: the point of the test is that the whole path works.
+    await mkRole("formulary_admin", ["formulary.read", "formulary.manage"]);
 
     clerk = await mkUser(db, "clerk", ["desk", "front_office"]);
     vitalsDesk = await mkUser(db, "vd", ["desk", "vitals_desk"]);
     supervisor = await mkUser(db, "sup", ["sup", "front_office_supervisor"]);
     display = await mkUser(db, "disp", ["disp"]);
     pharmacy = await mkUser(db, "pharm", ["pharm"]);
+    formularyAdmin = await mkUser(db, "formadmin", ["formulary_admin"]);
     rando = await mkUser(db, "rando", []);
     // Every weekday, so the suite is not calendar-dependent: the doctor is always scheduled today.
     dra = await mkDoctor(db, { username: "dra", departmentId: deptId, roomId, weekdays: [0, 1, 2, 3, 4, 5, 6] });
@@ -241,6 +256,92 @@ describe("opd e2e", () => {
     const bad = await request(app.getHttpServer())
       .post("/opd/prescriptions/verify").set(...auth(pharmacy.token)).send({ payload: tampered }).expect(200);
     expect(bad.body).toEqual({ ok: false, reason: "invalid_signature" });
+  });
+
+  /**
+   * PLAN 16a T5 — the formulary safety layer, end to end over HTTP.
+   *
+   * It curates the formulary through the pharmacist's own routes, pre-checks as the consult screen
+   * will, gets refused, and then issues with a reasoned override — the whole loop, with no function
+   * called directly. What it proves that the unit legs cannot: the refusal reaches the client as a
+   * 409 carrying its hits (not a 400 and not a 500), and the pre-check needs no write permission.
+   */
+  it("the formulary safety layer: curate, pre-check, refuse, override (16a)", async () => {
+    const salt = async (name: string, drugClass: string | null): Promise<string> => {
+      const res = await request(app.getHttpServer())
+        .post("/formulary/salts").set(...auth(formularyAdmin.token))
+        .send({ name, drugClass }).expect(201);
+      return res.body.saltId as string;
+    };
+    const medicine = async (brandName: string, saltId: string): Promise<string> => {
+      const res = await request(app.getHttpServer())
+        .post("/formulary/medicines").set(...auth(formularyAdmin.token))
+        .send({ brandName, form: "tablet", routeClass: "systemic", salts: [{ saltId }] }).expect(201);
+      return res.body.medicineId as string;
+    };
+    const warfarin = await salt("warfarin", null);
+    const aspirin = await salt("aspirin", "nsaid");
+    await request(app.getHttpServer())
+      .post("/formulary/interactions").set(...auth(formularyAdmin.token))
+      .send({
+        saltAId: warfarin, saltBId: aspirin, severity: "severe",
+        note: "bleeding risk — avoid or monitor INR closely", source: "seed-2026-08",
+      }).expect(201);
+    const warfMed = await medicine("Warf 5", warfarin);
+    const asaMed = await medicine("Ecosprin 75", aspirin);
+
+    // A doctor may READ the formulary — the autocomplete needs it — and may not curate it.
+    await request(app.getHttpServer()).get("/formulary/medicines").set(...auth(dra.token)).expect(200);
+    await request(app.getHttpServer())
+      .post("/formulary/salts").set(...auth(dra.token)).send({ name: "invented" }).expect(403);
+
+    const patientId = await registerPatientOverHttp("Meena Bai", "9876543219");
+    const { encounterId, sessionId } = await openAndSeat(patientId);
+    await request(app.getHttpServer()).post(`/opd/queues/${sessionId}/call-next`).set(...auth(dra.token)).expect(201);
+    await request(app.getHttpServer()).post(`/opd/visits/${encounterId}/consult/start`).set(...auth(dra.token)).expect(201);
+
+    const line = (drug: string, medicineId: string): Record<string, unknown> => ({
+      drug, dose: "1 tab", route: "oral", frequency: "OD", durationDays: 5,
+      instructions: null, noSubstitution: false, medicineId,
+    });
+    const lines = [line("Warf 5", warfMed), line("Ecosprin 75", asaMed)];
+
+    // The pre-check: the screen sees the hit before the doctor presses submit, and nothing is written.
+    const pre = await request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/rx-precheck`).set(...auth(dra.token))
+      .send({ lines }).expect(201);
+    expect(pre.body.interactions).toHaveLength(1);
+    expect(pre.body.interactions[0].severity).toBe("severe");
+    expect(pre.body.notices).toEqual([]);
+    expect((await request(app.getHttpServer())
+      .get(`/opd/visits/${encounterId}/prescriptions`).set(...auth(dra.token)).expect(200)).body.items).toHaveLength(0);
+
+    // The refusal: 409 with its hits, in `allergy_conflict`'s exact grammar (DD3).
+    const conflict = await request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/prescriptions`).set(...auth(dra.token))
+      .send({ lines }).expect(409);
+    expect(conflict.body.code).toBe("interaction_conflict");
+    expect(conflict.body.detail.hits).toHaveLength(1);
+    expect(conflict.body.detail.hits[0].note).toBe("bleeding risk — avoid or monitor INR closely");
+
+    // A reason too short is refused by the OPD code, not by a schema error the client cannot map.
+    // 400, not 409, and that is the SHIPPED mapping for `override_reason_required` — it is a
+    // malformed request (the reason field is too short), not a state conflict. Asserted at the
+    // status as well as the code so the two new kinds cannot silently drift from the allergy one.
+    const shortReason = await request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/prescriptions`).set(...auth(dra.token))
+      .send({ lines, interactionOverrides: [{ lineIndex: 1, reason: "ok" }] }).expect(400);
+    expect(shortReason.body.code).toBe("override_reason_required");
+
+    const issued = await request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/prescriptions`).set(...auth(dra.token))
+      .send({
+        lines,
+        interactionOverrides: [{ lineIndex: 1, reason: "cardiology advised dual therapy, INR weekly" }],
+      }).expect(201);
+    expect(issued.body.interactionOverrideCount).toBe(1);
+    expect(issued.body.allergyOverrideCount).toBe(0);
+    expect(issued.body.notices).toEqual([]);
   });
 
   it("the desk's error contract: every refusal carries its OPD code", async () => {

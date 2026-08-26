@@ -118,6 +118,15 @@ export const prescriptionIssued = defineEvent("prescription.issued", MODULE, z.o
   prescriptionId: id, encounterId: id, patientId: id, doctorId: id,
   version: z.number().int().positive(), lineCount: z.number().int().positive(),
   allergyOverrideCount: z.number().int().nonnegative(), // the S10 override-rate KPI numerator
+  /**
+   * PLAN 16a T5 — two more numerators beside it, and `allergyOverrideCount` is UNTOUCHED so every
+   * shipped reader of this payload keeps working. Separate counts rather than one total because
+   * §1.4's calibration loop asks a per-KIND question: a severe interaction pair overridden 95% of
+   * the time is mis-graded and needs a curator, while a duplicate override at the same rate means
+   * something quite different about how refills are being written.
+   */
+  interactionOverrideCount: z.number().int().nonnegative().default(0),
+  duplicateOverrideCount: z.number().int().nonnegative().default(0),
 }));
 
 export const referralIssued = defineEvent("referral.issued", MODULE, z.object({
