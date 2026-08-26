@@ -404,6 +404,24 @@ export async function importStatement(
         continue;
       }
 
+      /**
+       * PLAN 09a DD4 — THE SERIALIZER THE PAYABLE LANE ALWAYS HAD AND THIS ONE DID NOT.
+       *
+       * Without `for update` this is a read-modify-write with nothing holding the row: two
+       * statements quoting ONE slip both read it `expected`, both matched it, and both appended a
+       * full receivable accrual. Plan 09's T7 gate measured 7 of 8 trials double-counting; this
+       * phase's own fail-first measured **8 of 8**.
+       *
+       * The lock is what makes the second import WAIT. When it wakes, READ COMMITTED re-evaluates
+       * this predicate against the committed row (EvalPlanQual) — the winner has set `state`
+       * to `matched`, so `state = 'expected'` no longer holds, the claim reads as absent, and the
+       * loser takes the V3 correction path below. That path computes `claimed − already-confirmed`
+       * = 0 for an honest duplicate, and a zero adjustment appends no row: the partner is owed the
+       * money ONCE, however the two imports interleave.
+       *
+       * `statements.contention.test.ts` asserts the BLOCK and not merely the outcome, because a
+       * forced interleave ends identically with and without a lock (§3 Q6 / §3.21).
+       */
       const open = await tx
         .select()
         .from(receivableExpectations)
@@ -415,7 +433,8 @@ export async function importStatement(
           ),
         )
         .orderBy(asc(receivableExpectations.seq))
-        .limit(1);
+        .limit(1)
+        .for("update");
       const claim = open[0];
 
       // ── V3 — nothing open: this statement is amending a period that has already been settled. ──
