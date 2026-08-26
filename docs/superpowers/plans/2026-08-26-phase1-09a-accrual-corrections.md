@@ -631,6 +631,12 @@ red one changed documentation and a hook and nothing else, so **the test surface
 across one RED run and four GREEN ones.** Red then green on identical code is nondeterminism proven
 by execution (§2.98). `pnpm verify` on that exact tree was exit 0 locally as well.
 
+**FINAL CI STATE — every commit of this phase, by full SHA:** `0f77004` (no run of its own, §2.106) ·
+`54ab73b` ✅ · `a092ecc` ✅ · `79afbf6` ✅ · `4b92d24` ✅ · **`ff79eb9` ❌ (the flake above)** ·
+`9f9ec96` ✅ · `0fba3ae` ✅ · `b7ae37a` ✅ · `8eabf45` ✅ · **`24f9272` ✅ — HEAD, and it carries the
+trial reduction.** Eleven commits, one red, and the red is refuted by five green runs over an
+identical test surface.
+
 **§2.80 still binds in the other direction: four green runs refute determinism, they do not prove the
 flake is gone.** It is a real flake, it is named, and it belongs to `scheduler.test.ts` rather than to
 this phase.
@@ -657,8 +663,9 @@ returned **PAYABLE SAFE TO ARM, PHASE SAFE TO CLOSE** after three corrections, a
 **Every one of Plan 09's four MAJORs is fixed, and so is the fifth that T2's own fix created.**
 `pnpm verify` exit 0 at close: core **213 suites / 1,860 tests**, web 43 / 259, contracts 4 / 21.
 Counts across the phase **212 / 1,847 → 213 / 1,860**, nothing deleted. Seven commits: four tasks
-`0f77004` · `54ab73b` · `a092ecc` · `79afbf6`, two review remediations `4b92d24` · `ff79eb9`, and the
-CLOSE `9f9ec96` (with the token audit at `0fba3ae`). Three migrations — `0028` the re-key, `0029` its
+`0f77004` · `54ab73b` · `a092ecc` · `79afbf6`, two review remediations `4b92d24` · `ff79eb9`, the
+CLOSE `9f9ec96` (with the token audit at `0fba3ae`) and the CI-load reduction `24f9272`.
+**`pnpm verify` exit 0 and CI green at HEAD.** Three migrations — `0028` the re-key, `0029` its
 correction after the first review, `0030` the composite FK from the second.
 
 **`COMMISSION_ACCRUAL_ENABLED` is safe to arm** on a system with no accrual history, subject to open
