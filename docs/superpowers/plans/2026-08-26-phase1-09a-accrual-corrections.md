@@ -854,6 +854,14 @@ the partner it displaces.
   references, and the migration is unrunnable as generated. Generated is not the same as correct.
 - **§2.110** — a mutant that SURVIVES is worth more than one that dies. Any sentence of the form
   *"this would fail against X"* is either an executed result or it must be deleted.
+- **§2.111** — *"not my defect"* and *"not my contribution"* are different questions, and a CI red in
+  a suite you never touched can still be load you added. Carries the free-controlled-observation
+  trick: a close's docs-only commits are CI runs over an identical test surface.
+- **§2.112** — when a predicate is duplicated, check the CONSTANT underneath it; *"different
+  domains"* answers a question about the predicate. Nine hand-written copies of the hospital clock,
+  pinned verbatim rather than consolidated.
+- **§2.113** — a file only one session can vouch for is not archived, it is remembered. Untracked is
+  not stored; delete on a measurement, never on a description.
 
 ### Production — MEASURED 2026-08-26 17:36 UTC, read-only, against `hmis-prod-db-1`
 
