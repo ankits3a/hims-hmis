@@ -255,6 +255,7 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
 | T4 — the check suite | _pending push_ | **17/17** in `rx-checks.test.ts`, isolated, no database; **seven mutants built, SEVEN DIED**, all quoted |
 | T5 — the pipeline | _pending push_ | **15/15** `prescriptions.test.ts` (7 shipped legs unmodified), **7/7** `opd.e2e.test.ts`; **three mutants built, THREE DIED** |
 | T6 — the consult UI | _pending push_ | **12/12** `opd-consult.test.tsx` (10 shipped legs unmodified); picker, three-kind override dialog, soft-notice panel, coverage-gated hint |
+| T7 — staging admission | _pending push_ | **7/7** `staging.test.ts`, **6/6** `formulary-admin.test.tsx`, **3/3** `shell-nav.test.tsx`; XSS fixture asserted inert |
 | _appended as each lands_ | | |
 
 ### Findings
@@ -311,6 +312,28 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
   that last pair is what proves the second run grants nothing, which is the property `seed:roles`
   exists to have. **DD10 predicted 77 = 63 + 14 and the measurement agreed exactly** — recorded
   because AGENT-RULES §4 says report the difference, and the honest report is that there was none.
+- **F21 — THE SPA-ROUTE CENSUS CAUGHT `/formulary/admin`, AND THE COLLISION IT GUARDS AGAINST IS
+  EXACTLY THE ONE THIS ROUTE COULD HAVE BEEN.** `caddyfile-parity.test.ts` pins how many screens the
+  router declares and asserts none of them falls inside a Caddy-proxied prefix — the leg written
+  after Plan 11g's smoke test found **fifteen of twenty screens dark in production**, because the
+  edge matched `/admin/users` as an API path and handed the browser `{"statusCode":401}`.
+  T7 adds a SPA screen at `/formulary/admin` **while the API controller is `@Controller("formulary")`**
+  — the same shape. It is safe only because Plan 11g/DD1 left exactly ONE proxied prefix and the API
+  lives under it, and the suite's `shadowed` assertion is what proves that rather than the reasoning.
+  The census moved 24 → 25 **by execution**: the verify run failed with `Received length: 25`
+  against the pinned 24 before anything was edited. **Files-list amendment:** T7's list does not
+  name this file, and the test's own docstring says it joins the list of every task that moves the
+  number. *(It also caught the count in the only way that works — a task that had added the route
+  and quietly bumped the integer would have proved nothing.)*
+- **F20 — THE NORMALIZER STRIPS `-` RATHER THAN SPACING IT, so `Augmentin-625` and `Augmentin 625`
+  are different strings.** Found by a staging-search test that assumed otherwise and failed. DD2
+  specifies *strip* `.,()-/`, and stripping is what shipped — `augmentin-625` normalizes to
+  `augmentin625`, which does not match the stored `augmentin 625`. **It fails SAFE in the place
+  that matters:** on the resolution path an unmatched text resolves to `null` and drops to the
+  legacy substring layer, so the line is still checked and nothing is mis-resolved. At the staging
+  desk it costs a pharmacist one retry with a space. Pinned by a test with its reasoning rather
+  than smoothed away, because the fix — spacing the punctuation instead of removing it — would
+  change what `Co-Amoxiclav` resolves to and is a DD2 amendment, not a bug fix.
 - **F17 — THE COVERAGE HINT NEEDED THE SERVER TO SAY WHICH LINES ARE UNRESOLVED, or the browser
   would have grown a second normalizer.** T6's hint renders per line when the formulary does not
   know that line. The client could only decide that by normalizing drug names against a fetched

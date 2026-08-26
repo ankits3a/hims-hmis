@@ -21,3 +21,6 @@ export type { InteractionRow, MedicineWithSalts, MedicineRow, RouteClass, SaltRo
  */
 export { listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines } from "./resolve";
 export type { InteractionPair, ResolvedDrug, SaltRef } from "./resolve";
+/** T7 — staging admission. `searchStaging` may match generously; nothing here resolves anything. */
+export { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./staging";
+export type { StagingRow } from "./staging";

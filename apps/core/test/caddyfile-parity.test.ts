@@ -297,12 +297,24 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // moves the number, and the waves are sequential so four tasks touching one integer cannot
     // collide). MEASURED, not predicted: the previous value 23 was observed failing with
     // `Received length: 24` before it was moved.
-    expect(routes).toHaveLength(24);
+    // PLAN 16a T7 — 25 with the formulary desk. This file joins the Files list of every task that
+    // moves the number, and the number moved BY EXECUTION rather than by prediction: the verify run
+    // that added `/formulary/admin` failed here with `Received length: 25` against the pinned 24,
+    // which is the friction working exactly as its docstring promises.
+    expect(routes).toHaveLength(25);
     expect(routes).toContain("/admin/users");
     expect(routes).toContain("/counter/instruments");
     expect(routes).toContain("/counter/reconcile");
     expect(routes).toContain("/partners/receivables");
     expect(routes).toContain("/partners/pnl");
+    /**
+     * AND THE ONE THAT NEEDED THIS LEG MOST. `/formulary/admin` is a SPA screen, and `formulary` is
+     * ALSO the API controller's prefix (`@Controller("formulary")`) — the exact shape of the
+     * collision that left 15 screens dark in production. It is safe here only because Plan 11g/DD1
+     * left exactly ONE proxied prefix and the API lives under it; the `shadowed` assertion below is
+     * what proves that rather than this comment.
+     */
+    expect(routes).toContain("/formulary/admin");
 
     const proxied = caddyProxyPrefixes(caddySource);
     // NAME the shadowed routes rather than comparing lengths: "15 !== 0" does not tell an operator

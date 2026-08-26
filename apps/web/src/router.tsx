@@ -31,6 +31,7 @@ import { ChangePassword } from "./screens/change-password";
 import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
 import { InstrumentReconcile } from "./screens/instrument-reconcile";
+import { FormularyAdmin } from "./screens/formulary-admin";
 import { PartnerReceivables } from "./screens/partner-receivables";
 import { PartnerPnl } from "./screens/partner-pnl";
 
@@ -73,6 +74,11 @@ const NAV: readonly { to: string; label: string; permission: string }[] = [
   // invisible to everybody until the owner grants it — the runbook (README.md) names it beside the
   // other flag-flip permissions.
   { to: "/partners/pnl", label: "nav.partnerPnl", permission: "partners.pnl.read" },
+  // PLAN 16a T7 — the formulary desk. The path and the permission match `formularyManifest.menu`'s
+  // own entry exactly, which is where the authoritative pairing lives. `formulary.manage` is
+  // GRANTED (DD10) — to `pharmacy`, a role that exists with no holders — so this link appears the
+  // day a pharmacist account does, and for nobody before then.
+  { to: "/formulary/admin", label: "nav.formularyAdmin", permission: "formulary.manage" },
 ];
 
 function Shell(): React.ReactElement {
@@ -211,6 +217,12 @@ const opdAdminRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/admin",
   component: OpdAdmin,
+});
+
+const formularyAdminRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/formulary/admin",
+  component: FormularyAdmin,
 });
 
 const opdAppointmentsRoute = createRoute({
@@ -360,6 +372,7 @@ export const router = createRouter({
       opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
+      formularyAdminRoute,
     ]),
   ]),
 });

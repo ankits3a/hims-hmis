@@ -45,6 +45,17 @@ it("offers only the screens the signed-in person holds a permission for", async 
   expect(screen.queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Merge review" })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "OPD desk" })).not.toBeInTheDocument();
+  // PLAN 16a T7 — the formulary desk is `formulary.manage`, held by `pharmacy` alone (DD10). A
+  // clerk with a counter permission is not offered it, which is also why the link is invisible on
+  // the live deployment today: that role exists and has no holders.
+  expect(screen.queryByRole("link", { name: "Formulary" })).not.toBeInTheDocument();
+});
+
+it("16a: the formulary desk appears for the permission that guards it, and for no other", async () => {
+  renderShell(["formulary.manage"]);
+  await waitFor(() => expect(screen.getByRole("link", { name: "Formulary" })).toBeInTheDocument());
+  // `formulary.read` is a PRESCRIBER's permission (the consult autocomplete) and opens no desk.
+  expect(screen.queryByRole("link", { name: "Registration" })).not.toBeInTheDocument();
 });
 
 it("a person whose role holds nothing is TOLD SO rather than shown a blank bar", async () => {

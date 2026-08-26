@@ -10,7 +10,9 @@ import {
   addInteraction, addMedicine, addSalt, listInteractions, listMedicines, listSalts,
   updateInteraction, updateMedicine, updateSalt,
 } from "./masters";
+import { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./staging";
 import type { InteractionRow, MedicineWithSalts, SaltRow } from "./masters";
+import type { StagingRow } from "./staging";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -83,6 +85,14 @@ const interactionCreateBody = z.object({
   note: z.string().min(1).max(500), source: z.string().min(1).max(100),
   routeScope: z.literal("systemic_only").nullish(),
 });
+const stagingQuery = z.object({ q: z.string().max(200) });
+const admitBody = z.object({
+  brandName: name, form: z.string().min(1).max(100), routeClass: routeClass.default("systemic"),
+  strengthLabel: z.string().min(1).max(100).nullish(), scheduleFlag: scheduleFlag.nullish(),
+  salts: composition.min(1), acknowledgeIntraFdc: z.boolean().optional(),
+});
+const rejectBody = z.object({ reason: z.string().min(1).max(500) });
+
 const interactionPatchBody = z.object({
   severity: severity.optional(), note: z.string().min(1).max(500).optional(),
   routeScope: z.literal("systemic_only").nullish(), active: z.boolean().optional(),
@@ -170,6 +180,55 @@ export class FormularyController {
     const b = parsed(interactionCreateBody, body);
     try {
       return await withTx(this.db, (tx) => addInteraction(tx, actor, b));
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  // ─────────────────── T7: staging admission, pharmacist-gated ───────────────────
+
+  /**
+   * PULL-BASED (spec §1.1): a name search, never a queue. There is deliberately no route that
+   * lists all pending rows — the mined mass is a dictionary of possibly tens of thousands of
+   * entries, and a review-queue view would turn it into a backlog nobody could ever clear.
+   */
+  @RequirePermission("formulary.staging.review", "hospital")
+  @Get("staging/search")
+  async stagingSearch(@Query() query: unknown): Promise<{ items: StagingRow[] }> {
+    const q = parsed(stagingQuery, query);
+    return { items: await searchStaging(this.db, q.q) };
+  }
+
+  @RequirePermission("formulary.staging.review", "hospital")
+  @Get("staging/:id")
+  async stagingRow(@Param("id") id: string): Promise<StagingRow> {
+    const row = await getStagingRow(this.db, id);
+    if (row === null) toHttp(new FormularyError("staging_not_pending", `no staging row ${id}`));
+    return row;
+  }
+
+  @RequirePermission("formulary.staging.review", "hospital")
+  @Post("staging/:id/admit")
+  async admit(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<{ medicineId: string }> {
+    const b = parsed(admitBody, body);
+    try {
+      return await withTx(this.db, (tx) => admitStaging(tx, actor, id, b));
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("formulary.staging.review", "hospital")
+  @Post("staging/:id/reject")
+  async reject(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<{ ok: true }> {
+    const b = parsed(rejectBody, body);
+    try {
+      await withTx(this.db, (tx) => rejectStaging(tx, actor, id, b.reason));
+      return { ok: true };
     } catch (e) {
       toHttp(e);
     }
