@@ -601,6 +601,13 @@ The author then re-measured, reversed itself, and got the diagnosis exactly righ
 **Two mechanical forms.** (a) **Untracked is not stored.** At every phase close, `git status --porcelain` the tree and account for each `??` — commit it, move it, or delete it deliberately; "somebody's scratch" is a decision nobody made. (b) **Never delete on a description; delete on a measurement.** `wc -c`, entry counts, and a keyword sample against the file said to supersede it cost about ninety seconds here and refuted the description outright. *(And the payoff was not hypothetical: §2.112 came out of entry 16 of the file that was nearly deleted.)*
 
 
+**2.114 — THE DEPLOY DETECTOR COULD ONLY SEE A DEPLOY RUN THE WAY THE RULES FORBID.** *(Plan 09a, 2026-08-26 — found by running a real production deploy and noticing the silence)*
+`is-deploy-execution.py` was written to answer "is `deploy.sh` the word in COMMAND POSITION", and it answers that correctly for `bash docker/prod/deploy.sh`. It steps over interpreters — `setsid`, `nohup`, `sh` — then meets `-c`, which is not an interpreter, stops scanning, and never looks inside. **A shell's `-c` argument is a COMMAND and it was being treated as data.**
+**Why that is not a corner case: AGENT-RULES rule 18 REQUIRES long commands to run detached** (`setsid nohup sh -c '…' &`), and a deploy is the longest command this project has. So the only shape a *correctly executed* deploy takes was the one shape the detector could not see, while the shape it did detect is the one the rules tell you not to use. **The trigger and the execution standard were pointing in opposite directions, and nothing compared them.** A real production deploy ran, the stamp was never written, and the owner's standing "audit every deploy" instruction was silently not honoured.
+**Mechanical form, and the narrow half matters as much as the fix:** recurse into `-c` **for shells only**, depth-bounded. `python3 -c` and `perl -e` carry a PROGRAM, which really is data, and widening the recursion to every interpreter would reintroduce the mention-vs-execution misfire the file exists to prevent (§16a's three misfires). The pinned suite went 24 → 31 cases, and the new must-NOT-fire entries — `sh -c 'cat deploy.sh'`, `python3 -c "open('deploy.sh')"` — are the ones that would break if that line were crossed.
+**The general rule: when a hook watches for an action, test it against the shape the METHOD MANDATES, not the shape that is easiest to type.** A detector validated only against hand-typed commands is validated against the case that will not occur.
+
+
 
 
 ## 3. Plan-authoring defects

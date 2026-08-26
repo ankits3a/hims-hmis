@@ -770,6 +770,54 @@ tree carrying a MAJOR, a test that would have gone red on a busy runner, and thr
 comments I had written. **Two review passes cost 474,771 tokens — 40% over the stop-loss — and every
 one of those findings was real.**
 
+### DEPLOYED — 2026-08-26 21:04–21:06 UTC, owner-authorised
+
+**`deploy.sh` exit 0, eight steps, 9/9 services, edge gate green.** Production went **26 → 31
+migrations** and **74 → 77 permissions**.
+
+**AND THE DEPLOY WAS NOT 09a's. It was 16a's, carrying 09a.** Production had never received `0026`
+or `0027`, so the five pending migrations were two phases, not one — and **09a's own contribution to
+what a user can see is NOTHING**: all five partner flags are unset, every partner table holds zero
+rows, so the accrual corrections are behind flags that are still false. **The entire observable
+effect was Plan 16a's prescribing-safety layer reaching doctors.** Stated because "deploy 09a" is
+what was asked for and is not what a deploy of `main` does; the two phases interleaved on one branch
+and could not be shipped apart.
+
+**Verified independently afterwards rather than read off the script's own output:**
+
+| | before | after |
+|---|---|---|
+| patients / invoices / receipts | 21 / 5 / 5 | **21 / 5 / 5** — unchanged |
+| opd_encounters / prescriptions | 8 / 1 | **8 / 1** — unchanged |
+| users / roles | 33 / 18 | **33 / 18** — unchanged |
+| permissions | 74 | **77** (16a's three `formulary.*`, granted by `seed-roles`) |
+| migrations | 26 | **31** |
+| events | 294 | 349 (the deploy's own seeding) |
+
+`formulary_salts` **29**, `formulary_interactions` **26** — T9's severe-pair floor, seeded.
+`formulary_medicines` and `formulary_staging` are **0**, which is correct: the DTC owns expansion and
+seed is never authority. `opd_prescriptions` carries all three override columns.
+
+**09a's own migrations landed and are verifiable in production:** the subject unique key reads
+`(invoice_id, direction, counterparty_id)` — **the CORRECTED key from the close review, not the one
+T2 first shipped** — and `commission_accruals_subject_counterparty_fk` exists. Partner lane: 0
+accruals, 0 subjects. Event cursors seeded at 294, the pre-deploy maximum, so the worker caught up 55
+events instead of replaying 349 (D10).
+
+Edge through the real hostname: `{"status":"ok","db":"ok","worker":"ok"}`, and `/admin/users` serves
+the SPA. **`operating_mode_changes` is still 0** — deploying is not operating, and this deploy did not
+change that.
+
+**THE DEPLOY ITSELF FOUND A METHOD DEFECT, AND IT IS THE ONE WORTH KEEPING.** The token-audit hook
+never fired: `is-deploy-execution.py` steps over `setsid`/`nohup`/`sh`, meets `-c`, and stops —
+**a shell's `-c` argument is a COMMAND and it was being treated as data.** AGENT-RULES rule 18
+requires long commands to run detached, and a deploy is the longest command this project has, so
+**the detector could only see a deploy run the way the rules say not to run it.** Every correctly
+executed deploy was invisible to the audit trigger. Fixed at `cb3178e` — shells (and only shells;
+`python3 -c` carries a program, which really is data) recurse into `-c`, depth-bounded. The pinned
+suite went 24 cases → **31, 0 wrong**, with `sh -c 'cat deploy.sh'` among the new
+must-NOT-fire cases, because that is what would break if the recursion were widened past shells.
+
 ### OPEN ITEMS — what this phase did NOT close, and what each one gates
 
 **1. ~~MAJOR 2~~ — CLOSED 2026-08-26 (`e9d5433`). It is no longer an open item and no longer gates
@@ -862,6 +910,9 @@ the partner it displaces.
   pinned verbatim rather than consolidated.
 - **§2.113** — a file only one session can vouch for is not archived, it is remembered. Untracked is
   not stored; delete on a measurement, never on a description.
+- **§2.114** — the deploy detector could only see a deploy run the way the rules forbid. When a hook
+  watches for an action, test it against the shape the METHOD MANDATES, not the shape that is
+  easiest to type.
 
 ### Production — MEASURED 2026-08-26 17:36 UTC, read-only, against `hmis-prod-db-1`
 
