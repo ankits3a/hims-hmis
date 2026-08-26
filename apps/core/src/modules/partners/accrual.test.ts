@@ -114,6 +114,8 @@ describe("the commission ledger: DD12's delta-to-target on real invoices", () =>
     /** 09a T3 — the card's own window, so a boundary fixture can sit inside the 05:30 IST gap. */
     cardFrom?: Date;
     cardTo?: Date;
+    /** 09a close — a card imported but NOT yet linked to a patient (`match-queue` links it later). */
+    unlinked?: boolean;
   }): Promise<PartnerFixture> {
     const counterpartyId = newId();
     const agreementId = newId();
@@ -134,7 +136,7 @@ describe("the commission ledger: DD12's delta-to-target on real invoices", () =>
     });
     await db.insert(membershipInstances).values({
       id: instanceId, planId, counterpartyId, cardCode: `IC-${instanceId.slice(-6)}`,
-      holderName: "Vimal Rao", patientId: args.forPatientId ?? patientId,
+      holderName: "Vimal Rao", patientId: args.unlinked === true ? null : (args.forPatientId ?? patientId),
       validFrom: args.cardFrom ?? CARD_FROM, validTo: args.cardTo ?? CARD_TO, status: "active", origin: "import",
       verified: args.verified ?? true, partnerSaleRef: `INV-SALE-${instanceId.slice(-6)}`,
     });
@@ -911,5 +913,78 @@ describe("the commission ledger: DD12's delta-to-target on real invoices", () =>
     // The P&L's answer, which must be the SAME answer.
     const pnl = await partnerPnl(db, { counterpartyId: partner.counterpartyId, asOf: NOW });
     expect({ memberSpendPaise: pnl.memberSpendPaise }).toEqual({ memberSpendPaise: 100_000 });
+  });
+  /**
+   * PLAN 09a CLOSE — MAJOR 1 FROM THE INDEPENDENT REVIEW. TWO COUNTERPARTIES MUST NEVER SHARE A
+   * SUBJECT, AND THE FIRST RE-KEY LET THEM.
+   *
+   * DD2 dropped `agreement_id` from the subject key to stop a backdated amendment re-accruing an
+   * invoice. `agreement_id` was also the only thing keeping two COUNTERPARTIES apart, because an
+   * agreement belongs to exactly one of them. Keyed on `(invoice_id, direction)` alone, a second
+   * partner attributed to the same invoice found the FIRST partner's subject, summed the FIRST
+   * partner's rows as its own prior, and appended the difference — so the incoming partner was
+   * short-paid by exactly what the outgoing one had already been credited.
+   *
+   * **It is reachable through shipped code, which is why it is a defect and not a hypothetical.**
+   * `membership_instances.patient_id` is *"null until a human links it"* and `match-queue` links it
+   * later; `attributeInvoice` breaks ties on `seq`, which is insert order. So a card **imported
+   * earlier and linked later** displaces the card that is currently attributed — and the flip is
+   * ordinary operations, not an attack.
+   *
+   * The key is therefore `(invoice_id, direction, counterparty_id)`: coarser than the agreement, so
+   * DD2's backdated amendment still lands on one subject, and finer than the invoice, so two
+   * partners can never pool. The test below fails against `(invoice_id, direction)` with B credited
+   * 5 000 instead of 10 000.
+   */
+  it("two counterparties on ONE invoice never share a subject, and neither pays the other's prior", async () => {
+    // B is imported FIRST (lower `seq`) but arrives UNLINKED, exactly as the holder-book import
+    // leaves a card whose patient nobody has matched yet.
+    const b = await partnerFor({ rateBps: 1000, eligibleCategories: ["consultation"], unlinked: true });
+    const a = await partnerFor({ rateBps: 500, eligibleCategories: ["consultation"] });
+
+    const issued = await issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId,
+      lines: [{ lineId: newId(), serviceId: base.consultNewServiceId, qty: 2 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 100_000 }] },
+    }, NOW);
+    const view = (await invoiceAccrualView(db, issued.invoiceId))!;
+
+    // ── While only A is linked, the invoice is A's: 100 000 × 500 bps = 5 000. ──
+    const attrA = (await attributeInvoice(db, issued.invoiceId))!;
+    expect(attrA.counterpartyId).toBe(a.counterpartyId);
+    const cpA = (await counterpartyFacts(db, a.counterpartyId))!;
+    const agA = (await resolveAgreementAt(db, a.counterpartyId, attrA.issuedAt))!;
+    await appendAccrualDelta(db, {
+      actor: SYSTEM, attribution: attrA, counterparty: cpA, agreement: agA, view,
+      basisEventId: newId(), basisEventName: "payment.received", occurredAt: NOW,
+    });
+    expect(await deltasOf(a.counterpartyId)).toEqual([5_000]);
+
+    // ── The human links B. `match-queue` does exactly this, and B's lower `seq` now wins. ──
+    await db.update(membershipInstances).set({ patientId }).where(eq(membershipInstances.id, b.instanceId));
+    const attrB = (await attributeInvoice(db, issued.invoiceId))!;
+    expect(attrB.counterpartyId).toBe(b.counterpartyId);
+
+    const cpB = (await counterpartyFacts(db, b.counterpartyId))!;
+    const agB = (await resolveAgreementAt(db, b.counterpartyId, attrB.issuedAt))!;
+    await appendAccrualDelta(db, {
+      actor: SYSTEM, attribution: attrB, counterparty: cpB, agreement: agB, view,
+      basisEventId: newId(), basisEventName: "payment.received", occurredAt: NOW,
+    });
+
+    // B's target is 100 000 × 1 000 bps = 10 000, and B has been credited NOTHING before now.
+    // Sharing A's subject made this `[5_000]` — A's 5 000 counted as B's own prior.
+    expect(await deltasOf(b.counterpartyId)).toEqual([10_000]);
+    expect(await payableTotalPaise(db, b.counterpartyId)).toBe(10_000);
+
+    // TWO subjects, one per counterparty, and each names the partner it serialises.
+    const subjects = await db.select().from(commissionAccrualSubjects);
+    expect(subjects).toHaveLength(2);
+    expect([...subjects.map((r) => r.counterpartyId)].sort())
+      .toEqual([a.counterpartyId, b.counterpartyId].sort());
+
+    // A is untouched by B's arrival: this phase does not decide what a re-attribution owes A —
+    // it only guarantees B is never paid out of A's ledger. (Recorded as an open item in the CLOSE.)
+    expect(await payableTotalPaise(db, a.counterpartyId)).toBe(5_000);
   });
 });

@@ -181,20 +181,35 @@ export const partnerRefMap = pgTable(
  * (§3 Q6). Idempotency on `basis_event_id` stays as the second guard, exactly as DD10 keeps its
  * index behind its lock. **This task ships the table and its unique index; T6 writes the locking.**
  *
- * ═══ THE KEY IS `(invoice_id, direction)` AND `agreement_id` IS NOT IN IT — PLAN 09a DD2 ═══
+ * ═══ THE KEY IS `(invoice_id, direction, counterparty_id)` — PLAN 09a DD2, AS CORRECTED ═══
  *
  * Plan 09 keyed this `(agreement_id, invoice_id, direction)`, and Plan 09's independent reviewer
  * measured what that costs: an agreement amendment BACKDATED over an invoice already accrued
  * resolves to a different agreement id, opens a SECOND subject, finds no prior rows beneath it,
  * and appends the whole target again — `[5000, 10000]`, total 15 000 where 10 000 is correct.
  *
- * `agreement_id` STAYS AS A COLUMN and it is deliberately no longer the identity: it records which
- * version first opened the subject, which is provenance worth keeping and is not a key. Nothing is
- * lost by dropping it from the key, because every `commission_accruals` row carries its OWN
- * `agreement_id` and its own `rate_snapshot` (DD6) — so which terms priced which delta stays
- * reconstructible per ROW, at the grain where the question is actually asked. What is GAINED is
- * that DD12's invariant, **Σ deltas = target**, becomes true per INVOICE, which is what it always
- * meant. A serializer keyed on something that can change mid-life is not a serializer.
+ * `agreement_id` STAYS AS A COLUMN and it is deliberately no longer part of the identity: it records
+ * which version first opened the subject, which is provenance worth keeping and is not a key.
+ * Nothing is lost by dropping it from the key, because every `commission_accruals` row carries its
+ * OWN `agreement_id` and its own `rate_snapshot` (DD6) — so which terms priced which delta stays
+ * reconstructible per ROW, at the grain where the question is actually asked.
+ *
+ * **AND `counterparty_id` IS IN THE KEY, WHICH THE FIRST VERSION OF THIS FIX GOT WRONG.** Keyed on
+ * `(invoice_id, direction)` alone the subject stopped separating two COUNTERPARTIES — `agreement_id`
+ * had been doing that silently, because an agreement belongs to exactly one of them. A second
+ * partner attributed to the same invoice then found the first partner's subject, summed the first
+ * partner's rows as its own prior (`Σ` is scoped by `subject_id`), and appended only the difference:
+ * **the incoming partner was short-paid by exactly what the outgoing one had already been credited.**
+ * Found by the independent review, reproduced through shipped code — `membership_instances`
+ * `patient_id` is null until a human links it, `match-queue` links it later, and `attributeInvoice`
+ * breaks ties on insert order, so a card imported earlier and linked later displaces the attributed
+ * one. Ordinary operations, not an attack.
+ *
+ * **So the key is exactly one step coarser than the agreement and one step finer than the invoice**,
+ * and both steps are load-bearing: coarser, so a backdated amendment for the SAME partner lands on
+ * the subject its earlier rows are under; finer, so two partners can never pool. `subject_id` then
+ * determines `counterparty_id`, which is what makes the unqualified `Σ` in `appendAccrualDelta`
+ * correct. DD12's invariant is **Σ deltas = target per (invoice, direction, counterparty)**.
  */
 export const commissionAccrualSubjects = pgTable(
   "commission_accrual_subjects",
@@ -207,7 +222,7 @@ export const commissionAccrualSubjects = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("commission_accrual_subjects_ux").on(t.invoiceId, t.direction),
+    uniqueIndex("commission_accrual_subjects_ux").on(t.invoiceId, t.direction, t.counterpartyId),
     check("commission_accrual_subjects_direction_ck", sql`${t.direction} in ('payable', 'receivable')`),
   ],
 );

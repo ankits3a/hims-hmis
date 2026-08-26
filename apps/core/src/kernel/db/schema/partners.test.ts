@@ -185,7 +185,7 @@ describe("the partner tables (Plan 09 T1)", () => {
 
   // ──────────────────── DD12 — the subject row, and idempotency on the basis event ────────────────────
 
-  it("one subject per (invoice, direction) — NOT per agreement — which is what T6 locks FOR UPDATE", async () => {
+  it("one subject per (invoice, direction, counterparty) — NOT per agreement — which is what T6 locks FOR UPDATE", async () => {
     await db.insert(patients).values({
       id: "01HPAT0000000000000000001", uhid: "HMS-00000001-1", name: "Invented Patient",
       sex: "female", createdBy: "test", updatedBy: "test",
@@ -231,6 +231,20 @@ describe("the partner tables (Plan 09 T1)", () => {
       ...subject, id: "01HSUB0000000000000000003", direction: "receivable",
     });
     expect(await db.select().from(commissionAccrualSubjects)).toHaveLength(2);
+
+    // ── THE OTHER HALF OF THE KEY — review MAJOR 1, and the leg that fails against `(invoice,
+    //    direction)` alone. A DIFFERENT COUNTERPARTY on the same invoice and direction is a
+    //    DIFFERENT subject and must be ALLOWED, because `Σ` is scoped by `subject_id`: pooled onto
+    //    one row, the second partner's prior becomes the first partner's credited total and the
+    //    incoming partner is short-paid by exactly that amount.
+    //
+    //    The two legs together pin the key from BOTH sides — refused one step coarser (a second
+    //    agreement), allowed one step finer (a second counterparty). Either leg alone is satisfied
+    //    by a wrong key.
+    await db.insert(commissionAccrualSubjects).values({
+      ...subject, id: "01HSUB0000000000000000005", counterpartyId: RMP,
+    });
+    expect(await db.select().from(commissionAccrualSubjects)).toHaveLength(3);
 
     // DD12's second guard: one delta per basis event per subject, so a redelivered event finds its
     // own row already there instead of appending a second one.

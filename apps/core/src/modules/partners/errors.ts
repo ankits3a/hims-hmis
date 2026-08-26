@@ -27,6 +27,21 @@ export type PartnersErrorCode =
   | "duplicate_partner_ref" | "unknown_partner_ref"
   | "statement_columns_unknown" | "statement_already_imported" | "statement_line_unmatched"
   | "expectation_state_conflict" | "unknown_expectation"
+  /**
+   * PLAN 09a CLOSE — a concurrency refusal the caller should RETRY, added rather than borrowed.
+   *
+   * T4's row lock made two imports listing the same slips in OPPOSITE order able to deadlock
+   * (Postgres `40P01`, measured 3/3 by the close reviewer against a forced interleave; 3/3 clean
+   * without the lock, so it is the lock's). The transaction rolls back and the money stays correct,
+   * but a raw `40P01` reaching an operator says nothing they can act on.
+   *
+   * **None of the codes above means "try again".** `expectation_state_conflict` is the nearest and
+   * it is about the STATE of a claim, not about two writers colliding — answering it here would send
+   * a human to look at an expectation that is perfectly fine. This union's own header rules that a
+   * task needing a code it does not carry has found a defect and must say so rather than borrow one;
+   * this is that, said. It maps to 409 through `partnersStatus`'s default, which is correct.
+   */
+  | "statement_import_conflict"
   // ── the structural-OFF lanes (DD14) ─────────────────────────────────────────────────────────
   | "accrual_disabled" | "receivable_disabled";
 

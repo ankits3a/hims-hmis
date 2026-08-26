@@ -412,12 +412,30 @@ export async function importStatement(
        * full receivable accrual. Plan 09's T7 gate measured 7 of 8 trials double-counting; this
        * phase's own fail-first measured **8 of 8**.
        *
-       * The lock is what makes the second import WAIT. When it wakes, READ COMMITTED re-evaluates
-       * this predicate against the committed row (EvalPlanQual) — the winner has set `state`
-       * to `matched`, so `state = 'expected'` no longer holds, the claim reads as absent, and the
-       * loser takes the V3 correction path below. That path computes `claimed − already-confirmed`
-       * = 0 for an honest duplicate, and a zero adjustment appends no row: the partner is owed the
-       * money ONCE, however the two imports interleave.
+       * The lock is what makes the second import WAIT. When it wakes, the winner has set `state` to
+       * `matched`, `state = 'expected'` no longer holds, and the loser takes the V3 correction path
+       * below — which computes `claimed − already-confirmed` = 0 for an honest duplicate and appends
+       * no row.
+       *
+       * ═══ TWO CLAIMS THAT WOULD BE WRONG TO MAKE HERE, BOTH CORRECTED BY THE CLOSE REVIEW ═══
+       *
+       * **(1) The re-evaluation does NOT simply return nothing.** With `order by seq limit 1 for
+       * update` the `LockRows` node sits above the `Sort` and below the `Limit`, so Postgres
+       * RE-SCANS: given two open rows the loser blocks and then returns the SECOND one (measured,
+       * 1,398 ms, returned `r2`). The loser finds nothing here for a NARROWER reason, and it is an
+       * INVARIANT rather than a mechanism: `issueAttribution` is the only writer of
+       * `state = 'expected'`, it writes exactly one row per attribution, and no path returns a row to
+       * `expected`. **If a second open expectation per attribution ever becomes reachable, this
+       * lookup quietly starts matching it — and this paragraph is the thing that was wrong.**
+       *
+       * **(2) The partner is NOT owed the money once "however the two imports interleave".** That
+       * holds only where both statements quote the SAME amount. Quoting DIFFERENT amounts, the total
+       * depends on which import wins this lock: the winner's figure stands and the loser's is
+       * absorbed as a V3 correction — or disputed, if it arrived first and met the open claim. The
+       * absorption is Plan 09's ruled V3 behaviour (`G4/V3` pins an upward correction to 75 000 over
+       * a 60 000 expectation deliberately); what concurrency adds is that "later" is decided by a
+       * lock rather than by an operator. **Recorded as an open item gating the receivable flag, and
+       * NOT fixed here: overturning V3 is the owner's ruling to make, not a lock's to smuggle.**
        *
        * `statements.contention.test.ts` asserts the BLOCK and not merely the outcome, because a
        * forced interleave ends identically with and without a lock (§3 Q6 / §3.21).
@@ -539,7 +557,47 @@ export async function importStatement(
       linesTotal: parsed.rows.length, linesMatched, linesDisputed, linesCorrected, linesQuarantined,
       confirmedPaise, lines: outcomes,
     };
+  }).catch((e: unknown) => {
+    throw mapImportConflict(e, statementRef, input.counterpartyId);
   });
+}
+
+/**
+ * PLAN 09a CLOSE — the two Postgres refusals T4's row lock made reachable, given sentences.
+ *
+ * Both were found by the close reviewer, both were measured, and in both the MONEY IS ALREADY
+ * CORRECT: the transaction rolls back whole. What was wrong is that an operator got a raw driver
+ * error for a situation the system understands perfectly well.
+ *
+ *  · **`40P01` (deadlock)** — two imports listing the same slips in OPPOSITE order take this lane's
+ *    row locks in opposite order. Measured 3/3 under a forced interleave, and 3/3 clean against the
+ *    lock-less mutant, so it is T4's to own. **The better repair is a deterministic lock order** —
+ *    resolve every row first, then sort by attribution id before the loop — and it is deliberately
+ *    NOT taken here: it moves resolution out of the loop and changes the order of `lines` in a
+ *    money path's result, which deserves its own task and its own review rather than a close
+ *    remediation. Named in the CLOSE as a follow-up.
+ *  · **`23505` on `receivable_expectations_statement_line_ux`** — two imports of the SAME
+ *    `statementRef` racing. The legible pre-check at the top of `importStatement` runs on `db`
+ *    OUTSIDE the transaction, so it cannot see an in-flight twin; the loser collides on the partial
+ *    unique index instead. It means exactly what the pre-check means, so it answers the same code.
+ */
+function mapImportConflict(e: unknown, statementRef: string, counterpartyId: string): unknown {
+  const err = e as { code?: unknown; constraint?: unknown };
+  if (err.code === "40P01") {
+    return new PartnersError(
+      "statement_import_conflict",
+      `statement "${statementRef}" deadlocked against a concurrent import and was rolled back whole — retry it`,
+      { statementRef, counterpartyId, pgCode: "40P01" },
+    );
+  }
+  if (err.code === "23505" && err.constraint === "receivable_expectations_statement_line_ux") {
+    return new PartnersError(
+      "statement_already_imported",
+      `statement "${statementRef}" is being imported concurrently for ${counterpartyId}`,
+      { statementRef, counterpartyId, pgCode: "23505" },
+    );
+  }
+  return e;
 }
 
 /** V1/V6's row: a claim we did not make, recorded rather than discarded. */
