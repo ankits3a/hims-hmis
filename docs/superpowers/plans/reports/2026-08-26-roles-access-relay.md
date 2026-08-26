@@ -1,134 +1,178 @@
-# Relay — roles, access and the elevation ceiling, landed 2026-08-26
+# Relay — roles, access and the elevation ceiling, 2026-08-26
 
-**Commits:** `fc9e49a` (elevation ceiling + review queue) · `0b26b61` (role picker)
+**Commits, in order:** `fc9e49a` elevation ceiling + review queue · `0b26b61` role picker ·
+`68868ed` Group C · `1ef118a` Group A · `37787de` the patient-merge lane · `fd92fe3` Group B.
 **Migration:** `0023_elevation_review`. **Next free migration: 0026** — the identifier-grammar lane took 0024/0025.
-**Status: SHIPPED AND LIVE.** Deployed 2026-08-26 as an ancestor of `1bff417`; the operator step was performed after the fact (§5).
+**New seed:** `seed:patients`, in `deploy.sh` between `seed-opd` and `seed-billing`.
+
+> ## ⚠ STATUS: PUSHED, **NOT DEPLOYED** — and one of the undeployed fixes is clinical
+>
+> `fc9e49a` and `0b26b61` went live as ancestors of the identifier-grammar lane's deploy. **The four
+> role-model commits have NOT.** Measured against production at the time of writing: 14 roles,
+> `doctor has patients.read: false`, `patient_merge registered: false`, `owner` holds 3 permissions.
+>
+> **Until `seed:roles` runs on the box, every doctor in consultation is still refused the allergy
+> register.** That is the reason to deploy, and it is not a tidy-up.
 
 Companion note: `2026-08-26-identifier-grammar-relay.md`. That lane and this one ran in the **same
-checkout at the same time**; read §6 before you run a broad test suite or stage a commit.
+checkout at the same time**; read §7 before you run a broad test suite or stage a commit.
 
 ---
 
-## 1. What changed, in one paragraph each
+## 1. What changed
 
-**The elevation ceiling.** `POST /auth/emergency-elevation` carries no `@RequirePermission` on purpose
-— at 2 a.m. with the duty manager unreachable a person must be able to act, and the design pays for
-that with loudness rather than a gate. But it accepted **any** `roleKey`, and `hasPermission` honours a
-temp grant at *hospital* scope. So any authenticated user could POST `{roleKey: "admin",
-ttlMinutes: 720}` and hold every `auth.*` permission for twelve hours — long enough to `POST
-/admin/users` and give the new account a **permanent** `admin` assignment. The elevation expired; the
-escalation did not. `assertMayTakeOver` could not catch it either: it reads `role_assignments` only, so
-an elevated actor's `auth.*` set reads as empty. `temp-roles.ts` now refuses any role carrying authority
-over access, on **both** grant doors.
+**The elevation ceiling (`fc9e49a`).** `POST /auth/emergency-elevation` carries no
+`@RequirePermission` on purpose — at 2 a.m. with the duty manager unreachable a person must be able
+to act, and the design pays for that with loudness rather than a gate. But it accepted **any**
+`roleKey`, and `hasPermission` honours a temp grant at *hospital* scope. Any authenticated user
+could POST `{roleKey: "admin", ttlMinutes: 720}` and hold every `auth.*` permission for twelve
+hours — long enough to `POST /admin/users` and give the new account a **permanent** `admin`
+assignment. The elevation expired; the escalation did not. `assertMayTakeOver` could not catch it
+either: it reads `role_assignments` only, so an elevated actor's `auth.*` set reads as empty.
 
-**The review queue.** The staffing spec's workforce mechanism 6 says emergency elevation is "loudly
-evented + **mandatory review**". The loud half shipped in Plan 02; the review half never existed —
-`break_glass_grants` had `reviewed_at`/`reviewed_by`/`review_note` and a pending queue, and the table
-recording a person handing *themselves* a role had nothing. `GET /auth/emergency-elevations/pending`
-and `POST /auth/emergency-elevations/:id/review` now exist under a new permission,
-`auth.elevation.review`, with an `emergency_elevation.reviewed` event.
+**The review queue (`fc9e49a`).** Workforce mechanism 6 says emergency elevation is "loudly evented
++ **mandatory review**". The loud half shipped in Plan 02; the review half never existed.
+`GET /auth/emergency-elevations/pending` and `POST /auth/emergency-elevations/:id/review` now do,
+under a new permission `auth.elevation.review`, with an `emergency_elevation.reviewed` event.
 
-**The role picker.** `admin-users.tsx` shipped able to REVOKE a role and never to assign one; its own
-header said assigning "needs a role picker fed by a roles list the server does not yet expose". That
-sentence was met in production as a bug report — *"I created users but can't assign roles."*
-`RolesCatalogController` (`GET /admin/roles`, under `auth.roles.manage`) is that list, and the screen
-now assigns. It reads only: role **authoring** stays code-owned.
+**The role picker (`0b26b61`).** `admin-users.tsx` could REVOKE a role and never assign one — its
+own header said so. The owner met that sentence as a bug report: *"I created users but can't assign
+roles."* `GET /admin/roles` (`RolesCatalogController`) is the catalogue; the screen now assigns.
 
----
+**Group C (`68868ed`).** Every `auth.*` string was held by `admin` alone, because `seed:admin`
+grants the whole manifest there and no model row mentioned one. `medical_superintendent` gained the
+two review desks; `duty_manager` gained `auth.temp_role.grant`, the mechanism the night-shift
+bundling matrix was built on. All additive — `admin` keeps everything.
 
-## 2. Landmines — read this before you touch auth
+**Group A (`1ef118a`).** Eight permissions guarded LIVE routes and were held by nobody, so those
+routes answered 403 to every account. New `tariff_editor`, `membership_admin` and
+`biomedical_engineer`; `owner` gained the tariff activator key plus `approvals.types.manage`. The
+price list now has the ceremony the state machine already had: editor drafts, `billing_manager`
+approves via `tariff_revision`, owner activates.
 
-1. **`seed:admin` IS NOT IN `deploy.sh`, and adding an `auth.*` permission is therefore a two-part
-   change.** This is the one that actually bit. `syncPermissions` mirrors the new string into the
-   `permissions` catalog at api boot, but only `seed-admin` grants it, and it is an operator command by
-   design. Between deploy and that command, production had `auth.elevation.review` in the catalog held
-   by **nobody** — the review queue answered 403 to the sole administrator. Re-running it is safe and
-   idempotent: the policy gate at `seed-admin.ts:136` fires only `if (userCreated)`, so on a deployment
-   that already has an admin, `ADMIN_PASSWORD` is read and never used. The repair is in §5.
+**The merge lane (`37787de`).** See §2 — this one is the pattern in its purest form.
 
-2. **`fullAdministrators` requires the WHOLE `authManifest.permissions` set, so adding a string moves a
-   number the operator sees.** It is `held.length === authManifest.permissions.length`. Going 6 → 7
-   turned production's count from 1 to **0** until the grant landed, and `/admin/users` renders that
-   count in the two-admin banner. Nothing had degraded; the definition moved under a deployment that
-   had not been re-seeded. Expect this every time the manifest grows.
-
-3. **Three tests pin the auth manifest exactly, and they are supposed to fail when you add to it.**
-   `user-admin.e2e.test.ts`'s M6 leg ("a seventh `auth.*` is covered on arrival") pins the sorted list;
-   its leg 3 pins the guarded-elsewhere exception list; `seed-roles.test.ts` pins the census at
-   **74 declared = 51 held + 23 not yet modelled** in five places. Update them deliberately — that
-   failure is the mechanism working, not an obstacle.
-
-4. **Do not add anything to `ELEVATABLE_AUTH_PERMISSIONS` without reading its header.** The list is what
-   a temporary grant MAY carry; the forbidden set is `authManifest.permissions` **minus** that list, so a
-   new `auth.*` string is refused the day it is declared without anybody remembering. Inverting it into a
-   hand-written deny-list fails open on exactly the permission nobody thought about. `auth.break_glass.use`
-   is the single member: it is the emergency the mechanism exists for and confers nothing durable.
-   `auth.elevation.review` is deliberately absent — that is what makes self-elevating into clearing your
-   own elevation structurally impossible.
-
-5. **`ASSIGNABLE_SCOPES` is `["hospital"]` and `roles-catalog.e2e.test.ts` PARSES THE SOURCE to prove it.**
-   Every `@RequirePermission` in the tree demands `"hospital"`, and `hasPermission` refuses a
-   non-hospital holding against a hospital requirement. A department-scoped assignment grants its holder
-   **exactly nothing, on every route**. If that test starts failing you have added a genuinely
-   department-scoped route: widen the constant and the picker gains the option in the same commit. Do not
-   weaken the test, and do not add floor/department to the picker to be "complete".
-
-6. **`truncateAll` did not need a new entry this time** — `temp_role_grants` was already in it. If you add
-   a table this lane's successors assert counts on, it does.
+**Group B (`fd92fe3`).** `doctor` gained `patients.read` + `patients.update`; `pharmacy` gained
+`patients.read`; `owner` gained the three billing reads. See the banner above.
 
 ---
 
-## 3. Rules the code enforces, so don't "simplify" them away
+## 2. THE PATTERN — a permission is the last mile of something, and four times it was the only mile
 
-- **The ceiling guards BOTH doors.** `grantTempRole` is checked identically to `emergencyElevate`. Today
-  only `admin` holds `auth.temp_role.grant` so the admin-granted path is not itself an escalation — but
-  §7's group C proposes moving that permission to the duty manager, and on the day it moves, two
-  colleagues granting each other `admin` would reopen the hole through the other door.
-- **A refused elevation writes NOTHING** — no row, no `emergency_elevation.used`. That event means
-  authority was taken; emitting it for a refusal would put a lie in the stream the review queue reads.
-- **Expired grants stay in the review queue.** The authority is gone; whether taking it was justified is
-  not, and that is the only question a reviewer is asked. Filtering on `expiresAt > now` would drain the
-  queue on a twelve-hour timer and call that "reviewed" — a race the reviewer loses by sleeping.
-- **The review is a conditional UPDATE** (`isNull(reviewedAt)` in the WHERE), so two reviewers racing
-  produce one winner and one event. A read-then-write commits both at READ COMMITTED.
-- **Delegating authority over access is a PERMANENT assignment or it does not happen.** Temp grants are
-  invisible to `hospitalScopeHolders` and `authPermissionsHeld` by design, so a temporary `admin` would be
-  an administrator neither the lockout invariant nor the takeover rule can see.
-- **The picker excludes roles the person already holds.** `assignRole` mints a fresh row per call and
-  refuses nothing; an unfiltered list lets a double-click stack duplicates that each need their own revoke.
-- **`grantsAccessAuthority` is derived server-side from `authManifest`**, never recomputed in the client, so
-  the eighth `auth.*` string lights the warning with no web change.
+**Four times in one session, a missing GRANT turned out to be a missing MECHANISM.** Treat this as a
+standing hypothesis, not four coincidences: permissions are declared beside routes, grants are
+decided separately and later, and nothing checks that the machinery between them exists.
 
----
-
-## 4. Known gaps, deliberately left open
-
-**`break-glass.ts`'s `recordReview` is weaker than its elevation counterpart and was left alone.** It
-updates unconditionally, cannot distinguish a missing grant from an already-reviewed one, and **emits no
-event at all**. That is a real gap, named in `temp-roles.ts`'s header so the difference reads as a decision
-rather than an inconsistency. Closing it is cheap and belongs with whoever next touches break-glass.
-
-**No second factor on any admin route.** Production still holds zero TOTP enrolments (11e's stated seam),
-so turning `secondFactor: true` on would brick the surface. Unchanged by this work.
-
-**Agents remain authenticated and powerless** — see §7.
-
----
-
-## 5. Production state after this landed
-
-| | before | after |
+| the permission | what it looked like | what was actually missing |
 |---|---|---|
-| Migrations applied | through 0022 | 26 rows, through `0025` (0023 is this lane's) |
-| `auth.elevation.review` in catalog | — | present (added by `syncPermissions` at boot) |
-| Roles granting it | — | `admin` |
-| `admin` holds `auth.*` | 6 | **7 of 7** |
-| `fullAdministrators` | 1 | **1** (it read **0** between deploy and the repair) |
-| Unreviewed emergency elevations | — | **0** (none has ever been taken) |
-| Self-elevation to `admin` | **possible, 12h, then permanent** | refused, 403 `role_not_temporarily_grantable` |
+| `auth.break_glass.use` | no clinical role holds it | **no route sets `breakGlassBypass`** — a grant unlocks nothing |
+| `patients.merge` | MRD officer has no role | **`patient_merge` registered by no seed** — `requestApproval` threw `unknown_type` for everybody |
+| `membership.catalog.manage` | unmodelled since Plan 09 | **guards no route in the tree** — its only occurrence is the manifest |
+| `approvals.requests.*` for `duty_manager` | night override authority missing | worklist is role-scoped, decide enforces `approverRole` — **no type names `duty_manager`** |
 
-The repair, performed 2026-08-26 after the deploy, and the thing to run again the next time an `auth.*`
-permission is declared:
+**The check before you grant anything, and it is three greps:**
+
+1. `grep -rn "<permission>" apps/core/src --include="*.ts" | grep -v test` — does it guard a route
+   at all, or only appear in its manifest?
+2. If the route creates an approval, is its `typeKey` registered by a seed *that `deploy.sh` runs*?
+3. If it decides an approval, does any registered type name a role the grantee holds?
+
+**Why the reachability census cannot see any of this.** `seed:roles`'s invariant asks whether a
+permission has **a** holder. It never asks whether the holder can reach anything, nor whether the
+role that *needs* it has it. Group B moved six pairs and **the census did not move at all** — every
+string was already held by some role. A green census is not a working system.
+
+---
+
+## 3. Landmines — read before you touch auth or the role model
+
+1. **`seed:admin` IS NOT IN `deploy.sh`, so adding an `auth.*` permission is a two-part change.**
+   This one bit. `syncPermissions` mirrors the string into the catalog at api boot; only
+   `seed-admin` grants it, and it is an operator command. Production ran part of 2026-08-26 with
+   `auth.elevation.review` held by nobody. Re-running is safe and idempotent — the policy gate at
+   `seed-admin.ts:136` fires only `if (userCreated)`, so `ADMIN_PASSWORD` is read and never used on
+   a box that already has an admin. Command in §6.
+
+2. **`fullAdministrators` requires the WHOLE `authManifest.permissions` set**, so adding a string
+   moves a number the operator sees. Going 6 → 7 turned production's count from 1 to **0** until
+   the grant landed, and `/admin/users` renders it in the two-admin banner.
+
+3. **Seven censuses pin this model and they are SUPPOSED to fail when you change it.** In
+   `seed-roles.test.ts`: the role-key list, the per-role permission counts, `modelPairs`,
+   `modelPermissions`, `heldPermissions`, `NOT_YET_MODELLED`'s length AND its explicit roster, and
+   `NON_TABLE_PAIRS`. Elsewhere: `seed-staff.test.ts`'s `KNOWN_ROLE_KEYS` (derived — it grows on its
+   own, the pin is there so somebody notices) and `deploy-parity.test.ts`'s two seed-script censuses.
+   Budget for all of them; the failures are precise and tell you the new number.
+
+4. **Every non-table grant needs a README sentence this test quotes VERBATIM.** There are now seven
+   such sets (`RULING_7_PAIRS`, `WORKFLOW_RULING_PAIRS`, `PLAN_09_PAIRS`, `GROUP_C_PAIRS`,
+   `GROUP_A_PAIRS`, `MERGE_LANE_PAIRS`, `GROUP_B_PAIRS`). A model row in none of them fails V3's
+   last leg, which is what stops the README-subset scoping becoming a hole.
+
+5. **Do not add to `ELEVATABLE_AUTH_PERMISSIONS` without reading its header.** The list is what a
+   temporary grant MAY carry; the forbidden set is `authManifest.permissions` **minus** it, so a new
+   `auth.*` string is refused on arrival. Inverting it into a deny-list fails open on exactly the
+   permission nobody thought about. `auth.break_glass.use` is the only member.
+
+6. **`ASSIGNABLE_SCOPES` is `["hospital"]` and `roles-catalog.e2e.test.ts` PARSES THE SOURCE to
+   prove it.** Every `@RequirePermission` in the tree demands hospital, and `hasPermission` refuses
+   a non-hospital holding against a hospital requirement — so a department-scoped assignment grants
+   **nothing, on every route**. If that test fails you have added a genuinely department-scoped
+   route: widen the constant and the picker gains the option in the same commit. Do not weaken the
+   test; do not add floor/department to the picker "for completeness".
+
+---
+
+## 4. Rules the code enforces, so don't "simplify" them away
+
+- **The elevation ceiling guards BOTH doors.** `grantTempRole` is checked identically to
+  `emergencyElevate` — which is what made Group C's `duty_manager` row safe to write at all.
+- **A refused elevation writes NOTHING** — no row, no `emergency_elevation.used`. That event means
+  authority was taken; emitting it for a refusal would put a lie in the stream the queue reads.
+- **Expired elevations stay in the review queue.** The authority is gone; whether taking it was
+  justified is not. Filtering on `expiresAt > now` makes the mandatory review a race the reviewer
+  loses by sleeping.
+- **The merge is gated three ways, independently:** `executeMerge` refuses anything but a `granted`
+  approval; the approver is `medical_superintendent`, a different role; and
+  `assertNotSodPair("requester_approver", …)` means one person holding BOTH roles still cannot
+  approve their own merge — which matters, because in a small hospital they often will.
+- **`tariff_editor` drafts and `owner` activates.** There is no `tariff_drafter_activator` SoD pair;
+  the role boundary IS the control, and it is the first thing a revenue audit asks about.
+- **`owner` has money and operations visibility, never clinical records.** The absence of
+  `patients.read` there is a ruling, not an oversight: an owner who is also a clinician holds a
+  SECOND role, visible on the admin screen.
+- **`seed:patients` is in the DEPLOY path, not the runbook**, precisely because `seed:registration`
+  is not — a registration that must be remembered per environment is one that gets forgotten, which
+  is how `patient_merge` went unregistered from Plan 05 until now.
+
+---
+
+## 5. Known gaps, deliberately left open
+
+- **`break-glass` unlocks nothing** and `recordReview` in `break-glass.ts` is weaker than its
+  elevation counterpart — unconditional update, cannot tell a missing grant from a reviewed one,
+  emits no event. Named in `temp-roles.ts` so the difference reads as a decision.
+- **No second factor on any admin route.** Production holds zero TOTP enrolments (11e's seam).
+- **Agents remain authenticated and powerless** — `guards.ts:99-101`.
+- **No read-only observer role** (Group D, unbuilt) — see §8.
+
+---
+
+## 6. Production state, and what deploying will do
+
+| | now (measured) | after `seed:roles` runs |
+|---|---|---|
+| Roles in `roles` | 14 | 16 model roles ensured |
+| `doctor` → `patients.read` | **false** | true — the consultation panel stops 403ing |
+| `pharmacy` permissions | 1 | 2 |
+| `owner` permissions | 3 | 10 |
+| `patient_merge` registered | **false** | true (via `seed:patients`, now in `deploy.sh`) |
+| `auth.elevation.review` | granted to `admin` ✅ | unchanged |
+| `fullAdministrators` | 1 ✅ | unchanged |
+| Unreviewed emergency elevations | 0 | unchanged |
+
+The operator command for any future `auth.*` permission — idempotent, password never used on a box
+that already has an admin:
 
 ```
 cd /opt/hmis-prod && docker compose -p hmis-prod -f docker-compose.prod.yml --project-directory /opt/hmis-prod \
@@ -136,79 +180,76 @@ cd /opt/hmis-prod && docker compose -p hmis-prod -f docker-compose.prod.yml --pr
   api node dist/scripts/seed-admin.js
 ```
 
-`ADMIN_PASSWORD=x` is deliberate, not lazy: the user exists so the value is never used, and it cannot pass
-the ten-character policy — so if the username were ever wrong the script REFUSES and writes nothing instead
-of minting an administrator with a one-character password. It fails safe in the one direction that matters.
-Note `admin` is the live account; `syn.smokeadmin` also holds the role and is **deactivated**.
+`ADMIN_PASSWORD=x` is deliberate: it cannot pass the ten-character policy, so a wrong username makes
+the script REFUSE rather than mint an administrator with a one-character password. Note `admin` is
+the live account; `syn.smokeadmin` also holds the role and is deactivated.
+
+**`seed:roles` mints authority and assigns nobody.** After deploying, `mrd_officer`,
+`tariff_editor`, `membership_admin` and `biomedical_engineer` exist with **zero holders** — assign
+them at `/admin/users`, which is now a two-click job because the picker exists.
 
 ---
 
-## 6. The shared-checkout collision, from this side
+## 7. The shared checkout
 
-Both commits here are ancestors of `1bff417`, so the identifier-grammar lane's push **and its production
-deploy carried them**. Nothing was lost in either direction and no file was overruled: the only overlap was
-`locales/en.json` / `hi.json`, where `rx.visitNo` and the `adminUsers.*` picker keys landed side by side.
+Both early commits are ancestors of `1bff417`, so the identifier-grammar lane's push and deploy
+carried them. Nothing was lost either way; the only file overlap was the two locale catalogs, where
+`rx.visitNo` and the `adminUsers.*` picker keys landed side by side.
 
-What it cost was **verification, not code**. A full `pnpm verify` taken while the other session's jest was
-running failed across a dozen unrelated suites — billing, tariff, opd, membership, ops, realtime, identity —
-with foreign-key violations and 5 s timeouts, none of them explicable from the diff. Both sessions share
-`hmis_test_<worker>`. The signature to recognise is `perf-opd-queue.test.ts` dying on
-`opd_encounters_patient_id_patients_id_fk`: another run truncated `patients` mid-test.
+What it cost was **verification, not code**. A full `pnpm verify` taken while the other session's
+jest was running failed across a dozen unrelated suites — billing, tariff, opd, membership, ops,
+realtime, identity — none explicable from the diff. Both sessions share `hmis_test_<worker>`. The
+signature is `perf-opd-queue.test.ts` dying on `opd_encounters_patient_id_patients_id_fk`: another
+run truncated `patients` mid-test.
 
-Habits, matching the companion note's §5 and adding one:
-
-- **`ps -eo pid,etimes,cmd | grep jest` before believing any broad failure.** A second session shows its own
-  `/tmp/claude-0/-opt-hmis/<uuid>/` scratchpad path.
-- **Run the suites your change touches; re-run collisions in isolation.** Every suite that failed in the
-  batch here passed alone.
-- **Stage explicitly. Never `git add -A` in this checkout** — the tree holds another lane's in-flight work.
-- **`git stash -u` sweeps their files too.** It round-trips safely, but their work reappears in `git status`
-  after the pop and reads as your own. That is what it looks like; it is not damage.
+- **`ps -eo pid,etimes,cmd | grep jest` before believing any broad failure.** A second session shows
+  its own `/tmp/claude-0/-opt-hmis/<uuid>/` scratchpad path.
+- **Run the suites your change touches; re-run collisions in isolation.** Every suite that failed in
+  the batch passed alone.
+- **Stage explicitly. Never `git add -A` in this checkout.**
+- **`git stash -u` sweeps their files too.** It round-trips safely, but their work reappears in
+  `git status` after the pop and reads as your own. That is what it looks like; it is not damage.
 
 ---
 
-## 7. What the owner ruled, and the next right action
+## 8. What remains, and the suggested order
 
-Ruled 2026-08-25 in the brainstorm that produced this work:
+**Ruled by the owner 2026-08-25, still unbuilt:**
 
-- **Role authoring: hybrid with an approval ceremony.** Not free-form DB editing. A composer screen drafts
-  a role from the permission catalogue, then **draft → approve → activate** through the approvals engine,
-  evented, with SoD warnings — mirroring how workflow definitions are already governed. The vocabulary stays
-  code-owned until that ceremony exists. **This is the largest unbuilt piece and the natural next slice.**
-- **Agent authority: design now, build in Plan 12a.** No agent code this phase.
+- **Role authoring: hybrid with an approval ceremony.** Not free-form DB editing — a composer that
+  drafts a role from the permission catalogue, then **draft → approve → activate** through the
+  approvals engine, evented, with SoD warnings, mirroring how workflow definitions are governed.
+  **The largest unbuilt piece.** Note it will hit the same wall as everything in §2: a role minted
+  at runtime is invisible to `ROLE_MODEL`, so the census and the README-parity tests need a
+  DB-authored class distinct from the code-owned one before this can land.
+- **Agent authority: design now, build in Plan 12a.** Start from `guards.ts:99-101` —
+  `"agents hold no permissions yet"`, so every agent request is 403 on every guarded route.
+  `auth.agents.manage` is declared, granted to `admin`, and **guards zero routes** — the shape
+  `auth.users.manage` had before 11e. And `role_assignments.user_id` FKs `users.id`, so an agent
+  **cannot hold a role at all**. The design owes: delegated authority (`user ∩ agent`) for
+  interactive copilots versus **standing** authority for scheduled automations with no human to
+  intersect against; whether autonomy tier is a column or is expressed as `.draft`-style permission
+  strings the guards already enforce (a tier no route reads is documentation); and the two §16
+  guardrails that do not exist — **global halt** and **agent heartbeat**.
 
-**The role-model corrections the owner asked for ("think of more similar"), none of them yet built:**
+**Group D — the missing shape.** There is still **no read-only observer role**; every read
+permission is bundled with a write role. Internal audit (E-17) needs one, and it is exactly the
+shape Digest Writer and Leakage Auditor need in 12a — building it now means the agent runtime
+inherits a proven pattern instead of inventing one.
 
-- *Group A — new roles, permissions already exist, no holder:* `tariff_editor` (draft) with `owner` keeping
-  `tariff.versions.activate` to honour the drafter/activator pair · `mrd_officer` (`patients.merge` — today
-  duplicate records have **no repair path**) · `membership_admin` · `biomedical_engineer`
-  (`ops.interface.manage`, currently bundled into `duty_manager`) · a holder for `approvals.types.manage`.
-- *Group B — roles too thin to do their job:* `medical_superintendent` holds two workflow permissions and
-  **cannot read a patient record** · `owner` holds three and cannot see an invoice or report · `duty_manager`
-  has no `approvals.requests.decide` despite the bundling matrix giving it night override authority ·
-  `pharmacy` holds exactly one permission · `display` is a role for a screen and should be a device identity.
-- *Group C — permissions on the wrong role, all six `auth.*` sit on `admin` alone:* **`auth.break_glass.use`
-  has NO clinical holder**, so spec §14's "ER staff can open any record instantly" is not true on this
-  deployment · `auth.break_glass.review` and now `auth.elevation.review` sit with the technical superuser
-  when governance intent puts both with the medical superintendent · `auth.temp_role.grant` is unreachable by
-  the duty manager, who is the role the night-shift bundling matrix was built for.
-- *Group D — a missing shape:* there is **no read-only observer role**; every read permission is bundled with
-  a write role. Internal audit (E-17) needs one, and it is the exact shape Digest Writer and Leakage Auditor
-  need in 12a — building it now means the agent runtime inherits a proven pattern.
-- *Group E — blocked on owner rulings:* `patients.confidential.read` (who may see a VIP/staff record — note
-  the identifier lane's §1 ruling that this lives on `patients.is_confidential`, **not** in a UHID serial
-  band) · the seven `partners.*` (Plan 09 O-8, CA/counsel register) · `approvals.requests.create`.
+**Group E — blocked on owner rulings.** `patients.confidential.read` (who may see a VIP/staff
+record — note the identifier lane's ruling that this lives on `patients.is_confidential`, **not** in
+a UHID serial band) · the seven `partners.*` (Plan 09 O-8, CA/counsel register) ·
+`approvals.requests.create`.
 
-**The agent finding that Plan 12a must start from:** `guards.ts:99-101` throws
-`"agents hold no permissions yet"` — every agent request is 403 on every guarded route. `auth.agents.manage`
-is declared, granted to `admin`, and **guards zero routes**, which is precisely the shape `auth.users.manage`
-had before 11e. And `role_assignments.user_id` has an FK to `users.id`, so an agent **cannot hold a role at
-all**. The design owes: delegated authority (`user ∩ agent`, the Lane 3 rule) for interactive copilots versus
-**standing** authority for scheduled automations that have no human to intersect against; whether autonomy
-tier is a column or is expressed as `.draft`-style permission strings the guards already enforce (a tier no
-route reads is documentation); and the two uniform guardrails from §16 that do not exist yet — **global halt**
-and **agent heartbeat**.
+**The four unwired mechanisms from §2**, each a design piece rather than a role row:
+break-glass bypass (and whether it may cross the confidential gate — spec §14 puts "open any record"
+and "confidential stays sealed" in direct tension, which only the owner can resolve) · night
+override for the duty manager · a screen for `membership.catalog.manage` · `display` as a device
+identity rather than a role.
 
-**Suggested order for whoever picks this up:** Group C first — it is small, it is pure `ROLE_MODEL` plus
-README rows, and one of its items means the ER cannot currently break glass. Then Group A. Then the composer
-ceremony. The agent design doc can run in parallel with any of them since it touches no shipped code.
+**Suggested order.** **Deploy first** — the doctor/allergy fix is sitting in the repo doing nobody
+any good. Then Group D, because it is small and 12a wants it. Then the break-glass ruling, because
+it is the only remaining item with a clinical edge. The composer ceremony and the agent design doc
+are both large and independent; the agent doc touches no shipped code and can run in parallel with
+anything.
