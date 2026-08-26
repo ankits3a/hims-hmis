@@ -307,6 +307,18 @@ SoD pair requires. The four `workflow.instances.*` strings stay deliberately ung
 flow calls `startInstance` and `transition` in-process from `modules/opd/encounters.ts`, never
 through that controller, so granting them would mint authority nobody needs.
 
+Owner ruling of 2026-08-26 moves three `auth.*` strings off `admin`, which appear in no table
+above: the `medical_superintendent` role gains `auth.break_glass.review` and
+`auth.elevation.review` — reviewing exceptional access is medical-record governance, not a
+technical-administrator chore — and the `duty_manager` role gains `auth.temp_role.grant`, the
+mechanism the night-shift bundling matrix was built on. `admin` keeps all three; these are
+additions, not moves, and nothing is taken from the account that repairs the deployment. A fourth
+string, `auth.break_glass.use`, is deliberately NOT granted to any clinical role: no route in the
+tree sets `breakGlassBypass`, so an active break-glass grant currently unlocks nothing, and
+granting the key to a door that opens on nothing would manufacture the appearance of an emergency
+path. That one needs wiring and an owner ruling on whether a bypass may cross the confidential
+gate, not a role row.
+
 ### Go-live runbook — OPD (owner steps, once per environment)
 0. `UHID_PREFIX=<PREFIX> pnpm --filter @hmis/core seed:registration` — **the `registration_config`
    row.** Numbered ZERO because it belongs to Plan 05 rather than to OPD, and because the steps

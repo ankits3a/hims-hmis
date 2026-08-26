@@ -236,9 +236,76 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // administrative sign-off alone. No `.activate`: approving and activating stay separate.
       "workflow.definitions.approve",
       "workflow.definitions.read",
+      // ─── GROUP C, owner ruling 2026-08-26: the two REVIEW desks leave the superuser ───
+      //
+      // Both of these used to be held by `admin` and by nobody else, because `seed:admin` grants
+      // the whole `authManifest` to that role and no model row ever mentioned them. That put the
+      // review of EXCEPTIONAL ACCESS with the technical administrator — the account that exists to
+      // repair the deployment — when spec §14 and role card #39 both put medical-record governance
+      // with the Medical Superintendent. `admin` KEEPS them (seed:admin is unchanged); what
+      // changes is that the person whose job this is can finally do it.
+      //
+      // `auth.elevation.review` is the live one: the emergency-elevation queue shipped in
+      // `fc9e49a` and, until this row, answered 403 to everyone but `admin`. Reviewing who handed
+      // themselves authority is exactly the "worklist of governance decisions" card #39 describes.
+      //
+      // `auth.break_glass.review` is granted in the SAME breath deliberately, even though its
+      // queue cannot fill yet (see the `auth.break_glass.use` note below): the two reviews are one
+      // desk, and splitting them across two commits would leave a second correction to remember.
+      "auth.break_glass.review",
+      "auth.elevation.review",
     ],
   },
+  // ------------------------------------------------------------------------------------------
+  // GROUP C, owner ruling 2026-08-26 — THE DUTY MANAGER GAINS THE MECHANISM BUILT FOR THEM.
+  //
+  // `duty_manager` has existed since `seed:ops` and held THREE `ops.*` strings, so it appears in
+  // `GRANTED_BY_OTHER_SEEDS` and, until now, in no model row. `temp_role_grants` — the table, the
+  // route, the auto-expiry sweep — was built for the staffing spec's §10 night-shift bundling
+  // matrix and its workforce mechanism 4 (surge rosters, "pre-verified locum pool with
+  // auto-expiring grants"). Every one of those is a duty-manager act at 2 a.m., and the permission
+  // sat on `admin`: the one person the mechanism exists to avoid waking.
+  //
+  // ═══ THIS ROW WAS UNSAFE TO WRITE BEFORE `fc9e49a`, AND THAT IS THE POINT ═══
+  //
+  // `grantTempRole` used to accept ANY role key. A duty manager holding this permission could have
+  // granted a colleague `admin` — a twelve-hour hospital-scope superuser, invisible to both the
+  // lockout invariant and the takeover rule, and long enough to mint a permanent assignment. The
+  // elevation ceiling (`temp-roles.ts`) now refuses any role carrying authority over access on
+  // BOTH grant doors, which is why the header there says "one rule, both doors" and names this
+  // exact move as the reason the admin-granted door had to be guarded too.
+  //
+  // It gets ONLY `auth.temp_role.grant`. Not `auth.users.manage`, not `auth.roles.manage`: the
+  // night shift needs to lend authority for an hour, never to create an account or change what a
+  // role means.
+  // ------------------------------------------------------------------------------------------
+  { roleKey: "duty_manager", permissions: ["auth.temp_role.grant"] },
 ];
+
+/**
+ * ═══ WHY `auth.break_glass.use` IS NOT GRANTED TO ANY CLINICAL ROLE — MEASURED 2026-08-26 ═══
+ *
+ * It is the obvious fourth Group C row and it is DELIBERATELY ABSENT, because granting it today
+ * would ship a lie. Spec §14 promises "ER staff can open any record instantly"; the honest state of
+ * the tree is that **break-glass unlocks nothing at all**.
+ *
+ * `PermissionGuard` consults `hasActiveBreakGlass` only when a route's requirement carries
+ * `breakGlassBypass: true` (`guards.ts`). **NO ROUTE IN THIS TREE SETS IT.** The only occurrences of
+ * that flag are its own type definition, the decorator signature, the guard's check, and one
+ * comment. Separately, the confidentiality gate that would matter most is not a route guard at all:
+ * `patients.confidential.read` is read through direct `hasPermission` calls inside
+ * `search-provider.ts`, `search.ts` and `qr.ts`, which the guard's bypass could never reach.
+ *
+ * So a doctor granted this permission could record a grant, fill the review queue, and open exactly
+ * nothing. That is worse than the current gap: it manufactures the APPEARANCE of an emergency path,
+ * and the first person to rely on it would do so in an emergency.
+ *
+ * WHAT IT NEEDS IS A RULING PLUS WIRING, not a role row: which routes accept a bypass, whether a
+ * bypass may cross the confidential gate (spec §14 says a VIP record is restricted BEYOND normal
+ * RBAC, so "open any record" and "confidential stays sealed" are in direct tension and only the
+ * owner can resolve it), and only then which roles hold the key. It is written up in
+ * `docs/superpowers/plans/reports/2026-08-26-roles-access-relay.md` §7.
+ */
 
 /**
  * THE TWENTY-THREE DECLARED PERMISSIONS NO ROLE HOLDS YET, EACH WITH ITS REASON.
