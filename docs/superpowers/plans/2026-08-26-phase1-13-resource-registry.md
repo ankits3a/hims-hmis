@@ -1,6 +1,6 @@
 # Plan 13 — Resource Registry (kernel), and the OPD rooms move
 
-**Written 2026-08-26 on the build host; amended the same evening after a second brainstorm (the amendments are marked *AMENDED* in place — DD4, DD12, T1, T6, T7, § 4A). NOT APPROVED FOR EXECUTION — this document is the whole of what that session produced; execution is a separate session with its own approval.**
+**Written 2026-08-26 on the build host; amended the same evening after a second brainstorm (the amendments are marked *AMENDED* in place — DD4, DD12, T1, T6, T7, § 4A). ~~NOT APPROVED FOR EXECUTION — this document is the whole of what that session produced; execution is a separate session with its own approval.~~ APPROVED FOR EXECUTION by the owner 2026-08-26 evening, at `576a9b7`, and executed from this document in a separate session beginning ~22:40 UTC the same day (§ 3's spike answers and § 2's re-measure are that session's first writes; § 6's CLOSE is its last). The struck sentence stands as the record — it was true of the authoring session and its replacement is the approval it asked for. The two deploys inside this phase are separately authorised and the struck sentence does NOT cover them (DD12, T7's precondition).**
 
 **Roadmap:** [`2026-08-11-phase1-plan-series.md`](2026-08-11-phase1-plan-series.md) § *Plan 13* (sequencing RULED 2026-08-25: immediately after 09, hard gate before the IPD cluster) and § *Stage-2 acceleration*. **Spec:** [`../specs/2026-08-10-hmis-architecture-design.md`](../specs/2026-08-10-hmis-architecture-design.md) §11.18 (the ward-room model and its v4.6 sentence naming this registry), §11.2 (bed board, class-drives-tariff), §11.19-A (service-line floors), §11.16-A (the mini-OT's registry contributions), §4 (module framework). **This plan argues from those and does not restate them.**
 
@@ -58,6 +58,11 @@
 
 Every line below was run in this checkout at write time. **Three of them had already drifted from the launch prompt that commissioned this document, which is why the rule is re-measure rather than re-read.**
 
+> **RE-MEASURED AT KICKOFF, 2026-08-26 ~22:40 UTC, before anything was generated (AGENT-RULES §6). NOT ONE NUMBER MOVED, and the re-measure is recorded rather than skipped because the rule's value is in the runs that come back identical too.**
+> Migration head **`0030_charming_the_hood.sql`**, journal idx **30**, **31** `.sql` files · `git status` **clean**, branch `main`, HEAD **`8c64cad`** (the write-time `0055c06` plus the three Plan 13 docs commits `a7910e3` → `576a9b7` → `8c64cad`; no code moved) · `pgTable("resources"` and `resource_status_history` still **zero hits** · **NINE** `opdRooms` files, the same nine, byte for byte the list in the bullet below · `ALL_MANIFESTS` **twelve**, pinned at `manifests.test.ts:108`, leg 3 still reads *"exactly three enumerated, intentional ways"* at line 143 with `["ops","membership","formulary"]` at line 172 · permission census **77 = 63 + 14**, both pins present · SPA routes **25** · deploy seeds **SEVEN** · this document **64,449** bytes (was 64,116 before the § 4A rulings commit; the context-budget row below is re-derived: **≈16,112 tokens**, +83 against the estimate, which changes no decision).
+> **Parallel-work fence: `ps -eo pid,cmd | grep -iE 'jest|vitest'` matched NOTHING — not even a self-match, because the probe ran as an argv-list without a shell wrapper carrying the literal string** (rule 20's own trap, avoided by construction rather than by reading past it). No second lane.
+
+
 - **Migration head `0030_charming_the_hood.sql`.** Journal idx 30. `git status` clean, branch `main`, HEAD `0055c06`. **This phase generates THREE: `0031`, `0032`, `0033` — see DD12.** Read the head yourself (`ls apps/core/drizzle/*.sql | tail -1` **and** `git status`) before writing a number into a commit.
 - **There is NO `resources` table and no `resource_status_history` anywhere** — `pgTable("resources"` and `resource_status_history` are zero hits across `apps` and `packages`.
 - **`opdRooms` is touched by NINE source files, not six.** The launch prompt named six. Measured (`grep -rln 'opdRooms\|opd_rooms' --include=*.ts apps packages`, excluding `drizzle/`):
@@ -89,20 +94,54 @@ Every line below was run in this checkout at write time. **Three of them had alr
 
 Write the measured answers **in place here** before T1 starts (v3 §1.2; the 11d Question B precedent — a read-only production query from the main session is the cheapest honest way, and no agent is needed for any of these).
 
+> **ANSWERED 2026-08-26 ~22:40 UTC, from the execution session, read-only against `hmis-prod-db-1` (user `hmis`, db `hmis`) via `docker exec … psql`. No agent. Every answer is inline under its question below. Headline: NOTHING MOVED — the write-time measurement still describes production exactly, and Q5 returns the answer that lets T6/T7 proceed as written.**
+
 **Q1 — Has the room book changed?** `select id, code, name, floor, active from opd_rooms order by code;`
 Answers three things at once: whether the two `SYN-` rows are still the whole book (write-time measurement), whether **any room now carries a non-null `floor`**, and whether **any room is inactive**. *Consequence:* both of those fields are mapped by the backfill and production currently exercises NEITHER — so if the answer is still "two SYN rooms, floor NULL, active true", **T6's fixtures must deliberately differ from production** (**A8** and **A9**, and §2.102: a fixture whose fields coincide has not exercised the code that distinguishes them). If real rooms HAVE been entered, say so and re-read the risk of T7's drop.
+
+> **A1 — UNCHANGED. The book is still the two synthetic rows, and it still exercises NEITHER discriminating field.**
+> ```
+>              id             |  code  |        name        | floor | active
+>  ----------------------------+--------+--------------------+-------+--------
+>   01M0TEPMH5H83HWAYQ4AY5MS5C | SYN-R1 | SYN Consult Room 1 |       | t
+>   01M0TEPMJ91B2CA5QR6N8CW46Q | SYN-R2 | SYN Consult Room 2 |       | t
+>  (2 rows)
+> ```
+> Two rows, both `SYN-`-prefixed, **`floor` NULL on both, `active` true on both** — so production holds **zero** rooms with a floor and **zero** inactive rooms. **The consequence the question predicted is now binding: T6's fixtures MUST deliberately differ from production** (**A8** needs a room with a non-null `floor`, **A9** needs an inactive room), because a production-shaped fixture cannot discriminate either mutant. §2.102 exactly. No real rooms were entered between the write and the execution, so T7's drop carries the risk this document already priced.
+
 
 **Q2 — Does every referrer resolve?** `select count(*) from opd_doctor_schedules s left join opd_rooms r on r.id = s.room_id where r.id is null;` and the same for `opd_queue_sessions`.
 Answers whether the backfill's row-count guard can pass. *Consequence:* a non-zero count means an orphan exists behind a NOT NULL FK, and **T6 halts and reports rather than migrating** — the guard in `0032` must RAISE, not skip.
 
+> **A2 — ZERO ORPHANS ON BOTH SIDES. The backfill's row-count guard can pass.**
+> `opd_doctor_schedules` left-joined to `opd_rooms`: **0** unresolved. `opd_queue_sessions` (non-null `room_id` only): **0** unresolved.
+> Row census re-measured in the same batch, and it matches § 2 line for line: `opd_rooms` **2** · `opd_doctor_schedules` **14**, all **14** carrying a `room_id` (the NOT NULL FK) · `opd_queue_sessions` **2**, **1** carrying a `room_id`.
+> **This does not make `0032`'s guard optional.** It is a fact about production *today*, and the guard defends the book that exists *at apply time* — which, per DD12's deploy gate, is a later moment than this measurement.
+
+
 **Q3 — Where is production?** `select max(id) from drizzle.__drizzle_migrations;` (or the deploy's own report) and `select to_regclass('resources');`
 Answers that production is at `0030` and that nothing has claimed the table name. *Consequence:* a head other than `0030` re-bases every migration number in § 5 before T1 generates anything.
+
+> **A3 — PRODUCTION IS AT `0030`, AND THE TABLE NAMES ARE UNCLAIMED. No re-basing: `0031`/`0032`/`0033` stand as written.**
+> `select max(id), count(*) from drizzle.__drizzle_migrations` → **`max_id = 31`, `applied = 31`**. That serial counts *rows*, one per applied file, from 1 — so 31 applied rows are files `0000`…`0030`, and the local checkout holds exactly **31** `.sql` files (`ls apps/core/drizzle/*.sql | wc -l`). The two numbers agree; production and the build checkout are at the same head. **Read the row COUNT beside `max(id)` when checking this — `max(id)` alone is off by one against the file number and reads as `0031` already applied, which it is not.**
+> `select to_regclass('resources'), to_regclass('resource_status_history')` → **both NULL.** Nothing has claimed either name.
+
 
 **Q4 — Is `site_id` still one value with nothing behind it?** `select site_id, count(*) from events group by 1;` and `select to_regclass('sites'), to_regclass('facilities');`
 Confirms the owner's Q3 ruling still describes the system at kickoff. *Consequence:* more than one distinct value, or a sites table appearing, re-opens DD3 with the owner before T1.
 
+> **A4 — STILL ONE VALUE, STILL NOTHING BEHIND IT. DD3 stands and is not re-opened.**
+> `select site_id, count(*) from events group by 1` → one row: **`main` — 349 events.** `to_regclass` on `sites`, `facilities` and `branches` → **all three NULL.** The owner's Q3 ruling still describes the system, so `site_id text NOT NULL DEFAULT 'main'` ships as DD3 declares it.
+
+
 **Q5 — WHAT IS THE HOSPITAL DOING RIGHT NOW?** `select to_mode, at from operating_mode_changes order by seq desc limit 1;` — **the columns are `from_mode`/`to_mode`/`at`, ordered by `seq`** (`schema/ops.ts:54-66`), not `mode`/`changed_at`
 **This is the gate on the destructive half of the phase and it is asked for that reason.** Production has never left `commissioning` (11f's CLOSE; `operating_mode_changes` was still empty at 11f close). *Consequence:* if the answer is still `commissioning` or an empty table, T6/T7 proceed as planned. **If production has entered `live`, T7's drop stops being a migration and becomes an owner-authorised operational act** — record the answer, do not proceed on the strength of this document, and route it.
+
+> **A5 — THE TABLE IS EMPTY. PRODUCTION HAS NEVER LEFT `commissioning`. T6 AND T7 PROCEED AS PLANNED.**
+> `select from_mode, to_mode, at, seq from operating_mode_changes order by seq desc limit 5` → **`(0 rows)`**; `select count(*)` → **0**.
+> Zero rows is not an absence of information here: `schema/ops.ts:39` states it in as many words — *"`commissioning` is FIRST on purpose: it is what zero rows read as, and what a freshly-migrated deployment IS"* — and `getOperatingMode` is one `ORDER BY seq DESC LIMIT 1` over this ledger. **The gate on the destructive half of the phase is therefore OPEN, and § 4A item 4 does not fire.**
+> **This answer has a shelf life and DD12 is why.** T7's precondition re-asks it *after* T6's deploy; the mode may change between now and then, and it is that later reading — not this one — that authorises `0033`.
+
 
 ---
 
