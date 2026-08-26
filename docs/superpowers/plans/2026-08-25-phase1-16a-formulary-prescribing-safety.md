@@ -251,6 +251,7 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
 | kickoff — spike answered, §2 re-based, DD10 ruled | `be9134f` | four spike answers measured against production; two stale counters corrected; one plan defect caught before code |
 | T1 — the five tables | `b1c9db8` **CI GREEN** (run 32949762683, 773s) | migration `0026_true_malcolm_colcord`; **12/12** in `formulary.test.ts`, isolated (`Test Suites: 1 passed, 1 total`); `pnpm verify` exit 0 before push (core 205/1758 → **206/1770**) |
 | T2 — the module | _pending push_ | **12/12** in `masters.test.ts`, isolated; census **MEASURED 77 = 63 held + 14 not-yet-modelled**, exactly DD10's prediction; manifest census eleven → twelve; `pnpm verify` exit 0 (core **207/1782**, web 42, contracts 4/21) after two reds — F8 (real, fixed) and F9 (flake, measured) |
+| T3 — resolution, exact | _pending push_ | **12/12** in `resolve.test.ts`, isolated; **fail-first quoted** (staged subset, semantic red); **four mutants built, four DIED** — M3 only on the shipped assertion, see F10 |
 | _appended as each lands_ | | |
 
 ### Findings
@@ -307,6 +308,24 @@ Semantics (each a spec §1.3 line): allergy matching = substance's resolved moie
   that last pair is what proves the second run grants nothing, which is the property `seed:roles`
   exists to have. **DD10 predicted 77 = 63 + 14 and the measurement agreed exactly** — recorded
   because AGENT-RULES §4 says report the difference, and the honest report is that there was none.
+- **F10 — THE PLAN'S NAMED DISCRIMINATING INPUT FOR MUTANT A3 DOES NOT DISCRIMINATE, AND ONLY
+  BUILDING IT SHOWED THAT.** §5's Assertion Book says: *mutant: matching by `includes()` after
+  normalization · input: `"Augmentn"` (typo) → expected `null`; mutant → resolves.* Built and run:
+  **the mutant PASSED that input.** `"Augmentn"` is a DELETION typo, and no substring relation holds
+  in either direction between `augmentn` and `augmentin 625` — a fuzzy-by-`includes()`
+  implementation is exactly as blind to it as the exact one. The hand-walk predicted a kill and was
+  wrong in the dangerous direction: *the mutant appeared to survive a correct implementation*.
+  **AGENT-RULES §3 branch (b): the shipped code is right and the PLAN'S row could not discriminate.**
+  The fix was already in the shipped test, which asserts `null` over five texts rather than one —
+  three of them (`"Augmentin"`, `"amox"`, `"625"`) ARE genuine substring relations, and the mutant
+  dies on the first: `"text": "Augmentin"`, expected `drug: null`, received a fully resolved object.
+  The scratch spec was left carrying BOTH legs so the record shows the non-discriminating input
+  beside the discriminating one.
+  **This is rule 21's entire thesis, met head-on:** *"a hand-walk of 'a wrong implementation would
+  produce X' is a prediction, not evidence, and it has been wrong in BOTH directions in the same
+  plan."* Here it was wrong at plan-authoring time, in a row whose whole job was to make DD2
+  executable — and a phase that trusted the row instead of running it would have shipped the law
+  with a test that proves it against one input a fuzzy matcher also passes.
 - **F9 — `billing/series.test.ts`'s race leg FLAKED ONCE UNDER FULL-SUITE LOAD, and the honest
   report includes the hypothesis I could not fully exclude.** The leg runs **ten rounds of six
   concurrent `nextDocNo` transactions** against a 15-second per-test budget and threw

@@ -14,3 +14,10 @@ export {
   updateInteraction, updateMedicine, updateSalt,
 } from "./masters";
 export type { InteractionRow, MedicineWithSalts, MedicineRow, RouteClass, SaltRow, Severity } from "./masters";
+/**
+ * T3 — THE BOUNDARY `modules/opd` ACTUALLY CONSUMES. Everything above is the curation surface;
+ * these four are what the prescription pipeline calls at issue time. DD2 lives in
+ * `resolveDrugTexts`: exact resolution only, `null` for anything else.
+ */
+export { listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines } from "./resolve";
+export type { InteractionPair, ResolvedDrug, SaltRef } from "./resolve";
