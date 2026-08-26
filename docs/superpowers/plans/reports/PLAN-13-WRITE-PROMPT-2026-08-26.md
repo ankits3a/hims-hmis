@@ -41,7 +41,11 @@ you need one, grep for it. The ones that bear on this plan: §2.54 (two copies o
 
 ═══ MEASURED GROUND TRUTH, 2026-08-26 (re-measure before you trust any of it) ═══
 
-  · Migration head: 0027_perfect_korg.sql. Plan 13 generates 0028.
+  · Migration head: 0027_perfect_korg.sql — AND 0028 IS ALREADY TAKEN. A concurrent session was
+    executing Plan 09a T2 (the accrual-subject re-key, DD2) at the time of writing and had
+    generated 0028_overjoyed_havok.sql in this working tree, uncommitted. READ THE HEAD YOURSELF
+    (`ls apps/core/drizzle/*.sql | tail -1`) and check for uncommitted ones (`git status`) before
+    you write a number into the plan. AGENT-RULES §6.
   · ALL_MANIFESTS holds TWELVE manifests; manifests.test.ts pins the census by key, in order, and
     app.module.ts must agree. A thirteenth is a deliberate three-file change.
   · Permission census: 77 declared = 63 held + 14 not-yet-modelled (test/seed-roles.test.ts). Any
@@ -123,6 +127,14 @@ stop — execution is a separate session with its own approval.
 deployment changes the lane, the task count and therefore the stop-loss. It is the difference
 between a kernel-table phase and a kernel-table-plus-data-migration phase.
 
-**The ground truth above will drift.** Plan 09a is open at T2–T4 and takes the next migration
-number when it lands; a session that trusts `0028` without re-reading the head will collide with it,
-which is exactly the collision 16a's kickoff caught between itself and 09a over `0026`.
+**The ground truth above drifted while this file was being written, which is the point.** The
+paragraph originally read "Plan 13 generates 0028". Within the hour, a concurrent session executing
+Plan 09a T2 generated `0028_overjoyed_havok.sql` in this very working tree. That is the second time
+in one day two open phases have contended for a migration number — 16a's kickoff caught the first,
+over `0026`. **Do not take a number from a document. Read the head, and read `git status` for one
+somebody has generated but not committed.**
+
+**Two sessions share this checkout.** Per-worker test databases are keyed on `JEST_WORKER_ID` and
+collide across concurrent runs (AGENT-RULES rule 20), so a neighbouring suite makes your timing and
+flake evidence unreliable. Check `pgrep -af jest` and READ the matched lines rather than counting
+them — the shell you run the check in contains the string "jest" and matches itself.
