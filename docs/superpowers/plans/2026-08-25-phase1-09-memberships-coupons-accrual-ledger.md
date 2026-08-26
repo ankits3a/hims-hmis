@@ -1776,13 +1776,113 @@ first attempt.** No wave stalled, no chain halted, no infrastructure death.
 
 ### The independent reviewer (v3 §3.4 / EXECUTE-METHOD §4's discovery review)
 
-**NOT RUN — `You've hit your weekly limit · resets Aug 28, 6am (UTC)`.** This is the phase's one
-outstanding gate and it is a hard block on close (F13). When it runs it reads all eight task commits
-together plus the relay, and it has been pointed at the two highest-risk pairs by construction:
-**T4's `invoiceAccrualView` seam, which had no caller until T6** (§2.49's vacuity risk, now
-resolvable), and **the new way this phase opens to reach a patient — by instrument** — where the
-question is whether every lane that can name one goes through `visiblePatientIds()`. That is the
-shape of 11h's CRITICAL: two halves individually correct, jointly blind.
+**RAN 2026-08-26 (335,870 tokens, 104 tool calls, 18 m). Verdict: NO CRITICAL — the phase is safe
+to CLOSE. Four MAJOR, three MINOR, five NOTEs. It is NOT safe to flip `COMMISSION_ACCRUAL_ENABLED`.**
+
+Every MAJOR sits behind a flag production measures as `false`, so nothing here reaches a patient or
+a partner today — **which is the structural-OFF pattern doing exactly the job it was built for.**
+But two of the four are **wrong money in the accrual ledger**, and they become CRITICAL the moment
+O-8 is taken and the lane is armed.
+
+**MAJOR 1 — DD12's ratio is unbounded above 1, and crediting an INELIGIBLE line raises the payable
+commission. MINE, and it is the phase's most serious finding.** `targetBase = divHalfUp(eligibleBase
+x collected, settleable)` has no clamp, and `collected > settleable` is ordinary: a credit note moves
+`settleable` immediately while `collected` does not move until a refund voucher is **paid**. Executed
+against real invoices through the shipped path — an agreement paying on `consultation` only, and a
+credit note on the **pharmacy** line raised the consultation commission from 10 000 to 15 600,
+because the base silently became the whole invoice. `targetBase` reached **5x the live eligible
+base** in the pure probe. It converges only if a refund is paid in cash; a credit adjusted at a later
+visit leaves it permanently inflated, and `replayAccruals` bakes that in.
+**Why forty mutants missed it: all nine golden fixtures sit at `collected == settleable`.** The
+spike measured only that regime, and I wrote the fixtures from the spike. `accrual.test.ts`'s F8 leg
+even constructs `collected > settleable` and asserts the unclamped answer *as intended* — defensible
+for the all-eligible invoice it uses, false for a mixed one.
+**RULED 2026-08-26 (owner): SERVICE DELIVERED — clamp the ratio.** `targetBase = min(targetBase,
+eligibleBase)`. Commission tracks what the hospital actually delivered and can still be paid for, so
+crediting an ineligible line can never raise an unrelated line's commission, and the base means what
+the agreement's `eligibleCategories` say it means. **Reason recorded because it is the kind of thing
+a later reader will want to re-open:** it is the conservative direction for a trust hospital, and it
+is the only one that can be explained to a partner during reconciliation without reference to the
+hospital's cash position. **The fix is NOT taken here** — it changes `accrual.test.ts`'s F8 leg from
+`[25 000]` to `[25 000, −10 000]` and wants the golden fixture the phase never had (`collected >
+settleable` on a MIXED invoice). It lands in the follow-up phase below, with its ruling settled.
+
+**MAJOR 2 — a BACKDATED agreement version opens a second subject and re-accrues the whole invoice**
+(measured `[5000, 10000]`, total 15 000 where 10 000 is correct). The subject key is
+`(agreement_id, invoice_id, direction)`, so a new version finds no rows for itself and appends the
+target again. **Reviewer's recommended fix, and it is right: key the subject on
+`(invoice_id, direction)` alone** — the agreement already travels on each row's `rate_snapshot`
+(DD6), so nothing is lost and "sum of deltas equals target" becomes true per invoice, which is what
+DD12's invariant actually means.
+
+**MAJOR 3 — the counter and the ledger disagree about when a card is valid.** B6/K7 rule an IST
+calendar-day comparison and `membershipUsableAt` honours it; `attributeInvoice` compares raw
+instants in SQL, and the importer writes `T00:00:00.000Z` = 05:30 IST. **For ~18.5 hours of the
+final day of every imported card — all of a working day — the counter honours the discount and the
+partner is credited nothing.** No test anywhere pins the boundary; every partners fixture uses a
+December expiry against an August clock. The "convention several tasks honour that no test protects"
+class, exactly.
+
+**MAJOR 4 — the receivable lane has no serializer.** Measured by T7's own gate at **7 of 8 trials
+double-counting** a statement slip. The open-claim lookup has no `FOR UPDATE` and the update carries
+no state predicate — the hazard `commission_accrual_subjects` closes on the payable side, absent on
+the receivable one. Narrowest fix: `FOR UPDATE` on the open expectation inside `importStatement`'s
+transaction. The runbook's "two operators must not import at once" is a mitigation, not a fix.
+
+**MINOR 1 — the priced-draft door takes no `Actor`,** so `previewInvoice`/`feeQuote` can surface a
+sealed patient's membership benefit where recognition correctly returns nothing. Graded MINOR with
+the reason: to honour a sealed member's benefit at all it must appear on their bill, so the
+asymmetry buys only membership status from an encounter id. Inert behind `MEMBER_BENEFITS_ENABLED`.
+
+**MINOR 2 — FIXED at close.** `COUPON_ISSUANCE_ENABLED` gates no code path anywhere (three
+occurrences, all in `config.ts` and its test) and the README implied flipping it opens issuance.
+Row 5 and runbook step 8 now say so in row 1's own words.
+
+**MINOR 3 — FIXED at close, and it was the ONLY finding not protected by a flag.** The fuzzy
+matcher persisted a confidential patient's **name** into `patient_match_queue.candidates[].why`.
+The reader gates correctly and there was no API leak — but 11h's ruling that "a patient id is not a
+capability" was about **ids**, and a name is neither opaque nor useless. The import and reconcile
+lanes ship UNFLAGGED; only the two ungranted permissions kept it from firing on the first import.
+The name was redundant anyway (the reader re-reads names through its own gated map), so it is gone
+and a test now asserts its absence.
+
+**Reassurances the reviewer re-checked and found SOUND** (§2.67's discipline applied to my own
+relay): `accrual-view.ts` is formula-identical to billing's private readers, so DD19's seam cannot
+drift from `invoiceSettlement`; the three duplicated flag readers are each pinned by execution;
+`loadInstances` and `resolveCoupons` both close the "empty predicate → SELECT everything"
+catastrophe; `instrumentSearchProvider`'s gate is genuinely one SQL predicate shared by rows and
+count.
+
+### The follow-up phase — RULED 2026-08-26 (owner), and it gates every flag flip
+
+All four MAJORs land together in **one short phase before any flag is flipped**, with MAJOR 1's
+ruling already settled. The reviewer named each fix, which is why this is small and well specified:
+
+1. **MAJOR 1 — clamp the ratio** (`min(targetBase, eligibleBase)`), and amend F8's asserted ledger
+   to match the ruling rather than the other way round.
+2. **MAJOR 2 — re-key `commission_accrual_subjects` on `(invoice_id, direction)`.** One migration.
+   The agreement travels on `rate_snapshot` (DD6), so nothing is lost and DD12's invariant becomes
+   true per invoice, which is what it always meant.
+3. **MAJOR 3 — give `attributeInvoice` the SAME IST-calendar-day predicate the counter uses.** Today
+   the two disagree for ~18.5 hours of every imported card's final day.
+4. **MAJOR 4 — `FOR UPDATE` on the open expectation inside `importStatement`'s transaction**, plus
+   the contention test that proves it, in the shape T4's `entitlements.contention.test.ts` proved:
+   assert the BLOCK, not merely the outcome.
+
+**Two fixture shapes the phase's forty mutants never reached, and they are the point of the
+exercise** (ledger §2.93): a golden fixture with **`collected > settleable` on a MIXED invoice**,
+and a **validity-boundary** fixture inside the 05:30 IST window. Both are cheap now and neither
+existed because the spike measured one regime and the fixtures were written from the spike.
+
+**MINOR 1** (the priced-draft door takes no `Actor`) is carried into that phase as a decision rather
+than a fix: closing it means threading an actor through `previewInvoice`/`feeQuote`, which is a
+signature change on a money path and deserves its own ruling.
+
+**One NOTE is mine to answer.** The reviewer reported `/opt/hmis/.ciwatch-fix.log` present at its
+start and absent at its end, and reported rather than explained it (rule 8, correctly). **I deleted
+it** — my own CI-watch scratch, removed by an explicit two-path `rm -f` after I read the verdict.
+Recorded here so the observation is closed rather than left hanging.
+
 
 ### The close remediation — `MembershipError` was answering 500 (owner-authorised, taken 2026-08-26)
 
@@ -1857,7 +1957,15 @@ self-report** — detached `pnpm verify`, exit VALUE **0** read from a file:
 | `packages/contracts` | 4 suites / 20 tests | **4 / 21** |
 | workspace total | 1540 | **1714 (+174)** |
 
-**AFTER THE CLOSE REMEDIATION, on a quiet host, detached, exit VALUE 0 read from a file:**
+**AT CLOSE, on a quiet host, detached, exit VALUE 0 read from a file:** `apps/core`
+**205 suites / 1757 tests** · `apps/web` **42 / 247** · `packages/contracts` **4 / 21**.
+**A first attempt at this run came back exit 1**, and the failure was mine: removing the patient's
+name from the persisted match reason (MINOR 3) broke a SECOND assertion on that string in
+`importer.test.ts`, which my grep missed because it was scoped to the file I had edited rather than
+to the string I had changed. **F3's class, and the reason `pnpm verify` before every push is not
+negotiable even when a change looks local.** Fixed, re-run, green.
+
+**After the first close remediation, same conditions, exit VALUE 0:**
 `apps/core` **205 suites / 1757 tests** · `apps/web` **42 files / 247 tests** ·
 `packages/contracts` **4 / 21**. Workspace total **2,025** against the 1,540 baseline — **+485**,
 no decrease at any point, no test deleted. **This discharges F14**, which stood undischarged while

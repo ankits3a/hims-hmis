@@ -97,7 +97,15 @@ describe("reconcile queue", () => {
     const found = await findPatientCandidates(db, "Sunanda Phatak");
     expect(found.map((c) => c.patientId)).toEqual([near]);
     expect(found[0]!.score).toBeGreaterThan(0.3);
-    expect(found[0]!.why).toContain("Sunandaa Phatak");
+    /**
+     * INDEPENDENT REVIEW, MINOR 3 — the stored reason must NOT carry the matched patient's name.
+     * It once read `… resembles registered patient "Sunandaa Phatak"`, which denormalised a
+     * confidential fact into another module's table; the reader re-reads names through its own
+     * gated map, so the name was redundant as well as leaky. The HOLDER's name (from the partner's
+     * file, not from a patient record) stays.
+     */
+    expect(found[0]!.why).toContain("Sunanda Phatak"); // the holder, from the drop
+    expect(found[0]!.why).not.toContain("Sunandaa Phatak"); // the PATIENT, never persisted
   });
 
   it("folds SCRIPT, so a Devanagari holder finds a Latin-registered patient", async () => {

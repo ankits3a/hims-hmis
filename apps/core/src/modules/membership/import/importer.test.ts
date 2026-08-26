@@ -269,7 +269,11 @@ describe("holder-book import", () => {
     const candidates = queue[0]!.candidates as { patientId: string; score: number; why: string }[];
     expect(candidates.map((c) => c.patientId)).toEqual([patientId]);
     expect(candidates[0]!.score).toBeGreaterThan(0.3);
-    expect(candidates[0]!.why).toContain("Sunandaa Phatak");
+    // INDEPENDENT REVIEW, MINOR 3 — the stored reason names the HOLDER (from the partner's drop)
+    // and never the matched PATIENT. See `match-queue.ts` for why the patient's name is not
+    // persisted; the queue screen still renders it, read through its own gated `byId` map.
+    expect(candidates[0]!.why).toContain("Sunanda Phatak"); // the holder
+    expect(candidates[0]!.why).not.toContain("Sunandaa Phatak"); // the patient, never persisted
   });
 
   it("a DORMANT holder nobody in this hospital resembles imports inert — no queue row, no link", async () => {

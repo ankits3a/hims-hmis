@@ -207,6 +207,45 @@ Plan [`2026-08-14-phase1-06-tariff-gst-golden.md`](2026-08-14-phase1-06-tariff-g
 
 ## Plan 09 — Memberships, Coupons & the Accrual Ledger
 
+**STATUS: SHIPPED 2026-08-25/26 — 8/8 tasks, CLOSED 2026-08-26 on a clean independent review. LIVE
+IN PRODUCTION AND INERT, and the phase did NOT authorise that deploy.** Phase document
+[`2026-08-25-phase1-09-memberships-coupons-accrual-ledger.md`](2026-08-25-phase1-09-memberships-coupons-accrual-ledger.md)
+— **its §8 CLOSE is the gate report; read that, not this line.** Relay note
+[`reports/2026-08-26-plan-09-relay.md`](reports/2026-08-26-plan-09-relay.md).
+Eleven commits `15eedcc`→`f797999`, **all CI green by full SHA** (one intermediate, `927afc6`, went
+red on foreign content swept in from a parallel session and was fixed by `b0d046b`). Migration
+`0022`, seventeen tables, two modules. `pnpm verify` exit 0 at close: core **205/1757**, web
+**42/247**, contracts **4/21** — workspace 1,540 → **2,025**, no test deleted anywhere in the range.
+**Assertion Book: 40 mutants built, 40 DIED**, plus 8 in the spike and a full independent rebuild of
+T4's seven by its own gate.
+
+**HOW IT REACHED THE HOSPITAL, because it matters more than the code.** These commits are ancestors
+of the identifier-grammar lane's `1bff417`, and `deploy.sh` builds from whatever `HEAD` is — so
+another lane's authorised deploy carried the whole phase to production. Nobody decided that; the
+topology went around the rule. **It went out inert and that is measured, not assumed:** 17/17 tables
+present, every catalog empty, none of the five flags set, `membership_grace_honor` registered.
+The failure mode is written up in [`reports/2026-08-26-parallel-session-protocol.md`](reports/2026-08-26-parallel-session-protocol.md) §5.
+
+**DD7 IS CONFIRMED ON THE LIVE BOX and it is the phase's best decision.** `event_cursors` reads
+`partners.accrual` at the same sequence as `kernel.alerts` and `kernel.notify` while
+`commission_accruals` holds zero rows — the consumer registers and tracks ALWAYS, and the flag
+decides only whether it WRITES. The obvious implementation (register only when the flag is on) has
+no cursor, so a later flip would start from *now* and lose every earlier event. Arming the lane is
+two tested steps: set the flag, run the replay.
+
+**THE PHASE IS CLOSED. THE FLAGS ARE NOT CLEARED TO FLIP.** The independent review found no
+CRITICAL and four MAJOR, every one behind a flag production measures as `false`. Two are wrong money
+and become CRITICAL the instant `COMMISSION_ACCRUAL_ENABLED` is set: **MAJOR 1**, DD12's ratio is
+unbounded above 1 so crediting an INELIGIBLE line raises the payable commission (needs an OWNER
+RULING — commission on money held, or on service delivered?), and **MAJOR 2**, a backdated agreement
+version re-accrues a whole invoice. **MAJOR 3** (the counter and the ledger disagree about an IST
+day boundary) and **MAJOR 4** (the receivable lane has no serializer) complete the list. All four,
+with their executed evidence and their named fixes, are in the phase document's §8.
+
+**Still the owner's:** O-8, the CA/counsel register — which gates three of the five flags — and
+`membership_admin`, which exists in production with correct grants and **zero holders**.
+
+
 **Sequencing (RULED 2026-08-23, superseding 2026-08-20; AMENDED 2026-08-24 by the post-11e brainstorm session):** runs immediately **AFTER Plan 11f** (the operability gate, [`2026-08-24-phase1-11f-operability-gate.md`](2026-08-24-phase1-11f-operability-gate.md) — its §1 marks "Plan 09 next" dead in place with the reasons: the 2026-08-23 ruling predates 11e's evidence that a whole plan surface sat dark in production under a green test, the burned-roster/one-admin credential state is a standing hazard revenue features would compound, and Plan 09's counter-recognition and accrual consumer presuppose a hospital that actually operates). The planning session needs the owner to supply the out-of-git `hmis-context/plan-09-channel-partners-2026-08-23.md` — it is not on the build host. Still ahead of 11b (hardware-gated) and 12a. **Depends on 08.5:** the accrual consumer on `payment.received` / reversal on `payment.refunded` is the first *business* consumer of the dispatcher — register it through the module-manifest subscription seam 08.5 binds; never check-on-execute for accrual.
 
 **RE-SHAPED 2026-08-23 (owner disclosure — read the open-decisions ruling above and the out-of-git file `hmis-context/plan-09-channel-partners-2026-08-23.md` before planning):** the live program is **channel-partner-intermediated**. Scope deltas the planning session must carry: (1) partner entities as first-class payee/payor counterparties (agreements on file; the ledger records the hospital's actual legal arrangements — flows to/from *partners*, never to external RMPs; C-1 structural OFF unchanged); (2) a **receivable-commission instrument** (expected commission FROM third-party diagnostics/labs via partners: outbound-referral attribution → expected receivable → reconciliation against partner statements); (3) **partner-originated membership instances** (partner sells, hospital honors — the counter recognizes a coupon/card, applies the configured discount on tests/IPD/OT, attributes to the partner for reconciliation); (4) the **import task** for the existing holder book; (5) **sales lanes config-OFF for Phase 1** (E-32 guardrails ship anyway; disclosure applies at honoring time); (6) CA questions extended: GST treatment of partner-sold instruments (who invoices the member, whose GST), commission-income treatment for the trust (§11(4A) incidental-business + separate books — counsel/CA gate before the receivable instrument goes live).

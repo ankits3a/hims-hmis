@@ -98,10 +98,26 @@ export async function findPatientCandidates(db: Db | Tx, holderName: string): Pr
     )
     .orderBy(desc(sql`similarity(lower(${patients.name}), ${folded})`), asc(patients.id))
     .limit(MAX_CANDIDATES);
+  /**
+   * PLAN 09 CLOSE, INDEPENDENT REVIEW MINOR 3 — THE STORED REASON CARRIES NO PATIENT NAME.
+   *
+   * It used to read `… resembles registered patient "<their name>"`. That denormalised the
+   * confidential fact ITSELF into another module's table. The READER is gated correctly —
+   * `listMatchQueue` calls `visiblePatientIds` once per page and filters before it joins names —
+   * so there was no API leak. But 11h's ruling that "a patient id is not a capability" was about
+   * IDS: an id is opaque and useless without a permitted route, and a NAME is neither. Any future
+   * reader of this column that forgets the gate would leak the name rather than an opaque id, and
+   * this lane is one of the two that ship UNFLAGGED.
+   *
+   * The name was also redundant: `listMatchQueue` re-reads names from `patients` through its own
+   * gated `byId` map, so the queue screen renders exactly what it rendered before.
+   *
+   * The HOLDER's name stays — it comes from the partner's own file, not from a patient record.
+   */
   return rows.map((r) => ({
     patientId: r.id,
     score: Number(r.score),
-    why: `holder name "${holderName}" resembles registered patient "${r.name}"`,
+    why: `holder name "${holderName}" resembles a registered patient (trigram ${Number(r.score).toFixed(2)})`,
   }));
 }
 

@@ -801,7 +801,7 @@ The mapping from flag to CA/counsel register item is stated ONCE, here.
 | 2 | `MEMBER_BENEFITS_ENABLED` | `false` | Composing the membership and coupon `AdjustmentSource`s into `priceDraft` at billing (DD2) | **Not a legal gate** — DD8's operational order, in the runbook below |
 | 3 | `COMMISSION_ACCRUAL_ENABLED` | `false` | The accrual consumer WRITING payable commission rows (it registers and advances its cursor either way, DD7 — this flag decides writes only) | CA/counsel register items 2 and 3 (O-8, owner) |
 | 4 | `RECEIVABLE_COMMISSION_ENABLED` | `false` | Attribution issuance, statement import and matching | CA/counsel register item 2 (O-8, owner) |
-| 5 | `COUPON_ISSUANCE_ENABLED` | `false` | Issuing NEW coupon codes (campaign creation). Redeeming an already-issued coupon is ON and unflagged | CA/counsel register item 5, advertising rules (O-8, owner) |
+| 5 | `COUPON_ISSUANCE_ENABLED` | `false` | Issuing NEW coupon codes (campaign creation). **No code lane exists for it in this phase at all** — nothing anywhere reads this flag, so flipping it opens nothing (independent review, MINOR 2). Redeeming an already-issued coupon is ON and unflagged | CA/counsel register item 5, advertising rules (O-8, owner) |
 
 **ON and unflagged regardless of all five:** recognition, honouring an already-issued instrument,
 entitlement consume/restore, redemption of an already-issued coupon, the holder-book import, the
@@ -851,9 +851,11 @@ catches up.
    exit code, because a backfill that ran with the flag still off reports a clean pass having
    written nothing (`replayAccruals` refuses outright with the flag off, precisely so this cannot
    be mistaken for success).
-8. `COUPON_ISSUANCE_ENABLED` carries no ordering constraint of its own — flip it whenever the
-   owner's coupon catalog (real codes, rates and windows — DD3, never in this repository) is ready
-   to load and register item 5 is cleared.
+8. `COUPON_ISSUANCE_ENABLED` carries no ordering constraint of its own **because it carries no
+   lane**: it is declared and defaulted, and nothing in `apps/`, `packages/` or `docker/` reads it
+   (three occurrences, all in `kernel/config.ts` and its test). Flipping it changes no behaviour.
+   It is here so the issuance lane a later phase builds is born gated rather than retrofitted —
+   the same reason row 1 exists. Register item 5 gates that phase, not this flag.
 
 **Watch items — read before trusting a number on any of these screens:**
 
