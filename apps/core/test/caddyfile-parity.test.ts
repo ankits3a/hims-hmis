@@ -301,7 +301,13 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // moves the number, and the number moved BY EXECUTION rather than by prediction: the verify run
     // that added `/formulary/admin` failed here with `Received length: 25` against the pinned 24,
     // which is the friction working exactly as its docstring promises.
-    expect(routes).toHaveLength(25);
+    // PLAN 14 T9 / DD16 — 28 with the three materials screens (items, vendors, the GRN gate). The
+    // number moved BY EXECUTION rather than by prediction, exactly as the paragraph above records
+    // for 16a: the verify run that added them failed here with `Received length: 28` against 25.
+    expect(routes).toHaveLength(28);
+    expect(routes).toContain("/materials/items");
+    expect(routes).toContain("/materials/vendors");
+    expect(routes).toContain("/materials/grn");
     expect(routes).toContain("/admin/users");
     expect(routes).toContain("/counter/instruments");
     expect(routes).toContain("/counter/reconcile");

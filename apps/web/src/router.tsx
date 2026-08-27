@@ -32,6 +32,9 @@ import { OpsDowntimeKit } from "./screens/ops-downtime-kit";
 import { CounterInstruments } from "./screens/counter-instruments";
 import { InstrumentReconcile } from "./screens/instrument-reconcile";
 import { FormularyAdmin } from "./screens/formulary-admin";
+import { MaterialsItems } from "./screens/materials-items";
+import { MaterialsVendors } from "./screens/materials-vendors";
+import { MaterialsGrn } from "./screens/materials-grn";
 import { PartnerReceivables } from "./screens/partner-receivables";
 import { PartnerPnl } from "./screens/partner-pnl";
 
@@ -79,6 +82,14 @@ const NAV: readonly { to: string; label: string; permission: string }[] = [
   // GRANTED (DD10) — to `pharmacy`, a role that exists with no holders — so this link appears the
   // day a pharmacist account does, and for nobody before then.
   { to: "/formulary/admin", label: "nav.formularyAdmin", permission: "formulary.manage" },
+  // PLAN 14 T9 / DD16 — the three materials screens. Each path and permission matches
+  // `materialsManifest.menu`'s own entry exactly, which is where the authoritative pairing lives.
+  // All three permissions are GRANTED (DD11) to `materials_head` and `storekeeper` — roles that
+  // exist with NO HOLDERS — so these links appear the day a storekeeper account does, and for
+  // nobody before then. That is the `formulary.manage` precedent one phase later.
+  { to: "/materials/items", label: "nav.materialsItems", permission: "materials.items.manage" },
+  { to: "/materials/vendors", label: "nav.materialsVendors", permission: "materials.vendors.manage" },
+  { to: "/materials/grn", label: "nav.materialsGrn", permission: "materials.grn.capture" },
 ];
 
 function Shell(): React.ReactElement {
@@ -223,6 +234,24 @@ const formularyAdminRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/formulary/admin",
   component: FormularyAdmin,
+});
+
+const materialsItemsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/materials/items",
+  component: MaterialsItems,
+});
+
+const materialsVendorsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/materials/vendors",
+  component: MaterialsVendors,
+});
+
+const materialsGrnRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/materials/grn",
+  component: MaterialsGrn,
 });
 
 const opdAppointmentsRoute = createRoute({
@@ -373,6 +402,9 @@ export const router = createRouter({
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       formularyAdminRoute,
+      // PLAN 14 T9 — 25 -> 28. `caddyfile-parity.test.ts` pins the count and joins this task's
+      // Files list, which is the S11 rule the repo has applied to itself four times.
+      materialsItemsRoute, materialsVendorsRoute, materialsGrnRoute,
     ]),
   ]),
 });
