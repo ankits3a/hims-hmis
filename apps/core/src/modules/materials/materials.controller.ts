@@ -6,6 +6,7 @@ import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { ApprovalError } from "../../kernel/approvals/types";
+import { ResourceError, resourceHttpStatus } from "../../kernel/resources/errors";
 import { MaterialsError, materialsHttpStatus } from "./errors";
 import {
   addBarcode, addItemUom, getItem, listItems, registerItem, resolveBarcode, setPriceRegulation,
@@ -89,6 +90,21 @@ function httpError(statusCode: number, message: string, code: string, detail?: u
 export function toHttp(e: unknown): never {
   if (e instanceof MaterialsError) throw httpError(materialsHttpStatus(e.code), e.message, e.code, e.detail);
   if (e instanceof ApprovalError) throw httpError(409, e.message, e.code);
+  /**
+   * ═══ CLOSE REVIEW M1 — THE FOURTH DOOR, AND THE REPO HAD ALREADY SHUT IT ONCE ═══
+   *
+   * `POST /materials/stores` reaches `createResource`, which raises `ResourceError` for
+   * `duplicate_code`, `unknown_resource` (a stale `parentId`), `too_deep`, `unknown_status` and
+   * `unknown_kind`. None is a `MaterialsError` or an `ApprovalError`, there is no global exception
+   * filter in this app, so every one of them answered **500**.
+   *
+   * `modules/opd/opd-masters.controller.ts` carries this exact clause, added by **Plan 13's own
+   * close pass** under the heading "THIS CONTROLLER CAN RECEIVE A `ResourceError`, SO IT MAPS ONE".
+   * This is the third module to learn it and the second to learn it from a reviewer. The e2e's
+   * "never a 500" leg walked six families and not `stores` — the one family with an unmapped class,
+   * which is exactly how a guard that looks thorough leaves the only gap that matters.
+   */
+  if (e instanceof ResourceError) throw httpError(resourceHttpStatus(e.code), e.message, e.code);
   throw e;
 }
 
@@ -502,7 +518,28 @@ export class MaterialsController {
 
   // ═══════════════════════════════ THE GRN GATE ═══════════════════════════════
 
-  @RequirePermission("materials.grn.capture", "hospital")
+  /**
+   * ═══ CLOSE REVIEW M6 — THE READ HALF OF DD8's GATE IS GUARDED ON `stock.read`, NOT `grn.capture`
+   *     ═══
+   *
+   * DD11 makes the **pharmacist the QC signatory for drugs**, and `seed-roles.ts` grants `pharmacy`
+   * exactly `items.read`, `stock.read` and `grn.qc` — deliberately **not** `grn.capture`, because
+   * capture is the storekeeper's half of the two-stage gate.
+   *
+   * These two READ routes were guarded on `materials.grn.capture`. So the one role the plan names
+   * as the QC signatory **could post a verdict it was not allowed to read the GRN to reach**: 403
+   * on the list, 403 on the detail, `POST grns/:id/qc` wide open. A signatory who cannot see the
+   * document is not a signatory, and the grant DD11 rules was unreachable in practice.
+   *
+   * `materials.stock.read` is the right guard and `seed-roles.ts` had already said so in a comment
+   * beside the grant — *"`materials.stock.read` is what makes a QC verdict informed"*. All three
+   * roles that touch a GRN hold it (`materials_head`, `storekeeper`, `pharmacy`), so this WIDENS
+   * nobody's authority beyond what DD11 already granted; it stops narrowing it below.
+   *
+   * The WRITE routes are untouched: `POST grns` stays on `grn.capture` and the three verdict routes
+   * stay on `grn.qc`. Reading a GRN and acting on it remain separate authorities.
+   */
+  @RequirePermission("materials.stock.read", "hospital")
   @Get("grns")
   async grns(@Query() query: unknown): Promise<{ grns: unknown[] }> {
     const q = parsed(z.object({
@@ -511,7 +548,8 @@ export class MaterialsController {
     return { grns: await listGrns(this.db, q) };
   }
 
-  @RequirePermission("materials.grn.capture", "hospital")
+  /** M6 — see `grns()` above: the QC signatory must be able to read what it signs. */
+  @RequirePermission("materials.stock.read", "hospital")
   @Get("grns/:id")
   async grn(@Param("id") grnId: string): Promise<{ grn: unknown }> {
     const grn = await getGrn(this.db, grnId);

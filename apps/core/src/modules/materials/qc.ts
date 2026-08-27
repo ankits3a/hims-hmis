@@ -67,6 +67,15 @@ export type QcContext = {
   uoms: readonly UomRow[];
   /** The ceiling in force on the challan date, per BASE unit, or null when none is (rule 7). */
   ceilingPaisePerBase: number | null;
+  /**
+   * A ceiling IS in force and could NOT be expressed per base unit — CLOSE REVIEW M7.
+   *
+   * Distinct from `ceilingPaisePerBase: null`, which means *no ceiling was notified* and is a PASS.
+   * This one means *a ceiling was notified and we cannot compare against it*, which must be a
+   * REJECT. Collapsing the two — which is what a bare `null` did — makes DD8 rule 7 fail OPEN on
+   * exactly the items it exists for.
+   */
+  ceilingUnconvertible: boolean;
   /** Whether the batch named already exists and is recall-frozen (rule 8). */
   batchFrozen: boolean;
   /** Whether a valid `consignment_agreement` is on file for the challan date (rule 9, O-8). */
@@ -199,6 +208,25 @@ export function qcLine(ctx: QcContext, line: QcLine): QcVerdict {
       if (mrpBase < line.unitCostPaise) return { verdict: "reject", rule: "mrp_below_cost" };
 
       // ── 7. MRP above a notified ceiling, where one is in force ──
+      /**
+       * ═══ CLOSE REVIEW M7 — FAIL CLOSED, AND PER LINE ═══
+       *
+       * `qcContextFor` used to call `mrpPerBaseUnit` on the CEILING outside any `try`, so an
+       * unconvertible ceiling threw out of the context assembler, escaped `runGateQc`, and
+       * `materialsHttpStatus` answered **404 for a whole delivery** — a storekeeper with twenty
+       * good lines told the GRN does not exist.
+       *
+       * That is finding F9's lesson one level up: **a per-line rule must produce a per-line
+       * verdict.** F9 fixed it for the LINE's own MRP, immediately above; the context assembler
+       * that computes the other operand did not get the same treatment, and a fix that stops at
+       * the first of two identical call sites is how a defect survives its own remediation.
+       *
+       * The direction is not arbitrary. A ceiling that cannot be compared against must REJECT,
+       * never pass: the item is one the government has capped, and DD8 calls rule 7 "the cheapest
+       * place to stop selling above a notified ceiling". Letting it through because the arithmetic
+       * was untidy is the same fail-open M4 fixed at the other end of the same rule.
+       */
+      if (ctx.ceilingUnconvertible) return { verdict: "reject", rule: "mrp_unconvertible" };
       if (ctx.ceilingPaisePerBase !== null && mrpBase > ctx.ceilingPaisePerBase) {
         return { verdict: "reject", rule: "mrp_above_ceiling" };
       }

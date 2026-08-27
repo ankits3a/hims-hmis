@@ -5,6 +5,7 @@ import { resources } from "../../kernel/db/schema";
 import { MATERIALS_RESOURCE_KINDS } from "./kinds";
 import { TRANSIT_STORE_CODE } from "./config";
 import { MaterialsError } from "./errors";
+import { ResourceError } from "../../kernel/resources/errors";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -79,15 +80,49 @@ export async function ensureTransitStore(tx: Tx, siteId = "main"): Promise<strin
   const found = await findStoreByCode(tx, TRANSIT_STORE_CODE, siteId);
   if (found !== undefined) return found.id;
   try {
-    const { resourceId } = await createStore(tx, { type: "system", id: "materials-transit" }, {
-      code: TRANSIT_STORE_CODE,
-      name: "In transit",
-      siteId,
-      attributes: { system: true, reason: "DD9 two-sided issue: stock between two signatures" },
-    });
+    /**
+     * ═══ SECOND-PASS FINDING R1 — THE CREATE RUNS IN A SAVEPOINT, AND IT HAS TO ═══
+     *
+     * The first remediation of M2 fixed the PREDICATE (below) and stopped there, which made the
+     * recovery reachable and still broken. `createResource` raises `duplicate_code` off a REAL
+     * unique-index violation (`registry.ts`: `catch (e) { if (isUniqueViolation(e)) … }`), and a
+     * constraint violation puts the enclosing Postgres transaction into the ABORTED state. Every
+     * subsequent command on it answers `25P02 current transaction is aborted` — so the re-read in
+     * the `catch` would have thrown a SECOND, more confusing error on top of the first, and the
+     * race would still have surfaced as a 500.
+     *
+     * **Fixing the predicate without fixing the transaction state is Plan 13's lesson repeating:
+     * a remediation is unreviewed code, and this one shipped its own defect inside the fix.**
+     *
+     * Drizzle's nested `transaction()` is a `savepoint`/`rollback to savepoint` pair, so the
+     * violation rolls back to the savepoint ONLY. The caller's transaction — which by this point
+     * may already hold ledger locks — survives intact and the re-read below can run on it.
+     */
+    const { resourceId } = await tx.transaction(async (sp) =>
+      createStore(sp, { type: "system", id: "materials-transit" }, {
+        code: TRANSIT_STORE_CODE,
+        name: "In transit",
+        siteId,
+        attributes: { system: true, reason: "DD9 two-sided issue: stock between two signatures" },
+      }));
     return resourceId;
   } catch (e) {
-    if (typeof e === "object" && e !== null && (e as { code?: unknown }).code === "23505") {
+    /**
+     * ═══ CLOSE REVIEW M2 — THIS RECOVERY WAS DEAD CODE ═══
+     *
+     * It tested for a raw Postgres `23505`. But `createResource` has ALREADY converted that
+     * violation into `ResourceError("duplicate_code", …)`, whose `.code` is the STRING
+     * `"duplicate_code"` — so the comparison could never be true, the re-read never ran, and the
+     * race this function documents surfaced as an unmapped `ResourceError` (M1) and therefore as a
+     * **500 on `POST /materials/transfers`** for the second of two storekeepers issuing stock for
+     * the first time at a site.
+     *
+     * A `catch` that cannot fire is worse than no `catch`: it reads as a handled case.
+     */
+    const isDuplicate = e instanceof ResourceError
+      ? e.code === "duplicate_code"
+      : typeof e === "object" && e !== null && (e as { code?: unknown }).code === "23505";
+    if (isDuplicate) {
       const raced = await findStoreByCode(tx, TRANSIT_STORE_CODE, siteId);
       if (raced !== undefined) return raced.id;
     }

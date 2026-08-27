@@ -359,11 +359,28 @@ export async function setPriceRegulation(
   },
 ): Promise<{ regulationId: string }> {
   await requireItem(tx, itemId);
-  // The pair rule again (schema header): paise never travels without its unit.
+  /**
+   * The pair rule again (schema header): paise never travels without its unit.
+   *
+   * ═══ CLOSE REVIEW M4 — IT APPLIES TO THE CEILING TOO, AND DID NOT ═══
+   *
+   * Only `mrpDefaultPaise` was checked. A DPCO ceiling entered as `{ ceilingPaise: 800 }` with no
+   * `mrpUom` was accepted, and `grn.ts` then FELL BACK TO THE BASE UNIT and read ₹8.00-per-strip
+   * as 800 paise per TABLET. **DD8 rule 7 — which DD8 itself calls "the cheapest place to stop"
+   * selling above a notified ceiling — failed OPEN by the pack multiplier**, silently, tenfold on
+   * a strip of ten. A gate that fails open is worse than no gate, because it is believed.
+   */
   if ((input.mrpDefaultPaise ?? null) !== null && (input.mrpUom ?? null) === null) {
     throw new MaterialsError(
       "unknown_uom",
       "an MRP was given with no unit — an MRP is printed on a pack (DD7)",
+    );
+  }
+  if ((input.ceilingPaise ?? null) !== null && (input.mrpUom ?? null) === null) {
+    throw new MaterialsError(
+      "unknown_uom",
+      "a ceiling was given with no unit — a notified ceiling is per pack, and without its unit the "
+        + "GRN gate would read it as a per-base-unit figure and fail OPEN (DD8 rule 7)",
     );
   }
   if ((input.mrpUom ?? null) !== null) {

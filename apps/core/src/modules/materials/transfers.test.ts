@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
-import { events, formularyMedicines, stockBatches } from "../../kernel/db/schema";
+import { events, formularyMedicines, resources, stockBatches } from "../../kernel/db/schema";
 import { MaterialsError } from "./errors";
 import { registerItem } from "./items";
 import { createStore, findStoreByCode } from "./stores";
@@ -334,5 +334,132 @@ describe("two-sided issue and receive (Plan 14 T7)", () => {
     await expect(withTx(db, (tx) => issueStock(tx, HEAD, {
       fromResourceId: main, toResourceId: ward, lines: [], occurredAt: T0,
     }))).rejects.toThrow(/at least one line/);
+  });
+
+  /**
+   * ═══ CLOSE REVIEW m3 — A FEFO OVERRIDE MUST NAME A BATCH **OF** THE ITEM IT OVERRIDES ═══
+   *
+   * The override path took `itemId` and `batchId` from the caller and checked neither against the
+   * other. `postMovements` reads the batch's OWN `item_id` for the ledger row, so the ledger and
+   * the balances were always right — which is why the reviewer filed this MINOR.
+   *
+   * But the transfer LINE and the `material.issued` EVENT both carry the CALLER's `itemId`. A
+   * transposed pair therefore produced a permanent, plausible, wrong record — "300 of paracetamol"
+   * against a batch of insulin — in an append-only stream where nothing downstream can tell.
+   */
+  it("m3: an override naming a batch of a DIFFERENT item is refused `batch_mismatch`", async () => {
+    const paracetamol = await anItem("CROC500");
+    const insulin = await anItem("INSULIN");
+    const main = await aStore("MAIN");
+    const ward = await aStore("WARD-A");
+    const insulinBatch = await aBatch(insulin, "INS-1", "2028-01-31");
+    await withTx(db, (tx) => postMovements(tx, HEAD, [
+      { resourceId: main, batchId: insulinBatch, qtyDelta: 100, reason: "grn", occurredAt: T0 },
+    ]));
+
+    await expect(withTx(db, (tx) => issueStock(tx, HEAD, {
+      fromResourceId: main, toResourceId: ward,
+      // The item is paracetamol; the batch is insulin's. Stock is plentiful, so nothing else refuses.
+      lines: [{ itemId: paracetamol, qtyBase: 10, batchId: insulinBatch, overrideReason: "substitution" }],
+      occurredAt: T0,
+    }))).rejects.toMatchObject({ code: "batch_mismatch" });
+
+    // NOTHING was written — not a transfer, not a ledger row, not an event.
+    expect(await listTransfers(db, {})).toEqual([]);
+    expect(await movementsFor(db, { batchId: insulinBatch })).toHaveLength(1); // the receipt only
+    expect(await eventsNamed("material.issued")).toEqual([]);
+
+    // A batch id that names nothing is a different refusal, and it keeps its own code.
+    await expect(withTx(db, (tx) => issueStock(tx, HEAD, {
+      fromResourceId: main, toResourceId: ward,
+      lines: [{ itemId: insulin, qtyBase: 10, batchId: newId(), overrideReason: "substitution" }],
+      occurredAt: T0,
+    }))).rejects.toMatchObject({ code: "unknown_batch" });
+
+    // …and the CORRECT pairing still overrides FEFO, which is the behaviour this must not break.
+    const ok = await withTx(db, (tx) => issueStock(tx, HEAD, {
+      fromResourceId: main, toResourceId: ward,
+      lines: [{ itemId: insulin, qtyBase: 10, batchId: insulinBatch, overrideReason: "substitution" }],
+      occurredAt: T0,
+    }));
+    expect(ok.lines[0]?.batchId).toBe(insulinBatch);
+  });
+
+  /**
+   * ═══ CLOSE REVIEW M2 (and its own second-pass fix R1) — THE TRANSIT STORE'S COLD-START RACE ═══
+   *
+   * `ensureTransitStore` is a read-then-create, and the unique index on
+   * `(site_id, kind, lower(code))` is what makes it safe: the loser re-reads instead of propagating
+   * a constraint violation. **Two defects were stacked in that recovery.**
+   *
+   *   · **M2** — the `catch` tested for a raw Postgres `23505`, but `createResource` has ALREADY
+   *     converted it to `ResourceError("duplicate_code")`, whose `.code` is a STRING. The
+   *     comparison could never be true, so the re-read never ran and the race surfaced as an
+   *     unmapped `ResourceError` — a **500 on `POST /materials/transfers`** for the second of two
+   *     storekeepers issuing stock for the first time at a site.
+   *   · **R1**, found reviewing the fix for M2 — fixing the predicate made the recovery REACHABLE
+   *     and still broken. A unique violation ABORTS the enclosing Postgres transaction, so the
+   *     re-read would have failed with `25P02 current transaction is aborted`: a second, more
+   *     confusing error on top of the first. The create now runs in a SAVEPOINT (drizzle's nested
+   *     `transaction()`), so only the failed insert rolls back.
+   *
+   * **The interleave is forced by the winner's own uncommitted tuple**, the C1 leg's instrument:
+   * A creates the store and parks; B's read sees nothing (A is uncommitted), B's insert blocks on
+   * A's tuple; A commits; B's savepoint rolls back and B re-reads the row A committed. Both return
+   * the SAME id and exactly one `IN-TRANSIT` store exists.
+   */
+  it("M2/R1: two first-issues racing to create IN-TRANSIT both succeed on ONE store", async () => {
+    const itemId = await anItem();
+    const main = await aStore("MAIN");
+    const ward = await aStore("WARD-A");
+    const batchId = await aBatch(itemId, "B-1", "2028-06-30");
+    await withTx(db, (tx) => postMovements(tx, HEAD, [
+      { resourceId: main, batchId, qtyDelta: 100, reason: "grn", occurredAt: T0 },
+    ]));
+    // The whole point: there is no transit store yet.
+    expect(await findStoreByCode(db, "IN-TRANSIT")).toBeUndefined();
+
+    let openGate = (): void => {};
+    const gate = new Promise<void>((resolve) => { openGate = resolve; });
+    const delay = (ms: number): Promise<void> => new Promise<void>((r) => { setTimeout(r, ms); });
+
+    const a = withTx(db, async (tx) => {
+      const r = await issueStock(tx, HEAD, {
+        fromResourceId: main, toResourceId: ward,
+        lines: [{ itemId, qtyBase: 10 }], occurredAt: T0,
+      });
+      await gate;
+      return r;
+    });
+    a.catch(() => { /* settled below */ });
+    await delay(400);
+
+    const b = withTx(db, (tx) => issueStock(tx, HEAD, {
+      fromResourceId: main, toResourceId: ward,
+      lines: [{ itemId, qtyBase: 10 }], occurredAt: T0,
+    }));
+    b.catch(() => { /* settled below */ });
+
+    // B is blocked on A's uncommitted `resources` row — a STATE, not a duration (§2.99).
+    const state = await Promise.race([
+      b.then(() => "settled", () => "settled"),
+      delay(400).then(() => "pending"),
+    ]);
+    expect(state).toBe("pending");
+
+    openGate();
+    // BOTH fulfil. Before the fix the second was a `ResourceError` nobody mapped, i.e. a 500.
+    const [ra, rb] = await Promise.all([a, b]);
+    expect({ a: ra.lines.length, b: rb.lines.length }).toEqual({ a: 1, b: 1 });
+
+    // ONE transit store, and both transfers went through it.
+    const transit = await findStoreByCode(db, "IN-TRANSIT");
+    expect(transit).toBeDefined();
+    const allStores = await db.select().from(resources)
+      .where(and(eq(resources.kind, "store"), eq(resources.code, "IN-TRANSIT")));
+    expect(allStores).toHaveLength(1);
+    // 20 tablets in transit, 80 left at MAIN — the arithmetic is intact through the race.
+    expect((await balances(db, { resourceId: transit?.id ?? "" }))[0]?.qtyOnHand).toBe(20);
+    expect((await balances(db, { resourceId: main }))[0]?.qtyOnHand).toBe(80);
   });
 });

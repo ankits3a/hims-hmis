@@ -352,4 +352,107 @@ describe("the stock ledger under contention (Plan 14 T5, A8 + A9)", () => {
     expect((await balances(db, { batchId: x }))[0]?.qtyOnHand).toBe(4);
     expect(await movementsFor(db, { batchId: x })).toHaveLength(3);
   });
+
+  // ══════════════════ C1 — THE CLOSE REVIEW'S CRITICAL, PINNED ══════════════════
+
+  /**
+   * ═══ C1: TWO CONCURRENT RECEIPTS INTO A **NEW** `(store, batch)` PAIR, AND STOCK VANISHES ═══
+   *
+   * The close reviewer's one CRITICAL, and the only defect in this phase that could silently lose
+   * a hospital's stock. `postMovements` wrote an APPLICATION-COMPUTED ABSOLUTE balance
+   * (`before + delta`) through `ON CONFLICT DO UPDATE`, and `lockBalances` — `SELECT … FOR UPDATE`
+   * — **cannot lock a row that does not exist yet.** So for a pair with no balance row:
+   *
+   *   · both sessions read `0`;
+   *   · both compute `0 + q`;
+   *   · the loser blocks on the winner's tuple, then takes the `DO UPDATE` branch and writes ITS
+   *     OWN `q` over the winner's;
+   *   · the ledger carries two rows summing `2q` and the balance says `q`.
+   *
+   * **The loss lands HIGH, so `stock_balances_non_negative_ck` never fires.** That is the corrected
+   * A8 note's lesson — "the CHECK defends against a negative balance, and the defect is not a
+   * negative balance, it is a balance that is merely WRONG" — applied to the one case the lock does
+   * not reach. Reachable through `postGrn`, `issueStock` (two sources racing on the shared
+   * `IN-TRANSIT` row, which is new to a batch on its first transfer) and `receiveStock`.
+   *
+   * ═══ THE INTERLEAVE IS FORCED, NOT HOPED FOR — AND UNLIKE A8's IT NEEDS NO HELD ROW ═══
+   *
+   * A8's legs park both racers on a row held `FOR UPDATE` by a third session. **That instrument is
+   * useless here by construction**: the row does not exist, so there is nothing to hold, which is
+   * the finding. The barrier used instead is the winner's OWN UNCOMMITTED TUPLE:
+   *
+   *   1. Racer A runs `postMovements` inside a transaction the test parks before commit.
+   *   2. Racer B then starts. Its `FOR UPDATE` finds nothing and its read sees nothing (A is
+   *      uncommitted), so B's pre-check runs against a balance of ZERO — the exact stale read.
+   *   3. B's insert blocks on A's uncommitted tuple. **Asserted as a STATE, not a duration**
+   *      (§2.99): a slow host makes "still pending" more true, never less.
+   *   4. The gate opens, A commits, and B resolves its conflict.
+   *
+   * Every step is a hard database wait rather than a `Promise.all` coin-flip (ledger §3.22), so
+   * this leg cannot pass by luck on an idle host.
+   *
+   * ═══ THE ASSERTION IS THE INVARIANT, NOT THE NUMBER ═══
+   *
+   * `sum(stock_ledger.qty_delta) === stock_balances.qty_on_hand` for the pair. That is the property
+   * the ledger exists to guarantee and the one the defect broke; asserting only "the balance is 10"
+   * would pass an implementation that also lost a LEDGER row.
+   */
+  it("C1: two concurrent receipts into a NEW (store, batch) pair COMPOSE — the ledger and the balance agree", async () => {
+    const itemId = await anItem("CROC500");
+    const storeId = await aStore("MAIN");
+    const batchId = await aBatch(itemId, "B-NEW");
+    // NOTHING is posted first: the pair must have NO balance row, which is the whole scenario.
+    expect(await balances(db, { batchId })).toHaveLength(0);
+
+    let openGate = (): void => {};
+    const gate = new Promise<void>((resolve) => { openGate = resolve; });
+
+    // RACER A — writes, then parks the transaction open and uncommitted.
+    const a = withTx(db, async (tx) => {
+      const r = await postMovements(tx, HEAD, [
+        { resourceId: storeId, batchId, qtyDelta: 5, reason: "grn", refId: "racer-a", occurredAt: T0 },
+      ]);
+      await gate;
+      return r;
+    });
+    a.catch(() => { /* settled below */ });
+    await delay(PROBE_MS);
+
+    // RACER B — reads a world in which A has not happened, then collides with A's tuple.
+    const b = withTx(db, (tx) => postMovements(tx, HEAD, [
+      { resourceId: storeId, batchId, qtyDelta: 5, reason: "grn", refId: "racer-b", occurredAt: T0 },
+    ]));
+    b.catch(() => { /* settled below */ });
+
+    const state = await Promise.race([
+      b.then(() => "settled", () => "settled"),
+      delay(PROBE_MS).then(() => "pending"),
+    ]);
+    expect(state).toBe("pending");
+
+    openGate();
+    const [ra, rb] = await Promise.all([a, b]);
+
+    const rows = await movementsFor(db, { batchId });
+    expect(rows).toHaveLength(2);
+    const ledgerSum = rows.reduce((acc, r) => acc + r.qtyDelta, 0);
+    const [bal] = await balances(db, { batchId });
+
+    /**
+     * The three numbers that were wrong together. Against the shipped implementation this read
+     * `{ ledgerSum: 10, balance: 5, agree: false }` — five units of stock received, recorded, and
+     * absent from the shelf figure, with no error anywhere and a perfectly legal balance.
+     */
+    expect({ ledgerSum, balance: bal?.qtyOnHand, agree: ledgerSum === bal?.qtyOnHand })
+      .toEqual({ ledgerSum: 10, balance: 10, agree: true });
+
+    /**
+     * And the RETURNED `balanceAfter` is the true post-value of each write, not the caller's
+     * arithmetic: one racer saw 5 and the other saw 10, in whichever order the database settled
+     * them. The old code returned 5 from BOTH, which is how a caller writing a receipt note would
+     * have printed the wrong figure too.
+     */
+    expect([ra[0]?.balanceAfter, rb[0]?.balanceAfter].sort((x, y) => (x ?? 0) - (y ?? 0)))
+      .toEqual([5, 10]);
+  });
 });

@@ -10,8 +10,30 @@
  * does not widen the union and it does not borrow a neighbouring code.
  *
  * The plan states the other half of the same discipline: *"Every code listed here is thrown by some
- * task below; a code thrown by no path is a lie the reviewer should catch."* Both directions are
- * asserted by `errors.test.ts` at T8, when every thrower exists.
+ * task below; a code thrown by no path is a lie the reviewer should catch."*
+ *
+ * ═══ CLOSE REVIEW M8 — THAT SENTENCE PROMISED A TEST THAT WAS NEVER WRITTEN, AND THE UNION HAD
+ *     DRIFTED IN BOTH DIRECTIONS BEHIND IT ═══
+ *
+ * This paragraph used to end *"Both directions are asserted by `errors.test.ts` at T8, when every
+ * thrower exists."* **`errors.test.ts` did not exist.** It is the most expensive kind of comment: a
+ * claim about the test suite, in the file the test was supposed to guard, believed by every reader
+ * including the reviewer of the task that was meant to write it. The close pass found what it was
+ * hiding, mechanically, in one pass over this directory:
+ *
+ *   · **Five declared codes had ZERO throw sites** — `batch_required`, `expiry_required`,
+ *     `expired`, `mrp_below_cost`, `mrp_above_ceiling`. All five are `qc.ts` `RuleCode`s: a
+ *     DIFFERENT union, recorded on the GRN line as a verdict and never thrown as an error. They
+ *     were transcribed into this union because DD8's rules read like refusals. They are removed;
+ *     `qc.ts` owns them and always did.
+ *   · **`not_in_transit` was declared for `receiveStock`, unreachable there by construction** (a
+ *     ternary whose true branch sat inside a guard excluding it), **and BORROWED by `postGrn`** to
+ *     mean "gate QC has not run" — the exact practice this header forbids two paragraphs up.
+ *     `postGrn` now has `qc_not_run`, and `not_in_transit` is gone.
+ *
+ * **`errors.test.ts` now exists and asserts both directions by scanning this directory's source**,
+ * so the next code that is declared-and-never-thrown, or thrown-and-never-declared, fails a suite
+ * instead of waiting for a reviewer. A promise in a comment is not a guard.
  *
  * ═══ `materialsHttpStatus` IS EXPORTED, AND PLAN 13's M-CLASS IS WHY ═══
  *
@@ -44,9 +66,10 @@
  *     `classFlags.drugLicensed`"*. `agreement_missing` is O-8's consignment-specific refusal and
  *     means something else.
  *   · **`unknown_document`** — `applyBankChange(changeId)`, `receiveStock(transferId)`,
- *     `postGrn(grnId)` and `getGrn` all take an id that may name nothing. `not_in_transit` is a
+ *     `postGrn(grnId)` and `getGrn` all take an id that may name nothing. `already_received` is a
  *     WRONG-STATUS refusal and answering it for a row that does not exist would tell the caller the
- *     transfer exists and is finished.
+ *     transfer exists and is finished. (This clause named `not_in_transit` until M8 removed it;
+ *     the argument is unchanged and now points at the code that actually makes it.)
  */
 export type MaterialsErrorCode =
   // ── 404: a thing that is not there ──────────────────────────────────────────────────────────
@@ -58,12 +81,18 @@ export type MaterialsErrorCode =
   | "unknown_store"
   /** T5/T6 — no such `stock_batches` row. */
   | "unknown_batch"
-  /** T3 — the UoM is not one of THIS item's (`uom.ts`, A2). Never a global UoM table. */
-  | "unknown_uom"
   /** T4/T6 — the transfer, GRN, lot or bank-change row named does not exist. */
   | "unknown_document"
 
   // ── 409: a state conflict the caller can act on ─────────────────────────────────────────────
+  /**
+   * T3 — the UoM is not one of THIS item's (`uom.ts`, A2). Never a global UoM table.
+   *
+   * **Filed under 409 despite the `unknown_` prefix (m8).** The item was found; it is the unit in
+   * the request that is wrong, or an MRP that will not divide into whole paise. See
+   * `NOT_FOUND_CODES` below, which deliberately omits it.
+   */
+  | "unknown_uom"
   /** T3/T4 — an item `code` or a vendor `code` that already exists, case-insensitively. */
   | "duplicate_code"
   /** T3, A1 — DD3's CHECK, refused in code so the error names the RULE and not the constraint. */
@@ -84,18 +113,8 @@ export type MaterialsErrorCode =
   | "agreement_missing"
   /** T4 — `activateVendor` without the `gst_certificate`/`pan` minimum, or without a drug licence when the class demands it. */
   | "documents_incomplete"
-  /** T6, DD8 rule 3 — a batch-tracked class with no batch number. */
-  | "batch_required"
-  /** T6, DD8 rule 3 — a batch-tracked class with no expiry date. */
-  | "expiry_required"
-  /** T6, DD8 rule 4 — the expiry date is on or before the challan date. */
-  | "expired"
   /** T6, A17 — a `near_expiry` line with no GRANTED `materials_near_expiry_acceptance` on the GRN. */
   | "near_expiry_unapproved"
-  /** T6, A15 — DD8 rule 6, and the comparison is `<` so equality passes and free goods never trip it. */
-  | "mrp_below_cost"
-  /** T6, DD8 rule 7 — MRP above an `item_price_regulations` ceiling effective on the challan date. */
-  | "mrp_above_ceiling"
   /** T5/T6/T7, DD14 — the batch is recall-frozen: no outbound movement, and no new receipt. */
   | "batch_frozen"
   /** T6, A14 — a batch row exists for `(item, batch_no, ownership)` and its expiry or MRP disagrees. */
@@ -104,8 +123,8 @@ export type MaterialsErrorCode =
   | "insufficient_stock"
   /** T7, A20 — the consignment lot's `received − deployed − returned` cannot cover the deployment. */
   | "lot_exhausted"
-  /** T7 — `receiveStock` against a transfer whose status is not `in_transit`. */
-  | "not_in_transit"
+  /** T6 — `postGrn` on a GRN that has not been through gate QC. DD8's two-stage gate, refused. */
+  | "qc_not_run"
   /** T7 — `receiveStock` against a line already received. */
   | "already_received"
   /**
@@ -119,8 +138,15 @@ export type MaterialsErrorCode =
  * 404 for a thing that is not there, 409 for a state conflict the caller can act on.
  * NOTHING here answers 5xx, which is the property the two counter-side lessons above are about.
  */
+/**
+ * CLOSE REVIEW m8 — **`unknown_uom` is NOT in this set, despite the prefix.** Every other
+ * `unknown_*` names a ROW the caller addressed and the server could not find, which is what 404
+ * means. `unknown_uom` is raised when the REQUEST BODY carries a unit the item does not declare, or
+ * an MRP that will not divide into whole paise — the item was found, and answering 404 tells the
+ * caller the opposite of what happened. It is a 409 with the rest of the validation conflicts.
+ */
 const NOT_FOUND_CODES = new Set<MaterialsErrorCode>([
-  "unknown_item", "unknown_vendor", "unknown_store", "unknown_batch", "unknown_uom",
+  "unknown_item", "unknown_vendor", "unknown_store", "unknown_batch",
   "unknown_document",
 ]);
 

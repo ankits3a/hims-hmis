@@ -4,7 +4,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { transferLines, transfers } from "../../kernel/db/schema";
 import { MaterialsError } from "./errors";
 import { materialDiscrepancyFlagged, materialIssued, materialReceived } from "./events";
-import { fefoPick, postMovements } from "./ledger";
+import { fefoPick, getBatch, postMovements } from "./ledger";
 import { ensureTransitStore, requireStore } from "./stores";
 import type { MovementInput } from "./ledger";
 import type { Actor } from "@hmis/contracts";
@@ -108,6 +108,32 @@ export async function issueStock(
           { itemId: line.itemId, batchId: line.batchId },
         );
       }
+      /**
+       * ═══ CLOSE REVIEW m3 — THE NAMED BATCH MUST BE A BATCH OF THE NAMED ITEM ═══
+       *
+       * The override took `itemId` and `batchId` from the caller and checked NEITHER against the
+       * other. `postMovements` reads the batch's OWN `item_id` for the ledger row, so the ledger
+       * and the balances were always right — which is why this is a MINOR and not a MAJOR. But the
+       * transfer LINE and the `material.issued` EVENT both carry the caller's `itemId`, so a
+       * transposed pair produced a permanent, plausible, wrong record: "300 of paracetamol" against
+       * a batch of insulin, in the append-only event stream, where nothing downstream can tell.
+       *
+       * `batch_mismatch` is the right code and already means exactly this — `grn.ts` and
+       * `consumption.ts` both raise it when a batch does not agree with what its caller believes.
+       */
+      const named = await getBatch(tx, line.batchId);
+      if (named === undefined) {
+        throw new MaterialsError("unknown_batch", `batch ${line.batchId} not found`, {
+          itemId: line.itemId, batchId: line.batchId,
+        });
+      }
+      if (named.itemId !== line.itemId) {
+        throw new MaterialsError(
+          "batch_mismatch",
+          `batch ${named.batchNo} belongs to a different item — a FEFO override names a batch OF the item it overrides`,
+          { itemId: line.itemId, batchId: line.batchId, batchItemId: named.itemId },
+        );
+      }
       resolved.push({
         itemId: line.itemId, batchId: line.batchId, qty: line.qtyBase,
         overrideReason: line.overrideReason ?? null,
@@ -193,9 +219,26 @@ export async function receiveStock(
     throw new MaterialsError("unknown_document", `transfer ${transferId} not found`);
   }
   if (transfer.status !== "in_transit") {
-    // `received` and `discrepancy` are both terminal in this phase; resolution is 14c's.
+    /**
+     * ═══ CLOSE REVIEW M8 — THE TERNARY WAS UNREACHABLE IN ONE DIRECTION BY CONSTRUCTION ═══
+     *
+     * This read `transfer.status === "in_transit" ? "not_in_transit" : "already_received"` INSIDE
+     * `if (transfer.status !== "in_transit")`. The true branch could never be taken, so
+     * `not_in_transit` — a code `errors.ts` declares and describes as belonging to exactly this
+     * call — had NO reachable thrower anywhere in the module, while `grn.ts` had BORROWED it to
+     * mean something else entirely ("gate QC has not run"). The union drifted in both directions
+     * at once and `errors.test.ts`, promised in `errors.ts` to assert exactly that, was never
+     * written.
+     *
+     * `transfers_status_ck` admits three values and the guard above excludes one, so the two that
+     * remain — `received` and `discrepancy` — both mean the other side has already signed. That is
+     * `already_received` unconditionally, and it is now written unconditionally. `not_in_transit`
+     * is REMOVED from the union rather than kept as a code nothing can produce.
+     *
+     * (`received` and `discrepancy` are both terminal in this phase; resolution is 14c's.)
+     */
     throw new MaterialsError(
-      transfer.status === "in_transit" ? "not_in_transit" : "already_received",
+      "already_received",
       `transfer ${transferId} is "${transfer.status}" and cannot be received again`,
       { status: transfer.status },
     );

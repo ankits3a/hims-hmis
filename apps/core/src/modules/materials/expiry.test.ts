@@ -107,6 +107,52 @@ describe("the batch-expiry sweep (Plan 14 T8 / DD14)", () => {
 
   // ───────────────────────── the worklist read ─────────────────────────
 
+  /**
+   * ═══ CLOSE REVIEW m2 — "TODAY" IS AN **IST** CALENDAR DAY, AND EVERY OTHER LEG HERE IS BLIND ═══
+   *
+   * `expiringBatches` computed `now.toISOString().slice(0, 10)` — a **UTC** calendar day. Between
+   * 00:00 and 05:30 IST, that is YESTERDAY, so every `daysRemaining` in the file was one too many
+   * and every threshold band was crossed one day late. A 90-day announcement fired at 89; a batch
+   * expiring TODAY was listed as having a day left.
+   *
+   * **`NOW` in this file is 06:30 UTC = 12:00 noon IST, so the UTC day and the IST day are the SAME
+   * DAY and no existing leg can see the difference.** That is the phase's §2.102 trap again, in a
+   * seventh disguise: a clock fixture in the middle of the working day makes a timezone defect
+   * invisible, because the only window where the two calendars disagree is the small hours.
+   *
+   * The `ist-clock-parity` census could not catch it either, and the reason is worth recording: the
+   * census counts hand-rolled IST offset COPIES, and this defect was not a wrong offset — it was
+   * the ABSENCE of one. **A census of copies cannot count omissions.**
+   *
+   * `EARLY` below is 20:00 UTC on the 26th, which is 01:30 IST on the 27th. UTC says the 26th, IST
+   * says the 27th, and the batch expires on the 27th — so the two implementations disagree by
+   * exactly one day, in opposite directions about whether the stock is still usable.
+   */
+  it("m2: `today` is the IST calendar day — in the 00:00–05:30 IST window UTC is a day behind", async () => {
+    const itemId = await anItem();
+    const storeId = await aStore();
+    const EARLY = new Date("2026-08-26T20:00:00Z"); // 01:30 IST on 2026-08-27
+    expect(EARLY.toISOString().slice(0, 10)).toBe("2026-08-26"); // what the defect used
+
+    const id = newId();
+    await db.insert(stockBatches).values({
+      id, itemId, batchNo: "B-IST", expiryDate: "2026-08-27", landedCostPaise: 100,
+      ownership: "owned", createdBy: HEAD.id,
+    });
+    await withTx(db, (tx) => postMovements(tx, HEAD, [
+      { resourceId: storeId, batchId: id, qtyDelta: 10, reason: "grn", occurredAt: EARLY },
+    ]));
+
+    const [row] = await expiringBatches(db, EARLY);
+    /**
+     * **0, not 1.** In IST it is already the 27th, so a batch dated the 27th expires TODAY and has
+     * nothing left. Reading the UTC day gives 1 — "there is still a day" — for stock a pharmacist
+     * must not dispense. The wrong direction, on the one clock question the sweep exists to answer.
+     */
+    expect({ batchNo: row?.batchNo, daysRemaining: row?.daysRemaining })
+      .toEqual({ batchNo: "B-IST", daysRemaining: 0 });
+  });
+
   it("expiringBatches lists only batches with stock, soonest first, with days remaining", async () => {
     const itemId = await anItem();
     const storeId = await aStore();

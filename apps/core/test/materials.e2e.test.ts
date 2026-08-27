@@ -159,6 +159,103 @@ describe("materials over HTTP (Plan 14 T8)", () => {
       .set("Authorization", `Bearer ${token}`).send({ batchId: "b", reason: "x" }).expect(403);
   });
 
+  /**
+   * ═══ CLOSE REVIEW M6 — THE PHARMACIST'S GRANT, WALKED END TO END ═══
+   *
+   * DD11 makes **the pharmacist the QC signatory for drugs**, and `seed-roles.ts` grants `pharmacy`
+   * exactly `items.read`, `stock.read` and `grn.qc` — deliberately not `grn.capture`.
+   *
+   * Both GRN READ routes were guarded on `materials.grn.capture`, so that role got a 403 on the
+   * list and a 403 on the detail while `POST grns/:id/qc` stayed open to it. **The one authority
+   * DD11 rules was unreachable in practice**: a signatory who cannot open the document. The menu
+   * entry was gated the same way, so there was not even a link.
+   *
+   * The 403 leg above walks six families and finds this one healthy, which is the shape worth
+   * noticing: a permission suite that checks *"the wrong role is refused"* cannot see *"the RIGHT
+   * role is refused too"*. That needs a POSITIVE leg with a real, narrow grant, and this is it.
+   */
+  it("M6: a `pharmacy`-shaped actor can LIST a GRN, READ it, and sign its verdict", async () => {
+    const capture = await userWith([...ALL_PERMISSIONS]);
+    const cap = (r: request.Test): request.Test => r.set("Authorization", `Bearer ${capture.token}`);
+
+    const medicineId = newId();
+    await db.insert(formularyMedicines).values({
+      id: medicineId, brandName: "Crocin 500 m6", form: "tablet", createdBy: "t", updatedBy: "t",
+    });
+    const itemRes = await cap(request(server()).post("/materials/items").send({
+      code: "CROC-M6", name: "Crocin 500mg tablet", class: "drug",
+      formularyMedicineId: medicineId, baseUom: "tablet", batchTracked: true, shelfLifeDays: 1095,
+      uoms: [{ uom: "strip", toBaseMultiplier: 10 }],
+    })).expect(201);
+    const itemId = (itemRes.body as { itemId: string }).itemId;
+
+    const vendorRes = await cap(request(server()).post("/materials/vendors").send({
+      code: "ACME-M6", legalName: "Acme Pharma Pvt Ltd",
+    })).expect(201);
+    const vendorId = (vendorRes.body as { vendorId: string }).vendorId;
+    for (const doc of [{ type: "gst_certificate", number: "09AAACA1234A1Z5" }, { type: "pan", number: "AAACA1234A" }]) {
+      await cap(request(server()).post(`/materials/vendors/${vendorId}/documents`).send(doc)).expect(201);
+    }
+    await cap(request(server()).post(`/materials/vendors/${vendorId}/activate`).send({})).expect(201);
+    const storeRes = await cap(request(server()).post("/materials/stores").send({
+      code: "MAIN-M6", name: "Main store",
+    })).expect(201);
+    const storeResourceId = (storeRes.body as { resourceId: string }).resourceId;
+
+    const grnRes = await cap(request(server()).post("/materials/grns").send({
+      vendorId, source: "challan", storeResourceId,
+      challanNo: "CH/M6/1", challanDate: "2026-08-27",
+      lines: [{
+        itemId, uom: "strip", qtyInUom: 10, batchNo: "B-M6-1",
+        mfgDate: "2026-01-01", expiryDate: "2028-06-30",
+        mrpPaise: 8500, mrpUom: "strip", unitCostPaise: 700,
+      }],
+    })).expect(201);
+    const grnId = (grnRes.body as { grnId: string }).grnId;
+
+    // THE PHARMACIST — the three permissions `seed-roles.ts` actually grants that role, and no more.
+    const pharm = await userWith(["materials.items.read", "materials.stock.read", "materials.grn.qc"]);
+    const asPharmacist = (r: request.Test): request.Test => r.set("Authorization", `Bearer ${pharm.token}`);
+
+    // Reads the worklist…
+    const list = await asPharmacist(request(server()).get("/materials/grns")).expect(200);
+    expect((list.body as { grns: { id: string }[] }).grns.map((g) => g.id)).toContain(grnId);
+    // …opens the one awaiting a verdict…
+    const detail = await asPharmacist(request(server()).get(`/materials/grns/${grnId}`)).expect(200);
+    expect((detail.body as { grn: { status: string } }).grn.status).toBe("gate_qc");
+    // …and signs it.
+    const qc = await asPharmacist(request(server()).post(`/materials/grns/${grnId}/qc`).send({})).expect(201);
+    expect((qc.body as { status: string }).status).toBe("accepted");
+
+    /**
+     * And the gate has NOT been widened in the other direction: reading a GRN is `stock.read`,
+     * CAPTURING one is still `grn.capture`, which the pharmacist does not hold. DD8's two-stage
+     * gate survives the fix.
+     */
+    await asPharmacist(request(server()).post("/materials/grns").send({})).expect(403);
+  });
+
+  /**
+   * CLOSE REVIEW M1 — `POST /materials/stores` reaches `createResource`, which raises
+   * `ResourceError`: not a `MaterialsError`, not an `ApprovalError`, and there is no global
+   * exception filter. Every one of them answered **500**. The leg below the header walks six
+   * families and not `stores` — the only family with an unmapped error class, which is how a guard
+   * that looks thorough leaves the one gap that matters.
+   */
+  it("M1: a `stores` refusal is a mapped 4xx with its own code — it was a 500", async () => {
+    const { token } = await userWith([...ALL_PERMISSIONS]);
+    const auth = (r: request.Test): request.Test => r.set("Authorization", `Bearer ${token}`);
+
+    await auth(request(server()).post("/materials/stores").send({ code: "DUP-M1", name: "First" })).expect(201);
+    // Case-insensitively the same code — `duplicate_code`, 409.
+    await auth(request(server()).post("/materials/stores").send({ code: "dup-m1", name: "Second" }))
+      .expect(409).expect((r) => { expect(r.body.code).toBe("duplicate_code"); });
+    // A parent that does not exist — `unknown_resource`, 404.
+    await auth(request(server()).post("/materials/stores")
+      .send({ code: "ORPHAN-M1", name: "Orphan", parentId: newId() }))
+      .expect(404).expect((r) => { expect(r.body.code).toBe("unknown_resource"); });
+  });
+
   // ═══════════════ THE REFUSAL MAPPING, WALKED FROM EVERY FAMILY (Plan 13's M-class) ═══════════════
 
   it("every family's refusal reaches HTTP as a 4xx with the module's own code — never a 500", async () => {

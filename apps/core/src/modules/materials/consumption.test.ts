@@ -74,7 +74,24 @@ describe("the consignment consumer (Plan 14 T7 / DD13)", () => {
    * needs it — a SECOND OWNED batch of the same item in the same store, so the balance outlives the
    * lot. See the file header.
    */
-  async function fixture(opts: { received?: number; deployed?: number; secondLot?: number } = {}): Promise<{
+  /**
+   * ═══ CLOSE REVIEW M3 — `mrpUom` IS A PARAMETER NOW, AND THAT IS THE WHOLE FINDING ═══
+   *
+   * Every leg in this file used to pin the batch's `mrpUom` to `"each"` — **the item's BASE unit**
+   * — so `mrpPerBaseUnit` multiplied by 1 and every unit conversion in the consumer was a no-op.
+   * The payload could mix a per-PACK MRP with a per-BASE ceiling and no assertion here could tell,
+   * because in this fixture the two units were the same unit.
+   *
+   * **That is a SEVENTH §2.102 coinciding-field trap and it is the one that hid a money defect.**
+   * The six the phase's standing note already names are about ordering and identity; this one is
+   * about UNITS, and its cost is a factor-of-five error in a patient's bill rather than a test that
+   * fails to discriminate. `mrpUom === baseUom` belongs on the list.
+   */
+  async function fixture(opts: {
+    received?: number; deployed?: number; secondLot?: number;
+    /** The unit the batch's MRP is PRINTED on. `"box"` is 5 × the base unit `"each"`. */
+    mrpUom?: string;
+  } = {}): Promise<{
     itemId: string; storeId: string; vendorId: string; batchId: string; lotId: string;
   }> {
     const itemId = await anItem();
@@ -92,7 +109,7 @@ describe("the consignment consumer (Plan 14 T7 / DD13)", () => {
     const batchId = newId();
     await db.insert(stockBatches).values({
       id: batchId, itemId, batchNo: "LOT-A", expiryDate: "2029-06-30",
-      mrpPaise: 4500000, mrpUom: "each", landedCostPaise: 3000000,
+      mrpPaise: 4500000, mrpUom: opts.mrpUom ?? "each", landedCostPaise: 3000000,
       vendorId, ownership: "consignment", createdBy: HEAD.id,
     });
     const lotId = newId();
@@ -183,7 +200,10 @@ describe("the consignment consumer (Plan 14 T7 / DD13)", () => {
       ownership: "consignment", vendorId: f.vendorId, qtyBase: 1,
       patientId: "pat-1", encounterId: "enc-1",
       caseRef: { type: "ot_case", id: "case-1" },
-      mrpPaise: 4500000, mrpUom: "each",
+      // AS PRINTED, with its unit beside it — and, since M3, the same price expressed per BASE
+      // unit under a name that says so. Here `mrpUom` IS the base unit, so the two agree; the leg
+      // below is the one where they must not.
+      mrpPaise: 4500000, mrpUom: "each", mrpPaisePerBase: 4500000,
     });
   });
 
@@ -205,6 +225,11 @@ describe("the consignment consumer (Plan 14 T7 / DD13)", () => {
     expect(rows[0]?.ownership).toBe("consignment");
     expect(rows[0]?.vendorId).toBe(f.vendorId);
     expect(rows[0]?.mrpPaise).toBe(4500000);
+    // M5 — the read carries what a bill's clamp actually needs: both operands in ONE unit, and the
+    // case the consumption belongs to. Plan 15 composes the bill from THIS call and no other.
+    expect(rows[0]?.mrpPaisePerBase).toBe(4500000);
+    expect(rows[0]?.ceilingPaisePerBase).toBeNull();
+    expect(rows[0]?.caseRef).toEqual({ type: "ot_case", id: "case-1" });
     // A different encounter sees nothing.
     expect(await consumptionsFor(db, "enc-other")).toEqual([]);
   });
@@ -353,7 +378,7 @@ describe("the consignment consumer (Plan 14 T7 / DD13)", () => {
     const consumed = await eventsNamed("material.consumed");
     expect(consumed).toHaveLength(1);
     // **C1**, the ceiling in force on 27 August — not C2, the one in force today.
-    expect((consumed[0]?.payload as { ceilingPaise: number }).ceilingPaise).toBe(4000000);
+    expect((consumed[0]?.payload as { ceilingPaisePerBase: number }).ceilingPaisePerBase).toBe(4000000);
     expect((consumed[0]?.payload as { occurredAt: string }).occurredAt).toBe(OCCURRED.toISOString());
   });
 
@@ -364,15 +389,100 @@ describe("the consignment consumer (Plan 14 T7 / DD13)", () => {
       effectiveFrom: new Date("2026-01-01T00:00:00Z"), gazetteRef: "NPPA/2026/1",
     }));
     await withTx(db, (tx) => handleConsignmentDeployed(tx, HEAD, "evt-1", deployment(f)));
-    expect(((await eventsNamed("material.consumed"))[0]?.payload as { ceilingPaise: number }).ceilingPaise)
+    expect(((await eventsNamed("material.consumed"))[0]?.payload as { ceilingPaisePerBase: number }).ceilingPaisePerBase)
       .toBe(4000000);
+  });
+
+  /**
+   * ═══ CLOSE REVIEW M3 — THE LEG THIS FILE DID NOT HAVE, AND THE DEFECT IT WOULD HAVE CAUGHT ═══
+   *
+   * The item is `each`-based and sold in boxes of five. The MRP is printed **on the box**
+   * (₹45,000/box) and the NPPA ceiling is notified **on the box** too (₹40,000/box). Per base unit
+   * those are ₹9,000 and ₹8,000 — and the implant is under the cap, comfortably.
+   *
+   * **What shipped put `mrpPaise: 4500000` (per BOX) in the payload beside a `ceilingPaise` that
+   * had been silently divided down to 800000 (per EACH), with nothing in either name to say so.**
+   * Plan 15's discharge bill applies `min(tariff, MRP, ceiling)` from this payload. Comparing
+   * 4,500,000 with 800,000 says the implant is more than five times over a government price cap —
+   * on an item that is not over it at all — and the bill would have been clamped to a fifth of the
+   * legitimate price, or the case flagged as a pricing offence. Either way a real number, wrong by
+   * the pack multiplier, in a patient's bill.
+   *
+   * Both fields now carry their unit in the NAME, and this leg asserts the two `…PerBase` figures
+   * against each other in the one fixture where the multiplier is not 1. **Every other leg in this
+   * file passes with or without the fix.**
+   */
+  it("M3: the MRP and the ceiling reach the payload in ONE unit when the pack is not the base unit", async () => {
+    const f = await fixture({ received: 2, mrpUom: "box" });
+    await withTx(db, (tx) => setPriceRegulation(tx, HEAD, f.itemId, {
+      ceilingPaise: 4000000, mrpUom: "box",
+      effectiveFrom: new Date("2026-01-01T00:00:00Z"), gazetteRef: "NPPA/2026/1",
+    }));
+    await withTx(db, (tx) => handleConsignmentDeployed(tx, HEAD, "evt-1", deployment(f)));
+
+    const payload = (await eventsNamed("material.consumed"))[0]?.payload as {
+      mrpPaise: number; mrpUom: string; mrpPaisePerBase: number; ceilingPaisePerBase: number;
+    };
+    // AS PRINTED, on the pack it is printed on — unchanged, and still paired with its unit.
+    expect({ mrpPaise: payload.mrpPaise, mrpUom: payload.mrpUom })
+      .toEqual({ mrpPaise: 4500000, mrpUom: "box" });
+    // AND per base unit, both of them, which is the pair a bill compares.
+    expect({ mrp: payload.mrpPaisePerBase, ceiling: payload.ceilingPaisePerBase })
+      .toEqual({ mrp: 900000, ceiling: 800000 });
+    /**
+     * The consequence, stated as an assertion rather than left to the reader: under the cap when
+     * the operands share a unit, and 5.6× over it when they do not. This is the line that fails
+     * against the shipped payload.
+     */
+    expect(payload.mrpPaisePerBase > payload.ceilingPaisePerBase).toBe(true);
+    expect(payload.mrpPaise / payload.ceilingPaisePerBase).toBeCloseTo(5.625, 3);
+  });
+
+  /** M5 — the same fact through the READ Plan 15 actually calls, not just through the event. */
+  it("M5: `consumptionsFor` returns both operands per base unit, resolved per row", async () => {
+    const f = await fixture({ received: 2, mrpUom: "box" });
+    await withTx(db, (tx) => setPriceRegulation(tx, HEAD, f.itemId, {
+      ceilingPaise: 4000000, mrpUom: "box",
+      effectiveFrom: new Date("2026-01-01T00:00:00Z"), gazetteRef: "NPPA/2026/1",
+    }));
+    await withTx(db, (tx) => handleConsignmentDeployed(tx, HEAD, "evt-1", deployment(f)));
+
+    const rows = await consumptionsFor(db, "enc-1");
+    expect(rows).toHaveLength(1);
+    expect({
+      printed: rows[0]?.mrpPaise, unit: rows[0]?.mrpUom,
+      mrp: rows[0]?.mrpPaisePerBase, ceiling: rows[0]?.ceilingPaisePerBase,
+      caseRef: rows[0]?.caseRef,
+    }).toEqual({
+      printed: 4500000, unit: "box",
+      mrp: 900000, ceiling: 800000,
+      caseRef: { type: "ot_case", id: "case-1" },
+    });
+  });
+
+  /**
+   * An unconvertible price is carried as NULL and never throws — the implant is already in the
+   * patient. `"drum"` is not one of this item's units, so `mrpPerBaseUnit` refuses it.
+   */
+  it("M3: a price that cannot be expressed per base unit is null, and the consumption still records", async () => {
+    const f = await fixture({ received: 2, mrpUom: "drum" });
+    await withTx(db, (tx) => handleConsignmentDeployed(tx, HEAD, "evt-1", deployment(f)));
+
+    const payload = (await eventsNamed("material.consumed"))[0]?.payload as {
+      mrpPaise: number; mrpUom: string; mrpPaisePerBase: number | null;
+    };
+    expect({ printed: payload.mrpPaise, unit: payload.mrpUom, perBase: payload.mrpPaisePerBase })
+      .toEqual({ printed: 4500000, unit: "drum", perBase: null });
+    // The stock still moved and the lot still drew down: a price we cannot restate is not a reason
+    // to lose the clinical record.
+    expect((await consumptionsFor(db, "enc-1"))).toHaveLength(1);
   });
 
   it("NO regulation at all carries a null ceiling rather than failing", async () => {
     const f = await fixture({ received: 2 });
     await withTx(db, (tx) => handleConsignmentDeployed(tx, HEAD, "evt-1", deployment(f)));
-    expect(((await eventsNamed("material.consumed"))[0]?.payload as { ceilingPaise: number | null }).ceilingPaise)
-      .toBeNull();
+    expect(((await eventsNamed("material.consumed"))[0]?.payload as { ceilingPaisePerBase: number | null })
+      .ceilingPaisePerBase).toBeNull();
   });
 
   // ══════════════════════════ the frozen interface itself ══════════════════════════

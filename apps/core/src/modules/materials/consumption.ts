@@ -53,6 +53,28 @@ export const MATERIALS_CONSUMPTION_CONSUMER = "materials.consumption";
  * have already written a ledger row for stock the vendor never sent.
  */
 
+/**
+ * A pack price expressed per BASE unit, or `null` when it cannot be — CLOSE REVIEW M3.
+ *
+ * Null covers three cases and they are deliberately not distinguished here: no price at all, no
+ * unit, and a price that does not divide into whole paise. **An unconvertible figure is carried as
+ * null rather than thrown**, because the implant is already in the patient: refusing to RECORD a
+ * consumption because its price arithmetic is untidy would be the worse error by a wide margin.
+ * A null tells the bill "this number was not computable", which is a fact it can act on.
+ */
+function perBaseOrNull(
+  uoms: readonly { uom: string; toBaseMultiplier: number }[],
+  paise: number | null,
+  uom: string | null,
+): number | null {
+  if (paise === null || uom === null) return null;
+  try {
+    return mrpPerBaseUnit(uoms, paise, uom);
+  } catch {
+    return null;
+  }
+}
+
 /** The claim key. Namespaced so it cannot collide with `appendEvent`'s own idempotency keys. */
 function claimKey(eventId: string): string {
   return `${MATERIALS_CONSUMPTION_CONSUMER}:${eventId}`;
@@ -163,19 +185,10 @@ export async function handleConsignmentDeployed(
    */
   const uoms = await itemUomRows(tx, parsed.itemId);
   const reg = await effectiveRegulation(tx, parsed.itemId, occurredAt);
-  let ceilingPaise: number | null = null;
-  if (reg?.ceilingPaise !== null && reg?.ceilingPaise !== undefined) {
-    try {
-      ceilingPaise = mrpPerBaseUnit(
-        uoms, reg.ceilingPaise,
-        reg.mrpUom ?? uoms.find((u) => u.toBaseMultiplier === 1)?.uom ?? null,
-      );
-    } catch {
-      // An unconvertible ceiling is carried as null rather than aborting a clinical event: the
-      // implant is already in the patient, and refusing to record that would be the worse error.
-      ceilingPaise = null;
-    }
-  }
+  const ceilingPaisePerBase = perBaseOrNull(uoms, reg?.ceilingPaise ?? null, reg?.mrpUom ?? null);
+  // M3 — the batch's printed MRP, ALSO expressed per base unit, so a consumer can compare it with
+  // the ceiling without holding the item's UoM table.
+  const mrpPaisePerBase = perBaseOrNull(uoms, batch.mrpPaise, batch.mrpUom);
 
   await appendEvent(tx, materialConsumed.make({
     payload: {
@@ -192,7 +205,8 @@ export async function handleConsignmentDeployed(
       // default from the master (DD7's pair rule: paise and unit travel together).
       mrpPaise: batch.mrpPaise,
       mrpUom: batch.mrpUom,
-      ceilingPaise,
+      mrpPaisePerBase,
+      ceilingPaisePerBase,
       occurredAt: parsed.occurredAt,
     },
     actor, correlationId: parsed.encounterId,
@@ -242,6 +256,11 @@ export type ConsumptionRow = {
   encounterId: string | null;
   mrpPaise: number | null;
   mrpUom: string | null;
+  /** M5 — the clamp needs both operands in one unit; this read is where a bill gets them. */
+  mrpPaisePerBase: number | null;
+  ceilingPaisePerBase: number | null;
+  /** M5 — the OT case the consumption belongs to. `{ type, id }`, from the ledger row's ref. */
+  caseRef: { type: string; id: string } | null;
   occurredAt: Date;
 };
 
@@ -258,6 +277,8 @@ export async function consumptionsFor(db: Db | Tx, encounterId: string): Promise
     encounterId: stockLedger.encounterId,
     mrpPaise: stockBatches.mrpPaise,
     mrpUom: stockBatches.mrpUom,
+    refType: stockLedger.refType,
+    refId: stockLedger.refId,
     occurredAt: stockLedger.occurredAt,
   })
     .from(stockLedger)
@@ -265,20 +286,42 @@ export async function consumptionsFor(db: Db | Tx, encounterId: string): Promise
     .where(and(eq(stockLedger.encounterId, encounterId), eq(stockLedger.reason, "consume")))
     .orderBy(asc(stockLedger.seq));
 
-  return rows.map((r) => ({
-    ledgerEntryId: r.ledgerEntryId,
-    seq: r.seq,
-    itemId: r.itemId,
-    batchId: r.batchId,
-    ownership: r.ownership,
-    vendorId: r.vendorId,
-    // The ledger stores the movement SIGNED; a consumption's quantity is its magnitude, and a
-    // caller composing a bill should not have to remember the sign convention.
-    qtyBase: Math.abs(r.qtyDelta),
-    patientId: r.patientId,
-    encounterId: r.encounterId,
-    mrpPaise: r.mrpPaise,
-    mrpUom: r.mrpUom,
-    occurredAt: r.occurredAt,
-  }));
+  /**
+   * ═══ CLOSE REVIEW M5 — THE CLAMP'S OPERANDS COME FROM HERE, OR THE READ IS NOT THE INTERFACE ═══
+   *
+   * § 4A item 4 says the implant is *"clamped by billing against the batch MRP and ceiling that
+   * `material.consumed` carries"*, and DD13 says Plan 15 composes the discharge bill from THIS ONE
+   * CALL. It returned neither the ceiling nor the case ref, so Plan 15 would have had to go to the
+   * event stream for them — which is precisely the work this read exists to spare it, and a caller
+   * that has to read the stream anyway will stop calling this.
+   *
+   * The regulation is resolved PER ROW at that row's own `occurred_at` — A21's rule applied to the
+   * read as well as to the event. Two implants consumed a month apart in one long admission can sit
+   * under two different gazettes, and a single `now()` lookup would price both at today's.
+   */
+  const out: ConsumptionRow[] = [];
+  for (const r of rows) {
+    const uoms = await itemUomRows(db, r.itemId);
+    const reg = await effectiveRegulation(db, r.itemId, r.occurredAt);
+    out.push({
+      ledgerEntryId: r.ledgerEntryId,
+      seq: r.seq,
+      itemId: r.itemId,
+      batchId: r.batchId,
+      ownership: r.ownership,
+      vendorId: r.vendorId,
+      // The ledger stores the movement SIGNED; a consumption's quantity is its magnitude, and a
+      // caller composing a bill should not have to remember the sign convention.
+      qtyBase: Math.abs(r.qtyDelta),
+      patientId: r.patientId,
+      encounterId: r.encounterId,
+      mrpPaise: r.mrpPaise,
+      mrpUom: r.mrpUom,
+      mrpPaisePerBase: perBaseOrNull(uoms, r.mrpPaise, r.mrpUom),
+      ceilingPaisePerBase: perBaseOrNull(uoms, reg?.ceilingPaise ?? null, reg?.mrpUom ?? null),
+      caseRef: r.refType === null || r.refId === null ? null : { type: r.refType, id: r.refId },
+      occurredAt: r.occurredAt,
+    });
+  }
+  return out;
 }

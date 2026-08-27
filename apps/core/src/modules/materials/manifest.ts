@@ -70,7 +70,24 @@ export const materialsManifest: ModuleManifest = {
     // convention), so the permission-gated link and the screen it opens cannot drift apart.
     { label: "Items", path: "/materials/items", permission: "materials.items.manage" },
     { label: "Vendors", path: "/materials/vendors", permission: "materials.vendors.manage" },
-    { label: "Goods receipt", path: "/materials/grn", permission: "materials.grn.capture" },
+    /**
+     * ═══ CLOSE REVIEW M6 — A **DD16 DEVIATION, RECORDED**: this entry is gated on
+     *     `materials.stock.read` and not on `materials.grn.capture` ═══
+     *
+     * DD16's convention is that a menu entry carries the permission of the route it opens. The GRN
+     * screen is not one route: it LISTS (read) and it CAPTURES (write), and DD8's two-stage gate
+     * deliberately puts those in two different hands. Gated on `grn.capture`, the `pharmacy` role —
+     * which DD11 names the QC signatory and which `seed-roles.ts` grants `grn.qc` and `stock.read`
+     * — **had no menu entry at all**, so the pharmacist's only route to a GRN awaiting their
+     * verdict was a URL somebody typed for them.
+     *
+     * The entry therefore carries the WEAKER of the screen's two permissions, which is the one that
+     * makes it reachable at all; the screen's own capture controls remain gated on `grn.capture`
+     * (T9), and the routes behind them are guarded independently in the controller. The deviation
+     * is written down rather than taken quietly, because "the menu permission is the route
+     * permission" is a rule the next module will read this file to learn.
+     */
+    { label: "Goods receipt", path: "/materials/grn", permission: "materials.stock.read" },
   ],
   permissions: [
     "materials.items.read",

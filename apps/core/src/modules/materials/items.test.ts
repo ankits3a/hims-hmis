@@ -239,10 +239,10 @@ describe("the item master (Plan 14 T3)", () => {
   it("A4 control: different dates — the latest one at or before `at`, and NOTHING before the first", async () => {
     const itemId = await paracetamol();
     await withTx(db, (tx) => setPriceRegulation(tx, HEAD, itemId, {
-      ceilingPaise: 900, effectiveFrom: new Date("2026-01-01T00:00:00Z"), gazetteRef: "g1",
+      ceilingPaise: 900, mrpUom: "strip", effectiveFrom: new Date("2026-01-01T00:00:00Z"), gazetteRef: "g1",
     }));
     await withTx(db, (tx) => setPriceRegulation(tx, HEAD, itemId, {
-      ceilingPaise: 750, effectiveFrom: new Date("2026-06-01T00:00:00Z"), gazetteRef: "g2",
+      ceilingPaise: 750, mrpUom: "strip", effectiveFrom: new Date("2026-06-01T00:00:00Z"), gazetteRef: "g2",
     }));
     expect((await effectiveRegulation(db, itemId, new Date("2026-03-01T00:00:00Z")))?.ceilingPaise).toBe(900);
     expect((await effectiveRegulation(db, itemId, new Date("2026-07-01T00:00:00Z")))?.ceilingPaise).toBe(750);
@@ -255,13 +255,48 @@ describe("the item master (Plan 14 T3)", () => {
   it("regulations are APPEND-ONLY: a second row for one item leaves the first standing", async () => {
     const itemId = await paracetamol();
     await withTx(db, (tx) => setPriceRegulation(tx, HEAD, itemId, {
-      ceilingPaise: 900, effectiveFrom: new Date("2026-01-01T00:00:00Z"),
+      ceilingPaise: 900, mrpUom: "strip", effectiveFrom: new Date("2026-01-01T00:00:00Z"),
     }));
     await withTx(db, (tx) => setPriceRegulation(tx, HEAD, itemId, {
-      ceilingPaise: 750, effectiveFrom: new Date("2026-06-01T00:00:00Z"),
+      ceilingPaise: 750, mrpUom: "strip", effectiveFrom: new Date("2026-06-01T00:00:00Z"),
     }));
     const all = await db.select().from(itemPriceRegulations).where(eq(itemPriceRegulations.itemId, itemId));
     expect(all).toHaveLength(2);
+  });
+
+  /**
+   * ═══ CLOSE REVIEW M4 — THE PAIR RULE APPLIES TO THE **CEILING**, AND DID NOT ═══
+   *
+   * `setPriceRegulation` enforced "paise never travels without its unit" for `mrpDefaultPaise` and
+   * not for `ceilingPaise`. A DPCO ceiling entered as `{ ceilingPaise: 800 }` with no `mrpUom` was
+   * accepted, and `grn.ts` then **fell back to the BASE unit** — reading ₹8.00-per-strip as 800
+   * paise per TABLET.
+   *
+   * **DD8 rule 7 — which DD8 itself calls "the cheapest place to stop selling above a notified
+   * ceiling" — therefore failed OPEN by the pack multiplier**, tenfold on a strip of ten, silently.
+   * A gate that fails open is worse than no gate, because it is believed.
+   *
+   * Two legs in this very file were relying on the hole: `A4 control` and the append-only leg both
+   * set a ceiling with no unit and passed. Both now carry `mrpUom: "strip"`, which is what a real
+   * gazette carries. **A fixture that only compiles because a guard is missing is the guard's
+   * absence, written down** — and neither leg noticed, because neither was about units.
+   */
+  it("M4: a CEILING without its unit is refused — the pair rule is not just for the MRP", async () => {
+    const itemId = await paracetamol();
+    await expect(withTx(db, (tx) => setPriceRegulation(tx, HEAD, itemId, {
+      ceilingPaise: 800, effectiveFrom: new Date("2026-01-01T00:00:00Z"),
+    }))).rejects.toMatchObject({ code: "unknown_uom" });
+    // WITH its unit it is accepted, and the unit is stored so the gate can convert it.
+    await withTx(db, (tx) => setPriceRegulation(tx, HEAD, itemId, {
+      ceilingPaise: 800, mrpUom: "strip", effectiveFrom: new Date("2026-01-01T00:00:00Z"),
+    }));
+    const reg = await effectiveRegulation(db, itemId, new Date("2026-02-01T00:00:00Z"));
+    expect({ ceilingPaise: reg?.ceilingPaise, mrpUom: reg?.mrpUom })
+      .toEqual({ ceilingPaise: 800, mrpUom: "strip" });
+    // And a unit that is not one of THIS item's is still refused, ceiling or no ceiling (A2).
+    await expect(withTx(db, (tx) => setPriceRegulation(tx, HEAD, itemId, {
+      ceilingPaise: 800, mrpUom: "drum", effectiveFrom: new Date("2026-03-01T00:00:00Z"),
+    }))).rejects.toMatchObject({ code: "unknown_uom" });
   });
 
   it("an MRP on a regulation needs its unit, and the unit must be the item's", async () => {

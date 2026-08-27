@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import {
@@ -175,8 +175,23 @@ export async function postMovements(
   // Everything below happens INSIDE the lock.
   const balances = new Map<string, BalanceRow>();
   if (pairs.length > 0) {
+    /**
+     * CLOSE REVIEW m7 — **the predicate is the PAIR set, not the batch set.**
+     *
+     * This filtered on `batchId` alone, so it read EVERY store's balance of every batch touched and
+     * threw all but the matching pairs away in the `Map`. On a batch held in forty stores an issue
+     * of one line read forty rows to use one: O(stores) work for an O(1) answer, growing with the
+     * hospital rather than with the movement. **The same shape Plan 13's CLOSE/M5 fixed in
+     * `heightOf`** — a correct answer assembled in the application from an over-broad read.
+     *
+     * The `OR` of `(resource, batch)` equalities matches `stock_balances`' primary key exactly, so
+     * it reads precisely the rows `lockBalances` just locked and no others.
+     */
     const rows = await tx.select().from(stockBalances)
-      .where(inArray(stockBalances.batchId, [...new Set(pairs.map((p) => p.batchId))]));
+      .where(or(...pairs.map((p) => and(
+        eq(stockBalances.resourceId, p.resourceId),
+        eq(stockBalances.batchId, p.batchId),
+      ))));
     for (const r of rows) balances.set(pairKey(r), r);
   }
 
@@ -222,21 +237,90 @@ export async function postMovements(
   }
 
   const results: { ledgerEntryId: string; balanceAfter: number }[] = [];
-  const after = new Map<string, number>();
   for (const m of inputs) {
-    const key = pairKey(m);
-    const before = after.get(key) ?? balances.get(key)?.qtyOnHand ?? 0;
-    const balanceAfter = before + m.qtyDelta;
-    after.set(key, balanceAfter);
-
+    /**
+     * ═══ CLOSE REVIEW C1 — THE UPSERT IS AN INCREMENT, AND IT MUST STAY ONE ═══
+     *
+     * This wrote an APPLICATION-COMPUTED ABSOLUTE VALUE (`before + delta`, from a read taken before
+     * the insert) and it was a LOST UPDATE on the one path `lockBalances` cannot cover.
+     *
+     * `SELECT … FOR UPDATE` locks rows that EXIST. For a `(resource, batch)` pair with no balance
+     * row yet, it locks nothing — the docstring above says so and then argues the gap away on the
+     * grounds that "the INSERT that creates it takes its own lock through the primary key". **That
+     * is true and it is not sufficient.** Under `INSERT … ON CONFLICT DO UPDATE`, the second
+     * session blocks on the first's tuple and then takes the DO UPDATE path — writing ITS OWN
+     * absolute value over the winner's. Both had read 0; both write `q`; the ledger sums to `2q`.
+     *
+     * **Reachable through three shipped routes**, all with a batch that exists and a
+     * `(store, batch)` balance that does not: two concurrent `postGrn`s of one batch into a store
+     * that has never held it; two concurrent `issueStock`s from DIFFERENT sources into the shared
+     * `IN-TRANSIT` store; two concurrent `receiveStock`s into a destination new to the batch. The
+     * loss lands HIGH, so `stock_balances_non_negative_ck` never fires — which is the corrected A8
+     * note's own lesson ("the CHECK is not the backstop for this case; only the lock is") applied
+     * to the case the lock does not reach.
+     *
+     * The increment below is atomic at the row level: Postgres evaluates
+     * `stock_balances.qty_on_hand + delta` against the LOCKED, POST-WINNER row, so the two
+     * transactions compose instead of overwriting. `RETURNING` then gives the TRUE post-value
+     * rather than the caller's arithmetic — which also removes the `after` map that existed only to
+     * simulate it, and which was itself wrong under contention.
+     *
+     * `reserveStock` and `releaseReservation` already used the increment form. This file no longer
+     * contains two answers to one question.
+     *
+     * ═══ SECOND-PASS FINDING R2 — WHY THIS IS **TWO STATEMENTS** AND NOT ONE UPSERT ═══
+     *
+     * The first version of this fix kept the single `INSERT … ON CONFLICT DO UPDATE` and moved only
+     * the `set:` clause to an increment, leaving `values({ qtyOnHand: m.qtyDelta })` as the proposed
+     * row. **It failed five ledger tests and eight consumer tests outright**, every one of them on
+     * `stock_balances_non_negative_ck`, and the reason is a Postgres ordering fact worth writing
+     * down because it is not obvious from the statement:
+     *
+     * **A CHECK constraint is evaluated against the PROPOSED tuple, BEFORE the unique index reports
+     * the conflict that would have sent execution down the `DO UPDATE` branch.** So an outbound
+     * movement of −4 into a location holding 10 proposed a row with `qty_on_hand = −4`, and the
+     * CHECK rejected it before Postgres ever noticed the row already existed and that the real
+     * post-value was 6. The generated SQL was correct; the insert branch's *values* were not.
+     *
+     * That is the C1 remediation shipping its own defect — Plan 13's lesson, live, on the very fix
+     * the close pass was blocked on. It is caught here only because the suite was RUN.
+     *
+     * The two-statement form below has no such branch:
+     *
+     *   1. `ON CONFLICT DO NOTHING` with **zero** — materialise the row if it is missing. Zero is
+     *      not a fabricated stock figure; it is "this location now has a line for this batch,
+     *      holding nothing", and it satisfies the CHECK by construction.
+     *   2. `UPDATE … SET qty_on_hand = qty_on_hand + delta RETURNING` — the atomic increment, whose
+     *      result the CHECK now judges. **The CHECK stays a real backstop**, which the tempting
+     *      one-statement alternative (`values({ qtyOnHand: Math.max(delta, 0) })`) would have
+     *      quietly destroyed: it would turn an unguarded negative movement into a silent zero row
+     *      instead of an error.
+     *
+     * Concurrency is unchanged and is the whole point. Two transactions inserting a NEW pair: the
+     * loser's `DO NOTHING` WAITS on the winner's tuple, then skips; both then take the UPDATE's own
+     * row lock in turn, so `0 → q → 2q`. No update is lost, and the ledger and the balance agree.
+     */
     await tx.insert(stockBalances).values({
       resourceId: m.resourceId, batchId: m.batchId,
       itemId: batches.get(m.batchId)?.itemId ?? "",
-      qtyOnHand: balanceAfter, updatedAt: new Date(),
-    }).onConflictDoUpdate({
-      target: [stockBalances.resourceId, stockBalances.batchId],
-      set: { qtyOnHand: balanceAfter, updatedAt: new Date() },
-    });
+      qtyOnHand: 0, updatedAt: new Date(),
+    }).onConflictDoNothing({ target: [stockBalances.resourceId, stockBalances.batchId] });
+
+    const [written] = await tx.update(stockBalances)
+      .set({ qtyOnHand: sql`${stockBalances.qtyOnHand} + ${m.qtyDelta}`, updatedAt: new Date() })
+      .where(and(
+        eq(stockBalances.resourceId, m.resourceId),
+        eq(stockBalances.batchId, m.batchId),
+      ))
+      .returning({ qtyOnHand: stockBalances.qtyOnHand });
+    if (written === undefined) {
+      // Unreachable: the statement above guarantees the row inside this transaction. Loud rather
+      // than `?? 0`, which would report a balance of zero for a movement that did happen.
+      throw new Error(
+        `stock_balances row for (${m.resourceId}, ${m.batchId}) vanished between materialise and increment`,
+      );
+    }
+    const balanceAfter = written.qtyOnHand;
 
     const ledgerEntryId = newId();
     await tx.insert(stockLedger).values({

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { createItem, fetchItems, materialsErrorMessage, patchItem } from "../lib/materials-api";
+import { createItem, fetchItems, materialsErrorText, patchItem } from "../lib/materials-api";
 import { Button } from "@/components/ui/button";
 import type { WireItem } from "../lib/materials-api";
 
@@ -74,7 +74,7 @@ export function MaterialsItems(): React.ReactElement {
       setShelfLifeDays(""); setPackUom(""); setPackMultiplier("");
       await qc.invalidateQueries({ queryKey: ["materials", "items"] });
     } catch (e) {
-      setError(materialsErrorMessage(e));
+      setError(materialsErrorText(e, t));
     }
   };
 
@@ -84,7 +84,7 @@ export function MaterialsItems(): React.ReactElement {
       await patchItem(item.id, { active: !item.active });
       await qc.invalidateQueries({ queryKey: ["materials", "items"] });
     } catch (e) {
-      setError(materialsErrorMessage(e));
+      setError(materialsErrorText(e, t));
     }
   };
 

@@ -1,4 +1,5 @@
 import { api, ApiError } from "./api";
+import en from "../locales/en.json";
 
 /**
  * PLAN 14 T9 — the materials wire contract, transcribed from `materials.controller.ts` exactly as
@@ -234,4 +235,36 @@ export function materialsErrorCode(e: unknown): string | null {
     return body?.code ?? null;
   }
   return null;
+}
+
+/**
+ * ═══ CLOSE REVIEW m6 — WHAT A SCREEN ACTUALLY SHOWS: THE LOCALE STRING, THEN THE MESSAGE ═══
+ *
+ * `materialsErrorCode` shipped with the docstring above — *"for a screen that needs to render a
+ * locale string"* — and **no screen called it.** All three rendered `materialsErrorMessage`, which
+ * is the server's sentence and the server's sentence is English. So a Hindi storekeeper got a Hindi
+ * form, Hindi buttons, Hindi QC verdicts (`materialsGrn.rule_*`, thirteen keys, both locales — that
+ * half was done right), and then an English sentence at the only moment the screen has something
+ * urgent to say. T9's acceptance asked for the locale string.
+ *
+ * The order here is deliberate and it is NOT a fallback chain bolted on for safety:
+ *
+ *   · **The CODE first**, through `materialsErrors.<code>` — 24 keys, one per member of
+ *     `MaterialsErrorCode`, in `en.json` and `hi.json`. This is the sentence a user reads.
+ *   · **The server's MESSAGE second**, for anything with no key: an `ApprovalError`, a
+ *     `ResourceError` (which only became mappable at all in this same remediation, M1), a
+ *     validation refusal from the pipe. A wrong-language sentence beats a blank box or a raw code.
+ *
+ * Membership is tested against the IMPORTED `en.json` rather than i18next's missing-key behaviour,
+ * which is configuration and can change under us. `i18n.test.ts` already asserts `hi` mirrors `en`
+ * key-for-key, so one check covers both locales; `materials-errors-parity.test.ts` then asserts
+ * this block against the module's union, so a code added in `apps/core` cannot reach a screen with
+ * no sentence to show for it.
+ */
+export function materialsErrorText(e: unknown, t: (key: string) => string): string {
+  const code = materialsErrorCode(e);
+  if (code !== null && Object.prototype.hasOwnProperty.call(en.materialsErrors, code)) {
+    return t(`materialsErrors.${code}`);
+  }
+  return materialsErrorMessage(e);
 }

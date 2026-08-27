@@ -1,6 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
+import { switchLanguage } from "../lib/i18n";
 import { renderWithProviders } from "../test-utils";
 import { MaterialsVendors } from "./materials-vendors";
 
@@ -58,10 +59,22 @@ describe("MaterialsVendors", () => {
   });
 
   /**
-   * **THE REFUSAL PATH.** Reinstating before `blacklist_until` — A5's clock — comes back 409 with
-   * `blacklist_active`, and the screen renders the SERVER'S SENTENCE.
+   * ═══ THE REFUSAL PATH — **CLOSE REVIEW m6 CHANGED WHAT THIS ASSERTS, AND THE CHANGE IS THE
+   *     FINDING** ═══
+   *
+   * Reinstating before `blacklist_until` (A5's clock) comes back 409 with `blacklist_active`.
+   *
+   * This leg used to assert the screen rendered **the server's own English sentence**, and it
+   * passed — which is exactly why nobody noticed that T9's acceptance asked for the LOCALE STRING.
+   * The server's `message` is written in English by `apps/core`; there is no mechanism by which it
+   * could ever be anything else. So a Hindi storekeeper got a Hindi form, Hindi buttons, Hindi QC
+   * verdicts — and an English sentence at the one moment the screen had something urgent to say.
+   *
+   * The screen now renders `materialsErrors.<code>`, and the assertion is inverted to match: the
+   * locale string is present and **the server's sentence is ABSENT**. The Hindi leg below is the
+   * one that could not have passed before, in either direction.
    */
-  it("renders the server's refusal when a blacklist is reinstated early — the sentence, not the code", async () => {
+  it("renders the LOCALE string for a refusal — not the server's English sentence, and not the code", async () => {
     mockRoutes({
       "GET /api/materials/vendors": { status: 200, body: { vendors: [BLACKLISTED] } },
       "POST /api/materials/vendors/v-1/reinstate": {
@@ -78,8 +91,44 @@ describe("MaterialsVendors", () => {
     await user.click(await screen.findByRole("button", { name: "Reinstate" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(/may not be reinstated before then/);
+    expect(alert).toHaveTextContent("The blacklist period has not ended yet");
+    // NOT the bare code — what a screen with no catalogue at all would have shown…
     expect(alert).not.toHaveTextContent("blacklist_active");
+    // …and NOT the server's English sentence, which is what shipped (m6).
+    expect(alert).not.toHaveTextContent(/may not be reinstated before then/);
+  });
+
+  /**
+   * **m6, the leg that actually proves it.** Same refusal, same server response — a Hindi user.
+   * Before the fix this rendered the identical English sentence as the leg above, because the
+   * screen was showing `body.message` and `body.message` has exactly one language.
+   */
+  it("m6: a Hindi user gets the refusal in Hindi — the server's `message` never reaches the screen", async () => {
+    switchLanguage("hi");
+    try {
+      mockRoutes({
+        "GET /api/materials/vendors": { status: 200, body: { vendors: [BLACKLISTED] } },
+        "POST /api/materials/vendors/v-1/reinstate": {
+          status: 409,
+          body: {
+            statusCode: 409, code: "blacklist_active",
+            message: "vendor ACME is blacklisted until 2029-08-27T06:00:00.000Z and may not be "
+              + "reinstated before then (O-11: 3 years)",
+          },
+        },
+      });
+      renderWithProviders(<MaterialsVendors />);
+      const user = userEvent.setup();
+      // BY ITS HINDI LABEL — `/.+/ ` matched the first button on the screen and hit an unstubbed
+      // route, which is its own small lesson about loose role queries.
+      await user.click(await screen.findByRole("button", { name: "पुनर्बहाल करें" }));
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("प्रतिबंध की अवधि अभी समाप्त नहीं हुई है");
+      expect(alert).not.toHaveTextContent(/reinstated before then/);
+    } finally {
+      switchLanguage("en");
+    }
   });
 
   /**

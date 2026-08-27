@@ -31,6 +31,7 @@ function ctx(over: Partial<QcContext> = {}): QcContext {
     item: { id: "it1", class: "drug", active: true, shelfLifeDays: 1095 },
     uoms: TABLETS,
     ceilingPaisePerBase: null,
+    ceilingUnconvertible: false,
     batchFrozen: false,
     hasConsignmentAgreement: true,
     source: "challan",
@@ -199,6 +200,43 @@ describe("the GRN gate's rules (Plan 14 T6 / DD8)", () => {
     // NO ceiling in force → nothing to breach.
     expect(qcLine(ctx({ ceilingPaisePerBase: null }), line({ mrpPaise: 9999990, mrpUom: "strip" })))
       .toEqual({ verdict: "pass" });
+  });
+
+  /**
+   * ═══ CLOSE REVIEW M7 — AN UNCONVERTIBLE CEILING REJECTS THE LINE, AND DOES NOT PASS IT ═══
+   *
+   * The two null-ish states are NOT the same and this is the leg that says so. `ceilingPaisePerBase:
+   * null` means *no ceiling was notified* — nothing to breach, pass. `ceilingUnconvertible: true`
+   * means *a ceiling WAS notified and could not be put in the line's unit* — a rule the government
+   * imposed that we are unable to evaluate, which must fail CLOSED.
+   *
+   * Before M7 there was no second state: `qcContextFor` let `mrpPerBaseUnit` THROW, the exception
+   * left `runGateQc`, and the caller got **404 on the whole GRN**. So the first assertion here is
+   * against the old behaviour twice over — the verdict was neither `pass` nor `reject`, it was an
+   * HTTP status for a document the storekeeper was holding in their hand.
+   */
+  it("rule 7: a ceiling that CANNOT be converted rejects the LINE — it never passes it (M7)", () => {
+    // The default line is MRP 8500/strip = 850 a tablet against a cost of 700 — comfortably ABOVE
+    // cost, so rule 6 passes and rule 7 is genuinely the rule under test.
+    expect(qcLine(ctx({ ceilingUnconvertible: true }), line()))
+      .toEqual({ verdict: "reject", rule: "mrp_unconvertible" });
+    /**
+     * **The discriminating pair, and it is the whole point of the finding.** Identical line;
+     * `ceilingPaisePerBase` is `null` in BOTH cases, because there is no usable number either way;
+     * opposite verdicts. An implementation that collapses "no ceiling notified" and "a ceiling was
+     * notified and cannot be converted" into one `null` — which is exactly what shipped, by letting
+     * the conversion THROW and catching nothing — cannot satisfy both of these at once.
+     */
+    expect(qcLine(ctx({ ceilingPaisePerBase: null, ceilingUnconvertible: false }), line()))
+      .toEqual({ verdict: "pass" });
+    // It rejects an MRP that would have been under any plausible ceiling too: the point is that the
+    // comparison could not be MADE, not that it failed.
+    expect(qcLine(ctx({ ceilingUnconvertible: true }), line({ mrpPaise: 7100, mrpUom: "strip" })))
+      .toEqual({ verdict: "reject", rule: "mrp_unconvertible" });
+    // Rule ORDER is preserved: rule 6 still runs first, so an MRP below cost is reported as such
+    // rather than being masked by the unconvertible ceiling downstream of it.
+    expect(qcLine(ctx({ ceilingUnconvertible: true }), line({ unitCostPaise: 900 })))
+      .toEqual({ verdict: "reject", rule: "mrp_below_cost" });
   });
 
   // ─────────────────── rules 8 and 9 ───────────────────

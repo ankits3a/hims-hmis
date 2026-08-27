@@ -5,6 +5,7 @@ import { stockBalances, stockBatches } from "../../kernel/db/schema";
 import { EXPIRY_THRESHOLD_DAYS } from "./config";
 import { batchExpiring } from "./events";
 import { daysBetween } from "./qc";
+import { istDay } from "./grn";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -65,7 +66,13 @@ export async function expiringBatches(
   // parameter accept only the literal 90.
   withinDays: number = EXPIRY_THRESHOLD_DAYS[0],
 ): Promise<ExpiringBatch[]> {
-  const today = now.toISOString().slice(0, 10);
+  /**
+   * CLOSE REVIEW m2 — **IST, not UTC.** This was `now.toISOString().slice(0, 10)`, so between 00:00
+   * and 05:30 IST "today" was YESTERDAY and every `daysRemaining` — and therefore every threshold
+   * band — was off by one. The `ist-clock-parity` census could not see it, because the defect was
+   * not a hand-rolled offset but the ABSENCE of one; a census of copies cannot count omissions.
+   */
+  const today = istDay(now);
   const rows = await db.select({
     batchId: stockBatches.id,
     itemId: stockBatches.itemId,

@@ -6,7 +6,7 @@ import { approveRequest } from "../../kernel/approvals/decisions";
 import { assignRole } from "../../kernel/auth/permissions";
 import { createUser } from "../../kernel/auth/identity";
 import { seedSodPairs } from "../../kernel/auth/sod";
-import { consignmentLots, events, roles, stockBatches } from "../../kernel/db/schema";
+import { consignmentLots, events, roles, stockBatches, vendorDocuments } from "../../kernel/db/schema";
 import { MaterialsError } from "./errors";
 import { registerMaterialsApprovalTypes } from "./approval-types";
 import { registerItem, setPriceRegulation } from "./items";
@@ -152,6 +152,149 @@ describe("the GRN gate (Plan 14 T6)", () => {
   async function eventsNamed(name: string): Promise<{ payload: unknown }[]> {
     return db.select({ payload: events.payload }).from(events).where(eq(events.name, name));
   }
+
+  /**
+   * ═══ CLOSE REVIEW m4 — DD8 RULE 8 IS RE-ASKED AT POST, BECAUSE QC's ANSWER HAS AN AGE ═══
+   *
+   * Rule 8 refuses a receipt into a recall-frozen batch, and it is evaluated in `runGateQc` — a
+   * SEPARATE transaction, minutes or hours before `postGrn`. `recallBatch` is one action and DD14
+   * gives it to `materials_head`; a recall is precisely the thing that happens between a delivery
+   * arriving and its paperwork being posted.
+   *
+   * What that produced: `recallBatch` sets `qty_frozen = qty_on_hand` **at the moment of the
+   * freeze**, so a receipt posted afterwards raised `qty_on_hand` and left `qty_frozen` behind.
+   * `available()` — `on_hand − reserved − frozen` — then reported the new stock as AVAILABLE on a
+   * batch under recall. Nothing could actually leave (`postMovements` refuses every outbound
+   * movement of a frozen batch), but the recall screen and 14c's leakage triangle would both have
+   * read a frozen batch as partly free — and a recall is the one place a wrong number gets acted on
+   * in a hurry.
+   *
+   * The refusal is recoverable by design: `runGateQc` accepts a GRN in `accepted`, so re-running
+   * gate QC rejects the affected line by rule 8 and the rest of the delivery posts.
+   */
+  it("m4: a batch frozen BETWEEN QC and post refuses the post, and re-running QC clears it", async () => {
+    const itemId = await drugItem();
+    const storeId = await aStore();
+    const vendorId = await aVendor();
+
+    // A first delivery, posted — so the batch row exists and can be recalled.
+    const first = await withTx(db, (tx) => captureGrn(tx, HEAD, {
+      vendorId, source: "challan", storeResourceId: storeId,
+      challanNo: "CH/M4/1", challanDate: CHALLAN, lines: [goodLine(itemId)], now: T0,
+    }));
+    await withTx(db, (tx) => runGateQc(tx, HEAD, first.grnId));
+    await withTx(db, (tx) => postGrn(tx, HEAD, first.grnId, T0));
+    const batchId = (await db.select().from(stockBatches))[0]?.id ?? "";
+
+    // A SECOND delivery of the same batch, captured and QC'd while the batch is still healthy.
+    const second = await withTx(db, (tx) => captureGrn(tx, HEAD, {
+      vendorId, source: "challan", storeResourceId: storeId,
+      challanNo: "CH/M4/2", challanDate: CHALLAN, lines: [goodLine(itemId)], now: T0,
+    }));
+    const qc = await withTx(db, (tx) => runGateQc(tx, HEAD, second.grnId));
+    expect(qc.status).toBe("accepted"); // rule 8 was satisfied AT THAT MOMENT
+
+    // …and NOW the recall lands, after the verdict and before the post.
+    await withTx(db, (tx) => recallBatch(tx, HEAD, batchId, "supplier notice"));
+
+    await expect(withTx(db, (tx) => postGrn(tx, HEAD, second.grnId, T0)))
+      .rejects.toMatchObject({ code: "batch_frozen" });
+
+    /**
+     * The invariant the defect broke, asserted directly: on a frozen batch every unit on hand is
+     * frozen. Without the refusal this read `{ onHand: 600, frozen: 300 }` — 300 tablets of
+     * recalled stock showing as available to anything reading the balance.
+     */
+    const [bal] = await balances(db, { batchId });
+    expect({ onHand: bal?.qtyOnHand, frozen: bal?.qtyFrozen })
+      .toEqual({ onHand: 300, frozen: 300 });
+
+    // And the GRN is not stuck: re-run gate QC, rule 8 rejects the line, the delivery closes.
+    const requalified = await withTx(db, (tx) => runGateQc(tx, HEAD, second.grnId));
+    expect({ status: requalified.status, rule: requalified.verdicts[0]?.rule })
+      .toEqual({ status: "rejected", rule: "batch_frozen" });
+    await withTx(db, (tx) => postGrn(tx, HEAD, second.grnId, T0));
+    expect((await getGrn(db, second.grnId))?.status).toBe("posted");
+    // Still 300, still wholly frozen: nothing was received into the recalled batch.
+    const [after] = await balances(db, { batchId });
+    expect({ onHand: after?.qtyOnHand, frozen: after?.qtyFrozen })
+      .toEqual({ onHand: 300, frozen: 300 });
+  });
+
+  /**
+   * ═══ CLOSE REVIEW M8 — `postGrn` ON AN UN-QC'd GRN SAYS `qc_not_run`, NOT `not_in_transit` ═══
+   *
+   * It threw `not_in_transit`, which `errors.ts` documents as *"`receiveStock` against a transfer
+   * whose status is not `in_transit`"*. A GRN is not a transfer and has no `in_transit` status: the
+   * code was BORROWED, which the same file forbids in as many words. A client told `not_in_transit`
+   * about a GRN cannot act on it — the remedy is *run gate QC*, and nothing in the code said so.
+   */
+  it("M8: posting a GRN that has not been through gate QC refuses `qc_not_run`", async () => {
+    const itemId = await drugItem();
+    const storeId = await aStore();
+    const vendorId = await aVendor();
+    const { grnId } = await withTx(db, (tx) => captureGrn(tx, HEAD, {
+      vendorId, source: "challan", storeResourceId: storeId,
+      challanNo: "CH/M8/1", challanDate: CHALLAN, lines: [goodLine(itemId)], now: T0,
+    }));
+    expect((await getGrn(db, grnId))?.status).toBe("gate_qc");
+    await expect(withTx(db, (tx) => postGrn(tx, HEAD, grnId, T0)))
+      .rejects.toMatchObject({ code: "qc_not_run" });
+    // A posted GRN is a different refusal, and it keeps its own code.
+    await withTx(db, (tx) => runGateQc(tx, HEAD, grnId));
+    await withTx(db, (tx) => postGrn(tx, HEAD, grnId, T0));
+    await expect(withTx(db, (tx) => postGrn(tx, HEAD, grnId, T0)))
+      .rejects.toMatchObject({ code: "already_received" });
+  });
+
+  /**
+   * ═══ CLOSE REVIEW M9 — THE LOT RECORDS THE AGREEMENT IT WAS RECEIVED UNDER ═══
+   *
+   * `createConsignmentLot` took `limit(1)` with **no `ORDER BY` and no validity filter**. QC rule 9
+   * had already proved that SOME valid agreement exists; this then recorded an ARBITRARY one — and
+   * with an expired `CA/2023` beside a current `CA/2026`, "arbitrary" is whichever the heap returns
+   * first, which can differ between runs on the same data.
+   *
+   * The FK is what makes O-8 structural. Pointing it at an agreement the goods were NOT received
+   * under is worse than not pointing it anywhere, because 14c's reconciliation and any statutory
+   * audit will follow it in good faith.
+   *
+   * **The discriminating fixture is TWO agreements where the EXPIRED one is inserted FIRST**, so a
+   * heap-order `limit(1)` returns exactly the wrong row — the §2.102 discipline applied to a
+   * missing `ORDER BY`.
+   */
+  it("M9: the consignment lot names the agreement VALID on the challan date, not an arbitrary one", async () => {
+    const itemId = await drugItem();
+    const storeId = await aStore();
+    const { vendorId } = await withTx(db, (tx) => registerVendor(tx, HEAD, {
+      code: "CONSIGN-M9", legalName: "Consign Co Pvt Ltd",
+    }));
+    await withTx(db, (tx) => addVendorDocument(tx, HEAD, vendorId, { type: "gst_certificate", number: "g" }));
+    await withTx(db, (tx) => addVendorDocument(tx, HEAD, vendorId, { type: "pan", number: "p" }));
+    // The EXPIRED one first — heap order therefore favours the wrong answer.
+    await withTx(db, (tx) => addVendorDocument(tx, HEAD, vendorId, {
+      type: "consignment_agreement", number: "CA/2023",
+      validFrom: "2023-01-01", validTo: "2023-12-31",
+    }));
+    await withTx(db, (tx) => addVendorDocument(tx, HEAD, vendorId, {
+      type: "consignment_agreement", number: "CA/2026",
+      validFrom: "2026-01-01", validTo: "2027-12-31",
+    }));
+    await withTx(db, (tx) => activateVendor(tx, HEAD, vendorId, T0));
+
+    const { grnId } = await withTx(db, (tx) => captureGrn(tx, HEAD, {
+      vendorId, source: "consignment_challan", storeResourceId: storeId,
+      challanNo: "CH/M9/1", challanDate: CHALLAN, lines: [goodLine(itemId)], now: T0,
+    }));
+    await withTx(db, (tx) => runGateQc(tx, HEAD, grnId));
+    await withTx(db, (tx) => postGrn(tx, HEAD, grnId, T0));
+
+    const [lot] = await db.select().from(consignmentLots);
+    const [doc] = await db.select().from(vendorDocuments)
+      .where(eq(vendorDocuments.id, lot?.agreementDocumentId ?? ""));
+    expect({ number: doc?.number, validTo: doc?.validTo })
+      .toEqual({ number: "CA/2026", validTo: "2027-12-31" });
+  });
 
   it("a FULLY REJECTED GRN writes NO ledger row and emits grn.rejected plus a line event each", async () => {
     const itemId = await drugItem();

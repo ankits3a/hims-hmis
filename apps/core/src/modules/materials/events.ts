@@ -218,9 +218,29 @@ export const consignmentDeployed = defineEvent("consignment.deployed", MODULE, z
  * in the stores module. What it does instead is carry **every fact a charge will need**, so that
  * the day billing grows a chargeables spine this is already the event it consumes.
  *
- * `mrpPaise` + `mrpUom` travel as a PAIR for the file-header reason in `schema/materials.ts`: an
- * MRP is printed on a pack, and a number without its unit has to be divided by a multiplier
- * somewhere. `ceilingPaise` is the DPCO/NPPA ceiling **effective at `occurredAt`** or null — A21's
+ * ═══ EVERY MONEY FIELD CARRIES ITS UNIT IN ITS NAME OR BESIDE IT — CLOSE REVIEW M3 ═══
+ *
+ * The first version carried `mrpPaise` (per PACK, with `mrpUom`) beside `ceilingPaise` — which was
+ * silently converted to a PER-BASE-UNIT figure — and said nothing about the difference. Plan 15's
+ * discharge bill applies `min(tariff, MRP, ceiling)`; comparing a per-box MRP with a per-each
+ * ceiling on an implant sold in fives is a **factor-of-five error in a patient's bill**, in
+ * whichever direction the numbers happen to fall.
+ *
+ * **The fixture hid it exactly as §2.102 predicts**: `consumption.test.ts` gave the batch and the
+ * regulation `mrpUom: "each"` — the BASE unit — so every conversion was a no-op and the mismatch
+ * was invisible. `mrpUom === baseUom` is a SEVENTH coinciding field the phase's standing note does
+ * not name, and it is the one that hides the money arithmetic.
+ *
+ * So the payload now carries, explicitly:
+ *   · `mrpPaise` + `mrpUom` — the price AS PRINTED, on the pack it is printed on;
+ *   · `mrpPaisePerBase` — the same price per BASE unit, or null when it does not divide evenly;
+ *   · `ceilingPaisePerBase` — the ceiling per BASE unit, the unit now in the NAME (`qc.ts` already
+ *     called its own field this, and the frozen payload had dropped the suffix).
+ *
+ * A consumer comparing the two `…PerBase` figures is comparing like with like without needing the
+ * item's UoM table at all, which is the property a bill actually needs.
+ *
+ * `ceilingPaisePerBase` is the DPCO/NPPA ceiling **effective at `occurredAt`** or null — A21's
  * whole subject, and the mutant is a consumer that asks for the regulation at processing time.
  *
  * The bill for a day-care case is composed by Plan 15 at discharge from `consumptionsFor(encounterId)`
@@ -237,9 +257,13 @@ export const materialConsumed = defineEvent("material.consumed", MODULE, z.objec
   patientId: id,
   encounterId: id,
   caseRef: z.object({ type: z.string().min(1), id }),
+  /** AS PRINTED, on `mrpUom`'s pack. */
   mrpPaise: paise.nullable(),
   mrpUom: z.string().nullable(),
-  ceilingPaise: paise.nullable(),
+  /** The same price per BASE unit; null when the MRP does not divide into whole paise (M3). */
+  mrpPaisePerBase: paise.nullable(),
+  /** The notified ceiling per BASE unit — the unit is in the name, deliberately (M3). */
+  ceilingPaisePerBase: paise.nullable(),
   occurredAt: z.string().min(1),
 }));
 

@@ -61,10 +61,14 @@ describe("MaterialsItems", () => {
   });
 
   /**
-   * **THE REFUSAL PATH.** A `drug` with no formulary medicine: the server answers 409 with
-   * `drug_needs_medicine` and its own sentence, and the screen shows THE SENTENCE.
+   * **THE REFUSAL PATH — and see `materials-vendors.test.tsx` for why this now asserts a LOCALE
+   * string rather than the server's sentence (close review m6).**
+   *
+   * A `drug` with no formulary medicine: the server answers 409 with `drug_needs_medicine`. The
+   * screen renders `materialsErrors.drug_needs_medicine`, which is translated; the server's own
+   * sentence — English, always — never reaches the DOM.
    */
-  it("renders the server's refusal for a drug with no medicine — the sentence, not the code", async () => {
+  it("renders the LOCALE string for a drug with no medicine — not the code, not the server's sentence", async () => {
     mockRoutes({
       "GET /api/materials/items": { status: 200, body: { items: [] } },
       "POST /api/materials/items": {
@@ -86,10 +90,15 @@ describe("MaterialsItems", () => {
     await user.click(screen.getByRole("button", { name: "Register" }));
 
     const alert = await screen.findByRole("alert");
-    // The server's own sentence…
-    expect(alert).toHaveTextContent(/must name the formulary medicine/);
-    // …and NOT the bare code, which is what a client-side catalogue would have produced.
+    expect(alert).toHaveTextContent("A drug-class item must name the formulary medicine it stocks");
+    // NOT the bare code…
     expect(alert).not.toHaveTextContent("drug_needs_medicine");
+    /**
+     * …and not the server's sentence either. The two texts overlap on the phrase "must name the
+     * formulary medicine", which is why the ORIGINAL assertion survived the fix unchanged and
+     * proved nothing. The tail is what tells them apart, so the tail is what is asserted.
+     */
+    expect(alert).not.toHaveTextContent(/salts and the schedule flag live there/);
   });
 
   /**

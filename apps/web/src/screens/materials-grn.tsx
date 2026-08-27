@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   captureGrn, fetchDiscrepancies, fetchExpiring, fetchGrn, fetchGrns, fetchItems, fetchStores,
-  fetchVendors, materialsErrorMessage, postGrn, requestNearExpiry, runGrnQc,
+  fetchVendors, materialsErrorText, postGrn, requestNearExpiry, runGrnQc,
 } from "../lib/materials-api";
 import { Button } from "@/components/ui/button";
 import type { CaptureLineInput, WireGrn } from "../lib/materials-api";
@@ -95,7 +95,7 @@ export function MaterialsGrn(): React.ReactElement {
       setDone(message);
       await qc.invalidateQueries({ queryKey: ["materials"] });
     } catch (e) {
-      setError(materialsErrorMessage(e));
+      setError(materialsErrorText(e, t));
     }
   };
 
