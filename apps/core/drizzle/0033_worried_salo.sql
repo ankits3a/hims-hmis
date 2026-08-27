@@ -1,0 +1,26 @@
+--> PLAN 13 T7 — `opd_rooms` IS DROPPED. **THIS IS THE PHASE'S ONLY IRREVERSIBLE STEP.**
+-->
+--> HAND-AUTHORED, AND THE HAND-EDIT IS THE REMOVAL OF ONE WORD. `drizzle-kit generate` emitted
+-->
+-->     DROP TABLE "opd_rooms" CASCADE;
+-->
+--> and that word is the A12 mutant verbatim. **CASCADE is not a convenience here, it is a silent
+--> data-integrity loss**: applied to a database where `0032`'s repoint did NOT happen — a
+--> hand-applied hotfix on a live box, which is exactly how a mis-ordered application occurs —
+--> `CASCADE` succeeds and takes BOTH foreign keys with it without a word, leaving
+--> `opd_doctor_schedules.room_id` unconstrained on a live hospital's schedule book. The bare drop
+--> refuses and names the dependent constraint. Measured, not asserted: see the phase document's
+--> CLOSE for the executed A12 evidence.
+-->
+--> `_journal.json` is untouched (AGENT-RULES §6) and no `drizzle.__drizzle_migrations` row is
+--> inserted or deleted by hand.
+-->
+--> WHY THIS IS A SEPARATE FILE AND A SEPARATE DEPLOY (DD12). `db:migrate:prod` applies every
+--> pending file in ONE run, so `0032` and `0033` merged together would give the live database a
+--> recovery window of zero. `0032` was deployed to production on 2026-08-27 and VERIFIED before
+--> this file was authored: 2 rooms in `resources` against 2 in `opd_rooms`, every id preserved,
+--> both `room_id` foreign keys naming `resources` in `pg_constraint`, and
+--> `operating_mode_changes` still empty — production has never left `commissioning`, so § 4A
+--> item 4 does not fire and this drop is a migration rather than an owner-authorised operational
+--> act. The precondition answers are quoted in the phase document's CLOSE.
+DROP TABLE "opd_rooms";

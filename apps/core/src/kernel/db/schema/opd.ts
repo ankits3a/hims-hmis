@@ -48,29 +48,16 @@ export const opdDepartments = pgTable(
 );
 
 /**
- * PLAN 13 T6 — **ORPHANED. Nothing points at this table and nothing reads it.** `0032` copied every
- * row into `resources` with its id preserved and repointed both foreign keys; the table survives for
- * exactly one commit so that a wrong backfill is a FIX rather than a RESTORE (DD12). T7's `0033`
- * drops it, after T6 has been deployed and verified against production.
+ * PLAN 13 T7 — **`opd_rooms` IS GONE.** It stood here from Plan 07 until 2026-08-27; `0032` copied
+ * every row into `resources` with its id preserved and repointed both foreign keys, and `0033`
+ * dropped the table after that migration had been deployed to production and verified.
  *
- * Do not add a reader. Do not add a column. If you are here because something still needs it, that
- * is the finding — report it before T7 runs.
+ * A room is a `resources` row of kind `'room'` (`schema/resources.ts`), reached through
+ * `modules/opd/masters.ts`'s `listRooms`/`createRoom`/`updateRoom`, whose external shape is
+ * unchanged — that is DD9, and it is why no controller, no contract and no screen moved with the
+ * table. The absence is recorded rather than left as a gap because "where did the room table go" is
+ * the first question a reader of this file will have.
  */
-export const opdRooms = pgTable(
-  "opd_rooms",
-  {
-    id: text("id").primaryKey(),
-    code: text("code").notNull(), // what the display board and the token slip show, e.g. '12', 'B-4'
-    name: text("name").notNull(),
-    floor: text("floor"),
-    active: boolean("active").notNull().default(true),
-    createdBy: text("created_by").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedBy: text("updated_by").notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [uniqueIndex("opd_rooms_code_ux").on(t.code)],
-);
 
 /** Doctor profile — a Plan 02 user (user_id, plain text, no FK) with one primary OPD department. */
 export const opdDoctors = pgTable(

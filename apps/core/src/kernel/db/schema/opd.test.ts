@@ -18,9 +18,9 @@ describe("opd schema (migration 0010)", () => {
 
   async function seedDoctor(): Promise<{ deptId: string; roomId: string; doctorId: string }> {
     await db.insert(opdDepartments).values({ id: "D1", code: "MED", name: "General Medicine", ...AUDIT });
-    // PLAN 13 T6 — a room is a REGISTRY row and `opd_doctor_schedules.room_id` /
-    // `opd_queue_sessions.room_id` now name `resources(id)`. Seeding `opd_rooms` here would insert
-    // a row nothing points at and the schedule below would violate its foreign key.
+    // PLAN 13 T6/T7 — a room is a REGISTRY row and `opd_doctor_schedules.room_id` /
+    // `opd_queue_sessions.room_id` name `resources(id)`. `opd_rooms` no longer exists at all after
+    // `0033`, so there is no other table this fixture could seed.
     await db.insert(resources).values({ id: "R1", kind: "room", code: "12", name: "Room 12", status: "available", ...AUDIT });
     await db.insert(opdDoctors).values({ id: "DOC1", userId: "U1", displayName: "Dr A", departmentId: "D1", ...AUDIT });
     return { deptId: "D1", roomId: "R1", doctorId: "DOC1" };

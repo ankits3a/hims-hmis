@@ -150,8 +150,11 @@ export async function truncateAll(db: Db): Promise<void> {
   // by F2 would take a statement of its own. But at T6 it becomes the PARENT of
   // `opd_queue_sessions.room_id` and `opd_doctor_schedules.room_id`, and truncating a parent
   // requires every table that points at it in the SAME statement. Putting both names here today
-  // costs one edit instead of two and is never wrong in between. They sit adjacent to `opd_rooms`,
-  // which is the table they are about to replace.
+  // costs one edit instead of two and is never wrong in between. They took the place `opd_rooms`
+  // held in this statement, which T7 removed in the same commit as `0033`: a table named here after
+  // it has been dropped makes EVERY suite throw `relation "opd_rooms" does not exist` on its first
+  // `beforeEach` (A13), which is the loudest possible failure and the reason this line is not
+  // something a Files list may forget.
   //
   // NO `restart identity`, deliberately. This statement has never carried one, the billing tables
   // in it have `seq` bigserials of their own, and adding it now would silently change what every
@@ -170,7 +173,7 @@ export async function truncateAll(db: Db): Promise<void> {
         commission_accruals, commission_accrual_subjects, receivable_expectations, partner_ref_map,
         attribution_ids, partner_agreements, counterparties,
         retention_legal_holds, notifications, opd_prescriptions, opd_vitals, opd_queue_entries, opd_encounters, opd_appointments,
-        opd_queue_sessions, opd_doctor_leaves, opd_doctor_schedules, opd_doctors, opd_rooms, opd_departments,
+        opd_queue_sessions, opd_doctor_leaves, opd_doctor_schedules, opd_doctors, opd_departments,
         resource_status_history, resources,
         opd_config, allocations, receipt_tenders, receipts, credit_note_lines, credit_notes, invoice_lines,
         invoices, refund_vouchers, cashier_sessions, entered_in_error_marks, recon_batches, daily_closes,

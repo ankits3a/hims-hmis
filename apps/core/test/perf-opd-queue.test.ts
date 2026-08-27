@@ -179,7 +179,10 @@ describe("OPD queue and visit-type performance budgets (CI-gated — §15)", () 
         7, 'perf-seed', now() - ((gs % 400) || ' days')::interval, 'perf-seed'
       from generate_series(1, ${sql.raw(String(HISTORY))}) gs
     `);
-    await db.execute(sql`analyze patients, opd_encounters, opd_queue_entries, opd_queue_sessions, opd_doctors, opd_departments, opd_rooms`);
+    // PLAN 13 T7 — `opd_rooms` leaves this list in the same commit as `0033` drops it, and
+    // `resources` takes its place: `boardSnapshot` LEFT JOINs the registry now, so the planner needs
+    // statistics on the table it actually reads. An `analyze` naming a dropped relation throws.
+    await db.execute(sql`analyze patients, opd_encounters, opd_queue_entries, opd_queue_sessions, opd_doctors, opd_departments, resources`);
   }, 120_000);
 
   afterAll(async () => {
