@@ -323,9 +323,17 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
       V12_INTERVALS,
     );
 
-    expect(specs).toHaveLength(10);
-    expect(specs[9]).toEqual(
+    // PLAN 14 T8 / DD14 — ELEVEN since `sweepBatchExpiry` joined at `dailyIst("06:30")`. The
+    // interface sweep is still the one this test is ABOUT and is still LAST (it is registered last),
+    // so it is addressed by name rather than by an index that a twelfth job would shift again.
+    expect(specs).toHaveLength(11);
+    expect(specs[specs.length - 1]).toEqual(
       expect.objectContaining({ name: "sweepInterfaceHeartbeats", every: INTERFACE_SWEEP_EVERY_MS }),
+    );
+    // …and the new job is registered on the hospital clock rather than on a cadence, which is the
+    // property that distinguishes a calendar-distance sweep from an interval one.
+    expect(specs).toContainEqual(
+      expect.objectContaining({ name: "sweepBatchExpiry", dailyIst: "06:30" }),
     );
   });
 

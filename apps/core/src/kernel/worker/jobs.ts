@@ -7,6 +7,7 @@ import { runDueTimers } from "../workflow/timers";
 import { sweepExpiredTempRoles } from "../auth/temp-roles";
 import { sweepGuardianMajority } from "../../modules/patients/guardians";
 import { sweepAppointmentNoShows } from "../../modules/opd/appointments";
+import { sweepBatchExpiry } from "../../modules/materials";
 import { runDailyClose } from "../../modules/billing/daily-close";
 import { runNotifyPump } from "../notify/pump";
 import { createEventPartitions } from "./partitions";
@@ -25,6 +26,15 @@ const DAILY_CLOSE_IST = "23:59";
 // so the run that first needs a new month is the one that creates it, and it creates it before
 // anything else on the daily grid touches `events`.
 const CREATE_EVENT_PARTITIONS_IST = "00:15";
+/**
+ * PLAN 14 T8 / DD14 — the batch-expiry sweep, at the START of the day shift.
+ *
+ * 06:30 IST because a storekeeper reads the expiry worklist when they come on, and an event emitted
+ * at midnight would sit unread for seven hours while the batch got a day closer. It is a `dailyIst`
+ * job for the `sweepAppointmentNoShows` reason: the thing it measures is a CALENDAR distance, and a
+ * calendar distance must be measured at a fixed hospital hour rather than every N milliseconds.
+ */
+const BATCH_EXPIRY_IST = "06:30";
 // Plan 11a D6: an hour after the new month's partitions exist and well inside the quiet window —
 // a partition DROP takes ACCESS EXCLUSIVE on `events`, which is not a lock to take during a
 // clinic. Like its neighbours it is a code constant, not a deployment knob: WHAT retention does
@@ -176,6 +186,17 @@ export function registerAllJobs(
     name: "sweepAppointmentNoShows",
     dailyIst: APPOINTMENT_NO_SHOWS_IST,
     run: async (now) => { await sweepAppointmentNoShows(db, now); },
+  });
+  // PLAN 14 T8 / DD14 — the ELEVENTH job. It emits `batch.expiring` at the 90/60/30-day thresholds,
+  // ONCE per batch per threshold (idempotent through `stock_batches.expiry_notified_thresholds`),
+  // and only for batches with stock somewhere. It is deliberately NOT an alert: the alerts consumer
+  // routes three kinds and a fourth is a kernel change this phase has no ruling for. `now` is
+  // threaded exactly as the other daily jobs thread it — the sweep measures a calendar distance
+  // FROM it, so handing it a different clock would move every threshold.
+  scheduler.register({
+    name: "sweepBatchExpiry",
+    dailyIst: BATCH_EXPIRY_IST,
+    run: async (now) => { await sweepBatchExpiry(db, now); },
   });
   scheduler.register({
     name: "runDailyClose",

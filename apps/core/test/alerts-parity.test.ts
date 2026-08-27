@@ -98,10 +98,16 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // Plan 11c D6 — the TENTH job. It is an INTERVAL job, so it joins leg 1a's `job=~`
         // alternation and leg 2's `absent()` chain in `alerts.yml`; the DAILY leg does not move.
         "sweepInterfaceHeartbeats",
+        // PLAN 14 T8 / DD14 — the ELEVENTH job. It is a DAILY job (`dailyIst("06:30")`), so it
+        // joins leg 1b's `job=~` alternation and leg 2's `absent()` chain; the INTERVAL leg does
+        // not move. **The docstring above predicted this edit exactly** — "a task that registers a
+        // job edits four places in one commit: `jobs.ts`, both censuses, `alerts.yml`, and that
+        // number" — and Plan 14 T8's Files list named only two of the four. Finding F14.
+        "sweepBatchExpiry",
       ].sort(),
     );
-    expect(registered).toHaveLength(10);
-    expect(new Set(registered).size).toBe(10); // no job registered twice
+    expect(registered).toHaveLength(11);
+    expect(new Set(registered).size).toBe(11); // no job registered twice
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

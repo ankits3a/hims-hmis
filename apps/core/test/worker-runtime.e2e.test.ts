@@ -87,7 +87,7 @@ const T6_DEF = {
 };
 
 /**
- * The ten jobs `registerAllJobs` must register, in registration order — the census (L17/flag ①).
+ * The eleven jobs `registerAllJobs` must register, in registration order — the census (L17/flag ①).
  * `runNotifyPump` joined at Plan 10 T4 (amendment 7), `createEventPartitions` at Plan 11a T2 (D5)
  * and `retentionSweep` at Plan 11a T5 (D6/D7): this census is one of the TWO places a new job has
  * to be admitted, and neither of them is `jobs.test.ts`. The eighth needed no `JobIntervals` key —
@@ -97,12 +97,15 @@ const T6_DEF = {
  * operator sets), so a literal somewhere did stop compiling — just not this file, which passes the
  * whole `AppConfig`. This list remains the only guard here.
  */
-const THE_TEN = [
+const THE_ELEVEN = [
   "runDispatchCycle",
   "runDueTimers",
   "sweepExpiredTempRoles",
   "sweepGuardianMajority",
   "sweepAppointmentNoShows",
+  // PLAN 14 T8 / DD14 — the ELEVENTH, at `dailyIst("06:30")`. This census is one of the two places
+  // a new job has to be admitted, exactly as the paragraph above says.
+  "sweepBatchExpiry",
   "runDailyClose",
   "runNotifyPump",
   "createEventPartitions",
@@ -384,7 +387,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
     }
   });
 
-  it("(a) boots the worker context, and its Scheduler names EXACTLY the ten jobs", async () => {
+  it("(a) boots the worker context, and its Scheduler names EXACTLY the eleven jobs", async () => {
     const ctx = await NestFactory.createApplicationContext(WorkerModule, { logger: false });
     try {
       const workerDb = ctx.get<Db>(DB);
@@ -403,7 +406,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
 
       // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these ten, in
       // registration order — not "at least", not "these among others".
-      expect(scheduler.jobs()).toEqual(THE_TEN);
+      expect(scheduler.jobs()).toEqual(THE_ELEVEN);
       // The scheduler was never started, so nothing was scheduled and nothing needs stopping.
       expect(scheduler.leakedErrors()).toEqual([]);
     } finally {

@@ -25,6 +25,7 @@ import * as notifyPumpMod from "../notify/pump";
 import * as partitionsMod from "./partitions";
 import * as retentionMod from "../retention/sweep";
 import * as interfacesMod from "../ops/interfaces";
+import * as materialsExpiryMod from "../../modules/materials/expiry";
 import type { Db } from "../db/client";
 
 // D3/halt condition 7: no test in this file ever observes the advisory lock. Every test below
@@ -204,7 +205,7 @@ async function settleUntil(done: () => boolean, maxTurns = SETTLE_BOUND_TURNS): 
  * Names are pushed in invocation ORDER, and duplicates are kept: "fired exactly once across
  * five ticks" is a claim a `Set` cannot make.
  */
-function spyOnTheTen(invoked: string[]): jest.SpyInstance[] {
+function spyOnTheEleven(invoked: string[]): jest.SpyInstance[] {
   return [
     jest.spyOn(dispatcherMod, "runDispatchCycle").mockImplementation(async () => {
       invoked.push("runDispatchCycle");
@@ -255,15 +256,27 @@ function spyOnTheTen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("sweepInterfaceHeartbeats");
       return [];
     }),
+    // THE ELEVENTH (Plan 14 T8 / DD14). Stubbed for the same reason as the tenth: un-stubbed it
+    // reads every batch with stock and APPENDS `batch.expiring` events, inside a fake-clock unit
+    // test that is about the CLOCK. Its behaviour is asserted DIRECTLY in
+    // `modules/materials/expiry.test.ts`. It is spied on its OWN module rather than on the
+    // module index, because that is where the binding `jobs.ts` reaches through actually lives.
+    jest.spyOn(materialsExpiryMod, "sweepBatchExpiry").mockImplementation(async () => {
+      invoked.push("sweepBatchExpiry");
+      return { announced: [] };
+    }),
   ];
 }
 
-const THE_TEN = [
+const THE_ELEVEN = [
   "runDispatchCycle",
   "runDueTimers",
   "sweepExpiredTempRoles",
   "sweepGuardianMajority",
   "sweepAppointmentNoShows",
+  // PLAN 14 T8 / DD14 — registered between the no-show sweep and the daily close, which is where
+  // `jobs.ts` puts it. `06:30` IST: a storekeeper reads the expiry worklist at the start of a shift.
+  "sweepBatchExpiry",
   "runDailyClose",
   "runNotifyPump",
   "createEventPartitions",
@@ -327,7 +340,7 @@ describe("Scheduler", () => {
     expect(scheduler.leakedErrors()).toEqual([]);
   });
 
-  // L14 — the registration census. Two tests, because there are two claims: that all ten jobs
+  // L14 — the registration census. Two tests, because there are two claims: that all eleven jobs
   // are registered and reached at their cadences, and that the DAILY four are keyed on the IST
   // calendar rather than the UTC one. The first cannot make the second — see M-S2 below.
   describe("the registration census (L14)", () => {
@@ -463,6 +476,9 @@ describe("Scheduler", () => {
       6 * HOUR_MS + 35 * MINUTE_MS, // 18:35Z = 00:05 IST 08-22 · sweepGuardianMajority
       6 * HOUR_MS + 45 * MINUTE_MS, // 18:45Z = 00:15 IST 08-22 · createEventPartitions
       7 * HOUR_MS + 45 * MINUTE_MS, // 19:45Z = 01:15 IST 08-22 · retentionSweep
+      // PLAN 14 T8 — 13:00Z 08-22 = 06:30 IST 08-22 · sweepBatchExpiry. The LAST daily instant in
+      // the walk, which is why the 25-hour span the block above insists on is still exactly enough.
+      13 * HOUR_MS,
     ];
 
     /** Total fake time advanced: past the last daily instant AND past the 9 h longest cadence. */
@@ -520,17 +536,17 @@ describe("Scheduler", () => {
         .map(([atMs, daily]) => ({ atMs, daily }));
     })();
 
-    it("invokes all ten jobs across a stepwise advance from a pinned instant", async () => {
+    it("invokes all eleven jobs across a stepwise advance from a pinned instant", async () => {
       expect(process.env.DATABASE_URL).toBeUndefined(); // CI's environment, reproduced here
       const invoked: string[] = [];
-      const spies = spyOnTheTen(invoked);
+      const spies = spyOnTheEleven(invoked);
       const registry = censusRegistry();
       const fresh = freshWorkerDb();
       jest.useFakeTimers({ now: CENSUS_PIN });
       try {
         const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), CENSUS_DAILY_TICK_MS);
         registerAllJobs(scheduler, fresh.db, registry, {}, CENSUS_INTERVALS);
-        expect(scheduler.jobs()).toEqual(THE_TEN);
+        expect(scheduler.jobs()).toEqual(THE_ELEVEN);
 
         // Fake milliseconds advanced so far, measured from the pin. The walk only moves forward,
         // so a target already behind the cursor is a no-op rather than a rewind.
@@ -566,18 +582,18 @@ describe("Scheduler", () => {
         // and the post-await re-check then correctly drops any run whose read had not come back,
         // so calling it too early is exactly how this census came back short on CI twice while
         // being green on the build host every single time.
-        const settled = await settleUntil(() => new Set(invoked).size >= THE_TEN.length);
+        const settled = await settleUntil(() => new Set(invoked).size >= THE_ELEVEN.length);
         await scheduler.stop();
         // Reported, not asserted: on a bound hit the assertion below fails on its own SET and
         // names the missing jobs, which is a better failure message than a bare timeout.
         if (!settled) {
           // eslint-disable-next-line no-console
           console.warn(
-            `census: settleUntil hit its bound with ${new Set(invoked).size}/${THE_TEN.length} invoked`,
+            `census: settleUntil hit its bound with ${new Set(invoked).size}/${THE_ELEVEN.length} invoked`,
           );
         }
 
-        expect(new Set(invoked)).toEqual(new Set(THE_TEN));
+        expect(new Set(invoked)).toEqual(new Set(THE_ELEVEN));
         expect(scheduler.leakedErrors()).toEqual([]);
       } finally {
         jest.useRealTimers();
@@ -627,7 +643,7 @@ describe("Scheduler", () => {
       const NOW = new Date("2026-08-21T19:00:00.000Z"); // IST 2026-08-22 00:30
       const LAST_OK = new Date("2026-08-21T10:00:00.000Z"); // IST 2026-08-21 15:30 — same UTC day
       const invoked: string[] = [];
-      const spies = spyOnTheTen(invoked);
+      const spies = spyOnTheEleven(invoked);
       const registry = censusRegistry();
       const fresh = freshWorkerDb();
       try {

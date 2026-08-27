@@ -77,3 +77,9 @@ export {
   MATERIALS_CONSUMPTION_CONSUMER, consumptionConsumer, consumptionsFor, handleConsignmentDeployed,
 } from "./consumption";
 export type { ConsumptionRow } from "./consumption";
+
+// ── T8 — the routes, and the batch-expiry sweep ──
+export { MaterialsController } from "./materials.controller";
+export { MaterialsModule } from "./materials.module";
+export { expiringBatches, sweepBatchExpiry, thresholdToAnnounce } from "./expiry";
+export type { ExpiringBatch } from "./expiry";

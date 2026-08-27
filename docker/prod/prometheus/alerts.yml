@@ -38,14 +38,14 @@ groups:
             {{ $labels.job }} last started {{ $value | humanizeDuration }} ago. Check
             `docker compose -p hmis-prod logs worker`.
 
-      # Leg 1b — the five `dailyIst` jobs. Each runs once every ~24h by design
+      # Leg 1b — the SIX `dailyIst` jobs (five until Plan 14 T8 added `sweepBatchExpiry` at 06:30). Each runs once every ~24h by design
       # (kernel/worker/scheduler.ts's `isDailyDue`), so staleness legitimately climbs to ~24h
       # between runs; 26h (93600s) gives a two-hour margin for scheduling jitter before treating
       # a missed day as an incident.
       - alert: HmisSchedulerJobStaleDaily
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"sweepGuardianMajority|sweepAppointmentNoShows|runDailyClose|createEventPartitions|retentionSweep"
+            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep"
           } > 93600
         for: 5m
         labels:
@@ -58,7 +58,7 @@ groups:
 
       # Leg 2 — THE BLIND SPOT (spike finding 6, flag ⑨). A job that has NEVER started has no row
       # in scheduler_heartbeats at all, so it has no series for leg 1 to threshold against — that
-      # is precisely what leg 1 cannot see. `absent()` over each of the ten expected job names
+      # is precisely what leg 1 cannot see. `absent()` over each of the ELEVEN expected job names
       # closes it: every term that matches carries that job's own name as $labels.job (from the
       # positive equality matcher inside it), so `or` fires one alert instance PER missing job
       # rather than one alert for all of them together.
@@ -74,6 +74,10 @@ groups:
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="createEventPartitions"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="retentionSweep"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepInterfaceHeartbeats"})
+          # Plan 14 T8 / DD14 — the ELEVENTH job. A batch-expiry sweep that silently stopped would
+          # be invisible in exactly the way that matters: the worklist would simply keep saying
+          # nothing, which is what it says when there is nothing to say.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepBatchExpiry"})
         for: 5m
         labels:
           severity: critical
