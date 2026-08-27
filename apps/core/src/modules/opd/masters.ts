@@ -157,12 +157,16 @@ export async function createRoom(tx: Tx, actor: Actor, input: { code: string; na
  * has to go when the registry gains a second writer**, and it is written down here rather than
  * discovered then (CLOSE / m5).
  *
- * **`active: false` goes through `changeResourceStatus` and NOT through `retireResource`.**
- * `retireResource` additionally refuses an OCCUPIED resource — correct for the registry, and a
- * behaviour change for a function that has always deactivated a room unconditionally. Nothing in
- * this phase can occupy a room (no assign path until Plan 15), so the guard could not fire today;
- * routing around it keeps DD9's promise exactly rather than nearly. Recorded here because a reader
- * comparing the two paths will otherwise read this as an oversight.
+ * **`active: false` goes through `changeResourceStatus` and NOT through `retireResource`** —
+ * ~~`retireResource` additionally refuses an OCCUPIED resource … routing around it keeps DD9's
+ * promise exactly rather than nearly.~~ **THAT ARGUMENT IS DEAD AS OF THIS PHASE'S CLOSE (M1) AND
+ * IS STRUCK RATHER THAN DELETED, because it explains why the call is shaped this way.** The
+ * occupied-resource refusal MOVED INTO `changeResourceStatus`, so the route-around now buys
+ * nothing: `updateRoom({ active: false })` on an occupied room raises `already_occupied` either
+ * way. `opd-masters.controller.ts`'s `toHttp` maps it (CLOSE pass 2 / R2) instead of letting it
+ * reach the counter as a 500. It still cannot fire in this phase — nothing can occupy a room until
+ * Plan 15 — and when it can, the refusal is the correct answer rather than a silent retirement of
+ * a room with somebody in it.
  */
 export async function updateRoom(tx: Tx, actor: Actor, id: string, patch: { name?: string; floor?: string | null; active?: boolean }): Promise<void> {
   requireUserActor(actor);

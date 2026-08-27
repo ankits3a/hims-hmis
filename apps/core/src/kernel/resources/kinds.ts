@@ -149,6 +149,20 @@ export function collectResourceKinds(registry: ModuleRegistry): ResourceKindDecl
         );
       }
     }
+    /**
+     * CLOSE PASS 2 / m4 — A KIND WHOSE `initial` IS ITS `occupied` IS A TRAP ON THIS EXACT SEAM.
+     * Every `createResource` for it would default to the occupied status with no occupant, which is
+     * R1's state produced by declaration rather than by a caller. Refused at boot, where every other
+     * declaration error in this collector is refused, because Plan 15 is the first phase to write a
+     * declaration this file did not.
+     */
+    if (d.occupied !== null && d.initial === d.occupied) {
+      throw new ResourceError(
+        "unknown_status",
+        `resource kind "${d.kind}" declares initial="${d.initial}", which is also its occupied ` +
+          "status — every resource of that kind would be created occupied with no occupant",
+      );
+    }
     seen.set(d.kind, d);
   }
   return [...seen.values()];

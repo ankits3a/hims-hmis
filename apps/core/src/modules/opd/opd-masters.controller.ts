@@ -9,6 +9,7 @@ import { SodViolationError } from "../../kernel/auth/sod";
 import { WorkflowError } from "../../kernel/workflow/instances";
 import { withTx } from "../../kernel/db/client";
 import { PatientError } from "../patients";
+import { ResourceError, resourceHttpStatus } from "../../kernel/resources";
 import { loadOpdConfig, updateOpdConfig } from "./config";
 import { OpdError } from "./errors";
 import { cancelDoctorLeave, listLeaves, scheduleDoctorLeave } from "./leaves";
@@ -58,6 +59,22 @@ function httpError(statusCode: number, message: string, code: string, detail?: u
 /** Unrecognized errors rethrow — a 500 is a genuine bug, loudly (the patients toHttp convention). */
 export function toHttp(e: unknown): never {
   if (e instanceof OpdError) throw httpError(opdStatus(e.code), e.message, e.code, e.detail);
+  /**
+   * PLAN 13 CLOSE PASS 2 / R2 — **THIS CONTROLLER CAN RECEIVE A `ResourceError`, SO IT MAPS ONE.**
+   *
+   * OPD's room masters delegate into the kernel registry (DD9). `masters.ts`'s `asOpdError`
+   * translates the two codes that were reachable when it was written and rethrows the rest, on the
+   * argument that guessing at the others would turn a genuine bug into a misleading refusal — which
+   * is right, and which makes THIS the place the remaining codes have to land.
+   *
+   * The close's own M1 fix is what made that urgent: `updateRoom({ active: false })` on an occupied
+   * room now raises `already_occupied` from `changeResourceStatus`, and `OpdError`'s union has no
+   * code for an occupied room. Without this clause that refusal reached the masters counter as a
+   * **500** — Plan 09's `MembershipError` escaping `billing.controller.ts` exactly, one phase later,
+   * introduced by the commit that fixed a different defect. `errors.ts` exports `resourceHttpStatus`
+   * so every controller that can receive one maps it from the SAME table; this is the second caller.
+   */
+  if (e instanceof ResourceError) throw httpError(resourceHttpStatus(e.code), e.message, e.code, e.detail);
   // The engine's own refusals: role_denied is an authorization answer, everything else a state conflict.
   if (e instanceof WorkflowError) throw httpError(e.code === "role_denied" ? 403 : 409, e.message, e.code);
   if (e instanceof SodViolationError) throw httpError(403, e.message, "sod_violation");

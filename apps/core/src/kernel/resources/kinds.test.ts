@@ -153,6 +153,19 @@ describe("the resource kind seam (Plan 13 T2)", () => {
     expect(RESOURCE_KINDS).toContain("theatre");
   });
 
+  /**
+   * CLOSE PASS 2 / m4 — a kind whose `initial` IS its `occupied` would make every `createResource`
+   * for it default to the occupied status with no occupant: R1's state, produced by DECLARATION
+   * rather than by a caller. Refused at boot, where the collector refuses every other declaration
+   * error, because Plan 15 writes the first declaration this file did not.
+   */
+  it("a kind whose `initial` is also its `occupied` is a boot error — it would create every resource occupied", () => {
+    const registry = registryOf(bare("a", { resourceKinds: [decl({ initial: "occupied" })] }));
+    expect(() => collectResourceKinds(registry)).toThrow(/which is also its occupied/);
+    // The kernel's own five do not trip it — the guard is real, not vacuous.
+    expect(collectResourceKinds(registryOf(...ALL_MANIFESTS))).toHaveLength(5);
+  });
+
   it("a manifest with no resourceKinds contributes nothing and is not an error", () => {
     expect(collectResourceKinds(registryOf(bare("a"), bare("b")))).toEqual([]);
   });

@@ -174,6 +174,28 @@ export async function createResource(
   if (!decl.statuses.includes(status)) {
     throw new ResourceError("unknown_status", `"${status}" is not a status the kind "${input.kind}" admits`);
   }
+  /**
+   * ═══ CLOSE PASS 2 / R1 — THE FOURTH DOOR ═══
+   *
+   * The first remediation closed DD6's biconditional on `changeResourceStatus` and left THIS ONE
+   * open, which the second reviewer caught: `status` is a public, optional, caller-supplied field
+   * and `"occupied"` is a member of `bed`'s and `room`'s vocabularies, so
+   * `createResource({ kind: "bed", status: "occupied" })` wrote an occupied bed with the whole triad
+   * NULL — the same defect as the first bullet of M1, through a different function. A biconditional
+   * enforced on three of four write entry points is not enforced, and the honest lesson is that
+   * fixing an invariant *in one place* is only correct when there IS one place.
+   *
+   * `assignResource` self-heals such a row and `retireResource` retires it cleanly, so it was
+   * bounded — but until somebody does either, `resourceBoard` renders a bed nobody is in as
+   * occupied, and the index documented as "the board: every bed that is free" agrees with it.
+   */
+  if (decl.occupied !== null && status === decl.occupied) {
+    throw new ResourceError(
+      "not_occupied",
+      `"${status}" is the occupied status for kind "${input.kind}" — a resource cannot be REGISTERED ` +
+        "occupied, because there is no occupant to record; create it and then assignResource",
+    );
+  }
   const parentId = input.parentId ?? null;
   if (parentId !== null) await requireResource(tx, parentId);
   await requireDepth(tx, parentId, 1);

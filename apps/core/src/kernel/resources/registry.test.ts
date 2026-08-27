@@ -312,6 +312,22 @@ describe("the resource registry write surface (Plan 13 T3)", () => {
     expect({ st: row.status, r: row.occupantRef, s: row.since }).toEqual({ st: "occupied", r: "ADM-1", s: T0 });
   });
 
+  /**
+   * CLOSE PASS 2 / R1 — the FOURTH door. The second reviewer found that the first remediation closed
+   * `changeResourceStatus` and left `createResource` open: `status` is a public optional input and
+   * `"occupied"` is in a bed's vocabulary, so a resource could be REGISTERED occupied with nobody
+   * in it. Same defect, different function.
+   */
+  it("R1: a resource cannot be REGISTERED into the occupied status — there is no occupant to record", async () => {
+    await expect(mk("bed", "1", { status: "occupied" })).rejects.toMatchObject({ code: "not_occupied" });
+    await expect(mk("room", "12", { status: "occupied" })).rejects.toMatchObject({ code: "not_occupied" });
+    expect(await db.select().from(resources)).toHaveLength(0);
+    // …and every OTHER declared status is still creatable, so the guard is not refusing broadly.
+    for (const status of ["available", "cleaning", "blocked", "retired"]) await mk("bed", `B-${status}`, { status });
+    expect((await db.select().from(resources)).map((r) => r.status).sort())
+      .toEqual(["available", "blocked", "cleaning", "retired"]);
+  });
+
   it("M1: the guard applies only to assignable kinds — a floor's statuses still move freely", async () => {
     const floor = await mk("floor", "1");
     await withTx(db, (tx) => changeResourceStatus(tx, ACTOR, KINDS, floor, "blocked", { at: T1 }));
