@@ -378,4 +378,136 @@ Header comment states what was hand-authored and why, that `_journal.json` is un
 
 *(Findings as they arrive · the independent reviewer's report · mechanical verification: detached `pnpm verify` with the exit value read from a file, per-commit `git show --stat` against Files lists, frozen-path audit, clean tree · CI green by full SHA · the actuals row: tokens / agents / wall clock / catches · the ledger's ARCHIVE pass (v3 §5) · the token audit (v3 §9.2) · lessons bound for the ledger · the one-line roadmap amendment, which lands at close and not before — the 11h and 16a precedent.)*
 
-**Nothing below this line is written yet. Per v3 §9.4, this phase may not record an actuals row and no session may report it as cheap before the independent review has returned** — 16a passed eleven green `pnpm verify` runs and eight green CI runs and then one reviewer found three patient-safety CRITICALs in it.
+~~**Nothing below this line is written yet. Per v3 §9.4, this phase may not record an actuals row and no session may report it as cheap before the independent review has returned**~~ — 16a passed eleven green `pnpm verify` runs and eight green CI runs and then one reviewer found three patient-safety CRITICALs in it. **The review has returned, twice. Written 2026-08-27.**
+
+---
+
+## 6.1 THE PHASE SHIPPED, AND BOTH DEPLOYS LANDED
+
+**Ten commits, every one CI-green by full SHA.** Seven tasks as written, one docs commit for the spike, two remediation commits for the reviewer's findings.
+
+| | commit | CI |
+|---|---|---|
+| spike answers + §2 re-measure | `710af65` | (docs) |
+| **T1** schema + `0031` | `e913845` | GREEN 686s · run 33021449575 |
+| **T2** the kind seam | `c8a34e6` | GREEN 831s · run 33022864624 |
+| **T3** the write surface | `f4473ac` | GREEN 749s · run 33036418839 |
+| **T4** the read surface | `a6add31` | GREEN 764s · run 33037179412 |
+| **T5** the read routes | `e50e07b` | GREEN 833s · run 33037821225 |
+| **T6** the move + `0032` | `37eb481` | GREEN 859s · run 33038946417 |
+| **T7** the drop + `0033` | `a005775` | GREEN 782s · run 33042088721 |
+| CLOSE remediation, pass 1 | `6bff729` | GREEN 767s · run 33043841354 |
+| CLOSE remediation, pass 2 | `673a8ea` | GREEN 793s · run 33044826256 |
+
+**DEPLOY 1 — `0031` + `0032`, owner-authorised 2026-08-27, `deploy.sh` exit 0**, 8/8 steps, 9/9 services, edge gate green. Production went **31 → 33** applied migration rows. Verified immediately after, read-only:
+
+- both rooms in `resources`, **ids preserved byte for byte** (`01M0TEPMH5H83HWAYQ4AY5MS5C`, `01M0TEPMJ91B2CA5QR6N8CW46Q`), `attributes = {}` on both (floor was NULL — **not** `{"floor": null}`), `status = 'available'` on both, `site_id = 'main'`, `created_by`/`created_at`/`updated_by`/`updated_at` copied verbatim;
+- two `resource_status_history` rows, `from_status` NULL, `actor_id = 'migration:0032'`, reason naming the migration, **and no `resource.registered` event** — exactly as `0032`'s header says it chose;
+- **14 of 14** `opd_doctor_schedules` and **1 of 1** non-null `opd_queue_sessions` resolving through `resources`; both `room_id` foreign keys naming `resources` in `pg_constraint`.
+
+**T7's PRECONDITION, run read-only against production after that deploy and before `0033` was authored** (DD12's gate, and the reason the file split buys anything at all): 33 applied rows · `resources` kind=`room` count **2** = `opd_rooms` count **2** · **0** rows unmigrated · both FKs on `resources` · **`operating_mode_changes` EMPTY.** Production has still never left `commissioning`, so **§ 4A item 4 did not fire** and the drop stayed a migration rather than becoming an owner-authorised operational act.
+
+**DEPLOY 2 — `0033`, separately owner-authorised 2026-08-27, `deploy.sh` exit 0.** Production **33 → 34**. `to_regclass('opd_rooms')` is **NULL**; the two rooms, all 14 schedules and the one session are unchanged and resolving; both foreign keys name `resources`; `/api/health` through the edge answers `200 {"status":"ok","db":"ok","worker":"ok"}`. **`opd_rooms` no longer exists in this hospital.**
+
+---
+
+## 6.2 FINDINGS
+
+### The Assertion Book's own rows — four corrections, which is the instrument working
+
+The plan's standing note says a discriminating input is a PREDICTION until somebody runs it, and asks the executor to correct rows and record the correction. Four needed it.
+
+**F1 — A2 claimed a kill it does not get. `registry.mutant-a2b.ts` SURVIVED, 17/17 passed.**
+A2's row says the assign → release → re-assign leg *"kills both"* the named mutant and its sneakier sibling — an `assignResource` that sets `since` only when it is currently null (`since: existing.since ?? at`). **It does not.** After a CORRECT release, `since` is always null, so `existing.since ?? at` always evaluates to `at`: through the shipped write path the sibling is an EQUIVALENT mutant, reachable only from a state the shipped release cannot produce. **A fixture built entirely through the guarded path can never construct the input that discriminates it** — which is A6's lesson arriving four rows early. Corrected in-task (AGENT-RULES §3 branch (b)): one added leg builds the inconsistent row **by RAW SQL**, exactly as A6 builds its cycle, and the mutant then DIED (`Expected: 2026-08-26T12:00:00.000Z · Received: 2026-08-26T10:00:00.000Z`).
+
+**F2 — A11's fixture cannot be built the obvious way, and the obvious way tests the wrong statement.**
+A11 needs an `opd_doctor_schedules` row whose `room_id` names no room, which is constructible only by dropping the foreign key first. Do just that and leave it dropped, and the mutant fails at `0032`'s own `DROP CONSTRAINT` — a fixture artefact, not the failure A11 is about. The fixture must **re-add the constraint `NOT VALID`**, which leaves it PRESENT (so the migration's drop succeeds) while tolerating the pre-existing bad row — the state a live box reaches after an unguarded repair. With that correction the row measures what it claims: shipped raises `opd_doctor_schedules has 1 row(s) whose room_id names no opd_rooms row; refusing to migrate a broken room book` and writes **0 rooms**; the mutant emits a NOTICE, writes **2 rooms**, and fails later at the FK ADD naming a CONSTRAINT.
+
+**F3 — A12's mutant is not a hypothetical. It is `drizzle-kit generate`'s DEFAULT OUTPUT.**
+The plan calls the CASCADE mutant *"one word long"*, implying the bare drop is the natural thing and CASCADE the deviation. **It is the other way round.** `pnpm db:generate` emitted `DROP TABLE "opd_rooms" CASCADE;` and the hand-edit that ships is the REMOVAL of that word. That inverts which case takes effort and makes A12 the most valuable row in the phase rather than a formality. Measured, at `0031` with the repoint not applied: CASCADE succeeds, `NOTICE: drop cascades to 2 other objects`, and **both `room_id` foreign keys vanish — 0 surviving**, leaving a live hospital's schedule book unconstrained. The bare drop refuses, names both dependent constraints, and leaves table and keys untouched.
+
+**F4 — A13's acceptance criterion is literally unmeetable and should be restated.**
+A13 says the mechanical instrument is a grep returning *"zero hits outside `apps/core/drizzle/`"*. It returns **14**, every one a COMMENT — including the paragraphs in `schema/resources.ts` that carry this phase's whole reasoning about why the registry exists. Stripping them to satisfy a grep would delete the argument to save the assertion. **The criterion is restated as: zero NON-COMMENT references**, which is what the row actually means and which holds — verified, and independently guaranteed by typecheck (an `opdRooms` identifier would not resolve) and by the suite (an `opd_rooms` SQL string throws).
+
+### The independent reviewer — two passes, no CRITICAL, seven MAJOR across both
+
+**Pass 1** read all eight commits together plus the live database. **No CRITICAL.** It confirmed by execution — not by inference — that `0032`'s three guards RAISE rather than skip, that the whole migration runs in one transaction so a RAISE rolls the file back, that guard 2 asserts ids-preserved by left-join rather than trusting a count, that the production backfill was correct column by column, and that `0033` was safe to apply. It hunted specifically for a value where the DD9 facade and the migration disagree and **found none**.
+
+| | finding | disposition |
+|---|---|---|
+| **M1** | **DD6's occupancy invariant was enforced on `assignResource`/`releaseResource` only.** `changeResourceStatus` validated the status against the kind's vocabulary and never looked at the triad, so three states were reachable: an occupied bed with nobody in it; an occupied bed reading `available` to **the exact index documented as "the board: every bed that is free"**; and a retirement that walked straight past `retireResource`'s own guard. | **FIXED** `6bff729`, four legs |
+| **M2** | `kinds.ts` promises in capitals that a duplicate kind is a BOOT error. `collectResourceKinds` had **no caller outside its own test**, so a duplicate-`bed` deployment would have booted fine. The cited precedent, `collectProviders`, *is* called from a live path. | **FIXED** `6bff729` |
+| **M3** | **A8, A9, A11 and A12 have no shipped regression.** They are mutants of SQL, and the shipped A8/A9 legs test the DD9 MAPPER, not the backfill. No test anywhere applies `0032` to a database with rows in `opd_rooms` — the per-worker databases are empty when it runs. **The `floor IS NOT NULL` and `active = false` branches have therefore never executed in any environment, and after T7 they never can.** | **RECORDED — not fixable, see 6.4** |
+| **M4** | `errors.ts` exports `resourceHttpStatus` so no controller keeps a private copy of the mapping, citing the Plan 09 escape by name. The controller kept a private copy. | **FIXED** `6bff729` |
+| **M5** | Three unindexed full-table reads: `subtreeHeight` scanned the whole table once per level **inside the caller's write transaction**; `resourceTree` and `resourceBoard` fetched every matching row to filter roots in JS — the board behind a live route. | **FIXED** `6bff729` |
+
+**Pass 2 reviewed the remediation adversarially and found two MAJOR defects in it. Both were real and both were introduced by the fix.**
+
+| | finding | disposition |
+|---|---|---|
+| **R1** | **THE FOURTH DOOR.** Pass 1 closed the invariant on `changeResourceStatus` and left `createResource` open: `status` is a public optional input and `"occupied"` is in a bed's vocabulary, so a resource could be **REGISTERED** occupied with the triad NULL — M1's first bullet, through a different function. | **FIXED** `673a8ea`, one leg |
+| **R2** | **THE M1 FIX OPENED A 500 AT THE MASTERS COUNTER.** Making `changeResourceStatus` refuse an occupied resource made `already_occupied` reachable from `updateRoom({active:false})`; `OpdError` has no code for an occupied room, so `asOpdError` rethrew and `opd-masters.controller.ts`'s `toHttp` rethrew. **That is Plan 09's `MembershipError` escaping `billing.controller.ts`, one phase later, introduced by the commit that fixed a different defect** — and it is the cautionary tale this plan's own DD14 and `errors.ts` header cite. | **FIXED** `673a8ea` |
+
+A targeted third exchange confirmed all four fixes and found nothing new: R1's guard has no false positive and `createResource`'s default can no longer equal `occupied` (m4 refuses that declaration at boot); R2 maps `already_occupied` to **409**, shadows nothing (every error class in that chain extends `Error` directly, so no clause captures another's), and adds no import edge; m4 refuses none of the kernel five; m5's replacement paragraph is true of the shipped code.
+
+### Minor findings, recorded and not fixed
+
+- **`0032`'s collision guard names ONE collision.** `SELECT string_agg(...) INTO collision ... GROUP BY ... HAVING count(*) > 1` returns one row per colliding GROUP and plpgsql `SELECT INTO` keeps the first. It still RAISEs correctly; the operator fixes one, re-runs, hits the next. **Not edited: `0032` is applied to production and its hash is in `drizzle.__drizzle_migrations`.**
+- **`0032` guard (c) checks id collisions, not code collisions** against a pre-existing `resources` row at the same `(site, kind, lower(code))`. Unreachable under the deploy ordering actually used. Same reason not edited.
+- **`changeResourceStatus` preserves the invariant but does not REPAIR it.** A row with `occupant_ref` set while status is not the occupied one moves freely with a stale occupant. Proved to be a correct inductive invariant by the reviewer: from a consistent row no transition produces an inconsistent one. Unreachable through the write path after `673a8ea`; `releaseResource` is the repair; **production has no such row (verified).**
+- **The worker's registry does not call `collectResourceKinds`.** Nothing installed there declares `resourceKinds` today. **Plan 15 must know**: its mini-OT manifest will likely carry subscriptions and therefore be installed in the worker, which would then boot without the refusal the API now has — the API-and-worker-differ shape `manifests.test.ts` exists to police.
+- `app.module.ts` deep-imports `./kernel/resources/kinds` rather than the module index, which `index.ts`'s own header forbids. Defensible at a composition root; the file says otherwise.
+- `resourceHistory`'s `limit` returns the OLDEST rows. Pinned deliberately by a named test; recorded because a board asks the opposite question.
+- `0032` writes history ids as `'MIG0032-' || id` rather than ULIDs. Self-documenting, and nothing constrains it.
+- `updateRoom({active:true})` forces the kind's `initial`. **The `active` toggle is the shape that has to go when the registry gains a second writer** — written into `masters.ts` rather than left to be discovered.
+
+---
+
+## 6.3 MECHANICAL VERIFICATION
+
+- **`pnpm verify` exit 0**, detached, exit value read from a file, on every task and on both remediations. Final: **apps/core 219 suites / 1941 tests · apps/web 43 test files · packages/contracts 4 suites / 21 tests.** Derived pre-phase baseline 214 / 1863 — the phase adds **5 suites and 78 tests and deletes none** (AGENT-RULES §4).
+- **Per-commit `git show --stat` against each task's Files list: ALL SEVEN MATCH EXACTLY.** No file touched that its task's list does not name; no file named and not touched. Confirmed independently by the reviewer.
+- **Sixteen mutants built**, each a separate scratch file beside its source, each run ISOLATED with counts quoted. **Fifteen DIED on first run; `a2b` SURVIVED and DIED after F1's correction.** The four migration mutants (A8–A11) were run against scratch databases built by applying `0000`–`0031` and seeded with a fixture that **deliberately differs from production** — one room with `floor = '2'`, one INACTIVE — because spike Q1 measured that production holds zero of each and a production-shaped fixture is blind to both mappings (§2.102).
+- **All scratch deleted before final counts.** `git log --stat 8c64cad..HEAD` contains **no `*.mutant*`, no `.log`, no `.exit`, no drill file**. Every scratch database (`p13_base`, `p13_run`, `p13_ok`, `p13a`, `p13b`) dropped; `select datname from pg_database where datname like 'p13%'` returns nothing. Working tree clean.
+- **Frozen-path audit:** no frozen path in any diff. `truncateAll` gained both new tables in the `patients`/`opd` statement at T1 — parent and children in one statement, correct at T1 and at T6 — and lost `opd_rooms` at T7 in the same commit as `0033`.
+- **`_journal.json` never hand-edited** (AGENT-RULES §6): 34 entries, `idx` monotonic 0–33, one per `.sql` file, generator-appended in the three feature commits. No `drizzle.__drizzle_migrations` row inserted or deleted by hand.
+- **Censuses moved exactly as DD11 predicted and no others:** manifests **12 → 13** (appended in order; leg 3's assertion AND its title moved from "three" to "four" with the `(1d)` block) · permissions **77 → 78 declared, 63 → 64 held, 14 not-yet-modelled UNCHANGED** · SPA routes **25**, deploy seeds **7**, API prefixes **1**, `packages/contracts` **4/21** — all untouched.
+
+---
+
+## 6.4 THE ACTUALS, AND THE STOP-LOSS WAS BREACHED
+
+| | |
+|---|---|
+| stop-loss | **660,000** (§ THE LANE) |
+| **reviewer tokens, measured** | **604,655** — pass 1 **175,209** · pass 2 **205,365** · targeted check **224,081** |
+| main-session tokens | **UNMEASURABLE FROM INSIDE A SESSION** — runbook **O3**, open since Plan 11e |
+| agents | ONE, invoked three times |
+| commits / CI runs | 10 / 10 green by full SHA |
+| deploys | 2, each separately owner-authorised |
+| mutants | 16 built, 16 died |
+| catches | 4 Assertion Book corrections · 5 MAJOR (pass 1) · 2 MAJOR (pass 2) · 0 CRITICAL |
+
+**The reviewer alone consumed 92% of the whole phase's stop-loss, so the phase breached it.** Stated plainly because §9.4 exists to stop a session reporting a phase as cheap, and this one was not.
+
+**And the shape of the breach is the finding: A RESUMED REVIEWER GETS MORE EXPENSIVE EVERY TIME, WHILE THE WORK IT DOES SHRINKS.** 175,209 → 205,365 → **224,081**, against a workload that went from *review eight commits and a live database* to *review one seven-file diff* to *answer four yes/no questions*. The third invocation cost **28% more than the first and did perhaps 5% of the work.** v3 §9.5 says a resumed agent starts full and the plan's own stop-loss arithmetic budgeted for it — what neither anticipated is that the cost keeps CLIMBING, because each resume replays a transcript that now contains the previous review IN FULL. The budgeted review term (450,230) was set from 16a's fresh pass plus 09a's one resume; it is short by a third against two resumes.
+
+**Was it worth it?** The second pass found two MAJOR defects **in the first pass's own remediation**, one of which (R2) re-introduced the exact 500-at-the-counter defect this plan cites as its cautionary tale. A phase that had stopped after one pass would have shipped it. The plan's argument for budgeting two passes — *"a remediation on that path is unreviewed code on the same path"* — is now evidenced rather than asserted, and it argues for a THIRD pass that this phase deliberately did not take, substituting a bounded four-question check instead. **That substitution is the reusable move**, not the extra pass.
+
+---
+
+## 6.5 LESSONS BOUND FOR THE LEDGER
+
+1. **A MUTANT OF SQL NEEDS A TEST THAT RUNS THE SQL.** Four Assertion Book rows (A8, A9, A11, A12) named mutants of a migration, and the shipped tests exercise the application code either side of it. They were discharged by a scratch-database drill in the executing session — `0000`–`0031` applied by `psql`, a template snapshot, one mutated file per row — and that evidence lives only in a transcript. **A migration whose branches never execute in any environment cannot be regression-tested after its source table is dropped.** Where a backfill's branch matters, the phase that writes it must either ship a migration-level test or accept, in writing, that its only evidence is one session's drill.
+2. **"ENFORCE IT AT THE WRITE PATH IN ONE PLACE" IS ONLY SOUND WHEN THERE IS ONE PLACE.** DD6 said one place; there were four write entry points and a facade on top. The first remediation closed one door and the reviewer found the fourth. **Count the doors before writing the sentence.**
+3. **A GUARD ADDED IN THE KERNEL CHANGES WHAT A MODULE'S CONTROLLER CAN RECEIVE.** Making `changeResourceStatus` refuse made a new error code reachable from an OPD route whose `toHttp` had never seen it — a 500 introduced by a correctness fix. **When you add a refusal to a shared function, walk every caller's error mapper in the same commit.**
+4. **THE GENERATOR'S DEFAULT CAN BE THE DANGEROUS FORM.** `drizzle-kit generate` emits `DROP TABLE … CASCADE`. A plan that treats the safe form as the default and the dangerous one as a deviation has the effort backwards, and the review that catches it is the one that reads the generated file rather than the plan's description of it.
+5. **A FIXTURE BUILT THROUGH THE GUARDED PATH CANNOT TEST THE GUARD.** A6 says this about the tree reader; F1 found it true of `since`, and F2 of the migration's precondition. **Raw SQL is the instrument, and a row that needs it should say so.**
+6. **RESUMING A REVIEWER COSTS MORE EACH TIME.** See 6.4. Budget a resume at ~1.3× the previous invocation regardless of how small the question is, and prefer a bounded question list over an open re-review once the diff is small.
+7. **RE-MEASURING AND FINDING NOTHING MOVED IS WORTH RECORDING.** §2's kickoff re-measure returned every number unchanged. That is not a wasted step: it is what makes the three numbers the launch prompt had wrong (§2, written 24 hours earlier) a measurement rather than a coincidence.
+
+---
+
+## 6.6 THE ROADMAP AMENDMENT
+
+> **Plan 13 — Resource Registry (kernel) — CLOSED AND DEPLOYED 2026-08-27.** `resources` + `resource_status_history` are live; OPD's rooms are registry rows and `opd_rooms` is dropped. The kind seam is open for Plan 15 (`theatre`, `device`), Plan 16 (`store`) and Plan 17 (`bench`, `analyzer`) with no kernel edit. **The hard gate before the IPD cluster is discharged.** Carried forward to Plan 15: the worker's registry does not collect resource kinds; instrument sets are NOT a registry kind (§ 4A item 2, owner-ruled); `class` and its tariff link land with the IPD cluster (§ 4A item 1); master-data change control is its own phase after the IPD cluster and cannot be scheduled before runbook **O1** closes (§ 4A item 3).
