@@ -12,4 +12,6 @@ export * from "./events";
 export * from "./manifest";
 // PLAN 13 T3 — the write surface.
 export * from "./registry";
+// PLAN 13 T4 — the read surface.
+export * from "./read";
 export { ResourcesModule } from "./resources.module";
