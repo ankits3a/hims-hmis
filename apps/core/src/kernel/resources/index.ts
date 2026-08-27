@@ -10,4 +10,6 @@ export * from "./kinds";
 export * from "./errors";
 export * from "./events";
 export * from "./manifest";
+// PLAN 13 T3 — the write surface.
+export * from "./registry";
 export { ResourcesModule } from "./resources.module";
