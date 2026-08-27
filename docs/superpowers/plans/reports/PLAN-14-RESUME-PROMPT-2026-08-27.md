@@ -215,6 +215,14 @@ Tally, no register); A11's append-only absence; and the four Assertion Book corr
 The phase document is the contract; this file is only the seed. If they disagree, the phase document
 wins and the disagreement is a finding.
 
+**If the uncommitted remediation has vanished, it is recoverable.** A second lane shares this
+working tree, and protocol §6 warns that another session's `git stash -u` or a broad `git add` can
+sweep files that are not yours. Before handing off, the diff was written to
+`/opt/hmis/.plan14-remediation.patch` (untracked, inside the only writable path). If
+`git status` no longer shows the eight modified files, `git apply .plan14-remediation.patch`
+restores them. If the patch is gone too, every fix is described precisely enough above to rewrite —
+and C1's is four lines.
+
 **The single most important thing in this handoff is C1.** It is a silent stock loss on a
 money-adjacent read model with no reconciliation tool in the phase, and its fix is written but has
 never been compiled or run. Verify it before anything else.
