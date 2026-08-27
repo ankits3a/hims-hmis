@@ -22,6 +22,7 @@ import { OpsModule } from "./kernel/ops/ops.module";
 import { SearchModule } from "./kernel/search/search.module";
 import { InferenceModule } from "./kernel/inference/inference.module";
 import { ResourcesModule } from "./kernel/resources/resources.module";
+import { collectResourceKinds } from "./kernel/resources/kinds";
 
 export { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "./kernel/tokens";
 
@@ -59,6 +60,17 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // and absent there, and it states the worker's deliberately different set in as many
         // words so that difference can never be read as drift.
         for (const manifest of ALL_MANIFESTS) registry.install(manifest);
+        // PLAN 13 CLOSE / M2 — THE KIND SEAM'S BOOT REFUSALS, ACTUALLY AT BOOT.
+        // `kinds.ts` promises in capitals that a kind two manifests claim, or a declaration naming
+        // a status outside its own vocabulary, is a BOOT error rather than a write-time one —
+        // "finding out at the first admission is worse than finding out at startup". The collector
+        // shipped with no caller outside its own test, so neither refusal existed in the running
+        // system and a duplicate-`bed` deployment would have booted fine. `collectProviders`, the
+        // precedent `kinds.ts` cites, IS called from a live path (kernel/search/registry.ts); this
+        // line is what makes the citation true. The return value is deliberately discarded — the
+        // THROW is the whole point, and the write surface takes its declarations as a parameter
+        // (see registry.ts's header on why that is a parameter and not a global).
+        collectResourceKinds(registry);
         return registry;
       },
     },

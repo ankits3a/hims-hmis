@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../events/append";
 import { resourceStatusHistory, resources } from "../db/schema";
@@ -108,9 +108,13 @@ async function subtreeHeight(tx: Tx, id: string): Promise<number> {
   let height = 0;
   while (frontier.length > 0 && height <= MAX_RESOURCE_DEPTH) {
     height += 1;
-    const rows = await tx.select({ id: resources.id, parentId: resources.parentId }).from(resources);
-    const byParent = new Set(frontier);
-    frontier = rows.filter((r) => r.parentId !== null && byParent.has(r.parentId)).map((r) => r.id);
+    // CLOSE / M5 — the predicate is IN SQL and it uses `resources_parent_idx`. This shipped as an
+    // unfiltered `select … from resources` filtered in JS: a FULL TABLE SCAN, once per level, up to
+    // seven times, INSIDE THE CALLER'S WRITE TRANSACTION, on every move. Correct and a scaling
+    // landmine on the one table the IPD cluster is about to make large.
+    const rows = await tx.select({ id: resources.id }).from(resources)
+      .where(inArray(resources.parentId, frontier));
+    frontier = rows.map((r) => r.id);
   }
   return height;
 }
@@ -303,6 +307,50 @@ export async function changeResourceStatus(
   if (!decl.statuses.includes(toStatus)) {
     throw new ResourceError("unknown_status", `"${toStatus}" is not a status the kind "${existing.kind}" admits`);
   }
+  /**
+   * ═══ CLOSE / M1 — DD6's BICONDITIONAL IS ENFORCED HERE TOO, NOT ONLY ON assign/release ═══
+   *
+   * The independent reviewer found this hole and was right about it. DD6 states the invariant as
+   * `occupant_ref` non-null ⟺ `occupant_type` non-null ⟺ `since` non-null ⟺ `status` is the kind's
+   * `occupied`, and says it is *"enforced at the write path in one place"*. It was enforced along
+   * `assignResource`/`releaseResource` only; this function validated the status against the kind's
+   * vocabulary and never looked at the occupancy triad. Three states were reachable:
+   *
+   *   · → `occupied` on a FREE bed: an occupied bed with nobody in it, which `resourceBoard`
+   *     renders and `resources_kind_status_idx` is documented to serve.
+   *   · → `available` on an OCCUPIED bed: a bed picker filtering `status='available'` — the exact
+   *     query that index exists for — offers a bed with a patient in it. `assignResource` then
+   *     refuses with `already_occupied` on a bed the board just said was free.
+   *   · → `retired` on an OCCUPIED bed: silently bypasses `retireResource`'s own guard, whose
+   *     comment says a retired bed with a patient in it is the row DD2 exists to prevent. Two
+   *     doors, one locked.
+   *
+   * NOTHING IN PLAN 13 COULD REACH ANY OF THEM — the write surface has no route (DD14) and OPD's
+   * `updateRoom` only ever passes `available`/`retired` to a room nothing can occupy. It is fixed
+   * now rather than later because this is the kernel API the IPD cluster and the mini-OT are about
+   * to build bed management on, and the plan books the invariant as already held.
+   *
+   * NO NEW ERROR CODE. `errors.ts` closes its union for the phase and says a later task needing a
+   * code it lacks has found a plan defect; the two existing codes carry the meaning exactly, and
+   * `already_occupied` is the same refusal `retireResource` already makes for the same reason.
+   */
+  if (decl.occupied !== null) {
+    if (toStatus === decl.occupied && existing.occupantRef === null) {
+      throw new ResourceError(
+        "not_occupied",
+        `"${toStatus}" is the occupied status for kind "${existing.kind}" and resource ${id} has no ` +
+          "occupant — use assignResource, which sets the whole triad in one write",
+      );
+    }
+    if (toStatus !== decl.occupied && existing.status === decl.occupied && existing.occupantRef !== null) {
+      throw new ResourceError(
+        "already_occupied",
+        `resource ${id} is occupied by ${existing.occupantType ?? "?"} ${existing.occupantRef}; ` +
+          "use releaseResource, which clears the whole triad in one write",
+      );
+    }
+  }
+
   const from = existing.status;
   if (from === toStatus) return;
   const at = opts.at ?? new Date();

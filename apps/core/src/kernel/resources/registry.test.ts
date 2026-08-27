@@ -275,6 +275,58 @@ describe("the resource registry write surface (Plan 13 T3)", () => {
     expect(await eventNames()).toEqual(["resource.registered", "resource.status_changed", "resource.status_changed"]);
   });
 
+  /**
+   * ═══ CLOSE / M1 — DD6's BICONTIDIONAL, PINNED WHERE IT WAS NOT ═══
+   *
+   * The independent reviewer found that `changeResourceStatus` enforced the occupancy invariant
+   * nowhere: A2 covered `assignResource`/`releaseResource` and nothing covered the third door.
+   * These are the legs that were missing, and each one names the state that was reachable.
+   */
+  it("M1: `changeResourceStatus` cannot manufacture an occupied resource with no occupant", async () => {
+    const id = await mk("bed", "1");
+    await expect(
+      withTx(db, (tx) => changeResourceStatus(tx, ACTOR, KINDS, id, "occupied", { at: T1 })),
+    ).rejects.toMatchObject({ code: "not_occupied" });
+    // Nothing moved. A board reading `status='occupied'` would have rendered a bed with nobody in it.
+    expect((await rowOf(id)).status).toBe("available");
+    expect(await historyOf(id)).toHaveLength(1);
+  });
+
+  it("M1: `changeResourceStatus` cannot free an occupied resource behind the triad's back", async () => {
+    const id = await mk("bed", "1");
+    await withTx(db, (tx) => assignResource(tx, ACTOR, KINDS, id, { occupantType: "admission", occupantRef: "ADM-1", at: T0 }));
+    // THE ROW THAT MATTERS: a bed picker filtering `status='available'` — the query
+    // `resources_kind_status_idx` exists for — would have offered this bed with a patient in it.
+    await expect(
+      withTx(db, (tx) => changeResourceStatus(tx, ACTOR, KINDS, id, "available", { at: T1 })),
+    ).rejects.toMatchObject({ code: "already_occupied" });
+    await expect(
+      withTx(db, (tx) => changeResourceStatus(tx, ACTOR, KINDS, id, "blocked", { at: T1 })),
+    ).rejects.toMatchObject({ code: "already_occupied" });
+    // …and the same door `retireResource` already guarded, which this one used to bypass.
+    await expect(
+      withTx(db, (tx) => changeResourceStatus(tx, ACTOR, KINDS, id, "retired", { at: T1 })),
+    ).rejects.toMatchObject({ code: "already_occupied" });
+
+    const row = await rowOf(id);
+    expect({ st: row.status, r: row.occupantRef, s: row.since }).toEqual({ st: "occupied", r: "ADM-1", s: T0 });
+  });
+
+  it("M1: the guard applies only to assignable kinds — a floor's statuses still move freely", async () => {
+    const floor = await mk("floor", "1");
+    await withTx(db, (tx) => changeResourceStatus(tx, ACTOR, KINDS, floor, "blocked", { at: T1 }));
+    await withTx(db, (tx) => changeResourceStatus(tx, ACTOR, KINDS, floor, "available", { at: T2 }));
+    expect((await historyOf(floor)).map((h) => h.toStatus)).toEqual(["available", "blocked", "available"]);
+  });
+
+  it("M1: release then re-status still works — the guard refuses the SHORTCUT, not the sequence", async () => {
+    const id = await mk("bed", "1");
+    await withTx(db, (tx) => assignResource(tx, ACTOR, KINDS, id, { occupantType: "admission", occupantRef: "ADM-1", at: T0 }));
+    await withTx(db, (tx) => releaseResource(tx, ACTOR, KINDS, id, { at: T1 }));
+    await withTx(db, (tx) => changeResourceStatus(tx, ACTOR, KINDS, id, "available", { at: T2 }));
+    expect((await historyOf(id)).map((h) => h.toStatus)).toEqual(["available", "occupied", "cleaning", "available"]);
+  });
+
   it("A3: a no-op transition writes NOTHING — no history row, no event", async () => {
     const id = await mk("bed", "1");
     await withTx(db, (tx) => changeResourceStatus(tx, ACTOR, KINDS, id, "available", { at: T1 }));

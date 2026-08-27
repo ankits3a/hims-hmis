@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { resourceStatusHistory, resources } from "../db/schema";
 import { MAX_RESOURCE_DEPTH } from "./kinds";
 import type { Db } from "../db/client";
@@ -89,9 +89,12 @@ export async function resourceTree(db: Db, opts: ResourceTreeOptions = {}): Prom
     ...(opts.siteId === undefined ? [] : [eq(resources.siteId, opts.siteId)]),
     ...(opts.kind === undefined ? [] : [eq(resources.kind, opts.kind)]),
   ];
+  // CLOSE / M5 — `isNull` IN SQL, not a JS filter over every matching row. The root query shipped
+  // as "fetch every resource of that kind and keep the ones with no parent", which reads the whole
+  // table to return its top level.
   const roots = opts.rootId === undefined
-    ? (await db.select().from(resources).where(and(...rootWhere)).orderBy(asc(resources.kind), asc(resources.code)))
-        .filter((r) => r.parentId === null)
+    ? await db.select().from(resources).where(and(isNull(resources.parentId), ...rootWhere))
+        .orderBy(asc(resources.kind), asc(resources.code))
     : await db.select().from(resources).where(eq(resources.id, opts.rootId));
 
   const nodes = roots.map(toNode);
@@ -103,7 +106,15 @@ export async function resourceTree(db: Db, opts: ResourceTreeOptions = {}): Prom
   for (let level = 1; level < maxDepth && frontier.length > 0; level += 1) {
     const parentIds = frontier.map((n) => n.id);
     const children = await db.select().from(resources)
-      .where(inArray(resources.parentId, parentIds))
+      .where(and(
+        inArray(resources.parentId, parentIds),
+        // CLOSE / m3 — THE SITE PREDICATE BELONGS ON THE DESCENT TOO. It shipped on the ROOT query
+        // only, so `resourceTree({ siteId: "main" })` would pull children from another site into a
+        // tree that claims to be one site's. Inert today (production has exactly one site value,
+        // spike Q4) and wrong the moment a second one exists — which is the case DD3's column was
+        // added early precisely to make cheap.
+        ...(opts.siteId === undefined ? [] : [eq(resources.siteId, opts.siteId)]),
+      ))
       .orderBy(asc(resources.kind), asc(resources.code));
     const byParent = new Map(frontier.map((n) => [n.id, n]));
     const next: ResourceNode[] = [];
@@ -139,14 +150,16 @@ export type ResourceBoardOptions = {
  * apart, because `parentId` is constant across it.
  */
 export async function resourceBoard(db: Db, opts: ResourceBoardOptions): Promise<ResourceBoardRow[]> {
-  const rows = await db.select().from(resources)
+  // CLOSE / M5 — as the tree above: `isNull` in SQL. `GET /resources/board?kind=bed` with no
+  // parentId read EVERY bed row in the hospital to return the root-level ones, and it is behind a
+  // live HTTP route.
+  const direct = await db.select().from(resources)
     .where(and(
       eq(resources.kind, opts.kind),
       ...(opts.siteId === undefined ? [] : [eq(resources.siteId, opts.siteId)]),
-      ...(opts.parentId === undefined ? [] : [eq(resources.parentId, opts.parentId)]),
+      opts.parentId === undefined ? isNull(resources.parentId) : eq(resources.parentId, opts.parentId),
     ))
     .orderBy(asc(resources.code));
-  const direct = opts.parentId === undefined ? rows.filter((r) => r.parentId === null) : rows;
   // A board row is FLAT by construction rather than by stripping a `children` off a node: shipping
   // an always-empty `children: []` on a snapshot would invite a caller to render a TREE from a
   // query that fetched exactly one level.

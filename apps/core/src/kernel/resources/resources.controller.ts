@@ -4,7 +4,7 @@ import {
 import { z } from "zod";
 import { DB } from "../tokens";
 import { RequirePermission } from "../auth/decorators";
-import { ResourceError } from "./errors";
+import { ResourceError, resourceHttpStatus } from "./errors";
 import { RESOURCES_READ } from "./manifest";
 import { resourceBoard, resourceHistory, resourceTree } from "./read";
 import type { Db } from "../db/client";
@@ -61,11 +61,15 @@ import type { ResourceBoardRow, ResourceHistoryRow, ResourceNode } from "./read"
 function toHttp(e: unknown): never {
   if (e instanceof ResourceError) {
     const body = { code: e.code, detail: e.detail ?? null, message: e.message };
-    if (e.code === "unknown_resource") throw new NotFoundException(body);
-    if (e.code === "unknown_kind" || e.code === "unknown_status" || e.code === "duplicate_kind") {
-      throw new BadRequestException(body);
+    // CLOSE / M4 — READ FROM `resourceHttpStatus`, NEVER RESTATE IT. This function shipped with a
+    // hand-rolled copy of the same 404/400/409 conditionals, which is precisely the second copy
+    // `errors.ts` exports that mapper to prevent (§2.54, and the Plan 09 escape its header cites).
+    // They agreed, which is what made it a latent defect rather than a live one. One table now.
+    switch (resourceHttpStatus(e.code)) {
+      case 404: throw new NotFoundException(body);
+      case 400: throw new BadRequestException(body);
+      default: throw new ConflictException(body);
     }
-    throw new ConflictException(body);
   }
   throw e; // anything unrecognised is a genuine bug: 500, loudly
 }

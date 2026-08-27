@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { opdDepartments, opdDoctors, resources, users } from "../../kernel/db/schema";
 import {
@@ -149,6 +149,14 @@ export async function createRoom(tx: Tx, actor: Actor, input: { code: string; na
  * (`changeResourceStatus`), and the registry keeps `resource.updated` and `resource.status_changed`
  * from overlapping precisely so a consumer need not read both to know what happened.
  *
+ * **`active: true` FORCES the kind's `initial`, which is `available`.** Today that is exactly right:
+ * a room's only two reachable statuses through this path are `available` and `retired`, because
+ * nothing in this phase can occupy or block one. From Plan 15 on it will not be — reactivating a
+ * room that a module had put into `cleaning` or `blocked` would reset it to `available`, and a
+ * boolean cannot express which of four states to return to. **The `active` toggle is the shape that
+ * has to go when the registry gains a second writer**, and it is written down here rather than
+ * discovered then (CLOSE / m5).
+ *
  * **`active: false` goes through `changeResourceStatus` and NOT through `retireResource`.**
  * `retireResource` additionally refuses an OCCUPIED resource — correct for the registry, and a
  * behaviour change for a function that has always deactivated a room unconditionally. Nothing in
@@ -203,12 +211,11 @@ export async function listRooms(db: Db, opts: { activeOnly?: boolean } = {}): Pr
   return opts.activeOnly ? mapped.filter((r) => r.active) : mapped;
 }
 
-/** One room by id, or undefined — the shape `schedules.ts` and the controller need. */
-export async function getRoom(db: Db, id: string): Promise<RoomRow | undefined> {
-  const rows = await db.select().from(resources)
-    .where(and(eq(resources.id, id), eq(resources.kind, "room")));
-  return rows[0] === undefined ? undefined : toRoomRow(rows[0]);
-}
+// CLOSE / m4 — a `getRoom(db, id)` shipped here with zero callers, zero tests, no entry in T6's
+// Produces list, and a doc comment claiming it was "the shape `schedules.ts` and the controller
+// need" when neither used it. Removed rather than wired: `schedules.ts` needs a SET of rooms and
+// queries for them directly, and the controller reads through `listRooms`. An unused export on a
+// facade is a second vocabulary waiting for its first caller.
 
 export async function createDoctor(
   tx: Tx,
