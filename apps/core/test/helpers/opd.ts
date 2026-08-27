@@ -4,7 +4,7 @@ import { createSession } from "../../src/kernel/auth/sessions";
 import { assignRole } from "../../src/kernel/auth/permissions";
 import { seedSodPairs } from "../../src/kernel/auth/sod";
 import { activateDefinition, approveDefinition, createDraft } from "../../src/kernel/workflow/definitions";
-import { registrationConfig, roles, sodPairs, opdConfig, opdDepartments, opdDoctors, opdDoctorSchedules, opdRooms } from "../../src/kernel/db/schema";
+import { registrationConfig, roles, sodPairs, opdConfig, opdDepartments, opdDoctors, opdDoctorSchedules, resources } from "../../src/kernel/db/schema";
 import { withTx } from "../../src/kernel/db/client";
 import { loadConfig } from "../../src/kernel/config";
 import { newId } from "@hmis/contracts";
@@ -72,9 +72,13 @@ export async function seedOpdMasters(db: Db): Promise<{ deptId: string; dept2Id:
     { id: deptId, code: "MED", name: "General Medicine", createdBy: "t", updatedBy: "t" },
     { id: dept2Id, code: "PED", name: "Paediatrics", createdBy: "t", updatedBy: "t" },
   ]);
-  await db.insert(opdRooms).values([
-    { id: roomId, code: "12", name: "Room 12", createdBy: "t", updatedBy: "t" },
-    { id: room2Id, code: "14", name: "Room 14", createdBy: "t", updatedBy: "t" },
+  // PLAN 13 T6 — rooms are REGISTRY rows now. Seeded directly rather than through `createResource`
+  // because this helper runs outside a transaction and every suite that calls it wants two rooms,
+  // not two rooms and four events; `kind`/`status` are spelled here so a reader of any OPD suite can
+  // see what a room now IS.
+  await db.insert(resources).values([
+    { id: roomId, kind: "room", code: "12", name: "Room 12", status: "available", createdBy: "t", updatedBy: "t" },
+    { id: room2Id, kind: "room", code: "14", name: "Room 14", status: "available", createdBy: "t", updatedBy: "t" },
   ]);
   return { deptId, dept2Id, roomId, room2Id };
 }

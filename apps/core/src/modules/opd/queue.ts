@@ -3,7 +3,7 @@ import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
 import {
-  opdDepartments, opdDoctorSchedules, opdDoctors, opdEncounters, opdQueueEntries, opdQueueSessions, opdRooms,
+  opdDepartments, opdDoctorSchedules, opdDoctors, opdEncounters, opdQueueEntries, opdQueueSessions, resources,
 } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { loadOpdConfig } from "./config";
@@ -200,11 +200,13 @@ export type BoardItem = {
 export async function boardSnapshot(db: Db, serviceDate: string, roomIds?: string[], now: Date = new Date()): Promise<BoardItem[]> {
   const cfg = await loadOpdConfig(db);
   const rows = await db
-    .select({ session: opdQueueSessions, doctorName: opdDoctors.displayName, departmentName: opdDepartments.name, roomCode: opdRooms.code })
+    // PLAN 13 T6 — the join target moved to the registry and the join STAYS A LEFT JOIN: a session
+    // with no room still belongs on the board (it sorts to the end, below).
+    .select({ session: opdQueueSessions, doctorName: opdDoctors.displayName, departmentName: opdDepartments.name, roomCode: resources.code })
     .from(opdQueueSessions)
     .innerJoin(opdDoctors, eq(opdQueueSessions.doctorId, opdDoctors.id))
     .innerJoin(opdDepartments, eq(opdDoctors.departmentId, opdDepartments.id))
-    .leftJoin(opdRooms, eq(opdQueueSessions.roomId, opdRooms.id))
+    .leftJoin(resources, eq(opdQueueSessions.roomId, resources.id))
     .where(and(
       eq(opdQueueSessions.serviceDate, serviceDate),
       ne(opdQueueSessions.status, "closed"),
@@ -264,7 +266,7 @@ export async function summaryByDoctor(db: Db, departmentId: string | undefined, 
   }
 
   const roomIds = [...new Set([...sessions.map((s) => s.roomId), ...scheduledRoom.values()].filter((r): r is string => r !== null))];
-  const rooms = roomIds.length === 0 ? [] : await db.select({ id: opdRooms.id, code: opdRooms.code }).from(opdRooms).where(inArray(opdRooms.id, roomIds));
+  const rooms = roomIds.length === 0 ? [] : await db.select({ id: resources.id, code: resources.code }).from(resources).where(inArray(resources.id, roomIds));
   const roomCode = new Map(rooms.map((r) => [r.id, r.code] as const));
 
   return doctors

@@ -3,7 +3,7 @@ import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import { withTx } from "../client";
 import {
   opdAppointments, opdConfig, opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, opdQueueSessions,
-  opdRooms, opdVitals, patients, registrationConfig,
+  opdVitals, patients, registrationConfig, resources,
 } from "./index";
 import type { Db } from "../client";
 
@@ -18,7 +18,10 @@ describe("opd schema (migration 0010)", () => {
 
   async function seedDoctor(): Promise<{ deptId: string; roomId: string; doctorId: string }> {
     await db.insert(opdDepartments).values({ id: "D1", code: "MED", name: "General Medicine", ...AUDIT });
-    await db.insert(opdRooms).values({ id: "R1", code: "12", name: "Room 12", ...AUDIT });
+    // PLAN 13 T6 — a room is a REGISTRY row and `opd_doctor_schedules.room_id` /
+    // `opd_queue_sessions.room_id` now name `resources(id)`. Seeding `opd_rooms` here would insert
+    // a row nothing points at and the schedule below would violate its foreign key.
+    await db.insert(resources).values({ id: "R1", kind: "room", code: "12", name: "Room 12", status: "available", ...AUDIT });
     await db.insert(opdDoctors).values({ id: "DOC1", userId: "U1", displayName: "Dr A", departmentId: "D1", ...AUDIT });
     return { deptId: "D1", roomId: "R1", doctorId: "DOC1" };
   }

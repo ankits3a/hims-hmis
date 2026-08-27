@@ -3,6 +3,7 @@ import {
   bigserial, boolean, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { patients } from "./patients";
+import { resources } from "./resources";
 
 /**
  * OPD module tables (Plan 07). Kernel-located by the shipped one-migration-dir convention; ownership
@@ -46,6 +47,15 @@ export const opdDepartments = pgTable(
   (t) => [uniqueIndex("opd_departments_code_ux").on(t.code)],
 );
 
+/**
+ * PLAN 13 T6 — **ORPHANED. Nothing points at this table and nothing reads it.** `0032` copied every
+ * row into `resources` with its id preserved and repointed both foreign keys; the table survives for
+ * exactly one commit so that a wrong backfill is a FIX rather than a RESTORE (DD12). T7's `0033`
+ * drops it, after T6 has been deployed and verified against production.
+ *
+ * Do not add a reader. Do not add a column. If you are here because something still needs it, that
+ * is the finding — report it before T7 runs.
+ */
 export const opdRooms = pgTable(
   "opd_rooms",
   {
@@ -90,7 +100,9 @@ export const opdDoctorSchedules = pgTable(
     weekday: integer("weekday").notNull(), // 0 = Sunday … 6 = Saturday (IST calendar)
     startTime: text("start_time").notNull(), // 'HH:MM'
     endTime: text("end_time").notNull(), // 'HH:MM', exclusive
-    roomId: text("room_id").notNull().references(() => opdRooms.id),
+    // PLAN 13 T6 — REPOINTED at the registry. The value is UNCHANGED: room ids are ULIDs, so
+    // `0032` preserved every one of them and only this foreign key's TARGET moved.
+    roomId: text("room_id").notNull().references(() => resources.id),
     slotMinutes: integer("slot_minutes"), // null ⇒ opd_config.slot_minutes
     validFrom: date("valid_from", { mode: "string" }).notNull(),
     validTo: date("valid_to", { mode: "string" }), // null = open-ended
@@ -166,7 +178,10 @@ export const opdQueueSessions = pgTable(
     id: text("id").primaryKey(),
     doctorId: text("doctor_id").notNull().references(() => opdDoctors.id),
     serviceDate: date("service_date", { mode: "string" }).notNull(),
-    roomId: text("room_id").references(() => opdRooms.id), // from the day's schedule template; null if unscheduled
+    // PLAN 13 T6 — REPOINTED at the registry, like the schedules FK above. NULLABLE here and NOT
+    // NULL there, which is why the backfill's precondition guard is load-bearing (A11): an orphan
+    // behind the NOT NULL one halts the migration rather than being migrated.
+    roomId: text("room_id").references(() => resources.id), // from the day's schedule template; null if unscheduled
     status: text("status").notNull().default("not_started"), // 'not_started' | 'in' | 'out' | 'closed'
     nextToken: integer("next_token").notNull().default(1), // allocated by UPDATE … SET next_token = next_token + 1 RETURNING
     callsMade: integer("calls_made").notNull().default(0), // drives the E-32 every-Nth interleave

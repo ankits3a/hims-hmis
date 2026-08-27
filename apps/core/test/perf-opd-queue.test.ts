@@ -101,8 +101,8 @@ describe("OPD queue and visit-type performance budgets (CI-gated — §15)", () 
       from generate_series(1, ${sql.raw(String(DEPARTMENTS))}) gs
     `);
     await db.execute(sql`
-      insert into opd_rooms (id, code, name, created_by, updated_by)
-      select 'PERFROOM' || lpad(gs::text, 4, '0'), 'R' || lpad(gs::text, 3, '0'), 'Perf Room ' || gs::text, 'perf-seed', 'perf-seed'
+      insert into resources (id, kind, code, name, status, site_id, created_by, updated_by)
+      select 'PERFROOM' || lpad(gs::text, 4, '0'), 'room', 'R' || lpad(gs::text, 3, '0'), 'Perf Room ' || gs::text, 'available', 'main', 'perf-seed', 'perf-seed'
       from generate_series(1, ${sql.raw(String(DEPARTMENTS))}) gs
     `);
     await db.execute(sql`

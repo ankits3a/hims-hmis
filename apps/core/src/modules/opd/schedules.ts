@@ -1,12 +1,16 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { opdAppointments, opdDoctorLeaves, opdDoctorSchedules, opdRooms } from "../../kernel/db/schema";
+import { opdAppointments, opdDoctorLeaves, opdDoctorSchedules, resources } from "../../kernel/db/schema";
+import { KERNEL_RESOURCE_KINDS, findKindDecl } from "../../kernel/resources";
 import { OpdError } from "./errors";
 import { loadOpdConfig } from "./config";
 import { slotsForDate } from "./slots";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Slot } from "./slots";
+
+/** DD2's one predicate, read from the kernel declaration — never a `"retired"` string literal. */
+const ROOM_RETIRED = findKindDecl(KERNEL_RESOURCE_KINDS, "room")!.retired;
 
 export type ScheduleInput = {
   weekday: number; startTime: string; endTime: string; roomId: string;
@@ -56,11 +60,19 @@ export async function replaceDoctorSchedules(
 
   const roomIds = [...new Set(items.map((i) => i.roomId))];
   if (roomIds.length > 0) {
-    const rooms = await tx.select().from(opdRooms).where(inArray(opdRooms.id, roomIds));
+    // PLAN 13 T6 — the room book is the REGISTRY now. `kind = 'room'` is part of the predicate and
+    // not decoration: `resources` holds beds and floors too, and a schedule pointing at a floor
+    // would otherwise resolve happily.
+    const rooms = await tx.select().from(resources)
+      .where(and(eq(resources.kind, "room"), inArray(resources.id, roomIds)));
     const byId = new Map(rooms.map((r) => [r.id, r]));
     for (const roomId of roomIds) {
       const room = byId.get(roomId);
-      if (!room || !room.active) throw new OpdError("unknown_room", `room ${roomId} not found or inactive`);
+      // DD2 — there is no `active` boolean any more; "inactive" IS the kind's declared `retired`
+      // status, read from the ONE declaration rather than restated as a string literal here.
+      if (!room || room.status === ROOM_RETIRED) {
+        throw new OpdError("unknown_room", `room ${roomId} not found or inactive`);
+      }
     }
   }
 
