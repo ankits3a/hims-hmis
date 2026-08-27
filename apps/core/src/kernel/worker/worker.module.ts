@@ -17,7 +17,9 @@ import { tariffManifest } from "../../modules/tariff";
 import { opdManifest } from "../../modules/opd";
 import { billingManifest } from "../../modules/billing";
 import { PARTNERS_ACCRUAL_CONSUMER, accrualConsumer, partnersManifest } from "../../modules/partners";
-import { materialsManifest } from "../../modules/materials";
+import {
+  MATERIALS_CONSUMPTION_CONSUMER, consumptionConsumer, materialsManifest,
+} from "../../modules/materials";
 import { collectResourceKinds } from "../resources/kinds";
 import type { Handler } from "../events/subscriptions";
 import type { Scheduler } from "./scheduler";
@@ -165,6 +167,15 @@ export function workerConsumers(db: Db): Record<string, Handler> {
     // PLAN 09 T6 — the other half of the install above. Deleting either fails
     // `worker-runtime.e2e.test.ts`'s whole-equality assertion instead of a hospital's ledger.
     [PARTNERS_ACCRUAL_CONSUMER]: accrualConsumer(db),
+    // PLAN 14 T7 / DD13 — the consignment consumer, and it is the SAME ONE EDIT a fourth time.
+    // `materialsManifest` declares `consignment.deployed -> materials.consumption` in the commit
+    // that adds this line; `buildSubscriptionBus` turns a declaration with no matching handler into
+    // a BOOT ERROR, so installing one without the other stops the worker at startup.
+    //
+    // The event is defined by THIS module and emitted by PLAN 15's mini-OT. Subscribing before a
+    // publisher exists is deliberate: the consumer is the half of the interface Plan 14 owes, and
+    // the cursor advances from the first boot so nothing is lost between the two phases.
+    [MATERIALS_CONSUMPTION_CONSUMER]: consumptionConsumer(db),
   };
 }
 

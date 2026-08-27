@@ -1,4 +1,6 @@
 import { MATERIALS_RESOURCE_KINDS } from "./kinds";
+import { consignmentDeployed } from "./events";
+import { MATERIALS_CONSUMPTION_CONSUMER } from "./consumption";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -85,8 +87,21 @@ export const materialsManifest: ModuleManifest = {
     /** DD14's one-action freeze. Narrowest grant in the module: `materials_head` alone. */
     "materials.recall.manage",
   ],
-  /** EMPTY IN T2 BY DESIGN. T7 adds the one subscription with its handler in the same commit. */
-  subscriptions: [],
+  /**
+   * **PLAN 14 T7 — THE ONE SUBSCRIPTION, LANDED WITH ITS HANDLER IN THIS COMMIT.**
+   *
+   * T2 shipped `subscriptions: []` precisely so that no commit ever existed in which a declared
+   * subscription had no handler: `buildSubscriptionBus` (kernel/worker/jobs.ts) makes that a BOOT
+   * ERROR by design. This line, `consumptionConsumer` in `workerConsumers`, and the worker-consumer
+   * census are ONE commit — the `partnersManifest` rule (§6.0 S2, Plan 10 D13), a fourth time.
+   *
+   * `consignment.deployed` is DEFINED here (DD13, `events.ts`) and EMITTED BY PLAN 15. Subscribing
+   * to an event nothing yet publishes is correct rather than premature: the consumer is the half of
+   * the interface this phase owes, and it is what makes Plan 15 a one-file import.
+   */
+  subscriptions: [
+    { event: consignmentDeployed.name, consumer: MATERIALS_CONSUMPTION_CONSUMER },
+  ],
   /**
    * DD2 — the `store` kind. `kinds.ts` carries the declaration and the reasoning; this line is what
    * makes `collectResourceKinds` see it at boot, in BOTH processes once T2's worker fix lands.

@@ -7,6 +7,7 @@ import { withTx, Db } from "../db/client";
 import { ALERTS_CONSUMER } from "../alerts/consumer";
 import { NOTIFY_CONSUMER } from "../notify/consumer";
 import { PARTNERS_ACCRUAL_CONSUMER } from "../../modules/partners";
+import { MATERIALS_CONSUMPTION_CONSUMER } from "../../modules/materials";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -46,11 +47,27 @@ describe("seedCursors", () => {
    * `replayAccruals`, which walks the `events` TABLE directly and reads no cursor at all. So the
    * two are complementary: the live lane starts at the head and writes nothing until the flag is
    * on, and the backfill fills the ledger in from event history when it is.
+   *
+   * ═══ FOUR SINCE PLAN 14 T7 / DD13, AND IT IS THE SAME SHAPE A FIFTH TIME ═══
+   *
+   * `materials.consumption` subscribes to `consignment.deployed`. **This file was not in T7's Files
+   * list either** — the paragraph above predicted exactly that ("this file is named in no task's
+   * Files list") and it happened again; recorded as finding F12 in Plan 14's CLOSE, with the same
+   * remedy: correct the census in place, with the reason.
+   *
+   * **What seeding THIS consumer does is the interesting part.** `consignment.deployed` is defined
+   * by Plan 14 and EMITTED BY PLAN 15, so on the deploy that ships Plan 14 the cursor is set to
+   * `max(seq)` over a history that contains none of them — and then Plan 15's first scan-on-use
+   * lands after it and is delivered. That is the correct outcome and it is why the consumer is
+   * wired a phase early: without a seeded cursor the consumer's first cycle after Plan 15 ships
+   * would start from zero and re-walk every event the hospital has ever emitted.
    */
-  it("enumerates workerConsumers(db)'s keys — kernel.alerts, kernel.notify and partners.accrual, and no others", async () => {
+  it("enumerates workerConsumers(db)'s keys — the kernel two, partners.accrual and materials.consumption, and no others", async () => {
     const seeded = await seedCursors(db);
     expect(seeded.map((s) => s.consumer).sort())
-      .toEqual([ALERTS_CONSUMER, NOTIFY_CONSUMER, PARTNERS_ACCRUAL_CONSUMER].sort());
+      .toEqual([
+        ALERTS_CONSUMER, NOTIFY_CONSUMER, PARTNERS_ACCRUAL_CONSUMER, MATERIALS_CONSUMPTION_CONSUMER,
+      ].sort());
   });
 
   /**

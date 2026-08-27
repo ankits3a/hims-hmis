@@ -332,6 +332,19 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
             "patient.registered",
           ],
         ],
+        // PLAN 14 T7 / DD13 — THE FOURTH WIRE, and the first one that subscribes to an event NOTHING
+        // IN THIS BUILD PUBLISHES YET. `consignment.deployed` is DEFINED by `modules/materials`
+        // (the frozen interface Plan 15 imports) and EMITTED by Plan 15's mini-OT scan-on-use.
+        // Wiring the consumer a phase early is deliberate: it is the half of the interface Plan 14
+        // owes, and the cursor advances from the first boot so nothing is lost in the gap between
+        // the two phases — the same reasoning DD7 gives for installing `partners.accrual`
+        // unconditionally while its flag is off.
+        //
+        // `materials.consumption` sorts before `partners.accrual`, which is why it lands here.
+        //
+        // **THIS FILE WAS NOT IN PLAN 14 T7's FILES LIST** and it pins a census that task moves;
+        // recorded as finding F11 in the phase document's CLOSE rather than fixed silently.
+        ["materials.consumption", ["consignment.deployed"]],
         // PLAN 09 T6 / DD7 — THE THIRD WIRE, and the one whose absence would be invisible for the
         // longest. `COMMISSION_ACCRUAL_ENABLED` defaults to false, so a partners consumer that was
         // declared and never wired would look exactly like a partners consumer that was wired and

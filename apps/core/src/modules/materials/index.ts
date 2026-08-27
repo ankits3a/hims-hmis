@@ -63,3 +63,17 @@ export {
   captureGrn, getGrn, listGrns, lotsForBatch, postGrn, requestNearExpiryAcceptance, runGateQc,
 } from "./grn";
 export type { CaptureLine, GrnLineRow, GrnRow, GrnWithLines } from "./grn";
+
+// ── T7 — two-sided issue, discrepancies, and the consignment.deployed consumer ──
+export {
+  getTransfer, issueStock, listDiscrepancies, listTransfers, receiveStock,
+} from "./transfers";
+export type { IssueLine, TransferLineRow, TransferRow, TransferWithLines } from "./transfers";
+/**
+ * DD13's half of the interface Plan 15 imports: it appends `consignmentDeployed` (exported above,
+ * from T2) and reads `consumptionsFor` to compose the discharge bill.
+ */
+export {
+  MATERIALS_CONSUMPTION_CONSUMER, consumptionConsumer, consumptionsFor, handleConsignmentDeployed,
+} from "./consumption";
+export type { ConsumptionRow } from "./consumption";
