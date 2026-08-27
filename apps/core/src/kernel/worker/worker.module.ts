@@ -17,6 +17,8 @@ import { tariffManifest } from "../../modules/tariff";
 import { opdManifest } from "../../modules/opd";
 import { billingManifest } from "../../modules/billing";
 import { PARTNERS_ACCRUAL_CONSUMER, accrualConsumer, partnersManifest } from "../../modules/partners";
+import { materialsManifest } from "../../modules/materials";
+import { collectResourceKinds } from "../resources/kinds";
 import type { Handler } from "../events/subscriptions";
 import type { Scheduler } from "./scheduler";
 
@@ -92,6 +94,33 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // later starts from `now` and every earlier payment is gone. The flag decides only whether
         // the handler WRITES; the cursor advances either way.
         registry.install(partnersManifest);
+        // PLAN 14 T2 — MATERIALS, AND IT IS THE ONE-EDIT RULE A FOURTH TIME. This manifest ships
+        // `subscriptions: []` in THIS commit; T7 lands `consignment.deployed` →
+        // `materials.consumption`, the handler in `workerConsumers` below, and the census as ONE
+        // commit. It is installed here AND in `ALL_MANIFESTS` — unlike `ops`, `membership`,
+        // `formulary` and `resources`, which the worker omits because each is check-on-execute with
+        // nothing to consume — because materials carries a subscription (T7) and a daily job
+        // (`sweepBatchExpiry`, T8). So `manifests.test.ts` leg 3 stays at FOUR: materials appears
+        // on neither side of the difference, which is what "installed in both" looks like there.
+        registry.install(materialsManifest);
+        // ══ PLAN 13 CLOSE / M2's CARRY-FORWARD, CLOSED HERE (Plan 14 DD2, Spike Q6) ══
+        //
+        // This is `app.module.ts:73`'s line, in the process that did not have it. Plan 13's close
+        // added the collector call to the API and named the worker as a known gap: the worker
+        // installs its manifests by hand and called `collectResourceKinds` nowhere, so a manifest
+        // declaring `resourceKinds` booted the worker with NEITHER of the seam's two refusals
+        // active — a duplicate-kind deployment, or a declaration naming a status outside its own
+        // vocabulary, would have started fine and been discovered at the first write.
+        //
+        // The gap was invisible until now for a precise reason: the only manifest carrying
+        // `resourceKinds` was `resourcesManifest`, which the worker deliberately does NOT install.
+        // **`materialsManifest` is the first kind-declaring manifest the worker holds**, so this
+        // line and the install above are one edit, and Spike Q6 is the evidence that the refusal
+        // now exists in the running worker rather than only in a test.
+        //
+        // The return value is deliberately discarded — the THROW is the whole point, and the write
+        // surface takes its declarations as a parameter (kernel/resources/registry.ts's header).
+        collectResourceKinds(registry);
         return registry;
       },
     },

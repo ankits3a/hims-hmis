@@ -12,6 +12,7 @@ import { membershipManifest } from "../../modules/membership";
 import { partnersManifest } from "../../modules/partners";
 import { formularyManifest } from "../../modules/formulary";
 import { resourcesManifest } from "../resources/manifest";
+import { materialsManifest } from "../../modules/materials";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -83,4 +84,17 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // kinds (floor, ward, hall, room, bed) because no module owns a floor. Plan 15 declares
   // `theatre` and `device` on the mini-OT's own manifest without editing kernel code.
   resourcesManifest,
+  // PLAN 14 T2 — materials, appended so the thirteen above keep the order they were installed in.
+  //
+  // **IT IS THE FIRST MANIFEST ON THIS LIST THAT THE WORKER ALSO INSTALLS SINCE `partners`**, and
+  // the reason is the one leg 3 of `manifests.test.ts` enumerates: it carries a SUBSCRIPTION (T7's
+  // `consignment.deployed` → `materials.consumption`) and a daily JOB (`sweepBatchExpiry`, T8), so
+  // the worker has something to consume and something to run. `ops`, `membership`, `formulary` and
+  // `resources` are omitted there precisely because they have neither. So the worker's difference
+  // from this list stays FOUR — materials appears on neither side of it.
+  //
+  // It ships `subscriptions: []` in THIS commit and T7 lands the one subscription, its handler in
+  // `workerConsumers` and the census as ONE commit — the `partnersManifest` rule (§6.0 S2, Plan 10
+  // D13): a declared subscription with no matching handler is a BOOT ERROR by design.
+  materialsManifest,
 ];

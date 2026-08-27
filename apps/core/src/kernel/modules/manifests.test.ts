@@ -16,6 +16,7 @@ import { billingManifest } from "../../modules/billing";
 import { membershipManifest } from "../../modules/membership";
 import { partnersManifest } from "../../modules/partners";
 import { formularyManifest } from "../../modules/formulary";
+import { materialsManifest } from "../../modules/materials";
 
 /**
  * Plan 11d / D2, Book row V4 — `ALL_MANIFESTS` is the ONE list, and a manifest installed outside
@@ -61,6 +62,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   membershipManifest,
   partnersManifest,
   formularyManifest,
+  materialsManifest,
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -105,7 +107,7 @@ function manifestKeys(identifiers: string[], label: string): string[] {
 }
 
 describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
-  it("declares exactly thirteen manifests, by key, in app.module.ts's original install order", () => {
+  it("declares exactly fourteen manifests, by key, in app.module.ts's original install order", () => {
     expect(ALL_MANIFESTS.map((m) => m.key)).toEqual([
       "auth",
       "workflow",
@@ -123,13 +125,15 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "formulary",
       // PLAN 13 T2 — appended, so the twelve above keep the order they were installed in.
       "resources",
+      // PLAN 14 T2 — appended, so the thirteen above keep the order they were installed in.
+      "materials",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(13);
+    expect(ALL_MANIFESTS).toHaveLength(14);
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(13);
+    expect(registry.all()).toHaveLength(14);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -181,6 +185,23 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      If a later phase gives the registry a consumer (Plan 15's assignment stream is the
     //      candidate), its subscriptions and its worker install land in ONE commit — the (1b)
     //      discipline, unchanged.
+    //
+    // (1e) PLAN 14 T2 — **THE FOURTEENTH MANIFEST IS THE FIRST SINCE `partners` TO FALL ON NEITHER
+    //      SIDE OF THIS DIFFERENCE, AND THE COUNT THEREFORE STAYS AT FOUR.** Every manifest named
+    //      in (1)/(1a)/(1c)/(1d) is omitted from the worker because it is check-on-execute with
+    //      nothing to consume and no route the worker serves. `materialsManifest` is the opposite
+    //      on both counts: it carries a SUBSCRIPTION (T7's `consignment.deployed` →
+    //      `materials.consumption`) and a daily JOB (`sweepBatchExpiry`, T8), so the worker
+    //      installs it and it appears in NEITHER array below — it is in the SHARED list at the
+    //      bottom, which grows from nine to ten.
+    //
+    //      A thirteenth manifest could not join `ALL_MANIFESTS` without somebody stating which
+    //      side of this difference it fell on (the (1d) note). A FOURTEENTH still cannot: this
+    //      paragraph is that statement, and the shared array below is where it is mechanically
+    //      true. The test's title stays "four" because four is still the answer.
+    //
+    //      It ships `subscriptions: []` in T2 and lands the one subscription with its handler in
+    //      T7 — the (1b) discipline, unchanged, a fourth time.
     expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "formulary", "resources"]);
 
     // (2) The worker ADDS `notify`. It declares five `kernel.notify` subscriptions, and
@@ -204,7 +225,10 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // PLAN 09 T6 — see (1b). It is LAST because the worker installs it last, and this array is
       // the worker's own source order rather than `ALL_MANIFESTS`'.
       "partners",
+      // PLAN 14 T2 — see (1e). Installed in BOTH processes, so it is HERE rather than in either
+      // difference array above. The worker installs it after `partners`, which is why it is last.
+      "materials",
     ]);
-    expect(workerKeys).toHaveLength(10);
+    expect(workerKeys).toHaveLength(11);
   });
 });

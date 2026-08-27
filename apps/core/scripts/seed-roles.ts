@@ -235,6 +235,25 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "formulary.read",
       "formulary.manage",
       "formulary.staging.review",
+      // ── PLAN 14 / DD11, 2026-08-27 — THE PHARMACIST IS THE QC SIGNATORY FOR DRUGS ──
+      //
+      // `materials.grn.qc` is the VERDICT half of DD8's two-stage gate: a storekeeper captures what
+      // came off the lorry so the lorry can leave, and somebody competent to judge a drug decides
+      // whether it may go on a shelf. Doc 09 §7's "who signs what" gives that signature to the
+      // pharmacist for drug classes, and `storekeeper` deliberately does NOT hold it.
+      //
+      // The two READ halves come with it for a reason that is about this repo rather than about
+      // the ward: `pharmacy` already curates the formulary (16a, above), and an item is the shelf
+      // side of a medicine. A curator who can see `Crocin 500mg tablet` in `formulary_medicines`
+      // and cannot see that it is stocked as `CROC500` in three stores is curating half a fact.
+      // `materials.stock.read` is what makes a QC verdict informed — "we already hold 4,000 of
+      // these, expiring in March" is the context in which accepting short-dated stock is decided.
+      //
+      // NOT `materials.items.manage`: registering an item is a master-data act with an HSN code and
+      // a GST rate on it, and it belongs to `materials_head`. Read here, write there.
+      "materials.items.read",
+      "materials.stock.read",
+      "materials.grn.qc",
     ],
   },
   {
@@ -466,6 +485,66 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ops.interface.manage",
     ],
   },
+  // ------------------------------------------------------------------------------------------
+  // PLAN 14 / DD11, 2026-08-27 — TWO ROLES FOR THE STORES, AND THE SPLIT BETWEEN THEM IS THE POINT.
+  //
+  // Both are created by this script with grants and NO HOLDERS — the `pharmacy` / `tariff_editor`
+  // precedent, and it is measured rather than hoped: production held 33 users and no storekeeper at
+  // kickoff. The grant is a door that opens the day a storekeeper account exists, which is the
+  // right order, because the alternative is a store nobody may operate.
+  //
+  // ═══ WHY TWO ROLES AND NOT ONE ═══
+  //
+  // A single `stores` role would be the cheap thing to write and it would collapse the only
+  // separation this phase can honestly express. `storekeeper` is an OPERATOR: receive the lorry,
+  // move stock between stores, read what is on a shelf. `materials_head` is ACCOUNTABLE: what the
+  // hospital may buy, who it may buy from, whose stock is frozen, and whether short-dated goods are
+  // accepted.
+  //
+  // The SoD pairs doc 09 §10 names — PO-approver/GRN-receiver, custodian/counter — cannot be built
+  // in this phase, because neither a purchase order (14b) nor a cycle count (14c) exists, and
+  // because a two-key rule needs a SECOND APPROVING ACTOR that production does not have (runbook
+  // O1: one full admin, 33 users). Inventing a third pair here would be a rule nobody ruled. What
+  // IS built is the permission SPLIT those pairs will hang on, so that the day O1 is discharged the
+  // strings are already distinct and the pair is a `sod_pairs` row rather than a refactor.
+  // ------------------------------------------------------------------------------------------
+  {
+    roleKey: "materials_head",
+    permissions: [
+      // All eleven. The person accountable for what the hospital owns holds every string the module
+      // declares — including `materials.recall.manage`, which is the narrowest grant in the phase:
+      // DD14's freeze is one action that stops every location's stock of a batch at once, and the
+      // people who should be able to fire it are the people who will answer for having fired it.
+      "materials.items.read",
+      "materials.items.manage",
+      "materials.vendors.read",
+      "materials.vendors.manage",
+      "materials.stores.manage",
+      "materials.stock.read",
+      "materials.grn.capture",
+      "materials.grn.qc",
+      "materials.stock.issue",
+      "materials.stock.receive",
+      "materials.recall.manage",
+    ],
+  },
+  {
+    roleKey: "storekeeper",
+    permissions: [
+      // The six an operator needs, and the five absences are the decision. NOT `items.manage` or
+      // `vendors.manage`: a storekeeper who could register a vendor could receive from one nobody
+      // approved, which is the whole of what a vendor master is for. NOT `grn.qc`: see the
+      // `pharmacy` row above. NOT `stores.manage`: creating a stock location changes the shape of
+      // the ledger's key space, and `ensureTransitStore` creates the only one an operator needs.
+      // NOT `recall.manage`.
+      "materials.items.read",
+      "materials.vendors.read",
+      "materials.stock.read",
+      "materials.grn.capture",
+      "materials.stock.issue",
+      "materials.stock.receive",
+    ],
+  },
 ];
 
 /**
@@ -613,6 +692,13 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   membership_admin: "Membership Administrator (holder-book import and the reconcile queue)",
   biomedical_engineer: "Biomedical Engineer (device and analyzer interfaces)",
   mrd_officer: "MRD Officer (records; requests merges, never approves one)",
+  // PLAN 14 / DD11, 2026-08-27. Neither is an OPD station, so neither is in `OPD_ROLE_KEYS`.
+  // § 4A item 5: these KEYS are the brainstorm's S10 names and they are what the code matches on.
+  // If the owner's org chart says "Purchase Manager" or "Store In-charge", the TITLE changes here
+  // and the key does not — `ensureRole(db, key, title)` takes both, and a key rename would orphan
+  // every `role_assignments` row and every `role_permissions` grant already written against it.
+  materials_head: "Materials Head (item and vendor masters, QC verdicts, recall freeze)",
+  storekeeper: "Storekeeper (receives, issues and moves stock; does not sign the QC verdict)",
 };
 
 /** The title for a model role key. Throws rather than inventing one — an unresolved role is a defect. */

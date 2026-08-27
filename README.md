@@ -973,6 +973,56 @@ alone. It creates no new authority — that role already holds `opd.masters.read
 keep going through OPD's existing `opd.masters.manage` routes, and the first module that needs a
 registry write route declares and mounts its own permission with it.
 
+## Materials — items, vendors, stores and the stock ledger (Plan 14)
+
+The first tables in this system that know a box of anything exists: what an item IS, who supplied
+it, which batch it belongs to, when it expires, what MRP is printed on it, **and who owns it**. One
+module owns one ledger; pharmacy, the mini-OT and the lab are all CALLERS of it, never owners of a
+second one. Stock lives at a location, and every location is a resource of kind `store` in the Plan
+13 registry — central stores, sub-stores, the OT's consignment bin, and one `IN-TRANSIT` store per
+site that a two-sided issue moves through.
+
+**Permissions (Plan 14 / DD11): the storekeeper receives, the head is accountable, and the
+pharmacist signs the drug verdict.** Eleven strings across three roles, and the split is the phase's
+one RBAC decision. `materials_head` is ACCOUNTABLE — what the hospital may buy, whom it may buy
+from, whose stock is frozen — and holds all eleven. `storekeeper` is an OPERATOR and holds six:
+receive the lorry, move stock, read a shelf. `pharmacy` gains the QC verdict for drugs plus the two
+read halves that make a verdict informed, because an item is the shelf side of a medicine the same
+role already curates.
+
+`materials.grn.capture` and `materials.grn.qc` are two strings for what is one desk today, and that
+is deliberate: capture records what came off the lorry so the lorry can leave, and the verdict is a
+separate act. The SoD pairs the procurement spec names — PO-approver/GRN-receiver,
+custodian/counter — cannot be built until a purchase order (14b) and a cycle count (14c) exist, and
+a two-key rule needs a second approving actor this deployment does not yet have. The permission
+split is what those pairs will hang on.
+
+| Permission | materials_head | storekeeper | pharmacy |
+|---|---|---|---|
+| `materials.items.read` | ✓ | ✓ | ✓ |
+| `materials.items.manage` | ✓ | | |
+| `materials.vendors.read` | ✓ | ✓ | |
+| `materials.vendors.manage` | ✓ | | |
+| `materials.stores.manage` | ✓ | | |
+| `materials.stock.read` | ✓ | ✓ | ✓ |
+| `materials.grn.capture` | ✓ | ✓ | |
+| `materials.grn.qc` | ✓ | | ✓ |
+| `materials.stock.issue` | ✓ | ✓ | |
+| `materials.stock.receive` | ✓ | ✓ | |
+| `materials.recall.manage` | ✓ | | |
+
+`owner` gains nothing new: the vendor bank-change approval reaches the owner through `approvals.*`,
+which that role already holds, and a `materials.*` string for it would be a second door to one
+decision. Both new roles are created by `seed:roles` with grants and **no holders** — the `pharmacy`
+precedent — so this table mints live authority to nobody until a storekeeper account exists.
+
+**Two approval types, registered by `seed:materials` in the deploy path.**
+`materials_near_expiry_acceptance` (approver `materials_head`, 240-minute SLA) gates posting a GRN
+line whose residual shelf life is short; `materials_vendor_bank_change` (approver **`owner`**,
+always, 1,440 minutes) gates changing where a supplier's money goes, and stamps a seven-day
+cooling-off that this phase records and a later one enforces. An approval type reaches a deployment
+only through a seed script, which is why that seed is in `deploy.sh` and not in a runbook.
+
 ## Worker process (Plan 08.5)
 
 A second Node process, `apps/core/src/worker.ts`, boots a providers-only Nest application context

@@ -448,6 +448,17 @@ compose run --rm api node dist/scripts/seed-membership.js
 # PLAN 16a T9 — the severe-pair starter floor. It is a FLOOR, not a formulary: the DTC owns
 # expansion and a licensed dataset arrives through `formulary_staging`, never as a bulk load.
 compose run --rm api node dist/scripts/seed-formulary-interactions.js
+# PLAN 14 T2 — the materials module's TWO approval types (`materials_near_expiry_acceptance`,
+# `materials_vendor_bank_change`). It seeds NO item, vendor or store: those are hospital-specific
+# master data with a GST rate and a legal name attached, registered through /materials/* (DD16),
+# and a seed that invented them would put placeholder commercial data in a live item master.
+#
+# It is HERE rather than in a runbook step for the reason `seed-patients` is: `requestApproval`
+# throws `unknown_type` for a key no `approval_types` row carries, so an approval type reaches a
+# deployment ONLY through this path. Without it, `postGrn` on a near-expiry line throws at a bay
+# with a lorry in it, and `requestBankChange` throws at the vendor desk — the exact shape of the
+# `patient_merge` and `tariff_revision` gaps, both of which ran for weeks before a human noticed.
+compose run --rm api node dist/scripts/seed-materials.js
 
 # `seed-roles` IS RUN, AND ITS EXIT STATUS IS DELIBERATELY NOT THIS DEPLOY'S.
 #

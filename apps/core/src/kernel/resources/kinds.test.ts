@@ -104,9 +104,27 @@ describe("the resource kind seam (Plan 13 T2)", () => {
 
   // ────────────────────────────── what the boot collector REFUSES ──────────────────────────────
 
-  it("collects every installed manifest's declarations, and the shipped registry yields the kernel five", () => {
+  /**
+   * PLAN 14 T2 / DD2 — **THIS LEG MOVED, AND THE MOVE IS THE SEAM WORKING AS DESIGNED.**
+   *
+   * The kernel five became six when `materialsManifest` claimed `store`. That is exactly what
+   * `kinds.ts`'s header promises — *"a module CLAIMS a kind and declares its status vocabulary,
+   * with NO kernel edit"* — and `store` was already among the ten `RESOURCE_KIND_VALUES`, so no
+   * migration was needed either. The only kernel-side cost of the claim is this line, which is the
+   * friction the census exists to create: a kind cannot join the running system without somebody
+   * editing an assertion that names it.
+   *
+   * The order is APPEND: the collector walks `registry.all()` in `ALL_MANIFESTS` order and
+   * `materialsManifest` is the fourteenth and last, so `store` lands after `bed` rather than
+   * anywhere else.
+   *
+   * **This file was NOT in Plan 14 T2's Files list** and it pins a number that task moves — the
+   * shape 16a hit four times, recorded here and in the phase document's CLOSE as finding F6 rather
+   * than fixed silently (AGENT-RULES: disclose-don't-work-around).
+   */
+  it("collects every installed manifest's declarations: the kernel five plus materials' `store`", () => {
     expect(collectResourceKinds(registryOf(...ALL_MANIFESTS)).map((d) => d.kind))
-      .toEqual(["floor", "ward", "hall", "room", "bed"]);
+      .toEqual(["floor", "ward", "hall", "room", "bed", "store"]);
   });
 
   /**
@@ -162,8 +180,10 @@ describe("the resource kind seam (Plan 13 T2)", () => {
   it("a kind whose `initial` is also its `occupied` is a boot error — it would create every resource occupied", () => {
     const registry = registryOf(bare("a", { resourceKinds: [decl({ initial: "occupied" })] }));
     expect(() => collectResourceKinds(registry)).toThrow(/which is also its occupied/);
-    // The kernel's own five do not trip it — the guard is real, not vacuous.
-    expect(collectResourceKinds(registryOf(...ALL_MANIFESTS))).toHaveLength(5);
+    // The SHIPPED declarations do not trip it — the guard is real, not vacuous. Six since Plan 14
+    // T2 added `store`, whose `initial` is `available` and whose `occupied` is null: a store is not
+    // assignable at all, so it could not trip this guard even in principle.
+    expect(collectResourceKinds(registryOf(...ALL_MANIFESTS))).toHaveLength(6);
   });
 
   it("a manifest with no resourceKinds contributes nothing and is not an error", () => {

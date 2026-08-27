@@ -188,6 +188,46 @@ written: the bridge is a later phase's, and `material.consumed` must carry its o
 
 **Q6 — Does the worker boot with a kind-declaring manifest installed?** Not SQL: after T2, `node dist/kernel/worker/main.js` (or the shipped worker entry) against a scratch database, once with the materials manifest and once with a scratch duplicate `store` declaration. *Consequence:* the second run must REFUSE. If it boots, T2's worker fix is incomplete and Plan 13's carry-forward is still open. Quote both boot lines in CLOSE.
 
+**ANSWERED AT T2, 2026-08-27 — BOTH LEGS, ON THIS HOST, AGAINST A SCRATCH DATABASE.**
+`hmis_spike_q6` was created on the dev container, migrated to **35 applied migrations** (`0000`…`0034`
+— production's 34 plus this phase's), used, and **dropped in the same task** (AGENT-RULES rule 7's
+one exception, discharged).
+
+*Leg 1 — the SHIPPED worker entry (`apps/core/src/worker.ts`), materials manifest installed:*
+
+```
+[Nest] 3586618  - 08/27/2026, 4:04:22 PM     LOG [InstanceLoader] WorkerModule dependencies initialized +28ms
+worker started: jobs=runDispatchCycle,runDueTimers,sweepExpiredTempRoles,sweepGuardianMajority,
+sweepAppointmentNoShows,runDailyClose,runNotifyPump,createEventPartitions,retentionSweep,
+sweepInterfaceHeartbeats
+```
+
+**It boots.** `collectResourceKinds(registry)` now runs inside the worker's `MODULE_REGISTRY`
+factory and the kind-declaring manifest passes it.
+
+*Leg 2 — the same `WorkerModule`, booted, with a SECOND manifest claiming `store` installed into the
+registry it actually built* (a scratch file beside the source; nothing shipped was edited — rule 21's
+shape). Exit value read from a file: **0**.
+
+```
+Q6b: WorkerModule booted; its registry holds 11 manifests
+Q6b: kinds collected from the WORKER's registry = ["store"]
+Q6b: REFUSED as required -> ResourceError: two manifests declare the resource kind "store" — one kind
+     has one vocabulary, and a second declaration makes onRelease depend on which one a reader
+     happened to find
+```
+
+**The second run REFUSES, so T2's worker fix is complete and Plan 13's carry-forward is CLOSED.**
+
+Two details worth keeping. **The worker's registry collects `["store"]` and nothing else** — one
+kind, not six — because the worker deliberately omits `resourcesManifest`, which is where the five
+KERNEL kinds live. That is the precise reason the gap was invisible until now: *the only manifest
+carrying `resourceKinds` before this phase was one the worker does not install*, so a collector call
+in the worker would have had nothing to collect and nothing to refuse. `materialsManifest` is the
+first kind-declaring manifest the worker holds, which is why DD2 could put the fix here rather than
+leaving it for Plan 15's `theatre`. And **eleven manifests** is the worker's own census — ten before
+this phase (`manifests.test.ts` leg 3) plus materials.
+
 ---
 
 ## 4. Design decisions — what this plan rules beyond the spec

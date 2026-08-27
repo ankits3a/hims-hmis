@@ -133,7 +133,7 @@ function row(
 }
 
 describe("seed:staff — the census, stated before anything is compared (§2.49)", () => {
-  it("KNOWN_ROLE_KEYS is the eighteen keys some seed script in this tree can create", () => {
+  it("KNOWN_ROLE_KEYS is the twenty keys some seed script in this tree can create", () => {
     expect(KNOWN_ROLE_KEYS).toEqual([
       "admin",
       "billing_manager",
@@ -144,6 +144,13 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "duty_manager",
       "front_office",
       "front_office_supervisor",
+      // PLAN 14 / DD11, 2026-08-27 — the two stores roles. They arrive here for FREE, because
+      // `KNOWN_ROLE_KEYS` is DERIVED from `ROLE_MODEL ∪ GRANTED_BY_OTHER_SEEDS ∪ OPD_ROLE_KEYS`
+      // rather than hand-listed; what this array pins is that somebody NOTICED the vocabulary grew.
+      // The consequence is real and not bookkeeping: `seed:staff` refuses a roster naming a key
+      // outside this list, so until it carried these two, a roster hiring the hospital's first
+      // storekeeper would have been rejected as a typo.
+      "materials_head",
       "medical_superintendent",
       "membership_admin",
       "mrd_officer",
@@ -151,6 +158,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "opd_admin",
       "owner",
       "pharmacy",
+      "storekeeper",
       // Group A, 2026-08-26 — three roles for permissions that had guarded live routes with no
       // holder at all. This list is DERIVED (ROLE_MODEL ∪ GRANTED_BY_OTHER_SEEDS ∪ OPD_ROLE_KEYS),
       // so it grew on its own; what is pinned here is that somebody noticed.
@@ -162,7 +170,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
     for (const r of ROLE_MODEL) expect(KNOWN_ROLE_KEYS).toContain(r.roleKey);
     for (const g of GRANTED_BY_OTHER_SEEDS) expect(KNOWN_ROLE_KEYS).toContain(g.roleKey);
     for (const o of OPD_ROLE_KEYS) expect(KNOWN_ROLE_KEYS).toContain(o.key);
-    expect(KNOWN_ROLE_KEYS).toHaveLength(18);
+    expect(KNOWN_ROLE_KEYS).toHaveLength(20);
   });
 
   it("the vocabulary is WIDER than what seed:roles creates, which is what makes two refusals distinct", () => {

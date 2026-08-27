@@ -395,7 +395,13 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
     // others': an existing pair is left alone, severity and all, because §1.4 lets the DTC
     // downgrade one and a deploy must not restore it. (This file joins the Files list of the task
     // that moves the integer — the S11 rule the paragraph above invokes, applied to itself.)
-    expect(order).toHaveLength(11);
+    // 12 since Plan 14 T2 added `seed-materials.js` after seed-formulary-interactions: the two
+    // materials approval types. It joins for the reason `seed-patients` and `seed-membership` did
+    // — an approval type reaches a deployment ONLY through a seed script, and `requestApproval`
+    // throws `unknown_type` without one — and unlike `seed-formulary-interactions` it writes no
+    // content at all, so its idempotence question is only "does a second run draft a redundant
+    // workflow definition version". `approval-types.test.ts` answers that by counting rows.
+    expect(order).toHaveLength(12);
     expect(order[0]).toBe("migrate.js");
     expect(order[1]).toBe("seed-cursors.js");
   });
