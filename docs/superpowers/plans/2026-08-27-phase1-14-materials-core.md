@@ -479,9 +479,141 @@ Tiers per AGENT-RULES §3. **CRITICAL tasks carry their Assertion Book rows inli
 
 ---
 
-## 6. CLOSE — appended as the phase runs
+## 6. CLOSE
 
-*(empty at write time; v3 §1.5. Findings as they arrive, the mechanical-verification evidence, the actuals row — NOT before §3.4's reviewer has returned (v3 §9.4) — the lessons bound for the ledger, the ARCHIVE pass, the token audit, and the roadmap amendment.)*
+**Executed 2026-08-27 on the build host, LIGHT lane, main session, T1 → T9 sequentially.** Ten
+commits: nine tasks plus one close-pass fix. Every task ran the finish block; `pnpm verify` was
+green and read from an exit file before every push.
+
+### 6.1 The commits
+
+| task | SHA | CI |
+|---|---|---|
+| T1 schema — 16 tables, migration `0034` | `d068b996d59db6b65242f54f0d74dbb6388a8a82` | GREEN (811s, run 33089553945) |
+| T2 module seam | `957515dedfa4e6bdc8dac614cb4bdcc90cb78a47` | GREEN |
+| T3 item master | `1c5b637fe100be744f334fbe4940aa3c41513aa2` | GREEN |
+| T4 vendor master | `bc5ad0b94d6232e4b0815e1cd000fd8ba1d9ab85` | GREEN (812s, run 33096067964) |
+| T5 the ledger | `ec3b493b5ff20308e645654654bc992330856444` | GREEN (902s, run 33097905426) |
+| T6 the GRN gate | `1a1548f8c401128819924f87bd58eef2d1212cc3` | GREEN (831s, run 33100382569) |
+| T7 issue/receive + the consumer | `b3c9c18e7a7055751fb127b394251ca0179decba` | GREEN (824s, run 33102997205) |
+| T8 routes, sweep, e2e | `d86e00e22ca981f79753d30e87809d3bdf9bd5e5` | GREEN (810s, run 33105458493) |
+| T9 three screens | `b0cffd73094da6f5f914180e93126e3178ad9f5d` | *(watching at close)* |
+| close fix F15/F16 | `2a54ebfecc2a7511d4926e5477080e3ac1875095` | *(watching at close)* |
+
+**§2.62 CONFIRMED IN THE WILD, and it is worth recording because it is the first clean specimen.**
+T2's push carried TWO commits — `957515d` and another lane's docs-only `402b458`, which had landed
+on the shared `main` between T1's push and T2's commit. `ci-watch-host.sh` over both returned
+**exit 2**: `957515d GREEN`, `402b458 UNRESOLVED after 1800s — no run object`. GitHub Actions builds
+the HEAD of a push and nothing else, so a coalesced push leaves the earlier commit with no run to
+watch. Checking per COMMIT rather than per PUSH is what made that visible rather than assumed.
+
+### 6.2 A SECOND LANE APPEARED MID-PHASE, and the protocol was engaged
+
+At **15:45**, between T1's push and T2's first edit, 26 markdown files appeared under
+`docs/superpowers/brainstorms/` and were committed as `402b458` **on top of this session's T1
+commit, in this shared working tree**. `reports/2026-08-26-parallel-session-protocol.md` was read
+before any further test evidence was trusted, and its §8 checklist was worked in order:
+
+- **§8.1 — is my work still there?** `git merge-base --is-ancestor d068b99 HEAD` → SURVIVED.
+- **§8.2 — did anyone change my files?** `git log d068b99..HEAD -- <every T1 path>` → EMPTY.
+- **§8.5 — did I ship anything needing an operator step?** T1: none. From T2 on, `seed:materials`
+  is in `deploy.sh` precisely so the answer stays "none" (protocol §5's rule).
+- No jest/vitest process ran at any point; the other lane's act was a `cp` of markdown and a commit,
+  which cannot touch a test database.
+
+**Verdict: the evidence stood.** The phase continued, staging every commit BY PATH (§3.1 — never
+`git add -A`), and this section is the relay note §10 asks for.
+
+### 6.3 Findings
+
+**Sixteen, and the shape of them is the story: the FILES LISTS were the weak part of the plan, not
+the design.** Six of the sixteen (F6, F7, F10, F11, F12, F14) are the same defect — a file that
+pins a census the task moves, absent from that task's Files list. 16a hit it four times and named
+it; this phase hit it six times.
+
+| # | task | finding |
+|---|---|---|
+| **F1** | T1 | **The formulary's truncate statement could not survive `items.formulary_medicine_id`.** The plan said the sixteen tables join the `patients`/`opd` statement; it did not see that `items` acquires an inbound FK into `formulary_medicines`, making Postgres REFUSE the formulary island's own statement — `cannot truncate a table referenced in a foreign key constraint`, a STATIC check that does not care whether `items` holds a row. **Measured on this host against a two-table scratch pair before the change.** The closure of {formulary} ∪ {materials} ∪ {resources group} is one group and now rides one statement. |
+| **F2** | T1 | **Sixteen tables, not fifteen.** The plan's prose says fifteen throughout; its own Produces list bundles `transfers`/`transfer_lines` and `grns`/`grn_lines` onto one bullet each, and the count followed the bullets. `materials.test.ts` pins SIXTEEN. |
+| **F3** | T2 | **The plan gives `BATCH_MANDATORY_CLASSES` two addresses.** DD3 says `items.ts`; T2's Produces says `config.ts`. T2's list wins (it is the operative instruction for the file's creating task) and is the better address: `items.ts` is T3's and `qc.ts` is T6's, so a constant in `config.ts` is readable by both without either task editing the other's file. |
+| **F4** | T2 | `MRP_MANDATORY_CLASSES` and `TRANSIT_STORE_CODE` are not in T2's enumerated Produces list but are required by DD8 rule 6 and DD9. Added to `config.ts` — the only file T2 owns that could hold them — rather than left as literals in `qc.ts` and `stores.ts`. |
+| **F5** | T2 | **Three error codes the plan's CLOSED union lacks and the plan's own text requires:** `approval_not_granted` (named verbatim by A6), `documents_incomplete` (T4's `activateVendor` gate), `unknown_document` (four functions take an id that may name nothing; `not_in_transit` would have lied that the row exists). |
+| **F6** | T2 | `kernel/resources/kinds.test.ts` pins the collected-kind census (kernel five → six with `store`) and is in NO task's Files list. |
+| **F7** | T2 | `test/seed-staff.test.ts` pins `KNOWN_ROLE_KEYS` (18 → 20) and is in no task's Files list. Operationally real: `seed:staff` REFUSES a roster naming a key outside that list, so until it carried them a roster hiring the hospital's first storekeeper would have been rejected as a typo. |
+| **F8** | T5 | **METHODOLOGY, and it invalidates grep-as-evidence.** The `grep` in this shell is a SHELL FUNCTION wrapping `ugrep --ignore-files`, and it **silently returns zero matches on UNTRACKED files**. A11's mechanical grep first reported "zero hits" on a file containing ten. `/usr/bin/grep` returned 10. A second trap rides with it: `/usr/bin/grep` calls a UTF-8 file with box-drawing characters "binary" and skips it without `-a`. **Every grep-based absence claim about a file created in the current task is a false negative until that file is committed.** A11 was re-run with `/usr/bin/grep -a` and passed. |
+| **F9** | T6 | An MRP that does not divide into whole paise per base unit made `mrpPerBaseUnit` THROW out of `qcLine`, aborting the whole `runGateQc` transaction over one mistyped price. A per-line rule must produce a per-line verdict; the throw is caught and becomes `mrp_unconvertible`. The plan's nine rules do not name this case. |
+| **F10** | T6 | `test/ist-clock-parity.test.ts` pins the census of files carrying a hand-rolled IST offset, and `grn.ts` is the TENTH. Not in T6's Files list — **and the census's own docstring predicted the edit**, which is the friction working as designed one phase later. |
+| **F11** | T7 | `test/worker-runtime.e2e.test.ts` pins the consumer→events map whole. Not in T7's Files list (which named only `manifests.test.ts`, conditionally). |
+| **F12** | T7 | `src/kernel/worker/seed-cursors.test.ts` pins the same census — and its own docstring already said *"this file is named in no task's Files list"*. It happened again. |
+| **F13** | T8 | **A 500, caught by this phase's own e2e.** `POST /materials/vendors/:id/bank-change` raised `ApprovalError` (`unknown_type`), which is not a `MaterialsError`, so `toHttp` rethrew it as a **500**. Every other controller that calls the approvals engine maps it; this one did not. **This is Plan 09's defect and Plan 13's, a third time, in the phase whose own `errors.ts` header warns about exactly it** — the warning was written, read, and still not enough. What caught it was a real request through a database with no approval type registered. |
+| **F14** | T8 | Registering a job edits FOUR places — `jobs.ts`, both censuses, and `docker/prod/prometheus/alerts.yml`. `alerts-parity.test.ts`'s docstring says so in those words. T8's Files list named two. `sweepBatchExpiry` now has its staleness leg and its `absent()` term, so a sweep that silently stopped is visible. |
+| **F15** | close | **`ledger.ts` was BINARY to git.** Two literal NUL bytes as the composite-key separator → `git show --stat` reported `Bin 0 -> 24638 bytes`: no diff, no blame, no line-level review on the phase's most important file. Found by the close pass's own mechanical verification, not by any test — nothing was red, because the cost was reviewability, not correctness. |
+| **F16** | close | The T9 locale edit re-serialised both JSON files with `indent=2`, expanding 40 lines to 1313 and producing a 1349-line diff for three added keys. House style is one top-level key per line; both restored, content asserted identical. |
+
+### 6.4 The Assertion Book, corrected by execution
+
+**Every CRITICAL row's mutant was built as a separate scratch file, run isolated, and deleted before
+the commit. FOUR rows were WRONG and are corrected in place in §5 above.** That is the instrument
+working: the plan says a discriminating input is a prediction until somebody runs it, and four
+predictions failed.
+
+| row | outcome | expected vs received |
+|---|---|---|
+| A1 | **DIED** | expected `"non_drug_has_medicine"`, received `"23514"` — the raw CHECK SQLSTATE, exactly as predicted |
+| A2 | **DIED** | expected 72, received 30; and the coinciding leg (`TABLETS` strip = 10) PASSED against the mutant, confirming one item cannot discriminate |
+| A3 | **DIED** | expected `"base_uom_required"`, received `undefined` — the mutant accepted a second base unit |
+| **A4** | **SURVIVED → row corrected** | The plan's mutant (drop the `seq` tie-break) returned the SAME row as the shipped code at 2, 3 and 5 tied rows — `agree=true` every time. `ORDER BY` on a tie is *permitted* to return either, so **a missing tie-break is not observably wrong, only unreliably right, and no assertion over the returned row can kill it.** A `asc(seq)` mutant DIED (expected `g2`, received `g1`). |
+| A5 | **DIED** | expected `"blacklist_active"`, received `undefined` — the date-ignoring reinstate succeeded a day early |
+| A6 | **DIED** (both shapes) | (i) expected `null` bank, received `{"accountNo":"••••9012",…}` — the spreading `updateVendor` wrote it; (ii) expected `"approval_not_granted"`, received `undefined` — the presence-checking `applyBankChange` applied a PENDING change |
+| A7 | **DIED** | the unmasked mapper returned `"123456789012"` |
+| **A8** | **half SURVIVED → row corrected** | (i) *"is it still blocked?"* does NOT discriminate — the mutant blocks too, because its `ON CONFLICT DO UPDATE` takes the same row lock at write time. (ii) The mutant's failure mode is not the predicted one: **BOTH racers FULFILLED, both returning `balanceAfter: 0`, two `issue` rows for one unit — a LOST UPDATE landing on ZERO, invisible to `stock_balances_non_negative_ck`.** The CHECK is not the backstop for this case; only the lock is. The OUTCOME leg is the discriminator and it DIED. |
+| A9 | **DIED** | `40P01` — `deadlock detected`. The caller-order mutant produced exactly the SQLSTATE the row names |
+| A10 | **DIED** | returned the earliest-CREATED batch where the shipped code returns the earliest-EXPIRING |
+| A11 | **mechanical, re-run after F8** | `/usr/bin/grep -a`: ZERO `update(stockLedger)` / `delete(stockLedger)` in shipped code; exactly ONE `update(stockBatches)`, at `ledger.ts:426`, setting `recallStatus` and never `ownership`; zero shipped writes of `ownership:` outside the schema declaration and the event payload schema |
+| A12 | **DIED** | expected `frozen: 20`, received `frozen: 0` at the two stores the caller did not name |
+| A13 | **DIED** | expected `pass`, received `near_expiry` — the six-month-only mutant on a 180-day reagent 150 days out. **The control (a three-year item) SURVIVED, as the plan predicted** |
+| A14 | **DIED** | expected `"batch_mismatch"`, received `"23505"` — the always-insert mutant hit the unique index with a raw constraint code |
+| A15 | **DIED** (both legs) | `<=` rejected an MRP equal to cost, and rejected a free-goods line |
+| A16 | **DIED** | expected `false`, received `true` — the existence-only check accepted an agreement that expired the day before the challan. **The control (no document at all) SURVIVED, as predicted** |
+| A17 | **DIED** | expected `"near_expiry_unapproved"`, received `undefined` — the presence-checking post moved stock on a PENDING approval |
+| A18 | **DIED** | expected 7 at the ward, received 10 — the mutant emptied transit and filled the ward with uncounted stock |
+| A19 | **DIED** | two `consume` ledger rows for one event id |
+| **A20** | **row corrected — the plan had it exactly backwards** | (i) The prescribed fixture *does not work*: a balance is keyed `(resource, batch)` and the deployment names a specific batch, so **a second OWNED batch adds nothing to THIS batch's balance**. The only shape that leaves the batch healthy while one lot is exhausted is a SECOND LOT against the SAME batch. (ii) With that corrected fixture the mutant **SURVIVES** — both implementations run in ONE transaction, so the throw rolls the movement back either way and *"writes NOTHING" is a property of the transaction, not of the order of the checks*. **The OBVIOUS fixture is the discriminator**, on the refusal's CODE: shipped `lot_exhausted`, mutant `insufficient_stock`. |
+| **A21** | **DIED, after the executor's own fixture was corrected** | The ROW is right; its first instantiation was wrong. C2 was dated to the day AFTER `occurredAt`, but that day was still in the FUTURE relative to the real clock, so `effectiveRegulation(now())` returned C1 and **the leg passed against the mutant — a vacuously green assertion.** C2 must fall strictly between `occurredAt` and now, which the plan's wording already said. Corrected to `occurredAt + 1h`; the mutant then DIED. |
+
+**The pattern across A4, A8 and A20 is one lesson, and it is new:** three of the four corrections are
+cases where **the persisted state cannot distinguish the implementations** — a database is permitted
+to return either row for a tie, a transaction rolls back either way, a lock-less write can land on a
+legal number. In each, what discriminates is either the ERROR CODE or nothing at all. An Assertion
+Book row that asserts an outcome should be asked, at authoring time, whether the outcome is
+*observably* different — not merely different in principle.
+
+### 6.5 Mechanical verification
+
+- **`pnpm verify` exit 0**, detached, exit value read from a file, before every push and once more
+  after the close-pass fix. Final: **apps/core 233 suites / 2108 tests · apps/web 46 files / 273
+  tests · packages/contracts 4 / 21**. Started at core 219/1860-era counts; the workspace total
+  never decreased and **no test was deleted** (AGENT-RULES §4).
+- **Per-commit `git show --stat`** walked against each task's Files list. Every deviation is a
+  numbered finding above; there are no undisclosed ones.
+- **Working tree clean** at every commit; `git status --porcelain` read before every `git add`;
+  staged BY PATH throughout (never `git add -A`), which the second lane made load-bearing.
+- **No `*.mutant.*` residue.** Every mutant module and scratch spec was deleted before its task's
+  commit; `find` confirms none survives.
+- **CI green by FULL SHA, per COMMIT** — the table in §6.1. §2.62's coalesced-push case was hit and
+  is recorded there.
+- **Migration `0034`** is additive: 16 `CREATE TABLE`, 22 CHECK constraints emitted (all five
+  semantic ones present and read back out of `pg_constraint` by name), **no DROP, no data
+  migration**. The generated SQL was read, per DD17.
+- **Rule-3 breach, disclosed:** one scratch file (`kickoff.py`) was written to the session scratchpad
+  under `/tmp` before the executor internalised that AGENT-RULES §1.3 forbids `/tmp` absolutely,
+  which conflicts with the harness's own scratchpad instruction. It was deleted; every later script
+  ran as a heredoc with no file. **The conflict between the two instructions is real and should be
+  settled in the method rather than re-litigated per session.**
+- **Spike Q6's scratch database** (`hmis_spike_q6`) was created, migrated to 35 applied migrations,
+  used, and DROPPED in the same task — AGENT-RULES rule 7's single exception, discharged.
+
+### 6.6 THE ROADMAP AMENDMENT — the slice, landed at write time
 
 ### 6.6 THE ROADMAP AMENDMENT — the slice, landed at write time
 
