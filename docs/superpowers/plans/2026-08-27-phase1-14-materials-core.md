@@ -305,6 +305,22 @@ No indent, no PO, no rate contract, no supplier invoice, no match, no Tally expo
 Tiers per AGENT-RULES §3. **CRITICAL tasks carry their Assertion Book rows inline** — assertion · mutant · discriminating input. Every task ends with the finish block (AGENT-RULES §5); commit messages are exact. **The migration number is re-based at kickoff against the measured head (Spike Q1).**
 
 > **A standing note on every Assertion Book row below — 16a's F10 and Plan 13's four corrected rows: a "discriminating input" is a PREDICTION until somebody runs it.** Where a row's input is arguable it is argued; where an obvious-looking input would NOT discriminate, that is said. **The executor is expected to correct these rows and to record the correction as a finding — a corrected row is the instrument working.** And the fixture rule §2.102 leaves behind: **for every fixture, name the field whose value coincides with another's, and write one leg where they differ.** In this phase the coinciding fields are: `qty_in_uom` = `qty_base` (multiplier 1 hides every conversion defect), `mrp_paise` = `unit_cost_paise` (hides rule 6), `occurred_at` = `recorded_at` (hides ordering), one store (hides the `parentId`/`resourceId` predicate), one batch per item (hides FEFO), `ownership = 'owned'` everywhere (hides DD5).
+>
+> **AMENDED AT CLOSE — a SEVENTH coinciding field, and it is the only one that hid a MONEY defect:
+> `mrp_uom` = the item's BASE unit.** The six above are about ordering, identity and conversion
+> arithmetic; their cost is a test that fails to discriminate. This one's cost is a wrong number in
+> a patient's bill. `consumption.test.ts` gave the batch and the regulation `mrpUom: "each"` on an
+> `each`-based item, so `mrpPerBaseUnit` multiplied by 1, every conversion in the consumer was a
+> no-op, and **`material.consumed` could carry a per-PACK MRP beside a per-BASE ceiling with no
+> assertion in the file able to see it** (close review M3). Plan 15 applies
+> `min(tariff, MRP, ceiling)` to those two fields.
+>
+> The general rule the seventh instance sharpens: **where a fixture makes a CONVERSION the identity,
+> it has removed the conversion from the test rather than exercised it.** A multiplier of 1, an
+> offset of 0, a timezone at UTC noon and a currency at par are all the same trap, and the last of
+> those is not hypothetical either — the same close pass found `NOW = 06:30 UTC` hiding an IST
+> calendar-day defect in `expiry.test.ts` (m2), where the UTC day and the IST day coincide for
+> eighteen and a half hours out of every twenty-four.
 
 ---
 
@@ -615,6 +631,264 @@ Book row that asserts an outcome should be asked, at authoring time, whether the
 
 ### 6.6 THE ROADMAP AMENDMENT — the slice, landed at write time
 
-### 6.6 THE ROADMAP AMENDMENT — the slice, landed at write time
-
 > **Plan 14 RE-SLICED 2026-08-27 (owner ruling, authoring session):** **14 — Materials core** (this document: masters, stores, the ledger, challan-GRN, two-sided issue, FEFO, recall, expiry, the `consignment.deployed` consumer) → **15 — Mini-OT** (consumes DD13) → **14b — Procure-to-pay** (indent + Replenishment, PO + approval bands R-095, GRN-against-PO, rate contracts/RFQ, supplier invoice + match + holds + registers + Tally export, emergency purchase + 40A(3); **gated on the CA session R-097/R-098/R-099**) → **14c — Consignment reconciliation & auto-PO, cycle counts + variance, capex → assets → `device`, payment runs + disbursement recon, scorecards, Invoice Reader flag-inert** (**gated on O1 for every two-key rule**). 14b and 14c may interleave with 16/17 as the calendar demands; 15 needs only 14.
+
+> **PLAN 14 — CODE-COMPLETE AND REVIEWED TWICE, 2026-08-27.** Nine tasks, migration `0034`, sixteen
+> tables. Eighteen first-pass findings and seven second-pass findings closed across `464aa5a` and
+> `a4cf0d3`; `pnpm verify` exit 0 at 235 suites / 2,138 tests (core), 274 (web), 21 (contracts).
+> **NOT DEPLOYED — the deploy is the owner's and is not taken on the strength of a green suite.**
+> Production remains at 34 migrations and has never left `commissioning`.
+>
+> **Carried forward, deliberately, each with its reason in place:**
+> · **m5** — a merged batch keeps the FIRST receipt's `landed_cost_paise`. Every alternative is a
+>   costing policy, DD18 fences this phase off from valuation, and **14c owns it**. Nothing reads
+>   the field in shipped code today, so nothing computes a wrong number.
+> · **F5** — `consumptionsFor` RE-DERIVES the ceiling; `material.consumed` FROZE it. They agree on
+>   every ordinary case and diverge on a gazette correction filed with the same `effective_from`.
+>   **Plan 15 must rule which of the two its `min(tariff, MRP, ceiling)` clamps against**, and the
+>   argument for each is recorded at the call site.
+> · **The `/tmp` conflict** — AGENT-RULES §1.3 forbids writing to `/tmp` absolutely; the harness
+>   instructs every session to use a `/tmp` scratchpad. One breach was committed and disclosed in
+>   §6.5; this close avoided files entirely by piping heredocs into `python3`. **It should be
+>   settled in the method rather than re-litigated per session** — an owner ruling, not a phase's.
+
+---
+
+### 6.7 THE INDEPENDENT CLOSE REVIEW — 1 CRITICAL, 9 MAJOR, 8 MINOR, and the close BLOCKED
+
+A fresh reviewer read the nine task commits against §1–§5 with no memory of the execution. It cost
+**≈230,000 tokens of a 244,568 billed**, 67 tool uses, 838 s. It returned **eighteen findings**, and
+the phase document's own rule — *"a CRITICAL blocks the close"* — held.
+
+**What it got right that matters most: the CRITICAL was real, and nothing in this phase's own
+evidence would have found it.** Every task was green, every CRITICAL task's mutants were built and
+killed, `pnpm verify` was 0, CI was green by full SHA on all nine commits. The defect sat in the gap
+between two things that were each separately verified.
+
+#### C1 — the lost update `SELECT … FOR UPDATE` cannot reach
+
+`postMovements` computed the new balance in the APPLICATION (`before + delta`) and wrote it as an
+absolute through `INSERT … ON CONFLICT DO UPDATE`. `lockBalances` locks rows that EXIST; for a
+`(resource, batch)` pair with no balance row there is nothing to lock. The docstring said so and
+then argued the gap away — *"the INSERT that creates it takes its own lock through the primary
+key"* — which is TRUE and NOT SUFFICIENT: the second session blocks on the first's tuple, then takes
+the `DO UPDATE` branch and writes its own absolute over the winner's.
+
+Two concurrent receipts of `q` therefore left a ledger summing `2q` and a balance saying `q`.
+**Reachable through `postGrn`, `issueStock` (two sources racing on the shared `IN-TRANSIT` row,
+which is new to a batch on its first transfer) and `receiveStock`.**
+
+**The loss lands HIGH, so `stock_balances_non_negative_ck` never fires.** That is the corrected A8
+note's own lesson — *"the CHECK defends against a negative balance, and the defect is not a negative
+balance, it is a balance that is merely WRONG"* — applied to the one case the lock does not reach.
+A8's two legs were both written about an EXISTING row, because that is the case a lock is about.
+
+#### The other seventeen
+
+| | finding | one line |
+|---|---|---|
+| M1 | `ResourceError` → 500 | `POST /materials/stores` had no mapping in `toHttp`. Plan 13 fixed this exact defect in the OPD controller; this is the third module to learn it and the second from a reviewer. |
+| M2 | dead race recovery | `ensureTransitStore`'s `catch` tested for a raw `23505` that `createResource` had already converted to a `ResourceError`. A `catch` that cannot fire reads as a handled case. |
+| M3 | payload unit mismatch | `material.consumed` carried a per-PACK `mrpPaise` beside a silently per-BASE `ceilingPaise`. A factor-of-five error in a patient's bill, in whichever direction the numbers fell. |
+| M4 | ceiling pair rule | `setPriceRegulation` enforced "paise never travels without its unit" for the MRP and not for the CEILING. **DD8 rule 7 failed OPEN by the pack multiplier.** |
+| M5 | `consumptionsFor` incomplete | DD13 says Plan 15 composes the discharge bill from this one call; it returned neither the ceiling nor the case ref. |
+| M6 | `pharmacy`'s grant unreachable | DD11's QC signatory 403'd on the GRN it was ruled to sign. |
+| M7 | unconvertible ceiling → 404 | One mistyped regulation aborted a twenty-line delivery. F9 had fixed exactly this one level down and the context assembler did not get the same treatment. |
+| M8 | error-union drift, both ways | Five declared codes had zero throw sites; `not_in_transit` was unreachable where it was declared and BORROWED where it was thrown. `errors.ts` promised `errors.test.ts` at T8 and **that file did not exist.** |
+| M9 | arbitrary agreement | `limit(1)` with no `ORDER BY` and no validity filter, recorded on the FK that makes O-8 structural. |
+| m1 | NUL bytes | already fixed in-phase as F15. |
+| m2–m8 | | UTC calendar day · unvalidated batch override · post-after-recall · stale landed cost · English refusals on the screens · unfiltered balance read · `unknown_uom` → 404. |
+
+#### What the reviewer verified as CORRECT, recorded so it is not re-litigated
+
+Every census against the code (manifests 14, permissions 89 = 75 + 14, deploy seeds 12, SPA routes
+28, worker consumers 4, jobs 11, IST copies 10, `alerts.yml` both legs); all five semantic CHECKs in
+the generated migration; `truncateAll` complete; A9's ordered set lock; FEFO's ordering and filters;
+`recallBatch` taking no store argument; the vendor masking in every direction including the events;
+DD18 held (no PO, no charge poster, no Tally, no register); A11's append-only absence; and the four
+Assertion Book corrections themselves.
+
+#### The lesson, named
+
+**§2.119 — A LOCK'S DOCSTRING IS THE PLACE A LOCK'S GAP HIDES.** `postMovements` carried a paragraph
+that stated the gap precisely and then dismissed it in the next sentence. Nine tasks of readers,
+one reviewer of that task, and the executing session all read that paragraph and none re-derived
+the dismissal. **Mechanical form:** where a comment says *"X cannot happen because Y"*, Y is a claim
+about behaviour and belongs in a test. If the phase cannot test Y, the comment must say the gap is
+UNPROVEN rather than closed.
+
+---
+
+### 6.8 THE REMEDIATION, AND THE SECOND REVIEW THAT BLOCKED IT AGAIN
+
+The remediation landed in **two** commits, and the second exists because the first was reviewed.
+
+| commit | CI | what it carries |
+|---|---|---|
+| `464aa5a` | **green** | C1, M1–M9, m2–m8, and two defects found INSIDE the handed-off fixes (R1, R2) |
+| `a4cf0d3` | *(watched by full SHA)* | the second reviewer's F1 (MAJOR) and F2–F7 |
+
+#### The handoff was honest and the code was still wrong — v3 §9.6
+
+The previous session hit its context limit mid-remediation. It wrote **eight files of fixes**,
+**typechecked none and ran none**, and spent its remaining budget on a careful handoff document that
+said so in bold. `pnpm typecheck` on that tree passed in 12 seconds, which is exactly why the state
+was misleading rather than obviously unfinished. The narrow suites disagreed:
+
+- **R2 — the C1 fix failed 13 tests on its first run** (5 ledger, 8 consumer), every one on
+  `stock_balances_non_negative_ck`. Its generated SQL was correct; its VALUES clause was not. **A
+  CHECK constraint is evaluated against the PROPOSED tuple, before the unique index reports the
+  conflict that would have sent execution down `DO UPDATE`** — so an outbound `−4` into a location
+  holding 10 was rejected before the real post-value of 6 could be computed. Replaced with
+  materialise-with-zero (`ON CONFLICT DO NOTHING`) then a separate atomic
+  `UPDATE … SET qty = qty + delta RETURNING`, which keeps the CHECK a real backstop. Ledger §2.120.
+- **R1 — the M2 fix was reachable and still broken.** Correcting the `catch` predicate made a
+  recovery path live for the first time, and a unique violation ABORTS the enclosing transaction, so
+  the re-read would have raised `25P02`. Now a SAVEPOINT. Ledger §2.121.
+
+**Two of eight files were wrong and one of the two was the CRITICAL, both found in the first four
+minutes.** That is the whole of v3 §9.6: a handoff spends its last budget on RUNNING, not on writing.
+
+#### C1's mutant DIED, and the number is the finding
+
+The mutant is `git show 6d5a04c:…/ledger.ts` — the shipped implementation, byte for byte, as a
+separate scratch module with its own scratch spec (rule 21), deleted before the commit. The
+interleave is forced by the winner's own uncommitted tuple, because the row does not exist and there
+is nothing to hold `FOR UPDATE` — which is the finding.
+
+> **DIED:** `{ ledgerSum: 10, balance: 5, agree: false }` against the shipped code;
+> `{ ledgerSum: 10, balance: 10, agree: true }` against the fix.
+
+Five units received, recorded in an append-only ledger, and absent from the shelf figure, with no
+error and a perfectly legal balance.
+
+#### The SECOND review — fresh, not resumed (v3 §9.5, ledger §2.115)
+
+A **fresh** `Plan`-type reviewer (read + bash, no write) was given the diff and one question:
+*does this introduce a new defect, and does each fix do what it claims?* **213,923 tokens, 72 tool
+uses, 17.6 minutes.** It returned **1 MAJOR + 6 MINOR and blocked the close again.**
+
+**F1 is the one that matters, and it is a claim the commit message made that the diff did not
+deliver.** M6 moved the GRN menu entry in `materialsManifest` — and `apps/web/src/router.tsx` has
+its own hard-coded `NAV` table, which is what the shell actually renders. That was not moved. So the
+routes said yes, the menu still said `materials.grn.capture`, and **`pharmacy` — DD11's QC signatory
+— still had no link**: precisely the symptom M6's own docstring says it removed.
+
+Both files carry a comment asserting the two lists match (`router.tsx`: *"The strings match the
+`menu` entries the server's module manifests declare"*; `manifest.ts`: *"so the permission-gated
+link and the screen it opens cannot drift apart"*), and **nothing compared them.** That is §2.122's
+shape with the roles reversed — not a comment naming a test that does not exist, but a comment
+naming an invariant no test asserts. `apps/core/test/nav-parity.test.ts` now asserts it; applied to
+the pre-fix file it yields exactly one drift row, and to the fixed file, none.
+
+The six MINORs, each fixed or resolved: **F2** a fictitious test filename in `materials-api.ts` —
+§2.122 committed inside the remediation for §2.122, by the session that wrote the lesson, because
+the census was scoped to the directory where the defect last appeared; **F3** M7's `qcContextFor`
+half was untested (deleting the `try`/`catch` left the suite green); **F4** M9's `ORDER BY` was
+never exercised and `desc(validFrom)` is NULLS FIRST in Postgres, so an undated agreement outranked
+a current one — measured: `desc` → `CA/OPEN`, `desc nulls last` → `CA/RENEWAL`; **F5**
+`consumptionsFor` RE-DERIVES the ceiling rather than reading what `material.consumed` froze, and the
+two diverge on a gazette correction — the docstring now says what the code does and **which source
+Plan 15 clamps against is recorded as its ruling to make**; **F6** that loop was an N+1 in the
+commit whose m7 fix was about N+1s; **F7** `already_received` is raised from seven sites with six
+subjects while its docstring named one — resolved by WIDENING the definition, on this file's own
+test for splitting a code (*"because the remedy differs"* — here it does not), and by pinning the
+throw-site census.
+
+#### What the second reviewer verified as CORRECT — recorded so it is not re-litigated
+
+The two-statement upsert under READ COMMITTED (`ON CONFLICT DO NOTHING` waits on a conflicting
+uncommitted tuple, then the `UPDATE` re-evaluates against the post-lock row); no new
+CHECK-violation class, because `available()` is strictly stronger than all three clauses of
+`stock_balances_non_negative_ck`; no new deadlock class and no lock-order cycle (`resources` is
+taken before `stock_balances` in both callers); the savepoint genuinely confining the abort; A9's
+ordered-set-lock guarantee unchanged; M7 failing CLOSED on all three throw paths with rule order
+preserved; M8's removed codes having no surviving non-comment reference anywhere including
+`apps/web`; and **M6 widening nobody's authority** — exactly three roles hold `materials.stock.read`
+and the two that could already reach the GRN reads still can.
+
+#### A process disclosure the reviewer made about itself
+
+It wrote one 401-byte scratch file into the repo root through a `>` redirect, removed it with
+`rm -f` in the next call, and confirmed its absence. It also **built no mutant** — its tool set has
+no write capability — and said so in as many words wherever a discrimination claim rested on
+derivation rather than execution. That is the honest form; it is recorded because a reviewer that
+cannot build a mutant cannot discharge rule 21, and briefs for read-only reviewers should say which
+claims they are therefore allowed to make.
+
+#### The lesson, named
+
+**§2.124 — A SERVER-SIDE PERMISSION CHANGE IS HALF A PERMISSION CHANGE.** Authority in this system
+is declared in a manifest, enforced in a controller, and RENDERED from a separate hard-coded table
+in the SPA. M6 changed two of the three. The client copy is courtesy rather than security, so
+nothing broke and nothing failed — the only symptom was a role that could do its job and could not
+find the door. **Mechanical form: grep the permission string across `apps/web` in the same commit
+that changes it server-side, and where a client table claims to mirror a server list, make a test
+compare them.** A comment asserting two lists match is a claim about a file the author is not
+editing.
+
+---
+
+### 6.9 ACTUALS — written only now, because v3 §9.4 forbids it earlier
+
+> **The rule this section obeys:** *"a LIGHT phase's saving is not a saving until its reviewer has
+> run."* Plan 14 had TWO reviewers and each of them blocked the close. Any actuals row written
+> before them would have described a phase that was nine-for-nine green, CI-clean on every commit,
+> and shipping a silent stock loss.
+
+| | |
+|---|---|
+| Lane | **LIGHT** (v3 §3) — nine tasks coded in-session, **zero coding subagents** |
+| Tasks | 9 |
+| Subagents | **2, both FRESH, neither resumed** |
+| Reviewer 1 (close) | **244,568 tokens billed** (≈230,000 its own), 67 tool uses, 838 s → 1 CRITICAL, 9 MAJOR, 8 MINOR |
+| Reviewer 2 (remediation) | **213,923 tokens**, 72 tool uses, 1,058 s → 1 MAJOR, 6 MINOR |
+| **Total subagent** | **458,491** |
+| Stop-loss | **675,000** — **NOT breached**, 32% of headroom unused |
+| Main session | **UNMEASURABLE from inside the session** (runbook O3). Stated rather than estimated. |
+| Migration | `0034` — 16 tables, 22 CHECKs, **additive: no DROP, no data migration** |
+| Production at close | 34 migrations · `items`/`stock_ledger`/`consignment_lots` all NULL · `operating_mode_changes` **0 rows** · 35 users |
+
+#### Test counts — the workspace total never decreased and NO test was deleted
+
+| | at §6.5 (task close) | at §6.9 (after both reviews) | Δ |
+|---|---|---|---|
+| `apps/core` | 233 suites / 2,108 | **235 / 2,138** | +2 / +30 |
+| `apps/web` | 46 files / 273 | **46 / 274** | +1 |
+| `packages/contracts` | 4 / 21 | 4 / 21 | — |
+
+`git show` over both remediation commits reports **25 `it(` added and 2 removed**; both removals are
+RENAMES (`"renders the server's refusal…"` → `"renders the LOCALE string…"`), and both tests still
+exist. AGENT-RULES §4 discharged.
+
+#### THE ROI LINE — and it is the only number in this table that argues for anything
+
+**Two reviewers cost 458,491 tokens and between them found the phase's only CRITICAL, all nine
+MAJORs, and a MAJOR in the fix for one of them.** Set against what the phase's own instruments said
+before either ran: **nine green `pnpm verify` runs, nine green CI runs by full SHA, every CRITICAL
+task's mutants built and killed, four Assertion Book rows corrected by execution, and a mechanical
+census pass that found sixteen findings of its own.** All of that was true and none of it could see
+C1, because C1 lived in the gap between two things that were each separately verified — and the
+phase's own A8 rows were written about the case a lock is *for*, not the case it cannot reach.
+
+**The mutants CONFIRMED; the reviewers REFUTED.** Sixteen mutants died this phase, which means
+sixteen assertions were already right. Confirmation and refutation are different purchases and the
+second is the one nothing else in the method buys.
+
+**And the second review earned its keep exactly where Plan 13 said it would.** F1 is a MAJOR inside
+the remediation, and it is the third consecutive phase in which the fix for a reviewer's finding
+carried a defect of its own (09a, 13, 14). The rule has now paid three times: **a remediation is
+unreviewed code on the path a reviewer has just told you is fragile.**
+
+#### Where the close's own effort actually went, for the next phase's benefit
+
+Of the eighteen first-pass findings, **thirteen were fixed in under an hour of tool time**; the cost
+was concentrated in three places, none of which was writing the fix:
+
+- **running the handed-off remediation** — 13 failing tests inside four minutes, and it changed the
+  approach for two fixes rather than confirming them (v3 §9.6);
+- **making the new tests discriminate** — four of them could not, as written, and were rewritten
+  after being measured, not after being read (F3, F4, F5, and the `already_received` heuristic that
+  fired on four healthy codes);
+- **the mutant for C1**, which is the only evidence in this document that the CRITICAL was real
+  rather than argued.

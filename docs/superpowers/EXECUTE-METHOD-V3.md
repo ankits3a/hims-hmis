@@ -324,6 +324,38 @@ question needs what that agent *remembers*:
 invocation**, not at the fresh rate and not at parity. A two-resume phase costs about 3.4× its
 first pass, which is what Plan 13's 450,230 review term underestimated by a third.
 
+### 9.6 A HANDOFF SPENDS ITS LAST BUDGET ON RUNNING, NOT ON WRITING — added 2026-08-27 (Plan 14 close, ledger §2.120/§2.121)
+
+A session that hits its context limit mid-remediation faces one choice, and Plan 14 made it the
+wrong way round. It wrote **eight files of fixes** — the CRITICAL among them — **typechecked none of
+them, ran none of them**, and spent its remaining budget writing an excellent 200-line handoff
+document that described the fixes as done. The handoff was honest: it said in bold that the work was
+*"written, NOT typechecked, NOT tested."* It was still wrong about the code.
+
+**Measured on the successor session.** `pnpm typecheck` on the handed-off tree: **12 seconds**, and
+it passed — so a reader had every reason to believe the fixes were sound. The narrow suites did not:
+
+- the **C1** fix, the one the whole close was blocked on, **failed 13 tests** on the first run
+  (5 ledger, 8 consumer), all on one CHECK constraint. Time to discover: **~90 seconds.** The fix's
+  SQL was correct and its VALUES clause was not (§2.120) — a fact no amount of re-reading the diff
+  produces, because it is a claim about when Postgres evaluates constraints;
+- the **M2** fix was reachable and still broken for a second, independent reason (§2.121), found by
+  reading the newly-live code rather than by running it — but only because running C1 had already
+  established that the handed-off fixes could not be trusted.
+
+**Two of the eight files were wrong, and one of the two was the CRITICAL.** Both were found in the
+first four minutes of the successor session. The handoff prose could not have found either.
+
+**The rule.** When a session must hand off mid-work, its remaining budget goes, in this order:
+**(1) typecheck, (2) run the narrowest suite that covers what you changed, (3) write the handoff.**
+A handoff that says *"green as of <suite>, exit value read from a file"* is worth several pages of
+prose about intent. If there is budget for only one, run the suite — the successor can re-derive
+your reasoning from the diff, and cannot re-derive a test result you never took.
+
+**And the corollary for the reader of a handoff: uncompiled, unrun code is UNKNOWN code, however
+well it is described and however confident the description.** Treat a handoff's "what is already
+fixed — verify by reading, then move on" as "what is already WRITTEN". Run it first.
+
 ### 9.2 The measurement, before compiling and after closing
 
 **Before:** `wc -c` every file the briefs point at, divide by four, and write the total into the
