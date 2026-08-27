@@ -30,3 +30,8 @@ export * from "./formulary";
 // `opd_rooms` entirely), so `opd.ts` depends on THIS file and not the other way round, and the
 // registry must be readable before the module tables that point into it.
 export * from "./resources";
+// PLAN 14 T1 — materials, LAST because it is the only file that depends on TWO of the files above:
+// `items.formulary_medicine_id` references `formulary_medicines` (DD3) and six of its tables
+// reference `resources` (every stock location is a registry resource of kind `store`, DD2). It is
+// therefore downstream of both `formulary` and `resources` and neither is downstream of it.
+export * from "./materials";

@@ -88,6 +88,37 @@ Every line below was run in this checkout or read-only against production at wri
 | `users` | 33 |
 | `operating_mode_changes` | **0 rows — production has never left `commissioning`** |
 
+### RE-MEASURED AT KICKOFF — 2026-08-27, execution session, on the build host
+
+**Nothing moved.** Every line of §2 above was re-run in this checkout before T1 and the answer was
+the same one the authoring session recorded. This block exists because AGENT-RULES §6 requires the
+re-measure whether or not it finds anything, and because Plan 13's launch prompt was wrong about
+three numbers within a day of being written — recording a null result is the only way the next
+session can tell "measured, unchanged" from "not measured".
+
+| line of §2 | expected at write time | measured at kickoff | verdict |
+|---|---|---|---|
+| migration head | `0033_worried_salo.sql`, 34 `.sql` files | `0033_worried_salo.sql`, **34** files | unchanged — this phase generates `0034` |
+| uncommitted migration | none | `git status --porcelain` **empty**, branch `main`, HEAD `cc76aed` | unchanged |
+| `ALL_MANIFESTS` | 13 | **13**, pinned `manifests.test.ts:105` (`toHaveLength(13)`) | unchanged → 14 at T2 |
+| worker leg 3 | exactly four: `ops`, `membership`, `formulary`, `resources` | **exactly four**, `manifests.test.ts:180`; `workerKeys` pinned `toHaveLength(10)` and the shared array pinned at nine keys | unchanged |
+| permission census | 78 declared = 64 held + 14 not-yet-modelled | **78 = 64 + 14**, pins at `seed-roles.test.ts:453`, `:527`, `:544`, `:802`, `:810` | unchanged |
+| SPA routes | 25 | **25**, `caddyfile-parity.test.ts:304` | unchanged → 28 at T9 |
+| deploy seeds | 11 | **11**, `deploy-parity.test.ts:398` | unchanged → 12 at T2 |
+| `workerConsumers` | THREE handlers | **three** — `kernel.alerts`, `kernel.notify`, `partners.accrual` (`worker.module.ts:132-139`) | unchanged → four at T7 |
+| `collectResourceKinds` in the worker | absent | **absent** — the only two hits are `app.module.ts:25` (import) and `:73` (call). Plan 13's carry-forward is still open and T2 closes it | unchanged |
+| suites | core 219 · web 43 · contracts 4 | **219 · 43 · 4** | unchanged |
+| `grep -rli vendor apps/core/src --include=*.ts` non-test | zero files | **zero files** | unchanged |
+| `pgTable("items"/"vendors"/"stock_ledger"/"grns")` across `apps` + `packages` | zero | **zero** | unchanged |
+
+**Parallel-work fence — READ, not counted (AGENT-RULES rule 20).** `ps -eo pid,cmd | grep -iE 'jest|vitest'`
+matched four lines and **none of them is a test run**: PID 3009865 is an idle `claude` session whose
+*prompt text* contains the words `jest` and `pgrep -af jest` (it is Plan 13's authoring session, still
+resident); two lines are this probe's own `bash -c`, whose command line contains the pattern; one is the
+`ugrep` the probe spawned. This is the self-match trap rule 20 names, hit four ways at once. **No jest or
+vitest process is running; this session is the only lane.** `reports/2026-08-26-parallel-session-protocol.md`
+is therefore not engaged.
+
 ---
 
 ## 3. Spike — questions written now, answered at kickoff by read-only SQL against production
@@ -96,18 +127,64 @@ Write the measured answers **in place here** before T1 starts (v3 §1.2). None o
 
 **Q1 — Where is production, and is the name space clear?** `select max(id), count(*) from drizzle.__drizzle_migrations;` and `select to_regclass('items'), to_regclass('vendors'), to_regclass('stock_ledger'), to_regclass('grns');`
 *Consequence:* a count other than 34 re-bases `0034` before T1 generates anything; a non-NULL regclass means somebody claimed the name and T1 halts.
+**ANSWERED AT KICKOFF 2026-08-27 — production is at 34, and the name space is clear.**
+`select max(id), count(*) from drizzle.__drizzle_migrations;` → **`34|34`**. The COUNT beside
+`max(id)` is read, not inferred (Plan 13 A3): thirty-four rows applied, `0000`…`0033`, and the two
+numbers agreeing is itself the evidence that no row was inserted by hand. `select to_regclass(...)`
+for `items`, `vendors`, `stock_ledger`, `grns`, `stock_batches`, `consignment_lots` → **six NULLs**.
+**`0034` stands as this phase's number; no re-base, no halt.**
+
 
 **Q2 — Is the formulary still empty?** `select count(*) from formulary_medicines; select count(*) from formulary_salts;`
 *Consequence:* if still 0, the owner cannot register a single drug-class item on the live box after this phase deploys until a medicine exists — **say so in CLOSE as a named dependency on the owner's platinumrx mining track (16a spec D2), not as a defect.** Either way T3's fixtures build their own medicine and A3's leg where `formulary_medicine_id` is null-on-a-drug must exist.
+**ANSWERED AT KICKOFF — still empty. `formulary_medicines` 0, `formulary_salts` 29.**
+So the consequence fires: after this phase deploys, **no drug-class item can be registered on the
+live box until a medicine exists**, because DD3's CHECK makes `formulary_medicine_id` mandatory for
+`class = 'drug'`. Non-drug classes (`consumable`, `consumable_dated`, `implant`, `reagent`,
+`stationery`, `linen`, `gas`, `asset`, `service`) are unaffected and are what the mini-OT's first
+consignment challan actually needs. **Carried to CLOSE as a named dependency on the owner's
+platinumrx mining track (16a spec D2) — not a defect of this phase.** T3's fixtures build their own
+medicine, as planned.
+
 
 **Q3 — Is `store` still unclaimed?** `select kind, count(*) from resources group by 1;` and, at build time, `grep -rn '"store"' apps/core/src --include=*.ts | grep -v test | grep kind`.
 *Consequence:* a `store` row in production or a manifest already declaring the kind means Plan 16's session got there first and DD2 re-opens with the owner before T2. (Plan 13 said "Plan 16 adds `store`"; this document moves that to Plan 14 — DD2 says why.)
+**ANSWERED AT KICKOFF — `store` is unclaimed, in both halves.**
+`select kind, count(*) from resources group by 1;` → **`room|2`, and nothing else**: production holds
+two resources and both are rooms (Plan 13's migrated OPD rooms). The build-time half:
+`grep -rn '"store"' apps/core/src --include=*.ts | grep -v test | grep -i kind` → **no output**. No
+manifest declares the kind. **DD2 does not re-open; T2 claims `store` as written.**
+
 
 **Q4 — What is the hospital doing right now?** `select from_mode, to_mode, at, seq from operating_mode_changes order by seq desc limit 1;`
 *Consequence:* this phase is additive and has no destructive step, so `live` does not halt it — but a `live` answer means the deploy is an operational act on a working hospital and the owner authorises it as one, in as many words (§3.6).
+**ANSWERED AT KICKOFF — production has still NEVER left `commissioning`. `operating_mode_changes`
+holds 0 rows**, so the `order by seq desc limit 1` returns nothing at all. The hospital is not
+`live`. That does **not** relax the deploy gate: §3.6 requires owner authorisation naming the SHA,
+the migration and the seed regardless, and `commissioning` is a real deployment with 33 users, 2
+rooms and real patients behind it. It only means the deploy is not an operational act on a *working*
+hospital, and CLOSE should say which of the two it was.
+
 
 **Q5 — Does `services` carry anything an implant could be billed against?** `select id, code, category, regulated from services order by code;`
 *Consequence:* informs § 4A item 3 (the item→service bridge). Zero `device`/`pharmacy`-category services confirms the bridge is a later phase's and that `material.consumed` must carry its own price facts (DD13).
+**ANSWERED AT KICKOFF — six services, and NOT ONE of them is a `device` or `pharmacy` category.**
+
+| id | code | category | regulated |
+|---|---|---|---|
+| `01M0TE3AQE931Y6X0XWTCNXK6C` | `OPD-CONSULT-NEW` | consultation | f |
+| `01M0TE3AQMPMZMV06BP01HQAME` | `OPD-CONSULT-RENEWAL` | consultation | f |
+| `01M0TFNSVZZT7AN2GBE5MG38Q8` | `SYN-OPD-GEN` | consultation | f |
+| `01M0TFNSW21FMCVPXAR5V4TMWS` | `SYN-OPD-SPEC` | consultation | f |
+| `01M0TFNSW4CZ5VR2PS47MA1BRZ` | `SYN-LAB-CBC` | investigation | f |
+| `01M0TFNSW6NBWWBPKZZCFC2KEP` | `SYN-PROC-DRESS` | procedure | f |
+
+Three categories (`consultation`, `investigation`, `procedure`), **`regulated = false` on all six**,
+and `regulated_prices` holds **0 rows** — so the tariff's regulated-price clamp has nothing to clamp
+today either. **There is nothing an implant could be billed against.** § 4A item 3 stands as
+written: the bridge is a later phase's, and `material.consumed` must carry its own price facts
+(`mrpPaise`, `mrpUom`, `ceilingPaise`) because no service row can supply them. DD13 confirmed.
+
 
 **Q6 — Does the worker boot with a kind-declaring manifest installed?** Not SQL: after T2, `node dist/kernel/worker/main.js` (or the shipped worker entry) against a scratch database, once with the materials manifest and once with a scratch duplicate `store` declaration. *Consequence:* the second run must REFUSE. If it boots, T2's worker fix is incomplete and Plan 13's carry-forward is still open. Quote both boot lines in CLOSE.
 

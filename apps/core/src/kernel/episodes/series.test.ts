@@ -15,6 +15,40 @@ describe("formatEpisodeNo (pure)", () => {
     expect(formatEpisodeNo("lab_specimen", DAY, 5)).toBe("S2608250005");
     expect(formatEpisodeNo("radiology_order", DAY, 8)).toBe("R2608250008");
     expect(formatEpisodeNo("pharmacy_dispense", DAY, 311)).toBe("P2608250311");
+    // PLAN 14 T1 — the one MULTI-letter prefix, and it renders in exactly the same format: the
+    // serial is still padded to four digits and the date slice is still YYMMDD. `series.ts` says
+    // why a stores document does not take a single letter.
+    expect(formatEpisodeNo("grn", DAY, 7)).toBe("GRN2608250007");
+  });
+
+  /**
+   * PLAN 14 T1 — THE KEY CENSUS, which this file did not carry before and which the plan's T1
+   * acceptance names ("`series.test.ts` pins the key list").
+   *
+   * The three legs below assert three different things and none of them implies another. The
+   * CENSUS stops a key being deleted or renamed by a refactor that still compiles — every caller
+   * passes a string literal, so a dropped key is a type error at the call site and nowhere else if
+   * no call site remains. The DISTINCTNESS leg below already existed and stops two document types
+   * sharing a prefix. The PREFIX-FREEDOM leg is new and is the one `grn` made necessary: with every
+   * prefix a single letter, no prefix could be a prefix of another; with `GRN` in the map, adding a
+   * bare `G` later would make `G` + `RN2608` + `250007` parse as a G-series number of a different
+   * day, silently, in any reader that slices by position.
+   */
+  it("the key census is the seven reserved document types, and no more", () => {
+    expect(Object.keys(EPISODE_SERIES).sort()).toEqual([
+      "appointment", "grn", "lab_order", "lab_specimen", "pharmacy_dispense", "radiology_order",
+      "visit",
+    ]);
+  });
+
+  it("no prefix is a prefix of another — the ambiguity `GRN` introduced the possibility of", () => {
+    const prefixes: string[] = Object.values(EPISODE_SERIES);
+    for (const a of prefixes) {
+      for (const b of prefixes) {
+        if (a === b) continue;
+        expect({ a, b, aStartsWithB: a.startsWith(b) }).toEqual({ a, b, aStartsWithB: false });
+      }
+    }
   });
 
   it("the date slice is YYMMDD — the ambiguity the printed label exists to resolve", () => {

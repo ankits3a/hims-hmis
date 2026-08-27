@@ -3,7 +3,8 @@ import { episodeSeries } from "../db/schema";
 import type { Tx } from "../db/client";
 
 /**
- * THE EPISODE-NUMBER VOCABULARY (owner ruling 2026-08-25). One letter per document type, and the
+ * THE EPISODE-NUMBER VOCABULARY (owner ruling 2026-08-25). One letter per document type — with ONE
+ * deliberate exception, `grn`, added by Plan 14 T1 and explained at its entry below — and the
  * map is CODE-owned rather than config: unlike the UHID prefix — which is hospital identity and
  * printed on every card — these letters are an internal grammar that every module must agree on,
  * and a per-deployment override would only create hospitals whose lab forms cannot be read by
@@ -23,6 +24,21 @@ export const EPISODE_SERIES = {
   lab_specimen: "S",
   radiology_order: "R",
   pharmacy_dispense: "P",
+  /**
+   * PLAN 14 T1 — THE ONE MULTI-LETTER PREFIX, and the exception is stated rather than smuggled.
+   *
+   * Every other entry is a single letter because every other entry names a CLINICAL document a
+   * patient carries: a visit slip, a lab form, a prescription. A GRN is a STORES document, it is
+   * read by a storekeeper and a vendor and never by a patient, and `G` alone collides with nothing
+   * today only by luck — `gate pass`, `gas cylinder log` and `glucometer QC` are all in doc 09's
+   * own §14 sketch and all of them want it. Three letters cost the width nothing: `formatEpisodeNo`
+   * pads the SERIAL to four digits and the prefix is free-form, so `GRN2608270001` parses exactly as
+   * `V2608270001` does.
+   *
+   * The plan names this prefix in as many words (T1: "`EPISODE_SERIES` gains `grn` with a `GRN`
+   * prefix in the existing format"), which is why it is here and not `G`.
+   */
+  grn: "GRN",
 } as const;
 
 export type EpisodeSeriesKey = keyof typeof EPISODE_SERIES;

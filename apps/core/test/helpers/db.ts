@@ -90,10 +90,18 @@ export async function truncateAll(db: Db): Promise<void> {
   // §3.35 the whole island must ride one statement — constraint EXISTENCE decides — and by §3.12 it
   // makes no claim on the users or patients groups. It MUST be here rather than in the formulary
   // suite alone: a moiety left standing from one test is a moiety the next test's resolver finds.
-  await db.execute(
-    sql`truncate table formulary_medicine_salts, formulary_interactions, formulary_medicines,
-        formulary_salts, formulary_staging`,
-  );
+  //
+  // PLAN 14 T1 — **THE FORMULARY IS NO LONGER AN ISLAND, AND ITS STATEMENT HAS MOVED.** The five
+  // names above now ride the big `patients`/`opd`/`resources` statement further down this function,
+  // and the paragraph there says why. In one sentence: `items.formulary_medicine_id` REFERENCES
+  // `formulary_medicines` (Plan 14 DD3), so by the §3.35 rule this comment already states —
+  // constraint EXISTENCE decides the group — `items` must be named in any statement that truncates
+  // `formulary_medicines`; `items` drags in the other fifteen materials tables; and six of THOSE
+  // reference `resources`, which lives in the big statement. The closure of the three former groups
+  // is one group. **This is not a preference: `truncate table formulary_medicines, …` without
+  // `items` is REFUSED OUTRIGHT by Postgres** — `cannot truncate a table referenced in a foreign
+  // key constraint`, a STATIC check that does not care whether `items` holds a single row.
+  // Measured on this host before the change, against a two-table scratch pair, rather than assumed.
   await db.execute(sql`truncate table approvals, approval_types`);
   await db.execute(
     sql`truncate table approvals, workflow_timers, workflow_transitions, workflow_instances,
@@ -161,6 +169,40 @@ export async function truncateAll(db: Db): Promise<void> {
   // shipped test reading a billing `seq` observes. Plan 09's own tests assert seq ORDER, not seq
   // VALUES, which is what makes that safe rather than merely convenient.
   //
+  // ─────────────────── PLAN 14 T1 — SIXTEEN MATERIALS TABLES, AND THE FORMULARY WITH THEM ────
+  //
+  // **The plan said fifteen tables joined this statement. It is SIXTEEN, and the formulary's five
+  // come too — both corrections are recorded as findings F1 and F2 in the phase document's CLOSE
+  // rather than made silently**, because 16a's F2 is exactly the rule that a table absent from this
+  // function is NEVER EMPTIED AT ALL and the suite that discovers it belongs to a later phase.
+  //
+  // WHY THEY ARE HERE AND NOT IN A STATEMENT OF THEIR OWN, which is the §3.35 question this file
+  // asks of every new table. Six materials tables reference `resources` — `stock_ledger`,
+  // `stock_balances`, `stock_reservations`, `consignment_lots`, `grns` and `transfers` (twice) —
+  // because every stock location IS a registry resource of kind `store` (DD2). Truncating a parent
+  // requires every table that points at it in the SAME statement, so `resources` and these six
+  // cannot be separated. The other ten ride in by the same rule one hop further: `items` is pointed
+  // at by `item_uoms`, `item_barcodes`, `item_price_regulations`, `stock_batches`, `stock_ledger`,
+  // `stock_balances`, `grn_lines` and `consignment_lots`; `vendors` by `vendor_documents`,
+  // `vendor_bank_changes`, `stock_batches`, `consignment_lots` and `grns`; `stock_batches` by six of
+  // them; `transfers` by `transfer_lines` and `grns` by `grn_lines`.
+  //
+  // AND THE FORMULARY'S FIVE, WHICH IS THE HALF THE PLAN DID NOT SEE (F1). `items.formulary_medicine_id`
+  // references `formulary_medicines` (DD3), so `formulary_medicines` acquired an inbound FK from
+  // outside its own island for the first time and its private statement — which stood, correctly,
+  // from 16a T1 until this commit — became one Postgres refuses to run. The closure of
+  // {formulary island} ∪ {materials} ∪ {resources group} is a single group, and one group is one
+  // statement.
+  //
+  // CHILD-BEFORE-PARENT ORDERING IS IRRELEVANT INSIDE ONE `truncate` and the names are nonetheless
+  // written child-first, matching the style of every group above it: what Postgres requires is
+  // PRESENCE, not order, and writing them in dependency order is how the next reader checks presence
+  // without running anything.
+  //
+  // NO `restart identity` for these either, for the reason the paragraph below gives: `stock_ledger`
+  // and `item_price_regulations` carry `seq` bigserials, and this phase's tests assert seq ORDER,
+  // never seq VALUES.
+  //
   // AND THE `users` STATEMENT ABOVE NEEDS NO CHANGE AT ALL. That is DD17 paying for itself: every
   // actor column in this phase — `coupon_redemptions.actor_id`, `entitlement_movements.actor_id`,
   // `patient_match_queue.resolved_by`, `holder_book_imports.imported_by`,
@@ -174,6 +216,10 @@ export async function truncateAll(db: Db): Promise<void> {
         attribution_ids, partner_agreements, counterparties,
         retention_legal_holds, notifications, opd_prescriptions, opd_vitals, opd_queue_entries, opd_encounters, opd_appointments,
         opd_queue_sessions, opd_doctor_leaves, opd_doctor_schedules, opd_doctors, opd_departments,
+        grn_lines, grns, transfer_lines, transfers, stock_reservations, stock_balances, stock_ledger,
+        consignment_lots, stock_batches, vendor_bank_changes, vendor_documents, vendors,
+        item_price_regulations, item_barcodes, item_uoms, items,
+        formulary_medicine_salts, formulary_interactions, formulary_medicines, formulary_salts, formulary_staging,
         resource_status_history, resources,
         opd_config, allocations, receipt_tenders, receipts, credit_note_lines, credit_notes, invoice_lines,
         invoices, refund_vouchers, cashier_sessions, entered_in_error_marks, recon_batches, daily_closes,
