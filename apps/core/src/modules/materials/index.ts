@@ -46,3 +46,12 @@ export {
 export type {
   BankDetails, MaskedBank, VendorBankChangeRow, VendorDocumentRow, VendorRow, VendorView,
 } from "./vendors";
+
+// ── T5 — stores, and the stock ledger: movements, balances under lock, FEFO, reservations, recall ──
+export { createStore, ensureTransitStore, findStoreByCode, listStores, requireStore } from "./stores";
+export type { StoreRow } from "./stores";
+export {
+  balances, batchLocations, consumeReservation, fefoPick, getBatch, movementsFor, postMovement,
+  postMovements, recallBatch, releaseReservation, reserveStock,
+} from "./ledger";
+export type { BalanceRow, BatchRow, LedgerRow, MovementInput, MovementReason, ReservationRow } from "./ledger";
