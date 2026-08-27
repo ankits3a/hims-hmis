@@ -125,7 +125,33 @@ export type MaterialsErrorCode =
   | "lot_exhausted"
   /** T6 — `postGrn` on a GRN that has not been through gate QC. DD8's two-stage gate, refused. */
   | "qc_not_run"
-  /** T7 — `receiveStock` against a line already received. */
+  /**
+   * **An action already taken, on a row that is now terminal.** T7's `receiveStock` against a line
+   * already received is the case it was named for; it is not the only one it means.
+   *
+   * ═══ SECOND-PASS FINDING F7 — SEVEN THROW SITES, AND THE **DOCSTRING** WAS THE DEFECT ═══
+   *
+   * This read *"T7 — `receiveStock` against a line already received"* while seven sites raised it
+   * with six different subjects: a GRN whose QC verdict is already recorded (`grn.ts`), a GRN
+   * already posted (`grn.ts`), a reservation already consumed or released (`ledger.ts`, twice), a
+   * transfer in a terminal status (`transfers.ts`), a transfer LINE already received
+   * (`transfers.ts` — the documented one), and a bank change no longer `pending` (`vendors.ts`).
+   * M8 removed one borrowed code and left these; `errors.test.ts` cannot see them, because a borrow
+   * satisfies both directions it asserts.
+   *
+   * **Resolved by widening the DEFINITION rather than by minting six codes, and the reason is this
+   * file's own test for when to split one.** `vendor_blacklisted` is separate from
+   * `vendor_not_active` *"because the remedy differs"*. Here the remedy does **not** differ: for all
+   * seven the caller's next move is identical — stop, this is already done, re-read the row. Six
+   * near-synonyms would give a client six things to switch on and one thing to do, which is a
+   * worse interface than one honest code, and each would need a locale string saying the same
+   * sentence in six ways.
+   *
+   * What DOES change is that the meaning is now written down, so the next author is choosing it
+   * rather than borrowing it — and `errors.test.ts` pins the throw-site census, so an EIGHTH site
+   * in a new file has to update a test and say why. A shared code is legitimate; a shared code
+   * nobody declared is the defect.
+   */
   | "already_received"
   /**
    * T5 — the DD6 invariant, refused BEFORE the CHECK so the caller gets a code rather than a

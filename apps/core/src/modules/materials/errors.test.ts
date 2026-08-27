@@ -165,6 +165,62 @@ describe("the materials error union (Plan 14 CLOSE, M8)", () => {
     expect(byFile.get("grn.ts")).toContain('"qc_not_run"');
   });
 
+  /**
+   * ═══ SECOND-PASS FINDING F7 — THE TWO DIRECTIONS ABOVE CANNOT SEE A **BORROW** ═══
+   *
+   * A code raised for a subject it was not defined for satisfies *declared ⇒ thrown* and
+   * *thrown ⇒ declared* perfectly. That is how `not_in_transit` survived nine tasks meaning "gate
+   * QC has not run", and the same sweep that removed it found `already_received` raised from SEVEN
+   * sites with six different subjects while its docstring named one.
+   *
+   * **A test cannot read intent, so it pins the CENSUS instead.** The set of files that raise a
+   * shared code is a fact; a new file joining it is a decision. Pinning the set turns that decision
+   * into a diff somebody has to justify, which is the most a mechanical guard can do here — and it
+   * is strictly more than nothing, which is what guarded it before.
+   *
+   * `already_received` is deliberately shared: `errors.ts` widens its definition to "an action
+   * already taken on a row that is now terminal", on the grounds that the REMEDY is identical for
+   * every one of them. That argument is in the union; this is the tripwire under it.
+   */
+  it("F7: `already_received` is SHARED on purpose — its throw-site census is pinned", () => {
+    const sites = throwSites().get("already_received") ?? new Set<string>();
+    expect([...sites].sort()).toEqual(["grn.ts", "ledger.ts", "transfers.ts", "vendors.ts"]);
+  });
+
+  /**
+   * ═══ EVERY CODE RAISED FROM THREE OR MORE FILES, ENUMERATED WITH ITS REASON ═══
+   *
+   * The first draft of this leg asserted *"no other code is shared across more than two files"* and
+   * failed immediately on four healthy ones. **File count does not imply a borrow** — `unknown_batch`
+   * means "no such batch" in all three of its files, and a module-wide vocabulary is the entire
+   * point of a shared union. The heuristic was wrong, and a guard that cries wolf on correct code
+   * gets deleted by the third person who trips it.
+   *
+   * So the census is EXPLICIT instead. Each row below is a claim somebody made once, and a new file
+   * joining any of these sets — or a new code reaching three files — fails here and has to be
+   * argued in the diff. That is the honest limit of a mechanical check on a semantic property:
+   * **it cannot tell a borrow from a vocabulary, but it can make every instance visible.**
+   */
+  it("the shared codes are enumerated, each with a reason — a new sharer must argue in the diff", () => {
+    const shared: Record<string, string[]> = {};
+    for (const [code, files] of throwSites()) {
+      if (files.size > 2) shared[code] = [...files].sort();
+    }
+    expect(shared).toEqual({
+      // "an action already taken on a row that is now terminal" — six subjects, ONE remedy (F7).
+      already_received: ["grn.ts", "ledger.ts", "transfers.ts", "vendors.ts"],
+      // "this batch exists and disagrees with what the caller believes" — one meaning throughout.
+      batch_mismatch: ["consumption.ts", "grn.ts", "transfers.ts"],
+      // "no such batch". The id is wrong, wherever it came from.
+      unknown_batch: ["consumption.ts", "ledger.ts", "transfers.ts"],
+      // "the id names no row of this kind" — GRN, transfer, lot, bank change. `errors.ts`'s F5
+      // clause argues this one at length; it is the module's generic 404 by design.
+      unknown_document: ["consumption.ts", "grn.ts", "ledger.ts", "materials.controller.ts", "transfers.ts", "vendors.ts"],
+      // "no such item".
+      unknown_item: ["grn.ts", "items.ts", "materials.controller.ts"],
+    });
+  });
+
   it("NOTHING in the union answers 5xx — the Plan 09 / Plan 13 / M1 lesson, asserted", () => {
     const statuses = declaredCodes().map((c) => materialsHttpStatus(c as MaterialsErrorCode));
     expect(statuses.every((s) => s >= 400 && s < 500)).toBe(true);

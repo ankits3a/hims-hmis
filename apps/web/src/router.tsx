@@ -84,12 +84,27 @@ const NAV: readonly { to: string; label: string; permission: string }[] = [
   { to: "/formulary/admin", label: "nav.formularyAdmin", permission: "formulary.manage" },
   // PLAN 14 T9 / DD16 — the three materials screens. Each path and permission matches
   // `materialsManifest.menu`'s own entry exactly, which is where the authoritative pairing lives.
-  // All three permissions are GRANTED (DD11) to `materials_head` and `storekeeper` — roles that
-  // exist with NO HOLDERS — so these links appear the day a storekeeper account does, and for
-  // nobody before then. That is the `formulary.manage` precedent one phase later.
+  // Two of the three are GRANTED (DD11) to `materials_head` and `storekeeper` — roles that exist
+  // with NO HOLDERS — so those links appear the day a storekeeper account does, and for nobody
+  // before then. That is the `formulary.manage` precedent one phase later.
   { to: "/materials/items", label: "nav.materialsItems", permission: "materials.items.manage" },
   { to: "/materials/vendors", label: "nav.materialsVendors", permission: "materials.vendors.manage" },
-  { to: "/materials/grn", label: "nav.materialsGrn", permission: "materials.grn.capture" },
+  /**
+   * ═══ SECOND-PASS FINDING F1 — THIS LINE IS THE OTHER HALF OF CLOSE REVIEW M6 ═══
+   *
+   * M6 moved the GRN read routes and `materialsManifest.menu`'s entry from `materials.grn.capture`
+   * to `materials.stock.read`, so `pharmacy` — DD11's QC signatory, which holds `grn.qc` and
+   * `stock.read` and NOT `grn.capture` — can open the GRN it is ruled to sign. **This table was
+   * not moved with them**, and it is the one the shell actually renders: `NAV.filter(can)` below.
+   * So the server said yes and the pharmacist still had no link, which is the exact symptom the
+   * remediation's own commit message claimed to have removed.
+   *
+   * The comment four lines up — *"matches `materialsManifest.menu`'s own entry exactly"* — was
+   * true when it was written and false after M6, and **nothing could tell**: no test compared this
+   * table to any manifest. That is §2.122 in the remediation for §2.122. The guard now exists at
+   * `apps/core/test/nav-parity.test.ts`, so the next divergence fails a suite instead of a role.
+   */
+  { to: "/materials/grn", label: "nav.materialsGrn", permission: "materials.stock.read" },
 ];
 
 function Shell(): React.ReactElement {

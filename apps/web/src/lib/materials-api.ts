@@ -257,9 +257,19 @@ export function materialsErrorCode(e: unknown): string | null {
  *
  * Membership is tested against the IMPORTED `en.json` rather than i18next's missing-key behaviour,
  * which is configuration and can change under us. `i18n.test.ts` already asserts `hi` mirrors `en`
- * key-for-key, so one check covers both locales; `materials-errors-parity.test.ts` then asserts
- * this block against the module's union, so a code added in `apps/core` cannot reach a screen with
- * no sentence to show for it.
+ * key-for-key, so one check covers both locales; **`apps/core/src/modules/materials/errors.test.ts`**
+ * ("m6: every declared code has a sentence in BOTH locales") then asserts this block against the
+ * module's union in both directions, so a code added in `apps/core` cannot reach a screen with no
+ * sentence to show for it, and a stale sentence cannot outlive its code.
+ *
+ * **SECOND-PASS FINDING F2 — that sentence originally named `materials-errors-parity.test.ts`, and
+ * no such file exists.** The property was guarded all along, by the file named above; only the
+ * citation was invented. It is recorded rather than quietly corrected because of where it happened:
+ * this is §2.122's defect — a claim about the test suite, in the file the test would guard —
+ * committed **inside the remediation for §2.122**, by the session that wrote the lesson. The
+ * mechanical form that entry prescribes (`grep` the sources for every `*.test.ts` string and `find`
+ * each one repo-wide) was run against `apps/core/src/modules/materials` and found nothing, because
+ * this file is in `apps/web`. **A census scoped to where the defect last appeared is not a census.**
  */
 export function materialsErrorText(e: unknown, t: (key: string) => string): string {
   const code = materialsErrorCode(e);

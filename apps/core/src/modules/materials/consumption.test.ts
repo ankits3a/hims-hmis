@@ -461,6 +461,56 @@ describe("the consignment consumer (Plan 14 T7 / DD13)", () => {
   });
 
   /**
+   * ═══ SECOND-PASS FINDING F5 — "RESOLVED PER ROW" NEEDED **TWO ROWS AND TWO GAZETTES** ═══
+   *
+   * The M5 leg above asserts `consumptionsFor` returns the ceiling per base unit, and it does — but
+   * with ONE consumption and ONE regulation it cannot tell a per-row lookup at each row's own
+   * `occurred_at` from a single `now()` lookup applied to everything. Both implementations return
+   * the same number on that fixture. **The claim in the docstring was "resolved PER ROW at that
+   * row's own `occurred_at`", and that is the claim nothing tested** — §2.102 again, this time
+   * hiding behind a fixture with one of something.
+   *
+   * Two implants a gazette apart in one admission is the ordinary case DD13 is about: a long stay,
+   * an NPPA notification in the middle of it, and a bill composed at discharge from this one call.
+   * A `now()` implementation prices BOTH at 700000 and quietly overcharges or undercharges the
+   * first by ₹1,000 a unit.
+   */
+  it("F5: two consumptions either side of a gazette get DIFFERENT ceilings — the per-row claim, tested", async () => {
+    const f = await fixture({ received: 3, mrpUom: "box" });
+    // R1 in force when the first implant went in; R2 gazetted between the two.
+    await withTx(db, (tx) => setPriceRegulation(tx, HEAD, f.itemId, {
+      ceilingPaise: 4000000, mrpUom: "box",
+      effectiveFrom: new Date("2026-01-01T00:00:00Z"), gazetteRef: "NPPA/2026/1",
+    }));
+    await withTx(db, (tx) => setPriceRegulation(tx, HEAD, f.itemId, {
+      ceilingPaise: 3500000, mrpUom: "box",
+      effectiveFrom: new Date("2026-08-27T07:00:00Z"), gazetteRef: "NPPA/2026/2",
+    }));
+
+    // BEFORE the new gazette…
+    await withTx(db, (tx) => handleConsignmentDeployed(tx, HEAD, "evt-1", deployment(f)));
+    // …and after it, in the same encounter.
+    await withTx(db, (tx) => handleConsignmentDeployed(tx, HEAD, "evt-2", deployment(f, {
+      occurredAt: new Date("2026-08-27T09:00:00Z").toISOString(),
+    })));
+
+    const rows = await consumptionsFor(db, "enc-1");
+    expect(rows).toHaveLength(2);
+    /**
+     * **800000 then 700000** — 4,000,000 and 3,500,000 paise per box of five. A single-lookup
+     * implementation returns `[700000, 700000]`, which is the leg that fails. The MRP per base unit
+     * is identical on both rows on purpose: it isolates the regulation lookup as the only thing
+     * that can differ.
+     */
+    expect(rows.map((r) => r.ceilingPaisePerBase)).toEqual([800000, 700000]);
+    expect(rows.map((r) => r.mrpPaisePerBase)).toEqual([900000, 900000]);
+    // The memoisation (F6) is keyed on `(item, occurred_at)` — this is also the leg that proves it
+    // does not collapse two different instants onto one cached answer.
+    expect(rows.map((r) => r.occurredAt.toISOString()))
+      .toEqual(["2026-08-27T06:00:00.000Z", "2026-08-27T09:00:00.000Z"]);
+  });
+
+  /**
    * An unconvertible price is carried as NULL and never throws — the implant is already in the
    * patient. `"drum"` is not one of this item's units, so `mrpPerBaseUnit` refuses it.
    */

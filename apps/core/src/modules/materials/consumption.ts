@@ -298,11 +298,56 @@ export async function consumptionsFor(db: Db | Tx, encounterId: string): Promise
    * The regulation is resolved PER ROW at that row's own `occurred_at` — A21's rule applied to the
    * read as well as to the event. Two implants consumed a month apart in one long admission can sit
    * under two different gazettes, and a single `now()` lookup would price both at today's.
+   *
+   * ═══ SECOND-PASS FINDING F5 — THIS RE-DERIVES; IT DOES NOT READ WHAT THE EVENT FROZE ═══
+   *
+   * The paragraph above used to say the clamp uses *"the batch MRP and ceiling that
+   * `material.consumed` carries"*. **It does not.** `material.consumed` FROZE those two numbers at
+   * consumption time; this read recomputes them from `item_price_regulations` at query time. For
+   * every ordinary case the two agree, because `effectiveRegulation` is asked for the same
+   * `occurred_at` — which is why the divergence survived a review.
+   *
+   * **They can disagree, and the case is real: a gazette CORRECTION.** `effectiveRegulation` orders
+   * `effective_from desc, seq desc` (`items.ts`), so a correction row filed LATER with the SAME
+   * `effective_from` and a higher `seq` supersedes the original. An implant consumed under R1 has
+   * `ceilingPaisePerBase: 800000` frozen in its event; after the correction this read answers
+   * 600000 for the same row. **Two answers to one question — §2.54, and DD13 points Plan 15 at
+   * this one.**
+   *
+   * **Which is right is Plan 15's ruling to make, and it is recorded rather than decided here.**
+   * The argument is genuinely two-sided: the EVENT is the contemporaneous record of what the
+   * hospital believed when the implant went in, and a bill is a statement about that moment; the
+   * READ reflects the gazette as corrected, and a corrected ceiling is the one a regulator will
+   * apply. This phase ships DD18-fenced — no charge poster, no clamp — so nothing computes a wrong
+   * number today; the day Plan 15 applies `min(tariff, MRP, ceiling)` it must say WHICH source it
+   * clamps against, and this comment is the note it has to answer.
+   *
+   * What is fixed here is the honesty of the description and the test: `consumption.test.ts`'s
+   * "resolved per row" leg had ONE row and ONE regulation, so it could not tell a per-row lookup
+   * from a single `now()` one. It now carries two rows either side of a gazette boundary.
    */
+  /**
+   * SECOND-PASS FINDING F6 — memoised, because the loop was an N+1 in the commit whose m7 fix was
+   * about exactly that. A forty-implant admission issued eighty-one statements where three would
+   * do. The UoM table is per ITEM and cannot change inside one read; the regulation depends on
+   * `(item, occurred_at)`, so it is keyed on both — two implants of one item on one day share a
+   * lookup, and two a month apart correctly do not.
+   */
+  const uomCache = new Map<string, Awaited<ReturnType<typeof itemUomRows>>>();
+  const regCache = new Map<string, Awaited<ReturnType<typeof effectiveRegulation>>>();
   const out: ConsumptionRow[] = [];
   for (const r of rows) {
-    const uoms = await itemUomRows(db, r.itemId);
-    const reg = await effectiveRegulation(db, r.itemId, r.occurredAt);
+    let uoms = uomCache.get(r.itemId);
+    if (uoms === undefined) {
+      uoms = await itemUomRows(db, r.itemId);
+      uomCache.set(r.itemId, uoms);
+    }
+    const regKey = `${r.itemId}\u0001${String(r.occurredAt.getTime())}`;
+    let reg = regCache.get(regKey);
+    if (reg === undefined && !regCache.has(regKey)) {
+      reg = await effectiveRegulation(db, r.itemId, r.occurredAt);
+      regCache.set(regKey, reg);
+    }
     out.push({
       ledgerEntryId: r.ledgerEntryId,
       seq: r.seq,

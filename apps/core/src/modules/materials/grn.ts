@@ -608,6 +608,19 @@ async function createConsignmentLot(
    *
    * Now: filtered to those VALID ON THE CHALLAN DATE — the same predicate `hasValidDocument` uses,
    * so the gate and the record cannot disagree — and ordered so the choice is deterministic.
+   *
+   * ═══ SECOND-PASS FINDING F4 — `desc(validFrom)` IS **NULLS FIRST** IN POSTGRES, AND THAT PREFERS
+   *     THE LEAST SPECIFIC AGREEMENT ═══
+   *
+   * The filter admits an open-ended agreement (`valid_from IS NULL`), exactly as `hasValidDocument`
+   * does. Under a plain `ORDER BY valid_from DESC` Postgres sorts NULLs FIRST, so a document with
+   * no start date at all outranks a specific, current, freshly-signed one. That is deterministic —
+   * which is all M9 asked for — and it is deterministically the WRONG choice: "the agreement these
+   * goods were received under" is the most specific one in force, not the vaguest.
+   *
+   * `NULLS LAST` makes dated agreements win and leaves the undated one as the fallback it is. The
+   * same reasoning, and the same clause, as FEFO's `expiry_date asc NULLS LAST` in `ledger.ts`: a
+   * row with no date is not the extreme of the range, it is outside it.
    */
   const docs = await tx.select().from(vendorDocuments)
     .where(and(
@@ -616,7 +629,7 @@ async function createConsignmentLot(
       or(isNull(vendorDocuments.validFrom), sql`${vendorDocuments.validFrom} <= ${grn.challanDate}`),
       or(isNull(vendorDocuments.validTo), sql`${vendorDocuments.validTo} >= ${grn.challanDate}`),
     ))
-    .orderBy(desc(vendorDocuments.validFrom), desc(vendorDocuments.id))
+    .orderBy(sql`${vendorDocuments.validFrom} desc nulls last`, desc(vendorDocuments.id))
     .limit(1);
   const agreementDocumentId = docs[0]?.id;
   if (agreementDocumentId === undefined) {

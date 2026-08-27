@@ -263,6 +263,61 @@ describe("the GRN gate (Plan 14 T6)", () => {
    * heap-order `limit(1)` returns exactly the wrong row — the §2.102 discipline applied to a
    * missing `ORDER BY`.
    */
+  /**
+   * ═══ SECOND-PASS FINDING F3 — M7's OTHER HALF: THE THROW MUST BE CAUGHT IN `qcContextFor` ═══
+   *
+   * M7 has two halves. `qc.test.ts` pins the second — rule 7 rejects when `ceilingUnconvertible` is
+   * set — by handing `qcLine` a context built by hand. **Nothing tested the first**, which is the
+   * half M7 is actually about: `qcContextFor` calling `mrpPerBaseUnit` on the CEILING outside any
+   * `try`, so the throw escaped `runGateQc` and `materialsHttpStatus` answered **404 for the whole
+   * delivery**. The second-pass reviewer measured it: deleting the `try`/`catch` in `grn.ts` left
+   * the entire suite green.
+   *
+   * The path is reachable through shipped code. `setPriceRegulation` enforces the pair rule and
+   * that `mrpUom` is one of the item's units — it does **not** check divisibility — so a gazette
+   * entered as ₹85.05 per strip of ten is ACCEPTED at write time and only fails when a GRN is
+   * gated against it. A price that does not divide into whole paise per base unit is refused
+   * rather than rounded, deliberately (`uom.ts`), and that refusal has to become a LINE verdict.
+   *
+   * The second line is what makes this leg discriminating rather than decorative: **the rest of the
+   * delivery must still post.** A per-line rule that takes the whole GRN down with it is the defect,
+   * not the fix.
+   */
+  it("F3: an unconvertible CEILING rejects its line and leaves the rest of the delivery postable", async () => {
+    const bad = await drugItem("CEIL-BAD");
+    const good = await drugItem("CEIL-OK");
+    const storeId = await aStore();
+    const vendorId = await aVendor();
+
+    // ₹85.05 per strip of TEN — 8505 % 10 = 5, so it does not divide into whole paise per tablet.
+    await withTx(db, (tx) => setPriceRegulation(tx, HEAD, bad, {
+      ceilingPaise: 8505, mrpUom: "strip",
+      effectiveFrom: new Date("2026-01-01T00:00:00Z"), gazetteRef: "NPPA/BAD",
+    }));
+
+    const { grnId } = await withTx(db, (tx) => captureGrn(tx, HEAD, {
+      vendorId, source: "challan", storeResourceId: storeId,
+      challanNo: "CH/F3/1", challanDate: CHALLAN,
+      lines: [goodLine(bad, { batchNo: "B-BAD" }), goodLine(good, { batchNo: "B-OK" })],
+      now: T0,
+    }));
+
+    // It does NOT throw, and it does NOT 404: it returns a verdict per line.
+    const { status, verdicts } = await withTx(db, (tx) => runGateQc(tx, HEAD, grnId));
+    expect(status).toBe("partially_accepted");
+    expect(verdicts.map((v) => ({ verdict: v.verdict, rule: v.rule })))
+      .toEqual([
+        { verdict: "reject", rule: "mrp_unconvertible" },
+        { verdict: "pass", rule: undefined },
+      ]);
+
+    // …and the good line posts. One mistyped gazette costs one line, not a lorry.
+    const { ledgerEntryIds } = await withTx(db, (tx) => postGrn(tx, HEAD, grnId, T0));
+    expect(ledgerEntryIds).toHaveLength(1);
+    const posted = await getGrn(db, grnId);
+    expect(posted?.lines.map((l) => l.qtyAcceptedBase).sort((a, b) => a - b)).toEqual([0, 300]);
+  });
+
   it("M9: the consignment lot names the agreement VALID on the challan date, not an arbitrary one", async () => {
     const itemId = await drugItem();
     const storeId = await aStore();
@@ -294,6 +349,62 @@ describe("the GRN gate (Plan 14 T6)", () => {
       .where(eq(vendorDocuments.id, lot?.agreementDocumentId ?? ""));
     expect({ number: doc?.number, validTo: doc?.validTo })
       .toEqual({ number: "CA/2026", validTo: "2027-12-31" });
+  });
+
+  /**
+   * ═══ SECOND-PASS FINDING F4 — THE `ORDER BY` NEEDS TWO AGREEMENTS VALID **AT ONCE** ═══
+   *
+   * The M9 leg above pairs an EXPIRED agreement with a current one, so exactly one row survives the
+   * validity filter and the `ORDER BY` is never exercised: an implementation carrying the `WHERE`
+   * and no `ORDER BY` passes it unchanged. **That is §2.102 applied to a sort — the fixture makes
+   * the ordering vacuous.**
+   *
+   * The case the ordering exists for is ordinary: a RENEWAL signed before the old agreement lapses,
+   * so two are in force on the challan date. Both here are valid on 2026-08-27.
+   *
+   * And the second half is the `NULLS LAST` fix. An OPEN-ENDED agreement — `valid_from IS NULL`,
+   * which the filter admits because `hasValidDocument` admits it — sorts FIRST under a plain
+   * `desc`, so the vaguest document on file would win. It must lose to a dated one.
+   */
+  it("F4: with TWO agreements in force the LATEST-DATED wins, and an undated one never outranks a dated one", async () => {
+    const itemId = await drugItem("CONSIGN-F4");
+    const storeId = await aStore();
+    const { vendorId } = await withTx(db, (tx) => registerVendor(tx, HEAD, {
+      code: "CONSIGN-F4", legalName: "Consign Co Pvt Ltd",
+    }));
+    await withTx(db, (tx) => addVendorDocument(tx, HEAD, vendorId, { type: "gst_certificate", number: "g" }));
+    await withTx(db, (tx) => addVendorDocument(tx, HEAD, vendorId, { type: "pan", number: "p" }));
+    // Inserted OLDEST-FIRST and UNDATED-FIRST, so heap order and a NULLS-FIRST sort both favour
+    // the wrong answer. All three are valid on the challan date.
+    await withTx(db, (tx) => addVendorDocument(tx, HEAD, vendorId, {
+      type: "consignment_agreement", number: "CA/OPEN", validFrom: null, validTo: null,
+    }));
+    await withTx(db, (tx) => addVendorDocument(tx, HEAD, vendorId, {
+      type: "consignment_agreement", number: "CA/OLD",
+      validFrom: "2024-01-01", validTo: "2027-12-31",
+    }));
+    await withTx(db, (tx) => addVendorDocument(tx, HEAD, vendorId, {
+      type: "consignment_agreement", number: "CA/RENEWAL",
+      validFrom: "2026-06-01", validTo: "2028-12-31",
+    }));
+    await withTx(db, (tx) => activateVendor(tx, HEAD, vendorId, T0));
+
+    const { grnId } = await withTx(db, (tx) => captureGrn(tx, HEAD, {
+      vendorId, source: "consignment_challan", storeResourceId: storeId,
+      challanNo: "CH/F4/1", challanDate: CHALLAN, lines: [goodLine(itemId)], now: T0,
+    }));
+    await withTx(db, (tx) => runGateQc(tx, HEAD, grnId));
+    await withTx(db, (tx) => postGrn(tx, HEAD, grnId, T0));
+
+    const [lot] = await db.select().from(consignmentLots);
+    const [doc] = await db.select().from(vendorDocuments)
+      .where(eq(vendorDocuments.id, lot?.agreementDocumentId ?? ""));
+    /**
+     * `CA/RENEWAL` — the most recently dated agreement in force. NOT `CA/OPEN` (which a NULLS-FIRST
+     * `desc` returns) and NOT `CA/OLD` (which heap order returns, since it was inserted first among
+     * the dated pair).
+     */
+    expect(doc?.number).toBe("CA/RENEWAL");
   });
 
   it("a FULLY REJECTED GRN writes NO ledger row and emits grn.rejected plus a line event each", async () => {
