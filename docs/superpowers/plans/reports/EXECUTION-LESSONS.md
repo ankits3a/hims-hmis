@@ -609,6 +609,48 @@ The author then re-measured, reversed itself, and got the diagnosis exactly righ
 
 
 
+**2.115 — A RESUMED REVIEWER GETS MORE EXPENSIVE EVERY TIME, AND ITS PER-CALL COST EXPLODES AS ITS WORKLOAD SHRINKS.** *(Plan 13 close, 2026-08-27 — measured across three invocations of ONE agent)*
+§2.108 established that a resumed agent starts full. Plan 13 resumed one reviewer twice and measured the stronger law: **each resume is dearer than the last, because the transcript it replays now contains its own previous report.**
+
+| invocation | workload | tokens | tool calls | **per call** |
+|---|---|---|---|---|
+| pass 1, fresh | 8 commits, 40 files, +38,779, plus the live database | 175,209 | 38 | **4,611** |
+| pass 2, resumed | ONE 7-file diff, +163/−27 | 205,365 | 5 | **41,073** |
+| pass 3, resumed | FOUR yes/no questions over a 6-file diff, +92/−6 | 224,081 | 2 | **112,041** |
+
+**Total 604,655 — 92% of the phase's whole 660,000 stop-loss, on the reviewer alone, and the phase breached it.** The workload fell by roughly two orders of magnitude between the first call and the third; the cost went UP 28%. Per call it went up **24×**. The plan's review term (450,230) was derived from 16a's fresh pass plus 09a's ONE resume, and it is short by a third against two.
+
+**The mechanism, and it is why the trend is monotonic rather than noisy:** a resume re-bills the whole transcript, and the transcript grew by the agent's own output — a full review report is thousands of tokens that the next resume pays for on every call it makes. With few calls the context ramp is the entire cost and nothing amortises it.
+
+**Mechanical form: RESUME FOR MEMORY, SPAWN FRESH FOR SCOPE.** Before resuming, ask whether the question actually needs what that agent remembers.
+- **Needs memory** — *"is the fix for the defect YOU found correct?"* Pass 2 qualified: it had to hold the original code in mind to judge whether the remediation preserved it, and it earned every token by finding two MAJORs in that remediation.
+- **Does NOT need memory** — *"confirm these four properties of this 92-line diff."* Pass 3 did not qualify. A FRESH agent carrying `AGENT-RULES.md` (24.5k) plus the diff (~3k) plus the questions (~1k) would have opened at roughly **7k of context against the resumed agent's whole transcript**, and answered the same four questions. On this measurement that is a **4–7× saving on that invocation with nothing verified less.**
+
+**And the counter-rule, because the cheap move here would be to stop reviewing:** Plan 13's pass 2 found **two MAJOR defects in pass 1's own remediation**, one of which (a `ResourceError` escaping an OPD controller's `toHttp` as a 500) re-introduced the exact defect class this project's own DD14 and `errors.ts` cite as their cautionary tale — **introduced by the commit that fixed a different defect.** A phase that stopped after one pass ships it. The lesson is not *review less*; it is **review the remediation with a resumed agent, then confirm the confirmation with a fresh one.**
+
+**2.116 — A MUTANT OF SQL NEEDS A TEST THAT RUNS THE SQL, AND A MIGRATION'S BRANCHES CAN DIE UNEXECUTED.** *(Plan 13 close, 2026-08-27 — found by the independent reviewer, not by the executor)*
+Plan 13's Assertion Book named four rows — A8, A9, A11, A12 — whose mutants are mutations of a **migration file**, and the tests that shipped for them exercise the application code on either side of it. The reviewer's finding: **no test anywhere applies `0032` to a database with rows in `opd_rooms`.** Every per-worker test database is empty when the migration runs, so the backfill inserts zero rows; and production held two rooms with `floor NULL` and `active true` on both. **The `floor IS NOT NULL` branch and the `active = false → 'retired'` branch therefore never executed in ANY environment — and T7 dropped the source table, so they never can again.**
+
+The rows were genuinely discharged, by a scratch-database drill in the executing session: `0000`–`0031` applied with `psql`, a template snapshot, one mutated `0032` per row, assertions in SQL. All four mutants DIED with quoted output. **But that evidence lives in one transcript and nothing in the repository regresses it.**
+
+**Mechanical form, two halves.** (a) When an Assertion Book row's mutant is a mutation of a `.sql` file, the row must say **which instrument discharges it** — a migration-level test, or a named drill whose transcript is the evidence — because a plan that says "mutant · discriminating input" and means "run it by hand once" is describing a different instrument from the one every other row uses. (b) At authoring time, ask of every backfill branch: **is there any environment in which this branch executes?** A branch guarded by a field that is NULL in production and absent from every fixture is dead code with a `CASE` around it, and the phase that drops its source table is the last one that could ever have found out.
+
+**2.117 — "ENFORCE THE INVARIANT AT THE WRITE PATH IN ONE PLACE" IS ONLY SOUND WHEN THERE IS ONE PLACE — AND ADDING A GUARD CHANGES WHAT EVERY CALLER'S ERROR MAPPER CAN RECEIVE.** *(Plan 13 close, 2026-08-27 — two review passes, and the second defect was created by the fix for the first)*
+Plan 13's DD6 stated an occupancy invariant as a biconditional and said it was *"enforced at the write path in one place"*. There were **four** write entry points and a module-facing facade on top of them. It was enforced on two. The first remediation closed a third; the second review pass found the fourth — `createResource`, where `status` is a public optional input and the occupied value is a legal member of the vocabulary, so a resource could be **registered** into the state the invariant forbids.
+
+**Then the fix for the third door opened a different defect.** Making `changeResourceStatus` refuse an occupied resource made a new error code reachable from an OPD route, and that module's error union has no code for it — so the module's translator rethrew, the controller's `toHttp` rethrew, and a correct refusal reached the masters counter as a **500**. That is §2's Plan 09 specimen (a `MembershipError` escaping `billing.controller.ts`) reproduced one phase later **by the commit that was fixing a correctness bug**, in a phase whose own plan cites that specimen twice.
+
+**Mechanical form, and it is two greps.** (a) Before writing *"enforced in one place"*, `grep` for every function that writes the columns the invariant constrains and **count them**; if the answer is more than one, the sentence is a specification of what should be true, not a description of what is. (b) **In the same commit that adds a refusal to a shared function, walk every caller's error mapper** — `grep` the callers, and for each one check its `toHttp`/translator against the code you just made reachable. A guard added in the kernel is a change to the HTTP contract of every module that calls it.
+
+**2.118 — THE GENERATOR'S DEFAULT CAN BE THE DANGEROUS FORM, AND A PLAN THAT ASSUMES OTHERWISE HAS THE EFFORT BACKWARDS.** *(Plan 13, 2026-08-27 — measured at `drizzle-kit generate`)*
+Plan 13's A12 pinned that `0033` must be a bare `DROP TABLE "opd_rooms";` and **never** `CASCADE`, and described the CASCADE mutant as *"one word long"* — the natural reading being that the safe form is what you get and the dangerous one takes an edit. **It is the other way round.** `pnpm db:generate` emitted `DROP TABLE "opd_rooms" CASCADE;`, and the hand-edit that ships is the REMOVAL of that word.
+
+Measured against a database at `0031` with the repoint not applied — the hand-applied-hotfix scenario, which AGENT-RULES-compliant detached execution makes more likely rather than less: `CASCADE` **succeeds**, emits `NOTICE: drop cascades to 2 other objects`, and **both `room_id` foreign keys vanish — zero surviving** — leaving a live hospital's schedule book unconstrained. The bare drop refuses and names both dependent constraints.
+
+**Mechanical form: read the GENERATED file before writing the plan row that describes it.** A plan authored from what a tool *ought* to emit mis-states which case is the deviation, and the mis-statement points the executor's attention away from the word that matters. Where a generated migration will be hand-edited, the plan should quote the generator's actual output and mark the edit against it.
+
+
+
 
 ## 3. Plan-authoring defects
 

@@ -296,6 +296,34 @@ paid for all of that on each of its 30 remaining calls.
   exactly what it had already proven and re-verified none of it, which a fresh reviewer would have
   had to redo — but choose it for that reason and price it honestly.
 
+**AMENDED 2026-08-27 after Plan 13 (ledger §2.115) — the cost does not merely stay high, IT
+CLIMBS, and the per-call figure explodes as the workload shrinks.** One reviewer, three
+invocations:
+
+| invocation | workload | tokens | calls | per call |
+|---|---|---|---|---|
+| pass 1, fresh | 8 commits, 40 files, +38,779 | 175,209 | 38 | 4,611 |
+| pass 2, resumed | one 7-file diff, +163/−27 | 205,365 | 5 | **41,073** |
+| pass 3, resumed | four yes/no questions, 6 files, +92/−6 | 224,081 | 2 | **112,041** |
+
+**604,655 total — 92% of that phase's entire stop-loss, on the reviewer alone.** The mechanism is
+monotonic rather than noisy: **a resume re-bills the transcript, and the transcript grew by the
+agent's OWN previous report.** With few calls the context ramp IS the cost and nothing amortises it.
+
+**THE DECISION RULE — resume for MEMORY, spawn FRESH for SCOPE.** Before resuming, ask whether the
+question needs what that agent *remembers*:
+- **Needs memory:** *"is the fix for the defect YOU found correct?"* Resume. Plan 13's pass 2
+  qualified and earned it — it found TWO MAJOR defects in the remediation for its own first
+  finding, one of which re-introduced a defect class the plan itself cites as a cautionary tale.
+- **Does NOT need memory:** *"confirm these four properties of this 92-line diff."* **Spawn fresh.**
+  A fresh agent carrying `AGENT-RULES.md` plus the diff plus the questions opens at roughly 7k of
+  context; the resumed one opened at its whole transcript. Measured saving on that invocation:
+  **4–7×, with nothing verified less.**
+
+**And the budget term in §6 is amended with it:** price a resume at **~1.3× the previous
+invocation**, not at the fresh rate and not at parity. A two-resume phase costs about 3.4× its
+first pass, which is what Plan 13's 450,230 review term underestimated by a third.
+
 ### 9.2 The measurement, before compiling and after closing
 
 **Before:** `wc -c` every file the briefs point at, divide by four, and write the total into the
