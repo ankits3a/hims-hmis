@@ -26,3 +26,13 @@ export {
   NEAR_EXPIRY_MIN_MONTHS, TRANSIT_STORE_CODE,
 } from "./config";
 export type { BlacklistReason } from "./config";
+
+// ── T3 — the item master, UoM conversion, barcodes and price regulations ──
+export {
+  addBarcode, addItemUom, effectiveRegulation, getItem, itemUomRows, itemsByIds, listItems,
+  registerItem, resolveBarcode, setPriceRegulation, updateItem,
+} from "./items";
+export type { ItemBarcodeRow, ItemRow, ItemUomRow, ItemWithUoms, PriceRegulationRow, RegisterItemInput } from "./items";
+/** DD7's one place a multiplier is applied. Pure; T6's gate and 16c's dispense both read it. */
+export { fromBase, mrpPerBaseUnit, multiplierFor, toBase } from "./uom";
+export type { UomRow } from "./uom";
