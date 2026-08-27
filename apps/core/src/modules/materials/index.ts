@@ -36,3 +36,13 @@ export type { ItemBarcodeRow, ItemRow, ItemUomRow, ItemWithUoms, PriceRegulation
 /** DD7's one place a multiplier is applied. Pure; T6's gate and 16c's dispense both read it. */
 export { fromBase, mrpPerBaseUnit, multiplierFor, toBase } from "./uom";
 export type { UomRow } from "./uom";
+
+// ── T4 — the vendor master: documents, lifecycle, blacklist, the bank change ──
+export {
+  activateVendor, addVendorDocument, applyBankChange, assertVendorPurchasable, blacklistVendor,
+  getBankChange, getVendor, hasValidDocument, listBankChanges, listVendorDocuments, listVendors,
+  registerVendor, reinstateVendor, requestBankChange, suspendVendor, updateVendor,
+} from "./vendors";
+export type {
+  BankDetails, MaskedBank, VendorBankChangeRow, VendorDocumentRow, VendorRow, VendorView,
+} from "./vendors";
