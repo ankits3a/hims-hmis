@@ -55,3 +55,11 @@ export {
   postMovements, recallBatch, releaseReservation, reserveStock,
 } from "./ledger";
 export type { BalanceRow, BatchRow, LedgerRow, MovementInput, MovementReason, ReservationRow } from "./ledger";
+
+// ── T6 — the GRN gate: capture, deterministic QC, near-expiry approval, post ──
+export { daysBetween, nearExpiryMinDays, qcLine } from "./qc";
+export type { QcContext, QcLine, QcVerdict, RuleCode } from "./qc";
+export {
+  captureGrn, getGrn, listGrns, lotsForBatch, postGrn, requestNearExpiryAcceptance, runGateQc,
+} from "./grn";
+export type { CaptureLine, GrnLineRow, GrnRow, GrnWithLines } from "./grn";

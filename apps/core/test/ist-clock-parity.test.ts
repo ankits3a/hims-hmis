@@ -40,6 +40,16 @@ import { IST_UTC_OFFSET_MINUTES } from "../src/kernel/approvals/cumulative";
  * import-based test would be blind to exactly the copies most likely to drift. Each site's
  * expression is PINNED verbatim and evaluated by a small multiplier parser — never `eval`. A tenth
  * copy fails the census, the same discipline `manifests.test.ts` applies to module registration.
+ *
+ * ═══ THE TENTH COPY ARRIVED, 2026-08-27 (Plan 14 T6) ═══
+ *
+ * `modules/materials/grn.ts` needs the IST calendar date of an instant to number a GRN through
+ * `EPISODE_SERIES`. It took the `modules/billing/time.ts` route — copy the two lines module-locally,
+ * because cross-module internals are not importable (spec §4) and a goods-receipt date is not an OPD
+ * concept — and **this census is what made that a DELIBERATE act rather than a silent one**: the
+ * phase's verify went red here, the file was not in the task's Files list, and the copy had to be
+ * argued for in writing before it could land. That is the friction the docstring above promises,
+ * working exactly as designed, one phase later. Recorded as finding F10 in Plan 14's CLOSE.
  */
 
 const IST_OFFSET_MS = 19_800_000; // 5h30m. Design law, no DST.
@@ -55,6 +65,9 @@ const SITES: { file: string; expr: string }[] = [
   { file: "src/modules/opd/search-providers.ts", expr: "5.5 * 60 * 60 * 1000" },
   { file: "src/modules/opd/time.ts", expr: "5.5 * 60 * 60 * 1000" },
   { file: "src/modules/partners/kicker.ts", expr: "5.5 * 60 * 60 * 1000" },
+  // PLAN 14 T6 — the tenth. See the paragraph above: a GRN number is series-numbered by IST
+  // calendar date, and `grn.ts` resolves one when its caller does not supply it.
+  { file: "src/modules/materials/grn.ts", expr: "5.5 * 60 * 60 * 1000" },
 ];
 
 /** A product of number literals, with `IST_UTC_OFFSET_MINUTES` resolved. No eval, no Function. */
@@ -100,7 +113,7 @@ describe("the IST clock is the same clock everywhere (09a close, ledger §2.105)
       .toEqual({ sitesWhoseExpressionMoved: [] });
   });
 
-  it("the census is pinned — a TENTH copy of the hospital clock is a deliberate change", () => {
+  it("the census is pinned — an ELEVENTH copy of the hospital clock is a deliberate change", () => {
     const carrying = new Set<string>();
     for (const file of sourceFiles(join(CORE, "src"))) {
       for (const line of readFileSync(file, "utf8").split("\n")) {
