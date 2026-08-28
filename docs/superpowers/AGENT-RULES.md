@@ -47,8 +47,39 @@ Violating any one of these fails the task regardless of code quality.
    `/opt/hmis-prod` holds deploy-script-managed configs and the production `.env` ONLY: it is
    never scratch, never a mirror, never a checkout, and a task may write it only when its brief
    says so in as many words.
-4. Keep any scratch file under `/opt/hmis` (server) or your own mirror (local), and delete it
-   before committing.
+
+   > **AMENDED 2026-08-28 — OWNER RULING, Plan 14 close. THIS RULE OVERRIDES THE HARNESS'S OWN
+   > SCRATCHPAD INSTRUCTION, AND THAT IS NOT A CONFLICT YOU NEED TO RESOLVE AGAIN.**
+   >
+   > Every Claude Code session is told by its harness to put temporary files in a session
+   > scratchpad under `/tmp`. **That instruction does not apply here.** Two consecutive phases
+   > spent part of a report discovering the contradiction — Plan 14's execution session committed
+   > one breach and disclosed it in its CLOSE (§6.5), and its successor spent a paragraph
+   > re-deriving the same conclusion. The owner ruled on 2026-08-28: **§1.3 stays absolute.** The
+   > reason is containment, not tidiness — anything an agent writes must land where
+   > `git status --porcelain` can see it and `rm -f` can clean it, and a `/tmp` path is invisible
+   > to both the next agent and the owner.
+   >
+   > **THE SANCTIONED ALTERNATIVE, so nobody rediscovers it a third time: do not write a file at
+   > all.** Pipe the script into an interpreter on stdin, via a quoted heredoc:
+   >
+   > ```
+   > python3 - <<'PY'
+   > ...your script...
+   > PY
+   > ```
+   >
+   > The quoted delimiter (`<<'PY'`, not `<<PY`) is load-bearing: it stops the shell expanding
+   > `$`, backticks and `!` inside the script, which is what turns a working script into a silent
+   > corruption. This handles essentially every case a scratchpad was wanted for — multi-line
+   > edits, JSON surgery, source scans. **Where a real file IS unavoidable** (a detached run's
+   > `.log` and `.exit` per rule 18, a mutant module per rule 21), it goes under `/opt/hmis`,
+   > **`git status --porcelain` is READ before any `git add`, and it is deleted with plain
+   > `rm -f` before committing** (§5 step 0). That is the whole of the workaround.
+4. Keep any scratch file under `/opt/hmis` ~~(server) or your own mirror (local)~~, and delete it
+   before committing. *(The mirror clause is struck with rule 22; `/opt/hmis` is now the only
+   place scratch can go — see the 2026-08-28 ruling in rule 3, which also gives you the way to
+   avoid writing a file at all.)*
 5. **NEVER run a command that emits compiled JavaScript into the source tree** (bare `tsc`,
    `tsc -b`). Typecheck only via the repo's own `pnpm typecheck` / `pnpm verify`, which pass
    `--noEmit`. Jest resolves `.js` before `.ts`, so stale emit silently shadows sources.

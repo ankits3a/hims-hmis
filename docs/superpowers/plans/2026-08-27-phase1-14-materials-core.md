@@ -633,11 +633,12 @@ Book row that asserts an outcome should be asked, at authoring time, whether the
 
 > **Plan 14 RE-SLICED 2026-08-27 (owner ruling, authoring session):** **14 — Materials core** (this document: masters, stores, the ledger, challan-GRN, two-sided issue, FEFO, recall, expiry, the `consignment.deployed` consumer) → **15 — Mini-OT** (consumes DD13) → **14b — Procure-to-pay** (indent + Replenishment, PO + approval bands R-095, GRN-against-PO, rate contracts/RFQ, supplier invoice + match + holds + registers + Tally export, emergency purchase + 40A(3); **gated on the CA session R-097/R-098/R-099**) → **14c — Consignment reconciliation & auto-PO, cycle counts + variance, capex → assets → `device`, payment runs + disbursement recon, scorecards, Invoice Reader flag-inert** (**gated on O1 for every two-key rule**). 14b and 14c may interleave with 16/17 as the calendar demands; 15 needs only 14.
 
-> **PLAN 14 — CODE-COMPLETE AND REVIEWED TWICE, 2026-08-27.** Nine tasks, migration `0034`, sixteen
+> **PLAN 14 — CLOSED 2026-08-28, CODE-COMPLETE AND REVIEWED TWICE, NOT DEPLOYED.** Nine tasks, migration `0034`, sixteen
 > tables. Eighteen first-pass findings and seven second-pass findings closed across `464aa5a` and
 > `a4cf0d3`; `pnpm verify` exit 0 at 235 suites / 2,138 tests (core), 274 (web), 21 (contracts).
 > **NOT DEPLOYED — the deploy is the owner's and is not taken on the strength of a green suite.**
-> Production remains at 34 migrations and has never left `commissioning`.
+> Production remains at 34 migrations and has never left `commissioning`. All three commits are
+> **CI green by FULL SHA**: `464aa5a`, `a4cf0d3`, `5490ee6`.
 >
 > **Carried forward, deliberately, each with its reason in place:**
 > · **m5** — a merged batch keeps the FIRST receipt's `landed_cost_paise`. Every alternative is a
@@ -892,3 +893,65 @@ was concentrated in three places, none of which was writing the fix:
   fired on four healthy codes);
 - **the mutant for C1**, which is the only evidence in this document that the CRITICAL was real
   rather than argued.
+
+
+---
+
+### 6.10 THE OWNER'S THREE RULINGS AT CLOSE — 2026-08-28
+
+Put to the owner at the point each one actually blocked, rather than assumed. All three are recorded
+here with the argument that was put, so a later reader can see what was decided and on what basis.
+
+#### RULING 1 — **CLOSE NOW; no third review pass.**
+
+*The question:* the phase's own rule is that a remediation's MAJORs must be fixed **and the fix
+reviewed again**, and that rule has now paid three phases running (09a, 13, 14 each shipped a defect
+inside a fix). Pass 2 blocked on F1, F1 was fixed, and by the letter of the rule that fix is
+unreviewed code on a path a reviewer has just called fragile.
+
+*What was put:* `a4cf0d3`'s risk profile is materially lower than `464aa5a`'s. It touches **no
+ledger, no money arithmetic, no locking, no transaction boundary** — a permission string, an
+`ORDER BY` clause proven by direct measurement against Postgres, a memoisation whose behaviour is
+pinned by a new discriminating test, two docstrings, and five test legs. The two fixes that DID
+carry that risk (C1's two-statement upsert and M2's savepoint) were read and confirmed by pass 2,
+including its own derivation of the concurrency semantics. The second reviewer itself scoped the
+blocker as *"a one-line fix (`apps/web/src/router.tsx:92`)"* and said the remainder *"can close with
+the findings recorded"*. A third pass would cost ~150–200k, taking the phase to ~640k against a
+675,000 stop-loss — under, but only just, and buying a review of the lowest-risk diff in the phase.
+
+**RULED: close, findings recorded.** The judgement is explicitly about THIS diff's risk profile and
+is **not** a precedent for skipping the second pass, which is the one that has paid three times.
+
+#### RULING 2 — **HOLD the deploy.**
+
+*What was put:* migration `0034` is additive — 16 tables, 22 CHECKs, **no DROP and no data
+migration** — and `seed-materials.js` is already in `deploy.sh`'s chain (census 11→12, landed
+in-phase). Production, re-measured read-only at close: **34 migrations**, `to_regclass` NULL for
+`items` / `stock_ledger` / `consignment_lots`, `operating_mode_changes` **0 rows**, 35 users, 365
+events. So this is a real deployment but **not an operational act on a working hospital** — the
+hospital has never left `commissioning`.
+
+**RULED: do not deploy.** The phase closes CODE-COMPLETE and NOT DEPLOYED; the owner authorises
+separately, naming the SHA, when they want it. There is no operational pressure and nothing about
+the code changes by waiting.
+
+#### RULING 3 — **AGENT-RULES §1.3 stays ABSOLUTE, and the workaround is documented.**
+
+*The question:* §1.3 forbids writing to `/tmp` absolutely; every session's harness instructs it to
+use a `/tmp` scratchpad. The contradiction cost Plan 14's execution session a committed breach
+(disclosed in §6.5) and cost this session a paragraph re-deriving the same answer.
+
+*What was put:* the rule's purpose is **containment, not tidiness** — anything an agent writes must
+land where `git status --porcelain` can see it and `rm -f` can clean it, and a `/tmp` path is
+invisible to both the next agent and the owner. The alternative on offer was carving out the
+harness's auto-cleaned session scratchpad: simpler for agents, slightly weaker containment.
+
+**RULED: §1.3 stays absolute and OVERRIDES the harness instruction, stated in as many words in the
+rule itself.** [`../AGENT-RULES.md`](../AGENT-RULES.md) rule 3 now carries the ruling plus the
+sanctioned alternative — **do not write a file at all**; pipe the script into `python3`/`node` on
+stdin through a **quoted** heredoc (`<<'PY'`, never `<<PY`, so the shell cannot expand `$`,
+backticks or `!` inside it). Where a real file is unavoidable (a detached run's `.log`/`.exit` per
+rule 18, a mutant module per rule 21) it goes under `/opt/hmis` and is deleted before committing.
+
+Rule 4's stale *"or your own mirror (local)"* clause was struck **in the same commit** — §2.38's own
+prescription, applied to the amendment that cites it.
