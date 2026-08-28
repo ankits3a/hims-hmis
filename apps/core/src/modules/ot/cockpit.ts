@@ -8,7 +8,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
 import { transition } from "../../kernel/workflow/instances";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
-import { assignResource, releaseResource } from "../../kernel/resources/registry";
+import { assignResource, changeResourceStatus, releaseResource } from "../../kernel/resources/registry";
 import { verifyQrScan } from "../patients";
 import { OT_RESOURCE_KINDS } from "./kinds";
 import { OtError } from "./errors";
@@ -351,9 +351,15 @@ export async function signOut(db: Db, actor: Actor, caseId: string): Promise<{ s
     if (run === undefined) {
       throw new OtError("checklist_incomplete", "the WHO sign-out has not been completed for this case");
     }
-    // Re-read INSIDE the transaction and HOLD the rows (MINOR 19): the checks above were on `db`,
-    // the case may have moved, and an unlocked re-read could be overtaken by a concurrent
-    // `recordCount` writing a mismatching final round between this line and the transition.
+    /**
+     * Re-read INSIDE the transaction and HOLD the rows (MINOR 19), and hold the CASE row too
+     * (PASS-2 MINOR-4). Locking the existing count rows serialises a concurrent UPDATE but cannot
+     * block an INSERT of a final round for a NEW `item_type` — `SELECT … FOR UPDATE` locks rows,
+     * not gaps, and `finalCountVerdict` would neither see nor be blocked by it. `recordCount` takes
+     * the same case row, so the two paths now serialise on a row that always exists, which is the
+     * shape Plan 14's C1 says to reach for when the thing you want to exclude is an insert.
+     */
+    await tx.select({ id: otCases.id }).from(otCases).where(eq(otCases.id, caseId)).for("update");
     const inTx = finalCountVerdict(await lockedCountsFor(tx, caseId));
     if (!inTx.ok) throw new OtError("count_mismatch", "the counts changed while signing out — re-read them");
     if ((await deployingImplants(tx, caseId)).length > 0) {
@@ -589,5 +595,58 @@ export async function backfillCase(
       flagged += 1;
     }
     return { state, flagged };
+  });
+}
+
+/**
+ * ═══ PASS-2 MAJOR-6 — THE THEATRE THAT IS BLOCKED HAS TO BE RETURNABLE TO SERVICE ═══
+ *
+ * `recordDeathOnTable` sets the theatre to `blocked`, and the first remediation's MINOR 12 made
+ * `assignResource` refuse any status that is not the kind's `initial` or `onRelease`. Both are
+ * right: a theatre stopped after a death must not be walked back into by the next sign-in, which is
+ * exactly what used to happen. But together, on a unit DD3 says has exactly ONE theatre, they left
+ * the module permanently unusable — and the refusal's own message ("return it to available first")
+ * named an action **no route in this system provided**. The kernel exposes only reads; OPD's room
+ * update is scoped to `kind === "room"`.
+ *
+ * Shipping the guard without the way out would have traded a silent defect for a hard stop, which
+ * is not obviously the better trade at 07:00 on a Monday. So the OT owns the unblock, because the
+ * OT owns the block:
+ *
+ *   · **The IN-CHARGE only**, checked by role rather than by permission — `ot.list.manage` is also
+ *     held by the day-care coordinator, and returning a theatre to service after a death on table
+ *     is not a coordinator's call. This is the `force` pattern from A9, for the same reason.
+ *   · **A reason is required**, and the act is evented, because a theatre returning to service
+ *     after a death is a fact the quality committee reads.
+ *   · **Only from `blocked`**, and only for a `theatre`: this is not a general status editor.
+ */
+export async function returnTheatreToService(
+  db: Db, actor: Actor, input: { theatreResourceId: string; reason: string },
+): Promise<{ status: string }> {
+  if (input.reason.trim() === "") {
+    throw new OtError("bad_transition", "returning a theatre to service must carry a reason");
+  }
+  return withTx(db, async (tx) => {
+    if (actor.type !== "user" || !(await actorHoldsAnyRole(tx, actor.id, ["ot_incharge"]))) {
+      throw new OtError(
+        "same_actor",
+        "returning a blocked theatre to service is the OT in-charge's call (MAJOR-6)",
+      );
+    }
+    const row = (await tx.select().from(resources).where(eq(resources.id, input.theatreResourceId)))[0];
+    if (row === undefined || row.kind !== "theatre") {
+      throw new OtError("bad_transition", `resource ${input.theatreResourceId} is not a theatre`);
+    }
+    if (row.status !== "blocked") {
+      throw new OtError(
+        "bad_transition",
+        `theatre ${row.code} is "${row.status}", not blocked — there is nothing to return`,
+        { status: row.status },
+      );
+    }
+    await changeResourceStatus(tx, actor, THEATRE_KINDS, input.theatreResourceId, "available", {
+      reason: `returned to service by ${actor.id}: ${input.reason}`,
+    });
+    return { status: "available" };
   });
 }

@@ -125,7 +125,9 @@ describe("the OT error union (Plan 15 T2)", () => {
 
       bill_not_composable: "bill.ts",
       deposit_shortfall: "deposit.ts",
-      cash_limit_exceeded: "bill.ts",
+      // Moved out of `bill.ts` at close so the DEPOSIT lane can ask it too without a module cycle
+      // (PASS-2 MAJOR-5). This map is what noticed — the guard working as designed.
+      cash_limit_exceeded: "cash-limit.ts",
     };
 
     // The map itself must stay total — a code added to the union with no owner would be excused
@@ -153,14 +155,17 @@ describe("the OT error union (Plan 15 T2)", () => {
      *
      *   1. **The scanner found source at all.** A `shippedSources()` that returned `[]` — a moved
      *      directory, a changed extension — would make every leg in this file pass for nothing.
-     *   2. **The map's file set is the plan's own layout.** These eleven names come from T3–T7's
+     *   2. **The map's file set is the plan's own layout.** These twelve names come from T3–T7's
      *      Produces lists. Pinning them means a task that renames its logic file has to come here
      *      and say so, rather than silently excusing every code that file owned.
      */
     expect(present.size).toBeGreaterThan(0);
     expect([...new Set(Object.values(OWNED_BY))].sort()).toEqual([
-      "bill.ts", "booking.ts", "cockpit.ts", "consents.ts", "counts.ts", "definitions.ts",
-      "deposit.ts", "gates.ts", "implants.ts", "lists.ts", "recovery.ts",
+      // TWELVE since the close review: `cash-limit.ts` was split out of `bill.ts` so the deposit
+      // lane could ask the §269ST ceiling too (PASS-2 MAJOR-5). This pin is what noticed the move —
+      // it is meant to, and updating it here is the "come and say so" the docstring above demands.
+      "bill.ts", "booking.ts", "cash-limit.ts", "cockpit.ts", "consents.ts", "counts.ts",
+      "definitions.ts", "deposit.ts", "gates.ts", "implants.ts", "lists.ts", "recovery.ts",
     ]);
   });
 

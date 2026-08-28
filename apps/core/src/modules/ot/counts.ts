@@ -72,6 +72,14 @@ export async function recordCount(
     { type: "user", id: input.scrubBy }, { type: "user", id: input.circulatingBy });
 
   return withTx(db, async (tx) => {
+    /**
+     * PASS-2 MINOR-4 — the CASE row is taken first, so a count write and a sign-out serialise on a
+     * row that always exists. `signOut` locks the existing count rows, which stops a concurrent
+     * UPDATE but cannot stop an INSERT of a final round for a NEW `item_type`: `FOR UPDATE` locks
+     * rows, not gaps, and the verdict would neither see nor be blocked by it. Plan 14's C1 is the
+     * precedent — when the thing to exclude is an insert, lock a row that is already there.
+     */
+    await tx.select({ id: otCases.id }).from(otCases).where(eq(otCases.id, input.caseId)).for("update");
     const existing = (await tx.select().from(otCounts).where(and(
       eq(otCounts.caseId, input.caseId), eq(otCounts.round, input.round), eq(otCounts.itemType, input.itemType),
     )))[0];

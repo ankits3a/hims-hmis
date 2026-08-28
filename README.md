@@ -1111,9 +1111,14 @@ faces the corridor, which is what §14 is about.
 Plan 15 is code-complete and **not deployed**; production is at 34 migrations and has never left
 `commissioning`. When the owner names a SHA, these run in this order:
 
-1. **`pnpm db:migrate`** — applies `0035_mute_vision.sql`. It is ADDITIVE ONLY: twelve new tables,
-   their indexes and FKs, and the `ot_forbid_timestamp_rewrite` trigger. No `DROP`, no `DELETE`, no
-   data migration — verified by grep at close, and worth re-running before you apply it.
+1. **`pnpm db:migrate`** — applies **three** migrations, all additive:
+   · `0035_mute_vision.sql` — twelve new tables, their indexes and FKs, and the
+     `ot_forbid_timestamp_rewrite` trigger.
+   · `0036_ot_timestamp_delete_guard.sql` — re-creates that trigger as `BEFORE UPDATE OR DELETE`,
+     so a delete-then-reinsert cannot rewrite the five clinical clocks (close review M5).
+   · `0037_ot_incident_kinds.sql` — widens `ot_incidents_kind_ck` with `dose_log` and `absconded`.
+   No `DROP TABLE`, no `DELETE`, no data migration — verified by grep at close, and worth reading
+   before you apply them.
 2. **`pnpm seed:roles`** — creates the six new roles with their grants and **no holders**, and adds
    `ot.definitions.*` to `medical_superintendent` and `ot.bill.compose` to `billing_manager`.
 3. **`pnpm seed:ot`** — idempotently creates `OT-1` (theatre), `RB-1`/`RB-2` (kernel `bed` rows of

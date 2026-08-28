@@ -82,7 +82,7 @@ export async function admitToBay(
         .where(eq(resources.id, encounter.bayResourceId)))[0];
       throw new OtError(
         "bay_occupied",
-        `this encounter is already in bay ${current?.code ?? encounter.bayResourceId} — discharge or move it rather than admitting it twice (M10)`,
+        `this encounter is already in bay ${current?.code ?? encounter.bayResourceId} — discharge it, or release the bay, rather than admitting it twice (M10). There is no bay-move in this phase.`,
         { bayResourceId: encounter.bayResourceId, bayCode: current?.code ?? null },
       );
     }
@@ -214,7 +214,7 @@ export async function recordScore(
     await tx.insert(pacuScores).values({
       id: scoreId, encounterId: input.encounterId, caseId: input.caseId, scale: scale.scale,
       values: input.values, total, scoredBy: actor.id, bayResourceId: encounter.bayResourceId,
-      occurredAt: input.occurredAt ?? new Date(),
+      occurredAt: at, // PASS-2 MINOR-7 — the clock that was VALIDATED is the clock that is stored
     });
     return { scoreId, total, scale: scale.scale };
   });
@@ -454,11 +454,22 @@ export async function dischargeDaycare(
     if (state !== "discharge_ready") {
       throw new OtError("not_discharge_ready", `a case in "${state}" cannot be discharged`, { state });
     }
-    if (!escortVerifiedAt(encounter, "discharge", kase.wheelOut)) {
+    /**
+     * PASS-2 MINOR-3 — anchored on the LATEST wheel-out on the encounter, not this case's. A
+     * bilateral encounter has two cases; a verification recorded between the two wheel-outs is not
+     * evidence about who is taking the patient home after the second.
+     */
+    const wheelOuts = (await tx.select({ wheelOut: otCases.wheelOut }).from(otCases)
+      .where(eq(otCases.encounterId, input.encounterId)))
+      .map((r) => r.wheelOut).filter((w): w is Date => w !== null);
+    const lastWheelOut = wheelOuts.length === 0
+      ? null
+      : new Date(Math.max(...wheelOuts.map((w) => w.getTime())));
+    if (!escortVerifiedAt(encounter, "discharge", lastWheelOut)) {
       throw new OtError(
         "escort_required",
         "no DISCHARGE-time escort verification recorded since the patient left theatre: a check-in verification is evidence about who brought her, not about who is taking her home (E-4/M11)",
-        { wheelOut: kase.wheelOut?.toISOString() ?? null },
+        { wheelOut: lastWheelOut?.toISOString() ?? null },
       );
     }
     // F7 — the ISBAR handover is acknowledged by a named person, or it did not happen.

@@ -3,6 +3,7 @@ import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { daycareEncounters, otDepositHolds } from "../../kernel/db/schema";
 import { advanceOf, receiptUnallocatedPaise } from "../billing";
+import { assertCashWithinEncounterLimit } from "./cash-limit";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { requestApproval } from "../../kernel/approvals/requests";
 import { PAYER_CLASS_VALUES } from "../../kernel/db/schema/ot";
@@ -159,7 +160,8 @@ async function patientHeldPaise(tx: Tx, encounterIds: string[]): Promise<number>
 async function receiptHeldPaise(tx: Tx, receiptId: string): Promise<number> {
   const rows = await tx.select({ amountPaise: otDepositHolds.amountPaise })
     .from(otDepositHolds)
-    .where(and(eq(otDepositHolds.receiptId, receiptId), isNull(otDepositHolds.releasedAt)));
+    .where(and(eq(otDepositHolds.receiptId, receiptId), isNull(otDepositHolds.releasedAt)))
+    .for("update");
   return rows.reduce((sum, r) => sum + r.amountPaise, 0);
 }
 
@@ -171,27 +173,44 @@ export async function holdDeposit(
   if (!Number.isSafeInteger(input.amountPaise) || input.amountPaise <= 0) {
     throw new OtError("deposit_shortfall", `hold amount must be a positive integer of paise, got ${String(input.amountPaise)}`);
   }
-  const encRows = await tx.select({ patientId: daycareEncounters.patientId })
+  const encRows = await tx.select({ patientId: daycareEncounters.patientId, encounterNo: daycareEncounters.encounterNo })
     .from(daycareEncounters).where(eq(daycareEncounters.id, input.encounterId));
   const encounter = encRows[0];
   if (!encounter) throw new OtError("unknown_case", `unknown day-care encounter ${input.encounterId}`);
 
+  const encounterIds = await lockPatientEncounters(tx, encounter.patientId);
+
   /**
-   * ═══ CLOSE REVIEW M2 — THE RECEIPT IS LOADED, AND IT MUST BE ABLE TO FUND THIS HOLD ═══
+   * ═══ M2 / PASS-2 MAJOR-2 — THE RECEIPT IS LOADED, AND IT IS LOADED INSIDE THE LOCK ═══
    *
    * DD12 says a hold "earmarks part of a RECEIPT's unallocated balance", and nothing checked the
    * receipt at all: not that it exists (`ot_deposit_holds.receipt_id` carries no FK), not that it
-   * belongs to this patient, not that it has that much left. The only bound was the patient's whole
-   * advance — so a patient who paid ₹10,000 by card (R1) and ₹20,000 cash (R2) could have ₹30,000
-   * held against R1, which the gate happily satisfied. The bill then could not be issued at all:
-   * `settleDischargeBill` asks `allocateOnTx` for ₹30,000 of R1, billing refuses `over_allocation`,
-   * and the whole invoice transaction rolls back with no path forward but editing holds by hand.
+   * belongs to this patient, not that it has that much left. A patient who paid ₹10,000 by card and
+   * ₹20,000 cash could have ₹30,000 held against the card receipt, which the gate satisfied — and
+   * the bill then could not be issued at all, because `allocateOnTx` refuses `over_allocation` and
+   * the whole invoice transaction rolls back.
    *
-   * Refusing here puts the error in front of the person who can fix it, at the moment they made it.
+   * **This runs AFTER `lockPatientEncounters`, and that ordering is the second review pass's
+   * finding.** The first fix read the receipt before taking the lock, which is a read-then-act: two
+   * coordinators holding from one receipt for two encounters of one patient both read the same
+   * spare, and the loser's re-read on waking only covered the patient-level figures. The lock is
+   * what makes every number below a decision rather than a guess.
+   *
+   * **And the two bounds are BOTH load-bearing** — the first remediation claimed the per-receipt one
+   * strictly dominates, and that is false: `advanceOf` subtracts advance REFUNDS per patient while a
+   * receipt's unallocated balance does not, so after a refund the patient-level bound is the tighter
+   * of the two. Keeping both is not belt-and-braces; each catches cases the other admits.
    */
   const receipt = await receiptUnallocatedPaise(tx, input.receiptId);
   if (receipt === null) {
     throw new OtError("deposit_shortfall", `unknown receipt ${input.receiptId}`, { receiptId: input.receiptId });
+  }
+  if (receipt.enteredInError) {
+    throw new OtError(
+      "deposit_shortfall",
+      `receipt ${input.receiptId} is marked entered-in-error — earmark the receipt that replaced it`,
+      { receiptId: input.receiptId },
+    );
   }
   if (receipt.patientId !== encounter.patientId) {
     throw new OtError(
@@ -210,7 +229,6 @@ export async function holdDeposit(
     );
   }
 
-  const encounterIds = await lockPatientEncounters(tx, encounter.patientId);
   const advance = await advanceOf(tx, encounter.patientId);
   const alreadyHeld = await patientHeldPaise(tx, encounterIds);
   const spare = advance - alreadyHeld;
@@ -221,6 +239,26 @@ export async function holdDeposit(
       { advancePaise: advance, alreadyHeldPaise: alreadyHeld, requestedPaise: input.amountPaise },
     );
   }
+
+  /**
+   * ═══ PASS-2 MAJOR-5 — §269ST WAS ONLY EVER ASKED ABOUT THE DISCHARGE TENDER ═══
+   *
+   * `assertCashWithinEncounterLimit` had exactly one caller, inside `settleDischargeBill`, and it
+   * was guarded by `if (cashPaise > 0)`. So two cash deposits of ₹1,90,000 on two days against one
+   * encounter each passed billing's per-DAY check, were never tested against the encounter total,
+   * and — if the bill was then settled entirely from those holds — the encounter guard never ran at
+   * all. ₹3,80,000 of cash in respect of one operation, with a compliant-looking record, which is
+   * the exact scenario `bill.ts`'s header claims this module exists to prevent.
+   *
+   * The deposit lane is where most of an encounter's cash actually arrives, so the check belongs
+   * here as much as at settlement. It runs after the receipt is loaded — the amount being earmarked
+   * from a cash receipt is cash received in respect of this encounter — and inside the lock, so two
+   * concurrent holds cannot each see the other's absence.
+   */
+  await assertCashWithinEncounterLimit(
+    tx, input.encounterId, encounter.encounterNo,
+    receipt.cashPaise === 0 ? 0 : Math.min(input.amountPaise, receipt.cashPaise),
+  );
 
   const holdId = newId();
   await tx.insert(otDepositHolds).values({

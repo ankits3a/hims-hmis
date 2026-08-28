@@ -531,5 +531,84 @@ by starting a `pnpm verify` while an earlier one was still running, which produc
 collisions and one spurious `unknown SoD pair key`. Both times the fix was to kill the strays,
 confirm zero processes, and re-run once cleanly.
 
+### 6.6 The two review passes, and their dispositions
+
+Both FRESH, neither resumed (§2.115). **Pass 1: 271,994 tokens / 77 calls / 874 s — 1 CRITICAL, 11
+MAJOR, 19 MINOR. Pass 2, over the remediation: 191,515 / 53 / 660 s — 0 CRITICAL, 6 MAJOR, 7 MINOR.**
+
+**The ROI line.** Pass 1 ran against a tree that was eight-for-eight green on `pnpm verify` and CI,
+with 22 mutants built and 21 killed, and it found a CRITICAL in the money path anyway: the §269ST
+cash ceiling could not see cash taken at discharge. **The Assertion Book had a row for that guard and
+its mutant died** — the row asked whether the refusal fires, which is the question the plan's author
+had already thought about. Nobody had asked what the compared quantity was summed from. That is
+ledger §2.128, and it is now a standing instruction in the reviewer's brief (v3 §9.7).
+
+**Pass 2 earned its cost twice over, and both times inside pass 1's own fixes** — the fourth
+consecutive phase (09a, 13, 14, 15) whose worst late defect is in the remediation:
+
+- **MAJOR-3.** Pass 1 added an `additionalBill` flag so a return to theatre (N13) could raise a
+  second bill. `composeDischargeBill` knows nothing of what is already invoiced, so the flag emitted
+  a **full duplicate charge** — and the refusal message instructed the operator to use it.
+  `invoice_lines` records no caller line id, so this phase cannot compose the increment honestly.
+  **The flag is gone and the refusal is absolute; N13 is carried to 15d.** The shipped test had
+  asserted the wrong thing (invoice numbers differ) and would have locked the double-charge in.
+- **MAJOR-1/2.** Pass 1's per-receipt deposit bound ignored entered-in-error receipts (a dead receipt
+  reports its full value as unallocated, so the hold passed both bounds and made the bill unissuable
+  — M2's own defect, through a door M2's fix left open), and read the receipt **before** the lock,
+  which is a read-then-act. Both fixed; the receipt read is now inside `lockPatientEncounters` and
+  takes `FOR UPDATE`.
+- **MAJOR-2's second half is a correction to this document.** Pass 1 claimed the per-receipt bound
+  strictly dominates the patient-level one, and rewrote A5c on that basis. It is false: `advanceOf`
+  subtracts advance refunds per patient and a receipt's balance does not. **Both bounds are kept and
+  the dominance claim is withdrawn** — ledger §2.126 is the lesson, and the suite now says in as many
+  words which divergence it does not test.
+- **MAJOR-6 is the sharpest.** Pass 1's MINOR 12 made `assignResource` refuse any status that is not
+  `initial`/`onRelease` — correct, and it closed a real hole (a theatre `blocked` after a death on
+  table was reassigned by the next sign-in). But on a one-theatre unit it left the module
+  **permanently unusable**, with the refusal naming an action no route provided. A guard shipped
+  without its way out is a worse trade than the defect. `returnTheatreToService` ships with it,
+  in-charge only, reason required.
+- **MAJOR-4/5.** The double-bill guard was a non-transactional read-then-act on a route with no
+  idempotency key, so a genuine double-tap still double-billed (billing's `withIdempotency` now
+  guards it, exported rather than copied); and the §269ST ceiling had exactly one caller, so two cash
+  deposits on two days were never tested against the encounter total at all.
+
+**Every pass-2 MINOR was fixed** (the tender/shorthand double-count, the bay-move message, the
+escort anchor on a bilateral encounter, the count-lock gap, the stale runbook, an unbounded CTE, and
+a validated-but-unstored clock). **Pass 2 found no CRITICAL, so the close is not blocked; a third
+pass is the owner's call and was not taken.**
+
+**One pass-1 finding is recorded and NOT fixed** — MINOR 17: `invoices.encounter_id` carries the
+D-number while `stock_ledger.encounter_id` carries the ULID. Each side is self-consistent with its
+own module's frozen convention and the composer reads each correctly; unifying them is a two-module
+data migration. Documented in `schema/ot.ts`, carried to 15b.
+
+### 6.7 Actuals
+
+| | |
+|---|---|
+| Lane | LIGHT — nine tasks coded in-session, **zero coding subagents** |
+| Subagent tokens | **463,509** (pass 1 271,994 + pass 2 191,515) |
+| Stop-loss | 730,000 — **not breached; 36% of headroom unused** |
+| Agents | 2, both fresh, neither resumed |
+| Main-session cost | **UNMEASURED** (runbook O3, open since Plan 11e) |
+| Tests | `apps/core` 2,138 → **2,398** · `apps/web` 274 → **284** · contracts 21 → 21 |
+| Migrations | `0035` (12 tables + the DD8 trigger), `0036` (the trigger gains DELETE), `0037` (two incident kinds) |
+| Mutants | 22 built across T3–T8, 21 died; A15 survives legitimately (the trigger kills it first). Plus 4 at close: 3 for C1, 1 for the hold-release ordering — all died |
+
+**The LIGHT-lane honesty rule (v3 §9.4).** 463,509 is not comparable to a HEAVY phase's number:
+LIGHT moves the cost into the main session, which no session can measure from inside. Plan 14's
+comparable figure was 458,491 for the same shape — two fresh reviewers over nine tasks — so the
+review cost is flat phase-on-phase while the findings rose (14: 1 CRITICAL + 10 MAJOR across both
+passes; 15: 1 CRITICAL + 17 MAJOR). **And a cheap phase that shipped a defect is not a saving:** the
+number to weigh this against is that pass 2 found six MAJORs in the first remediation, which is what
+the second pass is for.
+
+**What the close cost, and it should be budgeted next time.** The remediation was larger than any
+task: pass 1's touched 31 files and added two migrations; pass 2's added a third file, a route and an
+idempotency guard. v3 §9.8 now says so — a phase whose review returns a CRITICAL should expect its
+close to cost about as much as its tasks did.
+
+
 ---
 *Byte count at write time: 71050 (≈ 17762 tokens) — the "this document" row of the context budget.*

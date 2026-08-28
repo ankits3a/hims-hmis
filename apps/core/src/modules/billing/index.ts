@@ -8,6 +8,13 @@
  */
 export { billingManifest } from "./manifest";
 export { BillingModule } from "./billing.module";
+/**
+ * PLAN 15 CLOSE REVIEW PASS 2 (MAJOR-4) — the OT's discharge-bill route needs the SAME duplicate-
+ * delivery guard billing's own issue route uses. It is exported rather than reimplemented: an
+ * idempotency store with two writers and one table is one mechanism, and a second copy of the
+ * claim/replay protocol is the kind of thing that works until two of them race (§2.54).
+ */
+export { withIdempotency } from "./idempotency";
 export { BillingError, billingHttpStatus } from "./errors";
 export type { BillingErrorCode } from "./errors";
 export {

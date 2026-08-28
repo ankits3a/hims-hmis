@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import {
-  allocations, creditNotes, enteredInErrorMarks, invoices, receipts, refundVouchers,
+  allocations, creditNotes, enteredInErrorMarks, invoices, receiptTenders, receipts, refundVouchers,
 } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
@@ -894,14 +894,34 @@ export async function patientBalance(db: Db, actor: Actor, patientId: string): P
  */
 export async function receiptUnallocatedPaise(
   exec: Db | Tx, receiptId: string,
-): Promise<{ patientId: string; totalPaise: number; unallocatedPaise: number } | null> {
+): Promise<{
+  patientId: string; totalPaise: number; unallocatedPaise: number; enteredInError: boolean;
+  /** The CASH part of this receipt — what §269ST counts (Plan 15 MAJOR-5). */
+  cashPaise: number;
+} | null> {
   const rows = await exec.select().from(receipts).where(eq(receipts.id, receiptId));
   const receipt = rows[0];
   if (receipt === undefined) return null;
+  /**
+   * ═══ PASS-2 MAJOR-1 — AN ENTERED-IN-ERROR RECEIPT REPORTS ITS FULL VALUE AS UNALLOCATED ═══
+   *
+   * `markEnteredInError` REVERSES the receipt's live allocations, so `totalPaise − allocated` comes
+   * back as the whole amount — while `advanceOf` correctly excludes the receipt entirely. The first
+   * version of this function did not ask, and the gap re-opened the exact defect it was written to
+   * close: a cashier keys ₹30,000, marks it entered-in-error, re-keys it; a hold naming the DEAD
+   * receipt passes both bounds, satisfies the deposit gate, and then makes the discharge bill
+   * unissuable because `allocateOnTx` refuses a dead receipt by name — hours later, on another desk.
+   */
+  const dead = await enteredInErrorDocIds(exec, "receipt", [receipt.id]);
   const spent = (await allocatedByReceipt(exec, [receipt.id])).get(receipt.id) ?? 0;
+  const cashRows = await exec.select({ amountPaise: receiptTenders.amountPaise })
+    .from(receiptTenders)
+    .where(and(eq(receiptTenders.receiptId, receipt.id), eq(receiptTenders.mode, "cash")));
   return {
     patientId: receipt.patientId,
     totalPaise: receipt.totalPaise,
-    unallocatedPaise: receipt.totalPaise - spent,
+    unallocatedPaise: dead.has(receipt.id) ? 0 : receipt.totalPaise - spent,
+    enteredInError: dead.has(receipt.id),
+    cashPaise: cashRows.reduce((sum, r) => sum + r.amountPaise, 0),
   };
 }

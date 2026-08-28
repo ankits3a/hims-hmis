@@ -356,6 +356,55 @@ your reasoning from the diff, and cannot re-derive a test result you never took.
 well it is described and however confident the description.** Treat a handoff's "what is already
 fixed — verify by reading, then move on" as "what is already WRITTEN". Run it first.
 
+### 9.7 BRIEF THE CLOSE REVIEWER AT THE OPERANDS, NOT THE BRANCHES — added 2026-08-28 (Plan 15 close, ledger §2.128)
+
+Three phases running, the close reviewer has returned more than the phase's own instruments found,
+and each time the worst finding was in **what a guard's numbers were summed from**, not in whether
+the guard branched correctly. Plan 15 is the cleanest specimen: 22 mutants built, 21 killed, verify
+and CI green on eight of eight commits — and one reviewer found that the §269ST cash ceiling could
+not see cash taken at discharge, because the quantity it compared was summed only from deposits
+*held*. The Assertion Book had a row for that guard. Its mutant died. The row asked whether the
+refusal fires, which is the question the plan's author had already thought about.
+
+**So the brief now carries this instruction, first, ahead of the dimension list:**
+
+> For every threshold, cap or limit on a money or safety path: name what the compared quantity is
+> summed from, and name one real transaction whose money that sum does not include. Do the same for
+> every "already exists" and "already done" check — say what it queries and what writes rows it
+> would miss.
+
+Two supporting rules, both cheap:
+
+- **Money file first in the priority order.** Plan 15's brief listed the discharge-bill composer and
+  the deposit holds as item 1; the CRITICAL came back in the report's first section.
+- **Name the frozen interfaces the phase consumes.** A guard is most often wrong where one module's
+  sum is fed by another module's writes, and a reviewer who does not know which interfaces were
+  inherited cannot tell a deliberate boundary from an oversight.
+
+### 9.8 A CLOSE-REVIEW FIX IS NOT DONE WHEN IT COMPILES — RUN THE SUITE AND READ THE COUNT — added 2026-08-28 (ledger §2.125, §2.126, §2.127)
+
+Remediation is where a phase's remaining defects concentrate: 09a, 13 and 14 each had their worst
+late defect inside the fix for an earlier finding. Plan 15 adds the failure mode from the other
+direction — **fixes that are correct and break the fixtures that were quietly documenting their
+absence.** Three of its findings did this, and the pattern is mechanical enough to prescribe:
+
+1. **Run the whole suite after each guard, before writing its test, and read the failure COUNT as
+   evidence** (§2.125). Zero means the invariant was already enforced — find out by what. Fifty-one,
+   as Plan 15 measured for one `force` flag, means it was enforced nowhere and every fixture had
+   been exercising a privileged act as somebody who does not hold it.
+2. **When the fix adds a second bound on a quantity that already had one, write the inequality
+   between them** (§2.126). If the new bound dominates, the old test now certifies a path that
+   cannot execute; re-point it at the property rather than leaving it green and meaningless.
+3. **When a new invariant makes an existing fixture unconstructable, do not reach for a test-only
+   clock or seam** (§2.127). Ask which of the invariants carries the property, and whether the other
+   is already covered. A collision between two individually-correct guards is a design finding about
+   the pair.
+
+**And the budget consequence.** A remediation of this size is not free and must not be priced as an
+afterthought: Plan 15's pass-1 remediation touched 31 files, added two migrations and moved the core
+suite by +20 tests. The stop-loss covers the REVIEWERS; the remediation is main-session work, and a
+phase whose review returns a CRITICAL should expect its close to cost as much again as its tasks did.
+
 ### 9.2 The measurement, before compiling and after closing
 
 **Before:** `wc -c` every file the briefs point at, divide by four, and write the total into the

@@ -703,6 +703,48 @@ Nothing broke and nothing failed. The client table is courtesy rather than secur
 
 
 
+
+**2.125 — WHEN A NEW GUARD BREAKS N TEST FIXTURES, N IS THE FINDING.** *(Plan 15 close, 2026-08-28 — MINOR 10)*
+The reviewer noticed that `force` — the flag clearing the duplicate-booking soft block — was taken straight off the request body, while the plan's A9 reads *"unless `force` by `ot_incharge`"*. One `actorHoldsAnyRole` check closed it. **Then 51 tests failed across five files, and not one of them was a code defect: every failing fixture had been booking a forced case as the day-care COORDINATOR**, a role that does not hold the authority the flag represents.
+
+That count is the whole lesson. A guard whose addition breaks nothing was already enforced somewhere; a guard whose addition breaks fifty-one fixtures is measuring how many places had been exercising a privileged action as somebody who does not hold it — **and every one of those fixtures had been green for the entire phase, asserting behaviour that the finished system does not have.** The fixtures were not "using a convenient actor". They were quietly documenting the missing check.
+
+The same phase produced the same shape twice more, which is why it generalises rather than being a story about one flag: A5c's deposit tests asserted a refusal message that a new, tighter bound made unreachable (§2.126), and A20/A21's PACU fixtures scored patients a week in the future, which only surfaced when a clock bound was added (§2.127).
+
+**Mechanical form.** When a close-review fix adds an authorisation or invariant check, **run the whole suite before writing the test for it, and read the failure COUNT as evidence**. Zero failures means the invariant was already held (ask what by, and whether the new check is dead). A handful means the fixtures were sloppy. Dozens means the invariant was never exercised anywhere in the system, and the fix is more valuable than its severity label suggested — say so in the close report, and check whether the same gap exists on the other routes that share the permission.
+
+**2.126 — TWO BOUNDS ON ONE QUANTITY: WRITE THE INEQUALITY, OR ONE TEST IS CERTIFYING A PATH THAT CANNOT EXECUTE.** *(Plan 15 close, 2026-08-28 — MAJOR M2)*
+A day-care deposit hold was bounded by the patient's whole advance minus everything already held (`advanceOf − Σ holds`). The review found it never checked the RECEIPT it named, so a hold could be earmarked from money that receipt did not have — and the failure surfaced hours later, on the billing desk, as an invoice that could not be issued at all. The fix added a second bound: `receipt.unallocated − holds on that receipt`.
+
+Both bounds are correct. **But they are not independent**, and the arithmetic says which one can ever fire:
+
+```
+patient spare  = advance − Σ holds  =  Σ over receipts of (unallocated − held on that receipt)
+receipt spare  = one TERM of that sum  ≤  patient spare
+```
+
+The per-receipt bound therefore always refuses first, and the patient-level one became unreachable. Nothing failed — but `A5c`, the test named for the patient-level invariant, went on passing while asserting a message the system could no longer produce. It had become a test of the new bound wearing the old one's name.
+
+**Mechanical form.** When adding a bound to a quantity that already has one, **write the inequality between the two before writing the test.** If one dominates, say so in the surviving test's docstring and re-point it at the property (*"two encounters cannot hold the same rupee"*) rather than at a message that can no longer be emitted. Keep the dominated check — it is a cheap backstop for writes that bypass the new path — but never let a test claim to exercise it. This is §3.14's family: an assertion that passes for a different reason than its name says.
+
+**2.127 — AN INVARIANT THAT MAKES ITS OWN FIXTURE UNCONSTRUCTABLE IS TELLING YOU ABOUT THE INVARIANT.** *(Plan 15 close, 2026-08-28 — MINOR 11)*
+A PACU score carried an unchecked `occurredAt`, so the discharge rule *"two qualifying scores thirty minutes apart"* could be satisfied by two scores typed thirty-one minutes apart in one keystroke. Two bounds were added, both obviously right: a score may not be in the future, and a score may not predate the patient leaving theatre.
+
+Together they were untestable. **A test suite runs a whole case in milliseconds**, so `wheel_out` is stamped at ~now and any score with real elapsed time between the two must be in the future — while the phase's own DD8 trigger (correctly) forbids backdating `wheel_out` to make room. The two guards, each defensible alone, left no constructable state in which a stable patient is discharged.
+
+The temptation is to reach for a test-only clock seam in production code. The right reading is that the collision is evidence: **the upper bound is the one that carries the safety property** (a gap you have not waited for cannot be typed forward), and the lower bound's value was already covered by an existing check (the encounter must be in a bay). One was kept, one was removed, and the removal is recorded in the source with its reasoning so the next reader does not re-add it.
+
+**Mechanical form.** When a new invariant makes an existing fixture impossible to build, **do not first weaken the fixture or add a clock seam.** Ask which of the invariants carries the property you actually wanted, and whether the other is already enforced elsewhere. Where both are genuinely needed and genuinely untestable together, that is a design finding about the pair, not a testing problem — write it down rather than routing around it.
+
+**2.128 — THE ASSERTION BOOK TESTS WHAT THE PLAN IMAGINED; THE REVIEWER TESTS WHAT IT DID NOT.** *(Plan 15 close, 2026-08-28 — the ROI line)*
+Plan 15 reached its close review with 22 mutants built and 21 killed, `pnpm verify` green, and CI green by full SHA on eight of eight commits. One fresh reviewer, at 271,994 tokens, returned **1 CRITICAL, 11 MAJOR and 19 MINOR** against that tree.
+
+The CRITICAL is the specimen. The §269ST guard — India's ₹2,00,000 cash ceiling, counted per transaction — summed only the deposits HELD on an encounter. A tender taken at discharge is never held, so the guard could not see it: two bills on one encounter each took ₹40,000 on top of a ₹1,50,000 deposit, and each was told it was inside the limit. **The Assertion Book had a row for this guard, and a mutant, and the mutant died** — because the row asked *"is a second cash tender refused when the deposit already reaches the ceiling?"*, which is the question the plan's author thought of. Nobody had asked whether the number the guard compares against includes all the cash.
+
+Three phases running (13, 14, 15), the reviewer has found more than the phase's own instruments, and the finding has been in the arithmetic rather than the control flow. This is not an argument for fewer mutants — the mutants are what make the tested behaviour trustworthy — but for what the reviewer is FOR, and it should be briefed accordingly.
+
+**Mechanical form.** Brief the close reviewer to **audit the OPERANDS of every guard on a money or safety path, not the branch**: for each threshold check, ask what the compared quantity is summed from, and name one real transaction whose money the sum does not include. Put the money file first in the brief's priority order (Plan 15's did, and the CRITICAL came back in the first section of the report).
+
 ## 3. Plan-authoring defects
 
 Fix these when writing the next plan, not when executing it.

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -6,6 +6,7 @@ import {
   admitToBay, convertToAdmission, dischargeDaycare, evaluateDischargeReady, markAbsconded,
   recordScore, recoveryBoard, scoresFor, verifyEscort,
 } from "./recovery";
+import { withIdempotency } from "../billing";
 import { composeDischargeBill, settleDischargeBill, unbilledDaycare } from "./bill";
 import { idSchema, parsed, toHttp } from "./ot-definitions.controller";
 import type { Actor } from "@hmis/contracts";
@@ -113,7 +114,12 @@ export class OtRecoveryController {
 
   @Post(":encounterId/bill")
   @RequirePermission("ot.bill.compose", "hospital")
-  async bill(@CurrentActor() actor: Actor, @Param("encounterId") encounterId: string, @Body() body: unknown): Promise<unknown> {
+  async bill(
+    @CurrentActor() actor: Actor,
+    @Param("encounterId") encounterId: string,
+    @Body() body: unknown,
+    @Headers("idempotency-key") idemKey?: string,
+  ): Promise<unknown> {
     const input = parsed(z.object({
       // M9 — the full tender list; `cashTenderPaise` stays as the shorthand it always was.
       tenders: z.array(z.object({
@@ -122,10 +128,26 @@ export class OtRecoveryController {
         refText: z.string().max(120).optional(),
       })).optional(),
       cashTenderPaise: z.number().int().min(0).optional(), note: z.string().max(500).optional(),
-      // M8 — a DELIBERATE second bill on this encounter (a return to theatre, N13).
-      additionalBill: z.boolean().optional(),
+    }).refine((b) => !(b.tenders !== undefined && b.cashTenderPaise !== undefined), {
+      // PASS-2 MINOR-1 — the two are folded into ONE list downstream, so sending both records the
+      // cash twice. They are alternatives, not a list and a shorthand for part of it.
+      message: "send `tenders` or `cashTenderPaise`, not both — the cash would be counted twice",
     }), body);
-    try { return await settleDischargeBill(this.db, actor, { encounterId, ...input }); } catch (e) { toHttp(e); }
+    /**
+     * PASS-2 MAJOR-4 — the "already billed" guard is a read-then-act outside any transaction, so
+     * two concurrent POSTs both read zero invoices and both issue. That is the literal double-tap
+     * M8 is named for, and the guard alone closes only the retry-after-response case. This is
+     * billing's own protocol on its own route (`POST /billing/invoices`), reused rather than
+     * reimplemented: one claim/replay table, one mechanism.
+     */
+    try {
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: "POST /ot/recovery/:encounterId/bill", key: idemKey },
+        { encounterId, ...input },
+        () => settleDischargeBill(this.db, actor, { encounterId, ...input }),
+      );
+    } catch (e) { toHttp(e); }
   }
 
   @Get("unbilled")

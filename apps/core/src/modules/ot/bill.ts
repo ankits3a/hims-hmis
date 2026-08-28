@@ -11,6 +11,7 @@ import { OtError } from "./errors";
 import { materialCeilingDiverged } from "./events";
 import { caseState } from "./booking";
 import { openHolds, releaseHolds } from "./deposit";
+import { assertCashWithinEncounterLimit } from "./cash-limit";
 import { deployingImplants } from "./implants";
 import type { InvoiceLineInput } from "../tariff";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -321,95 +322,6 @@ export async function composeDischargeBill(
   };
 }
 
-/**
- * F24e — **§269ST ACROSS THE ENCOUNTER, not per service day.**
- *
- * Billing's own C-2 check is per `service_day` (`cash-law.ts`), which a deposit-then-discharge pair
- * defeats: ₹1,50,000 cash on the booking day and ₹60,000 on the discharge day are two lawful days
- * and one unlawful transaction, because §269ST counts receipts "in respect of a single transaction"
- * and one operation is one transaction whatever the calendar says.
- *
- * So this sums CASH receipts held on the encounter plus the discharge tender and refuses at the
- * threshold. Billing's per-day check stays where it is and catches the single-day case; this catches
- * the one it cannot see.
- */
-export const CASH_LIMIT_PAISE = 20_000_000; // ₹2,00,000
-
-export async function encounterCashPaise(
-  exec: Db | Tx, encounterId: string, encounterNo: string,
-): Promise<number> {
-  /**
-   * ═══ CLOSE REVIEW C1 — THE GUARD USED TO COUNT ONLY THE BOOKING DEPOSIT ═══
-   *
-   * The first version summed `ot_deposit_holds ⋈ receipt_tenders WHERE mode='cash'` and nothing
-   * else, which was wrong three separate ways — and the one that mattered was the direction that
-   * UNDER-counts:
-   *
-   *   1. **A discharge tender is never held**, so it never entered the total. Two bills on one
-   *      encounter (a return to theatre — N13, which this module supports) could each take ₹40,000
-   *      cash on top of a ₹1,50,000 deposit and each be told it was inside the limit. ₹2,30,000
-   *      received in respect of one transaction, with the guard reporting compliance.
-   *   2. It summed the receipt's WHOLE cash tender rather than the part earmarked here, so a
-   *      ₹1,50,000 cash advance with ₹10,000 held against this encounter counted as ₹1,50,000.
-   *   3. Two holds carved from one receipt counted that receipt twice.
-   *
-   * So the total is now built per RECEIPT, each counted exactly once:
-   *
-   *   · a receipt whose money reached an INVOICE on this encounter contributes all of its cash —
-   *     that money was received in respect of this operation, whatever else it was labelled;
-   *   · a receipt merely EARMARKED here contributes `least(earmarked, its cash)` — a patient with a
-   *     large cash advance has not paid it all for this operation.
-   *
-   * Over-counting is the safe direction and under-counting is a §271DA penalty, so where the two
-   * readings differ this takes the larger: a released hold still counts, because the cash was
-   * received. `>=` not `>`: §269ST prohibits receiving ₹2,00,000 **or more**.
-   */
-  const rows = (await exec.execute(sql`
-    with held as (
-      select h.receipt_id, sum(h.amount_paise) as earmarked
-        from ot_deposit_holds h
-       where h.encounter_id = ${encounterId}
-       group by h.receipt_id
-    ),
-    billed as (
-      select distinct a.receipt_id
-        from allocations a
-        join invoices i on i.id = a.invoice_id
-       where i.encounter_id = ${encounterNo}
-    ),
-    cash as (
-      select rt.receipt_id, sum(rt.amount_paise) as cash_paise
-        from receipt_tenders rt
-       where rt.mode = 'cash'
-       group by rt.receipt_id
-    )
-    select coalesce(sum(
-      case when b.receipt_id is not null then c.cash_paise
-           else least(h.earmarked, c.cash_paise) end
-    ), 0)::bigint as "cash"
-      from cash c
-      left join held   h on h.receipt_id = c.receipt_id
-      left join billed b on b.receipt_id = c.receipt_id
-     where h.receipt_id is not null or b.receipt_id is not null
-  `)).rows as { cash: string | number }[];
-  return Number(rows[0]?.cash ?? 0);
-}
-
-export async function assertCashWithinEncounterLimit(
-  exec: Db | Tx, encounterId: string, encounterNo: string, incomingCashPaise: number,
-): Promise<void> {
-  if (incomingCashPaise <= 0) return;
-  const prior = await encounterCashPaise(exec, encounterId, encounterNo);
-  const total = prior + incomingCashPaise;
-  if (total >= CASH_LIMIT_PAISE) {
-    throw new OtError(
-      "cash_limit_exceeded",
-      `this encounter's cash total would reach ${String(total)}p (§269ST blocks at ${String(CASH_LIMIT_PAISE)}p) — ${String(prior)}p is already held against it, on an earlier day (F24e)`,
-      { priorCashPaise: prior, incomingCashPaise, totalPaise: total, limitPaise: CASH_LIMIT_PAISE },
-    );
-  }
-}
-
 export type SettleResult = {
   invoiceId: string;
   invoiceNo: string;
@@ -445,8 +357,6 @@ export async function settleDischargeBill(
     tenders?: { mode: "cash" | "upi" | "card"; amountPaise: number; refText?: string }[];
     cashTenderPaise?: number;
     note?: string;
-    /** M8 — a deliberate SECOND bill on this encounter (a return to theatre, N13). */
-    additionalBill?: boolean;
   },
   now: Date = new Date(),
 ): Promise<SettleResult> {
@@ -455,41 +365,46 @@ export async function settleDischargeBill(
     .where(eq(daycareEncounters.id, input.encounterId)))[0]!;
 
   /**
-   * ═══ CLOSE REVIEW M8 — A DOUBLE-SUBMIT USED TO TAKE THE CASH TWICE ═══
+   * ═══ M8 / PASS-2 MAJOR-3 — ONE ENCOUNTER, ONE BILL, AND NO FLAG TO GET PAST IT ═══
    *
-   * Nothing refused a second settlement. `composeDischargeBill` never looked for an existing
-   * invoice and `issueInvoice` was handed a fresh `newId()` every time, so a cashier double-tapping
-   * a cash-only discharge got **two invoices, two receipts and two payments**. The deposit-funded
-   * path happened to self-block on the second call because `releaseHolds` had already run — which
-   * is luck, not a guard, and the cash-only path (a waived deposit, a scheme patient's
-   * non-payables) had no luck to rely on.
+   * Nothing refused a second settlement, so a cashier double-tapping a cash-only discharge got two
+   * invoices, two receipts and the money taken twice. The first fix added an `additionalBill` flag
+   * for the legitimate second bill — a return to theatre on the same encounter (N13).
    *
-   * `additionalBill` is the deliberate second bill — a return to theatre on the same encounter
-   * (N13), which this module supports. It has to be asked for in as many words, because the whole
-   * point is that a repeated request is not one.
+   * **The second review pass found that the flag was worse than the defect it excused.**
+   * `composeDischargeBill` has no knowledge of what is already invoiced: it emits one package line
+   * per case and every non-explanted consumption, every time. So `additionalBill` produced a full
+   * DUPLICATE of the first bill, not the increment — and the refusal message below was instructing
+   * the operator to pass it. `invoice_lines` stores no caller line id, only `service_id`, so there
+   * is no honest way to compose the increment from what this phase records.
+   *
+   * The flag is gone and the refusal is absolute. **N13's second bill is carried to 15d**, which
+   * owns the theatre-time bands and the cancellation matrix and will have to compose incremental
+   * charges anyway. Refusing something this module cannot do correctly is the smaller failure: a
+   * cashier who needs a second bill raises it in billing, where a human chooses the lines.
    */
   const existing = await db.select({ id: invoices.id, invoiceNo: invoices.invoiceNo })
     .from(invoices).where(eq(invoices.encounterId, encounter.encounterNo));
-  if (existing.length > 0 && input.additionalBill !== true) {
+  if (existing.length > 0) {
     throw new OtError(
       "bill_not_composable",
-      `${encounter.encounterNo} is already billed (${existing.map((i) => i.invoiceNo).join(", ")}) — pass additionalBill to raise a second bill for a return to theatre (M8)`,
+      `${encounter.encounterNo} is already billed (${existing.map((i) => i.invoiceNo).join(", ")}) — a further charge on this encounter is raised in billing, against chosen lines`,
       { invoiceNos: existing.map((i) => i.invoiceNo) },
     );
   }
 
   /**
-   * ═══ CLOSE REVIEW M9 — THE DISCHARGE DESK IS NOT A CASH-ONLY DESK ═══
+   * ═══ M9 — THE DISCHARGE DESK IS NOT A CASH-ONLY DESK ═══
    *
    * The route took `cashTenderPaise` and nothing else, so any balance above the held deposit had to
    * be settled in cash or `issueInvoice` refused it `unsettled_issue_refused`. Combined with the
-   * §269ST ceiling that C1 now enforces properly, a ₹2,50,000 bill with no deposit **could not be
-   * settled through this module at all** — and the documented workaround (record a receipt, then
-   * hold it) needs `ot.cases.book`, which DD14 deliberately keeps away from the billing desk.
+   * §269ST ceiling, a ₹2,50,000 bill with no deposit could not be settled through this module at
+   * all — and the documented workaround (record a receipt, then hold it) needs `ot.cases.book`,
+   * which DD14 deliberately keeps away from the billing desk.
    *
-   * `cashTenderPaise` is kept as the shorthand it was, and folded into the same list, so the two
-   * cannot disagree about what was tendered. §269ST is asked about the CASH subset only, which is
-   * what the section is about.
+   * `cashTenderPaise` is the shorthand it always was, folded into the same list so the two cannot
+   * disagree about what was tendered; the route refuses a request carrying both (PASS-2 MINOR-1).
+   * §269ST is asked about the CASH subset only, which is what the section is about.
    */
   const tenders = [
     ...(input.tenders ?? []),
@@ -499,12 +414,10 @@ export async function settleDischargeBill(
   ];
   const tenderedPaise = tenders.reduce((sum, t) => sum + t.amountPaise, 0);
   /**
-   * CLOSE REVIEW (MINOR 4) — an OVER-tender used to become a silent patient-level advance: the
-   * surplus sat on the receipt as unallocated money and no refund was requested, which is exactly
-   * what §3A says must not happen ("never held as credit for next time"). The deposit lane was
-   * guarded and this one was not. A counter takes the money and gives change, so the tender it
-   * RECORDS is what is being applied; anything above the bill is a typo, and the fix is to say so
-   * rather than to quietly bank it.
+   * MINOR 4 — an OVER-tender used to become a silent patient-level advance: the surplus sat on the
+   * receipt as unallocated money and no refund was requested, which is exactly what §3A says must
+   * not happen ("never held as credit for next time"). A counter takes the money and gives change,
+   * so the tender it RECORDS is what is being applied; anything above the bill is a typo.
    */
   if (tenderedPaise > composed.expectedNetPaise) {
     throw new OtError(

@@ -6,7 +6,8 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import {
   BACKFILL_PHASES, backfillCase, completeChecklist, markClosure, markIncision, recordDeathOnTable,
-  recordDoseLog, recordProcedureConverted, signIn, signOut, timeOut, toHolding, verifyHolding,
+  recordDoseLog, recordProcedureConverted, returnTheatreToService, signIn, signOut, timeOut,
+  toHolding, verifyHolding,
   wheelOut,
 } from "./cockpit";
 import { countsFor, recordCount } from "./counts";
@@ -61,7 +62,7 @@ const backfillBody = z.object({
   phases: z.array(z.object({
     phase: z.enum(BACKFILL_PHASES),
     occurredAt: z.string().min(1),
-  })).min(1).max(5),
+  })).min(1).max(BACKFILL_PHASES.length), // derived, so it cannot go stale when a phase is added or dropped
 });
 
 @Controller("ot/cockpit")
@@ -219,5 +220,22 @@ export class OtCockpitController {
         phases: input.phases.map((p) => ({ phase: p.phase, occurredAt: new Date(p.occurredAt) })),
       });
     } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * PASS-2 MAJOR-6 — the way back from a blocked theatre. Gated on `ot.list.manage` at the route
+   * and narrowed to the IN-CHARGE inside `returnTheatreToService`, because that permission is also
+   * held by the day-care coordinator and this is not their call.
+   */
+  @Post("theatre/:theatreResourceId/return-to-service")
+  @RequirePermission("ot.list.manage", "hospital")
+  async returnTheatre(
+    @CurrentActor() actor: Actor,
+    @Param("theatreResourceId") theatreResourceId: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    const input = parsed(z.object({ reason: z.string().min(1).max(500) }), body);
+    try { return await returnTheatreToService(this.db, actor, { theatreResourceId, ...input }); }
+    catch (e) { toHttp(e); }
   }
 }

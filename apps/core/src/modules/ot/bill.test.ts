@@ -18,10 +18,12 @@ import { bookCase } from "./booking";
 import { heldPaise, holdDeposit, openHolds } from "./deposit";
 import { intendedPayerFor } from "./ot.module";
 import {
-  CASH_LIMIT_PAISE, assertCashWithinEncounterLimit, clampImplantUnitPaise, composeDischargeBill,
-  encounterCashPaise,
+  clampImplantUnitPaise, composeDischargeBill,
   frozenCeilingPaisePerBase, settleDischargeBill, unbilledDaycare,
 } from "./bill";
+// The §269ST guard moved to its own file so the DEPOSIT lane can call it too without a cycle
+// (PASS-2 MAJOR-5).
+import { CASH_LIMIT_PAISE, assertCashWithinEncounterLimit, encounterCashPaise } from "./cash-limit";
 import type { OtBaseFixture } from "../../../test/helpers/ot";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -701,18 +703,18 @@ describe("the OT discharge bill (Plan 15 T7 / DD11)", () => {
     expect(await db.select().from(invoices)).toHaveLength(1);
 
     /**
-     * The deliberate second bill — a return to theatre on the same encounter (N13) — is allowed,
-     * and it is a DIFFERENT invoice rather than a repeat of the first. It has to be paid for on its
-     * own: the deposit is spent, so the second bill needs its own tender, which is the honest shape
-     * of a second operation and is why `additionalBill` is opt-in rather than a retry.
+     * ═══ PASS-2 MAJOR-3 — THERE IS NO SANCTIONED SECOND BILL, AND THAT IS THE POINT ═══
+     *
+     * The first remediation added an `additionalBill` flag for a return to theatre (N13). The
+     * second review pass found the flag was worse than the defect it excused: `composeDischargeBill`
+     * knows nothing of what is already invoiced, so it re-emitted every package and implant line —
+     * a full DUPLICATE charge — and the refusal message was telling the operator to pass it.
+     *
+     * `invoice_lines` records no caller line id, only `service_id`, so this phase cannot compose the
+     * increment honestly. The refusal is absolute and the message points at billing, where a human
+     * chooses the lines. N13's second bill is carried to 15d.
      */
-    const composedAgain = await composeDischargeBill(db, e.encounterId);
-    const second = await settleDischargeBill(db, cashier, {
-      encounterId: e.encounterId, additionalBill: true,
-      tenders: [{ mode: "card", amountPaise: composedAgain.expectedNetPaise, refText: "CARD/2" }],
-    });
-    expect(second.invoiceNo).not.toBe(first.invoiceNo);
-    expect(await db.select().from(invoices)).toHaveLength(2);
+    expect(await db.select().from(invoices)).toHaveLength(1);
   });
 
   /**

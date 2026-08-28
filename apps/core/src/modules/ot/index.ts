@@ -93,8 +93,10 @@ export type { EscortVerification, PacuScoreRow, ReadinessVerdict } from "./recov
 
 // ── T7 — the discharge bill ──
 export {
-  CASH_LIMIT_PAISE, COMPOSABLE_OUTCOMES, assertCashWithinEncounterLimit, clampImplantUnitPaise,
-  composeDischargeBill, encounterCashPaise, frozenCeilingPaisePerBase, settleDischargeBill,
-  unbilledDaycare,
+  COMPOSABLE_OUTCOMES, clampImplantUnitPaise, composeDischargeBill, frozenCeilingPaisePerBase,
+  settleDischargeBill, unbilledDaycare,
 } from "./bill";
+// The §269ST encounter ceiling lives in its own file because BOTH lanes ask it — the deposit hold
+// and the discharge tender — and `bill.ts` already imports `deposit.ts` (PASS-2 MAJOR-5).
+export { CASH_LIMIT_PAISE, assertCashWithinEncounterLimit, encounterCashPaise } from "./cash-limit";
 export type { ComposedBill, ImplantLine, SettleResult } from "./bill";

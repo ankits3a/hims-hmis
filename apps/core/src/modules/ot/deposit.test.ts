@@ -1,4 +1,6 @@
+import { eq } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
+import { otDepositHolds } from "../../kernel/db/schema";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { openSessionFor } from "../../../test/helpers/billing";
 import { OtError } from "./errors";
@@ -6,7 +8,7 @@ import { mkOtPatient, mkOtUser, seedOtBase } from "../../../test/helpers/ot";
 import { withTx } from "../../kernel/db/client";
 import { approveRequest } from "../../kernel/approvals/decisions";
 import { PAYER_CLASS_VALUES } from "../../kernel/db/schema/ot";
-import { recordReceipt } from "../billing";
+import { markEnteredInError, recordReceipt, requestRefund } from "../billing";
 import { depositPolicyBodySchema } from "./definitions";
 import {
   grantedShortfallPaise, heldPaise, holdDeposit, openHolds, releaseHolds, requestDepositException,
@@ -268,6 +270,71 @@ describe("holdDeposit / releaseHolds (Plan 15 T3 / A5c, F3)", () => {
    * receipt the cashier never chose — or, in the split-tender case, as a discharge bill that could
    * not be issued at all.
    */
+  /**
+   * ═══ PASS-2 MAJOR-1 — AN ENTERED-IN-ERROR RECEIPT REPORTED ITS FULL VALUE AS UNALLOCATED ═══
+   *
+   * `markEnteredInError` reverses the receipt's allocations, so `total − allocated` came back as the
+   * whole amount while `advanceOf` correctly excluded it. A hold naming the dead receipt therefore
+   * passed BOTH bounds — and made the discharge bill unissuable hours later, which is the exact
+   * defect M2 was written to close, arriving through a door M2's own fix left open.
+   */
+  it("MAJOR-1 — a hold cannot be earmarked from an ENTERED-IN-ERROR receipt", async () => {
+    const e = await book("2026-09-02");
+    const receiptId = await advance(3_000_000);
+    await markEnteredInError(db, cashierActor, {
+      receiptId, reason: "keyed twice at the counter",
+    });
+    await expect(withTx(db, (tx) => holdDeposit(tx, f.coordinator, {
+      encounterId: e, receiptId, amountPaise: 1_000_000,
+    }))).rejects.toThrow(/entered-in-error/);
+  });
+
+  /**
+   * ═══ PASS-2 MAJOR-2 — THE RECEIPT CHECK IS A READ-THEN-ACT UNLESS IT IS INSIDE THE LOCK ═══
+   *
+   * The first remediation read the receipt's spare BEFORE `lockPatientEncounters`. Two coordinators
+   * holding from one receipt for two encounters of one patient therefore both read the same spare,
+   * and the loser's re-read on waking covered only the patient-level figures. Both holds landed and
+   * the receipt carried more earmarks than it had money — which is the state that makes a discharge
+   * bill unissuable.
+   *
+   * §2.99: this asserts a STATE (how much is held on the receipt), never a duration. A busy host
+   * makes the interleave MORE likely, not less, so the assertion only gets truer under load.
+   */
+  it("MAJOR-2 — two concurrent holds on ONE receipt cannot together exceed it", async () => {
+    const receiptId = await advance(3_000_000);
+    const e1 = await book("2026-09-02");
+    const e2 = await book("2026-09-03");
+
+    const results = await Promise.allSettled([
+      withTx(db, (tx) => holdDeposit(tx, f.coordinator, { encounterId: e1, receiptId, amountPaise: 2_000_000 })),
+      withTx(db, (tx) => holdDeposit(tx, f.coordinator, { encounterId: e2, receiptId, amountPaise: 2_000_000 })),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+
+    const held = (await db.select().from(otDepositHolds).where(eq(otDepositHolds.receiptId, receiptId)))
+      .reduce((sum, h) => sum + h.amountPaise, 0);
+    expect(held).toBe(2_000_000);
+    expect(held).toBeLessThanOrEqual(3_000_000);
+  });
+
+  /**
+   * ═══ WHY BOTH BOUNDS ARE KEPT, AND WHAT THIS SUITE DOES NOT TEST ═══
+   *
+   * The first remediation claimed the per-receipt bound strictly dominates the patient-level one and
+   * rewrote A5c on that basis. The second review pass showed the claim is false: `advanceOf`
+   * subtracts advance REFUNDS per patient (`billing/receipts.ts` `advanceRefundedPaise`, counting
+   * vouchers in `issued`/`paid`), while a receipt's unallocated balance does not. After a refund the
+   * receipt still reports its full spare and only the patient-level check refuses.
+   *
+   * **That divergence is NOT asserted here**, and saying so is the point: reaching it needs a
+   * granted approval and an issued voucher, which is `billing/receipts.test.ts`'s fixture and not
+   * this suite's. What is asserted here is that both bounds exist, that each refuses on its own
+   * ground (the legs above), and that the ordering is now safe. The claim that one dominates has
+   * been removed rather than re-stated — a comment asserting an inequality nobody checks is how the
+   * first version got it wrong.
+   */
+
   it("M2 — a hold naming an UNKNOWN receipt is refused here, not at the bill", async () => {
     const e = await book("2026-09-02");
     await expect(withTx(db, (tx) => holdDeposit(tx, f.coordinator, {
