@@ -30,3 +30,26 @@ export {
 } from "./consumers";
 export type { MergeRewrite } from "./consumers";
 export { OtModule } from "./ot.module";
+
+// ── T3 — governed definition data, the deposit, booking, and the two workflow definitions ──
+export {
+  CRITERIA_SEED_BODY, DEPOSIT_POLICY_SEED_BODY, OT_DEFINITION_SEEDS, PACU_THRESHOLDS_SEED_BODY,
+  PROCEDURE_CLASS_VALUES, activeDefinition, activeDefinitionRow, criteriaBodySchema, criteriaFor,
+  depositPolicyBodySchema, draftDefinition, pacuThresholdsBodySchema, parseDefinitionBody,
+  privilegesBodySchema, publishDefinition, requestDefinitionPublish,
+} from "./definitions";
+export type {
+  CriteriaBody, CriteriaEntry, DepositPolicyBody, OtDefinitionKind, OtDefinitionRow,
+  PacuThresholdsBody, PrivilegesBody, ProcedureClass,
+} from "./definitions";
+export {
+  grantedShortfallPaise, heldPaise, holdDeposit, openHolds, releaseHolds, requestDepositException,
+  requiredDeposit,
+} from "./deposit";
+export type { DepositHoldRow, PayerClass, RequiredDepositInput } from "./deposit";
+export { bookCase, cancelCase, caseState, changePayerClass, currentState, postponeCase } from "./booking";
+export type { BookCaseInput, BookCaseResult } from "./booking";
+export {
+  DAYCARE_CASE_DEF_KEY, OT_GATE_DEF_KEY, OT_WORKFLOW_DEFINITIONS, POSTPONE_REASONS,
+  daycareCaseDefinition, otGateDefinition,
+} from "./workflow-def";

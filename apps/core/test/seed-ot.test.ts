@@ -1,10 +1,11 @@
 import { eq, sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "./helpers/db";
-import { resources } from "../src/kernel/db/schema";
+import { otDefinitions, resources } from "../src/kernel/db/schema";
 import {
   DAYCARE_RECOVERY_BAY_CLASS, OT_CONSIGNMENT_STORE_CODE, OT_RECOVERY_BAY_CODES, OT_THEATRE_CODE,
 } from "../src/modules/ot/kinds";
-import { ensureOtUnit } from "../scripts/seed-ot";
+import { ensureOtDefinitionDrafts, ensureOtUnit } from "../scripts/seed-ot";
+import { parseDefinitionBody } from "../src/modules/ot";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../src/kernel/db/client";
 
@@ -100,5 +101,64 @@ describe("seed:ot — the day-care unit (Plan 15 T2 / DD3)", () => {
       select count(*)::int as "n" from resource_status_history
     `)).rows as { n: number }[];
     expect(history[0]!.n).toBe(4);
+  });
+  // ═══════════════════ DD6 — the drafts, and the fact that nothing activates ═══════════════════
+
+  /**
+   * DD6: *"a seed that activates a Class-B definition is the theatre the owner named."* This is the
+   * mechanical form of that ruling. All three bodies are validated by their own schemas at draft
+   * time, so a whitelist that would fail `criteriaBodySchema` cannot reach a deployment at all — and
+   * `privileges` is deliberately absent, because a seed cannot know a real surgeon's user id.
+   */
+  it("drafts the three DD6 bodies, activates NONE of them, and drafts no privilege list", async () => {
+    const actor = { type: "user" as const, id: "test-seed-ot" };
+    const result = await ensureOtDefinitionDrafts(db, actor);
+    expect(result).toEqual({ created: ["criteria", "deposit_policy", "pacu_thresholds"], skipped: [] });
+
+    const rows = await db.select().from(otDefinitions);
+    expect(rows.map((r) => ({ kind: r.kind, version: r.version, status: r.status })).sort((a, b) => (a.kind < b.kind ? -1 : 1)))
+      .toEqual([
+        { kind: "criteria", version: 1, status: "draft" },
+        { kind: "deposit_policy", version: 1, status: "draft" },
+        { kind: "pacu_thresholds", version: 1, status: "draft" },
+      ]);
+    // NOTHING is active — the property the whole ruling is about.
+    expect(rows.filter((r) => r.status === "active")).toEqual([]);
+    expect(rows.filter((r) => r.kind === "privileges")).toEqual([]);
+  });
+
+  /**
+   * A re-run must not bury a real draft under a pile of identical ones, and must not resurrect a
+   * kind whose v1 the MS has already published and superseded.
+   */
+  it("a second run drafts nothing new, and leaves a published version alone", async () => {
+    const actor = { type: "user" as const, id: "test-seed-ot" };
+    await ensureOtDefinitionDrafts(db, actor);
+    const second = await ensureOtDefinitionDrafts(db, actor);
+    expect(second).toEqual({ created: [], skipped: ["criteria", "deposit_policy", "pacu_thresholds"] });
+    expect(await db.select().from(otDefinitions)).toHaveLength(3);
+
+    // Simulate the MS having published `criteria` v1, then deploy again.
+    await db.update(otDefinitions)
+      .set({ status: "active", publishedBy: "ms", publishedAt: new Date() })
+      .where(eq(otDefinitions.kind, "criteria"));
+    const third = await ensureOtDefinitionDrafts(db, actor);
+    expect(third.created).toEqual([]);
+    const criteria = (await db.select().from(otDefinitions).where(eq(otDefinitions.kind, "criteria")));
+    expect(criteria.map((r) => r.status)).toEqual(["active"]);
+  });
+
+  /** The seed bodies pass their OWN schemas — a draft that could not be published is a dead seed. */
+  it("every seeded body validates against its kind's schema", async () => {
+    const actor = { type: "user" as const, id: "test-seed-ot" };
+    await ensureOtDefinitionDrafts(db, actor);
+    for (const row of await db.select().from(otDefinitions)) {
+      expect(() => parseDefinitionBody(row.kind as "criteria", row.body)).not.toThrow();
+    }
+    // And the whitelist really is R-3.18's twenty minus the two 15b owns.
+    const criteria = parseDefinitionBody("criteria", (await db.select().from(otDefinitions)
+      .where(eq(otDefinitions.kind, "criteria")))[0]!.body);
+    expect(criteria.entries).toHaveLength(20);
+    expect(criteria.entries.map((e) => e.procedureClass)).not.toContain("mtp");
   });
 });

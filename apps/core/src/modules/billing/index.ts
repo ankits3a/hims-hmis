@@ -12,7 +12,18 @@ export { BillingError } from "./errors";
 export type { BillingErrorCode } from "./errors";
 export { issueInvoice, memberBenefitsEnabled, previewInvoice, invoiceSettlement, getInvoice, listInvoices } from "./invoices";
 export type { IssueInvoiceInput, IssueInvoiceResult, InvoiceRow, InvoiceLineRow, PricedDraft } from "./invoices";
-export { recordReceipt, allocateReceipt, reverseAllocation, patientBalance, listDues, markEnteredInError } from "./receipts";
+/**
+ * PLAN 15 T3 / DD12 — `advanceOf` JOINS THIS LIST, and it is a one-line cross-module edit with a
+ * reason rather than a convenience.
+ *
+ * `patientBalance` already exposes the same number, but it takes `Db` and an `Actor` and runs three
+ * reads. The mini-OT's `holdDeposit` needs the advance INSIDE its own transaction, under the lock
+ * that makes "the patient's advance minus what is already earmarked" a safe read-then-write —
+ * `advanceOf(exec: Db | Tx, patientId)` is the only reader in this module with that signature.
+ * Reaching around this index into `receipts.ts` would be the §4 violation; widening the index by
+ * one export is the sanctioned way, and it exposes nothing `patientBalance` did not already.
+ */
+export { recordReceipt, allocateReceipt, reverseAllocation, patientBalance, listDues, markEnteredInError, advanceOf } from "./receipts";
 export type { PatientBalance, DueRow, ReceiptRow, AllocationRow } from "./receipts";
 export { issueCreditNote, listCreditNotes } from "./credit-notes";
 export type { IssueCreditNoteInput, IssueCreditNoteResult, CreditNoteKind } from "./credit-notes";

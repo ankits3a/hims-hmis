@@ -3,11 +3,12 @@ import { createDb } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import { seedSodPairs } from "../src/kernel/auth/sod";
 import { withTx } from "../src/kernel/db/client";
-import { resources } from "../src/kernel/db/schema";
+import { otDefinitions, resources } from "../src/kernel/db/schema";
 import { createResource } from "../src/kernel/resources/registry";
 import { KERNEL_RESOURCE_KINDS } from "../src/kernel/resources/kinds";
 import { createStore } from "../src/modules/materials";
 import { registerOtApprovalTypes } from "../src/modules/ot/approval-types";
+import { OT_DEFINITION_SEEDS, draftDefinition } from "../src/modules/ot/definitions";
 import {
   DAYCARE_RECOVERY_BAY_CLASS, OT_CONSIGNMENT_STORE_CODE, OT_RECOVERY_BAY_CODES,
   OT_RESOURCE_KINDS, OT_THEATRE_CODE,
@@ -52,15 +53,27 @@ import type { Db, Tx } from "../src/kernel/db/client";
  * exactly as the hospital left it, which is `seed-tariff.ts`'s "a deploy must never overwrite a
  * corrected value" applied to a place.
  *
- * ═══ IT SEEDS NO DEFINITION DATA, AND THAT IS DD6's RULING RATHER THAN AN OMISSION ═══
+ * ═══ IT DRAFTS DEFINITION DATA AND ACTIVATES NONE OF IT — DD6's RULING ═══
  *
- * DD6: *"a seed that activates a Class-B definition is the theatre the owner named."* The criteria
- * whitelist, the privilege list, the deposit policy and the PACU thresholds are DRAFTED and
- * PUBLISHED by a human through the approvals engine (T9's runbook), not written active by a deploy.
- * **T3 adds the DRAFT installation to this script** once `definitions.ts` owns their schemas — the
- * plan puts "DD6 drafts" in T2's Produces and their zod schemas in T3's, which cannot both be true
- * in one commit (finding T2-c). Drafts are inert until an MS publishes them, so landing them one
- * task later costs nothing and keeps the schema and its seed in the same commit.
+ * DD6: *"a seed that activates a Class-B definition is the theatre the owner named."* So this
+ * installs three DRAFTS — the R-3.18 criteria whitelist, §3A's deposit policy and F24b's PACU
+ * scales — and publishes nothing. A human publishes them through the approvals engine (T9's
+ * runbook); until then `bookCase` refuses everything with `definition_not_active`, which is the
+ * honest state of a unit nobody has yet said what it may do.
+ *
+ * **The drafts land at T3 rather than T2** (finding T2-c): the plan puts "DD6 drafts" in T2's
+ * Produces and their zod schemas in T3's, and a seed cannot validate a body against a schema that
+ * does not exist yet. Drafts are inert, so one task later costs nothing.
+ *
+ * **`privileges` is deliberately NOT drafted.** A privilege list names REAL surgeon user ids, which
+ * a seed cannot know and must not invent — a placeholder id in a credentialing list is exactly the
+ * commercial-placeholder failure `seed-tariff.ts` was rewritten to avoid, with a patient on the end
+ * of it. The MS drafts it at go-live from the credentialing committee's own list.
+ *
+ * **A re-run drafts nothing new.** A draft is created only when the kind has NO row at all, so the
+ * second deploy leaves the MS's own published v1 — and any draft they are still working on —
+ * exactly where they are. A seed that re-drafted on every deploy would bury a real draft under a
+ * pile of identical ones.
  *
  * Usage: DATABASE_URL=postgres://... pnpm --filter @hmis/core seed:ot
  */
@@ -152,6 +165,25 @@ export async function ensureOtUnit(db: Db, actor: Actor): Promise<OtSeedResult> 
   });
 }
 
+/**
+ * Installs the three DD6 seed bodies as DRAFTS, once. Exported so `seed-ot.test.ts` can prove the
+ * idempotence the deploy path depends on, and prove that nothing becomes active.
+ */
+export async function ensureOtDefinitionDrafts(
+  db: Db, actor: Actor,
+): Promise<{ created: string[]; skipped: string[] }> {
+  const created: string[] = [];
+  const skipped: string[] = [];
+  for (const seed of OT_DEFINITION_SEEDS) {
+    const existing = await db.select({ id: otDefinitions.id }).from(otDefinitions)
+      .where(eq(otDefinitions.kind, seed.kind)).limit(1);
+    if (existing.length > 0) { skipped.push(seed.kind); continue; }
+    await withTx(db, (tx) => draftDefinition(tx, actor, { kind: seed.kind, body: seed.body }));
+    created.push(seed.kind);
+  }
+  return { created, skipped };
+}
+
 async function main(): Promise<void> {
   const { db, pool } = createDb(requireEnv("DATABASE_URL"));
   try {
@@ -165,7 +197,10 @@ async function main(): Promise<void> {
 
     const unit = await ensureOtUnit(db, activator);
     console.log(`day-care unit ensured — created: [${unit.created.join(", ") || "none"}], found: [${unit.found.join(", ") || "none"}]`);
-    console.log("no criteria, privilege, deposit-policy or PACU definition activated — an MS publishes them (DD6)");
+
+    const drafts = await ensureOtDefinitionDrafts(db, activator);
+    console.log(`definition drafts ensured — created: [${drafts.created.join(", ") || "none"}], already present: [${drafts.skipped.join(", ") || "none"}]`);
+    console.log("NOTHING IS ACTIVE: an MS publishes the three drafts and drafts `privileges` themselves (DD6, T9's runbook)");
   } finally {
     await pool.end();
   }
