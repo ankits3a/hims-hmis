@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
 import { usePalette } from "../components/command-palette";
+import { usePatientInHand } from "./patient-in-hand";
 
 function isTypingTarget(el: EventTarget | null): boolean {
   return el instanceof HTMLElement && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
@@ -30,6 +31,7 @@ export function shouldOpenPalette(
 export function KeyboardProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const navigate = useNavigate();
   const { open } = usePalette();
+  const { inHand } = usePatientInHand();
   useEffect(() => {
     /**
      * `/opd/vitals` and `/opd/consult` are registered by later tasks, but their shortcuts live here
@@ -58,7 +60,19 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }): R
         void navigate({ to: "/approvals" });
       } else if (e.altKey && (e.key === "b" || e.key === "B")) {
         e.preventDefault();
-        void navigate({ to: "/billing" });
+        /**
+         * PLAN 07b T2 — A SHORTCUT IS AN ACTION ON THE PATIENT IN HAND, NOT A DESTINATION.
+         *
+         * `Alt+B` went to a BARE `/billing`, so a clerk mid-walk-in landed on an empty counter and
+         * re-found the patient they were already serving. With a visit in hand it now carries the
+         * encounter, which is the same rail the token slip uses. With nobody in hand the bare route
+         * is still correct — that is a cashier opening the counter, not a handoff.
+         */
+        void navigate(
+          inHand?.encounterId != null
+            ? { to: "/billing", search: { encounterId: inHand.encounterId } }
+            : { to: "/billing" },
+        );
       } else if (e.altKey && (e.key === "d" || e.key === "D")) {
         e.preventDefault();
         void navigate({ to: "/opd/desk" });
@@ -75,7 +89,7 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }): R
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [navigate, open]);
+  }, [navigate, open, inHand]);
   return <>{children}</>;
 }
 

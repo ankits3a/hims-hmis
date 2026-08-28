@@ -1,13 +1,19 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import { AuthProvider } from "./lib/auth";
+import { PatientInHandProvider } from "./lib/patient-in-hand";
 import "./lib/i18n";
 
 export function renderWithProviders(ui: React.ReactElement): ReturnType<typeof render> {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <AuthProvider>{ui}</AuthProvider>
+      {/*
+        PLAN 07b T1 — every authed screen renders inside `PatientInHandProvider` in production
+        (`router.tsx`'s Shell), so the harness mirrors that rather than letting a screen that reads
+        the patient in hand pass its own suite while throwing in the app.
+      */}
+      <AuthProvider><PatientInHandProvider>{ui}</PatientInHandProvider></AuthProvider>
     </QueryClientProvider>,
   );
 }

@@ -7,7 +7,17 @@ import { PatientDetail } from "./patient-detail";
 // The screen reads its patient id from the route param, which only exists inside a
 // <RouterProvider>. A component test mounts no router, so useParams is stubbed to the
 // one value this screen consumes — mirroring T14's useNavigate mock.
-vi.mock("@tanstack/react-router", () => ({ useParams: () => ({ patientId: "p-1" }) }));
+/**
+ * PLAN 07b T2 — the screen gained onward actions, so it now calls `useNavigate` as well as
+ * `useParams`. A factory that returns only what the screen needed YESTERDAY fails at access time
+ * with "No 'useNavigate' export is defined on the mock" — which is the failure mode
+ * `billing-counter.test.tsx`'s own comment warns about, met here for real.
+ */
+const navigate = vi.hoisted(() => vi.fn());
+vi.mock("@tanstack/react-router", () => ({
+  useParams: () => ({ patientId: "p-1" }),
+  useNavigate: () => navigate,
+}));
 
 const PATIENT = {
   id: "p-1",
@@ -327,5 +337,27 @@ describe("PatientDetail", () => {
     await waitFor(() => expect(fetchCalls().some((c) => c.method === "POST")).toBe(true));
     expect(await screen.findByText("2.p-1.2.def456")).toBeInTheDocument();
     expect(screen.queryByText("1.p-1.1.abc123")).not.toBeInTheDocument();
+  });
+
+  /**
+   * PLAN 07b T2 — THE DEAD END, ENDED. Confirming a match on the registration desk routed here and
+   * this screen had no onward action at all, so the clerk navigated away and searched for the same
+   * person a second time. The action must ALSO take the patient in hand, or the destination is just
+   * another empty screen and nothing has been gained.
+   */
+  it("an onward action takes the patient in hand and then navigates", async () => {
+    sessionStorage.clear();
+    stubFetch({
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+    });
+    renderWithProviders(<PatientDetail />);
+    await screen.findByTestId("onward-actions");
+
+    await userEvent.setup().click(screen.getByTestId("onward-open-visit"));
+
+    expect(JSON.parse(sessionStorage.getItem("hmis.inHand") ?? "{}")).toMatchObject({ patientId: "p-1" });
+    expect(navigate).toHaveBeenCalledWith({ to: "/opd/desk" });
   });
 });

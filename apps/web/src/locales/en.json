@@ -1491,5 +1491,12 @@
     "inHand": "in hand",
     "release": "Release",
     "loading": "…"
+  },
+  "patientDetail": {
+    "onward": {
+      "openVisit": "Open visit",
+      "book": "Book appointment",
+      "bill": "Take payment"
+    }
   }
 }

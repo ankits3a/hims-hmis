@@ -1491,5 +1491,12 @@
     "inHand": "हाथ में",
     "release": "छोड़ें",
     "loading": "…"
+  },
+  "patientDetail": {
+    "onward": {
+      "openVisit": "विज़िट खोलें",
+      "book": "अपॉइंटमेंट बुक करें",
+      "bill": "भुगतान लें"
+    }
   }
 }

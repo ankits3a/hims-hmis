@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,6 +12,7 @@ import { SubmitButton } from "../components/submit-button";
 import { PatientPhoto } from "./registration-desk";
 import { QrCard, type QrCardData } from "../components/qr-card";
 import { Button } from "@/components/ui/button";
+import { usePatientInHand } from "../lib/patient-in-hand";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -702,6 +703,39 @@ function CardSection({ patient }: { patient: PatientRow }): React.ReactElement {
 
 // ——— Screen ———
 
+/**
+ * PLAN 07b T2 — THE DEAD END, ENDED.
+ *
+ * Confirming a match on the registration desk routed here, and this screen had ZERO onward actions:
+ * no open-visit, no book, no bill. A clerk who had just found the right person had to navigate away
+ * by menu and search for them a second time, which is one of the three searches the walk-in cost.
+ *
+ * Each action TAKES THE PATIENT IN HAND before it navigates, so the destination already knows who
+ * is being served — the whole point of the context is that finding somebody happens once.
+ */
+function OnwardActions({ patientId }: { patientId: string }): React.ReactElement {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { takePatient } = usePatientInHand();
+  const go = (to: "/opd/desk" | "/opd/appointments" | "/billing"): void => {
+    takePatient(patientId);
+    void navigate({ to });
+  };
+  return (
+    <div className="no-print flex flex-wrap gap-2" data-testid="onward-actions">
+      <Button data-testid="onward-open-visit" onClick={() => { go("/opd/desk"); }}>
+        {t("patientDetail.onward.openVisit")}
+      </Button>
+      <Button variant="outline" data-testid="onward-book" onClick={() => { go("/opd/appointments"); }}>
+        {t("patientDetail.onward.book")}
+      </Button>
+      <Button variant="outline" data-testid="onward-bill" onClick={() => { go("/billing"); }}>
+        {t("patientDetail.onward.bill")}
+      </Button>
+    </div>
+  );
+}
+
 export function PatientDetail(): React.ReactElement {
   // The route's full id is "/authed/patients/$patientId" — authedRoute is a pathless
   // layout route (id: "authed", no path segment), so the URL is "/patients/$patientId"
@@ -721,6 +755,7 @@ export function PatientDetail(): React.ReactElement {
   return (
     <div className="space-y-6 p-6">
       <Header patient={patient} resolvedFrom={resolvedFrom} />
+      <OnwardActions patientId={patient.id} />
       <DeceasedSection patient={patient} />
       <DemographicsSection patient={patient} />
       <OptInSection patient={patient} />
