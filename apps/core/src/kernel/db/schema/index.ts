@@ -40,3 +40,8 @@ export * from "./materials";
 // the two recovery bays ARE registry rows, DD3). Nothing above depends on it: materials learns
 // about a day-care case only through the `consignment.deployed` event payload, never by import.
 export * from "./ot";
+// PLAN 07a T2 — the PHI access log. It references NOTHING: `actor_id` and `patient_id` are plain
+// text on purpose (its own header carries the reasoning), so it sits downstream of no table and
+// nothing is downstream of it. That independence is the point — an audit log must outlive the
+// record it describes, and an FK would couple it to that record's truncate group and lifecycle.
+export * from "./phi-access";

@@ -1,5 +1,7 @@
 import { Injectable, Module, OnModuleInit } from "@nestjs/common";
 import { registerEncounterResolver } from "../billing";
+import { registerCareContextProvider } from "../../kernel/phi/audit";
+import { careContextFor } from "./care-context";
 import { EPISODE_SERIES } from "../../kernel/episodes/series";
 import { getEncounter } from "./encounters";
 import { RealtimeGateway } from "../../kernel/realtime/gateway";
@@ -43,6 +45,7 @@ class OpdRealtimeRegistrar implements OnModuleInit {
 export class OpdModule implements OnModuleInit {
   onModuleInit(): void {
     registerOpdEncounterResolver();
+    registerOpdCareContextProvider();
   }
 }
 
@@ -58,4 +61,16 @@ export function registerOpdEncounterResolver(): () => void {
     if (!encounter) return null;
     return { patientId: encounter.patientId, intendedPayer: encounter.intendedPayer };
   });
+}
+
+/**
+ * PLAN 07a T2 — OPD answers "was this reader looking after this patient?" for the PHI access log.
+ *
+ * Exported for the same reason the encounter resolver above is: a suite should not have to boot a
+ * module graph to get a truthful care context, and a private copy in a fixture would be a second
+ * answer to a question that must have one.
+ */
+export function registerOpdCareContextProvider(): () => void {
+  return registerCareContextProvider("opd", (db, actor, patientId, now) =>
+    careContextFor(db, actor, patientId, now));
 }

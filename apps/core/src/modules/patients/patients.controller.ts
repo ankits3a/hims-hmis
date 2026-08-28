@@ -12,6 +12,7 @@ import { WorkflowError } from "../../kernel/workflow/instances";
 import { withTx } from "../../kernel/db/client";
 import { PatientError } from "./uhid";
 import { getPatient, registerPatient, updatePatient } from "./registration";
+import { recordPhiAccess } from "../../kernel/phi/audit";
 import { searchPatients } from "./search";
 import { getPatientPhoto, storePatientPhoto } from "./photos";
 import { addAllergy, listAllergies, markAllergyEnteredInError } from "./allergies";
@@ -252,6 +253,14 @@ export class PatientsController {
   async detail(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
     const found = await getPatient(this.db, actor, id);
     if (!found) throw new NotFoundException(`unknown patient ${id}`);
+    // PLAN 07a T2 — recorded HERE and not inside `getPatient`, deliberately. `getPatient` is the
+    // confidentiality decision every module calls, including the OPD read gate's own check; logging
+    // there would record a row for every internal permission test and bury the reads a records-access
+    // enquiry is actually about. The controller is the HTTP read surface, and that is what to log.
+    await recordPhiAccess(this.db, {
+      actor, patientId: found.patient.id, surface: "patient.detail",
+      sealed: found.patient.isConfidential,
+    });
     return found;
   }
 
@@ -322,6 +331,10 @@ export class PatientsController {
   async getAllergies(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
     const found = await getPatient(this.db, actor, id);
     if (!found) throw new NotFoundException(`unknown patient ${id}`);
+    await recordPhiAccess(this.db, {
+      actor, patientId: found.patient.id, surface: "patient.allergies",
+      sealed: found.patient.isConfidential,
+    });
     return { items: await listAllergies(this.db, found.patient.id) };
   }
 

@@ -75,6 +75,12 @@ export async function truncateAll(db: Db): Promise<void> {
   // group's statement and takes its own. It MUST be here: a leftover audit row from one test makes
   // the next test's "exactly one row was written" assertion read two.
   await db.execute(sql`truncate table search_audit`);
+  // PLAN 07a T2 — `phi_access_log`, for exactly the reason above and by the same rules. Its
+  // `actor_id`, `patient_id` and `encounter_id` are all plain text with NO foreign key in either
+  // direction (schema/phi-access.ts: an audit log must outlive the record it describes), so it has
+  // no claim on any existing group's statement and takes its own. It MUST be here: a leftover row
+  // from one test makes the next test's "exactly one access was recorded" assertion read two.
+  await db.execute(sql`truncate table phi_access_log`);
   // The V/A/L/S/R/P daily counters. NO foreign key in either direction — the table is keyed by a
   // series-key STRING and a date, precisely so lab, radiology and pharmacy need no schema change
   // to join the grammar — so by §3.35/§3.12 it has no claim on any existing group's statement and

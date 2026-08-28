@@ -186,6 +186,11 @@ describe("retentionSweep", () => {
         // flag is false. Global Constraint 5 holds for the new leg by construction, and this line
         // is what would notice if a later leg were ever added above the gate.
         searchAuditDeleted: 0,
+        // PLAN 07a T2 — the PHI access-log leg, and this line is the assertion doing its job: the
+        // exact-shape `toEqual` is what forced this file to be edited when a leg was added, which
+        // is exactly the visibility it exists for. Same reasoning as above — the leg sits BELOW the
+        // inert gate, so it deletes nothing while the flag is false.
+        phiAccessDeleted: 0,
       });
       expect(await partitions()).toEqual(before);
       expect(await notificationIds()).toEqual([

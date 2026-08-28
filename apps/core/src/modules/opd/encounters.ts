@@ -9,6 +9,7 @@ import {
 } from "../../kernel/db/schema";
 import { startInstance, transition, WorkflowError } from "../../kernel/workflow/instances";
 import { getPatient, listMergedLoserIds, resolvePatientId } from "../patients";
+import { recordPhiAccess } from "../../kernel/phi/audit";
 import { loadOpdConfig } from "./config";
 import { OpdError } from "./errors";
 import { patientCheckedIn, visitAbandoned, visitOpened, visitTransferred } from "./events";
@@ -280,7 +281,12 @@ export async function getVisit(
   // missing encounter returns, so sealed and absent stay indistinguishable (07a DD2).
   const encounter = await getEncounter(db, encounterId);
   if (!encounter) return null;
-  if ((await getPatient(db, actor, encounter.patientId)) === null) return null;
+  const visible = await getPatient(db, actor, encounter.patientId);
+  if (visible === null) return null;
+  await recordPhiAccess(db, {
+    actor, patientId: visible.patient.id, surface: "opd.visit",
+    encounterId, sealed: visible.patient.isConfidential,
+  });
   const queueEntries = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId)).orderBy(asc(opdQueueEntries.seq));
   const vitals = await db.select().from(opdVitals).where(eq(opdVitals.encounterId, encounterId)).orderBy(asc(opdVitals.recordedAt));
   const prescriptions = await db.select().from(opdPrescriptions).where(eq(opdPrescriptions.encounterId, encounterId)).orderBy(asc(opdPrescriptions.version));
@@ -320,6 +326,11 @@ export async function patientTimeline(db: Db, actor: Actor, patientId: string, l
   const visible = await getPatient(db, actor, patientId);
   if (!visible) throw new OpdError("patient_not_found", `unknown patient ${patientId}`);
   const canonical = visible.patient.id;
+  // PLAN 07a T2 — the read happened; record who saw it. Successful reads only: a refusal produced
+  // no PHI, and a row naming a patient the reader was refused would be a leak in the audit log.
+  await recordPhiAccess(db, {
+    actor, patientId: canonical, surface: "opd.timeline", sealed: visible.patient.isConfidential,
+  });
   const chainIds = [canonical, ...(await listMergedLoserIds(db, canonical))];
   const rows = await db
     .select({ encounter: opdEncounters, doctorName: opdDoctors.displayName, departmentName: opdDepartments.name })

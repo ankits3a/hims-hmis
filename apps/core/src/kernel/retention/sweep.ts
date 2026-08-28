@@ -15,6 +15,8 @@ import { EVENTS_DEFAULT_PARTITION, listEventPartitions } from "../worker/partiti
 import { dropBlocked, notificationsPruned, partitionDropped, sideTablesPruned } from "./events";
 import { SEARCH_AUDIT_RETAIN_DAYS, pruneSearchAudit } from "../search/audit";
 import { searchAuditPruned } from "../search/events";
+import { phiAccessPruned } from "../phi/events";
+import { PHI_ACCESS_RETAIN_DAYS, prunePhiAccessLog } from "../phi/audit";
 
 // RETENTION (Plan 11a D6/D7). THIS FILE DESTROYS CLINICAL RECORDS, and every guard below is
 // therefore written to fail CLOSED — the sweep does nothing at all unless it is switched on, and
@@ -94,6 +96,7 @@ export type RetentionSweepOptions = {
   notifyRetainDays?: number;
   /** PLAN 11h T5 / DD4 — the search access log's own window, independent of the events window. */
   searchAuditRetainDays?: number;
+  phiAccessRetainDays?: number;
   batchSize?: number;
   /** Global Constraint 11: the clock is a parameter, never read from the wall inside a branch. */
   now?: Date;
@@ -109,6 +112,7 @@ export type RetentionSweepResult = {
   deliveriesDeleted: number;
   deadLettersDeleted: number;
   searchAuditDeleted: number;
+  phiAccessDeleted: number;
 };
 
 const inert = (): RetentionSweepResult => ({
@@ -119,6 +123,7 @@ const inert = (): RetentionSweepResult => ({
   deliveriesDeleted: 0,
   deadLettersDeleted: 0,
   searchAuditDeleted: 0,
+  phiAccessDeleted: 0,
 });
 
 const pad2 = (n: number): string => String(n).padStart(2, "0");
@@ -467,6 +472,47 @@ export async function retentionSweep(
             actor: RETENTION_ACTOR,
             payload: {
               rows: result.searchAuditDeleted,
+              retainDays,
+              cutoff: new Date(now.getTime() - retainDays * 24 * 60 * 60 * 1000).toISOString(),
+            },
+          }),
+        ),
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // 2b. `phi_access_log` — WHO READ A CHART. Three years, and UNLIKE the search audit above it IS
+  //     legal-hold clamped.
+  //
+  //     The block above explains at length why a hold check on `search_audit` would be theatre: a
+  //     search row references no patient, so "does a hold on patient X cover the fact that somebody
+  //     typed 'sharma'?" has no computable answer. THIS TABLE IS THE OPPOSITE CASE and the contrast
+  //     is the reason both comments exist. Every row here names a patient, a hold on that patient
+  //     has an exact answer, and the rows a hold exists to preserve — who looked at this chart, and
+  //     when — are precisely what a records-access enquiry asks for. `prunePhiAccessLog` does the
+  //     clamping; this leg only drives it.
+  //
+  //     Three years rather than ninety days because a records-access enquiry, unlike a search-audit
+  //     question, arrives long after the fact.
+  // ---------------------------------------------------------------------------------------------
+  {
+    const retainDays = opts.phiAccessRetainDays ?? PHI_ACCESS_RETAIN_DAYS;
+    let phiBatches = 0;
+    while (phiBatches < MAX_NOTIFY_BATCHES) {
+      const removed = await prunePhiAccessLog(db, { retainDays, batchSize, now });
+      result.phiAccessDeleted += removed;
+      phiBatches += 1;
+      if (removed < batchSize) break; // the window is clear (or a hold is holding it)
+    }
+    if (result.phiAccessDeleted > 0) {
+      await withTx(db, (tx) =>
+        appendEvent(
+          tx,
+          phiAccessPruned.make({
+            actor: RETENTION_ACTOR,
+            payload: {
+              rows: result.phiAccessDeleted,
               retainDays,
               cutoff: new Date(now.getTime() - retainDays * 24 * 60 * 60 * 1000).toISOString(),
             },
