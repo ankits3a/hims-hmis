@@ -176,7 +176,7 @@ Plan 14 precedent says slice rather than change lanes.
 | Phase | Scope | Status |
 |---|---|---|
 | **22c-A** | The patient actor and the identity spine — K1, K4, and the as-of-encounter resolver. Kernel only; ships nothing patient-facing | **WRITTEN** — `../../plans/2026-08-28-phase1-22cA-patient-actor-identity-spine.md` |
-| **22c-B** | Self-registration — OTP/PIN auth, drafts, the dedup gate, households, the confidential request (T1a–T1e) | next |
+| **22c-B** | Self-registration — OTP/PIN auth, drafts, the dedup gate, households, the confidential request (T1a–T1e) | **WRITTEN** — `../../plans/2026-08-28-phase1-22cB-self-registration.md` |
 | **22c-C** | Browse and book — catalogue, doctor profiles, availability projection, holds, binding, cart, pay-later (T2–T4) | after B |
 
 22c-A goes first and alone: 29 files read `actor.type` and 46 sites throw
