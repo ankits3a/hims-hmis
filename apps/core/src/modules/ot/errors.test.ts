@@ -239,4 +239,33 @@ describe("the OT error union (Plan 15 T2)", () => {
   it("declares each code exactly once", () => {
     expect(new Set<string>(OT_ERROR_CODES).size).toBe(OT_ERROR_CODES.length);
   });
+
+  /**
+   * ═══ T8 — EVERY CODE HAS A SENTENCE, IN BOTH LOCALES, IN BOTH DIRECTIONS ═══
+   *
+   * `apps/web/src/lib/ot-api.ts`'s `otErrorText` looks up `otErrors.<code>` and falls back to the
+   * server's English message. The fallback is deliberate and good — a `ResourceError` or a
+   * `BillingError` reaching an OT screen has no key here and a wrong-language sentence beats a
+   * blank box — but it also means a MISSING key is invisible: the screen shows something, and the
+   * only person who notices is the Hindi-reading nurse who gets English at 7 a.m.
+   *
+   * This is materials' `m6`, in the directory where the union is authored, for its reason: a parity
+   * test on the web side only fails after somebody thinks to look.
+   */
+  it("T8: every declared code has a sentence in BOTH locales, and no sentence outlives its code", () => {
+    const locales = resolve(__dirname, "..", "..", "..", "..", "..", "apps", "web", "src", "locales");
+    const en = JSON.parse(readFileSync(resolve(locales, "en.json"), "utf8")) as Record<string, Record<string, string>>;
+    const hi = JSON.parse(readFileSync(resolve(locales, "hi.json"), "utf8")) as Record<string, Record<string, string>>;
+    const codes: string[] = [...OT_ERROR_CODES];
+
+    expect({ missingEn: codes.filter((c) => en.otErrors?.[c] === undefined) }).toEqual({ missingEn: [] });
+    expect({ missingHi: codes.filter((c) => hi.otErrors?.[c] === undefined) }).toEqual({ missingHi: [] });
+    // The other direction: a sentence for a code that no longer exists is dead weight a translator
+    // keeps maintaining — and the three codes T5 removed from this union are exactly the shape of
+    // thing that would have been left behind.
+    expect(Object.keys(en.otErrors ?? {}).filter((k) => !codes.includes(k))).toEqual([]);
+    // And the Hindi is actually Hindi. The parity check above cannot see a copy-paste.
+    expect({ untranslated: codes.filter((c) => en.otErrors?.[c] === hi.otErrors?.[c]) })
+      .toEqual({ untranslated: [] });
+  });
 });

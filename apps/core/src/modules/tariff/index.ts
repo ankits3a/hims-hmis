@@ -16,7 +16,7 @@ export { listAdjustmentRules, loadRuleConfig, upsertAdjustmentRule } from "./rul
 export { TARIFF_APPROVAL_TYPES, registerTariffApprovalTypes } from "./approval-types";
 export { getGstSettings, listGstCategories, upsertGstCategory, upsertGstSettings } from "./gst-config";
 export { assertPaise, divHalfUp, percentAmount, roundTotalToRupee, taxHead } from "./money";
-export { TariffError } from "./errors";
+export { TariffError, tariffHttpStatus } from "./errors";
 export type { TariffErrorCode } from "./errors";
 export * from "./types";
 export * from "./events";

@@ -102,7 +102,7 @@ describe("OT recovery (Plan 15 T6 / DD10)", () => {
   it("admits to a bay through the registry, and the board shows the occupant", async () => {
     const { encounterId } = await inRecovery();
     await admitToBay(db, f.recoveryNurse, { encounterId, bayResourceId: f.bayIds[0]! });
-    const board = await recoveryBoard(db);
+    const board = await recoveryBoard(db, f.recoveryNurse);
     expect(board).toHaveLength(2);
     expect(board[0]).toMatchObject({ code: "RB-1", status: "occupied", occupantType: "daycare_encounter", occupantRef: encounterId });
     expect(board[1]).toMatchObject({ code: "RB-2", status: "available", occupantRef: null });

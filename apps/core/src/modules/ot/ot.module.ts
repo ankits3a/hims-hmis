@@ -3,6 +3,10 @@ import { eq } from "drizzle-orm";
 import { registerEncounterResolver } from "../billing";
 import { EPISODE_SERIES } from "../../kernel/episodes/series";
 import { daycareEncounters } from "../../kernel/db/schema";
+import { OtDefinitionsController } from "./ot-definitions.controller";
+import { OtCasesController } from "./ot-cases.controller";
+import { OtCockpitController } from "./ot-cockpit.controller";
+import { OtRecoveryController } from "./ot-recovery.controller";
 
 /**
  * The mini-OT module.
@@ -12,11 +16,13 @@ import { daycareEncounters } from "../../kernel/db/schema";
  * adds carries `@RequirePermission` and none carries a check of its own. Plan 13 T5's recorded rule
  * and the `MaterialsModule` shape.
  *
- * T2 ships the module SEAM — manifest, kind, permissions, events, errors, approval types, the merge
- * consumer and the seed — with NO controller, deliberately: routes land when there are functions
- * behind them. **T8 mounts the four controllers**, and that is the only change this file needs.
+ * T2 shipped the module SEAM — manifest, kind, permissions, events, errors, approval types, the
+ * merge consumer and the seed — with NO controller, deliberately: routes land when there are
+ * functions behind them. **T8 mounts the four**, and `ot.e2e.test.ts` walks a refusal from every
+ * error family through them so the `toHttp` mapping is EXECUTED rather than asserted (Plan 13's
+ * 500-escape specimen, which this repository has now shipped three times).
  */
-@Module({ controllers: [] })
+@Module({ controllers: [OtDefinitionsController, OtCasesController, OtCockpitController, OtRecoveryController] })
 export class OtModule implements OnModuleInit {
   /**
    * PLAN 15 T7 / DD11-F2 — **THE OT CLAIMS THE `D` PREFIX.**

@@ -7,7 +7,7 @@ import {
 } from "../../../test/helpers/ot";
 import { withTx } from "../../kernel/db/client";
 import {
-  daycareEncounters, events, invoiceLines, invoices, otCaseImplants, otCases,
+  daycareEncounters, events, invoiceLines, invoices, otCaseImplants, otCases, otDepositHolds,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { issueInvoice, recordReceipt, registeredEncounterPrefixes } from "../billing";
@@ -15,7 +15,7 @@ import { materialConsumed } from "../materials";
 import { loadPricingContext } from "../tariff";
 import { registerItem } from "../materials";
 import { bookCase } from "./booking";
-import { holdDeposit, openHolds } from "./deposit";
+import { heldPaise, holdDeposit, openHolds } from "./deposit";
 import { intendedPayerFor } from "./ot.module";
 import {
   CASH_LIMIT_PAISE, assertCashWithinEncounterLimit, clampImplantUnitPaise, composeDischargeBill,
@@ -536,6 +536,74 @@ describe("the OT discharge bill (Plan 15 T7 / DD11)", () => {
   });
 
   // ═══════════════════════════════ D12 and the orphan scan ═══════════════════════════════
+
+  /**
+   * ═══ THE EARMARK IS CONSUMED BY THE SETTLEMENT THAT SPENDS IT ═══
+   *
+   * Found by T8's e2e, which asserted the hold was spent after a real discharge and measured
+   * `released_at: null`. `settleDischargeBill` passes the holds to `issueInvoice` as
+   * `settleFromReceipts` — the money genuinely moves — but nothing closed the hold rows, so
+   * `heldPaise()` went on reporting ₹60,000 that billing had already allocated. Two copies of one
+   * fact, disagreeing (§2.54), and the stale copy is the one three callers read:
+   *
+   *   - DD12's deposit gate, which decides whether a case may be booked;
+   *   - `composeDischargeBill`, whose `excess = heldPaise − plannedFromHolds` is the REFUND amount;
+   *   - `POST /ot/cases/:id/deposit/release` (ot-cases.controller.ts), which would cheerfully
+   *     report "₹60,000 released" for money already inside an invoice.
+   *
+   * Every open hold is disposed of by a settlement — spent into the invoice, or returned as the
+   * `excess` refund request — so releasing all of them is right, and the reason names the invoice
+   * so a ledger reader can follow the money out.
+   */
+  it("F-settle — settlement releases the holds it spends, naming the invoice", async () => {
+    const e = await anEncounter();
+    const composed = await composeDischargeBill(db, e.encounterId);
+    await holdFor(e.encounterId, composed.expectedNetPaise);
+    const settled = await settleDischargeBill(db, cashier, { encounterId: e.encounterId });
+    expect(settled.allocatedPaise).toBe(composed.expectedNetPaise);
+
+    expect(await withTx(db, (tx) => openHolds(tx, e.encounterId))).toEqual([]);
+    expect(await withTx(db, (tx) => heldPaise(tx, e.encounterId))).toBe(0);
+    const rows = await db.select().from(otDepositHolds).where(eq(otDepositHolds.encounterId, e.encounterId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.releasedReason).toContain(settled.invoiceNo);
+  });
+
+  /**
+   * The refund leg of the same fact: a deposit LARGER than the bill leaves an excess, which becomes
+   * a refund request — and the hold must still close, or the next composition would count the same
+   * excess a second time.
+   */
+  it("F-settle — an over-deposit closes its hold too, and refunds the excess exactly once", async () => {
+    const e = await anEncounter();
+    const composed = await composeDischargeBill(db, e.encounterId);
+    await holdFor(e.encounterId, composed.expectedNetPaise + 1_000_000);
+    const settled = await settleDischargeBill(db, cashier, { encounterId: e.encounterId });
+    expect({ refundPaise: settled.refundPaise, hasApproval: settled.refundApprovalId !== null })
+      .toEqual({ refundPaise: 1_000_000, hasApproval: true });
+    expect(await withTx(db, (tx) => heldPaise(tx, e.encounterId))).toBe(0);
+  });
+
+  /**
+   * ═══ THE ORDERING, WHICH IS THE ONLY THING THE TWO TESTS ABOVE CANNOT SEE ═══
+   *
+   * Both legs above pass just as well if the release happens BEFORE `issueInvoice` — on the happy
+   * path the two orders are indistinguishable. They differ only when the invoice is REFUSED, and
+   * then they differ in the direction that costs a patient money: release-first drops the earmark
+   * on a deposit that was never spent, so the next reader sees ₹0 held against money sitting in the
+   * patient's advance. A hold under-deposited for its bill and tendered no cash is exactly that
+   * case, so this pins the order the failure path depends on.
+   */
+  it("F-settle — a REFUSED invoice leaves the hold open, money still earmarked", async () => {
+    const e = await anEncounter();
+    const composed = await composeDischargeBill(db, e.encounterId);
+    await holdFor(e.encounterId, composed.expectedNetPaise - 1_000_000);
+
+    await expect(settleDischargeBill(db, cashier, { encounterId: e.encounterId }))
+      .rejects.toThrow(/unsettled/);
+    expect(await withTx(db, (tx) => heldPaise(tx, e.encounterId)))
+      .toBe(composed.expectedNetPaise - 1_000_000);
+  });
 
   it("D12 — stock ISSUED and never consumed is a warning row, not a block", async () => {
     const e = await anEncounter();

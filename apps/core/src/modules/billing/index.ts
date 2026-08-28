@@ -8,7 +8,7 @@
  */
 export { billingManifest } from "./manifest";
 export { BillingModule } from "./billing.module";
-export { BillingError } from "./errors";
+export { BillingError, billingHttpStatus } from "./errors";
 export type { BillingErrorCode } from "./errors";
 export {
   issueInvoice, memberBenefitsEnabled, previewInvoice, invoiceSettlement, getInvoice, listInvoices,

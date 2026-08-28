@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { hmacSign, hmacVerify } from "../../kernel/crypto";
-import { hasPermission } from "../../kernel/auth/permissions";
+import { displayNameFor } from "./display-name";
 import { appendEvent } from "../../kernel/events/append";
 import { patients } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
@@ -79,11 +79,11 @@ export async function verifyQrScan(
 
   // §14: the card was physically presented, so the scan resolves — but the display name is
   // the alias for callers without the permission. D-37: nothing here affects any priority.
-  let name = resolved.name;
-  if (resolved.isConfidential) {
-    const canSee = await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
-    if (!canSee) name = resolved.alias ?? "—";
-  }
+  //
+  // This was the ORIGINAL of that rule and is now one of its callers: Plan 15's F20 moved the four
+  // lines into `displayName`/`displayNameFor` so the OT's list and recovery board could apply the
+  // same rule without copying it. The behaviour here is unchanged, including the `—` fallback.
+  const name = await displayNameFor(db, actor, resolved);
   return {
     ok: true,
     patient: { id: resolved.id, uhid: resolved.uhid, name, sex: resolved.sex, dob: resolved.dob },

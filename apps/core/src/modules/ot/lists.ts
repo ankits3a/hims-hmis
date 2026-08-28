@@ -4,6 +4,8 @@ import type { Actor } from "@hmis/contracts";
 import { otCases, otLists } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { transition } from "../../kernel/workflow/instances";
+import { hasPermission } from "../../kernel/auth/permissions";
+import { displayName } from "../patients";
 import { OtError } from "./errors";
 import { listPublished, surgeonLateFlagged } from "./events";
 import { caseGates, evaluateReadiness } from "./gates";
@@ -39,26 +41,56 @@ export type ListItem = {
   surgeonId: string;
   anaesthetistId: string | null;
   state: string;
+  /**
+   * F20/DD16 — the name a theatre list may show. NEVER `patients.name`: a confidential patient's
+   * legal name must not reach this DTO, because this DTO is printed and pinned to a wall. It is
+   * `displayName`'s answer for the ASKING actor, so the same list is a legal name for the two
+   * people holding `patients.confidential.read` and an alias for the theatre.
+   */
+  patientDisplay: string;
   gates: { kind: string; state: string }[];
 };
 
 /** The day's list for a theatre, with each case's gate chips (the `/ot/list` screen's whole data). */
 export async function listForDay(
-  exec: Db | Tx, listDate: string, theatreResourceId: string,
+  exec: Db | Tx, actor: Actor, listDate: string, theatreResourceId: string,
 ): Promise<ListItem[]> {
   const rows = (await exec.execute(sql`
     select c.id as "caseId", c.seq as "seq", c.procedure_class as "procedureClass",
            c.procedure_code as "procedureCode", c.laterality as "laterality",
            c.surgeon_id as "surgeonId", c.anaesthetist_id as "anaesthetistId",
-           w.current_state as "state"
+           w.current_state as "state",
+           p.name as "patientName", p.alias as "patientAlias", p.is_confidential as "patientConfidential"
       from ot_cases c
       join workflow_instances w on w.id = c.workflow_instance_id
+      join daycare_encounters e on e.id = c.encounter_id
+      join patients p on p.id = e.patient_id
      where c.list_date = ${listDate} and c.theatre_resource_id = ${theatreResourceId}
      order by c.seq asc
-  `)).rows as Omit<ListItem, "gates">[];
+  `)).rows as (Omit<ListItem, "gates" | "patientDisplay"> & {
+    patientName: string; patientAlias: string | null; patientConfidential: boolean;
+  })[];
+
+  /**
+   * F20 — the confidential gate is asked ONCE for the whole list, not once per row. The permission
+   * belongs to the ACTOR, not to the patient, so a per-row lookup would ask the same question N
+   * times and answer it identically; on a 30-case Monday that is 30 round trips for one boolean.
+   */
+  const canSee = actor.type === "user"
+    ? await hasPermission(exec as Db, actor.id, "patients.confidential.read", "hospital")
+    : false;
+
   const items: ListItem[] = [];
   for (const row of rows) {
-    items.push({ ...row, gates: (await caseGates(exec, row.caseId)).map((g) => ({ kind: g.kind, state: g.state })) });
+    const { patientName, patientAlias, patientConfidential, ...rest } = row;
+    items.push({
+      ...rest,
+      patientDisplay: displayName(
+        { name: patientName, alias: patientAlias, isConfidential: patientConfidential },
+        canSee,
+      ),
+      gates: (await caseGates(exec, row.caseId)).map((g) => ({ kind: g.kind, state: g.state })),
+    });
   }
   return items;
 }

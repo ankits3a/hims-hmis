@@ -12,3 +12,14 @@ export class TariffError extends Error {
     this.name = "TariffError";
   }
 }
+
+/**
+ * The tariff twin of `billingHttpStatus`, moved out of `billing.controller.ts` for the same reason
+ * and at the same time: `priceInvoiceLines` runs inside every invoice, so a `TariffError` surfaces
+ * wherever an invoice is issued — including Plan 15's OT discharge-bill route.
+ */
+export function tariffHttpStatus(code: TariffErrorCode): number {
+  if (code.startsWith("unknown_")) return 404;
+  if (code === "invalid_paise" || code === "invalid_qty" || code === "invalid_rule_params") return 400;
+  return 409;
+}

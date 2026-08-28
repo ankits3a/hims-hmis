@@ -1,11 +1,13 @@
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { mkOtPatient, seedOtBase } from "../../../test/helpers/ot";
+import { mkOtPatient, mkOtUser, seedOtBase } from "../../../test/helpers/ot";
 import { withTx } from "../../kernel/db/client";
-import { events, otCases, otLists } from "../../kernel/db/schema";
+import { daycareEncounters, events, otCases, otLists, patients } from "../../kernel/db/schema";
 import { eq } from "drizzle-orm";
 import { bookCase, caseState } from "./booking";
 import { flagLateSurgeons, listForDay, printPack, publishList, resequence } from "./lists";
 import { satisfyGate, caseGates } from "./gates";
+import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
+import { ModuleRegistry } from "../../kernel/modules/loader";
 import type { OtBaseFixture } from "../../../test/helpers/ot";
 import type { Db } from "../../kernel/db/client";
 
@@ -155,10 +157,49 @@ describe("the OT list (Plan 15 T4)", () => {
     })).rejects.toThrow(/is not on this list/);
   });
 
+  /**
+   * ═══ F20 — A CONFIDENTIAL PATIENT'S LEGAL NAME NEVER REACHES THE LIST DTO ═══
+   *
+   * The theatre list is PRINTED and pinned to a wall, which makes it the surface §14 is about. The
+   * assertion is deliberately two-sided: the alias is present (so the list is still usable — a
+   * board with no names sends a nurse to the notes) and the legal name is absent from the whole
+   * serialized DTO, not merely from the field we remembered to check. `JSON.stringify` is the
+   * check, because a leak that mattered would arrive in a field nobody thought to assert on.
+   */
+  it("F20 — a confidential patient shows as their alias, and the legal name is nowhere in the DTO", async () => {
+    const a = await book();
+    const encounter = (await db.select().from(daycareEncounters)
+      .where(eq(daycareEncounters.id, a.encounterId)))[0]!;
+    await db.update(patients)
+      .set({ isConfidential: true, alias: "Patient A", name: "Ravi Shankar Menon" })
+      .where(eq(patients.id, encounter.patientId));
+    await publishList(db, f.incharge, { listDate: LIST_DATE, theatreResourceId: f.theatreId });
+
+    // The in-charge does NOT hold `patients.confidential.read`.
+    const items = await listForDay(db, f.incharge, LIST_DATE, f.theatreId);
+    expect(items[0]!.patientDisplay).toBe("Patient A");
+    expect(JSON.stringify(items)).not.toContain("Ravi");
+
+    // …and the two people who DO hold it see the legal name on the same list, or the flag would be
+    // a wall rather than a permission.
+    // The registry-checked grant path, never a raw `role_permissions` insert — the
+    // `invoices.test.ts` precedent, and the reason is the same: a test that granted a permission
+    // the registry does not know about would be testing a state the system cannot reach.
+    const privileged = await mkOtUser(db, "ot_vip_reader", ["ot_vip_reader"]);
+    const registry = new ModuleRegistry();
+    registry.install({
+      key: "patients", title: "Patients", menu: [], permissions: ["patients.confidential.read"], subscriptions: [],
+    });
+    await syncPermissions(db, registry);
+    await grantPermissionToRole(db, registry, "ot_vip_reader", "patients.confidential.read");
+    const seen = await listForDay(db, privileged, LIST_DATE, f.theatreId);
+    expect(seen[0]!.patientDisplay).toBe("Ravi Shankar Menon");
+  });
+
   it("`listForDay` returns the cases in sequence with their gate chips", async () => {
     const a = await book();
     await publishList(db, f.incharge, { listDate: LIST_DATE, theatreResourceId: f.theatreId });
-    const items = await listForDay(db, LIST_DATE, f.theatreId);
+    const items = await listForDay(db, f.incharge, LIST_DATE, f.theatreId);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ caseId: a.caseId, seq: 1, state: "listed", procedureClass: "gynae_dnc" });
     expect(items[0]!.gates.map((g) => g.kind).sort()).toEqual([

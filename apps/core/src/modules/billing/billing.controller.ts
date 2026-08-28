@@ -12,13 +12,13 @@ import { receipts, refundVouchers } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { getPatientSummaries, PatientError } from "../patients";
 import { loadOpdConfig, OpdError } from "../opd";
-import { DISCOUNT_CATEGORIES, TariffError } from "../tariff";
+import { DISCOUNT_CATEGORIES, TariffError, tariffHttpStatus } from "../tariff";
 import { feeQuote } from "./charge-rules";
 import { loadBillingConfig, updateBillingConfig } from "./config";
 import { dayBook, gstr1Summary } from "./daily-close";
 import { issueCreditNote, listCreditNotes } from "./credit-notes";
 import { MembershipError, membershipHttpStatus } from "../membership";
-import { BillingError } from "./errors";
+import { BillingError, billingHttpStatus } from "./errors";
 import { withIdempotency } from "./idempotency";
 import { getInvoice, invoiceSettlement, issueInvoice, listInvoices, previewInvoice } from "./invoices";
 import {
@@ -28,7 +28,6 @@ import { issueRefundVoucher, payRefundVoucher, requestRefund } from "./refunds";
 import { listMismatches, setDegraded, uploadSettlement } from "./recon";
 import { beginClose, confirmClose, listSessions, openSession } from "./sessions";
 import { istDay } from "./time";
-import type { BillingErrorCode } from "./errors";
 import type { FeeQuote } from "./charge-rules";
 import type { BillingConfig } from "./config";
 import type { DayBook, Gstr1Row } from "./daily-close";
@@ -62,29 +61,6 @@ import type { Db } from "../../kernel/db/client";
  * which module's error class raised the refusal, so the body carries `code: "invalid_paise"`
  * either way.
  */
-
-const NOT_FOUND_CODES = new Set<BillingErrorCode>([
-  "unknown_invoice", "unknown_receipt", "unknown_line", "unknown_encounter", "unknown_series",
-]);
-const FORBIDDEN_CODES = new Set<BillingErrorCode>(["credit_permission_required"]);
-/** Client-input refusals. Everything else is a state/ledger conflict and answers 409. */
-const VALIDATION_CODES = new Set<BillingErrorCode>([
-  "invalid_paise", "pan_required", "tender_ref_required", "bank_transfer_required",
-  "recon_parse_failed", "duplicate_ref",
-]);
-
-function billingStatus(code: BillingErrorCode): number {
-  if (NOT_FOUND_CODES.has(code)) return 404;
-  if (FORBIDDEN_CODES.has(code)) return 403;
-  if (VALIDATION_CODES.has(code)) return 400;
-  return 409;
-}
-
-function tariffStatus(code: string): number {
-  if (code.startsWith("unknown_")) return 404;
-  if (code === "invalid_paise" || code === "invalid_qty" || code === "invalid_rule_params") return 400;
-  return 409;
-}
 
 /**
  * PLAN 11g / DD3 — THE ONE FOREIGN KEY WHOSE VIOLATION IS A CLIENT'S MISTAKE, NOT A BUG.
@@ -129,8 +105,8 @@ function httpError(statusCode: number, message: string, code: string, detail?: u
 
 /** Unrecognized errors rethrow — a 500 is a genuine bug, loudly (the patients/OPD toHttp convention). */
 function toHttp(e: unknown): never {
-  if (e instanceof BillingError) throw httpError(billingStatus(e.code), e.message, e.code, e.detail);
-  if (e instanceof TariffError) throw httpError(tariffStatus(e.code), e.message, e.code);
+  if (e instanceof BillingError) throw httpError(billingHttpStatus(e.code), e.message, e.code, e.detail);
+  if (e instanceof TariffError) throw httpError(tariffHttpStatus(e.code), e.message, e.code);
   /**
    * PLAN 09 CLOSE REMEDIATION (owner-authorised 2026-08-26). T4 wired `resolveInstruments`,
    * `consumeEntitlements` and `redeemCoupon` into `issueInvoice`, so a `MembershipError` reaches

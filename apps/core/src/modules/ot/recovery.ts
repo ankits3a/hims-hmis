@@ -1,15 +1,16 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import {
-  daycareEncounters, otCases, otIncidents, pacuScores, resources,
+  daycareEncounters, otCases, otIncidents, pacuScores, patients, resources,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
 import { transition } from "../../kernel/workflow/instances";
 import { assignResource, releaseResource } from "../../kernel/resources/registry";
 import { KERNEL_RESOURCE_KINDS } from "../../kernel/resources/kinds";
-import { getPatient, guardiansWithAuthority } from "../patients";
+import { hasPermission } from "../../kernel/auth/permissions";
+import { displayName, getPatient, guardiansWithAuthority } from "../patients";
 import { activeDefinition, criteriaFor } from "./definitions";
 import { OtError } from "./errors";
 import {
@@ -472,17 +473,45 @@ export async function markAbsconded(
 }
 
 /** The two bays and who is in them — the `/ot/recovery` board's whole data. */
-export async function recoveryBoard(exec: Db | Tx): Promise<{
+export async function recoveryBoard(exec: Db | Tx, actor: Actor): Promise<{
   bayResourceId: string; code: string; status: string;
   occupantType: string | null; occupantRef: string | null;
+  /**
+   * F20/DD16 — who is in the bay, by the name this actor may see. `occupantRef` is an ENCOUNTER id
+   * and always has been; a recovery board that showed only ids would send a nurse to the notes to
+   * find out who is in bay 2, so the name is here — and it is `displayName`'s answer, never
+   * `patients.name`. A recovery board is the most public surface in the building: it faces the
+   * corridor.
+   */
+  patientDisplay: string | null;
 }[]> {
   const rows = await exec.select().from(resources).where(eq(resources.kind, "bed")).orderBy(asc(resources.code));
-  return rows
-    .filter((r) => (r.attributes as { class?: string } | null)?.class === DAYCARE_RECOVERY_BAY_CLASS)
-    .map((r) => ({
+  const bays = rows
+    .filter((r) => (r.attributes as { class?: string } | null)?.class === DAYCARE_RECOVERY_BAY_CLASS);
+
+  // Asked once for the actor, not once per bay — see `listForDay`'s note.
+  const canSee = actor.type === "user"
+    ? await hasPermission(exec as Db, actor.id, "patients.confidential.read", "hospital")
+    : false;
+
+  const occupantIds = bays.map((b) => b.occupantRef).filter((r): r is string => r !== null);
+  const occupants = occupantIds.length === 0 ? [] : await exec.select({
+    encounterId: daycareEncounters.id,
+    name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential,
+  })
+    .from(daycareEncounters)
+    .innerJoin(patients, eq(patients.id, daycareEncounters.patientId))
+    .where(inArray(daycareEncounters.id, occupantIds));
+  const byEncounter = new Map(occupants.map((o) => [o.encounterId, o]));
+
+  return bays.map((r) => {
+    const occupant = r.occupantRef === null ? undefined : byEncounter.get(r.occupantRef);
+    return {
       bayResourceId: r.id, code: r.code, status: r.status,
       occupantType: r.occupantType, occupantRef: r.occupantRef,
-    }));
+      patientDisplay: occupant === undefined ? null : displayName(occupant, canSee),
+    };
+  });
 }
 
 /** Every score on an encounter, newest last. */

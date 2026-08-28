@@ -10,7 +10,7 @@ import { loadPricingContext } from "../tariff";
 import { OtError } from "./errors";
 import { materialCeilingDiverged } from "./events";
 import { caseState } from "./booking";
-import { openHolds } from "./deposit";
+import { openHolds, releaseHolds } from "./deposit";
 import { deployingImplants } from "./implants";
 import type { InvoiceLineInput } from "../tariff";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -420,6 +420,23 @@ export async function settleDischargeBill(
       : {}),
   });
   const allocated = result.allocatedPaise + result.settledFromHeldPaise;
+
+  /**
+   * ═══ THE HOLDS CLOSE HERE, AND ONLY AFTER THE INVOICE EXISTS ═══
+   *
+   * Every open hold is disposed of by this call — spent into the invoice above, or returned as the
+   * `excess` refund request below — so all of them close, with the invoice named as the reason.
+   * Without this the earmark outlived the money: `heldPaise()` kept reporting a deposit that
+   * billing had already allocated, which is the number DD12's booking gate and the `excess` refund
+   * arithmetic both read (see bill.test.ts `F-settle`).
+   *
+   * AFTER `issueInvoice`, never before: releasing first and then failing to issue would drop the
+   * earmark while the money sat unspent, which is the strictly worse direction. A crash in the gap
+   * leaves a hold open over a settled invoice — recoverable, and exactly the state that shipped
+   * before this line existed, because a re-settle is refused by billing's own allocation guard
+   * rather than double-spending the receipt.
+   */
+  await withTx(db, (tx) => releaseHolds(tx, input.encounterId, `settled against ${result.invoiceNo}`));
 
   // The excess, as a refund REQUEST. `requestRefund` is approval-gated and returns an approval id.
   const excess = composed.heldPaise - plannedFromHolds;

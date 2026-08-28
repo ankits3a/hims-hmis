@@ -37,6 +37,10 @@ import { MaterialsVendors } from "./screens/materials-vendors";
 import { MaterialsGrn } from "./screens/materials-grn";
 import { PartnerReceivables } from "./screens/partner-receivables";
 import { PartnerPnl } from "./screens/partner-pnl";
+import { OtList } from "./screens/ot-list";
+import { OtBook } from "./screens/ot-book";
+import { OtCockpit } from "./screens/ot-cockpit";
+import { OtRecovery } from "./screens/ot-recovery";
 
 /**
  * PLAN 11h T6 — the shell's navigation, PAIRED WITH THE PERMISSION EACH SCREEN'S ROUTE ACTUALLY
@@ -105,6 +109,19 @@ const NAV: readonly { to: string; label: string; permission: string }[] = [
    * `apps/core/test/nav-parity.test.ts`, so the next divergence fails a suite instead of a role.
    */
   { to: "/materials/grn", label: "nav.materialsGrn", permission: "materials.stock.read" },
+  /**
+   * PLAN 15 T8 — the mini-OT. Each path and permission matches `otManifest.menu`'s own entry
+   * exactly, which is where the authoritative pairing lives and which `nav-parity.test.ts` now
+   * enforces rather than trusts.
+   *
+   * There are THREE links for FOUR screens, and that is not an omission: the cockpit is a route on
+   * ONE case (`/ot/cockpit/$caseId`) and there is no such thing as "the cockpit" without a case to
+   * open it on. It is reached from the list, which is where a nurse actually is when they need it.
+   * `otManifest.menu` declares the same three, so the two tables agree.
+   */
+  { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read" },
+  { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book" },
+  { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate" },
 ];
 
 function Shell(): React.ReactElement {
@@ -269,6 +286,31 @@ const materialsGrnRoute = createRoute({
   component: MaterialsGrn,
 });
 
+const otListRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ot/list",
+  component: OtList,
+});
+
+const otBookRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ot/book",
+  component: OtBook,
+});
+
+/** The cockpit is per CASE — see the NAV comment for why it carries no menu entry. */
+const otCockpitRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ot/cockpit/$caseId",
+  component: OtCockpit,
+});
+
+const otRecoveryRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ot/recovery",
+  component: OtRecovery,
+});
+
 const opdAppointmentsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/appointments",
@@ -420,6 +462,9 @@ export const router = createRouter({
       // PLAN 14 T9 — 25 -> 28. `caddyfile-parity.test.ts` pins the count and joins this task's
       // Files list, which is the S11 rule the repo has applied to itself four times.
       materialsItemsRoute, materialsVendorsRoute, materialsGrnRoute,
+      // PLAN 15 T8 — 28 -> 32, the day-care spine. Four ROUTES and three NAV links: the cockpit is
+      // per case. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
+      otListRoute, otBookRoute, otCockpitRoute, otRecoveryRoute,
     ]),
   ]),
 });
