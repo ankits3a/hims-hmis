@@ -2,6 +2,7 @@ export type BillingErrorCode =
   | "billing_not_configured" | "invalid_paise" | "unsettled_issue_refused"
   | "credit_permission_required" | "credit_approval_required" | "outstanding_cap_exceeded"
   | "discount_approval_missing" | "approval_subject_mismatch"
+  | "change_exceeds_surplus" | "change_without_cash"
   | "unknown_invoice" | "unknown_receipt" | "unknown_line"
   | "over_allocation" | "allocation_exceeds_advance" | "allocation_reversed_already"
   | "no_open_session" | "session_already_open" | "session_state_conflict" | "variance_approval_required"

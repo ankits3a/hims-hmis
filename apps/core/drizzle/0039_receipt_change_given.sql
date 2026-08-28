@@ -1,0 +1,12 @@
+-- PLAN 07b T5 — HOW MUCH OF THE SURPLUS WAS HANDED BACK AS CHANGE.
+--
+-- The surplus itself was already computed (`unallocatedPaise`) and already shown at the counter,
+-- under a label reading "Change due / banked as advance". TWO OUTCOMES, ONE RECORD: whichever the
+-- cashier did, the ledger wrote an unallocated receipt balance — which IS a patient advance. So
+-- when the money was handed over, that advance was fictional: the patient's balance was overstated
+-- by exactly that amount AND the drawer was short by it at close, with no row explaining the
+-- variance the cashier then had to answer for.
+--
+-- ADDITIVE AND DEFAULTED TO ZERO, so every receipt written before this migration keeps precisely
+-- the arithmetic it was closed under. `expectedCash` subtracts this term; a zero changes nothing.
+ALTER TABLE "receipts" ADD COLUMN "change_given_paise" bigint DEFAULT 0 NOT NULL;

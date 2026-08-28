@@ -104,6 +104,27 @@ async function sumCashTendersPaise(tx: Tx, sessionId: string): Promise<number> {
  * the query is still written now, against T1's schema, per this task's Step 2 (T8's suite covers
  * the non-zero case; not owed here).
  */
+/**
+ * PLAN 07b T5 — change handed back on this session's receipts. It mirrors `sumCashTendersPaise`
+ * exactly, INCLUDING the entered-in-error exclusion: a receipt struck from the ledger takes its
+ * change with it, or reversing a mistaken receipt would leave the drawer permanently short.
+ */
+async function sumChangeGivenPaise(tx: Tx, sessionId: string): Promise<number> {
+  const rows = await tx
+    .select({ total: sql<string>`coalesce(sum(${receipts.changeGivenPaise}), 0)` })
+    .from(receipts)
+    .where(
+      and(
+        eq(receipts.cashierSessionId, sessionId),
+        sql`not exists (
+          select 1 from entered_in_error_marks
+          where entered_in_error_marks.doc_type = 'receipt' and entered_in_error_marks.doc_id = receipts.id
+        )`,
+      ),
+    );
+  return Number(rows[0]?.total ?? 0);
+}
+
 async function sumCashVouchersPaidPaise(tx: Tx, sessionId: string): Promise<number> {
   const rows = await tx
     .select({ total: sql<string>`coalesce(sum(${refundVouchers.amountPaise}), 0)` })
@@ -149,7 +170,8 @@ export async function beginClose(
     const counted = sumDenominations(input.denominations);
     const cashTenders = await sumCashTendersPaise(tx, session.id);
     const cashVouchers = await sumCashVouchersPaidPaise(tx, session.id);
-    const expected = expectedCash(session.openingFloatPaise, cashTenders, cashVouchers);
+    const changeGiven = await sumChangeGivenPaise(tx, session.id);
+    const expected = expectedCash(session.openingFloatPaise, cashTenders, cashVouchers, changeGiven);
     const variancePaise = counted - expected;
     const closed = variancePaise === 0;
 

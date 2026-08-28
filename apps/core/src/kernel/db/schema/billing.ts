@@ -175,6 +175,20 @@ export const receipts = pgTable("receipts", {
   panNumber: text("pan_number"), // C-2 §139A above the PAN threshold …
   form60: boolean("form60").notNull().default(false), // … or Form 60 in its place
   degraded: boolean("degraded").notNull().default(false), // E-24 stamp
+  /**
+   * PLAN 07b T5 — HOW MUCH OF THE SURPLUS WAS HANDED BACK AS CHANGE.
+   *
+   * `issueInvoice` has always computed the surplus (`unallocatedPaise`) and the counter has always
+   * shown it — under a label reading "Change due / banked as advance". TWO OUTCOMES, ONE RECORD:
+   * the cashier picked, and the ledger wrote the same row either way — an unallocated receipt
+   * balance, which IS a patient advance. Nothing recorded cash handed back, so when the cashier
+   * handed it over the advance was fictional: the patient's balance was overstated by exactly that
+   * amount AND the drawer was short by it at close, with no row to explain the variance.
+   *
+   * This column is the cashier's DECLARATION, and `expectedCash` now subtracts it. What remains
+   * unallocated after it is a real advance the patient can spend later.
+   */
+  changeGivenPaise: bigint("change_given_paise", { mode: "number" }).notNull().default(0),
   note: text("note"),
   seq: bigserial("seq", { mode: "number" }),
 });

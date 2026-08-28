@@ -498,6 +498,8 @@ export class BillingController {
         .select({
           id: receipts.id,
           receiptNo: receipts.receiptNo,
+          // PLAN 07b T5 — part of the money record: what the drawer handed back, not just what it took.
+          changeGivenPaise: receipts.changeGivenPaise,
           patientId: receipts.patientId,
           cashierSessionId: receipts.cashierSessionId,
           receivedBy: receipts.receivedBy,

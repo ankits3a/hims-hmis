@@ -81,7 +81,20 @@ export type IssueInvoiceInput = {
   buyerLegalName?: string;
   lines: InvoiceLineInput[];
   tags?: string[]; // request-level pricing eligibility tags
-  receipt?: { tenders: TenderInput[]; panNumber?: string; form60?: boolean; note?: string };
+  receipt?: {
+    tenders: TenderInput[]; panNumber?: string; form60?: boolean; note?: string;
+    /**
+     * PLAN 07b T5 — how much of the surplus was HANDED BACK as change, declared by the cashier.
+     *
+     * The surplus itself has always been computed (`unallocatedPaise`) and shown at the counter
+     * under "Change due / banked as advance" — two outcomes, one record. Whichever the cashier
+     * did, the ledger wrote an unallocated receipt balance, which IS a patient advance; so when
+     * the money was handed over, that advance was fictional and the drawer was short by the same
+     * amount at close, with nothing to explain the variance. Declaring it is what separates the
+     * two lanes, and `expectedCash` subtracts it.
+     */
+    changeGivenPaise?: number;
+  };
   credit?: { reason: string; approvalId?: string };
   discountApprovals?: Record<string, string>; // lineId -> approvalId, for `requiresApproval` winners
   /**
@@ -625,7 +638,7 @@ export async function insertReceiptWithTenders(
   cfg: BillingConfig,
   input: {
     patientId: string; cashierSessionId: string; tenders: TenderInput[];
-    panNumber?: string; form60?: boolean; note?: string; at: Date;
+    panNumber?: string; form60?: boolean; note?: string; changeGivenPaise?: number; at: Date;
   },
 ): Promise<{ receiptId: string; receiptNo: string; totalPaise: number }> {
   let totalPaise = 0;
@@ -650,6 +663,7 @@ export async function insertReceiptWithTenders(
     panNumber: input.panNumber ?? null,
     form60: input.form60 ?? false,
     degraded: cfg.degradedTender, // E-24 stamp
+    changeGivenPaise: input.changeGivenPaise ?? 0, // PLAN 07b T5 — the cashier's declaration
     note: input.note ?? null,
   });
   for (const tender of input.tenders) {
@@ -742,6 +756,29 @@ export async function issueInvoice(
   // D2 step 5: overpayment is NOT an error. The surplus stays unallocated on the receipt — it IS
   // the change-due / banked-advance lane, and refusing it would refuse ordinary cash transactions.
   const unallocatedPaise = receiptTotalPaise - allocatedPaise;
+  /**
+   * PLAN 07b T5 — the two guards that keep the declaration honest.
+   *
+   * You cannot hand back more than the surplus (the rest is the hospital's money), and you cannot
+   * hand back CASH against a card-only payment — that is not change, it is a refund, and refunds
+   * have an approval ladder this route deliberately does not have.
+   */
+  const changeGivenPaise = input.receipt?.changeGivenPaise ?? 0;
+  if (changeGivenPaise > 0) {
+    if (changeGivenPaise > unallocatedPaise) {
+      throw new BillingError(
+        "change_exceeds_surplus",
+        `change of ${String(changeGivenPaise)} exceeds the ${String(unallocatedPaise)} surplus on this receipt`,
+        { changeGivenPaise, unallocatedPaise },
+      );
+    }
+    if (!(input.receipt?.tenders ?? []).some((t) => t.mode === "cash")) {
+      throw new BillingError(
+        "change_without_cash",
+        "change can only be handed back against a cash tender — returning money on a card payment is a refund",
+      );
+    }
+  }
 
   try {
     return await withTx(db, async (tx) => {
@@ -906,6 +943,7 @@ export async function issueInvoice(
           panNumber: receipt.panNumber,
           form60: receipt.form60,
           note: receipt.note,
+          changeGivenPaise,
           at: now,
         });
         receiptId = written.receiptId;

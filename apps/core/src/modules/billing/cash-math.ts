@@ -38,9 +38,24 @@ export function sumDenominations(denominations: Record<string, number>): number 
  * and cash-paid vouchers for the session); this function is their pure combinator, so the
  * arithmetic itself stays kernel-free and grep-clean under the purity sweep.
  */
-export function expectedCash(openingFloatPaise: number, cashTendersPaise: number, cashVouchersPaidPaise: number): number {
+export function expectedCash(
+  openingFloatPaise: number,
+  cashTendersPaise: number,
+  cashVouchersPaidPaise: number,
+  changeGivenPaise = 0,
+): number {
   assertPaise(openingFloatPaise, "opening float");
   assertPaise(cashTendersPaise, "cash tenders");
   assertPaise(cashVouchersPaidPaise, "cash vouchers paid");
-  return openingFloatPaise + cashTendersPaise - cashVouchersPaidPaise;
+  assertPaise(changeGivenPaise, "change given");
+  /**
+   * PLAN 07b T5 — CHANGE HANDED BACK LEAVES THE DRAWER, so it is subtracted exactly as a paid cash
+   * voucher is. Its absence was a real money defect rather than a missing feature: the surplus was
+   * recorded as a patient advance whether or not the cash was handed over, so a cashier who gave
+   * change was short by that amount at close and carried a variance they did not cause.
+   *
+   * It DEFAULTS to zero so every existing caller and every row written before `0039` keeps its
+   * current arithmetic — the column defaults to 0 for the same reason.
+   */
+  return openingFloatPaise + cashTendersPaise - cashVouchersPaidPaise - changeGivenPaise;
 }
