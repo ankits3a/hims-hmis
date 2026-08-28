@@ -53,3 +53,16 @@ export {
   DAYCARE_CASE_DEF_KEY, OT_GATE_DEF_KEY, OT_WORKFLOW_DEFINITIONS, POSTPONE_REASONS,
   daycareCaseDefinition, otGateDefinition,
 } from "./workflow-def";
+
+// ── T4 — readiness: the gates, the consents, the list ──
+export {
+  ADULT_AGE_YEARS, CLINICALLY_OVERRIDABLE_KINDS, NPO_CLEAR_FLUIDS_HOURS, NPO_SOLIDS_HOURS,
+  TERMINAL_GATE_STATES, caseGates, evaluateReadiness, gateState, overrideGate, satisfyGate, waiveGate,
+} from "./gates";
+export type { GateRow } from "./gates";
+export { CONSENT_KINDS, consentEvidence, consentSchema, validateConsent } from "./consents";
+export type { ConsentEvidence, ConsentKind } from "./consents";
+export {
+  SURGEON_LATE_RUNGS_MINUTES, flagLateSurgeons, listForDay, printPack, publishList, resequence,
+} from "./lists";
+export type { ListItem, OtListRow } from "./lists";

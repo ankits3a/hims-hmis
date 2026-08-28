@@ -102,7 +102,12 @@ describe("the OT error union (Plan 15 T2)", () => {
       gate_not_overridable: "gates.ts",
       gate_already_terminal: "gates.ts",
       same_actor: "gates.ts",
-      not_ready: "lists.ts",
+      // CORRECTED at T4 by this very test (finding T4-c). `not_ready` was mapped to `lists.ts`
+      // because "the list is where readiness is evaluated" — but evaluating readiness is not the
+      // same act as REFUSING a case that is not ready, and nothing in `lists.ts` refuses anything on
+      // that ground: `publishList` publishes whatever is bookable and `evaluateReadiness` returns a
+      // state. The refusal happens where a not-ready case is STOPPED, which is the holding bay.
+      not_ready: "cockpit.ts",
       consent_authority_missing: "consents.ts",
       list_not_publishable: "lists.ts",
 

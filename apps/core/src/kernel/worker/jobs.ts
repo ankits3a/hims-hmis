@@ -8,6 +8,7 @@ import { sweepExpiredTempRoles } from "../auth/temp-roles";
 import { sweepGuardianMajority } from "../../modules/patients/guardians";
 import { sweepAppointmentNoShows } from "../../modules/opd/appointments";
 import { sweepBatchExpiry } from "../../modules/materials";
+import { flagLateSurgeons } from "../../modules/ot";
 import { runDailyClose } from "../../modules/billing/daily-close";
 import { runNotifyPump } from "../notify/pump";
 import { createEventPartitions } from "./partitions";
@@ -197,6 +198,36 @@ export function registerAllJobs(
     name: "sweepBatchExpiry",
     dailyIst: BATCH_EXPIRY_IST,
     run: async (now) => { await sweepBatchExpiry(db, now); },
+  });
+  /**
+   * PLAN 15 T4 / F1 — the surgeon-late flag, EVERY FIVE MINUTES rather than daily.
+   *
+   * It is a JOB and not a `setTimeout`, and the plan says so in as many words: a timeout dies with
+   * the process, leaves no lock, and would fire twice on two workers and never after a restart. The
+   * scheduler's pg-advisory lock is the whole reason this is safe to run in a two-process
+   * deployment.
+   *
+   * ═══ SIXTY SECONDS, AND THE CADENCE WAS CHOSEN BY THE ALERTING RULE (finding T4-b) ═══
+   *
+   * The obvious cadence is five minutes: the rungs are at +15 and +30, and a two-case list does not
+   * need scanning every minute. **It was written that way and then changed, because
+   * `docker/prod/prometheus/alerts.yml` leg 1a thresholds every INTERVAL job at 300 s staleness** —
+   * so a 300,000 ms job would page the on-call the first time it was one tick late, for ever. The
+   * two repairs available were to widen that threshold for every interval job or to fit this job to
+   * it; weakening a live production alert to accommodate a new job's convenience is the wrong trade,
+   * and `alerts-parity.test.ts` requires exactly two staleness legs, so a third leg of its own is
+   * not available either.
+   *
+   * At 60 s the job matches the existing model exactly (`sweepExpiredTempRoles` and
+   * `sweepInterfaceHeartbeats` are both 60 s defaults) and the flag lands within a minute of the
+   * rung rather than within five. The cost is one indexed query per minute over a list that has at
+   * most a handful of live cases, and the job is idempotent per (case, rung) — it reads the event
+   * stream before emitting — so a double run flags nothing twice.
+   */
+  scheduler.register({
+    name: "flagLateSurgeons",
+    every: 60_000,
+    run: async (now) => { await flagLateSurgeons(db, now); },
   });
   scheduler.register({
     name: "runDailyClose",

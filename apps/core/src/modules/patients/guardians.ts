@@ -38,6 +38,37 @@ export function effectiveGuardianAuthority(
   };
 }
 
+/**
+ * PLAN 15 T4 / A11 — **the effective authority of every live guardian of one patient.**
+ *
+ * A NAMED CROSS-MODULE ADDITION, and the shape is chosen for DPDP minimisation rather than
+ * convenience. The mini-OT's consent gate has to answer one question — *may this guardian consent
+ * for this minor?* — and `effectiveGuardianAuthority` is pure, so answering it from outside this
+ * module would have meant exporting GUARDIAN ROWS, including `id_number_masked` and `consent_note`,
+ * to a caller that needs neither. This returns the ANSWER: an id, a name, a relationship and the
+ * four booleans, computed at `at` so a guardian of a patient who turned eighteen this morning is
+ * already powerless (the whole point of computing authority at read time).
+ *
+ * `patients.controller.ts` reads the table directly for its own detail view; that is inside this
+ * module and stays. Nothing outside it touches `patient_guardians`.
+ */
+export async function guardiansWithAuthority(
+  exec: Db | Tx,
+  patientId: string,
+  at: Date = new Date(),
+): Promise<{ guardianId: string; name: string; relationship: string; authority: GuardianAuthority }[]> {
+  const found = await exec.select().from(patients).where(eq(patients.id, patientId));
+  const patient = found[0];
+  if (!patient) return [];
+  const rows = await exec.select().from(patientGuardians).where(eq(patientGuardians.patientId, patientId));
+  return rows.map((guardian) => ({
+    guardianId: guardian.id,
+    name: guardian.name,
+    relationship: guardian.relationship,
+    authority: effectiveGuardianAuthority(patient, guardian, at),
+  }));
+}
+
 export async function linkGuardian(
   tx: Tx,
   actor: Actor,

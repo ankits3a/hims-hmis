@@ -11,7 +11,7 @@
 # HmisSchedulerJobMissing while the staleness legs stay silent for it — they have no series to
 # threshold against, which is exactly the blind spot this rule exists to close.
 #
-# The TEN job names and their cadences are transcribed verbatim from `registerAllJobs`
+# The TWELVE job names and their cadences are transcribed verbatim from `registerAllJobs`
 # (apps/core/src/kernel/worker/jobs.ts) — this file invents no cadence of its own. The tenth,
 # `sweepInterfaceHeartbeats` (Plan 11c D6), is an INTERVAL job, so it joins leg 1a and leg 2 and
 # leaves leg 1b alone. `apps/core/test/alerts-parity.test.ts` fails if this file and that registry
@@ -19,7 +19,8 @@
 groups:
   - name: hmis-scheduler
     rules:
-      # Leg 1a — the FIVE `every(ms)` jobs. The slowest shipped cadence is still 60s
+      # Leg 1a — the SIX `every(ms)` jobs (five until Plan 15 T4 added `flagLateSurgeons`). The
+      # slowest shipped cadence is still 60s
       # (WORKER_TEMP_ROLES_INTERVAL_MS, and now WORKER_INTERFACE_SWEEP_INTERVAL_MS beside it at the
       # same 60s default), so the 300s threshold is unchanged: 5 minutes is a wide margin over one
       # missed tick before paging anyone, while still catching a genuinely stuck loop inside the
@@ -27,7 +28,7 @@ groups:
       - alert: HmisSchedulerJobStaleInterval
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|sweepInterfaceHeartbeats"
+            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|sweepInterfaceHeartbeats|flagLateSurgeons"
           } > 300
         for: 2m
         labels:
@@ -78,6 +79,10 @@ groups:
           # be invisible in exactly the way that matters: the worklist would simply keep saying
           # nothing, which is what it says when there is nothing to say.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepBatchExpiry"})
+          # Plan 15 T4 / F1 — the TWELFTH job. A surgeon-late flag that silently stopped is invisible
+          # in the same way the batch sweep is: the digest simply keeps saying nothing, which is what
+          # it says when nobody is late.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="flagLateSurgeons"})
         for: 5m
         labels:
           severity: critical

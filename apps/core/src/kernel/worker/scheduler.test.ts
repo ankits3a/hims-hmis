@@ -26,6 +26,7 @@ import * as partitionsMod from "./partitions";
 import * as retentionMod from "../retention/sweep";
 import * as interfacesMod from "../ops/interfaces";
 import * as materialsExpiryMod from "../../modules/materials/expiry";
+import * as otListsMod from "../../modules/ot/lists";
 import type { Db } from "../db/client";
 
 // D3/halt condition 7: no test in this file ever observes the advisory lock. Every test below
@@ -205,7 +206,7 @@ async function settleUntil(done: () => boolean, maxTurns = SETTLE_BOUND_TURNS): 
  * Names are pushed in invocation ORDER, and duplicates are kept: "fired exactly once across
  * five ticks" is a claim a `Set` cannot make.
  */
-function spyOnTheEleven(invoked: string[]): jest.SpyInstance[] {
+function spyOnTheTwelve(invoked: string[]): jest.SpyInstance[] {
   return [
     jest.spyOn(dispatcherMod, "runDispatchCycle").mockImplementation(async () => {
       invoked.push("runDispatchCycle");
@@ -265,10 +266,18 @@ function spyOnTheEleven(invoked: string[]): jest.SpyInstance[] {
       invoked.push("sweepBatchExpiry");
       return { announced: [] };
     }),
+    // THE TWELFTH (Plan 15 T4 / F1). Stubbed for the same reason as the tenth and eleventh:
+    // un-stubbed it joins `ot_cases` to `workflow_instances` and APPENDS `surgeon.late_flagged`
+    // events, inside a fake-clock unit test that is about the CLOCK. Its behaviour is asserted
+    // DIRECTLY in `modules/ot/lists.test.ts`, where the rungs and the idempotence are the subject.
+    jest.spyOn(otListsMod, "flagLateSurgeons").mockImplementation(async () => {
+      invoked.push("flagLateSurgeons");
+      return 0;
+    }),
   ];
 }
 
-const THE_ELEVEN = [
+const THE_TWELVE = [
   "runDispatchCycle",
   "runDueTimers",
   "sweepExpiredTempRoles",
@@ -277,6 +286,10 @@ const THE_ELEVEN = [
   // PLAN 14 T8 / DD14 — registered between the no-show sweep and the daily close, which is where
   // `jobs.ts` puts it. `06:30` IST: a storekeeper reads the expiry worklist at the start of a shift.
   "sweepBatchExpiry",
+  // PLAN 15 T4 / F1 — the TWELFTH, an `every(60_000)` job. Registered between the batch-expiry
+  // sweep and the daily close, which is where `jobs.ts` puts it — so it sits there here too, and
+  // this array stays the REGISTRATION order rather than an alphabetical one.
+  "flagLateSurgeons",
   "runDailyClose",
   "runNotifyPump",
   "createEventPartitions",
@@ -340,7 +353,7 @@ describe("Scheduler", () => {
     expect(scheduler.leakedErrors()).toEqual([]);
   });
 
-  // L14 — the registration census. Two tests, because there are two claims: that all eleven jobs
+  // L14 — the registration census. Two tests, because there are two claims: that all twelve jobs
   // are registered and reached at their cadences, and that the DAILY four are keyed on the IST
   // calendar rather than the UTC one. The first cannot make the second — see M-S2 below.
   describe("the registration census (L14)", () => {
@@ -536,17 +549,17 @@ describe("Scheduler", () => {
         .map(([atMs, daily]) => ({ atMs, daily }));
     })();
 
-    it("invokes all eleven jobs across a stepwise advance from a pinned instant", async () => {
+    it("invokes all twelve jobs across a stepwise advance from a pinned instant", async () => {
       expect(process.env.DATABASE_URL).toBeUndefined(); // CI's environment, reproduced here
       const invoked: string[] = [];
-      const spies = spyOnTheEleven(invoked);
+      const spies = spyOnTheTwelve(invoked);
       const registry = censusRegistry();
       const fresh = freshWorkerDb();
       jest.useFakeTimers({ now: CENSUS_PIN });
       try {
         const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), CENSUS_DAILY_TICK_MS);
         registerAllJobs(scheduler, fresh.db, registry, {}, CENSUS_INTERVALS);
-        expect(scheduler.jobs()).toEqual(THE_ELEVEN);
+        expect(scheduler.jobs()).toEqual(THE_TWELVE);
 
         // Fake milliseconds advanced so far, measured from the pin. The walk only moves forward,
         // so a target already behind the cursor is a no-op rather than a rewind.
@@ -582,18 +595,18 @@ describe("Scheduler", () => {
         // and the post-await re-check then correctly drops any run whose read had not come back,
         // so calling it too early is exactly how this census came back short on CI twice while
         // being green on the build host every single time.
-        const settled = await settleUntil(() => new Set(invoked).size >= THE_ELEVEN.length);
+        const settled = await settleUntil(() => new Set(invoked).size >= THE_TWELVE.length);
         await scheduler.stop();
         // Reported, not asserted: on a bound hit the assertion below fails on its own SET and
         // names the missing jobs, which is a better failure message than a bare timeout.
         if (!settled) {
           // eslint-disable-next-line no-console
           console.warn(
-            `census: settleUntil hit its bound with ${new Set(invoked).size}/${THE_ELEVEN.length} invoked`,
+            `census: settleUntil hit its bound with ${new Set(invoked).size}/${THE_TWELVE.length} invoked`,
           );
         }
 
-        expect(new Set(invoked)).toEqual(new Set(THE_ELEVEN));
+        expect(new Set(invoked)).toEqual(new Set(THE_TWELVE));
         expect(scheduler.leakedErrors()).toEqual([]);
       } finally {
         jest.useRealTimers();
@@ -643,7 +656,7 @@ describe("Scheduler", () => {
       const NOW = new Date("2026-08-21T19:00:00.000Z"); // IST 2026-08-22 00:30
       const LAST_OK = new Date("2026-08-21T10:00:00.000Z"); // IST 2026-08-21 15:30 — same UTC day
       const invoked: string[] = [];
-      const spies = spyOnTheEleven(invoked);
+      const spies = spyOnTheTwelve(invoked);
       const registry = censusRegistry();
       const fresh = freshWorkerDb();
       try {

@@ -87,6 +87,10 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
     expect([...registered].sort()).toEqual(
       [
         "createEventPartitions",
+        // PLAN 15 T4 / F1 — the TWELFTH job, an INTERVAL one, so like the tenth it joins leg 1a's
+        // `job=~` alternation and leg 2's `absent()` chain and leaves the daily leg alone. This
+        // array is SORTED (a rename is a readable diff), so it lands second rather than last.
+        "flagLateSurgeons",
         "retentionSweep",
         "runDailyClose",
         "runDispatchCycle",
@@ -106,8 +110,8 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         "sweepBatchExpiry",
       ].sort(),
     );
-    expect(registered).toHaveLength(11);
-    expect(new Set(registered).size).toBe(11); // no job registered twice
+    expect(registered).toHaveLength(12);
+    expect(new Set(registered).size).toBe(12); // no job registered twice
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

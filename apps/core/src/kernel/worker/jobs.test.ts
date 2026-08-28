@@ -326,7 +326,16 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
     // PLAN 14 T8 / DD14 — ELEVEN since `sweepBatchExpiry` joined at `dailyIst("06:30")`. The
     // interface sweep is still the one this test is ABOUT and is still LAST (it is registered last),
     // so it is addressed by name rather than by an index that a twelfth job would shift again.
-    expect(specs).toHaveLength(11);
+    //
+    // PLAN 15 T4 / F1 — TWELVE, and the twelfth is `flagLateSurgeons` on a five-minute cadence. The
+    // sentence above predicted it ("an index that a twelfth job would shift again") and is why this
+    // assertion addresses the interface sweep BY NAME: the census moves and the subject does not.
+    // **THIS FILE IS NOT IN PLAN 15 T4's FILES LIST** — a census the task moves, recorded as
+    // finding T4-b with the timeout below rather than fixed silently.
+    expect(specs).toHaveLength(12);
+    expect(specs).toContainEqual(
+      expect.objectContaining({ name: "flagLateSurgeons", every: 60_000 }),
+    );
     expect(specs[specs.length - 1]).toEqual(
       expect.objectContaining({ name: "sweepInterfaceHeartbeats", every: INTERFACE_SWEEP_EVERY_MS }),
     );
@@ -337,6 +346,28 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
     );
   });
 
+  /**
+   * ═══ AN EXPLICIT TIMEOUT, AND IT IS §2.99's LESSON ARRIVING ON SCHEDULE (finding T4-b) ═══
+   *
+   * This test drives FOUR fake-timer advances, each followed by fifty REAL event-loop turns, with
+   * real database round-trips inside them. It runs in **1,117 ms on an idle build host** and it
+   * **exceeded jest's 15,000 ms default on the CI runner** at Plan 15 T3 (`858727b`, run
+   * 33152555678) — a ~13x slowdown, on a commit that does not touch this file, this job, or the
+   * scheduler. What T3 changed was the LOAD: sixty new tests, several of them heavy DB fixtures,
+   * sharing four CI workers.
+   *
+   * The body's own comment already anticipated half of this — *"a starved container may not drain
+   * every tick's real database round-trips"* — and defended the ASSERTION (`>= 1` rather than
+   * `=== 4`) while leaving the TIMEOUT at jest's default. That is exactly Plan 09a's finding: a
+   * race test sitting nine seconds inside a fifteen-second budget is green on an idle host and red
+   * on a busy runner, and the phase that finally tips it is the one that gets blamed.
+   *
+   * 60,000 ms is chosen as ~50x the observed idle cost rather than as a round number: the test is
+   * bounded by the SCHEDULER's cadence (four 7,000 ms ticks under fake timers, which cost no wall
+   * clock) plus real I/O, so a generous ceiling changes nothing about what it proves and removes a
+   * failure mode that is about the runner rather than the code. It is a TIMEOUT, not a retry — the
+   * assertions are untouched.
+   */
   it("V12: the REAL Scheduler invokes it inside a window shorter than the default — the operator's key takes effect", async () => {
     const invoked: string[] = [];
     const spy = jest
@@ -372,5 +403,5 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
       spy.mockRestore();
       await fresh.close();
     }
-  });
+  }, 60_000);
 });

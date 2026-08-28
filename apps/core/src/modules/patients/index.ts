@@ -13,7 +13,7 @@ export { listAllergies } from "./allergies";
 export type { AllergyRow } from "./allergies";
 export { searchPatients, visiblePatientIds } from "./search";
 export type { PatientSearchResult } from "./search";
-export { NO_AUTHORITY, effectiveGuardianAuthority, sweepGuardianMajority } from "./guardians";
+export { NO_AUTHORITY, effectiveGuardianAuthority, guardiansWithAuthority, sweepGuardianMajority } from "./guardians";
 export type { GuardianAuthority, GuardianRow } from "./guardians";
 export { isValidUhid, PatientError } from "./uhid";
 export type { PatientErrorCode } from "./uhid";
