@@ -168,8 +168,17 @@ appointment optimiser (22b). Each has a plan number already; the app surfaces th
 
 ---
 
-## 10. Next step
+## 10. M1 is three phase documents — SLICED 2026-08-28
 
-Slice **M1** into a phase document — `kernel-P` (K1, K4) and `22c-T1` — following the
-EXECUTE-METHOD conventions, with the task briefs pointing at AGENT-RULES rather than
-restating them.
+M1 as specified above is sixteen tasks: a module build, which v3 §2 sends to HEAVY. The
+Plan 14 precedent says slice rather than change lanes.
+
+| Phase | Scope | Status |
+|---|---|---|
+| **22c-A** | The patient actor and the identity spine — K1, K4, and the as-of-encounter resolver. Kernel only; ships nothing patient-facing | **WRITTEN** — `../../plans/2026-08-28-phase1-22cA-patient-actor-identity-spine.md` |
+| **22c-B** | Self-registration — OTP/PIN auth, drafts, the dedup gate, households, the confidential request (T1a–T1e) | next |
+| **22c-C** | Browse and book — catalogue, doctor profiles, availability projection, holds, binding, cart, pay-later (T2–T4) | after B |
+
+22c-A goes first and alone: 29 files read `actor.type` and 46 sites throw
+`user_actor_required`, so the union widening lands with the full suite green before
+anything is built on it.
