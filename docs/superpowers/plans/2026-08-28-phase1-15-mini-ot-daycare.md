@@ -413,6 +413,8 @@ the four governed definitions can be published.
 | T6 | `a484172` | recovery: bays under the registry, PACU scoring, escort-gated discharge, conversion, absconded | GREEN 33163705494 |
 | T7 | `1d5ba69` | discharge bill composed from the ledger under min(tariff, MRP, ceiling); deposit settled | GREEN 33166676053 |
 | T8 | `69dde01` | four controllers, four screens, the e2e, nav parity, i18n, F20 | GREEN 33171887445 |
+| — | `e4a1269` | close-review pass 1 remediation: 1 CRITICAL, 11 MAJOR, 13 MINOR; `0036`, `0037` | GREEN 33181152072 |
+| T9 | `c82bc8f` | CLOSE + pass 2 remediation: 6 MAJOR, 7 MINOR; ledger, method, baselines | GREEN 33184781781 |
 
 **T3 shipped CI-RED and it is recorded as red rather than smoothed over.** `jobs.test.ts` V12
 exceeded jest's 15,000 ms default on the runner; it runs in 1,117 ms on an idle host. T3 touched no
