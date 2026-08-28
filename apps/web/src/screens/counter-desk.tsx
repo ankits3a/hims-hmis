@@ -12,6 +12,7 @@ import { usePatientInHand } from "../lib/patient-in-hand";
 import { PatientPicker } from "../components/patient-picker";
 import type { PatientPickerHit } from "../components/patient-picker";
 import { TenderEditor } from "../components/tender-editor";
+import { MoneyInput } from "../components/money-input";
 import { CounterSlip } from "../components/counter-slip";
 import type { QrCardData } from "../components/qr-card";
 import { SubmitButton } from "../components/submit-button";
@@ -65,6 +66,17 @@ export function CounterDesk(): React.ReactElement {
   const [opened, setOpened] = useState<WireWalkInResult | null>(null);
   const [quote, setQuote] = useState<WireFeeQuote | null>(null);
   const [tenders, setTenders] = useState<WireTender[]>([]);
+  /**
+   * PLAN 07b T5 — WHICH LANE THE SURPLUS WENT DOWN, declared rather than inferred.
+   *
+   * `undefined` means "not yet answered"; the control below seeds it with the WHOLE surplus the
+   * moment one exists. Defaulting to the full amount rather than to zero is the substance of this
+   * control, not a convenience: at a counter, handing change back is overwhelmingly the common
+   * case, and a zero default would go on silently minting the fictional patient advances that are
+   * the entire defect. Banking an advance should cost an explicit act; handing change back should
+   * not.
+   */
+  const [changeGivenPaise, setChangeGivenPaise] = useState<number | undefined>(undefined);
   const [issued, setIssued] = useState<WireIssueInvoiceResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [qr, setQr] = useState<QrCardData | null>(null);
@@ -115,7 +127,7 @@ export function CounterDesk(): React.ReactElement {
     setPhase("find"); setPicked(null); setRegistering(false);
     setNewName(""); setNewPhone(""); setNewSex("unknown");
     setDoctorId(""); setDuplicates(null); setOpened(null); setQuote(null);
-    setTenders([]); setIssued(null); setError(null); setQr(null);
+    setTenders([]); setIssued(null); setError(null); setQr(null); setChangeGivenPaise(undefined);
     setDraftId(newIdemKey());
     release();
   };
@@ -154,13 +166,18 @@ export function CounterDesk(): React.ReactElement {
         patientId: opened.patientId,
         encounterId: opened.encounter.id,
         lines: quote.draft.lines.map((l) => ({ lineId: l.lineId, serviceId: l.serviceId, qty: l.qty })),
-        receipt: { tenders },
+        receipt: { tenders, ...(surplusPaise > 0 ? { changeGivenPaise: changeGivenPaise ?? surplusPaise } : {}) },
       }, idemKey));
       setPhase("done");
     } catch (e) {
       setError(billingErrorMessage(e));
     }
   }
+
+  const payablePaise = quote?.draft?.totals.netPayablePaise ?? 0;
+  const tenderedPaise = tenders.reduce((n, t) => n + t.amountPaise, 0);
+  const surplusPaise = Math.max(0, tenderedPaise - payablePaise);
+  const hasCash = tenders.some((t) => t.mode === "cash");
 
   /** DD2's three exits, named. `null` until the visit is open. */
   const exit: "free" | "settled" | "credit" | null =
@@ -307,6 +324,21 @@ export function CounterDesk(): React.ReactElement {
             <div className="space-y-2" data-testid="collect">
               <p className="text-sm">{t("counter.payable", { amount: quote.draft.totals.netPayablePaise / 100 })}</p>
               <TenderEditor payablePaise={quote.draft.totals.netPayablePaise} onChange={setTenders} />
+              {surplusPaise > 0 && hasCash && (
+                <div className="rounded border border-amber-500 bg-amber-50 p-2" data-testid="change-lane">
+                  <p className="text-sm">{t("counter.surplus", { amount: surplusPaise / 100 })}</p>
+                  <MoneyInput
+                    id="change-given"
+                    label={t("counter.changeGiven")}
+                    value={changeGivenPaise ?? surplusPaise}
+                    onChange={setChangeGivenPaise}
+                  />
+                  <p className="mt-1 text-xs text-neutral-600">{t("counter.changeHint")}</p>
+                </div>
+              )}
+              {surplusPaise > 0 && !hasCash && (
+                <p data-testid="surplus-no-cash" className="text-sm text-neutral-600">{t("counter.surplusNoCash")}</p>
+              )}
               <SubmitButton data-testid="settle" onClick={settle}>{t("counter.settle")}</SubmitButton>
             </div>
           )}

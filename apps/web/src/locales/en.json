@@ -1534,7 +1534,11 @@
     "inHandHint": "A patient is still in hand from the last screen.",
     "drawerClosed": "Your cash drawer is not open. Open it before you start — a walk-in you cannot take payment for is a walk-in you cannot finish.",
     "openDrawer": "Open my drawer",
-    "drawerLocked": "Your drawer is locked pending a variance approval from a billing manager. You cannot take payment, and therefore cannot complete a walk-in, until it is granted."
+    "drawerLocked": "Your drawer is locked pending a variance approval from a billing manager. You cannot take payment, and therefore cannot complete a walk-in, until it is granted.",
+    "surplus": "₹{{amount}} more than the bill.",
+    "changeGiven": "Handed back as change",
+    "changeHint": "Whatever you do not hand back stays on the patient's account as an advance. Say which — the drawer is counted on this.",
+    "surplusNoCash": "More than the bill was tendered, but not in cash — the surplus stays on the patient's account. Returning money on a card payment is a refund."
   },
   "counterSlip": {
     "token": "Token",

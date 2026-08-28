@@ -263,4 +263,71 @@ describe("CounterDesk (07b T3)", () => {
       expect(screen.queryByTestId("drawer-blocker")).toBeNull();
     });
   });
+
+  /**
+   * PLAN 07b T5 — THE CHANGE LANE, reachable by a human at last. The server has accepted the
+   * declaration since `e1e35f1`; until this control existed nothing sent it, so the defect was
+   * half-fixed: a mechanism no one could use.
+   */
+  describe("declaring the change (T5)", () => {
+    const overpaid = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
+      await pickPatientAndDoctor(user);
+      await user.click(screen.getByTestId("open-visit"));
+      await screen.findByTestId("collect");
+      // CHARGEABLE_QUOTE is ₹300 payable; ₹700 tendered in cash → a ₹400 surplus
+      await user.type(screen.getByLabelText("Amount"), "700");
+    };
+
+    it("a cash surplus asks which lane, and defaults to handing it back", async () => {
+      mockRoutes(base({ "GET /api/billing/visits/enc-1/fee-quote": ok(CHARGEABLE_QUOTE) }));
+      renderWithProviders(<CounterDesk />);
+      const user = userEvent.setup();
+      await overpaid(user);
+
+      const lane = await screen.findByTestId("change-lane");
+      expect(lane).toBeInTheDocument();
+      // The default is the WHOLE surplus: banking an advance must cost an explicit act, because a
+      // zero default is what silently minted the fictional advances in the first place.
+      expect(screen.getByLabelText("Handed back as change")).toHaveValue("400.00");
+    });
+
+    it("posts the declaration with the receipt", async () => {
+      mockRoutes(base({
+        "GET /api/billing/visits/enc-1/fee-quote": ok(CHARGEABLE_QUOTE),
+        "POST /api/billing/invoices": ok({
+          invoiceId: "inv-1", invoiceNo: "INV-1", totals: { netPayablePaise: 30000 },
+          receiptId: "r-1", receiptNo: "R-1", allocatedPaise: 30000, unallocatedPaise: 0,
+          creditExtended: false, settlement: { state: "settled", outstandingPaise: 0 }, warnings: [],
+        }),
+      }));
+      renderWithProviders(<CounterDesk />);
+      const user = userEvent.setup();
+      await overpaid(user);
+      await user.click(screen.getByTestId("settle"));
+
+      await screen.findByTestId("exit-settled");
+      const post = vi.mocked(fetch).mock.calls
+        .find(([, init]) => init?.method === "POST" && String(init.body).includes("changeGivenPaise"));
+      expect(post).toBeDefined();
+      expect(JSON.parse(String(post![1]!.body)).receipt).toMatchObject({ changeGivenPaise: 40000 });
+    });
+
+    it("a NON-cash surplus offers no change lane — returning money on a card is a refund", async () => {
+      mockRoutes(base({ "GET /api/billing/visits/enc-1/fee-quote": ok(CHARGEABLE_QUOTE) }));
+      renderWithProviders(<CounterDesk />);
+      const user = userEvent.setup();
+      await pickPatientAndDoctor(user);
+      await user.click(screen.getByTestId("open-visit"));
+      await screen.findByTestId("collect");
+      await user.selectOptions(screen.getByLabelText("Mode"), "card");
+      await user.type(screen.getByLabelText("Amount"), "700");
+      // `TenderEditor` DROPS an incomplete row, and an electronic tender without a settlement
+      // reference is incomplete — so without this the tender never reaches the screen at all and
+      // the assertion would pass for the wrong reason.
+      await user.type(screen.getByLabelText("Reference"), "AUTH-9");
+
+      expect(await screen.findByTestId("surplus-no-cash")).toBeInTheDocument();
+      expect(screen.queryByTestId("change-lane")).toBeNull();
+    });
+  });
 });
