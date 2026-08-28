@@ -745,6 +745,50 @@ Three phases running (13, 14, 15), the reviewer has found more than the phase's 
 
 **Mechanical form.** Brief the close reviewer to **audit the OPERANDS of every guard on a money or safety path, not the branch**: for each threshold check, ask what the compared quantity is summed from, and name one real transaction whose money the sum does not include. Put the money file first in the brief's priority order (Plan 15's did, and the CRITICAL came back in the first section of the report).
 
+**2.129 — VERIFY IS THE EXPENSIVE UNIT, NOT THE COMMIT. FOLD EVERY CODE-COMPLETE TASK INTO THE RUN BEFORE YOU LAUNCH IT.** *(Plan 07a/07b close, 2026-08-28)*
+
+The phase shipped twelve commits and paid for **nine full `pnpm verify` runs** — ~20 minutes of wall
+clock each, plus a polling turn every time the session asked whether it had finished. Rule 12 is
+what forces the cost: evidence must match the state you commit, so a tree edited after a verify
+cannot cite it, and a new commit needs a new run.
+
+Two of those runs were avoidable and one was not, which is what makes the rule mechanical rather
+than a preference:
+
+- **Avoidable.** T5's server half and its web half were both code-complete in the same session. They
+  were committed separately for a good reason (each carried its own evidence) and that cost a second
+  full run for zero additional verification — the second run tested a superset of the first.
+- **Avoidable.** A verify was launched on T3, then T9 and T4 were written while it ran, which made
+  the finished run evidence for a tree that no longer existed. It had to be discarded and re-run.
+- **NOT avoidable.** The run that caught `nav-parity` parsing zero entries. That one bought a real
+  defect.
+
+The batched commit (T3+T9+T4 on one run) is the counterexample that proves the lever: three tasks,
+one run, and the commit message still separates them.
+
+**Mechanical form.** Before launching `pnpm verify`, run
+`git status --porcelain` **and ask of every modified file: is this task code-complete?** If a second
+task is finished and unverified, finish it into the same run. And once a verify is launched, **do
+not edit the tree until it returns** — an edit mid-run silently converts the result into evidence
+for a state that no longer exists, and the only honest response is to discard it and re-run.
+
+**2.130 — POLLING A LONG RUN COSTS A FULL CONTEXT RE-READ PER POLL; BLOCK ONCE INSTEAD.** *(Plan 07a/07b close, 2026-08-28)*
+
+An agent pays for its whole context on every tool call, so a one-line `cat .verify.exit` costs the
+same as reading a file — and this phase polled its nine verify runs by hand dozens of times, *in
+addition to* arming a background waiter that would have reported the same answer once.
+
+The waiter is already the correct instrument and was already in use. The waste was polling **beside**
+it, out of impatience, while the notification was pending.
+
+**Mechanical form.** Launch the long run detached with an exit file (AGENT-RULES rule 18), arm
+exactly one blocking waiter —
+`until [ -f /opt/hmis/.verify.exit ]; do sleep 30; done; echo "EXIT=[$(cat /opt/hmis/.verify.exit)]"`
+— and then **do work that cannot touch the tree, or nothing at all, until it fires.** If there is
+genuinely nothing to do that does not touch the tree, that is the signal to fold another task into
+the run (§2.129), not to check on it again.
+
+
 ## 3. Plan-authoring defects
 
 Fix these when writing the next plan, not when executing it.

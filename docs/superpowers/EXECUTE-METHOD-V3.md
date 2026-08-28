@@ -237,6 +237,33 @@ agent needed perhaps 15k, re-billed on every call.
 3. **Address relay entries to the task that needs them.** A relay is append-only and compounds; an
    agent in the last wave should not pay for the first wave's findings.
 
+### 9.9 In a LIGHT phase the expensive unit is the VERIFY RUN, not the agent — added 2026-08-28
+
+§9's arithmetic was written for a HEAVY phase, where the bill is agents × context. **A LIGHT phase
+has no agents, and the term that replaces them is the verify run.** Plan 07a/07b: twelve commits,
+**nine full `pnpm verify` runs**, ~20 minutes each, and rule 12 makes every one of them mandatory —
+evidence must match the state committed, so a tree edited after a run cannot cite it.
+
+Two of the nine were pure waste and the ledger names both (§2.129): one paid for a second run to
+commit the two halves of a single task that were finished at the same moment, and one launched a run
+and then edited the tree while it was in flight, which converted a green result into evidence for a
+state that no longer existed. The batched run — three tasks, one verify, one commit that still
+separates them in its message — is the shape to copy.
+
+**The two rules this adds to §9.1, and they bind the main session rather than a compiled brief:**
+
+4. **Before launching a verify, read `git status --porcelain` and fold in every task that is already
+   code-complete.** The run is the unit of cost; the commit is free. A phase that verifies once per
+   task pays its task count in twenty-minute runs.
+5. **Once a verify is launched, the tree is frozen until it returns.** Not as discipline — as
+   arithmetic. An edit mid-run silently invalidates the only evidence the commit is allowed to cite,
+   and the sole honest recovery is to discard the result and pay for the run again.
+
+And one that binds the session's own turns: **arm exactly ONE blocking waiter on the exit file and
+then stop asking.** Every hand-poll of a long run costs a full context re-read to learn a single
+byte (§2.130). If there is nothing to do that cannot touch the frozen tree, that is rule 4 telling
+you the run was launched too early.
+
 ### 9.4 A LIGHT phase's saving is not a saving until its reviewer has run — added 2026-08-26
 
 Measured, Plan 16a: nine tasks in-session, zero subagents, **eleven green `pnpm verify` runs and
