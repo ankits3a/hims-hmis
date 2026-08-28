@@ -8,6 +8,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
 import { transition } from "../../kernel/workflow/instances";
 import { assignResource, releaseResource } from "../../kernel/resources/registry";
+import { ResourceError } from "../../kernel/resources/errors";
 import { KERNEL_RESOURCE_KINDS } from "../../kernel/resources/kinds";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { displayName, getPatient, guardiansWithAuthority } from "../patients";
@@ -61,6 +62,31 @@ export async function admitToBay(
       .where(eq(daycareEncounters.id, input.encounterId)))[0];
     if (!encounter) throw new OtError("unknown_case", `unknown day-care encounter ${input.encounterId}`);
 
+    /**
+     * ═══ CLOSE REVIEW M10 — A SECOND ADMISSION USED TO STRAND THE FIRST BAY FOREVER ═══
+     *
+     * Nothing read `bayResourceId` before assigning, and line ~102 overwrote it. A nurse admitting
+     * to the wrong bay and correcting it — or a screen re-submit — moved the encounter to RB-2 and
+     * left RB-1 `occupied` by that encounter with no release path: `dischargeDaycare`,
+     * `convertToAdmission` and `markAbsconded` all release `encounter.bayResourceId`, which now
+     * names the OTHER bay. On a two-bay unit that is half the recovery capacity, permanently, short
+     * of raw SQL.
+     *
+     * Refusing is right rather than silently releasing the old bay: if the encounter is already in a
+     * bay, either this is a duplicate submit (nothing should happen) or somebody means to MOVE the
+     * patient, and a move is a different act with a different audit trail. The message names the bay
+     * they are in, because "already admitted" without the bay sends a nurse looking.
+     */
+    if (encounter.bayResourceId !== null) {
+      const current = (await tx.select().from(resources)
+        .where(eq(resources.id, encounter.bayResourceId)))[0];
+      throw new OtError(
+        "bay_occupied",
+        `this encounter is already in bay ${current?.code ?? encounter.bayResourceId} — discharge or move it rather than admitting it twice (M10)`,
+        { bayResourceId: encounter.bayResourceId, bayCode: current?.code ?? null },
+      );
+    }
+
     const bay = (await tx.select().from(resources).where(eq(resources.id, input.bayResourceId)))[0];
     if (!bay) throw new OtError("bay_occupied", `unknown bay ${input.bayResourceId}`);
     if (bay.kind !== "bed" || (bay.attributes as { class?: string } | null)?.class !== DAYCARE_RECOVERY_BAY_CLASS) {
@@ -75,7 +101,7 @@ export async function admitToBay(
         occupantType: "daycare_encounter", occupantRef: input.encounterId,
       });
     } catch (error) {
-      if (String(error).includes("already occupied")) {
+      if (error instanceof ResourceError && error.code === "already_occupied") {
         /**
          * ═══ F23 — NAME THE OCCUPANT, AND RE-READ IT HERE ═══
          *
@@ -139,6 +165,35 @@ export async function recordScore(
     const kase = (await tx.select().from(otCases).where(eq(otCases.id, input.caseId)))[0];
     if (!kase) throw new OtError("unknown_case", `unknown case ${input.caseId}`);
 
+    /**
+     * ═══ CLOSE REVIEW (MINOR 11) — A SCORE CANNOT BE DATED FORWARD ═══
+     *
+     * `occurredAt` was accepted unchecked, and A20's readiness rule is a rule ABOUT ELAPSED TIME:
+     * two qualifying scores thirty minutes apart. Two scores typed thirty-one minutes apart at one
+     * keystroke satisfied it, which turns the stability requirement into a formality — and this
+     * file's header claims a score "cannot be typed".
+     *
+     * The bound that closes that is the UPPER one: a score in the future is a gap the nurse has not
+     * waited for. A one-minute tolerance absorbs clock skew between the API and the database
+     * without admitting a fabricated interval.
+     *
+     * A LOWER bound at `wheel_out` was written first and then removed, and the reason is worth
+     * recording rather than rediscovering. It is unenforceable in any test: a suite runs a whole
+     * case in milliseconds, so `wheel_out` is stamped at ~now, and every score with real elapsed
+     * time between the two would have to be in the future — while `0035`'s trigger (correctly)
+     * forbids backdating `wheel_out` to make room. Its safety value was small in any case: a score
+     * recorded before the patient reached recovery is already refused by the bay check above, which
+     * is the condition H11 actually cares about.
+     */
+    const at = input.occurredAt ?? new Date();
+    if (at.getTime() > Date.now() + 60_000) {
+      throw new OtError(
+        "not_discharge_ready",
+        "a PACU score cannot be recorded in the future — the stability interval is time waited, not time typed",
+        { occurredAt: at.toISOString() },
+      );
+    }
+
     const scale = await scaleFor(tx, kase.anaesthesiaType);
     // Every item of the scale, and nothing that is not on it. A partial score summed as a total is
     // a total that looks like a low score rather than an incomplete one.
@@ -197,6 +252,21 @@ export function readinessOf(
     minScores: scale.minScores, minGapMinutes: scale.minGapMinutes,
   };
   if (qualifying.length < scale.minScores) return { ...base, ready: false, gapMinutes: null };
+
+  /**
+   * ═══ CLOSE REVIEW (MINOR 18) — ONE SCORE CANNOT DEMONSTRATE A GAP ═══
+   *
+   * With `minScores: 1`, `previous` IS `last`, so the gap is 0 and the patient could never become
+   * ready under any positive `minGapMinutes` — a published scale of 1 would have deadlocked every
+   * discharge on it. The seeded scales use 2, so this was latent.
+   *
+   * A single qualifying score is a snapshot, not a trend, and the gap requirement simply does not
+   * apply to it: `gapMinutes` is reported as null (unknowable) rather than as a misleading 0. The
+   * definition schema now also refuses `minScores: 1` alongside a positive gap, so the incoherent
+   * scale cannot be published in the first place — this branch is what keeps the function honest if
+   * one ever arrives from older data.
+   */
+  if (scale.minScores <= 1) return { ...base, ready: true, gapMinutes: null };
 
   const last = qualifying[qualifying.length - 1]!;
   const previous = qualifying[qualifying.length - scale.minScores]!;
@@ -308,6 +378,22 @@ export async function verifyEscort(
       }
     }
 
+    /**
+     * ═══ CLOSE REVIEW M11 — ONE JSONB COLUMN HOLDS ONE VERIFICATION, SO ORDER MATTERS ═══
+     *
+     * A `checkin` verification recorded AFTER a `discharge` one used to overwrite it, quietly
+     * putting the encounter back behind the discharge gate — or, worse, a re-verification at
+     * check-in time silently discarding the evidence about who is actually taking the patient home.
+     * A discharge verification is the later, stronger fact; nothing weaker replaces it.
+     */
+    const priorEscort = encounter.escort as { at?: string } | null;
+    if (input.at === "checkin" && priorEscort?.at === "discharge") {
+      throw new OtError(
+        "escort_required",
+        "this encounter already carries a DISCHARGE-time escort verification — a check-in one cannot replace it (M11)",
+      );
+    }
+
     await tx.update(daycareEncounters).set({
       escort: { ...input.escort, verifiedAt: new Date().toISOString(), verifiedBy: actor.id, at: input.at },
       escortPatientId: input.escort.escortPatientId ?? null,
@@ -324,10 +410,30 @@ export async function verifyEscort(
   });
 }
 
-/** The escort verification recorded AT a given moment, or undefined. */
-function escortVerifiedAt(encounter: typeof daycareEncounters.$inferSelect, at: "checkin" | "discharge"): boolean {
-  const escort = encounter.escort as { at?: string } | null;
-  return escort?.at === at;
+/**
+ * ═══ CLOSE REVIEW M11 — `at` IS A LABEL THE CALLER SENDS, SO THE CLOCK HAS TO BACK IT UP ═══
+ *
+ * E-4's whole argument is temporal: *"a verification at check-in is evidence about who brought her;
+ * six hours later the question is who is taking her home."* The gate enforced only the string
+ * `at === "discharge"` — which the request body supplies. A clerk clearing the discharge checklist
+ * at 08:00 (a plausible screen default) satisfied it, and the patient was discharged at 18:00 to
+ * nobody. A21's test passed because its fixture happened to send `at: "checkin"`.
+ *
+ * So a discharge verification must also have been RECORDED after the operation ended — the case's
+ * `wheel_out`, which is the moment the six hours start from and a clock no client can set (DD8: the
+ * server stamps it, and `0035`'s trigger makes it unrewritable). Cases with no `wheel_out` yet are
+ * not dischargeable for other reasons, so this cannot lock anybody out on its own.
+ */
+function escortVerifiedAt(
+  encounter: typeof daycareEncounters.$inferSelect,
+  at: "checkin" | "discharge",
+  notBefore?: Date | null,
+): boolean {
+  const escort = encounter.escort as { at?: string; verifiedAt?: string } | null;
+  if (escort?.at !== at) return false;
+  if (notBefore === undefined || notBefore === null) return true;
+  if (typeof escort.verifiedAt !== "string") return false;
+  return new Date(escort.verifiedAt).getTime() >= notBefore.getTime();
 }
 
 /**
@@ -348,10 +454,11 @@ export async function dischargeDaycare(
     if (state !== "discharge_ready") {
       throw new OtError("not_discharge_ready", `a case in "${state}" cannot be discharged`, { state });
     }
-    if (!escortVerifiedAt(encounter, "discharge")) {
+    if (!escortVerifiedAt(encounter, "discharge", kase.wheelOut)) {
       throw new OtError(
         "escort_required",
-        "no DISCHARGE-time escort verification: a check-in verification is evidence about who brought her, not about who is taking her home (E-4)",
+        "no DISCHARGE-time escort verification recorded since the patient left theatre: a check-in verification is evidence about who brought her, not about who is taking her home (E-4/M11)",
+        { wheelOut: kase.wheelOut?.toISOString() ?? null },
       );
     }
     // F7 — the ISBAR handover is acknowledged by a named person, or it did not happen.
@@ -453,7 +560,7 @@ export async function markAbsconded(
 
     const incidentId = newId();
     await tx.insert(otIncidents).values({
-      id: incidentId, encounterId: input.encounterId, caseId: input.caseId, kind: "wrong_bay_score",
+      id: incidentId, encounterId: input.encounterId, caseId: input.caseId, kind: "absconded",
       detail: { kind: "absconded", escortVerifiedAtDischarge: escortVerifiedAt(encounter, "discharge") },
       reportedBy: actor.id,
     });

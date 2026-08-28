@@ -10,6 +10,7 @@ import { getPatient } from "../patients";
 import { PAYER_CLASS_VALUES, ANAESTHESIA_TYPE_VALUES } from "../../kernel/db/schema/ot";
 import { activeDefinition, criteriaFor } from "./definitions";
 import { requiredDeposit } from "./deposit";
+import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { OtError } from "./errors";
 import { caseCancelled, daycareBooked, payerClassChanged } from "./events";
 import { DAYCARE_CASE_DEF_KEY, OT_GATE_DEF_KEY, POSTPONE_REASONS } from "./workflow-def";
@@ -213,7 +214,24 @@ export async function bookCase(
       );
     }
     await assertPrivileged(tx, input.surgeonId, input.procedureClass);
-    if (input.force !== true) {
+    if (input.force === true) {
+      /**
+       * ═══ CLOSE REVIEW (MINOR 10) — `force` IS THE IN-CHARGE'S CALL, WHICH IS WHAT A9 SAYS ═══
+       *
+       * The plan reads "unless `force` by `ot_incharge`", and the boolean was taken straight from
+       * the request body — so any holder of `ot.cases.book`, which includes every day-care
+       * coordinator, could clear the duplicate soft-block. The block exists because a patient
+       * booked twice for one day is nearly always a mistake and occasionally a real second
+       * procedure; deciding which is a supervisory judgement, and it is the one the plan assigns.
+       */
+      if (actor.type !== "user" || !(await actorHoldsAnyRole(tx, actor.id, ["ot_incharge"]))) {
+        throw new OtError(
+          "duplicate_booking",
+          "clearing the duplicate-booking block is the OT in-charge's call (A9) — book without `force`, or ask them",
+          { patientId: input.patientId, listDate: input.listDate },
+        );
+      }
+    } else {
       await assertNotDuplicate(tx, {
         patientId: input.patientId, listDate: input.listDate, procedureClass: input.procedureClass,
       });
@@ -391,9 +409,19 @@ export async function changePayerClass(
       entitlementPaise: input.entitlementPaise,
     });
 
+    const changedAt = new Date();
     await tx.update(daycareEncounters)
-      .set({ payerClass: input.to, updatedBy: actor.id, updatedAt: new Date() })
+      .set({ payerClass: input.to, updatedBy: actor.id, updatedAt: changedAt })
       .where(eq(daycareEncounters.id, input.encounterId));
+    /**
+     * CLOSE REVIEW M1 — and the case snapshot with it, in the SAME transaction. The deposit gate
+     * reads the encounter now, so this no longer decides anything; it is here because a row that
+     * says `govt_scheme` next to an encounter that says `self_pay` is a lie a reader will believe,
+     * and the list DTO and every future report select from `ot_cases`.
+     */
+    await tx.update(otCases)
+      .set({ payerClass: input.to, updatedBy: actor.id, updatedAt: changedAt })
+      .where(eq(otCases.encounterId, input.encounterId));
 
     await appendEvent(tx, payerClassChanged.make({
       actor, patientId: encounter.patientId, encounterId: input.encounterId,

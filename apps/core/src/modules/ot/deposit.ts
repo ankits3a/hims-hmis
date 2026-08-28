@@ -2,7 +2,7 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { daycareEncounters, otDepositHolds } from "../../kernel/db/schema";
-import { advanceOf } from "../billing";
+import { advanceOf, receiptUnallocatedPaise } from "../billing";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { requestApproval } from "../../kernel/approvals/requests";
 import { PAYER_CLASS_VALUES } from "../../kernel/db/schema/ot";
@@ -155,6 +155,14 @@ async function patientHeldPaise(tx: Tx, encounterIds: string[]): Promise<number>
  * `advanceOf` alone and lets both through — an advance of 30,000 backing two 20,000 deposits, and
  * two operations that both believe they are paid for.
  */
+/** Open holds carved from ONE receipt, across every encounter — they all spend the same money. */
+async function receiptHeldPaise(tx: Tx, receiptId: string): Promise<number> {
+  const rows = await tx.select({ amountPaise: otDepositHolds.amountPaise })
+    .from(otDepositHolds)
+    .where(and(eq(otDepositHolds.receiptId, receiptId), isNull(otDepositHolds.releasedAt)));
+  return rows.reduce((sum, r) => sum + r.amountPaise, 0);
+}
+
 export async function holdDeposit(
   tx: Tx,
   actor: Actor,
@@ -167,6 +175,40 @@ export async function holdDeposit(
     .from(daycareEncounters).where(eq(daycareEncounters.id, input.encounterId));
   const encounter = encRows[0];
   if (!encounter) throw new OtError("unknown_case", `unknown day-care encounter ${input.encounterId}`);
+
+  /**
+   * ═══ CLOSE REVIEW M2 — THE RECEIPT IS LOADED, AND IT MUST BE ABLE TO FUND THIS HOLD ═══
+   *
+   * DD12 says a hold "earmarks part of a RECEIPT's unallocated balance", and nothing checked the
+   * receipt at all: not that it exists (`ot_deposit_holds.receipt_id` carries no FK), not that it
+   * belongs to this patient, not that it has that much left. The only bound was the patient's whole
+   * advance — so a patient who paid ₹10,000 by card (R1) and ₹20,000 cash (R2) could have ₹30,000
+   * held against R1, which the gate happily satisfied. The bill then could not be issued at all:
+   * `settleDischargeBill` asks `allocateOnTx` for ₹30,000 of R1, billing refuses `over_allocation`,
+   * and the whole invoice transaction rolls back with no path forward but editing holds by hand.
+   *
+   * Refusing here puts the error in front of the person who can fix it, at the moment they made it.
+   */
+  const receipt = await receiptUnallocatedPaise(tx, input.receiptId);
+  if (receipt === null) {
+    throw new OtError("deposit_shortfall", `unknown receipt ${input.receiptId}`, { receiptId: input.receiptId });
+  }
+  if (receipt.patientId !== encounter.patientId) {
+    throw new OtError(
+      "deposit_shortfall",
+      `receipt ${input.receiptId} belongs to a different patient — a deposit cannot be earmarked from somebody else's money`,
+      { receiptId: input.receiptId },
+    );
+  }
+  const heldOnReceipt = await receiptHeldPaise(tx, input.receiptId);
+  const spareOnReceipt = receipt.unallocatedPaise - heldOnReceipt;
+  if (input.amountPaise > spareOnReceipt) {
+    throw new OtError(
+      "deposit_shortfall",
+      `cannot hold ${String(input.amountPaise)}p against receipt ${input.receiptId}: ${String(spareOnReceipt)}p is unallocated and unheld on it`,
+      { receiptId: input.receiptId, spareOnReceiptPaise: spareOnReceipt, requestedPaise: input.amountPaise },
+    );
+  }
 
   const encounterIds = await lockPatientEncounters(tx, encounter.patientId);
   const advance = await advanceOf(tx, encounter.patientId);

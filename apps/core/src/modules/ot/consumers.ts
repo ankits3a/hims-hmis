@@ -184,9 +184,18 @@ export async function handleMaterialConsumed(
   // dispensing will emit them too from 16c.
   if (consumed.caseRef.type !== "ot_case") return { handled: true, implantId: null };
 
+  /**
+   * CLOSE REVIEW (MINOR 15) — the BATCH is part of the match, as the docstring above always said it
+   * was. It was missing from the filter, so two same-item implants from DIFFERENT lots on one case
+   * were paired to their ledger entries by arrival order alone: a plate from lot A could be
+   * confirmed against lot B's consumption, and the discharge bill would then price it from the wrong
+   * batch's MRP. A comment that describes a match the code does not make is §2.122's defect with the
+   * roles reversed, and the fix is to make the code true rather than the comment weaker.
+   */
   const candidates = await tx.select().from(otCaseImplants).where(and(
     eq(otCaseImplants.caseId, consumed.caseRef.id),
     eq(otCaseImplants.itemId, consumed.itemId),
+    eq(otCaseImplants.batchId, consumed.batchId),
     eq(otCaseImplants.state, "deploying"),
   ));
   const row = candidates.sort((a, b) => a.deployedAt.getTime() - b.deployedAt.getTime())[0];

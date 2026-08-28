@@ -42,7 +42,7 @@ describe("the recovery bays under contention (Plan 15 T6, A19)", () => {
   /** An encounter that is ready to be put in a bay. The gate walk is A12's subject, not this one's. */
   async function anEncounter(name: string, phone: string): Promise<string> {
     const patientId = await mkOtPatient(db, f.coordinator, name, { phone });
-    const r = await bookCase(db, f.coordinator, {
+    const r = await bookCase(db, f.incharge, {
       patientId, procedureCode: "GYN-DNC-01", procedureClass: "gynae_dnc",
       surgeonId: f.surgeon.id, anaesthetistId: f.anaesthetist.id,
       listDate: LIST_DATE, payerClass: "self_pay", force: true,

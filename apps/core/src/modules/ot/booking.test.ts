@@ -182,11 +182,34 @@ describe("bookCase (Plan 15 T3)", () => {
   // ═══════════════════════════════ A9 ═══════════════════════════════
 
   it("A9 — a second live case for the same patient, date and class is a SOFT block an in-charge can force", async () => {
-    await bookCase(db, f.coordinator, dnc());
-    await expect(bookCase(db, f.coordinator, dnc())).rejects.toThrow(/already has a live/);
-    // FORCED, by anybody the route lets through — the permission is the control, not this function.
+    await bookCase(db, f.incharge, dnc());
+    await expect(bookCase(db, f.incharge, dnc())).rejects.toThrow(/already has a live/);
+    // FORCED, by the OT in-charge — see the `force` test below for why the actor matters.
     const forced = await bookCase(db, f.incharge, { ...dnc(), force: true });
     expect(await caseState(db, forced.caseId)).toBe("booked");
+  });
+
+  /**
+   * ═══ CLOSE REVIEW (MINOR 10) — `force` IS THE IN-CHARGE'S CALL, AND THE PLAN ALWAYS SAID SO ═══
+   *
+   * A9 reads "unless `force` by `ot_incharge`", and the boolean came straight off the request body:
+   * every holder of `ot.cases.book` — which is every day-care coordinator — could clear the block.
+   * The block exists because a patient booked twice for one day is usually a mistake and sometimes
+   * a real second procedure, and deciding which is a supervisory judgement.
+   *
+   * Five test files were booking forced cases as the COORDINATOR when this landed, which is the
+   * measure of how invisible the gap was: the fixtures had been exercising a supervisory action as
+   * somebody who does not hold it, and nothing said so.
+   */
+  it("A9 — a COORDINATOR cannot force past the duplicate block; the in-charge can", async () => {
+    await bookCase(db, f.coordinator, dnc());
+    await expect(bookCase(db, f.coordinator, { ...dnc(), force: true }))
+      .rejects.toThrow(/the OT in-charge's call/);
+    // …and the block itself is still what refuses an unforced second booking.
+    await expect(bookCase(db, f.coordinator, dnc())).rejects.toThrow(/already has a live/);
+    // The in-charge clears it.
+    const forced = await bookCase(db, f.incharge, { ...dnc(), force: true });
+    expect(forced.caseId).toBeTruthy();
   });
 
   it("A9 — a DIFFERENT date, a different class, or a cancelled first case do not block", async () => {
@@ -210,7 +233,7 @@ describe("bookCase (Plan 15 T3)", () => {
     const first = await bookCase(db, f.coordinator, {
       ...dnc(), procedureClass: "ortho_ganglion_excision", procedureCode: "ORT-GANG-L", laterality: "left",
     });
-    const second = await bookCase(db, f.coordinator, {
+    const second = await bookCase(db, f.incharge, {
       ...dnc(), procedureClass: "ortho_ganglion_excision", procedureCode: "ORT-GANG-R", laterality: "right",
       encounterId: first.encounterId, force: true,
     });
@@ -278,7 +301,7 @@ describe("bookCase (Plan 15 T3)", () => {
     const first = await bookCase(db, f.coordinator, {
       ...dnc(), procedureClass: "ortho_ganglion_excision", procedureCode: "ORT-GANG-L", laterality: "left",
     });
-    await bookCase(db, f.coordinator, {
+    await bookCase(db, f.incharge, {
       ...dnc(), procedureClass: "ortho_ganglion_excision", procedureCode: "ORT-GANG-R", laterality: "right",
       encounterId: first.encounterId, force: true,
     });

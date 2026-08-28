@@ -66,7 +66,7 @@ describe("the OT cockpit under contention (Plan 15 T5, A12)", () => {
   /** A case driven all the way to the holding bay, ready to be signed in. */
   async function caseInHolding(name: string, phone: string): Promise<string> {
     const patientId = await mkOtPatient(db, f.coordinator, name, { phone });
-    const r = await bookCase(db, f.coordinator, {
+    const r = await bookCase(db, f.incharge, {
       patientId, procedureCode: "GYN-DNC-01", procedureClass: "gynae_dnc",
       surgeonId: f.surgeon.id, anaesthetistId: f.anaesthetist.id,
       listDate: LIST_DATE, payerClass: "self_pay", force: true,

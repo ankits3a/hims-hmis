@@ -1,6 +1,7 @@
 import type { Actor } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { openSessionFor } from "../../../test/helpers/billing";
+import { OtError } from "./errors";
 import { mkOtPatient, mkOtUser, seedOtBase } from "../../../test/helpers/ot";
 import { withTx } from "../../kernel/db/client";
 import { approveRequest } from "../../kernel/approvals/decisions";
@@ -158,7 +159,17 @@ describe("requiredDeposit (Plan 15 T3 / A1)", () => {
     for (let i = 0; i < 2000; i += 1) {
       const percentBps = rand(10001);
       const coPayFloorBps = rand(10001);
-      const policy = depositPolicyBodySchema.parse({
+      /**
+       * CLOSE REVIEW (MINOR 7) — built DIRECTLY, not through `depositPolicyBodySchema.parse`.
+       *
+       * The schema now refuses a charging rule on `govt_scheme`, `fp_scheme` or `charity` (D10), so
+       * parsing here would reject most of the generated space and this property test would silently
+       * shrink to the classes the schema happens to allow. That is the wrong direction: the bound
+       * `0 ≤ required ≤ quote + implant` is a property of the FUNCTION and must hold for any rule
+       * that reaches it — including one from a policy published before the constraint existed. The
+       * schema's own refusal is tested separately, where it belongs.
+       */
+      const policy = ({
         rules: Object.fromEntries(PAYER_CLASS_VALUES.map((c, idx) => {
           const shape = (idx + rand(5)) % 5;
           if (shape === 0) return [c, { kind: "zero" }];
@@ -167,7 +178,7 @@ describe("requiredDeposit (Plan 15 T3 / A1)", () => {
           if (shape === 3) return [c, { kind: "excess_over_credit" }];
           return [c, { kind: "quote_minus_entitlement" }];
         })),
-      });
+      }) as unknown as Parameters<typeof requiredDeposit>[0];
       const quotePaise = rand(50_000_000);
       const implantEstimatePaise = rand(20_000_000);
       for (const payerClass of PAYER_CLASS_VALUES as readonly PayerClass[]) {
@@ -203,6 +214,27 @@ describe("requiredDeposit (Plan 15 T3 / A1)", () => {
     expect(charity).toBeDefined();
     expect(() => depositPolicyBodySchema.parse({ rules: incomplete })).toThrow();
   });
+
+  /**
+   * ═══ CLOSE REVIEW (MINOR 7) — D10 IS STRUCTURAL OR IT IS NOTHING ═══
+   *
+   * A1's zero-deposit assertion for the three scheme classes was a property of the SEEDED policy
+   * and of nothing else: `requiredDeposit` reads `policy.rules[class]` and the schema accepted any
+   * rule for any class. A published policy putting a percentage on `govt_scheme` would have made
+   * the claim false while the test kept passing, because the test reads the same seed it asserts
+   * about. A scheme patient may not be asked for a deposit; that is what the scheme IS.
+   */
+  it("MINOR 7 — a scheme or charity class cannot carry a CHARGING deposit rule", () => {
+    for (const cls of ["govt_scheme", "fp_scheme", "charity"] as const) {
+      expect(() => depositPolicyBodySchema.parse({
+        rules: { ...POLICY.rules, [cls]: { kind: "percent_of_quote", percentBps: 5000, includeImplantEstimate: false } },
+      })).toThrow(new RegExp(`${cls} must carry a`));
+    }
+    // …and a self-pay percentage is still perfectly legal, so the guard is not a blanket ban.
+    expect(() => depositPolicyBodySchema.parse({
+      rules: { ...POLICY.rules, self_pay: { kind: "percent_of_quote", percentBps: 5000, includeImplantEstimate: true } },
+    })).not.toThrow();
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -215,6 +247,7 @@ describe("holdDeposit / releaseHolds (Plan 15 T3 / A5c, F3)", () => {
   let teardown: () => Promise<void>;
   let f: OtBaseFixture;
   let patientId: string;
+  let cashierActor: Actor;
 
   beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
   afterAll(async () => teardown());
@@ -229,7 +262,50 @@ describe("holdDeposit / releaseHolds (Plan 15 T3 / A5c, F3)", () => {
     cashierActor = cashier;
   });
 
-  let cashierActor: Actor;
+  /**
+   * CLOSE REVIEW M2 — the three ways a hold could name a receipt that cannot fund it. Each one
+   * used to be accepted here and to surface hours later, on the billing desk, as a refusal naming a
+   * receipt the cashier never chose — or, in the split-tender case, as a discharge bill that could
+   * not be issued at all.
+   */
+  it("M2 — a hold naming an UNKNOWN receipt is refused here, not at the bill", async () => {
+    const e = await book("2026-09-02");
+    await expect(withTx(db, (tx) => holdDeposit(tx, f.coordinator, {
+      encounterId: e, receiptId: "rcpt-does-not-exist", amountPaise: 1_000_000,
+    }))).rejects.toThrow(/unknown receipt/);
+  });
+
+  it("M2 — a hold cannot be earmarked from ANOTHER patient's receipt", async () => {
+    const e = await book("2026-09-02");
+    const other = await mkOtPatient(db, f.coordinator, "Ramesh Kumar");
+    const { receiptId } = await recordReceipt(db, cashierActor, {
+      patientId: other, tenders: [{ mode: "upi", amountPaise: 5_000_000, refText: "UPI/other" }],
+    });
+    await expect(withTx(db, (tx) => holdDeposit(tx, f.coordinator, {
+      encounterId: e, receiptId, amountPaise: 1_000_000,
+    }))).rejects.toThrow(/belongs to a different patient/);
+  });
+
+  it("M2 — a hold cannot exceed what is left on the receipt it names, even when the ADVANCE covers it", async () => {
+    const e = await book("2026-09-02");
+    // Two receipts: ₹10,000 card and ₹20,000 cash. The patient's advance is ₹30,000 …
+    const r1 = (await recordReceipt(db, cashierActor, {
+      patientId, tenders: [{ mode: "card", amountPaise: 1_000_000, refText: "CARD/1" }],
+    })).receiptId;
+    await recordReceipt(db, cashierActor, {
+      patientId, tenders: [{ mode: "cash", amountPaise: 2_000_000 }],
+    });
+    // … but only ₹10,000 of it is on R1, so a ₹30,000 hold naming R1 is a lie the bill cannot honour.
+    await expect(withTx(db, (tx) => holdDeposit(tx, f.coordinator, {
+      encounterId: e, receiptId: r1, amountPaise: 3_000_000,
+    }))).rejects.toThrow(/1000000p is unallocated and unheld on it/);
+    // The truthful hold is accepted …
+    await withTx(db, (tx) => holdDeposit(tx, f.coordinator, { encounterId: e, receiptId: r1, amountPaise: 1_000_000 }));
+    // … and a SECOND hold on the same receipt cannot spend the same money twice.
+    await expect(withTx(db, (tx) => holdDeposit(tx, f.coordinator, {
+      encounterId: e, receiptId: r1, amountPaise: 1,
+    }))).rejects.toThrow(/0p is unallocated and unheld on it/);
+  });
 
   /** Money on the patient with nothing allocated against it — an ADVANCE, per patient (F3). */
   async function advance(amountPaise: number): Promise<string> {
@@ -267,28 +343,58 @@ describe("holdDeposit / releaseHolds (Plan 15 T3 / A5c, F3)", () => {
     await withTx(db, (tx) => holdDeposit(tx, f.coordinator, { encounterId: e1, receiptId, amountPaise: 2_000_000 }));
     await expect(withTx(db, (tx) =>
       holdDeposit(tx, f.coordinator, { encounterId: e2, receiptId, amountPaise: 2_000_000 })))
-      .rejects.toThrow(/is already held on their day-care encounters/);
+      .rejects.toThrow(OtError);
 
     // What DOES fit, fits — the refusal is the arithmetic and not a blanket second-hold block.
     await withTx(db, (tx) => holdDeposit(tx, f.coordinator, { encounterId: e2, receiptId, amountPaise: 1_000_000 }));
     expect(await withTx(db, (tx) => heldPaise(tx, e1))).toBe(2_000_000);
     expect(await withTx(db, (tx) => heldPaise(tx, e2))).toBe(1_000_000);
+    // The whole advance is earmarked and not a paise more — F3's invariant, stated as the sum.
+    expect(await withTx(db, (tx) => heldPaise(tx, e1)) + await withTx(db, (tx) => heldPaise(tx, e2)))
+      .toBe(3_000_000);
   });
 
-  it("A5c — the NON-discriminating leg: with ONE encounter, `advanceOf` alone gives the same answer", async () => {
-    const receiptId = await advance(3_000_000);
+  /**
+   * ═══ CLOSE REVIEW M2 MADE THE PATIENT-LEVEL BOUND A BACKSTOP, AND THAT IS WORTH SAYING ═══
+   *
+   * A5c above no longer asserts the patient-level MESSAGE, because it can no longer be the one that
+   * fires. The arithmetic is the reason, not a preference:
+   *
+   *   patient spare = advance − Σ holds = Σ over receipts of (unallocated − held on that receipt)
+   *
+   * so a single receipt's spare is a TERM of the patient's spare and can never exceed it. Any hold
+   * the per-receipt bound admits therefore already satisfies the patient-level bound, and the
+   * per-receipt refusal always arrives first. F3's invariant — two encounters cannot hold the same
+   * rupee — is enforced strictly more tightly than before, per receipt rather than per patient.
+   *
+   * The patient-level check is KEPT rather than deleted: it costs one query, and it is the thing
+   * that still holds if a receipt is ever double-counted or a hold is written by a path that does
+   * not go through `holdDeposit`. But it is now defence in depth, and a test that claimed to
+   * exercise it would be claiming a discrimination it does not have (§3.14).
+   */
+  it("A5c — the two bounds agree, and the per-receipt one is the tighter", async () => {
+    const r1 = await advance(2_000_000);
+    const r2 = await advance(1_000_000);
     const e1 = await book("2026-09-02");
-    await withTx(db, (tx) => holdDeposit(tx, f.coordinator, { encounterId: e1, receiptId, amountPaise: 2_000_000 }));
+    const e2 = await book("2026-09-03");
+
+    await withTx(db, (tx) => holdDeposit(tx, f.coordinator, { encounterId: e1, receiptId: r1, amountPaise: 2_000_000 }));
+    // r1 is spent; the patient still has ₹10,000 of advance, and it is all on r2.
     await expect(withTx(db, (tx) =>
-      holdDeposit(tx, f.coordinator, { encounterId: e1, receiptId, amountPaise: 2_000_000 })))
-      .rejects.toThrow(/already held/);
+      holdDeposit(tx, f.coordinator, { encounterId: e2, receiptId: r1, amountPaise: 1 })))
+      .rejects.toThrow(/0p is unallocated and unheld on it/);
+    await withTx(db, (tx) => holdDeposit(tx, f.coordinator, { encounterId: e2, receiptId: r2, amountPaise: 1_000_000 }));
+    // Everything is earmarked; nothing further fits anywhere.
+    await expect(withTx(db, (tx) =>
+      holdDeposit(tx, f.coordinator, { encounterId: e2, receiptId: r2, amountPaise: 1 })))
+      .rejects.toThrow(OtError);
   });
 
-  it("refuses a hold with no advance behind it at all", async () => {
+  it("refuses a hold against a receipt that does not exist", async () => {
     const e1 = await book("2026-09-02");
     await expect(withTx(db, (tx) =>
       holdDeposit(tx, f.coordinator, { encounterId: e1, receiptId: "r-nothing", amountPaise: 1 })))
-      .rejects.toThrow(/the patient's advance is 0p/);
+      .rejects.toThrow(/unknown receipt r-nothing/);
   });
 
   it("refuses a zero or negative hold, and an unknown encounter", async () => {
@@ -325,8 +431,9 @@ describe("holdDeposit / releaseHolds (Plan 15 T3 / A5c, F3)", () => {
     const e1 = await book("2026-09-02");
     const e2 = await book("2026-09-03");
     await withTx(db, (tx) => holdDeposit(tx, f.coordinator, { encounterId: e1, receiptId, amountPaise: 3_000_000 }));
+    // Every paise of the receipt is earmarked on e1, so nothing is left to earmark anywhere.
     await expect(withTx(db, (tx) => holdDeposit(tx, f.coordinator, { encounterId: e2, receiptId, amountPaise: 1 })))
-      .rejects.toThrow(/already held/);
+      .rejects.toThrow(/0p is unallocated and unheld on it/);
 
     const released = await withTx(db, (tx) => releaseHolds(tx, e1, "case cancelled — patient withdrew"));
     expect(released).toEqual({ released: 1, amountPaise: 3_000_000 });

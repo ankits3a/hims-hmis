@@ -74,6 +74,33 @@ export type DeployImplantInput = {
 export async function deployImplant(
   tx: Tx, actor: Actor, input: DeployImplantInput, occurredAt: Date = new Date(),
 ): Promise<{ implantId: string; state: string }> {
+  /**
+   * ═══ CLOSE REVIEW M3 — A CONSIGNMENT IMPLANT MUST BE IDENTIFIABLE, OR NOTHING CATCHES A DOUBLE ═══
+   *
+   * The duplicate guard is two PARTIAL unique indexes: `(case_id, serial) WHERE serial IS NOT NULL`
+   * and `(case_id, lot_id, sticker_ref) WHERE sticker_ref IS NOT NULL`. Both are switched off by a
+   * row carrying neither — and both fields were optional. A double-tap on the scan button, or a
+   * retried request, therefore wrote two `ot_case_implants` rows, two `consignment.deployed` events
+   * and two consumptions (the materials consumer is idempotent per EVENT id, so two events are two
+   * deployments), and `composeDischargeBill` billed **two implant lines for one plate**. A17's test
+   * only ever exercised the `serial` path.
+   *
+   * Refusing is right rather than inventing a synthetic key: a consignment implant identifiable by
+   * neither its serial nor its sticker cannot be recalled, cannot be traced to the patient it went
+   * into, and cannot be reconciled against the vendor's challan — the three reasons consignment
+   * tracking exists. `patient_supplied` is deliberately exempt: it has no vendor challan and no
+   * consignment ledger, and its identifiers are whatever the patient brought.
+   */
+  const implantSource = input.source ?? "consignment";
+  if (implantSource === "consignment"
+    && (input.serial ?? "").trim() === "" && (input.stickerRef ?? "").trim() === "") {
+    throw new OtError(
+      "implant_state",
+      "a consignment implant needs a serial or a sticker reference — without one it cannot be recalled, traced or reconciled, and nothing would catch a double scan (M3)",
+      { caseId: input.caseId, itemId: input.itemId },
+    );
+  }
+
   const kase = (await tx.select().from(otCases).where(eq(otCases.id, input.caseId)))[0];
   if (!kase) throw new OtError("unknown_case", `unknown case ${input.caseId}`);
 

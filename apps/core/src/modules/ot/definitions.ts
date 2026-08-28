@@ -122,6 +122,27 @@ const criteriaEntrySchema = z.object({
     if (!has(w)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${entry.procedureClass}: ${w} is waivable but not required` });
     }
+    /**
+     * ═══ CLOSE REVIEW (MINOR 6) — THREE GATES ARE NOT WAIVABLE, WHATEVER A DEFINITION SAYS ═══
+     *
+     * `waiveGate` reaches `waived`, and `TERMINAL_GATE_STATES` counts `waived` as done — so a
+     * definition that listed `escort`, `deposit` or `privilege` as waivable would be a second door
+     * past exactly the gates `overrideGate` refuses outright. Each of the three refuses for a
+     * reason no definition author is entitled to overrule:
+     *
+     *   · `escort`  — E-4: a day-care patient discharges to an adult, structurally.
+     *   · `deposit` — DD12: the only path past a shortfall is the owner's approval, not a drafter's.
+     *   · `privilege` — R-3.15: outside privilege is a refusal, not a warning.
+     *
+     * The seeded definitions all carry `waivableGates: []`, so this was data-only today — which is
+     * the point: it is refused now, before somebody publishes the definition that uses it.
+     */
+    if (w === "escort" || w === "deposit" || w === "privilege") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${entry.procedureClass}: ${w} can never be waivable — it is overridden by approval or not at all`,
+      });
+    }
   }
   if (entry.ageMin > entry.ageMax) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${entry.procedureClass}: ageMin exceeds ageMax` });
@@ -160,12 +181,36 @@ const depositRuleSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("quote_minus_entitlement") }),
 ]);
 
+/**
+ * ═══ CLOSE REVIEW (MINOR 7) — D10's "NO BALANCE BILLING, STRUCTURALLY" HAS TO BE STRUCTURAL ═══
+ *
+ * A1's test asserts that `govt_scheme`, `fp_scheme` and `charity` require exactly ₹0. That was a
+ * property of the SEEDED POLICY and of nothing else: `requiredDeposit` just reads
+ * `policy.rules[class]`, and this schema accepted any rule for any class — so a published policy
+ * putting `percent_of_quote` on `govt_scheme` would have made the test's claim false while the test
+ * went on passing, because the test reads the same seed it is asserting about (§3.14's family).
+ *
+ * A scheme patient may not be charged a deposit at all; that is what the scheme IS. Refusing it in
+ * the schema means the definition cannot be published rather than discovered at a counter.
+ */
+const NON_CHARGING_PAYER_CLASSES = ["govt_scheme", "fp_scheme", "charity"] as const;
+
 export const depositPolicyBodySchema = z.object({
   rules: z.object(
     Object.fromEntries(PAYER_CLASS_VALUES.map((c) => [c, depositRuleSchema])) as Record<
       (typeof PAYER_CLASS_VALUES)[number], typeof depositRuleSchema
     >,
   ),
+}).superRefine((body, ctx) => {
+  for (const cls of NON_CHARGING_PAYER_CLASSES) {
+    const rule = body.rules[cls];
+    if (rule !== undefined && rule.kind !== "zero") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${cls} must carry a "zero" deposit rule — a scheme or charity patient is not asked for a deposit (D10)`,
+      });
+    }
+  }
 });
 
 /**
@@ -189,6 +234,18 @@ export const pacuThresholdsBodySchema = z.object({
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate PACU scale for ${s.anaesthesiaType}` });
     }
     seen.add(s.anaesthesiaType);
+    /**
+     * CLOSE REVIEW (MINOR 18) — "one qualifying score, but stable for thirty minutes" is not a
+     * strict scale, it is an unsatisfiable one: a gap needs two observations to exist between. A
+     * definition carrying it would have deadlocked every discharge scored on it, and the author
+     * would have had no way to tell that from a patient who simply was not ready.
+     */
+    if (s.minScores <= 1 && s.minGapMinutes > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${s.anaesthesiaType}: minGapMinutes needs at least two qualifying scores — a gap cannot be measured against one`,
+      });
+    }
     const maxPossible = s.items.reduce((sum, i) => sum + i.max, 0);
     if (s.threshold > maxPossible) {
       ctx.addIssue({

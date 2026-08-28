@@ -1084,6 +1084,74 @@ superintendent's, and the person who waives a deposit must not be the person und
 the list.
 
 
+### The four screens, and where the cockpit lives
+
+`/ot/list` (the day's list, with each case's gate chips and a link into its cockpit), `/ot/book`
+(book a case, then hold the deposit against the encounter the booking created), `/ot/recovery` (the
+bay board, PACU scores, escort verification, discharge and the bill) and `/ot/cockpit/:caseId` (the
+one case, holding to wheel-out). **Three appear in the menu and four exist**: there is no such thing
+as "the cockpit" without a case to open it on, so it is reached from the list, which is where a
+nurse actually is when they need it. `otManifest.menu` declares the same three and
+`apps/core/test/nav-parity.test.ts` fails if the two tables ever disagree.
+
+Every hard gate is the SERVER's. The cockpit renders all seven clock buttons live rather than
+greying out the ones it believes are not next — a client's idea of "next" is a second copy of the
+state machine, and in a theatre the copy that is wrong is the one on the screen the nurse is looking
+at. Press the wrong one and the engine refuses it with a sentence. No screen sends a timestamp:
+DD8's five clocks are stamped by the server and the `0035` trigger makes them unrewritable.
+
+**A confidential patient's legal name never reaches the theatre list or the recovery board.** Both
+DTOs carry `patientDisplay`, which is `displayName(patient, canSeeConfidential)`'s answer for the
+actor who asked — the alias for the theatre, the legal name for the two people holding
+`patients.confidential.read`. A theatre list is printed and pinned to a wall and a recovery board
+faces the corridor, which is what §14 is about.
+
+### Go-live runbook — the mini-OT (executed at deploy, not at build)
+
+Plan 15 is code-complete and **not deployed**; production is at 34 migrations and has never left
+`commissioning`. When the owner names a SHA, these run in this order:
+
+1. **`pnpm db:migrate`** — applies `0035_mute_vision.sql`. It is ADDITIVE ONLY: twelve new tables,
+   their indexes and FKs, and the `ot_forbid_timestamp_rewrite` trigger. No `DROP`, no `DELETE`, no
+   data migration — verified by grep at close, and worth re-running before you apply it.
+2. **`pnpm seed:roles`** — creates the six new roles with their grants and **no holders**, and adds
+   `ot.definitions.*` to `medical_superintendent` and `ot.bill.compose` to `billing_manager`.
+3. **`pnpm seed:ot`** — idempotently creates `OT-1` (theatre), `RB-1`/`RB-2` (kernel `bed` rows of
+   the day-care recovery class), the `OT-CONSIGN` consignment store, the two approval types, and
+   DRAFTS the four governed definitions. It does **not** publish them: publishing is a governance
+   act, below.
+4. **Create the `daycare_package` tariff services** — one per procedure class the unit will actually
+   operate on (DD6/F8). A case whose class has no such service is refused `bill_not_composable` at
+   discharge, which is the right failure but a late one; create them before the first booking.
+5. **Publish the four definitions through the MS.** Each draft goes
+   `request-publish → approved by `medical_superintendent` → published`, and the approvals engine's
+   requester-vs-approver segregation forces two DISTINCT humans. **This deployment has one full
+   admin.** Spike Q3 measured it: a second human — a named MS account distinct from whoever drafts —
+   must exist before this step, or the publish cannot complete and no case can be booked. It is not
+   a check you can wave through; it is the engine refusing.
+6. **Activate the two Class-A workflow definitions** (the day-care case and the recovery stay)
+   through the same drafter/approver/activator separation the OPD runbook already describes.
+7. **Assign holders to the six roles.** Until somebody holds `daycare_coordinator`, the OT links are
+   invisible to every user — the `pharmacy`/`storekeeper` precedent, working as ruled.
+
+**Consignment agreements are Plan 14's precondition, not this one's.** A vendor without one is
+refused at the materials GRN gate, which is where that rule lives and where it belongs; the OT
+neither re-checks it nor can it be satisfied from here.
+
+**Downtime is hospital-scoped.** A backfilled case is entered through
+`POST /ot/cockpit/:caseId/backfill`, which walks the real transition matrix as the `system` actor
+and carries the human's identity on a `late_entry.flagged` event — so an out-of-order downtime
+record is refused by the state machine rather than by a private check, and every backfilled phase is
+visibly a backfill. The transition is made as `system` because `in_holding → signed_in` admits only
+an anaesthetist and the person typing a downtime record at 09:00 is usually the in-charge; the ROLE
+check is the only thing `system` skips, so the ORDER check still bites.
+
+**The conversion boundary (E-11).** A day-care case that becomes an inpatient stay hands over at
+`converted_at`: consumptions at or before that instant are billed on the day-care invoice, and later
+ones go to a `handoff_unbilled` report line for the incumbent IPD to bill. The boundary is INCLUSIVE
+at the instant itself. Billing cannot enforce this — it has no idea a conversion happened — so the
+OT composer filters, and `A30` is the test that says so.
+
 ## Worker process (Plan 08.5)
 
 A second Node process, `apps/core/src/worker.ts`, boots a providers-only Nest application context

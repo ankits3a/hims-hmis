@@ -18,7 +18,7 @@ import {
 } from "./events";
 import { caseState } from "./booking";
 import { TERMINAL_GATE_STATES, caseGates } from "./gates";
-import { countsFor, finalCountVerdict, openCountMismatch } from "./counts";
+import { countsFor, finalCountVerdict, lockedCountsFor, openCountMismatch } from "./counts";
 import { deployingImplants } from "./implants";
 import type { AppConfig } from "../../kernel/config";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -351,9 +351,10 @@ export async function signOut(db: Db, actor: Actor, caseId: string): Promise<{ s
     if (run === undefined) {
       throw new OtError("checklist_incomplete", "the WHO sign-out has not been completed for this case");
     }
-    // Re-read INSIDE the transaction: the checks above were on `db` and the case may have moved.
-    // The counts are re-verified here too — cheap, and it is the write path's own guarantee.
-    const inTx = finalCountVerdict(await countsFor(tx, caseId));
+    // Re-read INSIDE the transaction and HOLD the rows (MINOR 19): the checks above were on `db`,
+    // the case may have moved, and an unlocked re-read could be overtaken by a concurrent
+    // `recordCount` writing a mismatching final round between this line and the transition.
+    const inTx = finalCountVerdict(await lockedCountsFor(tx, caseId));
     if (!inTx.ok) throw new OtError("count_mismatch", "the counts changed while signing out — re-read them");
     if ((await deployingImplants(tx, caseId)).length > 0) {
       throw new OtError("implant_deploying", "an implant was scanned while signing out and has no ledger fact yet");
@@ -396,7 +397,7 @@ export async function recordDoseLog(
     // Recorded on the incident table's `detail` rather than a column of its own: this phase does
     // not bill or block on it, and 15d owns the C-arm's device row and its own table.
     await tx.insert(otIncidents).values({
-      id: incidentId, encounterId: kase.encounterId, caseId: input.caseId, kind: "wrong_bay_score",
+      id: incidentId, encounterId: kase.encounterId, caseId: input.caseId, kind: "dose_log",
       detail: { kind: "dose_log", dapCgyCm2: input.dapCgyCm2, fluoroSeconds: input.fluoroSeconds, operatorUserId: input.operatorUserId },
       reportedBy: actor.id, resolvedAt: new Date(), resolution: "recorded",
     });
@@ -484,12 +485,28 @@ export async function recordDeathOnTable(
  * The five timestamps are written by the transitions here as they are live, so the trigger applies
  * to a backfill too: a phase backfilled twice is refused by the database.
  */
-export const BACKFILL_PHASES = ["wheel_in", "induction", "incision", "closure", "wheel_out"] as const;
+/**
+ * ═══ CLOSE REVIEW M7 — `wheel_out` IS NOT A BACKFILLABLE PHASE, AND WAS NEVER REACHABLE ═══
+ *
+ * It used to be listed, mapped to `in_recovery`. The only edge into `in_recovery` is
+ * `signed_out → in_recovery`, and no phase maps to `signed_out` — so a full five-phase backfill
+ * (which is what an in-charge types after a two-hour outage) applied the first four, raised
+ * `unknown_transition` on the fifth, and because the whole loop is one transaction **rolled the
+ * entire record back**. The operator retypes it and hits the same wall. The shipped test only
+ * backfilled three phases, so nothing caught it.
+ *
+ * Dropping it is the right repair rather than adding a `signed_out` phase, because sign-out is
+ * where the count reconciliation and the implant-ledger hard stops live (A14, A18). A backfill that
+ * could reach `signed_out` would be a backfill that walks past them — the very thing M6 is about.
+ * So the paper record is entered up to `closure` and the case then re-enters the LIVE path at
+ * sign-out, where the counts are reconciled by a human who is present.
+ */
+export const BACKFILL_PHASES = ["wheel_in", "induction", "incision", "closure"] as const;
 export type BackfillPhase = (typeof BACKFILL_PHASES)[number];
 
 const PHASE_TO_STATE: Record<BackfillPhase, string> = {
   wheel_in: "signed_in", induction: "timed_out", incision: "incision",
-  closure: "closing", wheel_out: "in_recovery",
+  closure: "closing",
 };
 
 export async function backfillCase(
@@ -527,13 +544,40 @@ export async function backfillCase(
        * transition matrix, so an out-of-order backfill is still refused `unknown_transition`. The
        * test above proves it with `incision` before `wheel_in`.
        */
+      /**
+       * ═══ CLOSE REVIEW M6 — THE FACTS THE LIVE PATH CHECKS ARE CHECKED HERE TOO ═══
+       *
+       * The comment below argues correctly that a RECORDER should not need to hold every role the
+       * case walked through. It then drew the wrong boundary: because the backfill replays raw
+       * `transition` calls rather than `signIn`/`timeOut`, it skipped every fact those functions
+       * gate on as well as the roles — so a case could reach `incision` with **no WHO time-out
+       * recorded at all**, on a route guarded only by `ot.cockpit.operate`. `workflow-def.ts` says
+       * the matrix exists so the time-out "is not a checkbox that can be skipped under pressure";
+       * the backfill was the checkbox.
+       *
+       * A downtime record is a record of things that HAPPENED, so the fix is not to refuse the
+       * backfill — it is to require the paperwork to exist before the state that presupposes it.
+       * The time-out run can itself be entered late; it just has to be entered.
+       */
+      if (PHASE_TO_STATE[phase] === "timed_out" && (await completedRun(tx, input.caseId, "timeout")) === undefined) {
+        throw new OtError(
+          "checklist_incomplete",
+          "a backfill cannot pass the WHO time-out without a completed time-out checklist run — record the paper checklist first (M6)",
+        );
+      }
+      if (PHASE_TO_STATE[phase] === "signed_in" && kase.anaesthetistId === null) {
+        throw new OtError(
+          "bad_transition",
+          "a backfill cannot sign a case in with no assigned anaesthetist (F18/M6)",
+        );
+      }
       const moved = await transition(
         tx, kase.workflowInstanceId, PHASE_TO_STATE[phase],
         { type: "system", id: "ot.backfill" },
         { note: `backfill by ${actor.id}: ${input.reason}` },
       );
       state = moved.state;
-      await tx.update(otCases).set({ [phase === "wheel_in" ? "wheelIn" : phase === "wheel_out" ? "wheelOut" : phase]: occurredAt, updatedBy: actor.id, updatedAt: recordedAt })
+      await tx.update(otCases).set({ [phase === "wheel_in" ? "wheelIn" : phase]: occurredAt, updatedBy: actor.id, updatedAt: recordedAt })
         .where(eq(otCases.id, input.caseId));
       await appendEvent(tx, lateEntryFlagged.make({
         actor, patientId: kase.patientId, encounterId: kase.encounterId, occurredAt,

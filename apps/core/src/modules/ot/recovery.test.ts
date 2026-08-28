@@ -23,6 +23,20 @@ import type { Db } from "../../kernel/db/client";
  * PLAN 15 T6 / DD10 — recovery.
  */
 const LIST_DATE = "2026-09-02";
+
+/**
+ * ═══ CLOSE REVIEW (MINOR 11) — SCORE CLOCKS ARE RELATIVE, BECAUSE A SCORE CANNOT BE IN THE FUTURE ═══
+ *
+ * These fixtures used absolute instants on the list date, which is a few days AHEAD of the clock the
+ * suite runs on — so every PACU score was dated into the future. `recordScore` now refuses that (a
+ * score is an observation, and A20's readiness rule is a rule about elapsed time, so two scores
+ * "thirty minutes apart" typed at one keystroke would make the stability requirement a formality).
+ * The times are therefore anchored to the real clock, which is the same correction the backfill
+ * tests already carry: the fixture obeys the code rather than the other way round.
+ */
+function minutesAgo(n: number): Date {
+  return new Date(Date.now() - n * 60_000);
+}
 const SLOT = "2026-09-02T03:30:00.000Z";
 jest.setTimeout(40_000);
 
@@ -52,7 +66,7 @@ describe("OT recovery (Plan 15 T6 / DD10)", () => {
 
   /** A case driven all the way to `in_recovery`, in a bay. */
   async function inRecovery(pid = patientId, phone = "9800001111"): Promise<{ caseId: string; encounterId: string }> {
-    const r = await bookCase(db, f.coordinator, {
+    const r = await bookCase(db, f.incharge, {
       patientId: pid, procedureCode: "GYN-DNC-01", procedureClass: "gynae_dnc",
       surgeonId: f.surgeon.id, anaesthetistId: f.anaesthetist.id,
       anaesthesiaType: "general", listDate: LIST_DATE, payerClass: "self_pay", force: true,
@@ -150,7 +164,7 @@ describe("OT recovery (Plan 15 T6 / DD10)", () => {
   it("A20 — two qualifying scores 10 min apart are NOT ready; a third at +30 is", async () => {
     const { caseId, encounterId } = await inRecovery();
     await admitToBay(db, f.recoveryNurse, { encounterId, bayResourceId: f.bayIds[0]! });
-    const t0 = new Date("2026-09-02T06:00:00.000Z");
+    const t0 = minutesAgo(60);
 
     await recordScore(db, f.recoveryNurse, { encounterId, caseId, values: GOOD_SCORE, occurredAt: t0 });
     let verdict = await evaluateDischargeReady(db, { encounterId, caseId });
@@ -198,7 +212,7 @@ describe("OT recovery (Plan 15 T6 / DD10)", () => {
   it("A20 — a score BELOW the threshold does not qualify at all", async () => {
     const { caseId, encounterId } = await inRecovery();
     await admitToBay(db, f.recoveryNurse, { encounterId, bayResourceId: f.bayIds[0]! });
-    const t0 = new Date("2026-09-02T06:00:00.000Z");
+    const t0 = minutesAgo(60);
     await recordScore(db, f.recoveryNurse, { encounterId, caseId, values: POOR_SCORE, occurredAt: t0 });
     await recordScore(db, f.recoveryNurse, {
       encounterId, caseId, values: POOR_SCORE, occurredAt: new Date(t0.getTime() + 60 * 60_000),
@@ -209,7 +223,7 @@ describe("OT recovery (Plan 15 T6 / DD10)", () => {
 
   it("F24b — the scale is the CASE's anaesthesia technique: a spinal is scored on a longer set", async () => {
     const spinalPatient = await mkOtPatient(db, f.coordinator, "Kavita Rao", { phone: "9800004411" });
-    const r = await bookCase(db, f.coordinator, {
+    const r = await bookCase(db, f.incharge, {
       patientId: spinalPatient, procedureCode: "GYN-DNC-01", procedureClass: "gynae_dnc",
       surgeonId: f.surgeon.id, anaesthetistId: f.anaesthetist.id,
       anaesthesiaType: "spinal", listDate: LIST_DATE, payerClass: "self_pay", force: true,
@@ -246,7 +260,7 @@ describe("OT recovery (Plan 15 T6 / DD10)", () => {
     const { caseId, encounterId } = await inRecovery();
     await admitToBay(db, f.recoveryNurse, { encounterId, bayResourceId: f.bayIds[0]! });
     await verifyEscort(db, f.recoveryNurse, { encounterId, at: "checkin", escort: ESCORT });
-    const t0 = new Date("2026-09-02T06:00:00.000Z");
+    const t0 = minutesAgo(60);
     await recordScore(db, f.recoveryNurse, { encounterId, caseId, values: GOOD_SCORE, occurredAt: t0 });
     await recordScore(db, f.recoveryNurse, { encounterId, caseId, values: GOOD_SCORE, occurredAt: new Date(t0.getTime() + 40 * 60_000) });
     await evaluateDischargeReady(db, { encounterId, caseId });
@@ -265,6 +279,50 @@ describe("OT recovery (Plan 15 T6 / DD10)", () => {
     expect({ status: enc.status, outcome: enc.outcome, bay: enc.bayResourceId })
       .toEqual({ status: "discharged", outcome: "discharged", bay: null });
     expect((await db.select().from(events)).filter((e) => e.name === "escort.verified")).toHaveLength(2);
+  });
+
+  /**
+   * ═══ CLOSE REVIEW M11 — `at` IS A LABEL THE CALLER SENDS, SO THE CLOCK HAS TO BACK IT UP ═══
+   *
+   * E-4's argument is temporal: a verification at check-in is evidence about who BROUGHT her; six
+   * hours later the question is who is TAKING her home. The gate enforced only the string
+   * `at === "discharge"`, which the request body supplies — so a clerk clearing the discharge
+   * checklist at 08:00 satisfied it, and the patient left at 18:00 with nobody. A21 passed because
+   * its fixture happened to send `at: "checkin"`.
+   */
+  it("M11 — a `discharge` verification recorded BEFORE the patient left theatre does not discharge her", async () => {
+    const { caseId, encounterId } = await inRecovery();
+    await admitToBay(db, f.recoveryNurse, { encounterId, bayResourceId: f.bayIds[0]! });
+    const t0 = minutesAgo(60);
+    await recordScore(db, f.recoveryNurse, { encounterId, caseId, values: GOOD_SCORE, occurredAt: t0 });
+    await recordScore(db, f.recoveryNurse, { encounterId, caseId, values: GOOD_SCORE, occurredAt: new Date(t0.getTime() + 40 * 60_000) });
+    await evaluateDischargeReady(db, { encounterId, caseId });
+    // Backdate the verification to before wheel-out: the label says discharge, the clock says
+    // it cannot be about who is taking her home.
+    const kase = (await db.select().from(otCases).where(eq(otCases.id, caseId)))[0]!;
+    const before = new Date(kase.wheelOut!.getTime() - 3_600_000).toISOString();
+    await db.update(daycareEncounters)
+      .set({ escort: { ...ESCORT, at: "discharge", verifiedAt: before, verifiedBy: f.recoveryNurse.id } })
+      .where(eq(daycareEncounters.id, encounterId));
+
+    await expect(dischargeDaycare(db, f.recoveryNurse, {
+      encounterId, caseId, isbarAcknowledgedBy: "Lata Gowda",
+    })).rejects.toThrow(/recorded since the patient left theatre/);
+
+    // Verified again, now, and she goes home.
+    await verifyEscort(db, f.recoveryNurse, { encounterId, at: "discharge", escort: ESCORT });
+    await dischargeDaycare(db, f.recoveryNurse, {
+      encounterId, caseId, isbarAcknowledgedBy: "Lata Gowda",
+    });
+    expect(await caseState(db, caseId)).toBe("discharged");
+  });
+
+  it("M11 — a check-in verification cannot overwrite a discharge one", async () => {
+    const { encounterId } = await inRecovery();
+    await admitToBay(db, f.recoveryNurse, { encounterId, bayResourceId: f.bayIds[0]! });
+    await verifyEscort(db, f.recoveryNurse, { encounterId, at: "discharge", escort: ESCORT });
+    await expect(verifyEscort(db, f.recoveryNurse, { encounterId, at: "checkin", escort: ESCORT }))
+      .rejects.toThrow(/cannot replace it/);
   });
 
   it("A21 — an escort whose phone is the PATIENT's is refused; so is a minor escort", async () => {
@@ -286,7 +344,7 @@ describe("OT recovery (Plan 15 T6 / DD10)", () => {
         authorityMessages: true, authorityConsents: false, authorityDsr: false, authorityBills: false,
       },
     });
-    const r = await bookCase(db, f.coordinator, {
+    const r = await bookCase(db, f.incharge, {
       patientId: minor, procedureCode: "GYN-DNC-01", procedureClass: "gynae_dnc",
       surgeonId: f.surgeon.id, anaesthetistId: f.anaesthetist.id,
       anaesthesiaType: "general", listDate: LIST_DATE, payerClass: "self_pay", force: true,
@@ -305,7 +363,7 @@ describe("OT recovery (Plan 15 T6 / DD10)", () => {
   it("refuses a discharge with no ISBAR acknowledgement (F7)", async () => {
     const { caseId, encounterId } = await inRecovery();
     await admitToBay(db, f.recoveryNurse, { encounterId, bayResourceId: f.bayIds[0]! });
-    const t0 = new Date("2026-09-02T06:00:00.000Z");
+    const t0 = minutesAgo(60);
     await recordScore(db, f.recoveryNurse, { encounterId, caseId, values: GOOD_SCORE, occurredAt: t0 });
     await recordScore(db, f.recoveryNurse, { encounterId, caseId, values: GOOD_SCORE, occurredAt: new Date(t0.getTime() + 40 * 60_000) });
     await evaluateDischargeReady(db, { encounterId, caseId });
@@ -370,7 +428,7 @@ describe("OT recovery (Plan 15 T6 / DD10)", () => {
   it("A23 — reaching `discharge_ready` after the cut-off OFFERS conversion; it does not convert", async () => {
     const { caseId, encounterId } = await inRecovery();
     await admitToBay(db, f.recoveryNurse, { encounterId, bayResourceId: f.bayIds[0]! });
-    const t0 = new Date("2026-09-02T13:00:00.000Z"); // 18:30 IST
+    const t0 = minutesAgo(90); // the scores are real-clock; the CUT-OFF below is the explicit one
     await recordScore(db, f.recoveryNurse, { encounterId, caseId, values: GOOD_SCORE, occurredAt: t0 });
     await recordScore(db, f.recoveryNurse, { encounterId, caseId, values: GOOD_SCORE, occurredAt: new Date(t0.getTime() + 40 * 60_000) });
 

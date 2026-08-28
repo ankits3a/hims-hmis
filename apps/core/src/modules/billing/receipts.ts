@@ -877,3 +877,31 @@ export async function patientBalance(db: Db, actor: Actor, patientId: string): P
     dues: await listDues(db, actor, { patientId }),
   };
 }
+
+/**
+ * ═══ PLAN 15 CLOSE REVIEW M2 — WHAT IS LEFT ON ONE RECEIPT, AND WHOSE IT IS ═══
+ *
+ * `advanceOf` answers a PATIENT-level question, and the OT's deposit hold was bounded only by that:
+ * it earmarked "a receipt" without ever loading it. A hold naming a receipt that could not fund it
+ * was accepted, satisfied the deposit gate, and then made the discharge bill **unissuable** —
+ * `settleDischargeBill` built `settleFromReceipts` from the hold, `allocateOnTx` refused
+ * `over_allocation`, and the whole invoice transaction rolled back with no way forward but manual
+ * surgery on the holds. The cashier's mistake surfaced hours later, on a different desk, as an error
+ * naming a receipt they never chose.
+ *
+ * Exported rather than duplicated in the OT: `allocateOnTx` already computes exactly this number to
+ * decide the same question, and two copies of it would drift (§2.54).
+ */
+export async function receiptUnallocatedPaise(
+  exec: Db | Tx, receiptId: string,
+): Promise<{ patientId: string; totalPaise: number; unallocatedPaise: number } | null> {
+  const rows = await exec.select().from(receipts).where(eq(receipts.id, receiptId));
+  const receipt = rows[0];
+  if (receipt === undefined) return null;
+  const spent = (await allocatedByReceipt(exec, [receipt.id])).get(receipt.id) ?? 0;
+  return {
+    patientId: receipt.patientId,
+    totalPaise: receipt.totalPaise,
+    unallocatedPaise: receipt.totalPaise - spent,
+  };
+}

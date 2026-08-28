@@ -116,6 +116,25 @@ export async function countsFor(exec: Db | Tx, caseId: string): Promise<CountRow
 }
 
 /**
+ * ═══ CLOSE REVIEW (MINOR 19) — SIGN-OUT'S RE-CHECK HAS TO HOLD WHAT IT READ ═══
+ *
+ * `signOut` re-verifies the counts inside its transaction, which is right, but the read took no
+ * lock — so a `recordCount` writing a MISMATCHING final row could commit between that read and the
+ * transition, and the case would sign out over a discrepancy that exists in the table by the time
+ * anybody looks. That is the one thing the count spine is for.
+ *
+ * `FOR UPDATE` on the case's count rows closes it: the concurrent writer either lands before the
+ * read (and is seen) or blocks until the sign-out commits (and then finds the case already signed
+ * out). Plan 14's C1 warned that `FOR UPDATE` cannot lock a row that does not exist — that is not
+ * this shape, because the row this guards against is one that ALREADY exists in the losing case,
+ * and a brand-new final row racing an empty table is caught by `finalCountVerdict`'s "no final
+ * round is not agreement either" rule (H8).
+ */
+export async function lockedCountsFor(tx: Tx, caseId: string): Promise<CountRow[]> {
+  return tx.select().from(otCounts).where(eq(otCounts.caseId, caseId)).for("update");
+}
+
+/**
  * A14 — **THE DERIVED VERDICT, and the round it is derived FROM is the point.**
  *
  * Only `final` rows decide sign-out. The mutant reads `initial` — which is the round that is

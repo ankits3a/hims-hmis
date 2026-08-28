@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { openSessionFor } from "../../../test/helpers/billing";
 import {
@@ -14,7 +14,7 @@ import { holdDeposit } from "./deposit";
 import { caseGates, satisfyGate } from "./gates";
 import { publishList } from "./lists";
 import {
-  backfillCase, completeChecklist, markClosure, markIncision, recordDeathOnTable,
+  BACKFILL_PHASES, backfillCase, completeChecklist, markClosure, markIncision, recordDeathOnTable,
   recordProcedureConverted, signIn, signOut, timeOut, toHolding, verifyHolding, wheelOut,
 } from "./cockpit";
 import { recordCount } from "./counts";
@@ -355,6 +355,31 @@ describe("the OT cockpit (Plan 15 T5)", () => {
       .toEqual({ wheelIn: true, induction: true, closure: null, wheelOut: null });
   });
 
+  /**
+   * ═══ CLOSE REVIEW M5 — "WHATEVER WRITES IT" HAS TO INCLUDE A DELETE ═══
+   *
+   * `0035`'s trigger was `BEFORE UPDATE` only, so the 2 a.m. data fix this guard exists to stop —
+   * delete the row, re-insert it with edited clocks — never fired it. A15's claim is that the five
+   * timestamps cannot be changed once written *whatever writes them*, and a DELETE was a hole in
+   * exactly that word. Billing's `0012` got this right for all six of its tables; `0036` brings the
+   * OT into line.
+   *
+   * The refusal is raised in the DATABASE, below every service, which is the whole point of DD8:
+   * no application code can be persuaded to skip it, including code written by somebody with a psql
+   * prompt and a good reason.
+   */
+  it("M5 — an ot_cases row cannot be DELETED, so it cannot be re-inserted with edited clocks", async () => {
+    const { caseId } = await readyCase();
+    await toTimedOut(caseId);
+    await markIncision(db, f.surgeon, caseId);
+
+    await expect(db.execute(sql`delete from ot_cases where id = ${caseId}`))
+      .rejects.toThrow(/ot_timestamp_immutable/);
+    // The row, and its clock, are still there.
+    const row = (await db.select().from(otCases).where(eq(otCases.id, caseId)))[0]!;
+    expect(row.incision).not.toBeNull();
+  });
+
   it("A15 — `incision` cannot be reached without `timed_out` (B8's matrix)", async () => {
     const { caseId } = await readyCase();
     await toHolding(db, f.incharge, caseId);
@@ -368,6 +393,34 @@ describe("the OT cockpit (Plan 15 T5)", () => {
     itemId: "it-plate-1", batchId: "b-plate-1", lotId: "lot-plate-1", storeResourceId: "",
     serviceCode: OT_IMPLANT_SERVICE_CODE, qtyBase: 1,
   };
+
+  /**
+   * ═══ CLOSE REVIEW M3 — THE DUPLICATE GUARD IS TWO PARTIAL INDEXES, AND BOTH CAN BE SWITCHED OFF ═══
+   *
+   * `(case_id, serial) WHERE serial IS NOT NULL` and `(case_id, lot_id, sticker_ref) WHERE
+   * sticker_ref IS NOT NULL`. A consignment row carrying neither is outside both, so a double-tap
+   * on the scan button wrote two implant rows, two `consignment.deployed` events, two consumptions
+   * and — at discharge — two implant lines for one plate. A17 only ever exercised the serial path.
+   */
+  it("M3 — a consignment implant with neither serial nor sticker is refused", async () => {
+    const { caseId } = await readyCase();
+    await toTimedOut(caseId);
+    await markIncision(db, f.surgeon, caseId);
+    await expect(withTx(db, (tx) => deployImplant(tx, f.otNurse, {
+      ...IMPLANT, caseId, storeResourceId: f.consignmentStoreId,
+    }))).rejects.toThrow(/needs a serial or a sticker reference/);
+    expect(await db.select().from(otCaseImplants)).toHaveLength(0);
+  });
+
+  it("M3 — a STICKER alone is enough, and the index then catches the double scan", async () => {
+    const { caseId } = await readyCase();
+    await toTimedOut(caseId);
+    await markIncision(db, f.surgeon, caseId);
+    const scan = { ...IMPLANT, caseId, storeResourceId: f.consignmentStoreId, stickerRef: "STK-1" };
+    await withTx(db, (tx) => deployImplant(tx, f.otNurse, scan));
+    await expect(withTx(db, (tx) => deployImplant(tx, f.otNurse, scan))).rejects.toThrow();
+    expect(await db.select().from(otCaseImplants)).toHaveLength(1);
+  });
 
   it("A16 — a deployment in `signed_in` is refused `implant_state`; in `incision` it writes the row AND the event", async () => {
     const { caseId } = await readyCase();
@@ -560,6 +613,15 @@ describe("the OT cockpit (Plan 15 T5)", () => {
      * the FUTURE, and this suite books on a list date a few days ahead of the clock the tests run
      * on. Absolute dates from the list read as future and were refused — correctly.
      */
+    /**
+     * CLOSE REVIEW M6 — the PAPER time-out is entered before the backfill walks past `timed_out`.
+     * The original version of this test did not, and passed: the backfill replayed raw transitions
+     * and so skipped every fact `timeOut()` gates on, letting a case reach `incision` with no WHO
+     * time-out recorded anywhere. A downtime checklist can be entered late; it cannot be absent.
+     */
+    await completeChecklist(db, f.otNurse, {
+      caseId, phase: "timeout", items: TIMEOUT_ITEMS, participants: [f.surgeon.id, f.anaesthetist.id, f.otNurse.id],
+    });
     const t0 = Date.now() - 4 * 3_600_000;
     const paper = [
       { phase: "wheel_in" as const, occurredAt: new Date(t0) },
@@ -577,6 +639,48 @@ describe("the OT cockpit (Plan 15 T5)", () => {
     }
     const row = (await db.select().from(otCases).where(eq(otCases.id, caseId)))[0]!;
     expect(row.incision!.toISOString()).toBe(new Date(t0 + 25 * 60_000).toISOString());
+  });
+
+  it("M6 — a backfill cannot walk past the WHO time-out with no checklist run", async () => {
+    const { caseId } = await readyCase();
+    await toHolding(db, f.incharge, caseId);
+    const t0 = Date.now() - 4 * 3_600_000;
+    await expect(backfillCase(db, f.incharge, {
+      caseId,
+      phases: [
+        { phase: "wheel_in", occurredAt: new Date(t0) },
+        { phase: "induction", occurredAt: new Date(t0 + 10 * 60_000) },
+      ],
+      reason: "server down",
+    })).rejects.toThrow(/without a completed time-out checklist run/);
+    // Nothing landed — the whole backfill is one transaction, so the refusal is total.
+    expect((await db.select().from(events)).filter((e) => e.name === "late_entry.flagged")).toHaveLength(0);
+    expect(await caseState(db, caseId)).toBe("in_holding");
+  });
+
+  /**
+   * CLOSE REVIEW M7 — the phase list used to carry `wheel_out`, mapped to `in_recovery`, which no
+   * edge reaches from `closing`. A full downtime record therefore applied four phases, threw on the
+   * fifth and rolled all five back — and the operator had no way to enter a completed case at all.
+   * `wheel_out` is gone, and this asserts the boundary explicitly so it cannot come back by
+   * accident: the paper record ends at `closure` and the case re-enters the live path at sign-out,
+   * where the count reconciliation is done by somebody who is present.
+   */
+  it("M7 — the backfill stops at `closure`, and a whole downtime case applies in one transaction", async () => {
+    expect([...BACKFILL_PHASES]).toEqual(["wheel_in", "induction", "incision", "closure"]);
+
+    const { caseId } = await readyCase();
+    await toHolding(db, f.incharge, caseId);
+    await completeChecklist(db, f.otNurse, {
+      caseId, phase: "timeout", items: TIMEOUT_ITEMS, participants: [f.surgeon.id, f.anaesthetist.id, f.otNurse.id],
+    });
+    const t0 = Date.now() - 4 * 3_600_000;
+    const result = await backfillCase(db, f.incharge, {
+      caseId,
+      phases: BACKFILL_PHASES.map((phase, i) => ({ phase, occurredAt: new Date(t0 + i * 15 * 60_000) })),
+      reason: "server down 09:00-11:00, whole case on paper",
+    });
+    expect(result).toEqual({ state: "closing", flagged: 4 });
   });
 
   it("C1 — an OUT-OF-ORDER backfill is refused by the transition matrix, not by a private check", async () => {

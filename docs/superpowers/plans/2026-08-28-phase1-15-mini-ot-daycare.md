@@ -395,7 +395,141 @@ Tiers per AGENT-RULES §3. **CRITICAL tasks carry their Assertion Book rows inli
 
 ## 6. CLOSE
 
-*(written at close, not before — v3 §9.4)*
+**Closed 2026-08-28. CODE-COMPLETE and NOT DEPLOYED** — production is at 34 migrations and has never
+left `commissioning`; Plan 14's `0034` is itself held. Plan 15 deploys only when the owner names a
+SHA, and the go-live runbook (README, *Go-live runbook — the mini-OT*) needs a second human before
+the four governed definitions can be published.
+
+### 6.1 The commits
+
+| # | SHA | Task | CI |
+|---|---|---|---|
+| — | `b5197e1` | spike answers Q1–Q7 written into §2A/§3B | — (docs) |
+| T1 | `0f7f9f1` | schema: twelve tables, the `D` series, the `theatre` kind, the scrub/circulating SoD pair | GREEN 33146080758 |
+| T2 | `ba11f9c` | module skeleton: manifest, events, errors, roles, approval types, seed; censuses moved | GREEN 33149451364 |
+| T3 | `858727b` | definitions, deposit policy, booking with criteria and privilege gates | **RED 33152555678** |
+| T4 | `bb8e3ac` | readiness: gates, consents, escort, NPO, list publish, override lane | GREEN 33157098556 |
+| T5 | `93ada28` | cockpit: holding verify, WHO states, counts hard stop, immutable timestamps, implant scan, consumer | GREEN 33162083472 |
+| T6 | `a484172` | recovery: bays under the registry, PACU scoring, escort-gated discharge, conversion, absconded | GREEN 33163705494 |
+| T7 | `1d5ba69` | discharge bill composed from the ledger under min(tariff, MRP, ceiling); deposit settled | GREEN 33166676053 |
+| T8 | `69dde01` | four controllers, four screens, the e2e, nav parity, i18n, F20 | GREEN 33171887445 |
+
+**T3 shipped CI-RED and it is recorded as red rather than smoothed over.** `jobs.test.ts` V12
+exceeded jest's 15,000 ms default on the runner; it runs in 1,117 ms on an idle host. T3 touched no
+scheduler code — it added ~60 tests and starved the runner, which is §2.99 arriving from the
+opposite direction (not a duration assertion that goes red on a busy host, but a *budget* that does).
+T4 repaired it with an explicit `}, 60_000)` and the measurement in the docstring. Diagnosed by
+running `gh run view 33152555678 --log-failed`, not by reasoning about it (v3 §9.3(a)).
+
+### 6.2 Mechanical verification
+
+- **`pnpm verify` exit 0**, read from a file (rule 18): `apps/core` **2,376 tests**, `apps/web`
+  **284**, `packages/contracts` **21**. Entering the phase: 2,138 / 274 / 21 (Plan 14's close). The
+  total never decreased at any task.
+- **CI green by FULL SHA** for every commit except T3, above.
+- **`git status --porcelain` clean** but for another session's untracked `docs/` work, which was
+  never staged. Six of that session's files were unstaged from the shared index at T5 and left
+  byte-untouched.
+- **Migration `0035_mute_vision.sql` read and quoted.** Twelve `CREATE TABLE`s, their indexes and
+  FKs, and the DD8 trigger. **Zero `DROP`, zero `DELETE`, zero `UPDATE … SET`** — additive only,
+  confirmed by grep, not by assertion.
+- **Both boot lines quoted, from the COMPILED build** (`node dist/src/main.js`, the production path):
+  API `Nest application successfully started` with **52 OT routes mapped**; worker
+  `worker started: jobs=…,flagLateSurgeons,…`. `tsx src/main.ts` cannot boot this app at all —
+  esbuild does not emit `design:paramtypes`, so every constructor injection resolves `undefined`.
+  That is a property of `tsx`, not of Plan 15; the probe that established it is in §6.5.
+- **The four T9 drills, run and quoted:** A14 count mismatch (2 legs), A21 escort absent (3 legs),
+  A12 two racing sign-ins (3 legs), C1/DD8 downtime backfill (3 legs). 11/11 pass.
+
+### 6.3 The gate report (§19 lines this phase can honestly write)
+
+- **`mtp` and the in-unit USG classes are ABSENT, not stubbed.** `PROCEDURE_CLASS_VALUES` is a zod
+  enum of twenty classes and contains neither; a criteria draft naming `mtp` is refused
+  `definition_invalid` (test A5b), and `definitions.test.ts` asserts the enum does not contain it.
+  Nothing can be "pending" on a class that cannot be named.
+- **`OT-CONSIGN` is a materials `store`**, not a theatre or a bay (`OT_CONSIGNMENT_STORE_CODE`),
+  created idempotently by `seed:ot`.
+- **One `daycare_package` tariff service per procedure class** (`packageServiceCode`), created by the
+  go-live runbook. A class without one is refused `bill_not_composable` at discharge.
+- **The consignment agreement is Plan 14 O-8's precondition and is checked at the materials GRN**,
+  not here. The OT neither re-checks it nor can satisfy it.
+- **Criteria and privileges are PUBLISHED by a named MS with a distinct drafter.** The approvals
+  engine's requester-vs-approver segregation forces it. **Spike Q3 measured that this deployment has
+  ONE full admin** — a second human must exist before step 5 of the runbook, and no code change
+  substitutes for that.
+- **Downtime is hospital-scoped**, and the conversion boundary (E-11) is inclusive at `converted_at`
+  — both written up in the README runbook.
+
+
+### 6.4 The Assertion Book, corrected by execution
+
+**Twenty-two mutants built across T3–T8. Twenty-one DIED; one SURVIVED and is disclosed.**
+
+- **A15 SURVIVED, legitimately.** The mutation — an update path that accepts a timestamp map — is
+  refused by `0035`'s `ot_forbid_timestamp_rewrite` trigger, which is the mechanism DD8 ships. The
+  test cannot kill it because the database kills it first. Plan 14's A8 is the precedent; the row is
+  marked measured-not-predicted rather than engineered into a kill.
+- **A8's first mutant died for the WRONG reason** (a weak kill, §3.14's family). The acting user was
+  `f.incharge`, so the mutant died on the workflow engine's ROLE check and never reached the
+  distinct-id check the row is about. Rebuilt with an actor holding BOTH `surgeon` and
+  `anaesthetist`, so the distinct-id check is the only line that can refuse, plus a control leg
+  proving the same actor under two different ids succeeds.
+- **A12 and A16's first mutants were too weak** — both rolled back harmlessly inside one
+  transaction. A12 was rebuilt with the state move in its OWN committed transaction ("without", not
+  "before"); A16 with the event committed FIRST and the insert second.
+- **Three error codes left the union at T5** (`identity_mismatch`, `theatre_occupied`,
+  `timestamp_immutable`), found by this module's own `errors.test.ts` direction-1 scan. Each names a
+  real refusal that a DIFFERENT layer already refuses in its own vocabulary. This is Plan 14's M8
+  lesson caught at T5 instead of at CLOSE, by the test that phase's close had to invent.
+- **T8's `F-settle` rows are new**, not in the original Book: the executing session found the defect
+  in §6.5 and added three rows to pin it, including the ordering leg whose mutant DIED at
+  `Expected: 5000000, Received: 0`.
+
+### 6.5 Defects the executing session found and fixed, each proved before it was fixed
+
+1. **`pnpm db:generate` emitted every CHECK constraint as a BIND PLACEHOLDER.** `sql\`${v}\`` makes
+   a parameter, so `CHECK ("payer_class" in ($1, $2, …))` would have shipped a column enforcing
+   nothing. Caught by READING the generated SQL before applying it. The `.sql`, the meta snapshot and
+   the journal entry were rolled back (the journal restored byte-exactly with `printf '%s'`) and
+   `inList` was rewritten to use `sql.raw` behind a snake_case guard that throws on anything else.
+2. **The kernel resource registry had a read-check-write occupancy race** (finding T5-a). Proved
+   fail-first: two overlapping assigns both returned `fulfilled` on ONE bed. `assignResource` and
+   `releaseResource` now take a row lock via `lockResource`; `moveResource` deliberately does not,
+   because two-row locking there is a deadlock shape. **This affects every bed, room and theatre in
+   the system, not only the OT.** The first fix attempt used `tx.execute(sql\`… for update\`)`, whose
+   snake_case columns broke a zod parse three layers down — replaced with drizzle's `.for("update")`.
+3. **The whole deposit-then-discharge design was unreachable** (finding T7-a). `issueInvoice` refuses
+   an unsettled remainder without a credit extension, and `allocateReceipt` needs the invoice to
+   exist first — so there was no order in which the two could be called. Fixed by extracting
+   `allocateOnTx` and adding `settleFromReceipts`, which allocates inside the issuing transaction so
+   the invoice is never momentarily unsettled.
+4. **`openCountMismatch` was rolled back by its own refusal.** The incident was written inside the
+   transaction that then threw, so a refused sign-out left `ot_incidents` empty — the audit trail
+   erased by the event it exists to record. Restructured: checks on `db`, the incident in its OWN
+   transaction, only the transition transactional.
+5. **`flagLateSurgeons` at 300 s collided with a production alert.** `alerts.yml` leg 1a thresholds
+   every interval job at 300 s staleness, so the job would have paged on its first missed tick.
+   Changed the job to 60 s rather than weaken the alert.
+6. **`BillingError` and `TariffError` escaped the OT controllers as 500** (T8). A discharge bill
+   larger than the deposit answered `Internal server error`. The status tables moved from
+   `billing.controller.ts`'s privates to `billingHttpStatus` / `tariffHttpStatus` on their modules'
+   index, imported by both controllers — Plan 09's `membershipHttpStatus` finding, one plan later.
+7. **`settleDischargeBill` spent the deposit holds and never closed them** (T8). `releaseHolds`
+   existed and was not called, so `heldPaise()` kept reporting money billing had already allocated —
+   the number DD12's booking gate reads, the number the refund arithmetic is computed from, and the
+   number the deposit-release ROUTE would have "released" out of an invoice.
+8. **F20/DD16 was unbuilt.** §14's confidentiality rule was open-coded in `qr.ts` and nowhere else,
+   and the OT list and recovery board carried no patient identity at all — satisfying the letter of
+   "no legal name in the DTO" by carrying no name, which would have made both screens unusable and
+   left the invariant unguarded. `displayName(patient, canSeeConfidential)` is now the one place the
+   rule lives, `qr.ts` is one of its callers, and both DTOs carry `patientDisplay`.
+9. **`F23`'s refusal message read "occupied by null null"** under contention, because the bay row was
+   pre-read before the winner committed. Fixed by re-reading inside the catch.
+
+Two self-inflicted process failures are recorded rather than hidden: **rule 20 was violated twice**
+by starting a `pnpm verify` while an earlier one was still running, which produced per-worker DB
+collisions and one spurious `unknown SoD pair key`. Both times the fix was to kill the strays,
+confirm zero processes, and re-run once cleanly.
 
 ---
 *Byte count at write time: 71050 (≈ 17762 tokens) — the "this document" row of the context budget.*

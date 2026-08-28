@@ -1,12 +1,12 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { openSessionFor } from "../../../test/helpers/billing";
 import { mkOtPatient, mkOtUser, publishOtDefinition, seedOtBase } from "../../../test/helpers/ot";
 import { withTx } from "../../kernel/db/client";
 import { approveRequest } from "../../kernel/approvals/decisions";
-import { events, otCaseGates } from "../../kernel/db/schema";
+import { events, otCaseGates, otCases } from "../../kernel/db/schema";
 import { recordReceipt } from "../billing";
-import { bookCase, caseState } from "./booking";
+import { bookCase, caseState, changePayerClass } from "./booking";
 import { holdDeposit, requestDepositException } from "./deposit";
 import { caseGates, evaluateReadiness, gateState, overrideGate, satisfyGate, waiveGate } from "./gates";
 import { publishList } from "./lists";
@@ -540,5 +540,60 @@ describe("the OT gates (Plan 15 T4 / DD5)", () => {
     await expect(withTx(db, (tx) => overrideGate(tx, f.surgeon, gateIdSync(caseId, "consent_procedure"), {
       surgeonId: f.surgeon.id, anaesthetistId: f.anaesthetist.id, reason: "x",
     }))).rejects.toThrow(/already satisfied/);
+  });
+});
+
+describe("CLOSE REVIEW M1 — the deposit gate reads the ENCOUNTER's payer class", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let f: OtBaseFixture;
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+  beforeEach(async () => { await truncateAll(db); f = await seedOtBase(db); });
+
+  /**
+   * The scenario the review named, and it is not exotic: a case is booked `govt_scheme`, whose
+   * deposit policy is `zero`; the scheme then refuses cover and the desk re-classes the encounter
+   * to `self_pay`, which is 100% of the quote. `changePayerClass` wrote only
+   * `daycare_encounters.payer_class`; the gate read `ot_cases.payer_class`. So the gate went on
+   * requiring ₹0 and satisfying at ₹0 held, the patient reached theatre unfunded, and the shortfall
+   * surfaced only at discharge — as `unsettled_issue_refused`, with the operation already done.
+   */
+  it("M1 — re-classing govt_scheme → self_pay makes the deposit gate require the real money", async () => {
+    const patientId = await mkOtPatient(db, f.coordinator, "Sunita Devi");
+    const { caseId, encounterId } = await bookCase(db, f.coordinator, {
+      patientId, procedureCode: "GYN-DNC-01", procedureClass: "gynae_dnc",
+      surgeonId: f.surgeon.id, listDate: "2026-09-02", payerClass: "govt_scheme",
+    });
+    const depositGateId = (await caseGates(db, caseId)).find((g) => g.kind === "deposit")!.id;
+
+    // The scheme refuses cover, so the desk re-classes the ENCOUNTER to self-pay.
+    await changePayerClass(db, f.coordinator, {
+      encounterId, to: "self_pay", reason: "scheme refused cover",
+    });
+
+    // The gate now demands the real money, with nothing held — because it reads the encounter.
+    // Before this fix it read `ot_cases.payer_class`, which `changePayerClass` never wrote, and
+    // satisfied at ₹0 required against ₹0 held.
+    await expect(withTx(db, (tx) => satisfyGate(tx, f.coordinator, depositGateId, {})))
+      .rejects.toThrow(/deposit/i);
+
+    // …and the case snapshot was carried along, so no reader sees the two rows disagree.
+    const kase = (await db.select().from(otCases).where(eq(otCases.id, caseId)))[0]!;
+    expect(kase.payerClass).toBe("self_pay");
+  });
+
+  it("M1 — a case still on its ORIGINAL scheme class satisfies at zero, as the policy says", async () => {
+    const patientId = await mkOtPatient(db, f.coordinator, "Kamala Iyer");
+    const { caseId } = await bookCase(db, f.coordinator, {
+      patientId, procedureCode: "GYN-DNC-01", procedureClass: "gynae_dnc",
+      surgeonId: f.surgeon.id, listDate: "2026-09-02", payerClass: "govt_scheme",
+    });
+    const depositGateId = (await caseGates(db, caseId)).find((g) => g.kind === "deposit")!.id;
+    // The non-discriminating control: without the re-class, both readings agree, and this leg
+    // proves the fix did not simply make every scheme case demand a deposit.
+    await withTx(db, (tx) => satisfyGate(tx, f.coordinator, depositGateId, {}));
+    expect((await caseGates(db, caseId)).find((g) => g.kind === "deposit")!.state).toBe("satisfied");
   });
 });

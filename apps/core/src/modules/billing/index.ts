@@ -27,7 +27,7 @@ export type { EncounterResolver, IssueInvoiceInput, IssueInvoiceResult, InvoiceR
  * Reaching around this index into `receipts.ts` would be the §4 violation; widening the index by
  * one export is the sanctioned way, and it exposes nothing `patientBalance` did not already.
  */
-export { recordReceipt, allocateReceipt, reverseAllocation, patientBalance, listDues, markEnteredInError, advanceOf } from "./receipts";
+export { recordReceipt, allocateReceipt, reverseAllocation, patientBalance, listDues, markEnteredInError, advanceOf, receiptUnallocatedPaise } from "./receipts";
 export type { PatientBalance, DueRow, ReceiptRow, AllocationRow } from "./receipts";
 export { issueCreditNote, listCreditNotes } from "./credit-notes";
 export type { IssueCreditNoteInput, IssueCreditNoteResult, CreditNoteKind } from "./credit-notes";

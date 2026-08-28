@@ -23,7 +23,7 @@
  *
  * ═══ THE STATUS CHOICES THAT ARE NOT OBVIOUS ═══
  *
- *   · **409, not 422, for every RACE** — `theatre_occupied`, `bay_occupied`, `stale_version`,
+ *   · **409, not 422, for every RACE** — `bay_occupied`, `stale_version`,
  *     `duplicate_booking`, `duplicate_scan`. The caller's request was well-formed and lost a race;
  *     a 422 tells a nurse to fix her input, which is exactly the wrong instruction.
  *   · **422 for every GATE refusal** — `gate_open`, `not_ready`, `count_mismatch`,

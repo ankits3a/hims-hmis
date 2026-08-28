@@ -117,8 +117,21 @@ export const IMPLANT_STATE_VALUES = ["deploying", "confirmed", "explanted"] as c
 export const CANCELLATION_ATTRIBUTION_VALUES = ["patient", "hospital", "surgeon", "payer", "clinical"] as const;
 
 /** DD13 / R-3.22 — the OT-local incident family, until the quality module (28a). */
+/**
+ * ═══ CLOSE REVIEW (MINOR 14) — TWO DIFFERENT FACTS WERE FILED UNDER ONE KIND ═══
+ *
+ * The radiation dose log (`cockpit.ts`) and an absconded patient (`recovery.ts`) were both written
+ * as `wrong_bay_score`, because the CHECK admitted only five kinds and neither of them was one. The
+ * real kind survived inside `detail.kind` — so the incident register was readable only by opening
+ * every row's jsonb, and any query grouped by `kind` reported a nonsense number. An incident
+ * register nobody can read by kind is not a register.
+ *
+ * `0036` widens the constraint. The two are genuinely different: a dose log is a ROUTINE record
+ * (resolved at insert, kept for the radiation-safety file) and an absconding is an open incident.
+ */
 export const OT_INCIDENT_KIND_VALUES = [
   "identity_mismatch", "timeout_halted", "count_mismatch", "death_on_table", "wrong_bay_score",
+  "dose_log", "absconded",
 ] as const;
 
 /** F24b — PACU thresholds are keyed by ANAESTHESIA TECHNIQUE, not one PADSS for everybody. */
@@ -150,6 +163,24 @@ function inList(column: SQL | unknown, values: readonly string[]): SQL {
 // 1. The encounter — DD2. `D2608280001`, and the id every downstream fact carries.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
+/**
+ * ═══ CLOSE REVIEW (MINOR 17) — DD2 SAYS "THE `encounterId` EVERY DOWNSTREAM FACT CARRIES", AND THE
+ * TWO DOWNSTREAM TABLES CARRY DIFFERENT KEYS FOR IT ═══
+ *
+ * Both are the same day-care encounter and each side is self-consistent with its own module's
+ * convention, but they cannot be joined to each other:
+ *
+ *   · `invoices.encounter_id`     ← `encounter_no`  (`D2609020001`) — billing's convention; OPD
+ *                                   passes its `V` number the same way.
+ *   · `stock_ledger.encounter_id` ← `id`            (the ULID)      — materials' convention, which
+ *                                   Plan 14 froze before this module existed.
+ *
+ * `composeDischargeBill` is correct because it reads each side with the key that side uses. The
+ * cost is a trap for the NEXT reader: a report joining an invoice to the stock it consumed by
+ * `encounter_id` will return nothing and look like a data problem. Recorded here rather than
+ * "fixed" at close — changing either side is a data migration across two modules' frozen
+ * interfaces, and neither convention is wrong on its own. **Carried to 15b.**
+ */
 export const daycareEncounters = pgTable(
   "daycare_encounters",
   {

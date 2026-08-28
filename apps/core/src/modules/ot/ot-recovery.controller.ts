@@ -115,7 +115,15 @@ export class OtRecoveryController {
   @RequirePermission("ot.bill.compose", "hospital")
   async bill(@CurrentActor() actor: Actor, @Param("encounterId") encounterId: string, @Body() body: unknown): Promise<unknown> {
     const input = parsed(z.object({
+      // M9 — the full tender list; `cashTenderPaise` stays as the shorthand it always was.
+      tenders: z.array(z.object({
+        mode: z.enum(["cash", "upi", "card"]),
+        amountPaise: z.number().int().positive(),
+        refText: z.string().max(120).optional(),
+      })).optional(),
       cashTenderPaise: z.number().int().min(0).optional(), note: z.string().max(500).optional(),
+      // M8 — a DELIBERATE second bill on this encounter (a return to theatre, N13).
+      additionalBill: z.boolean().optional(),
     }), body);
     try { return await settleDischargeBill(this.db, actor, { encounterId, ...input }); } catch (e) { toHttp(e); }
   }

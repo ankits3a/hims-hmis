@@ -1,7 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
-import { daycareEncounters, otCaseImplants, otCases } from "../../kernel/db/schema";
+import { daycareEncounters, invoices, otCaseImplants, otCases } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
 import { consumptionsFor } from "../materials";
@@ -260,8 +260,25 @@ export async function composeDischargeBill(
       divergences.push({ ledgerEntryId: row.ledgerEntryId, frozen, derived: row.ceilingPaisePerBase });
     }
 
+    /**
+     * ═══ CLOSE REVIEW M4 — A CEILING THAT CANNOT BE RE-DERIVED IS NOT "NO CEILING" ═══
+     *
+     * `consumptionsFor` returns `ceilingPaisePerBase: null` whenever `mrpPerBaseUnit` throws — an
+     * unrecognised `mrp_uom` on the regulation row, or a gazette price that does not divide into
+     * whole paise per base unit (a ceiling filed per `box` of 3). `clampImplantUnitPaise` skips a
+     * null bound, so the clamp silently became `min(tariff, MRP)` and the invoice could stand ABOVE
+     * the NPPA ceiling — in exactly the untidy cases, and with this file's own header claiming the
+     * cap is "impossible to lose".
+     *
+     * The frozen value is the ceiling that was in force when the implant was consumed, carried on
+     * `material.consumed`. Falling back to it is strictly better than dropping the bound: it is a
+     * real gazette number for this item, and the divergence row above already records that the two
+     * readings differ, so the fallback is visible rather than silent. Both null is the honest
+     * unregulated case and keeps no ceiling.
+     */
+    const ceilingPaisePerBase = row.ceilingPaisePerBase ?? frozen;
     const { capUnitPaise, boundApplied } = clampImplantUnitPaise(tariffUnitPaise, {
-      mrpPaisePerBase: row.mrpPaisePerBase, ceilingPaisePerBase: row.ceilingPaisePerBase,
+      mrpPaisePerBase: row.mrpPaisePerBase, ceilingPaisePerBase,
     });
     const lineId = `impl-${implant.id}`;
     lines.push({ lineId, serviceId: service.id, qty: row.qtyBase, capUnitPaise });
@@ -269,7 +286,8 @@ export async function composeDischargeBill(
     implantLines.push({
       ledgerEntryId: row.ledgerEntryId, implantId: implant.id, serviceCode: implant.serviceCode,
       qtyBase: row.qtyBase, tariffUnitPaise,
-      mrpPaisePerBase: row.mrpPaisePerBase, ceilingPaisePerBase: row.ceilingPaisePerBase,
+      // The ceiling the clamp actually used (M4) — the derived one, or the frozen fallback.
+      mrpPaisePerBase: row.mrpPaisePerBase, ceilingPaisePerBase,
       capUnitPaise, boundApplied,
     });
   }
@@ -317,21 +335,71 @@ export async function composeDischargeBill(
  */
 export const CASH_LIMIT_PAISE = 20_000_000; // ₹2,00,000
 
-export async function encounterCashPaise(exec: Db | Tx, encounterId: string): Promise<number> {
+export async function encounterCashPaise(
+  exec: Db | Tx, encounterId: string, encounterNo: string,
+): Promise<number> {
+  /**
+   * ═══ CLOSE REVIEW C1 — THE GUARD USED TO COUNT ONLY THE BOOKING DEPOSIT ═══
+   *
+   * The first version summed `ot_deposit_holds ⋈ receipt_tenders WHERE mode='cash'` and nothing
+   * else, which was wrong three separate ways — and the one that mattered was the direction that
+   * UNDER-counts:
+   *
+   *   1. **A discharge tender is never held**, so it never entered the total. Two bills on one
+   *      encounter (a return to theatre — N13, which this module supports) could each take ₹40,000
+   *      cash on top of a ₹1,50,000 deposit and each be told it was inside the limit. ₹2,30,000
+   *      received in respect of one transaction, with the guard reporting compliance.
+   *   2. It summed the receipt's WHOLE cash tender rather than the part earmarked here, so a
+   *      ₹1,50,000 cash advance with ₹10,000 held against this encounter counted as ₹1,50,000.
+   *   3. Two holds carved from one receipt counted that receipt twice.
+   *
+   * So the total is now built per RECEIPT, each counted exactly once:
+   *
+   *   · a receipt whose money reached an INVOICE on this encounter contributes all of its cash —
+   *     that money was received in respect of this operation, whatever else it was labelled;
+   *   · a receipt merely EARMARKED here contributes `least(earmarked, its cash)` — a patient with a
+   *     large cash advance has not paid it all for this operation.
+   *
+   * Over-counting is the safe direction and under-counting is a §271DA penalty, so where the two
+   * readings differ this takes the larger: a released hold still counts, because the cash was
+   * received. `>=` not `>`: §269ST prohibits receiving ₹2,00,000 **or more**.
+   */
   const rows = (await exec.execute(sql`
-    select coalesce(sum(rt.amount_paise), 0)::bigint as "cash"
-      from ot_deposit_holds h
-      join receipt_tenders rt on rt.receipt_id = h.receipt_id
-     where h.encounter_id = ${encounterId} and rt.mode = 'cash'
+    with held as (
+      select h.receipt_id, sum(h.amount_paise) as earmarked
+        from ot_deposit_holds h
+       where h.encounter_id = ${encounterId}
+       group by h.receipt_id
+    ),
+    billed as (
+      select distinct a.receipt_id
+        from allocations a
+        join invoices i on i.id = a.invoice_id
+       where i.encounter_id = ${encounterNo}
+    ),
+    cash as (
+      select rt.receipt_id, sum(rt.amount_paise) as cash_paise
+        from receipt_tenders rt
+       where rt.mode = 'cash'
+       group by rt.receipt_id
+    )
+    select coalesce(sum(
+      case when b.receipt_id is not null then c.cash_paise
+           else least(h.earmarked, c.cash_paise) end
+    ), 0)::bigint as "cash"
+      from cash c
+      left join held   h on h.receipt_id = c.receipt_id
+      left join billed b on b.receipt_id = c.receipt_id
+     where h.receipt_id is not null or b.receipt_id is not null
   `)).rows as { cash: string | number }[];
   return Number(rows[0]?.cash ?? 0);
 }
 
 export async function assertCashWithinEncounterLimit(
-  exec: Db | Tx, encounterId: string, incomingCashPaise: number,
+  exec: Db | Tx, encounterId: string, encounterNo: string, incomingCashPaise: number,
 ): Promise<void> {
   if (incomingCashPaise <= 0) return;
-  const prior = await encounterCashPaise(exec, encounterId);
+  const prior = await encounterCashPaise(exec, encounterId, encounterNo);
   const total = prior + incomingCashPaise;
   if (total >= CASH_LIMIT_PAISE) {
     throw new OtError(
@@ -371,16 +439,85 @@ export type SettleResult = {
  */
 export async function settleDischargeBill(
   db: Db, actor: Actor,
-  input: { encounterId: string; cashTenderPaise?: number; note?: string },
+  input: {
+    encounterId: string;
+    /** M9 — the full tender list; a discharge is not a cash-only desk. */
+    tenders?: { mode: "cash" | "upi" | "card"; amountPaise: number; refText?: string }[];
+    cashTenderPaise?: number;
+    note?: string;
+    /** M8 — a deliberate SECOND bill on this encounter (a return to theatre, N13). */
+    additionalBill?: boolean;
+  },
   now: Date = new Date(),
 ): Promise<SettleResult> {
   const composed = await composeDischargeBill(db, input.encounterId, now);
   const encounter = (await db.select().from(daycareEncounters)
     .where(eq(daycareEncounters.id, input.encounterId)))[0]!;
 
+  /**
+   * ═══ CLOSE REVIEW M8 — A DOUBLE-SUBMIT USED TO TAKE THE CASH TWICE ═══
+   *
+   * Nothing refused a second settlement. `composeDischargeBill` never looked for an existing
+   * invoice and `issueInvoice` was handed a fresh `newId()` every time, so a cashier double-tapping
+   * a cash-only discharge got **two invoices, two receipts and two payments**. The deposit-funded
+   * path happened to self-block on the second call because `releaseHolds` had already run — which
+   * is luck, not a guard, and the cash-only path (a waived deposit, a scheme patient's
+   * non-payables) had no luck to rely on.
+   *
+   * `additionalBill` is the deliberate second bill — a return to theatre on the same encounter
+   * (N13), which this module supports. It has to be asked for in as many words, because the whole
+   * point is that a repeated request is not one.
+   */
+  const existing = await db.select({ id: invoices.id, invoiceNo: invoices.invoiceNo })
+    .from(invoices).where(eq(invoices.encounterId, encounter.encounterNo));
+  if (existing.length > 0 && input.additionalBill !== true) {
+    throw new OtError(
+      "bill_not_composable",
+      `${encounter.encounterNo} is already billed (${existing.map((i) => i.invoiceNo).join(", ")}) — pass additionalBill to raise a second bill for a return to theatre (M8)`,
+      { invoiceNos: existing.map((i) => i.invoiceNo) },
+    );
+  }
+
+  /**
+   * ═══ CLOSE REVIEW M9 — THE DISCHARGE DESK IS NOT A CASH-ONLY DESK ═══
+   *
+   * The route took `cashTenderPaise` and nothing else, so any balance above the held deposit had to
+   * be settled in cash or `issueInvoice` refused it `unsettled_issue_refused`. Combined with the
+   * §269ST ceiling that C1 now enforces properly, a ₹2,50,000 bill with no deposit **could not be
+   * settled through this module at all** — and the documented workaround (record a receipt, then
+   * hold it) needs `ot.cases.book`, which DD14 deliberately keeps away from the billing desk.
+   *
+   * `cashTenderPaise` is kept as the shorthand it was, and folded into the same list, so the two
+   * cannot disagree about what was tendered. §269ST is asked about the CASH subset only, which is
+   * what the section is about.
+   */
+  const tenders = [
+    ...(input.tenders ?? []),
+    ...(input.cashTenderPaise !== undefined && input.cashTenderPaise > 0
+      ? [{ mode: "cash" as const, amountPaise: input.cashTenderPaise }]
+      : []),
+  ];
+  const tenderedPaise = tenders.reduce((sum, t) => sum + t.amountPaise, 0);
+  /**
+   * CLOSE REVIEW (MINOR 4) — an OVER-tender used to become a silent patient-level advance: the
+   * surplus sat on the receipt as unallocated money and no refund was requested, which is exactly
+   * what §3A says must not happen ("never held as credit for next time"). The deposit lane was
+   * guarded and this one was not. A counter takes the money and gives change, so the tender it
+   * RECORDS is what is being applied; anything above the bill is a typo, and the fix is to say so
+   * rather than to quietly bank it.
+   */
+  if (tenderedPaise > composed.expectedNetPaise) {
+    throw new OtError(
+      "deposit_shortfall",
+      `tendered ${String(tenderedPaise)}p against a ${String(composed.expectedNetPaise)}p bill — record what is being applied, and give the change`,
+      { tenderedPaise, netPayablePaise: composed.expectedNetPaise },
+    );
+  }
+  const cashPaise = tenders.filter((t) => t.mode === "cash").reduce((sum, t) => sum + t.amountPaise, 0);
+
   // F24e — BEFORE the invoice, because a refused tender must not leave an issued bill behind.
-  if (input.cashTenderPaise !== undefined) {
-    await assertCashWithinEncounterLimit(db, input.encounterId, input.cashTenderPaise);
+  if (cashPaise > 0) {
+    await assertCashWithinEncounterLimit(db, input.encounterId, encounter.encounterNo, cashPaise);
   }
 
   /**
@@ -397,8 +534,7 @@ export async function settleDischargeBill(
    */
   const holds = (await withTx(db, (tx) => openHolds(tx, input.encounterId)))
     .sort((a, b) => a.heldAt.getTime() - b.heldAt.getTime());
-  const cashPaise = input.cashTenderPaise ?? 0;
-  let toSettle = Math.max(0, composed.expectedNetPaise - cashPaise);
+  let toSettle = Math.max(0, composed.expectedNetPaise - tenderedPaise);
   const settleFromReceipts: { receiptId: string; amountPaise: number }[] = [];
   let plannedFromHolds = 0;
   for (const hold of holds) {
@@ -409,16 +545,17 @@ export async function settleDischargeBill(
     toSettle -= amount;
   }
 
+  // MINOR 1 — the SAME clock prices the preview and the invoice. A caller passing an explicit `now`
+  // (a backdated settlement) otherwise priced `expectedNetPaise` against one tariff version and the
+  // invoice against another, and the mismatch surfaced as `unsettled_issue_refused`.
   const result = await issueInvoice(db, actor, {
     draftId: newId(),
     patientId: composed.patientId,
     encounterId: encounter.encounterNo,
     lines: composed.lines,
     ...(settleFromReceipts.length > 0 ? { settleFromReceipts } : {}),
-    ...(cashPaise > 0
-      ? { receipt: { tenders: [{ mode: "cash" as const, amountPaise: cashPaise }], note: input.note } }
-      : {}),
-  });
+    ...(tenders.length > 0 ? { receipt: { tenders, note: input.note } } : {}),
+  }, now);
   const allocated = result.allocatedPaise + result.settledFromHeldPaise;
 
   /**
@@ -435,20 +572,46 @@ export async function settleDischargeBill(
    * leaves a hold open over a settled invoice — recoverable, and exactly the state that shipped
    * before this line existed, because a re-settle is refused by billing's own allocation guard
    * rather than double-spending the receipt.
+   *
+   * MINOR 3 — and the REFUND is raised first. The two used to run the other way round, so a throw
+   * inside `requestRefund` (an approval type missing, a validation refusal) left the holds released
+   * with no refund raised behind them: the patient's money unearmarked and nobody asked to return
+   * it. Raising the request first means the worse failure is a refund request over holds that are
+   * still open, which a human reading either row can see.
    */
-  await withTx(db, (tx) => releaseHolds(tx, input.encounterId, `settled against ${result.invoiceNo}`));
-
-  // The excess, as a refund REQUEST. `requestRefund` is approval-gated and returns an approval id.
-  const excess = composed.heldPaise - plannedFromHolds;
+  /**
+   * CLOSE REVIEW (MINOR 2) — `heldPaise` is summed from the SAME `holds` read that planned the
+   * settlement, not from `composed.heldPaise`, which was a separate earlier query. A hold released
+   * between the two produced a refund request for money that was no longer earmarked.
+   */
+  const heldAtSettlement = holds.reduce((sum, h) => sum + h.amountPaise, 0);
+  const excess = heldAtSettlement - plannedFromHolds;
   let refundApprovalId: string | null = null;
   if (excess > 0) {
+    /**
+     * CLOSE REVIEW (MINOR 5) — §3A's third-party payer is carried into the reason.
+     *
+     * `ot_deposit_holds.paid_by` records who actually handed over the money (Spike Q6), and
+     * `requestRefund` has no payee field: billing captures the payee at VOUCHER time, which is the
+     * right moment — the person standing at the counter is who gets paid, and pre-filling a payee
+     * from a booking-day note would be worse than not carrying it. What was missing is that the
+     * clerk raising the voucher had no way to KNOW a third party paid. The reason line says so, so
+     * the fact travels to where the decision is made without pre-empting it.
+     */
+    const payers = holds
+      .map((h) => h.paidBy as { name?: string; relation?: string } | null)
+      .filter((p): p is { name?: string; relation?: string } => p !== null && typeof p.name === "string");
+    const payerNote = payers.length === 0
+      ? ""
+      : ` — deposit paid by ${payers.map((p) => `${p.name!}${p.relation === undefined ? "" : ` (${p.relation})`}`).join(", ")}; confirm the payee at the counter (§3A)`;
     const refund = await requestRefund(db, actor, {
       patientId: composed.patientId, kind: "advance_refund", amountPaise: excess,
-      reason: `day-care deposit exceeded the discharge bill for ${encounter.encounterNo}`,
+      reason: `day-care deposit exceeded the discharge bill for ${encounter.encounterNo}${payerNote}`,
       reasonClass: "genuine",
     });
     refundApprovalId = refund.approvalId;
   }
+  await withTx(db, (tx) => releaseHolds(tx, input.encounterId, `settled against ${result.invoiceNo}`));
 
   // A28 — the divergences, evented once the invoice exists so the event can name the line's price.
   for (const divergence of composed.divergences) {

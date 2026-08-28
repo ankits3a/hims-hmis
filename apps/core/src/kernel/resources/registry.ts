@@ -456,6 +456,29 @@ export async function assignResource(
       `resource ${id} is already occupied by ${existing.occupantType ?? "?"} ${existing.occupantRef}`,
     );
   }
+  /**
+   * ═══ PLAN 15 CLOSE REVIEW (MINOR 12) — AN EMPTY RESOURCE IS NOT THE SAME AS A FREE ONE ═══
+   *
+   * The only check used to be `occupantRef === null`, which is a check for EMPTY. A theatre blocked
+   * after a death on table has its occupant cleared and its status set to `blocked` — so it was
+   * empty, and the next sign-in walked straight back into it. The same holds for anything a human
+   * has deliberately taken out of service: `maintenance`, and `retired`, which DD2 introduced
+   * precisely to replace an `active` flag.
+   *
+   * A kind declares no explicit "assignable" set, and inventing one here would mean editing every
+   * manifest. But it declares the two statuses that MEAN not-in-use-and-not-withdrawn by
+   * construction — `initial` (never used) and `onRelease` (finished with) — and everything else is a
+   * state somebody put the resource into on purpose. Walking out of such a state silently is the
+   * defect; walking out of it deliberately is `changeResourceStatus`, which is where that decision
+   * belongs and is audited.
+   */
+  if (existing.status !== decl.initial && existing.status !== decl.onRelease) {
+    throw new ResourceError(
+      "already_occupied",
+      `resource ${id} is "${existing.status}" and cannot be assigned — return it to "${decl.initial}" first`,
+      { status: existing.status },
+    );
+  }
   const at = input.at ?? new Date();
   await tx.update(resources)
     .set({

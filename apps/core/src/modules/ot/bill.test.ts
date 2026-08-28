@@ -19,6 +19,7 @@ import { heldPaise, holdDeposit, openHolds } from "./deposit";
 import { intendedPayerFor } from "./ot.module";
 import {
   CASH_LIMIT_PAISE, assertCashWithinEncounterLimit, clampImplantUnitPaise, composeDischargeBill,
+  encounterCashPaise,
   frozenCeilingPaisePerBase, settleDischargeBill, unbilledDaycare,
 } from "./bill";
 import type { OtBaseFixture } from "../../../test/helpers/ot";
@@ -72,7 +73,7 @@ describe("the OT discharge bill (Plan 15 T7 / DD11)", () => {
    * a fifty-line walk in every leg would make the money hard to see.
    */
   async function anEncounter(outcome = "discharged"): Promise<{ caseId: string; encounterId: string; encounterNo: string }> {
-    const r = await bookCase(db, f.coordinator, {
+    const r = await bookCase(db, f.incharge, {
       patientId, procedureCode: "GYN-DNC-01", procedureClass: "gynae_dnc",
       surgeonId: f.surgeon.id, anaesthetistId: f.anaesthetist.id,
       listDate: LIST_DATE, payerClass: "self_pay", force: true,
@@ -270,7 +271,7 @@ describe("the OT discharge bill (Plan 15 T7 / DD11)", () => {
    */
   it("A27 — composition is refused while the SECOND case of a bilateral encounter is still open", async () => {
     const e = await anEncounter();
-    const second = await bookCase(db, f.coordinator, {
+    const second = await bookCase(db, f.incharge, {
       patientId, procedureCode: "GYN-DNC-02", procedureClass: "gynae_dnc",
       surgeonId: f.surgeon.id, anaesthetistId: f.anaesthetist.id,
       listDate: LIST_DATE, payerClass: "self_pay", encounterId: e.encounterId, force: true,
@@ -381,7 +382,7 @@ describe("the OT discharge bill (Plan 15 T7 / DD11)", () => {
    */
   it("A29 — the encounter's own hold settles the bill; the other encounter's hold is untouched", async () => {
     const e1 = await anEncounter();
-    const e2 = await bookCase(db, f.coordinator, {
+    const e2 = await bookCase(db, f.incharge, {
       patientId, procedureCode: "GYN-DNC-01", procedureClass: "gynae_dnc",
       surgeonId: f.surgeon.id, anaesthetistId: f.anaesthetist.id,
       listDate: "2026-09-09", payerClass: "self_pay", force: true,
@@ -464,6 +465,59 @@ describe("the OT discharge bill (Plan 15 T7 / DD11)", () => {
    * `service_day` and sees two lawful days; §269ST counts receipts in respect of a SINGLE
    * TRANSACTION, and one operation is one transaction. The mutant checks the day only.
    */
+  /**
+   * ═══ CLOSE REVIEW C1 — THE THREE READINGS THE ORIGINAL A31 COULD NOT TELL APART ═══
+   *
+   * A31 held the ENTIRE ₹1,50,000 receipt, so it passed identically whether the guard summed the
+   * held amounts or the receipts' whole cash tenders — and identically whether or not it counted a
+   * discharge tender at all. Three implementations, one green test. These are the legs that
+   * separate them; the first is the one that was actually broken, and it is the direction that
+   * under-counts, which is the direction that costs a §271DA penalty.
+   */
+  it("C1 — cash taken AT DISCHARGE counts against the encounter's next bill", async () => {
+    const e = await anEncounter();
+    const composed = await composeDischargeBill(db, e.encounterId);
+    await holdFor(e.encounterId, composed.expectedNetPaise);
+
+    // Settle with a cash tender on top of the deposit. That cash is received in respect of THIS
+    // encounter and is never held — the original guard could not see it at all.
+    // `holdFor` pays by UPI, so the ONLY cash on this encounter is the discharge tender — which is
+    // exactly what the original guard could not see. ₹40,000 stays under billing's own PAN
+    // threshold, so this leg tests §269ST and not §139A.
+    await settleDischargeBill(db, cashier, { encounterId: e.encounterId, cashTenderPaise: 4_000_000 });
+
+    expect(await encounterCashPaise(db, e.encounterId, e.encounterNo)).toBe(4_000_000);
+    // …so a SECOND bill on the same encounter cannot quietly take another ₹1,60,000 on top.
+    await expect(assertCashWithinEncounterLimit(db, e.encounterId, e.encounterNo, 16_000_000))
+      .rejects.toThrow(/§269ST/);
+  });
+
+  it("C1 — only the EARMARKED part of a large cash advance counts", async () => {
+    const e = await anEncounter();
+    const { receiptId } = await recordReceipt(db, cashier, {
+      patientId, tenders: [{ mode: "cash", amountPaise: 15_000_000 }], panNumber: "ABCDE1234F",
+    });
+    // ₹1,50,000 received; only ₹10,000 earmarked for this operation.
+    await withTx(db, (tx) => holdDeposit(tx, f.coordinator, {
+      encounterId: e.encounterId, receiptId, amountPaise: 1_000_000,
+    }));
+    expect(await encounterCashPaise(db, e.encounterId, e.encounterNo)).toBe(1_000_000);
+  });
+
+  it("C1 — two holds carved from ONE receipt do not count that receipt twice", async () => {
+    const e = await anEncounter();
+    const { receiptId } = await recordReceipt(db, cashier, {
+      patientId, tenders: [{ mode: "cash", amountPaise: 15_000_000 }], panNumber: "ABCDE1234F",
+    });
+    for (const amt of [1_000_000, 2_000_000]) {
+      await withTx(db, (tx) => holdDeposit(tx, f.coordinator, {
+        encounterId: e.encounterId, receiptId, amountPaise: amt,
+      }));
+    }
+    // ₹30,000 earmarked in two pieces of one receipt — not ₹3,00,000, and not ₹1,50,000 twice.
+    expect(await encounterCashPaise(db, e.encounterId, e.encounterNo)).toBe(3_000_000);
+  });
+
   it("A31 — a discharge cash tender is refused when the ENCOUNTER's cash total would reach ₹2,00,000", async () => {
     const e = await anEncounter();
     // Day 1: ₹1,50,000 in cash, with PAN, held against the encounter.
@@ -471,10 +525,10 @@ describe("the OT discharge bill (Plan 15 T7 / DD11)", () => {
       patientId, tenders: [{ mode: "cash", amountPaise: 15_000_000 }], panNumber: "ABCDE1234F",
     });
     await withTx(db, (tx) => holdDeposit(tx, f.coordinator, { encounterId: e.encounterId, receiptId, amountPaise: 15_000_000 }));
-    expect(await assertCashWithinEncounterLimit(db, e.encounterId, 4_000_000).then(() => "ok", () => "refused")).toBe("ok");
+    expect(await assertCashWithinEncounterLimit(db, e.encounterId, e.encounterNo, 4_000_000).then(() => "ok", () => "refused")).toBe("ok");
 
     // Day 3: ₹60,000 more takes the encounter to ₹2,10,000.
-    await expect(assertCashWithinEncounterLimit(db, e.encounterId, 6_000_000))
+    await expect(assertCashWithinEncounterLimit(db, e.encounterId, e.encounterNo, 6_000_000))
       .rejects.toThrow(/§269ST blocks at 20000000p/);
     await expect(settleDischargeBill(db, cashier, { encounterId: e.encounterId, cashTenderPaise: 6_000_000 }))
       .rejects.toThrow(/cash total would reach/);
@@ -603,6 +657,81 @@ describe("the OT discharge bill (Plan 15 T7 / DD11)", () => {
       .rejects.toThrow(/unsettled/);
     expect(await withTx(db, (tx) => heldPaise(tx, e.encounterId)))
       .toBe(composed.expectedNetPaise - 1_000_000);
+  });
+
+  /**
+   * ═══ CLOSE REVIEW M4 — A CEILING THAT CANNOT BE RE-DERIVED IS NOT "NO CEILING" ═══
+   *
+   * `consumptionsFor` returns `ceilingPaisePerBase: null` when `mrpPerBaseUnit` cannot convert the
+   * regulation to a per-base number — an unrecognised `mrp_uom`, or a gazette price that does not
+   * divide into whole paise. The clamp skipped null bounds, so it quietly became `min(tariff, MRP)`
+   * and the invoice could stand ABOVE the NPPA ceiling, in exactly the untidy cases. The frozen
+   * value on `material.consumed` is a real gazette number for this item, so it is used instead.
+   */
+  it("M4 — an underivable ceiling falls back to the FROZEN one, never to no ceiling at all", async () => {
+    const e = await anEncounter();
+    // Frozen ceiling ₹38,000 — below both the ₹50,000 tariff and the ₹42,000 MRP, so it must win.
+    // The regulation row is written with a uom the item has no conversion for, which is what makes
+    // the derived value null.
+    await anImplant({
+      caseId: e.caseId, encounterId: e.encounterId, serial: "SN-M4",
+      frozenCeiling: 3_800_000, ceilingPaisePerBase: null,
+    });
+    const composed = await composeDischargeBill(db, e.encounterId);
+    expect(composed.implantLines[0]).toMatchObject({
+      boundApplied: "ceiling", capUnitPaise: 3_800_000, ceilingPaisePerBase: 3_800_000,
+    });
+  });
+
+  /**
+   * ═══ CLOSE REVIEW M8 — A DOUBLE-SUBMIT USED TO TAKE THE CASH TWICE ═══
+   *
+   * Nothing refused a second settlement, and `issueInvoice` was handed a fresh `newId()` each time.
+   * The deposit-funded path self-blocked because `releaseHolds` had already run — luck, not a
+   * guard — and the cash-only path (a waived deposit, a scheme patient's non-payables) had no luck.
+   */
+  it("M8 — a second settlement is refused unless it is asked for as an additional bill", async () => {
+    const e = await anEncounter();
+    const composed = await composeDischargeBill(db, e.encounterId);
+    await holdFor(e.encounterId, composed.expectedNetPaise);
+    const first = await settleDischargeBill(db, cashier, { encounterId: e.encounterId });
+
+    await expect(settleDischargeBill(db, cashier, { encounterId: e.encounterId }))
+      .rejects.toThrow(/is already billed/);
+    expect(await db.select().from(invoices)).toHaveLength(1);
+
+    /**
+     * The deliberate second bill — a return to theatre on the same encounter (N13) — is allowed,
+     * and it is a DIFFERENT invoice rather than a repeat of the first. It has to be paid for on its
+     * own: the deposit is spent, so the second bill needs its own tender, which is the honest shape
+     * of a second operation and is why `additionalBill` is opt-in rather than a retry.
+     */
+    const composedAgain = await composeDischargeBill(db, e.encounterId);
+    const second = await settleDischargeBill(db, cashier, {
+      encounterId: e.encounterId, additionalBill: true,
+      tenders: [{ mode: "card", amountPaise: composedAgain.expectedNetPaise, refText: "CARD/2" }],
+    });
+    expect(second.invoiceNo).not.toBe(first.invoiceNo);
+    expect(await db.select().from(invoices)).toHaveLength(2);
+  });
+
+  /**
+   * ═══ CLOSE REVIEW M9 — THE DISCHARGE DESK IS NOT A CASH-ONLY DESK ═══
+   *
+   * The route took `cashTenderPaise` and nothing else, so any balance above the deposit had to be
+   * cash — and with §269ST capping encounter cash at ₹2,00,000, a large bill with no deposit could
+   * not be settled through this module at all.
+   */
+  it("M9 — a card tender settles the balance, and §269ST is asked only about the cash", async () => {
+    const e = await anEncounter();
+    const composed = await composeDischargeBill(db, e.encounterId);
+    const settled = await settleDischargeBill(db, cashier, {
+      encounterId: e.encounterId,
+      tenders: [{ mode: "card", amountPaise: composed.expectedNetPaise, refText: "CARD/9001" }],
+    });
+    expect(settled.allocatedPaise).toBe(composed.expectedNetPaise);
+    // No cash was taken, so nothing counts against the encounter's §269ST total.
+    expect(await encounterCashPaise(db, e.encounterId, e.encounterNo)).toBe(0);
   });
 
   it("D12 — stock ISSUED and never consumed is a warning row, not a block", async () => {

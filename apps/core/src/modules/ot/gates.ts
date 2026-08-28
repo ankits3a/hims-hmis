@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
-import { otCaseGates, otCases } from "../../kernel/db/schema";
+import { daycareEncounters, otCaseGates, otCases } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { transition } from "../../kernel/workflow/instances";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
@@ -254,8 +254,27 @@ async function computeSatisfaction(
       const policy = await activeDefinition(tx, "deposit_policy");
       const cases = await tx.select().from(otCases).where(eq(otCases.encounterId, kase.encounterId));
       const quotePaise = cases.reduce((sum, c) => sum + c.quotePaise, 0);
+      /**
+       * ═══ CLOSE REVIEW M1 — THE PAYER CLASS IS THE ENCOUNTER'S, NOT THE CASE'S SNAPSHOT ═══
+       *
+       * `ot_cases.payer_class` and `daycare_encounters.payer_class` are two copies of one fact
+       * (§2.54), and `changePayerClass` wrote only the encounter — so a case booked `govt_scheme`
+       * (policy `zero`) and re-classed to `self_pay` when the scheme refused cover kept satisfying
+       * its deposit gate at ₹0 required against ₹0 held. The patient reached theatre unfunded and
+       * the shortfall only surfaced at discharge, as `unsettled_issue_refused`, with the operation
+       * already done.
+       *
+       * The money control reads the ENCOUNTER, which is the row `changePayerClass` writes and the
+       * row `intendedPayerFor` bills from. `changePayerClass` also keeps the case snapshot in step
+       * so the two cannot be seen disagreeing, but this read is what makes the drift harmless.
+       */
+      const enc = (await tx.select().from(daycareEncounters)
+        .where(eq(daycareEncounters.id, kase.encounterId)))[0];
+      if (enc === undefined) {
+        throw new OtError("unknown_case", `unknown day-care encounter ${kase.encounterId}`);
+      }
       const required = requiredDeposit(policy, {
-        payerClass: kase.payerClass as PayerClass,
+        payerClass: enc.payerClass as PayerClass,
         quotePaise,
         implantEstimatePaise: parsed.implantEstimatePaise,
         sanctionedPaise: parsed.sanctionedPaise,

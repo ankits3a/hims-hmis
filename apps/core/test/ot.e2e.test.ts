@@ -396,9 +396,9 @@ describe("the mini-OT over HTTP (Plan 15 T8)", () => {
 
     const score = { vitals: 2, ambulation: 2, nausea: 2, pain: 2, bleeding: 2 };
     await request(server()).post(`/ot/recovery/${encounterId}/scores`).set(...auth(recovery.token))
-      .send({ caseId, values: score, occurredAt: "2026-09-02T06:00:00.000Z" }).expect(201);
+      .send({ caseId, values: score, occurredAt: new Date(Date.now() - 60 * 60_000).toISOString() }).expect(201);
     const second = await request(server()).post(`/ot/recovery/${encounterId}/scores`).set(...auth(recovery.token))
-      .send({ caseId, values: score, occurredAt: "2026-09-02T06:40:00.000Z" }).expect(201);
+      .send({ caseId, values: score, occurredAt: new Date(Date.now() - 20 * 60_000).toISOString() }).expect(201);
     expect((second.body as { readiness: { ready: boolean } }).readiness.ready).toBe(true);
 
     // A21 — discharge is refused without a DISCHARGE-time escort verification. Over HTTP.
