@@ -83,3 +83,10 @@ export {
 export type { DeployImplantInput, ImplantRow } from "./implants";
 export { SPECIMEN_STATES, createSpecimen, dispatchSpecimen, specimensFor } from "./specimens";
 export type { SpecimenRow } from "./specimens";
+
+// ── T6 — recovery: bays, scoring, escort, discharge, conversion, absconded ──
+export {
+  admitToBay, convertToAdmission, dischargeDaycare, evaluateDischargeReady, istTimePassed,
+  markAbsconded, readinessOf, recordScore, recoveryBoard, scoresFor, verifyEscort,
+} from "./recovery";
+export type { EscortVerification, PacuScoreRow, ReadinessVerdict } from "./recovery";
