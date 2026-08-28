@@ -13,6 +13,7 @@ import { partnersManifest } from "../../modules/partners";
 import { formularyManifest } from "../../modules/formulary";
 import { resourcesManifest } from "../resources/manifest";
 import { materialsManifest } from "../../modules/materials";
+import { otManifest } from "../../modules/ot";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -97,4 +98,16 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // `workerConsumers` and the census as ONE commit — the `partnersManifest` rule (§6.0 S2, Plan 10
   // D13): a declared subscription with no matching handler is a BOOT ERROR by design.
   materialsManifest,
+  // PLAN 15 T2 — the mini-OT, appended so the fourteen above keep the order they were installed in.
+  //
+  // Installed in BOTH processes, the `materials` case exactly: it carries a SUBSCRIPTION
+  // (`patient.merged` → `ot.patient_merged`, shipped WITH its handler in this same commit) and,
+  // from T4, a scheduler job (`surgeon.late_flagged`). So the worker has something to consume and
+  // something to run, and the worker's difference from this list stays FOUR — `ot` appears on
+  // neither side of it (manifests.test.ts leg 3).
+  //
+  // It is also the second manifest to carry `resourceKinds`, and it claims exactly ONE: `theatre`.
+  // NOT `bed` — `KERNEL_RESOURCE_KINDS` already claims that and a second declaration is
+  // `duplicate_kind` at boot (adversarial finding F1). The two recovery bays are kernel `bed` rows.
+  otManifest,
 ];

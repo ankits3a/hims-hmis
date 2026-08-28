@@ -20,6 +20,9 @@ import { PARTNERS_ACCRUAL_CONSUMER, accrualConsumer, partnersManifest } from "..
 import {
   MATERIALS_CONSUMPTION_CONSUMER, consumptionConsumer, materialsManifest,
 } from "../../modules/materials";
+import {
+  OT_PATIENT_MERGED_CONSUMER, otManifest, patientMergedConsumer,
+} from "../../modules/ot";
 import { collectResourceKinds } from "../resources/kinds";
 import type { Handler } from "../events/subscriptions";
 import type { Scheduler } from "./scheduler";
@@ -105,6 +108,18 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // (`sweepBatchExpiry`, T8). So `manifests.test.ts` leg 3 stays at FOUR: materials appears
         // on neither side of the difference, which is what "installed in both" looks like there.
         registry.install(materialsManifest);
+        // PLAN 15 T2 — THE MINI-OT, AND IT IS THE ONE-EDIT RULE A FIFTH TIME. Unlike the four
+        // before it, this manifest ships its subscription IN THIS COMMIT rather than an empty array:
+        // `patient.merged` -> `ot.patient_merged`, with `patientMergedConsumer` in `workerConsumers`
+        // below and the census in the same commit. The plan says so in as many words — a stub that
+        // throws `not_implemented` is NOT acceptable — and the reason is `patient_merge`'s own
+        // history: an unregistered approval type threw on every merge on the live box for months
+        // because nothing failed loudly at boot. A consumer that boots and refuses is the same lie.
+        //
+        // It also carries `resourceKinds` (`theatre`), so `collectResourceKinds` below now has two
+        // kind-declaring manifests to reconcile rather than one — which is what makes that call a
+        // live check in this process rather than a formality.
+        registry.install(otManifest);
         // ══ PLAN 13 CLOSE / M2's CARRY-FORWARD, CLOSED HERE (Plan 14 DD2, Spike Q6) ══
         //
         // This is `app.module.ts:73`'s line, in the process that did not have it. Plan 13's close
@@ -176,6 +191,11 @@ export function workerConsumers(db: Db): Record<string, Handler> {
     // publisher exists is deliberate: the consumer is the half of the interface Plan 14 owes, and
     // the cursor advances from the first boot so nothing is lost between the two phases.
     [MATERIALS_CONSUMPTION_CONSUMER]: consumptionConsumer(db),
+    // PLAN 15 T2 / A5 — the other half of the install above. `otManifest` declares
+    // `patient.merged` -> `ot.patient_merged` in the commit that adds this line; deleting either
+    // fails `worker-runtime.e2e.test.ts`'s whole-equality assertion instead of leaving a merged
+    // patient's theatre list pointing at a patient id the registry says does not exist.
+    [OT_PATIENT_MERGED_CONSUMER]: patientMergedConsumer(db),
   };
 }
 

@@ -1023,6 +1023,67 @@ always, 1,440 minutes) gates changing where a supplier's money goes, and stamps 
 cooling-off that this phase records and a later one enforces. An approval type reaches a deployment
 only through a seed script, which is why that seed is in `deploy.sh` and not in a runbook.
 
+## Mini-OT — the day-care spine (Plan 15)
+
+The hospital could register a patient, consult, prescribe, bill and hold a consignment implant in a
+store. It could not operate on anyone. This module is spec §11.16-A at one-theatre scale: a booking
+that cannot skip its gates, a theatre that cannot be double-entered, counts that cannot be typed as
+"correct", an implant scan that is a ledger fact in the same transaction, a recovery bay that cannot
+be double-assigned, and a discharge bill composed from the ledger under `min(tariff, MRP, ceiling)`.
+
+The unit is ONE theatre (`OT-1`, a registry resource of the module's own `theatre` kind), TWO
+recovery bays (`RB-1`, `RB-2` — **kernel `bed` rows**, because `bed` is a kernel kind and a second
+declaration is a boot error) and ONE consignment bin (`OT-CONSIGN`, a materials `store`). All four
+are created by `seed:ot` in the deploy path, idempotently, and never through a screen: they are
+fixed by the building rather than by a purchasing decision, and every write path needs them to exist
+before the first booking.
+
+**Permissions (Plan 15 / DD14): fourteen strings across six new roles, and three separations that
+are the point of the module.** `ot_incharge` runs the list and holds eleven — but NOT
+`ot.gates.override`, NOT `ot.definitions.manage`, NOT `ot.bill.compose`: the person under the most
+pressure to start on time must not be able to wave a clinical gate through, redefine what the unit
+may operate on, or bill for it. `surgeon` AND `anaesthetist` both hold `ot.gates.override`, because
+a clinical override needs two DISTINCT actors holding those two roles — one role holding it would
+make the two-key rule satisfiable by one person with two logins. `recovery_nurse` holds
+`ot.discharge` and `ot_nurse` does not: a day-care patient leaves from the bay, and the person who
+signs her out is the person who scored her.
+
+| Permission | ot_incharge | surgeon | anaesthetist | ot_nurse | recovery_nurse | daycare_coordinator |
+|---|---|---|---|---|---|---|
+| `ot.definitions.read` | ✓ | ✓ | ✓ | | | ✓ |
+| `ot.cases.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `ot.cases.book` | ✓ | | | | | ✓ |
+| `ot.cases.cancel` | ✓ | | | | | ✓ |
+| `ot.list.manage` | ✓ | | | | | ✓ |
+| `ot.gates.satisfy` | ✓ | | | | | ✓ |
+| `ot.gates.override` | | ✓ | ✓ | | | |
+| `ot.cockpit.operate` | ✓ | ✓ | ✓ | ✓ | | |
+| `ot.implants.scan` | ✓ | | | ✓ | | |
+| `ot.counts.record` | ✓ | | | ✓ | | |
+| `ot.recovery.operate` | ✓ | | | | ✓ | |
+| `ot.discharge` | ✓ | | | | ✓ | |
+
+Two strings are held outside that table, by roles that already exist: `medical_superintendent` gains
+`ot.definitions.read` and `ot.definitions.manage` — the criteria whitelist, the privilege list, the
+deposit policy and the PACU thresholds are what the unit is ALLOWED to do, which is a
+clinical-governance decision and therefore that office's — and `billing_manager` gains
+`ot.bill.compose`, because composing a discharge bill reads the ledger, applies the regulated clamp,
+allocates the deposit and can raise a refund, which belongs with the role that approves every other
+billing exception rather than with the desk that takes the cash. **The plan named a
+`billing_counter` role for that grant; no such role exists anywhere in this system, and granting a
+string to a role that does not exist would make it a permission nobody can ever hold.** All six new
+roles are created by `seed:roles` with grants and **no holders**, the `pharmacy` and `storekeeper`
+precedent.
+
+**Two approval types, registered by `seed:ot` in the deploy path.** `ot_definition_publish`
+(approver `medical_superintendent`, 1,440-minute SLA) gates publishing any of the four governed
+definitions — the engine's own requester-vs-approver segregation then forces two distinct humans, and
+this deployment has them. `ot_deposit_exception` (approver **`owner`**, 120 minutes) is the ONLY
+path by which a deposit shortfall reaches a satisfied gate: the money rule is the owner's, not the
+superintendent's, and the person who waives a deposit must not be the person under pressure to fill
+the list.
+
+
 ## Worker process (Plan 08.5)
 
 A second Node process, `apps/core/src/worker.ts`, boots a providers-only Nest application context

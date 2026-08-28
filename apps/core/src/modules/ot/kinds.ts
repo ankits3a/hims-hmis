@@ -68,3 +68,21 @@ export const OT_RESOURCE_KINDS: readonly ResourceKindDecl[] = [
  * reader name the same string — one constant, one owner (16a DD5).
  */
 export const DAYCARE_RECOVERY_BAY_CLASS = "daycare_recovery";
+
+/**
+ * PLAN 15 T2 — the three resource CODES `seed-ot.ts` creates and every later reader looks up by.
+ *
+ * They live beside the kind declaration because they are resource identity, and one constant with
+ * one owner is 16a's DD5: a seed that writes `"OT-1"` and a reader that looks up `"OT1"` produce a
+ * unit with two theatres, one of which nothing can find. `resources_site_kind_code_lower_ux` is
+ * unique on `(site_id, kind, lower(code))`, so the seed's find-or-create is safe against a re-run
+ * and against a race — and Spike Q2 measured production holding `room × 2` and nothing else, so on
+ * the first deploy all four rows are created rather than found.
+ *
+ * **`OT-CONSIGN` is a materials `store`, not a theatre or a bay** (DD3 / F14): `0034` created the
+ * consignment TABLES and not a single store row, and `consignmentDeployed.storeResourceId` is
+ * required — so without this row the first implant scan has nowhere to deploy FROM.
+ */
+export const OT_THEATRE_CODE = "OT-1";
+export const OT_RECOVERY_BAY_CODES = ["RB-1", "RB-2"] as const;
+export const OT_CONSIGNMENT_STORE_CODE = "OT-CONSIGN";

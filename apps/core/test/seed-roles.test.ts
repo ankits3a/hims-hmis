@@ -270,10 +270,35 @@ const RESOURCES_PAIRS: readonly string[] = [
   "opd_admin/resources.read",
 ];
 
-/** All nine non-table sets. A model row outside this union fails V3's last leg. */
+/** The README prose line that authorises Plan 15's two out-of-table OT grants. Quoted, not paraphrased. */
+const OT_README_PROSE =
+  "`ot.bill.compose`, because composing a discharge bill reads the ledger, applies the regulated clamp,";
+
+/**
+ * PLAN 15 / DD14 — THE THREE (role, permission) PAIRS THAT SIT OUTSIDE THE OT TABLE. The TENTH
+ * non-table set, and the first one whose existence is a CORRECTION rather than a decision.
+ *
+ * The other twelve OT strings are a table (see `otTable` below): fourteen strings across six roles
+ * is a shape, and a grid shows a shape. These three are held by roles that pre-date the module and
+ * have no column in it — the same structural reason every non-table set exists.
+ *
+ * **`billing_manager/ot.bill.compose` is where the plan was wrong.** DD14 says
+ * *"`billing_counter` (existing) gains `ot.bill.compose`"*, and there is no `billing_counter` role:
+ * not in `ROLE_MODEL`, not in `OPD_ROLE_KEYS`, not in `LOCAL_ROLE_TITLES`, and — Spike Q3 —
+ * not on production, where the counter is `cashier` and its supervisor is `billing_manager`.
+ * Granting a declared string to a role that does not exist produces a permission nobody can ever
+ * hold, which is exactly the state `NOT_YET_MODELLED` exists to make visible.
+ */
+const OT_PAIRS: readonly string[] = [
+  "medical_superintendent/ot.definitions.read",
+  "medical_superintendent/ot.definitions.manage",
+  "billing_manager/ot.bill.compose",
+];
+
+/** All ten non-table sets. A model row outside this union fails V3's last leg. */
 const NON_TABLE_PAIRS: readonly string[] = [
   ...RULING_7_PAIRS, ...WORKFLOW_RULING_PAIRS, ...PLAN_09_PAIRS, ...GROUP_C_PAIRS, ...GROUP_A_PAIRS,
-  ...MERGE_LANE_PAIRS, ...GROUP_B_PAIRS, ...FORMULARY_PAIRS, ...RESOURCES_PAIRS,
+  ...MERGE_LANE_PAIRS, ...GROUP_B_PAIRS, ...FORMULARY_PAIRS, ...RESOURCES_PAIRS, ...OT_PAIRS,
 ];
 
 type GrantTable = {
@@ -424,15 +449,22 @@ const billingTable = tables.find((t) => t.roles[0] === "cashier");
  * why `NON_TABLE_PAIRS` does not grow by twenty.
  */
 const materialsTable = tables.find((t) => t.roles[0] === "materials_head");
-if (opdTable === undefined || billingTable === undefined || materialsTable === undefined) {
+/**
+ * PLAN 15 T2 / DD14 — THE FOURTH TABLE, and it clears the materials bar by a wide margin: twelve
+ * strings across SIX roles is thirty ticks, and the SHAPE is the whole decision — who may override a
+ * gate, who may discharge, what the in-charge is deliberately denied. A paragraph cannot show a
+ * shape. The three grants that fall outside it are `OT_PAIRS`.
+ */
+const otTable = tables.find((t) => t.roles[0] === "ot_incharge");
+if (opdTable === undefined || billingTable === undefined || materialsTable === undefined || otTable === undefined) {
   throw new Error(
-    "README.md: could not identify all three permission tables by their first role column " +
+    "README.md: could not identify all four permission tables by their first role column " +
       `(found: ${tables.map((t) => t.roles.join("+")).join(" | ")}) — this parser is stale`,
   );
 }
 
 describe("seed:roles — the census pins, stated before anything is compared (§2.49)", () => {
-  it("ALL_MANIFESTS declares eighty-nine permissions, by module", () => {
+  it("ALL_MANIFESTS declares one hundred and three permissions, by module", () => {
     const byKey = new Map(ALL_MANIFESTS.map((m) => [m.key, m.permissions.length]));
     expect(Object.fromEntries(byKey)).toEqual({
       auth: 7, // 11e's six + `auth.elevation.review` (the elevation-review queue)
@@ -472,11 +504,19 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // today — DD8's two-stage gate — so that the day a PO-approver/receiver SoD pair is ruled
       // (14b, and O1), it is a `sod_pairs` row rather than a refactor.
       materials: 11,
+      // PLAN 15 T2 / DD14 — fourteen, declared on the manifest ahead of every route that guards on
+      // them (T8 mounts the routes). The count is the module's whole authority surface: four about
+      // the case (`read/book/cancel` + `list.manage`), three about the gates
+      // (`satisfy/override` + `definitions.read`), one about definition governance
+      // (`definitions.manage`), four about the theatre floor
+      // (`cockpit.operate`, `implants.scan`, `counts.record`, `recovery.operate`), one about
+      // leaving (`discharge`) and one about the money (`bill.compose`).
+      ot: 14,
     });
-    expect(installedRegistry().allPermissions()).toHaveLength(89);
+    expect(installedRegistry().allPermissions()).toHaveLength(103);
   });
 
-  it("the role model is eighteen roles, one hundred and twenty-one grants, sixty-nine distinct permissions", () => {
+  it("the role model is twenty-four roles, one hundred and fifty-six grants, eighty-three distinct permissions", () => {
     expect(ROLE_MODEL.map((r) => r.roleKey)).toEqual([
       "front_office",
       "front_office_supervisor",
@@ -507,6 +547,15 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // precedent: production held 33 users and no storekeeper at kickoff.
       "materials_head",
       "storekeeper",
+      // PLAN 15 / DD14, 2026-08-28 — the six OT roles, APPENDED so the eighteen above keep the
+      // order they were added in. All six are created with grants and no holders (Spike Q3: none
+      // of the six keys exists on production), the `materials_head` precedent one phase later.
+      "ot_incharge",
+      "surgeon",
+      "anaesthetist",
+      "ot_nurse",
+      "recovery_nurse",
+      "daycare_coordinator",
     ]);
     expect(Object.fromEntries(ROLE_MODEL.map((r) => [r.roleKey, r.permissions.length]))).toEqual({
       // Plan 09 / DD18 moved four of these: +3 each to the two desk roles and the cashier (read,
@@ -532,14 +581,14 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // as `CROC500` in three stores is curating half a fact.
       pharmacy: 8,
       cashier: 11,
-      billing_manager: 10,
+      billing_manager: 11,
       // Group A, 2026-08-26: +4 — tariff.read, the activator key, tariff config, and approval-type
       // governance. `owner` is now the activator for BOTH ceremonies, workflow and price list.
       // Group B then added +3: the invoice, the daybook and the cashier sessions. NOT patients.read.
       owner: 10,
       // Group C, 2026-08-26: +2, the break-glass and elevation review desks. The merge lane then
       // added +3 — the approvals pair it is the approverRole for, and the records it decides about.
-      medical_superintendent: 7,
+      medical_superintendent: 9,
       duty_manager: 1,
       tariff_editor: 3,
       membership_admin: 2,
@@ -549,9 +598,18 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // three read/QC strings), which is why the grant total moves by twenty and not by seventeen.
       materials_head: 11,
       storekeeper: 6,
+      // PLAN 15 T2 / DD14 — the six OT roles. `medical_superintendent` moved 12 → 14 and
+      // `billing_manager` 9 → 10 in the same commit (the three `OT_PAIRS`), which is why the grant
+      // total moves by thirty-five and not by thirty-two.
+      ot_incharge: 11,
+      surgeon: 4,
+      anaesthetist: 4,
+      ot_nurse: 4,
+      recovery_nurse: 3,
+      daycare_coordinator: 6,
     });
-    expect(modelPairs()).toHaveLength(121);
-    expect(modelPermissions()).toHaveLength(69);
+    expect(modelPairs()).toHaveLength(156);
+    expect(modelPermissions()).toHaveLength(83);
     // No role lists the same permission twice — a duplicate would inflate the counts above
     // without changing a single row of `role_permissions`.
     for (const role of ROLE_MODEL) {
@@ -559,8 +617,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     }
   });
 
-  it("the reachability census closes: 89 declared = 75 held + 14 not yet modelled", () => {
-    expect(installedRegistry().allPermissions()).toHaveLength(89);
+  it("the reachability census closes: 103 declared = 89 held + 14 not yet modelled", () => {
+    expect(installedRegistry().allPermissions()).toHaveLength(103);
     // 42 + 13 until the 2026-08-23 ruling moved the four `workflow.definitions.*` strings across;
     // 46 + 13 until Plan 09 declared fourteen and DD18 granted four of them.
     // 50 until `auth.elevation.review` was declared; it is held from the first deploy because
@@ -581,15 +639,21 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // FOURTEEN**, which is the number worth reading here. All eleven new strings are granted in the
     // same commit that declares them, so this phase adds nothing to the list of permissions held by
     // nobody — the property the paragraph above says a phase "has to add a row with a reason" for.
-    expect(heldPermissions()).toHaveLength(75);
+    // PLAN 15 T2 — 89 → 103 declared and 75 → 89 held, and **NOT_YET_MODELLED IS UNCHANGED AT
+    // FOURTEEN** for the third phase running. All fourteen new strings are granted in the same
+    // commit that declares them. One of the fourteen nearly was not: DD14 assigned
+    // `ot.bill.compose` to a `billing_counter` role that does not exist, and a grant to a
+    // non-existent role is not a grant — the string would have landed on the other side of this
+    // sum with nothing anywhere saying so. It goes to `billing_manager` (finding T2-d).
+    expect(heldPermissions()).toHaveLength(89);
     expect(NOT_YET_MODELLED).toHaveLength(14);
-    expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(89);
+    expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(103);
   });
 
-  it("the README carries exactly three permission tables, of the measured shapes", () => {
-    // THREE since Plan 14 T2 / DD11 — see the `materialsTable` docstring above for why materials
-    // takes a table where `formulary` and `resources` took non-table pairs.
-    expect(tables).toHaveLength(3);
+  it("the README carries exactly four permission tables, of the measured shapes", () => {
+    // FOUR since Plan 15 T2 / DD14 — see the `materialsTable` and `otTable` docstrings above for
+    // why materials and the OT take tables where `formulary` and `resources` took non-table pairs.
+    expect(tables).toHaveLength(4);
     expect(opdTable.roles).toEqual([
       "front_office",
       "front_office_supervisor",
@@ -629,6 +693,36 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     expect(materialsTable.cells.get("materials.grn.qc")).toEqual(["materials_head", "pharmacy"]);
     // The narrowest grant in the module: one action stops every location's stock of a batch.
     expect(materialsTable.cells.get("materials.recall.manage")).toEqual(["materials_head"]);
+
+    // PLAN 15 T2 / DD14 — the fourth table. TWELVE rows, twelve permissions (no shorthand cell) and
+    // THIRTY-TWO ticks. Per-role counts are pinned separately from the total for the materials reason,
+    // which bites harder here: the total alone would survive a diff that moved `ot.gates.override`
+    // from `surgeon` to `ot_incharge`, and that single tick is the difference between a two-key
+    // clinical override and a list manager waving a gate through to start on time.
+    expect(otTable.roles).toEqual([
+      "ot_incharge", "surgeon", "anaesthetist", "ot_nurse", "recovery_nurse", "daycare_coordinator",
+    ]);
+    expect(otTable.rowCount).toBe(12);
+    expect(otTable.cells.size).toBe(12);
+    expect(tablePairs(otTable)).toHaveLength(32);
+    expect(tablePairs(otTable).filter((p) => p.startsWith("ot_incharge/"))).toHaveLength(11);
+    expect(tablePairs(otTable).filter((p) => p.startsWith("surgeon/"))).toHaveLength(4);
+    expect(tablePairs(otTable).filter((p) => p.startsWith("anaesthetist/"))).toHaveLength(4);
+    expect(tablePairs(otTable).filter((p) => p.startsWith("ot_nurse/"))).toHaveLength(4);
+    expect(tablePairs(otTable).filter((p) => p.startsWith("recovery_nurse/"))).toHaveLength(3);
+    expect(tablePairs(otTable).filter((p) => p.startsWith("daycare_coordinator/"))).toHaveLength(6);
+
+    // ── The three separations DD14 exists for, as cells rather than as prose ──
+    //
+    // 1. The override is the two clinicians' and NOBODY else's — least of all the in-charge.
+    expect(otTable.cells.get("ot.gates.override")).toEqual(["surgeon", "anaesthetist"]);
+    // 2. The patient leaves from the bay: the person who scores her signs her out.
+    expect(otTable.cells.get("ot.discharge")).toEqual(["ot_incharge", "recovery_nurse"]);
+    // 3. `ot.definitions.manage` and `ot.bill.compose` appear in NO column of this table at all —
+    //    they are `OT_PAIRS`, held by the MS and by `billing_manager`. A table cell for either
+    //    would be the in-charge redefining the unit's scope or billing for its own list.
+    expect(otTable.cells.get("ot.definitions.manage")).toBeUndefined();
+    expect(otTable.cells.get("ot.bill.compose")).toBeUndefined();
   });
 
   it("both README parsers THROW on a shape they do not recognise, never return []", () => {
@@ -683,14 +777,19 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     expect(modelKeys.filter((k) => !opdKeys.includes(k))).toEqual([
       "pharmacy", "cashier", "billing_manager", "tariff_editor", "membership_admin", "mrd_officer",
       "biomedical_engineer", "materials_head", "storekeeper",
+      // PLAN 15 / DD14 appends six: a theatre is not a consulting room either, and `surgeon` and
+      // `anaesthetist` in particular are NOT `doctor` — `doctor` is an OPD station key, these two
+      // are what `signIn` and `overrideGate` match on.
+      "ot_incharge", "surgeon", "anaesthetist", "ot_nurse", "recovery_nurse", "daycare_coordinator",
     ]);
     // `nurse` is now the ONLY constant entry with no permission column anywhere — `duty_manager`
     // left this list on 2026-08-26 when Group C gave it one.
     expect(opdKeys.filter((k) => !modelKeys.includes(k))).toEqual(["nurse"]);
     // The UNION covers the model exactly, and neither source shadows the other.
     expect(Object.keys(LOCAL_ROLE_TITLES).sort()).toEqual([
-      "billing_manager", "biomedical_engineer", "cashier", "materials_head", "membership_admin",
-      "mrd_officer", "pharmacy", "storekeeper", "tariff_editor",
+      "anaesthetist", "billing_manager", "biomedical_engineer", "cashier", "daycare_coordinator",
+      "materials_head", "membership_admin", "mrd_officer", "ot_incharge", "ot_nurse", "pharmacy",
+      "recovery_nurse", "storekeeper", "surgeon", "tariff_editor",
     ]);
     expect(Object.keys(LOCAL_ROLE_TITLES).filter((k) => opdKeys.includes(k))).toEqual([]);
     for (const key of modelKeys) expect(roleTitle(key).length).toBeGreaterThan(0);
@@ -775,13 +874,15 @@ describe("seed:roles — the reachability invariant (V1, V2)", () => {
 });
 
 describe("seed:roles — README parity, cell for cell (V3)", () => {
-  it("V3: the three tables and the model agree over the table-derived subset, both directions", () => {
+  it("V3: the four tables and the model agree over the table-derived subset, both directions", () => {
     const fromReadme = [
       ...tablePairs(opdTable), ...tablePairs(billingTable), ...tablePairs(materialsTable),
+      ...tablePairs(otTable),
     ].sort();
     const fromModel = modelPairs().filter((pair) => !NON_TABLE_PAIRS.includes(pair));
-    // 46 until Plan 14 T2 added the twenty ticks of the materials table.
-    expect(fromReadme).toHaveLength(66);
+    // 46 until Plan 14 T2 added the twenty ticks of the materials table; 66 until Plan 15 T2 added
+    // the thirty-two of the OT table.
+    expect(fromReadme).toHaveLength(98);
     // Direction 1: nothing the README ticks is missing from the model.
     expect(fromReadme.filter((p) => !fromModel.includes(p))).toEqual([]);
     // Direction 2: nothing the model grants from a table is missing from that table.
@@ -789,9 +890,10 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(fromModel).toEqual(fromReadme);
   });
 
-  it("V3: the three rulings' twenty-five pairs are exactly the model's non-table rows, with all three README prose lines quoted", () => {
+  it("V3: the rulings' fifty-eight pairs are exactly the model's non-table rows, with every README prose line quoted", () => {
     const fromReadme = new Set([
       ...tablePairs(opdTable), ...tablePairs(billingTable), ...tablePairs(materialsTable),
+      ...tablePairs(otTable),
     ]);
     const nonTable = modelPairs().filter((pair) => !fromReadme.has(pair));
     // This is the leg that stops the subset scoping above becoming a hole: a model row that is
@@ -801,8 +903,16 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     // grants are TABLE-derived (DD11 ruled the third table in), so a phase that added eleven
     // permissions and two roles added NOTHING to this list. A materials pair appearing here would
     // mean the README table and the model had drifted.
-    expect(NON_TABLE_PAIRS).toHaveLength(55);
+    // 55 → 58 after Plan 15: THIRTY-TWO of the OT's thirty-five grants are TABLE-derived (DD14 ruled
+    // the fourth table in) and exactly three are not — `medical_superintendent`'s two definition
+    // strings and `billing_manager`'s `ot.bill.compose`, held by roles that pre-date the module and
+    // have no column in it. An `ot_incharge` or `surgeon` pair appearing here would mean the README
+    // table and the model had drifted.
+    expect(NON_TABLE_PAIRS).toHaveLength(58);
     expect(nonTable.filter((p) => p.includes("/materials."))).toEqual([]);
+    expect(nonTable.filter((p) => p.startsWith("ot_") || p.startsWith("surgeon/") || p.startsWith("anaesthetist/") || p.startsWith("recovery_nurse/") || p.startsWith("daycare_coordinator/"))).toEqual([]);
+    // Plan 15 / DD14's own source sentence, held to exactly the standard of the nine below.
+    expect(readme).toContain(OT_README_PROSE);
     // Plan 13 / DD14's own source sentence, held to exactly the standard of the eight below.
     expect(readme).toContain(RESOURCES_README_PROSE);
     // Plan 16a / DD10's own source sentence, held to exactly the standard of the seven below.
@@ -857,7 +967,7 @@ describe("seed:roles — executed against a database (V5)", () => {
 
   it("V5: is idempotent — the second run creates nothing, grants nothing, and still reports the census", async () => {
     const first = await seedRoles(db);
-    expect(first.roles.map((r) => r.created)).toEqual(Array(18).fill(true));
+    expect(first.roles.map((r) => r.created)).toEqual(Array(24).fill(true));
     // The last two are the governance roles the 2026-08-23 ruling added: `owner` 3, `medical_
     // superintendent` 2. `opd_admin` went 4 -> 6 with the two definition-drafting strings. Plan
     // 09 / DD18 then moved four: front_office 9 -> 12, its supervisor 10 -> 13, cashier 8 -> 11,
@@ -872,21 +982,28 @@ describe("seed:roles — executed against a database (V5)", () => {
     // PLAN 14 T2 — eighteen entries now. `pharmacy` (position 7) moved 5 → 8 and the two stores
     // roles append 11 and 6; the array is `ROLE_MODEL` order, so a role inserted rather than
     // appended would fail here rather than silently shifting the comparison.
-    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 13, 5, 10, 7, 1, 8, 11, 10, 10, 7, 1, 3, 2, 3, 1, 11, 6]);
+    // PLAN 15 T2 / DD14 — TWENTY-FOUR entries. `billing_manager` (position 9) moved 10 → 11 with
+    // `ot.bill.compose` and `medical_superintendent` (position 11) 7 → 9 with the two definition
+    // strings; the six OT roles append 11, 4, 4, 4, 3, 6. The two in-place moves are the ones worth
+    // reading: DD14 named a `billing_counter` role that does not exist, so position 9 moving is the
+    // visible half of that correction (finding T2-d).
+    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 13, 5, 10, 7, 1, 8, 11, 11, 10, 9, 1, 3, 2, 3, 1, 11, 6, 11, 4, 4, 4, 3, 6]);
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
-    expect(first.declared).toBe(89);
+    expect(first.declared).toBe(103);
     // MEASURED from role_permissions, not derived from the model. On this database only seed:roles
     // has run, so what is held is exactly what the model granted — 57, not the 63 the model CLAIMS
     // once seed:admin and seed:ops have also run. That SEVEN-permission gap IS MAJOR 1 (it was ten
     // until Group C moved three `auth.*` strings into the model), and before the 2026-08-23 fix
     // this line read the model's claim against a database holding the grants.
-    expect(first.held).toBe(69);
+    expect(first.held).toBe(83);
     expect(first.held).toBe(modelPermissions().length);
-    expect(heldPermissions()).toHaveLength(75);
+    expect(heldPermissions()).toHaveLength(89);
     expect(first.notYetModelled).toBe(14);
     expect(first.expectedElsewhereAbsent).toBe(6);
     // And the census RECONCILES against the catalog, which is the property that makes it evidence:
-    // 69 held + 14 unmodelled + 6 expected-elsewhere = 89 declared (Plan 14 T2 moved the first
+    // 83 held + 14 unmodelled + 6 expected-elsewhere = 103 declared (Plan 15 T2 moved the first by
+    // fourteen and the other two by nothing at all — every string it declares, it grants). Before
+    // it: 69 + 14 + 6 = 89 (Plan 14 T2 moved the first
     // and the last by eleven and zero). Plan 13 moved the first and the
     // last of those three by one each and left the middle two alone, which is what a phase whose
     // one new permission is granted in the same commit looks like from here.
@@ -895,9 +1012,9 @@ describe("seed:roles — executed against a database (V5)", () => {
     // `createRole` is a BARE INSERT and is not idempotent; the guard around it is what makes this
     // run exit rather than die on a duplicate key.
     const second = await seedRoles(db);
-    expect(second.roles.map((r) => r.created)).toEqual(Array(18).fill(false));
+    expect(second.roles.map((r) => r.created)).toEqual(Array(24).fill(false));
     expect(second.roles.every((r) => r.granted.length === 0)).toBe(true);
-    expect(second.roles.map((r) => r.already.length)).toEqual([12, 13, 5, 10, 7, 1, 8, 11, 10, 10, 7, 1, 3, 2, 3, 1, 11, 6]);
+    expect(second.roles.map((r) => r.already.length)).toEqual([12, 13, 5, 10, 7, 1, 8, 11, 11, 10, 9, 1, 3, 2, 3, 1, 11, 6, 11, 4, 4, 4, 3, 6]);
 
     // And the database holds the model exactly once.
     const written = await db
@@ -964,7 +1081,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     // A role with no holder is REPORTED rather than silently absent — grants without holders are
     // still 403 for every user on the deployment, and the verdict line has to say so.
     expect(report.ready).toBe(false);
-    expect(report.problems.join(" ")).toContain("NO USER HOLDS ANY OF THE 18 ROLES");
+    expect(report.problems.join(" ")).toContain("NO USER HOLDS ANY OF THE 24 ROLES");
   });
 
   /**

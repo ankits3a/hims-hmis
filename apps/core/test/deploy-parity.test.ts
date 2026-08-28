@@ -348,8 +348,29 @@ const SEED_STEP_SCRIPTS = [
   // from Plan 05 and registered by nothing, so every merge request threw `unknown_type` on the
   // live box until somebody went looking.
   "seed-ops.js", "seed-opd.js", "seed-patients.js", "seed-billing.js", "seed-tariff.js",
+  // ═══ PLAN 15 T2 / DD15 — THIS CENSUS NAMED SEVEN OF NINE, AND THAT IS THE DEFECT IT EXISTS TO
+  //     CATCH, TWICE OVER (finding T2-e) ═══
+  //
+  // `deploy.sh` runs NINE configuration seeds. This array listed SEVEN: `seed-membership.js` and
+  // `seed-materials.js` were both absent, so neither was checked to exist in `scripts/`, and
+  // neither was checked to run BEFORE the `check-config-present.js` gate. A seed named in
+  // `deploy.sh` and deleted from the tree kills a production deploy at a `node` that cannot find
+  // its file — after migrations, before the containers come up — and this test is the only thing
+  // standing between that and a hospital. The `seed-materials.js` gap was recorded at Plan 14's
+  // close and carried here; the `seed-membership.js` gap had never been noticed at all.
+  //
+  // Both join in the same edit as Plan 15's own seed, because a census that names seven of nine is
+  // not a census. The comment below is kept verbatim — its ORDER claim about seed-membership is
+  // exactly the fact the array did not carry.
+  "seed-membership.js",
   // Plan 16a T9 — the severe-pair floor, after seed-membership and before the seed-roles gate.
   "seed-formulary-interactions.js",
+  "seed-materials.js",
+  // PLAN 15 T2 — the day-care unit's registry rows (one theatre, two bays, the consignment bin) and
+  // its two approval types. It runs AFTER `seed-materials.js` and that order is load-bearing rather
+  // than cosmetic: `ensureOtUnit` creates `OT-CONSIGN` through `materials.createStore`, so the
+  // materials module's own seed must have run first.
+  "seed-ot.js",
   "seed-roles.js",
 ] as const;
 
@@ -401,7 +422,11 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
     // throws `unknown_type` without one — and unlike `seed-formulary-interactions` it writes no
     // content at all, so its idempotence question is only "does a second run draft a redundant
     // workflow definition version". `approval-types.test.ts` answers that by counting rows.
-    expect(order).toHaveLength(12);
+    // 13 since Plan 15 T2 added `seed-ot.js` after `seed-materials.js`: the two OT approval types
+    // AND the day-care unit's four registry rows (one theatre, two kernel `bed` bays, the
+    // `OT-CONSIGN` store). The ORDER matters and is asserted separately below — `ensureOtUnit`
+    // creates that store through `materials.createStore`, so the materials seed must run first.
+    expect(order).toHaveLength(13);
     expect(order[0]).toBe("migrate.js");
     expect(order[1]).toBe("seed-cursors.js");
   });
@@ -418,7 +443,7 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
       .toEqual({ seedOpsAt: ops, seedRolesAt: roles, opsFirst: true });
   });
 
-  it("runs every one of the five configuration seeds, and each one exists in scripts/", () => {
+  it("runs every one of the ten configuration seeds, and each one exists in scripts/", () => {
     const order = deploySeedOrder(deploySource);
     expect(SEED_STEP_SCRIPTS.filter((name) => !order.includes(name))).toEqual([]);
     // A seed named here but deleted from the tree would make the deploy die at a `node` that

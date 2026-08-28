@@ -295,6 +295,21 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // given `membership.instrument.read`: the approval carries its own subject, and minting a
       // read of every member's instrument to authorise one exception is authority nobody asked for.
       "membership.grace_honor.approve",
+      // ═══ PLAN 15 / DD14, WITH A CORRECTION THE SPIKE FORCED (finding T2-d) ═══
+      //
+      // DD14 says *"`billing_counter` (existing) gains `ot.bill.compose`"*. **There is no
+      // `billing_counter` role.** It is in no `ROLE_MODEL` row, no `OPD_ROLE_KEYS` entry and no
+      // `LOCAL_ROLE_TITLES` key, and Spike Q3 confirmed production has none either — the counter is
+      // `cashier` and its supervisor is `billing_manager`. Granting a string to a role that does
+      // not exist would make `ot.bill.compose` a permission nobody can ever hold, which is the
+      // exact `NOT_YET_MODELLED` failure this file was rewritten to make visible.
+      //
+      // It goes to `billing_manager` and NOT to `cashier`, deliberately. `composeDischargeBill`
+      // does not take a typed amount: it reads the ledger, applies `min(tariff, MRP, ceiling)`,
+      // allocates the deposit hold and can raise a refund request. That is the money act of the
+      // whole phase, and it belongs with the role that already approves every billing exception,
+      // not with the desk that takes the cash.
+      "ot.bill.compose",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -397,6 +412,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // "the MS cannot read a patient record": `patients.update` and `.register` stay with the desk
       // roles — the superintendent decides about records, they do not keep them.
       "patients.read",
+      // PLAN 15 / DD14 — THE OT DEFINITION DESK. `ot_definition_publish` names this role as its
+      // `approverRole`, and DD6 puts the criteria whitelist, the privilege list, the deposit policy
+      // and the PACU thresholds behind it: what the unit may operate on, and who may operate. That
+      // is a clinical-governance decision, which is exactly what this office is. `.read` comes with
+      // it because approving a whitelist you cannot open is a coin flip — the same sentence three
+      // lines up, applied to a definition instead of a patient.
+      "ot.definitions.read",
+      "ot.definitions.manage",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -544,6 +567,67 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "materials.stock.issue",
       "materials.stock.receive",
     ],
+  },
+  // ------------------------------------------------------------------------------------------
+  // PLAN 15 T2 / DD14 — THE MINI-OT'S SIX ROLES, AND THE THREE SEPARATIONS THAT ARE THE POINT.
+  //
+  // A day-care theatre is where this system finally has authority worth separating: the person who
+  // runs the list, the two who may override a clinical gate, the two who touch the patient, and the
+  // one who books. Every separation below is a rule somebody can point at, not an org chart.
+  //
+  //   1. **`ot_incharge` does NOT hold `ot.gates.override`, `ot.definitions.manage` or
+  //      `ot.bill.compose`.** The person under the most pressure to start the list on time is
+  //      exactly the person who must not be able to wave a gate through, redefine what the unit may
+  //      operate on, or bill for it.
+  //   2. **`surgeon` AND `anaesthetist` both hold `ot.gates.override`**, because DD5's override
+  //      requires two DISTINCT actors holding those two roles. One role holding it would make the
+  //      two-key rule satisfiable by one person with two logins — which is the theatre this
+  //      repository already refuses elsewhere.
+  //   3. **`recovery_nurse` holds `ot.discharge` and `ot_nurse` does not.** A day-care patient
+  //      leaves from the bay, and the person who signs her out is the person who scored her.
+  //
+  // Every one of these six is minted with grants and NO HOLDERS — the `pharmacy` and
+  // `materials_head` precedent, and `seed:roles` assigns nobody by design. Spike Q3 measured
+  // production: none of these six role keys exists there yet, so this seed creates all six empty.
+  // ------------------------------------------------------------------------------------------
+  {
+    roleKey: "ot_incharge",
+    permissions: [
+      "ot.definitions.read",
+      "ot.cases.read",
+      "ot.cases.book",
+      "ot.cases.cancel",
+      "ot.list.manage",
+      "ot.gates.satisfy",
+      "ot.cockpit.operate",
+      "ot.implants.scan",
+      "ot.counts.record",
+      "ot.recovery.operate",
+      "ot.discharge",
+    ],
+  },
+  {
+    roleKey: "surgeon",
+    permissions: ["ot.cases.read", "ot.definitions.read", "ot.gates.override", "ot.cockpit.operate"],
+  },
+  {
+    roleKey: "anaesthetist",
+    permissions: ["ot.cases.read", "ot.definitions.read", "ot.gates.override", "ot.cockpit.operate"],
+  },
+  {
+    roleKey: "ot_nurse",
+    // NOT `ot.discharge` — see separation 3 above. NOT `ot.gates.satisfy`: the gates are the
+    // coordinator's and the clinicians', and a scrub nurse satisfying a consent gate is the
+    // documentation-gate failure mode this module is built to remove.
+    permissions: ["ot.cases.read", "ot.cockpit.operate", "ot.implants.scan", "ot.counts.record"],
+  },
+  {
+    roleKey: "recovery_nurse",
+    permissions: ["ot.cases.read", "ot.recovery.operate", "ot.discharge"],
+  },
+  {
+    roleKey: "daycare_coordinator",
+    permissions: ["ot.cases.read", "ot.cases.book", "ot.cases.cancel", "ot.gates.satisfy", "ot.list.manage", "ot.definitions.read"],
   },
 ];
 
@@ -699,6 +783,17 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // every `role_assignments` row and every `role_permissions` grant already written against it.
   materials_head: "Materials Head (item and vendor masters, QC verdicts, recall freeze)",
   storekeeper: "Storekeeper (receives, issues and moves stock; does not sign the QC verdict)",
+  // PLAN 15 / DD14, 2026-08-28. None is an OPD station, so none is in `OPD_ROLE_KEYS`. The KEYS are
+  // spec §11.16-A's names and are what the code matches on — `signIn` checks `anaesthetist`,
+  // `overrideGate` checks `surgeon` AND `anaesthetist`. If the owner's org chart says "OT Manager"
+  // or "Scrub Nurse", the TITLE changes here and the key does not: a key rename would orphan every
+  // `role_assignments` row and every `role_permissions` grant already written against it.
+  ot_incharge: "OT In-charge (runs the list; cannot override a gate, publish criteria or bill)",
+  surgeon: "Surgeon (operates; one half of the two-actor clinical gate override)",
+  anaesthetist: "Anaesthetist (signs the case in; the other half of the override)",
+  ot_nurse: "OT Nurse (cockpit, counts and implant scanning; does not discharge)",
+  recovery_nurse: "Recovery Nurse (PACU scoring and the escort-gated discharge)",
+  daycare_coordinator: "Day-care Coordinator (books cases, chases gates, publishes the list)",
 };
 
 /** The title for a model role key. Throws rather than inventing one — an unresolved role is a defect. */

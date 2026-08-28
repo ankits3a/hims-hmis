@@ -17,6 +17,7 @@ import { membershipManifest } from "../../modules/membership";
 import { partnersManifest } from "../../modules/partners";
 import { formularyManifest } from "../../modules/formulary";
 import { materialsManifest } from "../../modules/materials";
+import { otManifest } from "../../modules/ot";
 
 /**
  * Plan 11d / D2, Book row V4 — `ALL_MANIFESTS` is the ONE list, and a manifest installed outside
@@ -63,6 +64,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   partnersManifest,
   formularyManifest,
   materialsManifest,
+  otManifest,
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -107,7 +109,7 @@ function manifestKeys(identifiers: string[], label: string): string[] {
 }
 
 describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
-  it("declares exactly fourteen manifests, by key, in app.module.ts's original install order", () => {
+  it("declares exactly fifteen manifests, by key, in app.module.ts's original install order", () => {
     expect(ALL_MANIFESTS.map((m) => m.key)).toEqual([
       "auth",
       "workflow",
@@ -127,13 +129,15 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "resources",
       // PLAN 14 T2 — appended, so the thirteen above keep the order they were installed in.
       "materials",
+      // PLAN 15 T2 — appended, so the fourteen above keep the order they were installed in.
+      "ot",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(14);
+    expect(ALL_MANIFESTS).toHaveLength(15);
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(14);
+    expect(registry.all()).toHaveLength(15);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -200,6 +204,15 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      paragraph is that statement, and the shared array below is where it is mechanically
     //      true. The test's title stays "four" because four is still the answer.
     //
+    //  (1f) PLAN 15 T2 — the FIFTEENTH, `ot`, and it falls on the SHARED side for the same two
+    //      reasons `materials` does: a subscription and a job. So this array is untouched and the
+    //      answer stays four. What is different about it is worth one line, because it breaks a
+    //      pattern the four notes above establish: `ot` ships its subscription AND its handler in
+    //      the install commit, rather than `subscriptions: []` first, because the plan requires the
+    //      real `patient.merged` consumer at T2. The one-edit rule is satisfied either way — what
+    //      it forbids is a declared subscription with no handler, never a handler that arrives on
+    //      time.
+    //
     //      It ships `subscriptions: []` in T2 and lands the one subscription with its handler in
     //      T7 — the (1b) discipline, unchanged, a fourth time.
     expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "formulary", "resources"]);
@@ -228,7 +241,13 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // PLAN 14 T2 — see (1e). Installed in BOTH processes, so it is HERE rather than in either
       // difference array above. The worker installs it after `partners`, which is why it is last.
       "materials",
+      // PLAN 15 T2 — installed in BOTH, the `materials` case exactly, and for the same two reasons:
+      // it carries a SUBSCRIPTION (`patient.merged` → `ot.patient_merged`) and, from T4, a
+      // scheduler job. It is the FIRST manifest on this list to ship its subscription and its
+      // handler in the SAME commit as its install — the four before it shipped `subscriptions: []`
+      // first — because the plan requires the real merge consumer at T2 rather than a stub.
+      "ot",
     ]);
-    expect(workerKeys).toHaveLength(11);
+    expect(workerKeys).toHaveLength(12);
   });
 });

@@ -133,12 +133,21 @@ function row(
 }
 
 describe("seed:staff — the census, stated before anything is compared (§2.49)", () => {
-  it("KNOWN_ROLE_KEYS is the twenty keys some seed script in this tree can create", () => {
+  it("KNOWN_ROLE_KEYS is the twenty-six keys some seed script in this tree can create", () => {
     expect(KNOWN_ROLE_KEYS).toEqual([
       "admin",
+      // PLAN 15 / DD14, 2026-08-28 — the six OT roles arrive for FREE by the same derivation, and
+      // the consequence is the same one the materials note below describes, one phase sharper:
+      // `seed:staff` REFUSES a roster naming a key outside this list, so until it carried these
+      // six, the roster that hires the day-care unit's first recovery nurse — the person the whole
+      // escort-gated discharge depends on — would have been rejected as a typo, with the whole
+      // roster refused rather than half-provisioned. THIS FILE IS NOT IN PLAN 15 T2's FILES LIST
+      // (finding T2-f); the census is pinned here and the task that moves it must say so.
+      "anaesthetist",
       "billing_manager",
       "biomedical_engineer",
       "cashier",
+      "daycare_coordinator",
       "display",
       "doctor",
       "duty_manager",
@@ -156,9 +165,13 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "mrd_officer",
       "nurse",
       "opd_admin",
+      "ot_incharge",
+      "ot_nurse",
       "owner",
       "pharmacy",
+      "recovery_nurse",
       "storekeeper",
+      "surgeon",
       // Group A, 2026-08-26 — three roles for permissions that had guarded live routes with no
       // holder at all. This list is DERIVED (ROLE_MODEL ∪ GRANTED_BY_OTHER_SEEDS ∪ OPD_ROLE_KEYS),
       // so it grew on its own; what is pinned here is that somebody noticed.
@@ -170,7 +183,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
     for (const r of ROLE_MODEL) expect(KNOWN_ROLE_KEYS).toContain(r.roleKey);
     for (const g of GRANTED_BY_OTHER_SEEDS) expect(KNOWN_ROLE_KEYS).toContain(g.roleKey);
     for (const o of OPD_ROLE_KEYS) expect(KNOWN_ROLE_KEYS).toContain(o.key);
-    expect(KNOWN_ROLE_KEYS).toHaveLength(20);
+    expect(KNOWN_ROLE_KEYS).toHaveLength(26);
   });
 
   it("the vocabulary is WIDER than what seed:roles creates, which is what makes two refusals distinct", () => {

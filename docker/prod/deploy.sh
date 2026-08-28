@@ -459,6 +459,7 @@ compose run --rm api node dist/scripts/seed-formulary-interactions.js
 # with a lorry in it, and `requestBankChange` throws at the vendor desk — the exact shape of the
 # `patient_merge` and `tariff_revision` gaps, both of which ran for weeks before a human noticed.
 compose run --rm api node dist/scripts/seed-materials.js
+compose run --rm api node dist/scripts/seed-ot.js
 
 # `seed-roles` IS RUN, AND ITS EXIT STATUS IS DELIBERATELY NOT THIS DEPLOY'S.
 #

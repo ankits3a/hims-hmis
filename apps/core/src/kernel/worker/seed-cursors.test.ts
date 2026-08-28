@@ -8,6 +8,7 @@ import { ALERTS_CONSUMER } from "../alerts/consumer";
 import { NOTIFY_CONSUMER } from "../notify/consumer";
 import { PARTNERS_ACCRUAL_CONSUMER } from "../../modules/partners";
 import { MATERIALS_CONSUMPTION_CONSUMER } from "../../modules/materials";
+import { OT_PATIENT_MERGED_CONSUMER } from "../../modules/ot";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -62,11 +63,20 @@ describe("seedCursors", () => {
    * wired a phase early: without a seeded cursor the consumer's first cycle after Plan 15 ships
    * would start from zero and re-walk every event the hospital has ever emitted.
    */
-  it("enumerates workerConsumers(db)'s keys — the kernel two, partners.accrual and materials.consumption, and no others", async () => {
+  it("enumerates workerConsumers(db)'s keys — the kernel two, partners.accrual, materials.consumption and ot.patient_merged, and no others", async () => {
     const seeded = await seedCursors(db);
+    // PLAN 15 T2 / A5 — the fifth. It joins for the reason D10 gives every entry here: a consumer
+    // whose cursor is not seeded starts from zero and re-reads the WHOLE subscribed backlog on its
+    // first cycle. For this one that means replaying every `patient.merged` since Plan 05 against a
+    // module that did not exist for any of them — harmless by luck (no OT row names those patients)
+    // and not a property anybody should be relying on.
+    //
+    // **THIS FILE IS NOT IN PLAN 15 T2's FILES LIST** — a census the task moves, recorded as finding
+    // T2-f with the three others rather than fixed silently.
     expect(seeded.map((s) => s.consumer).sort())
       .toEqual([
         ALERTS_CONSUMER, NOTIFY_CONSUMER, PARTNERS_ACCRUAL_CONSUMER, MATERIALS_CONSUMPTION_CONSUMER,
+        OT_PATIENT_MERGED_CONSUMER,
       ].sort());
   });
 

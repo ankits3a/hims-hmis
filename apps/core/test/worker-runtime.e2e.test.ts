@@ -348,6 +348,20 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // **THIS FILE WAS NOT IN PLAN 14 T7's FILES LIST** and it pins a census that task moves;
         // recorded as finding F11 in the phase document's CLOSE rather than fixed silently.
         ["materials.consumption", ["consignment.deployed"]],
+        // PLAN 15 T2 / A5 — THE FIFTH WIRE, and the mirror image of the fourth. `materials.consumption`
+        // subscribes to an event nothing in its own build publishes; this one subscribes to an event
+        // `modules/patients` has published since Plan 05, and it ships WITH its handler in the same
+        // commit as its declaration rather than a task later. Both shapes satisfy the one-edit rule —
+        // what `buildSubscriptionBus` forbids is a declared subscription with no handler, never a
+        // handler that arrives on time.
+        //
+        // `ot.patient_merged` sorts between `materials.consumption` and `partners.accrual`.
+        //
+        // **THIS FILE IS NOT IN PLAN 15 T2's FILES LIST EITHER** — the same census, moved by the
+        // same kind of task, recorded as finding T2-f rather than fixed silently. Plan 14 recorded
+        // the identical omission as its F11; an authoring rule this repeated is worth stating in the
+        // ledger, and the CLOSE does.
+        ["ot.patient_merged", ["patient.merged"]],
         // PLAN 09 T6 / DD7 — THE THIRD WIRE, and the one whose absence would be invisible for the
         // longest. `COMMISSION_ACCRUAL_ENABLED` defaults to false, so a partners consumer that was
         // declared and never wired would look exactly like a partners consumer that was wired and

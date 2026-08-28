@@ -122,9 +122,13 @@ describe("the resource kind seam (Plan 13 T2)", () => {
    * shape 16a hit four times, recorded here and in the phase document's CLOSE as finding F6 rather
    * than fixed silently (AGENT-RULES: disclose-don't-work-around).
    */
-  it("collects every installed manifest's declarations: the kernel five plus materials' `store`", () => {
+  it("collects every installed manifest's declarations: the kernel five, materials' `store` and the OT's `theatre`", () => {
+    // PLAN 15 T2 / DD3 — SEVEN. The OT claims exactly ONE kind, and the order is manifest install
+    // order: `resources` (the kernel five) then `materials` then `ot`. **THIS FILE IS NOT IN PLAN 15
+    // T2's FILES LIST** — it pins a census that task moves, recorded as finding T2-f rather than
+    // fixed silently, exactly as Plan 14 recorded its own F11 against `worker-runtime.e2e.test.ts`.
     expect(collectResourceKinds(registryOf(...ALL_MANIFESTS)).map((d) => d.kind))
-      .toEqual(["floor", "ward", "hall", "room", "bed", "store"]);
+      .toEqual(["floor", "ward", "hall", "room", "bed", "store", "theatre"]);
   });
 
   /**
@@ -162,13 +166,21 @@ describe("the resource kind seam (Plan 13 T2)", () => {
   /**
    * A kind no installed manifest declares is NOT an error here — it is simply absent, and the write
    * path refuses it (T3, A4). This leg pins the distinction, because it is the whole difference
-   * between "a legal string" and "a kind this hospital has": `theatre` is in the CHECK, so Postgres
-   * would store it, and Plan 15 is what makes it declarable.
+   * between "a legal string" and "a kind this hospital has".
+   *
+   * **PLAN 15 T2 — `theatre` HAS NOW BEEN CLAIMED, so this leg moves to `device`.** The property is
+   * unchanged and is the point of the kind seam; what changed is which kind demonstrates it. `device`
+   * is in the CHECK (Postgres would store it) and no installed manifest declares it — the autoclave
+   * is 15c's and the C-arm 15d's. The `theatre` half of the old assertion is now the leg above, and
+   * both directions are still pinned: `theatre` present, `device` absent, both legal strings.
    */
-  it("an undeclared kind is absent rather than refused — `theatre` is legal in the table and not yet a kind this hospital has", () => {
+  it("an undeclared kind is absent rather than refused — `device` is legal in the table and not yet a kind this hospital has", () => {
     const decls = collectResourceKinds(registryOf(...ALL_MANIFESTS));
-    expect(findKindDecl(decls, "theatre")).toBeUndefined();
-    expect(RESOURCE_KINDS).toContain("theatre");
+    expect(findKindDecl(decls, "device")).toBeUndefined();
+    expect(RESOURCE_KINDS).toContain("device");
+    // …and the kind Plan 15 DID claim is present, with the vocabulary the mini-OT declared: the
+    // seam let a module add a kind with no kernel edit, which is what Plan 13 built it for.
+    expect(findKindDecl(decls, "theatre")?.onRelease).toBe("turnover");
   });
 
   /**
@@ -183,7 +195,14 @@ describe("the resource kind seam (Plan 13 T2)", () => {
     // The SHIPPED declarations do not trip it — the guard is real, not vacuous. Six since Plan 14
     // T2 added `store`, whose `initial` is `available` and whose `occupied` is null: a store is not
     // assignable at all, so it could not trip this guard even in principle.
-    expect(collectResourceKinds(registryOf(...ALL_MANIFESTS))).toHaveLength(6);
+    //
+    // SEVEN since Plan 15 T2 added `theatre` — and this is the FIRST shipped declaration that could
+    // have tripped it, which is why the guard was written. A theatre IS assignable (`occupied:
+    // "in_use"`), so an author who had picked `in_use` as the initial status — a plausible mistake
+    // for a kind whose whole vocabulary is about being in use — would have created every theatre
+    // occupied with no occupant. The close pass that added this guard said in as many words that
+    // "Plan 15 is the first phase to write a declaration this file did not"; it was right.
+    expect(collectResourceKinds(registryOf(...ALL_MANIFESTS))).toHaveLength(7);
   });
 
   it("a manifest with no resourceKinds contributes nothing and is not an error", () => {
