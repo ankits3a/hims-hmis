@@ -1,5 +1,5 @@
 # Plan 15 — Mini-OT day-care: brainstorm record
-**Date:** 2026-08-28 · **Status:** brainstorm v2 — forks DECIDED under the owner's 2026-08-28 mandate ("most logical, the way Indian hospitals work"; all standard certificates and machinery assumed present); edge-case pass done; nothing executed · **Author:** session record
+**Date:** 2026-08-28 · **Status:** brainstorm v3 — the 2026-08-28 adversarial pass is folded into the phase doc `../../plans/2026-08-28-phase1-15-mini-ot-daycare.md` §4B (25 corrections; the tree refutes several §1 claims, notably `bed` IS kernel-claimed and billing cannot yet resolve a day-care encounter) — v2 was — forks DECIDED under the owner's 2026-08-28 mandate ("most logical, the way Indian hospitals work"; all standard certificates and machinery assumed present); edge-case pass done; nothing executed · **Author:** session record
 **Companions:** department series `2026-08-27-department-series/15-ot-anaesthesia-cssd.md` (§1, §3, §4, §13, §14, §15 — the raw material) · `00-INDEX-AND-SYNTHESIS.md` themes 1, 5, 6, 7, 9, 21 · spec §11.16-A (v4.8) · roadmap *Stage-2 acceleration* + the 2026-08-27 re-slice · Plan 14 phase doc DD13, § 4A-3, § 6.6, close review F5.
 
 ---
@@ -49,11 +49,11 @@ The ortho implant case and the non-MTP gynae case, from OPD procedure advice to 
 - **Screens (Lane 1, hand-built):** theatre board/list, cockpit (gates → checklist → implants → close), recovery bay, booking from the OPD consult's procedure-advice branch.
 - **Events:** the seven from §11.16-A minus `form_f.recorded`, plus `case.cancelled`, `timeout.halted`, `count.mismatch`, `gate.overridden` (two-actor clinical override lane only; **no override for statutory gates by definition**).
 
-### 15b — CSSD-lite
-`cssd_sets` (FK to the autoclave `device`, per Plan 13 §4A), loads, BI per load, release/hold policy (O-6), BI-fail auto-recall of the whole load, issue-against-tomorrow's-list, expiry watch, IUSS. In 15, the "valid sterile set" gate is a **documentation gate** (set ids typed/scanned, no structural check) — exactly the index theme-6 posture for pre-roster chaperone gates; 15b turns it structural. Needs the owner's autoclave/BI-reader facts (§5.2).
+### 15c — CSSD-lite (renumbered 2026-08-28 to match §3.4 — adversarial pass F13)
+`cssd_sets` (FK to the autoclave `device`, per Plan 13 §4A), loads, BI per load, release/hold policy (O-6), BI-fail auto-recall of the whole load, issue-against-tomorrow's-list, expiry watch, IUSS. In 15, the "valid sterile set" gate is a **documentation gate** (set ids typed/scanned, no structural check) — exactly the index theme-6 posture for pre-roster chaperone gates; 15c turns it structural. Needs the owner's autoclave/BI-reader facts (§5.2).
 
-### 15c — Statutory surfaces
-`pcpndt` module (registrations config + Form-F register, shared with Plan 18), Form-F structural gate on any applicable USG, MTP register (`termination.recorded`, sealed class, opinion-count config, Form C/I/II print layouts), MLC check for ortho trauma, sealed-class propagation on worklists/labels/invoices. **Gated on the certificates being on file** (§19) and on the E-21 electronic-register legality opinion. Until 15c, MTP and in-unit USG procedure classes are **outside the Class-B whitelist** — the unit opens for ortho and non-MTP gynae. That is the ruling in §3.4.
+### 15b — Statutory surfaces (renumbered 2026-08-28 to match §3.4 — adversarial pass F13)
+`pcpndt` module (registrations config + Form-F register, shared with Plan 18), Form-F structural gate on any applicable USG, MTP register (`termination.recorded`, sealed class, opinion-count config, Form C/I/II print layouts), MLC check for ortho trauma, sealed-class propagation on worklists/labels/invoices. **Gated on the certificates being on file** (§19) and on the E-21 electronic-register legality opinion. Until 15b, MTP and in-unit USG procedure classes are **outside the Class-B whitelist** — the unit opens for ortho and non-MTP gynae. That is the ruling in §3.4.
 
 ### Why not the other cuts
 - *Horizontal (all schema in 15, all screens in 15b):* the review method has shown twice that the defects live in the seams between a write path and its consumer; a schema-only phase reviews nothing real.
