@@ -1484,5 +1484,12 @@
     "bill_not_composable": "बिल अभी नहीं बनाया जा सकता।",
     "deposit_shortfall": "इस एनकाउंटर के लिए रोकी गई जमा कम है।",
     "cash_limit_exceeded": "इससे एनकाउंटर का नकद §269ST सीमा से ऊपर चला जाएगा।"
+  },
+  "patientStrip": {
+    "restricted": "प्रतिबंधित रिकॉर्ड",
+    "visitOpen": "विज़िट खुली",
+    "inHand": "हाथ में",
+    "release": "छोड़ें",
+    "loading": "…"
   }
 }

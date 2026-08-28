@@ -11,6 +11,8 @@ import i18next from "./lib/i18n";
 import { AlertsBell } from "./components/alerts-bell";
 import { ModeBanner } from "./components/mode-banner";
 import { LoginScreen } from "./screens/login";
+import { PatientInHandProvider } from "./lib/patient-in-hand";
+import { PatientStrip } from "./components/patient-strip";
 import { RegistrationDesk } from "./screens/registration-desk";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
@@ -129,7 +131,8 @@ function Shell(): React.ReactElement {
   const { logout, can } = useAuth();
   const navigate = useNavigate();
   return (
-    <PaletteProvider>
+    <PatientInHandProvider>
+      <PaletteProvider>
       <KeyboardProvider>
       <div className="flex min-h-screen flex-col">
         <header className="no-print flex items-center gap-6 border-b px-4 py-2">
@@ -177,6 +180,11 @@ function Shell(): React.ReactElement {
           </div>
         </header>
         <ModeBanner />
+        {/*
+          PLAN 07b T1 — the patient in hand, directly under the chrome and above every screen, so a
+          clerk never has to find the same person twice. It renders nothing when nobody is in hand.
+        */}
+        <PatientStrip />
         <div className="flex-1">
           <Outlet />
         </div>
@@ -184,6 +192,7 @@ function Shell(): React.ReactElement {
       </div>
       </KeyboardProvider>
     </PaletteProvider>
+    </PatientInHandProvider>
   );
 }
 

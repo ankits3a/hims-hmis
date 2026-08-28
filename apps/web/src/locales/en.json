@@ -1484,5 +1484,12 @@
     "bill_not_composable": "The bill cannot be composed yet.",
     "deposit_shortfall": "The deposit held for this encounter is short.",
     "cash_limit_exceeded": "This would take the encounter's cash over the §269ST limit."
+  },
+  "patientStrip": {
+    "restricted": "Restricted record",
+    "visitOpen": "Visit open",
+    "inHand": "in hand",
+    "release": "Release",
+    "loading": "…"
   }
 }

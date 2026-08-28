@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
+import { usePatientInHandOptional } from "../lib/patient-in-hand";
 import { PatientPhoto } from "../screens/registration-desk";
 
 /**
@@ -58,6 +59,17 @@ export function PatientPicker(
   const [scan, setScan] = useState("");
   const [scanError, setScanError] = useState(false);
   const debounced = useDebounced(q, 250);
+  /**
+   * PLAN 07b T1 — ONE reporting seam for BOTH lanes. The picker has two ways to choose a patient
+   * (the scan box and a click on a hit) and they had already drifted once; routing both through a
+   * single function is what stops the context and `onPick` disagreeing about who is in hand.
+   * Optional because shared components are mounted outside the authed shell (see the hook).
+   */
+  const inHand = usePatientInHandOptional();
+  const pick = (hit: PatientPickerHit): void => {
+    inHand?.takePatient(hit.id);
+    onPick(hit);
+  };
   // The wedge buffer and its idle timer (see the scan box below). Refs, not state: a keystroke of a
   // 24-character payload must not cost a render, and the buffer is never read during one.
   const wedgeRef = useRef("");
@@ -78,7 +90,7 @@ export function PatientPicker(
     try {
       const res = await api<QrVerifyResult>("POST", "/patients/qr/verify", { payload });
       if (res.ok) {
-        onPick({ id: res.patient.id, uhid: res.patient.uhid, name: res.patient.name, sex: res.patient.sex, dob: res.patient.dob });
+        pick({ id: res.patient.id, uhid: res.patient.uhid, name: res.patient.name, sex: res.patient.sex, dob: res.patient.dob });
         setScan("");
       } else {
         setScanError(true);
@@ -110,7 +122,7 @@ export function PatientPicker(
           <button
             key={hit.id}
             type="button"
-            onClick={() => onPick({ id: hit.id, uhid: hit.uhid, name: hit.name, sex: hit.sex, dob: hit.dob })}
+            onClick={() => { pick({ id: hit.id, uhid: hit.uhid, name: hit.name, sex: hit.sex, dob: hit.dob }); }}
             className="flex w-full items-center gap-2 rounded border p-1 text-left hover:bg-neutral-50"
           >
             {hit.hasPhoto ? (
