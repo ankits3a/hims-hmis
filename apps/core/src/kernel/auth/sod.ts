@@ -16,6 +16,12 @@ export const SOD_PAIR_SEED: { pairKey: string; description: string }[] = [
   { pairKey: "workflow_drafter_activator", description: "Workflow-definition drafter vs activator" },
   { pairKey: "quality_auditor_audited_station", description: "Quality auditor vs audited-station holder for that audit" },
   { pairKey: "downtime_declarer_cash_reconciler", description: "Downtime declarer vs downtime-cash reconciler" },
+  // PLAN 15 T1 / DD7 (adversarial finding F11) — the WHO count is a TWO-PERSON act and the pair
+  // was named by spec §11.9 and seeded by nothing. `ot_counts` carries a CHECK that the two ids
+  // differ, which is the half that survives raw SQL; this row is the half that emits
+  // `sod.violation_blocked` when a service call tries it, so the attempt is auditable rather than
+  // merely refused.
+  { pairKey: "scrub_circulating", description: "Scrub nurse vs circulating nurse on one OT count round" },
 ];
 
 export async function seedSodPairs(db: Db): Promise<void> {

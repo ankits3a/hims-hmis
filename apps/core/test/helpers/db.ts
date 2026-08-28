@@ -194,6 +194,28 @@ export async function truncateAll(db: Db): Promise<void> {
   // {formulary island} ∪ {materials} ∪ {resources group} is a single group, and one group is one
   // statement.
   //
+  // ───────────────────── PLAN 15 T1 — THE TWELVE MINI-OT TABLES JOIN THIS STATEMENT ────────────
+  //
+  // Same two rules, third phase running: §3.35 (constraint EXISTENCE decides the group, never row
+  // counts and never statement order) and §3.12 (the group's OWN statement must carry the name).
+  //
+  // `daycare_encounters`, `ot_cases` and `ot_specimens` reference `patients.id`; `ot_cases`,
+  // `ot_lists`, `pacu_scores` and `daycare_encounters.bay_resource_id` reference `resources.id`.
+  // Both parents are in this statement, so all twelve must be too — and the other eight are dragged
+  // in one hop by the same rule: `ot_case_gates`, `ot_checklist_runs`, `ot_counts`,
+  // `ot_case_implants`, `ot_specimens`, `pacu_scores` and `ot_incidents` point at `ot_cases`, and
+  // `ot_deposit_holds`, `ot_case_implants`, `ot_specimens`, `pacu_scores` and `ot_incidents` point
+  // at `daycare_encounters`.
+  //
+  // NO materials table is dragged in by them, and that is DD9's plain-text ruling paying for
+  // itself: `ot_case_implants.item_id / batch_id / lot_id` are plain text with no FK (the
+  // `schema/billing.ts` cross-module precedent), so this family adds nothing to the materials
+  // closure it sits beside.
+  //
+  // AND THE `users` STATEMENT NEEDS NO CHANGE: every actor column here — `created_by`,
+  // `updated_by`, `scrub_by`, `circulating_by`, `deployed_by`, `scored_by`, `published_by` — is
+  // plain text, the `approvals.ts` precedent, so no FK in these twelve points at `users`.
+  //
   // CHILD-BEFORE-PARENT ORDERING IS IRRELEVANT INSIDE ONE `truncate` and the names are nonetheless
   // written child-first, matching the style of every group above it: what Postgres requires is
   // PRESENCE, not order, and writing them in dependency order is how the next reader checks presence
@@ -221,6 +243,8 @@ export async function truncateAll(db: Db): Promise<void> {
         item_price_regulations, item_barcodes, item_uoms, items,
         formulary_medicine_salts, formulary_interactions, formulary_medicines, formulary_salts, formulary_staging,
         resource_status_history, resources,
+        ot_incidents, ot_deposit_holds, ot_definitions, pacu_scores, ot_specimens, ot_case_implants,
+        ot_counts, ot_checklist_runs, ot_case_gates, ot_lists, ot_cases, daycare_encounters,
         opd_config, allocations, receipt_tenders, receipts, credit_note_lines, credit_notes, invoice_lines,
         invoices, refund_vouchers, cashier_sessions, entered_in_error_marks, recon_batches, daily_closes,
         idempotency_keys, document_series, billing_config, patient_merge_requests, patient_guardians, patient_allergies,

@@ -35,3 +35,8 @@ export * from "./resources";
 // reference `resources` (every stock location is a registry resource of kind `store`, DD2). It is
 // therefore downstream of both `formulary` and `resources` and neither is downstream of it.
 export * from "./materials";
+// PLAN 15 T1 — the mini-OT, LAST because it is downstream of both `patients` (every clinical
+// document carries a real patient FK, billing's owner ruling R5) and `resources` (the theatre and
+// the two recovery bays ARE registry rows, DD3). Nothing above depends on it: materials learns
+// about a day-care case only through the `consignment.deployed` event payload, never by import.
+export * from "./ot";

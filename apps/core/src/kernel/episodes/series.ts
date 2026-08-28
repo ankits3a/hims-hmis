@@ -39,6 +39,21 @@ export const EPISODE_SERIES = {
    * prefix in the existing format"), which is why it is here and not `G`.
    */
   grn: "GRN",
+  /**
+   * PLAN 15 T1 — the day-care encounter's letter (DD2, brainstorm R-3.1).
+   *
+   * `D` was free: the six single letters above are `V A L S R P` and `grn` is the multi-letter
+   * exception. A day-care encounter needs its OWN letter rather than borrowing `V`, because it is
+   * not a visit — it carries a theatre, an anaesthetic, an implant and a discharge, and
+   * `billing.invoices.encounter_id` dispatches on this letter to decide WHICH module can resolve
+   * the encounter (Plan 15 DD11/F2, `registerEncounterResolver`). A day-care case numbered `V…`
+   * would be resolved by OPD, which has never heard of it.
+   *
+   * `S` stays the LAB SPECIMEN's letter and the OT does not invent a second one: a specimen cut in
+   * this theatre draws its label number from `lab_specimen`, so that Plan 17's accession finds one
+   * number for one tube (adversarial finding F17).
+   */
+  daycare: "D",
 } as const;
 
 export type EpisodeSeriesKey = keyof typeof EPISODE_SERIES;

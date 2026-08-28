@@ -34,11 +34,24 @@ describe("formatEpisodeNo (pure)", () => {
    * bare `G` later would make `G` + `RN2608` + `250007` parse as a G-series number of a different
    * day, silently, in any reader that slices by position.
    */
-  it("the key census is the seven reserved document types, and no more", () => {
+  it("the key census is the eight reserved document types, and no more", () => {
     expect(Object.keys(EPISODE_SERIES).sort()).toEqual([
-      "appointment", "grn", "lab_order", "lab_specimen", "pharmacy_dispense", "radiology_order",
-      "visit",
+      "appointment", "daycare", "grn", "lab_order", "lab_specimen", "pharmacy_dispense",
+      "radiology_order", "visit",
     ]);
+  });
+
+  /**
+   * PLAN 15 T1 / DD2 — `D` is the day-care encounter, and the two legs are separate claims. The
+   * FORMAT leg pins what the number looks like; the SEPARATION leg pins that the OT did not take
+   * `S`, which is the lab specimen's and which a theatre cutting a specimen every other gynae case
+   * is the module most likely to want (adversarial finding F17). One tube, one number, when Plan
+   * 17's accession lands.
+   */
+  it("the day-care encounter is the `D` series, and the OT did not take `S` (DD2, F17)", () => {
+    expect(formatEpisodeNo("daycare", DAY, 1)).toBe("D2608250001");
+    expect(EPISODE_SERIES.daycare).toBe("D");
+    expect(EPISODE_SERIES.lab_specimen).toBe("S");
   });
 
   it("no prefix is a prefix of another — the ambiguity `GRN` introduced the possibility of", () => {

@@ -14,9 +14,23 @@ describe("sod", () => {
   beforeEach(async () => { await truncateAll(db); await seedSodPairs(db); });
   afterAll(async () => { await teardown(); });
 
-  it("seeds all nine S10 pairs idempotently", async () => {
-    expect(SOD_PAIR_SEED).toHaveLength(9);
+  it("seeds all ten S10 pairs idempotently", async () => {
+    expect(SOD_PAIR_SEED).toHaveLength(10);
     await seedSodPairs(db); // second run must not throw
+  });
+
+  /**
+   * PLAN 15 T1 / DD7 (adversarial finding F11) — `scrub_circulating` was named by spec §11.9 and
+   * seeded by NOTHING, so `assertNotSodPair(db, "scrub_circulating", …)` threw `unknown SoD pair
+   * key` rather than refusing the violation. The row is the reason the OT's count service can emit
+   * `sod.violation_blocked` instead of only returning an error; `ot_counts`' own CHECK is the other
+   * half, and neither replaces the other.
+   */
+  it("knows the OT's scrub/circulating pair, and blocks one nurse doing both (Plan 15 DD7)", async () => {
+    await expect(assertNotSodPair(db, "scrub_circulating", userA, userA)).rejects.toThrow(SodViolationError);
+    const rows = await db.select().from(events);
+    expect(rows).toHaveLength(1);
+    expect((rows[0]!.payload as { pairKey: string }).pairKey).toBe("scrub_circulating");
   });
 
   it("distinct actors pass without an event", async () => {
