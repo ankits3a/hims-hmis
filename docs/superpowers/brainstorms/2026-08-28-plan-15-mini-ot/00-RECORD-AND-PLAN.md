@@ -1,5 +1,5 @@
 # Plan 15 — Mini-OT day-care: brainstorm record
-**Date:** 2026-08-28 · **Status:** brainstorm, not approved, nothing executed · **Author:** session record
+**Date:** 2026-08-28 · **Status:** brainstorm v2 — forks DECIDED under the owner's 2026-08-28 mandate ("most logical, the way Indian hospitals work"; all standard certificates and machinery assumed present); edge-case pass done; nothing executed · **Author:** session record
 **Companions:** department series `2026-08-27-department-series/15-ot-anaesthesia-cssd.md` (§1, §3, §4, §13, §14, §15 — the raw material) · `00-INDEX-AND-SYNTHESIS.md` themes 1, 5, 6, 7, 9, 21 · spec §11.16-A (v4.8) · roadmap *Stage-2 acceleration* + the 2026-08-27 re-slice · Plan 14 phase doc DD13, § 4A-3, § 6.6, close review F5.
 
 ---
@@ -62,70 +62,59 @@ The ortho implant case and the non-MTP gynae case, from OPD procedure advice to 
 
 ---
 
-## 3. The forks — what the owner has to rule, with a recommendation each
+## 3. The forks — DECIDED (planner, under the 2026-08-28 mandate; owner may overturn any line)
 
-### 3.1 O-1 — where the day-care encounter lives (cannot be retrofitted cheaply)
-The index assumed a kernel enum; the tree has `opd_encounters.type` (text) and nothing else.
-- **(a) OT-owned `daycare_encounters`** — doc 15's recommendation. Own lifecycle (booked → checked-in → in-theatre → recovery → discharged/converted), own `D` series, no OPD coupling beyond the back-reference. Billing's plain-text `encounter_id` works unchanged. When IPD lands, `daycare_encounters` migrates into whatever the admission model is — one table, known shape.
-- **(b) `opd_encounters.type = 'daycare'`** — zero new tables, but OPD's queue engine, consult-completed indexes, visit numbering and `status` vocabulary would all have to learn a second lifecycle, and OPD would become the owner of a surgical record. The "two homes for one concept" trap runs the other way here: one home for two concepts.
-- **Recommend (a).** Record that R-035 is discharged by *this* ruling, not by an enum migration.
+The owner ruled 2026-08-28: when in doubt take the most logical choice, the way an Indian corporate hospital works; assume every certificate and machine that such a hospital holds is on file (MTP approved-place, PCPNDT registration for machine + sonologists, autoclave with a rapid BI reader, C-arm with AERB licence, OT environment monitoring). Each line below is therefore a DECISION, not a question.
 
-### 3.2 F5 (from Plan 14) — which ceiling the `min(tariff, MRP, ceiling)` clamp uses
-`material.consumed` FROZE `ceilingPaise` at the deployment instant; `consumptionsFor` RE-DERIVES it at read time. They diverge only when a gazette correction is filed with the same `effective_from`.
-- **Recommend: clamp against the re-derived value at invoice time; the frozen value is provenance.** The invoice is the tax document and must be right against the gazette as corrected on the day it is issued; the event records what the system believed at the scan. When the two differ, `consumptionsFor` returns both and the bill composer emits `material.ceiling_diverged` for the digest — never silently picks. This is a ruling, not a fix; Plan 15's phase doc records it as DD-n and asserts it (one test: same-`effective_from` correction, frozen ≠ derived, invoice uses derived, event emitted).
-- The alternative (frozen) is defensible only if the owner wants "the price on the day of surgery" to be the legal price — that is a CA question; ask it in the same session as R-097/098/099.
-
-### 3.3 Charge path — chargeables spine at 15 or 16c
-Plan 14 § 4A-3 recommended 16c. Nothing in this brainstorm moves it: a day-care bill composes from one read at discharge; a pharmacy counter cannot. **Recommend: hold at 16c**, 15 composes.
-
-### 3.4 Opening scope — does the unit open without MTP/PCPNDT machinery?
-- **Recommend: yes.** 15 ships with MTP and in-unit USG **outside** the Class-B whitelist (structurally — a case with those procedure codes cannot be booked). 15c adds them when the certificates are on file. The owner must confirm the unit can run ortho + non-MTP gynae first. If the answer is "MTP is most of the gynae volume", 15c moves ahead of 15b.
-
-### 3.5 Single-approver honesty for Class-B criteria
-Case-selection criteria are Class-B definition data and prod has one admin. **Recommend: adopt R-247 now** for 15 (`governance.single_approver_used` on every criteria publish, re-ratify within 30 days of O1). Not adopting it means either theatre (a two-key rule with one key) or no criteria at all.
-
-### 3.6 Overnight conversion — who owns the record after the crossing
-Spec §11.16-A says "documented handoff to the incumbent system under E-11's boundary map". The boundary map must name: which system bills the converted episode (double-billing risk), who closes `daycare_encounters`, and where the patient physically goes (the incumbent 10-bed IPD). **Owner fact needed, then a one-paragraph boundary entry in the phase doc.**
-
-### 3.7 The deploy chain
-15's migration chains on `0034`. The owner is holding 14's deploy. **Nothing in 15 needs 14 deployed to be built and reviewed** — but the first mini-OT case in production needs 0034 + 0035 together. Recommend the phase doc name this explicitly and that 15's close does not re-open the 14 deploy question.
-
-### 3.8 Rulings from doc 15 §13 this slice can defer
-O-4 theatre-time bands, O-5 cancellation matrix → after 100 cases of data (15d). O-6 BI policy, O-9 telemetry, O-10 photography → 15b or never. O-7 wrongly-opened implant → counsel's consignment-agreement review (in flight). O-12 FP sterilisation → **owner fact needed** (yes/no) because it changes 15c's scope.
+| # | Fork | DECIDED | Why this is the logical choice |
+|---|---|---|---|
+| 3.1 | **O-1 encounter home** | OT-owned `daycare_encounters`; `D` letter reserved in `kernel/episodes/series.ts`; `opd_encounter_id` back-reference to the advising consult | No kernel enum exists to extend; OPD's queue/visit lifecycle must not learn a surgical one. R-035 is discharged by this ruling |
+| 3.2 | **F5 ceiling source** | Clamp against the ceiling **re-derived at invoice time**; the frozen `material.consumed.ceilingPaise` is provenance. On divergence the composer uses the derived value and emits `material.ceiling_diverged` | The invoice is the tax document and must match the gazette as corrected on the day of issue; NPPA enforcement reads the invoice, not the event log |
+| 3.3 | **Charge path** | Chargeables spine stays at 16c; 15 composes at discharge from one read | Unchanged from Plan 14 §4A-3 |
+| 3.4 | **Slice order** | **15 spine → 15b statutory → 15c CSSD-lite → 15d money detail + equipment/telemetry** | Certificates assumed → 15b is not gated, only sized. Gynae day-care in India is MTP/D&C/hysteroscopy-heavy with a pelvic USG before most of them; the unit is half-open without 15b, so it lands immediately after the spine and before CSSD. Whitelist excludes `mtp` and in-unit USG classes structurally until 15b ships |
+| 3.5 | **Class-B criteria with one admin** | R-247 single-approver honesty mode: `governance.single_approver_used` on every criteria/privileging publish; re-ratify within 30 d of O1 | The truthful posture; a two-key rule with one key is theatre |
+| 3.6 | **Overnight conversion** | Conversion timestamp is the billing boundary: our invoice covers everything to `daycare.converted_to_admission` (theatre, implants, consumables, recovery); the incumbent IPD bills the admission from that instant. `daycare_encounters` closes with `outcome=converted`, handoff document printed (summary + implant stickers + drug chart). Physical destination: the incumbent 10-bed IPD | Indian practice folds day-care into the IPD bill; with two systems the only double-billing-proof rule is a timestamp boundary |
+| 3.7 | **Deploy chain** | 15 chains on `0034`; build + review do not need 14 deployed; first production case needs 0034+0035 together; 15's close does not re-open 14's deploy question | — |
+| 3.8 | **Deposit gate** | Definition data: self-pay deposit ≥ 100 % of package quote by default (configurable %); insured: pre-auth number + sanctioned amount typed as a documentation gate (TPA module is Plan 22/20-series); shortfall → approvals-engine exception (single-approver); §269ST cash block inherited from billing | Corporate hospitals take the full package as deposit for day-care; poor-patient exceptions are an owner call, so they go through approvals, not a lower default |
+| 3.9 | **O-2 bay class / bed billing** | Bays carry `class=daycare_recovery`; day-care bills by procedure package, never by bed-hours | Plan 13 §4A-1 already ruled the tariff link waits for IPD |
+| 3.10 | **O-3 Form-F home** | Tiny shared `pcpndt` module (registrations config + Form-F register) in 15b; radiology (18) consumes it | One register, two consumers |
+| 3.11 | **O-4 theatre-time basis** | Deferred to 15d: wheel-in→wheel-out in bands (first 60 min, then 30-min blocks — the corporate norm), anaesthesia induction→handover. **15 makes the five timestamps immutable transitions** so 15d computes from them | Package-first billing makes bands matter only outside package; one theatre has no band data yet |
+| 3.12 | **O-5 cancellation matrix** | 15 captures reason code + attribution class `patient / hospital / surgeon / payer / clinical`; the charge consequence (opened consumables → patient only when patient-attributable, else cost centre "OT cancellation") lands in 15d; issued-unopened stock returns via 14's transfer | Attribution must be captured from day one or the matrix has no data |
+| 3.13 | **O-6 BI release** | Implant loads held until rapid BI negative (1–3 h); non-implant loads released on parametric + class-5 chemical indicator with retrospective BI and auto-recall (15c) | Rapid BI reader assumed present; this is the CSSD norm in accredited Indian hospitals |
+| 3.14 | **O-7 wrongly-opened implant** | Hospital cost centre unless vendor packaging defect; **never the patient**; per-vendor override only via a signed agreement clause | — |
+| 3.15 | **O-8 privileging** | Privileging list per surgeon (procedure classes) is definition data in 15; outside privilege = **booking refused** (not a warning); list seeded by the MS at go-live under 3.5 | Credentialing committees are standard; a warning-only gate is unenforced |
+| 3.16 | **O-9 telemetry** | 15: start-of-list environment log (temp/humidity/pressure) as a documentation gate; sensor integration + "block if no reading > 2 h" → 15d | Sensors exist but the edge service is an integration phase |
+| 3.17 | **O-10 photography** | Out of 15 except the implant-sticker photo (H3); no clinical image capture until a consent-scope policy exists | — |
+| 3.18 | **O-11 criteria defaults** | ASA I–II · age 1–70 · BMI < 35 · escort mandatory · home within ~1 h · **procedure whitelist seed** — gynae: first-trimester MTP (suction evacuation / medical), D&C, diagnostic + operative hysteroscopy, LEEP/cervical biopsy, Bartholin marsupialisation, laparoscopic/minilap tubectomy, polypectomy, colposcopy, difficult IUCD removal, pelvic USG · ortho: implant/K-wire removal, closed reduction + percutaneous pinning, carpal tunnel release, trigger finger release, ganglion excision, diagnostic/therapeutic knee arthroscopy (meniscectomy), tendon repair, distal radius/ankle fixation on anaesthetist's call, joint aspiration/injection, MUA. **Excluded:** obstetric emergencies, ACL/joint replacement, anything needing a blood reserve. Department heads confirm-or-correct the seed | This is the whitelist most corporate day-care units run; excluding blood-reserve cases removes the blood-bank gate from 15 entirely (M2 becomes moot) |
+| 3.19 | **O-12 FP scheme** | Tubectomy is on the whitelist as an ordinary paid procedure; the government FP-scheme register/compensation surface is OUT until the owner says the hospital is empanelled (empanelment is not a standard certificate) | — |
+| 3.20 | **Narcotics in theatre** | The NDPS per-case kit, witnessed wastage and running balance belong to **Plan 16's controlled-drug register**; 15's anaesthesia record lists drugs given; no OT-local narcotic register | One register, the pharmacy's |
+| 3.21 | **Histopath specimens** | In 15 (gynae D&C/hysteroscopy produce a specimen almost every case): specimen row per case, label printed from the open case only (A10), dispatch record with destination (in-house lab or outsourced courier) — the manual chain until 17 | Cannot be deferred: the specimen exists whether the lab module does or not |
+| 3.22 | **Death on table** | Minimal but present in 15: `death.on_table_recorded` → case terminal, theatre `blocked_incident`, MLC flag, legal hold on the record, MS notified. The six-task cascade (police, mortuary, disclosure) → 28a/15d | A day-care unit can still have a death; the event cannot be "deferred" if it happens |
+| 3.23 | **Late discharge** | Discharge-ready after a configurable cut-off (default 20:00) → offer conversion to overnight observation (which IS 3.6's conversion); escort choice recorded | Sending a post-anaesthesia woman home at 22:00 is not Indian practice |
+| 3.24 | **Escort** | Adult (≥ 18) with a phone; relationship recorded; hired attendants allowed with ID type + last-4; `escort_id ≠ patient_id` CHECK (A7); DPDP-minimal fields | — |
 
 ---
 
 ## 4. Method notes for the authoring session
 
 - **One doc, LIGHT lane, ~9 tasks, second review pass mandatory** (the owner's 2026-08-28 "no third pass" ruling was explicitly not a precedent for skipping the second).
-- **Read before authoring:** doc 15 §3.1 (WF-OT-CASE states), §3.2 (gates as child workflows), §3.6 (PACU), §3.8 (implant case), §4 (data model), §13, §14; `modules/materials/events.ts` (DD13 verbatim), `modules/materials/consumption.ts` (`consumptionsFor`'s actual return shape post-M5), `modules/opd/workflow-def.ts` (the definition-JSON house shape), `kernel/db/schema/resources.test.ts` (kind claiming contract).
-- **Spec §11.16-A adversarial pass:** the roadmap booked it "before Plan 15 is authored". Run it as a fresh-reviewer pass over §11.16-A + this record (scope, not memory → spawn fresh, §2.115), or state in the phase doc that the doc's own second review discharges it. Do not skip silently.
-- **Fixture rule §2.102** applies from T1: the implant fixture must NOT have tariff = MRP = ceiling, or the clamp is untested (the Plan 14 seventh-coinciding-field lesson).
-- **Stop-loss:** shape 14 — set from 14's actuals at authoring (`token-baselines.json`), not from doc 15's ambition.
+- **Read before authoring:** doc 15 §3.1 (WF-OT-CASE states), §3.2 (gates as child workflows), §3.6 (PACU), §3.8 (implant case), §4 (data model), §5 rows named in §7 below; `modules/materials/events.ts` (DD13 verbatim), `modules/materials/consumption.ts` (`consumptionsFor`'s actual return shape post-M5), `modules/opd/workflow-def.ts` (the definition-JSON house shape), `kernel/db/schema/resources.test.ts` (kind claiming contract), `kernel/episodes/series.ts` (letter reservation).
+- **Spec §11.16-A adversarial pass:** booked "before Plan 15 is authored", not evidenced. Run it as a FRESH reviewer pass over §11.16-A + this record (scope, not memory — §2.115), or state in the phase doc that its own second review discharges it. Do not skip silently.
+- **Fixture rule §2.102** from T1: the implant fixture must NOT have tariff = MRP = ceiling, and the F5 test needs frozen ≠ derived.
+- **Downtime is hospital-scoped** until Plan 30 — say so (index theme 9).
+- **Stop-loss:** shape 14 — set from 14's actuals (`token-baselines.json`), not from doc 15's ambition.
 - **§1.3 absolute:** no scratch files; quoted heredocs into `node`/`python3`.
 
 ---
 
-## 5. What the owner needs to supply
+## 5. What remains for the owner — confirm-or-correct, not blocking
 
-### 5.1 Rulings (this session or next)
-1. O-1 encounter home → recommend OT-owned `daycare_encounters` (§3.1)
-2. The slice: 15 spine / 15b CSSD / 15c statutory (§2) — and whether 15c precedes 15b (§3.4)
-3. F5 ceiling source → recommend re-derived at invoice, frozen as provenance (§3.2)
-4. R-247 single-approver honesty for Class-B criteria (§3.5)
-5. Unit opens for ortho + non-MTP gynae before certificates (§3.4)
-6. Chargeables spine stays at 16c (§3.3)
-
-### 5.2 Facts (not rulings — the phase doc cannot be honest without them)
-- The actual day-care procedure list, gynae and ortho, that the heads would whitelist (O-11 needs the list, not the rule)
-- MTP approved-place certificate: on file / applied / not applied
-- PCPNDT: is the unit's USG machine already registered, and under which sonologists
-- Autoclave model; is there a BI reader (rapid or 24 h); who reads it today
-- How ortho implants arrive today — rep brings a sterile set per case, or a consignment stock sits in the store; is any consignment agreement signed (O-8 says no signed agreement = no consignment GRN)
-- Where a converted patient goes (the incumbent IPD), who bills that episode
-- Anaesthetist arrangement — on staff, visiting, on-call panel
-- FP sterilisation under the government scheme: yes/no (O-12)
-- Expected cases/month — sizes the list screen and whether O-4/O-5 ever matter
+Everything below has a default from §3 already; the phase doc is authored on the default and the owner corrects any line.
+1. The whitelist seed (3.18) — gynae + ortho heads strike or add procedures
+2. Conversion destination and billing boundary (3.6) — the incumbent IPD bills from the conversion instant
+3. Deposit default 100 % of package for self-pay (3.8)
+4. FP-scheme empanelment: assumed NO (3.19)
+5. Expected cases/month — sizes nothing in 15; matters for 15d's band design
 
 ---
 
@@ -133,14 +122,68 @@ O-4 theatre-time bands, O-5 cancellation matrix → after 100 cases of data (15d
 
 | T | Content | Depends on |
 |---|---|---|
-| T1 | Schema `daycare_encounters`, `ot_cases`, `ot_lists`, `ot_case_gates`, `ot_checklist_runs`, `ot_counts`, `ot_case_implants`, `pacu_scores`; `D` episode letter; registry manifest claiming `theatre` + `bed`; module skeleton | 0034 |
-| T2 | Workflow definitions WF-DAYCARE-CASE, WF-OT-GATES (child instances), WF-PACU; events in the catalog | T1 |
-| T3 | Booking from the OPD procedure-advice branch; Class-B criteria check under R-247; deposit quote via PricingContext | T2 |
-| T4 | Readiness: gate writes (anaesthesia/ASA, consents incl. guardian path, site, NPO, deposit, escort), list publish | T3 |
-| T5 | Cockpit: WHO states, counts + SoD + hard stop, timestamps, implant scan → `consignmentDeployed` in-transaction, `lot_exhausted` surfaced | T4, DD13 |
-| T6 | Recovery: scoring-to-threshold, escort re-verify, `daycare.discharged`, follow-up booking + recall task, `daycare.converted_to_admission` + handoff record | T5 |
-| T7 | Discharge bill composition: package + `consumptionsFor` + deposit allocation; the F5 ruling asserted; `material.ceiling_diverged` | T6, F5 ruling |
-| T8 | Screens: list/board, cockpit, recovery, booking branch; i18n; nav parity | T3–T7 |
-| T9 | Gate report: §19 mini-OT items (criteria approved, consignment agreement on file, MTP/PCPNDT explicitly OUT of whitelist), drills (count-mismatch, escort-absent), two review passes | all |
+| T1 | Schema `daycare_encounters`, `ot_cases`, `ot_lists`, `ot_case_gates`, `ot_checklist_runs`, `ot_counts`, `ot_case_implants`, `ot_specimens`, `pacu_scores`, `ot_privileges`, criteria definition; `D` episode letter; registry manifest claiming `theatre` + `bed`; module skeleton; `patient.merged` consumer | 0034 |
+| T2 | Workflow definitions WF-DAYCARE-CASE (with transition matrix incl. `cancelled_onday`, `absconded`, `converted`, `death_on_table` terminals), WF-OT-GATES (child instances), WF-PACU; events in the catalog | T1 |
+| T3 | Booking from the OPD procedure-advice branch; Class-B criteria + privileging check under R-247; duplicate-booking soft-block; deposit quote via PricingContext | T2 |
+| T4 | Readiness: gate writes (anaesthesia/ASA incl. external PAC, consents with language/interpreter/thumb + guardian path + conversion item, laterality invariant, site, NPO computed, deposit/pre-auth, escort, MLC decision for trauma), list publish + print-from-draft | T3 |
+| T5 | Cockpit: holding QR verify, WHO states, counts (two actors, SoD, optimistic version, derived status), five immutable timestamps, C-arm dose log, implant scan → `consignmentDeployed` in-transaction (state-guarded, idempotent on case+serial, explant path), specimen label + dispatch, `procedure.converted`, death-on-table minimal | T4, DD13 |
+| T6 | Recovery: bay assignment (occupancy-guarded), scoring-to-threshold (two scores 30 min apart), escort re-verify, ISBAR handover ack, late-discharge cut-off → conversion offer, `daycare.discharged` / `converted` / `absconded`, follow-up booking + recall task, family WhatsApp status at wheel-in/out via Plan 10 | T5 |
+| T7 | Discharge bill composition: package + `consumptionsFor` implant lines flagged outside-package + deposit allocation; F5 asserted; `material.ceiling_diverged`; composition refused unless the case is `signed_out` (no ghost cases); unreturned issued stock flagged at discharge | T6 |
+| T8 | Screens (Lane 1): list/board, cockpit, recovery, booking branch; i18n; nav parity; per-case downtime pack print | T3–T7 |
+| T9 | Gate report: criteria + privileging published under R-247, consignment agreement on file, `mtp`/USG classes structurally out until 15b; drills (count mismatch, escort absent, downtime backfill); two review passes | all |
 
 Nine tasks. If the phase doc's argument grows it past ten, something above belongs in 15b/15c/15d.
+
+---
+
+## 7. Edge-case register — the pass the owner asked for
+
+Source: doc 15 §5 (111 rows) + §6 chaos walkthroughs + cross-module chaos; filtered against the spine. **IN** rows are assertions the phase doc must carry; deferred rows name the slice that owns them. Ids are doc 15's.
+
+### 7.1 IN the spine (15) — 52 rows
+| Area | Rows | What 15 must assert |
+|---|---|---|
+| Identity / site | A1, A2, A3, A5, A7, A8, A9, A10 | Holding verify by UHID QR before `signed_in`; check-in refused without band id; laterality triple-equality (booking = consent = marking); `patient.merged` rewrites the case + re-verify flag; `escort_id ≠ patient_id` CHECK; time-out halt = near-miss row; (patient, date, procedure) soft-block; specimen label only from the open case |
+| Timing / races | B1, B4, B7, B8, B10, B11 | Sign-in serialises on the theatre row (exactly one of two racing succeeds); count row optimistic version → one 409; discharge needs ≥ 2 threshold scores 30 min apart; `incision` unreachable without `timed_out` (transition matrix test); cross-midnight case counted once, tariff pinned at case start; bay assign on occupied → error |
+| Downtime | C1, C2, C6, C10, C11 | Backfill with `occurred_at` < `recorded_at` and all three WHO phases required to close; list printable from draft; registry error inside the transition fails loudly, no half-state; hospital-scoped downtime until Plan 30; backfilled cancellation + refund linked to the downtime session |
+| Money | D2, D5, D8, D9, D12, D15 | Implant lines flagged outside-package before discharge; deposit carried across postponement; explant → 14 return path + vendor cost centre, one patient charge; `min(tariff, MRP, ceiling)` line records which won; issued ≠ consumed at discharge → return task; §269ST inherited |
+| Consent / legal | E5, E7, E8, E15, K2, K4 | RTA ortho: MLC decision recorded before wheel-in; consent has language + interpreter/witness + thumb path; `consent.revoked` → `cancelled_onday reason=patient_withdrew`, no theatre charge; minor without guardian consent → blocked |
+| Staff | F1, F2, F3, F4, F9, F10 | `surgeon.late_flagged` at +15/+30, no-show cancel at +60 with reason `surgeon_no_show`; sign-in requires an assigned anaesthetist actor (static role holder until Plan 20); same actor for both counts → `sod.violation_blocked`; privileging refuses booking; trainee logged, consultant is surgeon of record |
+| Equipment | G2, G4 | `procedure.converted` requires the consent's conversion item; C-arm case cannot sign out without a dose log |
+| Data quality | H1, H2, H3, H6, H8, H9, H10, H11 | Signing after 24 h needs a reason; op-note amendment append-only; manual UDI needs a verifier; consent requires procedure code + template version; "counts correct" derived from rows, never typed; NPO computed from the typed time; deploy idempotent on (case, serial); score from the wrong bay warns |
+| Fraud | I4, I7, I9 | Timestamps immutable, correction = reason + second actor + credit note; bill composition refused without WHO events; clinical cancellation reasons need anaesthetist co-sign |
+| Privacy | J1, J2, J3, J7 | Alias from `patients.get` on list/board/recovery; no WhatsApp to unverified numbers for VIP; family-facing text is token + status; sealed flag renders as "standard precautions" to non-clinical roles |
+| Integration | M3 | FHIR Encounter class=AMB for the day-care encounter |
+| Chaos | 6.2, 6.3 | Server-down mid-case on the per-case pack; anaesthetist no-show + surgeon late + deposit short on one morning — every branch above exists |
+
+### 7.2 New rows this pass added (Indian-context gaps in doc 15)
+| Id | Scenario | Decision |
+|---|---|---|
+| N1 | Family fed the patient despite the NPO call | NPO gate = typed last-intake time (computed) + patient attestation at check-in; violation → `cancelled_onday`, attribution `patient` |
+| N2 | Escort is a hired attendant / a minor | 3.24: adult with phone and ID; minor escort refused |
+| N3 | Discharge-ready at 21:30 | 3.23: cut-off → conversion offer, escort choice recorded |
+| N4 | Patient outside criteria (age 72, ASA III) the surgeon still wants as day-care | Two-actor clinical override (surgeon + anaesthetist, distinct ids, reason) → `gate.overridden`, digest line; statutory gates have no override lane |
+| N5 | Pre-auth denied at 07:00 on the list day | Attribution class `payer`; self-pay counselling; deposit paid → proceeds, else `postponed reason=payer_denied` |
+| N6 | Implant scanned before the case is in theatre (nurse pre-opens) | `consignmentDeployed` allowed only in states `timed_out … signed_out`; earlier → refused |
+| N7 | Implant deployed, then case abandoned pre-incision | D8's explant/return path; attribution `clinical` |
+| N8 | Bilateral as two cases, one day | One `daycare_encounter`, two `ot_cases`; bill composes per encounter (consumptionsFor is per encounter) |
+| N9 | Patient walks out of recovery without discharge | `absconded` terminal; bill issued as-is; recall call task; escort not verified is recorded as the cause |
+| N10 | ED overflow parks a patient in a recovery bay (cross-chaos 106) | Bay assignment only through the OT module for day-care cases; ED use = registry status set by in-charge with reason; never a `pacu_scores` row |
+| N11 | Surgeon extends the procedure on the table | `procedure.converted` + consent conversion item (G2); package delta → 15d |
+| N12 | Deposit shortfall for a poor patient | 3.8: approvals-engine exception under single-approver mode, evented; no silent lower default |
+| N13 | Same-day return to theatre (bleeding after D&C) | `return_to_ot.flagged` NEW case row linked to the original, no second deposit, quality counter; the second case's bill folds into the same encounter |
+| N14 | Two Sunita Devis, one is the other's escort | A1 + A7 together: escort verify scans the escort's own id if she has a UHID; cross-view blocked |
+
+### 7.3 Deferred, by owning slice
+- **15b statutory:** E1, E2, E3, E4, E16, E17, J5, 6.6 (MTP minor + POCSO, spouse-not-a-field, gestation limits + opinion count, certificate expiry as config, Form-F gate, sealed alias on invoices, copilot sealed-class, the inspector walk-in).
+- **15c CSSD-lite:** B6, C3, F5, G6, G7, H4, I2, I10, I11, M6, 6.1 (late insert vs set availability, manual cycle entry, temp role for autoclave, cycle/Bowie-Dick failure, backdated BI recall reaching used sets, loaner without load, exclusive set status, derived expiry, no data port, BI-positive mid-list).
+- **15d money/equipment/telemetry:** D1, D3, D4 (charge side), D6, D7, D10, D11, D13, D14, B2 (full cascade), B5, C4, C7, G1, G3, G5, G8, G9, G10, M7, I1, I6, I12, F6, 6.5.
+- **Plan 16 (NDPS):** I5. **Plan 17/18:** M1 external results, B12 frozen section. **28a quality:** E11 cascade, E12, E18, J4, J6. **Plan 20 roster:** F8, F6 validation. **Plan 22/document chrome:** K1 pictorial instructions, K3/K5 display + IVR. **Out of scope by whitelist:** A6, B3, B9, E6, E13, E14, E19, M2, L1–L5, 6.4 (MLC trauma path exists minimally via 3.22), 6.7 (disaster widening = Class-B emergency activation, evented — stays with 28-G).
+
+---
+
+## 8. Assumptions this record now rests on (owner mandate 2026-08-28)
+- MTP approved-place certificate, PCPNDT registration (machine + sonologists), AERB licence for the C-arm, autoclave with rapid BI reader, OT environment monitoring: **all present**. Their expiry dates are config with an Expiry Watchman warning (E4 pattern) — 15b/15c capture them.
+- The hospital is not FP-scheme empanelled (3.19).
+- The incumbent IPD stays the destination for conversions until the IPD cluster (3.6).
+- The blood bank is never on the day-care critical path because the whitelist excludes blood-reserve cases (3.18).
