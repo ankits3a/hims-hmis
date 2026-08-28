@@ -8,6 +8,7 @@ import { getPatientSummaries } from "../patients";
 import { loadOpdConfig } from "./config";
 import { getEncounter, moveEncounter } from "./encounters";
 import { OpdError } from "./errors";
+import { encounterVisibleTo } from "./read-gate";
 import { vitalsDangerFlagged, vitalsRecorded } from "./events";
 import { ageYearsAt } from "./time";
 import { bandFor, evaluateVitals, missingRequired, validateVitalsRanges } from "./vitals-rules";
@@ -92,6 +93,8 @@ export async function recordVitals(
   });
 }
 
-export async function listVitals(db: Db, encounterId: string): Promise<VitalsRow[]> {
+export async function listVitals(db: Db, actor: Actor, encounterId: string): Promise<VitalsRow[]> {
+  // PLAN 07a T1 — an encounter id is not a capability. Same empty answer as an unknown encounter.
+  if (!(await encounterVisibleTo(db, actor, encounterId))) return [];
   return db.select().from(opdVitals).where(eq(opdVitals.encounterId, encounterId)).orderBy(asc(opdVitals.recordedAt));
 }

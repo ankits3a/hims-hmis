@@ -93,7 +93,7 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
     expect(issued.qrPayload).toMatch(/^rx1\.[0-9A-Z]{26}\.[0-9A-Z]{26}\.1\.[A-Za-z0-9_-]{43}$/);
     expect(issued.qrPayload).toBe(buildRxQrPayload(testCfg, { id: issued.prescriptionId, encounterId: enc.id, version: 1 }));
 
-    const rows = await listPrescriptions(db, enc.id);
+    const rows = await listPrescriptions(db, dra.actor, enc.id);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       id: issued.prescriptionId, status: "active", version: 1, patientId: patient.id, doctorId: dra.doctorId, issuedBy: dra.userId,
@@ -121,7 +121,7 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
       .rejects.toMatchObject({ code: "empty_prescription" });
     await expect(issuePrescription(db, dra.actor, testCfg, enc.id, { lines: [{ ...TWO_LINES[0]!, drug: "   " }] }, MON3))
       .rejects.toMatchObject({ code: "empty_prescription" });
-    expect(await listPrescriptions(db, enc.id)).toHaveLength(1);
+    expect(await listPrescriptions(db, dra.actor, enc.id)).toHaveLength(1);
   });
 
   it("the allergy hard-warning blocks, a reasoned override releases it, and matching is bidirectional and case-insensitive", async () => {
@@ -131,7 +131,7 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
     await expect(issuePrescription(db, dra.actor, testCfg, enc.id, { lines: PENICILLIN_LINES }, MON2)).rejects.toMatchObject({
       code: "allergy_conflict", detail: { matches: [{ lineIndex: 0, substance: "Penicillin" }] },
     });
-    expect(await listPrescriptions(db, enc.id)).toHaveLength(0);
+    expect(await listPrescriptions(db, dra.actor, enc.id)).toHaveLength(0);
     expect(await eventsNamed("prescription.issued")).toHaveLength(0);
 
     await expect(issuePrescription(db, dra.actor, testCfg, enc.id, {
@@ -146,7 +146,7 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
       ],
     }, MON2);
     expect(ok.allergyOverrideCount).toBe(1); // only overrides that resolve a real match are stored and counted
-    expect((await listPrescriptions(db, enc.id))[0]!.allergyOverrides)
+    expect((await listPrescriptions(db, dra.actor, enc.id))[0]!.allergyOverrides)
       .toEqual([{ lineIndex: 0, substance: "Penicillin", reason: "tolerated previously, benefit outweighs" }]);
     expect((await eventsNamed("prescription.issued"))[0]!.payload).toMatchObject({ allergyOverrideCount: 1 });
 
@@ -167,7 +167,7 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
     const v2 = await issuePrescription(db, dra.actor, testCfg, enc.id, { lines: [TWO_LINES[0]!] }, MON3);
     expect(v2.version).toBe(2);
 
-    const rows = await listPrescriptions(db, enc.id);
+    const rows = await listPrescriptions(db, dra.actor, enc.id);
     expect(rows.map((r) => [r.version, r.status])).toEqual([[1, "superseded"], [2, "active"]]);
     expect(rows[0]!.id).toBe(v1.prescriptionId);
     expect(rows[1]!.id).toBe(v2.prescriptionId);
@@ -182,7 +182,7 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
     ]);
     expect(both.map((r) => r.version).sort((a, b) => a - b)).toEqual([1, 2]);
 
-    const rows = await listPrescriptions(db, enc.id);
+    const rows = await listPrescriptions(db, dra.actor, enc.id);
     expect(rows.map((r) => r.version)).toEqual([1, 2]);
     expect(rows.filter((r) => r.status === "active").map((r) => r.version)).toEqual([2]);
     expect(await eventsNamed("prescription.issued")).toHaveLength(2);
@@ -353,7 +353,7 @@ describe("opd prescriptions — interactions, duplicates and their overrides (Pl
       expect(detail?.hits).toHaveLength(1);
       expect(detail?.hits?.[0]).toMatchObject({ severity: "severe", note: "bleeding risk — avoid or monitor INR closely" });
     }
-    expect(await listPrescriptions(db, enc.id)).toHaveLength(0);
+    expect(await listPrescriptions(db, dra.actor, enc.id)).toHaveLength(0);
   });
 
   it("an override with a reason lets it through, and the count lands on the KPI event", async () => {
@@ -495,7 +495,7 @@ describe("opd prescriptions — interactions, duplicates and their overrides (Pl
         saltPair: pre.interactions[0]!.saltPair,
       }],
     }, MON2);
-    const [row] = await listPrescriptions(db, enc.id);
+    const [row] = await listPrescriptions(db, dra.actor, enc.id);
     expect((row!.lines as { drug: string; medicineId?: string | null }[])[0])
       .toMatchObject({ drug: "Crocin 650", medicineId: warfarinId });
     expect(issued.interactionOverrideCount).toBe(1);
@@ -536,7 +536,7 @@ describe("opd prescriptions — interactions, duplicates and their overrides (Pl
       }],
     }, MON2);
 
-    const [row] = await listPrescriptions(db, enc.id);
+    const [row] = await listPrescriptions(db, dra.actor, enc.id);
     expect(row!.interactionOverrides).toEqual([{
       lineIndex: 1, reason: "cardiology advised dual therapy, INR weekly", saltPair: hits[0]!.saltPair,
     }]);
@@ -586,7 +586,7 @@ describe("opd prescriptions — interactions, duplicates and their overrides (Pl
     expect(pre.notices).toEqual([]);
     // T6 reads this for the coverage-gated hint: the SERVER decides what resolved, never the browser.
     expect(pre.unresolvedLineIndexes).toEqual([]);
-    expect(await listPrescriptions(db, enc.id)).toHaveLength(0);
+    expect(await listPrescriptions(db, dra.actor, enc.id)).toHaveLength(0);
     expect(await db.select().from(events).where(eq(events.name, "prescription.issued"))).toHaveLength(0);
   });
 });

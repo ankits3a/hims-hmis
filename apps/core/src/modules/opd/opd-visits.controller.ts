@@ -224,8 +224,8 @@ export class OpdVisitsController {
 
   @RequirePermission("opd.visits.read", "hospital")
   @Get("visits/:id/vitals")
-  async getVitals(@Param("id") id: string): Promise<{ items: VitalsRow[] }> {
-    return { items: await listVitals(this.db, id) };
+  async getVitals(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ items: VitalsRow[] }> {
+    return { items: await listVitals(this.db, actor, id) };
   }
 
   // ——— the patient's OPD history (merge-chain aware) ———

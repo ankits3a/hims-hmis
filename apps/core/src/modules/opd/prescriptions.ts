@@ -12,6 +12,7 @@ import { loadOpdConfig } from "./config";
 import { requireTreatingDoctor } from "./consultation";
 import { getEncounter } from "./encounters";
 import { OpdError } from "./errors";
+import { encounterVisibleTo } from "./read-gate";
 import { prescriptionIssued, rxQrSignatureFailed } from "./events";
 import { getDoctor } from "./masters";
 import { toFhirBundle } from "./fhir";
@@ -451,7 +452,9 @@ export async function issuePrescription(
   });
 }
 
-export async function listPrescriptions(db: Db, encounterId: string): Promise<PrescriptionRow[]> {
+export async function listPrescriptions(db: Db, actor: Actor, encounterId: string): Promise<PrescriptionRow[]> {
+  // PLAN 07a T1 — an encounter id is not a capability. Same empty answer as an unknown encounter.
+  if (!(await encounterVisibleTo(db, actor, encounterId))) return [];
   return db.select().from(opdPrescriptions).where(eq(opdPrescriptions.encounterId, encounterId)).orderBy(asc(opdPrescriptions.version));
 }
 

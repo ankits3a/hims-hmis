@@ -244,8 +244,8 @@ export class OpdQueueController {
 
   @RequirePermission("opd.visits.read", "hospital")
   @Get("visits/:id/prescriptions")
-  async prescriptions(@Param("id") id: string): Promise<{ items: PrescriptionRow[] }> {
-    return { items: await listPrescriptions(this.db, id) };
+  async prescriptions(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ items: PrescriptionRow[] }> {
+    return { items: await listPrescriptions(this.db, actor, id) };
   }
 
   @RequirePermission("opd.prescriptions.verify", "hospital")

@@ -8,7 +8,7 @@ import {
   opdDepartments, opdDoctors, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions, opdVitals,
 } from "../../kernel/db/schema";
 import { startInstance, transition, WorkflowError } from "../../kernel/workflow/instances";
-import { listMergedLoserIds, resolvePatientId } from "../patients";
+import { getPatient, listMergedLoserIds, resolvePatientId } from "../patients";
 import { loadOpdConfig } from "./config";
 import { OpdError } from "./errors";
 import { patientCheckedIn, visitAbandoned, visitOpened, visitTransferred } from "./events";
@@ -305,8 +305,14 @@ export type TimelineItem = {
  * with and a merge never rewrites another module's rows (§6), so the chain is walked at read time.
  */
 export async function patientTimeline(db: Db, actor: Actor, patientId: string, limit = 50): Promise<TimelineItem[]> {
-  const canonical = await resolvePatientId(db, patientId);
-  if (!canonical) throw new OpdError("patient_not_found", `unknown patient ${patientId}`);
+  // PLAN 07a T1 — `getPatient`, NOT `resolvePatientId`. The latter is id mapping and says so
+  // ("no gate"); using it here left a sealed patient's diagnoses and ICD-10 codes readable to any
+  // holder of `opd.visits.read`, which `front_office` holds, while `GET /patients/:id` correctly
+  // existence-hid the same person. The refusal below is the SAME `patient_not_found` an absent id
+  // produces, so it cannot confirm existence (07a DD2).
+  const visible = await getPatient(db, actor, patientId);
+  if (!visible) throw new OpdError("patient_not_found", `unknown patient ${patientId}`);
+  const canonical = visible.patient.id;
   const chainIds = [canonical, ...(await listMergedLoserIds(db, canonical))];
   const rows = await db
     .select({ encounter: opdEncounters, doctorName: opdDoctors.displayName, departmentName: opdDepartments.name })
