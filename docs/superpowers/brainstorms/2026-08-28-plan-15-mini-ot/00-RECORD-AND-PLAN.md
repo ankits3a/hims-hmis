@@ -75,7 +75,7 @@ The owner ruled 2026-08-28: when in doubt take the most logical choice, the way 
 | 3.5 | **Class-B criteria with one admin** | R-247 single-approver honesty mode: `governance.single_approver_used` on every criteria/privileging publish; re-ratify within 30 d of O1 | The truthful posture; a two-key rule with one key is theatre |
 | 3.6 | **Overnight conversion** | Conversion timestamp is the billing boundary: our invoice covers everything to `daycare.converted_to_admission` (theatre, implants, consumables, recovery); the incumbent IPD bills the admission from that instant. `daycare_encounters` closes with `outcome=converted`, handoff document printed (summary + implant stickers + drug chart). Physical destination: the incumbent 10-bed IPD | Indian practice folds day-care into the IPD bill; with two systems the only double-billing-proof rule is a timestamp boundary |
 | 3.7 | **Deploy chain** | 15 chains on `0034`; build + review do not need 14 deployed; first production case needs 0034+0035 together; 15's close does not re-open 14's deploy question | — |
-| 3.8 | **Deposit gate** | Definition data: self-pay deposit ≥ 100 % of package quote by default (configurable %); insured: pre-auth number + sanctioned amount typed as a documentation gate (TPA module is Plan 22/20-series); shortfall → approvals-engine exception (single-approver); §269ST cash block inherited from billing | Corporate hospitals take the full package as deposit for day-care; poor-patient exceptions are an owner call, so they go through approvals, not a lower default |
+| 3.8 | **Deposit gate** | **Deposit policy is definition data (Class B), default 100 % of the package quote for self-pay; the gate evaluates `required = f(payer class, quote, entitlements, credit)` and `paid ≥ required`.** Full policy and edge cases in §3A. Shortfall → approvals-engine exception (single-approver), never a silent lower default | Owner ruling 2026-08-28: default 100 %, but flexible — corporate hospitals run one rule per payer class, not one number |
 | 3.9 | **O-2 bay class / bed billing** | Bays carry `class=daycare_recovery`; day-care bills by procedure package, never by bed-hours | Plan 13 §4A-1 already ruled the tariff link waits for IPD |
 | 3.10 | **O-3 Form-F home** | Tiny shared `pcpndt` module (registrations config + Form-F register) in 15b; radiology (18) consumes it | One register, two consumers |
 | 3.11 | **O-4 theatre-time basis** | Deferred to 15d: wheel-in→wheel-out in bands (first 60 min, then 30-min blocks — the corporate norm), anaesthesia induction→handover. **15 makes the five timestamps immutable transitions** so 15d computes from them | Package-first billing makes bands matter only outside package; one theatre has no band data yet |
@@ -86,12 +86,46 @@ The owner ruled 2026-08-28: when in doubt take the most logical choice, the way 
 | 3.16 | **O-9 telemetry** | 15: start-of-list environment log (temp/humidity/pressure) as a documentation gate; sensor integration + "block if no reading > 2 h" → 15d | Sensors exist but the edge service is an integration phase |
 | 3.17 | **O-10 photography** | Out of 15 except the implant-sticker photo (H3); no clinical image capture until a consent-scope policy exists | — |
 | 3.18 | **O-11 criteria defaults** | ASA I–II · age 1–70 · BMI < 35 · escort mandatory · home within ~1 h · **procedure whitelist seed** — gynae: first-trimester MTP (suction evacuation / medical), D&C, diagnostic + operative hysteroscopy, LEEP/cervical biopsy, Bartholin marsupialisation, laparoscopic/minilap tubectomy, polypectomy, colposcopy, difficult IUCD removal, pelvic USG · ortho: implant/K-wire removal, closed reduction + percutaneous pinning, carpal tunnel release, trigger finger release, ganglion excision, diagnostic/therapeutic knee arthroscopy (meniscectomy), tendon repair, distal radius/ankle fixation on anaesthetist's call, joint aspiration/injection, MUA. **Excluded:** obstetric emergencies, ACL/joint replacement, anything needing a blood reserve. Department heads confirm-or-correct the seed | This is the whitelist most corporate day-care units run; excluding blood-reserve cases removes the blood-bank gate from 15 entirely (M2 becomes moot) |
-| 3.19 | **O-12 FP scheme** | Tubectomy is on the whitelist as an ordinary paid procedure; the government FP-scheme register/compensation surface is OUT until the owner says the hospital is empanelled (empanelment is not a standard certificate) | — |
+| 3.19 | **O-12 FP scheme** | **Hospital IS FP-scheme empanelled (owner, 2026-08-28).** Tubectomy/vasectomy under the scheme: GoI sterilisation consent form (Standards 2014 / 2020 update), eligibility checks as config (age, marital status, living children), counselling checklist, **FP register + compensation/incentive fields + failure/complication reporting pathway** — lands in **15b** with the other statutory surfaces; the spine books the procedure with `scheme=fp` so 15b's register back-fills from cases | A scheme case has no patient deposit and a government claim instead — that is a payer class in §3A, and a register the district reads |
 | 3.20 | **Narcotics in theatre** | The NDPS per-case kit, witnessed wastage and running balance belong to **Plan 16's controlled-drug register**; 15's anaesthesia record lists drugs given; no OT-local narcotic register | One register, the pharmacy's |
 | 3.21 | **Histopath specimens** | In 15 (gynae D&C/hysteroscopy produce a specimen almost every case): specimen row per case, label printed from the open case only (A10), dispatch record with destination (in-house lab or outsourced courier) — the manual chain until 17 | Cannot be deferred: the specimen exists whether the lab module does or not |
 | 3.22 | **Death on table** | Minimal but present in 15: `death.on_table_recorded` → case terminal, theatre `blocked_incident`, MLC flag, legal hold on the record, MS notified. The six-task cascade (police, mortuary, disclosure) → 28a/15d | A day-care unit can still have a death; the event cannot be "deferred" if it happens |
 | 3.23 | **Late discharge** | Discharge-ready after a configurable cut-off (default 20:00) → offer conversion to overnight observation (which IS 3.6's conversion); escort choice recorded | Sending a post-anaesthesia woman home at 22:00 is not Indian practice |
 | 3.24 | **Escort** | Adult (≥ 18) with a phone; relationship recorded; hired attendants allowed with ID type + last-4; `escort_id ≠ patient_id` CHECK (A7); DPDP-minimal fields | — |
+
+---
+
+## 3A. Deposit policy — flexible by design (owner ruling 2026-08-28)
+
+**Shape:** one `deposit_policies` definition (Class B, versioned) keyed by **payer class**; the gate computes `required` and compares to `paid` (billing's payment/advance rows allocated to the encounter). No screen ever types a deposit amount — it types a payer class and, where allowed, an exception request.
+
+| Payer class | Default `required` | Notes |
+|---|---|---|
+| `self_pay` | 100 % of package quote (+ implant estimate when the procedure carries one) | The owner's default |
+| `insured_tpa` | quote − sanctioned pre-auth amount, floor at the policy's co-pay/non-payables estimate (default 20 % of quote) | Pre-auth number + sanctioned amount typed (documentation gate until the TPA module); **denied at the list day → N5** |
+| `govt_scheme` (PMJAY / state schemes) | 0 — **no balance billing, structurally** (D10) | Pre-auth/TMS id captured; costlier implant than the package → absorption cost centre with approval, never the patient |
+| `fp_scheme` | 0 | 3.19; claim to the district, compensation fields in 15b |
+| `corporate_credit` | 0 up to the partner's available credit limit (Plan 09 `partners`), else the excess as self-pay | Credit letter/reference captured |
+| `membership_prepaid` | quote − entitlement value (Plan 09 counters/benefits, best-single-benefit) | Contest recorded (D14) |
+| `staff_dependant` | policy % (default 0 for staff, 50 % for dependants) | HR-verified relationship |
+| `charity` | 0 with approval reference (D13) | Full cost composition still recorded |
+
+**Edge cases the gate must handle (all evented, all in 15 T3/T4/T7):**
+- **Partial deposit / instalments** — approval exception under single-approver mode records `allowed_shortfall` + a settlement-before-discharge task; discharge bill shows the balance; discharge itself is never blocked on money (a post-anaesthesia patient is not held for a bill — the dues ladder handles it).
+- **Same-day booking** (OPD consult in the morning, list at noon) — deposit due at check-in, not T-24 h; the chaser's timing is relative to the slot.
+- **Postponement** — deposit stays as liability on the encounter (D5); nothing is refunded unless asked.
+- **Cancellation** — refund reverses to source (credit note + voucher, identity check); hospital/surgeon/payer-attributable → full refund; patient-attributable → opened-consumable deduction only after 15d's matrix exists (until then full refund, evented).
+- **Over-deposit** (procedure smaller than quoted, implant not used) — auto-refund line at discharge; never held as "credit for next time" without the patient's written choice.
+- **Paid by a third party** (employer, relative, NGO) — payer identity on the payment row; refunds go to the payer, not the patient.
+- **Payer switch mid-episode** (TPA denies at discharge, D11) — re-attribution by payer period; the deposit ladder restarts as self-pay.
+- **Quote changes** (procedure converted on table N11, second side A4, implant brand change) — `required` recomputes; the gate is only evaluated pre-wheel-in, so post-op deltas surface as balance, never as a retroactive gate failure.
+- **Cash law** — §269ST block above ₹2 lakh, PAN/Form-60 line (D15) inherited from billing; UPI/NEFT counselling text.
+- **Deposit taken but case never booked** (walk-in pays at the counter first) — advance sits unallocated on the patient; booking allocates it; unallocated advances past 30 days → refund task.
+- **Two cases one encounter** (N8) — one deposit against the encounter, `required` = sum of quotes.
+- **Downtime** — paper deposit receipt with reserved serial; backfill allocates it (C11).
+- **Wrong payer class chosen** — change requires reason + recompute; `payer.class_changed` event; audit shows both.
+
+**Test the phase doc must carry:** a property test that for every payer class `required ≥ 0`, `required ≤ quote`, and the exception path is the only way `paid < required` reaches `satisfied`.
 
 ---
 
@@ -112,8 +146,8 @@ The owner ruled 2026-08-28: when in doubt take the most logical choice, the way 
 Everything below has a default from §3 already; the phase doc is authored on the default and the owner corrects any line.
 1. The whitelist seed (3.18) — gynae + ortho heads strike or add procedures
 2. Conversion destination and billing boundary (3.6) — the incumbent IPD bills from the conversion instant
-3. Deposit default 100 % of package for self-pay (3.8)
-4. FP-scheme empanelment: assumed NO (3.19)
+3. ~~Deposit default~~ RULED 2026-08-28: 100 % default, flexible per §3A
+4. ~~FP-scheme empanelment~~ RULED 2026-08-28: YES — scheme surface in 15b
 5. Expected cases/month — sizes nothing in 15; matters for 15d's band design
 
 ---
@@ -124,7 +158,7 @@ Everything below has a default from §3 already; the phase doc is authored on th
 |---|---|---|
 | T1 | Schema `daycare_encounters`, `ot_cases`, `ot_lists`, `ot_case_gates`, `ot_checklist_runs`, `ot_counts`, `ot_case_implants`, `ot_specimens`, `pacu_scores`, `ot_privileges`, criteria definition; `D` episode letter; registry manifest claiming `theatre` + `bed`; module skeleton; `patient.merged` consumer | 0034 |
 | T2 | Workflow definitions WF-DAYCARE-CASE (with transition matrix incl. `cancelled_onday`, `absconded`, `converted`, `death_on_table` terminals), WF-OT-GATES (child instances), WF-PACU; events in the catalog | T1 |
-| T3 | Booking from the OPD procedure-advice branch; Class-B criteria + privileging check under R-247; duplicate-booking soft-block; deposit quote via PricingContext | T2 |
+| T3 | Booking from the OPD procedure-advice branch; Class-B criteria + privileging check under R-247; duplicate-booking soft-block; payer class + deposit policy evaluation (§3A) with quote via PricingContext | T2 |
 | T4 | Readiness: gate writes (anaesthesia/ASA incl. external PAC, consents with language/interpreter/thumb + guardian path + conversion item, laterality invariant, site, NPO computed, deposit/pre-auth, escort, MLC decision for trauma), list publish + print-from-draft | T3 |
 | T5 | Cockpit: holding QR verify, WHO states, counts (two actors, SoD, optimistic version, derived status), five immutable timestamps, C-arm dose log, implant scan → `consignmentDeployed` in-transaction (state-guarded, idempotent on case+serial, explant path), specimen label + dispatch, `procedure.converted`, death-on-table minimal | T4, DD13 |
 | T6 | Recovery: bay assignment (occupancy-guarded), scoring-to-threshold (two scores 30 min apart), escort re-verify, ISBAR handover ack, late-discharge cut-off → conversion offer, `daycare.discharged` / `converted` / `absconded`, follow-up booking + recall task, family WhatsApp status at wheel-in/out via Plan 10 | T5 |
@@ -184,6 +218,6 @@ Source: doc 15 §5 (111 rows) + §6 chaos walkthroughs + cross-module chaos; fil
 
 ## 8. Assumptions this record now rests on (owner mandate 2026-08-28)
 - MTP approved-place certificate, PCPNDT registration (machine + sonologists), AERB licence for the C-arm, autoclave with rapid BI reader, OT environment monitoring: **all present**. Their expiry dates are config with an Expiry Watchman warning (E4 pattern) — 15b/15c capture them.
-- The hospital is not FP-scheme empanelled (3.19).
+- The hospital IS FP-scheme empanelled (owner, 2026-08-28) — 3.19.
 - The incumbent IPD stays the destination for conversions until the IPD cluster (3.6).
 - The blood bank is never on the day-care critical path because the whitelist excludes blood-reserve cases (3.18).
