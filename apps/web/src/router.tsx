@@ -13,6 +13,7 @@ import { ModeBanner } from "./components/mode-banner";
 import { LoginScreen } from "./screens/login";
 import { PatientInHandProvider } from "./lib/patient-in-hand";
 import { PatientStrip } from "./components/patient-strip";
+import { CounterDesk } from "./screens/counter-desk";
 import { RegistrationDesk } from "./screens/registration-desk";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
@@ -52,6 +53,10 @@ import { OtRecovery } from "./screens/ot-recovery";
  * route — hiding it is courtesy, not security.
  */
 const NAV: readonly { to: string; label: string; permission: string }[] = [
+  // PLAN 07b T3 — the counter, first in the row for the reason `otManifest`-style menus give: it is
+  // the screen a one-person desk lives on. Path and permission match `opdManifest.menu` exactly,
+  // which `nav-parity.test.ts` enforces rather than trusts.
+  { to: "/counter", label: "nav.counterDesk", permission: "opd.visits.open" },
   { to: "/registration", label: "nav.registration", permission: "patients.register" },
   { to: "/merge", label: "nav.merge", permission: "patients.merge" },
   { to: "/approvals", label: "nav.approvals", permission: "approvals.requests.read" },
@@ -233,6 +238,18 @@ const indexRoute = createRoute({
   beforeLoad: () => {
     throw redirect({ to: "/registration" });
   },
+});
+
+/**
+ * PLAN 07b T3 — THE COUNTER. One screen for the whole walk-in: find the patient once, open the
+ * visit, take the money, hand them to vitals. It sits BESIDE `/opd/desk` and `/billing` rather than
+ * replacing them (DD11) — the supervisor's board, the transfer lane and the dues desk still need
+ * their own surfaces, and Plan 22's multi-counter model needs them intact.
+ */
+const counterDeskRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/counter",
+  component: CounterDesk,
 });
 
 const registrationRoute = createRoute({
@@ -463,7 +480,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, counterDeskRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,

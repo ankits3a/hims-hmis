@@ -36,7 +36,8 @@
     "materialsGrn": "Goods receipt",
     "otList": "Theatre list",
     "otBook": "Book day-care case",
-    "otRecovery": "Recovery"
+    "otRecovery": "Recovery",
+    "counterDesk": "Counter"
   },
   "palette": {
     "title": "Search",
@@ -1498,5 +1499,49 @@
       "book": "Book appointment",
       "bill": "Take payment"
     }
+  },
+  "counter": {
+    "title": "Counter",
+    "whoIsHere": "Who is at the counter?",
+    "registerNew": "Register a new patient",
+    "backToSearch": "Back to search",
+    "name": "Name",
+    "phone": "Phone",
+    "sex": "Sex",
+    "sexUnknown": "Not stated",
+    "sexFemale": "Female",
+    "sexMale": "Male",
+    "whichDoctor": "Which doctor?",
+    "department": "Department",
+    "pickDepartment": "Choose a department",
+    "doctor": "Doctor",
+    "pickDoctor": "Choose a doctor",
+    "waiting": "{{n}} waiting",
+    "openVisit": "Open visit",
+    "token": "Token {{n}}",
+    "registered": "newly registered",
+    "duplicateWarning": "{{n}} existing patient(s) closely match this registration. Check before creating a second record.",
+    "useExisting": "Search for the existing patient",
+    "registerAnyway": "Register anyway",
+    "exitFree": "No fee — this revisit is inside the follow-up window. Nothing to collect.",
+    "exitSettled": "Paid in full.",
+    "exitCredit": "Billed on credit — the amount is owed and recorded.",
+    "payable": "Payable: ₹{{amount}}",
+    "settle": "Take payment",
+    "sendToVitals": "Send the patient to the vitals desk.",
+    "print": "Print slip",
+    "nextPatient": "Next patient",
+    "inHandHint": "A patient is still in hand from the last screen.",
+    "drawerClosed": "Your cash drawer is not open. Open it before you start — a walk-in you cannot take payment for is a walk-in you cannot finish.",
+    "openDrawer": "Open my drawer",
+    "drawerLocked": "Your drawer is locked pending a variance approval from a billing manager. You cannot take payment, and therefore cannot complete a walk-in, until it is granted."
+  },
+  "counterSlip": {
+    "token": "Token",
+    "room": "Room {{code}}",
+    "fee": "Consultation fee",
+    "onCredit": "Billed on credit — amount owed",
+    "freeFollowUp": "Free follow-up — nothing to pay",
+    "nextStep": "Please go to the vitals desk next."
   }
 }

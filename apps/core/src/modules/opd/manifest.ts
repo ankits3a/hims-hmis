@@ -10,6 +10,10 @@ export const opdManifest: ModuleManifest = {
   key: "opd",
   title: "OPD — encounters, appointments, queues, vitals",
   menu: [
+    // PLAN 07b T3 — the counter comes FIRST because it is where a one-person desk actually works:
+    // find, open, collect, hand on. The module screens below it stay for the supervisor and for the
+    // multi-counter model Plan 22 brings (07b DD11).
+    { label: "Counter", path: "/counter", permission: "opd.visits.open" },
     { label: "Appointments", path: "/opd/appointments", permission: "opd.appointments.read" },
     { label: "OPD desk", path: "/opd/desk", permission: "opd.visits.open" },
     { label: "Vitals", path: "/opd/vitals", permission: "opd.vitals.record" },

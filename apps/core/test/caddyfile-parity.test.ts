@@ -308,7 +308,12 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // The number moved BY EXECUTION rather than by prediction, exactly as the two paragraphs above
     // record for 16a and 14: the run that added them failed here with `Received length: 32`
     // against the pinned 28.
-    expect(routes).toHaveLength(32);
+    // PLAN 07b T3 — 33 with the counter, the one screen a single-staffer desk works a walk-in on.
+    // The number moved BY EXECUTION rather than by prediction, exactly as the paragraphs above
+    // record for 16a, 14 and 15: the run that added it failed here with `Received length: 33`
+    // against the pinned 32.
+    expect(routes).toHaveLength(33);
+    expect(routes).toContain("/counter");
     expect(routes).toContain("/ot/list");
     expect(routes).toContain("/ot/book");
     expect(routes).toContain("/ot/recovery");

@@ -265,3 +265,32 @@ export function listDoctorSchedules(doctorId: string): Promise<{ items: WireSche
 export function listLeaves(doctorId: string): Promise<{ items: WireLeave[] }> {
   return api("GET", `/opd/leaves?doctorId=${encodeURIComponent(doctorId)}`);
 }
+
+/**
+ * PLAN 07b T6/T3 — THE WALK-IN, AS ONE CALL.
+ *
+ * The counter used to make this journey out of several requests the browser sequenced itself, which
+ * is how a patient ended up registered with no visit when one of them failed. `POST /opd/walk-in`
+ * registers-or-attaches AND opens the visit in one transaction; the idempotency key is what makes a
+ * retry after a timeout safe, and it is minted in ONE place so thirteen call sites cannot forget it.
+ */
+export type WireWalkInPatient = { existingId: string } | { register: Record<string, unknown> };
+
+export type WireWalkInBody = {
+  patient: WireWalkInPatient;
+  departmentId: string;
+  doctorId: string;
+  intendedPayer?: string;
+  referralSource?: string;
+  referrerName?: string;
+  acknowledgedDuplicates?: boolean;
+};
+
+export type WireWalkInResult = WireOpenVisitResult & { patientId: string; registered: boolean };
+
+/** The near-matches a refused registration comes back with (`duplicate_suspected`). */
+export type WireDuplicateCandidate = { id: string; uhid: string; name: string | null };
+
+export function walkIn(body: WireWalkInBody, idempotencyKey: string): Promise<WireWalkInResult> {
+  return api("POST", "/opd/walk-in", body, idempotencyKey);
+}
