@@ -134,6 +134,20 @@ async function pickPatient(user: ReturnType<typeof userEvent.setup>): Promise<vo
   expect(await screen.findByText(/Selected patient: Asha Devi/)).toBeInTheDocument();
 }
 
+/**
+ * PLAN 07b T2 — `useNavigate` is the one TanStack Router hook this screen calls (the token slip's
+ * handoff to `/billing?encounterId=…`). Everything else in the module stays REAL, for the reason
+ * `billing-counter.test.tsx` records: `PatientPicker` pulls in `registration-desk`, which imports
+ * router hooks of its own, and a factory that dropped them would fail at access time rather than
+ * tell us anything. A `<Link>` was tried first and cannot work here — it needs a `RouterProvider`
+ * this suite deliberately does not mount.
+ */
+const navigate = vi.hoisted(() => vi.fn());
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  useNavigate: () => navigate,
+}));
+
 describe("OpdDesk", () => {
   beforeEach(() => {
     setToken(null);
@@ -243,6 +257,59 @@ describe("OpdDesk", () => {
       patientId: "p-1", departmentId: "dep-1", doctorId: "doc-1", intendedPayer: "self",
       referralSource: "camp", referrerName: "Ward camp",
     });
+  });
+
+  /**
+   * PLAN 07b T2 — THE RAIL THAT WAS BUILT AND NEVER SENT.
+   *
+   * `router.tsx` documented `/billing?encounterId=…` as the OPD desk's handoff to the counter,
+   * `billing-counter.tsx` read the param and its suite covered the deep link — and NOTHING in the
+   * app ever constructed it, so every cashier re-found the patient and typed the visit id by hand.
+   * These two assertions are what stop that regressing, and they are a pair on purpose: the link
+   * must appear for a chargeable visit and must NOT appear for a free follow-up.
+   */
+  it("a chargeable visit's slip hands off to the counter carrying the encounter id", async () => {
+    stubFetch({
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/queues/summary": { items: SUMMARY },
+      "GET /api/patients/search": { items: [SEARCH_HIT] },
+      "GET /api/opd/appointments": { items: [] },
+      "GET /api/opd/patients/p-1/timeline": { items: [] },
+      "POST /api/opd/visits": { ...OPEN_RESULT, visitType: "new" },
+      "GET /api/patients/p-1/qr": QR,
+    });
+    renderWithProviders(<OpdDesk />);
+    const user = userEvent.setup();
+    await pickDepartment(user);
+    await pickPatient(user);
+    await screen.findByTestId("board-row-doc-1");
+    await user.click(screen.getByTestId("open-visit-doc-1"));
+
+    await user.click(await screen.findByTestId("take-payment"));
+    expect(navigate).toHaveBeenCalledWith({ to: "/billing", search: { encounterId: "enc-1" } });
+  });
+
+  it("a free follow-up's slip offers NO payment step — it names the vitals desk instead", async () => {
+    stubFetch({
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/queues/summary": { items: SUMMARY },
+      "GET /api/patients/search": { items: [SEARCH_HIT] },
+      "GET /api/opd/appointments": { items: [] },
+      "GET /api/opd/patients/p-1/timeline": { items: [] },
+      "POST /api/opd/visits": OPEN_RESULT, // visitType: "revisit"
+      "GET /api/patients/p-1/qr": QR,
+    });
+    renderWithProviders(<OpdDesk />);
+    const user = userEvent.setup();
+    await pickDepartment(user);
+    await pickPatient(user);
+    await screen.findByTestId("board-row-doc-1");
+    await user.click(screen.getByTestId("open-visit-doc-1"));
+
+    await screen.findByTestId("slip-next-step");
+    expect(screen.queryByTestId("take-payment")).toBeNull();
   });
 
   it("today's arrivals for the picked patient show the booked appointment with Check in → the slip, beside the last-visit hint", async () => {

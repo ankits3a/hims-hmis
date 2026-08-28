@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
 import { FormProvider, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -66,7 +67,7 @@ type OpenVisitForm = {
   referrerName: string;
 };
 
-type Opened = { slip: TokenSlipProps; visitType: OpdVisitType };
+type Opened = { slip: TokenSlipProps; visitType: OpdVisitType; encounterId: string };
 
 // ——— abandon: the reason is the rule (K45), mirrored from the server's `reason_required` ———
 
@@ -239,6 +240,7 @@ export function OpdDesk(): React.ReactElement {
   const [pickerKey, setPickerKey] = useState(0);
   const [departmentId, setDepartmentId] = useState("");
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
+  const navigate = useNavigate();
   const [opened, setOpened] = useState<Opened | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
   const [checkInError, setCheckInError] = useState<string | null>(null);
@@ -321,6 +323,7 @@ export function OpdDesk(): React.ReactElement {
       visitType: result.visitType,
     },
     visitType: result.visitType,
+    encounterId: result.encounter.id,
   });
 
   const openVisit = async (doctorId: string): Promise<void> => {
@@ -385,7 +388,38 @@ export function OpdDesk(): React.ReactElement {
           )}
         </div>
         <TokenSlip {...opened.slip} />
-        <Button variant="outline" className="no-print" onClick={nextPatient}>{t("opdDesk.nextPatient")}</Button>
+        {/*
+          * PLAN 07b T2 — THE HANDOFF THAT WAS BUILT AND NEVER SENT.
+          *
+          * `router.tsx` has documented since Plan 08 that "the OPD desk hands a walk-in straight to
+          * the counter as `/billing?encounterId=…`", `billing-counter.tsx` reads that search param,
+          * and its own suite covers the deep link. NOTHING IN THE APP EVER CONSTRUCTED IT: every
+          * reference to `/billing` was bare, so the cashier re-found the patient and typed the visit
+          * id by hand — the comment's fallback clause was the only path there was.
+          *
+          * A REVISIT MUST NOT SAY "TAKE PAYMENT". Inside the follow-up window the consultation is
+          * free (spec:224, and `feeServiceFor` returns null for it), so the counter has nothing to
+          * collect and the honest next step is the vitals desk. Sending a free follow-up to billing
+          * would either bill them or waste a queue place, and the clerk cannot tell which from a
+          * screen that says the same thing for both.
+          */}
+        <div className="no-print flex flex-wrap items-center gap-2">
+          {opened.visitType === "revisit"
+            ? (
+              <span data-testid="slip-next-step" className="text-sm font-medium text-emerald-700">
+                {t("opdDesk.noFeeToVitals")}
+              </span>
+            )
+            : (
+              <Button
+                data-testid="take-payment"
+                onClick={() => { void navigate({ to: "/billing", search: { encounterId: opened.encounterId } }); }}
+              >
+                {t("opdDesk.takePayment")}
+              </Button>
+            )}
+          <Button variant="outline" onClick={nextPatient}>{t("opdDesk.nextPatient")}</Button>
+        </div>
       </div>
     );
   }
@@ -400,7 +434,7 @@ export function OpdDesk(): React.ReactElement {
         <div className="space-y-3">
           <h2 className="text-sm font-semibold">{t("opdDesk.pickPatient")}</h2>
           <div ref={pickerRef}>
-            <PatientPicker key={pickerKey} onPick={setPatient} />
+            <PatientPicker autoFocus key={pickerKey} onPick={setPatient} />
           </div>
           {patient !== null && (
             <div className="flex items-center gap-3 rounded border p-2">

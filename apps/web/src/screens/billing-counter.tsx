@@ -324,7 +324,7 @@ export function BillingCounter(): React.ReactElement {
         {/* (a) who is paying, for which visit, and what they already owe */}
         <div className="space-y-3">
           <h2 className="text-sm font-semibold">{t("billing.counter.pickPatient")}</h2>
-          <PatientPicker onPick={setPatient} />
+          <PatientPicker autoFocus onPick={setPatient} />
           {patient !== null && (
             <div className="rounded border p-2">
               <p className="text-sm">{t("billing.counter.selectedPatient")}: {patient.name ?? "—"}</p>

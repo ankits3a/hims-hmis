@@ -41,7 +41,18 @@ const WEDGE_IDLE_MS = 500;
  * open. Wraps `GET /patients/search` (typed digits, phone-first) and a QR-scan text box that posts
  * `POST /patients/qr/verify` — the same signed-QR verification Plan 05's card uses.
  */
-export function PatientPicker({ onPick }: { onPick: (hit: PatientPickerHit) => void }): React.ReactElement {
+/**
+ * PLAN 07b T2 — `autoFocus` is OPT-IN, not the default.
+ *
+ * On a counter screen the first keystroke of every patient should land in this box without a mouse
+ * ever being touched, and it did not: the picker took no focus on mount, so a clerk clicked into it
+ * a few thousand times a day. But a page may mount more than one picker (a tab beside a dialog),
+ * and two inputs both claiming focus on mount is a worse defect than the one being fixed — so the
+ * screens that want it ask for it.
+ */
+export function PatientPicker(
+  { onPick, autoFocus = false }: { onPick: (hit: PatientPickerHit) => void; autoFocus?: boolean },
+): React.ReactElement {
   const { t } = useTranslation();
   const [q, setQ] = useState("");
   const [scan, setScan] = useState("");
@@ -87,6 +98,7 @@ export function PatientPicker({ onPick }: { onPick: (hit: PatientPickerHit) => v
       */}
       <input
         data-search-input
+        autoFocus={autoFocus}
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder={t("picker.searchPlaceholder")}

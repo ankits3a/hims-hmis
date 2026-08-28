@@ -402,7 +402,9 @@
     "consentRequired": "कतार स्थानांतरित करने से पहले सहमति आवश्यक है",
     "confirmTransfer": "स्थानांतरण की पुष्टि करें",
     "transferred": "{{n}} स्थानांतरित",
-    "pickDoctorFirst": "पहले बोर्ड से डॉक्टर चुनें"
+    "pickDoctorFirst": "पहले बोर्ड से डॉक्टर चुनें",
+    "takePayment": "भुगतान लें →",
+    "noFeeToVitals": "कोई शुल्क नहीं — इस फ़ॉलो-अप को वाइटल्स भेजें"
   },
   "opdVitals": {
     "title": "वाइटल्स डेस्क",
