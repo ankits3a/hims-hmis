@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from "@nestjs/common";
 import { asc, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
@@ -8,6 +8,8 @@ import { opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
 import { abandonVisit, getVisit, listVisits, openVisit, patientTimeline, reEnterVisit } from "./encounters";
+import { walkIn } from "./walk-in";
+import type { WalkInInput, WalkInResult } from "./walk-in";
 import { OpdError } from "./errors";
 import { parsed, toHttp } from "./opd-masters.controller";
 import { availableSlots } from "./schedules";
@@ -44,6 +46,23 @@ const visitOpenBody = z.object({
   intendedPayer: z.enum(["self", "tpa", "pmjay", "corporate"]).optional(),
   referralSource: z.enum(["self", "internal_doctor", "external_rmp", "camp", "other"]).optional(),
   referrerName: z.string().max(200).optional(),
+});
+/**
+ * PLAN 07b T6 — the walk-in body. It is `visitOpenBody` with the patient made a UNION rather than a
+ * required id, because the whole point is that a first-time patient and a returning one are the
+ * same act at the counter.
+ */
+const walkInBody = z.object({
+  patient: z.union([
+    z.object({ existingId: z.string().min(1) }),
+    z.object({ register: z.record(z.string(), z.unknown()) }),
+  ]),
+  departmentId: z.string().min(1),
+  doctorId: z.string().min(1),
+  intendedPayer: z.enum(["self", "tpa", "pmjay", "corporate"]).optional(),
+  referralSource: z.enum(["self", "internal_doctor", "external_rmp", "camp", "other"]).optional(),
+  referrerName: z.string().max(200).optional(),
+  acknowledgedDuplicates: z.boolean().optional(),
 });
 const visitsQuery = z.object({
   status: z.enum(["registered", "waiting", "in_consultation", "awaiting_results", "completed", "abandoned"]).optional(),
@@ -153,6 +172,32 @@ export class OpdVisitsController {
     const b = parsed(visitOpenBody, body);
     try {
       return await openVisit(this.db, actor, b);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * PLAN 07b T6 — ONE call where the browser used to orchestrate several, and the only place a
+   * patient can be registered AND put in the queue as a single act.
+   *
+   * ═══ THE SECOND PERMISSION IS CHECKED IN THE SERVICE, NOT BY A SECOND DECORATOR ═══
+   *
+   * This route can CREATE A PATIENT, so it must also demand `patients.register`. Stacking a second
+   * `@RequirePermission` looks like it would say that and does not: the decorator is
+   * `SetMetadata(PERMISSION_KEY, …)` on ONE key, so a second call OVERWRITES the first and exactly
+   * one requirement survives — silently. Written that way, a holder of `opd.visits.open` alone
+   * could have registered patients through this route. `walkIn` therefore asserts
+   * `patients.register` itself, and only on the branch that actually creates one.
+   */
+  @RequirePermission("opd.visits.open", "hospital")
+  @Post("walk-in")
+  async walkInRoute(
+    @CurrentActor() actor: Actor, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string,
+  ): Promise<WalkInResult> {
+    const b = parsed(walkInBody, body);
+    try {
+      return await walkIn(this.db, actor, b as unknown as WalkInInput, idemKey);
     } catch (e) {
       toHttp(e);
     }

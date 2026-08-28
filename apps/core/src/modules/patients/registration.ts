@@ -279,7 +279,7 @@ export async function updatePatient(
 const MERGE_CHAIN_MAX_HOPS = 5;
 
 async function followMergeChain(
-  db: Db,
+  db: Db | Tx,
   patientId: string,
 ): Promise<{ row: PatientRow; resolvedFrom: string | null } | null> {
   let currentId = patientId;
@@ -335,8 +335,15 @@ export async function getPatient(
   return { patient: resolved.row, resolvedFrom: resolved.resolvedFrom, breakGlass };
 }
 
-/** Id mapping only — no demographics, no gate (§6: later modules resolve ids, they never copy data). */
-export async function resolvePatientId(db: Db, patientId: string): Promise<string | null> {
+/**
+ * Id mapping only — no demographics, no gate (§6: later modules resolve ids, they never copy data).
+ *
+ * PLAN 07b T6 — widened to `Db | Tx`. It is a pure read that takes no locks, and the narrow `Db`
+ * was only ever the shape of its first caller; the walk-in resolves a patient INSIDE the
+ * transaction that then opens their visit, and a cast at that call site would have been a lie about
+ * which connection the read runs on.
+ */
+export async function resolvePatientId(db: Db | Tx, patientId: string): Promise<string | null> {
   const resolved = await followMergeChain(db, patientId);
   return resolved ? resolved.row.id : null;
 }
@@ -383,7 +390,7 @@ export async function getPatientSummaries(db: Db, actor: Actor, patientIds: stri
  * Consumers that keep their own patient_id (Plan 07 encounters) assemble a merged patient's full history with it —
  * merge never rewrites other modules' rows (§6).
  */
-export async function listMergedLoserIds(db: Db, winnerId: string): Promise<string[]> {
+export async function listMergedLoserIds(db: Db | Tx, winnerId: string): Promise<string[]> {
   const found: string[] = [];
   let frontier = [winnerId];
   for (let hop = 0; hop < 5 && frontier.length > 0; hop++) {

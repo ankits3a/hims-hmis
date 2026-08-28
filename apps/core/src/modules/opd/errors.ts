@@ -5,7 +5,7 @@ export type OpdErrorCode =
   | "unknown_doctor" | "doctor_inactive" | "unknown_user" | "user_already_doctor" | "doctor_department_mismatch"
   | "not_a_doctor" | "not_your_patient"
   | "invalid_schedule" | "unknown_schedule" | "unknown_leave" | "leave_not_scheduled" | "invalid_leave_range"
-  | "patient_not_found"
+  | "patient_not_found" | "duplicate_suspected" | "registration_not_permitted"
   | "invalid_slot" | "slot_taken" | "slot_in_past" | "doctor_on_leave" | "unknown_appointment"
   | "appointment_state_conflict" | "appointment_not_today"
   | "unknown_encounter" | "encounter_state_conflict" | "consult_gate_refused" | "unknown_session" | "session_closed" | "doctor_out"

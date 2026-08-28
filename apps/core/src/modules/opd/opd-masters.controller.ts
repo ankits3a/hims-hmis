@@ -46,6 +46,11 @@ const OPD_CONFLICT_CODES = new Set<OpdErrorCode>([
 
 function opdStatus(code: OpdErrorCode): number {
   if (code.startsWith("unknown_") || code === "patient_not_found") return 404;
+  // PLAN 07b T6 — an authorization answer, not a client mistake. The walk-in route is guarded on
+  // `opd.visits.open`; `patients.register` is asserted in the service (the decorator writes one
+  // metadata key, so a second `@RequirePermission` would silently replace the first), and its
+  // refusal must read as 403 rather than falling through to the 400 default.
+  if (code === "registration_not_permitted") return 403;
   if (code.endsWith("_state_conflict") || code.startsWith("duplicate_") || OPD_CONFLICT_CODES.has(code)) return 409;
   return 400; // invalid_*, vitals_incomplete, reason_required, empty_prescription, … — a client mistake
 }
