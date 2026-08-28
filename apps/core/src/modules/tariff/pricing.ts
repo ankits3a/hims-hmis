@@ -41,6 +41,33 @@ function priceLine(ctx: PricingContext, line: InvoiceLineInput): PricedLine {
       }
     }
   }
+  /**
+   * PLAN 15 T7 / DD11 — THE CALLER'S BOUND, in the SAME `min` chain and after the regulated ones.
+   *
+   * It applies to EVERY service, regulated or not, because the case it exists for is an implant
+   * whose service is deliberately NOT regulated (Plan 15 F4: `regulated_prices` is keyed by service
+   * and an implant's lawful maximum is keyed by batch). Placing it outside the `svc.regulated`
+   * branch is therefore the point rather than an oversight.
+   *
+   * `<` and not `<=`: a cap EQUAL to the tariff changes no price and should not claim a bound was
+   * applied — which is exactly the `tariff = MRP = ceiling` coincidence §2.102 warns about, and the
+   * reason `bill.ts`'s note can say "tariff" honestly.
+   */
+  if (line.capUnitPaise !== undefined) {
+    assertPaise(line.capUnitPaise, `line ${line.lineId}: capUnitPaise`);
+    if (line.capUnitPaise < unitPaise) {
+      unitPaise = line.capUnitPaise;
+      regulatedClamp = {
+        boundApplied: "caller_cap", tariffPaise,
+        mrpPaise: regulatedClamp?.mrpPaise ?? null,
+        ceilingPaise: regulatedClamp?.ceilingPaise ?? null,
+        capUnitPaise: line.capUnitPaise,
+      };
+    } else if (regulatedClamp !== null) {
+      regulatedClamp = { ...regulatedClamp, capUnitPaise: line.capUnitPaise };
+    }
+  }
+
   const grossPaise = unitPaise * line.qty;
   assertPaise(grossPaise, "gross");
 

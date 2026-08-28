@@ -17,6 +17,7 @@ import {
   narrowToUsableEntitlements, redeemCoupons, resolveInstruments,
 } from "../membership";
 import { assertPaise, loadPricingContext, percentAmount, priceInvoiceLines } from "../tariff";
+import { allocateOnTx } from "./receipts";
 import { assertCashAccepted } from "./cash-law";
 import { loadBillingConfig } from "./config";
 import { BillingError } from "./errors";
@@ -84,6 +85,21 @@ export type IssueInvoiceInput = {
   credit?: { reason: string; approvalId?: string };
   discountApprovals?: Record<string, string>; // lineId -> approvalId, for `requiresApproval` winners
   /**
+   * PLAN 15 T7 / DD12 — **SETTLE FROM MONEY THE HOSPITAL ALREADY HOLDS.**
+   *
+   * Until this field, an invoice could be settled ONLY by tenders taken in the same call: D2 step 3
+   * refuses to persist a remainder without a credit extension, and `allocateReceipt` cannot run
+   * before the invoice exists. **That left no path at all for a deposit-then-discharge flow** — the
+   * shape Plan 15's whole money design is built on, where the patient paid at booking and the bill
+   * is composed at discharge days later. Recorded as finding T7-a rather than worked around.
+   *
+   * Each entry is allocated INSIDE this transaction through `allocateOnTx`, so the invoice is never
+   * momentarily unsettled and D2 step 3's invariant is untouched. Every guard `allocateReceipt`
+   * applies applies here — the receipt must belong to the invoice's patient, must not be
+   * entered-in-error, must have room, and must not drive the patient's advance negative.
+   */
+  settleFromReceipts?: { receiptId: string; amountPaise: number }[];
+  /**
    * PLAN 09 / DD2 — coupon codes physically handed across the counter (a card's own bundled
    * coupons need none: `resolveInstruments` finds those from the patient's instruments).
    *
@@ -103,6 +119,8 @@ export type IssueInvoiceResult = {
   receiptId: string | null;
   receiptNo: string | null;
   allocatedPaise: number;
+  /** PLAN 15 T7 — what `settleFromReceipts` cleared, reported separately from the tender lane. */
+  settledFromHeldPaise: number;
   unallocatedPaise: number; // the change-due / banked-advance lane (D2 step 5) — never an error
   creditExtended: boolean;
   settlement: Settlement;
@@ -253,12 +271,78 @@ export async function listInvoices(
 // D2 step 1 — everything before the transaction: resolve, load, belt, price. PURE after the load.
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * ═══ PLAN 15 T7 / DD11-F2 — THE ENCOUNTER RESOLVER REGISTRY ═══
+ *
+ * **Before this, `issueInvoice` could bill an OPD encounter and nothing else.** `resolveEncounter`
+ * called `getEncounter` — OPD's reader over `opd_encounters` — and threw `unknown_encounter` for
+ * anything it did not find. Plan 15's day-care encounters live in `daycare_encounters` and are
+ * numbered `D…`, so every discharge bill the mini-OT composed would have been refused by billing.
+ * That is the adversarial pass's finding F2, and this registry is the seam that closes it.
+ *
+ * ═══ IT DISPATCHES ON THE ENCOUNTER NUMBER'S LETTER, WHICH IS WHY THE LETTER EXISTS ═══
+ *
+ * `kernel/episodes/series.ts` reserves one prefix per document type — `V` for a visit, `D` for a
+ * day-care encounter (Plan 15 DD2). A resolver registers under a prefix and owns every encounter
+ * number that starts with it. **A day-care case numbered `V…` would be resolved by OPD, which has
+ * never heard of it**, which is the reason DD2 took its own letter rather than borrowing one.
+ *
+ * The KEYED-MAP shape is `registerConsultStartGuard`'s, transcribed with its reasoning: re-registering
+ * under the same prefix REPLACES, which keeps it idempotent across the jest testing modules that
+ * share one worker. An array would double-register and the second resolver would never be reached.
+ *
+ * **Billing still imports nothing from either module.** OPD registers `V` from `opd.module.ts` and
+ * the OT registers `D` from `ot.module.ts`; this file knows only that a resolver returns a patient
+ * and an intended payer. That is the same dependency inversion `registerConsultStartGuard` uses to
+ * keep OPD from importing billing, pointed the other way.
+ */
+export type EncounterResolver = (
+  db: Db,
+  encounterId: string,
+) => Promise<{ patientId: string; intendedPayer: string } | null>;
+
+const encounterResolvers = new Map<string, EncounterResolver>();
+
+/** Registers (or replaces) the resolver for an episode-number prefix; returns the unregister fn. */
+export function registerEncounterResolver(prefix: string, resolver: EncounterResolver): () => void {
+  encounterResolvers.set(prefix, resolver);
+  return () => {
+    encounterResolvers.delete(prefix);
+  };
+}
+
+/** The registered prefixes, for the parity test that pins which modules have claimed one. */
+export function registeredEncounterPrefixes(): string[] {
+  return [...encounterResolvers.keys()].sort();
+}
+
 async function resolveEncounter(
   db: Db,
   encounterId: string | undefined,
 ): Promise<{ intendedPayer: string; patientId: string | null }> {
   if (encounterId === undefined) return { intendedPayer: "self", patientId: null };
-  // Cross-module read through the OPD module's index, never its tables (spec §4).
+
+  /**
+   * LONGEST PREFIX FIRST. `EPISODE_SERIES` carries one multi-letter prefix (`GRN`), so a
+   * shortest-first match would let a future `G` resolver swallow every `GRN…` number. The series
+   * file's own header records that trap; this loop is the one place billing could spring it.
+   */
+  for (const prefix of [...encounterResolvers.keys()].sort((a, b) => b.length - a.length)) {
+    if (!encounterId.startsWith(prefix)) continue;
+    const resolved = await encounterResolvers.get(prefix)!(db, encounterId);
+    if (!resolved) throw new BillingError("unknown_encounter", `unknown encounter ${encounterId}`);
+    return { intendedPayer: resolved.intendedPayer, patientId: resolved.patientId };
+  }
+
+  /**
+   * NO REGISTERED PREFIX MATCHED — fall back to OPD's reader.
+   *
+   * This is deliberate rather than lazy, and it is what keeps this change additive: every shipped
+   * caller passes an `opd_encounters` id, several tests pass ids that are not episode numbers at
+   * all, and `previewInvoice` is reachable with a bare id from the counter screen. Making the
+   * registry mandatory would turn a seam into a breaking change. An id that matches no prefix AND
+   * no OPD row still throws `unknown_encounter`, exactly as before (A32's third leg).
+   */
   const encounter = await getEncounter(db, encounterId);
   if (!encounter) throw new BillingError("unknown_encounter", `unknown encounter ${encounterId}`);
   return { intendedPayer: encounter.intendedPayer, patientId: encounter.patientId };
@@ -648,8 +732,13 @@ export async function issueInvoice(
   // Pure arithmetic over what the caller handed in and what the engine returned.
   let receiptTotalPaise = 0;
   for (const tender of input.receipt?.tenders ?? []) receiptTotalPaise += tender.amountPaise;
+  // PLAN 15 T7 — money already held counts toward settlement for D2 step 3's remainder check. It is
+  // NOT part of `receiptTotalPaise`: that figure drives the change-due lane below, and a deposit
+  // that exceeds the bill is a REFUND question (§3A), never change handed across a counter.
+  let heldSettlementPaise = 0;
+  for (const held of input.settleFromReceipts ?? []) heldSettlementPaise += held.amountPaise;
   const allocatedPaise = Math.min(receiptTotalPaise, totals.netPayablePaise);
-  const remainderPaise = totals.netPayablePaise - allocatedPaise;
+  const remainderPaise = totals.netPayablePaise - allocatedPaise - heldSettlementPaise;
   // D2 step 5: overpayment is NOT an error. The surplus stays unallocated on the receipt — it IS
   // the change-due / banked-advance lane, and refusing it would refuse ordinary cash transactions.
   const unallocatedPaise = receiptTotalPaise - allocatedPaise;
@@ -836,6 +925,25 @@ export async function issueInvoice(
         }
       }
 
+      /**
+       * PLAN 15 T7 / DD12 — settle from money already held, INSIDE this transaction.
+       *
+       * `allocateOnTx` is `allocateReceipt`'s own body, so every guard it applies applies here:
+       * the receipt must belong to this invoice's patient, must not be entered-in-error, must have
+       * room, and must not drive the patient's advance negative. Running it here rather than after
+       * the commit is what keeps D2 step 3's "no unsettled invoice" invariant true — see the field's
+       * own docstring on `IssueInvoiceInput`.
+       *
+       * It runs AFTER the tenders' allocation above so that the two together cannot exceed the
+       * invoice: `allocateOnTx`'s `over_allocation` check reads the allocations already written in
+       * this transaction and refuses the excess rather than silently over-settling.
+       */
+      for (const held of input.settleFromReceipts ?? []) {
+        await allocateOnTx(tx, actor, {
+          receiptId: held.receiptId, invoiceId, amountPaise: held.amountPaise,
+        }, now);
+      }
+
       // D2 step 4. correlationId is the invoice id on every invoice-scoped emission.
       const scope = { patientId: input.patientId, encounterId: input.encounterId, correlationId: invoiceId };
       await appendEvent(
@@ -908,9 +1016,12 @@ export async function issueInvoice(
         receiptId,
         receiptNo,
         allocatedPaise,
+        settledFromHeldPaise: heldSettlementPaise,
         unallocatedPaise,
         creditExtended: creditBlock !== null,
-        settlement: settlementState(totals.netPayablePaise, 0, allocatedPaise),
+        // The settlement state counts BOTH lanes: the tenders taken here and the deposit already
+        // held. An invoice cleared entirely from a booking deposit is SETTLED, not outstanding.
+        settlement: settlementState(totals.netPayablePaise, 0, allocatedPaise + heldSettlementPaise),
         warnings,
       };
     });

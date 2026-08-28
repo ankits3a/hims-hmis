@@ -30,7 +30,7 @@ export {
   handlePatientMerged, implantConfirmedConsumer, patientMergedConsumer,
 } from "./consumers";
 export type { ImplantConfirmation, MergeRewrite } from "./consumers";
-export { OtModule } from "./ot.module";
+export { OtModule, intendedPayerFor, registerOtEncounterResolver } from "./ot.module";
 
 // ── T3 — governed definition data, the deposit, booking, and the two workflow definitions ──
 export {
@@ -90,3 +90,11 @@ export {
   markAbsconded, readinessOf, recordScore, recoveryBoard, scoresFor, verifyEscort,
 } from "./recovery";
 export type { EscortVerification, PacuScoreRow, ReadinessVerdict } from "./recovery";
+
+// ── T7 — the discharge bill ──
+export {
+  CASH_LIMIT_PAISE, COMPOSABLE_OUTCOMES, assertCashWithinEncounterLimit, clampImplantUnitPaise,
+  composeDischargeBill, encounterCashPaise, frozenCeilingPaisePerBase, settleDischargeBill,
+  unbilledDaycare,
+} from "./bill";
+export type { ComposedBill, ImplantLine, SettleResult } from "./bill";

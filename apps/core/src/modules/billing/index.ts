@@ -10,8 +10,12 @@ export { billingManifest } from "./manifest";
 export { BillingModule } from "./billing.module";
 export { BillingError } from "./errors";
 export type { BillingErrorCode } from "./errors";
-export { issueInvoice, memberBenefitsEnabled, previewInvoice, invoiceSettlement, getInvoice, listInvoices } from "./invoices";
-export type { IssueInvoiceInput, IssueInvoiceResult, InvoiceRow, InvoiceLineRow, PricedDraft } from "./invoices";
+export {
+  issueInvoice, memberBenefitsEnabled, previewInvoice, invoiceSettlement, getInvoice, listInvoices,
+  // PLAN 15 T7 / DD11-F2 — the encounter-resolver seam. OPD registers `V`; the OT registers `D`.
+  registerEncounterResolver, registeredEncounterPrefixes,
+} from "./invoices";
+export type { EncounterResolver, IssueInvoiceInput, IssueInvoiceResult, InvoiceRow, InvoiceLineRow, PricedDraft } from "./invoices";
 /**
  * PLAN 15 T3 / DD12 — `advanceOf` JOINS THIS LIST, and it is a one-line cross-module edit with a
  * reason rather than a convenience.

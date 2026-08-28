@@ -12,6 +12,9 @@ import {
 import { registerPatient } from "../../src/modules/patients";
 import { buildQrPayload } from "../../src/modules/patients/qr";
 import { registerOtApprovalTypes } from "../../src/modules/ot/approval-types";
+import { registerOtEncounterResolver } from "../../src/modules/ot/ot.module";
+import { registerOpdEncounterResolver } from "../../src/modules/opd/opd.module";
+import { registerItem } from "../../src/modules/materials";
 import {
   OT_WORKFLOW_DEFINITIONS, draftDefinition, publishDefinition, requestDefinitionPublish,
 } from "../../src/modules/ot";
@@ -47,6 +50,7 @@ export const OT_PACKAGE_CODES = {
 export const OT_IMPLANT_SERVICE_CODE = "IMPL-PLATE-SET";
 
 export type OtBaseFixture = {
+  implantItemId: string;
   theatreId: string;
   bayIds: string[];
   consignmentStoreId: string;
@@ -276,7 +280,36 @@ export async function seedOtBase(db: Db, opts: { privilegedClasses?: string[] } 
   await publishOtDefinition(db, { kind: "deposit_policy", body: DEPOSIT_POLICY_BODY, drafter: base.drafter, ms });
   await publishOtDefinition(db, { kind: "pacu_thresholds", body: PACU_BODY, drafter: base.drafter, ms });
 
+  /**
+   * PLAN 15 T7 — BOTH encounter resolvers, registered without booting Nest.
+   *
+   * `issueInvoice` dispatches on the episode-number letter; in production `OpdModule` and `OtModule`
+   * register their own on init. A unit suite that needs billing to resolve a `D` number would
+   * otherwise have to stand up a module graph, so each module exports its registration and this
+   * calls both. The registry is KEYED, so calling it once per test is a replace rather than a leak.
+   */
+  registerOpdEncounterResolver();
+  registerOtEncounterResolver();
+
+  /**
+   * The implant ITEM, through materials' own API. `stock_batches.item_id` is a real FK, so a bill
+   * suite that invents an item id gets a constraint error rather than a fixture. `implant` class,
+   * so DD3's exactly-iff CHECK wants no formulary medicine.
+   */
+  const implantItem = await withTx(db, (tx) => registerItem(tx, base.drafter, {
+    code: "IMPL-PLATE-SET-ITEM", name: "Implant — plate/screw set", class: "implant",
+    baseUom: "each", batchTracked: true, serialTracked: true,
+    /**
+     * A `box` of TWO, beyond the base unit — §2.102's rule applied to the fixture, and it is the
+     * seventh coinciding field Plan 14's close named. An implant whose `mrpUom` IS its base unit
+     * makes every per-base conversion a no-op, which is exactly what hid a factor-of-five error
+     * there. A25 needs this row to exist or `mrpPerBaseUnit` cannot convert at all.
+     */
+    uoms: [{ uom: "box", toBaseMultiplier: 2, isPurchaseUom: true }],
+  }));
+
   return {
+    implantItemId: implantItem.itemId,
     theatreId: unit.theatreId, bayIds: unit.bayIds, consignmentStoreId: unit.consignmentStoreId,
     tariffVersionId: draft.versionId, packageServiceIds, implantServiceId: implant.serviceId,
     owner: base.owner, ms, drafter: base.drafter, activator: base.activator,

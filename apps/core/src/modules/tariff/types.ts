@@ -20,6 +20,36 @@ export type InvoiceLineInput = {
   lineId: string; serviceId: string; qty: number; // positive integer; days for room-rent lines
   supplyContext?: "standalone" | "composite_healthcare"; // D-3 composite supply; caller-set (Plan 08/IPD)
   manualDiscount?: ManualDiscountInput | null;
+  /**
+   * PLAN 15 T7 / DD11 — **A PER-LINE UNIT-PRICE CEILING THE CALLER COMPUTED, applied in the same
+   * `min` chain as MRP and the NPPA ceiling.**
+   *
+   * It exists because the regulated clamp this system already has is keyed by SERVICE
+   * (`regulated_prices.service_id`) and an implant's lawful maximum is keyed by BATCH: the same
+   * plate from two consignment lots carries two printed MRPs, and no service-level row can express
+   * that. So the OT module computes `min(MRP per base x qty, ceiling per base x qty)` against the
+   * batch the plate actually came from and hands the result down as a bound.
+   *
+   * ═══ WHY NOT A MANUAL DISCOUNT, WHICH IS WHERE THIS WAS GOING ═══
+   *
+   * Plan 15's DD11 branch (b) proposed expressing the clamp as a `manualDiscount`. Spike Q4 read
+   * `contest.ts` and found that unsafe: a manual discount is a CONTEST CANDIDATE, and
+   * `manualDiscountSource` REJECTS it outright when `ctx.manualCaps[category]` has no ACTIVE row
+   * (`unknown_category`) or when the ask exceeds that category's `maxBps` (`over_cap`) — after
+   * which `runContest` filters rejected candidates and the line prices at FULL TARIFF. A regulated
+   * ceiling that a missing configuration row silently deletes is not a ceiling. The alternative
+   * repair — widening a discount category's cap to 100% so the clamp always fits — would uncap that
+   * category hospital-wide to pay for a pricing bug.
+   *
+   * **A bound cannot be lost.** There is no config to be missing, no contest to lose, no approval
+   * to be absent. It is `Math.min`, in the block whose own comment already says *"the hard block IS
+   * the min — no path may exceed the ceiling"*.
+   *
+   * Integer paise, per UNIT (not per line): the engine multiplies by `qty` itself, exactly as it
+   * does for the tariff price and the two regulated bounds, so a caller cannot get the arithmetic
+   * one factor out.
+   */
+  capUnitPaise?: number;
 };
 
 export type AdjustmentCandidate = {
@@ -47,7 +77,19 @@ export type PricingContext = {
   tags: string[]; // request-level eligibility tags (e.g. "employee"); Plan 08 supplies from visit/patient
 };
 
-export type RegulatedClamp = { boundApplied: "mrp" | "ceiling"; tariffPaise: number; mrpPaise: number | null; ceilingPaise: number | null };
+/**
+ * PLAN 15 T7 — `boundApplied` gains `"caller_cap"`. A line whose winning bound was the caller's own
+ * says so, which is what lets `bill.ts` record WHICH of the three won in the invoice line's note
+ * (D9) instead of inferring it from the number.
+ */
+export type RegulatedClamp = {
+  boundApplied: "mrp" | "ceiling" | "caller_cap";
+  tariffPaise: number;
+  mrpPaise: number | null;
+  ceilingPaise: number | null;
+  /** The caller's bound, when it was supplied. Recorded whether or not it won. */
+  capUnitPaise?: number | null;
+};
 export type PricedLineGst = {
   sacCode: string; rateBps: number; exempt: boolean;
   exemptReason: "category_exempt" | "composite_healthcare" | "room_rent_at_or_below_threshold" | null;
