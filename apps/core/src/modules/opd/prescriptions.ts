@@ -455,9 +455,12 @@ export async function issuePrescription(
 
 export async function listPrescriptions(db: Db, actor: Actor, encounterId: string): Promise<PrescriptionRow[]> {
   // PLAN 07a T1 — an encounter id is not a capability. Same empty answer as an unknown encounter.
-  const encounter = await visibleEncounterFor(db, actor, encounterId);
-  if (!encounter) return [];
-  await recordPhiAccess(db, { actor, patientId: encounter.patientId, surface: "opd.prescriptions", encounterId });
+  const seen = await visibleEncounterFor(db, actor, encounterId);
+  if (!seen) return [];
+  await recordPhiAccess(db, {
+    actor, patientId: seen.encounter.patientId, surface: "opd.prescriptions", encounterId,
+    sealed: seen.sealed, reason: seen.breakGlass?.reason ?? null,
+  });
   return db.select().from(opdPrescriptions).where(eq(opdPrescriptions.encounterId, encounterId)).orderBy(asc(opdPrescriptions.version));
 }
 

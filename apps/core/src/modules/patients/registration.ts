@@ -3,6 +3,7 @@ import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { hasPermission } from "../../kernel/auth/permissions";
+import { activeBreakGlass } from "../../kernel/auth/break-glass";
 import { patientGuardians, patients } from "../../kernel/db/schema";
 import { allocateUhid, PatientError } from "./uhid";
 import { guardianLinked, patientRegistered, patientUpdated } from "./events";
@@ -304,15 +305,34 @@ export async function getPatient(
   db: Db,
   actor: Actor,
   patientId: string,
-): Promise<{ patient: PatientRow; resolvedFrom: string | null } | null> {
+): Promise<{ patient: PatientRow; resolvedFrom: string | null; breakGlass: { id: string; reason: string } | null } | null> {
   const resolved = await followMergeChain(db, patientId);
   if (!resolved) return null;
+  let breakGlass: { id: string; reason: string } | null = null;
   if (resolved.row.isConfidential && actor.type !== "system") {
     if (actor.type === "agent") return null;
     const allowed = await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
-    if (!allowed) return null;
+    if (!allowed) {
+      /**
+       * PLAN 07a T3 — BREAK-GLASS FINALLY REACHES A DECISION.
+       *
+       * The mechanism shipped complete — table, guard check, endpoints, mandatory after-the-fact
+       * review — and `breakGlassBypass: true` appeared on ZERO routes, so it granted nothing to
+       * anyone. It could not have helped here even if a route had opted in: that flag bypasses
+       * `@RequirePermission` at the guard, and THIS refusal is not a guard, it is `hasPermission`
+       * called directly inside the confidentiality decision. So the two never met.
+       *
+       * At 2 a.m. a clinician who must read a sealed record either holds the grant or does not,
+       * and "does not" means the record is unreadable while the patient is in front of them. The
+       * answer is not to widen the permission — it is to let them state a reason, take the record,
+       * and be reviewed for it afterwards, which is what this table was built for.
+       */
+      const grant = await activeBreakGlass(db, actor.id, resolved.row.id);
+      if (!grant) return null;
+      breakGlass = grant;
+    }
   }
-  return { patient: resolved.row, resolvedFrom: resolved.resolvedFrom };
+  return { patient: resolved.row, resolvedFrom: resolved.resolvedFrom, breakGlass };
 }
 
 /** Id mapping only — no demographics, no gate (§6: later modules resolve ids, they never copy data). */

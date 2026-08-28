@@ -284,8 +284,8 @@ export async function getVisit(
   const visible = await getPatient(db, actor, encounter.patientId);
   if (visible === null) return null;
   await recordPhiAccess(db, {
-    actor, patientId: visible.patient.id, surface: "opd.visit",
-    encounterId, sealed: visible.patient.isConfidential,
+    actor, patientId: visible.patient.id, surface: "opd.visit", encounterId,
+    sealed: visible.patient.isConfidential, reason: visible.breakGlass?.reason ?? null,
   });
   const queueEntries = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId)).orderBy(asc(opdQueueEntries.seq));
   const vitals = await db.select().from(opdVitals).where(eq(opdVitals.encounterId, encounterId)).orderBy(asc(opdVitals.recordedAt));
@@ -329,7 +329,8 @@ export async function patientTimeline(db: Db, actor: Actor, patientId: string, l
   // PLAN 07a T2 — the read happened; record who saw it. Successful reads only: a refusal produced
   // no PHI, and a row naming a patient the reader was refused would be a leak in the audit log.
   await recordPhiAccess(db, {
-    actor, patientId: canonical, surface: "opd.timeline", sealed: visible.patient.isConfidential,
+    actor, patientId: canonical, surface: "opd.timeline",
+    sealed: visible.patient.isConfidential, reason: visible.breakGlass?.reason ?? null,
   });
   const chainIds = [canonical, ...(await listMergedLoserIds(db, canonical))];
   const rows = await db

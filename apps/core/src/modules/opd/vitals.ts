@@ -96,8 +96,11 @@ export async function recordVitals(
 
 export async function listVitals(db: Db, actor: Actor, encounterId: string): Promise<VitalsRow[]> {
   // PLAN 07a T1 — an encounter id is not a capability. Same empty answer as an unknown encounter.
-  const encounter = await visibleEncounterFor(db, actor, encounterId);
-  if (!encounter) return [];
-  await recordPhiAccess(db, { actor, patientId: encounter.patientId, surface: "opd.vitals", encounterId });
+  const seen = await visibleEncounterFor(db, actor, encounterId);
+  if (!seen) return [];
+  await recordPhiAccess(db, {
+    actor, patientId: seen.encounter.patientId, surface: "opd.vitals", encounterId,
+    sealed: seen.sealed, reason: seen.breakGlass?.reason ?? null,
+  });
   return db.select().from(opdVitals).where(eq(opdVitals.encounterId, encounterId)).orderBy(asc(opdVitals.recordedAt));
 }

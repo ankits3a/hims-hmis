@@ -259,7 +259,7 @@ export class PatientsController {
     // enquiry is actually about. The controller is the HTTP read surface, and that is what to log.
     await recordPhiAccess(this.db, {
       actor, patientId: found.patient.id, surface: "patient.detail",
-      sealed: found.patient.isConfidential,
+      sealed: found.patient.isConfidential, reason: found.breakGlass?.reason ?? null,
     });
     return found;
   }
@@ -333,7 +333,7 @@ export class PatientsController {
     if (!found) throw new NotFoundException(`unknown patient ${id}`);
     await recordPhiAccess(this.db, {
       actor, patientId: found.patient.id, surface: "patient.allergies",
-      sealed: found.patient.isConfidential,
+      sealed: found.patient.isConfidential, reason: found.breakGlass?.reason ?? null,
     });
     return { items: await listAllergies(this.db, found.patient.id) };
   }

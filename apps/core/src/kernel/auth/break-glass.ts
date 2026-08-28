@@ -36,12 +36,34 @@ export async function useBreakGlass(
   return { grantId, expiresAt };
 }
 
-export async function hasActiveBreakGlass(db: Db, userId: string, patientId?: string): Promise<boolean> {
+/**
+ * PLAN 07a T3 — the grant ITSELF, not just its existence.
+ *
+ * `hasActiveBreakGlass` answers "may they"; this answers "and under what stated justification",
+ * which is the half the PHI access log needs. A break-glass read that records no reason is a read
+ * whose only defence is that somebody clicked a button.
+ *
+ * A grant with a NULL `patient_id` is hospital-wide — the shape a night emergency actually takes,
+ * where the person needing the record cannot always name the patient id first. Expiry is enforced
+ * here rather than by a sweep, so a lapsed grant stops working at the instant it lapses.
+ */
+export async function activeBreakGlass(
+  db: Db, userId: string, patientId?: string,
+): Promise<{ id: string; reason: string } | null> {
   const rows = await db
-    .select({ patientId: breakGlassGrants.patientId })
+    .select({ id: breakGlassGrants.id, patientId: breakGlassGrants.patientId, reason: breakGlassGrants.reason })
     .from(breakGlassGrants)
     .where(and(eq(breakGlassGrants.userId, userId), gt(breakGlassGrants.expiresAt, new Date())));
-  return rows.some((g) => g.patientId === null || (patientId !== undefined && g.patientId === patientId));
+  // A patient-scoped grant is preferred over a hospital-wide one: it is the more specific
+  // justification, and it is the one a reviewer wants quoted back to them.
+  const scoped = rows.find((g) => patientId !== undefined && g.patientId === patientId);
+  const wide = rows.find((g) => g.patientId === null);
+  const hit = scoped ?? wide;
+  return hit ? { id: hit.id, reason: hit.reason } : null;
+}
+
+export async function hasActiveBreakGlass(db: Db, userId: string, patientId?: string): Promise<boolean> {
+  return (await activeBreakGlass(db, userId, patientId)) !== null;
 }
 
 export type BreakGlassReviewItem = {

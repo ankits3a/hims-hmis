@@ -27,12 +27,22 @@ import type { Db } from "../../kernel/db/client";
  * that does not exist (07a DD2). A distinct refusal would confirm the patient exists to a caller
  * who may not know that, which is the leak wearing a fix's clothes.
  */
+export type VisibleEncounter = {
+  encounter: EncounterRow;
+  /** The patient carried the confidential flag. */
+  sealed: boolean;
+  /** Set when the read was only permitted by an active break-glass grant (07a T3). */
+  breakGlass: { id: string; reason: string } | null;
+};
+
 export async function visibleEncounterFor(
   db: Db, actor: Actor, encounterId: string,
-): Promise<EncounterRow | null> {
+): Promise<VisibleEncounter | null> {
   const encounter = await getEncounter(db, encounterId);
   if (!encounter) return null;
-  return (await getPatient(db, actor, encounter.patientId)) === null ? null : encounter;
+  const visible = await getPatient(db, actor, encounter.patientId);
+  if (visible === null) return null;
+  return { encounter, sealed: visible.patient.isConfidential, breakGlass: visible.breakGlass };
 }
 
 /** The boolean form, for callers that need the verdict and not the row. */
