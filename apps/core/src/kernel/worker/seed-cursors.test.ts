@@ -8,7 +8,7 @@ import { ALERTS_CONSUMER } from "../alerts/consumer";
 import { NOTIFY_CONSUMER } from "../notify/consumer";
 import { PARTNERS_ACCRUAL_CONSUMER } from "../../modules/partners";
 import { MATERIALS_CONSUMPTION_CONSUMER } from "../../modules/materials";
-import { OT_PATIENT_MERGED_CONSUMER } from "../../modules/ot";
+import { OT_IMPLANT_CONFIRMED_CONSUMER, OT_PATIENT_MERGED_CONSUMER } from "../../modules/ot";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -63,7 +63,7 @@ describe("seedCursors", () => {
    * wired a phase early: without a seeded cursor the consumer's first cycle after Plan 15 ships
    * would start from zero and re-walk every event the hospital has ever emitted.
    */
-  it("enumerates workerConsumers(db)'s keys — the kernel two, partners.accrual, materials.consumption and ot.patient_merged, and no others", async () => {
+  it("enumerates workerConsumers(db)'s keys — the kernel two, partners.accrual, materials.consumption and the OT's two, and no others", async () => {
     const seeded = await seedCursors(db);
     // PLAN 15 T2 / A5 — the fifth. It joins for the reason D10 gives every entry here: a consumer
     // whose cursor is not seeded starts from zero and re-reads the WHOLE subscribed backlog on its
@@ -77,6 +77,9 @@ describe("seedCursors", () => {
       .toEqual([
         ALERTS_CONSUMER, NOTIFY_CONSUMER, PARTNERS_ACCRUAL_CONSUMER, MATERIALS_CONSUMPTION_CONSUMER,
         OT_PATIENT_MERGED_CONSUMER,
+        // PLAN 15 T5 / DD9 — the sixth. Same reason as the fifth: an unseeded cursor starts from
+        // zero and re-reads every `material.consumed` since Plan 14's consumer first ran.
+        OT_IMPLANT_CONFIRMED_CONSUMER,
       ].sort());
   });
 

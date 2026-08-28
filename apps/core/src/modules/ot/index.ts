@@ -26,9 +26,10 @@ export {
   registerOtApprovalTypes,
 } from "./approval-types";
 export {
-  OT_PATIENT_MERGED_CONSUMER, handlePatientMerged, patientMergedConsumer,
+  OT_IMPLANT_CONFIRMED_CONSUMER, OT_PATIENT_MERGED_CONSUMER, handleMaterialConsumed,
+  handlePatientMerged, implantConfirmedConsumer, patientMergedConsumer,
 } from "./consumers";
-export type { MergeRewrite } from "./consumers";
+export type { ImplantConfirmation, MergeRewrite } from "./consumers";
 export { OtModule } from "./ot.module";
 
 // ── T3 — governed definition data, the deposit, booking, and the two workflow definitions ──
@@ -66,3 +67,19 @@ export {
   SURGEON_LATE_RUNGS_MINUTES, flagLateSurgeons, listForDay, printPack, publishList, resequence,
 } from "./lists";
 export type { ListItem, OtListRow } from "./lists";
+
+// ── T5 — the cockpit: holding verify, the WHO states, counts, implants, specimens ──
+export {
+  BACKFILL_PHASES, backfillCase, completeChecklist, markClosure, markIncision, recordDeathOnTable,
+  recordDoseLog, recordProcedureConverted, signIn, signOut, timeOut, toHolding, verifyHolding,
+  wheelOut,
+} from "./cockpit";
+export type { BackfillPhase, ChecklistPhase } from "./cockpit";
+export { countsFor, finalCountVerdict, openCountMismatch, recordCount } from "./counts";
+export type { CountRound, CountRow, RecordCountInput } from "./counts";
+export {
+  IMPLANTABLE_STATES, deployImplant, deployingImplants, explantImplant, implantsFor,
+} from "./implants";
+export type { DeployImplantInput, ImplantRow } from "./implants";
+export { SPECIMEN_STATES, createSpecimen, dispatchSpecimen, specimensFor } from "./specimens";
+export type { SpecimenRow } from "./specimens";

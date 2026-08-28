@@ -15,6 +15,15 @@ export { searchPatients, visiblePatientIds } from "./search";
 export type { PatientSearchResult } from "./search";
 export { NO_AUTHORITY, effectiveGuardianAuthority, guardiansWithAuthority, sweepGuardianMajority } from "./guardians";
 export type { GuardianAuthority, GuardianRow } from "./guardians";
+/**
+ * PLAN 15 T5 / A1 — `verifyQrScan` JOINS THIS INDEX. A second one-line cross-module widening with a
+ * reason: the mini-OT's holding verification IS a QR scan against a wristband, and it is the same
+ * act `patients.controller.ts` already performs at the desk. Reaching into `./qr` would be the §4
+ * violation; re-implementing the signature check in the OT module would be a second answer to "is
+ * this card genuine", which is the one question that must have exactly one.
+ */
+export { verifyQrScan } from "./qr";
+export type { QrVerifyResult } from "./qr";
 export { isValidUhid, PatientError } from "./uhid";
 export type { PatientErrorCode } from "./uhid";
 export * from "./events";

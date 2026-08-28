@@ -1,6 +1,7 @@
 import { OT_RESOURCE_KINDS } from "./kinds";
-import { OT_PATIENT_MERGED_CONSUMER } from "./consumers";
+import { OT_IMPLANT_CONFIRMED_CONSUMER, OT_PATIENT_MERGED_CONSUMER } from "./consumers";
 import { patientMerged } from "../patients";
+import { materialConsumed } from "../materials";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -37,10 +38,10 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  *
  * ═══ ONE SUBSCRIPTION IN THIS COMMIT, AND T5 ADDS THE SECOND — THE `partnersManifest` RULE ═══
  *
- * `patient.merged` → `ot.patient_merged` ships HERE **with its handler**, because the plan requires
- * the real consumer at T2 rather than a stub. T5 lands `material.consumed` → `ot.implant_confirmed`
- * with ITS handler and the census in ONE commit, so no commit ever exists in which a declared
- * subscription has no handler — `buildSubscriptionBus` makes that a boot error by design.
+ * `patient.merged` → `ot.patient_merged` shipped at T2 **with its handler**; `material.consumed` →
+ * `ot.implant_confirmed` lands at T5, also with its handler and the worker's `workerConsumers`
+ * entry, in ONE commit. No commit ever exists in which a declared subscription has no handler —
+ * `buildSubscriptionBus` makes that a boot error by design.
  *
  * ═══ INSTALLED IN **BOTH** PROCESSES, SO `manifests.test.ts` LEG 3 STAYS AT FOUR ═══
  *
@@ -75,6 +76,10 @@ export const otManifest: ModuleManifest = {
   ],
   subscriptions: [
     { event: patientMerged.name, consumer: OT_PATIENT_MERGED_CONSUMER },
+    // PLAN 15 T5 / DD9 — the second, landed WITH its handler and the worker's `workerConsumers`
+    // entry in ONE commit (the `partnersManifest` rule). It closes the scan's asynchronous half:
+    // until `material.consumed` arrives the implant row is `deploying` and `signOut` is refused.
+    { event: materialConsumed.name, consumer: OT_IMPLANT_CONFIRMED_CONSUMER },
   ],
   resourceKinds: OT_RESOURCE_KINDS,
 };

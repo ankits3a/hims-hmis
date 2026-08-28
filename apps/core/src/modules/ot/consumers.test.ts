@@ -2,10 +2,13 @@ import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import {
-  daycareEncounters, eventIdempotency, otCases, otSpecimens, patients, resources,
+  daycareEncounters, eventIdempotency, otCaseImplants, otCases, otSpecimens, patients, resources,
 } from "../../kernel/db/schema";
 import { patientMerged } from "../patients";
-import { OT_PATIENT_MERGED_CONSUMER, handlePatientMerged, patientMergedConsumer } from "./consumers";
+import {
+  OT_PATIENT_MERGED_CONSUMER, handleMaterialConsumed, handlePatientMerged,
+  implantConfirmedConsumer, patientMergedConsumer,
+} from "./consumers";
 import type { MergeRewrite } from "./consumers";
 import { otManifest } from "./manifest";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -150,6 +153,107 @@ describe("the OT patient-merge consumer (Plan 15 T2 / A5)", () => {
   it("the consumer key the manifest subscribes with is the one this file exports", () => {
     expect(otManifest.subscriptions).toContainEqual({
       event: patientMerged.name, consumer: OT_PATIENT_MERGED_CONSUMER,
+    });
+  });
+  // ═══════════════ T5 / DD9 — the implant-confirmed consumer ═══════════════
+
+  /**
+   * The scan's asynchronous half. `signOut`'s A18 leg proves the REFUSAL; these legs prove the
+   * consumer's own contract: it matches on `caseRef`, ignores everything that is not an OT case,
+   * and is idempotent by event id.
+   */
+  describe("the implant-confirmed consumer (Plan 15 T5 / DD9)", () => {
+    const CONSUMED = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+      ledgerEntryId: "led-1", itemId: "it-plate-1", batchId: "b-plate-1", ownership: "consignment",
+      vendorId: "vn1", qtyBase: 1, patientId: "p-x", encounterId: "e-x",
+      caseRef: { type: "ot_case", id: "c-x" },
+      mrpPaise: 4_200_000, mrpUom: "each", mrpPaisePerBase: 4_200_000, ceilingPaisePerBase: 4_500_000,
+      occurredAt: "2026-09-02T05:00:00.000Z", ...over,
+    });
+
+    async function anImplant(caseId: string, encounterId: string, serial: string): Promise<string> {
+      const id = `im-${serial}`;
+      await db.insert(otCaseImplants).values({
+        id, caseId, encounterId, itemId: "it-plate-1", batchId: "b-plate-1", lotId: "lot-1",
+        serial, serviceCode: "IMPL-PLATE-SET", qtyBase: 1, source: "consignment",
+        state: "deploying", deployedBy: "u1",
+      });
+      return id;
+    }
+
+    it("stamps the ledger entry on the matching row and confirms it", async () => {
+      await fixture();
+      await encounter("e1", "win", null);
+      const implantId = await anImplant("c-e1", "e1", "SN-1");
+      const result = await withTx(db, (tx) => handleMaterialConsumed(tx, "ev-1", CONSUMED({
+        caseRef: { type: "ot_case", id: "c-e1" }, encounterId: "e1",
+      })));
+      expect(result).toEqual({ handled: true, implantId });
+      const row = (await db.select().from(otCaseImplants).where(eq(otCaseImplants.id, implantId)))[0]!;
+      expect({ state: row.state, ledger: row.ledgerEntryId, event: row.eventId })
+        .toEqual({ state: "confirmed", ledger: "led-1", event: "ev-1" });
+    });
+
+    it("IGNORES a consumption that is not an OT case — pharmacy will emit these from 16c", async () => {
+      await fixture();
+      await encounter("e1", "win", null);
+      const implantId = await anImplant("c-e1", "e1", "SN-1");
+      const result = await withTx(db, (tx) => handleMaterialConsumed(tx, "ev-2", CONSUMED({
+        caseRef: { type: "pharmacy_dispense", id: "d-1" },
+      })));
+      expect(result).toEqual({ handled: true, implantId: null });
+      expect((await db.select().from(otCaseImplants).where(eq(otCaseImplants.id, implantId)))[0]!.state).toBe("deploying");
+    });
+
+    it("is IDEMPOTENT by event id — a redelivery confirms nothing a second time", async () => {
+      await fixture();
+      await encounter("e1", "win", null);
+      await anImplant("c-e1", "e1", "SN-1");
+      await withTx(db, (tx) => handleMaterialConsumed(tx, "ev-3", CONSUMED({ caseRef: { type: "ot_case", id: "c-e1" } })));
+      const replay = await withTx(db, (tx) => handleMaterialConsumed(tx, "ev-3", CONSUMED({ caseRef: { type: "ot_case", id: "c-e1" } })));
+      expect(replay).toEqual({ handled: false, implantId: null });
+    });
+
+    /**
+     * TWO identical implants on one case, confirmed in ARRIVAL ORDER. `material.consumed` was frozen
+     * by Plan 14 before this module existed and does not carry the implant row's id, so the match is
+     * (case, item) and the OLDEST still-deploying row wins. Stated as a test rather than left to a
+     * reader, because it is the one place a frozen payload forces a heuristic.
+     */
+    it("confirms the OLDEST deploying row when two identical implants are on one case", async () => {
+      await fixture();
+      await encounter("e1", "win", null);
+      const first = await anImplant("c-e1", "e1", "SN-1");
+      await new Promise<void>((r) => { setTimeout(r, 5); });
+      const second = await anImplant("c-e1", "e1", "SN-2");
+      await db.update(otCaseImplants).set({ deployedAt: new Date(Date.now() - 60_000) }).where(eq(otCaseImplants.id, first));
+
+      const a = await withTx(db, (tx) => handleMaterialConsumed(tx, "ev-4", CONSUMED({ caseRef: { type: "ot_case", id: "c-e1" } })));
+      expect(a.implantId).toBe(first);
+      const b = await withTx(db, (tx) => handleMaterialConsumed(tx, "ev-5", CONSUMED({ ledgerEntryId: "led-2", caseRef: { type: "ot_case", id: "c-e1" } })));
+      expect(b.implantId).toBe(second);
+    });
+
+    it("the two consumers claim INDEPENDENTLY — one event id, two namespaced keys", async () => {
+      await fixture();
+      await encounter("e1", "lose", null);
+      await anImplant("c-e1", "e1", "SN-1");
+      // The SAME event id through both handlers: each must claim it for itself.
+      await run("shared-id", "win", "lose");
+      const consumed = await withTx(db, (tx) => handleMaterialConsumed(tx, "shared-id", CONSUMED({ caseRef: { type: "ot_case", id: "c-e1" } })));
+      expect(consumed.handled).toBe(true);
+    });
+
+    it("the Handler ignores every event that is not `material.consumed`", async () => {
+      await fixture();
+      await encounter("e1", "win", null);
+      const implantId = await anImplant("c-e1", "e1", "SN-1");
+      const handler = implantConfirmedConsumer(db);
+      await handler({
+        seq: 1, eventId: "ev-x", name: "consignment.deployed", payload: {},
+        patientId: null, correlationId: null, occurredAt: new Date(),
+      });
+      expect((await db.select().from(otCaseImplants).where(eq(otCaseImplants.id, implantId)))[0]!.state).toBe("deploying");
     });
   });
 });

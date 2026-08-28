@@ -111,16 +111,13 @@ describe("the OT error union (Plan 15 T2)", () => {
       consent_authority_missing: "consents.ts",
       list_not_publishable: "lists.ts",
 
-      identity_mismatch: "cockpit.ts",
       bad_transition: "cockpit.ts",
-      theatre_occupied: "cockpit.ts",
       checklist_incomplete: "cockpit.ts",
       count_mismatch: "counts.ts",
       stale_version: "counts.ts",
       implant_state: "implants.ts",
       implant_deploying: "cockpit.ts",
       duplicate_scan: "implants.ts",
-      timestamp_immutable: "cockpit.ts",
 
       bay_occupied: "recovery.ts",
       escort_required: "recovery.ts",
@@ -205,13 +202,18 @@ describe("the OT error union (Plan 15 T2)", () => {
    */
   it("every race is a 409 and every hard stop a 422 — the difference the screen shows a nurse", () => {
     const races: OtErrorCode[] = [
-      "duplicate_booking", "theatre_occupied", "bay_occupied", "stale_version", "duplicate_scan",
-      "bad_transition", "gate_already_terminal", "definition_not_active", "timestamp_immutable",
+      "duplicate_booking", "bay_occupied", "stale_version", "duplicate_scan",
+      "bad_transition", "gate_already_terminal", "definition_not_active",
     ];
     const hardStops: OtErrorCode[] = [
       "gate_open", "not_ready", "count_mismatch", "implant_deploying", "escort_required",
       "checklist_incomplete", "criteria_refused", "bill_not_composable", "not_discharge_ready",
     ];
+    // The three that LEFT the union at T5 (finding T5-b) are gone for good: each is refused by a
+    // layer with its own vocabulary, and re-adding one here would be a second name for one fact.
+    for (const gone of ["identity_mismatch", "theatre_occupied", "timestamp_immutable"]) {
+      expect((OT_ERROR_CODES as readonly string[])).not.toContain(gone);
+    }
     expect(races.map((c) => [c, otHttpStatus(c)])).toEqual(races.map((c) => [c, 409]));
     expect(hardStops.map((c) => [c, otHttpStatus(c)])).toEqual(hardStops.map((c) => [c, 422]));
     // The two authority refusals are 403: they are about WHO is acting, not about what was sent.

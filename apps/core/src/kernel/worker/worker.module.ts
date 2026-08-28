@@ -21,7 +21,8 @@ import {
   MATERIALS_CONSUMPTION_CONSUMER, consumptionConsumer, materialsManifest,
 } from "../../modules/materials";
 import {
-  OT_PATIENT_MERGED_CONSUMER, otManifest, patientMergedConsumer,
+  OT_IMPLANT_CONFIRMED_CONSUMER, OT_PATIENT_MERGED_CONSUMER, implantConfirmedConsumer, otManifest,
+  patientMergedConsumer,
 } from "../../modules/ot";
 import { collectResourceKinds } from "../resources/kinds";
 import type { Handler } from "../events/subscriptions";
@@ -196,6 +197,9 @@ export function workerConsumers(db: Db): Record<string, Handler> {
     // fails `worker-runtime.e2e.test.ts`'s whole-equality assertion instead of leaving a merged
     // patient's theatre list pointing at a patient id the registry says does not exist.
     [OT_PATIENT_MERGED_CONSUMER]: patientMergedConsumer(db),
+    // PLAN 15 T5 / DD9 — the scan's asynchronous half. `otManifest` declares
+    // `material.consumed` -> `ot.implant_confirmed` in the commit that adds this line.
+    [OT_IMPLANT_CONFIRMED_CONSUMER]: implantConfirmedConsumer(db),
   };
 }
 

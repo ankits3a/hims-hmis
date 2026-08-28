@@ -107,9 +107,13 @@ describe("the OT event catalogue (Plan 15 T2 / DD13)", () => {
     }
   });
 
-  it("the manifest subscribes to `patient.merged` and, in this commit, to nothing else", () => {
-    // T5 adds `material.consumed` → `ot.implant_confirmed` WITH its handler, in one commit. Pinning
-    // the count here is what makes that a deliberate edit rather than a drift.
-    expect(otManifest.subscriptions).toEqual([{ event: "patient.merged", consumer: "ot.patient_merged" }]);
+  it("the manifest subscribes to exactly the two events this module consumes", () => {
+    // T2 landed the first WITH its handler; T5 landed the second the same way. Pinning the whole
+    // list is what makes a third a deliberate edit rather than a drift — and each entry's handler
+    // must exist in `workerConsumers`, or `buildSubscriptionBus` refuses the worker at boot.
+    expect(otManifest.subscriptions).toEqual([
+      { event: "patient.merged", consumer: "ot.patient_merged" },
+      { event: "material.consumed", consumer: "ot.implant_confirmed" },
+    ]);
   });
 });

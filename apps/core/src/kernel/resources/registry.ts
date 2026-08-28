@@ -74,6 +74,45 @@ async function requireResource(tx: Tx, id: string): Promise<ResourceRow> {
 }
 
 /**
+ * ═══ THE OCCUPANCY LOCK (PLAN 15 T5, finding T5-a) — AND IT IS A CORRECTION, NOT AN ADDITION ═══
+ *
+ * `assignResource` and `releaseResource` read a row, CHECK its occupancy, and then write. With the
+ * plain `SELECT` above between those two steps they were a read-check-write with nothing holding
+ * the row: **two overlapping assigns on one resource both passed the `occupant_ref IS NULL` check**
+ * — neither had committed when the other read — **and the second `UPDATE` silently overwrote the
+ * first.** The first caller had already been told it succeeded.
+ *
+ * `registry.concurrency.test.ts` reproduces it in an overlap and asserts the outcome; that file's
+ * header records why the two obvious probes (a sequential double-assign, and "does it block?")
+ * cannot see this at all.
+ *
+ * Plan 15's A12 and A19 both assume this lock exists — *"the theatre and bay races go through the
+ * registry's `assign`, which owns that lock"* — and it did not. It is fixed HERE rather than in the
+ * OT module because the invariant is the registry's: the two recovery bays are the first occupancy
+ * this system races, every ward bed will be the next, and a guard enforced by one caller is not
+ * enforced (Plan 13's own "close pass 2 / R1 — the fourth door", verbatim).
+ *
+ * **Only the two OCCUPANCY writers take it.** `moveResource` reads TWO rows (`id` and the new
+ * parent) and locking both would introduce a lock-ordering deadlock between two crossing moves —
+ * a new failure mode bought for an invariant that is not under race. `updateResource`,
+ * `changeResourceStatus` and `retireResource` are left as they were: this commit closes the race
+ * the phase can demonstrate, and does not widen a kernel lock on speculation.
+ */
+async function lockResource(tx: Tx, id: string): Promise<ResourceRow> {
+  /**
+   * `.for("update")` on the DRIZZLE query, never a raw `tx.execute(sql\`select * …\`)`. The raw form
+   * was written first and is wrong in a way that typechecks: it returns the row with POSTGRES's
+   * column names (`occupant_ref`, `created_by`), so every camelCase field a caller reads comes back
+   * `undefined` — and the first thing that noticed was a zod parse three layers down, not the read.
+   * The builder keeps the field mapping and appends the same `FOR UPDATE`.
+   */
+  const rows = await tx.select().from(resources).where(eq(resources.id, id)).for("update");
+  const row = rows[0];
+  if (row === undefined) throw new ResourceError("unknown_resource", `resource ${id} not found`);
+  return row;
+}
+
+/**
  * The ids from `id`'s parent up to the root, nearest first. Bounded — see the header.
  *
  * It is deliberately NOT a recursive CTE. There is no `WITH RECURSIVE` anywhere in this repository
@@ -405,7 +444,8 @@ export async function assignResource(
   id: string,
   input: { occupantType: string; occupantRef: string; at?: Date; reason?: string },
 ): Promise<void> {
-  const existing = await requireResource(tx, id);
+  // LOCKED — see `lockResource`. The check below is only meaningful while this row is held.
+  const existing = await lockResource(tx, id);
   const decl = requireDecl(kinds, existing.kind);
   if (decl.occupied === null) {
     throw new ResourceError("not_assignable", `the kind "${existing.kind}" is not assignable — it declares occupied: null`);
@@ -445,7 +485,9 @@ export async function releaseResource(
   id: string,
   opts: { at?: Date; reason?: string } = {},
 ): Promise<void> {
-  const existing = await requireResource(tx, id);
+  // LOCKED — see `lockResource`. Two overlapping releases would otherwise both pass the
+  // "is it occupied?" check and write two history rows for one transition.
+  const existing = await lockResource(tx, id);
   const decl = requireDecl(kinds, existing.kind);
   if (existing.occupantRef === null) {
     throw new ResourceError("not_occupied", `resource ${id} has no occupant to release`);

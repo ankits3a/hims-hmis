@@ -1,9 +1,10 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { withTx } from "../../kernel/db/client";
 import {
-  daycareEncounters, eventIdempotency, otCases, otSpecimens,
+  daycareEncounters, eventIdempotency, otCaseImplants, otCases, otSpecimens,
 } from "../../kernel/db/schema";
 import { patientMerged } from "../patients";
+import { materialConsumed } from "../materials";
 import type { Handler, DispatchedEvent } from "../../kernel/events/subscriptions";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -58,14 +59,15 @@ export const OT_PATIENT_MERGED_CONSUMER = "ot.patient_merged";
  * whose only change was the escort — that is deliberate, because the escort changing identity is
  * exactly the case where somebody should look.
  */
-function claimKey(eventId: string): string {
-  return `${OT_PATIENT_MERGED_CONSUMER}:${eventId}`;
-}
-
-/** `ON CONFLICT DO NOTHING` on the primary key — the claim-first shape `appendEvent` uses. */
-async function claim(tx: Tx, eventId: string): Promise<boolean> {
+/**
+ * `ON CONFLICT DO NOTHING` on the primary key — the claim-first shape `appendEvent` uses.
+ *
+ * The key is namespaced BY CONSUMER, so this module's two handlers claim independently: an event
+ * one has processed does not look processed to the other.
+ */
+async function claimFor(tx: Tx, consumer: string, eventId: string): Promise<boolean> {
   const claimed = await tx.insert(eventIdempotency)
-    .values({ idempotencyKey: claimKey(eventId), eventId })
+    .values({ idempotencyKey: `${consumer}:${eventId}`, eventId })
     .onConflictDoNothing({ target: eventIdempotency.idempotencyKey })
     .returning({ eventId: eventIdempotency.eventId });
   return claimed.length > 0;
@@ -89,7 +91,7 @@ export async function handlePatientMerged(
   payload: unknown,
 ): Promise<MergeRewrite> {
   const none: MergeRewrite = { handled: false, encounters: 0, cases: 0, specimens: 0, escortsCleared: 0 };
-  if (!(await claim(tx, eventId))) return none;
+  if (!(await claimFor(tx, OT_PATIENT_MERGED_CONSUMER, eventId))) return none;
 
   const { winnerPatientId, loserPatientId } = patientMerged.payloadSchema.parse(payload);
   // A merge of a patient into themselves is not a merge; the patients module refuses it, and this
@@ -142,6 +144,64 @@ export async function handlePatientMerged(
     cases: cases.length,
     specimens: specimens.length,
     escortsCleared: collisions.length,
+  };
+}
+
+/** The consumer key the manifest subscribes with for `material.consumed`. */
+export const OT_IMPLANT_CONFIRMED_CONSUMER = "ot.implant_confirmed";
+
+/**
+ * PLAN 15 T5 / DD9 — **THE OTHER HALF OF THE SCAN, ARRIVING LATER.**
+ *
+ * `deployImplant` appends `consignment.deployed` and returns; the worker's materials consumer
+ * decrements the lot, writes the `consume` ledger row and emits `material.consumed`; THIS handler
+ * stamps the OT row `confirmed` with its `ledger_entry_id`. Between the scan and this moment the
+ * row is `deploying`, and `signOut` is refused (A18) — which is the point of having a state at all.
+ *
+ * ═══ IT MATCHES ON `caseRef` AND `serial`, NOT ON THE EVENT ID ═══
+ *
+ * The `material.consumed` payload carries `caseRef: { type, id }` and the ledger entry, and that is
+ * what ties it back to an OT row. It does NOT carry the implant row's id — Plan 14 froze that
+ * payload before this module existed — so the match is (case, item, batch) and the row is chosen as
+ * the OLDEST still-deploying one for that triple. Two identical implants deployed on one case are
+ * distinguished by serial where there is one and by arrival order where there is not, which is the
+ * best a frozen payload allows and is stated here rather than assumed.
+ *
+ * Idempotent by EVENT ID, like every other consumer in this system.
+ */
+export type ImplantConfirmation = { handled: boolean; implantId: string | null };
+
+export async function handleMaterialConsumed(
+  tx: Tx, eventId: string, payload: unknown,
+): Promise<ImplantConfirmation> {
+  if (!(await claimFor(tx, OT_IMPLANT_CONFIRMED_CONSUMER, eventId))) {
+    return { handled: false, implantId: null };
+  }
+  const parsed = materialConsumed.payloadSchema.safeParse(payload);
+  if (!parsed.success) return { handled: true, implantId: null };
+  const consumed = parsed.data;
+  // Not an OT case: this consumer subscribes to every `material.consumed`, and pharmacy's
+  // dispensing will emit them too from 16c.
+  if (consumed.caseRef.type !== "ot_case") return { handled: true, implantId: null };
+
+  const candidates = await tx.select().from(otCaseImplants).where(and(
+    eq(otCaseImplants.caseId, consumed.caseRef.id),
+    eq(otCaseImplants.itemId, consumed.itemId),
+    eq(otCaseImplants.state, "deploying"),
+  ));
+  const row = candidates.sort((a, b) => a.deployedAt.getTime() - b.deployedAt.getTime())[0];
+  if (row === undefined) return { handled: true, implantId: null };
+
+  await tx.update(otCaseImplants)
+    .set({ state: "confirmed", ledgerEntryId: consumed.ledgerEntryId, eventId })
+    .where(eq(otCaseImplants.id, row.id));
+  return { handled: true, implantId: row.id };
+}
+
+export function implantConfirmedConsumer(db: Db): Handler {
+  return async (e: DispatchedEvent): Promise<void> => {
+    if (e.name !== materialConsumed.name) return;
+    await withTx(db, (tx) => handleMaterialConsumed(tx, e.eventId, e.payload));
   };
 }
 

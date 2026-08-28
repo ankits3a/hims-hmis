@@ -48,17 +48,34 @@ export const OT_ERROR_CODES = [
   "not_ready",
   "consent_authority_missing",
   "list_not_publishable",
-  // ── the cockpit (T5) ──
-  "identity_mismatch",
+  /**
+   * ── the cockpit (T5) ──
+   *
+   * ═══ THREE CODES LEFT THIS UNION AT T5, AND `errors.test.ts` IS WHAT REMOVED THEM (finding T5-b) ═══
+   *
+   * All three were declared here at T2 because they NAME real refusals. None of them is thrown by
+   * this module, and each is refused by a different layer that already has its own vocabulary —
+   * which is Plan 14's M8 lesson arriving a phase later and being caught by the test that phase's
+   * close had to invent, rather than by a reviewer:
+   *
+   *   · **`identity_mismatch`** — `verifyHolding` RETURNS `{ ok: false, reason }`; it does not throw.
+   *     A wristband that scans to the wrong patient is a modal the nurse reads and a near-miss row,
+   *     not an exception. The string survives as an `ot_incidents.kind`, which is a DIFFERENT union
+   *     — exactly the `qc.ts` `RuleCode` overlap M8 untangled.
+   *   · **`theatre_occupied`** — the REGISTRY throws `ResourceError("already_occupied")` and T8's
+   *     `toHttp` maps it to 409. An OT code for the same refusal would be a second name for one
+   *     fact, and the one nobody threw would be the one a caller matched on.
+   *   · **`timestamp_immutable`** — `0035`'s trigger raises it, in Postgres, as
+   *     `ot_timestamp_immutable`. No TypeScript throws it and none should: the whole point of DD8
+   *     is that the guard is below the service.
+   */
   "bad_transition",
-  "theatre_occupied",
   "checklist_incomplete",
   "count_mismatch",
   "stale_version",
   "implant_state",
   "implant_deploying",
   "duplicate_scan",
-  "timestamp_immutable",
   // ── recovery (T6) ──
   "bay_occupied",
   "escort_required",
@@ -98,16 +115,13 @@ const STATUS: Record<OtErrorCode, number> = {
   consent_authority_missing: 422,
   list_not_publishable: 422,
 
-  identity_mismatch: 422,
   bad_transition: 409,
-  theatre_occupied: 409,
   checklist_incomplete: 422,
   count_mismatch: 422,
   stale_version: 409,
   implant_state: 422,
   implant_deploying: 422,
   duplicate_scan: 409,
-  timestamp_immutable: 409,
 
   bay_occupied: 409,
   escort_required: 422,

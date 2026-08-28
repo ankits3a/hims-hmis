@@ -1,5 +1,6 @@
 import type { Actor } from "@hmis/contracts";
-import { registrationConfig, roles } from "../../src/kernel/db/schema";
+import { eq } from "drizzle-orm";
+import { patients, registrationConfig, roles } from "../../src/kernel/db/schema";
 import { createUser } from "../../src/kernel/auth/identity";
 import { assignRole } from "../../src/kernel/auth/permissions";
 import { approveRequest } from "../../src/kernel/approvals/decisions";
@@ -9,12 +10,13 @@ import {
   activateVersion, createDraftVersion, createService, setTariffItem, submitVersion, upsertGstCategory,
 } from "../../src/modules/tariff";
 import { registerPatient } from "../../src/modules/patients";
+import { buildQrPayload } from "../../src/modules/patients/qr";
 import { registerOtApprovalTypes } from "../../src/modules/ot/approval-types";
 import {
   OT_WORKFLOW_DEFINITIONS, draftDefinition, publishDefinition, requestDefinitionPublish,
 } from "../../src/modules/ot";
 import { ensureOtUnit } from "../../scripts/seed-ot";
-import { seedBillingBase } from "./billing";
+import { seedBillingBase, testCfg } from "./billing";
 import type { Db } from "../../src/kernel/db/client";
 
 /**
@@ -303,3 +305,15 @@ export async function mkOtPatient(
   return patient.id;
 }
 
+/** The `AppConfig` the QR verifier needs. `testCfg`'s shape, re-exported so an OT suite need not
+ *  reach into `helpers/billing` for a config it uses for a different reason. */
+export function testOtConfig(): typeof testCfg {
+  return testCfg;
+}
+
+/** A patient's QR card payload — the string a wristband scanner produces (A1's fixture). */
+export async function otPatientCard(db: Db, patientId: string): Promise<string> {
+  const rows = await db.select({ id: patients.id, uhid: patients.uhid, qrVersion: patients.qrVersion })
+    .from(patients).where(eq(patients.id, patientId));
+  return buildQrPayload(testCfg, rows[0]!);
+}

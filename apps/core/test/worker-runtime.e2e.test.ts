@@ -365,6 +365,11 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // same kind of task, recorded as finding T2-f rather than fixed silently. Plan 14 recorded
         // the identical omission as its F11; an authoring rule this repeated is worth stating in the
         // ledger, and the CLOSE does.
+        // PLAN 15 T5 / DD9 — THE SIXTH WIRE, and it closes the loop the fourth one opened.
+        // `materials.consumption` subscribes to an event PLAN 15 emits; this one subscribes to the
+        // event materials emits BACK, and stamps the OT implant row `confirmed`. Between the two,
+        // `signOut` is refused (A18). `ot.implant_confirmed` sorts before `ot.patient_merged`.
+        ["ot.implant_confirmed", ["material.consumed"]],
         ["ot.patient_merged", ["patient.merged"]],
         // PLAN 09 T6 / DD7 — THE THIRD WIRE, and the one whose absence would be invisible for the
         // longest. `COMMISSION_ACCRUAL_ENABLED` defaults to false, so a partners consumer that was
