@@ -52,54 +52,69 @@ import { OtRecovery } from "./screens/ot-recovery";
  * client's copy of that pairing and nothing more. A link rendered here still reaches a guarded
  * route — hiding it is courtesy, not security.
  */
-const NAV: readonly { to: string; label: string; permission: string }[] = [
+/**
+ * PLAN 07b T8 — THE NAV IS GROUPED, AND THE GROUP IS THE ONLY THING ADDED.
+ *
+ * `path` and `permission` still match `ModuleManifest.menu` exactly — `nav-parity.test.ts` compares
+ * those two and nothing else, which is why a third field can be added here without touching the
+ * server's copy. What changes is what a person SEES: twenty-seven links in one undifferentiated row
+ * is a list you read every time rather than a place you know your way around, and a holder of three
+ * roles got more of that row rather than a better one.
+ *
+ * `desk` comes first and holds exactly one entry. That is the point of it: the counter is where a
+ * one-person desk works, and it should not be the ninth thing in a row of similar-looking words.
+ */
+type NavGroup = "desk" | "patients" | "opd" | "billing" | "stores" | "admin";
+/** Reading order is the order a desk WORKS in — the counter first, administration last. */
+const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "billing", "stores", "admin"];
+const NAV: readonly { to: string; label: string; permission: string; group: NavGroup }[] = [
   // PLAN 07b T3 — the counter, first in the row for the reason `otManifest`-style menus give: it is
   // the screen a one-person desk lives on. Path and permission match `opdManifest.menu` exactly,
   // which `nav-parity.test.ts` enforces rather than trusts.
-  { to: "/counter", label: "nav.counterDesk", permission: "opd.visits.open" },
-  { to: "/registration", label: "nav.registration", permission: "patients.register" },
-  { to: "/merge", label: "nav.merge", permission: "patients.merge" },
-  { to: "/approvals", label: "nav.approvals", permission: "approvals.requests.read" },
-  { to: "/opd/admin", label: "nav.opdAdmin", permission: "opd.masters.manage" },
-  { to: "/opd/appointments", label: "nav.opdAppointments", permission: "opd.appointments.read" },
-  { to: "/opd/desk", label: "nav.opdDesk", permission: "opd.visits.open" },
-  { to: "/opd/vitals", label: "nav.opdVitals", permission: "opd.vitals.record" },
-  { to: "/opd/consult", label: "nav.opdConsult", permission: "opd.consult" },
-  { to: "/opd/display", label: "nav.opdDisplay", permission: "opd.display.read" },
-  { to: "/billing", label: "nav.billing", permission: "billing.invoice.issue" },
-  { to: "/billing/dues", label: "nav.billingDues", permission: "billing.invoice.read" },
-  { to: "/billing/session", label: "nav.billingSession", permission: "billing.session.own" },
-  { to: "/billing/office", label: "nav.billingOffice", permission: "billing.reports.read" },
-  { to: "/ops/mode", label: "nav.opsMode", permission: "ops.mode.set" },
-  { to: "/ops/downtime-kit", label: "nav.opsDowntimeKit", permission: "ops.downtime.generate" },
-  { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage" },
+  { to: "/counter", label: "nav.counterDesk", permission: "opd.visits.open", group: "desk" },
+  { to: "/registration", label: "nav.registration", permission: "patients.register", group: "patients" },
+  { to: "/merge", label: "nav.merge", permission: "patients.merge", group: "patients" },
+  { to: "/approvals", label: "nav.approvals", permission: "approvals.requests.read", group: "admin" },
+  { to: "/opd/admin", label: "nav.opdAdmin", permission: "opd.masters.manage", group: "opd" },
+  { to: "/opd/appointments", label: "nav.opdAppointments", permission: "opd.appointments.read", group: "opd" },
+  { to: "/opd/desk", label: "nav.opdDesk", permission: "opd.visits.open", group: "opd" },
+  { to: "/opd/vitals", label: "nav.opdVitals", permission: "opd.vitals.record", group: "opd" },
+  { to: "/opd/consult", label: "nav.opdConsult", permission: "opd.consult", group: "opd" },
+  { to: "/opd/display", label: "nav.opdDisplay", permission: "opd.display.read", group: "opd" },
+  { to: "/billing", label: "nav.billing", permission: "billing.invoice.issue", group: "billing" },
+  { to: "/billing/dues", label: "nav.billingDues", permission: "billing.invoice.read", group: "billing" },
+  { to: "/billing/session", label: "nav.billingSession", permission: "billing.session.own", group: "billing" },
+  { to: "/billing/office", label: "nav.billingOffice", permission: "billing.reports.read", group: "billing" },
+  { to: "/ops/mode", label: "nav.opsMode", permission: "ops.mode.set", group: "admin" },
+  { to: "/ops/downtime-kit", label: "nav.opsDowntimeKit", permission: "ops.downtime.generate", group: "admin" },
+  { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage", group: "admin" },
   // PLAN 09 T3 — the path and the permission match `membershipManifest.menu`'s own entry exactly,
   // which is where the authoritative pairing lives.
-  { to: "/counter/instruments", label: "nav.counterInstruments", permission: "membership.instrument.read" },
+  { to: "/counter/instruments", label: "nav.counterInstruments", permission: "membership.instrument.read", group: "desk" },
   // PLAN 09 T5 — the reconcile queue. `membership.reconcile.operate` is in NOT_YET_MODELLED
   // (DD18), so this link is invisible to everybody until the owner grants it — which is the flag
   // flip working as ruled, not an oversight, and T8's runbook names it beside the others.
-  { to: "/counter/reconcile", label: "nav.counterReconcile", permission: "membership.reconcile.operate" },
+  { to: "/counter/reconcile", label: "nav.counterReconcile", permission: "membership.reconcile.operate", group: "desk" },
   // PLAN 09 T7 — the receivables desk. `partners.receivable.operate` is in NOT_YET_MODELLED
   // (DD18) and the lane itself is behind RECEIVABLE_COMMISSION_ENABLED, so this link is invisible
   // to everybody until the owner does both — which is the ordered flip working as ruled.
-  { to: "/partners/receivables", label: "nav.partnerReceivables", permission: "partners.receivable.operate" },
+  { to: "/partners/receivables", label: "nav.partnerReceivables", permission: "partners.receivable.operate", group: "billing" },
   // PLAN 09 T8 — the channel P&L. `partners.pnl.read` is in NOT_YET_MODELLED (DD18); this link is
   // invisible to everybody until the owner grants it — the runbook (README.md) names it beside the
   // other flag-flip permissions.
-  { to: "/partners/pnl", label: "nav.partnerPnl", permission: "partners.pnl.read" },
+  { to: "/partners/pnl", label: "nav.partnerPnl", permission: "partners.pnl.read", group: "billing" },
   // PLAN 16a T7 — the formulary desk. The path and the permission match `formularyManifest.menu`'s
   // own entry exactly, which is where the authoritative pairing lives. `formulary.manage` is
   // GRANTED (DD10) — to `pharmacy`, a role that exists with no holders — so this link appears the
   // day a pharmacist account does, and for nobody before then.
-  { to: "/formulary/admin", label: "nav.formularyAdmin", permission: "formulary.manage" },
+  { to: "/formulary/admin", label: "nav.formularyAdmin", permission: "formulary.manage", group: "stores" },
   // PLAN 14 T9 / DD16 — the three materials screens. Each path and permission matches
   // `materialsManifest.menu`'s own entry exactly, which is where the authoritative pairing lives.
   // Two of the three are GRANTED (DD11) to `materials_head` and `storekeeper` — roles that exist
   // with NO HOLDERS — so those links appear the day a storekeeper account does, and for nobody
   // before then. That is the `formulary.manage` precedent one phase later.
-  { to: "/materials/items", label: "nav.materialsItems", permission: "materials.items.manage" },
-  { to: "/materials/vendors", label: "nav.materialsVendors", permission: "materials.vendors.manage" },
+  { to: "/materials/items", label: "nav.materialsItems", permission: "materials.items.manage", group: "stores" },
+  { to: "/materials/vendors", label: "nav.materialsVendors", permission: "materials.vendors.manage", group: "stores" },
   /**
    * ═══ SECOND-PASS FINDING F1 — THIS LINE IS THE OTHER HALF OF CLOSE REVIEW M6 ═══
    *
@@ -115,7 +130,7 @@ const NAV: readonly { to: string; label: string; permission: string }[] = [
    * table to any manifest. That is §2.122 in the remediation for §2.122. The guard now exists at
    * `apps/core/test/nav-parity.test.ts`, so the next divergence fails a suite instead of a role.
    */
-  { to: "/materials/grn", label: "nav.materialsGrn", permission: "materials.stock.read" },
+  { to: "/materials/grn", label: "nav.materialsGrn", permission: "materials.stock.read", group: "stores" },
   /**
    * PLAN 15 T8 — the mini-OT. Each path and permission matches `otManifest.menu`'s own entry
    * exactly, which is where the authoritative pairing lives and which `nav-parity.test.ts` now
@@ -126,9 +141,9 @@ const NAV: readonly { to: string; label: string; permission: string }[] = [
    * open it on. It is reached from the list, which is where a nurse actually is when they need it.
    * `otManifest.menu` declares the same three, so the two tables agree.
    */
-  { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read" },
-  { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book" },
-  { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate" },
+  { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "opd" },
+  { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "opd" },
+  { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "opd" },
 ];
 
 function Shell(): React.ReactElement {
@@ -152,10 +167,21 @@ function Shell(): React.ReactElement {
             navigation. Delete every one of these and the parity test that guards D1 still passes;
             restore the old edge matcher and it fails. The two are deliberately independent.
           */}
-          <nav className="flex gap-4 text-sm">
-            {NAV.filter((entry) => can(entry.permission)).map((entry) => (
-              <Link key={entry.to} to={entry.to} className="hover:underline">{t(entry.label)}</Link>
-            ))}
+          <nav className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+            {NAV_GROUPS.map((group) => {
+              const entries = NAV.filter((e) => e.group === group && can(e.permission));
+              if (entries.length === 0) return null;
+              return (
+                <span key={group} className="flex items-baseline gap-2">
+                  <span className="text-[10px] uppercase tracking-wider text-neutral-400">
+                    {t(`nav.group.${group}`)}
+                  </span>
+                  {entries.map((entry) => (
+                    <Link key={entry.to} to={entry.to} className="hover:underline">{t(entry.label)}</Link>
+                  ))}
+                </span>
+              );
+            })}
             {NAV.every((entry) => !can(entry.permission)) ? (
               /*
                * PLAN 11h T6 — AN EMPTY NAV IS A SENTENCE, NOT A BLANK BAR.

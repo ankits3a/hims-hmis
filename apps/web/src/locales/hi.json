@@ -37,7 +37,15 @@
     "otList": "ऑपरेशन थिएटर सूची",
     "otBook": "डे-केयर केस बुक करें",
     "otRecovery": "रिकवरी",
-    "counterDesk": "काउंटर"
+    "counterDesk": "काउंटर",
+    "group": {
+      "desk": "डेस्क",
+      "patients": "मरीज़",
+      "opd": "ओपीडी",
+      "billing": "बिलिंग",
+      "stores": "स्टोर",
+      "admin": "प्रशासन"
+    }
   },
   "palette": {
     "title": "खोज",

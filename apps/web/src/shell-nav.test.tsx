@@ -68,3 +68,36 @@ it("a person whose role holds nothing is TOLD SO rather than shown a blank bar",
   );
   expect(screen.queryByRole("link", { name: "Registration" })).not.toBeInTheDocument();
 });
+
+/**
+ * PLAN 07b T8 — THE ROW IS GROUPED, AND THE COUNTER LEADS IT.
+ *
+ * Twenty-seven links in one undifferentiated row is a list a person re-reads every time rather than
+ * a place they know their way around, and holding three roles bought MORE of that row rather than a
+ * better one. The group labels are the structure; the counter leading is the point, because that is
+ * where a one-person desk actually works.
+ */
+it("07b T8: the nav is grouped, and a counter clerk's Desk group comes before the rest", async () => {
+  renderShell(["opd.visits.open", "patients.register", "billing.invoice.issue"]);
+  await waitFor(() => { expect(screen.getByText("Registration")).toBeInTheDocument(); });
+
+  const nav = screen.getByRole("navigation");
+  expect(nav).toHaveTextContent("Desk");
+  expect(nav).toHaveTextContent("Patients");
+  expect(nav).toHaveTextContent("Billing");
+
+  // Reading order is the order a desk WORKS in: the counter first, not the ninth similar-looking word.
+  const text = nav.textContent ?? "";
+  expect(text.indexOf("Desk")).toBeLessThan(text.indexOf("Patients"));
+  expect(text.indexOf("Counter")).toBeLessThan(text.indexOf("Registration"));
+});
+
+/** A group with nothing in it must not render its label — an empty heading is furniture. */
+it("07b T8: a group the person holds nothing in does not render at all", async () => {
+  renderShell(["patients.register"]);
+  await waitFor(() => { expect(screen.getByText("Registration")).toBeInTheDocument(); });
+  const nav = screen.getByRole("navigation");
+  expect(nav).toHaveTextContent("Patients");
+  expect(nav).not.toHaveTextContent("Stores");
+  expect(nav).not.toHaveTextContent("Billing");
+});

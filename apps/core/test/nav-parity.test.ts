@@ -63,7 +63,17 @@ function navEntries(source: string): { to: string; permission: string }[] {
   const block = source.slice(start, end);
 
   const rows: { to: string; permission: string }[] = [];
-  for (const m of block.matchAll(/\{\s*to:\s*"([^"]+)"[^}]*?permission:\s*"([^"]+)"\s*\}/g)) {
+  /**
+   * PLAN 07b T8 — the trailing `[^}]*` is new, and it was bought by this parser THROWING.
+   *
+   * The pattern used to require `permission` to be the LAST field of the object, so adding a third
+   * one (`group`, for the nav's section headings) made every entry stop matching and the census
+   * came back empty. The guard did exactly what §2.49 built it to do — it threw "parsed to zero
+   * entries" rather than reporting no drift over a list it had failed to read, which is the silent
+   * false green this file exists to prevent. `[^}]*` cannot cross a `}`, so widening it keeps the
+   * match bounded to one object literal and cannot pair a path with a neighbour's permission.
+   */
+  for (const m of block.matchAll(/\{\s*to:\s*"([^"]+)"[^}]*?permission:\s*"([^"]+)"[^}]*\}/g)) {
     rows.push({ to: m[1] as string, permission: m[2] as string });
   }
   if (rows.length === 0) {

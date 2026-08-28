@@ -37,7 +37,15 @@
     "otList": "Theatre list",
     "otBook": "Book day-care case",
     "otRecovery": "Recovery",
-    "counterDesk": "Counter"
+    "counterDesk": "Counter",
+    "group": {
+      "desk": "Desk",
+      "patients": "Patients",
+      "opd": "OPD",
+      "billing": "Billing",
+      "stores": "Stores",
+      "admin": "Admin"
+    }
   },
   "palette": {
     "title": "Search",
