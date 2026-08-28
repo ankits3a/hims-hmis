@@ -7,7 +7,7 @@ import { ModuleRegistry } from "../../kernel/modules/loader";
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { newId } from "@hmis/contracts";
 import { opdPrescriptions, patients } from "../../kernel/db/schema";
-import { patientTimeline } from "./encounters";
+import { getVisit, patientTimeline } from "./encounters";
 import { listVitals, recordVitals } from "./vitals";
 import { listPrescriptions } from "./prescriptions";
 import { OpdError } from "./errors";
@@ -115,6 +115,20 @@ describe("opd read gate — the sealed class on timeline, vitals and prescriptio
     });
     expect(await listPrescriptions(db, mrd.actor, sealedEncounterId)).toHaveLength(1);
     expect(await listPrescriptions(db, clerk.actor, sealedEncounterId)).toEqual([]);
+  });
+
+  /**
+   * A4c — THE ROUTE THE FIRST FIX MISSED. `GET /opd/visits/:id` returns the encounter's diagnosis
+   * and ICD-10 AND the visit's vitals AND its prescriptions in one payload. Only the patient's NAME
+   * was ever protected here, by the controller aliasing it through `getPatientSummaries`; the
+   * clinical body went to any holder of `opd.visits.read`.
+   */
+  it("A4c: the whole visit is invisible to the clerk for a sealed patient, and intact for the permitted caller", async () => {
+    await recordVitals(db, mrd.actor, sealedEncounterId, { heightCm: 165, weightKg: 62, sbp: 120, dbp: 80, pulse: 72, rr: 16, spo2: 98, tempC: 36.8 }, T0);
+    const seen = await getVisit(db, mrd.actor, sealedEncounterId);
+    expect(seen?.encounter.id).toBe(sealedEncounterId);
+    expect(seen?.vitals).toHaveLength(1);
+    expect(await getVisit(db, clerk.actor, sealedEncounterId)).toBeNull();
   });
 
   /** A5 — gating must not be implemented by dropping the merge chain, which would truncate history. */

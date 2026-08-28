@@ -1,5 +1,6 @@
 import { getPatient } from "../patients";
 import { getEncounter } from "./encounters";
+import type { EncounterRow } from "./encounters";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -26,8 +27,15 @@ import type { Db } from "../../kernel/db/client";
  * that does not exist (07a DD2). A distinct refusal would confirm the patient exists to a caller
  * who may not know that, which is the leak wearing a fix's clothes.
  */
-export async function encounterVisibleTo(db: Db, actor: Actor, encounterId: string): Promise<boolean> {
+export async function visibleEncounterFor(
+  db: Db, actor: Actor, encounterId: string,
+): Promise<EncounterRow | null> {
   const encounter = await getEncounter(db, encounterId);
-  if (!encounter) return false;
-  return (await getPatient(db, actor, encounter.patientId)) !== null;
+  if (!encounter) return null;
+  return (await getPatient(db, actor, encounter.patientId)) === null ? null : encounter;
+}
+
+/** The boolean form, for callers that need the verdict and not the row. */
+export async function encounterVisibleTo(db: Db, actor: Actor, encounterId: string): Promise<boolean> {
+  return (await visibleEncounterFor(db, actor, encounterId)) !== null;
 }

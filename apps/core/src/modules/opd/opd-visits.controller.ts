@@ -182,7 +182,7 @@ export class OpdVisitsController {
   @RequirePermission("opd.visits.read", "hospital")
   @Get("visits/:id")
   async visit(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<VisitDetail> {
-    const found = await getVisit(this.db, id);
+    const found = await getVisit(this.db, actor, id);
     if (!found) toHttp(new OpdError("unknown_encounter", `unknown encounter ${id}`));
     const [summary] = await getPatientSummaries(this.db, actor, [found.encounter.patientId]);
     return { ...found, patient: summary ?? null };

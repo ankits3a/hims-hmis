@@ -270,10 +270,17 @@ export async function transferQueue(
 
 export async function getVisit(
   db: Db,
+  actor: Actor,
   encounterId: string,
 ): Promise<{ encounter: EncounterRow; queueEntries: QueueEntryRow[]; vitals: VitalsRow[]; prescriptions: PrescriptionRow[] } | null> {
+  // PLAN 07a T1 FOLLOW-UP — this route was the FOURTH instance of the same hole and the first fix
+  // missed it. It returns the encounter's diagnosis and ICD-10 code AND the visit's vitals AND its
+  // prescriptions; only the patient's NAME was protected, by `getPatientSummaries` aliasing it in
+  // the controller. The clinical payload went to any holder of `opd.visits.read`. Same null a
+  // missing encounter returns, so sealed and absent stay indistinguishable (07a DD2).
   const encounter = await getEncounter(db, encounterId);
   if (!encounter) return null;
+  if ((await getPatient(db, actor, encounter.patientId)) === null) return null;
   const queueEntries = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId)).orderBy(asc(opdQueueEntries.seq));
   const vitals = await db.select().from(opdVitals).where(eq(opdVitals.encounterId, encounterId)).orderBy(asc(opdVitals.recordedAt));
   const prescriptions = await db.select().from(opdPrescriptions).where(eq(opdPrescriptions.encounterId, encounterId)).orderBy(asc(opdPrescriptions.version));
