@@ -1,3 +1,20 @@
+> # ⚠ SUPERSEDED 2026-08-29 — DO NOT SEED A SESSION FROM THIS FILE
+>
+> **Plan 17 executed T1 and T2 from this prompt (`39beff0`) and then stopped on its stop-loss.** The
+> owner re-cut the remaining seven tasks into two phases, and **each carries its own executor seed in
+> its own §0**, which is what v3 §1 prescribes and what this file's existence cost:
+>
+> - **T3–T5** → [`2026-08-29-phase1-17a-lims-order-to-accession.md`](2026-08-29-phase1-17a-lims-order-to-accession.md)
+> - **T6–T9** → [`2026-08-29-phase1-17b-lims-result-to-report.md`](2026-08-29-phase1-17b-lims-result-to-report.md)
+>
+> Its §1 reading order, §2 kickoff block and §3 task tiers are **stale in three ways**: the tiers list
+> nine tasks, the kickoff tells you `0046` may be free (it is taken — this phase wrote it), and the
+> §2 censuses have all moved. It is kept, not deleted, because `39beff0`'s commit message and Plan
+> 17's §9.0 both cite it as the seed they actually ran from — the rule-6 pattern. **Read it as a
+> record of what T1 and T2 were told, never as an instruction.**
+
+---
+
 # EXECUTE PROMPT — Plan 17, the LIMS core
 
 **For the executing session (Opus), on the build host, in `/opt/hmis`.** Paste this file's path as the seed; read nothing else first.
