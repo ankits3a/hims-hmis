@@ -50,6 +50,18 @@ import { IST_UTC_OFFSET_MINUTES } from "../src/kernel/approvals/cumulative";
  * phase's verify went red here, the file was not in the task's Files list, and the copy had to be
  * argued for in writing before it could land. That is the friction the docstring above promises,
  * working exactly as designed, one phase later. Recorded as finding F10 in Plan 14's CLOSE.
+ *
+ * ═══ THE ELEVENTH COPY ARRIVED, 2026-08-29 (Plan 17a T3) — AND CAUGHT IT ON CI, NOT LOCALLY ═══
+ *
+ * `modules/lab/ranges.ts` resolves a reference range by the patient's age in whole IST days at
+ * collection, so it carries the offset. **The phase's own narrow suite was green and this census
+ * only runs in the full workspace suite, so `main` went red for the ~40 minutes between the push
+ * and somebody reading the run.** That is the same shape as §2.131/§2.138 — a new registration
+ * moves a census that no grep of the task's own files could find — with one addition worth
+ * recording: *a census that lives in `test/` rather than beside the code it counts is invisible to
+ * a task that runs only its module's suite*. The narrow-suite economy of AGENT-RULES §2.8 is still
+ * right; the correction is to read CI by full SHA at the task boundary, which is what found this.
+ * Declared here by 17a T4, with `ranges.ts`'s own written argument standing as the justification.
  */
 
 const IST_OFFSET_MS = 19_800_000; // 5h30m. Design law, no DST.
@@ -68,6 +80,12 @@ const SITES: { file: string; expr: string }[] = [
   // PLAN 14 T6 — the tenth. See the paragraph above: a GRN number is series-numbered by IST
   // calendar date, and `grn.ts` resolves one when its caller does not supply it.
   { file: "src/modules/materials/grn.ts", expr: "5.5 * 60 * 60 * 1000" },
+  // PLAN 17a T3 — the eleventh. A reference range is chosen by the patient's age IN WHOLE IST DAYS
+  // at COLLECTION (DD2, T3 A1), and a neonate crosses a band boundary at an IST midnight that is
+  // 18.5 hours from the UTC one. `ranges.ts` states its own reason for transcribing rather than
+  // importing, and it is the `grn.ts` argument one module over: the lab must not depend on the
+  // outpatient department to know what day it is.
+  { file: "src/modules/lab/ranges.ts", expr: "5.5 * 60 * 60 * 1000" },
 ];
 
 /** A product of number literals, with `IST_UTC_OFFSET_MINUTES` resolved. No eval, no Function. */
@@ -113,7 +131,7 @@ describe("the IST clock is the same clock everywhere (09a close, ledger §2.105)
       .toEqual({ sitesWhoseExpressionMoved: [] });
   });
 
-  it("the census is pinned — an ELEVENTH copy of the hospital clock is a deliberate change", () => {
+  it("the census is pinned — a TWELFTH copy of the hospital clock is a deliberate change", () => {
     const carrying = new Set<string>();
     for (const file of sourceFiles(join(CORE, "src"))) {
       for (const line of readFileSync(file, "utf8").split("\n")) {
