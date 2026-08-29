@@ -1,12 +1,18 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
+import {
+  assuranceAfterAmendment, isAmendmentReason, mintIdentityVersion, touchesIdentity,
+  type AmendmentReason,
+} from "./identity";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { activeBreakGlass } from "../../kernel/auth/break-glass";
 import { patientGuardians, patients } from "../../kernel/db/schema";
 import { allocateUhid, PatientError } from "./uhid";
-import { guardianLinked, patientRegistered, patientUpdated } from "./events";
+import {
+  guardianLinked, identityAssuranceChanged, identityVersionMinted, patientRegistered, patientUpdated,
+} from "./events";
 import { MAJORITY_AGE_YEARS, yearsBetween } from "./types";
 import type {
   AbhaVerificationStatus, BloodGroup, GuardianRelationship, PatientLanguage, Sex,
@@ -42,6 +48,8 @@ export type RegisterPatientInput = {
    * is a second migration over a table with a NOT NULL column once 22c-B splits the form.
    */
   administrativeGender?: Sex;
+  /** DD2 — omitted at the counter (defaults to `staff_verified`); 22c-B passes `self_declared`. */
+  identityAssurance?: string;
   addressLine?: string;
   district?: string;
   stateName?: string;
@@ -111,6 +119,21 @@ export async function registerPatient(
        * 24 rows that already existed — one rule, two places, so the two populations agree.
        */
       administrativeGender: input.administrativeGender ?? input.sex,
+      /**
+       * PLAN 22c-A T3/DD2 — A COUNTER REGISTRATION IS `staff_verified`, NOT THE COLUMN DEFAULT.
+       *
+       * This function refuses every non-user actor, so reaching this line means a clerk with the
+       * person in front of them typed this record — which is exactly the argument 0043's backfill
+       * made for the 24 rows that already existed. Letting the DEFAULT apply here would stamp
+       * every new counter registration `self_declared` while every older one said
+       * `staff_verified`, splitting the master into two populations that mean different things by
+       * the same field, purely as an artefact of when the row was created.
+       *
+       * The `self_declared` default is not dead code — it is what 22c-B's self-registration path
+       * will take, and it is the safer value to have as the default if a future write site forgets
+       * to think about this at all.
+       */
+      identityAssurance: input.identityAssurance ?? "staff_verified",
       addressLine: input.addressLine ?? null,
       district: input.district ?? null,
       stateName: input.stateName ?? null,
@@ -130,6 +153,35 @@ export async function registerPatient(
     })
     .returning();
   const patient = inserted[0]!;
+
+  /**
+   * PLAN 22c-A T3/A20 — VERSION 1 IS MINTED AT REGISTRATION, not on the first amendment.
+   *
+   * 0043 backfilled a version 1 for every patient that already existed. Without this block every
+   * patient registered AFTER the migration would have no version at all until somebody amended
+   * them, and `resolveIdentityAt` would return null for exactly the patients whose documents are
+   * newest. The resolver's "fall back to the earliest version" rule (A20) cannot rescue a patient
+   * who has no versions, so the invariant this establishes is the one worth stating plainly:
+   * EVERY patient has at least one version, always, from the instant they exist.
+   *
+   * `validFrom` is the row's own `createdAt`, matching what 0043 wrote for the backfilled rows, so
+   * the two populations answer the resolver identically.
+   */
+  await mintIdentityVersion(tx, {
+    patientId,
+    fields: {
+      name: patient.name,
+      dob: patient.dob,
+      dobEstimated: patient.dobEstimated,
+      administrativeGender: patient.administrativeGender,
+      abhaNumber: patient.abhaNumber,
+    },
+    identityAssurance: patient.identityAssurance,
+    validFrom: patient.createdAt,
+    reasonClass: null, // there is no amendment; this is the original state
+    evidenceRef: null,
+    createdBy: actor.id,
+  });
 
   let guardianId: string | null = null;
   if (input.guardian !== undefined) {
@@ -193,6 +245,7 @@ export type PatientPatch = Partial<{
   dob: Date | null;
   dobEstimated: boolean;
   sex: Sex;
+  administrativeGender: Sex; // PLAN 22c-A DD4 — Class I; amending it mints a version
   addressLine: string | null;
   district: string | null;
   stateName: string | null;
@@ -212,7 +265,7 @@ export type PatientPatch = Partial<{
 }>;
 
 const PATCHABLE = [
-  "name", "phone", "altPhone", "dob", "dobEstimated", "sex", "addressLine", "district",
+  "name", "phone", "altPhone", "dob", "dobEstimated", "sex", "administrativeGender", "addressLine", "district",
   "stateName", "pincode", "language", "bloodGroup", "isConfidential", "alias",
   "sensitiveContext", "abhaAddress", "abhaNumber", "abhaVerificationStatus",
   "abhaLinkToken", "legacyUhid", "promotionalOptIn", "deceasedAt",
@@ -236,11 +289,26 @@ function asAuditTimestamp(v: unknown): string | null {
   return String(v);
 }
 
+/**
+ * PLAN 22c-A T3 — the amendment context. Optional so every shipped caller keeps compiling; a
+ * Class I amendment that arrives without one is not refused, it simply cannot evidence itself and
+ * therefore drops assurance under DD5. The route (T7) is what makes `reasonClass` mandatory at
+ * the edge — putting the requirement here instead would break the merge and walk-in paths, which
+ * amend for reasons of their own.
+ */
+export type AmendmentContext = {
+  reasonClass?: AmendmentReason;
+  evidenceRef?: string | null;
+  /** The assurance level the presented evidence itself supports, if any (DD5). */
+  evidencedAt?: string | null;
+};
+
 export async function updatePatient(
   tx: Tx,
   actor: Actor,
   patientId: string,
   patch: PatientPatch,
+  ctx: AmendmentContext = {},
 ): Promise<{ patient: PatientRow; changed: string[] }> {
   if (actor.type !== "user") {
     throw new PatientError("user_actor_required", "only user actors update patients");
@@ -275,6 +343,27 @@ export async function updatePatient(
     throw new PatientError("alias_required", "a confidential patient needs an alias (§14)");
   }
 
+  if (ctx.reasonClass !== undefined && !isAmendmentReason(ctx.reasonClass)) {
+    throw new PatientError("reason_required", `unknown amendment reason "${ctx.reasonClass}"`);
+  }
+
+  /**
+   * PLAN 22c-A T3/DD5 — THE ASSURANCE DROP IS COMPUTED BEFORE THE WRITE AND APPLIED IN IT.
+   *
+   * An unevidenced Class I amendment on a record above `staff_verified` lowers the stamp to
+   * `staff_verified`: the record was `id_verified` about a name that has since been changed
+   * without anyone re-checking a document, so the stamp no longer covers the field it is
+   * attached to. It rides the SAME `set` as the amendment, so there is no window in which the
+   * new name sits under the old assurance — that window is the only thing a separate UPDATE
+   * would have added.
+   */
+  const changedFields = changes.map((c) => c.field);
+  const identityChanged = touchesIdentity(changedFields);
+  const resultingAssurance = identityChanged
+    ? assuranceAfterAmendment(current.identityAssurance, ctx.evidencedAt ?? null)
+    : current.identityAssurance;
+  if (resultingAssurance !== current.identityAssurance) set.identityAssurance = resultingAssurance;
+
   const updated = await tx
     .update(patients)
     .set({ ...set, updatedBy: actor.id, updatedAt: new Date() })
@@ -288,7 +377,58 @@ export async function updatePatient(
     tx,
     patientUpdated.make({ actor, patientId, payload: { patientId, changes } }),
   );
-  return { patient: updated[0]!, changed: changes.map((c) => c.field) };
+
+  /**
+   * A6 — THE MINT IS INSIDE THIS TRANSACTION, and that is the assertion rather than a detail. A
+   * version minted outside it would survive a rolled-back amendment and stand as a record of a
+   * state the patient was never in — a document could then be re-rendered as a person who never
+   * existed. A7 is its mirror: a Class II contact change mints NOTHING, because a phone number is
+   * not part of the answer to "who was this person".
+   */
+  if (identityChanged) {
+    const row = updated[0]!;
+    const { version } = await mintIdentityVersion(tx, {
+      patientId,
+      fields: {
+        name: row.name,
+        dob: row.dob,
+        dobEstimated: row.dobEstimated,
+        administrativeGender: row.administrativeGender,
+        abhaNumber: row.abhaNumber,
+      },
+      identityAssurance: resultingAssurance,
+      validFrom: row.updatedAt,
+      reasonClass: ctx.reasonClass ?? null,
+      evidenceRef: ctx.evidenceRef ?? null,
+      createdBy: actor.id,
+    });
+    await appendEvent(
+      tx,
+      identityVersionMinted.make({
+        actor, patientId,
+        payload: {
+          patientId, version,
+          fields: changedFields.filter((f) => touchesIdentity([f])),
+          reasonClass: ctx.reasonClass ?? null,
+          evidenceRef: ctx.evidenceRef ?? null,
+        },
+      }),
+    );
+    if (resultingAssurance !== current.identityAssurance) {
+      await appendEvent(
+        tx,
+        identityAssuranceChanged.make({
+          actor, patientId,
+          payload: {
+            patientId, from: current.identityAssurance, to: resultingAssurance,
+            reason: "amendment_drop", evidenceRef: ctx.evidenceRef ?? null,
+          },
+        }),
+      );
+    }
+  }
+
+  return { patient: updated[0]!, changed: changedFields };
 }
 
 const MERGE_CHAIN_MAX_HOPS = 5;

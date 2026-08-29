@@ -117,3 +117,38 @@ export const qrSignatureFailed = defineEvent(
     patientId: z.string().optional(), // only when the signature verified (stale_version / unknown_patient) — a forged id is never evented as a patientId
   }),
 );
+
+/**
+ * PLAN 22c-A T3 — the identity spine's two events. The module docblock above says this plan mints
+ * nine names; 22c-A adds these two, and they are additive to that catalogue rather than a
+ * revision of it.
+ */
+export const identityVersionMinted = defineEvent(
+  "patient.identity_version_minted",
+  MODULE,
+  z.object({
+    patientId: z.string().min(1),
+    version: z.number().int().positive(),
+    // The CLASS I fields that changed, by name only. The values are already in patient.updated's
+    // diff and in the version row itself; repeating them here would put a third copy of a
+    // person's former name in a third place, which is more exposure for no new answer.
+    fields: z.array(z.string().min(1)).min(1),
+    reasonClass: z.string().nullable(),
+    evidenceRef: z.string().nullable(),
+  }),
+);
+
+export const identityAssuranceChanged = defineEvent(
+  "patient.identity_assurance_changed",
+  MODULE,
+  z.object({
+    patientId: z.string().min(1),
+    from: z.string().min(1),
+    to: z.string().min(1),
+    // 'amendment_drop' is DD5's automatic descent; 'upgrade' is a clerk's deliberate act. They
+    // are one event with a direction rather than two, because the question anyone asks of this
+    // trail is "why does this record claim this level", and both answers belong on one timeline.
+    reason: z.enum(["amendment_drop", "upgrade"]),
+    evidenceRef: z.string().nullable(),
+  }),
+);

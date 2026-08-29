@@ -30,7 +30,13 @@ export type PatientErrorCode =
   | "merge_not_executed"
   | "approval_not_granted"
   | "unmerge_not_requested"
-  | "unmerge_already_requested";
+  | "unmerge_already_requested"
+  // PLAN 22c-A T3/T5 — the identity spine and the privacy write split.
+  | "invalid_assurance"
+  | "assurance_not_increasing"
+  | "evidence_required"
+  | "confidential_write_denied"
+  | "deceased_write_denied";
 
 export class PatientError extends Error {
   constructor(
