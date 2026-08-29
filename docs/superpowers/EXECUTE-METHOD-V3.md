@@ -461,6 +461,38 @@ afterthought: Plan 15's pass-1 remediation touched 31 files, added two migration
 suite by +20 tests. The stop-loss covers the REVIEWERS; the remediation is main-session work, and a
 phase whose review returns a CRITICAL should expect its close to cost as much again as its tasks did.
 
+### 9.10 THE SECOND REVIEWER IS BRIEFED AT THE FIXES, AND IT IS THE TERM THAT PAYS — added 2026-08-29 (Plan 22c-A close, ledger §2.136)
+
+§6's second budget term has been carried since 09a on the argument that a fix is unreviewed code on
+the same path. Plan 22c-A is the first phase to run **two FRESH reviewers** end to end and price the
+shape against §2.115's resumed chain:
+
+| | workload | tokens | calls | per call | found |
+|---|---|---|---|---|---|
+| pass 1, FRESH | 9 commits | 171,587 | 48 | **3,574** | 1 CRITICAL, 4 MAJOR |
+| pass 2, FRESH | the remediation only | 133,904 | 47 | **2,849** | 1 CRITICAL, 1 MAJOR |
+| *Plan 13 pass 2, RESUMED* | one 7-file diff | 205,365 | 5 | *41,073* | — |
+
+**Fourteen times cheaper per call than the resumed equivalent, nine times more work done, and it
+returned a CRITICAL** — the first remediation had fixed a clock-skew hazard with `sql\`now()\``,
+which is `transaction_timestamp()`, so the defect survived its own fix. No amount of re-reading the
+diff produces that: it is a claim about when Postgres evaluates a function.
+
+**Two amendments, both cheap:**
+
+1. **Brief the second reviewer at the FIXES, never at the phase.** Give it the one remediation
+   commit, the findings list with what each fix CLAIMS to do, and require **a verdict per fix —
+   CORRECT / INCOMPLETE / WRONG**. That table is what caught both defects; a free-form re-review of
+   the whole phase would have re-derived pass 1 and cost pass 1's tokens again.
+2. **Tell both reviewers whether another lane is running tests in the checkout, and forbid them to
+   run any.** A reviewer's own jest run corrupts the phase's evidence and its own (rule 20). Both of
+   this phase's reviewers were told to read only, and both still confirmed migrations, lock order
+   and HTTP mappings by reading — the verification depth was not what the restriction cost.
+
+**And the budget line, measured:** two fresh passes came in at **305,491 against a 458,491 review
+term — 33% under, with two CRITICALs found.** Price the second pass at roughly the first, not at a
+premium; the premium is what a RESUME costs.
+
 ### 9.2 The measurement, before compiling and after closing
 
 **Before:** `wc -c` every file the briefs point at, divide by four, and write the total into the

@@ -224,6 +224,75 @@ The resolver, tested against a fixture patient with a minted version history. No
 *(Filled by the executing session.)*
 
 ### 6.1 The commits
+
+Eleven, `871f932`..`1bf44a2`, all on `main`, all pushed. Three of the eleven are corrections
+to earlier commits in the same phase — they land as NEW commits, never as amends (AGENT-RULES
+rule 15), and they are listed as their own rows because a phase that hides its corrections
+inside the commits they correct teaches nobody anything.
+
+| sha | task | what |
+|---|---|---|
+| `871f932` | TASK 0 | the lane commits its own six planning documents, staged BY PATH |
+| `20fa958` | kickoff | §2 re-measured (four rows moved), the spike answered, the review's amendments folded in before any code |
+| `04b7b21` | **T1** | migration `0043` — assurance, administrative gender, `patient_identity_versions`, two permissions |
+| `bec9aa7` | **T2** | `Actor` gains `"patient"`; the 41-site refusal audit; the `workflow/instances.ts` fall-through closed |
+| `9c97a10` | *fix to T1* | the two new permissions declared to the reachability census — **CI RED caught this** |
+| `b13d74c` | **T3** | field classes, the assurance ladder, version minting inside the amendment's transaction |
+| `698e640` | **T4 + T5** | the gender split and the privacy write split — one commit, because both modify `updatePatient` |
+| `4cabbf2` | *fix to T1* | three perf suites bulk-insert patients in raw SQL and never named the new column |
+| `893561d` | **T7** | the amendment surface: an enumerated reason class, the assurance route, the e2e |
+| `1bf44a2` | *fix to T4* | a `require()` import — **CI RED caught this too, in 72 seconds** |
+
+**T6 has no commit of its own, and that is the review's doing rather than an omission.** Its
+binding amendment moved the print-surface conversion to kernel-D, leaving T6 owing the resolver
+and its as-of test on a fixture. `resolveIdentityAt` lives in `modules/patients/identity.ts`
+beside the field classes it shares a module with, so it landed in `b13d74c` with T3 and its
+Assertion Book rows (A19–A23) are executed in `identity.test.ts`. Separating them would have
+produced a commit that did not compile.
+
+### 6.2 Findings
+
+**Six defects this phase found in SHIPPED code, none of which it was looking for.**
+
+1. **`workflow/instances.ts:95` — a fall-through that the phase's own one-line change created.**
+   `if (actor.type === "user") { role check } else if (actor.type === "agent") { throw }`, with
+   `system` falling through by design. Exhaustive with three members; a fourth joins the TRUSTED
+   branch. `pnpm typecheck` says nothing, because an `if/else if` chain over a union is not an
+   exhaustiveness check. Proved by executing the mutant: a patient actor **completed a governed
+   workflow transition**. Fixed by inverting the default — `system` is named as the one bypass and
+   every other actor arrives denied.
+2. **A live one-way door in production (spike S5).** Seventeen of thirty-five users hold
+   `patients.update`, which today sets `is_confidential`; `patients.confidential.read` is held by
+   **zero** roles and zero users. Seventeen people can hide a patient from every search surface in
+   the hospital and nobody can read them back. T5 is what closes it.
+3. **One document, two as-of dates (spike S4).** The shipped e-Rx computes `ageYears` from
+   `row.issuedAt` and reads `name`/`sex` live from the same object. Medanta's P1, in our own tree,
+   already printing.
+4. **The reachability census (CI, `04b7b21`).** Two permissions declared and granted to nobody,
+   named nowhere. The invariant exists precisely for that and it fired.
+5. **Three perf suites bulk-insert patients in raw SQL** and never named the new NOT NULL column —
+   invisible to the compiler and to any directory-scoped narrow run.
+6. **A translation-key collision I introduced.** T7's amendment reasons overwrote `patient.reason`,
+   a STRING used by the entered-in-error dialog, with a nested object. Caught by a shipped test
+   (E-8) the moment I finally wrote the web tests the close review had asked for.
+
+**And what the two close reviews found in this phase's own work — one CRITICAL each, in different
+places, neither reachable by the tests I had written.** Full detail in §6.6.
+
+**Three things I got wrong and want on the record, because the pattern is the lesson:**
+
+- **Twice I chose the narrow suite by the DIRECTORY I had edited rather than by what my change
+  could REACH.** AGENT-RULES §2.8 is right that the full suite belongs at the end; it does not say
+  the narrow suite may be picked by proximity. A schema column touches every writer of that table
+  wherever it lives, and `grep -rn "insert into patients"` would have found all three perf suites
+  in one call. Cost: two red CI runs.
+- **I reverted a fix and left its test behind**, asserting the behaviour I had just decided
+  against. The second reviewer called it CRITICAL and was right to: a test that outlives its
+  decision documents the opposite of the ruling to whoever reads it next.
+- **I had the right diagnosis and the wrong primitive.** `sql`now()`` is
+  `transaction_timestamp()`, not statement time — it removed the cross-container clock and left
+  the intra-database ordering hazard untouched. Only a second reader caught that, which is exactly
+  the argument v3 §6 makes for budgeting the second pass.
 ### 6.2 Findings
 ### 6.3 The spike answers, and the actor-audit table (S1–S6, T2)
 
@@ -272,5 +341,228 @@ Read the last two rows together. `isConfidential` is settable today by anyone ho
 
 **D11 — the aliasing class, re-measured.** Four specimens today, not the one the review named: `registration.ts:376` (drifted from `:347-351`), `display-name.ts:52-53`, `ot/lists.ts:79-80`, `ot/recovery.ts:611-612`. All four are `canSee = actor.type === "user" ? await hasPermission(…) : false`. **Rule recorded: a patient actor is "self" for its own accessible set, and no permission lookup runs against a patient id.** No route opens in this phase, so none of the four is *reachable* by a patient actor yet — they are recorded as 22c-E's inbox, and A1 proves they are unreachable rather than correct.
 ### 6.4 The Assertion Book, corrected by execution
+
+**Seventeen mutants built as separate files beside their sources, executed, and ALL SEVENTEEN
+DIED.** None died at typecheck, which is the trap rule 21 names — a mutant killed by
+`noUncheckedIndexedAccess` or by nominal typing proves nothing about the assertion. Every kill
+below is evidenced by the ASSERTION's own failure, with expected vs received.
+
+| # | mutant | verdict | expected → received |
+|---|---|---|---|
+| A1 | `searchAll` admits a patient | **DIED** | reached `registry.all()` past the guard |
+| A2 | `bookAppointment` admits a patient | **DIED** | `user_actor_required` → `patient_not_found` — the guard was the only thing stopping it |
+| A3 | `verifyQrScan` admits a patient | **DIED** | promise RESOLVED; the patient scanned their own card |
+| A4 | the envelope drops patient provenance | **DIED** | `actor_type` persisted `"user"`, not `"patient"` |
+| A5 | the pre-fix two-branch fall-through | **DIED** | promise RESOLVED — **a patient actor COMPLETED a governed workflow transition** |
+| A5b | `PermissionGuard` admits a non-user | **DIED** | reached the lookup (`missing permission patients.read`); with a grant it passes |
+| A11 | the gender seed becomes a constant | **DIED** | `"other"` → `"unknown"`: a legal gender invented for 17% of the master |
+| A12 | administrative gender demoted to Class III | **DIED** | 2 versions → 1: a NALSA gender change leaves no trace |
+| A13 | clinical sex promoted to Class I | **DIED** | 1 version → 2: a clinical correction filed as an identity amendment |
+| A14 | the summary reads the clinical column | **DIED** | `"male"` → `"female"`: correcting sex silently rewrote legal gender |
+| A15 | `isConfidential` left on `patients.update` | **DIED** | promise RESOLVED; the clerk hid the patient |
+| A16 | `deceasedAt` left on `patients.update` | **DIED** | promise RESOLVED; the clerk marked a living patient dead |
+| A17 | the new strings granted to `front_office` | **DIED** | `false` → `true`: the split cosmetic in the commit that shipped it |
+| A18 | the alias rule dropped | **DIED** | promise RESOLVED; a confidential patient with a blank name |
+| A19 | the resolver ignores `at` | **DIED** | `"Asha Devi"` → `"Asha Sharma"` — **the Medanta bug, reproduced on demand** |
+| A20 | no fallback to the earliest version | **DIED** | received `null`: every pre-`0043` document fails to render |
+| A21 | `<` instead of `<=` | **DIED** | version 2 → version 1: an amendment and an issue in the same instant render the wrong side |
+
+**A5 and A19 are the two worth reading twice.** A5 is a hole that did not exist before this
+phase and was created by the phase's own one-line union widening — demonstrated by execution,
+not predicted. A19 is the entire justification for the phase, made to fail on command.
+
+**Two mutants were substituted, and both substitutions are disclosed rather than buried:**
+
+- **A4.** The plan's mutant is *"drop `patient` from the envelope's union"*. That is a TYPE-only
+  change; it dies at `tsc` and therefore proves nothing (rule 21, explicitly). The executed
+  mutant coerces a patient actor to `"user"` at the persist site instead — which is the failure
+  the assertion actually protects against, and it is observable at runtime.
+- **A22/A23.** Restated by the review's binding amendment when the print-surface conversion moved
+  to kernel-D. They now assert the resolver's own behaviour on a fixture — the whole Class I set
+  moving together from one version row, and `dob` coming from the version rather than the live
+  column — instead of asserting against two print surfaces this phase no longer converts.
+
+**A6–A10 carry no mutant and the reason is the tier, not an oversight:** they are asserted by
+execution in `identity.test.ts` (a deliberately rolled-back amendment leaving no version behind;
+the database refusing an UPDATE of a version row). T3 is CRITICAL and its Assertion Book rows
+that name a mutant have one; A6–A10 name none in the plan.
+
+### 6.5 Mechanical verification
+
+**AND THE HONEST CAVEAT FIRST, because it changes what the numbers below mean.** From roughly the
+midpoint of this phase, a SECOND CODING LANE (Plan 17, the order envelope) has been working in this
+same checkout — uncommitted `kernel/orders/`, `schema/orders.ts`, `drizzle/0044_order_envelope.sql`,
+and edits to `app.module.ts`, `worker.module.ts`, `kernel/modules/manifest.ts`, `schema/index.ts`
+and `test/helpers/db.ts`. Consequences, measured rather than assumed:
+
+- **A local `pnpm verify` cannot be green and cannot be attributed.** Its lint step failed on
+  `kernel/orders/advance.ts` (not this phase's file), and `test/seed-roles.test.ts` failed with
+  `+ "orders": 4` — the other lane's four new permissions moving the census this phase also moves.
+  Neither failure can appear in CI, which builds from the commit.
+- **`git pull --rebase` (AGENT-RULES §5 step 2) refused outright** — *"cannot pull with rebase: you
+  have unstaged changes"* — on files that are not mine to stash or commit. The pushes below went
+  out as fast-forwards after confirming `git rev-list --count HEAD..origin/main` was 0.
+- **A clean tree is not achievable** for this close, and will not be until that lane commits.
+- **Test evidence taken while their jest was running is unreliable** (rule 20), and once I
+  discovered a run of my own still alive and writing the same log file, self-inflicted too.
+
+**So the instrument for this close is CI, not the local verify** — CI builds from the commit, in an
+isolated container, with none of the other lane's working-tree files. That is the one uncontaminated
+full-suite verdict available, and it is the one this phase closes on.
+
+| check | result |
+|---|---|
+| `pnpm typecheck` (whole workspace) | **exit 0**, value read from a file |
+| `eslint` over this phase's changed files | **exit 0** (`npx eslint $(git diff --name-only 871f932~1..968f968 -- '*.ts' '*.tsx')`) |
+| `pnpm --filter @hmis/web test` | **56 files / 355 tests passed** (351 before; +4 from the close review's m13) |
+| core, the suites this phase touches | **17 suites / 205 tests passed**, exit value read from a file |
+| full core jest, locally | **NOT MEASURABLE on this host today** — see the paragraph below |
+
+**The local full core suite was attempted three times and abandoned, and the reason is worth the
+lines.** Attempt 1 died on the other lane's lint error. Attempt 2 was corrupted when I discovered a
+run of my OWN still alive and writing the same log — rule 20, self-inflicted. Attempt 3 ran
+cleanly to 31 suites and then began failing `ot/booking`, `notify/pump` and this phase's own
+`patient-actor` (which had passed 17/17 in a narrow run minutes earlier) with 120–160-second
+durations. The cause was measured, not guessed: `pgrep` showed a SECOND jest — the other lane's,
+launched **uncapped** — and `free` showed **14 GB used of 15, zero available**. Those failures are
+starvation and cross-run database collisions, not defects. I stopped my run rather than add
+pressure to a box already at its ceiling and produce more false red.
+
+**That is the whole argument for closing on CI.** CI runs `pnpm verify` from the commit, in its own
+container, with none of the other lane's working-tree files and none of its memory. On this host,
+today, it is the only full-suite instrument that can be attributed.
+| **CI by full SHA — THE VERDICT THIS PHASE CLOSES ON** | **`968f968` GREEN** (run 33257068514, 1,169s) — `pnpm verify` from the commit: typecheck, lint, all core suites, all web suites |
+| per-commit `git show --stat` vs Files lists | done, twelve commits — see below |
+| frozen-path / stray-path audit | `git diff --name-only 871f932~1..968f968` outside the expected roots → **empty** |
+
+**CI's history for this phase is itself part of the record, because it caught what I did not:**
+`04b7b21` RED (the reachability census + three perf suites), `b13d74c` RED (same, unfixed),
+`893561d` RED in **72 seconds** (a `require()` lint error), `968f968` **GREEN**. Three red runs, three
+real defects, none of them found by a narrow suite chosen by directory.
+
+**Per-commit stat.** The only commit whose size needs explaining is `04b7b21` at 17,197 insertions:
+**16,838 of them are `drizzle/meta/0043_snapshot.json`**, generated by `db:generate`. The
+hand-written content is 81 lines of SQL, 95 of schema, 115 of test and 22 of manifest.
+
+**Frozen-path audit:** no frozen directory appears in any commit of this phase. Every commit was
+staged BY PATH; `git add -A` and `git add <directory>` were never used — that is the mistake
+`cfde549` reverses and the reason TASK 0 existed at all.
+
+**Scratch:** every mutant, every intermediate module and every scratch spec was deleted with plain
+`rm -f` before the commit that follows it; `find apps packages -name '*mutant*' -o -name '*scratch*'`
+returns empty. The `.log`/`.exit` files rule 18 requires are the only residue and are removed at
+close.
 ### 6.5 Mechanical verification
 ### 6.6 The independent close review
+
+**TWO passes, both FRESH agents, never a resume** (v3 §9.5 — *resume for MEMORY, spawn FRESH for
+SCOPE*). Both were told not to run tests: another lane's jest was live in the checkout and a
+reviewer's own run would have corrupted this phase's evidence and its own.
+
+**Pass 1 — over all nine commits.** 171,587 tokens, 48 tool calls. Found **1 CRITICAL, 4 MAJOR,
+8 MINOR, 3 NIT**, and cleared DD1, the `0043` migration, the `hasPermission`-on-a-`Tx` cast, the
+resolver's ordering and the `sex` rename explicitly.
+
+> **C1 (CRITICAL) — `administrativeGender` was never on the PATCH schema.** `patchBody` derives
+> from `registerBody`, which correctly declares `sex` and not the new field; zod strips unknown
+> keys, so the field was removed before `updatePatient` saw it. `patch` was then empty,
+> `touchesIdentity` was false so the reason gate did not fire, `changes.length === 0` returned
+> early — **HTTP 200, nothing written**: no column, no version, no event, no error. *The one field
+> DD4 exists to protect could not be amended through the only surface a human uses, and it failed
+> silently.* Every test that amends it called `updatePatient` directly; the T7 e2e PATCHed `name`
+> and `phone` over HTTP and never this. **A12 was asserting in a way that could not discriminate
+> its own defect** — which is the single most useful sentence either review produced.
+
+MAJOR: M2 (`evidencedAt` an unverified client claim that defeated DD5's drop), M3 (an assurance
+upgrade wrote no event at all — the `"upgrade"` enum member was dead), M4 (after deploy nobody can
+CLEAR `isConfidential`; a deploy-ordering requirement, see §6.7), M5 (`valid_from` written from two
+clocks).
+
+**Pass 2 — over the remediation only, a fresh agent.** 133,904 tokens, 47 tool calls. Found
+**1 CRITICAL and 1 MAJOR, both in the FIXES rather than in the original code**, and returned a
+verdict per fix: C1 CORRECT, M2 CORRECT, M3 INCOMPLETE, M5 INCOMPLETE, m6 CORRECT, m7 INCOMPLETE,
+m8 CORRECT, m10 CORRECT, m12 CORRECT, m13 CORRECT, the m9 revert INCOMPLETE.
+
+> **The CRITICAL: I reverted a fix and left its test behind.** Having gated registration, seen it
+> break eight shipped tests and reverted, I left the e2e asserting 403 on the behaviour I had just
+> decided against.
+>
+> **The MAJOR: `now()` is `transaction_timestamp()`, not statement time.** My M5 fix removed the
+> cross-container clock and left the ordering hazard intact inside one database — a slow
+> transaction that begins first and acquires the row lock second writes an EARLIER `valid_from`
+> than the version it supersedes, and the resolver returns the superseded identity forever, with
+> no NTP drift required. `clock_timestamp()` is the primitive that is monotonic in
+> lock-acquisition order.
+
+**Every finding at MINOR and above was remediated; the two NITs about my own prose were too.** The
+one finding NOT taken as written is m9, and it is recorded as a RULING rather than a fix: see the
+comment at `registerPatient`, and §6.7.
+
+**This is the third phase in this project's record where the SECOND pass earned more than the
+first** (09a, 13, and now 22c-A), and the first where both passes found a CRITICAL the executing
+session's own tests could not see. v3 §6's second budget term is not insurance; on this evidence it
+is the term that pays.
+
+### 6.6a The actuals (v3 §6)
+
+| | |
+|---|---|
+| **Lane** | LIGHT, 7 tasks, 5 CRITICAL |
+| **Commits** | 12 (`871f932`..`968f968`), of which 4 are corrections to earlier commits in the same phase |
+| **Migration** | one, `0043` |
+| **Subagent tokens** | **305,491** — two FRESH reviewers, 95 tool calls, no resumes |
+| **Against the stop-loss** | review term budgeted 458,491 → came in **33% under**; total stop-loss 670,000 → subagent share **46%** |
+| **Main-session tokens** | unmeasurable from inside a session (runbook **O3**) — only the owner's `/cost` sees it |
+| **Mutants** | **17 built, 17 executed, 17 DIED**, none at typecheck |
+| **Defects found in SHIPPED code** | 6 (§6.2), incl. a fall-through this phase's own union widening created |
+| **Defects found in THIS phase's work** | 2 CRITICAL, 5 MAJOR, ~11 MINOR — all by the two reviewers, none by my own tests |
+| **CI runs** | 4: three RED, then GREEN. Every red was a real defect |
+
+**The stop-loss was never approached and the number was never the constraint.** What constrained
+this phase was a second lane sharing the checkout (§6.5), which cost far more wall-clock than tokens.
+
+### 6.7 Deploy — NOT AUTHORISED, and what it needs
+
+**Migration:** `0043_patient_identity_spine`. Repo journal 44 entries (`0000`–`0043`); production
+measured at 43 at kickoff, so this is the single migration this phase adds.
+
+**Precondition query — run BEFORE, read-only.** This is A11's evidence, and it is here rather than
+in a test because a test database is migrated from empty and the backfill would run over zero rows:
+
+```sql
+select count(*)                                              as patients,
+       count(*) filter (where sex is null)                   as null_sex,          -- must be 0
+       count(*) filter (where sex not in ('male','female','other','unknown')) as odd_sex; -- expect 0
+from patients;
+```
+
+**Post-migration verification — the backfill's own assertions:**
+
+```sql
+select count(*) filter (where administrative_gender is distinct from sex) as gender_mismatch, -- must be 0
+       count(*) filter (where identity_assurance <> 'staff_verified')     as wrong_assurance, -- must be 0
+       (select count(*) from patient_identity_versions)                   as versions,        -- must equal patients
+       (select count(*) from patients)                                    as patients
+from patients;
+```
+
+**Rollback posture: FORWARD-ONLY, and say so plainly.** `0043` adds two NOT NULL columns, a table,
+a trigger and two catalogue rows. Nothing is dropped and nothing is rewritten, so the migration is
+additive and safe to apply; but there is no down-migration in this project and the version table is
+append-only by trigger, so *undoing* it means a new migration that drops the columns — which would
+discard any amendment history recorded in between. The safe posture is to verify forward.
+
+**THE OWNER ACT THIS DEPLOY REQUIRES, and it is not optional (first review, M4).**
+`patients.confidential.write` and `patients.deceased.write` are granted to **no role**, by
+decision. The moment this lands, *nobody in the hospital can clear `isConfidential` on the one
+confidential patient production already has*, because the gate is direction-agnostic. That is
+strictly safer in one direction and strictly worse in the other, and the direction it is worse in
+is the one a mistake needs. **The Class-A grant must land in the same runbook step as the
+migration, not later.** Production has never left `commissioning`; the classifier blocks direct
+production DB writes, so there is no manual way back.
+
+**Second ruling the owner should see (first review m9, decided here):** `POST /patients` still
+accepts `isConfidential` under `patients.register` alone — twelve production users — because
+marking a VIP confidential at the counter is an ordinary front-office act. Combined with the grant
+above being absent, a patient flagged at registration is a record nobody can read by name until the
+grant happens. Second reason the grant cannot be deferred.

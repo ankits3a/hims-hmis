@@ -894,6 +894,91 @@ plus a production config, none of which share a shape:
 
 
 
+**2.134 — CHOOSE THE NARROW SUITE BY WHAT THE CHANGE CAN REACH, NEVER BY THE DIRECTORY YOU EDITED.** *(Plan 22c-A T1, 2026-08-29)*
+
+A phase added one NOT NULL column with no default to `patients`. The session ran the two directories
+it had edited — `src/kernel/db/schema` and `src/modules/patients`, 31 suites, 250 tests, all green —
+and pushed. CI went RED twice, for two different reasons, both outside those directories:
+
+- `apps/core/test/seed-roles.test.ts`, the REACHABILITY INVARIANT: the same commit declared two
+  permissions and granted them to no role, which that test exists to refuse.
+- three perf suites (`perf-search`, `perf-patient-search`, `perf-opd-queue`) that seed 100k–200k
+  patients with hand-written `insert into patients (…) select … from generate_series`. Raw SQL, so
+  the compiler cannot see them either.
+
+AGENT-RULES §2.8 is right that the full suite belongs at the end. It does not say the narrow suite
+may be picked by proximity, and proximity is what failed: a schema column touches every writer of
+that table wherever it lives, and a permission touches the census wherever that lives.
+
+**Mechanical form.** Before the narrow run, name the change's REACH and grep for it — not for the
+directory:
+
+```
+# a new NOT NULL column on <table>
+grep -rn "insert into <table>\|insert(<table>)" --include="*.ts" apps/core
+# a new permission in a manifest
+grep -rln "NOT_YET_MODELLED\|allPermissions()" --include="*.test.ts" apps/core
+```
+
+Every file that comes back joins the narrow run. Two greps, ten seconds, two red CI runs.
+
+---
+
+**2.135 — A REVERTED FIX MUST TAKE ITS TEST WITH IT. A TEST THAT OUTLIVES ITS DECISION DOCUMENTS THE OPPOSITE OF THE RULING.** *(Plan 22c-A, second close review, 2026-08-29)*
+
+A close reviewer found that `POST /patients` still accepted `isConfidential` under a weaker
+permission than the amendment path required. The session gated it, ran the suite, saw the gate break
+eight shipped tests, and reverted — correctly, on a ruling it then spent thirty lines justifying in
+the code. It left the e2e behind, still asserting `403`.
+
+The second reviewer graded that CRITICAL and was right to. The failing assertion is the small harm;
+the large one is that the test's TITLE — *"REGISTERING a confidential patient needs the same
+permission as flagging one"* — now states the opposite of the ruling, in the place a future reader
+looks first for the spec.
+
+**Mechanical form.** A revert is not complete at `git checkout` of the source file. Before
+committing a revert, run:
+
+```
+git diff --stat            # every file the fix touched, both directions
+grep -rn "<the finding id>" --include="*.test.ts" apps
+```
+
+and for each test the fix added: DELETE it, or REWRITE it to assert the ruling you actually took.
+Never leave it asserting the abandoned behaviour "so the coverage stays".
+
+---
+
+**2.136 — TWO FRESH REVIEWERS COST 3k/CALL AND FOUND A CRITICAL EACH; A RESUMED CHAIN COST 41k AND 112k/CALL FOR LESS.** *(Plan 22c-A close, 2026-08-29 — the measurement §2.115 asked for)*
+
+§2.115 established that a resumed reviewer's per-call cost CLIMBS as its workload shrinks, and set
+the rule *resume for MEMORY, spawn FRESH for SCOPE*. Plan 22c-A is the first phase to run the
+fresh-only shape end to end and measure it against that record.
+
+| | workload | tokens | calls | per call | found |
+|---|---|---|---|---|---|
+| **22c-A pass 1, FRESH** | 9 commits | 171,587 | 48 | **3,574** | 1 CRITICAL, 4 MAJOR, 8 MINOR |
+| **22c-A pass 2, FRESH** | the remediation | 133,904 | 47 | **2,849** | 1 CRITICAL, 1 MAJOR, 3 MINOR |
+| 13 pass 1, fresh | 8 commits | 175,209 | 38 | 4,610 | — |
+| 13 pass 2, RESUMED | one 7-file diff | 205,365 | 5 | **41,073** | — |
+| 13 pass 3, RESUMED | four yes/no questions | 224,081 | 2 | **112,040** | — |
+
+**Plan 13's second pass cost 41,073 per call to do five calls of work. 22c-A's second pass cost
+2,849 per call to do forty-seven.** Fourteen times cheaper per call, nine times more work, and it
+returned a CRITICAL — a fix that had used `now()` (transaction-start time) where the defect needed
+statement time, so the original hazard survived the remediation intact.
+
+**The second pass is not insurance. On this evidence it is the term that pays**, and it pays most
+when it is FRESH: a reviewer reviewing a remediation needs the DIFF and the findings, not the
+transcript of how the first reviewer reached them. Total for both passes: 305,491 against a 458,491
+review budget — **33% under, with two CRITICALs found.**
+
+**Mechanical form.** Brief the second reviewer at the fixes, not at the phase: give it the one
+remediation commit, the list of findings with what each fix CLAIMS to do, and ask for a verdict per
+fix (CORRECT / INCOMPLETE / WRONG). That verdict table is what caught both defects here.
+
+---
+
 ## 3. Plan-authoring defects
 
 Fix these when writing the next plan, not when executing it.
