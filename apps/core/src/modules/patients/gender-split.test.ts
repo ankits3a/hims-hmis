@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import type { Db } from "../../kernel/db/client";
@@ -71,11 +71,8 @@ describe("A11 — administrative gender seeds from clinical sex, by the same rul
     const [row] = await db.select().from(patients).limit(1);
     expect(row).toBeUndefined();
     await expect(
-      db.execute(
-        // eslint-disable-next-line no-restricted-syntax -- exercising the constraint, not the model
-        require("drizzle-orm").sql`insert into patients (id, uhid, name, sex, created_by, updated_by)
-          values ('p-none', 'HMS-00000009-1', 'No Gender', 'male', 'u1', 'u1')`,
-      ),
+      db.execute(sql`insert into patients (id, uhid, name, sex, created_by, updated_by)
+        values ('p-none', 'HMS-00000009-1', 'No Gender', 'male', 'u1', 'u1')`),
     ).rejects.toThrow(/administrative_gender/);
   });
 });
