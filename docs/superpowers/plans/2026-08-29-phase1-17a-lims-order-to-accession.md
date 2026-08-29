@@ -457,7 +457,59 @@ except `encounters.ts` and `index.ts`; `modules/patients/*`; anything Lane B has
 ## 9. CLOSE — filled at execution
 
 ### 9.0 Kickoff — the pre-flight, §2 re-measured, and the token balance at task zero
+
+**Executed 2026-08-29 20:55 UTC, HEAD `d1cb9ff`.**
+
+**Pre-flight (protocol §2):** no jest or vitest process (the matched lines were READ, not counted —
+rule 20); load average **0.26**; current with `origin/main`; everything dirty in the tree is Lane B's
+radiology/pcpndt work plus `docs/design/` and `.ci-watch.log`, **none of it this lane's to stage**.
+
+**§2 re-measured, every row: ALL THIRTEEN UNCHANGED.** 48 journal entries (`0047` is Lane B's, still
+uncommitted); 18 manifests; `lab` claimed in both censuses; 126 permissions; 31 `KNOWN_ROLE_KEYS`;
+13 lab tables; 13 scheduler jobs; **0 `investigation` services created by any seed**; 293 core test
+files. Nothing this phase needs a migration for — row 1's trap does not fire.
+
+**THE DATABASE, named here and in every commit that cites a green run (§2.137):**
+`TEST_DATABASE_URL="postgres://hmis:hmis@localhost:5433/hmis_17a_scratch"` → workers
+`hmis_17a_scratch_1 … _N`. Dropped by explicit name at CLOSE.
+
+**TOKEN BALANCE (v3 §6's new obligation, and this phase is one of the two that make it real):**
+
+| boundary | balance | delta |
+|---|---|---|
+| kickoff | 15,000,000 | — |
+| T3 committed | 14,874,000 | **126,000** |
+
+> **AND THE CAVEAT THAT MUST BE READ WITH EVERY NUMBER IN THAT TABLE.** §0 says execute this phase in
+> a FRESH session. **This one is not**: it is the session that executed Plan 17's T1/T2, ran the
+> token audit and authored both re-cut documents, so it carries all of that into every tool call —
+> which is precisely the mechanism v3 §9.5 describes and §2.141 measured. The deltas below are
+> therefore an UPPER bound on what a fresh session would spend, not an estimate of it, and the CLOSE
+> says so rather than letting the next stop-loss inherit an inflated rate.
+
 ### 9.3 The spike answers (S10, S11) and which inherited answers were re-checked
+
+**S10 — THE SCHEDULER INJECTS THE INSTANT, so T5 A4 needs no seam and no waiting.**
+`kernel/worker/scheduler.ts:17` types a job as **`JobRun = (now: Date) => Promise<void>`**, and
+`jobs.ts:214` registers the closest shipped shape as `run: async (now) => { await sweepBatchExpiry(db, now); }`.
+`sweepBatchExpiry(db: Db, now: Date)` takes the instant as its second parameter and
+`expiry.test.ts` drives it directly — `sweepBatchExpiry(db, NOW)` then `sweepBatchExpiry(db, later)`.
+**So both lab sweeps are `(db: Db, now: Date)` and A4's −7 d 1 h / −6 d 23 h boundary is two calls
+with two instants.** §2.127's warning about reaching for a test-only clock does not apply: the seam
+is the shipped signature.
+
+**S11 — PRODUCTION HAS NO BENCH, AND THE WORKLIST IS CORRECTLY EMPTY** (read-only `psql`, no write).
+`resources` holds **8 rows: 2 `bed`, 4 `room`, 1 `store`, 1 `theatre` — and 0 `bench`**, which is
+expected: nobody could declare the kind before `39beff0`. The table **does** carry a `code` column,
+which is what `lab_orderables.bench_key` names. **So the golden fixture supplies the `bench_key`
+values, the bench worklist returns nothing until rows exist, and CREATING THE BENCH ROWS IS A
+RUNBOOK ACT (§9.9), not code** — the second of the two outcomes S11 was written to distinguish.
+
+**Inherited answers re-checked rather than assumed:** S1's `billing.credit.extend` grant is present
+in `ROLE_MODEL` for all three lab roles (`39beff0`); S6's `nextEpisodeNo` signature is unchanged;
+S2's `openVisitInTx` still requires an active doctor in an active department. S3 and S4 were read
+this session and are unchanged.
+
 ### 9.1 The commits
 ### 9.2 Findings
 ### 9.4 The Assertion Book, corrected by execution

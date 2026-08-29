@@ -1,0 +1,3783 @@
+{
+  "_": "PLAN 17a T3 \u2014 the GOLDEN catalogue. It exists so the phase is executable and so 17b has something to result against; the hospital's REAL catalogue is the owner's data and its seeding is a runbook act (17a section 9.9). Ranges are drawn from standard kit inserts. All three reflex rules ship INACTIVE by design (DD8): a reflex is an order the system places and the patient pays for, so it is switched on per hospital by a human.",
+  "analytes": [
+    {
+      "code": "HB",
+      "nameEn": "Haemoglobin",
+      "resultType": "numeric",
+      "unit": "g/dL",
+      "decimals": 1,
+      "absurdLow": "1",
+      "absurdHigh": "25",
+      "criticalLow": "6.5",
+      "criticalHigh": "20",
+      "deltaAbs": "2",
+      "deltaWindowHours": 72
+    },
+    {
+      "code": "RBC",
+      "nameEn": "RBC count",
+      "resultType": "numeric",
+      "unit": "10^6/uL",
+      "decimals": 2
+    },
+    {
+      "code": "HCT",
+      "nameEn": "Haematocrit",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "MCV",
+      "nameEn": "MCV",
+      "resultType": "numeric",
+      "unit": "fL",
+      "decimals": 1
+    },
+    {
+      "code": "MCH",
+      "nameEn": "MCH",
+      "resultType": "numeric",
+      "unit": "pg",
+      "decimals": 1
+    },
+    {
+      "code": "MCHC",
+      "nameEn": "MCHC",
+      "resultType": "numeric",
+      "unit": "g/dL",
+      "decimals": 1
+    },
+    {
+      "code": "RDW",
+      "nameEn": "RDW-CV",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "WBC",
+      "nameEn": "Total leucocyte count",
+      "resultType": "numeric",
+      "unit": "10^3/uL",
+      "decimals": 2,
+      "absurdLow": "0.1",
+      "absurdHigh": "200",
+      "criticalLow": "1.5",
+      "criticalHigh": "50"
+    },
+    {
+      "code": "NEUT",
+      "nameEn": "Neutrophils",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "LYMPH",
+      "nameEn": "Lymphocytes",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "MONO",
+      "nameEn": "Monocytes",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "EOS",
+      "nameEn": "Eosinophils",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "BASO",
+      "nameEn": "Basophils",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "ANC",
+      "nameEn": "Absolute neutrophil count",
+      "resultType": "formula",
+      "unit": "10^3/uL",
+      "decimals": 2,
+      "formula": "WBC * NEUT / 100"
+    },
+    {
+      "code": "PLT",
+      "nameEn": "Platelet count",
+      "resultType": "numeric",
+      "unit": "10^3/uL",
+      "decimals": 0,
+      "absurdLow": "1",
+      "absurdHigh": "3000",
+      "criticalLow": "30",
+      "criticalHigh": "1000"
+    },
+    {
+      "code": "MPV",
+      "nameEn": "MPV",
+      "resultType": "numeric",
+      "unit": "fL",
+      "decimals": 1
+    },
+    {
+      "code": "ESR",
+      "nameEn": "ESR",
+      "resultType": "numeric",
+      "unit": "mm/hr",
+      "decimals": 0
+    },
+    {
+      "code": "PT",
+      "nameEn": "Prothrombin time",
+      "resultType": "numeric",
+      "unit": "sec",
+      "decimals": 1
+    },
+    {
+      "code": "INR",
+      "nameEn": "INR",
+      "resultType": "numeric",
+      "unit": null,
+      "decimals": 2,
+      "criticalHigh": "5.0"
+    },
+    {
+      "code": "APTT",
+      "nameEn": "APTT",
+      "resultType": "numeric",
+      "unit": "sec",
+      "decimals": 1
+    },
+    {
+      "code": "RETIC",
+      "nameEn": "Reticulocyte count",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 2
+    },
+    {
+      "code": "ABO",
+      "nameEn": "ABO group",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "RH",
+      "nameEn": "Rh(D) type",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "PSMEAR",
+      "nameEn": "Peripheral smear",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "GLUF",
+      "nameEn": "Glucose, fasting",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0,
+      "absurdLow": "5",
+      "absurdHigh": "1500",
+      "criticalLow": "45",
+      "criticalHigh": "450"
+    },
+    {
+      "code": "GLUPP",
+      "nameEn": "Glucose, post-prandial",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0,
+      "absurdLow": "5",
+      "absurdHigh": "1500"
+    },
+    {
+      "code": "GLUR",
+      "nameEn": "Glucose, random",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0,
+      "absurdLow": "5",
+      "absurdHigh": "1500",
+      "criticalLow": "45",
+      "criticalHigh": "450"
+    },
+    {
+      "code": "HBA1C",
+      "nameEn": "HbA1c",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 1
+    },
+    {
+      "code": "UREA",
+      "nameEn": "Urea",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0
+    },
+    {
+      "code": "CREA",
+      "nameEn": "Creatinine",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 2,
+      "deltaAbs": "0.5",
+      "deltaWindowHours": 168
+    },
+    {
+      "code": "URIC",
+      "nameEn": "Uric acid",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 1
+    },
+    {
+      "code": "NA",
+      "nameEn": "Sodium",
+      "resultType": "numeric",
+      "unit": "mmol/L",
+      "decimals": 0,
+      "absurdLow": "90",
+      "absurdHigh": "200",
+      "criticalLow": "120",
+      "criticalHigh": "160"
+    },
+    {
+      "code": "K",
+      "nameEn": "Potassium",
+      "resultType": "numeric",
+      "unit": "mmol/L",
+      "decimals": 1,
+      "absurdLow": "1",
+      "absurdHigh": "10",
+      "criticalLow": "2.8",
+      "criticalHigh": "6.0"
+    },
+    {
+      "code": "CL",
+      "nameEn": "Chloride",
+      "resultType": "numeric",
+      "unit": "mmol/L",
+      "decimals": 0
+    },
+    {
+      "code": "CA",
+      "nameEn": "Calcium, total",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 1,
+      "criticalLow": "6.5",
+      "criticalHigh": "13"
+    },
+    {
+      "code": "PHOS",
+      "nameEn": "Phosphorus",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 1
+    },
+    {
+      "code": "MG",
+      "nameEn": "Magnesium",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 2
+    },
+    {
+      "code": "TBIL",
+      "nameEn": "Bilirubin, total",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 2,
+      "criticalHigh": "15"
+    },
+    {
+      "code": "DBIL",
+      "nameEn": "Bilirubin, direct",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 2
+    },
+    {
+      "code": "IBIL",
+      "nameEn": "Bilirubin, indirect",
+      "resultType": "formula",
+      "unit": "mg/dL",
+      "decimals": 2,
+      "formula": "TBIL - DBIL"
+    },
+    {
+      "code": "SGOT",
+      "nameEn": "SGOT (AST)",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 0
+    },
+    {
+      "code": "SGPT",
+      "nameEn": "SGPT (ALT)",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 0
+    },
+    {
+      "code": "ALP",
+      "nameEn": "Alkaline phosphatase",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 0
+    },
+    {
+      "code": "GGT",
+      "nameEn": "GGT",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 0
+    },
+    {
+      "code": "TPROT",
+      "nameEn": "Protein, total",
+      "resultType": "numeric",
+      "unit": "g/dL",
+      "decimals": 1
+    },
+    {
+      "code": "ALB",
+      "nameEn": "Albumin",
+      "resultType": "numeric",
+      "unit": "g/dL",
+      "decimals": 1
+    },
+    {
+      "code": "GLOB",
+      "nameEn": "Globulin",
+      "resultType": "formula",
+      "unit": "g/dL",
+      "decimals": 1,
+      "formula": "TPROT - ALB"
+    },
+    {
+      "code": "AGR",
+      "nameEn": "A:G ratio",
+      "resultType": "formula",
+      "unit": null,
+      "decimals": 2,
+      "formula": "ALB / GLOB",
+      "formulaGuard": "GLOB > 0"
+    },
+    {
+      "code": "TC",
+      "nameEn": "Cholesterol, total",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0
+    },
+    {
+      "code": "TG",
+      "nameEn": "Triglycerides",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0
+    },
+    {
+      "code": "HDL",
+      "nameEn": "HDL cholesterol",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0
+    },
+    {
+      "code": "LDL",
+      "nameEn": "LDL cholesterol (Friedewald)",
+      "resultType": "formula",
+      "unit": "mg/dL",
+      "decimals": 0,
+      "formula": "TC - HDL - TG / 5",
+      "formulaGuard": "TG < 400"
+    },
+    {
+      "code": "VLDL",
+      "nameEn": "VLDL cholesterol",
+      "resultType": "formula",
+      "unit": "mg/dL",
+      "decimals": 0,
+      "formula": "TG / 5",
+      "formulaGuard": "TG < 400"
+    },
+    {
+      "code": "NONHDL",
+      "nameEn": "Non-HDL cholesterol",
+      "resultType": "formula",
+      "unit": "mg/dL",
+      "decimals": 0,
+      "formula": "TC - HDL"
+    },
+    {
+      "code": "TCHDL",
+      "nameEn": "Total cholesterol : HDL ratio",
+      "resultType": "formula",
+      "unit": null,
+      "decimals": 1,
+      "formula": "TC / HDL",
+      "formulaGuard": "HDL > 0"
+    },
+    {
+      "code": "TSH",
+      "nameEn": "TSH",
+      "resultType": "numeric",
+      "unit": "uIU/mL",
+      "decimals": 2,
+      "absurdLow": "0.001",
+      "absurdHigh": "500"
+    },
+    {
+      "code": "FT3",
+      "nameEn": "Free T3",
+      "resultType": "numeric",
+      "unit": "pg/mL",
+      "decimals": 2
+    },
+    {
+      "code": "FT4",
+      "nameEn": "Free T4",
+      "resultType": "numeric",
+      "unit": "ng/dL",
+      "decimals": 2
+    },
+    {
+      "code": "T3",
+      "nameEn": "Total T3",
+      "resultType": "numeric",
+      "unit": "ng/dL",
+      "decimals": 0
+    },
+    {
+      "code": "T4",
+      "nameEn": "Total T4",
+      "resultType": "numeric",
+      "unit": "ug/dL",
+      "decimals": 1
+    },
+    {
+      "code": "TROP_I",
+      "nameEn": "Troponin I",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 3,
+      "criticalHigh": "0.040"
+    },
+    {
+      "code": "TROP_T",
+      "nameEn": "Troponin T",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 3,
+      "criticalHigh": "0.014"
+    },
+    {
+      "code": "CPK",
+      "nameEn": "CPK total",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 0
+    },
+    {
+      "code": "CKMB",
+      "nameEn": "CK-MB",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 0
+    },
+    {
+      "code": "LDH",
+      "nameEn": "LDH",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 0
+    },
+    {
+      "code": "AMY",
+      "nameEn": "Amylase",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 0
+    },
+    {
+      "code": "LIP",
+      "nameEn": "Lipase",
+      "resultType": "numeric",
+      "unit": "U/L",
+      "decimals": 0
+    },
+    {
+      "code": "FE",
+      "nameEn": "Iron",
+      "resultType": "numeric",
+      "unit": "ug/dL",
+      "decimals": 0
+    },
+    {
+      "code": "TIBC",
+      "nameEn": "TIBC",
+      "resultType": "numeric",
+      "unit": "ug/dL",
+      "decimals": 0
+    },
+    {
+      "code": "TSAT",
+      "nameEn": "Transferrin saturation",
+      "resultType": "formula",
+      "unit": "%",
+      "decimals": 0,
+      "formula": "FE * 100 / TIBC",
+      "formulaGuard": "TIBC > 0"
+    },
+    {
+      "code": "FERR",
+      "nameEn": "Ferritin",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 1
+    },
+    {
+      "code": "VITD",
+      "nameEn": "Vitamin D (25-OH)",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 1
+    },
+    {
+      "code": "B12",
+      "nameEn": "Vitamin B12",
+      "resultType": "numeric",
+      "unit": "pg/mL",
+      "decimals": 0
+    },
+    {
+      "code": "FOL",
+      "nameEn": "Folate",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 1
+    },
+    {
+      "code": "CRP",
+      "nameEn": "C-reactive protein",
+      "resultType": "numeric",
+      "unit": "mg/L",
+      "decimals": 1
+    },
+    {
+      "code": "PCT",
+      "nameEn": "Procalcitonin",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 2
+    },
+    {
+      "code": "HIV",
+      "nameEn": "HIV 1 & 2 antibody",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "HBSAG",
+      "nameEn": "HBsAg",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "HCV",
+      "nameEn": "Anti-HCV",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "VDRL",
+      "nameEn": "VDRL / RPR",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "WIDAL_TO",
+      "nameEn": "Widal \u2014 S. typhi O",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "WIDAL_TH",
+      "nameEn": "Widal \u2014 S. typhi H",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "MP_AG",
+      "nameEn": "Malaria antigen (Pf/Pv)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "DEN_NS1",
+      "nameEn": "Dengue NS1 antigen",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "DEN_IGM",
+      "nameEn": "Dengue IgM",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "DEN_IGG",
+      "nameEn": "Dengue IgG",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "ASO",
+      "nameEn": "ASO titre",
+      "resultType": "numeric",
+      "unit": "IU/mL",
+      "decimals": 0
+    },
+    {
+      "code": "RAF",
+      "nameEn": "Rheumatoid factor",
+      "resultType": "numeric",
+      "unit": "IU/mL",
+      "decimals": 0
+    },
+    {
+      "code": "BHCG",
+      "nameEn": "Beta-hCG, serum",
+      "resultType": "numeric",
+      "unit": "mIU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "UPT",
+      "nameEn": "Urine pregnancy test",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "UR_COL",
+      "nameEn": "Urine \u2014 Colour",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "UR_APP",
+      "nameEn": "Urine \u2014 Appearance",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "UR_PH",
+      "nameEn": "Urine \u2014 pH",
+      "resultType": "numeric",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "UR_SG",
+      "nameEn": "Urine \u2014 Specific gravity",
+      "resultType": "numeric",
+      "unit": null,
+      "decimals": 2
+    },
+    {
+      "code": "UR_PROT",
+      "nameEn": "Urine \u2014 Protein",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "UR_GLU",
+      "nameEn": "Urine \u2014 Glucose",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "UR_KET",
+      "nameEn": "Urine \u2014 Ketones",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "UR_BLD",
+      "nameEn": "Urine \u2014 Blood",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "UR_BIL",
+      "nameEn": "Urine \u2014 Bilirubin",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "UR_URO",
+      "nameEn": "Urine \u2014 Urobilinogen",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "UR_NIT",
+      "nameEn": "Urine \u2014 Nitrite",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "UR_LEU",
+      "nameEn": "Urine \u2014 Leucocyte esterase",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "UR_RBC",
+      "nameEn": "Urine \u2014 RBC",
+      "resultType": "text",
+      "unit": "/hpf",
+      "decimals": 1
+    },
+    {
+      "code": "UR_WBC",
+      "nameEn": "Urine \u2014 Pus cells",
+      "resultType": "text",
+      "unit": "/hpf",
+      "decimals": 1
+    },
+    {
+      "code": "UR_EPI",
+      "nameEn": "Urine \u2014 Epithelial cells",
+      "resultType": "text",
+      "unit": "/hpf",
+      "decimals": 1
+    },
+    {
+      "code": "UR_CAST",
+      "nameEn": "Urine \u2014 Casts",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "UR_CRYS",
+      "nameEn": "Urine \u2014 Crystals",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "ST_COL",
+      "nameEn": "Stool \u2014 Colour",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "ST_CONS",
+      "nameEn": "Stool \u2014 Consistency",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "ST_OCB",
+      "nameEn": "Stool \u2014 Occult blood",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "ST_RBC",
+      "nameEn": "Stool \u2014 RBC",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "ST_WBC",
+      "nameEn": "Stool \u2014 Pus cells",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "ST_OVA",
+      "nameEn": "Stool \u2014 Ova / cysts",
+      "resultType": "text",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "HCO3",
+      "nameEn": "Bicarbonate",
+      "resultType": "numeric",
+      "unit": "mmol/L",
+      "decimals": 0,
+      "criticalLow": "10",
+      "criticalHigh": "40"
+    },
+    {
+      "code": "ANIONGAP",
+      "nameEn": "Anion gap",
+      "resultType": "formula",
+      "unit": "mmol/L",
+      "decimals": 0,
+      "formula": "NA - CL - HCO3"
+    },
+    {
+      "code": "CACORR",
+      "nameEn": "Calcium, albumin-corrected",
+      "resultType": "formula",
+      "unit": "mg/dL",
+      "decimals": 1,
+      "formula": "CA + 0.8 * (4 - ALB)"
+    },
+    {
+      "code": "UCR",
+      "nameEn": "Urea : creatinine ratio",
+      "resultType": "formula",
+      "unit": null,
+      "decimals": 0,
+      "formula": "UREA / CREA",
+      "formulaGuard": "CREA > 0"
+    },
+    {
+      "code": "DDIM",
+      "nameEn": "D-dimer",
+      "resultType": "numeric",
+      "unit": "ug/mL FEU",
+      "decimals": 2
+    },
+    {
+      "code": "FIB",
+      "nameEn": "Fibrinogen",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0
+    },
+    {
+      "code": "ATPO",
+      "nameEn": "Anti-TPO antibody",
+      "resultType": "numeric",
+      "unit": "IU/mL",
+      "decimals": 1
+    },
+    {
+      "code": "PSA",
+      "nameEn": "PSA, total",
+      "resultType": "numeric",
+      "unit": "ng/mL",
+      "decimals": 2
+    },
+    {
+      "code": "SEM_VOL",
+      "nameEn": "Semen \u2014 volume",
+      "resultType": "numeric",
+      "unit": "mL",
+      "decimals": 1
+    },
+    {
+      "code": "SEM_CONC",
+      "nameEn": "Semen \u2014 concentration",
+      "resultType": "numeric",
+      "unit": "10^6/mL",
+      "decimals": 1
+    },
+    {
+      "code": "SEM_MOT",
+      "nameEn": "Semen \u2014 total motility",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "SEM_MORPH",
+      "nameEn": "Semen \u2014 normal forms",
+      "resultType": "numeric",
+      "unit": "%",
+      "decimals": 0
+    },
+    {
+      "code": "ALB_UR",
+      "nameEn": "Urine microalbumin",
+      "resultType": "numeric",
+      "unit": "mg/L",
+      "decimals": 1
+    },
+    {
+      "code": "ACR",
+      "nameEn": "Urine albumin : creatinine ratio",
+      "resultType": "formula",
+      "unit": "mg/g",
+      "decimals": 0,
+      "formula": "ALB_UR / UCREA",
+      "formulaGuard": "UCREA > 0"
+    },
+    {
+      "code": "UCREA",
+      "nameEn": "Urine creatinine",
+      "resultType": "numeric",
+      "unit": "mg/dL",
+      "decimals": 0
+    },
+    {
+      "code": "LACT",
+      "nameEn": "Lactate",
+      "resultType": "numeric",
+      "unit": "mmol/L",
+      "decimals": 1,
+      "criticalHigh": "4.0"
+    },
+    {
+      "code": "AMMON",
+      "nameEn": "Ammonia",
+      "resultType": "numeric",
+      "unit": "ug/dL",
+      "decimals": 0,
+      "criticalHigh": "200"
+    }
+  ],
+  "orderables": [
+    {
+      "code": "CBC",
+      "nameEn": "Complete blood count",
+      "discipline": "haematology",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "PLT",
+        "MPV"
+      ],
+      "benchKey": "HAEM-1",
+      "tatMinutesStat": 60
+    },
+    {
+      "code": "ESR",
+      "nameEn": "Erythrocyte sedimentation rate",
+      "discipline": "haematology",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "ESR"
+      ],
+      "benchKey": "HAEM-1"
+    },
+    {
+      "code": "PTINR",
+      "nameEn": "Prothrombin time with INR",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 180,
+      "analyteCodes": [
+        "PT",
+        "INR"
+      ],
+      "benchKey": "COAG-1",
+      "tatMinutesStat": 45
+    },
+    {
+      "code": "APTT",
+      "nameEn": "Activated partial thromboplastin time",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 180,
+      "analyteCodes": [
+        "APTT"
+      ],
+      "benchKey": "COAG-1"
+    },
+    {
+      "code": "DDIMER",
+      "nameEn": "D-dimer",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 180,
+      "analyteCodes": [
+        "DDIM"
+      ],
+      "benchKey": "COAG-1",
+      "tatMinutesStat": 60
+    },
+    {
+      "code": "FIBRIN",
+      "nameEn": "Fibrinogen",
+      "discipline": "haematology",
+      "specimenType": "plasma",
+      "container": "citrate",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "FIB"
+      ],
+      "benchKey": "COAG-1"
+    },
+    {
+      "code": "BLDGRP",
+      "nameEn": "Blood group and Rh typing",
+      "discipline": "haematology",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 120,
+      "analyteCodes": [
+        "ABO",
+        "RH"
+      ],
+      "benchKey": "HAEM-1"
+    },
+    {
+      "code": "RETIC",
+      "nameEn": "Reticulocyte count",
+      "discipline": "haematology",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "RETIC"
+      ],
+      "benchKey": "HAEM-1"
+    },
+    {
+      "code": "PSMEAR",
+      "nameEn": "Peripheral blood smear",
+      "discipline": "haematology",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "PSMEAR"
+      ],
+      "benchKey": "HAEM-1"
+    },
+    {
+      "code": "GLUF",
+      "nameEn": "Glucose \u2014 fasting",
+      "discipline": "biochemistry",
+      "specimenType": "plasma",
+      "container": "fluoride",
+      "tatMinutesRoutine": 120,
+      "analyteCodes": [
+        "GLUF"
+      ],
+      "benchKey": "BIOCHEM-1",
+      "requiresFasting": true
+    },
+    {
+      "code": "GLUPP",
+      "nameEn": "Glucose \u2014 post-prandial",
+      "discipline": "biochemistry",
+      "specimenType": "plasma",
+      "container": "fluoride",
+      "tatMinutesRoutine": 120,
+      "analyteCodes": [
+        "GLUPP"
+      ],
+      "benchKey": "BIOCHEM-1"
+    },
+    {
+      "code": "GLUR",
+      "nameEn": "Glucose \u2014 random",
+      "discipline": "biochemistry",
+      "specimenType": "plasma",
+      "container": "fluoride",
+      "tatMinutesRoutine": 120,
+      "analyteCodes": [
+        "GLUR"
+      ],
+      "benchKey": "BIOCHEM-1",
+      "tatMinutesStat": 30
+    },
+    {
+      "code": "HBA1C",
+      "nameEn": "Glycated haemoglobin (HbA1c)",
+      "discipline": "biochemistry",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 360,
+      "analyteCodes": [
+        "HBA1C"
+      ],
+      "benchKey": "BIOCHEM-2"
+    },
+    {
+      "code": "RFT",
+      "nameEn": "Renal function test",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "UREA",
+        "CREA",
+        "UCR",
+        "URIC",
+        "NA",
+        "K",
+        "CL",
+        "CA",
+        "PHOS"
+      ],
+      "benchKey": "BIOCHEM-1",
+      "tatMinutesStat": 90
+    },
+    {
+      "code": "LFT",
+      "nameEn": "Liver function test",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "TBIL",
+        "DBIL",
+        "IBIL",
+        "SGOT",
+        "SGPT",
+        "ALP",
+        "GGT",
+        "TPROT",
+        "ALB",
+        "GLOB",
+        "AGR"
+      ],
+      "benchKey": "BIOCHEM-1",
+      "tatMinutesStat": 90
+    },
+    {
+      "code": "LIPID",
+      "nameEn": "Lipid profile",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "TC",
+        "TG",
+        "HDL",
+        "LDL",
+        "VLDL",
+        "NONHDL",
+        "TCHDL"
+      ],
+      "benchKey": "BIOCHEM-1",
+      "requiresFasting": true
+    },
+    {
+      "code": "ELECT",
+      "nameEn": "Serum electrolytes",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 120,
+      "analyteCodes": [
+        "NA",
+        "K",
+        "CL",
+        "HCO3",
+        "ANIONGAP"
+      ],
+      "benchKey": "BIOCHEM-1",
+      "tatMinutesStat": 30
+    },
+    {
+      "code": "CREA",
+      "nameEn": "Serum creatinine",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 180,
+      "analyteCodes": [
+        "CREA"
+      ],
+      "benchKey": "BIOCHEM-1",
+      "tatMinutesStat": 45
+    },
+    {
+      "code": "UREA",
+      "nameEn": "Blood urea",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 180,
+      "analyteCodes": [
+        "UREA"
+      ],
+      "benchKey": "BIOCHEM-1"
+    },
+    {
+      "code": "URIC",
+      "nameEn": "Serum uric acid",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "URIC"
+      ],
+      "benchKey": "BIOCHEM-1"
+    },
+    {
+      "code": "CALCIUM",
+      "nameEn": "Serum calcium with correction",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "CA",
+        "ALB",
+        "CACORR"
+      ],
+      "benchKey": "BIOCHEM-1"
+    },
+    {
+      "code": "MG",
+      "nameEn": "Serum magnesium",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "MG"
+      ],
+      "benchKey": "BIOCHEM-1"
+    },
+    {
+      "code": "PHOS",
+      "nameEn": "Serum phosphorus",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "PHOS"
+      ],
+      "benchKey": "BIOCHEM-1"
+    },
+    {
+      "code": "TFT",
+      "nameEn": "Thyroid function test",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "TSH",
+        "FT3",
+        "FT4"
+      ],
+      "benchKey": "IMMUNO-1"
+    },
+    {
+      "code": "TSH",
+      "nameEn": "TSH \u2014 thyroid stimulating hormone",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "TSH"
+      ],
+      "benchKey": "IMMUNO-1"
+    },
+    {
+      "code": "ATPO",
+      "nameEn": "Anti-TPO antibody",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 720,
+      "analyteCodes": [
+        "ATPO"
+      ],
+      "benchKey": "IMMUNO-1"
+    },
+    {
+      "code": "TROPI",
+      "nameEn": "Troponin I",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 90,
+      "analyteCodes": [
+        "TROP_I"
+      ],
+      "benchKey": "IMMUNO-1",
+      "tatMinutesStat": 30
+    },
+    {
+      "code": "TROPT",
+      "nameEn": "Troponin T",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 90,
+      "analyteCodes": [
+        "TROP_T"
+      ],
+      "benchKey": "IMMUNO-1",
+      "tatMinutesStat": 30
+    },
+    {
+      "code": "CARDIAC",
+      "nameEn": "Cardiac enzyme profile",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 180,
+      "analyteCodes": [
+        "CPK",
+        "CKMB",
+        "LDH",
+        "TROP_I"
+      ],
+      "benchKey": "BIOCHEM-1",
+      "tatMinutesStat": 60
+    },
+    {
+      "code": "AMYLASE",
+      "nameEn": "Serum amylase",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 180,
+      "analyteCodes": [
+        "AMY"
+      ],
+      "benchKey": "BIOCHEM-1"
+    },
+    {
+      "code": "LIPASE",
+      "nameEn": "Serum lipase",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 180,
+      "analyteCodes": [
+        "LIP"
+      ],
+      "benchKey": "BIOCHEM-1"
+    },
+    {
+      "code": "IRON",
+      "nameEn": "Iron studies",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "FE",
+        "TIBC",
+        "TSAT",
+        "FERR"
+      ],
+      "benchKey": "BIOCHEM-2"
+    },
+    {
+      "code": "FERRITIN",
+      "nameEn": "Serum ferritin",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "FERR"
+      ],
+      "benchKey": "IMMUNO-1"
+    },
+    {
+      "code": "VITD",
+      "nameEn": "Vitamin D (25-OH)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "analyteCodes": [
+        "VITD"
+      ],
+      "benchKey": "IMMUNO-1"
+    },
+    {
+      "code": "B12",
+      "nameEn": "Vitamin B12",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "analyteCodes": [
+        "B12"
+      ],
+      "benchKey": "IMMUNO-1"
+    },
+    {
+      "code": "FOLATE",
+      "nameEn": "Folate",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "analyteCodes": [
+        "FOL"
+      ],
+      "benchKey": "IMMUNO-1"
+    },
+    {
+      "code": "CRP",
+      "nameEn": "C-reactive protein",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 180,
+      "analyteCodes": [
+        "CRP"
+      ],
+      "benchKey": "BIOCHEM-2",
+      "tatMinutesStat": 60
+    },
+    {
+      "code": "PCT",
+      "nameEn": "Procalcitonin",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "PCT"
+      ],
+      "benchKey": "IMMUNO-1",
+      "tatMinutesStat": 90
+    },
+    {
+      "code": "LACTATE",
+      "nameEn": "Blood lactate",
+      "discipline": "biochemistry",
+      "specimenType": "plasma",
+      "container": "fluoride",
+      "tatMinutesRoutine": 60,
+      "analyteCodes": [
+        "LACT"
+      ],
+      "benchKey": "BIOCHEM-1",
+      "tatMinutesStat": 30
+    },
+    {
+      "code": "AMMONIA",
+      "nameEn": "Blood ammonia",
+      "discipline": "biochemistry",
+      "specimenType": "plasma",
+      "container": "edta",
+      "tatMinutesRoutine": 120,
+      "analyteCodes": [
+        "AMMON"
+      ],
+      "benchKey": "BIOCHEM-1",
+      "tatMinutesStat": 60
+    },
+    {
+      "code": "PSA",
+      "nameEn": "Prostate specific antigen",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 720,
+      "analyteCodes": [
+        "PSA"
+      ],
+      "benchKey": "IMMUNO-1"
+    },
+    {
+      "code": "MALB",
+      "nameEn": "Urine microalbumin with ACR",
+      "discipline": "biochemistry",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "ALB_UR",
+        "UCREA",
+        "ACR"
+      ],
+      "benchKey": "BIOCHEM-2"
+    },
+    {
+      "code": "HIV",
+      "nameEn": "HIV 1 & 2 antibody (ELISA)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "HIV"
+      ],
+      "benchKey": "SERO-1",
+      "consentRequired": true,
+      "sensitive": true,
+      "notifiable": true
+    },
+    {
+      "code": "HBSAG",
+      "nameEn": "Hepatitis B surface antigen",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "HBSAG"
+      ],
+      "benchKey": "SERO-1",
+      "sensitive": true,
+      "notifiable": true
+    },
+    {
+      "code": "HCV",
+      "nameEn": "Hepatitis C antibody",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "HCV"
+      ],
+      "benchKey": "SERO-1",
+      "sensitive": true,
+      "notifiable": true
+    },
+    {
+      "code": "VDRL",
+      "nameEn": "VDRL / RPR",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "VDRL"
+      ],
+      "benchKey": "SERO-1",
+      "sensitive": true
+    },
+    {
+      "code": "WIDAL",
+      "nameEn": "Widal test",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "WIDAL_TO",
+        "WIDAL_TH"
+      ],
+      "benchKey": "SERO-1"
+    },
+    {
+      "code": "MP",
+      "nameEn": "Malaria antigen (Pf/Pv)",
+      "discipline": "serology",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 120,
+      "analyteCodes": [
+        "MP_AG"
+      ],
+      "benchKey": "SERO-1",
+      "tatMinutesStat": 45,
+      "notifiable": true
+    },
+    {
+      "code": "DENGUE",
+      "nameEn": "Dengue NS1, IgM and IgG",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "DEN_NS1",
+        "DEN_IGM",
+        "DEN_IGG"
+      ],
+      "benchKey": "SERO-1",
+      "notifiable": true
+    },
+    {
+      "code": "ASO",
+      "nameEn": "ASO titre",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "ASO"
+      ],
+      "benchKey": "SERO-1"
+    },
+    {
+      "code": "RAF",
+      "nameEn": "Rheumatoid factor",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "RAF"
+      ],
+      "benchKey": "SERO-1"
+    },
+    {
+      "code": "BHCG",
+      "nameEn": "Beta-hCG, serum",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "BHCG"
+      ],
+      "benchKey": "IMMUNO-1",
+      "sensitive": true
+    },
+    {
+      "code": "UPT",
+      "nameEn": "Urine pregnancy test",
+      "discipline": "serology",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 60,
+      "analyteCodes": [
+        "UPT"
+      ],
+      "benchKey": "SERO-1",
+      "sensitive": true
+    },
+    {
+      "code": "URINE",
+      "nameEn": "Urine routine and microscopy",
+      "discipline": "clinical_pathology",
+      "specimenType": "urine",
+      "container": "urine_container",
+      "tatMinutesRoutine": 180,
+      "analyteCodes": [
+        "UR_COL",
+        "UR_APP",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS"
+      ],
+      "benchKey": "CP-1",
+      "tatMinutesStat": 60
+    },
+    {
+      "code": "STOOL",
+      "nameEn": "Stool routine and microscopy",
+      "discipline": "clinical_pathology",
+      "specimenType": "stool",
+      "container": "stool_container",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "ST_COL",
+        "ST_CONS",
+        "ST_OCB",
+        "ST_RBC",
+        "ST_WBC",
+        "ST_OVA"
+      ],
+      "benchKey": "CP-1"
+    },
+    {
+      "code": "SEMEN",
+      "nameEn": "Semen analysis",
+      "discipline": "clinical_pathology",
+      "specimenType": "semen",
+      "container": "sterile_container",
+      "tatMinutesRoutine": 240,
+      "analyteCodes": [
+        "SEM_VOL",
+        "SEM_CONC",
+        "SEM_MOT",
+        "SEM_MORPH"
+      ],
+      "benchKey": "CP-1"
+    },
+    {
+      "code": "FEVER",
+      "nameEn": "Fever profile",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 360,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "PLT",
+        "MPV",
+        "WIDAL_TO",
+        "WIDAL_TH",
+        "MP_AG",
+        "DEN_NS1",
+        "CRP"
+      ],
+      "benchKey": "BIOCHEM-1"
+    },
+    {
+      "code": "DIABETIC",
+      "nameEn": "Diabetic profile",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "GLUF",
+        "GLUPP",
+        "HBA1C",
+        "UREA",
+        "CREA",
+        "UCR",
+        "TC",
+        "TG",
+        "HDL",
+        "LDL",
+        "VLDL",
+        "NONHDL",
+        "TCHDL"
+      ],
+      "benchKey": "BIOCHEM-1",
+      "requiresFasting": true
+    },
+    {
+      "code": "PREOP",
+      "nameEn": "Pre-operative profile",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 360,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "PLT",
+        "MPV",
+        "PT",
+        "INR",
+        "APTT",
+        "GLUR",
+        "UREA",
+        "CREA",
+        "NA",
+        "K",
+        "HIV",
+        "HBSAG",
+        "ABO",
+        "RH"
+      ],
+      "benchKey": "BIOCHEM-1",
+      "consentRequired": true,
+      "sensitive": true
+    },
+    {
+      "code": "ANAEMIA",
+      "nameEn": "Anaemia profile",
+      "discipline": "haematology",
+      "specimenType": "whole_blood",
+      "container": "edta",
+      "tatMinutesRoutine": 720,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "PLT",
+        "MPV",
+        "RETIC",
+        "FE",
+        "TIBC",
+        "TSAT",
+        "FERR",
+        "B12",
+        "FOL"
+      ],
+      "benchKey": "HAEM-1"
+    },
+    {
+      "code": "HEALTH_B",
+      "nameEn": "Health check \u2014 basic",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 720,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "PLT",
+        "MPV",
+        "UREA",
+        "CREA",
+        "UCR",
+        "URIC",
+        "NA",
+        "K",
+        "CL",
+        "CA",
+        "PHOS",
+        "TBIL",
+        "DBIL",
+        "IBIL",
+        "SGOT",
+        "SGPT",
+        "ALP",
+        "GGT",
+        "TPROT",
+        "ALB",
+        "GLOB",
+        "AGR",
+        "TC",
+        "TG",
+        "HDL",
+        "LDL",
+        "VLDL",
+        "NONHDL",
+        "TCHDL",
+        "GLUF",
+        "HBA1C",
+        "TSH",
+        "UR_COL",
+        "UR_APP",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS"
+      ],
+      "benchKey": "BIOCHEM-1",
+      "requiresFasting": true
+    },
+    {
+      "code": "HEALTH_C",
+      "nameEn": "Health check \u2014 comprehensive",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "PLT",
+        "MPV",
+        "UREA",
+        "CREA",
+        "UCR",
+        "URIC",
+        "NA",
+        "K",
+        "CL",
+        "CA",
+        "PHOS",
+        "TBIL",
+        "DBIL",
+        "IBIL",
+        "SGOT",
+        "SGPT",
+        "ALP",
+        "GGT",
+        "TPROT",
+        "ALB",
+        "GLOB",
+        "AGR",
+        "TC",
+        "TG",
+        "HDL",
+        "LDL",
+        "VLDL",
+        "NONHDL",
+        "TCHDL",
+        "TSH",
+        "FT3",
+        "FT4",
+        "GLUF",
+        "GLUPP",
+        "HBA1C",
+        "VITD",
+        "B12",
+        "PSA",
+        "CRP",
+        "ESR",
+        "UR_COL",
+        "UR_APP",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS"
+      ],
+      "benchKey": "BIOCHEM-1",
+      "requiresFasting": true
+    },
+    {
+      "code": "ANC_PROF",
+      "nameEn": "Antenatal profile",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 720,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "PLT",
+        "MPV",
+        "ABO",
+        "RH",
+        "HIV",
+        "HBSAG",
+        "VDRL",
+        "GLUF",
+        "TSH",
+        "UR_COL",
+        "UR_APP",
+        "UR_PH",
+        "UR_SG",
+        "UR_PROT",
+        "UR_GLU",
+        "UR_KET",
+        "UR_BLD",
+        "UR_BIL",
+        "UR_URO",
+        "UR_NIT",
+        "UR_LEU",
+        "UR_RBC",
+        "UR_WBC",
+        "UR_EPI",
+        "UR_CAST",
+        "UR_CRYS"
+      ],
+      "benchKey": "SERO-1",
+      "consentRequired": true,
+      "sensitive": true
+    },
+    {
+      "code": "SEPSIS",
+      "nameEn": "Sepsis screen",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 180,
+      "analyteCodes": [
+        "HB",
+        "RBC",
+        "HCT",
+        "MCV",
+        "MCH",
+        "MCHC",
+        "RDW",
+        "WBC",
+        "NEUT",
+        "LYMPH",
+        "MONO",
+        "EOS",
+        "BASO",
+        "ANC",
+        "PLT",
+        "MPV",
+        "CRP",
+        "PCT",
+        "LACT",
+        "CREA",
+        "TBIL"
+      ],
+      "benchKey": "BIOCHEM-1",
+      "tatMinutesStat": 90
+    }
+  ],
+  "referenceRanges": [
+    {
+      "analyteCode": "HB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 28,
+      "low": "13.5",
+      "high": "21.5",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HB",
+      "sex": "any",
+      "ageMinDays": 28,
+      "ageMaxDays": 365,
+      "low": "10.0",
+      "high": "13.0",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HB",
+      "sex": "any",
+      "ageMinDays": 365,
+      "ageMaxDays": 4380,
+      "low": "11.0",
+      "high": "14.0",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HB",
+      "sex": "male",
+      "ageMinDays": 4380,
+      "ageMaxDays": 36500,
+      "low": "13.0",
+      "high": "17.0",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HB",
+      "sex": "female",
+      "ageMinDays": 4380,
+      "ageMaxDays": 36500,
+      "low": "12.0",
+      "high": "15.0",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "K",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 28,
+      "low": "3.5",
+      "high": "6.0",
+      "text": null,
+      "criticalLow": "2.5",
+      "criticalHigh": "7.0",
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "K",
+      "sex": "any",
+      "ageMinDays": 28,
+      "ageMaxDays": 36500,
+      "low": "3.5",
+      "high": "5.1",
+      "text": null,
+      "criticalLow": "2.8",
+      "criticalHigh": "6.0",
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "RBC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "4.2",
+      "high": "5.9",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HCT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "36",
+      "high": "50",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MCV",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "80",
+      "high": "100",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MCH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "27",
+      "high": "32",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MCHC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "32",
+      "high": "36",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "RDW",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "11.5",
+      "high": "14.5",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "WBC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "4.0",
+      "high": "11.0",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "NEUT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "40",
+      "high": "75",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LYMPH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "20",
+      "high": "45",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MONO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "2",
+      "high": "10",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "EOS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "1",
+      "high": "6",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BASO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "1",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ANC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "2.0",
+      "high": "7.0",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PLT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "150",
+      "high": "410",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MPV",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "7.5",
+      "high": "11.5",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "11",
+      "high": "13.5",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "INR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0.8",
+      "high": "1.2",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "APTT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "25",
+      "high": "35",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "RETIC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0.5",
+      "high": "2.5",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UREA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "15",
+      "high": "40",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CREA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0.6",
+      "high": "1.3",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "URIC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "3.5",
+      "high": "7.2",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "NA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "136",
+      "high": "145",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "98",
+      "high": "107",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "8.6",
+      "high": "10.2",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PHOS",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "2.5",
+      "high": "4.5",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "1.7",
+      "high": "2.4",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HCO3",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "22",
+      "high": "28",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ANIONGAP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "8",
+      "high": "16",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CACORR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "8.6",
+      "high": "10.2",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UCR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "10",
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TBIL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0.2",
+      "high": "1.2",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DBIL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0.0",
+      "high": "0.3",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "IBIL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0.1",
+      "high": "0.9",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SGOT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "5",
+      "high": "40",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SGPT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "5",
+      "high": "41",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ALP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "40",
+      "high": "129",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "GGT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "8",
+      "high": "61",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TPROT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "6.4",
+      "high": "8.3",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ALB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "3.5",
+      "high": "5.2",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "GLOB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "2.0",
+      "high": "3.5",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AGR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "1.0",
+      "high": "2.1",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "200",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "150",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LDL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "100",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "VLDL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "5",
+      "high": "30",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "NONHDL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "130",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TCHDL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "4.5",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TSH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0.35",
+      "high": "4.94",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FT3",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "1.71",
+      "high": "3.71",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FT4",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0.70",
+      "high": "1.48",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "T3",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "80",
+      "high": "200",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "T4",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "5.1",
+      "high": "14.1",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CPK",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "30",
+      "high": "200",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CKMB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "25",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LDH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "135",
+      "high": "225",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AMY",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "28",
+      "high": "100",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LIP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "13",
+      "high": "60",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FE",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "65",
+      "high": "175",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TIBC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "250",
+      "high": "450",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TSAT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "20",
+      "high": "50",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "VITD",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "30",
+      "high": "100",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "B12",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "211",
+      "high": "911",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FOL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "3.1",
+      "high": "20.5",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "CRP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "5",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PCT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "0.05",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ASO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "200",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "RAF",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "14",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ESR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "20",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HBA1C",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "4.0",
+      "high": "5.6",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "GLUF",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "70",
+      "high": "100",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "GLUPP",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "70",
+      "high": "140",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "GLUR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "70",
+      "high": "140",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DDIM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "0.50",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FIB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "200",
+      "high": "400",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ATPO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "34",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "PSA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "4.00",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "LACT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0.5",
+      "high": "2.2",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "AMMON",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "15",
+      "high": "45",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ALB_UR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "30",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UCREA",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "20",
+      "high": "320",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ACR",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "30",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_PH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "4.6",
+      "high": "8.0",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_SG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "1.005",
+      "high": "1.030",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SEM_VOL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "1.5",
+      "high": "6.0",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SEM_CONC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "15",
+      "high": "250",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SEM_MOT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "40",
+      "high": "100",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "SEM_MORPH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "4",
+      "high": "100",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HDL",
+      "sex": "male",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "40",
+      "high": "60",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HDL",
+      "sex": "female",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "50",
+      "high": "70",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FERR",
+      "sex": "male",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "24",
+      "high": "336",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "FERR",
+      "sex": "female",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "11",
+      "high": "307",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HIV",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HBSAG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HCV",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "VDRL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "WIDAL_TO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "WIDAL_TH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "MP_AG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DEN_NS1",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DEN_IGM",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "DEN_IGG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UPT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_PROT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_GLU",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_KET",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_BLD",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_BIL",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_NIT",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_LEU",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ST_OCB",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Negative",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "UR_URO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Normal",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "ABO",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "\u2014",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "RH",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "\u2014",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TROP_I",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "0.040",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": "0.040",
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "TROP_T",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "0.014",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": "0.014",
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "BHCG",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "0",
+      "high": "5.0",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    }
+  ],
+  "reflexRules": [
+    {
+      "analyteCode": "TSH",
+      "comparator": "gt",
+      "threshold": "6.0000",
+      "addsOrderableCode": "TFT",
+      "active": false
+    },
+    {
+      "analyteCode": "GLUF",
+      "comparator": "gt",
+      "threshold": "126.0000",
+      "addsOrderableCode": "HBA1C",
+      "active": false
+    },
+    {
+      "analyteCode": "TROP_I",
+      "comparator": "gt",
+      "threshold": "0.0400",
+      "addsOrderableCode": "CARDIAC",
+      "active": false
+    }
+  ]
+}

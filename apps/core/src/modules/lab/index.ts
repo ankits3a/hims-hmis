@@ -15,3 +15,19 @@ export {
   LAB_APPROVAL_TYPES, RELEASE_UNPAID_APPROVAL_TYPE, registerLabApprovalTypes,
 } from "./approval-types";
 export * from "./events";
+// ── PLAN 17a T3 — the catalogue and the three pure engines behind it ──
+// 17b CALLS these and does not reimplement them (17a §6.3): `resolveRange`'s output is what a
+// result row snapshots, `evaluateFormula` is what a formula analyte computes with, and
+// `matchReflex` decides that a rule FIRES while 17b's caller decides that it may be acted on.
+export {
+  analytesFor, activeReflexRules, getOrderable, rangesFor, upsertAnalyte, upsertOrderable,
+} from "./catalogue";
+export type { AnalyteInput, OrderableInput } from "./catalogue";
+export { ageInDaysIst, flagFor, resolveRange } from "./ranges";
+export type { AnalyteRow, RangeRow, RangeSubject, ResolvedRange } from "./ranges";
+export { assertFormulaParses, evaluateFormula } from "./formula";
+export type { FormulaOutcome, Siblings } from "./formula";
+export { matchReflex } from "./reflex";
+export type { ReflexMatch, ReflexRule } from "./reflex";
+export { duplicateWarnings, overlappingAnalytes } from "./duplicates";
+export type { DuplicateWarning } from "./duplicates";
