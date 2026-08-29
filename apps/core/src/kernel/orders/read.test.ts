@@ -4,7 +4,7 @@ import * as permissionsModule from "../auth/permissions";
 import { grantPermissionToRole, syncPermissions } from "../auth/permissions";
 import { ALL_MANIFESTS } from "../modules/manifests";
 import { ModuleRegistry } from "../modules/loader";
-import { patients, registrationConfig, services } from "../db/schema";
+import { patients, phiAccessLog, registrationConfig, services } from "../db/schema";
 import { withTx } from "../db/client";
 import { registerEncounterResolver } from "../episodes/encounter-resolvers";
 import { advanceOrderItem } from "./advance";
@@ -96,6 +96,69 @@ describe("the order envelope's readers (Plan 17 phase 0 T5)", () => {
   });
 
   afterEach(() => { unregister(); });
+
+  /**
+   * ═══ PLAN 17 T2 — **KERNEL EDIT 2's ASSERTION: THE READERS LOG.** (phase 0 §6A.8, paid here) ═══
+   *
+   * Phase 0 shipped these readers logging nothing and wrote the debt into its CONTRACT: *"the honest
+   * fix is one `recordPhiAccess` call inside `read.ts`, and it is left to the plan that mounts the
+   * first route."* Plan 17 T8 mounts them. Two properties are asserted rather than one, and the
+   * second is the one a reviewer would otherwise have to take on trust:
+   *
+   *   · a row appears, carrying the SURFACE and the SEALED flag; and
+   *   · a SECOND read writes a SECOND row. A deduplicated log answers "did they ever look" and the
+   *     question a records-access enquiry actually asks is "how many times, and when".
+   */
+  describe("PHI access logging (Plan 17 T2, kernel edit 2)", () => {
+    it("listOrdersForPatient writes one row per read, with the surface and the sealed flag", async () => {
+      await orderWithRestricted();
+      await listOrdersForPatient(db, ward, PATIENT);
+      const first = await db.select().from(phiAccessLog);
+      expect(first).toHaveLength(1);
+      expect([first[0]!.surface, first[0]!.patientId, first[0]!.actorId, first[0]!.sealed])
+        .toEqual(["orders.patient", PATIENT, ward.id, false]);
+
+      // A second read is a second disclosure.
+      await listOrdersForPatient(db, ward, PATIENT);
+      expect(await db.select().from(phiAccessLog)).toHaveLength(2);
+    });
+
+    it("a SEALED patient's list is logged with `sealed` true, whoever reads it", async () => {
+      await orderWithRestricted(SEALED, SEALED_VISIT);
+      await listOrdersForPatient(db, ward, SEALED);
+      const rows = await db.select().from(phiAccessLog);
+      expect(rows.map((r) => [r.surface, r.sealed])).toEqual([["orders.patient", true]]);
+    });
+
+    /**
+     * THE ENCOUNTER READER LOGS TOO, and it carries the encounter number — an audit that could not
+     * tell a visit-scoped read from the patient-wide one would answer "what did they see" wrong,
+     * which is the only question this log exists for.
+     */
+    it("listOrdersForEncounter logs with the encounter, and logs NOTHING when the visit has no orders", async () => {
+      await orderWithRestricted();
+      await listOrdersForEncounter(db, ward, VISIT);
+      const rows = await db.select().from(phiAccessLog);
+      expect(rows.map((r) => [r.surface, r.encounterId])).toEqual([["orders.patient", VISIT]]);
+
+      // An encounter with no orders names no patient this function can identify, so there is
+      // nothing to log — a property of the query rather than an exemption.
+      await listOrdersForEncounter(db, ward, SEALED_VISIT);
+      expect(await db.select().from(phiAccessLog)).toHaveLength(1);
+    });
+
+    /**
+     * A REFUSED READ LOGS NOTHING, because nothing was disclosed. `clearanceOf` throws before the
+     * recorder is reached, and a log row for a read that did not happen would inflate every
+     * records-access answer with attempts.
+     */
+    it("a refused patient-actor read writes no row", async () => {
+      await orderWithRestricted();
+      await expect(listOrdersForPatient(db, { type: "patient", id: "cred-1" }, PATIENT))
+        .rejects.toThrow(/may not read an order list/);
+      expect(await db.select().from(phiAccessLog)).toEqual([]);
+    });
+  });
 
   /** One lab order for `patientId`, carrying a plain CBC and a RESTRICTED HIV test. */
   async function orderWithRestricted(

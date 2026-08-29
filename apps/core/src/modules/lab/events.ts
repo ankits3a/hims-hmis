@@ -1,0 +1,189 @@
+import { z } from "zod";
+import { defineEvent } from "@hmis/contracts";
+
+/**
+ * PLAN 17 T2 / DD18 — the lab's event surface. `entity.verb_past`, module carried separately (the
+ * `opd`, `materials`, `membership`, `formulary` and `ot` grammar, unchanged).
+ *
+ * ═══ `subscriptions: []` — THIS MODULE CONSUMES NOTHING, AND THAT IS A DECISION ═══
+ *
+ * The one subscription a reader will look for is `patient.merged`, which the OT and materials both
+ * take. The lab does not need it: **every table in T1 keys by `order_item_id`, `specimen_id` or
+ * `result_id` and none of them stores a `patient_id` that a merge would have to move** — except
+ * `lab_specimens.patient_id`, which follows the envelope's own re-link (phase 0 E8) because the
+ * merge path moves `orders.patient_id` and the tube belongs to the order group. A consumer here
+ * would be a second answer to a question the envelope already answers, which is the shape §2.54
+ * exists to stop.
+ *
+ * `lab.notifiable_flagged` is emitted and consumed by NOBODY in this phase — 28a subscribes to it
+ * when the notifiable-disease register exists. An event with no consumer is not a defect; a
+ * SUBSCRIPTION with no handler is, and `buildSubscriptionBus` makes that a boot error.
+ *
+ * ═══ ONE NAME DD18's LIST DOES NOT CARRY, ADDED HERE AND DISCLOSED (finding F1) ═══
+ *
+ * DD15 says the desk emits `attribution.unverified_flagged` for an unattributed walk-in.
+ * **No such event exists**: `modules/partners/events.ts` declares seven and that is not one of
+ * them, and a module may not emit a fact it never declared. It is declared HERE, in the lab's own
+ * namespace, as `lab.attribution_unverified_flagged` — putting a `partners.*` name in this
+ * manifest would be a reach into another module's surface, which `modules/billing/index.ts`'s own
+ * header forbids in as many words. Disclosed rather than smuggled, at the one task that owns this
+ * file.
+ */
+const MODULE = "lab";
+const id = z.string().min(1);
+const iso = z.string().min(1);
+
+/* ───────────────────────────── The desk (T4) ───────────────────────────── */
+
+/**
+ * THE CONVERSION: what the doctor advised became an order and an invoice, in one transaction.
+ *
+ * It carries the invoice ids because that is the ONE fact no other event on this list has — 24a
+ * ignores it, and a reconciliation that wants "which invoice paid for this tube" would otherwise
+ * have to join three tables to a timestamp.
+ */
+export const labOrderDesked = defineEvent("lab.order_desked", MODULE, z.object({
+  orderId: id, orderNo: id, orderGroupId: id, patientId: id, encounterNo: id,
+  itemIds: z.array(id).min(1), invoiceId: id.nullable(), invoiceNo: z.string().nullable(),
+  chargeReason: z.string().min(1),
+}));
+
+/** DD15 / 02 I3 — a walk-in whose referrer nobody could confirm. The sentinel took the order. */
+export const labAttributionUnverifiedFlagged = defineEvent("lab.attribution_unverified_flagged", MODULE, z.object({
+  orderId: id, patientId: id, referrerName: z.string().nullable(), reason: z.string().min(1),
+}));
+
+/* ──────────────────────── Collection and accession (T5) ──────────────────────── */
+
+export const labLabelPrinted = defineEvent("lab.label_printed", MODULE, z.object({
+  specimenId: id, specimenNo: id, patientId: id, orderGroupId: id,
+  itemIds: z.array(id).min(1), labelSource: z.enum(["printer", "downtime_kit"]),
+}));
+
+/**
+ * DD10 / 02 A1 — THE SCAN SAID SOMEBODY ELSE. No tube was labelled; the event is the record that
+ * the check fired, and it is what a quality review counts. Two Ram Kumars is the case every lab
+ * has had, and a near-miss nobody logged is a near-miss nobody learns from.
+ */
+export const labTubeMismatchFlagged = defineEvent("lab.tube_mismatch_flagged", MODULE, z.object({
+  orderGroupId: id, expectedUhid: id, scannedUhid: id, at: iso,
+}));
+
+export const labSpecimenCollected = defineEvent("lab.specimen_collected", MODULE, z.object({
+  specimenId: id, specimenNo: id, patientId: id, collectedBy: id, at: iso,
+  wristbandScanned: z.boolean(), collectionSite: z.string().min(1),
+}));
+
+/** **THE TAT CLOCK STARTS HERE** (T5 A7) — not at placement and not at collection. */
+export const labSpecimenReceived = defineEvent("lab.specimen_received", MODULE, z.object({
+  specimenId: id, specimenNo: id, itemIds: z.array(id), receivedBy: id, at: iso,
+}));
+
+export const labSpecimenRejected = defineEvent("lab.specimen_rejected", MODULE, z.object({
+  specimenId: id, specimenNo: id, reason: z.string().min(1), attributableTo: z.string().min(1),
+  rejectedBy: id, at: iso,
+}));
+
+export const labRecollectionRequested = defineEvent("lab.recollection_requested", MODULE, z.object({
+  priorSpecimenId: id, specimenId: id, specimenNo: id, itemIds: z.array(id).min(1), reason: z.string().min(1),
+}));
+
+/* ─────────────────────────────── Results (T6) ─────────────────────────────── */
+
+export const labResultEntered = defineEvent("lab.result_entered", MODULE, z.object({
+  resultId: id, orderItemId: id, analyteId: id, enteredBy: id,
+  flag: z.string().nullable(), entryMode: z.string().min(1), absurdOverridden: z.boolean(),
+}));
+
+export const labResultVerified = defineEvent("lab.result_verified", MODULE, z.object({
+  resultId: id, orderItemId: id, analyteId: id, verifiedBy: id,
+  pathologistReviewPending: z.boolean(),
+}));
+
+/**
+ * DD12 — the 15-minute clock. Emitted at ENTRY, before any verification: the clinical need is the
+ * CALL, and the signature follows by 09:00 (R-014's default, adopted).
+ */
+export const labResultCriticalFlagged = defineEvent("lab.result_critical_flagged", MODULE, z.object({
+  resultId: id, callId: id, orderItemId: id, analyteId: id, patientId: id,
+  value: z.string().min(1), band: z.enum(["low", "high"]),
+}));
+
+/** Closed by a READ-BACK, never by an attempt (02 §3.6). `attempts` is how many it took. */
+export const labCriticalAcknowledged = defineEvent("lab.critical_acknowledged", MODULE, z.object({
+  callId: id, resultId: id, closedBy: id, attempts: z.number().int().nonnegative(), at: iso,
+}));
+
+export const labResultDeltaFlagged = defineEvent("lab.result_delta_flagged", MODULE, z.object({
+  resultId: id, priorResultId: id, analyteId: id, patientId: id,
+  priorValue: z.string().min(1), value: z.string().min(1),
+}));
+
+/** DD8 — placed SYNCHRONOUSLY inside the verifying transaction, as `system` under `protocol_ref`. */
+export const labReflexAdded = defineEvent("lab.reflex_added", MODULE, z.object({
+  ruleId: id, ruleVersion: z.number().int().positive(), triggerResultId: id,
+  parentItemId: id, orderId: id, orderNo: id, addedServiceId: id,
+}));
+
+/**
+ * DD11 — the SoD refusal, EVENTED. A refusal nobody can count is a control nobody can audit, and
+ * NABL asks how often the single-operator path was used.
+ */
+export const labSodViolationBlocked = defineEvent("lab.sod_violation_blocked", MODULE, z.object({
+  resultId: id, orderItemId: id, actorId: id, enteredById: id,
+}));
+
+/* ─────────────────────────────── Reports (T7) ─────────────────────────────── */
+
+export const labReportPublished = defineEvent("lab.report_published", MODULE, z.object({
+  reportId: id, orderId: id, patientId: id, version: z.number().int().positive(),
+  partial: z.boolean(), channels: z.array(z.string()), signedBy: id,
+}));
+
+/** DD6 — the interlock refused a delivery. `unpaidLineIds` is what the counter shows the patient. */
+export const labReportPrintBlocked = defineEvent("lab.report_print_blocked", MODULE, z.object({
+  reportId: id, orderId: id, reason: z.string().min(1), unpaidLineIds: z.array(id),
+}));
+
+/** DD6 — `billing_manager` released it. **The dues row is untouched: it was already the receivable.** */
+export const labReportReleasedUnpaid = defineEvent("lab.report_released_unpaid", MODULE, z.object({
+  reportId: id, orderId: id, approvalId: id, releasedBy: id, outstandingPaise: z.number().int(),
+}));
+
+export const labReportPrinted = defineEvent("lab.report_printed", MODULE, z.object({
+  reportId: id, orderId: id, deliveryId: id, channel: z.string().min(1),
+  collectorIdentity: z.string().nullable(), printedBy: id,
+}));
+
+/** R-018 — a reason CATEGORY, never free text: the re-notification says "AMENDED", not why. */
+export const labReportAmended = defineEvent("lab.report_amended", MODULE, z.object({
+  reportId: id, priorVersionId: id, orderId: id, version: z.number().int().positive(),
+  reasonCode: z.string().min(1), amendedBy: id,
+}));
+
+/* ──────────────────────── Sweeps and registers (T5, T9) ──────────────────────── */
+
+export const labSlaBreached = defineEvent("lab.sla_breached", MODULE, z.object({
+  orderItemId: id, orderId: id, stage: z.string().min(1), dueAt: iso, breachedAt: iso,
+  priority: z.string().min(1),
+}));
+
+/** 28a subscribes when the register exists. The FLAG is this phase's; the register is not. */
+export const labNotifiableFlagged = defineEvent("lab.notifiable_flagged", MODULE, z.object({
+  resultId: id, orderItemId: id, patientId: id, serviceId: id, analyteId: id,
+}));
+
+/**
+ * THE CATALOGUE OF THIS MODULE'S EVENTS, in one place, so `events.test.ts` can assert the grammar
+ * and the module tag over ALL of them rather than over the ones a reader remembered to list.
+ */
+export const LAB_EVENTS = [
+  labOrderDesked, labAttributionUnverifiedFlagged,
+  labLabelPrinted, labTubeMismatchFlagged, labSpecimenCollected, labSpecimenReceived,
+  labSpecimenRejected, labRecollectionRequested,
+  labResultEntered, labResultVerified, labResultCriticalFlagged, labCriticalAcknowledged,
+  labResultDeltaFlagged, labReflexAdded, labSodViolationBlocked,
+  labReportPublished, labReportPrintBlocked, labReportReleasedUnpaid, labReportPrinted,
+  labReportAmended,
+  labSlaBreached, labNotifiableFlagged,
+] as const;

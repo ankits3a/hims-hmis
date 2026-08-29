@@ -55,3 +55,11 @@ export * from "./desk";
 // Nothing above depends on it: a module that claims an order kind hangs its OWN tables off
 // `order_item_id` and never adds a column here.
 export * from "./orders";
+// PLAN 17 T1 — the central lab, LAST because it is downstream of FOUR of the files above:
+// `lab_orderables.service_id` → `tariff.services`, `lab_specimens.patient_id` → `patients`,
+// `lab_items` / `lab_results` / `lab_sla_breaches` → `orders.order_items`, and
+// `lab_items.invoice_id` / `invoice_line_id` → `billing.invoices` / `invoice_lines` (DD6 — the lab
+// posts its own money and the envelope holds none). Nothing above depends on it: these thirteen
+// tables are the lab's EXTENSION of the order envelope, keyed `order_item_id`, and phase 0 §8.1
+// forbids them adding a column to it.
+export * from "./lab";

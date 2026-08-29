@@ -127,8 +127,16 @@ describe("the resource kind seam (Plan 13 T2)", () => {
     // order: `resources` (the kernel five) then `materials` then `ot`. **THIS FILE IS NOT IN PLAN 15
     // T2's FILES LIST** — it pins a census that task moves, recorded as finding T2-f rather than
     // fixed silently, exactly as Plan 14 recorded its own F11 against `worker-runtime.e2e.test.ts`.
+    // PLAN 17 T2 / DD17 — NINE. The lab claims TWO (`bench`, `analyzer`), both already among the
+    // ten names this file closes and the `resources_kind_ck` CHECK enforces — Plan 13 DD4 reserved
+    // them for this plan — so the lab adds two VOCABULARIES and no kind, and edits neither
+    // `kinds.ts` nor `schema/resources.ts`. `analyzer` is written by nobody until 17-E;
+    // `modules/lab/kinds.ts` carries the argument for declaring it here anyway, which is the exact
+    // inverse of the OT's argument for leaving `device` unclaimed. **THIS FILE IS NOT IN PLAN 17
+    // T2's FILES LIST** — it pins a census that task moves, recorded as finding F6 rather than
+    // fixed silently, exactly as Plan 15 recorded T2-f and Plan 14 recorded F11.
     expect(collectResourceKinds(registryOf(...ALL_MANIFESTS)).map((d) => d.kind))
-      .toEqual(["floor", "ward", "hall", "room", "bed", "store", "theatre"]);
+      .toEqual(["floor", "ward", "hall", "room", "bed", "store", "theatre", "bench", "analyzer"]);
   });
 
   /**
@@ -202,7 +210,11 @@ describe("the resource kind seam (Plan 13 T2)", () => {
     // for a kind whose whole vocabulary is about being in use — would have created every theatre
     // occupied with no occupant. The close pass that added this guard said in as many words that
     // "Plan 15 is the first phase to write a declaration this file did not"; it was right.
-    expect(collectResourceKinds(registryOf(...ALL_MANIFESTS))).toHaveLength(7);
+    // NINE since Plan 17 T2 added `bench` and `analyzer`. `analyzer` is the SECOND shipped
+    // declaration that could have tripped this guard — its vocabulary is `in_use`-centred exactly
+    // as the theatre's is — and the third if you count that `bench`'s own `occupied` is the word
+    // `occupied`, which is the most natural thing to have written as an initial status.
+    expect(collectResourceKinds(registryOf(...ALL_MANIFESTS))).toHaveLength(9);
   });
 
   it("a manifest with no resourceKinds contributes nothing and is not an error", () => {

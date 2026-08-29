@@ -24,6 +24,7 @@ import {
   OT_IMPLANT_CONFIRMED_CONSUMER, OT_PATIENT_MERGED_CONSUMER, implantConfirmedConsumer, otManifest,
   patientMergedConsumer,
 } from "../../modules/ot";
+import { labManifest } from "../../modules/lab";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";
@@ -122,6 +123,24 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // kind-declaring manifests to reconcile rather than one — which is what makes that call a
         // live check in this process rather than a formality.
         registry.install(otManifest);
+        /**
+         * PLAN 17 T2 — THE LAB, INSTALLED IN THE WORKER because it carries two scheduler jobs
+         * (T5's `sweepLabNonReturn` and `sweepLabSla`) and no subscription at all. It is the
+         * `formulary` shape rather than the `ot` one: something to RUN, nothing to consume.
+         *
+         * It is also the FIRST manifest to declare `orderKinds`, so `collectOrderKinds` below is a
+         * live check in this process from this commit rather than a call over an empty set — a
+         * `seriesKey` outside `EPISODE_SERIES` or a `placePermission` no manifest declares now
+         * stops the WORKER's boot as well as the API's, which is the half phase 0 could not
+         * exercise because nothing claimed a kind.
+         *
+         * **Nothing in Plan 17 places an order from this process** (DD8): the reflex runs
+         * synchronously in the verifying transaction, in the API, because the worker registers no
+         * encounter resolver (phase 0 §6A.1). Both sweeps call `advanceOrderItem` and emit; neither
+         * resolves an encounter. A worker job that nonetheless called `placeOrder` would fail
+         * loudly with `unknown_encounter`, which is the right failure.
+         */
+        registry.install(labManifest);
         // ══ PLAN 13 CLOSE / M2's CARRY-FORWARD, CLOSED HERE (Plan 14 DD2, Spike Q6) ══
         //
         // This is `app.module.ts:73`'s line, in the process that did not have it. Plan 13's close

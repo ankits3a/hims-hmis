@@ -65,15 +65,15 @@ Every row is a command. **Re-run every row at kickoff**; Lane B may have moved r
 | 1 | migrations in the journal | **46** (`0000`–`0045`); this phase writes **`0046`** | `python3 -c "import json;j=json.load(open('apps/core/drizzle/meta/_journal.json'));print(len(j['entries']), j['entries'][-1]['tag'])"` → `46 0045_order_envelope_integrity` |
 | 2 | manifests installed | **17** `Manifest,` lines; `manifests.test.ts:144` pins `toHaveLength(17)` and `:113` the ordered key list | `grep -c 'Manifest,$' apps/core/src/kernel/modules/manifests.ts` |
 | 3 | claimed order kinds | **`[]`** — `kinds.test.ts:140` | `grep -n 'claims no order kind' apps/core/src/kernel/orders/kinds.test.ts` |
-| 4 | permission census | **111** declared (`seed-roles.test.ts:611`), reachability `111 = 91 held + 20 not yet modelled` (`:739`) | `grep -n 'toHaveLength(111)\|91 held' apps/core/test/seed-roles.test.ts` |
+| 4 | permission census | **111** declared (`seed-roles.test.ts:633` — was `:611`), reachability `111 = 91 held + 20 not yet modelled` (`:768`, was `:739`); **values unmoved by Lane B's `b657a66`, line numbers moved** | `grep -n 'toHaveLength(111)\|91 held' apps/core/test/seed-roles.test.ts` |
 | 5 | role census | **27** keys in `ROLE_MODEL`; `KNOWN_ROLE_KEYS` in `test/seed-staff.test.ts:136` says "twenty-seven" | `grep -c 'roleKey: "' apps/core/scripts/seed-roles.ts` |
-| 6 | places that COUNT the manifest list (§2.138) | 34 lines across ~20 files, excluding `dist/` | `grep -rn "ALL_MANIFESTS" apps/core --include=*.ts \| grep -v /dist/ \| grep -v 'manifests.ts:' \| wc -l` |
+| 6 | places that COUNT the manifest list (§2.138) | **88 lines across 31 files** (kickoff re-measure; the authoring figure of 34 was wrong, not moved) | `grep -rn "ALL_MANIFESTS" apps/core --include=*.ts \| grep -v /dist/ \| grep -v 'manifests.ts:' \| wc -l` |
 | 7 | `bench` / `analyzer` in the closed kind set, declared by nobody | present at `schema/resources.ts:87`; `grep -rn '"bench"' apps/core/src/modules --include=manifest.ts` → 0 | as stated |
 | 8 | `withIdempotency` | `modules/billing/idempotency.ts`, exported at `billing/index.ts:17`; `idempotency_keys` unique on `(actor_id, route, key)` | `grep -n 'withIdempotency' apps/core/src/modules/billing/index.ts` |
 | 9 | encounter-resolver registrants, and the worker | `opd.module.ts:59` exports `registerOpdEncounterResolver()`, `ot.module.ts:45` exports `registerOtEncounterResolver()`; `worker.module.ts` calls neither and has no `imports:` | `grep -rn 'export function register.*EncounterResolver' apps/core/src --include=*.ts` |
 | 10 | `PhiSurface` union | `kernel/phi/audit.ts:15`; `recordPhiAccess` at `:108`, never throws | `grep -n 'export type PhiSurface' apps/core/src/kernel/phi/audit.ts` |
 | 11 | `advised_tests` consumers in the SPA | `opd-consult.tsx:169`, `rx-print.tsx`; **no counter screen** | `grep -rln 'advisedTests' apps/web/src --include=*.tsx` |
-| 12 | web screens / router paths | **33** screen modules (66 files incl. tests) / **35** `path:` lines in `router.tsx` | `ls apps/web/src/screens \| grep -vc test; grep -c 'path:' apps/web/src/router.tsx` |
+| 12 | web screens / router paths | **35** screen modules (70 files incl. tests) / **35** `path:` lines in `router.tsx` (kickoff re-measure; the authoring figure of 33 was wrong, not moved) | `ls apps/web/src/screens \| grep -vc test; grep -c 'path:' apps/web/src/router.tsx` |
 | 13 | test files | core **286**, web **56** | `find apps/core/src apps/core/test -name '*.test.ts' \| wc -l; find apps/web/src -name '*.test.ts*' \| wc -l` |
 | 14 | `intendedPayer` vocabulary | `self \| tpa \| pmjay \| corporate` — `schema/opd.ts:237` | `grep -n 'intended_payer' apps/core/src/kernel/db/schema/opd.ts` |
 | 15 | OPD visit kinds | `walk_in \| appointment` (`opd/events.ts:59`); `openVisitInTx` takes `patientId, departmentId, doctorId` (`encounters.ts:34`) | `sed -n '34,40p' apps/core/src/modules/opd/encounters.ts` |
@@ -82,7 +82,7 @@ Every row is a command. **Re-run every row at kickoff**; Lane B may have moved r
 | 18 | private test databases | `db.ts:32-37` derives `<base>_<workerId>` from `TEST_DATABASE_URL` | `sed -n '31,38p' apps/core/test/helpers/db.ts` |
 | 19 | ledger §5 line / size | **1485** / **407,657 bytes** | `grep -n '^## 5' docs/superpowers/plans/reports/EXECUTION-LESSONS.md; wc -c …` |
 | 20 | `services` categories any seed creates | consultation, device, pharmacy, procedure, room_rent — **no `investigation`** | `grep -rhoE 'category: "[a-z_]+"' apps/core/scripts/*.ts \| sort -u` |
-| 21 | foreign files in the tree | `?? docs/design/` (another session's; not this lane's to stage) | `git status --porcelain` |
+| 21 | foreign files in the tree | `?? docs/design/` **and `?? .ci-watch.log`** (another session's; not this lane's to stage) | `git status --porcelain` |
 | 22 | approval-type shape | `ApprovalTypeSpec { typeKey, title, approverRole, urgencyClass?, actFirstAllowed? }` at `kernel/approvals/types.ts:39`; registration needs the `approval_<typeKey>` definition ACTIVE first | `sed -n '39,45p' apps/core/src/kernel/approvals/types.ts` |
 
 **Row 1 is the row Lane B will move.** Protocol §7: re-check `_journal.json` immediately before AND after `db:generate`, state the number taken in the commit message, and on a collision renumber YOURS — never the one already pushed.
@@ -428,9 +428,178 @@ A downstream plan may write its phase doc against these sentences without readin
 ## 9. CLOSE — filled at execution
 
 ### 9.0 Kickoff — the pre-flight, and §2 re-measured
+
+**Executed 2026-08-29 18:24 UTC on the build host, HEAD `dd6f869`, by the Lane A execution session.**
+
+**Parallel-session pre-flight** (protocol §2, run before the first change):
+
+| probe | result |
+|---|---|
+| `ps -eo pid,etimes,cmd \| grep -E "jest\|vitest\|deploy\.sh"` | **nothing** — no other suite running (the lines were read, not counted: §2.20) |
+| `git status --short` | `?? .ci-watch.log`, `?? docs/design/` — **both another session's; neither staged by this lane** |
+| `git log --oneline -5` / `git status -sb` | `## main...origin/main`, clean and current at `dd6f869` |
+| `ls apps/core/drizzle \| tail -3` | `0043`, `0044`, `0045` — **`0046` is free** |
+| `uptime` | load average **1.02** at kickoff |
+
+**Lane B's uncommitted work is GONE from the tree** — `seed-roles.ts`, `seed-roles.test.ts` and
+`privacy-write.test.ts` were committed as `b657a66` (the `mrd_officer` privacy-write ruling) before
+this session began, and `.g.log` / `.g.exit` were removed. Nothing of Lane B's is dirty at kickoff.
+
+**§2 re-measured, every row, with its own `how` command.** Rows 1, 2, 3, 5, 7–11, 13–20, 22 are
+UNMOVED. Four rows are corrected in place above:
+
+- **Row 1 — `0046` IS FREE.** 46 journal entries, last tag `0045_order_envelope_integrity`. Lane B
+  has not generated. This phase takes **`0046`**, re-checking `_journal.json` immediately before and
+  after `db:generate` (protocol §7).
+- **Row 4** — values unmoved (`111 = 91 held + 20 not yet modelled`); Lane B's `b657a66` moved the
+  LINE NUMBERS (`:611`→`:633`, `:739`→`:768`). A census pinned by line number is a census that
+  drifts; the greps below name identifiers instead.
+- **Row 6 — 88 lines across 31 files, not 34 across ~20.** The authoring measurement was wrong
+  rather than stale (the same command returns 88 today and nothing added 54 lines in a day). This
+  is the number T2's census sweep works from.
+- **Row 12 — 35 screen modules, not 33** (70 files including tests); the 35 `path:` lines are
+  unchanged, so T8 moves 35 → 39.
+- **Row 21** — `.ci-watch.log` joins `docs/design/` as a foreign untracked file.
+
+**The test database, named here and in every commit that cites a green run (§2.137, v3 §9.9 rule 8):**
+
+```
+export TEST_DATABASE_URL="postgres://hmis:hmis@localhost:5433/hmis_lane_a_scratch"
+```
+
+Jest appends `_<JEST_WORKER_ID>` (`test/helpers/db.ts:31-41`), so the real databases are
+`hmis_lane_a_scratch_1` … `hmis_lane_a_scratch_N`. They are dropped by explicit name in the CLOSE.
+
 ### 9.3 The spike answers (S1–S9), answered at kickoff, before T1
+
+Answered by reading code and one read-only production query. **Three change the work as the plan
+predicted (S1, S2, S9) and two more change it in ways the plan did not predict (S3, S7) — both are
+recorded as findings in §9.2 rather than absorbed silently.**
+
+**S1 — `issueInvoice` (`billing/invoices.ts:712`).**
+- Signature is **`issueInvoice(db: Db, actor, input, now?)` and it opens its OWN `withTx`** (`:760`).
+  It is NOT a `Tx`-first function. T4's "ONE transaction" is therefore achieved by handing it the
+  caller's transaction as `tx as unknown as Db` — drizzle's `transaction()` on a `Tx` opens a
+  SAVEPOINT inside it, so the invoice participates in the placement's transaction and a rollback of
+  the outer rolls back both. The cast is the shipped house pattern (`place.ts:296`,
+  `patients/registration.ts:408`, `materials/grn.ts:379`).
+- **It performs NO general permission check** — the route does. The ONLY `hasPermission` call in it
+  is in the credit lane (`:801`).
+- **An invoice with a remainder and no `credit` block is REFUSED** (`:783`, `credit_extension_required`):
+  a credit block without a non-empty `reason` "is not a credit block". The actor must hold
+  **`billing.credit.extend`** (`CREDIT_EXTEND_PERMISSION`, `invoices.ts:57`) and, above
+  `creditCapPaise`, a granted approval. **So DD6's lab-issued lines (reflex, add-on, walk-in) MUST
+  pass `credit: {reason}` AND their actor must hold `billing.credit.extend`** — which the seed
+  grants to `pathologist`, `lab_technician` and `lab_reception` in T2 (DD16 amended, §9.2 F2).
+- `settlementState` (`billing/settlement.ts:12`) is **PURE over three numbers and keyed on the
+  INVOICE, never the line**. The reader that feeds it is `invoiceSettlement(exec: Db | Tx, invoiceId)`
+  — exported from `modules/billing`, and it takes `Db | Tx`. **T7's `deliveryAllowed` is therefore
+  invoice-grained**: it blocks while ANY invoice carrying one of the order's lab lines is not
+  `settled`. That over-blocks on a partially-paid mixed invoice and never under-blocks, which is the
+  safe direction; it is stated in the CONTRACT rather than left to be discovered.
+- Refunds: **`issueCreditNote(db, actor, {kind:'refund', invoiceId, reason, lines:[{invoiceLineId, qty}]})`**,
+  permission `billing.credit_note.issue`. Same `Db`-first shape, same savepoint treatment.
+
+**S2 — the walk-in visit.** `opd_encounters.department_id` and `doctor_id` are **nullable in the
+schema** (`schema/opd.ts:232-233`) but `openVisitInTx` **requires both** and validates that the
+doctor is active, the department is active and `doctor.departmentId === dept.id`. `opd_departments`
+IS a master table (code-unique, `active`), so **the seed creates a `LAB` department and the
+pathologist-of-record as an `opd_doctors` row inside it** — that is DD6's "the pathologist is the
+visit's responsible doctor", and it is data, not code. `openVisitInTx` accepts
+`referralSource:'external_rmp'` + `referrerName` directly (`OpenVisitInput`), requires
+`actor.type === 'user'`, mints the `V` number, starts the OPD visit definition, and allocates a
+queue token in that doctor's session — the lab desk is a counter, so a token is correct.
+
+**S3 — the referrer.** `counterparties.payee_class` vocabulary is
+**`channel_partner | staff_internal | external_rmp`**; class (c) is `external_rmp`, and
+`accrual.ts:319` refuses a PAYABLE accrual to one outright (`payout_blocked`), which is 02 D9's
+"accrues nothing" enforced by a composite FK plus a CHECK rather than by policy. **`orders.external_referrer_id`
+carries NO foreign key** — it is `text` with a biconditional CHECK (`schema/orders.ts:136,169`) — so
+the sentinel needs no partners API, and there is none: counterparties are created by direct insert
+everywhere in this repo (no `createCounterparty` exists). **The `EXTERNAL_UNATTRIBUTED` sentinel is
+therefore a row the lab seed inserts** with `payeeClass:'external_rmp'`, `status:'active'`.
+**FINDING (§9.2 F1): `attribution.unverified_flagged` DOES NOT EXIST** — `modules/partners/events.ts`
+declares seven events and none of them is it. DD15's flag is emitted as the lab's own
+`lab.attribution_unverified_flagged`, appended to DD18's list.
+
+**S4 — the workflow engine checks the role itself.** `transition(tx, instanceId, to, actor, opts)`
+(`workflow/instances.ts:72`): a `user` actor **must hold one of the transition's declared roles**,
+a `system` actor bypasses the check, an `agent` is denied — the header states it and the code does
+it. So **the definitions carry `pathologist` on `verify`**, and T6's SoD guard is a SEPARATE,
+additional check, because "the verifier is not the enterer" is a fact about the RESULT ROW that no
+role list can express. The CAS is `workflow/instances.ts:136-157`, single-winner on
+`(id, status='active', current_state)`, `stale_transition` for the loser.
+
+**S5 — production, read-only** (`docker exec hmis-prod-db-1 psql -U hmis -d hmis -c "select …"`, no
+write, no `setsid`):
+
+| fact | value |
+|---|---|
+| `opd_encounters` | **13** |
+| encounters with a non-empty `advised_tests` | **0** |
+| `services` | **6**, of which category `investigation` = **1** (`SYN-LAB-CBC`, from the synthetic seed) |
+| `orders` | **0** |
+| `patients` | **24** |
+| `opd_departments` | 12 — **no `LAB`** |
+
+**The demand signal is empty in production today**, so T4's converter meets no orphan `serviceId` on
+day one; A5 still asserts the refusal, because the first real catalogue seed is exactly when an
+orphan becomes possible. §9.9 must create the `LAB` department — it does not exist.
+
+**S6 — `S` numbers.** `nextEpisodeNo(tx,'lab_specimen','2026-08-29')` → **`S2608290001`**
+(`formatEpisodeNo`, `episodes/series.ts:76`: letter + `YYMMDD` + 4 digits). `episode_series`'s key is
+`PRIMARY KEY (series_key, service_date)` and the allocator is a single-winner
+`UPDATE … RETURNING` whose returned value is the POST-increment counter. Inherited, not designed.
+
+**S7 — the notification template registry is CODE IN THE KERNEL, and this is the finding that
+changes T7's Files list.** `kernel/notify/templates.ts:48` is a literal
+`Record<string, NotificationTemplate>` with five entries; `templateByKey` **throws** for anything
+else; `enqueueNotification` calls it first, deliberately, so a typo dies at the enqueue. **There is
+no registration function** — `grep -rn 'notificationTemplates|registerTemplate' apps/core/src`
+returns only the definition, `templateByKey` and the census test. A module cannot register a
+template, so `modules/lab/notify-templates.ts` as the phase document imagined it **cannot exist**.
+**FINDING (§9.2 F3): T7 requires a FOURTH kernel edit** — `patient_lab_report_ready` appended to
+`kernel/notify/templates.ts` plus its key in `templates.test.ts:20`'s sorted census. It is the same
+class of append as the `PhiSurface` union (kernel edit 1), it is named in T7's commit message, and
+the template is patient-audience, transactional, **token-only: no result values, no analyte names**
+(02 J3 / R-020). There is no report deep link before 22c-F, so the body says where to collect.
+
+**S8 — the A4 design EXISTS and is UNCOMMITTED.** `docs/design/2026-08-29-opd-counter-flow/ReportA4.dc.html`
+(plus `PrescriptionA4.dc.html`) is on disk in the untracked `docs/design/` tree — **another
+session's, and this lane never stages it**. T8 may READ it for the print component's layout; if it
+is still untracked at T8, `components/rx-print.tsx` is the committed precedent and the layout is
+copied from the design by eye, with no file of that tree in this phase's diff.
+
+**S9 — a reflex order NEEDS an `ordering_clinician_id`, and the verifying pathologist is it.**
+`place.ts:126` checks `decl.requiresClinician && !input.orderingClinicianId` **for every actor
+type**, AFTER `resolveAuthority` has already accepted the `system` actor's `protocolRef`. The two
+guards are independent: `system` supplies `protocol_ref` (`place.ts:277`) and STILL owes the
+clinician column, because the kind declares `requiresClinician: true`. So DD8's reflex placement
+passes `orderingClinicianId = the verifying pathologist's user id` — the doctor answerable for the
+added test — and that is read from the code, not remembered.
+
 ### 9.1 The commits
 ### 9.2 Findings
+
+**F1 — `attribution.unverified_flagged` does not exist (spike S3).** DD15 says the desk emits it and
+`modules/partners/events.ts` declares no such event (seven events, none of them this). The lab emits
+its own `lab.attribution_unverified_flagged` instead, appended to DD18's list. The alternative —
+declaring an event in another module's namespace — would put a `partners.*` name in the lab's
+manifest, which is the kind of cross-module reach `modules/billing`'s index header forbids.
+
+**F2 — the lab roles need `billing.credit.extend` (spike S1).** DD6 has the lab issue unpaid
+invoices for reflex, add-on and walk-in lines. `issueInvoice` refuses a remainder without a `credit`
+block AND requires the ACTOR to hold `billing.credit.extend`. DD16's grant list is amended: the
+three lab roles that can create an unpaid lab line (`pathologist`, `lab_technician`,
+`lab_reception`) hold it. This is a grant of an EXISTING billing permission to new roles, not a new
+permission, and it is named in T2's commit message.
+
+**F3 — T7 needs a fourth kernel edit: the notification template (spike S7).** The template registry
+is a closed literal in `kernel/notify/templates.ts` with no registration seam, so
+`modules/lab/notify-templates.ts` cannot exist as the phase document wrote it. `patient_lab_report_ready`
+is appended to the kernel registry and to `templates.test.ts`'s sorted census. Disclosed here rather
+than absorbed: the plan says three kernel edits and the true number is four.
+
 ### 9.4 The Assertion Book, corrected by execution
 ### 9.5 Mechanical verification — name the `TEST_DATABASE_URL` database of every run claimed (§2.137)
 ### 9.6 The independent close review (pass 1, fresh) and 9.6.2 (pass 2, fresh, over the fixes, verdict per fix)

@@ -18,6 +18,7 @@ import { partnersManifest } from "../../modules/partners";
 import { formularyManifest } from "../../modules/formulary";
 import { materialsManifest } from "../../modules/materials";
 import { otManifest } from "../../modules/ot";
+import { labManifest } from "../../modules/lab";
 
 /**
  * Plan 11d / D2, Book row V4 — `ALL_MANIFESTS` is the ONE list, and a manifest installed outside
@@ -65,6 +66,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   formularyManifest,
   materialsManifest,
   otManifest,
+  labManifest,
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -109,7 +111,7 @@ function manifestKeys(identifiers: string[], label: string): string[] {
 }
 
 describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
-  it("declares exactly seventeen manifests, by key, in app.module.ts's original install order", () => {
+  it("declares exactly eighteen manifests, by key, in app.module.ts's original install order", () => {
     expect(ALL_MANIFESTS.map((m) => m.key)).toEqual([
       "auth",
       "workflow",
@@ -140,13 +142,17 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // Kernel code carrying a manifest, the `resources`/`desk` shape: the four `orders.*` strings
       // are declared here or no role can ever hold them.
       "orders",
+      // PLAN 17 T2 — appended, so the seventeen above keep the order they were installed in. It is
+      // the FIRST manifest to claim an order kind (`lab`), which is phase 0's contract taken up
+      // with one field and no kernel edit.
+      "lab",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(17);
+    expect(ALL_MANIFESTS).toHaveLength(18);
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(17);
+    expect(registry.all()).toHaveLength(18);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -285,7 +291,12 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // handler in the SAME commit as its install — the four before it shipped `subscriptions: []`
       // first — because the plan requires the real merge consumer at T2 rather than a stub.
       "ot",
+      // PLAN 17 T2 — installed in BOTH, and it is the `formulary` shape rather than the `ot` one:
+      // two scheduler jobs (T5's non-return and SLA sweeps) and NO subscription at all. It is also
+      // the first manifest in either process to declare `orderKinds`, so `collectOrderKinds` in
+      // `worker.module.ts` is a live check from this commit rather than a call over an empty set.
+      "lab",
     ]);
-    expect(workerKeys).toHaveLength(12);
+    expect(workerKeys).toHaveLength(13);
   });
 });

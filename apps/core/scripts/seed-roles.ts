@@ -198,6 +198,30 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // with the desk — a doctor does not create the record, they act on it.
       "patients.read",
       "patients.update",
+      /**
+       * ═══ PLAN 17 T2 / DD16 — THE DOCTOR ORDERS, AND THE DOCTOR READS ═══
+       *
+       * `advised_tests` (07d) is a SUGGESTION the counter converts; this is the doctor placing the
+       * order themselves. Both halves of the gate are granted together — `orders.place` is useless
+       * alone by design (`placeOrder` requires the kernel permission AND the kind's own, so holding
+       * one makes a pharmacist no imaging requester) and `lab.orders.place` is unreachable without
+       * it.
+       *
+       * **`lab.results.read` is the safety grant of this whole phase.** DD6's interlock holds a
+       * PRINTED report until a self-pay balance settles; it never holds a clinician's read, and
+       * `listResultsForEncounter` returns verified results for an unpaid order (T7 A3). That rule
+       * needs a permission the doctor can hold WITHOUT being able to key or sign a result, which is
+       * why `lab.results.read` is separate from `.enter` and `.verify`.
+       *
+       * `orders.cancel` rides with them: the doctor who ordered a test is the person who calls it
+       * off, and phase 0 parked that string for "the departmental decision" this plan now makes.
+       */
+      "lab.orders.place",
+      "lab.results.read",
+      "lab.catalogue.read",
+      "orders.place",
+      "orders.read",
+      "orders.cancel",
     ],
   },
   {
@@ -301,6 +325,20 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "billing_manager",
     permissions: [
+      /**
+       * PLAN 17 T2 / DD6 — **THE INTERLOCK'S OVERRIDE, AND IT LIVES HERE RATHER THAN IN THE LAB.**
+       *
+       * A held report is a self-pay balance the hospital has not collected. Releasing it anyway is
+       * a decision to carry that receivable, which is this office's decision and not the
+       * pathologist's — and the pathologist is the person standing in front of the patient asking.
+       * The approval type `lab_release_unpaid` names this same role as its approver, so the ask and
+       * the answer are the same desk by design.
+       *
+       * **The release writes no credit note and moves no dues row** (T7 A4): the money was already
+       * a receivable before it and is the same receivable after. A release that quietly wrote off
+       * the balance would make the interlock a discount mechanism, which is 02 O-1's opposite.
+       */
+      "lab.reports.release_unpaid",
       /**
        * ═══ PLAN 07b O-1, ANSWERED BY THE OWNER 2026-08-29: THE BILLING MANAGER COVERS ═══
        *
@@ -710,11 +748,24 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ot.counts.record",
       "ot.recovery.operate",
       "ot.discharge",
+      // PLAN 17 T2 / DD16 — the pre-op panel. A day-care case's fitness bloods are ordered from the
+      // theatre, not from an OPD chair, and the booking coordinator is who does it. Both halves of
+      // the gate together, for the reason the `doctor` row above gives at length.
+      "lab.orders.place",
+      "lab.catalogue.read",
+      "orders.place",
+      "orders.read",
     ],
   },
   {
     roleKey: "surgeon",
-    permissions: ["ot.cases.read", "ot.definitions.read", "ot.gates.override", "ot.cockpit.operate"],
+    permissions: [
+      "ot.cases.read", "ot.definitions.read", "ot.gates.override", "ot.cockpit.operate",
+      // PLAN 17 T2 / DD16 — the surgeon orders the pre-op panel and reads it. NOT `orders.cancel`:
+      // calling off a lab order the coordinator placed is the coordinator's act, and the surgeon
+      // asking for it is one message rather than one permission.
+      "lab.orders.place", "lab.results.read", "lab.catalogue.read", "orders.place", "orders.read",
+    ],
   },
   {
     roleKey: "anaesthetist",
@@ -734,6 +785,113 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "daycare_coordinator",
     permissions: ["ot.cases.read", "ot.cases.book", "ot.cases.cancel", "ot.gates.satisfy", "ot.list.manage", "ot.definitions.read"],
+  },
+  // ══════════════ PLAN 17 T2 / DD16 — THE LABORATORY'S FOUR ROLES ══════════════
+  //
+  // S10 cards 16 (`pathologist`), 17 (`lab_technician`) and 36 (`phlebotomist`), plus the counter
+  // role the brainstorm calls lab reception. Four separations decide every row below, and each one
+  // is a rule the module ENFORCES rather than a preference:
+  //
+  //   1. **`lab.results.verify` is the pathologist's alone.** DD11's SoD is enforced per RESULT ROW
+  //      (`verified_by <> entered_by`), not by role — but a technologist who could verify would make
+  //      the row-level check the ONLY thing standing between a keyed number and a signed report, and
+  //      one person with two logins would defeat it. The role separation and the row check are two
+  //      controls on one risk, deliberately.
+  //   2. **`lab_reception` holds NO `lab.results.*` at all.** It is a counter: it orders, bills,
+  //      prints and hands over. A front-office login that could read every result in the building
+  //      is exactly the confidentiality hole `restricted` and the alias rule exist to close, and
+  //      granting `lab.results.read` "for convenience" would open it at the busiest desk.
+  //   3. **`phlebotomist` reads the worklist and touches no result.** The chair needs to know WHO
+  //      is next and WHAT tube; it never needs a number.
+  //   4. **`lab.reports.release_unpaid` goes to `billing_manager` and to nobody in the lab.** The
+  //      interlock collects a self-pay balance (DD6); the decision to hand the document over anyway
+  //      is a decision to carry a receivable, and that is the money office's to make. The lab asks;
+  //      billing answers. See `modules/lab/approval-types.ts`.
+  //
+  // ═══ `billing.credit.extend` ON THREE OF THE FOUR, AND IT IS A MEASUREMENT, NOT A PREFERENCE ═══
+  //
+  // Spike S1, read from `modules/billing/invoices.ts:783,801`: `issueInvoice` REFUSES an invoice
+  // that would leave a remainder unless the caller passes `credit: {reason}` AND **holds
+  // `billing.credit.extend`**. DD6 has the lab issue exactly such invoices for the three lines the
+  // counter never sees — reflex (T6), add-on (T4) and walk-in accession (T5) — so without this
+  // grant those three paths throw `credit_permission_required` at the bench, at the chair and in the
+  // verifying transaction. `phlebotomist` does not get it: nothing that role does creates a line.
+  //
+  // This is a grant of an EXISTING billing permission to new roles, not a new permission, and it is
+  // recorded as finding F2 of this phase because DD16 did not predict it.
+  {
+    roleKey: "pathologist",
+    permissions: [
+      // The lab's clinical head curates the catalogue: the range book, the critical bands and the
+      // reflex rules are clinical documents, and NABL asks who signed them off.
+      "lab.catalogue.read",
+      "lab.catalogue.manage",
+      "lab.worklist.read",
+      "lab.accession.operate",
+      "lab.results.enter",
+      "lab.results.verify",
+      "lab.results.read",
+      "lab.criticals.close",
+      "lab.reports.publish",
+      "lab.reports.print",
+      "lab.reports.amend",
+      // The pathologist of record is the responsible clinician on a walk-in (DD15) and places the
+      // add-on the doctor asks for at the chair (DD9). The kernel half and the kind's half are
+      // granted together, which phase 0's own NOT_YET_MODELLED entry calls "the only moment either
+      // of them means anything".
+      "lab.orders.place",
+      "orders.place",
+      "orders.read",
+      "orders.cancel",
+      "billing.credit.extend",
+    ],
+  },
+  {
+    roleKey: "lab_technician",
+    permissions: [
+      "lab.catalogue.read",
+      "lab.worklist.read",
+      "lab.accession.operate",
+      "lab.results.enter",
+      "lab.results.read",
+      // DD12 — the tech OPENS the critical call at entry and closes it on the read-back. The
+      // 15-minute clinical need is the call, not the signature: a ladder that could only be closed
+      // by a pathologist would sit open all night in the very case it exists for (02 F1).
+      "lab.criticals.close",
+      "orders.read",
+      // T5's walk-in accession with no prior invoice bills on credit — see the header above.
+      "billing.credit.extend",
+    ],
+  },
+  {
+    roleKey: "phlebotomist",
+    permissions: ["lab.catalogue.read", "lab.worklist.read", "lab.collection.operate", "orders.read"],
+  },
+  {
+    roleKey: "lab_reception",
+    permissions: [
+      "lab.desk.operate",
+      "lab.catalogue.read",
+      "lab.worklist.read",
+      "lab.orders.place",
+      "lab.reports.print",
+      "orders.place",
+      "orders.read",
+      "orders.cancel",
+      // The front-office half: the desk registers the walk-in who arrives with an outside slip
+      // (DD15) and searches for the patient the doctor advised tests for.
+      "patients.register",
+      "patients.read",
+      "patients.update",
+      // The cashier half: DD6 posts the money AT ORDER TIME, at this counter, in the placement
+      // transaction. A desk that could place but not bill would be the split that makes the
+      // interlock necessary in the first place.
+      "billing.invoice.issue",
+      "billing.invoice.read",
+      "billing.receipt.record",
+      "billing.session.own",
+      "billing.credit.extend",
+    ],
   },
 ];
 
@@ -816,28 +974,26 @@ export const NOT_YET_MODELLED: readonly NotYetModelled[] = [
   //
   // Each string gets its holder from the plan that gives it a surface: 17 grants `orders.place`
   // and `orders.read` beside its own `lab.orders.place`; 18a does the same for imaging.
-  {
-    permission: "orders.place",
-    reason:
-      "PLAN 17 PHASE 0 — the kernel half of the placement gate, and it is USELESS ALONE by " +
-      "design: a caller needs this AND the kind's own permission (`lab.orders.place`), and no " +
-      "manifest claims a kind yet. Plan 17 T2 grants the pair together, which is the only " +
-      "moment either of them means anything",
-  },
-  {
-    permission: "orders.read",
-    reason:
-      "PLAN 17 PHASE 0 — the cross-kind readers exist and no screen calls them: this phase adds " +
-      "no route and the doctor cockpit still writes `advised_tests`. The ward's pending-" +
-      "investigations list is Plan 17's own, and it is the plan that should decide who reads it",
-  },
-  {
-    permission: "orders.cancel",
-    reason:
-      "PLAN 17 PHASE 0 — declared here and enforced by the CLAIMING MODULE's route, never by " +
-      "`advanceOrderItem`. Who among the staff may call off a lab order versus an imaging order " +
-      "is a departmental decision, and a kernel grant would be a second authority on it",
-  },
+  // ─────────── PLAN 17 T2 — THREE OF THE FOUR `orders.*` STRINGS LEFT THIS LIST ───────────
+  //
+  // `orders.place`, `orders.read` and `orders.cancel` are GRANTED as of this commit, exactly as
+  // phase 0's own entries above predicted: *"Each string gets its holder from the plan that gives
+  // it a surface: 17 grants `orders.place` and `orders.read` beside its own `lab.orders.place`."*
+  // The pair is granted together because `placeOrder` requires BOTH, so either alone is authority
+  // over nothing. `orders.cancel` goes with them under the same entry's own rule — *"a departmental
+  // decision"* — and Plan 17 is the department making it: `doctor`, `pathologist` and
+  // `lab_reception` may call off a lab order, and nobody else can.
+  //
+  // Holders as of this commit: `doctor`, `pathologist`, `lab_reception` (all three strings);
+  // `lab_technician`, `phlebotomist`, `surgeon`, `ot_incharge` (read, and place for the two OT
+  // roles' pre-op panel).
+  //
+  // **`orders.read.restricted` STAYS**, and it is the one that matters: it is the Class-A grant
+  // phase 0 handed to the owner, and this phase deliberately does not take it. Nothing in Plan 17
+  // needs it — the lab's own worklists read the lab's own tables, and the ordering clinician
+  // already sees their own restricted item through `read.ts`'s clinician leg. Granting it to run a
+  // bench would decide, without anyone noticing, that a role may read every restricted
+  // investigation in the building.
   {
     permission: "orders.read.restricted",
     reason:
@@ -952,6 +1108,17 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // something else, the TITLE changes here and the key does not.
   staff_auditor: "Staff Auditor (reads a named colleague's figures, and may open the patient rows behind them)",
   daycare_coordinator: "Day-care Coordinator (books cases, chases gates, publishes the list)",
+  // PLAN 17 T2 / DD16, 2026-08-29. None of the four is an OPD station — a bench is not a consulting
+  // room — so none is in `OPD_ROLE_KEYS`. The KEYS are 02 S10's names (cards 16, 17 and 36) and are
+  // what the code matches on: the `lab_item` definition's `verify` transition declares
+  // `pathologist`, and DD11's SoD refusal reads `entered_by` rather than a role. If the owner's org
+  // chart says "Chief Pathologist" or "Lab Front Desk", the TITLE changes here and the key does not
+  // — a key rename would orphan every `role_assignments` row and every `role_permissions` grant
+  // already written against it.
+  pathologist: "Pathologist (verifies and signs reports; the only role that may release a result)",
+  lab_technician: "Lab Technician (accessions, runs the bench and keys results; never verifies)",
+  phlebotomist: "Phlebotomist (calls the queue, scans the patient, draws and labels the tube)",
+  lab_reception: "Lab Reception (orders, bills, prints and hands over; reads no result)",
 };
 
 /** The title for a model role key. Throws rather than inventing one — an unresolved role is a defect. */

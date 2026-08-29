@@ -136,11 +136,29 @@ describe("the order kind seam (Plan 17 phase 0 T2)", () => {
      * envelope has no consumers yet" MEANS, and the day it stops being empty a reviewer sees which
      * plan claimed what. `medication` (Plan 16) and `package` (Plan 26) are reserved by NAME in the
      * contract and by nobody in code; this is where that becomes checkable.
+     *
+     * ═══ PLAN 17 T2 — **KERNEL EDIT 3 OF 4: THE DAY IT STOPPED BEING EMPTY.** ═══
+     *
+     * `labManifest` claims `lab`, and this line is the whole visible consequence of phase 0's
+     * "ONE manifest field" contract being taken up. The DECLARATION is asserted rather than just
+     * the name, because the four booleans are what a placing caller is bound by: a `requiresClinician`
+     * that silently flipped would let a walk-in be ordered with no doctor answerable for it.
+     *
+     * **18a appends `imaging` here and rebases if it lands second** (phase document §5 T2). The
+     * order is manifest INSTALL order, so a second claimant lands after `lab` rather than anywhere
+     * else. `medication` and `package` stay unclaimed.
      */
-    it("ALL_MANIFESTS claims no order kind today — the contract's reserved names are unclaimed", () => {
+    it("ALL_MANIFESTS claims exactly one order kind today: the lab's", () => {
       const registry = new ModuleRegistry();
       for (const m of ALL_MANIFESTS) registry.install(m);
-      expect(collectOrderKinds(registry)).toEqual([]);
+      expect(collectOrderKinds(registry)).toEqual([{
+        kind: "lab",
+        seriesKey: "lab_order",
+        placePermission: "lab.orders.place",
+        requiresClinician: true,
+        requiresIndication: false,
+        selfOrderable: false,
+      }]);
     });
   });
 

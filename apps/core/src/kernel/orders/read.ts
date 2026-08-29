@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, inArray, ne } from "drizzle-orm";
 import { hasPermission } from "../auth/permissions";
+import { recordPhiAccess } from "../phi/audit";
 import { orderItems, orders, patients } from "../db/schema";
 import { displayName } from "../../modules/patients/display-name";
 import { OrderError } from "./errors";
@@ -286,6 +287,33 @@ export async function listOrdersForPatient(
     .select().from(orders).where(where)
     .orderBy(desc(orders.placedAt));
 
+  /**
+   * ═══ PLAN 17 T2 — **KERNEL EDIT 2 OF 4: THE READER LOGS.** (phase 0 §6A.8, paid here) ═══
+   *
+   * Phase 0 shipped these readers logging nothing and said so: *"This repository logs at the
+   * READER, not the controller … the honest fix is one `recordPhiAccess` call inside `read.ts`, and
+   * it is left to the plan that mounts the first route."* Plan 17 T8 mounts them, so the row is
+   * written here rather than in a controller — which is the whole reason the rule is "at the
+   * reader": a second caller (18a's screens, 22c-F's app, 24a's rider) inherits the log by calling
+   * the function, and cannot forget it.
+   *
+   * **It is written for every ACCEPTED read, including one that returns nothing.** `clearanceOf`
+   * has already refused a `patient` and an `agent` actor above, so anything reaching this line is
+   * staff or the application's own automation, and "who looked at this patient's investigation
+   * list" is the question the log answers whether or not the list was empty. A per-read row rather
+   * than a deduplicated one, for the same reason `opd.rx_history` writes one per open: two reads
+   * are two disclosures.
+   *
+   * `recordPhiAccess` NEVER THROWS (its own header: the read is the priority and a broken log must
+   * not withhold an allergy list from someone holding a syringe), so this cannot fail a read.
+   */
+  await recordPhiAccess(exec as Db, {
+    actor,
+    patientId,
+    surface: "orders.patient",
+    sealed: patient?.isConfidential ?? false,
+  });
+
   return {
     patientDisplayName: patient ? displayName(patient, clearance.canSeeConfidential) : "—",
     orders: (await assemble(exec, headers, clearance)).slice(0, limit),
@@ -303,6 +331,27 @@ export async function listOrdersForEncounter(
     .select().from(orders)
     .where(eq(orders.encounterNo, encounterNo))
     .orderBy(desc(orders.placedAt));
+  /**
+   * THE SAME ROW, FROM THE OTHER READER — and the patient comes from the ROWS rather than from a
+   * parameter, because this reader has none. An encounter with no orders discloses nothing about a
+   * person this function can name, so there is nothing to log and no row is written: that is a
+   * property of the query, not an exemption. `encounterId` is carried so an audit can tell a
+   * visit-scoped read from the patient-wide one above.
+   */
+  const subject = headers[0];
+  if (subject) {
+    const [sealedRow] = await (exec as Db)
+      .select({ isConfidential: patients.isConfidential })
+      .from(patients)
+      .where(eq(patients.id, subject.patientId));
+    await recordPhiAccess(exec as Db, {
+      actor,
+      patientId: subject.patientId,
+      surface: "orders.patient",
+      encounterId: encounterNo,
+      sealed: sealedRow?.isConfidential ?? false,
+    });
+  }
   return assemble(exec, headers, clearance);
 }
 

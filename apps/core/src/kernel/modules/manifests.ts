@@ -16,6 +16,7 @@ import { formularyManifest } from "../../modules/formulary";
 import { resourcesManifest } from "../resources/manifest";
 import { materialsManifest } from "../../modules/materials";
 import { otManifest } from "../../modules/ot";
+import { labManifest } from "../../modules/lab";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -131,4 +132,22 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // claimed by Plan 17's lab module, 18a's radiology, 26's packages — none of which edits this
   // file, because a kind is a manifest field and not a list entry.
   ordersManifest,
+  /**
+   * PLAN 17 T2 — the central lab, appended so the seventeen above keep the order they were
+   * installed in. **It is the first manifest to CLAIM an order kind** (`lab`), which is phase 0's
+   * whole contract taken up: one field, no kernel edit, `collectOrderKinds` returns one declaration
+   * in both processes from this commit onward.
+   *
+   * Installed in BOTH processes, the `materials` and `ot` case exactly: it carries two scheduler
+   * jobs (T5's non-return and SLA sweeps), so the worker has something to run and the worker's
+   * difference from this list stays SIX — `lab` appears on neither side of it (manifests.test.ts
+   * leg 3). It declares `subscriptions: []`; see `modules/lab/events.ts` for why the lab consumes
+   * nothing, `patient.merged` included.
+   *
+   * It is the THIRD manifest to carry `resourceKinds` and it claims TWO — `bench` and `analyzer`,
+   * both already among the ten in `kernel/resources/kinds.ts` (Plan 13 DD4 reserved them for this
+   * plan), so this adds a VOCABULARY and no kind. `analyzer` is written by nobody until 17-E, and
+   * `modules/lab/kinds.ts` says why it is nonetheless declared here.
+   */
+  labManifest,
 ];

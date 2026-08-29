@@ -25,10 +25,20 @@ describe("the order envelope's parity pins", () => {
    * today, and whether it becomes an order is 16's decision on 16's evidence) and `package` to Plan
    * 26. Nothing in the code forbids claiming them; this list is what makes claiming them visible.
    */
-  it("no installed manifest claims an order kind today — the reserved names are unclaimed", () => {
+  /**
+   * AMENDED BY PLAN 17 T2 — **THE SECOND CLAIMED-KIND CENSUS, AND THE PHASE DOCUMENT NAMED ONLY THE
+   * FIRST** (finding F5). `kinds.test.ts:140` was in T2's Files list; this one was not, and it pins
+   * the same fact. It was found by the §2.138 list-grep (`ALL_MANIFESTS`), which is exactly the
+   * search that rule exists for: no grep for a SIBLING's name could have found either, because
+   * both derive from the list instead of naming a member of it.
+   *
+   * `medication` (Plan 16) and `package` (Plan 26) stay reserved by name and claimed by nobody;
+   * 18a appends `imaging` and rebases if it lands second.
+   */
+  it("exactly one installed manifest claims an order kind today: the lab's", () => {
     const registry = new ModuleRegistry();
     for (const m of ALL_MANIFESTS) registry.install(m);
-    expect(collectOrderKinds(registry)).toEqual([]);
+    expect(collectOrderKinds(registry).map((d) => d.kind)).toEqual(["lab"]);
   });
 
   /**

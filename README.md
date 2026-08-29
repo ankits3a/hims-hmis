@@ -1075,6 +1075,58 @@ string to a role that does not exist would make it a permission nobody can ever 
 roles are created by `seed:roles` with grants and **no holders**, the `pharmacy` and `storekeeper`
 precedent.
 
+**Permissions (Plan 17 / DD16): fifteen strings across four new laboratory roles, and four
+separations that are the point of the module.** `lab.results.verify` is the `pathologist`'s alone:
+DD11's separation of duties is enforced per RESULT ROW (`verified_by <> entered_by`), and a
+technologist who could verify would make that row check the only thing between a keyed number and a
+signed report. `lab_reception` holds NO `lab.results.*` at all — it is a counter that orders, bills,
+prints and hands over, and a front-office login able to read every result in the building is exactly
+the hole `restricted` and the alias rule exist to close. `phlebotomist` reads the worklist and
+touches no result: the chair needs to know who is next and which tube, never a number.
+`lab.reports.release_unpaid` is held by `billing_manager` and by nobody in the lab, because
+releasing a held report is a decision to carry a receivable and that is the money office's to make.
+
+| Permission | pathologist | lab_technician | phlebotomist | lab_reception |
+|---|---|---|---|---|
+| `lab.catalogue.read` | ✓ | ✓ | ✓ | ✓ |
+| `lab.catalogue.manage` | ✓ | | | |
+| `lab.worklist.read` | ✓ | ✓ | ✓ | ✓ |
+| `lab.desk.operate` | | | | ✓ |
+| `lab.collection.operate` | | | ✓ | |
+| `lab.accession.operate` | ✓ | ✓ | | |
+| `lab.results.enter` | ✓ | ✓ | | |
+| `lab.results.verify` | ✓ | | | |
+| `lab.results.read` | ✓ | ✓ | | |
+| `lab.criticals.close` | ✓ | ✓ | | |
+| `lab.reports.publish` | ✓ | | | |
+| `lab.reports.print` | ✓ | | | ✓ |
+| `lab.reports.amend` | ✓ | | | |
+| `lab.orders.place` | ✓ | | | ✓ |
+
+Thirty-four grants are held outside that table. **`doctor` gains `lab.orders.place`,
+`lab.results.read` and `lab.catalogue.read`** — the doctor orders the test and reads the result, and
+`lab.results.read` is the safety grant of the whole phase: the delivery interlock holds a printed
+report until a self-pay balance settles and NEVER holds a clinician's read, which needs a permission
+a doctor can hold without being able to key or sign anything. **`surgeon` and `ot_incharge` gain
+`lab.orders.place` and `lab.catalogue.read`** (and `surgeon` also `lab.results.read`) for the
+pre-op panel, which is ordered from the theatre rather than from an OPD chair. **`billing_manager`
+gains `lab.reports.release_unpaid`**, as above. And the KERNEL's `orders.place`, `orders.read` and
+`orders.cancel` are granted for the first time — to `doctor`, `pathologist` and `lab_reception` in
+full, and to `lab_technician`, `phlebotomist`, `surgeon` and `ot_incharge` in part — because
+`placeOrder` requires the kernel permission AND the kind's own, so either alone is authority over
+nothing. **`orders.read.restricted` is deliberately NOT granted and stays the owner's Class-A
+decision**: it buys the HIV order and the exposure-protocol source test that the ward's list omits,
+and handing it out with `orders.read` would decide, without anyone noticing, that a role may read
+every restricted investigation in the building. `lab_reception` also carries the front-office and
+cashier strings its counter needs — `patients.register/read/update`, `billing.invoice.issue`,
+`billing.invoice.read`, `billing.receipt.record`, `billing.session.own` — because DD6 posts the
+money at ORDER time at that desk, and a desk that could place but not bill would be the split the
+interlock exists to compensate for. `pathologist`, `lab_technician` and `lab_reception` each hold
+**`billing.credit.extend`**, which is a measurement rather than a preference: `issueInvoice` refuses
+an invoice leaving a remainder unless the caller holds it, and DD6 has the lab issue exactly such
+invoices for the reflex, add-on and walk-in lines the counter never sees. All four new roles are
+created by `seed:roles` with grants and **no holders**, the `pharmacy` and `storekeeper` precedent.
+
 **Plan 07c T9 / DD14 — who may open the patient rows (owner ruling, 2026-08-29).** A new role,
 `staff_auditor`, carries `staff.reports.read` AND `staff.reports.drill`, and it is assigned to **one
 named person**. The obvious shortcut was to add the drill to `duty_manager`, which that person

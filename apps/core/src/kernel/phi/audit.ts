@@ -25,7 +25,26 @@ export type PhiSurface =
    * left. That is a materially larger read and an audit log that could not tell the two apart would
    * answer "what did they actually see" wrong, which is the only question it exists for.
    */
-  | "opd.rx_history" | "opd.vitals_history";
+  | "opd.rx_history" | "opd.vitals_history"
+  /**
+   * PLAN 17 T2 — **KERNEL EDIT 1 OF 4, and it is an APPEND to a union.**
+   *
+   * `orders.patient` is the ENVELOPE's own reader, and phase 0 §6A.8 left it owed in as many
+   * words: *"The readers do NOT record PHI access … `listOrdersForPatient` returns a patient's
+   * investigation list and display name and logs nothing … the honest fix is one `recordPhiAccess`
+   * call inside `read.ts`, and it is left to the plan that mounts the first route because the
+   * audit row wants a `purpose` this phase has no caller to supply."* Plan 17 is that plan: T8
+   * mounts the first routes over these readers, so the debt is paid at the task that incurs it.
+   *
+   * `lab.results` and `lab.report` are the LAB's two reads, and they are two names rather than one
+   * for the reason `opd.rx_history` is not `opd.prescriptions`: a worklist read of unverified
+   * numbers by a technologist and a signed report handed to a counter are materially different
+   * disclosures, and a log that could not tell them apart would answer "what did they actually
+   * see" wrong — the only question it exists for.
+   *
+   * **18a appends `radiology.*` and rebases if it lands second** (phase document §6.10).
+   */
+  | "orders.patient" | "lab.results" | "lab.report";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

@@ -133,7 +133,7 @@ function row(
 }
 
 describe("seed:staff — the census, stated before anything is compared (§2.49)", () => {
-  it("KNOWN_ROLE_KEYS is the twenty-seven keys some seed script in this tree can create", () => {
+  it("KNOWN_ROLE_KEYS is the thirty-one keys some seed script in this tree can create", () => {
     expect(KNOWN_ROLE_KEYS).toEqual([
       "admin",
       // PLAN 15 / DD14, 2026-08-28 — the six OT roles arrive for FREE by the same derivation, and
@@ -153,6 +153,16 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "duty_manager",
       "front_office",
       "front_office_supervisor",
+      // PLAN 17 T2 / DD16, 2026-08-29 — the LAB's four, arriving by the same DERIVATION as the six
+      // OT roles above and landing in four different places in this sorted list rather than
+      // together, which is precisely why the count at the foot is the assertion that catches a
+      // miss. `seed:staff` REFUSES a roster naming a key outside this list, so until it carried
+      // these four, the roster that hires the hospital's first phlebotomist — the person the whole
+      // collection queue depends on — would have been rejected as a typo, with the WHOLE roster
+      // refused rather than half-provisioned. THIS FILE IS NOT IN PLAN 17 T2's FILES LIST as the
+      // phase document wrote it; the census is pinned here and the task that moves it says so.
+      "lab_reception",
+      "lab_technician",
       // PLAN 14 / DD11, 2026-08-27 — the two stores roles. They arrive here for FREE, because
       // `KNOWN_ROLE_KEYS` is DERIVED from `ROLE_MODEL ∪ GRANTED_BY_OTHER_SEEDS ∪ OPD_ROLE_KEYS`
       // rather than hand-listed; what this array pins is that somebody NOTICED the vocabulary grew.
@@ -168,7 +178,10 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "ot_incharge",
       "ot_nurse",
       "owner",
+      // PLAN 17 T2 / DD16 — see the lab note above; `pathologist` and `phlebotomist` sort here.
+      "pathologist",
       "pharmacy",
+      "phlebotomist",
       "recovery_nurse",
       // OWNER RULING 2026-08-29 (Plan 07c T9 / DD14) — `staff_auditor` joins by DERIVATION: this
       // list is `ROLE_MODEL ∪ GRANTED_BY_OTHER_SEEDS ∪ OPD_ROLE_KEYS`, sorted, so a new model role
@@ -188,7 +201,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
     for (const r of ROLE_MODEL) expect(KNOWN_ROLE_KEYS).toContain(r.roleKey);
     for (const g of GRANTED_BY_OTHER_SEEDS) expect(KNOWN_ROLE_KEYS).toContain(g.roleKey);
     for (const o of OPD_ROLE_KEYS) expect(KNOWN_ROLE_KEYS).toContain(o.key);
-    expect(KNOWN_ROLE_KEYS).toHaveLength(27);
+    expect(KNOWN_ROLE_KEYS).toHaveLength(31);
   });
 
   it("the vocabulary is WIDER than what seed:roles creates, which is what makes two refusals distinct", () => {

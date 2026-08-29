@@ -267,6 +267,8 @@ export async function truncateAll(db: Db): Promise<void> {
         ot_incidents, ot_deposit_holds, ot_definitions, pacu_scores, ot_specimens, ot_case_implants,
         ot_counts, ot_checklist_runs, ot_case_gates, ot_lists, ot_cases, daycare_encounters,
         order_item_transitions, order_items, orders,
+        lab_sla_breaches, lab_critical_calls, lab_report_deliveries, lab_reports,
+        lab_results, lab_specimen_items, lab_specimens, lab_items,
         opd_config, allocations, receipt_tenders, receipts, credit_note_lines, credit_notes, invoice_lines,
         invoices, refund_vouchers, cashier_sessions, entered_in_error_marks, recon_batches, daily_closes,
         idempotency_keys, document_series, billing_config, patient_merge_requests, patient_guardians, patient_allergies,
@@ -299,8 +301,29 @@ export async function truncateAll(db: Db): Promise<void> {
   // truncating a table requires the tables that POINT AT it, never its own parents.
   await db.execute(
     sql`truncate table order_item_transitions, order_items,
+        lab_sla_breaches, lab_critical_calls, lab_report_deliveries, lab_reports,
+        lab_results, lab_specimen_items, lab_specimens, lab_items,
+        lab_orderable_analytes, lab_reflex_rules, lab_orderables,
         tariff_items, regulated_prices, adjustment_rules, gst_config, gst_settings,
         tariff_versions, services`,
+  );
+  // ───────── PLAN 17 T1 — THE ANALYTE ISLAND, AND WHY IT NEEDS ITS OWN STATEMENT ─────────
+  //
+  // §3.35/§3.12, third and fourth application in this file: `lab_analytes` and
+  // `lab_reference_ranges` point at NOTHING that any statement above truncates — the catalogue's
+  // measurable quantities are a master of their own — so no group has a claim on them and they take
+  // their own statement (16a F2's island rule).
+  //
+  // The four names that ride WITH them are Postgres's PRESENCE rule, not a second truncate of the
+  // same rows: `lab_orderable_analytes`, `lab_results` and `lab_reflex_rules` all carry an
+  // `analyte_id` FK, and `lab_critical_calls` points at `lab_results`, so `truncate lab_analytes`
+  // is REFUSED OUTRIGHT ("cannot truncate a table referenced in a foreign key constraint") unless
+  // every one of them is named in the SAME statement. All four are already empty by the time this
+  // runs — the second truncate of an empty table is a no-op, exactly as `notifications` and
+  // `order_items` are named twice above for the same reason.
+  await db.execute(
+    sql`truncate table lab_critical_calls, lab_results, lab_orderable_analytes, lab_reflex_rules,
+        lab_reference_ranges, lab_analytes`,
   );
   // ───────────────────────── Plan 11c — the six ops tables, three statements ─────────────────────
   //

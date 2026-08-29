@@ -1,0 +1,141 @@
+/**
+ * PLAN 17 T2 — the lab's error vocabulary.
+ *
+ * ═══ THE UNION IS CLOSED FOR THE WHOLE OF PLAN 17, ON PURPOSE ═══
+ *
+ * `errors.ts` is named in T2's Files list and in NO other task's, while T3–T8 all modify `index.ts`
+ * and the controllers. So every refusal this phase can make is spelled here, ahead of its caller —
+ * the `ot/errors.ts`, `materials/errors.ts` and `formulary/errors.ts` precedent, and the same rule
+ * follows from it: **a later task that needs a code this union does not carry has found a PLAN
+ * DEFECT and reports it.** It does not widen the union and it does not borrow a neighbouring code.
+ *
+ * `errors.test.ts` asserts BOTH directions by scanning this directory's source — declared and never
+ * thrown, thrown and never declared. Plan 14's close measured what a promise in a comment is worth:
+ * five codes with zero throw sites, and one code borrowed by a second caller to mean something else.
+ *
+ * ═══ `labHttpStatus` IS EXPORTED, AND THE THREE-TIME SPECIMEN IS WHY ═══
+ *
+ * Plan 09 shipped a `MembershipError` that escaped `billing.controller.ts`'s `toHttp`, so a correct
+ * refusal reached a busy counter as a 500; Plan 13 shipped it again; Plan 15 exported its map to
+ * stop shipping it a third time. T8's `lab.e2e.test.ts` walks a refusal from every family through
+ * a real route so the mapping is EXECUTED rather than asserted.
+ *
+ * ═══ WHAT IS **NOT** HERE, AND WHERE EACH REFUSAL LIVES INSTEAD ═══
+ *
+ * The three that a reader will look for, each refused by a layer that already has a vocabulary:
+ *
+ *   · **placement refusals** — `unknown_kind`, `clinician_required`, `permission_denied`,
+ *     `patient_encounter_mismatch` are `OrderError`s from `kernel/orders/place.ts` and the envelope
+ *     owns their wording. A lab code for the same refusal would be a second name for one fact.
+ *   · **money refusals** — `credit_extension_required`, `credit_permission_required`,
+ *     `discount_approval_missing` are `BillingError`s. The lab CALLS billing (DD6); it does not
+ *     re-refuse on billing's behalf.
+ *   · **immutability** — `lab_result_immutable` and `lab_report_immutable` are raised by Postgres
+ *     triggers (T1). No TypeScript throws them and none should: the whole point of DD13 is that the
+ *     guard is below the service.
+ */
+export const LAB_ERROR_CODES = [
+  // ── catalogue (T3) ──
+  "unknown_orderable",
+  "unknown_analyte",
+  "foetal_sex_refused",
+  "catalogue_invalid",
+  // ── the desk (T4) ──
+  "unknown_service",
+  "consent_required",
+  "duplicate_unacknowledged",
+  "addon_specimen_disposed",
+  "unknown_item",
+  "item_not_cancellable",
+  // ── collection and accession (T5) ──
+  "tube_mismatch",
+  "identity_recheck_required",
+  "already_received",
+  "unknown_specimen",
+  "specimen_not_receivable",
+  "no_active_order",
+  // ── results (T6) ──
+  "absurd_value",
+  "absurd_override_same_actor",
+  "sod_violation",
+  "already_verified",
+  "user_actor_required",
+  "item_not_resultable",
+  "unknown_result",
+  // ── reports (T7) ──
+  "report_print_blocked",
+  "collector_identity_required",
+  "report_not_publishable",
+  "unknown_report",
+  "report_not_amendable",
+  "release_approval_invalid",
+] as const;
+
+export type LabErrorCode = (typeof LAB_ERROR_CODES)[number];
+
+export class LabError extends Error {
+  constructor(
+    readonly code: LabErrorCode,
+    message?: string,
+    readonly detail?: Record<string, unknown>,
+  ) {
+    super(message ?? `lab refused: ${code}`);
+    this.name = "LabError";
+  }
+}
+
+/**
+ * ═══ WHY THESE STATUSES ═══
+ *
+ * · **404** for the five `unknown_*` — the named row does not exist.
+ * · **409** for the state races (`already_received`, `already_verified`) — a CAS loser is a
+ *   conflict, not a bad request, and the caller's correct response is to re-read rather than to fix
+ *   its body.
+ * · **403** for the two authority refusals: `sod_violation` and `absurd_override_same_actor` are
+ *   both about WHO is acting (the same pair of hands twice), which is what 403 means.
+ * · **422** for every clinical hard stop — `consent_required`, `tube_mismatch`,
+ *   `identity_recheck_required`, `absurd_value`, `report_print_blocked`. These ARE the refusals this
+ *   phase exists to make unskippable, and the screen's job is to name the rule, which a 4xx body does.
+ *   `report_print_blocked` in particular is NOT a 402: the patient owes money to BILLING, and the
+ *   lab is declining to hand over a document — a payment-required status would tell the counter to
+ *   take money at the wrong window.
+ */
+const STATUS: Record<LabErrorCode, number> = {
+  unknown_orderable: 404,
+  unknown_analyte: 404,
+  foetal_sex_refused: 422,
+  catalogue_invalid: 422,
+
+  unknown_service: 404,
+  consent_required: 422,
+  duplicate_unacknowledged: 422,
+  addon_specimen_disposed: 409,
+  unknown_item: 404,
+  item_not_cancellable: 409,
+
+  tube_mismatch: 422,
+  identity_recheck_required: 422,
+  already_received: 409,
+  unknown_specimen: 404,
+  specimen_not_receivable: 409,
+  no_active_order: 409,
+
+  absurd_value: 422,
+  absurd_override_same_actor: 403,
+  sod_violation: 403,
+  already_verified: 409,
+  user_actor_required: 403,
+  item_not_resultable: 409,
+  unknown_result: 404,
+
+  report_print_blocked: 422,
+  collector_identity_required: 422,
+  report_not_publishable: 422,
+  unknown_report: 404,
+  report_not_amendable: 409,
+  release_approval_invalid: 422,
+};
+
+export function labHttpStatus(code: LabErrorCode): number {
+  return STATUS[code];
+}
