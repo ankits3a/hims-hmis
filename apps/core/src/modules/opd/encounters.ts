@@ -105,6 +105,121 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
   return { encounter: encounter!, queueEntry: queueEntry!, tokenNo, sessionId: session.id, roomId: session.roomId, visitType, doctorScheduledToday: roomId !== null };
 }
 
+/**
+ * PLAN 17a T4 / DD15 — **THE LAB WALK-IN IS A `V` VISIT, NOT A FOURTH KIND OF ENCOUNTER.**
+ *
+ * A patient who arrives at the lab counter with an outside doctor's slip has no OPD encounter, and
+ * everything downstream of a lab order needs one: `placeOrder` resolves `encounterNo` through the
+ * prefix registry, `issueInvoice` reads the encounter for `intendedPayer`, and every departmental
+ * report and every commission attribution keys off it. The alternatives were a nullable encounter
+ * on the order (which makes every downstream reader ask "and what if there is none?") or a new
+ * episode series (a new letter, which phase 0 §8 freezes). **A `V` visit in a `LAB` department,
+ * with the pathologist of record as its responsible doctor, is the shape that needs no new concept
+ * at all** — and it is also true: the hospital did see this person today.
+ *
+ * ═══ IT LIVES IN `opd/` BECAUSE `openVisitInTx` DOES, AND THAT IS SPEC §4 ═══
+ *
+ * The lab module may not write `opd_encounters`: a module reaches another module only through its
+ * `index.ts`. So the OPD module exports the act, the lab calls it, and the visit is opened by the
+ * code that owns visits — with `openVisitInTx`'s own guards intact rather than re-implemented.
+ *
+ * ═══ THE TWO PRECONDITIONS ARE **DATA**, AND THEIR ABSENCE IS NAMED (T4 A9) ═══
+ *
+ * Plan 17 §9.3 S2 measured what `openVisitInTx` requires: an ACTIVE doctor in an ACTIVE department
+ * with `doctor.departmentId === dept.id`. Production has twelve departments and no `LAB` (S5), so
+ * on day one this refuses — with `unknown_department`, which says exactly what the runbook must
+ * create. The alternative was to pass `department_id: null` (the column is nullable) and let the
+ * visit open anyway; that loses the lab from every departmental report and from every
+ * `intendedPayer` read, silently, forever. **Creating the department and the pathologist row is
+ * §9.9's runbook act.**
+ */
+export const LAB_DEPARTMENT_CODE = "LAB";
+
+export type OpenLabWalkinInput = {
+  patientId: string;
+  /** Named by the caller when the lab has more than one pathologist of record. */
+  doctorId?: string;
+  intendedPayer?: OpenVisitInput["intendedPayer"];
+  referralSource?: OpenVisitInput["referralSource"];
+  referrerName?: string;
+};
+
+/** Tx-first, so the walk-in and the order it exists for are ONE transaction (DD6). */
+export async function openLabWalkinInTx(
+  tx: Tx, actor: Actor, input: OpenLabWalkinInput & { chainIds: string[] }, now: Date,
+): Promise<OpenVisitResult> {
+  if (actor.type !== "user") throw new OpdError("user_actor_required");
+
+  const dept = (await tx.select().from(opdDepartments).where(eq(opdDepartments.code, LAB_DEPARTMENT_CODE)))[0];
+  if (!dept) {
+    throw new OpdError(
+      "unknown_department",
+      `no opd_departments row with code "${LAB_DEPARTMENT_CODE}" — a lab walk-in is a visit to the ` +
+        "laboratory, and this hospital has not declared one",
+    );
+  }
+  if (!dept.active) throw new OpdError("department_inactive", `department ${LAB_DEPARTMENT_CODE} is inactive`);
+
+  /**
+   * THE PATHOLOGIST OF RECORD. Named by the caller, or the sole ACTIVE doctor in the department.
+   *
+   * **Ambiguity refuses rather than picks.** `ordering_clinician_id` is the doctor answerable for
+   * the test in a medico-legal chain; choosing one of two pathologists by row order would put a
+   * name on a report by accident. A lab with two of them names one at the counter.
+   */
+  const labDoctors = await tx
+    .select()
+    .from(opdDoctors)
+    .where(and(eq(opdDoctors.departmentId, dept.id), eq(opdDoctors.active, true)))
+    .orderBy(asc(opdDoctors.id));
+  let doctorId: string;
+  if (input.doctorId !== undefined) {
+    const named = labDoctors.find((d) => d.id === input.doctorId);
+    if (!named) {
+      const anywhere = (await tx.select().from(opdDoctors).where(eq(opdDoctors.id, input.doctorId)))[0];
+      if (!anywhere) throw new OpdError("unknown_doctor", `unknown doctor ${input.doctorId}`);
+      if (!anywhere.active) throw new OpdError("doctor_inactive", `doctor ${input.doctorId} is inactive`);
+      throw new OpdError("doctor_department_mismatch", `doctor ${input.doctorId} is not in ${LAB_DEPARTMENT_CODE}`);
+    }
+    doctorId = named.id;
+  } else if (labDoctors.length === 0) {
+    throw new OpdError(
+      "unknown_doctor",
+      `no active doctor in department ${LAB_DEPARTMENT_CODE} — the pathologist of record is the ` +
+        "responsible clinician on a walk-in (DD15), and this hospital has named none",
+    );
+  } else if (labDoctors.length > 1) {
+    throw new OpdError(
+      "unknown_doctor",
+      `department ${LAB_DEPARTMENT_CODE} has ${labDoctors.length} active doctors — name the ` +
+        "pathologist of record for this walk-in rather than letting the counter choose one",
+    );
+  } else {
+    doctorId = labDoctors[0]!.id;
+  }
+
+  return await openVisitInTx(tx, actor, {
+    patientId: input.patientId,
+    chainIds: input.chainIds,
+    departmentId: dept.id,
+    doctorId,
+    intendedPayer: input.intendedPayer,
+    referralSource: input.referralSource ?? "external_rmp",
+    referrerName: input.referrerName,
+  }, now);
+}
+
+/** Db-first: resolves the merge chain, then runs the walk-in on its own transaction. */
+export async function openLabWalkin(
+  db: Db, actor: Actor, input: OpenLabWalkinInput, now: Date = new Date(),
+): Promise<OpenVisitResult> {
+  if (actor.type !== "user") throw new OpdError("user_actor_required");
+  const canonical = await resolvePatientId(db, input.patientId);
+  if (!canonical) throw new OpdError("patient_not_found", `unknown patient ${input.patientId}`);
+  const chainIds = [canonical, ...(await listMergedLoserIds(db, canonical))];
+  return withTx(db, (tx) => openLabWalkinInTx(tx, actor, { ...input, patientId: canonical, chainIds }, now));
+}
+
 /** THE only writer of opd_encounters.status: engine transition first (single-winner), then the mirror. */
 export async function moveEncounter(
   tx: Tx, actor: Actor, encounter: EncounterRow, to: OpdVisitState,
