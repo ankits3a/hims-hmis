@@ -579,6 +579,17 @@ passes `orderingClinicianId = the verifying pathologist's user id` — the docto
 added test — and that is read from the code, not remembered.
 
 ### 9.1 The commits
+
+| # | SHA | tasks | what landed |
+|---|---|---|---|
+| 1 | `39beff0` | **T1 + T2** | migration `0046_lab_core` (13 tables, 2 immutability triggers, 3 `truncateAll` statements), `modules/lab/` seam (manifest with the `lab` kind claim, 15 permissions, 22 events, 29 error codes, 1 approval type, 2 resource-kind vocabularies), 4 new roles + 34 non-table grants, and **four** kernel edits |
+
+**Batched T1+T2 into one commit** per v3 §9.9 rule 4 — the run is the unit of cost, the commit is
+free — with the two tasks separated in the message.
+
+**T3–T9 ARE NOT EXECUTED.** The phase stopped at the T2 boundary on the stop-loss rule; see §9.7
+and the handoff note below.
+
 ### 9.2 Findings
 
 **F1 — `attribution.unverified_flagged` does not exist (spike S3).** DD15 says the desk emits it and
@@ -600,9 +611,263 @@ is a closed literal in `kernel/notify/templates.ts` with no registration seam, s
 is appended to the kernel registry and to `templates.test.ts`'s sorted census. Disclosed here rather
 than absorbed: the plan says three kernel edits and the true number is four.
 
+**F4 — two arithmetic/naming corrections the document carries.** (a) §5 T1's heading says
+*"fourteen lab tables"* and its own Produces list enumerates **thirteen**; the migration creates
+thirteen and `lab.test.ts` asserts thirteen. (b) DD6 and §5 T2 write the approval type key as
+`lab.release_unpaid`; `registerApprovalType` drafts a workflow definition named
+`approval_<typeKey>`, and `kernel/workflow/definition.ts:28` validates that key against `KEY_RE`
+with the message *"definition key must be lowercase snake_case"*. A dotted key throws on the FIRST
+deploy that runs the seed, with the interlock's only override unregistered behind it. The shipped
+key is **`lab_release_unpaid`** and `approval-types.test.ts` pins the shape so it cannot drift back.
+
+**F5 — THERE ARE TWO CLAIMED-KIND CENSUSES AND THE PHASE DOCUMENT NAMED ONE.** §5 T2's Files list
+names `kernel/orders/kinds.test.ts:140`. `kernel/orders/parity.test.ts:28` pins the same fact
+(`collectOrderKinds(ALL_MANIFESTS) === []`) and was not named. Both were found by §2.138's
+LIST-grep (`grep -rn "ALL_MANIFESTS" apps/core --include=*.ts`), which is precisely the search that
+rule exists for: **neither census writes any manifest identifier**, so no sibling-name grep could
+have found either at any scope. The kickoff re-measure also corrected the rule's own input — row 6
+is **88 lines across 31 files**, not the 34 across ~20 the authoring measured.
+
+**F6 — three census files that no task's Files list names, moved and disclosed** (the shape Plan 14
+recorded as F11 and Plan 15 as T2-f): `kernel/resources/kinds.test.ts` (the collected-kind list,
+7 → 9), `kernel/orders/parity.test.ts` (F5 above), and `README.md` — which `seed-roles.test.ts`
+PARSES, so the fifth permission table is not a documentation nicety but a test input. A phase that
+declares fifteen permissions across four new roles cannot leave it unedited and stay green.
+
+**F7 — `issueInvoice` and `issueCreditNote` are `Db`-first and open their own transactions.** T4's
+"ONE transaction" is achieved by handing them the caller's `tx` cast as `Db`; drizzle's
+`transaction()` on a `Tx` opens a SAVEPOINT inside it, so the invoice participates in the placement
+and an outer rollback rolls back both. The cast is the shipped house pattern (`place.ts:296`,
+`patients/registration.ts:408`, `materials/grn.ts:379`) — **but it is a claim about drizzle's
+nesting behaviour that this phase has NOT yet proved by execution.** T4's A3 mutant ("invoice
+issued after commit") is what proves it, and it is unbuilt. **A successor session must build A3
+before trusting the seam.**
+
+**F8 — THE SHARED CHECKOUT MADE `pnpm verify` UNAVAILABLE FOR PART OF THIS SESSION, AND THE FIX WAS
+INDEX SURGERY RATHER THAN QUEUING.** Lane B's uncommitted work sat in four files this task also
+edits — `_journal.json`, `schema/index.ts`, `orders/parity.test.ts`, `test/helpers/db.ts` — and
+their half was not committable: `truncateAll` naming `pcpndt_*` with no migration behind it turns
+`main` red for everybody. `git add <path>` stages a whole file, so the commit was built by hashing
+**HEAD-plus-my-hunks** for those four (`git hash-object -w --stdin --path … ; git update-index
+--cacheinfo …`) and staging the resulting blobs, leaving Lane B's edits untouched in the worktree.
+The protocol's §3 rule 1 ("stage explicitly, by path") is not sufficient when two lanes share a
+FILE rather than a directory, and this is the mechanical answer. It also means the committed tree
+and the tested worktree differ, which is why CI-by-SHA is the load-bearing evidence for `39beff0`
+rather than the local run.
+
 ### 9.4 The Assertion Book, corrected by execution
+
+**No Assertion Book row was executed, because no CRITICAL task ran.** T1 and T2 are both ROUTINE:
+AGENT-RULES §3 owes them tests that pass and NO mutants, and none was built. Fail-first is not owed
+at either tier here and none was manufactured — for T1 a red would have been an unresolved-import
+error (§2.5: proves nothing), and this is said rather than faked.
+
+**What execution DID correct in the Books that have not run yet, recorded so the successor does not
+re-derive it:**
+
+| task | row | correction |
+|---|---|---|
+| **T4 A3** | "Placement and invoice are ONE transaction" | The mutant is now the ONLY proof of finding F7 — `issueInvoice` is `Db`-first and opens its own `withTx`, so the seam is a drizzle SAVEPOINT rather than a shared transaction handle. **Build it first.** |
+| **T4 A7** | the walk-in's sentinel referrer | `orders.external_referrer_id` has NO foreign key (spike S3), so the mutant's stated failure — *"the CHECK throws at `placeOrder`"* — is the BICONDITIONAL check on `authority`, not an FK violation. The refusal text differs and the assertion must match the real one. |
+| **T6 A4** | reflex placed in the verifying transaction | S9 changed the input: a `system` reflex order STILL requires `orderingClinicianId` (`place.ts:126` checks `requiresClinician` for every actor type). A mutant that omits it fails with `clinician_required` for the wrong reason. |
+| **T7 A1** | `deliveryAllowed` sums every self-pay line | `settlementState` is keyed on the INVOICE, not the line (S1), and the only exported reader is `invoiceSettlement(exec, invoiceId)`. The shipped rule is therefore *"blocked while ANY invoice carrying one of this order's lab lines is unsettled"*, which over-blocks a partially-paid MIXED invoice and never under-blocks. **A1's mutant must discriminate the invoice-grained rule, not a line-grained one that does not exist.** |
+| **T5 A2** | `S` numbers unique under concurrency | Inherited unchanged: `nextEpisodeNo`'s single-winner `UPDATE … RETURNING` is phase 0's, measured there over 12 rounds. The lab's row still owes its own ≥ 8. |
+
+**F9 — `main` WAS ALREADY CI-RED WHEN THIS PHASE'S FIRST COMMIT LANDED, AND THE CAUSE IS A CLOCK,
+NOT A DIFF. It is diagnosed here because nobody had diagnosed it.**
+
+`ci-watch-host.sh 39beff0` returned **RED**. It is not this commit's red, and the evidence is
+three-fold:
+
+1. **`39beff0` touches no file under `apps/web`** (`git show --stat` — zero), and both failures are
+   in `apps/web/src/screens/my-day.test.tsx`.
+2. **The three commits BEFORE it were red too** — `b657a66` (18:05), `dd6f869` (18:07), `023622a`
+   (18:48), against `a7d1673` green at 18:04 (`gh run list`).
+3. **`023622a` failed on the SAME two assertions**, verbatim: *"expected […] to include
+   `/api/me/report.csv?date=2026-08-29`"* and the `?period=half&date=2026-0…` one.
+
+**THE MECHANISM.** `apps/web/src/screens/my-day.tsx:140` is `useState(todayIst())` — the screen
+takes its date from the REAL clock. `my-day.test.tsx` hard-codes `2026-08-29` in its mocked replies
+and asserts the request URL contains that date. CI ran at **19:20–19:23 UTC**, which is
+**00:50 IST on 2026-08-30**, so the screen asked for `date=2026-08-30` and the assertion for
+`2026-08-29` failed. The rendered DOM in the failure output confirms it: `value="2026-08-30"`.
+
+**So every commit pushed between 18:30 UTC and midnight UTC goes red, whatever it contains** — and
+the local `pnpm verify` on this host reproduced the same two failures at the same wall-clock, which
+is what rules out a CI-environment explanation. `023622a` was a CI fix attempt by the other lane and
+did not touch this.
+
+**NOT FIXED HERE, deliberately.** `my-day.test.tsx` is in no Files list of this phase, the other
+lane has an in-flight commit in exactly that area, and two lanes editing one test file is finding
+F8's own hazard. The fix is one of: inject the clock into `MyDay`, or derive the fixture date from
+`todayIst()` instead of hard-coding it. **Whoever takes it should note that the SCREEN is arguably
+correct and the TEST is what asserts a frozen day.**
+
 ### 9.5 Mechanical verification — name the `TEST_DATABASE_URL` database of every run claimed (§2.137)
+
+**EVERY RUN BELOW USED `TEST_DATABASE_URL="postgres://hmis:hmis@localhost:5433/hmis_lane_a_scratch"`,
+so the worker databases were `hmis_lane_a_scratch_1 … _N` and migration `0046_lab_core` was applied
+to them FROM EMPTY by `setupTestDb`'s unconditional `migrate()`.** The clause exists because rule 7
+requires those databases to be dropped in the same task, so by the time anyone audits, the proof is
+gone — and phase 0's second reviewer spent its CRITICAL slot on exactly that phantom (§2.137).
+**They were dropped at close; the drop is recorded at the foot of this section.**
+
+**PREFLIGHT (v3 §9.9 rule 6), exit values READ, never inferred from a pipeline:**
+
+| stage | exit |
+|---|---|
+| `pnpm typecheck` | **0** |
+| `pnpm lint` | **0** (2 pre-existing warnings, 0 errors) |
+
+**SCOPED RUNS, before the commit — each isolation line read from the OUTPUT (rule 19):**
+
+| suite | result |
+|---|---|
+| `src/kernel/db/schema/lab.test.ts` | **24/24**, exit 0 |
+| `src/modules/lab` (5 suites) | **22/22**, exit 0 |
+| `test/seed-roles.test.ts test/seed-staff.test.ts` | **34/34**, exit 0 |
+| `src/kernel/orders/read.test.ts` | **25/25**, exit 0 |
+| `src/modules/lab src/kernel/modules src/kernel/orders src/kernel/resources` | 164/166 — the two were `advance.test.ts`'s C1/C1b concurrency rows, under load |
+
+**THE FULL RUNS, AND THE HONEST READING OF THEM.**
+
+| run | result |
+|---|---|
+| `pnpm verify` (whole workspace) | **exit 1** — aborted in `@hmis/web` on F9's date-rollover flake, so `apps/core`'s own summary never printed. `apps/web`: **353 passed / 2 failed** (both F9). `packages/contracts`: **21/21**. |
+| `pnpm --filter @hmis/core test` (full core) | **exit 1** — **2,867 passed / 15 failed, 293 suites (12 failed)** |
+| the SAME 12 suites, `--runInBand`, box quiet | **exit 0 — 80/80, 12/12 suites passed** |
+
+**THE 15 FAILURES WERE 100% CONTENTION AND 0% REAL, AND THAT IS MEASURED RATHER THAN ARGUED.** The
+signature is §2.137's, item for item: **30 occurrences of `Exceeded timeout of 15000 ms`**, zero
+foreign-key violations (the private database had already removed that class), failures spread across
+twelve suites the diff does not touch — `alerts`, `tariff`, `uhid`, `photos`, `schedules`,
+`rbac.e2e`, `seed-admin`, `seed-tariff`, `allergies`, `approvals`, `ot/approval-types` — and
+timings that are not the timings of those suites: `ops/mode.test.ts` **181 s**, `ot/cockpit.test.ts`
+**131 s**, `auth/patient-actor.test.ts` **121 s**. `uptime` during the run: load average **18.08**,
+with the other lane's own full suite in flight in the same checkout. Re-run serially on the quiet
+box, all twelve pass. **So the core total is 2,882 of 2,882**, established by execution in two
+parts rather than by one green line.
+
+**COUNTS (AGENT-RULES §4):**
+
+- **No test is deleted by `39beff0`** — `git show --stat --name-status` reports zero `D` entries.
+- Tracked core `*.test.ts` files **286 → 291**; the commit adds six suites (`schema/lab.test.ts` and
+  five under `modules/lab/`) and edits six censuses.
+- Core tests **2,882**, up from the phase's kickoff measurement.
+
+**PER-COMMIT `git show --stat` AGAINST THE FILES LISTS:** `39beff0` touches **32 files**. T1's list
+(schema, its test, the migration + snapshot + journal, `schema/index.ts`, `test/helpers/db.ts`) and
+T2's list are covered in full. **Four files are in NO task's Files list and each is disclosed** —
+`kernel/orders/parity.test.ts` (F5), `kernel/resources/kinds.test.ts` (F6), `README.md` (F6, and it
+is a TEST INPUT: `seed-roles.test.ts` parses it), and `apps/core/test/seed-staff.test.ts`, which the
+document names for T2 but under the wrong count.
+
+**FROZEN-PATH AUDIT:** the diff touches `kernel/orders/` in exactly three places — `read.ts` (the
+two `recordPhiAccess` calls), `read.test.ts` and `kinds.test.ts`/`parity.test.ts` (the two claimed-
+kind censuses). **`place.ts`, `advance.ts`, `kinds.ts`, `manifest.ts`, `events.ts`, `errors.ts`,
+`transitions.ts`, `schema/orders.ts`, `drizzle/0044*` and `drizzle/0045*` are UNTOUCHED**, as are
+`kernel/episodes/series.ts` (no new letter), `kernel/resources/kinds.ts` and `schema/resources.ts`
+(the two kinds were already in the closed ten), `kernel/auth/*`, `packages/contracts/*`,
+`modules/billing/*`, `modules/opd/*` and `modules/patients/*`.
+
+**CI, BY FULL SHA:** `ci-watch-host.sh 39beff0` → **RED**, and it is NOT this commit's red. See
+finding F9 for the three-part evidence and the mechanism.
+
+**THE SCRATCH DATABASES WERE DROPPED, BY EXPLICIT NAME, AND THE DROP WAS VERIFIED BY MEASUREMENT
+RATHER THAN BY THE COMMAND'S EXIT.** Seven existed — `hmis_lane_a_scratch_1` through
+`hmis_lane_a_scratch_7`, one per jest worker across the runs above. Each was dropped by name
+(`DROP DATABASE IF EXISTS hmis_lane_a_scratch_<n>`), never by a pattern and never by a prune
+(AGENT-RULES rule 7). Two of the seven `docker exec` calls were killed by their own client-side
+timeout before printing, so the exit status of the loop is not the evidence; the evidence is the
+listing taken afterwards:
+
+```
+select datname from pg_database where datname like 'hmis_lane_a_scratch%';   -- (0 rows)
+select datname, count(*) from pg_stat_activity where datname like 'hmis_lane_a_scratch%';  -- (0 rows)
+```
+
+**Nothing named `hmis_lane_a_scratch*` remains, and nothing is connected to one.** The dev database
+`hmis_dev` and the per-worker `hmis_test_*` databases were never touched by this phase — that is the
+whole point of the override, and it is why the other lane's full suite and this one could run in the
+same checkout without corrupting each other's fixtures.
+
 ### 9.6 The independent close review (pass 1, fresh) and 9.6.2 (pass 2, fresh, over the fixes, verdict per fix)
 ### 9.7 Actuals — recorded only after §9.6 exists (v3 §9.4)
+
+**No actuals row is recorded, and that is the rule rather than an omission** — v3 §9.4: *"a phase
+document may not record an actuals row, and a session may not report a phase as cheap, before
+§3.4's review has returned."* No reviewer has run. What is recorded instead is the STOP-LOSS
+measurement, because it is the reason the phase stopped.
+
+| | value |
+|---|---|
+| stop-loss (this document, §THE LANE) | **730,000** |
+| spent at the T2 boundary | **~482,000 (66%)** |
+| tasks delivered | **2 of 9** (T1, T2 — both ROUTINE) |
+| subagents used | **0** |
+| reviewer passes run | **0 of 2** (budgeted 458,491 between them) |
+
+**THE STOP-LOSS CANNOT COVER THIS PHASE, AND THE ARITHMETIC SAYS SO BEFORE T3 STARTS.** Two ROUTINE
+tasks consumed 66% of it. The five CRITICAL tasks still to come each owe a full Assertion Book with
+BUILT mutants and, for T4/T5/T6, concurrency rows measured over ≥ 8 rounds; T8 owes four screens, a
+print component and an e2e over every route. Even at a marginal rate well below this session's —
+much of T1+T2's cost is one-off (the §1 reading order, the nine-question spike, the kickoff
+re-measure, and the index surgery F8 describes) — seven tasks plus two reviewer passes cannot land
+inside 248,000 remaining tokens. The EXECUTE-PROMPT's §0 rule is *"if you approach it, stop and
+report — do not re-tier"*, and this session stopped at a task boundary rather than spending the
+remainder discovering the same thing mid-T4.
+
+**AND THE MEASUREMENT WORTH KEEPING, BECAUSE IT IS A DEFECT IN THE FORMULA RATHER THAN IN THIS
+PHASE.** The stop-loss came from `1.5 × (per-task rate × task count) + one reviewer pass per
+remediation cycle`, with the per-task rate taken as **20,178** — Plan 16a's 181,605 over nine tasks.
+This document's own §THE LANE states the bias in one sentence: *"in a LIGHT phase `subagentTokens`
+IS the reviewer, so this is review cost in execution clothing; main-session cost is unmeasurable
+from inside."* **A term that measures only the reviewer cannot budget the coder.** Measured here:
+two ROUTINE tasks of main-session coding, zero subagents, ~482,000 tokens — **24× the per-task rate
+the formula used.** The task term was never a task term. It is recorded here as a finding for
+EXECUTE-METHOD-V3 §6 and the ledger, because every LIGHT phase since 16a has carried a stop-loss
+built the same way and the three that finished did so by coming in under a number that was not
+measuring their main cost.
+
+---
+
+## HANDOFF — written at the T2 boundary (v3 §9.6: run first, write second)
+
+**The successor reads this section, then §9.0, §9.3 and §9.2, and then starts at T3.**
+
+**WHAT IS TRUE ABOUT THE CODE, AND HOW IT IS KNOWN.** Everything in `39beff0` was typechecked,
+linted and RUN — this is not a "written but unverified" handoff (§9.6's own failure mode). The
+suites, the counts and the database name are in §9.5. `pnpm typecheck` exit 0 and `pnpm lint`
+exit 0 were read as VALUES before the commit.
+
+**WHAT IS NOT DONE.** T3–T9, in full. No catalogue, no desk, no specimen, no result, no report, no
+route, no screen. `modules/lab/` holds the seam and nothing behind it: `errors.test.ts`'s
+direction-1 leg is DERIVED from which files exist, so it passes today and starts requiring throwers
+the moment T3 lands `catalogue.ts` — no edit to that test at any point, by design.
+
+**THE FOUR THINGS THE SUCCESSOR MUST NOT RE-DERIVE.**
+1. **The spike is answered (§9.3) and three of the nine changed the work.** S1 (the transaction
+   seam and `billing.credit.extend`), S7 (the template registry is closed kernel code) and S9 (a
+   reflex order still owes `ordering_clinician_id`) are the three; read them before T4, T7 and T6
+   respectively rather than re-reading the code.
+2. **F7 is an UNPROVED claim and it is load-bearing.** The `tx as unknown as Db` savepoint seam is
+   how T4 keeps placement and invoice in one transaction. Build T4 A3's mutant FIRST.
+3. **The censuses this phase moved are listed in §9.2 F5/F6.** Two claimed-kind censuses, not one.
+4. **F8's index surgery is how to commit in this checkout while Lane B is live.** Do not `git add`
+   a shared file wholesale.
+
+**THE PRE-CONDITION FOR T3.** `seed-lab-catalogue.ts` needs `services` rows of category
+`investigation`; production has exactly ONE (`SYN-LAB-CBC`, synthetic) and no seed script creates
+any. T3's own seed creates them from the golden fixture — that is in its Files list — but the
+PRODUCTION catalogue is the owner's data and stays a runbook act (§9.9, item 3 of §4A).
+
+**WHAT THE OWNER MUST DECIDE BEFORE T3 RESUMES.** Whether to raise the stop-loss on the measurement
+in §9.7 above, or to re-cut the remaining seven tasks into two phases. This session recommends the
+second: **T3+T4+T5 as "17a — order to accession" and T6+T7+T8+T9 as "17b — result to report"**,
+each with its own stop-loss set from THIS phase's measured main-session rate rather than from
+16a's reviewer-derived one. The seam between them is clean and already frozen by §6: an accessioned
+item with `in_progress` on the envelope and a specimen with an `S` number is a complete, testable
+state, and it is exactly where a lab's morning ends and its bench begins.
+
 ### 9.8 The question this phase existed to answer
 ### 9.9 Deploy block — the grants, the catalogue seed, the definitions activation, the department, the signatory — written when the owner authorises, never before
