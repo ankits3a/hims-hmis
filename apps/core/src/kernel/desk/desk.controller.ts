@@ -4,6 +4,7 @@ import { DB, MODULE_REGISTRY } from "../tokens";
 import { istDayString as istDay } from "../approvals/cumulative";
 import { CurrentActor } from "../auth/decorators";
 import { collectDeskProviders, loadDesk, loadReport } from "./registry";
+import { parsed } from "./http";
 import { baselineWindowFor, buildBrief, windowFor } from "./brief";
 import { factsForWindow } from "./rollup";
 import type { Brief } from "./brief";
@@ -62,7 +63,7 @@ export class DeskController {
 
   @Get("desk")
   async desk(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ date: string; cards: DeskCard[] }> {
-    const q = deskQuery.parse(query);
+    const q = parsed(deskQuery, query);
     const now = new Date();
     const date = q.date ?? istDay(now);
     /**
@@ -72,7 +73,7 @@ export class DeskController {
      */
     if (actor.type !== "user") return { date, cards: [] };
     const providers = collectDeskProviders(this.registry);
-    return { date, ...(await loadDesk(providers, { db: this.db, actor, date, now })) };
+    return { date, ...(await loadDesk(providers, { db: this.db, actor, reader: actor, date, now })) };
   }
 
   /**
@@ -84,13 +85,13 @@ export class DeskController {
   async report(
     @CurrentActor() actor: Actor, @Query() query: unknown,
   ): Promise<{ date: string; provisional: boolean; sections: ReportSection[] }> {
-    const q = deskQuery.parse(query);
+    const q = parsed(deskQuery, query);
     const now = new Date();
     const date = q.date ?? istDay(now);
     const provisional = isProvisional(date, now);
     if (actor.type !== "user") return { date, provisional, sections: [] };
     const providers = collectDeskProviders(this.registry);
-    return { date, provisional, ...(await loadReport(providers, { db: this.db, actor, date, now })) };
+    return { date, provisional, ...(await loadReport(providers, { db: this.db, actor, reader: actor, date, now })) };
   }
 
   /**
@@ -103,7 +104,7 @@ export class DeskController {
    */
   @Get("brief")
   async brief(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<Brief> {
-    const q = briefQuery.parse(query);
+    const q = parsed(briefQuery, query);
     const now = new Date();
     const today = q.date ?? istDay(now);
     const period = q.period ?? "week";
@@ -137,7 +138,7 @@ export class DeskController {
   async reportCsv(
     @CurrentActor() actor: Actor, @Query() query: unknown, @Res({ passthrough: true }) res: Response,
   ): Promise<string> {
-    const q = deskQuery.parse(query);
+    const q = parsed(deskQuery, query);
     const now = new Date();
     const date = q.date ?? istDay(now);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -145,7 +146,7 @@ export class DeskController {
     if (actor.type !== "user") return toCsv([]);
 
     const providers = collectDeskProviders(this.registry);
-    const { sections } = await loadReport(providers, { db: this.db, actor, date, now });
+    const { sections } = await loadReport(providers, { db: this.db, actor, reader: actor, date, now });
 
     /*
      * THE FILE CARRIES THE SAME MARKER THE SCREEN DOES (T2 A4). A CSV outlives the screen it was

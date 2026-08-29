@@ -93,7 +93,7 @@ export async function rollupUserDay(
   db: Db, providers: DeskProvider[], userId: string, day: string, now: Date,
 ): Promise<Record<string, number>> {
   const actor: Actor = { type: "user", id: userId };
-  const facts = await liveFactsFor(providers, { db, actor, date: day, now });
+  const facts = await liveFactsFor(providers, { db, actor, reader: actor, date: day, now });
   await db
     .insert(userDayFacts)
     .values({ userId, day, facts, computedAt: now })
@@ -173,7 +173,7 @@ export async function factsForWindow(
   if (today >= from && today <= to) {
     out.push({
       day: today,
-      facts: await liveFactsFor(providers, { db, actor, date: today, now }),
+      facts: await liveFactsFor(providers, { db, actor, reader: actor, date: today, now }),
       provisional: true,
     });
   }

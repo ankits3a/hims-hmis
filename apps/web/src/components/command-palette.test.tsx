@@ -134,10 +134,36 @@ it("A WEDGE SCAN OPENS THE PATIENT; the same payload typed by a human does not",
    * A REAL WEDGE DELIVERS CHARACTERS INDIVIDUALLY — the reviewer's MAJOR 7. Typing the payload in
    * one `fireEvent.change` is not how the hardware behaves, and an at-least-one assertion could
    * not have caught the eleven-POSTs-per-scan bug it hid.
+   *
+   * ═══ THE CLOCK IS DRIVEN, AND THAT IS WHAT STOPS THIS TEST FLAKING (07c) ═══
+   *
+   * The palette separates a scan from typing by SPEED alone (`WEDGE_MAX_MS = 120`), reading
+   * `Date.now()` on every change. Twenty-two `fireEvent.change` calls take well under 120 ms on an
+   * idle machine and comfortably OVER it inside a full `pnpm verify`, where the suite shares eight
+   * cores with everything else — so this test passed 12/12 in isolation and failed inside loaded
+   * runs. It was named as a known flake in the 07a/07b close, which prescribed exactly this: *"it
+   * wants an injected clock; it will flake in CI until it gets one."*
+   *
+   * The clock is driven HERE rather than through a seam in the component, because the component is
+   * not what is wrong: reading the real clock is correct behaviour for a scanner detector. What was
+   * wrong is a test asserting a timing property while letting the machine's load decide the timing.
+   * Five milliseconds per character is what a wedge actually does; the whole payload lands at
+   * 110 ms, inside the window and close enough to it to still be a meaningful assertion.
    */
+  const realNow = Date.now;
+  const base = realNow();
+  let tick = 0;
+  vi.spyOn(Date, "now").mockImplementation(() => base + tick);
+
   const payload = "HMISQR0000000000000001";
-  for (let i = 1; i <= payload.length; i += 1) {
-    fireEvent.change(paletteInput()!, { target: { value: payload.slice(0, i) } });
+  try {
+    for (let i = 1; i <= payload.length; i += 1) {
+      tick = i * 5; // a USB HID wedge's inter-character gap
+      fireEvent.change(paletteInput()!, { target: { value: payload.slice(0, i) } });
+    }
+    expect(tick).toBeLessThan(120); // the payload lands INSIDE the window, on any machine
+  } finally {
+    vi.mocked(Date.now).mockRestore();
   }
 
   await waitFor(() => {

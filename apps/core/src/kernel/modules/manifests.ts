@@ -1,4 +1,5 @@
 import type { ModuleManifest } from "./manifest";
+import { deskManifest } from "../desk/manifest";
 import { authManifest } from "../auth/manifest";
 import { workflowManifest } from "../workflow/manifest";
 import { approvalsManifest } from "../approvals/manifest";
@@ -110,4 +111,10 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // NOT `bed` — `KERNEL_RESOURCE_KINDS` already claims that and a second declaration is
   // `duplicate_kind` at boot (adversarial finding F1). The two recovery bays are kernel `bed` rows.
   otManifest,
+  // PLAN 07c T9 — the desk's own seam, appended so every manifest above keeps the order it was
+  // installed in. It is KERNEL code carrying a manifest for the `resources` reason: §4 is where
+  // permissions are DECLARED. It declares `subscriptions: []` and no search or desk provider of its
+  // own — what it exists for is `staff.reports.read` / `staff.reports.drill`, which nothing else
+  // could legitimately declare.
+  deskManifest,
 ];

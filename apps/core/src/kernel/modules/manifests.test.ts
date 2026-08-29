@@ -109,7 +109,7 @@ function manifestKeys(identifiers: string[], label: string): string[] {
 }
 
 describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
-  it("declares exactly fifteen manifests, by key, in app.module.ts's original install order", () => {
+  it("declares exactly sixteen manifests, by key, in app.module.ts's original install order", () => {
     expect(ALL_MANIFESTS.map((m) => m.key)).toEqual([
       "auth",
       "workflow",
@@ -131,13 +131,18 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "materials",
       // PLAN 15 T2 — appended, so the fourteen above keep the order they were installed in.
       "ot",
+      // PLAN 07c T9 — appended, so the fifteen above keep the order they were installed in. It is
+      // KERNEL code carrying a manifest (like `auth`, `workflow`, `approvals`, `alerts`, `ops` and
+      // `resources`): the §4 seam is where permissions are DECLARED, and `staff.reports.read` /
+      // `staff.reports.drill` are strings nothing else could legitimately declare.
+      "desk",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(15);
+    expect(ALL_MANIFESTS).toHaveLength(16);
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(15);
+    expect(registry.all()).toHaveLength(16);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -150,7 +155,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly four enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly five enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -215,7 +220,22 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //
     //      It ships `subscriptions: []` in T2 and lands the one subscription with its handler in
     //      T7 — the (1b) discipline, unchanged, a fourth time.
-    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "formulary", "resources"]);
+    //
+    //  (1g) PLAN 07c T9 — the SIXTEENTH, `desk`, and it falls on the APP-ONLY side. It carries no
+    //      subscription, no desk provider of its own and no job: what it exists for is two
+    //      permission strings and one menu entry, and the worker serves no `/staff` route. The
+    //      array below therefore GAINS an entry and the title's "four" becomes FIVE — the first
+    //      time this list has moved since Plan 11d wrote it, which is why every note above says
+    //      "the answer stays four".
+    //
+    //      **The worker not installing it is SAFE, and that was checked rather than assumed.**
+    //      `syncPermissions` is a pure upsert with no delete (`kernel/auth/permissions.ts`), so a
+    //      worker boot cannot retire a permission the api declared. And the nightly rollup job DOES
+    //      reach the desk providers it needs: `collectDeskProviders` walks the worker's own
+    //      registry, which installs `opd` and `billing` — the two manifests that actually carry a
+    //      `desk` array. A worker registry missing those would roll EMPTY facts for every person,
+    //      every night, silently.
+    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "formulary", "resources", "desk"]);
 
     // (2) The worker ADDS `notify`. It declares five `kernel.notify` subscriptions, and
     //     `buildSubscriptionBus` (kernel/worker/jobs.ts) makes a declared subscription with no

@@ -91,7 +91,34 @@ export type DeskCard = {
 
 export type DeskProviderCtx = {
   db: Db;
+  /**
+   * WHOSE DAY THIS IS. Every provider filters its own tables on `actor.id` — `opened_by`,
+   * `received_by`, `recorded_by` — so this is the SUBJECT of the report, not necessarily the
+   * person asking for it.
+   */
   actor: Actor;
+  /**
+   * PLAN 07c T9 / DD14 — WHO IS LOOKING, which is the same person for every self-scoped call and a
+   * DIFFERENT one for a supervisor's drill.
+   *
+   * ═══ WHY THESE CANNOT BE ONE FIELD, AND THE LEAK THAT PROVES IT ═══
+   *
+   * A provider that lists patients reads them through `getPatientSummaries(db, actor, ids)`, and
+   * that actor is what decides whether a confidential, VIP or staff-as-patient row comes back as a
+   * name or as an alias. For a self-scoped report the two roles coincide and the question never
+   * arises.
+   *
+   * For a supervisor's drill they come apart: the ROWS belong to the clerk (so the filter must use
+   * the clerk's id) and the VISIBILITY belongs to the supervisor (so the aliasing must use the
+   * supervisor's permissions). Collapse them into one field and the supervisor inherits the CLERK's
+   * confidentiality clearance — a supervisor who may not open a sealed record would read that
+   * patient's real name off a drill, because the clerk who registered them could. That is a leak
+   * created by a convenience, and it is invisible in every test where one person plays both roles.
+   *
+   * So: filter on `actor`, alias on `reader`. `loadDesk`, `loadReport` and `liveFactsFor` set them
+   * equal; only the staff drill sets them apart.
+   */
+  reader: Actor;
   /** The IST day the desk is being read for. Today, unless the caller asked for another. */
   date: string;
   now: Date;

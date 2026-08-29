@@ -1075,6 +1075,19 @@ string to a role that does not exist would make it a permission nobody can ever 
 roles are created by `seed:roles` with grants and **no holders**, the `pharmacy` and `storekeeper`
 precedent.
 
+**Plan 07c T9 / DD14 — the supervisor's named-staff view (owner ruling O-2, 2026-08-28).**
+`front_office_supervisor` and `medical_superintendent` gain `staff.reports.read`, because a
+supervisor asked why a department's throughput fell should be able to look without borrowing the
+technical administrator's account. It buys the FIGURES only — counts, money, timings and a person's
+comparison against their own median — and it cannot carry a patient, because the route returns
+integers. **`staff.reports.drill`, which reveals the patient rows behind those figures, is granted
+to NOBODY and is recorded in `NOT_YET_MODELLED`.** That split is the whole of DD14: a deployment
+that handed both out together would have decided, without noticing, that every shift supervisor may
+read every patient list in the building. Who holds the drill is a ruling for the person answerable
+under DPDP — the `patients.confidential.read` precedent — and every use of it writes a
+`staff_report.drilled` row naming the supervisor, the subject and the stated reason, so the audit
+trail covers the auditor.
+
 **Two approval types, registered by `seed:ot` in the deploy path.** `ot_definition_publish`
 (approver `medical_superintendent`, 1,440-minute SLA) gates publishing any of the four governed
 definitions — the engine's own requester-vs-approver segregation then forces two distinct humans, and

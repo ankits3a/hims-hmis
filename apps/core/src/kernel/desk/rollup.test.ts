@@ -70,7 +70,7 @@ describe("07c T8 — the user-day rollup", () => {
     await openOne(clerk, T0, "9876540031");
     await openOne(clerk, T0, "9876540032");
 
-    const live = await liveFactsFor(providers, { db, actor: clerk.actor, date: DAY, now: T0 });
+    const live = await liveFactsFor(providers, { db, actor: clerk.actor, reader: clerk.actor, date: DAY, now: T0 });
     await rollupUserDay(db, providers, clerk.id, DAY, T0);
 
     expect((await stored(clerk.id, DAY))!.facts).toEqual(live);
@@ -105,7 +105,7 @@ describe("07c T8 — the user-day rollup", () => {
 
     let liveTotal = 0;
     for (const day of days) {
-      const f = await liveFactsFor(providers, { db, actor: clerk.actor, date: day, now: T0 });
+      const f = await liveFactsFor(providers, { db, actor: clerk.actor, reader: clerk.actor, date: day, now: T0 });
       liveTotal += f["opd.visitsOpened"] ?? 0;
     }
     expect(fromRollup["opd.visitsOpened"]).toBe(liveTotal);
@@ -211,7 +211,7 @@ describe("07c T8 — the user-day rollup", () => {
   it("a person who holds no desk permission contributes no facts at all", async () => {
     await openOne(clerk, T0, "9876540071");
     const stranger = await mkUser(db, "stranger", []);
-    expect(await liveFactsFor(providers, { db, actor: stranger.actor, date: DAY, now: T0 })).toEqual({});
+    expect(await liveFactsFor(providers, { db, actor: stranger.actor, reader: stranger.actor, date: DAY, now: T0 })).toEqual({});
   });
 
   it("one clerk's roll never carries another clerk's work", async () => {
@@ -234,7 +234,7 @@ describe("07c T8 — the user-day rollup", () => {
       load: async () => [],
       facts: async () => ({ "bad.money": 12.5 }),
     };
-    await expect(liveFactsFor([bad], { db, actor: clerk.actor, date: DAY, now: T0 }))
+    await expect(liveFactsFor([bad], { db, actor: clerk.actor, reader: clerk.actor, date: DAY, now: T0 }))
       .rejects.toBeInstanceOf(DeskError);
   });
 
@@ -245,7 +245,7 @@ describe("07c T8 — the user-day rollup", () => {
       load: async () => [],
       facts: () => Promise.reject(new Error("index missing")),
     };
-    const facts = await liveFactsFor([...providers, boom], { db, actor: clerk.actor, date: DAY, now: T0 });
+    const facts = await liveFactsFor([...providers, boom], { db, actor: clerk.actor, reader: clerk.actor, date: DAY, now: T0 });
     expect(facts["opd.visitsOpened"]).toBeDefined();
   });
 

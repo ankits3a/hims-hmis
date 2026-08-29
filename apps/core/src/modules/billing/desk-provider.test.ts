@@ -50,8 +50,10 @@ describe("billing desk provider — the per-cashier day (07c T2, spike S1)", () 
     patientId = (await mkPatient(db, asha.actor, { name: "Ramesh Kale", phone: "9876540021" })).id;
   });
 
-  const ctxFor = (u: { id: string }, date = DAY): DeskProviderCtx =>
-    ({ db, actor: { type: "user", id: u.id }, date, now: T0 });
+  const ctxFor = (u: { id: string }, date = DAY): DeskProviderCtx => {
+    const actor = { type: "user" as const, id: u.id };
+    return { db, actor, reader: actor, date, now: T0 };
+  };
 
   /**
    * S1, AND IT IS THE WHOLE POINT. Four receipts, two cashiers, three tender modes and one voided

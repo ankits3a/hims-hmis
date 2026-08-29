@@ -318,9 +318,15 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // moved BY EXECUTION rather than by prediction, exactly as the paragraphs above record for 16a,
     // 14, 15 and 07b: the run that added `/my-day` failed here with `Received length: 34` against
     // the pinned 33.
-    expect(routes).toHaveLength(34);
+    // PLAN 07c T9 — 35 with `/staff`, the supervisor's named-staff view (DD14: what, not whom).
+    // The number moved BY EXECUTION rather than by prediction, as every paragraph above records:
+    // the run that added it failed here with `Received length: 35` against the pinned 34.
+    expect(routes).toHaveLength(35);
     expect(routes).toContain("/counter");
     expect(routes).toContain("/my-day");
+    // `/staff`, not `/staff/$userId`: the subject is picked on the screen and never enters a URL,
+    // so a staff member's id stays out of browser history and out of the access log.
+    expect(routes).toContain("/staff");
     expect(routes).toContain("/ot/list");
     expect(routes).toContain("/ot/book");
     expect(routes).toContain("/ot/recovery");

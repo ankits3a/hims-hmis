@@ -151,7 +151,13 @@ async function myVisitsSection(ctx: DeskProviderCtx): Promise<ReportSection> {
     .where(and(eq(opdEncounters.openedBy, ctx.actor.id), eq(opdEncounters.serviceDate, ctx.date)))
     .orderBy(opdEncounters.openedAt);
 
-  const summaries = await getPatientSummaries(ctx.db, ctx.actor, rows.map((r) => r.patientId));
+  /*
+   * PLAN 07c T9 / DD14 — `ctx.reader`, NOT `ctx.actor`. The ROWS are the subject's (filtered on
+   * `opened_by` above); the VISIBILITY is the looker's. For every self-scoped call these are the
+   * same person, and for a supervisor's drill they are not — see `DeskProviderCtx.reader` for the
+   * leak that collapsing them into one field would create.
+   */
+  const summaries = await getPatientSummaries(ctx.db, ctx.reader, rows.map((r) => r.patientId));
   const byId = new Map(summaries.map((s) => [s.requestedId, s]));
 
   return {

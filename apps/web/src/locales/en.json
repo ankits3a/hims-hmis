@@ -48,7 +48,8 @@
       "billing": "Billing",
       "stores": "Stores",
       "admin": "Admin"
-    }
+    },
+    "staffReports": "Staff reports"
   },
   "palette": {
     "title": "Search",
@@ -1675,5 +1676,17 @@
       "compared": "{{total}} collected, against a median of {{median}}.",
       "drift": "{{total}} collected — {{first}} in the first half, {{second}} in the second."
     }
+  },
+  "staffReports": {
+    "title": "Staff reports",
+    "person": "Staff member",
+    "pick": "Choose a person…",
+    "pickFirst": "Choose a staff member to see their figures.",
+    "whatNotWhom": "This view shows what a person did — counts, money and timings. It does not list patients.",
+    "drillTitle": "Open the rows behind these figures",
+    "drillWarning": "This reveals patient rows from that person's day. It requires a reason and is recorded against your account.",
+    "reason": "Why are you opening these rows?",
+    "drillAction": "Open the rows",
+    "drillFailed": "The rows could not be opened. Check your permission, or ask an administrator."
   }
 }

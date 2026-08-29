@@ -17,6 +17,7 @@ import { PatientInHandProvider } from "./lib/patient-in-hand";
 import { PatientStrip } from "./components/patient-strip";
 import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
+import { StaffReports } from "./screens/staff-reports";
 import { CounterDesk } from "./screens/counter-desk";
 import { RegistrationDesk } from "./screens/registration-desk";
 import { PatientDetail } from "./screens/patient-detail";
@@ -92,6 +93,11 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/ops/mode", label: "nav.opsMode", permission: "ops.mode.set", group: "admin" },
   { to: "/ops/downtime-kit", label: "nav.opsDowntimeKit", permission: "ops.downtime.generate", group: "admin" },
   { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage", group: "admin" },
+  // PLAN 07c T9 — the supervisor's named-staff view. Path and permission match `deskManifest.menu`
+  // exactly, which `nav-parity.test.ts` enforces rather than trusts. It sits in `admin` rather than
+  // `desk`: reading a colleague's figures is supervision, not counter work, and putting it beside
+  // the counter would make it look like part of a shift.
+  { to: "/staff", label: "nav.staffReports", permission: "staff.reports.read", group: "admin" },
   // PLAN 09 T3 — the path and the permission match `membershipManifest.menu`'s own entry exactly,
   // which is where the authoritative pairing lives.
   { to: "/counter/instruments", label: "nav.counterInstruments", permission: "membership.instrument.read", group: "desk" },
@@ -314,6 +320,18 @@ const myDayRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/my-day",
   component: MyDay,
+});
+
+/**
+ * PLAN 07c T9 / DD14 — the supervisor's view of a named staff member. It is `/staff` and NOT
+ * `/staff/:userId`: the subject is picked on the screen and never appears in a URL, which keeps a
+ * staff member's id out of browser history, out of a shared terminal's address bar and out of the
+ * access log next to the reason somebody typed.
+ */
+const staffReportsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/staff",
+  component: StaffReports,
 });
 
 /**
@@ -556,7 +574,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, counterDeskRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, counterDeskRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,

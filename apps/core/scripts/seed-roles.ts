@@ -122,6 +122,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "membership.instrument.read",
       "membership.instrument.recognise",
       "membership.grace_honor.request",
+      /**
+       * PLAN 07c T9 / DD14 — the supervisor's named-staff view, and this is the role the phrase
+       * "the supervisor" in that ruling actually means. It buys the FIGURES: what a named person
+       * did, how much they collected, how their week compares to their own median. It does NOT buy
+       * the patient rows behind those figures — `staff.reports.drill` is a separate string and it
+       * is deliberately held by nobody (see `NOT_YET_MODELLED`).
+       */
+      "staff.reports.read",
     ],
   },
   {
@@ -398,6 +406,13 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // queue cannot fill yet (see the `auth.break_glass.use` note below): the two reviews are one
       // desk, and splitting them across two commits would leave a second correction to remember.
       "auth.break_glass.review",
+      /**
+       * PLAN 07c T9 / DD14 — the same figures, for the same reason the two review desks moved here
+       * in the first place: medical-record and staff governance is this role's job (spec §14, role
+       * card #39). A Medical Superintendent asked why a department's throughput fell should be able
+       * to look without borrowing the technical administrator's account.
+       */
+      "staff.reports.read",
       "auth.elevation.review",
       // ─── The merge approver's kit, owner ruling 2026-08-26 ───
       //
@@ -688,6 +703,28 @@ export const NOT_YET_MODELLED: readonly NotYetModelled[] = [
       "calls `startInstance` and `transition` in-process, so the OPD flow never traverses these " +
       "routes; granting them would mint authority no role needs (owner ruling 2026-08-23)",
   })),
+  {
+    /**
+     * PLAN 07c T9 / DD14 — **THE ROWS BEHIND THE FIGURES SHIP HELD BY NOBODY, AND THAT IS THE
+     * DECISION RATHER THAN AN OMISSION.**
+     *
+     * `staff.reports.read` is granted (to `front_office_supervisor` and `medical_superintendent`):
+     * counts, money and timings are hospital work product and a supervisor needs them. This string
+     * is the other half — it reveals the PATIENT ROWS from somebody else's shift — and DD14 splits
+     * them precisely so that a hospital cannot hand out the second by accident while granting the
+     * first. A deployment that granted both together would have decided, without noticing, that
+     * every shift supervisor may read every patient list in the building.
+     *
+     * It sits beside `patients.confidential.read` on the identical argument: the mechanism is
+     * built, tested and audited (`staff_report.drilled` names the supervisor, the subject and the
+     * stated reason), and WHO holds it is a question for the person answerable under DPDP, not for
+     * the phase that built it.
+     */
+    permission: "staff.reports.drill",
+    reason:
+      "07c DD14 splits the figures from the rows on purpose — this string reveals patient rows " +
+      "from another person's shift, so who holds it is an owner/DPO ruling and not a default",
+  },
   {
     permission: "patients.confidential.read",
     reason:

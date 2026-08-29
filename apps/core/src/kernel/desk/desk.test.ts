@@ -90,7 +90,7 @@ describe("desk providers (07c T1)", () => {
       }),
     ];
 
-    const { cards } = await loadDesk(providers, { db, actor: user.actor, date: "2026-08-29", now: new Date() });
+    const { cards } = await loadDesk(providers, { db, actor: user.actor, reader: user.actor, date: "2026-08-29", now: new Date() });
     expect(allowedRan).toBe(true);
     expect(deniedRan).toBe(false);
     expect(cards.map((c) => c.key)).toEqual(["a"]);
@@ -113,7 +113,7 @@ describe("desk providers (07c T1)", () => {
       provider({ key: "bad", permission: "t.read", load: () => Promise.reject(new Error("boom")) }),
     ];
 
-    const { cards } = await loadDesk(providers, { db, actor: user.actor, date: "2026-08-29", now: new Date() });
+    const { cards } = await loadDesk(providers, { db, actor: user.actor, reader: user.actor, date: "2026-08-29", now: new Date() });
     expect(cards.map((c) => c.key)).toEqual(["good"]);
   });
 
@@ -121,7 +121,7 @@ describe("desk providers (07c T1)", () => {
     const user = await mkUser(db, "desk3", []);
     const { cards } = await loadDesk(
       [provider({ key: "x", permission: "t.read" })],
-      { db, actor: user.actor, date: "2026-08-29", now: new Date() },
+      { db, actor: user.actor, reader: user.actor, date: "2026-08-29", now: new Date() },
     );
     expect(cards).toEqual([]);
   });

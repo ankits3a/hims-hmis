@@ -40,7 +40,7 @@ describe("opd desk provider (07c)", () => {
   });
 
   const ctxFor = (u: Awaited<ReturnType<typeof mkUser>>): DeskProviderCtx =>
-    ({ db, actor: u.actor, date: DATE, now: T0 });
+    ({ db, actor: u.actor, reader: u.actor, date: DATE, now: T0 });
 
   it("the hall card counts the hall and names no patient", async () => {
     const p = await mkPatient(db, clerk.actor, { phone: "9876540002" });
