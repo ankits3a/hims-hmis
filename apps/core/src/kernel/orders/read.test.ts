@@ -156,18 +156,86 @@ describe("the order envelope's readers (Plan 17 phase 0 T5)", () => {
     expect(view.orders[0]!.items.map((i) => i.serviceId)).toEqual([CBC]);
   });
 
-  it("a non-user actor gets the FLOOR clearance and no permission lookup is made on its id", async () => {
+  /**
+   * CLOSE PASS 2 (M-3/M-4). This test previously asserted that a patient actor got FLOOR clearance
+   * and a filtered list — which was the leak: `patientId` is a free parameter, so any phone
+   * credential could read any patient's non-restricted record and, because the display name comes
+   * back even for an empty list, resolve a patient id to a name. The kernel cannot fix that today:
+   * a patient actor's id is a `patient_credentials` row and that table does not exist until 22c-B.
+   */
+  it("M3 — a patient actor is REFUSED, and no permission lookup is made on its id", async () => {
     await orderWithRestricted();
     const permissions = jest.spyOn(permissionsModule, "hasPermission");
     try {
-      const view = await listOrdersForPatient(db, { type: "patient", id: "patient-credential-1" }, PATIENT);
-      expect(view.orders[0]!.items.map((i) => i.serviceId)).toEqual([CBC]);
-      // On the ARGUMENTS, never on the spy — see place.test.ts A2 for why (a failing
-      // `not.toHaveBeenCalled()` pretty-prints the whole drizzle transaction and OOMs the runner).
+      await expect(listOrdersForPatient(db, { type: "patient", id: "patient-credential-1" }, PATIENT))
+        .rejects.toThrow(/may not read an order list/);
+      // ...and it is refused BEFORE any lookup: `hasPermission` takes a users.id, and false on a
+      // patient credential aliases with "this user lacks the permission". On the ARGUMENTS, never
+      // on the spy — a failing `not.toHaveBeenCalled()` prints the whole drizzle tx and OOMs jest.
       expect(permissions.mock.calls.map((call) => call[1])).toEqual([]);
     } finally {
       permissions.mockRestore();
     }
+  });
+
+  it("M3b — a patient actor cannot read ANOTHER patient's record, which was the leak", async () => {
+    await orderWithRestricted(SEALED, SEALED_VISIT);
+    await expect(listOrdersForPatient(db, { type: "patient", id: "p-1" }, SEALED))
+      .rejects.toThrow(/may not read an order list/);
+    await expect(listOrdersForEncounter(db, { type: "patient", id: "p-1" }, SEALED_VISIT))
+      .rejects.toThrow(/may not read an order list/);
+  });
+
+  /**
+   * M-1 — the header's own `status`/`closed_at` were a deterministic inference channel on a
+   * PARTIALLY restricted order: `closeHeaderIfDone` closes only when no item is live, so an `open`
+   * header whose every visible item is terminal proves a hidden live item exists.
+   */
+  it("M1 — the header status is projected over VISIBLE items, so it cannot prove a hidden one", async () => {
+    const { itemIds } = await withTx(db, (tx) => placeOrder(tx, consultant, DECLS, {
+      kind: "lab", patientId: PATIENT, encounterNo: VISIT, serviceDate: DAY,
+      orderingClinicianId: "another-doctor",
+      items: [{ serviceId: CBC }, { serviceId: HIV, restricted: true }],
+    }));
+    // The visible CBC finishes; the restricted item is left live. The real header is `open`.
+    await withTx(db, (tx) => advanceOrderItem(tx, consultant, DECLS, itemIds[0]!, "in_progress"));
+    await withTx(db, (tx) => advanceOrderItem(tx, consultant, DECLS, itemIds[0]!, "completed"));
+
+    const forWard = await listOrdersForPatient(db, ward, PATIENT);
+    const seen = forWard.orders[0]!;
+    expect(seen.items.map((i) => i.status)).toEqual(["completed"]);
+    // Every item the clerk can see is terminal, so their view says `closed` — NOT the real `open`,
+    // which would say "something you cannot see is still running".
+    expect(seen.status).toBe("closed");
+    expect(seen.closedAt).toBeNull();
+
+    // The cleared caller sees the truth, so the projection hides nothing from whoever may look.
+    const forAuditor = await listOrdersForPatient(db, auditor, PATIENT);
+    expect(forAuditor.orders[0]!.status).toBe("open");
+  });
+
+  /**
+   * M-2 — the limit was applied to the header query BEFORE filtering, so varying it counted and
+   * dated the hidden orders: with restricted orders at ranks 1 and 4, `limit=1..5` returned
+   * 0,1,2,2,3 and the flat spots named their exact ranks.
+   */
+  it("M2 — the limit is applied AFTER filtering, so it cannot count the hidden orders", async () => {
+    // Ranks newest-first: 1 restricted, 2 visible, 3 visible, 4 restricted, 5 visible.
+    for (const restricted of [false, true, false, false, true]) {
+      await withTx(db, (tx) => placeOrder(tx, consultant, DECLS, {
+        kind: "lab", patientId: PATIENT, encounterNo: VISIT, serviceDate: DAY,
+        orderingClinicianId: "another-doctor",
+        items: [{ serviceId: restricted ? HIV : CBC, restricted }],
+      }));
+    }
+    const counts: number[] = [];
+    for (const limit of [1, 2, 3, 4, 5]) {
+      counts.push((await listOrdersForPatient(db, ward, PATIENT, { limit })).orders.length);
+    }
+    // Monotone, one per step, no flat spot — the clerk learns nothing about what is not there.
+    expect(counts).toEqual([1, 2, 3, 3, 3]);
+    // Three visible of five placed, and the cleared caller sees all five.
+    expect((await listOrdersForPatient(db, auditor, PATIENT, { limit: 10 })).orders).toHaveLength(5);
   });
 
   // ═════════ CLOSE REVIEW C2 — THE HEADER IS PART OF THE DISCLOSURE, NOT A WRAPPER ═════════

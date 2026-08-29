@@ -90,6 +90,40 @@ type Clearance = { canSeeRestricted: boolean; canSeeConfidential: boolean; userI
  * rendering a VIP's legal name.
  */
 async function clearanceOf(exec: Db | Tx, actor: Actor): Promise<Clearance> {
+  /**
+   * ═══ A `patient` ACTOR IS REFUSED, BECAUSE THE KERNEL CANNOT YET TELL WHOSE RECORD IT IS ═══
+   *
+   * CLOSE PASS 2 (M-3/M-4). These readers take `patientId` as a FREE PARAMETER and never compare it
+   * to the actor. For a staff `user` that is correct — `orders.read` is a hospital-wide permission
+   * and a ward clerk legitimately reads other people's records. For a `patient` actor it was a
+   * disclosure of the whole clinical record to anybody holding a phone credential:
+   * `listOrdersForPatient(db, {type:'patient', id:'p-1'}, someoneElsesPatientId)` returned that
+   * patient's display name and every non-restricted order — `orderNo`, `encounterNo`,
+   * `orderingClinicianId`, `indication`, every `serviceId` and status — and, because the name is
+   * returned even when the order list is empty, doubled as a patient-id → name resolver.
+   *
+   * **The binding that would fix it does not exist yet.** `envelope.ts` rules that a patient
+   * actor's `id` is the `patient_credentials` row — the verified PHONE, never a patient — precisely
+   * so one phone can hold three household profiles. `grep -rn "patient_credentials" apps/core/src`
+   * returns NOTHING today: 22c-B builds that table. So the kernel has no way to compute the
+   * "accessible set" `envelope.ts` says a patient actor is `self` for, and a reader that cannot
+   * verify its subject must not serve a subject-scoped actor.
+   *
+   * Refusing is also what makes the M-4 half honest rather than half-open: a patient could not see
+   * their own restricted item anyway (floor clearance), so serving them a partial view of their own
+   * booking while hiding the item they need to cancel is worse than saying not yet.
+   *
+   * **What 22c-F owes when it wires the patient app:** a reader that takes the credential and
+   * resolves its own patient set, here in the kernel, with its own test. It is one function and it
+   * is written into the CONTRACT (§6A) rather than left to be discovered.
+   */
+  if (actor.type === "patient" || actor.type === "agent") {
+    throw new OrderError(
+      "actor_cannot_read",
+      `a ${actor.type} actor may not read an order list — the kernel cannot verify which patient ` +
+        "this actor is, and a reader that cannot verify its subject must not serve one",
+    );
+  }
   if (actor.type !== "user") {
     return { canSeeRestricted: false, canSeeConfidential: false, userId: null };
   }
@@ -179,15 +213,38 @@ async function assemble(
     const visible = visibleItems(h, mine, clearance);
     if (mine.length > 0 && visible.length === 0) return [];
     const withheld = visible.length !== mine.length;
+    /**
+     * ═══ AND THE HEADER'S OWN `status`/`closed_at` ARE PROJECTED OVER WHAT THE CALLER CAN SEE ═══
+     *
+     * CLOSE PASS 2 (M-1). Dropping the all-restricted order was not enough: on a PARTIALLY
+     * restricted one the real header state is an inference channel, and a deterministic one.
+     * `closeHeaderIfDone` closes only when NO item is live — so an `open` header whose every
+     * VISIBLE item is terminal means exactly one thing: a live item exists that this caller cannot
+     * see. The mirror is sharper still, because the close picks `closed` over `cancelled` only when
+     * something COMPLETED — so a `closed` header whose every visible item is `cancelled` proves a
+     * hidden item ran to completion.
+     *
+     * That is the `hasHiddenItems` boolean F6 removed, re-derived from two fields. The projection
+     * below is the same answer the caller would compute from the rows they hold, which is the most
+     * this view can honestly say: it is "the order as far as you can see it", not a claim about the
+     * order. `closedAt` goes with it — an instant is a fact about work the caller may not read.
+     */
+    const projected = withheld ? projectStatus(visible) : h.status;
     return [{
       id: h.id, orderNo: h.orderNo, orderGroupId: h.orderGroupId, kind: h.kind,
       patientId: h.patientId, encounterNo: h.encounterNo, serviceDate: h.serviceDate,
-      priority: h.priority, authority: h.authority, status: h.status,
+      priority: h.priority, authority: h.authority, status: projected,
       orderingClinicianId: h.orderingClinicianId,
       indication: withheld ? null : h.indication,
-      placedAt: h.placedAt, closedAt: h.closedAt, items: visible,
+      placedAt: h.placedAt, closedAt: withheld ? null : h.closedAt, items: visible,
     }];
   });
+}
+
+/** The header state the VISIBLE items imply — `closeHeaderIfDone`'s own rule over a subset. */
+function projectStatus(visible: readonly OrderItemView[]): string {
+  if (visible.some((i) => i.status === "placed" || i.status === "in_progress")) return "open";
+  return visible.some((i) => i.status === "completed") ? "closed" : "cancelled";
 }
 
 /**
@@ -211,14 +268,27 @@ export async function listOrdersForPatient(
   const where = opts.statuses
     ? and(eq(orders.patientId, patientId), inArray(orders.status, [...opts.statuses]))
     : eq(orders.patientId, patientId);
+  /**
+   * ═══ FILTER FIRST, LIMIT AFTER (CLOSE PASS 2, M-2) ═══
+   *
+   * The limit used to be applied to the HEADER query and `assemble` dropped rows afterwards, which
+   * made a caller-supplied parameter into a counting-and-dating oracle: with two fully-restricted
+   * orders at ranks 1 and 4, `limit=1..5` returns 0,1,2,2,3 — **the flat spots name the exact ranks
+   * of the hidden orders**, and each is bracketed in time by its visible neighbours' `placedAt`. A
+   * ward clerk learns how many restricted orders a patient has and roughly when. That is strictly
+   * more than the boolean F6 removed, from a knob the caller turns.
+   *
+   * It was also a plain paging bug in the ordinary case — a screen asking for 20 silently got 17
+   * with no way to know more existed.
+   */
+  const limit = Math.min(Math.max(opts.limit ?? 200, 1), 500);
   const headers = await db
     .select().from(orders).where(where)
-    .orderBy(desc(orders.placedAt))
-    .limit(opts.limit ?? 200);
+    .orderBy(desc(orders.placedAt));
 
   return {
     patientDisplayName: patient ? displayName(patient, clearance.canSeeConfidential) : "—",
-    orders: await assemble(exec, headers, clearance),
+    orders: (await assemble(exec, headers, clearance)).slice(0, limit),
   };
 }
 
@@ -279,7 +349,7 @@ export async function findRecentItems(
    */
   if (actor.type !== "user" && actor.type !== "system") {
     throw new OrderError(
-      "actor_cannot_advance",
+      "actor_cannot_read",
       `a ${actor.type} actor may not run a duplicate-window check — it is clinical decision ` +
         "support for whoever is about to order, and it deliberately sees restricted items",
     );

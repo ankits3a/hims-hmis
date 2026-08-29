@@ -73,7 +73,6 @@ export async function advanceOrderItem(
       serviceId: orderItems.serviceId,
       orderId: orderItems.orderId,
       kind: orders.kind,
-      headerStatus: orders.status,
       orderedByType: orders.orderedByType,
       orderedById: orders.orderedById,
     })
@@ -156,7 +155,19 @@ export async function advanceOrderItem(
     }));
   }
 
-  const headerClosedAs = await closeHeaderIfDone(tx, actor, item.orderId, item.kind, at);
+  /**
+   * ═══ THE CLOSE IS ATTEMPTED ONLY ON A TERMINAL MOVE (CLOSE PASS 2, m-4) ═══
+   *
+   * `placed → in_progress` cannot close anything — the item it just moved is now LIVE, so the count
+   * can never be zero — and taking the header's `FOR UPDATE` for it made every start serialise
+   * against every other move on the same order for no benefit. Worse, it widened the window in
+   * which an add-on INSERT (E3, which has no kernel API yet) could deadlock against it: an INSERT
+   * into `order_items` takes FOR KEY SHARE on the parent `orders` row, which conflicts with FOR
+   * UPDATE — an interaction this repository already documents in `billing/allocations.test.ts`.
+   */
+  const headerClosedAs = to === "in_progress"
+    ? null
+    : await closeHeaderIfDone(tx, actor, item.orderId, item.kind, at);
   return { itemId, from, to, headerClosedAs };
 }
 
@@ -236,10 +247,16 @@ async function closeHeaderIfDone(
  * union is not an exhaustiveness check, and when `patient` joined the union that chain's silent
  * fall-through was the TRUSTED branch.
  *
- * **WHOSE order a patient is cancelling is the CALLING SURFACE's question, not this one's.** The
+ * ~~**WHOSE order a patient is cancelling is the CALLING SURFACE's question, not this one's.** The
  * kernel is handed an item id; that the id belongs to the authenticated patient is established by
- * the patient-scoped reader the surface used to find it (`listOrdersForPatient`, T5). Stated here
- * because it is the kind of boundary that looks like an omission from inside one file.
+ * the patient-scoped reader the surface used to find it (`listOrdersForPatient`, T5).~~
+ *
+ * **STRUCK AT CLOSE PASS 1 — IT WAS FALSE, AND THE `patient` CASE BELOW IS WHAT REPLACES IT.**
+ * `listOrdersForPatient` established nothing: it took `patientId` as a free parameter and never
+ * compared it to `actor.id`. Struck in place rather than deleted, the rule-6 pattern, because
+ * close pass 2 found the retraction sitting 35 lines BELOW the claim — a reader met the wrong
+ * sentence first and the correction later, which is §2.38's defect exactly (an amendment that
+ * leaves its own contradiction standing costs every later reader a paragraph).
  */
 function assertActorMayAdvance(
   actor: Actor,

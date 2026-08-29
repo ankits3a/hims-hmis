@@ -437,6 +437,39 @@ describe("advanceOrderItem (Plan 17 phase 0 T4)", () => {
       .toBe("actor_cannot_advance");
   });
 
+  /**
+   * ═══ CLOSE PASS 2 (m-2) — A6c ABOVE CANNOT DISCRIMINATE ITS OWN RULE, AND THIS LEG CAN ═══
+   *
+   * A6c places as the lab TECH, so after M3 both guards refuse it: the `selfOrderable` gate AND the
+   * ownership gate. Delete `|| !decl?.selfOrderable` from the source and A6c stays green, because
+   * `ordered_by_type = 'user'` refuses anyway. A6b and A6d were both rewritten to place as the
+   * patient, so neither covers it either — M3's fix quietly made an existing assertion redundant,
+   * which is §9.8's "a correct fix breaks the fixture that was documenting the invariant's absence"
+   * seen from the other side.
+   *
+   * The gate is NOT dead code: flip `selfOrderable` off for a kind that already has patient-placed
+   * orders — a hospital deciding self-booking was a mistake — and it is the only thing stopping
+   * those patients continuing to cancel. That is the case below, and it is constructed the way the
+   * real change would be: the order is placed under the OLD declaration and advanced under the NEW
+   * one, which is exactly what a deployment does.
+   */
+  it("m-2 — the selfOrderable gate refuses on its own, with ownership satisfied", async () => {
+    const patient: Actor = { type: "patient", id: "p-1" };
+    const { itemIds } = await order([S1], "package", patient);   // placed while selfOrderable
+    // The hospital withdraws self-booking for `package`; everything else is unchanged.
+    const withdrawn = [labDecl, { ...packageDecl, selfOrderable: false }];
+    let thrown: unknown;
+    try {
+      await withTx(db, (tx) => advanceOrderItem(tx, patient, withdrawn, itemIds[0]!, "cancelled"));
+    } catch (error) { thrown = error; }
+    expect(thrown).toBeInstanceOf(OrderError);
+    expect((thrown as OrderError).code).toBe("actor_cannot_advance");
+    // Ownership is satisfied — the patient DID place it — so the refusal can only be the gate.
+    const [row] = await db.select().from(orders).where(eq(orders.id, (await order([S1], "package", patient)).orderId));
+    expect(row!.orderedByType).toBe("patient");
+    expect((await db.select().from(orderItems).where(eq(orderItems.id, itemIds[0]!)))[0]!.status).toBe("placed");
+  });
+
   it("A6d — a patient may not cancel once the work has started, even on their OWN package", async () => {
     // Placed by the patient, so M3's ownership rule is satisfied and the STAGE rule is what refuses.
     const patient: Actor = { type: "patient", id: "p-1" };

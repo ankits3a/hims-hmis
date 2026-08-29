@@ -59,7 +59,23 @@ export type OrderErrorCode =
   /** DD5 — cancelling from `in_progress` without saying why. The CHECK refuses it too. */
   | "cancel_reason_required"
   /** This actor type may not make this move (a `patient` completing their own test; an `agent`). */
-  | "actor_cannot_advance";
+  | "actor_cannot_advance"
+  /**
+   * This actor type may not make this READ.
+   *
+   * ═══ ADDED AT CLOSE PASS 2, AND IT IS A PLAN DEFECT REPORTED RATHER THAN A CODE BORROWED ═══
+   *
+   * The remediation of the first close review gated `findRecentItems` and answered
+   * `actor_cannot_advance` — a read refusal wearing a write refusal's code. **This file's own
+   * header forbids exactly that**: *"it does not widen the union and it does not borrow a
+   * neighbouring code, because a refusal that answers `unknown_kind` when the kind is fine and the
+   * ACTOR is wrong is the kind of thing an operator chases for an hour."* The rule it states for
+   * that case is the one being followed here: a later task needing a code the union does not carry
+   * has found a PLAN DEFECT and reports it. This is the report, and the widening is the fix.
+   *
+   * It is 403, like its write-side sibling: the request is well-formed and the caller may not.
+   */
+  | "actor_cannot_read";
 
 /** These name a thing that is not there; everything else is a request that could never be right. */
 const NOT_FOUND_CODES = new Set<OrderErrorCode>(["unknown_item", "unknown_encounter"]);
@@ -70,6 +86,7 @@ const CONFLICT_CODES = new Set<OrderErrorCode>(["stale_state", "illegal_transiti
 /** Authorisation, which is 403 and not 400: the request is well-formed and the caller may not. */
 const FORBIDDEN_CODES = new Set<OrderErrorCode>([
   "permission_denied", "agent_cannot_order", "self_order_not_permitted", "actor_cannot_advance",
+  "actor_cannot_read",
 ]);
 
 /**
