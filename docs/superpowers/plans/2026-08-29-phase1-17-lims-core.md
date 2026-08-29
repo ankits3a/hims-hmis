@@ -605,11 +605,21 @@ the local `pnpm verify` on this host reproduced the same two failures at the sam
 is what rules out a CI-environment explanation. `023622a` was a CI fix attempt by the other lane and
 did not touch this.
 
-**NOT FIXED HERE, deliberately.** `my-day.test.tsx` is in no Files list of this phase, the other
-lane has an in-flight commit in exactly that area, and two lanes editing one test file is finding
-F8's own hazard. The fix is one of: inject the clock into `MyDay`, or derive the fixture date from
-`todayIst()` instead of hard-coding it. **Whoever takes it should note that the SCREEN is arguably
-correct and the TEST is what asserts a frozen day.**
+**NOT FIXED AT THE TIME, deliberately** — `my-day.test.tsx` was in no Files list of this phase and
+the other lane had in-flight work in that area, which is finding F8's own hazard.
+
+> **CLOSED 2026-08-29, `46d6d51`, CI GREEN.** Both conditions lapsed within the hour: the file went
+> clean in every lane, and `main` had been red for four consecutive commits, none of which touched
+> `apps/web`. The clock is now driven in the TEST (`vi.setSystemTime` at midday IST) rather than
+> seamed into the component — Plan 07c's own recorded resolution of this class, and the shape
+> `opd-appointments.test.tsx` and `alerts-bell.test.tsx` already use. **The screen was right and the
+> test had frozen a day.** A guard test asserts the frozen instant against the same `todayIst` the
+> screen calls, so a future edit to `NOW_ISO` fails there rather than in two URL assertions eighty
+> lines apart. Before/after taken 31 minutes apart INSIDE the failure window: CI red at 19:52 UTC
+> (01:22 IST), the suite green at 20:23 UTC (01:53 IST), then CI GREEN on the full SHA at 1,265 s.
+> **And the class was swept rather than assumed:** twelve components take a default from the real
+> clock and six of their suites do not freeze it — all six run at 01:54 IST inside the window,
+> **47/47** — so `my-day` was the only member.
 
 ### 9.5 Mechanical verification — name the `TEST_DATABASE_URL` database of every run claimed (§2.137)
 
