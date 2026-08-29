@@ -28,6 +28,8 @@ type PatientRow = {
   dob: string | null;
   dobEstimated: boolean;
   sex: string;
+  administrativeGender: string;
+  identityAssurance: string;
   addressLine: string | null;
   district: string | null;
   stateName: string | null;
@@ -201,6 +203,8 @@ const patchSchema = z.object({
   altPhone: z.string().regex(phonePattern).optional().or(z.literal("")),
   dob: z.string().optional().or(z.literal("")),
   sex: z.enum(["male", "female", "other", "unknown"]),
+  administrativeGender: z.enum(["male", "female", "other", "unknown"]),
+  reasonClass: z.string().optional(),
   addressLine: z.string().optional(),
   district: z.string().optional(),
   stateName: z.string().optional(),
@@ -230,6 +234,8 @@ function DemographicsSection({ patient }: { patient: PatientRow }): React.ReactE
       altPhone: patient.altPhone ?? "",
       dob: patient.dob !== null ? patient.dob.slice(0, 10) : "",
       sex: patient.sex as PatchFormValues["sex"],
+      administrativeGender: patient.administrativeGender as PatchFormValues["administrativeGender"],
+      reasonClass: "",
       addressLine: patient.addressLine ?? "",
       district: patient.district ?? "",
       stateName: patient.stateName ?? "",
@@ -250,10 +256,25 @@ function DemographicsSection({ patient }: { patient: PatientRow }): React.ReactE
     const dirty = form.formState.dirtyFields as Record<string, unknown>;
     const patch: Record<string, unknown> = {};
     for (const key of Object.keys(dirty)) {
+      if (key === "reasonClass") continue; // context, never a column
       const v = (values as Record<string, unknown>)[key];
       patch[key] = v === "" ? null : v; // cleared inputs null the column (server treats null as a clear)
     }
     if (Object.keys(patch).length === 0) return;
+    /**
+     * PLAN 22c-A T7 — a Class I amendment carries its reason. The server refuses without one
+     * (400 `reason_required`); catching it here means the clerk is told before the round-trip
+     * rather than by an error banner. `sex` is deliberately NOT in this list: it is Class III, a
+     * clinical correction, and asking for an identity reason to fix it would be the DD4 confusion
+     * this phase exists to remove.
+     */
+    const CLASS_I = ["name", "dob", "administrativeGender", "abhaNumber"];
+    const touchesIdentity = Object.keys(patch).some((k) => CLASS_I.includes(k));
+    if (touchesIdentity && (values.reasonClass ?? "") === "") {
+      setServerError(t("patient.reasonRequired"));
+      return;
+    }
+    if (touchesIdentity) patch.reasonClass = values.reasonClass;
     setServerError(null);
     try {
       await api("PATCH", `/patients/${patientId}`, patch);
@@ -267,6 +288,12 @@ function DemographicsSection({ patient }: { patient: PatientRow }): React.ReactE
   return (
     <section className="space-y-3">
       <h2 className="text-lg font-semibold">{t("patient.demographics")}</h2>
+      {/* PLAN 22c-A T7 — the assurance stamp, surfaced so the desk can see how much the hospital
+          vouches for this identity before it amends it. An unevidenced Class I amendment drops it
+          to `staff_verified` (DD5), and a clerk who cannot see the stamp cannot notice that. */}
+      <p className="text-sm text-neutral-600" data-testid="identity-assurance">
+        {t("patient.identityAssurance")}: <span className="font-medium">{t(`assurance.${patient.identityAssurance}`, patient.identityAssurance)}</span>
+      </p>
       <FormProvider {...form}>
         <FormKit onSubmit={onSave} className="max-w-3xl">
           <div className="grid grid-cols-2 gap-3">
@@ -274,6 +301,28 @@ function DemographicsSection({ patient }: { patient: PatientRow }): React.ReactE
             <TextField name="phone" label={t("register.phone")} />
             <TextField name="altPhone" label={t("register.altPhone")} />
             <TextField name="dob" label={t("register.dob")} type="date" />
+            <SelectField
+              name="administrativeGender"
+              label={t("patient.administrativeGender")}
+              options={[
+                { value: "unknown", label: t("register.unknown") },
+                { value: "female", label: t("register.female") },
+                { value: "male", label: t("register.male") },
+                { value: "other", label: t("register.other") },
+              ]}
+            />
+            <SelectField
+              name="reasonClass"
+              label={t("patient.amendmentReason")}
+              options={[
+                { value: "", label: "—" },
+                { value: "clerical_error", label: t("patient.reason.clerical_error") },
+                { value: "legal_change", label: t("patient.reason.legal_change") },
+                { value: "document_correction", label: t("patient.reason.document_correction") },
+                { value: "patient_request", label: t("patient.reason.patient_request") },
+                { value: "merge_reconciliation", label: t("patient.reason.merge_reconciliation") },
+              ]}
+            />
             <SelectField
               name="sex"
               label={t("register.sex")}

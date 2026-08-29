@@ -162,7 +162,13 @@
     "moderate": "मध्यम",
     "severe": "गंभीर",
     "markError": "गलती से दर्ज",
-    "reason": "कारण",
+    "reason": {
+      "clerical_error": "लिपिकीय त्रुटि",
+      "legal_change": "कानूनी परिवर्तन (NALSA / विवाह / राजपत्र)",
+      "document_correction": "दस्तावेज़ के अनुसार सुधार",
+      "patient_request": "मरीज़ के अनुसार रिकॉर्ड गलत है",
+      "merge_reconciliation": "डुप्लिकेट सुलझाते समय तय हुआ"
+    },
     "guardians": "अभिभावक",
     "addGuardian": "अभिभावक जोड़ें",
     "endGuardian": "समाप्त करें",
@@ -183,7 +189,11 @@
     "deceasedDate": "मृत्यु तिथि",
     "confirmDeceased": "मृत्यु की पुष्टि करें",
     "clearDeceased": "मृत चिह्न हटाएँ",
-    "deceasedBanner": "{{date}} को मृत के रूप में चिह्नित"
+    "deceasedBanner": "{{date}} को मृत के रूप में चिह्नित",
+    "administrativeGender": "प्रशासनिक लिंग",
+    "amendmentReason": "संशोधन का कारण",
+    "identityAssurance": "पहचान आश्वासन",
+    "reasonRequired": "नाम, जन्म तिथि या प्रशासनिक लिंग बदलने के लिए कारण आवश्यक है।"
   },
   "merge": {
     "title": "मर्ज समीक्षा",
@@ -1717,5 +1727,11 @@
     "reason": "आप ये पंक्तियाँ क्यों खोल रहे हैं?",
     "drillAction": "पंक्तियाँ खोलें",
     "drillFailed": "पंक्तियाँ नहीं खुल सकीं। अपनी अनुमति जाँचें, या प्रशासक से कहें।"
+  },
+  "assurance": {
+    "self_declared": "स्वघोषित",
+    "staff_verified": "स्टाफ द्वारा सत्यापित",
+    "id_verified": "पहचान-पत्र सत्यापित",
+    "abha_verified": "ABHA सत्यापित"
   }
 }

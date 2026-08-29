@@ -162,7 +162,13 @@
     "moderate": "Moderate",
     "severe": "Severe",
     "markError": "Entered in error",
-    "reason": "Reason",
+    "reason": {
+      "clerical_error": "Clerical error",
+      "legal_change": "Legal change (NALSA / marriage / gazette)",
+      "document_correction": "Corrected against a document",
+      "patient_request": "Patient says the record is wrong",
+      "merge_reconciliation": "Settled while resolving a duplicate"
+    },
     "guardians": "Guardians",
     "addGuardian": "Add guardian",
     "endGuardian": "End",
@@ -183,7 +189,11 @@
     "deceasedDate": "Date of death",
     "confirmDeceased": "Confirm deceased",
     "clearDeceased": "Clear deceased mark",
-    "deceasedBanner": "Marked deceased on {{date}}"
+    "deceasedBanner": "Marked deceased on {{date}}",
+    "administrativeGender": "Administrative gender",
+    "amendmentReason": "Reason for amendment",
+    "identityAssurance": "Identity assurance",
+    "reasonRequired": "Changing name, date of birth or administrative gender needs a reason."
   },
   "merge": {
     "title": "Merge review",
@@ -1717,5 +1727,11 @@
     "reason": "Why are you opening these rows?",
     "drillAction": "Open the rows",
     "drillFailed": "The rows could not be opened. Check your permission, or ask an administrator."
+  },
+  "assurance": {
+    "self_declared": "Self declared",
+    "staff_verified": "Staff verified",
+    "id_verified": "ID verified",
+    "abha_verified": "ABHA verified"
   }
 }

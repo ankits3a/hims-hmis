@@ -13,6 +13,7 @@ import { workflowManifest } from "../src/kernel/workflow/manifest";
 import { approvalsManifest } from "../src/kernel/approvals/manifest";
 import { patientsManifest } from "../src/modules/patients";
 import { registrationConfig } from "../src/kernel/db/schema";
+import { resolveIdentityAt } from "../src/modules/patients/identity";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { loadConfig, requireEnv } from "../src/kernel/config";
 import type { NestExpressApplication } from "@nestjs/platform-express";
@@ -181,5 +182,98 @@ describe("patients e2e", () => {
       .post("/patients/merge-requests").set(...auth(clerkToken))
       .send({ winnerId: a.body.patient.id, loserId: b.body.patient.id, note: "dup" })
       .expect(409); // unknown approval type patient_merge — registration is go-live data, T10 exercises the full path
+  });
+
+  /**
+   * PLAN 22c-A T7 — THE AMENDMENT SURFACE, END TO END: register → amend → resolve as of the
+   * moment the first document would have been issued. This is the phase's whole promise in one
+   * test, taken over HTTP rather than against the service, because the reason-class requirement
+   * lives on the route.
+   */
+  describe("22c-A T7 — the amendment surface", () => {
+    async function registerAsha(): Promise<string> {
+      const reg = await request(app.getHttpServer())
+        .post("/patients").set(...auth(clerkToken))
+        .send({ name: "Asha Devi", sex: "female", phone: "9811111111", language: "hi" })
+        .expect(201);
+      return reg.body.patient.id as string;
+    }
+
+    it("REFUSES a Class I amendment that does not say why", async () => {
+      const id = await registerAsha();
+      const res = await request(app.getHttpServer())
+        .patch(`/patients/${id}`).set(...auth(clerkToken))
+        .send({ name: "Asha Sharma" })
+        .expect(400);
+      expect(JSON.stringify(res.body)).toMatch(/reason_required/);
+    });
+
+    it("ACCEPTS a Class II edit with no reason — the desk does not justify a typo fix", async () => {
+      const id = await registerAsha();
+      await request(app.getHttpServer())
+        .patch(`/patients/${id}`).set(...auth(clerkToken))
+        .send({ phone: "9822222222" })
+        .expect(200);
+    });
+
+    it("REFUSES an unknown reason class rather than storing free text", async () => {
+      const id = await registerAsha();
+      await request(app.getHttpServer())
+        .patch(`/patients/${id}`).set(...auth(clerkToken))
+        .send({ name: "Asha Sharma", reasonClass: "because I said so" })
+        .expect(400);
+    });
+
+    it("register → amend → the document as of issue still shows the ORIGINAL name", async () => {
+      const id = await registerAsha();
+
+      // What a document issued now would resolve to.
+      const atIssue = new Date();
+      const before = await resolveIdentityAt(db, id, atIssue);
+      expect(before!.name).toBe("Asha Devi");
+
+      await request(app.getHttpServer())
+        .patch(`/patients/${id}`).set(...auth(clerkToken))
+        .send({ name: "Asha Sharma", reasonClass: "legal_change", evidenceRef: "GAZETTE-2026-1187" })
+        .expect(200);
+
+      // The live record moved…
+      const read = await request(app.getHttpServer())
+        .get(`/patients/${id}`).set(...auth(clerkToken)).expect(200);
+      expect(read.body.patient.name).toBe("Asha Sharma");
+
+      // …and the document does not. This is the Medanta failure, not reproduced.
+      const stillAsIssued = await resolveIdentityAt(db, id, atIssue);
+      expect(stillAsIssued!.name).toBe("Asha Devi");
+      expect(stillAsIssued!.version).toBe(1);
+    });
+
+    it("the assurance route raises the stamp, and an unevidenced amendment drops it again (DD5)", async () => {
+      const id = await registerAsha();
+      const up = await request(app.getHttpServer())
+        .post(`/patients/${id}/assurance`).set(...auth(clerkToken))
+        .send({ toLevel: "id_verified", evidenceRef: "AADHAAR-XXXX-1234" })
+        .expect(201);
+      expect(up.body).toEqual({ from: "staff_verified", to: "id_verified" });
+
+      await request(app.getHttpServer())
+        .patch(`/patients/${id}`).set(...auth(clerkToken))
+        .send({ name: "Asha Sharma", reasonClass: "patient_request" })
+        .expect(200);
+
+      const read = await request(app.getHttpServer())
+        .get(`/patients/${id}`).set(...auth(clerkToken)).expect(200);
+      // The amendment succeeded and the stamp told the truth about itself, which is DD5's whole
+      // argument: refusing would have pushed the clerk into re-registering the patient.
+      expect(read.body.patient.identityAssurance).toBe("staff_verified");
+    });
+
+    it("REFUSES a downgrade through the assurance route", async () => {
+      const id = await registerAsha();
+      await request(app.getHttpServer())
+        .post(`/patients/${id}/assurance`).set(...auth(clerkToken))
+        .send({ toLevel: "self_declared" })
+        .expect(409);
+    });
   });
 });

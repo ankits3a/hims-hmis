@@ -12,6 +12,7 @@ import { WorkflowError } from "../../kernel/workflow/instances";
 import { withTx } from "../../kernel/db/client";
 import { PatientError } from "./uhid";
 import { getPatient, registerPatient, updatePatient } from "./registration";
+import { AMENDMENT_REASONS, IDENTITY_ASSURANCE, touchesIdentity, upgradeAssurance } from "./identity";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { searchPatients } from "./search";
 import { getPatientPhoto, storePatientPhoto } from "./photos";
@@ -121,7 +122,28 @@ const patchBody = registerBody
     // Strict ISO-8601 (not z.coerce.date()): the deceased hard stop is CRITICAL machinery and
     // the wire contract should reject a loosely-parsed date rather than silently accept one.
     deceasedAt: z.string().datetime().nullable().optional(),
+    /**
+     * PLAN 22c-A T7 — THE AMENDMENT CONTEXT, AND `reasonClass` IS AN ENUM RATHER THAN FREE TEXT
+     * (series R-018; the shipped precedent is `refunds.ts`'s `reasonClass`). Free text on an
+     * amendment produces "correction", "corrected", "as per document" and a thousand other
+     * spellings of five actual reasons, and nothing can ever be counted or audited from it.
+     *
+     * It is OPTIONAL at the schema and REQUIRED for a Class I change — enforced below rather than
+     * here, because the same body also carries Class II edits (a phone fix) that owe no reason at
+     * all, and a schema-level requirement would make the desk type a reason to correct a typo.
+     */
+    reasonClass: z.enum(AMENDMENT_REASONS).optional(),
+    /** What the clerk saw: a document number, an upload id later. Free text by nature. */
+    evidenceRef: z.string().max(200).nullable().optional(),
+    /** The assurance level the presented evidence supports (DD5) — decides whether the stamp drops. */
+    evidencedAt: z.enum(IDENTITY_ASSURANCE).optional(),
   });
+
+/** PLAN 22c-A T7 — the assurance upgrade is its own act, with its own body. */
+const assuranceBody = z.object({
+  toLevel: z.enum(IDENTITY_ASSURANCE),
+  evidenceRef: z.string().max(200).nullable().optional(),
+});
 
 const searchQuery = z.object({ q: z.string(), limit: z.coerce.number().int().positive().max(50).optional() });
 const photoBody = z.object({ imageBase64: z.string().min(1) });
@@ -267,11 +289,45 @@ export class PatientsController {
   @RequirePermission("patients.update", "hospital")
   @Patch(":id")
   async patch(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<unknown> {
-    const b = parsed(patchBody, body);
+    const { reasonClass, evidenceRef, evidencedAt, ...patch } = parsed(patchBody, body);
+    /**
+     * PLAN 22c-A T7 — A CLASS I AMENDMENT MUST SAY WHY, AND THE CHECK IS HERE RATHER THAN IN THE
+     * DOMAIN FUNCTION. `updatePatient` is also reached by the merge path and the walk-in path,
+     * which amend for reasons of their own and would be broken by a blanket requirement; this is
+     * the human-facing door, and a person changing a patient's legal name owes a reason.
+     *
+     * Class II is deliberately exempt: making the desk pick a reason to fix a mistyped phone
+     * number is how a required field becomes whatever is first in the list.
+     */
+    if (reasonClass === undefined && touchesIdentity(Object.keys(patch))) {
+      throw new BadRequestException("reason_required: an identity amendment records why (22c-A T7)");
+    }
     try {
-      return await withTx(this.db, (tx) => updatePatient(tx, actor, id, b));
+      return await withTx(this.db, (tx) =>
+        updatePatient(tx, actor, id, patch, { reasonClass, evidenceRef, evidencedAt }));
     } catch (e) {
       toHttp(e);
+    }
+  }
+
+  /**
+   * PLAN 22c-A T7 — raise a patient's identity assurance. Separate from PATCH because it is a
+   * different act: PATCH changes what the record SAYS, this changes how much the hospital is
+   * willing to VOUCH for it, and conflating them is how "I fixed a typo" becomes "I verified this
+   * person's identity". Staff only, upgrades only, evidence required at `id_verified` and above —
+   * all enforced in `upgradeAssurance` so a future caller cannot route around it.
+   */
+  @RequirePermission("patients.update", "hospital")
+  @Post(":id/assurance")
+  async setAssurance(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<{ from: string; to: string }> {
+    const b = parsed(assuranceBody, body);
+    try {
+      return await withTx(this.db, (tx) =>
+        upgradeAssurance(tx, actor, id, b.toLevel, b.evidenceRef ?? null));
+    } catch (e) {
+      return toHttp(e);
     }
   }
 
@@ -302,7 +358,7 @@ export class PatientsController {
     const found = await getPatient(this.db, actor, id);
     if (!found) throw new NotFoundException(`unknown patient ${id}`);
     const p = found.patient;
-    return { payload: buildQrPayload(this.cfg, p), uhid: p.uhid, name: p.name, sex: p.sex, dob: p.dob };
+    return { payload: buildQrPayload(this.cfg, p), uhid: p.uhid, name: p.name, administrativeGender: p.administrativeGender, dob: p.dob };
   }
 
   @RequirePermission("patients.update", "hospital")
