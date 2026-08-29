@@ -20,6 +20,22 @@ import { loadConfig, requireEnv } from "../src/kernel/config";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { Db } from "../src/kernel/db/client";
 
+/**
+ * PLAN 22c-A — THE HOOK BUDGET, raised to the `ot.e2e.test.ts` precedent (120s).
+ *
+ * This suite's `beforeEach` truncates ~100 tables, seeds the SoD pairs, syncs the permission
+ * catalogue, grants EVERY `patients.*` string to a role, and creates two users with sessions —
+ * for each of eighteen tests. jest's project default is `testTimeout: 15000`
+ * (`jest.config.cjs:14`), and that budget covers the ASSERTIONS, not a fixture of this weight.
+ *
+ * 22c-A grew the suite from twelve tests to eighteen and pushed it over: the hook timed out under
+ * load, and the next test then died on `registration_config_pkey` because the truncate it depended
+ * on had never finished — one slow fixture reported as two unrelated failures. The tests are not
+ * wrong and neither is the fixture; fifteen seconds was the wrong number for it, and it was the
+ * wrong number before this phase too. `ot.e2e.test.ts:47` reached the same conclusion first.
+ */
+jest.setTimeout(120_000);
+
 describe("patients e2e", () => {
   let app: INestApplication;
   let db: Db;
