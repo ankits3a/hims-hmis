@@ -2,6 +2,7 @@ import { and, desc, eq, gte, inArray, ne } from "drizzle-orm";
 import { hasPermission } from "../auth/permissions";
 import { orderItems, orders, patients } from "../db/schema";
 import { displayName } from "../../modules/patients/display-name";
+import { OrderError } from "./errors";
 import { ORDERS_PERMISSIONS } from "./manifest";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../db/client";
@@ -151,16 +152,41 @@ async function assemble(
     .select().from(orderItems)
     .where(inArray(orderItems.orderId, headers.map((h) => h.id)))
     .orderBy(orderItems.createdAt);
-  return headers.map((h) => {
+
+  /**
+   * ═══ THE HEADER IS PART OF THE DISCLOSURE, NOT A WRAPPER AROUND IT (CLOSE REVIEW C2) ═══
+   *
+   * Filtering the ITEMS and returning the header regardless was the whole of DD11 undone by one
+   * level of nesting. An order whose every item is restricted came back as a real header with
+   * `items: []` — and that header carries `orderNo`, `placedAt`, `orderingClinicianId`,
+   * `encounterNo` and, worst, **`indication`, which is free clinical text**. A ward clerk holding
+   * `orders.read` and nothing else could read:
+   *
+   *     L2608290007 · lab · open · Dr D · "post-exposure prophylaxis, needle-stick,
+   *                                        source patient unknown" · items: []
+   *
+   * That is more than the `hasHiddenItems` boolean F6 removed for being too revealing — it is that
+   * boolean plus five fields plus the reason. Two rules close it:
+   *
+   *   1. **An order with items, none of them visible, is not returned at all.** `placeOrder` refuses
+   *      an empty order (`no_items`), so an empty visible list can only mean everything was filtered.
+   *   2. **`indication` is withheld whenever ANY item was filtered.** One order is one kind and one
+   *      act, so the justification is written for the whole of it — "why was this ordered" about a
+   *      partially-restricted order is a statement about the restricted part.
+   */
+  return headers.flatMap((h) => {
     const mine = items.filter((i) => i.orderId === h.id).map(toItemView);
     const visible = visibleItems(h, mine, clearance);
-    return {
+    if (mine.length > 0 && visible.length === 0) return [];
+    const withheld = visible.length !== mine.length;
+    return [{
       id: h.id, orderNo: h.orderNo, orderGroupId: h.orderGroupId, kind: h.kind,
       patientId: h.patientId, encounterNo: h.encounterNo, serviceDate: h.serviceDate,
       priority: h.priority, authority: h.authority, status: h.status,
-      orderingClinicianId: h.orderingClinicianId, indication: h.indication,
+      orderingClinicianId: h.orderingClinicianId,
+      indication: withheld ? null : h.indication,
       placedAt: h.placedAt, closedAt: h.closedAt, items: visible,
-    };
+    }];
   });
 }
 
@@ -229,25 +255,57 @@ export async function listOrdersForEncounter(
  */
 export async function findRecentItems(
   exec: Db | Tx,
+  actor: Actor,
   patientId: string,
   serviceId: string,
   windowHours: number,
   now: Date = new Date(),
-): Promise<{ itemId: string; orderId: string; orderNo: string; kind: string; status: OrderItemStatus; createdAt: Date }[]> {
+): Promise<{ itemId: string; orderId: string; orderNo: string; kind: string; status: OrderItemStatus; placedAt: Date }[]> {
+  /**
+   * ═══ IT TAKES AN ACTOR, AND IT REFUSES ONE (CLOSE REVIEW M5) ═══
+   *
+   * This function deliberately applies NO restricted filter — that is what makes it safe to warn a
+   * clinician about a prior HIV test they may not read, and F6 leans on it. But with no actor
+   * parameter it was an unauthenticated oracle: anything holding a `Db` could ask
+   * `findRecentItems(db, sealedPatientId, hivServiceId, 720)` and get a positive answer that a
+   * specific restricted test exists, then iterate `serviceId` over the tariff to reconstruct the
+   * whole restricted history `listOrdersForPatient` exists to hide. Nothing to gate on, nothing to
+   * log, and no way for a reviewer of a downstream route to SEE that a clearance had been skipped.
+   *
+   * So the actor is required and only STAFF and the application's own automated callers may ask.
+   * A `patient` actor is refused outright: a duplicate check is clinical decision support made by
+   * the person about to order, and there is no version of it a patient app needs. An `agent` is
+   * refused for the reason it is refused everywhere else in this envelope.
+   */
+  if (actor.type !== "user" && actor.type !== "system") {
+    throw new OrderError(
+      "actor_cannot_advance",
+      `a ${actor.type} actor may not run a duplicate-window check — it is clinical decision ` +
+        "support for whoever is about to order, and it deliberately sees restricted items",
+    );
+  }
+
+  /**
+   * THE WINDOW IS MEASURED ON `placed_at`, THE CLINICAL INSTANT — never on `created_at` (M9).
+   * E13 rules that a paper order backfilled at 14:00 carries `placed_at` = the paper time, so a
+   * window measured on the row's insert instant would call a six-hour-old troponin one hour old and
+   * warn about it — which is the "trains people to click through warnings" failure this function's
+   * own header names, produced by the check itself.
+   */
   const since = new Date(now.getTime() - windowHours * 3600_000);
   const rows = await (exec as Db)
     .select({
       itemId: orderItems.id, orderId: orders.id, orderNo: orders.orderNo, kind: orders.kind,
-      status: orderItems.status, createdAt: orderItems.createdAt,
+      status: orderItems.status, placedAt: orders.placedAt,
     })
     .from(orderItems)
     .innerJoin(orders, eq(orders.id, orderItems.orderId))
     .where(and(
       eq(orders.patientId, patientId),
       eq(orderItems.serviceId, serviceId),
-      gte(orderItems.createdAt, since),
+      gte(orders.placedAt, since),
       ne(orderItems.status, "cancelled"),
     ))
-    .orderBy(desc(orderItems.createdAt));
+    .orderBy(desc(orders.placedAt));
   return rows.map((r) => ({ ...r, status: r.status as OrderItemStatus }));
 }

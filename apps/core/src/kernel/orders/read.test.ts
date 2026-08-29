@@ -170,6 +170,90 @@ describe("the order envelope's readers (Plan 17 phase 0 T5)", () => {
     }
   });
 
+  // ═════════ CLOSE REVIEW C2 — THE HEADER IS PART OF THE DISCLOSURE, NOT A WRAPPER ═════════
+
+  /**
+   * The leg A1 could not see. A1's fixture always carries a VISIBLE CBC beside the restricted HIV
+   * test, so the header is legitimately present and `JSON.stringify(view)` never contains the
+   * restricted service id. **An order whose EVERY item is restricted is the case that leaked**, and
+   * it came back as a full header with `items: []` — which is the `hasHiddenItems` boolean F6
+   * removed for being too revealing, plus five fields, plus the indication.
+   */
+  it("C2 — an order whose every item is restricted is not returned AT ALL to an uncleared caller", async () => {
+    await withTx(db, (tx) => placeOrder(tx, consultant, DECLS, {
+      kind: "lab", patientId: PATIENT, encounterNo: VISIT, serviceDate: DAY,
+      orderingClinicianId: consultant.id,
+      indication: "post-exposure prophylaxis, needle-stick, source patient unknown",
+      items: [{ serviceId: HIV, restricted: true }],
+    }));
+    const forWard = await listOrdersForPatient(db, ward, PATIENT);
+    expect(forWard.orders).toEqual([]);
+    // Not the order number, not the clinician, and above all not the free-text indication.
+    expect(JSON.stringify(forWard)).not.toContain("needle-stick");
+    expect(JSON.stringify(forWard)).not.toContain("L26");
+    // ...and the cleared caller still sees all of it, so the filter is not simply hiding everything.
+    const forAuditor = await listOrdersForPatient(db, auditor, PATIENT);
+    expect(forAuditor.orders).toHaveLength(1);
+    expect(forAuditor.orders[0]!.indication).toContain("needle-stick");
+  });
+
+  it("C2b — `indication` is withheld when only SOME items were filtered", async () => {
+    await withTx(db, (tx) => placeOrder(tx, consultant, DECLS, {
+      kind: "lab", patientId: PATIENT, encounterNo: VISIT, serviceDate: DAY,
+      orderingClinicianId: "another-doctor",
+      indication: "occupational exposure workup",
+      items: [{ serviceId: CBC }, { serviceId: HIV, restricted: true }],
+    }));
+    const forWard = await listOrdersForPatient(db, ward, PATIENT);
+    // The order is still visible — a CBC was ordered and the ward has work to do — but the REASON
+    // is not, because one order is one act and the justification is written for the whole of it.
+    expect(forWard.orders).toHaveLength(1);
+    expect(forWard.orders[0]!.items.map((i) => i.serviceId)).toEqual([CBC]);
+    expect(forWard.orders[0]!.indication).toBeNull();
+    expect((await listOrdersForPatient(db, auditor, PATIENT)).orders[0]!.indication)
+      .toBe("occupational exposure workup");
+  });
+
+  it("C2c — listOrdersForEncounter has the same shape and the same rule", async () => {
+    await withTx(db, (tx) => placeOrder(tx, consultant, DECLS, {
+      kind: "lab", patientId: PATIENT, encounterNo: VISIT, serviceDate: DAY,
+      orderingClinicianId: consultant.id, indication: "confidential",
+      items: [{ serviceId: HIV, restricted: true }],
+    }));
+    expect(await listOrdersForEncounter(db, ward, VISIT)).toEqual([]);
+    expect(await listOrdersForEncounter(db, auditor, VISIT)).toHaveLength(1);
+  });
+
+  // ═════════ CLOSE REVIEW M5 — the duplicate window is staff-only ═════════
+
+  it("M5 — a patient actor may not run a duplicate-window check", async () => {
+    await expect(findRecentItems(db, { type: "patient", id: "p-1" }, SEALED, HIV, 720))
+      .rejects.toThrow(/may not run a duplicate-window check/);
+    await expect(findRecentItems(db, { type: "agent", id: "drafter" }, SEALED, HIV, 720))
+      .rejects.toThrow(/may not run a duplicate-window check/);
+    // Staff and the application's own automated callers may — that is what it is FOR.
+    await expect(findRecentItems(db, { type: "system", id: "reflex" }, PATIENT, CBC, 24))
+      .resolves.toEqual([]);
+  });
+
+  /**
+   * M9 — the window is measured on the CLINICAL instant. A paper order backfilled hours later
+   * carries `placed_at` = the paper time (E13); a window measured on the row's insert instant would
+   * call a six-hour-old test one hour old and warn about it.
+   */
+  it("M9 — the window measures placed_at, not the row's insert instant (E13's backfill)", async () => {
+    await withTx(db, (tx) => placeOrder(tx, consultant, DECLS, {
+      kind: "lab", patientId: PATIENT, encounterNo: VISIT, serviceDate: DAY,
+      orderingClinicianId: consultant.id,
+      placedAt: new Date(Date.now() - 6 * 3600_000),   // written on paper six hours ago
+      items: [{ serviceId: CBC }],                      // and keyed into the system just now
+    }));
+    // A two-hour window must NOT see it: clinically it is six hours old.
+    expect(await findRecentItems(db, consultant, PATIENT, CBC, 2)).toEqual([]);
+    // An eight-hour window must.
+    expect(await findRecentItems(db, consultant, PATIENT, CBC, 8)).toHaveLength(1);
+  });
+
   // ─────────────────────────── A5 — the sealed patient's name ───────────────────────────
 
   /**
@@ -216,7 +300,7 @@ describe("the order envelope's readers (Plan 17 phase 0 T5)", () => {
       kind: "imaging", patientId: PATIENT, encounterNo: VISIT, serviceDate: DAY,
       orderingClinicianId: consultant.id, items: [{ serviceId: CBC }],
     }));
-    const found = await findRecentItems(db, PATIENT, CBC, 24);
+    const found = await findRecentItems(db, consultant, PATIENT, CBC, 24);
     expect(found).toHaveLength(2);
     // Cross-kind by construction: the lab's duplicate check sees radiology's order.
     expect(found.map((f) => f.kind).sort()).toEqual(["imaging", "lab"]);
@@ -232,11 +316,11 @@ describe("the order envelope's readers (Plan 17 phase 0 T5)", () => {
       orderingClinicianId: consultant.id, items: [{ serviceId: CBC }, { serviceId: HIV }],
     }));
     await withTx(db, (tx) => advanceOrderItem(tx, consultant, DECLS, itemIds[0]!, "cancelled"));
-    expect(await findRecentItems(db, PATIENT, CBC, 24)).toEqual([]);
+    expect(await findRecentItems(db, consultant, PATIENT, CBC, 24)).toEqual([]);
 
     await withTx(db, (tx) => advanceOrderItem(tx, consultant, DECLS, itemIds[1]!, "in_progress"));
     await withTx(db, (tx) => advanceOrderItem(tx, consultant, DECLS, itemIds[1]!, "completed"));
-    const completed = await findRecentItems(db, PATIENT, HIV, 24);
+    const completed = await findRecentItems(db, consultant, PATIENT, HIV, 24);
     expect(completed).toHaveLength(1);
     expect(completed[0]!.status).toBe("completed");
   });
@@ -247,12 +331,12 @@ describe("the order envelope's readers (Plan 17 phase 0 T5)", () => {
       orderingClinicianId: consultant.id, items: [{ serviceId: CBC }],
     }));
     // `now` is injected, so the window is measured rather than waited for.
-    const inWindow = await findRecentItems(db, PATIENT, CBC, 2, new Date(Date.now() + 3600_000));
+    const inWindow = await findRecentItems(db, consultant, PATIENT, CBC, 2, new Date(Date.now() + 3600_000));
     expect(inWindow).toHaveLength(1);
-    const outOfWindow = await findRecentItems(db, PATIENT, CBC, 2, new Date(Date.now() + 3 * 3600_000));
+    const outOfWindow = await findRecentItems(db, consultant, PATIENT, CBC, 2, new Date(Date.now() + 3 * 3600_000));
     expect(outOfWindow).toEqual([]);
     // A different patient's identical test is not a duplicate.
-    expect(await findRecentItems(db, SEALED, CBC, 24)).toEqual([]);
+    expect(await findRecentItems(db, consultant, SEALED, CBC, 24)).toEqual([]);
   });
 
   // ────────────────────────── A4 — the manifest census, by measurement ──────────────────────────

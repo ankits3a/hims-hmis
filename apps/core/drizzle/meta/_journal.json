@@ -316,6 +316,13 @@
       "when": 1788008787199,
       "tag": "0044_order_envelope",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1788016665132,
+      "tag": "0045_order_envelope_integrity",
+      "breakpoints": true
     }
   ]
 }

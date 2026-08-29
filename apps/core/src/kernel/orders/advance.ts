@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { orderItemTransitions, orderItems, orders } from "../db/schema";
 import { appendEvent } from "../events/append";
@@ -74,6 +74,8 @@ export async function advanceOrderItem(
       orderId: orderItems.orderId,
       kind: orders.kind,
       headerStatus: orders.status,
+      orderedByType: orders.orderedByType,
+      orderedById: orders.orderedById,
     })
     .from(orderItems)
     .innerJoin(orders, eq(orders.id, orderItems.orderId))
@@ -83,7 +85,7 @@ export async function advanceOrderItem(
   if (!item) throw new OrderError("unknown_item", `no order item ${itemId}`);
   const from = item.status as OrderItemStatus;
 
-  assertActorMayAdvance(actor, decls, item.kind, from, to);
+  assertActorMayAdvance(actor, decls, item, from, to);
 
   if (!isLegalItemTransition(from, to)) {
     throw new OrderError(
@@ -180,6 +182,32 @@ async function closeHeaderIfDone(
   kind: string,
   at: Date,
 ): Promise<"closed" | "cancelled" | null> {
+  /**
+   * ═══ LOCK THE HEADER BEFORE COUNTING, AND THE CAS BELOW IS NOT A SUBSTITUTE FOR IT ═══
+   *
+   * CLOSE REVIEW C1. The sibling count is a plain READ, and this repository runs READ COMMITTED
+   * (`withTx` issues a bare `db.transaction`, no isolation level anywhere). The item compare-and-set
+   * locks THIS item's row and nothing else — two items of one order are two different rows and never
+   * contend. So two analyzer results landing at the same instant each saw the OTHER item still
+   * `in_progress`, because the other transaction had not committed:
+   *
+   *     T1: CAS A→completed ·  count: A=completed(own), B=in_progress → live=1 → return null
+   *     T2: CAS B→completed ·  count: B=completed(own), A=in_progress → live=1 → return null
+   *     both COMMIT → every item completed, header still `open`, `order.closed` never emitted.
+   *
+   * Neither transaction reached the CAS at the foot of this function, so its "zero rows is not an
+   * error" defence never engaged: the defect was that neither party got THERE. The order then sits
+   * on every pending-investigations list for ever — the exact failure this function's own header
+   * says it exists to prevent — and 22c-F's projection and 26's package progress, both of which key
+   * off `order.closed`, never hear about it.
+   *
+   * `FOR UPDATE` on the header serialises the two: the second blocks here, and when it proceeds its
+   * sibling read sees the first's COMMITTED row. **The lock order is item → header for every
+   * caller, so there is no cycle to deadlock on.** The statement is the house pattern
+   * (`billing/receipts.ts`, `materials/consumption.ts`, `ot/deposit.ts` all take exactly this shape).
+   */
+  await tx.execute(sql`select id from orders where id = ${orderId} for update`);
+
   const siblings = await tx
     .select({ status: orderItems.status })
     .from(orderItems)
@@ -216,7 +244,7 @@ async function closeHeaderIfDone(
 function assertActorMayAdvance(
   actor: Actor,
   decls: readonly OrderKindDecl[],
-  kind: string,
+  order: { kind: string; orderedByType: string; orderedById: string },
   from: OrderItemStatus,
   to: OrderItemStatus,
 ): void {
@@ -235,11 +263,36 @@ function assertActorMayAdvance(
      * is at the bench, calling it off is a conversation with the department, not a button.
      */
     case "patient": {
-      const decl = findOrderKindDecl(decls, kind);
+      const decl = findOrderKindDecl(decls, order.kind);
       if (to !== "cancelled" || from !== "placed" || !decl?.selfOrderable) {
         throw new OrderError(
           "actor_cannot_advance",
-          `a patient may only cancel a not-yet-started item of a self-orderable kind — ${from} → ${to} on "${kind}" is not that`,
+          `a patient may only cancel a not-yet-started item of a self-orderable kind — ${from} → ${to} on "${order.kind}" is not that`,
+        );
+      }
+      /**
+       * ═══ AND IT MUST BE THEIR OWN ORDER (CLOSE REVIEW M3) ═══
+       *
+       * This clause is new, and the paragraph it replaces was WRONG. It said whose order a patient
+       * is cancelling is the calling surface's question, "established by the patient-scoped reader
+       * the surface used to find it (`listOrdersForPatient`)". **`listOrdersForPatient` establishes
+       * nothing**: it takes `patientId` as a free parameter and never compares it to `actor.id`. The
+       * loop had no closed end, and this phase's own A6b test was green BECAUSE of the gap — it
+       * cancelled, with credential `p-1`, an item on an order a lab tech had placed for a different
+       * patient entirely.
+       *
+       * Under Plan 26 (`package`, `selfOrderable: true`) that is any authenticated phone credential
+       * cancelling any other patient's booked check-up. The binding the kernel CAN make is the one
+       * it has the data for: the order must have been placed BY THIS PATIENT ACTOR. That is exactly
+       * the act DD6 is describing when it says a patient may cancel — 26's own package cancellation —
+       * and it needs no new column, because `ordered_by_type`/`ordered_by_id` are stamped at
+       * placement and frozen by `0044`'s trigger.
+       */
+      if (order.orderedByType !== "patient" || order.orderedById !== actor.id) {
+        throw new OrderError(
+          "actor_cannot_advance",
+          "a patient may cancel only an order they placed themselves — this one was placed by " +
+            `a ${order.orderedByType} actor`,
         );
       }
       return;

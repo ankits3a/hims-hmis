@@ -187,6 +187,20 @@ describe("the order envelope — 0044 structure", () => {
         .rejects.toThrow(/order_items_duplicate_ck/);
     });
 
+    /**
+     * CLOSE REVIEW (MINOR 13) — `0045`. `cancelled` and `cancelled_from` are ONE fact. Before this,
+     * `insert … (status='cancelled')` with everything else null passed every constraint, and 02
+     * O-4's money rule — which decides whether the charge stands by reading `cancelled_from` —
+     * would have had a row it cannot interpret. `order_items_cancel_reason_ck` does not cover it:
+     * that one fires only once `cancelled_from` is already `'in_progress'`.
+     */
+    it("refuses a cancelled item with no cancelled_from, and a cancelled_from on a live item (0045)", async () => {
+      await expect(db.insert(orderItems).values(item({ status: "cancelled" }) as never))
+        .rejects.toThrow(/order_items_cancelled_shape_ck/);
+      await expect(db.insert(orderItems).values(item({ status: "placed", cancelledFrom: "placed" }) as never))
+        .rejects.toThrow(/order_items_cancelled_shape_ck/);
+    });
+
     it("refuses an item whose service is not in the tariff", async () => {
       await expect(db.insert(orderItems).values(item({ serviceId: "no-such-service" }) as never))
         .rejects.toThrow(/service_id/);
@@ -255,6 +269,32 @@ describe("the order envelope — 0044 structure", () => {
      * a header, so a trigger that refused `status` would make the phase's central write path
      * impossible — a mistake that would only surface at T4.
      */
+    /**
+     * CLOSE REVIEW (MAJOR 10) — `0045` adds these two to the trigger. They ARE the commission
+     * ledger's attribution (02 §1), and they move together cleanly enough to satisfy every CHECK:
+     * `authority='external_prescription'` + a referrer id passes `orders_external_referrer_ck`'s
+     * biconditional and `orders_authority_ck`, so nothing refused it — turning a completed clinician
+     * order into a referral fee after the fact, with no audit row, because `order_item_transitions`
+     * records ITEM moves and never header edits.
+     */
+    it.each([
+      ["authority + external_referrer_id together — the attribution",
+        sql`update orders set authority = 'external_prescription', external_referrer_id = '01PARTNER000000000000001'`],
+      ["authority alone", sql`update orders set authority = 'protocol', protocol_ref = 'r1'`],
+    ])("refuses a change to %s (0045)", async (_what, statement) => {
+      await expect(db.execute(statement)).rejects.toThrow(/order_identity_immutable/);
+    });
+
+    /**
+     * `ordering_clinician_id` is deliberately NOT frozen, and the omission is a decision: it is the
+     * RESPONSIBLE clinician, and a genuine correction — the wrong doctor was named on a CT — has to
+     * stay possible. Asserted so the boundary is pinned rather than assumed.
+     */
+    it("PERMITS a correction to ordering_clinician_id — naming the wrong doctor must be fixable", async () => {
+      await db.execute(sql`update orders set ordering_clinician_id = 'dr-correct'`);
+      expect((await db.select().from(orders))[0]!.orderingClinicianId).toBe("dr-correct");
+    });
+
     it("PERMITS the moves the envelope itself makes — status and closed_at", async () => {
       await db.execute(sql`update orders set status = 'closed', closed_at = now()`);
       const [row] = await db.select().from(orders);

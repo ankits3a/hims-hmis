@@ -251,6 +251,18 @@ export const orderItems = pgTable(
       "order_items_duplicate_ck",
       sql`(${t.duplicateOfItemId} is null) = (${t.duplicateReason} is null)`,
     ),
+    /**
+     * CLOSE REVIEW (MINOR 13) — `cancelled` AND `cancelled_from` ARE ONE FACT, so neither may exist
+     * without the other. Before this, `insert … (status='cancelled')` with everything else null
+     * passed every constraint, and 02 O-4's money rule — which decides whether the charge stands by
+     * reading `cancelled_from` — would have had a row it cannot interpret.
+     * `order_items_cancel_reason_ck` above does NOT cover it: that one fires only once
+     * `cancelled_from` is already `'in_progress'`.
+     */
+    check(
+      "order_items_cancelled_shape_ck",
+      sql`(${t.status} = 'cancelled') = (${t.cancelledFrom} is not null)`,
+    ),
   ],
 );
 

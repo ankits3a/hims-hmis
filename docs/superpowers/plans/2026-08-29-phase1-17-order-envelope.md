@@ -305,6 +305,19 @@ A downstream plan may write its phase doc against these sentences without readin
 5. **Cross-kind reads are the kernel's:** `listOrdersForPatient`, `listOrdersForEncounter`, `findRecentItems`. A module never UNIONs another module's tables to answer "what is pending for this patient".
 6. **`restricted` is set at placement by the placing surface or by the module's own rule** (HIV test code → restricted); the kernel reader honours it; the module's extension may be stricter.
 7. **Specimens, studies, dispenses number themselves** from their own series (`S`, and whatever 18a/16 rule) on their own tables; `order_no` is never overloaded to name a tube.
+### 6A. WHAT THE ENVELOPE DOES NOT DO FOR YOU — added at close, from the independent review
+
+Six of the reviewer's findings are not defects in what shipped; they are things a downstream plan will assume and must not. They are stated here rather than left to be discovered, because §6 is the section a plan reads instead of this phase's code.
+
+1. **THE WORKER HAS NO ENCOUNTER RESOLVER, so `placeOrder` cannot resolve ANY encounter there.** `resolveEncounterByPrefix` reads a process-local map filled only by `OpdModule.onModuleInit` and `OtModule.onModuleInit`, and `worker.module.ts` has no `imports:` at all — it installs manifests, not Nest modules. **Plan 17's reflex rule and every standing order is a `system` actor running in the worker (DD6/E4), and today it would get `unknown_encounter` for a visit that exists.** Billing never hit this because its private wrapper falls back to OPD's reader; F1 deliberately did not give the kernel that fallback, and the decision stands. **The plan that first places an order from the worker owes the registration** — either the worker imports the modules that register `V` and `D`, or the resolver map is seeded some other way. It is a precondition, not a bug to file.
+2. **`placeOrder` has NO idempotency check of any kind.** No key, no natural-key lookup, no participation in `idempotency_keys`. A retried request mints a second `order_no`, a second set of items and a second `order.placed`, and Plan 17 posts the lab charge at accession — so the patient is billed twice and two tubes are drawn. **Idempotency belongs to the ROUTE**, and this phase mounts none. The plan that adds the route owes it.
+3. **`findRecentItems` matches `service_id` EXACTLY, so it does not catch a duplicate inside a profile.** "Fever Profile" containing CBC, then a standalone CBC, are two different `service_id` values and the window sees neither from the other. Packages and profiles are the normal Indian corporate-hospital shape and **Plan 26's whole subject is packages** — the composition model that would fix it is 17-M's, not the kernel's.
+4. **It also matches `patient_id` exactly, so it does not see across a pre-merge duplicate registration** (E7's UNK row, E8's merge). It reads a patient ROW, not a person.
+5. **E3 — an add-on on an OPEN order — has NO KERNEL API.** `placeOrder` creates a header; there is no `addOrderItem`. The first module to implement E3 would `INSERT INTO order_items` directly, which is the one write into these tables with no CAS, no trigger and no guard over it — and if the header closed first, the order is `closed` carrying a live item that `closeHeaderIfDone`'s `status='open'` CAS can never re-close. **§6.1's "adds ONE manifest field" does not cover E3.** The plan that needs it should ask for the kernel function rather than write the insert.
+6. **The readers do NOT record PHI access.** This repository logs at the READER, not the controller (`opd/history.ts`, `opd/vitals.ts`, `opd/prescriptions.ts` all call `recordPhiAccess`). `listOrdersForPatient` returns a patient's investigation list and display name and logs nothing. Every plan consuming these readers would otherwise have to remember independently; **the honest fix is one `recordPhiAccess` call inside `read.ts`, and it is left to the plan that mounts the first route** because the audit row wants a `purpose` this phase has no caller to supply.
+
+**And two properties the review CONFIRMED, worth having in writing because a downstream plan will wonder:** the item compare-and-set is a faithful transcription of `workflow/instances.ts:136-150` and is measured, not predicted (12 rounds, one winner every time); and no write path anywhere in `apps/core` reaches these three tables outside `kernel/orders` — grep over `src` and `scripts` returns only `place.ts`, `advance.ts` and the schema suite.
+
 8. Specifically: **Plan 17 T2** claims `lab` / `lab_order` / `lab.orders.place`, `requiresClinician:true` (external_prescription for walk-ins), `selfOrderable:false`; converts `advised_tests` into orders at the counter; hangs `lab_specimens` and `lab_results` off `order_item_id`. **Plan 18a** claims `imaging` / `radiology_order` / `radiology.orders.place`, `requiresIndication:true`; hangs studies, schedule, gates, Form F links off `order_item_id`; consumes `order.placed{kind:'imaging'}`. **Plan 24a** subscribes to `order.placed{kind:'lab'}` and `order_item.cancelled` (M9 quarantine) and adds `collection_site` on the lab's extension, not on the envelope. **Plan 26** claims `package` with `selfOrderable:true` and composes an `order_group_id` of lab + imaging orders per package. **Plan 22c-F** reads `listOrdersForPatient` as a patient actor and shows `completed` items whose module has published.
 
 ---
@@ -400,6 +413,12 @@ The sibling-grep §9.9 rule 7 asks for — `grep -rn 'formularyManifest' apps/co
 **S6b (DD12's sibling question, asked by the DD itself) — the patient merge uses NO GUC.** `grep -rn "set_config|current_setting" apps/core/src --include=*.ts` returns **zero hits**. DD12 named this branch in advance: **`orders.patient_id` is therefore left MUTABLE**, the immutability trigger freezes `order_no`, `kind`, `encounter_no`, `ordered_by_type` and `ordered_by_id` only, and this sentence is the close saying so. A merge re-links by plain UPDATE, as it must, and E8's "printed labels keep the original" holds because `order_no` is frozen.
 
 ### 9.1 The commits
+
+| SHA | tasks | what it carries |
+|---|---|---|
+| **`9ba2482`** | T1–T6, one commit | 33 files, +21,256/−67. Migration `0044` and the three tables; `kernel/orders/` (12 files); `kernel/episodes/encounter-resolvers.ts`; the `orderKinds?` manifest field and both boot call sites; the billing/opd/ot import repoints; five censuses; this document. |
+
+**ONE commit for six tasks, and that is v3 §9.9 rule 4 rather than a shortcut.** The unit of cost in a LIGHT phase is the VERIFY RUN, not the commit — Plan 07c paid eight verify launches for three commits. All six tasks were code-complete at the same moment, so they were folded into one run and one commit whose message separates them task by task. Migration `0044` taken; **next free is `0045`.**
 
 ### 9.2 Findings — eight, and every one of them was found by EXECUTING the document rather than by reading it
 
@@ -532,4 +551,93 @@ registry. The leg added in `place.test.ts` asserts containment rather than the e
 registers only `V` would pin the test's own fixture instead of the registry.
 
 ### 9.5 Mechanical verification
+
+**Preflight, before every verify launch (§9.9 rule 6 / ledger §2.132).** `pnpm typecheck && pnpm lint` was run before each of the two full-verify launches and caught one unused import (`inArray` in `advance.ts`) in sixty seconds rather than twenty minutes. It also caught, on its own, an unused `ordersManifest` import in `manifests.test.ts` — a manifest reaching both processes only through `ALL_MANIFESTS` is never a `registry.install()` argument, so `MANIFEST_BY_IDENTIFIER` does not carry it (the `resourcesManifest`/`deskManifest` precedent).
+
+**`pnpm verify`, detached, exit value READ FROM A FILE (`.verify17.exit`), tree frozen for its duration:**
+
+| | suites | tests |
+|---|---|---|
+| `apps/core` | **286 passed / 286** | **2,769 passed / 2,769** |
+| `apps/web` | 56 files passed | 355 passed |
+| `packages/contracts` | 4 passed | 21 passed |
+
+**Exit 0.** The workspace total did not decrease and this phase's diff deletes no test: it ADDS seven suites (`db/schema/orders.test.ts`, and `kinds`/`place`/`advance`/`read`/`envelope.e2e`/`parity` under `kernel/orders/`).
+
+**THE FIRST FULL VERIFY CAME BACK RED WITH 105 FAILURES AND ONLY TWO OF THEM WERE REAL — the rest were the shared host, and the distinction was measured rather than assumed.** 188 of the failure lines read `Exceeded timeout of 15000 ms`, spread across alerts, dispatcher, notify, ops, billing, formulary, materials, membership and opd — suites this phase does not touch — and `orders.test.ts` itself took **378 s** in that run against **27 s** in isolation. `uptime` at launch: **load average 18.70**, with the parallel patient-self-service lane running its own suites at `--maxWorkers=3`. Re-run at load average **2.35**: green. The two REAL failures inside that noise were `seed-roles.test.ts`'s censuses (F8), and they were found by reading the failure NAMES rather than the count.
+
+**The parallel-session protocol, applied and worth recording because it changed how this phase was tested.** `reports/2026-08-26-parallel-session-protocol.md` §4 says the shared per-worker test databases make a concurrent run's evidence unreliable, and this phase hit that four separate times — `order_items_service_id_services_id_fk` violations in tests whose own fixture had inserted the service, which is another run's `truncateAll` landing between the insert and the check. **The fix was not to queue: `setupTestDb` derives its database name from `TEST_DATABASE_URL`, so pointing it at `hmis_ord17_scratch` gave this phase private worker databases and the contention disappeared entirely** (154/154 on the first isolated run of suites that had been failing 6-at-a-time). AGENT-RULES rule 7 sanctions exactly this — *"a scratch database you create with a name that is obviously yours, use, and drop in the same task"* — and every one was dropped (`select count(*) … like 'hmis_ord17%'` → **0**). **This is the cheapest fix available to a parallel lane in this repo and it is not written down anywhere;** it belongs in the protocol document.
+
+**Frozen surfaces, audited against the commit's own `--stat`:** `kernel/resources/kinds.ts` UNTOUCHED · `resources_kind_ck` UNTOUCHED (no resource kind added; the set stays closed at ten, cross-module ruling 2 honoured) · `kernel/episodes/series.ts` UNTOUCHED (no new series letter; the phase adds no counter) · `kernel/auth/*` UNTOUCHED · `packages/contracts/*` UNTOUCHED (the four-member `Actor` union is consumed, never edited) · `modules/opd/` — **one line**, the import path in `opd.module.ts` · `modules/ot/` — **one line**, the same · `modules/patients/` UNTOUCHED (read from by deep path, never modified).
+
+**Claimed-kinds parity: `[]`**, asserted three ways — in `kinds.test.ts` over `ALL_MANIFESTS`, in `parity.test.ts` as the pin a reviewer sees move, and implicitly by `placeOrder` refusing every kind with `unknown_kind`. The envelope ships with **zero consumers**, which is the state the CONTRACT (§6) describes.
+
+**Scratch discipline (AGENT-RULES §5 step 0).** Four mutant modules and two mutant specs were written under `apps/core/src/kernel/orders/`, run, and deleted with plain `rm -f` before staging. `git status --porcelain` was read before the `git add` and showed no `*.mutant.*`, no `.log`/`.exit`, and no foreign-lane file. **Nothing was staged that this phase's Files lists do not name**, and staging was by explicit path — 33 paths, never `git add -A` and never a directory.
+
+**CI:** watched by FULL SHA with `pipelines/ci-watch-host.sh 9ba248228f8f53f02150954fb5b4f6b1a0f85ea7`.
+
 ### 9.6 The independent close review
+
+**ONE fresh reviewer, restricted tools, no MCP roster, briefed at the OPERANDS ahead of the dimension list (v3 §9.7).** There is no money file in this phase — DD10 keeps price off the envelope — so the "money file first" rule was replaced with *`place.ts` and `read.ts` first*, and the operand instruction was: *for every "already exists" check in `placeOrder` and `advanceOrderItem`, name what it queries and which writes it would MISS; for `listOrdersForPatient`'s restricted and sealed filters, name one row each would leak.*
+
+**It returned 2 CRITICAL, 8 MAJOR and 8 MINOR against a tree with 14 dead mutants, a green `pnpm verify` and a green CI run behind it.** That is v3 §9.4's measurement repeating exactly: *"the tree looked finished."*
+
+#### The two CRITICALs, both confirmed by executed mutants before being fixed
+
+**C1 — THE HEADER CLOSE WAS A READ-THEN-WRITE ON ROWS THE COMPARE-AND-SET DOES NOT LOCK, AND IT FAILED IN 7 OF 8 ROUNDS.**
+
+`closeHeaderIfDone` counted siblings with a plain unlocked `SELECT` under READ COMMITTED. **The item-level CAS locks that item's row and nothing else — two items of one order are two different rows and never contend.** So two results landing at the same instant each saw the other item still `in_progress`, because the other transaction had not committed:
+
+```
+T1: CAS A→completed · count: A=completed(own), B=in_progress → live=1 → return null
+T2: CAS B→completed · count: B=completed(own), A=in_progress → live=1 → return null
+both COMMIT → every item completed, header `open`, `order.closed` NEVER EMITTED
+```
+
+Neither transaction reached the CAS at the foot of that function, so its "zero rows is not an error" defence never engaged: **the defect was that neither party got there.** The order then sits on every pending-investigations list for ever — the exact failure the function's own header says it exists to prevent — and 22c-F's reports projection and 26's package progress both key off `order.closed`.
+
+**This is not a narrow window.** The pre-fix code, run 8 rounds against two concurrent completions: **header left OPEN with every item completed in 7 of 8.** The fix is `select id from orders where id = ? for update` before the count — the house pattern (`billing/receipts.ts`, `materials/consumption.ts`, `ot/deposit.ts`), and the lock order is item → header for every caller so there is no cycle.
+
+**Why the phase's own instruments missed it:** A4/A4b/A4c and the e2e close are all SEQUENTIAL, and A3 races two moves on the SAME item — the case the row lock already covers. No test raced two items of one order. The Assertion Book had a row for the header close; its mutant ("count all items instead of live ones") died on a sequential leg. **§9.7's lesson one level in: the Book asked whether the close FIRES, which is the question the author had already thought about.**
+
+**C2 — DD11's OMISSION WAS UNDONE BY ONE LEVEL OF NESTING: THE HEADER LEAKED, `indication` INCLUDED.**
+
+`visibleItems` filtered the ITEMS; `assemble` returned **every header regardless**. An order whose every item was restricted came back as a real header with `items: []`, carrying `orderNo`, `placedAt`, `orderingClinicianId`, `encounterNo` — and `indication`, which is free clinical text. A ward clerk holding `orders.read` and nothing else could read `L2608290007 · lab · open · Dr D · "post-exposure prophylaxis, needle-stick, source patient unknown"`.
+
+**That is more than the `hasHiddenItems` boolean F6 removed for being too revealing** — it is that boolean plus five fields plus the reason. Two rules close it: an order with items but none visible is not returned at all (`placeOrder` refuses an empty order, so an empty visible list can only mean everything was filtered), and `indication` is withheld whenever ANY item was filtered, because one order is one act and the justification is written for the whole of it.
+
+**And the assertion that could not see it was the one F6 substituted:** `expect(JSON.stringify(view)).not.toContain(HIV)` matches the SERVICE ID, and the fixture always carried a visible CBC beside the restricted test, so the header was legitimately present and the test passed. **No test built an order whose every item was restricted, and no test set `indication` at all.**
+
+#### The MAJORs acted on
+
+**M3 — the patient actor had no chain of custody, and A6b was GREEN BECAUSE OF IT.** `advanceOrderItem`'s comment said whose order a patient is cancelling is established by "the patient-scoped reader the surface used to find it (`listOrdersForPatient`)". **`listOrdersForPatient` establishes nothing** — it takes `patientId` as a free parameter and never compares it to `actor.id`. The loop had no closed end, and this phase's own A6b cancelled, with credential `p-1`, an item on an order a lab tech had placed for a different patient. Under Plan 26 that is any authenticated phone credential cancelling any other patient's booked check-up. **Fixed with the binding the kernel has the data for: the order must have been placed BY that patient actor** (`ordered_by_*`, stamped at placement and frozen by `0044`'s trigger). A6b now places as the patient; two new legs cover the stranger and the other-patient cases.
+
+**M5 — `findRecentItems` was an unauthenticated oracle.** It takes no actor, applies no clearance, and — correctly, deliberately — no restricted filter, which is what F6 leans on. But with no actor there was nothing to gate on and nothing to log: anything holding a `Db` could ask whether a sealed patient had a specific restricted test and iterate `serviceId` over the tariff to rebuild the history `listOrdersForPatient` hides. **It now requires an actor and admits only `user` and `system`** — a duplicate check is decision support for whoever is about to order.
+
+**M9 (partial) — the window measured `created_at`, the row's insert instant, not `placed_at`.** E13 rules that a paper order backfilled at 14:00 carries the paper time, so the check would have called a six-hour-old troponin one hour old and warned about it — *the "trains people to click through warnings" failure the function's own header names, produced by the check itself.* Now measured on `orders.placed_at`.
+
+**MAJOR 10 and MINOR 13 — two data-integrity holes closed by migration `0045`,** a follow-up rather than an edit to `0044` (rule 15: `0044` is pushed). `authority` and `external_referrer_id` were mutable, and they move together cleanly enough to satisfy every CHECK — so `UPDATE orders SET authority='external_prescription', external_referrer_id='<a partner I control>'` turned a completed clinician order into a commission-ledger referral fee after the fact, with no audit row anywhere (`order_item_transitions` records ITEM moves, never header edits). They join the identity trigger. And `status='cancelled'` with a null `cancelled_from` passed every constraint, leaving 02 O-4's money rule a row it cannot interpret — now a biconditional CHECK. `ordering_clinician_id` is deliberately left mutable: naming the wrong doctor must remain correctable, and that is pinned by its own test.
+
+#### Findings NOT acted on, each with its reason
+
+- **M7 (`hasPermission` hard-codes `"hospital"` scope) — CHECKED AND NOT A DEFECT.** All **20** `hasPermission` call sites in this repository pass `"hospital"`, and `grep 'scopeType: "department"'` over `src` and `scripts` returns **nothing**: there is no department-scoped assignment anywhere. This phase follows the shipped convention exactly. If department scoping ever arrives it is a repo-wide change, and a phase that deviated from the convention first would be the defect.
+- **M6 (`decls` is caller-supplied and forgeable)** — a fair critique, and it is the shipped `createResource(tx, actor, kinds, input)` precedent verbatim, whose header argues the alternatives (a boot-assigned mutable global; a default that goes stale without a typecheck error) are worse. Changing it here would put the kernel's two write paths on different shapes for the first time. **Recorded for the roadmap, not fixed in a remediation.**
+- **M4 (no encounter resolver is registered in the WORKER)** — real, verified (`worker.module.ts` has no `imports:` and never references `OpdModule`/`OtModule`), and **out of this phase's scope to fix**: it needs the worker to import two Nest modules, which is an architectural change to a process this phase does not own. It is a REAL constraint on Plan 17, whose reflex consumer is a `system` actor running in the worker, so it is written into the CONTRACT (§6) as a named precondition rather than left to be discovered.
+- **M8 (no idempotency on `placeOrder`)** — real, and it belongs to the ROUTE. This phase mounts none; the repo's `idempotency_keys` table is used at the controller layer. Written into the CONTRACT so Plan 17 owes it.
+- **M9's other two legs (profiles containing an analyte; pre-merge duplicate patient rows)** — both real limits of an exact-match window, neither fixable without a service-composition model (17-M) and a merge-aware patient resolver. Written into the CONTRACT as what `findRecentItems` does NOT catch.
+- **MINOR 11, 12, 14–18** — recorded in the CONTRACT where a downstream plan meets them. **12 is the one worth naming here: E3 (an add-on on an OPEN order) has no kernel API**, so the first module to implement it would `INSERT INTO order_items` directly — the one write with no CAS, no trigger and no guard over it. That is a real gap in §6's "adds ONE manifest field" promise and it is now stated as such.
+
+#### The remediation's own evidence
+
+Four mutants built from the PRE-FIX code (`remediation.mutant.ts`), run against the NEW assertions, **4 DIED / 0 SURVIVED, with a control that passed**:
+
+| # | mutant | verdict | evidence |
+|---|---|---|---|
+| C1 | `closeHeaderIfDone` without `FOR UPDATE` | **DIED** | *header left OPEN with every item completed in **7/8 rounds*** |
+| M3 | the patient leg without the ownership check | **DIED** | the stranger's cancel succeeded; item `cancelled`, expected `placed` |
+| C2 | `assemble` returning every header | **DIED** | the all-restricted order came back, indication included |
+| M5 | `findRecentItems` with no actor gate | **DIED** | resolved instead of rejecting for a `patient` actor |
+| — | **control: the SHIPPED code, same race** | **PASSED** | header `closed`, exactly one `order.closed` |
+
+**This is §9.8 applied rather than quoted: the fixes were written first, and then the mutants proved the new tests would have caught what they were written for.** A test added after a fix, never run against the defect, certifies nothing.
+

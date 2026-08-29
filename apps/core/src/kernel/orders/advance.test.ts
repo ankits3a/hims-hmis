@@ -46,8 +46,11 @@ describe("advanceOrderItem (Plan 17 phase 0 T4)", () => {
   beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
   afterAll(async () => { teardown(); });
 
-  beforeEach(async () => {
-    await truncateAll(db);
+  /**
+   * Extracted from `beforeEach` so C1's loop can re-seed between rounds: it truncates per round to
+   * measure the race repeatedly, and a race measured once is a race not measured (AGENT-RULES §2.3).
+   */
+  async function seedFixture(): Promise<void> {
     await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "t" }).onConflictDoNothing();
     await db.insert(patients).values({
       id: PATIENT, uhid: "HMS-00000001-5", name: "Asha Devi", sex: "female",
@@ -57,6 +60,7 @@ describe("advanceOrderItem (Plan 17 phase 0 T4)", () => {
       { id: S1, code: "CBC", name: "Complete blood count", category: "investigation", createdBy: "t", updatedBy: "t" },
       { id: S2, code: "LFT", name: "Liver function", category: "investigation", createdBy: "t", updatedBy: "t" },
     ]);
+    // Keyed by prefix, so re-registering REPLACES — idempotent across C1's rounds by construction.
     unregister = registerEncounterResolver("V", async (_db, no) =>
       no === VISIT ? { patientId: PATIENT, intendedPayer: "self" } : null);
 
@@ -68,6 +72,11 @@ describe("advanceOrderItem (Plan 17 phase 0 T4)", () => {
     await grantPermissionToRole(db, registry, "lab_tech", ORDERS_PLACE);
     await grantPermissionToRole(db, registry, "lab_tech", LAB_PLACE);
     ({ actor: tech } = await mkUser(db, "lab.tech", ["lab_tech"]));
+  }
+
+  beforeEach(async () => {
+    await truncateAll(db);
+    await seedFixture();
   });
 
   afterEach(() => { unregister(); });
@@ -78,6 +87,7 @@ describe("advanceOrderItem (Plan 17 phase 0 T4)", () => {
     kind = "lab",
     actor: Actor = tech,
   ): Promise<{ orderId: string; itemIds: string[] }> {
+    // A patient actor places under `authority: 'self'`, which the kind must admit (`selfOrderable`).
     const { orderId, itemIds } = await withTx(db, (tx) =>
       placeOrder(tx, actor, DECLS, {
         kind, patientId: PATIENT, encounterNo: VISIT, serviceDate: DAY,
@@ -297,6 +307,54 @@ describe("advanceOrderItem (Plan 17 phase 0 T4)", () => {
     expect(names).not.toContain("order.closed");
   });
 
+  /**
+   * ═══ CLOSE REVIEW C1 — TWO ITEMS OF ONE ORDER FINISHING AT THE SAME INSTANT ═══
+   *
+   * A4/A4b/A4c are all SEQUENTIAL, and the CAS at the foot of `closeHeaderIfDone` guards a race
+   * neither of them runs. The race that matters is on two DIFFERENT rows, which the item-level CAS
+   * cannot serialise: each transaction saw the other's item still `in_progress` because the other
+   * had not committed, so both returned early and the header stayed `open` for ever — every item
+   * completed, no `order.closed` event, and the order on every pending list until somebody noticed.
+   *
+   * The fix is a `FOR UPDATE` on the header before the sibling count. This is the test that was
+   * missing; it fails against the unlocked version.
+   */
+  it("C1 — two items of ONE order completing concurrently still close the header", async () => {
+    for (let round = 0; round < 8; round++) {
+      await truncateAll(db);
+      await seedFixture();
+      const { orderId, itemIds } = await order([S1, S2]);
+      await advance(tech, itemIds[0]!, "in_progress");
+      await advance(tech, itemIds[1]!, "in_progress");
+
+      const results = await Promise.allSettled([
+        advance(tech, itemIds[0]!, "completed"),
+        advance(tech, itemIds[1]!, "completed"),
+      ]);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(2);
+
+      const header = (await db.select().from(orders).where(eq(orders.id, orderId)))[0]!;
+      expect([header.status, header.closedAt === null]).toEqual(["closed", false]);
+      // EXACTLY ONE close event — the lock must serialise, not merely let both through.
+      const closed = (await db.select().from(events)).filter((e) => e.name === "order.closed");
+      expect(closed).toHaveLength(1);
+    }
+  });
+
+  it("C1b — a concurrent cancel and complete on two items still closes the header once", async () => {
+    const { orderId, itemIds } = await order([S1, S2]);
+    await advance(tech, itemIds[0]!, "in_progress");
+    const results = await Promise.allSettled([
+      advance(tech, itemIds[0]!, "completed"),
+      advance(tech, itemIds[1]!, "cancelled"),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(2);
+    const header = (await db.select().from(orders).where(eq(orders.id, orderId)))[0]!;
+    // One completed, one cancelled, no live items: the order RAN, so it is `closed` not `cancelled`.
+    expect(header.status).toBe("closed");
+    expect((await db.select().from(events)).filter((e) => e.name === "order.closed")).toHaveLength(1);
+  });
+
   // ───────────────────── A5 — one transitions row per move, with the actor ─────────────────────
 
   it("A5 — every success writes EXACTLY ONE transitions row carrying the caller's actor type", async () => {
@@ -331,17 +389,46 @@ describe("advanceOrderItem (Plan 17 phase 0 T4)", () => {
   // ───────────────────────── A6 — the actor legs on the state machine ─────────────────────────
 
   it("A6 — a patient may not start or complete their own test", async () => {
-    const { itemIds } = await order([S1], "package");
     const patient: Actor = { type: "patient", id: "patient-credential-1" };
+    const { itemIds } = await order([S1], "package", patient);
     expect(await codeOf(advance(patient, itemIds[0]!, "in_progress"))).toBe("actor_cannot_advance");
     await advance(tech, itemIds[0]!, "in_progress");
     expect(await codeOf(advance(patient, itemIds[0]!, "completed"))).toBe("actor_cannot_advance");
   });
 
-  it("A6b — a patient MAY cancel a not-yet-started item of a self-orderable kind (26)", async () => {
-    const { itemIds } = await order([S1], "package");
-    const result = await advance({ type: "patient", id: "p-1" }, itemIds[0]!, "cancelled");
+  /**
+   * ═══ CLOSE REVIEW M3 — THIS TEST WAS GREEN *BECAUSE OF* A DEFECT, AND IT IS THE SHARPEST THING
+   * THE REVIEW FOUND ═══
+   *
+   * As written, it placed a `package` order AS THE LAB TECH, for patient `01PATIENT…0001`, and then
+   * cancelled it with credential `p-1` — a patient actor with no relationship to that order or that
+   * patient — and passed. It was asserting the hole: under Plan 26 that is any authenticated phone
+   * credential cancelling any other patient's booked check-up.
+   *
+   * It now places the order AS THE PATIENT, which is the act DD6 actually describes, and the
+   * stranger's attempt is a separate leg below.
+   */
+  it("A6b — a patient MAY cancel a not-yet-started item of an order THEY placed (26)", async () => {
+    const patient: Actor = { type: "patient", id: "p-1" };
+    const { itemIds } = await order([S1], "package", patient);
+    const result = await advance(patient, itemIds[0]!, "cancelled");
     expect(result.headerClosedAs).toBe("cancelled");
+  });
+
+  it("M3 — a patient may NOT cancel an order somebody else placed, self-orderable kind or not", async () => {
+    // Placed by the lab tech, for the hospital's patient. `p-1` is a stranger to it.
+    const { itemIds } = await order([S1], "package");
+    expect(await codeOf(advance({ type: "patient", id: "p-1" }, itemIds[0]!, "cancelled")))
+      .toBe("actor_cannot_advance");
+    expect((await db.select().from(orderItems))[0]!.status).toBe("placed");
+  });
+
+  it("M3b — nor another PATIENT's order, which is the Plan 26 enumeration case exactly", async () => {
+    const owner: Actor = { type: "patient", id: "p-owner" };
+    const { itemIds } = await order([S1], "package", owner);
+    expect(await codeOf(advance({ type: "patient", id: "p-intruder" }, itemIds[0]!, "cancelled")))
+      .toBe("actor_cannot_advance");
+    expect((await db.select().from(orderItems))[0]!.status).toBe("placed");
   });
 
   it("A6c — a patient may NOT cancel an item of a kind that is not self-orderable", async () => {
@@ -350,10 +437,12 @@ describe("advanceOrderItem (Plan 17 phase 0 T4)", () => {
       .toBe("actor_cannot_advance");
   });
 
-  it("A6d — a patient may not cancel once the work has started, even on their own package", async () => {
-    const { itemIds } = await order([S1], "package");
+  it("A6d — a patient may not cancel once the work has started, even on their OWN package", async () => {
+    // Placed by the patient, so M3's ownership rule is satisfied and the STAGE rule is what refuses.
+    const patient: Actor = { type: "patient", id: "p-1" };
+    const { itemIds } = await order([S1], "package", patient);
     await advance(tech, itemIds[0]!, "in_progress");
-    expect(await codeOf(advance({ type: "patient", id: "p-1" }, itemIds[0]!, "cancelled", { reason: "changed mind" })))
+    expect(await codeOf(advance(patient, itemIds[0]!, "cancelled", { reason: "changed mind" })))
       .toBe("actor_cannot_advance");
   });
 
