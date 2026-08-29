@@ -9,7 +9,6 @@ import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { patientsManifest } from "./manifest";
 import { registerPatient, updatePatient } from "./registration";
-import { execSync } from "node:child_process";
 import { NOT_YET_MODELLED, ROLE_MODEL } from "../../../scripts/seed-roles";
 
 /**
@@ -142,15 +141,25 @@ describe("A17 — the phase granted these to NOBODY; the OWNER granted them the 
    * The owner ruled the day after, on the deployed system, and chose `mrd_officer`. That is a
    * separate act with its own commit, which is the whole point of DD7 routing it to a human.
    */
-  it("the phase's own migration granted neither string — checked against the commit, not today's model", () => {
-    // `04b7b21` is 22c-A T1, the commit that declared both. Reading the model AS OF that commit is
-    // the only way to keep asserting a fact about the phase now that the world has moved on.
-    const atT1 = execSync("git show 04b7b21:apps/core/scripts/seed-roles.ts", { encoding: "utf8" });
-    const roleModelAtT1 = atT1.slice(atT1.indexOf("export const ROLE_MODEL"), atT1.indexOf("export const NOT_YET_MODELLED"));
-    expect(roleModelAtT1).not.toContain("patients.confidential.write");
-    expect(roleModelAtT1).not.toContain("patients.deceased.write");
-  });
-
+  /**
+   * A TEST THAT ASSERTED THE PHASE'S HISTORY LIVED HERE FOR ONE COMMIT, AND CI DELETED IT.
+   *
+   * To keep A17's original claim alive after the owner's grant, I had this suite read the model
+   * **as of commit `04b7b21`** with `git show` and assert the strings were absent. It passed here
+   * and failed in CI, because `actions/checkout@v4` defaults to `fetch-depth: 1` — CI has the tip
+   * commit and no history, so the command cannot resolve. My clone has full history, which is
+   * exactly why the local run could not see the problem.
+   *
+   * The lesson is larger than the mechanism: **a historical fact does not belong in a test.** A
+   * test asserts what must be true NOW and must stay true; "the commit that declared these granted
+   * nothing" can never become false and can never be violated by future code, so nothing is
+   * protected by checking it — while the check itself adds an environment dependency the build
+   * does not otherwise have. That fact is recorded where facts belong: in `04b7b21`'s message, in
+   * the ruling commit's message, and in the phase document's CLOSE §6.4 beside A17's dead mutant.
+   *
+   * What IS durable, and is asserted below and in A15/A16 above: `patients.update` alone still
+   * cannot reach either field, and the holder set is exactly the one the owner named.
+   */
   it("TODAY they are held by mrd_officer, and by mrd_officer alone", async () => {
     const holders = (p: string): string[] =>
       ROLE_MODEL.filter((r) => (r.permissions as readonly string[]).includes(p)).map((r) => r.roleKey);

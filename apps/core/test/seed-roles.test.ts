@@ -765,7 +765,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     }
   });
 
-  it("the reachability census closes: 111 declared = 91 held + 20 not yet modelled", () => {
+  it("the reachability census closes: 111 declared = 93 held + 18 not yet modelled", () => {
     expect(installedRegistry().allPermissions()).toHaveLength(111);
     // 42 + 13 until the 2026-08-23 ruling moved the four `workflow.definitions.*` strings across;
     // 46 + 13 until Plan 09 declared fourteen and DD18 granted four of them.
