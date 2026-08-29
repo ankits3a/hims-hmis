@@ -505,19 +505,173 @@ which is what `lab_orderables.bench_key` names. **So the golden fixture supplies
 values, the bench worklist returns nothing until rows exist, and CREATING THE BENCH ROWS IS A
 RUNBOOK ACT (§9.9), not code** — the second of the two outcomes S11 was written to distinguish.
 
+**F7 IS PROVED, AND IT WAS THE ONE THING THAT COULD HAVE CHANGED THE DESIGN.** §5 T4 says to build
+A3 first because the "ONE transaction" seam rests on an unproven claim about drizzle: `issueInvoice`
+takes `Db` and opens its own `withTx`, so the seam is `issueInvoice(tx as unknown as Db, …)` and the
+question is whether that nests as a SAVEPOINT that rolls back with its parent. A scratch probe
+(deleted) asked Postgres directly, in both directions:
+
+| question | answer |
+|---|---|
+| an inner `withTx(tx as Db)` commits, then the OUTER transaction throws | **0 rows survive** — the savepoint is undone with its parent |
+| the INNER throws | the outer transaction stays alive and usable (its own row still visible) |
+
+So DD6's one-transaction placement is sound as designed, and T4 A3 asserts it over the REAL
+`placeOrder` + `issueInvoice` pair rather than over a probe. **Had it come back the other way, the
+answer would have been a design change and not a code change**, which is why the plan put it first.
+
 **Inherited answers re-checked rather than assumed:** S1's `billing.credit.extend` grant is present
 in `ROLE_MODEL` for all three lab roles (`39beff0`); S6's `nextEpisodeNo` signature is unchanged;
 S2's `openVisitInTx` still requires an active doctor in an active department. S3 and S4 were read
 this session and are unchanged.
 
 ### 9.1 The commits
+
+| # | SHA | task | what landed |
+|---|---|---|---|
+| 1 | `b06e3d6` | **T3** | `catalogue.ts`, `ranges.ts`, `formula.ts`, `reflex.ts`, `duplicates.ts` + suites; `scripts/seed-lab-catalogue.ts`; `test/fixtures/lab-catalogue.json` (64 orderables, 130 analytes, 124 ranges, 3 INACTIVE reflex rules); the module index widened |
+
+**T4 and T5 ARE NOT STARTED.** T4's precondition is discharged (F7, below) and no `desk.ts`,
+`workflow-def.ts`, `definitions.ts`, `collection.ts`, `specimens.ts`, `accession.ts` or `sweeps.ts`
+exists yet. `openLabWalkin` is not written and `modules/opd/encounters.ts` is untouched.
+
 ### 9.2 Findings
+
+**F1 — `lab_orderables` HAS NO `duplicate_window_hours` COLUMN.** §5 T3 says the duplicate window
+comes "from the catalogue"; T1's thirteen tables carry none, and §2 row 1 rules a needed column is a
+defect to REPORT rather than a migration to write. Shipped: `DEFAULT_WINDOW_HOURS = 24` plus a named
+`WINDOW_BY_CODE` map carrying 02 D11's one clinical exception, both in `duplicates.ts` and both
+labelled a stopgap. **The proper fix is one nullable column, and whichever phase next writes a lab
+migration should carry it.**
+
+**F2 — the fixture's eGFR analyte was DROPPED, not shipped.** CKD-EPI needs age and sex; DD3's
+grammar has only sibling analytes, so the placeholder formula computed **zero**. An analyte that
+prints a wrong number is the exact thing T3 exists to prevent. If eGFR is wanted, the grammar needs
+subject variables — a design change, and it belongs in a phase that rules on it rather than in a
+fixture that fakes it.
+
+**F3 — `findRecentItems` takes ONE `service_id`, and the desk pays for it.** A five-item order
+against a profile sharing twenty analytes is ~200 round-trips at a counter (E48: 900 orders/day).
+`duplicates.ts` collapses to the DISTINCT candidate set (~25). **The kernel could answer in one
+query if that reader took an array**; widening it is a kernel edit this phase may not make, and §6
+records it as the optimisation the first caller who measures a slow desk should ask for.
+
+**F4 — THREE REAL REDS AND ONE WRONG PREMISE, recorded because two of the four were the TESTS.**
+- the `range()` fixture helper dropped its `...over` argument, so every row came back `rr-1` and all
+  five assertions failed against a fixture that **could not express the difference under test**;
+- the merge fixture wrote a `patient_merge_requests` row, when the chain actually lives on the
+  PATIENT row (`status='merged'` + `merged_into_patient_id`) — the request is not the outcome;
+- **the code one:** `WINDOW_BY_CODE` was keyed by ANALYTE code where `windowFor` reads the
+  ORDERABLE's, so every troponin silently fell back to the 24 h default;
+- **the premise one:** the first troponin assertion said a 4 h repeat is not flagged. Four hours is
+  INSIDE a six-hour window; 02 D11's rule is that troponin's window is SHORTER, not that a serial
+  troponin never warns. The assertion moved to 8 h, where the two windows actually differ.
+
+**F5 — a §4 violation the lint rule caught, not a reviewer.** `duplicates.ts` first imported
+`../patients/registration`; modules may import only another module's `index.ts`. Both helpers were
+already on that index and `modules/membership/recognition.ts` uses the same pair the same way.
+
+**F7 — PROVED, AND IT WAS THE ONE THING THAT COULD HAVE CHANGED THE DESIGN.** See §9.3.
+
 ### 9.4 The Assertion Book, corrected by execution
+
+**T3 — nine rows, nine mutants BUILT, nine DIED.** Each was a scratch module beside the source, run
+isolated, deleted before the commit (`git status --porcelain` carries no `*.mutant.*`).
+
+| row | mutant | expected vs received |
+|---|---|---|
+| **A1** | age from `now` in UTC | `Expected 365, Received 364` — a one-year-old moved into the neonate band, different `ref_high` |
+| **A2** | fall back to `male` | `Received "rr-m"` — a male haemoglobin range printed for a patient of unstated sex, with nothing on the report saying so |
+| **A3** | guard ignored | `Received {computed: true, value: 70}` — a plausible, wrong LDL on a report a cardiologist acts on |
+| **A4** | missing sibling reads as `0` | computed a number where the shipped code names the missing analyte |
+| **A5** | compare `service_id` only | `Expected length 1, Received 0` — the CBC inside the Fever profile invisible |
+| **A6** | look up the given id, no chain | `Expected length 1, Received 0` — the order under the merged-away registration invisible |
+| **A7** | `active` ignored | `Expected [], Received [{addsServiceId: "svc-ft4", …}]` — a patient billed for an FT4 nobody enabled |
+| **A8** | analyte default beats the band | `Expected "7.0", Received "6.0"` — a critical call on a neonate's normal potassium |
+| **A9** | `new Function(...)` | **the runner DIED: `process.exit called with "1"`, stack `at eval (eval at run (formula-a9.mutant.ts:155:17))`.** It did not fail an assertion; it EXECUTED the catalogue string |
+
+**FAIL-FIRST:** discharged by the mutants and SAID so rather than manufactured. These are brand-new
+pure modules, so a test-before-code red is an unresolved-import error, which §2.5 says proves
+nothing. The four genuine reds of F4 are quoted above.
+
+**T4 and T5's Books are UNEXECUTED.** T4 A3's precondition is now proved (§9.3), so the row asserts
+the seam over the real `placeOrder` + `issueInvoice` pair rather than over a probe.
+
 ### 9.5 Mechanical verification — name the `TEST_DATABASE_URL` database of every run claimed (§2.137)
+
+**EVERY RUN SO FAR USED `TEST_DATABASE_URL="postgres://hmis:hmis@localhost:5433/hmis_17a_scratch"`**
+(workers `hmis_17a_scratch_1 … _N`). **They are NOT yet dropped** — T4 and T5 still need them; the
+CLOSE drops them by explicit name and says so.
+
+| run | result |
+|---|---|
+| `jest src/modules/lab` (9 suites) | **57/57 passed, exit 0** |
+| PREFLIGHT `pnpm typecheck` | **exit 0** |
+| PREFLIGHT `pnpm lint` | **exit 0** (2 pre-existing warnings, 0 errors) |
+
+**No full `pnpm verify` has run for this phase yet** — it is owed once T4 and T5 are code-complete,
+folded into ONE run per v3 §9.9 rule 4. CI is green on `b06e3d6`'s parent chain; `b06e3d6` itself
+was pushed at 21:2x UTC and its verdict is the successor's to read by full SHA.
+
 ### 9.6 The close review: pass 1 (fresh) and 9.6.2 (pass 2, fresh, over the fixes, a verdict per fix)
 ### 9.7 Actuals — **the token balance at every task boundary** (v3 §6 as amended; recorded only after §9.6 exists)
 ### 9.8 The question this phase existed to answer
 ### 9.9 Deploy block — the `LAB` department, the pathologist-of-record as an `opd_doctors` row, the production catalogue seed, the definitions activation, the bench rows, the four roles' grants — written when the owner authorises, never before
+
+---
+
+## HANDOFF — written at the T3 boundary, 2026-08-29 (v3 §9.6: run first, write second)
+
+**The successor reads §0, then this section, then starts at T4.** Everything below is either
+committed or measured; nothing here is a description of code that has not run.
+
+**WHAT IS TRUE ABOUT THE CODE, AND HOW IT IS KNOWN.** T3 is committed as `b06e3d6`, green:
+`jest src/modules/lab` **57/57, exit 0**, typecheck 0, lint 0, on `hmis_17a_scratch`. Nine mutants
+built, run isolated and DEAD, with expected-vs-received in §9.4. This is not a "written but
+unverified" handoff — §9.6's own failure mode — and the successor should not re-run T3 to believe it.
+
+**THE ONE THING THAT WAS GOING TO DECIDE T4, AND IT IS DECIDED.** F7 asked whether
+`issueInvoice(tx as unknown as Db, …)` nests as a savepoint that rolls back with its parent, because
+DD6's whole "ONE transaction" design rests on it. **It does** (§9.3, both directions probed against
+Postgres). So T4 is now an ordinary implementation task: write `deskOrder` to do `placeOrder` then
+`issueInvoice` on the SAME `tx`, and let A3 assert the rollback over the real pair.
+
+**WHAT IS NOT DONE.** T4 and T5, in full. No `desk.ts`, `workflow-def.ts`, `definitions.ts`,
+`lab_item.json`, `lab_specimen.json`, `collection.ts`, `specimens.ts`, `accession.ts`, `sweeps.ts`.
+`openLabWalkin` is not written and `modules/opd/encounters.ts` is untouched. No worker job is
+registered, so the five job censuses of §2 row 8 are unmoved.
+
+**THE FIVE THINGS NOT TO RE-DERIVE.**
+1. **The spike is answered** — §9.3 carries S10 (the scheduler injects `now`, so T5 A4's seven-day
+   boundary is two calls with two instants), S11 (no `bench` rows in production — a runbook act),
+   and F7. Read them; do not re-read `scheduler.ts` or re-query production.
+2. **T3's exports are the interface** — `resolveRange`, `evaluateFormula`, `matchReflex`,
+   `duplicateWarnings`, `getOrderable`, `analytesFor`, `rangesFor`, `activeReflexRules`, all on
+   `modules/lab/index.ts`. T4 CALLS them. **`matchReflex` deliberately does not check consent**
+   (§6.3) — that is 17b's caller's job and neither side may assume the other did it.
+3. **The golden fixture is seeded by `seedLabCatalogue(db, actor)`** and every T4/T5 fixture should
+   build on it rather than hand-rolling orderables. Service ids are `serviceIdForLabCode(code)` —
+   e.g. `LABSVC-CBC`. The three reflex rules are INACTIVE and a test pins that count at zero.
+4. **F4's four reds** — two were the tests and one was the code. In particular a `range()`-style
+   fixture helper that drops `...over` produces a suite that looks rigorous and reaches nothing.
+5. **F8/§2.142's staging technique.** Lane B still shares this checkout (radiology, pcpndt,
+   `0047`). `git add <path>` stages a WHOLE file, so for a file both lanes have edited, stage
+   HEAD-plus-your-hunks as a blob (`git hash-object -w --stdin --path` + `git update-index
+   --cacheinfo`) and read `git diff --cached --stat` before committing.
+
+**THE DATABASE.** `TEST_DATABASE_URL="postgres://hmis:hmis@localhost:5433/hmis_17a_scratch"`, named
+in every commit that cites a green run, dropped by explicit name at CLOSE — **not yet dropped**.
+
+**BUDGET.** Stop-loss **1,350,000**. Spent through T3: **~132,000** (§9.7's table), against a term
+that budgeted ~330,000 for one CRITICAL task. The successor records its own balance at each task
+boundary — that obligation is v3 §6's new one and this phase is one of the two making it real.
+
+**WHAT T4 SHOULD DO FIRST.** Write `deskOrder` and A3 together, since the seam is now known-good;
+then A1/A1b/A2 through the REAL `withIdempotency` imported from `../billing` (DD22 — 17a mounts no
+route, so the test calls the same function 17b's controller will); then the walk-in, which needs a
+`LAB` department and a pathologist `opd_doctors` row in the fixture (S2), and whose refusal path is
+A9. **A7's mutant fails on the BICONDITIONAL CHECK, not an FK** — `orders.external_referrer_id` has
+none (S3).
 
 **THE CLOSE REVIEW'S BRIEF (v3 §9.7, verbatim — the operand instruction goes FIRST, ahead of any
 dimension list):**
