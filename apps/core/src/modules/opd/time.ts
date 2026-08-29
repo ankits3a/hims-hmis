@@ -52,3 +52,15 @@ export function ageYearsAt(dob: Date, at: Date): number {
     (at.getUTCMonth() === dob.getUTCMonth() && at.getUTCDate() < dob.getUTCDate());
   return notYet ? years - 1 : years;
 }
+
+/**
+ * PLAN 07c T2 — 'HH:MM' on the hospital's clock, for a report cut on the IST day.
+ *
+ * It lives HERE rather than in the caller because `test/ist-clock-parity.test.ts` pins the census of
+ * files that write the offset out by hand, and it goes red on a new one — which is the guard doing
+ * its job (ledger §2.105: one expression, plus a test that reddens when the copies disagree). The
+ * desk provider that needed this had written an eleventh copy; this is where the tenth already was.
+ */
+export function istHourMinute(at: Date): string {
+  return new Date(at.getTime() + IST_OFFSET_MS).toISOString().slice(11, 16);
+}

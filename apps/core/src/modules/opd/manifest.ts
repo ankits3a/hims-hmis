@@ -1,3 +1,4 @@
+import { opdDeskProvider } from "./desk-provider";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 import { opdSearchProviders } from "./search-providers";
 
@@ -21,6 +22,7 @@ export const opdManifest: ModuleManifest = {
     { label: "Token display", path: "/opd/display", permission: "opd.display.read" },
     { label: "OPD admin", path: "/opd/admin", permission: "opd.masters.manage" },
   ],
+  desk: [opdDeskProvider],
   permissions: [
     "opd.masters.read", "opd.masters.manage", "opd.config.manage",
     "opd.appointments.read", "opd.appointments.manage",

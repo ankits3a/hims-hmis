@@ -1,5 +1,6 @@
 import type { ResourceKindDecl } from "../resources/kinds";
 import type { SearchProvider } from "../search/types";
+import type { DeskProvider } from "../desk/types";
 
 export type ModuleManifest = {
   key: string;
@@ -35,4 +36,15 @@ export type ModuleManifest = {
    * ever see refuse.
    */
   resourceKinds?: readonly ResourceKindDecl[];
+  /**
+   * PLAN 07c T1 / DD2 — the module's DESK CARDS. OPTIONAL for the same reason `search` and
+   * `resourceKinds` are, and it is the same seam solving the same problem a third time: every
+   * existing manifest stays valid unchanged. `kernel/desk/registry.ts`'s `collectDeskProviders`
+   * collects these from `registry.all()` exactly as `collectProviders` does, and refuses at BOOT on
+   * a duplicate key or a permission no manifest declares.
+   *
+   * A module owns its own card. When pharmacy or the lab lands, its card ships with the module and
+   * every holder's home gains a band without the kernel learning anything about pharmacy.
+   */
+  desk?: DeskProvider[];
 };

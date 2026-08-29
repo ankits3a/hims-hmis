@@ -20,6 +20,7 @@ import { RealtimeModule } from "./kernel/realtime/realtime.module";
 import { AlertsModule } from "./kernel/alerts/alerts.module";
 import { OpsModule } from "./kernel/ops/ops.module";
 import { SearchModule } from "./kernel/search/search.module";
+import { DeskModule } from "./kernel/desk/desk.module";
 import { InferenceModule } from "./kernel/inference/inference.module";
 import { ResourcesModule } from "./kernel/resources/resources.module";
 import { MaterialsModule } from "./modules/materials/materials.module";
@@ -33,7 +34,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
 
 @Global()
 @Module({
-  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule, OpdModule, BillingModule, AlertsModule, OpsModule, SearchModule, InferenceModule, MembershipModule, PartnersModule, FormularyModule, ResourcesModule, MaterialsModule, OtModule], // ← OtModule (Plan 15 T2 — no controller yet: T8 mounts the four, the MaterialsModule precedent); ← MaterialsModule (Plan 14 T2 — no controller yet: T8 mounts it, the ResourcesModule/MembershipModule precedent); ← ResourcesModule (Plan 13 T2 — no controller yet: T5 mounts it, the MembershipModule/PartnersModule precedent); ← MembershipModule/PartnersModule (Plan 09 T1 — no controllers yet: T3/T5 and T7/T8 mount them); InferenceModule (Plan 11h T9, inert); SearchModule (Plan 11h T1); PatientsModule added; AlertsModule (Plan 08.5 D6); OpsModule (Plan 11c T2)
+  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule, OpdModule, BillingModule, AlertsModule, OpsModule, SearchModule, DeskModule, InferenceModule, MembershipModule, PartnersModule, FormularyModule, ResourcesModule, MaterialsModule, OtModule], // ← OtModule (Plan 15 T2 — no controller yet: T8 mounts the four, the MaterialsModule precedent); ← MaterialsModule (Plan 14 T2 — no controller yet: T8 mounts it, the ResourcesModule/MembershipModule precedent); ← ResourcesModule (Plan 13 T2 — no controller yet: T5 mounts it, the MembershipModule/PartnersModule precedent); ← MembershipModule/PartnersModule (Plan 09 T1 — no controllers yet: T3/T5 and T7/T8 mount them); InferenceModule (Plan 11h T9, inert); SearchModule (Plan 11h T1); PatientsModule added; AlertsModule (Plan 08.5 D6); OpsModule (Plan 11c T2)
   controllers: [HealthController],
   providers: [
     { provide: CONFIG, useFactory: (): AppConfig => loadConfig() },
