@@ -744,6 +744,29 @@ Three mutants from the PRE-FIX code, run against the NEW assertions, **3 DIED / 
 
 ---
 
+### 9.9 DEPLOYED — 2026-08-29, 22:53 IST, on owner authorisation
+
+**`docker/prod/deploy.sh` from a clean tree at `dc31c3b`, exit 0 read from a file. Production 43 → 46 migrations.** Three went out together, and only one of them is this phase's plan: `0043` (22c-A's identity spine, closed earlier the same day), `0044` and `0045`.
+
+**The window, measured before launching** (protocol §9 — deploy when the box is quiet, and check rather than assume): **0 events in the prior hour**, 4 visits that day, 22:50 IST, no jest or deploy process running, tree clean and `main` level with `origin/main`.
+
+**VERIFIED AGAINST THE DATABASE, NEVER THE EXIT CODE** (protocol §9, and §5's warning that production and `main` diverge routinely):
+
+| claim | measured on `hmis-prod-db-1` |
+|---|---|
+| migrations | **46** |
+| the three tables | `orders`, `order_items`, `order_item_transitions` all present |
+| `0045` actually applied | `order_items_cancelled_shape_ck` in `pg_constraint`; `orders_forbid_identity_change`'s `prosrc` **carries the attribution clause** |
+| the four permissions | in the catalog under module `orders`, and **held by ZERO roles** — §8.11 intact |
+| permissions total | **111**, which is the census `seed-roles.test.ts` pins |
+| orders placed | **0 orders, 0 items** — no manifest claims a kind, so `placeOrder` refuses everything with `unknown_kind` |
+| the edge | `/api/health` 200 `{"status":"ok","db":"ok","worker":"ok"}`; 9/9 services up |
+| both boot collectors | api and worker both logged a clean start — `collectOrderKinds` threw in neither process |
+
+**Nothing a user can see changed, and that is the point.** The envelope is live with zero consumers: the doctor cockpit still writes `advised_tests`, no screen calls the readers, and no role can place an order. The first module to claim a kind is what turns it on.
+
+**No operator step is outstanding for this phase.** The four permissions are unheld deliberately, so there is no repeat of the `fc9e49a` failure the protocol's §5 records — a permission live in the catalog and held by nobody, gating a route that answers 403 to the only administrator. Here there is no route to gate.
+
 ### 9.8 The question this phase existed to answer
 
 **YES — Plans 17 and 18a may now be authored as two independent lanes.** The envelope is kernel, the kind seam is a manifest field, the four item states are frozen in code, `order_no` comes from the existing counters, and §6/§6A state what each plan inherits and what it still owes. Neither plan needs to touch the other's tables, and neither can decide the seam for the other by touching it first — which is the failure `opd_rooms` cost Plan 13 and the reason this phase was written.
