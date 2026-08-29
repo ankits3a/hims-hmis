@@ -9,6 +9,7 @@ import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { patientsManifest } from "./manifest";
 import { registerPatient, updatePatient } from "./registration";
+import { execSync } from "node:child_process";
 import { NOT_YET_MODELLED, ROLE_MODEL } from "../../../scripts/seed-roles";
 
 /**
@@ -126,25 +127,54 @@ describe("A16 — the same wall around deceasedAt", () => {
   });
 });
 
-describe("A17 — the phase grants the new permissions to NOBODY", () => {
-  it("no role in ROLE_MODEL holds either string", () => {
-    // If this ever fails, the split became cosmetic in the same commit that shipped it: the whole
-    // point is that `patients.update` STOPS reaching these fields, and a grant to any role that
-    // already holds `patients.update` restores exactly the state being removed.
-    const granted = new Set(ROLE_MODEL.flatMap((r) => r.permissions));
-    expect(granted.has("patients.confidential.write")).toBe(false);
-    expect(granted.has("patients.deceased.write")).toBe(false);
+describe("A17 — the phase granted these to NOBODY; the OWNER granted them the next day", () => {
+  /**
+   * A17 AS WRITTEN ASSERTED THE OPPOSITE OF WHAT IS NOW TRUE, and it is restated rather than
+   * deleted — ledger §2.135, learned in this phase's own second close review, where a reverted fix
+   * left a test behind documenting the opposite of the ruling.
+   *
+   * The assertion A17 made was never "nobody may ever hold these". It was: **the phase that removes
+   * a power from `patients.update` must not hand it straight back in the same commit** — because a
+   * split that grants its own new string to a role already holding `patients.update` is cosmetic,
+   * and that was A17's mutant (M-A17, which died). That claim is about the PHASE and it is still
+   * exactly true: `04b7b21` granted nothing, and both strings sat unheld through the deploy.
+   *
+   * The owner ruled the day after, on the deployed system, and chose `mrd_officer`. That is a
+   * separate act with its own commit, which is the whole point of DD7 routing it to a human.
+   */
+  it("the phase's own migration granted neither string — checked against the commit, not today's model", () => {
+    // `04b7b21` is 22c-A T1, the commit that declared both. Reading the model AS OF that commit is
+    // the only way to keep asserting a fact about the phase now that the world has moved on.
+    const atT1 = execSync("git show 04b7b21:apps/core/scripts/seed-roles.ts", { encoding: "utf8" });
+    const roleModelAtT1 = atT1.slice(atT1.indexOf("export const ROLE_MODEL"), atT1.indexOf("export const NOT_YET_MODELLED"));
+    expect(roleModelAtT1).not.toContain("patients.confidential.write");
+    expect(roleModelAtT1).not.toContain("patients.deceased.write");
   });
 
-  it("both are named in NOT_YET_MODELLED with a reason, so 'held by nobody' is a decision on the record", () => {
-    const parked = new Map(NOT_YET_MODELLED.map((n) => [n.permission, n.reason]));
-    for (const p of ["patients.confidential.write", "patients.deceased.write"]) {
-      expect(parked.has(p)).toBe(true);
-      expect(parked.get(p)!.length).toBeGreaterThan(20);
-    }
+  it("TODAY they are held by mrd_officer, and by mrd_officer alone", async () => {
+    const holders = (p: string): string[] =>
+      ROLE_MODEL.filter((r) => (r.permissions as readonly string[]).includes(p)).map((r) => r.roleKey);
+    expect(holders("patients.confidential.write")).toEqual(["mrd_officer"]);
+    expect(holders("patients.deceased.write")).toEqual(["mrd_officer"]);
   });
 
-  it("the manifest declares them, so the catalogue row exists for the owner's grant to reference", () => {
+  it("the holder is the role that already holds patients.merge — the same authority over the same object", () => {
+    const mrd = ROLE_MODEL.find((r) => r.roleKey === "mrd_officer")!;
+    expect(mrd.permissions).toContain("patients.merge");
+    expect(mrd.permissions).toContain("patients.confidential.write");
+    // …and it did NOT pick up the read side, which is a different question nobody has ruled on.
+    expect(mrd.permissions).not.toContain("patients.confidential.read");
+  });
+
+  it("both have LEFT the not-yet-modelled list, which is what that list is for", () => {
+    const parked = NOT_YET_MODELLED.map((n) => n.permission);
+    expect(parked).not.toContain("patients.confidential.write");
+    expect(parked).not.toContain("patients.deceased.write");
+    // `confidential.read` stays: SEEING a confidential record is still unruled.
+    expect(parked).toContain("patients.confidential.read");
+  });
+
+  it("the manifest still declares them, so the catalogue row the grant references exists", () => {
     expect(patientsManifest.permissions).toContain("patients.confidential.write");
     expect(patientsManifest.permissions).toContain("patients.deceased.write");
   });

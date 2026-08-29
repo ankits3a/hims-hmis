@@ -585,6 +585,22 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // approver is `medical_superintendent`, and `assertNotSodPair("requester_approver", …)` means
       // one person holding both roles still cannot approve their own merge.
       "patients.merge",
+      /**
+       * OWNER RULING 2026-08-29, after Plan 22c-A deployed — THE PRIVACY WRITE SPLIT GETS ITS HOLDER.
+       *
+       * 22c-A declared these two and granted them to NOBODY on purpose (DD7): the phase that removes
+       * a power from `patients.update` must not hand it straight back, and WHO may hide a patient or
+       * mark one dead is an owner ruling rather than an engineering choice. The ruling is now made,
+       * and it is the MRD officer — the custodian of the medical record, already the only holder of
+       * `patients.merge`, and one person in this hospital.
+       *
+       * Read them beside `patients.merge` above: merging two records for one person and deciding
+       * that a person is invisible or deceased are the same kind of authority over the same object,
+       * and they now sit with the same role. `patients.confidential.read` stays unheld — seeing a
+       * confidential record is a separate question the owner has not been asked yet.
+       */
+      "patients.confidential.write",
+      "patients.deceased.write",
     ],
   },
   {
@@ -784,31 +800,12 @@ export const NOT_YET_MODELLED: readonly NotYetModelled[] = [
       "spec section 14 confidential/VIP visibility beyond normal RBAC — it wants an owner ruling " +
       "about WHO may see a confidential record, and Plan 11d does not have one",
   },
-  // ──────────────── PLAN 22c-A T1/DD7 — the privacy WRITE split, held by nobody ────────────────
-  // These two are the deliberate half of the same argument `patients.confidential.read` makes
-  // above. Measured in production on 2026-08-29 (spike S5): SEVENTEEN of thirty-five users hold
-  // `patients.update`, which today carries the power to set `is_confidential`, while
-  // `patients.confidential.read` is held by ZERO roles. Seventeen people can hide a patient from
-  // every search surface in the hospital and nobody can read them back. Splitting the write out
-  // is what closes that door; granting the new string to any role in the same commit would leave
-  // the door exactly as wide and call it a fix.
-  {
-    permission: "patients.confidential.write",
-    reason:
-      "PLAN 22c-A DD7 — deliberately granted to NO role by the phase that declares it. Who may " +
-      "make a patient confidential is the same owner ruling `patients.confidential.read` above is " +
-      "still waiting for, and it is a Class-A grant: the runbook hands it to the owner rather " +
-      "than a phase minting the authority for itself",
-  },
-  {
-    permission: "patients.deceased.write",
-    reason:
-      "PLAN 22c-A DD7 — same split, colder path. `deceased_at` is a hard stop the notifications " +
-      "gateway reads at SEND time that beats urgency and beats everything else in the suppression " +
-      "gauntlet, so whoever holds this can silence every message to a living patient's family. " +
-      "Phase 1 has no death-recording flow to hang it on; IPD's death cascade is where it gets a " +
-      "holder, and until then no role should be able to set it by way of fixing a typo",
-  },
+  // PLAN 22c-A T1/DD7's two privacy-write strings LEFT this list on 2026-08-29, the day after they
+  // joined it: the owner ruled that `mrd_officer` holds both, beside the `patients.merge` it already
+  // had. That is the shortest stay any entry has had bar `staff.reports.drill`, and it is what this
+  // list is FOR — a permission parked with a reason until somebody rules, never a permanent home.
+  // `patients.confidential.read` stays: SEEING a confidential record is a different question, and it
+  // has not been asked.
   // ─────────── PLAN 17 PHASE 0 T5 — the four `orders.*` strings, held by nobody ───────────
   //
   // THE ENVELOPE HAS NO CONSUMERS ON THE DAY IT LANDS, and that is what makes granting any of

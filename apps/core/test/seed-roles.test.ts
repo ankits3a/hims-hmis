@@ -369,16 +369,38 @@ const COUNTER_COVER_PAIRS: readonly string[] = [
   "billing_manager/billing.session.own",
 ];
 
+/**
+ * OWNER RULING 2026-08-29, taken on the deployed system the day after Plan 22c-A shipped — the
+ * FIFTEENTH non-table set, and the smallest: two strings, one role, one holder.
+ *
+ * 22c-A split `patients.confidential.write` and `patients.deceased.write` out of `patients.update`
+ * and granted them to nobody, deliberately (DD7): a phase that removes a power must not hand it
+ * straight back, or the split is cosmetic. That left both fields unsettable by anyone in the
+ * hospital — safe in one direction and worse in the other — so the grant was always a runbook step
+ * waiting on a person.
+ *
+ * The owner ruled `mrd_officer`, and the argument is adjacency: merging two records for one person
+ * (`patients.merge`, which this role already held alone) and deciding that a person is invisible or
+ * deceased are the same kind of authority over the same object. `patients.confidential.read` was
+ * deliberately NOT included — SEEING a confidential record is a different question, and it is still
+ * the one entry `NOT_YET_MODELLED` is holding on this subject.
+ */
+const PRIVACY_WRITE_PAIRS: readonly string[] = [
+  "mrd_officer/patients.confidential.write",
+  "mrd_officer/patients.deceased.write",
+];
+
 const STAFF_REPORT_PAIRS: readonly string[] = [
   "front_office_supervisor/staff.reports.read",
   "medical_superintendent/staff.reports.read",
 ];
 
-/** All fourteen non-table sets. A model row outside this union fails V3's last leg. */
+/** All FIFTEEN non-table sets. A model row outside this union fails V3's last leg. */
 const NON_TABLE_PAIRS: readonly string[] = [
   ...RULING_7_PAIRS, ...WORKFLOW_RULING_PAIRS, ...PLAN_09_PAIRS, ...GROUP_C_PAIRS, ...GROUP_A_PAIRS,
   ...MERGE_LANE_PAIRS, ...GROUP_B_PAIRS, ...FORMULARY_PAIRS, ...RESOURCES_PAIRS, ...OT_PAIRS,
   ...STAFF_REPORT_PAIRS, ...DOCTOR_TARIFF_PAIRS, ...STAFF_AUDITOR_PAIRS, ...COUNTER_COVER_PAIRS,
+  ...PRIVACY_WRITE_PAIRS,
 ];
 
 type GrantTable = {
@@ -611,7 +633,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     expect(installedRegistry().allPermissions()).toHaveLength(111); // PLAN 17 PHASE 0 T5: 107 -> 111
   });
 
-  it("the role model is twenty-five roles, one hundred and sixty-eight grants, eighty-five distinct permissions", () => {
+  it("the role model is twenty-five roles, one hundred and seventy grants, eighty-seven distinct permissions", () => {
     expect(ROLE_MODEL.map((r) => r.roleKey)).toEqual([
       "front_office",
       "front_office_supervisor",
@@ -704,7 +726,11 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       staff_auditor: 2,
       tariff_editor: 3,
       membership_admin: 2,
-      mrd_officer: 3,
+      // OWNER RULING 2026-08-29 — 3 -> 5: the privacy write split gets its holder. Merging two
+      // records for one person and deciding a person is invisible or deceased are the same kind
+      // of authority over the same object, so they sit with the role that already holds
+      // `patients.merge`.
+      mrd_officer: 5,
       biomedical_engineer: 1,
       // PLAN 14 T2 / DD11 — the two stores roles. `pharmacy` moved 5 → 8 in the same commit (the
       // three read/QC strings), which is why the grant total moves by twenty and not by seventeen.
@@ -723,12 +749,15 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // PLAN 07c T9 — 156 → 158: `staff.reports.read` to `front_office_supervisor` and to
     // `medical_superintendent`. Two grants, one string, no new role.
     // 159 -> 168: the 2026-08-29 rulings add `staff_auditor`'s two and the counter cover's seven.
-    expect(modelPairs()).toHaveLength(168);
+    // 168 -> 170: the same day's LAST ruling, after 22c-A deployed — `mrd_officer` gains both
+    // privacy-write strings, which is TWO pairs and TWO new distinct strings, because no other
+    // role held either one.
+    expect(modelPairs()).toHaveLength(170);
     // PLAN 07c T9 — 83 → 84 DISTINCT: one new string (`staff.reports.read`) across two roles.
     // 84 -> 85 DISTINCT: only `staff.reports.drill` is new to the MODEL. Every other string the
     // two rulings grant was already held by another role — the counter cover moves WHO may act,
     // not WHAT the system can do.
-    expect(modelPermissions()).toHaveLength(85);
+    expect(modelPermissions()).toHaveLength(87);
     // No role lists the same permission twice — a duplicate would inflate the counts above
     // without changing a single row of `role_permissions`.
     for (const role of ROLE_MODEL) {
@@ -785,8 +814,13 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // granting either one here would have re-opened the door the split closes. The owner's grant
     // is a runbook step, and until it happens NOBODY can set those fields — which is strictly
     // safer than today, where seventeen users can.
-    expect(heldPermissions()).toHaveLength(91);
-    expect(NOT_YET_MODELLED).toHaveLength(20);
+    // OWNER RULING 2026-08-29, the day AFTER 22c-A shipped them unheld: 91 -> 93 held and
+    // 20 -> 18 unmodelled, declared UNCHANGED at 111. Two strings crossed from one side of this
+    // sum to the other without a new permission existing — which is exactly what
+    // NOT_YET_MODELLED's header promises happens the day somebody rules, and the second time
+    // this list has emptied in two days.
+    expect(heldPermissions()).toHaveLength(93);
+    expect(NOT_YET_MODELLED).toHaveLength(18);
     expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(111);
   });
 
@@ -1014,17 +1048,13 @@ describe("seed:roles — the reachability invariant (V1, V2)", () => {
       "partners.pnl.read",
       "partners.receivable.operate",
       "partners.statement.import",
+      // `patients.confidential.write` and `patients.deceased.write` were here for ONE DAY. 22c-A
+      // put them here because the phase that removed the power from `patients.update` must not hand
+      // it straight back; the owner ruled the next day and both went to `mrd_officer`. What stays
+      // is `confidential.read`, and the distinction is worth keeping in view: this list now holds
+      // the question "who may SEE a confidential record", which nobody has answered, and no longer
+      // the question "who may MAKE one", which somebody has.
       "patients.confidential.read",
-      // PLAN 22c-A T1 — `patients.confidential.write` and `patients.deceased.write` JOIN, and they
-      // join beside `patients.confidential.read` for the same reason it is here: who may make a
-      // patient invisible, and who may mark one dead, are owner rulings rather than engineering
-      // choices. What is new is the direction. `confidential.read` has always been unheld because
-      // nobody ruled; these two are unheld because the phase that created them REMOVED the power
-      // from `patients.update`, where seventeen production users held it by accident of it being
-      // the same permission as fixing a phone number (spike S5). An entry here is usually a gap;
-      // these two are a door being closed and left locked until the owner picks who gets the key.
-      "patients.confidential.write",
-      "patients.deceased.write",
       // `staff.reports.drill` LEFT this list on 2026-08-29, one day after it joined it: the owner
       // named who may open patient rows from a colleague's shift, and it is `staff_auditor` — a
       // role of its own, held by one person. It is the shortest stay any entry has had, and it is
@@ -1059,7 +1089,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(fromModel).toEqual(fromReadme);
   });
 
-  it("V3: the rulings' seventy pairs are exactly the model's non-table rows, with every README prose line quoted", () => {
+  it("V3: the rulings' seventy-two pairs are exactly the model's non-table rows, with every README prose line quoted", () => {
     const fromReadme = new Set([
       ...tablePairs(opdTable), ...tablePairs(billingTable), ...tablePairs(materialsTable),
       ...tablePairs(otTable),
@@ -1084,7 +1114,9 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     // belongs to neither README table by construction.
     // 61 -> 70 after the 2026-08-29 owner rulings: `staff_auditor`'s two and the seven that let a
     // `billing_manager` cover a locked-out counter (07b O-1).
-    expect(NON_TABLE_PAIRS).toHaveLength(70);
+    // 70 -> 72 with the LAST ruling of that same day, taken on the deployed system: the two
+    // privacy-write strings 22c-A shipped unheld, now `mrd_officer`'s.
+    expect(NON_TABLE_PAIRS).toHaveLength(72);
     expect(nonTable.filter((p) => p.includes("/materials."))).toEqual([]);
     expect(nonTable.filter((p) => p.startsWith("ot_") || p.startsWith("surgeon/") || p.startsWith("anaesthetist/") || p.startsWith("recovery_nurse/") || p.startsWith("daycare_coordinator/"))).toEqual([]);
     // Plan 15 / DD14's own source sentence, held to exactly the standard of the nine below.
@@ -1175,7 +1207,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     // OWNER RULINGS 2026-08-29 — two entries move and one is INSERTED, in ROLE_MODEL order:
     // `billing_manager` 11 -> 18 (the counter cover, 07b O-1) and a new `staff_auditor` at 2,
     // registered directly after `duty_manager`.
-    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 14, 5, 11, 7, 1, 8, 11, 18, 10, 10, 1, 2, 3, 2, 3, 1, 11, 6, 11, 4, 4, 4, 3, 6]);
+    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 14, 5, 11, 7, 1, 8, 11, 18, 10, 10, 1, 2, 3, 2, 5, 1, 11, 6, 11, 4, 4, 4, 3, 6]); // OWNER RULING 2026-08-29: mrd_officer gains the two privacy-write strings
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
     expect(first.declared).toBe(111); // PLAN 17 PHASE 0 T5 — the four `orders.*` strings
     // MEASURED from role_permissions, not derived from the model. On this database only seed:roles
@@ -1184,12 +1216,11 @@ describe("seed:roles — executed against a database (V5)", () => {
     // until Group C moved three `auth.*` strings into the model), and before the 2026-08-23 fix
     // this line read the model's claim against a database holding the grants.
     // 84 -> 85: `staff.reports.drill` is the one string these rulings add to the MODEL.
-    expect(first.held).toBe(85);
+    expect(first.held).toBe(87); // OWNER RULING 2026-08-29: mrd_officer gains the two privacy-write strings
     expect(first.held).toBe(modelPermissions().length);
-    expect(heldPermissions()).toHaveLength(91);
-    // PLAN 22c-A T1 — 14 -> 16. Both additions are DD7's privacy write split, unheld on purpose.
+    expect(heldPermissions()).toHaveLength(93); // OWNER RULING 2026-08-29, as above
     // PLAN 17 PHASE 0 T5 — 16 -> 20. All four `orders.*` strings, unheld on purpose (§8.11).
-    expect(first.notYetModelled).toBe(20);
+    expect(first.notYetModelled).toBe(18); // OWNER RULING 2026-08-29: mrd_officer gains the two privacy-write strings
     expect(first.expectedElsewhereAbsent).toBe(6);
     // And the census RECONCILES against the catalog, which is the property that makes it evidence:
     // 83 held + 14 unmodelled + 6 expected-elsewhere = 103 declared (Plan 15 T2 moved the first by
@@ -1206,7 +1237,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     expect(second.roles.map((r) => r.created)).toEqual(Array(25).fill(false));
     expect(second.roles.every((r) => r.granted.length === 0)).toBe(true);
     // PLAN 07c T9 — the same two entries as the first run's `granted` census above.
-    expect(second.roles.map((r) => r.already.length)).toEqual([12, 14, 5, 11, 7, 1, 8, 11, 18, 10, 10, 1, 2, 3, 2, 3, 1, 11, 6, 11, 4, 4, 4, 3, 6]);
+    expect(second.roles.map((r) => r.already.length)).toEqual([12, 14, 5, 11, 7, 1, 8, 11, 18, 10, 10, 1, 2, 3, 2, 5, 1, 11, 6, 11, 4, 4, 4, 3, 6]); // OWNER RULING 2026-08-29: mrd_officer 3 -> 5
 
     // And the database holds the model exactly once.
     const written = await db
