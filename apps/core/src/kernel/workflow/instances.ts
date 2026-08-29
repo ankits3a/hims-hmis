@@ -92,12 +92,36 @@ export async function transition(
     throw new WorkflowError("unknown_transition", `no transition ${instance.currentState}→${to} in ${instance.defKey} (pinned version)`);
   }
 
+  /**
+   * PLAN 22c-A T2 / SPIKE S2 — THIS BRANCH WAS A FALL-THROUGH, AND WIDENING `Actor` IS WHAT MADE
+   * IT ONE. Its previous form was:
+   *
+   *     if (actor.type === "user")        { role check }
+   *     else if (actor.type === "agent")  { throw }
+   *     // `system` falls through, deliberately: the application's own automated moves
+   *
+   * That was exhaustive and correct while the union had three members. `patient` joined the union
+   * in this phase and would have joined the SYSTEM branch — a patient actor making a governed
+   * workflow transition with no role check at all. Nobody wrote a hole; the branch was complete
+   * when it was written and the type is what changed underneath it. `pnpm typecheck` says nothing,
+   * because an `if/else if` chain over a union is not an exhaustiveness check.
+   *
+   * The shape below inverts the default: `system` is the ONE type that bypasses, named positively,
+   * and every other actor — agent, patient, and whatever the fifth member turns out to be — is
+   * refused until something grants it explicitly. A future union member now arrives DENIED, which
+   * is the only safe direction for a type that gates governed transitions.
+   */
   if (actor.type === "user") {
     if (!(await actorHoldsAnyRole(tx, actor.id, declared.roles))) {
       throw new WorkflowError("role_denied", `transition ${instance.currentState}→${to} allows roles: ${declared.roles.join(", ")}`);
     }
-  } else if (actor.type === "agent") {
-    throw new WorkflowError("role_denied", "agent transitions arrive with Plan 12's agent grants");
+  } else if (actor.type !== "system") {
+    throw new WorkflowError(
+      "role_denied",
+      actor.type === "agent"
+        ? "agent transitions arrive with Plan 12's agent grants"
+        : `a ${actor.type} actor holds no workflow roles — transitions are staff and system acts`,
+    );
   }
 
   const now = new Date();
