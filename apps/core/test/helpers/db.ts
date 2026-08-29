@@ -269,7 +269,7 @@ export async function truncateAll(db: Db): Promise<void> {
         opd_config, allocations, receipt_tenders, receipts, credit_note_lines, credit_notes, invoice_lines,
         invoices, refund_vouchers, cashier_sessions, entered_in_error_marks, recon_batches, daily_closes,
         idempotency_keys, document_series, billing_config, patient_merge_requests, patient_guardians, patient_allergies,
-        patient_photos, patients, registration_config`,
+        patient_photos, patient_identity_versions, patients, registration_config`,
   );
   // PLAN 09 — `import_quarantine` is the SEVENTEENTH table and the only one with no foreign key in
   // either direction: its `batch_id` is plain text because it names a `holder_book_imports.id`

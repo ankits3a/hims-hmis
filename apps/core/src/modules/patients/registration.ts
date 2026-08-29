@@ -36,6 +36,12 @@ export type RegisterPatientInput = {
   dob?: Date;
   ageYears?: number;
   sex: Sex;
+  /**
+   * PLAN 22c-A DD4 — the LEGAL identity marker, optional at the counter and defaulting to `sex`.
+   * It is a separate field from day one even though nothing sends it yet, because the alternative
+   * is a second migration over a table with a NOT NULL column once 22c-B splits the form.
+   */
+  administrativeGender?: Sex;
   addressLine?: string;
   district?: string;
   stateName?: string;
@@ -96,6 +102,15 @@ export async function registerPatient(
       dob,
       dobEstimated,
       sex: input.sex,
+      /**
+       * PLAN 22c-A DD4 — administrative gender seeds from the clinical sex the counter captured,
+       * because the counter captures ONE value today and splitting the form is 22c-B's work. It
+       * is `?? input.sex` rather than a column DEFAULT on purpose: a database default would be a
+       * CONSTANT, and a constant printed as a person's legal gender on a document is the failure
+       * A11's mutant describes. The fallback here is the same rule 0043's backfill applied to the
+       * 24 rows that already existed — one rule, two places, so the two populations agree.
+       */
+      administrativeGender: input.administrativeGender ?? input.sex,
       addressLine: input.addressLine ?? null,
       district: input.district ?? null,
       stateName: input.stateName ?? null,

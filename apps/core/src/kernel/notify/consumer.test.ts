@@ -154,7 +154,7 @@ describe("kernel notify consumer — five subscriptions, and nothing but enqueue
       id: patientId,
       uhid: ASHA_UHID,
       name: ASHA_NAME,
-      sex: "female",
+      sex: "female", administrativeGender: "female",
       phone: ASHA_PHONE,
       createdBy: "seed",
       updatedBy: "seed",
@@ -311,7 +311,7 @@ describe("kernel notify consumer — five subscriptions, and nothing but enqueue
 
     await truncateAll(db);
     await db.insert(patients).values({
-      id: patientId, uhid: ASHA_UHID, name: ASHA_NAME, sex: "female", phone: ASHA_PHONE,
+      id: patientId, uhid: ASHA_UHID, name: ASHA_NAME, sex: "female", administrativeGender: "female", phone: ASHA_PHONE,
       createdBy: "seed", updatedBy: "seed",
     });
 

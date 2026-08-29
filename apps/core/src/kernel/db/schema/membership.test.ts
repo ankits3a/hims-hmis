@@ -32,7 +32,7 @@ const COUNTER = "01HCTR0000000000000000001";
 
 async function seedInstrument(db: Db): Promise<void> {
   await db.insert(patients).values({
-    id: PATIENT, uhid: "HMS-00000001-1", name: "Invented Holder", sex: "female",
+    id: PATIENT, uhid: "HMS-00000001-1", name: "Invented Holder", sex: "female", administrativeGender: "female",
     createdBy: "test", updatedBy: "test",
   });
   await db.insert(counterparties).values({

@@ -17,7 +17,7 @@ describe("retention_legal_holds table", () => {
   beforeEach(async () => {
     await truncateAll(db);
     await db.insert(patients).values({
-      id: PATIENT, uhid: "HMS-00000009-1", name: "Asha Devi", sex: "female",
+      id: PATIENT, uhid: "HMS-00000009-1", name: "Asha Devi", sex: "female", administrativeGender: "female",
       createdBy: "u1", updatedBy: "u1",
     });
   });

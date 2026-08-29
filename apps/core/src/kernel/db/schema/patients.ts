@@ -53,6 +53,38 @@ export const patients = pgTable(
     dob: date("dob", { mode: "date" }), // nullable: unknown DOB; estimated flag below
     dobEstimated: boolean("dob_estimated").notNull().default(false), // true when derived from an entered age
     sex: text("sex").notNull(), // 'male' | 'female' | 'other' | 'unknown'
+    /**
+     * PLAN 22c-A DD4 — RULED: administrative gender is Class I (identity-bearing), clinical sex
+     * is Class III. They are two columns because they answer two questions and correct by two
+     * different paths. `administrative_gender` is the LEGAL identity marker: it prints on
+     * documents, a patient has a NALSA right to change it, and it is therefore versioned
+     * (`patient_identity_versions`) and amendment-gated. `sex` above stays the clinical
+     * observation that will drive reference ranges and dosing when a lab or a formulary needs
+     * them, and it corrects through the `entered_in_error` grammar allergies already use.
+     *
+     * Getting this backwards obstructs a legal right in one direction and lets a clinical value
+     * be rewritten as an identity correction in the other. Measured at kickoff (spike S6): NO
+     * clinical reader of `sex` exists yet — all 52 non-test references are display, document,
+     * search or form. That is precisely why the split is affordable in this phase and will not
+     * be affordable in the one that ships the lab.
+     *
+     * Backfilled from `sex` for every existing row in 0043, then set NOT NULL — 24 production
+     * patients, of whom 4 carry 'unknown' or 'other' (S3), so the values carry across unchanged.
+     */
+    administrativeGender: text("administrative_gender").notNull(), // 'male' | 'female' | 'other' | 'unknown'
+    /**
+     * PLAN 22c-A DD2 — the assurance ladder, stored as TEXT and compared by an exported rank
+     * function, never by string order: 'self_declared' (0) < 'staff_verified' (1) <
+     * 'id_verified' (2) < 'abha_verified' (3). Not a Postgres enum, following this table's own
+     * precedent (`sex`, `abha_verification_status`) — a fifth level will arrive and an enum
+     * would make that a migration with a lock.
+     *
+     * The DEFAULT is 'self_declared' because that is what a patient asserting their own identity
+     * in the app will be. Every row that exists TODAY backfills to 'staff_verified' instead:
+     * every patient in the master was typed in by a clerk who saw the person. The default and
+     * the backfill deliberately differ, and 0043 spells that out.
+     */
+    identityAssurance: text("identity_assurance").notNull().default("self_declared"),
     addressLine: text("address_line"),
     district: text("district"),
     stateName: text("state_name"),
@@ -110,6 +142,69 @@ export const patients = pgTable(
 );
 
 /** One CURRENT photo per patient (PK = patient_id) — C-18's photo-prompt source. Cap enforced in code (512,000 bytes). */
+/**
+ * PLAN 22c-A DD3/DD6 — the identity spine. Append-only, one row per Class I state a patient has
+ * ever been in, so a document can be re-rendered as the person who was seen rather than as the
+ * person the record has since become.
+ *
+ * WHY THIS TABLE EXISTS, in one measured line: there is NO name snapshot anywhere in this
+ * schema — every document renders `patients.name` by live join — so today amending a name
+ * silently rewrites every prescription ever printed for that patient. The competitor teardown
+ * (`01-MEDANTA-TEARDOWN.md` P1) shows the mature version of the same bug: one patient's age
+ * printed three different ways across a single episode.
+ *
+ * CLASS I is `name`, `dob`, `administrative_gender`, `abha_number` — the fields that answer
+ * *"who was this person"*. A Class II contact change (phone, address) mints NOTHING: a phone
+ * number is not part of that answer, and minting on it would make the table unbounded and the
+ * resolver ambiguous.
+ *
+ * FULL FIELD SET PER ROW, NEVER A DIFF (DD3). The resolver is then a single indexed lookup —
+ * "newest row with valid_from <= t" — and never a replay. A diff table would be smaller and
+ * would put a fold in the render path of every document the hospital prints.
+ *
+ * APPEND-ONLY IS ENFORCED IN THE DATABASE, not in code: 0043 puts the billing trigger pattern
+ * (0012) on this table. A version that can be updated is not a version.
+ */
+export const patientIdentityVersions = pgTable(
+  "patient_identity_versions",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    version: integer("version").notNull(), // 1-based, per patient, gapless within a patient
+    // --- the Class I field set, in force from `validFrom` ---
+    name: text("name").notNull(),
+    dob: date("dob", { mode: "date" }),
+    dobEstimated: boolean("dob_estimated").notNull().default(false),
+    administrativeGender: text("administrative_gender").notNull(),
+    abhaNumber: text("abha_number"),
+    /**
+     * Provenance, snapshotted with the field set rather than looked up live. A document asks
+     * "who was this person" and the honest answer carries "and how sure were we at the time" —
+     * a name at 'self_declared' and the same name at 'id_verified' are different claims.
+     */
+    identityAssurance: text("identity_assurance").notNull(),
+    /**
+     * `valid_from` is the instant this version came into force, and the resolver's comparison is
+     * `<=` (A21): a version minted at exactly `t` IS in force at `t`. An amendment and an issue
+     * in the same second must resolve to the same side deterministically, and the amendment
+     * happened first or it would not be in the table.
+     */
+    validFrom: timestamp("valid_from", { withTimezone: true }).notNull(),
+    /** T7's enumerated reason class — never free text (series R-018). NULL on the 0043 backfill row. */
+    reasonClass: text("reason_class"),
+    /** Optional pointer to the evidence a clerk saw (a document number, an upload id later). */
+    evidenceRef: text("evidence_ref"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("patient_identity_versions_patient_version_ux").on(t.patientId, t.version),
+    // The resolver's only query: newest row for a patient with valid_from <= t. DESC on
+    // valid_from so the planner takes the first row of the index rather than a sort.
+    index("patient_identity_versions_resolve_idx").on(t.patientId, t.validFrom.desc()),
+  ],
+);
+
 export const patientPhotos = pgTable("patient_photos", {
   patientId: text("patient_id").primaryKey().references(() => patients.id),
   mimeType: text("mime_type").notNull(), // image/jpeg only in v1

@@ -209,7 +209,7 @@ describe("the mini-OT tables (Plan 15 T1)", () => {
 
   async function fixture(): Promise<{ patientId: string; theatreId: string; encounterId: string; caseId: string }> {
     await db.insert(patients).values({
-      id: "p1", uhid: "U00000018", name: "Sunita Devi", sex: "female", ...AUDIT,
+      id: "p1", uhid: "U00000018", name: "Sunita Devi", sex: "female", administrativeGender: "female", ...AUDIT,
     });
     await db.insert(resources).values({
       id: "th1", kind: "theatre", code: "OT-1", name: "Theatre 1", status: "available", ...AUDIT,
@@ -232,7 +232,7 @@ describe("the mini-OT tables (Plan 15 T1)", () => {
       .rejects.toThrow(/daycare_encounters_escort_not_self_ck/);
     // The ordinary case — no escort UHID at all — must survive: `IS DISTINCT FROM`, not `<>`.
     await db.update(daycareEncounters).set({ escortPatientId: null });
-    await db.insert(patients).values({ id: "p2", uhid: "U00000026", name: "Ram Kumar", sex: "male", ...AUDIT });
+    await db.insert(patients).values({ id: "p2", uhid: "U00000026", name: "Ram Kumar", sex: "male", administrativeGender: "male", ...AUDIT });
     await db.update(daycareEncounters).set({ escortPatientId: "p2" });
   });
 

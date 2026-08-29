@@ -20,7 +20,7 @@ describe("patients schema", () => {
     id: "01PATIENT0000000000000001",
     uhid: "HMS-00000001-5",
     name: "Asha Devi",
-    sex: "female",
+    sex: "female", administrativeGender: "female",
     createdBy: "u1",
     updatedBy: "u1",
   };

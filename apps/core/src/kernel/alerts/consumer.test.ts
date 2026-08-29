@@ -143,7 +143,7 @@ describe("kernel alerts consumer", () => {
       id: patientId,
       uhid: ASHA_UHID,
       name: ASHA_NAME,
-      sex: "female",
+      sex: "female", administrativeGender: "female",
       // She HAS a number, so the desk flag below is earned by an EXHAUSTED LADDER rather than by
       // D-34's phoneless shortcut — two different rungs of D6, and only one of them is N8.
       phone: ASHA_PHONE,

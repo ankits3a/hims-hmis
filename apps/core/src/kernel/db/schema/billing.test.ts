@@ -19,7 +19,7 @@ afterAll(async () => teardown());
 beforeEach(async () => truncateAll(db));
 
 async function seedPatient(id = "p1"): Promise<string> {
-  await db.insert(patients).values({ id, uhid: `UH-${id}`, name: "Test Patient", sex: "female", createdBy: "t", updatedBy: "t" });
+  await db.insert(patients).values({ id, uhid: `UH-${id}`, name: "Test Patient", sex: "female", administrativeGender: "female", createdBy: "t", updatedBy: "t" });
   return id;
 }
 

@@ -122,11 +122,11 @@ describe("retentionSweep", () => {
     }
     await db.insert(patients).values([
       {
-        id: HELD_PATIENT, uhid: "HMS-00000001-5", name: "Asha Devi", sex: "female",
+        id: HELD_PATIENT, uhid: "HMS-00000001-5", name: "Asha Devi", sex: "female", administrativeGender: "female",
         phone: "9876500001", createdBy: "u1", updatedBy: "u1",
       },
       {
-        id: FREE_PATIENT, uhid: "HMS-00000002-3", name: "Ravi Kumar", sex: "male",
+        id: FREE_PATIENT, uhid: "HMS-00000002-3", name: "Ravi Kumar", sex: "male", administrativeGender: "male",
         phone: "9876500002", createdBy: "u1", updatedBy: "u1",
       },
     ]);

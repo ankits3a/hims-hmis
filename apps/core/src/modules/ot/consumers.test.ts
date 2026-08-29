@@ -32,9 +32,9 @@ describe("the OT patient-merge consumer (Plan 15 T2 / A5)", () => {
 
   async function fixture(): Promise<void> {
     await db.insert(patients).values([
-      { id: "win", uhid: "U00000018", name: "Sunita Devi", sex: "female", ...AUDIT },
-      { id: "lose", uhid: "U00000026", name: "Sunita Devi", sex: "female", ...AUDIT },
-      { id: "other", uhid: "U00000034", name: "Ram Kumar", sex: "male", ...AUDIT },
+      { id: "win", uhid: "U00000018", name: "Sunita Devi", sex: "female", administrativeGender: "female", ...AUDIT },
+      { id: "lose", uhid: "U00000026", name: "Sunita Devi", sex: "female", administrativeGender: "female", ...AUDIT },
+      { id: "other", uhid: "U00000034", name: "Ram Kumar", sex: "male", administrativeGender: "male", ...AUDIT },
     ]);
     await db.insert(resources).values({
       id: "th1", kind: "theatre", code: "OT-1", name: "Theatre 1", status: "available", ...AUDIT,

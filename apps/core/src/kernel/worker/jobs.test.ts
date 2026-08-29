@@ -172,7 +172,7 @@ describe("registerAllJobs threads NOTIFY_STUCK_AFTER_MS to the pump (Book R2)", 
   beforeEach(async () => {
     await truncateAll(db);
     await db.insert(patients).values({
-      id: PATIENT, uhid: "HMS-00000001-5", name: "Asha Devi", sex: "female",
+      id: PATIENT, uhid: "HMS-00000001-5", name: "Asha Devi", sex: "female", administrativeGender: "female",
       phone: "9876500001", createdBy: "u1", updatedBy: "u1",
     });
     await db.insert(notifications).values({

@@ -26,7 +26,7 @@ describe("opd schema (migration 0010)", () => {
     return { deptId: "D1", roomId: "R1", doctorId: "DOC1" };
   }
   async function seedPatient(id: string): Promise<void> {
-    await db.insert(patients).values({ id, uhid: `HMS-0000000${id.slice(-1)}-0`, name: "P", sex: "other", createdBy: "t", updatedBy: "t" });
+    await db.insert(patients).values({ id, uhid: `HMS-0000000${id.slice(-1)}-0`, name: "P", sex: "other", administrativeGender: "other", createdBy: "t", updatedBy: "t" });
   }
 
   it("service_date round-trips as a YYYY-MM-DD STRING (mode: string) — no timezone shift", async () => {

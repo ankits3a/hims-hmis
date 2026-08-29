@@ -37,7 +37,7 @@ describe("migration 0015 — the notifications outbox and the three columns besi
     // table (§3.35, constraint existence, never row counts, never statement order).
     await truncateAll(db);
     await db.insert(patients).values({
-      id: PATIENT_A, uhid: "HMS-00000001-5", name: "Asha Devi", sex: "female",
+      id: PATIENT_A, uhid: "HMS-00000001-5", name: "Asha Devi", sex: "female", administrativeGender: "female",
       createdBy: "u1", updatedBy: "u1",
     });
     await db.insert(users).values({

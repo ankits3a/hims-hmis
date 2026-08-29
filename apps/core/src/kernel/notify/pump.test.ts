@@ -70,10 +70,10 @@ describe("runNotifyPump — the send path (Plan 10 T4: D2/D3/D4/D6/D7)", () => {
     await truncateAll(db);
     calls = [];
     await db.insert(patients).values([
-      { id: PATIENT_A, uhid: "HMS-00000001-5", name: "Asha Devi", sex: "female", phone: PHONE_A, createdBy: "u1", updatedBy: "u1" },
-      { id: PATIENT_SURVIVOR, uhid: "HMS-00000002-3", name: "Bina Devi", sex: "female", phone: PHONE_SURVIVOR, createdBy: "u1", updatedBy: "u1" },
+      { id: PATIENT_A, uhid: "HMS-00000001-5", name: "Asha Devi", sex: "female", administrativeGender: "female", phone: PHONE_A, createdBy: "u1", updatedBy: "u1" },
+      { id: PATIENT_SURVIVOR, uhid: "HMS-00000002-3", name: "Bina Devi", sex: "female", administrativeGender: "female", phone: PHONE_SURVIVOR, createdBy: "u1", updatedBy: "u1" },
       {
-        id: PATIENT_LOSER, uhid: "HMS-00000003-1", name: "Bina D", sex: "female", phone: PHONE_LOSER,
+        id: PATIENT_LOSER, uhid: "HMS-00000003-1", name: "Bina D", sex: "female", administrativeGender: "female", phone: PHONE_LOSER,
         status: "merged", mergedIntoPatientId: PATIENT_SURVIVOR, createdBy: "u1", updatedBy: "u1",
       },
     ]);

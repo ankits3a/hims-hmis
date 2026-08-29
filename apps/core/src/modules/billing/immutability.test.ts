@@ -38,7 +38,7 @@ beforeEach(async () => {
 /** One row in each protected table, plus a childless invoice for the DELETE sample. */
 async function seedLedger(): Promise<void> {
   // `invoices` and `receipts` FK into `patients` (ruling R5) — the patient exists first.
-  await db.insert(patients).values({ id: "p1", uhid: "UH-p1", name: "Test Patient", sex: "female", createdBy: "t", updatedBy: "t" });
+  await db.insert(patients).values({ id: "p1", uhid: "UH-p1", name: "Test Patient", sex: "female", administrativeGender: "female", createdBy: "t", updatedBy: "t" });
   await db.insert(cashierSessions).values({ id: "cs1", cashierUserId: "u-cashier", openedAt: AT, openingFloatPaise: 0 });
   await db.insert(invoices).values({
     id: "inv1", invoiceNo: "INV/26-27/000001", patientId: "p1", tariffVersionId: "v1",

@@ -29,7 +29,7 @@ describe("enqueueNotification / expireByRef — the outbox's only writer (Plan 1
   beforeEach(async () => {
     await truncateAll(db);
     await db.insert(patients).values({
-      id: PATIENT_A, uhid: "HMS-00000001-5", name: "Asha Devi", sex: "female",
+      id: PATIENT_A, uhid: "HMS-00000001-5", name: "Asha Devi", sex: "female", administrativeGender: "female",
       phone: "9876500001", createdBy: "u1", updatedBy: "u1",
     });
     await db.insert(users).values({

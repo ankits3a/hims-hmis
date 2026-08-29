@@ -188,7 +188,7 @@ describe("the partner tables (Plan 09 T1)", () => {
   it("one subject per (invoice, direction, counterparty) — NOT per agreement — which is what T6 locks FOR UPDATE", async () => {
     await db.insert(patients).values({
       id: "01HPAT0000000000000000001", uhid: "HMS-00000001-1", name: "Invented Patient",
-      sex: "female", createdBy: "test", updatedBy: "test",
+      sex: "female", administrativeGender: "female", createdBy: "test", updatedBy: "test",
     });
     await db.insert(invoices).values({
       id: "01HINV0000000000000000001", invoiceNo: "INV-TEST-1", patientId: "01HPAT0000000000000000001",
