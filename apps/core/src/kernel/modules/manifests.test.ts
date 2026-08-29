@@ -109,7 +109,7 @@ function manifestKeys(identifiers: string[], label: string): string[] {
 }
 
 describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
-  it("declares exactly sixteen manifests, by key, in app.module.ts's original install order", () => {
+  it("declares exactly seventeen manifests, by key, in app.module.ts's original install order", () => {
     expect(ALL_MANIFESTS.map((m) => m.key)).toEqual([
       "auth",
       "workflow",
@@ -136,13 +136,17 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // `resources`): the §4 seam is where permissions are DECLARED, and `staff.reports.read` /
       // `staff.reports.drill` are strings nothing else could legitimately declare.
       "desk",
+      // PLAN 17 PHASE 0 T5 — appended, so the sixteen above keep the order they were installed in.
+      // Kernel code carrying a manifest, the `resources`/`desk` shape: the four `orders.*` strings
+      // are declared here or no role can ever hold them.
+      "orders",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(16);
+    expect(ALL_MANIFESTS).toHaveLength(17);
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(16);
+    expect(registry.all()).toHaveLength(17);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -155,7 +159,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly five enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly six enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -235,7 +239,21 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      registry, which installs `opd` and `billing` — the two manifests that actually carry a
     //      `desk` array. A worker registry missing those would roll EMPTY facts for every person,
     //      every night, silently.
-    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "formulary", "resources", "desk"]);
+    //
+    //  (1h) PLAN 17 PHASE 0 T5 — the SEVENTEENTH, `orders`, and it falls on the APP-ONLY side. It
+    //      carries no subscription, no job, no menu and no provider of any kind: what it exists for
+    //      is four permission strings, and the worker serves no orders route. The array below
+    //      therefore gains an entry and the title's "five" becomes SIX.
+    //
+    //      **The worker not installing it is SAFE, and that was checked rather than assumed**, the
+    //      (1g) discipline: `syncPermissions` is a pure upsert with no delete
+    //      (`kernel/auth/permissions.ts`), so a worker boot cannot retire a permission the api
+    //      declared. And what the worker DOES need from this phase is not the manifest but the
+    //      COLLECTOR — `collectOrderKinds(registry)` is called in `worker.module.ts` as well as in
+    //      `app.module.ts`, so a module declaring `orderKinds` meets the seam's three boot refusals
+    //      in both processes. Plan 13 shipped a collector the worker never called and Plan 14 had to
+    //      close it; this one is wired into both in the commit that creates it.
+    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders"]);
 
     // (2) The worker ADDS `notify`. It declares five `kernel.notify` subscriptions, and
     //     `buildSubscriptionBus` (kernel/worker/jobs.ts) makes a declared subscription with no

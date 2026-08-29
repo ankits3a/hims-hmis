@@ -49,3 +49,9 @@ export * from "./phi-access";
 // CACHE derived from the primary tables, so an FK would couple a rebuildable projection to the
 // lifecycle of the rows it summarises and would put it in their truncate group for no benefit.
 export * from "./desk";
+// PLAN 17 PHASE 0 T1 — the P2 order envelope, LAST because it is downstream of both `patients`
+// (every clinical document carries a real patient FK, billing's owner ruling R5) and `tariff`
+// (`order_items.service_id` references `services.id`, the only tariff link the envelope has, DD10).
+// Nothing above depends on it: a module that claims an order kind hangs its OWN tables off
+// `order_item_id` and never adds a column here.
+export * from "./orders";

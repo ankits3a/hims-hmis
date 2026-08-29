@@ -809,6 +809,48 @@ export const NOT_YET_MODELLED: readonly NotYetModelled[] = [
       "Phase 1 has no death-recording flow to hang it on; IPD's death cascade is where it gets a " +
       "holder, and until then no role should be able to set it by way of fixing a typo",
   },
+  // ─────────── PLAN 17 PHASE 0 T5 — the four `orders.*` strings, held by nobody ───────────
+  //
+  // THE ENVELOPE HAS NO CONSUMERS ON THE DAY IT LANDS, and that is what makes granting any of
+  // these premature rather than cautious: no manifest claims an order KIND, so `placeOrder`
+  // refuses everything with `unknown_kind` and there is no route to reach. A role granted
+  // `orders.place` today would hold authority over nothing — and would be the reason nobody
+  // checks the grant again when Plan 17's lab module gives it something to do.
+  //
+  // Each string gets its holder from the plan that gives it a surface: 17 grants `orders.place`
+  // and `orders.read` beside its own `lab.orders.place`; 18a does the same for imaging.
+  {
+    permission: "orders.place",
+    reason:
+      "PLAN 17 PHASE 0 — the kernel half of the placement gate, and it is USELESS ALONE by " +
+      "design: a caller needs this AND the kind's own permission (`lab.orders.place`), and no " +
+      "manifest claims a kind yet. Plan 17 T2 grants the pair together, which is the only " +
+      "moment either of them means anything",
+  },
+  {
+    permission: "orders.read",
+    reason:
+      "PLAN 17 PHASE 0 — the cross-kind readers exist and no screen calls them: this phase adds " +
+      "no route and the doctor cockpit still writes `advised_tests`. The ward's pending-" +
+      "investigations list is Plan 17's own, and it is the plan that should decide who reads it",
+  },
+  {
+    permission: "orders.cancel",
+    reason:
+      "PLAN 17 PHASE 0 — declared here and enforced by the CLAIMING MODULE's route, never by " +
+      "`advanceOrderItem`. Who among the staff may call off a lab order versus an imaging order " +
+      "is a departmental decision, and a kernel grant would be a second authority on it",
+  },
+  {
+    permission: "orders.read.restricted",
+    reason:
+      "PLAN 17 PHASE 0 / DD11 — the same argument `patients.confidential.read` above is still " +
+      "waiting on an owner for, one door over. This buys the HIV order, the exposure-protocol " +
+      "source test and the PCPNDT-class USG that the ward's list omits; the ordering clinician " +
+      "already sees their own without it. Handing it out with `orders.read` would decide, " +
+      "without anyone noticing, that every clerk may read every restricted investigation in the " +
+      "building — so it is a Class-A grant the runbook hands to the owner",
+  },
   {
     permission: "approvals.requests.create",
     reason:

@@ -266,6 +266,7 @@ export async function truncateAll(db: Db): Promise<void> {
         resource_status_history, resources,
         ot_incidents, ot_deposit_holds, ot_definitions, pacu_scores, ot_specimens, ot_case_implants,
         ot_counts, ot_checklist_runs, ot_case_gates, ot_lists, ot_cases, daycare_encounters,
+        order_item_transitions, order_items, orders,
         opd_config, allocations, receipt_tenders, receipts, credit_note_lines, credit_notes, invoice_lines,
         invoices, refund_vouchers, cashier_sessions, entered_in_error_marks, recon_batches, daily_closes,
         idempotency_keys, document_series, billing_config, patient_merge_requests, patient_guardians, patient_allergies,
@@ -280,8 +281,25 @@ export async function truncateAll(db: Db): Promise<void> {
   // row from one import test makes the next test's "this drop quarantined exactly two rows"
   // assertion read four.
   await db.execute(sql`truncate table import_quarantine`);
+  // ───────── PLAN 17 PHASE 0 T1 — THE ENVELOPE IS NAMED IN **TWO** STATEMENTS, AND MUST BE ─────────
+  //
+  // §3.35/§3.12, third and fourth application in this file: `orders.patient_id` references
+  // `patients.id` (so all three tables join the big statement above, child-first) AND
+  // `order_items.service_id` references `services.id` (DD10 — the only tariff link the envelope
+  // has), so `order_items` must ALSO be named in the statement that truncates `services`.
+  // `order_item_transitions` comes with it because it points at `order_items`.
+  //
+  // This is the `notifications` precedent, which is named in two statements for exactly this
+  // reason — each group's OWN statement must carry the name, and the second truncate of an
+  // already-empty table is a no-op. Naming `order_items` only above is REFUSED OUTRIGHT by
+  // Postgres here: `cannot truncate a table referenced in a foreign key constraint`, a STATIC
+  // check that does not care whether the table holds a single row.
+  //
+  // `orders` is deliberately NOT in this statement: nothing in the tariff group points at it, and
+  // truncating a table requires the tables that POINT AT it, never its own parents.
   await db.execute(
-    sql`truncate table tariff_items, regulated_prices, adjustment_rules, gst_config, gst_settings,
+    sql`truncate table order_item_transitions, order_items,
+        tariff_items, regulated_prices, adjustment_rules, gst_config, gst_settings,
         tariff_versions, services`,
   );
   // ───────────────────────── Plan 11c — the six ops tables, three statements ─────────────────────

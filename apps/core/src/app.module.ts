@@ -26,6 +26,7 @@ import { ResourcesModule } from "./kernel/resources/resources.module";
 import { MaterialsModule } from "./modules/materials/materials.module";
 import { OtModule } from "./modules/ot/ot.module";
 import { collectResourceKinds } from "./kernel/resources/kinds";
+import { collectOrderKinds } from "./kernel/orders/kinds";
 
 export { DB, DB_POOL, CONFIG, MODULE_REGISTRY } from "./kernel/tokens";
 
@@ -74,6 +75,19 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // THROW is the whole point, and the write surface takes its declarations as a parameter
         // (see registry.ts's header on why that is a parameter and not a global).
         collectResourceKinds(registry);
+        /**
+         * PLAN 17 PHASE 0 T2 — THE ORDER-KIND SEAM'S BOOT REFUSALS, IN BOTH PROCESSES FROM THE
+         * FIRST COMMIT.
+         *
+         * Plan 13 shipped `collectResourceKinds` with no caller at all, so neither of ITS refusals
+         * existed in the running system and a duplicate-`bed` deployment would have booted fine;
+         * the line above is that gap closed, and Plan 14 had to close it a second time in the
+         * worker. This collector is wired into both processes in the commit that creates it, which
+         * is the whole lesson applied rather than re-learned. The return value is deliberately
+         * discarded — the THROW is the point, and `placeOrder` takes its declarations as a
+         * parameter (kinds.ts's header on why that is a parameter and not a global).
+         */
+        collectOrderKinds(registry);
         return registry;
       },
     },

@@ -1,5 +1,6 @@
 import type { ModuleManifest } from "./manifest";
 import { deskManifest } from "../desk/manifest";
+import { ordersManifest } from "../orders/manifest";
 import { authManifest } from "../auth/manifest";
 import { workflowManifest } from "../workflow/manifest";
 import { approvalsManifest } from "../approvals/manifest";
@@ -117,4 +118,17 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // own — what it exists for is `staff.reports.read` / `staff.reports.drill`, which nothing else
   // could legitimately declare.
   deskManifest,
+  // PLAN 17 PHASE 0 T5 — the order envelope, appended so every manifest above keeps the order it
+  // was installed in. It is KERNEL code carrying a manifest for the `resources` and `desk` reason:
+  // §4 is where permissions are DECLARED, and `orders.place` / `orders.read` / `orders.cancel` /
+  // `orders.read.restricted` are strings nothing else could legitimately declare.
+  //
+  // It declares `subscriptions: []` and is installed in the API and NOT in the worker — the
+  // (1)/(1a)/(1c)/(1d)/(1g) reason a sixth time: the worker serves no orders route and there is no
+  // consumer to feed, so installing it there would catalog nothing new and subscribe to nothing.
+  //
+  // It is the first manifest whose PURPOSE is a seam other manifests declare INTO: `orderKinds` is
+  // claimed by Plan 17's lab module, 18a's radiology, 26's packages — none of which edits this
+  // file, because a kind is a manifest field and not a list entry.
+  ordersManifest,
 ];

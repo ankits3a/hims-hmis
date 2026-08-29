@@ -1,6 +1,7 @@
 import { Module, OnModuleInit } from "@nestjs/common";
 import { eq } from "drizzle-orm";
-import { registerEncounterResolver } from "../billing";
+// PLAN 17 PHASE 0 T3 — the registry moved to the kernel; billing re-exports the same names.
+import { registerEncounterResolver } from "../../kernel/episodes/encounter-resolvers";
 import { EPISODE_SERIES } from "../../kernel/episodes/series";
 import { daycareEncounters } from "../../kernel/db/schema";
 import { OtDefinitionsController } from "./ot-definitions.controller";

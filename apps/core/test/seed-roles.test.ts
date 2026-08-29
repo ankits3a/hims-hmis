@@ -544,7 +544,7 @@ if (opdTable === undefined || billingTable === undefined || materialsTable === u
 }
 
 describe("seed:roles — the census pins, stated before anything is compared (§2.49)", () => {
-  it("ALL_MANIFESTS declares one hundred and five permissions, by module", () => {
+  it("ALL_MANIFESTS declares one hundred and eleven permissions, by module", () => {
     const byKey = new Map(ALL_MANIFESTS.map((m) => [m.key, m.permissions.length]));
     expect(Object.fromEntries(byKey)).toEqual({
       auth: 7, // 11e's six + `auth.elevation.review` (the elevation-review queue)
@@ -598,8 +598,17 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // PATIENT ROWS behind those figures and is held by nobody, on the `patients.confidential.read`
       // argument — the mechanism is built and audited, and who holds it is an owner/DPO ruling.
       desk: 2,
+      // PLAN 17 PHASE 0 T5 — FOUR strings, and every one of them is in `NOT_YET_MODELLED`.
+      // `orders.place` is the kernel half of a TWO-permission gate (the kind declares the other
+      // half, e.g. `lab.orders.place`), `orders.read` guards the cross-kind readers,
+      // `orders.cancel` is enforced by the claiming module's route rather than by the kernel, and
+      // `orders.read.restricted` is DD11's separate grant for HIV/NACO, exposure-protocol and
+      // PCPNDT-class items. Declared here ahead of every route for the `membership`/`materials`
+      // reason above: `seed-roles.ts` and this file are named in T5's Files list and in no later
+      // task's.
+      orders: 4,
     });
-    expect(installedRegistry().allPermissions()).toHaveLength(107); // PLAN 22c-A T1: 105 -> 107
+    expect(installedRegistry().allPermissions()).toHaveLength(111); // PLAN 17 PHASE 0 T5: 107 -> 111
   });
 
   it("the role model is twenty-five roles, one hundred and sixty-eight grants, eighty-five distinct permissions", () => {
@@ -727,8 +736,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     }
   });
 
-  it("the reachability census closes: 107 declared = 91 held + 16 not yet modelled", () => {
-    expect(installedRegistry().allPermissions()).toHaveLength(107);
+  it("the reachability census closes: 111 declared = 91 held + 20 not yet modelled", () => {
+    expect(installedRegistry().allPermissions()).toHaveLength(111);
     // 42 + 13 until the 2026-08-23 ruling moved the four `workflow.definitions.*` strings across;
     // 46 + 13 until Plan 09 declared fourteen and DD18 granted four of them.
     // 50 until `auth.elevation.review` was declared; it is held from the first deploy because
@@ -764,6 +773,11 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // and joins the held set (90 -> 91). It is the only string this ruling moves: every other
     // permission the two rulings grant was already held by some other role.
     // PLAN 22c-A T1 — 105 -> 107 declared, held UNCHANGED at 91, and NOT_YET_MODELLED 14 -> 16.
+    // PLAN 17 PHASE 0 T5 — 107 -> 111 declared, held UNCHANGED at 91, NOT_YET_MODELLED 16 -> 20.
+    // The envelope has no consumers on the day it lands: no manifest claims an order kind, so
+    // `placeOrder` refuses everything with `unknown_kind` and there is no route any of the four
+    // could guard. A grant now would be authority over nothing, and would be the reason nobody
+    // looks at it again when Plan 17's lab module gives it something to do (§8.11).
     // Both new strings land on the unheld side ON PURPOSE (DD7), which makes this the second
     // phase running to move that list — and unlike 07c's single row, this one adds two and grants
     // nothing. That is the whole content of the privacy write split: `patients.confidential.write`
@@ -772,8 +786,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // is a runbook step, and until it happens NOBODY can set those fields — which is strictly
     // safer than today, where seventeen users can.
     expect(heldPermissions()).toHaveLength(91);
-    expect(NOT_YET_MODELLED).toHaveLength(16);
-    expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(107);
+    expect(NOT_YET_MODELLED).toHaveLength(20);
+    expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(111);
   });
 
   it("the README carries exactly four permission tables, of the measured shapes", () => {
@@ -985,6 +999,14 @@ describe("seed:roles — the reachability invariant (V1, V2)", () => {
       // two siblings left because they guard live routes and gained `membership_admin`. The seven
       // `partners.*` still guard lanes that ship structurally OFF pending the owner's O-8 ruling.
       "membership.catalog.manage",
+      // PLAN 17 PHASE 0 T5 — the envelope's four, all unheld on purpose (§8.11). No manifest
+      // claims an order kind yet, so `placeOrder` refuses everything with `unknown_kind` and there
+      // is no route any of these could guard. 17 and 18a grant them beside their own kind
+      // permission, which is the first moment either half means anything.
+      "orders.cancel",
+      "orders.place",
+      "orders.read",
+      "orders.read.restricted",
       "partners.agreement.manage",
       "partners.attribution.issue",
       "partners.counterparty.manage",
@@ -1155,7 +1177,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     // registered directly after `duty_manager`.
     expect(first.roles.map((r) => r.granted.length)).toEqual([12, 14, 5, 11, 7, 1, 8, 11, 18, 10, 10, 1, 2, 3, 2, 3, 1, 11, 6, 11, 4, 4, 4, 3, 6]);
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
-    expect(first.declared).toBe(107); // PLAN 22c-A T1 — the two DD7 privacy-write strings
+    expect(first.declared).toBe(111); // PLAN 17 PHASE 0 T5 — the four `orders.*` strings
     // MEASURED from role_permissions, not derived from the model. On this database only seed:roles
     // has run, so what is held is exactly what the model granted — 57, not the 63 the model CLAIMS
     // once seed:admin and seed:ops have also run. That SEVEN-permission gap IS MAJOR 1 (it was ten
@@ -1166,7 +1188,8 @@ describe("seed:roles — executed against a database (V5)", () => {
     expect(first.held).toBe(modelPermissions().length);
     expect(heldPermissions()).toHaveLength(91);
     // PLAN 22c-A T1 — 14 -> 16. Both additions are DD7's privacy write split, unheld on purpose.
-    expect(first.notYetModelled).toBe(16);
+    // PLAN 17 PHASE 0 T5 — 16 -> 20. All four `orders.*` strings, unheld on purpose (§8.11).
+    expect(first.notYetModelled).toBe(20);
     expect(first.expectedElsewhereAbsent).toBe(6);
     // And the census RECONCILES against the catalog, which is the property that makes it evidence:
     // 83 held + 14 unmodelled + 6 expected-elsewhere = 103 declared (Plan 15 T2 moved the first by

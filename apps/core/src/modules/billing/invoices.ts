@@ -11,6 +11,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { getEncounter } from "../opd";
+import { resolveEncounterByPrefix } from "../../kernel/episodes/encounter-resolvers";
 import {
   consumeEntitlements, counterForWinner, couponRedemptionStates, couponSource, COUPON_SOURCE_KEY,
   entitlementCountersOf, membershipSource, MEMBERSHIP_SOURCE_KEY, narrowToRedeemableCoupons,
@@ -285,49 +286,24 @@ export async function listInvoices(
 // ---------------------------------------------------------------------------------------------
 
 /**
- * ═══ PLAN 15 T7 / DD11-F2 — THE ENCOUNTER RESOLVER REGISTRY ═══
+ * ═══ PLAN 15 T7 / DD11-F2 — THE ENCOUNTER RESOLVER REGISTRY, NOW IN THE KERNEL ═══
  *
- * **Before this, `issueInvoice` could bill an OPD encounter and nothing else.** `resolveEncounter`
+ * **Before it, `issueInvoice` could bill an OPD encounter and nothing else.** `resolveEncounter`
  * called `getEncounter` — OPD's reader over `opd_encounters` — and threw `unknown_encounter` for
- * anything it did not find. Plan 15's day-care encounters live in `daycare_encounters` and are
- * numbered `D…`, so every discharge bill the mini-OT composed would have been refused by billing.
- * That is the adversarial pass's finding F2, and this registry is the seam that closes it.
+ * anything it did not find, so every discharge bill the mini-OT composed for a `D…` encounter would
+ * have been refused. That is the adversarial pass's finding F2, and the registry is the seam that
+ * closed it.
  *
- * ═══ IT DISPATCHES ON THE ENCOUNTER NUMBER'S LETTER, WHICH IS WHY THE LETTER EXISTS ═══
- *
- * `kernel/episodes/series.ts` reserves one prefix per document type — `V` for a visit, `D` for a
- * day-care encounter (Plan 15 DD2). A resolver registers under a prefix and owns every encounter
- * number that starts with it. **A day-care case numbered `V…` would be resolved by OPD, which has
- * never heard of it**, which is the reason DD2 took its own letter rather than borrowing one.
- *
- * The KEYED-MAP shape is `registerConsultStartGuard`'s, transcribed with its reasoning: re-registering
- * under the same prefix REPLACES, which keeps it idempotent across the jest testing modules that
- * share one worker. An array would double-register and the second resolver would never be reached.
- *
- * **Billing still imports nothing from either module.** OPD registers `V` from `opd.module.ts` and
- * the OT registers `D` from `ot.module.ts`; this file knows only that a resolver returns a patient
- * and an intended payer. That is the same dependency inversion `registerConsultStartGuard` uses to
- * keep OPD from importing billing, pointed the other way.
+ * **PLAN 17 PHASE 0 T3 MOVED THE REGISTRY TO `kernel/episodes/encounter-resolvers.ts`**, because
+ * the order envelope is its second consumer and a kernel seam cannot import a module. The three
+ * names below are RE-EXPORTED from here unchanged, so `modules/billing`'s public surface is exactly
+ * what it was and no importer outside this module changed. What did NOT move is
+ * `resolveEncounter` itself: it falls back to OPD's reader for any id matching no registered
+ * prefix, and carrying that into the kernel would have inverted the dependency this registry
+ * exists to invert. See that file's header for the full reasoning.
  */
-export type EncounterResolver = (
-  db: Db,
-  encounterId: string,
-) => Promise<{ patientId: string; intendedPayer: string } | null>;
-
-const encounterResolvers = new Map<string, EncounterResolver>();
-
-/** Registers (or replaces) the resolver for an episode-number prefix; returns the unregister fn. */
-export function registerEncounterResolver(prefix: string, resolver: EncounterResolver): () => void {
-  encounterResolvers.set(prefix, resolver);
-  return () => {
-    encounterResolvers.delete(prefix);
-  };
-}
-
-/** The registered prefixes, for the parity test that pins which modules have claimed one. */
-export function registeredEncounterPrefixes(): string[] {
-  return [...encounterResolvers.keys()].sort();
-}
+export type { EncounterResolver } from "../../kernel/episodes/encounter-resolvers";
+export { registerEncounterResolver, registeredEncounterPrefixes } from "../../kernel/episodes/encounter-resolvers";
 
 async function resolveEncounter(
   db: Db,
@@ -336,15 +312,15 @@ async function resolveEncounter(
   if (encounterId === undefined) return { intendedPayer: "self", patientId: null };
 
   /**
-   * LONGEST PREFIX FIRST. `EPISODE_SERIES` carries one multi-letter prefix (`GRN`), so a
-   * shortest-first match would let a future `G` resolver swallow every `GRN…` number. The series
-   * file's own header records that trap; this loop is the one place billing could spring it.
+   * The longest-prefix-first match now lives in the kernel (T3). What billing still owns is the
+   * two answers it gives to the two outcomes: a prefix that matched and resolved to nothing is a
+   * refusal, because the module owning that letter has spoken; a string no prefix matched falls
+   * through to the OPD reader below.
    */
-  for (const prefix of [...encounterResolvers.keys()].sort((a, b) => b.length - a.length)) {
-    if (!encounterId.startsWith(prefix)) continue;
-    const resolved = await encounterResolvers.get(prefix)!(db, encounterId);
-    if (!resolved) throw new BillingError("unknown_encounter", `unknown encounter ${encounterId}`);
-    return { intendedPayer: resolved.intendedPayer, patientId: resolved.patientId };
+  const byPrefix = await resolveEncounterByPrefix(db, encounterId);
+  if (byPrefix.matched) {
+    if (!byPrefix.resolved) throw new BillingError("unknown_encounter", `unknown encounter ${encounterId}`);
+    return { intendedPayer: byPrefix.resolved.intendedPayer, patientId: byPrefix.resolved.patientId };
   }
 
   /**

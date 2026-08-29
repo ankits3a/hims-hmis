@@ -69,7 +69,7 @@ Every row is a command. **Re-run every row at kickoff**; four of 22c-A's seven r
 |---|---|---|---|
 | 1 | migrations in the journal | **44** (`0000`–`0043`); this phase writes **`0044`** | `python3 -c "import json;j=json.load(open('apps/core/drizzle/meta/_journal.json'));print(len(j['entries']), j['entries'][-1]['tag'])"` → `44 0043_patient_identity_spine` |
 | 2 | order-shaped tables in the kernel schema | **0** | `grep -rniE 'pgTable\(\s*"[a-z_]*order' apps/core/src/kernel/db/schema/ \| wc -l` |
-| 3 | `Actor` union | **four** members — `user \| agent \| system \| patient` — **in the WORKING TREE (22c-A T2, uncommitted at measurement)**; `main` still has three | `grep -n 'export type Actor' packages/contracts/src/envelope.ts`; `git diff --stat packages/contracts/src/envelope.ts` |
+| 3 | `Actor` union | **four** members — `user \| agent \| system \| patient` — **MERGED AND COMMITTED** (`bec9aa7`, carried through `b13d74c`); `git diff --stat` on the file is empty at kickoff. *(Corrected 2026-08-29 at kickoff: the write-time value said "uncommitted in the working tree; `main` still has three".)* | `grep -n 'export type Actor' packages/contracts/src/envelope.ts`; `git diff --stat packages/contracts/src/envelope.ts` |
 | 4 | episode series keys | `visit appointment lab_order lab_specimen radiology_order pharmacy_dispense grn daycare` — 8; `L S R P` reserved and unused | `grep -n '^  [a-z_]*: "' apps/core/src/kernel/episodes/series.ts`; `grep -rln '"lab_order"\|"radiology_order"' apps/core/src --include=*.ts \| grep -v test` → `series.ts` only |
 | 5 | encounter-resolver registry location and registrants | `modules/billing/invoices.ts:320`; registrants `opd.module.ts` (`V`), `ot.module.ts` (`D`); `billing/index.ts` re-exports | `grep -rn 'registerEncounterResolver' apps/core/src --include=*.ts \| grep -v '\.test\.'` → 4 lines |
 | 6 | manifests installed | **16** `Manifest,` lines in `ALL_MANIFESTS` (`manifests.ts:56`), last appended `formularyManifest` | `grep -c 'Manifest,$' apps/core/src/kernel/modules/manifests.ts` → 16 |
@@ -80,7 +80,7 @@ Every row is a command. **Re-run every row at kickoff**; four of 22c-A's seven r
 | 11 | event-name lint | `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$`, thrown as `entity.verb_past` | `grep -n 'NAME_RE' packages/contracts/src/envelope.ts` → line 64 |
 | 12 | ledger §5 line | **1323** (22c-A's seed says 1132 — stale) | `grep -n '^## 5' docs/superpowers/plans/reports/EXECUTION-LESSONS.md` |
 
-**Row 3 is the row this document is written against.** The envelope is specified for FOUR actor types. If 22c-A has not merged when this phase kicks off, T3's guard is written for four and its `patient` leg is tested against a literal object — the type widens underneath it without a change here. **This phase edits nothing under `kernel/auth/` or `packages/contracts/`.**
+**Row 3 is the row this document is written against.** The envelope is specified for FOUR actor types. **22c-A HAS merged**, so T3's guard is written and tested against the real four-member union rather than a literal object, and the contingency this paragraph carried is discharged. **This phase edits nothing under `kernel/auth/` or `packages/contracts/`.**
 
 ---
 
@@ -357,9 +357,179 @@ A downstream plan may write its phase doc against these sentences without readin
 
 ## 9. CLOSE — filled at execution
 
+### 9.0 Kickoff — the pre-flight, and §2 re-measured
+
+**Parallel-session pre-flight** (`reports/2026-08-26-parallel-session-protocol.md` §2), run 2026-08-29 before the first change:
+
+- `ps -eo pid,etimes,cmd | grep -E "jest|vitest|deploy\.sh"` — **nothing running.**
+- `git status --short` — **seventeen files uncommitted, none of them this phase's**: `modules/patients/*` (6), `modules/opd/prescriptions.ts`, and ten under `apps/web/src`. That is the patient self-service lane (22c-B) mid-work. They are not this phase's to stage, revert or clean, and this phase touches none of those paths. `.ci-watch.log` is untracked scratch.
+- `git log --oneline -3 && git status -sb` — `5717abd`, **`main` ahead of `origin/main` by 1** (the execute prompt commit).
+- `ls apps/core/drizzle | tail -3` — `0041`, `0042`, `0043`. **`0044` is free** and is the number this phase writes.
+
+**§2 re-measured, every row, with its own command.** Eleven of twelve hold at their written value. **Row 3 moved and is corrected in place**: the four-member `Actor` union is now COMMITTED (`bec9aa7`, carried through `b13d74c`) rather than uncommitted in the working tree, so the contingency §2's closing paragraph carried is discharged. Row 1 = 44 entries, last `0043_patient_identity_spine`. Row 12's ledger §5 line is still 1323. This document measures 47,312 bytes at kickoff against the 47,155 the context table predicted.
+
+### 9.3 The spike answers (S1–S6), answered at kickoff, before T1
+
+**S1 — `resolveEncounter`'s three behaviours, and the plan defect the reading found.**
+
+Measured at `modules/billing/invoices.ts:332-362`:
+- `encounterId === undefined` → returns `{ intendedPayer: "self", patientId: null }`. **It does not throw.**
+- A registered prefix matches and its resolver returns `null` → throws `BillingError("unknown_encounter")`.
+- **No** registered prefix matches → falls through to `getEncounter(db, encounterId)`, OPD's reader over `opd_encounters`, and throws `unknown_encounter` only if THAT misses. The fallback is deliberate and its header says so: every shipped caller passes a bare `opd_encounters` id.
+
+**THE DEFECT, and T3's minimal correction.** `resolveEncounter` is **not exported** from billing, and it **imports `getEncounter` from `../opd`** (`invoices.ts:13`). Moving it verbatim into `kernel/episodes/encounter-resolvers.ts` would give the kernel a dependency on `modules/opd` — and would defeat the exact dependency inversion the registry exists to provide (billing imports nothing from either module; the modules register themselves). So T3 moves **the registry and the longest-prefix-first matching loop** — `EncounterResolver`, `registerEncounterResolver`, `registeredEncounterPrefixes`, and a new `resolveEncounterByPrefix` carrying the loop verbatim — and billing keeps its own private `resolveEncounter` wrapper holding the `undefined` case and the OPD fallback. **§8 item 7 is honoured exactly as written: billing's three EXPORTED names are unchanged**, and the existing billing tests are the parity proof (T3 A8).
+
+`placeOrder` calls `resolveEncounterByPrefix` and refuses `unknown_encounter` when no prefix matched **or** the resolver returned null. It deliberately does NOT inherit billing's OPD-id fallback: DD8 says the envelope stores an episode NUMBER, and a bare `opd_encounters` id is not one.
+
+**S2 — there is no `actor_type` CHECK anywhere in this repository, and 22c-A added none.**
+
+`grep -rn "actor_type" apps/core/drizzle/*.sql` finds four columns (`events` 0000/0016, `workflow_transitions` 0004, `phi_access_log` 0038) and `grep -rn "actor_type_ck|actor_type IN"` over `drizzle/` and `kernel/db/schema/` returns **nothing**. So the envelope's CHECK is the FIRST SQL copy of the `Actor` union, not the second — which removes the §2.54 mismatch risk the question was asked about and replaces it with a different one: a copy with nothing to reconcile it against.
+
+**Ruled:** write the CHECK (§4.1 requires it and §8 freezes it), and **pay for the copy with a type-level exhaustiveness pin in the same file** — a `Record<Actor["type"], true>` beside the constant, so a FIFTH union member fails `pnpm typecheck` at the schema rather than at the first insert. That is §2.54's own prescription: if it must be written twice, make something fail when the copies diverge.
+
+**S3 — the demand signal 07d promised Plan 17 is EMPTY today.** Read-only against `hmis-prod-db-1`: `opd_encounters` holds **11 rows, 0** with a non-empty `advised_tests`, and **0** distinct `serviceId` values inside them. That is not a defect — `advised_tests` (migration `0042`) reached production on 2026-08-29 and no consult has used it yet. Consequence for this phase: there is no live data from which to prove `services.id` resolution, so T5's duplicate-window index is sized from the query shape (`(order_id, service_id, created_at)`) rather than from traffic, and Plan 17 T2's conversion of `advised_tests` will convert nothing on the day it lands.
+
+**S4 — UNK/unconscious registration is a PLANNED construct, not rows.** Production holds **24 patients**, none matching `unknown%`/`unk%`, and `grep -rn "unconscious|unknown_patient|isUnknown" apps/core/src` finds only `qr.ts`'s QR-verification failure reason, which is a different thing entirely. So `orders.patient_id NOT NULL` with its FK stands unchanged and costs nothing today; Plan 40 (ED) supplies the UNK row that E7 hangs on.
+
+**S5 — `istDate()` is a MODULE function, which settles T3 by construction.** It lives at `modules/opd/time.ts:11`. The kernel cannot call it without importing OPD. Every one of the six `nextEpisodeNo` call sites already passes an ALREADY-RESOLVED `serviceDate` (`materials/grn.ts:210`, `ot/specimens.ts:53`, `ot/booking.ts:257`, `opd/encounters.ts:81`, `opd/appointments.ts:63,124`), which is `series.ts`'s own warning obeyed. **`placeOrder` therefore takes `serviceDate` as an INPUT and never derives it** (E14).
+
+**S6 — no manifest literal breaks, and the censuses that DO move are named.** Adding an OPTIONAL field breaks nothing: the four helpers that build manifests in tests all spread `Partial<ModuleManifest>` (`kernel/resources/kinds.test.ts:41`, `modules/materials/kinds.test.ts:27`, `kernel/search/registry.test.ts:36`, `kernel/modules/loader.test.ts:4`) and the two full literals (`kernel/worker/jobs.test.ts:40,56`) are unaffected by an optional addition.
+
+The sibling-grep §9.9 rule 7 asks for — `grep -rn 'formularyManifest' apps/core/src --include=*.ts`, **directory and glob** — returns eight lines across four files, of which **two files are censuses T5 must move**: `kernel/modules/manifests.ts` (the import and the array entry) and `kernel/modules/manifests.test.ts` (the import, the ordered key list, TWO `toHaveLength(16)` assertions, and the enumerated worker-difference array whose title currently reads "five"). `MANIFEST_BY_IDENTIFIER` in that file does **not** need `ordersManifest`: it resolves `registry.install(<identifier>)` arguments, and a manifest reaching both processes only through `ALL_MANIFESTS` is never named in one — `resourcesManifest` and `deskManifest` are the precedent.
+
+**S6b (DD12's sibling question, asked by the DD itself) — the patient merge uses NO GUC.** `grep -rn "set_config|current_setting" apps/core/src --include=*.ts` returns **zero hits**. DD12 named this branch in advance: **`orders.patient_id` is therefore left MUTABLE**, the immutability trigger freezes `order_no`, `kind`, `encounter_no`, `ordered_by_type` and `ordered_by_id` only, and this sentence is the close saying so. A merge re-links by plain UPDATE, as it must, and E8's "printed labels keep the original" holds because `order_no` is frozen.
+
 ### 9.1 The commits
-### 9.2 Findings
-### 9.3 The spike answers (S1–S6)
+
+### 9.2 Findings — eight, and every one of them was found by EXECUTING the document rather than by reading it
+
+**F1 — `resolveEncounter` could not move, because it imports a module. T3 moved the REGISTRY and left the WRAPPER.** *(the plan's own §5 T3 said "moved verbatim")*
+
+`modules/billing/invoices.ts:332` is not exported and its last act is `getEncounter(db, encounterId)` — OPD's reader — as a fallback for any id matching no registered prefix. That fallback exists because every shipped billing caller passes a bare `opd_encounters` row id and several tests pass ids that are not episode numbers at all. Carrying it into `kernel/episodes/` would have given the kernel a dependency on `modules/opd` and defeated the exact inversion the registry provides.
+
+**What shipped:** the kernel owns `EncounterResolver`, `registerEncounterResolver`, `registeredEncounterPrefixes` and a new `resolveEncounterByPrefix` holding the longest-prefix-first loop verbatim. Billing keeps its private wrapper, its `undefined` case and its OPD fallback, and **re-exports the three names, so §8 item 7 is honoured exactly as written.** `resolveEncounterByPrefix` returns a three-way answer (`matched:false` / `matched:true,resolved:null` / resolved) rather than `null`, because collapsing the first two is precisely how billing would have lost its fallback. `placeOrder` does not inherit that fallback: DD8 says the envelope stores an episode NUMBER.
+
+**F2 — `placeOrder`'s signature carried a `registry` that is a second copy of `decls`.** §5 T3 writes `placeOrder(tx, registry, decls, actor, input)`. `decls` IS `collectOrderKinds(registry)`, so the two parameters are two hand-maintained copies of one fact at argument scope — §2.54's mechanism — and a caller passing a registry with a `decls` array derived from a different one would get silently wrong answers. Nothing in the function needs a registry: permissions are asked of the database. **Shipped as `placeOrder(tx, actor, decls, input)`, the `createResource(tx, actor, kinds, input)` shape.**
+
+**F3 — §4.2 names six events and no task's Files list named a file to put them in.** T3 needs `order.placed`, T4 needs the other five, T6's parity test pins them. Defining them inside `place.ts` and `advance.ts` would split one catalog across two files. **Shipped as `kernel/orders/events.ts`**, the `kernel/{retention,ops,resources}/events.ts` house pattern.
+
+**F4 — `advanceOrderItem`'s signature could not answer its own rule.** §5 T4 writes `advanceOrderItem(tx, actor, itemId, to, opts)` and then rules that a `patient` may cancel from `placed` *"only on a `selfOrderable` kind"* — a fact that lives on the kind declaration and nowhere else. **Shipped as `advanceOrderItem(tx, actor, decls, itemId, to, opts)`**, `decls` in `placeOrder`'s position so the two write paths have one shape.
+
+**F5 — the desk does NOT alias, so T5 could not do it "exactly as `DeskProviderCtx` does".** §5 T5 says the reader aliases sealed patients the way the desk does. `kernel/desk/types.ts` says the opposite in its own header: *"A provider that puts identity in a row is responsible for putting the ALIAS there… The kernel cannot do it for them: it does not know which field of which row is a name."* That is right for the desk, whose rows are arbitrary, and wrong for these readers, which are patient-SCOPED — one name per call, and the kernel knows exactly which field. **`read.ts` therefore makes the alias decision itself, once**, importing `displayName` from `modules/patients/display-name` by deep path (the `kernel/worker/jobs.ts` precedent), so the rule keeps its single owner. A5 and A5b are the proof in both directions.
+
+**And one thing the phase did NOT change, disclosed because DD12 asked for it in advance.** DD12 wanted `orders.patient_id` frozen and released for a merge behind `current_setting('hmis.merge', true)`, and told the executor to confirm the patients merge already uses a GUC. **It does not** — `set_config`/`current_setting` appear nowhere in `apps/core/src`. Freezing the column would break the merge path the day it re-links an order, and inventing the GUC would put a second undocumented authority on who may move a patient row. `patient_id` is left MUTABLE; the trigger freezes `order_no`, `kind`, `encounter_no` and `ordered_by_*`. E8 is unharmed: a printed label keeps its number because `order_no` is frozen.
+
+**F6 — `hasHiddenItems` was built, then removed, and the removal is the finding.** An earlier draft of `read.ts` returned a per-order boolean saying "this order carried restricted items you may not see", on the reasoning that a clinician needs to know there is something to ask about. It was cut. **For the investigations DD11 exists to protect, the EXISTENCE of the test IS the sensitive fact** — an HIV order, an exposure-protocol source test, a PCPNDT-class USG — so a boolean announcing "this patient has a restricted investigation" discloses precisely that to the one caller DD11 excludes. DD11's word is *omits*, and omission means the reader cannot tell. The safety case the flag was meant to serve is already covered, and better, by `findRecentItems`, which applies NO restricted filter: a clinician about to re-order the same test is warned about the prior one whether or not they may read it. `read.test.ts` A1 now asserts the omission is SILENT (`JSON.stringify(view)` contains the restricted service id nowhere), which is a stronger assertion than the one the flag replaced.
+
+**F7 — a test-harness hazard found by hitting it: `expect(spy).not.toHaveBeenCalled()` OOMs this runner.** The T3 A2 mutant run died with `FATAL ERROR: Reached heap limit — JavaScript heap out of memory` after 92 seconds and a 4 GB heap. The cause is not the mutant: when that matcher FAILS, jest pretty-prints the received calls, and `hasPermission`'s first argument is the whole drizzle transaction — an object graph carrying the connection pool and the entire schema. **A test whose only job is to fail loudly could not fail at all.** Both shipped spy assertions (`place.test.ts` A2, `read.test.ts`) now assert on `spy.mock.calls.map((c) => c[1])` — the user-id argument — which prints small AND is the sharper claim: *no lookup was made WITH THE PATIENT'S CREDENTIAL ID*, rather than *no lookup was made*. Worth carrying to the ledger: any spy assertion on a function whose arguments include a `Db`/`Tx` has this failure mode.
+
+**F8 — §9.9 RULE 7's SIBLING-GREP FOUND TWO OF FIVE CENSUSES, AND THE THREE IT MISSED WENT RED IN THE VERIFY.** *(this is §2.131 and §2.133's class again, one file further out — it belongs in the ledger)*
+
+The phase document told the executor to run `grep -rn 'formularyManifest' apps/core/src --include=*.ts`, directory and glob, rule 7 exactly as amended. It was run exactly as written. It returned eight lines across four files and named **two** censuses — `kernel/modules/manifests.ts` and `kernel/modules/manifests.test.ts`. Both were moved. The full verify then failed **three more**, all in `test/seed-roles.test.ts`:
+
+- the per-module permission map (`orders: 4`) and its total, `107 → 111`;
+- the reachability census, `111 declared = 91 held + 20 not yet modelled`, which also required four new `NOT_YET_MODELLED` entries **with reasons** in `scripts/seed-roles.ts`;
+- the disjointness list, a sorted literal of every unheld permission.
+
+**The mechanism, and it is why the rule as written could not have found them.** §2.131 says to grep for an existing SIBLING's IDENTIFIER because a sibling's name appears wherever the new one must. **That is false for a census that derives from `ALL_MANIFESTS` instead of naming any manifest.** `seed-roles.test.ts` never writes `formularyManifest`, or `deskManifest`, or any manifest identifier at all — it reads the list and counts. A grep for any sibling NAME is structurally incapable of finding it, however wide its scope, because the name is not there to find.
+
+**The amendment rule 7 needs, and the command that would have worked:** when the thing being added is an entry on a ONE LIST that other code derives from, grep for **the LIST's name**, not for a sibling's:
+
+```
+grep -rn "ALL_MANIFESTS" apps/core --include=*.ts | grep -v "kernel/modules/manifests"
+```
+
+That returns 34 lines across ~20 files and names every one of the five, plus the four more this phase checked and found unmoved (`roles-catalog.e2e.test.ts`, `nav-parity.test.ts`, `approval-types.test.ts`, `desk/rollup.test.ts` — all green, because `ordersManifest` carries `menu: []` and no provider). **Sibling-name and list-name are two different searches and the second is the one that finds a derived census.** Cost of learning it this way: one 20-minute verify run.
+
+*(§8.11's "granted to NO role" survived intact — the four strings are unheld, `heldPermissions()` is UNCHANGED at 91, and the four `NOT_YET_MODELLED` reasons say why each one waits for the plan that gives it a surface.)*
+
+**A defect in this phase's own test, found by running it and recorded because it is a real one.** `place.test.ts`'s A4b (`requiresIndication`) first came back `permission_denied` instead of `indication_required`: the fixture's doctor held `lab.orders.place` and not `radiology.orders.place`, so the actor leg refused before the indication check was reached. The FIXTURE was wrong and the code was right — the check order is deliberate, so that a caller who may not place at all is told that rather than told they forgot a field. **The order is now itself an assertion** ("answers permission_denied, not indication_required, when the caller may not place at all"), which is worth more than the fixture fix alone.
+
 ### 9.4 The Assertion Book, corrected by execution
+
+**Mutant discipline (AGENT-RULES §3, rule 21).** Every mutant below was BUILT as a `*.mutant.ts` scratch file beside its source, run in isolation, and deleted before commit. No mutant was predicted.
+
+#### T2 — CRITICAL. Four assertions, four mutants, **4 DIED / 0 SURVIVED**
+
+`kinds.mutant.ts` carried three byte-copies of `collectOrderKinds`, each with exactly ONE refusal removed, and `kinds.mutant.test.ts` ran the shipped assertions against them.
+
+| # | assertion | mutant | verdict | expected vs received |
+|---|---|---|---|---|
+| A1 | two manifests claiming `lab` throw `duplicate_kind` | `collectNoDup` — the `seen` check dropped | **DIED** | *Expected pattern: `/two manifests declare the order kind "lab"/` · Received function did not throw* |
+| A2 | a `seriesKey` outside `EPISODE_SERIES` throws `unknown_series` | `collectNoSeries` | **DIED** | *Expected pattern: `/unknown_series\|EPISODE_SERIES does not carry/` · Received function did not throw* |
+| A3 | a `placePermission` no manifest declares throws `undeclared_permission` | `collectNoPermission` | **DIED** | *Expected pattern: `/declares placePermission/` · Received function did not throw* |
+| A4 | the field is OPTIONAL and every existing manifest still compiles | `manifest-required.mutant.ts` — `orderKinds` made required, `authManifest` assigned to it | **DIED at typecheck** | `TS2322: Type 'ModuleManifest' is not assignable… Type 'undefined' is not assignable to type 'readonly OrderKindDecl[]'` |
+
+**A4's typecheck death is the evidence, not an evasion of rule 21.** The rule warns that a mutant dying at typecheck proves nothing *because the obstacle is usually the LANGUAGE rather than the ASSERTION* — an indexed array literal dying at `TS2532` says nothing about the test. Here the assertion's whole subject IS a type-level property ("the field is optional, so no existing manifest changes"), the plan names this exact mutant in as many words, and the error quoted is about the field under test. There is no runtime behaviour to mutate.
+
+**Two legs added beyond the Book, each because the assertion above it would otherwise pass for a wrong implementation:** two manifests declaring DIFFERENT kinds must NOT be refused (`lab` and `imaging` side by side is what 17 and 18a will do), and a `placePermission` declared by a DIFFERENT installed manifest must be accepted (the check is against the whole catalog, as `collectProviders` is — a self-declaration rule would forbid a module using `orders.place`).
+
+#### T3, T4, T5 — CRITICAL. Ten mutants, **10 DIED / 0 SURVIVED**
+
+Built as `place.mutant.ts`, `advance.mutant.ts` and `read.mutant.ts` — byte-copies of the shipped
+functions with exactly one rule removed each — and run from one scratch spec against the SHIPPED
+assertions. All four files deleted before commit; `git status --porcelain` carries no `*.mutant.*`.
+
+| task | # | assertion | mutant | verdict | expected vs received |
+|---|---|---|---|---|---|
+| T3 | A1 | an `agent` actor is refused | the `agent` case removed — it falls into the staff leg | **DIED** | *Expected pattern `/agent_cannot_order/` · Received message: `"permission_denied"`* |
+| T3 | A2 | a `patient` is refused, and **no `hasPermission` call is made with its id** | the `patient` case removed | **DIED** | *Expected `[]` · Received `["patient-credential-1", "patient-credential-1"]`* — the mutant asks the permission table about a patient credential id, twice |
+| T3 | A3 | a `system` actor with no `protocol_ref` is refused | the requirement removed | **DIED** | *Received promise resolved instead of rejected* |
+| T3 | A5 | a `user` needs BOTH `orders.place` and the kind's permission | only the kernel permission checked | **DIED** | *Received promise resolved instead of rejected* — the pharmacist places imaging |
+| T4 | A2 | cancelling from `in_progress` with no reason is refused **by the guard** | the guard removed | **DIED** | *Expected `{kind:"OrderError", code:"cancel_reason_required"}` · Received `{kind:"DatabaseError", code:"new row for relation \"order_items\" violates check constraint \"order_items_cancel…"}`* |
+| T4 | A4 | the header closes when the last LIVE item completes | the close counts ALL non-completed items | **DIED** | *Expected `"closed"` · Received `null`* — the order with one cancelled add-on never closes |
+| T5 | A1 | a restricted item is omitted for an uncleared caller | the filter dropped | **DIED** | *Expected `[CBC]` · Received `+ "01SERVICE…0002"`* — the HIV order is on the ward's list |
+| T5 | A2 | the ordering clinician sees their own restricted item | the permission required of everyone | **DIED** | *Expected `[CBC, HIV]` · Received `- "01SERVICE…0002"`* — the doctor who ordered it cannot see it |
+| T5 | A3 | `findRecentItems` excludes cancelled items | cancelled included | **DIED** | *Expected `[]` · Received `[{itemId:"01M16XH…", status:"cancelled"}]`* — a cancelled duplicate blocks a required repeat |
+| T5 | A5 | a sealed patient renders through the alias path | `patients.name` read directly | **DIED** | *Expected `"Patient S-14"` · Received `"Meera Raghavan"`* |
+
+**T4 A2 is the row worth reading twice.** The plan asked for both halves to die separately — remove
+the guard and Postgres must refuse; remove the CHECK and the guard must. The mutant proves both in
+one run: with the guard gone the write reaches the table and comes back as a `DatabaseError` naming
+`order_items_cancel_reason_ck`. The second half is proved independently in T1's schema suite, where
+the same row is refused on a direct INSERT that never passes through `advanceOrderItem` at all.
+
+**A control test ran beside the ten and PASSED** ("the shipped item stamps are untouched by the
+mutants above"), which is what says the ten failures are the mutants dying rather than the harness
+being broken.
+
+#### T4 A3 — the assertion the plan got wrong, corrected by MEASUREMENT
+
+The plan's A3: *"Two concurrent `advance` calls from `placed` (start vs cancel) — exactly one wins,
+the other gets `stale_state`."* **The loser gets one of THREE correct refusals**, and which one
+depends on where the transactions interleave — a fact found by running it, not by reasoning:
+
+- the loser READ before the winner committed → validated against `placed`, its CAS matched nothing →
+  **`stale_state`**. This is the CAS discriminating.
+- the loser READ after a committed START → sees `in_progress`, so `in_progress → cancelled` is a
+  legal edge needing a reason → **`cancel_reason_required`**.
+- the loser READ after a committed CANCEL → `cancelled → in_progress` is not in the table →
+  **`illegal_transition`**.
+
+All three are correct; none is the defect A3 exists to catch. **The test now asserts the invariant
+that holds on every interleaving, which is the stronger claim:** over 12 rounds, exactly one call
+succeeds, the loser writes NOTHING (one transitions row per item, one set of stamps), and every
+refusal is one of those three. The read-then-write mutant fails that on ANY interleaving — both
+succeed, the item ends `cancelled` carrying a `started_at`, and two transitions rows exist for one
+item, which is 02 §5 B6's analyzer running a cancelled tube.
+
+**The rate is reported, not asserted at a threshold (AGENT-RULES §2.3 — never engineer the window).
+Observed on this host: `{ stale_state: 11, cancel_reason_required: 1 }` over 12 rounds** — the CAS
+is the discriminator in 92% of races, so it is genuinely exercised rather than incidentally passed.
+
+**And the corollary A3b now states:** `stale_state` is reachable ONLY under true concurrency. A
+sequential repeat re-reads the CURRENT state, so the transition table catches it first — the first
+draft of A3b asserted `stale_state` for a sequential repeat and was asserting something unreachable.
+
+#### One assertion this phase could not discriminate, disclosed per T6
+
+**T3 A8 (the encounter-registry parity) has no mutant and cannot have a useful one.** The plan says
+so itself — *"no mutant — parity; the assertion is the existing billing test still passing from the
+new path"* — and that is the right instrument: `modules/ot/bill.test.ts` is the suite that pins
+`registeredEncounterPrefixes()`, it was not touched by this phase, and it passes against the moved
+registry. The leg added in `place.test.ts` asserts containment rather than the exact list, because
+`D` is registered only when `ot.module.ts` initialises and asserting an exact list from a suite that
+registers only `V` would pin the test's own fixture instead of the registry.
+
 ### 9.5 Mechanical verification
 ### 9.6 The independent close review

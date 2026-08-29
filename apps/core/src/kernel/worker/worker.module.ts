@@ -25,6 +25,7 @@ import {
   patientMergedConsumer,
 } from "../../modules/ot";
 import { collectResourceKinds } from "../resources/kinds";
+import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";
 import type { Scheduler } from "./scheduler";
 
@@ -139,6 +140,19 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // The return value is deliberately discarded — the THROW is the whole point, and the write
         // surface takes its declarations as a parameter (kernel/resources/registry.ts's header).
         collectResourceKinds(registry);
+        /**
+         * PLAN 17 PHASE 0 T2 — THE ORDER-KIND SEAM'S BOOT REFUSALS, IN BOTH PROCESSES FROM THE
+         * FIRST COMMIT.
+         *
+         * Plan 13 shipped `collectResourceKinds` with no caller at all, so neither of ITS refusals
+         * existed in the running system and a duplicate-`bed` deployment would have booted fine;
+         * the line above is that gap closed, and Plan 14 had to close it a second time in the
+         * worker. This collector is wired into both processes in the commit that creates it, which
+         * is the whole lesson applied rather than re-learned. The return value is deliberately
+         * discarded — the THROW is the point, and `placeOrder` takes its declarations as a
+         * parameter (kinds.ts's header on why that is a parameter and not a global).
+         */
+        collectOrderKinds(registry);
         return registry;
       },
     },

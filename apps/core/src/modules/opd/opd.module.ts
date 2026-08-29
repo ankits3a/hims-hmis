@@ -1,5 +1,6 @@
 import { Injectable, Module, OnModuleInit } from "@nestjs/common";
-import { registerEncounterResolver } from "../billing";
+// PLAN 17 PHASE 0 T3 — the registry moved to the kernel; billing re-exports the same names.
+import { registerEncounterResolver } from "../../kernel/episodes/encounter-resolvers";
 import { registerCareContextProvider } from "../../kernel/phi/audit";
 import { careContextFor } from "./care-context";
 import { EPISODE_SERIES } from "../../kernel/episodes/series";

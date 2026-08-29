@@ -1,3 +1,4 @@
+import type { OrderKindDecl } from "../orders/kinds";
 import type { ResourceKindDecl } from "../resources/kinds";
 import type { SearchProvider } from "../search/types";
 import type { DeskProvider } from "../desk/types";
@@ -47,4 +48,23 @@ export type ModuleManifest = {
    * every holder's home gains a band without the kernel learning anything about pharmacy.
    */
   desk?: DeskProvider[];
+  /**
+   * PLAN 17 PHASE 0 T2 / DD3 — the ORDER KINDS this module owns, and what each one requires of
+   * whoever places it. OPTIONAL for the same reason `search`, `resourceKinds` and `desk` are, and
+   * it is the same seam solving the same problem a FOURTH time: every existing manifest stays valid
+   * unchanged. `kernel/orders/kinds.ts`'s `collectOrderKinds` collects these from `registry.all()`
+   * exactly as `collectProviders` does, and refuses at BOOT on a kind two manifests claim, a
+   * `seriesKey` `EPISODE_SERIES` does not carry, or a `placePermission` no manifest declares.
+   *
+   * THE SEAM IS OPEN FOR THE SET OF KINDS, WHICH IS THE ONE PLACE IT DIFFERS FROM `resourceKinds`.
+   * A resource kind's status vocabulary is per-kind and written into history for ever, so the ten
+   * names are closed behind a CHECK. Every order kind runs the SAME four item states, so there is
+   * nothing an eleventh could corrupt and `orders.kind` carries no CHECK at all — Plan 17 claims
+   * `lab`, 18a `imaging`, 26 `package`, and none of them edits kernel code.
+   *
+   * `readonly` where `search` and `desk` are mutable, for the identity reason `resourceKinds`
+   * gives: a mutable field would let a consumer push a kind onto a manifest's declaration list at
+   * runtime, which is a way to claim a kind no boot-time collector would ever see refuse.
+   */
+  orderKinds?: readonly OrderKindDecl[];
 };
