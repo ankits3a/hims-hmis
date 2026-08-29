@@ -81,6 +81,21 @@ export async function truncateAll(db: Db): Promise<void> {
   // no claim on any existing group's statement and takes its own. It MUST be here: a leftover row
   // from one test makes the next test's "exactly one access was recorded" assertion read two.
   await db.execute(sql`truncate table phi_access_log`);
+  /**
+   * PLAN 07c T8 — `user_day_facts`, and it is here because a suite CAUGHT its absence rather than
+   * because the rule was remembered.
+   *
+   * It is a per-user daily CACHE with no foreign key in either direction (schema/desk.ts: it is
+   * rebuildable from the primary tables, so an FK would couple a projection to their lifecycle), so
+   * by §3.35/§3.12 it has no claim on any existing group's statement and takes its own.
+   *
+   * The failure it prevents was observed, not predicted: the rollup suite's "the nightly roll never
+   * writes today" assertion came back with 26 rows spanning four dates, because three earlier tests
+   * in the same file had each rolled 2026-08-17 and nothing cleared them. A leftover roll is
+   * particularly nasty in this table — it is a CACHE, so a stale row does not look like leftover
+   * test data, it looks like an answer.
+   */
+  await db.execute(sql`truncate table user_day_facts`);
   // The V/A/L/S/R/P daily counters. NO foreign key in either direction — the table is keyed by a
   // series-key STRING and a date, precisely so lab, radiology and pharmacy need no schema change
   // to join the grammar — so by §3.35/§3.12 it has no claim on any existing group's statement and

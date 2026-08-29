@@ -27,6 +27,7 @@ import * as retentionMod from "../retention/sweep";
 import * as interfacesMod from "../ops/interfaces";
 import * as materialsExpiryMod from "../../modules/materials/expiry";
 import * as otListsMod from "../../modules/ot/lists";
+import * as rollupMod from "../desk/rollup";
 import type { Db } from "../db/client";
 
 // D3/halt condition 7: no test in this file ever observes the advisory lock. Every test below
@@ -206,7 +207,7 @@ async function settleUntil(done: () => boolean, maxTurns = SETTLE_BOUND_TURNS): 
  * Names are pushed in invocation ORDER, and duplicates are kept: "fired exactly once across
  * five ticks" is a claim a `Set` cannot make.
  */
-function spyOnTheTwelve(invoked: string[]): jest.SpyInstance[] {
+function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
   return [
     jest.spyOn(dispatcherMod, "runDispatchCycle").mockImplementation(async () => {
       invoked.push("runDispatchCycle");
@@ -275,10 +276,20 @@ function spyOnTheTwelve(invoked: string[]): jest.SpyInstance[] {
       invoked.push("flagLateSurgeons");
       return 0;
     }),
+    // THE THIRTEENTH (Plan 07c T8). Stubbed for the same reason as the tenth, eleventh and
+    // twelfth: un-stubbed it walks every active user and WRITES a `user_day_facts` row per person
+    // per day, inside a fake-clock unit test that is about the CLOCK — and across a 25-fake-hour
+    // advance it would do that repeatedly. Its behaviour is asserted DIRECTLY in
+    // `kernel/desk/rollup.test.ts`, where idempotence, the lookback window and the live-vs-rolled
+    // agreement are the subject.
+    jest.spyOn(rollupMod, "rollupAll").mockImplementation(async () => {
+      invoked.push("rollupUserDayFacts");
+      return { users: 0, days: 0, rows: 0 };
+    }),
   ];
 }
 
-const THE_TWELVE = [
+const THE_THIRTEEN = [
   "runDispatchCycle",
   "runDueTimers",
   "sweepExpiredTempRoles",
@@ -294,6 +305,10 @@ const THE_TWELVE = [
   "runDailyClose",
   "runNotifyPump",
   "createEventPartitions",
+  // PLAN 07c T8 — the THIRTEENTH, a `dailyIst("02:00")` job. Registered between the partition
+  // creator and the retention sweep, which is where `jobs.ts` puts it — so it sits there here too,
+  // and this array stays the REGISTRATION order rather than an alphabetical one.
+  "rollupUserDayFacts",
   "retentionSweep",
   "sweepInterfaceHeartbeats",
 ];
@@ -490,6 +505,10 @@ describe("Scheduler", () => {
       6 * HOUR_MS + 35 * MINUTE_MS, // 18:35Z = 00:05 IST 08-22 · sweepGuardianMajority
       6 * HOUR_MS + 45 * MINUTE_MS, // 18:45Z = 00:15 IST 08-22 · createEventPartitions
       7 * HOUR_MS + 45 * MINUTE_MS, // 19:45Z = 01:15 IST 08-22 · retentionSweep
+      // PLAN 07c T8 — 20:30Z 08-21 = 02:00 IST 08-22 · rollupUserDayFacts. An hour after the
+      // retention sweep, which is where `jobs.ts` puts it and why: a partition DROP takes ACCESS
+      // EXCLUSIVE on `events` and there is nothing to gain by queueing the roll behind it.
+      8 * HOUR_MS + 30 * MINUTE_MS,
       // PLAN 14 T8 — 13:00Z 08-22 = 06:30 IST 08-22 · sweepBatchExpiry. The LAST daily instant in
       // the walk, which is why the 25-hour span the block above insists on is still exactly enough.
       13 * HOUR_MS,
@@ -550,17 +569,17 @@ describe("Scheduler", () => {
         .map(([atMs, daily]) => ({ atMs, daily }));
     })();
 
-    it("invokes all twelve jobs across a stepwise advance from a pinned instant", async () => {
+    it("invokes all thirteen jobs across a stepwise advance from a pinned instant", async () => {
       expect(process.env.DATABASE_URL).toBeUndefined(); // CI's environment, reproduced here
       const invoked: string[] = [];
-      const spies = spyOnTheTwelve(invoked);
+      const spies = spyOnTheThirteen(invoked);
       const registry = censusRegistry();
       const fresh = freshWorkerDb();
       jest.useFakeTimers({ now: CENSUS_PIN });
       try {
         const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), CENSUS_DAILY_TICK_MS);
         registerAllJobs(scheduler, fresh.db, registry, {}, CENSUS_INTERVALS);
-        expect(scheduler.jobs()).toEqual(THE_TWELVE);
+        expect(scheduler.jobs()).toEqual(THE_THIRTEEN);
 
         // Fake milliseconds advanced so far, measured from the pin. The walk only moves forward,
         // so a target already behind the cursor is a no-op rather than a rewind.
@@ -596,18 +615,18 @@ describe("Scheduler", () => {
         // and the post-await re-check then correctly drops any run whose read had not come back,
         // so calling it too early is exactly how this census came back short on CI twice while
         // being green on the build host every single time.
-        const settled = await settleUntil(() => new Set(invoked).size >= THE_TWELVE.length);
+        const settled = await settleUntil(() => new Set(invoked).size >= THE_THIRTEEN.length);
         await scheduler.stop();
         // Reported, not asserted: on a bound hit the assertion below fails on its own SET and
         // names the missing jobs, which is a better failure message than a bare timeout.
         if (!settled) {
           // eslint-disable-next-line no-console
           console.warn(
-            `census: settleUntil hit its bound with ${new Set(invoked).size}/${THE_TWELVE.length} invoked`,
+            `census: settleUntil hit its bound with ${new Set(invoked).size}/${THE_THIRTEEN.length} invoked`,
           );
         }
 
-        expect(new Set(invoked)).toEqual(new Set(THE_TWELVE));
+        expect(new Set(invoked)).toEqual(new Set(THE_THIRTEEN));
         expect(scheduler.leakedErrors()).toEqual([]);
       } finally {
         jest.useRealTimers();
@@ -657,7 +676,7 @@ describe("Scheduler", () => {
       const NOW = new Date("2026-08-21T19:00:00.000Z"); // IST 2026-08-22 00:30
       const LAST_OK = new Date("2026-08-21T10:00:00.000Z"); // IST 2026-08-21 15:30 — same UTC day
       const invoked: string[] = [];
-      const spies = spyOnTheTwelve(invoked);
+      const spies = spyOnTheThirteen(invoked);
       const registry = censusRegistry();
       const fresh = freshWorkerDb();
       try {

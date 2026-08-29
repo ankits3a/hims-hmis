@@ -332,7 +332,8 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
     // assertion addresses the interface sweep BY NAME: the census moves and the subject does not.
     // **THIS FILE IS NOT IN PLAN 15 T4's FILES LIST** — a census the task moves, recorded as
     // finding T4-b with the timeout below rather than fixed silently.
-    expect(specs).toHaveLength(12);
+    // PLAN 07c T8 — 13 with `rollupUserDayFacts`, the nightly per-user roll (see `jobs.ts`).
+    expect(specs).toHaveLength(13);
     expect(specs).toContainEqual(
       expect.objectContaining({ name: "flagLateSurgeons", every: 60_000 }),
     );

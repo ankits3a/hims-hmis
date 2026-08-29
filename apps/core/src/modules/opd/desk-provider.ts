@@ -1,8 +1,11 @@
-import { and, count, eq, inArray } from "drizzle-orm";
-import { opdEncounters } from "../../kernel/db/schema";
+import { and, count, eq, gte, inArray, lt } from "drizzle-orm";
+import {
+  opdAppointments, opdEncounters, opdPrescriptions, opdVitals, patients,
+} from "../../kernel/db/schema";
+
 import { summaryByDoctor } from "./queue";
 import { doctorForUser } from "./masters";
-import { istHourMinute } from "./time";
+import { istDateTimeToUtc, istHourMinute } from "./time";
 import { getPatientSummaries } from "../patients";
 import type { DeskCard, DeskProvider, DeskProviderCtx, ReportSection } from "../../kernel/desk/types";
 
@@ -171,6 +174,71 @@ async function myVisitsSection(ctx: DeskProviderCtx): Promise<ReportSection> {
   };
 }
 
+/**
+ * PLAN 07c T8 — OPD's counters for one person on one day.
+ *
+ * ═══ EACH ONE IS CUT ON THE GRAIN THE ACT ACTUALLY HAPPENED ON, AND THEY DIFFER ═══
+ *
+ * A visit is stamped with `service_date`, an IST calendar day the hospital already agreed on, so
+ * "visits I opened on the 17th" is an equality. Vitals, prescriptions and bookings carry only an
+ * INSTANT (`recorded_at`, `issued_at`, `booked_at`), so their day is an IST window over that
+ * instant. Mixing the two — filtering a timestamp column against a date string — is the defect that
+ * silently drops the 18:30-to-midnight slice of every day, and it is invisible because the number
+ * is merely small rather than absent.
+ *
+ * **A BOOKING IS COUNTED ON THE DAY IT WAS MADE, NOT THE DAY IT IS FOR.** `opd_appointments` has
+ * both, and `service_date` is the SLOT's date. A clerk who books forty appointments for next month
+ * did forty things today; crediting them to next month would empty today's brief and then flood a
+ * day the clerk may not even work.
+ */
+async function opdFacts(ctx: DeskProviderCtx): Promise<Record<string, number>> {
+  /*
+   * The IST window of the day, built from `istDateTimeToUtc` rather than from a fresh offset
+   * expression. `ist-clock-parity.test.ts` pins the census of files that write the hospital's clock
+   * by hand and reddens on a new one (ledger §2.105) — an eleventh copy has to be argued for in
+   * writing, and this one has no argument: the helper already exists two files away.
+   */
+  const from = istDateTimeToUtc(ctx.date, "00:00");
+  const to = new Date(from.getTime() + 86_400_000);
+  const one = async (rows: Promise<{ n: number }[]>): Promise<number> => (await rows)[0]?.n ?? 0;
+
+  const [opened, registered, vitals, consults, bookings, prescriptions] = await Promise.all([
+    one(ctx.db.select({ n: count() }).from(opdEncounters)
+      .where(and(eq(opdEncounters.openedBy, ctx.actor.id), eq(opdEncounters.serviceDate, ctx.date)))),
+    one(ctx.db.select({ n: count() }).from(patients)
+      .where(and(eq(patients.createdBy, ctx.actor.id), gte(patients.createdAt, from), lt(patients.createdAt, to)))),
+    one(ctx.db.select({ n: count() }).from(opdVitals)
+      .where(and(eq(opdVitals.recordedBy, ctx.actor.id), gte(opdVitals.recordedAt, from), lt(opdVitals.recordedAt, to)))),
+    /*
+     * A CONSULT IS COUNTED WHEN IT COMPLETED, and against the DOCTOR the encounter is assigned to
+     * rather than against `opened_by` — the clerk who opened the visit did not do the consultation.
+     * `doctorForUser` is what maps the signed-in person to that row; somebody who is not a doctor
+     * has none and correctly scores zero rather than being credited with the clerk's visits.
+     */
+    (async () => {
+      const doctor = await doctorForUser(ctx.db, ctx.actor.id);
+      if (doctor === null) return 0;
+      return one(ctx.db.select({ n: count() }).from(opdEncounters).where(and(
+        eq(opdEncounters.doctorId, doctor.id), eq(opdEncounters.serviceDate, ctx.date),
+        eq(opdEncounters.status, "completed"),
+      )));
+    })(),
+    one(ctx.db.select({ n: count() }).from(opdAppointments)
+      .where(and(eq(opdAppointments.bookedBy, ctx.actor.id), gte(opdAppointments.bookedAt, from), lt(opdAppointments.bookedAt, to)))),
+    one(ctx.db.select({ n: count() }).from(opdPrescriptions)
+      .where(and(eq(opdPrescriptions.issuedBy, ctx.actor.id), gte(opdPrescriptions.issuedAt, from), lt(opdPrescriptions.issuedAt, to)))),
+  ]);
+
+  return {
+    "opd.visitsOpened": opened,
+    "opd.patientsRegistered": registered,
+    "opd.vitalsRecorded": vitals,
+    "opd.consultsCompleted": consults,
+    "opd.appointmentsBooked": bookings,
+    "opd.prescriptionsIssued": prescriptions,
+  };
+}
+
 export const opdDeskProvider: DeskProvider = {
   key: "opd.desk",
   permission: "opd.queue.read",
@@ -181,4 +249,5 @@ export const opdDeskProvider: DeskProvider = {
     return cards;
   },
   report: async (ctx) => [await myVisitsSection(ctx)],
+  facts: opdFacts,
 };

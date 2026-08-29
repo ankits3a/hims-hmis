@@ -45,3 +45,7 @@ export * from "./ot";
 // nothing is downstream of it. That independence is the point — an audit log must outlive the
 // record it describes, and an FK would couple it to that record's truncate group and lifecycle.
 export * from "./phi-access";
+// PLAN 07c T8 — the desk's per-user daily rollup. Like `phi-access` it references NOTHING: it is a
+// CACHE derived from the primary tables, so an FK would couple a rebuildable projection to the
+// lifecycle of the rows it summarises and would put it in their truncate group for no benefit.
+export * from "./desk";

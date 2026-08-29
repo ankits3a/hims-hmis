@@ -1582,6 +1582,12 @@
       "opened": "खोली गईं",
       "stillHere": "अब भी यहाँ",
       "notStarted": "सत्र शुरू नहीं हुआ"
+    },
+    "billing": {
+      "myCollections": "मेरी वसूली",
+      "collected": "वसूली",
+      "receipts": "रसीदें",
+      "cash": "नकद"
     }
   },
   "report": {
@@ -1594,7 +1600,18 @@
       "uhid": "यूएचआईडी",
       "patient": "मरीज़",
       "type": "प्रकार",
-      "status": "स्थिति"
+      "status": "स्थिति",
+      "mode": "माध्यम",
+      "amount": "राशि",
+      "total": "कुल"
+    },
+    "billing": {
+      "myCollections": "मेरी वसूली"
+    },
+    "mode": {
+      "cash": "नकद",
+      "upi": "यूपीआई",
+      "card": "कार्ड"
     }
   },
   "myDay": {
@@ -1611,5 +1628,52 @@
     "docFor": "{{date}} के लिए",
     "signedBy": "हस्ताक्षर",
     "receivedBy": "प्राप्तकर्ता"
+  },
+  "brief": {
+    "title": "आपका सारांश",
+    "period": {
+      "day": "दिन",
+      "week": "सप्ताह",
+      "month": "महीना",
+      "quarter": "3 महीने",
+      "half": "6 महीने"
+    },
+    "range": "{{from}} से {{to}} तक",
+    "nothingToSay": "इस अवधि के लिए अभी कुछ नहीं — ईमानदार तुलना के लिए दो सप्ताह का इतिहास चाहिए।",
+    "registered": {
+      "plain": "{{total}} मरीज़ पंजीकृत।",
+      "compared": "{{total}} मरीज़ पंजीकृत, माध्य {{median}} के मुकाबले।",
+      "drift": "{{total}} मरीज़ पंजीकृत — पहली छमाही में {{first}}, दूसरी में {{second}}।"
+    },
+    "visits": {
+      "plain": "{{total}} विज़िट खोली।",
+      "compared": "{{total}} विज़िट खोली, माध्य {{median}} के मुकाबले।",
+      "drift": "{{total}} विज़िट खोली — पहली छमाही में {{first}}, दूसरी में {{second}}।"
+    },
+    "consults": {
+      "plain": "{{total}} परामर्श पूरे।",
+      "compared": "{{total}} परामर्श पूरे, माध्य {{median}} के मुकाबले।",
+      "drift": "{{total}} परामर्श पूरे — पहली छमाही में {{first}}, दूसरी में {{second}}।"
+    },
+    "vitals": {
+      "plain": "{{total}} वाइटल्स दर्ज।",
+      "compared": "{{total}} वाइटल्स दर्ज, माध्य {{median}} के मुकाबले।",
+      "drift": "{{total}} वाइटल्स दर्ज — पहली छमाही में {{first}}, दूसरी में {{second}}।"
+    },
+    "appointments": {
+      "plain": "{{total}} अपॉइंटमेंट बुक।",
+      "compared": "{{total}} अपॉइंटमेंट बुक, माध्य {{median}} के मुकाबले।",
+      "drift": "{{total}} अपॉइंटमेंट बुक — पहली छमाही में {{first}}, दूसरी में {{second}}।"
+    },
+    "receipts": {
+      "plain": "{{total}} रसीदें लीं।",
+      "compared": "{{total}} रसीदें लीं, माध्य {{median}} के मुकाबले।",
+      "drift": "{{total}} रसीदें लीं — पहली छमाही में {{first}}, दूसरी में {{second}}।"
+    },
+    "collected": {
+      "plain": "{{total}} वसूली।",
+      "compared": "{{total}} वसूली, माध्य {{median}} के मुकाबले।",
+      "drift": "{{total}} वसूली — पहली छमाही में {{first}}, दूसरी में {{second}}।"
+    }
   }
 }

@@ -15,6 +15,21 @@ export const IST_UTC_OFFSET_MINUTES = 330;
 const DAY_MS = 24 * 60 * 60_000;
 const OFFSET_MS = IST_UTC_OFFSET_MINUTES * 60_000;
 
+/**
+ * PLAN 07c T8 — THE IST CALENDAR DAY OF AN INSTANT, as the 'YYYY-MM-DD' string every desk figure,
+ * report and rollup row is cut on.
+ *
+ * It lives HERE, beside `IST_UTC_OFFSET_MINUTES` and `istDayWindow`, rather than in the two places
+ * that wanted it — `kernel/desk/desk.controller.ts` had a private copy and `kernel/worker/jobs.ts`
+ * was about to need one. `ist-clock-parity.test.ts` pins the census of files that write the
+ * hospital's clock by hand and reddens on a new one (ledger §2.105); adding it to the file that
+ * already OWNS the constant introduces no new site at all and removes the one the controller had.
+ * An eleventh copy has to be argued for in writing, and this one had no argument.
+ */
+export function istDayString(at: Date): string {
+  return new Date(at.getTime() + OFFSET_MS).toISOString().slice(0, 10);
+}
+
 export function istDayWindow(now: Date): { start: Date; end: Date } {
   const istMs = now.getTime() + OFFSET_MS;
   const istDayStartMs = Math.floor(istMs / DAY_MS) * DAY_MS;

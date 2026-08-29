@@ -148,4 +148,34 @@ describe("me (desk / report / export) e2e — 07c", () => {
     expect(rows[0]!.actorId).toBe(clerkA.id);
     expect(rows[0]!.payload).toMatchObject({ date: DATE, scope: "self", rows: 1 });
   });
+
+  /**
+   * PLAN 07c T8 — THE BRIEF IS `/me/…` FOR THE SAME REASON THE REPORT IS.
+   *
+   * There is no `userId` on this route either, so the five-period history of a colleague is not
+   * something a holder can ask for. Asserted over HTTP rather than by reading the controller,
+   * because the schema stripping an unknown key is the mechanism and a route test is the only place
+   * that mechanism is actually exercised.
+   */
+  it("T8: the brief is self-scoped, and `?userId=` cannot redirect it", async () => {
+    const mine = await get(`/me/brief?period=day&date=${DATE}`, clerkA.token).expect(200);
+    expect(mine.body.period).toBe("day");
+    expect(mine.body.totals["opd.visitsOpened"]).toBe(1);
+
+    const theirs = await get(`/me/brief?period=day&date=${DATE}&userId=${clerkA.id}`, clerkB.token).expect(200);
+    expect(theirs.body.totals["opd.visitsOpened"]).toBe(0);
+  });
+
+  /** A4/DD8 — a clerk with one day of history gets a PLAIN clause and no invented comparison. */
+  it("T8 A4: with no history behind it the brief states counts and compares nothing", async () => {
+    const res = await get(`/me/brief?period=day&date=${DATE}`, clerkA.token).expect(200);
+    expect(res.body.clauses.map((c: { key: string }) => c.key)).toContain("brief.visits.plain");
+    expect(JSON.stringify(res.body.clauses)).not.toContain("median");
+  });
+
+  /** The default period is a week, so a caller that names none still gets a real answer. */
+  it("T8: a brief with no period asked for is the week", async () => {
+    const res = await get("/me/brief", clerkA.token).expect(200);
+    expect(res.body.period).toBe("week");
+  });
 });

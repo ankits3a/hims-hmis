@@ -1,3 +1,4 @@
+import { billingDeskProvider } from "./desk-provider";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 import { invoiceSearchProvider } from "./search-provider";
 
@@ -20,6 +21,9 @@ export const billingManifest: ModuleManifest = {
     { label: "Cashier session", path: "/billing/session", permission: "billing.session.own" },
     { label: "Billing back office", path: "/billing/office", permission: "billing.reports.read" },
   ],
+  // PLAN 07c T2 — the cashier's own collections card and their slice of the daily report. It is
+  // gated on `billing.session.own`, the permission that already means "your own drawer".
+  desk: [billingDeskProvider],
   permissions: [
     "billing.invoice.issue", "billing.invoice.read", "billing.credit.extend",
     "billing.receipt.record", "billing.allocation.reverse", "billing.credit_note.issue",

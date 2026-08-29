@@ -1,9 +1,12 @@
 import { Controller, Get, Inject, Query, Res } from "@nestjs/common";
 import { z } from "zod";
 import { DB, MODULE_REGISTRY } from "../tokens";
-import { IST_UTC_OFFSET_MINUTES } from "../approvals/cumulative";
+import { istDayString as istDay } from "../approvals/cumulative";
 import { CurrentActor } from "../auth/decorators";
 import { collectDeskProviders, loadDesk, loadReport } from "./registry";
+import { baselineWindowFor, buildBrief, windowFor } from "./brief";
+import { factsForWindow } from "./rollup";
+import type { Brief } from "./brief";
 import { contentDisposition, toCsv } from "../report/csv";
 import { reportExported } from "../report/events";
 import { appendEvent } from "../events/append";
@@ -13,18 +16,6 @@ import type { Response } from "express";
 import type { ModuleRegistry } from "../modules/loader";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
-
-/**
- * IST calendar day, the grain every desk figure is cut on.
- *
- * It reuses `IST_UTC_OFFSET_MINUTES` rather than writing the offset out again, because
- * `test/ist-clock-parity.test.ts` pins the census of files that DO write it by hand and reddens on a
- * new one. That guard caught this file on its first verify — which is ledger §2.105 working exactly
- * as intended: one expression, and a test that goes red when a copy appears.
- */
-function istDay(at: Date): string {
-  return new Date(at.getTime() + IST_UTC_OFFSET_MINUTES * 60 * 1000).toISOString().slice(0, 10);
-}
 
 /**
  * PLAN 07c T2 A4 / E-5 — A REPORT FOR A DAY THAT IS STILL HAPPENING SAYS SO.
@@ -44,6 +35,10 @@ function isProvisional(date: string, now: Date): boolean {
 }
 
 const deskQuery = z.object({ date: z.string().length(10).optional() });
+const briefQuery = z.object({
+  date: z.string().length(10).optional(),
+  period: z.enum(["day", "week", "month", "quarter", "half"]).optional(),
+});
 
 /**
  * PLAN 07c T1 — THE DESK, IN ONE REQUEST.
@@ -96,6 +91,37 @@ export class DeskController {
     if (actor.type !== "user") return { date, provisional, sections: [] };
     const providers = collectDeskProviders(this.registry);
     return { date, provisional, ...(await loadReport(providers, { db: this.db, actor, date, now })) };
+  }
+
+  /**
+   * PLAN 07c T8 — THE FIVE-PERIOD BRIEF, and it is `/me/…` for the same reason the report is:
+   * there is no `userId`, so there is no version of this route that reads a colleague's history.
+   *
+   * The long windows are summed from `user_day_facts`; TODAY is computed live and marked
+   * provisional, so a brief opened at 11am is a true statement about a day that is still happening
+   * rather than a stale one about a day that is not (A3).
+   */
+  @Get("brief")
+  async brief(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<Brief> {
+    const q = briefQuery.parse(query);
+    const now = new Date();
+    const today = q.date ?? istDay(now);
+    const period = q.period ?? "week";
+    if (actor.type !== "user") return buildBrief(period, today, [], []);
+
+    const providers = collectDeskProviders(this.registry);
+    const w = windowFor(period, today);
+    const b = baselineWindowFor(period, today);
+    const [days, baseline] = await Promise.all([
+      factsForWindow(this.db, providers, actor, w.from, w.to, today, now),
+      /*
+       * THE BASELINE IS READ FROM THE ROLLUP ONLY — it ends strictly before the window starts, so
+       * it contains no "today" and needs no live leg. Passing `today` through would make the
+       * function look for a live day that cannot be inside this range.
+       */
+      factsForWindow(this.db, providers, actor, b.from, b.to, today, now),
+    ]);
+    return buildBrief(period, today, days, baseline);
   }
 
   /**

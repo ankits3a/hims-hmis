@@ -13,6 +13,9 @@ import { runDailyClose } from "../../modules/billing/daily-close";
 import { runNotifyPump } from "../notify/pump";
 import { createEventPartitions } from "./partitions";
 import { retentionSweep } from "../retention/sweep";
+import { istDayString } from "../approvals/cumulative";
+import { collectDeskProviders } from "../desk/registry";
+import { rollupAll } from "../desk/rollup";
 import { sweepInterfaceHeartbeats } from "../ops/interfaces";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
@@ -41,6 +44,17 @@ const BATCH_EXPIRY_IST = "06:30";
 // clinic. Like its neighbours it is a code constant, not a deployment knob: WHAT retention does
 // is configurable (and off by default), WHEN it runs is a design decision.
 const RETENTION_SWEEP_IST = "01:15";
+/**
+ * PLAN 07c T8 / DD13 — the per-user daily rollup that the five-period briefs are served from.
+ *
+ * 02:00 IST, and the position in the grid is the reasoning. It must run AFTER the daily close
+ * (23:59) so the day it rolls is settled, and after the retention sweep (01:15) because that one
+ * takes ACCESS EXCLUSIVE on `events` to drop a partition and there is nothing to gain by queueing
+ * behind it. It re-rolls a trailing window ending YESTERDAY rather than one day (`LOOKBACK_DAYS`),
+ * so a correction landing on Monday for Friday's shift reaches the brief without anybody asking —
+ * which is A5, and it is the reason this is a sweep rather than an incremental append.
+ */
+const USER_DAY_ROLLUP_IST = "02:00";
 
 /**
  * Amendment 6 (the plan's own resolution to the T2/T4 wave-order contradiction; spike
@@ -277,6 +291,39 @@ export function registerAllJobs(
   // unconditionally is deliberate: the job exists, heartbeats, and appears in the census on every
   // deployment, so an operator can see that retention is scheduled and doing nothing — which is a
   // very different thing from retention not being there at all.
+  /**
+   * PLAN 07c T8: THE THIRTEENTH JOB. Like the eighth it needs no `JobIntervals` key — its instant
+   * is the code constant above and its lookback is a code constant in `rollup.ts` — so no
+   * `JobIntervals` literal had to change for it.
+   *
+   * ═══ THE CENSUS LIVES IN FIVE PLACES, NOT THREE, AND THIS COMMENT USED TO UNDERCOUNT THEM ═══
+   *
+   * The comments on the eighth, ninth and tenth jobs say "both censuses" and name two. There are
+   * FOUR test censuses and one production file, and this task found the missing two the expensive
+   * way — by a verify run going red after they had been declared complete:
+   *
+   *   1. `src/kernel/worker/jobs.test.ts` — a COUNT (`toHaveLength`), 12 → 13.
+   *   2. `test/alerts-parity.test.ts` — a count AND a named list, 12 → 13.
+   *   3. `src/kernel/worker/scheduler.test.ts` — a NAMED ARRAY (`THE_THIRTEEN`) plus a spy plus a
+   *      daily instant in the clock walk. No count to grep for.
+   *   4. `test/worker-runtime.e2e.test.ts` — the same named array, independently.
+   *   5. `docker/prod/prometheus/alerts.yml` — the alert rules, which (2) compares against this
+   *      registry, so a job nobody added there is a RED TEST rather than a monitoring hole.
+   *
+   * Only (1) and (2) answer to `grep -rn "toHaveLength(12)"`, which is how (3) and (4) were
+   * missed. They moved BY EXECUTION rather than by prediction, which is the friction working.
+   *
+   * It is registered UNCONDITIONALLY and is a no-op on a hospital with no active users, matching
+   * the retention sweep's reasoning: a job that exists and heartbeats is visibly scheduled, which
+   * is a very different thing from a job that is not there at all.
+   */
+  scheduler.register({
+    name: "rollupUserDayFacts",
+    dailyIst: USER_DAY_ROLLUP_IST,
+    run: async (now) => {
+      await rollupAll(db, collectDeskProviders(registry), istDayString(now), now);
+    },
+  });
   scheduler.register({
     name: "retentionSweep",
     dailyIst: RETENTION_SWEEP_IST,

@@ -50,7 +50,16 @@ function istDayWindow(day: string): { from: Date; to: Date } {
 }
 
 /** Which of these documents carry an `entered-in-error` mark (the invoices.ts reader's shape). */
-async function enteredInErrorDocIds(exec: Db | Tx, docType: string, docIds: string[]): Promise<Set<string>> {
+/**
+ * PLAN 07c T2 — EXPORTED (it was private) so the per-cashier slice can apply the SAME exclusion.
+ *
+ * S1's whole requirement is that the per-cashier tender split reconciles to `dayBook` when summed
+ * across every cashier. It cannot, unless both sides void the same documents — money that was never
+ * really received cannot appear in one report and not the other. Re-implementing the exclusion
+ * beside the new query is how two reports come to disagree while both look defensible, so there is
+ * one function and both callers use it.
+ */
+export async function enteredInErrorDocIds(exec: Db | Tx, docType: string, docIds: string[]): Promise<Set<string>> {
   if (docIds.length === 0) return new Set();
   const rows = await exec
     .select({ docId: enteredInErrorMarks.docId })

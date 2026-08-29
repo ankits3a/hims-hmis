@@ -82,3 +82,28 @@ export function fetchReport(date?: string): Promise<WireReport> {
 export function downloadReportCsv(date: string): Promise<void> {
   return apiDownload(`/me/report.csv?date=${date}`, `my-day-${date}.csv`);
 }
+
+/**
+ * PLAN 07c T8 — the five-period brief. Every clause arrives as an i18n KEY plus pre-formatted
+ * values, so the SERVER decides which sentences can honestly be made (DD8) and the client only
+ * decides what language they are in. A clause the server could not make honestly is simply absent,
+ * and an empty `clauses` list is a real answer rather than a loading state.
+ */
+export type WireBriefPeriod = "day" | "week" | "month" | "quarter" | "half";
+
+export type WireBriefClause = { key: string; values: Record<string, string> };
+
+export type WireBrief = {
+  period: WireBriefPeriod;
+  from: string;
+  to: string;
+  clauses: WireBriefClause[];
+  totals: Record<string, number>;
+  daysWithActivity: number;
+};
+
+export const BRIEF_PERIODS: readonly WireBriefPeriod[] = ["day", "week", "month", "quarter", "half"];
+
+export function fetchBrief(period: WireBriefPeriod, date?: string): Promise<WireBrief> {
+  return api<WireBrief>("GET", `/me/brief?period=${period}${date === undefined ? "" : `&date=${date}`}`);
+}

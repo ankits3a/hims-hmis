@@ -1582,6 +1582,12 @@
       "opened": "Opened",
       "stillHere": "Still here",
       "notStarted": "Session not started"
+    },
+    "billing": {
+      "myCollections": "My collections",
+      "collected": "Collected",
+      "receipts": "Receipts",
+      "cash": "Cash"
     }
   },
   "report": {
@@ -1594,7 +1600,18 @@
       "uhid": "UHID",
       "patient": "Patient",
       "type": "Type",
-      "status": "Status"
+      "status": "Status",
+      "mode": "Mode",
+      "amount": "Amount",
+      "total": "Total"
+    },
+    "billing": {
+      "myCollections": "My collections"
+    },
+    "mode": {
+      "cash": "Cash",
+      "upi": "UPI",
+      "card": "Card"
     }
   },
   "myDay": {
@@ -1611,5 +1628,52 @@
     "docFor": "For {{date}}",
     "signedBy": "Signed",
     "receivedBy": "Received by"
+  },
+  "brief": {
+    "title": "Your brief",
+    "period": {
+      "day": "Day",
+      "week": "Week",
+      "month": "Month",
+      "quarter": "3 months",
+      "half": "6 months"
+    },
+    "range": "{{from}} to {{to}}",
+    "nothingToSay": "Nothing to report for this period yet — a comparison needs a fortnight of history before it can be made honestly.",
+    "registered": {
+      "plain": "{{total}} patients registered.",
+      "compared": "{{total}} patients registered, against a median of {{median}}.",
+      "drift": "{{total}} patients registered — {{first}} in the first half, {{second}} in the second."
+    },
+    "visits": {
+      "plain": "{{total}} visits opened.",
+      "compared": "{{total}} visits opened, against a median of {{median}}.",
+      "drift": "{{total}} visits opened — {{first}} in the first half, {{second}} in the second."
+    },
+    "consults": {
+      "plain": "{{total}} consultations completed.",
+      "compared": "{{total}} consultations completed, against a median of {{median}}.",
+      "drift": "{{total}} consultations completed — {{first}} in the first half, {{second}} in the second."
+    },
+    "vitals": {
+      "plain": "{{total}} vitals recorded.",
+      "compared": "{{total}} vitals recorded, against a median of {{median}}.",
+      "drift": "{{total}} vitals recorded — {{first}} in the first half, {{second}} in the second."
+    },
+    "appointments": {
+      "plain": "{{total}} appointments booked.",
+      "compared": "{{total}} appointments booked, against a median of {{median}}.",
+      "drift": "{{total}} appointments booked — {{first}} in the first half, {{second}} in the second."
+    },
+    "receipts": {
+      "plain": "{{total}} receipts taken.",
+      "compared": "{{total}} receipts taken, against a median of {{median}}.",
+      "drift": "{{total}} receipts taken — {{first}} in the first half, {{second}} in the second."
+    },
+    "collected": {
+      "plain": "{{total}} collected.",
+      "compared": "{{total}} collected, against a median of {{median}}.",
+      "drift": "{{total}} collected — {{first}} in the first half, {{second}} in the second."
+    }
   }
 }

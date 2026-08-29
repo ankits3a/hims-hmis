@@ -92,6 +92,12 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // array is SORTED (a rename is a readable diff), so it lands second rather than last.
         "flagLateSurgeons",
         "retentionSweep",
+        // PLAN 07c T8 — the THIRTEENTH job, a DAILY one (`dailyIst("02:00")`): the per-user daily
+        // rollup the five-period briefs read. Like the eleventh it joins leg 1b's `job=~`
+        // alternation and leg 2's `absent()` chain, and the INTERVAL leg does not move. The
+        // docstring's prediction held for a third time — jobs.ts, both censuses, alerts.yml, and
+        // the number below — and this time all four were in the task's Files list.
+        "rollupUserDayFacts",
         "runDailyClose",
         "runDispatchCycle",
         "runDueTimers",
@@ -110,8 +116,8 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         "sweepBatchExpiry",
       ].sort(),
     );
-    expect(registered).toHaveLength(12);
-    expect(new Set(registered).size).toBe(12); // no job registered twice
+    expect(registered).toHaveLength(13);
+    expect(new Set(registered).size).toBe(13); // no job registered twice
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

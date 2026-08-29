@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  bigint, bigserial, boolean, date, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex,
+  bigint, bigserial, boolean, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { patients } from "./patients";
 
@@ -98,7 +98,14 @@ export const invoices = pgTable("invoices", {
   serviceDay: date("service_day", { mode: "string" }).notNull(), // IST day — day book / orphan grain
   // Arrival order for the dues worklist. ULID ids cannot carry it (§3.26) — the database does.
   seq: bigserial("seq", { mode: "number" }),
-});
+}, (t) => [
+  /**
+   * PLAN 07c T8 / DD13 — `(day, issuer)`, for the reason `receipts_day_cashier_idx` gives at
+   * length: both live readers filter the day by equality, so a day-leading index serves the day
+   * book and the per-person slice from one structure. This table, too, had only its two unique keys.
+   */
+  index("invoices_day_issuer_idx").on(t.serviceDay, t.issuedBy),
+]);
 
 /** The engine's `PricedLine` persisted VERBATIM — head sums are read back, never re-derived. */
 export const invoiceLines = pgTable(
@@ -191,7 +198,26 @@ export const receipts = pgTable("receipts", {
   changeGivenPaise: bigint("change_given_paise", { mode: "number" }).notNull().default(0),
   note: text("note"),
   seq: bigserial("seq", { mode: "number" }),
-});
+}, (t) => [
+  /**
+   * PLAN 07c T8 / DD13 — AND THIS TABLE HAD NO INDEX BUT ITS TWO UNIQUE KEYS AT ALL.
+   *
+   * Re-measured at kickoff on the dev database: `receipts` carried `receipts_pkey` and
+   * `receipts_receipt_no_unique` and nothing else. So `service_day` was UNINDEXED, which means the
+   * existing day book — the screen a cashier closes their shift against — has been a sequential
+   * scan of every receipt ever taken since the day it shipped. That is a finding this phase did not
+   * go looking for and is not leaving behind.
+   *
+   * ═══ THE COLUMN ORDER IS `(day, cashier)` AND NOT THE `(actor, date)` DD13 NAMES ═══
+   *
+   * Both live readers filter the day by EQUALITY: `dayBook` on `service_day` alone, and the
+   * per-cashier slice on `service_day` AND `received_by`. A day-leading index serves both from one
+   * structure; an actor-leading one leaves the day book scanning. The RANGE query DD13 was thinking
+   * of — one person across six months — is served by `user_day_facts`, not from here, which is the
+   * whole point of the rollup.
+   */
+  index("receipts_day_cashier_idx").on(t.serviceDay, t.receivedBy),
+]);
 
 /** E-25 lifecycle: captured → reconciled | mismatched. `expected_net_paise` is stamped at CAPTURE. */
 export const receiptTenders = pgTable("receipt_tenders", {
@@ -205,7 +231,18 @@ export const receiptTenders = pgTable("receipt_tenders", {
   settledPaise: bigint("settled_paise", { mode: "number" }),
   reconciledAt: timestamp("reconciled_at", { withTimezone: true }),
   mismatchNote: text("mismatch_note"),
-});
+}, (t) => [
+  /**
+   * PLAN 07c T8 — THE MISSING INDEX ON ITS OWN FOREIGN KEY.
+   *
+   * Measured: `receipt_tenders` had exactly one index, its primary key. Postgres does not create
+   * one for a foreign key, and `receipt_id` is what BOTH tender readers join on —
+   * `dayBook`'s `inArray(receiptId, …)` over a whole day of receipts, and the per-cashier slice's
+   * over one cashier's. A day with 2,000 visits is thousands of receipts and a scan of the tender
+   * table per lookup. It is also what makes deleting or voiding a receipt slow, for the same reason.
+   */
+  index("receipt_tenders_receipt_idx").on(t.receiptId),
+]);
 
 /** Append-only receipt → invoice. Effective allocation = Σ apply − Σ reverse (D1). */
 export const allocations = pgTable("allocations", {

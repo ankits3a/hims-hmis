@@ -97,7 +97,7 @@ const T6_DEF = {
  * operator sets), so a literal somewhere did stop compiling — just not this file, which passes the
  * whole `AppConfig`. This list remains the only guard here.
  */
-const THE_TWELVE = [
+const THE_THIRTEEN = [
   "runDispatchCycle",
   "runDueTimers",
   "sweepExpiredTempRoles",
@@ -113,6 +113,14 @@ const THE_TWELVE = [
   "runDailyClose",
   "runNotifyPump",
   "createEventPartitions",
+  // PLAN 07c T8 — the THIRTEENTH, a `dailyIst("02:00")` job: the per-user daily rollup the
+  // five-period briefs are served from. Registered between the partition creator and the retention
+  // sweep, which is where `jobs.ts` puts it, so it sits there here too — this array is the
+  // REGISTRATION order. This census is one of the FOUR places a new job has to be admitted, and the
+  // count is worth stating because a `toHaveLength(12)` grep finds only two of them: this file and
+  // `scheduler.test.ts` both express the census as a NAMED ARRAY instead. Both were missed on the
+  // first pass of this task and both were caught by the verify run.
+  "rollupUserDayFacts",
   "retentionSweep",
   // Plan 11c D6 — THE TENTH. Unlike the eighth and ninth it is an `every` job whose cadence is a
   // real operator key, so the widened `Pick` DID announce it to the three `JobIntervals` object
@@ -410,7 +418,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
     }
   });
 
-  it("(a) boots the worker context, and its Scheduler names EXACTLY the twelve jobs", async () => {
+  it("(a) boots the worker context, and its Scheduler names EXACTLY the thirteen jobs", async () => {
     const ctx = await NestFactory.createApplicationContext(WorkerModule, { logger: false });
     try {
       const workerDb = ctx.get<Db>(DB);
@@ -427,9 +435,9 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
       // the same value `worker.ts` passes. `registerAllJobs` reads no environment of its own.
       registerAllJobs(scheduler, workerDb, registry, workerConsumers(workerDb), config);
 
-      // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these ten, in
+      // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these thirteen, in
       // registration order — not "at least", not "these among others".
-      expect(scheduler.jobs()).toEqual(THE_TWELVE);
+      expect(scheduler.jobs()).toEqual(THE_THIRTEEN);
       // The scheduler was never started, so nothing was scheduled and nothing needs stopping.
       expect(scheduler.leakedErrors()).toEqual([]);
     } finally {

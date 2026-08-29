@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { downloadReportCsv, fetchReport, todayIst } from "../lib/desk-api";
-import type { WireReportSection } from "../lib/desk-api";
+import { BRIEF_PERIODS, downloadReportCsv, fetchBrief, fetchReport, todayIst } from "../lib/desk-api";
+import type { WireBriefPeriod, WireReportSection } from "../lib/desk-api";
 import { useAuth } from "../lib/auth";
 import { Button } from "@/components/ui/button";
 
@@ -76,6 +76,64 @@ function SectionTable({ section }: { section: WireReportSection }): React.ReactE
   );
 }
 
+/**
+ * PLAN 07c T8 / DD12 — THE BRIEF, WHICH IS A PARAGRAPH AND NOT A DASHBOARD.
+ *
+ * Five periods, one deterministic sentence each, every clause generated on the SERVER from typed
+ * facts. This component renders keys and never composes prose, which is what keeps DD12's promise
+ * enforceable: a clause that could not be made honestly does not arrive, so there is no branch here
+ * that could invent one.
+ *
+ * ═══ A SHORT BRIEF IS A CORRECT BRIEF ═══
+ *
+ * On somebody's first week most comparison clauses are absent (DD8), so this panel is nearly empty
+ * — and it says so in a sentence rather than showing a spinner or a row of zeroes. A person whose
+ * history is thin should be able to see that that is what they are looking at.
+ */
+function BriefPanel({ date }: { date: string }): React.ReactElement {
+  const { t } = useTranslation();
+  const [period, setPeriod] = useState<WireBriefPeriod>("week");
+  const brief = useQuery({ queryKey: ["me", "brief", period, date], queryFn: () => fetchBrief(period, date) });
+
+  return (
+    <section className="no-print flex flex-col gap-2 rounded border p-3">
+      <div className="flex flex-wrap items-baseline gap-3">
+        <h2 className="text-sm font-semibold">{t("brief.title")}</h2>
+        <div className="flex gap-1" role="group" aria-label={t("brief.period")}>
+          {BRIEF_PERIODS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              aria-pressed={p === period}
+              className={`rounded border px-2 py-0.5 text-xs ${p === period ? "bg-accent font-medium" : ""}`}
+              onClick={() => { setPeriod(p); }}
+            >
+              {t(`brief.period.${p}`)}
+            </button>
+          ))}
+        </div>
+        {brief.data === undefined ? null : (
+          <span className="ml-auto text-xs text-muted-foreground">
+            {t("brief.range", { from: brief.data.from, to: brief.data.to })}
+          </span>
+        )}
+      </div>
+
+      {brief.isPending ? <p className="text-sm text-muted-foreground">{t("app.loading")}</p> : null}
+
+      {brief.data !== undefined && brief.data.clauses.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t("brief.nothingToSay")}</p>
+      ) : null}
+
+      <ul className="flex flex-col gap-1 text-sm">
+        {(brief.data?.clauses ?? []).map((c) => (
+          <li key={c.key}>{t(c.key, c.values)}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function MyDay(): React.ReactElement {
   const { t } = useTranslation();
   const { actor } = useAuth();
@@ -130,6 +188,8 @@ export function MyDay(): React.ReactElement {
       {error === null ? null : <p className="no-print text-sm text-destructive">{error}</p>}
 
       {report.isPending ? <p className="text-sm text-muted-foreground">{t("app.loading")}</p> : null}
+
+      <BriefPanel date={date} />
 
       {/*
         ONE printable node holding every section — see the header. It is also the SCREEN rendering:

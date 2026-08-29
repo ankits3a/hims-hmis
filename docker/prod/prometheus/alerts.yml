@@ -46,7 +46,7 @@ groups:
       - alert: HmisSchedulerJobStaleDaily
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep"
+            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts"
           } > 93600
         for: 5m
         labels:
@@ -83,6 +83,11 @@ groups:
           # in the same way the batch sweep is: the digest simply keeps saying nothing, which is what
           # it says when nobody is late.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="flagLateSurgeons"})
+          # PLAN 07c T8 — the THIRTEENTH job, a DAILY one (`dailyIst("02:00")`): the per-user
+          # rollup the five-period briefs are served from. It joins leg 1b's alternation above and
+          # this chain; the INTERVAL leg does not move. A brief that quietly goes on serving
+          # last week's rollup is exactly the kind of silence leg 2 exists to break.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="rollupUserDayFacts"})
         for: 5m
         labels:
           severity: critical

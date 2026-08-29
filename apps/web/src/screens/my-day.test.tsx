@@ -40,10 +40,13 @@ const SECTION = {
 
 const ME = { status: 200, body: { actor: { type: "user", id: "u1" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } } };
 
+const EMPTY_BRIEF = { period: "week", from: "2026-08-23", to: "2026-08-29", clauses: [], totals: {}, daysWithActivity: 0 };
+
 function mount(report: { date: string; provisional: boolean; sections: unknown[] }, extra: Record<string, Reply> = {}): void {
   mockRoutes({
     "GET /api/auth/me": ME,
     "GET /api/me/report": { status: 200, body: report },
+    "GET /api/me/brief": { status: 200, body: EMPTY_BRIEF },
     ...extra,
   });
   setToken("t-1");
@@ -157,5 +160,52 @@ describe("07c T2/T3/T5 — my day", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Download CSV" }));
     expect(await screen.findByText(/The export could not be prepared/i)).toBeInTheDocument();
+  });
+
+  /**
+   * PLAN 07c T8 / DD12 — THE BRIEF RENDERS KEYS, AND COMPOSES NO PROSE OF ITS OWN.
+   *
+   * Every clause arrives from the server as an i18n key plus pre-formatted values. That is what
+   * makes DD12's promise enforceable rather than aspirational: there is no branch in this component
+   * that could invent a comparison, because a comparison the server could not make honestly simply
+   * does not arrive.
+   */
+  it("T8: the server's clauses become sentences, with the server's own figures in them", async () => {
+    mount({ date: "2026-08-29", provisional: true, sections: [SECTION] }, {
+      "GET /api/me/brief": {
+        status: 200,
+        body: {
+          period: "week", from: "2026-08-23", to: "2026-08-29", daysWithActivity: 5,
+          totals: { "opd.visitsOpened": 61 },
+          clauses: [
+            { key: "brief.visits.compared", values: { total: "61", median: "48" } },
+            { key: "brief.collected.plain", values: { total: "₹1,20,450.00" } },
+          ],
+        },
+      },
+    });
+
+    expect(await screen.findByText("61 visits opened, against a median of 48.")).toBeInTheDocument();
+    expect(screen.getByText("₹1,20,450.00 collected.")).toBeInTheDocument();
+    expect(screen.getByText("2026-08-23 to 2026-08-29")).toBeInTheDocument();
+  });
+
+  /** DD8 — a thin history produces a SHORT brief, and the screen says why rather than spinning. */
+  it("T8/A4: a brief with no honest clause to make says so, in a sentence", async () => {
+    mount({ date: "2026-08-29", provisional: true, sections: [SECTION] });
+    expect(await screen.findByText(/a comparison needs a fortnight of history/i)).toBeInTheDocument();
+  });
+
+  it("T8: switching period asks the server for that period — the client computes nothing", async () => {
+    mount({ date: "2026-08-29", provisional: true, sections: [SECTION] });
+    await waitFor(() => { expect(screen.getByRole("button", { name: "6 months" })).toBeInTheDocument(); });
+
+    await userEvent.click(screen.getByRole("button", { name: "6 months" }));
+
+    await waitFor(() => {
+      const asked = vi.mocked(fetch).mock.calls.map(([i]) => String(i));
+      expect(asked).toContain("/api/me/brief?period=half&date=2026-08-29");
+    });
+    expect(screen.getByRole("button", { name: "6 months" })).toHaveAttribute("aria-pressed", "true");
   });
 });

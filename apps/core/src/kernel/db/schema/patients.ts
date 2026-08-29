@@ -89,6 +89,16 @@ export const patients = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    /**
+     * PLAN 07c T8 / DD13 — THE COMPOSITE `(actor, date)` INDEX THE PER-PERSON BRIEF NEEDS.
+     *
+     * Measured at kickoff: this table had NO index on its actor column, alone or paired with a
+     * date, and neither did any of the other seven a brief touches. Every "what did I do" query was
+     * a sequential scan, and at 2,000 visits/day a six-month window is millions of rows. The nightly
+     * roll (`user_day_facts`) is what keeps the long windows off the primary tables — this index is
+     * what keeps the ROLL itself cheap, since it runs once per active user per night.
+     */
+    index("patients_created_by_at_idx").on(t.createdBy, t.createdAt),
     uniqueIndex("patients_uhid_ux").on(t.uhid),
     // Phone-first search (<300 ms budget): prefix LIKE needs text_pattern_ops under the
     // cluster's en_US.utf8 collation — a plain btree would be ignored by LIKE 'x%'.

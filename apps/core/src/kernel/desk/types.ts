@@ -131,6 +131,33 @@ export type DeskProvider = {
    * to disagree about which permission guards the module.
    */
   report?(ctx: DeskProviderCtx): Promise<ReportSection[]>;
+  /**
+   * PLAN 07c T8 — THIS MODULE'S CONTRIBUTION TO ONE PERSON'S DAY, AS NAMED NUMBERS.
+   *
+   * The card is a picture of now and the report is a list of rows; FACTS are the same day reduced
+   * to counters that can be SUMMED ACROSS DAYS. That is what a five-period brief needs and what
+   * neither of the other two shapes can give: you cannot add up six months of card renderings.
+   *
+   * ═══ WHY A BAG OF NAMED NUMBERS AND NOT A TABLE OF COLUMNS ═══
+   *
+   * The obvious design is a `user_day_facts` table with a column per counter. It is also the design
+   * that makes every new module a MIGRATION and a schema review: pharmacy dispensing, lab
+   * collections, theatre cases. Worse, it puts the kernel in the position of knowing what a
+   * "consult" is. A module returns `{ "opd.visitsOpened": 46 }` and the rollup stores the bag; the
+   * kernel adds numbers and never learns what they mean.
+   *
+   * ═══ THE CONTRACT, AND IT IS NARROW ON PURPOSE ═══
+   *
+   * - Keys are `<module>.<fact>` and STABLE — they are stored, so renaming one orphans the history
+   *   that was written under the old name. A key is a schema decision wearing a string's clothes.
+   * - Values are finite, non-negative integers. Money is PAISE, never rupees and never a float:
+   *   the rollup sums them and a float sum of six months of money is a rounding argument nobody
+   *   can win. `rollupUserDay` refuses anything else rather than storing it.
+   * - The same `(actor, date)` must always produce the same bag. A fact derived from "now" rather
+   *   than from the day would make yesterday's rollup and today's re-roll disagree, which is A5's
+   *   whole subject.
+   */
+  facts?(ctx: DeskProviderCtx): Promise<Record<string, number>>;
 };
 
 export class DeskError extends Error {

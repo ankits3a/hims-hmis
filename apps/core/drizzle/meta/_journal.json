@@ -288,6 +288,13 @@
       "when": 1787983541920,
       "tag": "0040_queue_session_actors",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1787985866774,
+      "tag": "0041_desk_rollup_and_actor_indexes",
+      "breakpoints": true
     }
   ]
 }
