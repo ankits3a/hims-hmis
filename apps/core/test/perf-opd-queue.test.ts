@@ -86,13 +86,13 @@ describe("OPD queue and visit-type performance budgets (CI-gated — §15)", () 
     // Synthetic but index-realistic: ONE statement per table, no per-row round trips. The ids are
     // deterministic strings so the measurements below can address any seeded row without a lookup.
     await db.execute(sql`
-      insert into patients (id, uhid, name, phone, sex, language, status, created_by, updated_by)
+      insert into patients (id, uhid, name, phone, sex, administrative_gender, language, status, created_by, updated_by)
       select
         'OPDP' || lpad(gs::text, 22, '0'),
         'OPD-' || lpad(gs::text, 8, '0') || '-0',
         'Queue Patient ' || gs::text,
         '9' || lpad((200000000 + gs)::text, 9, '0'),
-        'other', 'hi', 'active', 'perf-seed', 'perf-seed'
+        'other', 'other', 'hi', 'active', 'perf-seed', 'perf-seed'
       from generate_series(1, ${sql.raw(String(PATIENTS))}) gs
     `);
     await db.execute(sql`

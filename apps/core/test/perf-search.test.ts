@@ -64,13 +64,13 @@ describe("federated search performance (Plan 11h T7)", () => {
     await assignRole(db, { userId, roleKey: "perf_all", scopeType: "hospital" });
 
     await db.execute(sql`
-      insert into patients (id, uhid, name, phone, sex, language, status, created_by, updated_by)
+      insert into patients (id, uhid, name, phone, sex, administrative_gender, language, status, created_by, updated_by)
       select
         'PERF' || lpad(gs::text, 22, '0'),
         'PRF' || lpad(gs::text, 7, '0') || '0',
         'Perf Patient ' || gs::text,
         '9' || lpad((100000000 + gs)::text, 9, '0'),
-        'other', 'hi', 'active', 'perf-seed', 'perf-seed'
+        'other', 'other', 'hi', 'active', 'perf-seed', 'perf-seed'
       from generate_series(1, ${sql.raw(String(SEED_ROWS))}) gs
     `);
     /**
@@ -81,10 +81,10 @@ describe("federated search performance (Plan 11h T7)", () => {
      * person among many, which is the selectivity a trigram index exists to serve.
      */
     await db.execute(sql`
-      insert into patients (id, uhid, name, phone, sex, language, status, created_by, updated_by)
+      insert into patients (id, uhid, name, phone, sex, administrative_gender, language, status, created_by, updated_by)
       values
-        ('PERFNAME0000000000000001', 'PRF90000010', 'Zephyrine Qadir', '9200000001', 'other', 'hi', 'active', 'perf-seed', 'perf-seed'),
-        ('PERFNAME0000000000000002', 'PRF90000020', 'Anantharaman Balasubramanian', '9200000002', 'other', 'hi', 'active', 'perf-seed', 'perf-seed')
+        ('PERFNAME0000000000000001', 'PRF90000010', 'Zephyrine Qadir', '9200000001', 'other', 'other', 'hi', 'active', 'perf-seed', 'perf-seed'),
+        ('PERFNAME0000000000000002', 'PRF90000020', 'Anantharaman Balasubramanian', '9200000002', 'other', 'other', 'hi', 'active', 'perf-seed', 'perf-seed')
     `);
     await db.execute(sql`analyze patients`);
     await searchAll(db, registry, { type: "user", id: userId }, parseSearchQuery("9100050", 20)); // warm
