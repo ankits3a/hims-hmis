@@ -280,6 +280,16 @@ now rules because neither is a matter of care:
    `grep -rn "retentionSweep" apps/core --include=*.ts` — because a sibling's name appears in every
    place the new one must, whatever shape that place is written in (ledger §2.131).
 
+   **AMENDED AGAIN 2026-08-29 (Plan 17 phase 0, ledger §2.138) — A SIBLING'S NAME CANNOT FIND A
+   CENSUS THAT DERIVES FROM THE LIST, AND THE RULE NOW HAS TWO HALVES.** The sibling-grep was run
+   exactly as written, at directory-and-glob scope, and found **two of five** censuses. The three it
+   missed live in `seed-roles.test.ts`, which never writes any manifest identifier at all — it reads
+   `ALL_MANIFESTS` and COUNTS. §2.131's premise is that a sibling's name appears wherever the new one
+   must; **that premise is false for derived code**, so no grep for a NAME could have found them at
+   any scope. They went red in the verify instead.
+   **So: grep the SIBLING for the places that NAME it, and grep the LIST for the places that COUNT
+   it** — `grep -rn "ALL_MANIFESTS" apps/core --include=*.ts`, which returns all five.
+
    **AMENDED 2026-08-29, the same day, because the rule was followed and still missed one.** The
    grep must name a **DIRECTORY and a glob**, never a file list. A session that ran
    `grep -rn 'duty_manager' <three files it already had open>` learned nothing it did not already
@@ -287,6 +297,24 @@ now rules because neither is a matter of care:
    went red in the verify instead. **A search whose scope is drawn from what you already believe
    cannot correct that belief** (ledger §2.133). If you are typing the second file path, you have
    stopped searching and started confirming.
+
+**AMENDED 2026-08-29 after Plan 17 phase 0 — RULE 8, AND IT IS THE CHEAPEST FIX IN THIS SECTION.**
+
+8. **A LANE THAT SHARES THE CHECKOUT TAKES ITS OWN TEST DATABASES, AND SAYS WHICH ONES IT USED.**
+   `test/helpers/db.ts` derives the worker database name from `TEST_DATABASE_URL`, so one env var
+   ends parallel-lane contention outright:
+   `TEST_DATABASE_URL="postgres://…/hmis_<lane>_scratch" pnpm …`. Measured on this phase: suites
+   failing six at a time on FK violations went 154/154 on the first isolated run, and a full verify
+   that returned **105 failures — 188 of them 15-second timeouts, at load average 18.70** — returned
+   green at 2.35 with nothing changed but the box. The protocol's "queue behind the other session"
+   is no longer the only answer, and AGENT-RULES rule 7 already sanctions the scratch database.
+
+   **AND THE OBLIGATION THAT COMES WITH IT (ledger §2.137): NAME THE DATABASE WHERE THE EVIDENCE IS
+   CLAIMED** — in the commit message and in CLOSE's mechanical verification. Rule 7 requires the
+   database to be dropped in the same task, so by the time anyone audits, the proof is gone: this
+   phase's second reviewer opened with a CRITICAL saying the migration had been applied nowhere and
+   the evidence could not cover the fixes, on observations that were all true. One clause prevents
+   it. Without it, `exit 0` is a claim about a database nobody can look at.
 
 And one that binds the session's own turns: **arm exactly ONE blocking waiter on the exit file and
 then stop asking.** Every hand-poll of a long run costs a full context re-read to learn a single
@@ -455,6 +483,19 @@ absence.** Three of its findings did this, and the pattern is mechanical enough 
    clock or seam** (§2.127). Ask which of the invariants carries the property, and whether the other
    is already covered. A collision between two individually-correct guards is a design finding about
    the pair.
+
+**AMENDED 2026-08-29 (Plan 17 phase 0, ledger §2.140) — A FOURTH PATTERN, AND IT IS ABOUT THE FIX
+FOR A DISCLOSURE.** Plan 17's pass-1 CRITICAL was a confidentiality leak; its fix was mutant-verified,
+green and CI-green — and pass 2 found the SAME dimension open twice more: the response's `status`
+field still implied the hidden row deterministically, and the fix itself turned a caller-supplied
+`limit` into a counting oracle (rows filtered AFTER the limit; varying it named the hidden rows'
+exact ranks). **So, as rule 4:**
+
+4. **When a fix REMOVES a disclosure, enumerate every OTHER field on the same response that is a
+   FUNCTION of the removed one, and every caller-supplied parameter that interacts with the filter.**
+   A filter applied at one level of a nested structure is not a filter; a filter applied after a
+   limit is a counter. Both of Plan 17's residuals were re-derivations of a boolean the first fix
+   had deleted for being too revealing.
 
 **And the budget consequence.** A remediation of this size is not free and must not be priced as an
 afterthought: Plan 15's pass-1 remediation touched 31 files, added two migrations and moved the core

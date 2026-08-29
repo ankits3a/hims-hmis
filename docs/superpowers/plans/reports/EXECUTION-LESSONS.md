@@ -979,6 +979,83 @@ fix (CORRECT / INCOMPLETE / WRONG). That verdict table is what caught both defec
 
 ---
 
+**2.137 — THE PRIVATE TEST DATABASE IS THE CHEAPEST FIX FOR PARALLEL-LANE CONTENTION, AND IT ERASES YOUR OWN AUDIT TRAIL. SAY WHICH DATABASE THE RUN USED.** *(Plan 17 phase 0, both close passes, 2026-08-29)*
+
+Two lanes shared `/opt/hmis` all day. The protocol (`2026-08-26-parallel-session-protocol.md` §4) says a concurrent run's evidence is unreliable and to queue behind the other session. This phase hit the contention **four separate times** — `order_items_service_id_services_id_fk` violations in tests whose own fixture had just inserted the service, which is another run's `truncateAll` landing between the insert and the check — and one full verify came back with **105 failures, 188 of them `Exceeded timeout of 15000 ms`, across nine suites the phase does not touch**, with `orders.test.ts` taking **378 s against 27 s in isolation**. `uptime` at launch: load average **18.70**.
+
+**Queuing was never necessary.** `test/helpers/db.ts:31-41` derives the worker database name from `TEST_DATABASE_URL`, so one env var gives a lane its own databases:
+
+```
+TEST_DATABASE_URL="postgres://hmis:hmis@localhost:5433/hmis_<lane>_scratch" pnpm --filter @hmis/core exec jest …
+```
+
+`ensureWorkerDatabaseExists` creates them, `migrate()` brings them up from empty, and the contention disappears completely — suites that had been failing six at a time went 154/154 on the first isolated run. AGENT-RULES rule 7 sanctions it in as many words: *"a scratch database you create with a name that is obviously yours, use, and drop in the same task."*
+
+**AND HERE IS THE HALF NOBODY WOULD PREDICT, WHICH COST A REVIEWER PASS TO LEARN.** The second close reviewer opened its report with a CRITICAL: migration `0045` *"has never been applied to any database on this host, so the 'full test run exit 0' evidence cannot cover the fixes it certifies."* Its evidence was real and it was thorough — every database it could see (`hmis_test_1..8`, `hmis_dev`) had `0044` as its highest applied migration, `pg_proc.prosrc` carried no `authority` clause, `order_items_cancelled_shape_ck` existed in no `pg_constraint`, and it correctly reasoned that `setupTestDb` migrates unconditionally so no run could have avoided it.
+
+**Every observation true; the conclusion false.** The run used the override, and rule 7's *"drop in the same task"* had already removed the databases. The two obligations that make the technique safe are exactly what erase the proof it ran.
+
+**MECHANICAL FORM — one clause, in two places:**
+
+> When a run uses a non-default `TEST_DATABASE_URL`, NAME THE DATABASE where the evidence is claimed — in the commit message and in the phase document's mechanical-verification section.
+
+Without it, `exit 0` is a claim about a database nobody can inspect, and an honest reviewer's only available conclusion is that the evidence is missing. **The refutation costs one command** (`jest -t "<the migration's tests>"` on a fresh isolated database, isolation line read from the output) — but the reviewer pass that raised it cost 152,552 tokens, and it spent its CRITICAL slot on a phantom.
+
+---
+
+**2.138 — §2.131's SIBLING-GREP CANNOT FIND A CENSUS THAT DERIVES FROM THE LIST. GREP THE LIST'S NAME.** *(Plan 17 phase 0 T5, 2026-08-29 — the third amendment to this rule in three days, and the mechanism is new rather than a re-application)*
+
+§2.131 says: when adding a registration, grep for an existing SIBLING's IDENTIFIER, because a sibling's name appears in every place the new one must. §2.133 amended it to name a DIRECTORY AND A GLOB rather than a file list. **Both were obeyed exactly**, and the phase still missed three of five censuses.
+
+The grep the phase document prescribed — `grep -rn 'formularyManifest' apps/core/src --include=*.ts` — returned eight lines across four files and named **two** censuses. The full verify then failed **three more**, all in `test/seed-roles.test.ts`: the per-module permission map, the reachability census (`107 declared = 91 held + 16 not yet modelled`), and a sorted literal of every unheld permission — plus four `NOT_YET_MODELLED` entries with reasons in `scripts/seed-roles.ts`.
+
+**THE MECHANISM, AND IT IS WHY NO SIBLING-NAME GREP COULD HAVE WORKED.** §2.131's premise is that a sibling's name appears wherever the new one must. **That premise is false for a census that DERIVES from the one list instead of naming any member of it.** `seed-roles.test.ts` never writes `formularyManifest`, or `deskManifest`, or any manifest identifier at all — it reads `ALL_MANIFESTS` and counts. A grep for a NAME is structurally incapable of finding it, at any scope.
+
+**MECHANICAL FORM:**
+
+> When the thing you are adding is an ENTRY ON A LIST that other code derives from, grep for **the LIST's own name**, not for a sibling's:
+> ```
+> grep -rn "ALL_MANIFESTS" apps/core --include=*.ts | grep -v "<the file that defines it>"
+> ```
+
+That returns 34 lines across ~20 files and names all five, plus four more this phase then checked and found unmoved. **Sibling-name and list-name are two different searches, and only the second finds a derived census.** The rule now has both halves: grep the sibling for the places that NAME it, grep the list for the places that COUNT it.
+
+---
+
+**2.139 — `expect(spy).not.toHaveBeenCalled()` ON A FUNCTION THAT TAKES A `Db` OR `Tx` KILLS THE RUNNER WHEN IT FAILS. ASSERT ON THE ARGUMENT.** *(Plan 17 phase 0, T3's mutant run, 2026-08-29)*
+
+A mutant run died after 92 seconds with `FATAL ERROR: Reached heap limit — JavaScript heap out of memory` and a 4 GB heap. It was not the mutant. `hasPermission(db, userId, permission, scope)` takes a drizzle handle as its FIRST argument, and when `not.toHaveBeenCalled()` FAILS, jest pretty-prints the received calls — serialising the connection pool and the whole schema graph.
+
+**The assertion whose entire job was to fail loudly could not fail at all.** It passes silently (nothing printed) and dies on the one run that matters, which is the worst possible direction for a security assertion — this one guards "no permission lookup is ever performed on a patient credential id" (22c-A review D11).
+
+**MECHANICAL FORM:**
+
+```ts
+// NOT: expect(spy).not.toHaveBeenCalled();
+expect(spy.mock.calls.map((call) => call[1])).toEqual([]);   // the ids, not the handles
+```
+
+It prints small **and it is the sharper claim**: *no lookup was made WITH THE PATIENT'S CREDENTIAL ID*, rather than *no lookup was made at all*. Applies to any spy on a function whose parameters include a `Db`, `Tx`, pool, registry or Nest module.
+
+---
+
+**2.140 — A CRITICAL FIX CAN BE INCOMPLETE IN ITS OWN DIMENSION, AND THE FIX ITSELF CAN OPEN THE NEXT DOOR. THE SECOND REVIEWER IS NOT OPTIONAL.** *(Plan 17 phase 0, close pass 2, 2026-08-29 — §6's second-pass argument, with a specimen)*
+
+Pass 1 found a confidentiality CRITICAL: the restricted-item filter filtered ITEMS and returned every HEADER, so an order whose every item was restricted came back as a real header with `items: []`, carrying `orderNo`, `placedAt`, `orderingClinicianId` and `indication` — free clinical text reading *"post-exposure prophylaxis, needle-stick, source patient unknown"*. The fix dropped such orders and nulled the indication. It was verified by a mutant, ran green, and passed CI.
+
+**Pass 2 found the same dimension still open, twice:**
+
+- **The header's own `status`/`closed_at` remained a deterministic channel on a PARTIALLY restricted order.** The close fires only when no item is live, so an `open` header whose every VISIBLE item is terminal proves a hidden live item exists; and because the close picks `closed` over `cancelled` only when something COMPLETED, a `closed` header whose visible items are all `cancelled` proves a hidden item ran. That is the boolean the first fix had removed for being too revealing, re-derived from two fields it left in place.
+- **The first fix CREATED a counting oracle.** It filtered rows AFTER a `LIMIT` applied to the header query, so varying the caller-supplied `limit` over restricted orders at ranks 1 and 4 returned **0, 1, 2, 2, 3** — the flat spots name their exact ranks, and each hidden order is bracketed in time by its visible neighbours' timestamps. Strictly more disclosure than the field that was removed, from a knob the caller turns. It was also a plain paging bug: a screen asking for 20 silently got 17.
+
+**THE GENERAL RULE, and it is sharper than "review the remediation":**
+
+> When a fix REMOVES a disclosure, enumerate every OTHER field on the same response that is a function of the removed one, and every caller-supplied parameter that interacts with the filter. A filter applied at one level of a nested structure is not a filter; a filter applied after a limit is a counter.
+
+**And the cost comparison that settles §6's second term.** Both passes FRESH: 195,491 / 40 calls = **4,887 per call**; 152,552 / 48 calls = **3,178 per call** — the second pass was CHEAPER per call than the first despite reviewing a diff, which is §2.136 confirmed on a second phase and the opposite of a resumed chain's 41k and 112k. **348,043 total against a 458,491 review term: 24% under, and the second pass found a live confidentiality leak the first pass's own fix had created.** A stop-loss that halted it would have shipped that leak.
+
+---
+
 ## 3. Plan-authoring defects
 
 Fix these when writing the next plan, not when executing it.

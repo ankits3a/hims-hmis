@@ -705,3 +705,46 @@ Three mutants from the PRE-FIX code, run against the NEW assertions, **3 DIED / 
 
 **Across both close passes: 21 mutants built, 21 died, 2 controls passed.**
 
+---
+
+### 9.7 Actuals, recorded only now — v3 §9.4 forbids the row before §9.6 exists
+
+| term | budgeted | actual |
+|---|---|---|
+| task term (1.5 × 20,178 × 6) | 181,602 | **UNMEASURABLE from inside** — LIGHT lane, zero coding subagents, so `token-audit.js` finds no transcripts by construction. Only the owner's `/cost` can see it (runbook O3). |
+| review term (two FRESH passes) | 458,491 | **348,043** — pass 1 195,491 / 40 calls = **4,887 per call**; pass 2 152,552 / 48 calls = **3,178 per call** |
+| **stop-loss** | **640,000** | not breached on the measurable half; the unmeasurable half is stated as such rather than implied to be zero |
+
+**The review term came in 24% under budget and the second pass was CHEAPER PER CALL than the first**, on a smaller workload — §2.136 confirmed on a second phase, and the exact opposite of Plan 13's resumed chain (41,073 and 112,041 per call for less work each time). **Fresh, not resumed, is now measured twice.**
+
+**And pass 2 earned its whole cost twice over.** It found a live confidentiality leak that **the first pass's own fix had created** (M-2: rows filtered after a `LIMIT`, so a caller varying it read `0,1,2,2,3` and the flat spots named the hidden orders' ranks) and the same dimension still open through the header's own `status` field. §6's second term exists for exactly this, and **a stop-loss that halted pass 2 would have shipped both.**
+
+#### What the spend bought, named
+
+- **The spike REFUTED two things** rather than confirming the plan, and both changed code before T1: `resolveEncounter` imports a module so it could not move to the kernel (F1), and the patients merge uses no GUC so `patient_id` could not be frozen (S6b). A spike that only confirms buys insurance; these bought the design.
+- **21 mutants, 21 dead** — and the one that matters most is C1's, which is not a mutant of a guard but of a LOCK: the pre-fix header close left the order `open` with every item completed in **7 of 8 rounds**.
+- **The reviewers found what the phase's own instruments could not, twice.** Fourteen dead mutants, a green verify and a green CI run stood over a tree in which an order could never close and a ward clerk could read a needle-stick indication. **That is v3 §9.4's measurement repeating: the tree looked finished.**
+- **Four verify runs, one red** — and that red was 105 failures of which two were real, the rest a load average of 18.70 from the other lane.
+
+#### Where it could have been cheaper — in numbers
+
+**Lever 1, context per call.** The reviewers were pointed at `AGENT-RULES.md` (26,563 B), specific sections of the phase document, and the commit — and were told **not** to read the ledger (398,347 B ≈ 99,587 tokens). Had either read it, its 40–48 calls would have carried ~100k extra each: **pass 1 alone would have cost ~4M instead of 195k.** §9.1 rule 1 is the single highest-leverage line in this method and it held.
+
+**Lever 2, turns.** The expensive turns were not reading — they were the **four full verify runs**, ~15–20 minutes each. One was pure waste (the contended red), and rule 8 below is what removes that class.
+
+**Lever 3, agents.** Two, both reviewers, both fresh. There is no agent to remove: the coding was in-session and the reviewers found two CRITICALs the session did not.
+
+#### What changed so it does not recur
+
+- **Ledger §2.137** — the private test database ends parallel-lane contention AND erases the audit trail; name the database where the evidence is claimed.
+- **Ledger §2.138** — the sibling-grep cannot find a census that DERIVES from the list; grep the list's name. (Third amendment to §2.131 in three days, and the first with a NEW mechanism.)
+- **Ledger §2.139** — `expect(spy).not.toHaveBeenCalled()` on a function taking a `Db` OOMs the runner at 4 GB when it fails; assert on the argument.
+- **Ledger §2.140** — a fix that removes a disclosure must enumerate every other field that is a function of it, and every caller-supplied parameter that interacts with the filter.
+- **Method §9.9 gains rule 8** (own databases, and name them), **§9.9 rule 7 gains its second half** (grep the list, not just a sibling), and **§9.8 gains rule 4** (the disclosure-removal enumeration).
+
+---
+
+### 9.8 The question this phase existed to answer
+
+**YES — Plans 17 and 18a may now be authored as two independent lanes.** The envelope is kernel, the kind seam is a manifest field, the four item states are frozen in code, `order_no` comes from the existing counters, and §6/§6A state what each plan inherits and what it still owes. Neither plan needs to touch the other's tables, and neither can decide the seam for the other by touching it first — which is the failure `opd_rooms` cost Plan 13 and the reason this phase was written.
+
