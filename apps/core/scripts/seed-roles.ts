@@ -160,6 +160,20 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // a checked one, and a doctor who cannot read the formulary gets the legacy substring allergy
       // check and nothing else. READ ONLY — the master is curated at the pharmacy, not the desk.
       "formulary.read",
+      /**
+       * PLAN 07d T5 / DD6 — ONE of the two grants DD6 names, and only one. `tariff.read` lets the
+       * cockpit browse the priced service catalogue so a doctor can advise tests WITH their prices
+       * (DD4) — which is the question a patient actually asks at the chair, and which the doctor
+       * currently cannot answer without walking to the counter.
+       *
+       * **`materials.stock.read` IS DELIBERATELY NOT GRANTED HERE.** DD6 names both, but it belongs
+       * to T3/T4 — the drug-availability panel — and those are GATED on owner item O-1: zero
+       * `formulary_medicines` are seeded and the `pharmacy` role has no holders, so the panel would
+       * ship as a well-built empty box. Granting the permission ahead of the feature would mint
+       * authority that reaches nothing, which is exactly the state `NOT_YET_MODELLED` exists to
+       * make visible rather than to hide.
+       */
+      "tariff.read",
       // ═══ GROUP B, owner ruling 2026-08-26 — THE SHARPEST ROW IN THIS FILE ═══
       //
       // THE DOCTOR COULD NOT READ A PATIENT RECORD, AND THAT INCLUDED THE ALLERGY LIST.

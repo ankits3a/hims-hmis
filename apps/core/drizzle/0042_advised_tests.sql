@@ -1,0 +1,1 @@
+ALTER TABLE "opd_encounters" ADD COLUMN "advised_tests" jsonb;

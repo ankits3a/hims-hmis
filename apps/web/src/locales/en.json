@@ -574,7 +574,33 @@
       "SOS": "SOS (as needed)",
       "STAT": "STAT (now)",
       "other": "Other"
-    }
+    },
+    "historyView": "History view",
+    "history": {
+      "visits": "Visits",
+      "rx": "Prescriptions",
+      "vitals": "Vitals"
+    },
+    "noRxHistory": "No prescription has been issued to this patient in this system.",
+    "noVitalsHistory": "No vitals have been recorded for this patient in this system.",
+    "rxStatus": {
+      "superseded": "Superseded",
+      "cancelled": "Cancelled"
+    },
+    "forDays": "{{days}} days",
+    "flagged": "flagged",
+    "waitingCount": "{{waiting}} waiting",
+    "myDay": "My day",
+    "vitalsBp": "BP",
+    "vitalsPulse": "Pulse",
+    "vitalsSpo2": "SpO₂",
+    "advisedTests": "Advised investigations",
+    "advisedTestsNote": "These print on the prescription as advice, with today's price. They create no order and book no sample — the patient takes the slip to the counter.",
+    "advisedTestsSearch": "Search the priced service catalogue",
+    "advisedTestsNoMatch": "No active service matches. The catalogue is curated in the tariff, not here.",
+    "advisedTestsEmpty": "No investigation advised.",
+    "advisedTestsRemove": "Remove {{name}}",
+    "remove": "Remove"
   },
   "rx": {
     "regNo": "Reg. No.",
@@ -590,7 +616,9 @@
     "days": "{{n}} days",
     "followUp": "Follow-up in {{days}} days",
     "version": "Version {{n}}",
-    "print": "Print prescription"
+    "print": "Print prescription",
+    "advisedTests": "Advised investigations",
+    "advisedTestsNote": "Advice only — no test has been ordered or booked. Prices are as of {{date}} and are re-confirmed at the counter."
   },
   "slip": {
     "room": "Room",

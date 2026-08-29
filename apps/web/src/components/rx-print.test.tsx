@@ -16,6 +16,7 @@ const DATA: WireRxPrint = {
   encounter: {
     id: "enc-1", visitNo: "V2608180001", serviceDate: "2026-08-18", diagnosis: "Acute pharyngitis", icd10Code: "J02.9",
     advice: "warm fluids", followUpDays: 7, chiefComplaint: "fever 3d",
+    advisedTests: [],
   },
   vitals: {
     id: "vit-2", encounterId: "enc-1", patientId: "p-1",
@@ -115,4 +116,48 @@ describe("RxPrint", () => {
 
     expect(printSpy).toHaveBeenCalledTimes(1);
   });
+});
+
+/**
+ * PLAN 07d T5 / DD4 — **THE DISCLAIMER IS ON THE PAPER, NOT ONLY ON THE SCREEN.**
+ *
+ * The slip outlives the consultation and is read by a patient, a relative and a counter clerk, none
+ * of whom saw the screen. A printed list of test names that looked like an order would send
+ * somebody to a sample-collection desk that does not exist in this hospital's software.
+ */
+it("07d T5: advised tests print with their price, the as-of date, and the words 'no test has been ordered'", () => {
+  renderWithProviders(<RxPrint data={{
+    ...DATA,
+    encounter: {
+      ...DATA.encounter,
+      advisedTests: [
+        { serviceId: "svc-usg", code: "USG-ABD", name: "Ultrasound abdomen", pricePaise: 120000 },
+      ],
+    },
+  }} />);
+
+  const block = screen.getByTestId("rx-advised-tests");
+  expect(block).toHaveTextContent("Ultrasound abdomen");
+  expect(block).toHaveTextContent("₹1,200.00");
+  expect(block).toHaveTextContent(/no test has been ordered or booked/i);
+  // E-9 — the slip names the day it is quoting, because the counter reprices.
+  expect(block).toHaveTextContent(DATA.encounter.serviceDate);
+});
+
+it("07d T5: a prescription with no advised tests prints no such block at all", () => {
+  renderWithProviders(<RxPrint data={DATA} />);
+  expect(screen.queryByTestId("rx-advised-tests")).not.toBeInTheDocument();
+});
+
+/**
+ * A browser tab open across a deploy can hold a print payload older than this field. An undefined
+ * list must read as "none advised" — a prescription that will not render is a patient who leaves
+ * without their slip.
+ */
+it("07d T5: a payload from before this field existed still renders", () => {
+  const stale = { ...DATA, encounter: { ...DATA.encounter } } as unknown as Record<string, unknown>;
+  delete (stale.encounter as Record<string, unknown>).advisedTests;
+  renderWithProviders(<RxPrint data={stale as never} />);
+  expect(screen.getByTestId("rx-date")).toBeInTheDocument();
+  expect(screen.queryByTestId("rx-advised-tests")).not.toBeInTheDocument();
 });

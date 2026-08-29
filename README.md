@@ -1075,6 +1075,16 @@ string to a role that does not exist would make it a permission nobody can ever 
 roles are created by `seed:roles` with grants and **no holders**, the `pharmacy` and `storekeeper`
 precedent.
 
+**Plan 07d T5 / DD6 — advised investigations (owner ruling O-2 of 07d, 2026-08-28).** `doctor`
+gains `tariff.read`, because a doctor advising an ultrasound should be able to tell the patient what
+it costs without walking them to the counter — and the price is the patient's first question. The
+selections print on the prescription as **advised tests with prices**; they create no order, book no
+sample and return no result, because there is no lab or radiology module in this system, and the
+screen and the printed slip both say so rather than implying a pipeline that does not exist.
+**`materials.stock.read`, the other grant DD6 names, is NOT made here**: the drug-availability panel
+it serves is gated on who holds the `pharmacy` role, and a permission granted ahead of its feature
+mints authority that reaches nothing.
+
 **Plan 07c T9 / DD14 — the supervisor's named-staff view (owner ruling O-2, 2026-08-28).**
 `front_office_supervisor` and `medical_superintendent` gain `staff.reports.read`, because a
 supervisor asked why a department's throughput fell should be able to look without borrowing the

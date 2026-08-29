@@ -7,7 +7,11 @@ export { simulateRevision } from "./simulation";
 export type { ImpactByService, ImpactLineDelta, ImpactReport, ImpactTotals } from "./simulation";
 export { loadPricingContext, validateTariffConfig } from "./context";
 export type { ConfigError } from "./context";
-export { appendRegulatedPrice, createService, listServices, resolveRegulatedPrices, updateService } from "./services";
+export {
+  appendRegulatedPrice, createService, listServices, listPriceList, resolveRegulatedPrices, updateService,
+} from "./services";
+/** PLAN 07d T5 — the active version's list price per active service; the cockpit's only price read. */
+export type { PriceListRow } from "./services";
 export {
   activateVersion, createDraftVersion, getVersion, listVersions, resolveActiveTariffVersion,
   setTariffItem, submitVersion, TARIFF_REVISION_APPROVAL_TYPE,

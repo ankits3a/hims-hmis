@@ -111,6 +111,17 @@ export type WireQueueEntryView = WireQueueEntry & {
   patient: WirePatientSummary | null;
 };
 
+/**
+ * PLAN 07d T5 / DD4 — one advised test. The price is a SNAPSHOT taken when the doctor advised it,
+ * never a live lookup: the slip is a quotation from a particular afternoon and the counter reprices.
+ */
+export type WireAdvisedTest = { serviceId: string; code: string; name: string; pricePaise: number };
+
+/** PLAN 07d T5 — `GET /tariff/price-list`: the active version's list price per active service. */
+export type WirePriceListRow = {
+  serviceId: string; code: string; name: string; category: string; pricePaise: number;
+};
+
 export type WireQueueView = {
   session: WireQueueSession; doctor: WireDoctor; ordered: WireQueueEntryView[];
   current: WireQueueEntryView | null; inConsult: WireQueueEntryView[]; waitingVitals: number;
@@ -192,6 +203,8 @@ export type WireRxPrint = {
   encounter: {
     id: string; visitNo: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
     advice: string | null; followUpDays: number | null; chiefComplaint: string | null;
+    /** PLAN 07d T5 — advised tests with the price AS OF the service date (DD4, E-9). */
+    advisedTests: WireAdvisedTest[];
   };
   vitals: WireVitals | null; lines: WireRxLine[]; qrPayload: string; version: number; issuedAt: string;
 };
@@ -294,3 +307,44 @@ export type WireDuplicateCandidate = { id: string; uhid: string; name: string | 
 export function walkIn(body: WireWalkInBody, idempotencyKey: string): Promise<WireWalkInResult> {
   return api("POST", "/opd/walk-in", body, idempotencyKey);
 }
+
+/**
+ * PLAN 07d T1 — the two cross-visit histories. `lines` is the prescription writer's persisted shape
+ * read back verbatim; the reader does not reinterpret it, which is why the fields are optional here
+ * rather than restated as a second, drifting copy of `RxLine`.
+ */
+export type WireRxHistoryLine = {
+  drug: string;
+  dose: string | null;
+  route: string | null;
+  frequency: string | null;
+  durationDays: number | null;
+  instructions: string | null;
+};
+
+export type WireRxHistoryItem = {
+  prescriptionId: string;
+  encounterId: string;
+  serviceDate: string;
+  issuedAt: string;
+  doctorId: string | null;
+  doctorName: string | null;
+  status: string;
+  version: number;
+  lines: WireRxHistoryLine[];
+};
+
+export type WireVitalsHistoryItem = {
+  vitalsId: string;
+  encounterId: string;
+  serviceDate: string;
+  recordedAt: string;
+  sbp: number | null;
+  dbp: number | null;
+  pulse: number | null;
+  rr: number | null;
+  spo2: number | null;
+  tempC: number | null;
+  band: string;
+  dangerFlags: unknown[];
+};

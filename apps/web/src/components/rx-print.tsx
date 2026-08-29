@@ -1,6 +1,7 @@
 import { QRCodeSVG } from "qrcode.react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { fmtPaise } from "../lib/format";
 import type { WireRxLine, WireRxPrint, WireVitals } from "../lib/opd-api";
 
 /**
@@ -99,6 +100,42 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
 
         {data.encounter.advice !== null && (
           <p className="text-sm">{t("rx.advice")}: {data.encounter.advice}</p>
+        )}
+
+        {/*
+          PLAN 07d T5 / DD4 — **ADVISED TESTS, AND THE PAPER SAYS WHAT THEY ARE NOT.**
+
+          This creates no order, books no sample and returns no result: there is no lab or radiology
+          module in this system. What it is, is what an Indian hospital does before a LIMS lands —
+          the tests are written on the slip WITH their prices, the patient takes it to the counter,
+          and somebody bills them.
+
+          The disclaimer is on the PAPER and not only on the screen, deliberately. The slip outlives
+          the consultation and is read by a patient, a relative and a counter clerk, none of whom
+          saw the screen. A printed list of test names that looked like an order would send somebody
+          to a sample-collection desk that does not exist.
+        */}
+        {/*
+          `?? []` IS NOT DEFENSIVE CLUTTER, and `auth.tsx` records the same reasoning for
+          `permissions ?? NO_PERMISSIONS`: a browser tab left open across a deploy can hold a print
+          payload older than this field, and an undefined list must read as "none advised" rather
+          than crash the whole printable document. A prescription that will not render is a patient
+          who leaves without their slip.
+        */}
+        {(data.encounter.advisedTests ?? []).length > 0 && (
+          <div data-testid="rx-advised-tests" className="text-sm">
+            <p className="font-medium">{t("rx.advisedTests")}</p>
+            <ul className="ml-4 list-disc">
+              {(data.encounter.advisedTests ?? []).map((test) => (
+                <li key={test.serviceId}>
+                  {test.name} — {fmtPaise(test.pricePaise)}
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-neutral-600">
+              {t("rx.advisedTestsNote", { date: data.encounter.serviceDate })}
+            </p>
+          </div>
         )}
         {data.encounter.followUpDays !== null && (
           <p data-testid="rx-follow-up" className="text-sm">

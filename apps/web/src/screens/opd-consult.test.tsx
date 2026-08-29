@@ -6,6 +6,23 @@ import { resetRealtimeClientForTests } from "../lib/realtime";
 import { renderWithProviders, stubFetch } from "../test-utils";
 import { OpdConsult } from "./opd-consult";
 
+/**
+ * PLAN 07d T6 — the screen gained ONE router component (`<Link to="/my-day">`), and a `<Link>`
+ * needs a `RouterProvider` that `renderWithProviders` does not build. The house convention is to
+ * mock `@tanstack/react-router` down to exactly what the screen uses — and the factory returns ONLY
+ * what it lists, which is why this is the one entry and why adding a second router import to this
+ * screen means adding it here too.
+ *
+ * A plain `<a href>` would have avoided the mock and was rejected: it is a full browser page load,
+ * and reloading the whole bundle mid-consultation to look at a brief is a worse trade than one line
+ * of test scaffolding (11g / DD1 records the same reasoning for the shell's own nav).
+ */
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ to, children, ...rest }: { to: string; children: React.ReactNode }) => (
+    <a href={to} {...rest}>{children}</a>
+  ),
+}));
+
 // 2026-08-18T04:00:00.000Z + 5:30 = 2026-08-18 09:30 IST (the T12/T13/T14 pin).
 const NOW_ISO = "2026-08-18T04:00:00.000Z";
 const TODAY = "2026-08-18";
@@ -160,6 +177,9 @@ const PRINT_DATA = {
   encounter: {
     id: "enc-1", serviceDate: TODAY, diagnosis: "Acute pharyngitis", icd10Code: "J02.9",
     advice: "warm fluids", followUpDays: 7, chiefComplaint: "fever 3d",
+    // PLAN 07d T5 — the wire shape gained `advisedTests`. The renderer tolerates its absence
+    // (a tab open across a deploy), but a fixture should be the shape the server actually sends.
+    advisedTests: [],
   },
   vitals: VITALS_LATEST,
   lines: [{
@@ -928,5 +948,245 @@ describe("OpdConsult", () => {
 
     await waitFor(() => expect(document.querySelectorAll(".print-doc")).toHaveLength(1));
     expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions")).toHaveLength(1);
+  });
+});
+
+/**
+ * PLAN 07d T1/T2/T6 — **THE PAST RECORD, WHICH THE DOCTOR HAS NEVER BEEN ABLE TO READ.**
+ *
+ * Before this task the history tab was one line per past visit and there was NO way to read a prior
+ * prescription at all — the only cross-encounter prescription query in the tree was private to the
+ * interaction checker. These assertions are about the three things that makes true: that the two
+ * new views exist and render the server's rows, that they are fetched ONLY when opened (each is a
+ * PHI read that writes an access-log row, and a read nobody looked at should not be recorded as
+ * one), and that an empty one says so rather than spinning.
+ */
+const RX_HISTORY = {
+  items: [
+    {
+      prescriptionId: "rx-2", encounterId: "enc-9", serviceDate: "2026-07-02", issuedAt: NOW_ISO,
+      doctorId: "doc-1", doctorName: "Dr Meera Rao", status: "active", version: 1,
+      lines: [{ drug: "Tab Amoxicillin 500 mg", dose: "1 tab", route: "oral", frequency: "TDS", durationDays: 5, instructions: null }],
+    },
+    {
+      prescriptionId: "rx-1", encounterId: "enc-8", serviceDate: "2026-03-11", issuedAt: NOW_ISO,
+      doctorId: "doc-2", doctorName: "Dr A Left", status: "superseded", version: 1,
+      lines: [{ drug: "Tab Metformin 500 mg", dose: "1 tab", route: "oral", frequency: "BD", durationDays: null, instructions: null }],
+    },
+  ],
+};
+const VITALS_HISTORY = {
+  items: [
+    { vitalsId: "v-1", encounterId: "enc-8", serviceDate: "2026-03-11", recordedAt: NOW_ISO, sbp: 124, dbp: 82, pulse: 78, rr: 16, spo2: 98, tempC: 36.8, band: "adult", dangerFlags: [] },
+    { vitalsId: "v-2", encounterId: "enc-9", serviceDate: "2026-07-02", recordedAt: NOW_ISO, sbp: 168, dbp: 104, pulse: 92, rr: 18, spo2: 96, tempC: 37.1, band: "adult", dangerFlags: [{ vital: "sbp", value: 168, bound: "max", limit: 160 }] },
+  ],
+};
+
+describe("07d T1 — the past-record panel", () => {
+  beforeEach(() => {
+    setToken(null);
+    localStorage.clear();
+    FakeWebSocket.reset();
+    resetRealtimeClientForTests();
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+    setToken("t-1");
+  });
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  /** The file's own harness, reused rather than duplicated — `baseRoutes` already reaches the panel. */
+  function withHistory(over: Record<string, Handler> = {}): Record<string, Handler> {
+    return {
+      ...baseRoutes(),
+      "GET /api/opd/patients/p-1/prescriptions": { status: 200, body: RX_HISTORY },
+      "GET /api/opd/patients/p-1/vitals": { status: 200, body: VITALS_HISTORY },
+      ...over,
+    };
+  }
+
+  const asked = (path: string): boolean => fetchCalls().some((c) => c.path.includes(path));
+
+  async function openHistoryTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await openPanel(user);
+    await user.click(screen.getByRole("tab", { name: "History" }));
+    await screen.findByTestId("timeline");
+  }
+
+  it("T2: the queue's DEPTH is shown, not only its rows — a doctor should not have to count", async () => {
+    mockRoutes(withHistory());
+    renderWithProviders(<OpdConsult />);
+    await screen.findByTestId("queue-row-qe-cur");
+
+    expect(screen.getByTestId("queue-depth")).toHaveTextContent("2 waiting");
+  });
+
+  /** T6 — 07c built the brief; a doctor who must navigate to it from the front door will not. */
+  it("T6: the doctor's own day is one click from the cockpit", async () => {
+    mockRoutes(withHistory());
+    renderWithProviders(<OpdConsult />);
+    await screen.findByTestId("queue-row-qe-cur");
+
+    expect(screen.getByRole("link", { name: "My day" })).toHaveAttribute("href", "/my-day");
+  });
+
+  /**
+   * THE LAZY FETCH IS A PRIVACY PROPERTY, NOT A PERFORMANCE ONE. Each history read writes a row
+   * into the PHI access log, so firing both on every consult render — or even on opening the tab —
+   * would fill the DPDP register with reads nobody performed.
+   */
+  it("T1: neither history is read until its own view is opened", async () => {
+    mockRoutes(withHistory());
+    await openHistoryTab(userEvent.setup());
+
+    expect(asked("/opd/patients/p-1/prescriptions")).toBe(false);
+    expect(asked("/opd/patients/p-1/vitals")).toBe(false);
+  });
+
+  it("T1: the prescription history renders every past prescription, and LABELS a superseded one", async () => {
+    mockRoutes(withHistory());
+    const user = userEvent.setup();
+    await openHistoryTab(user);
+
+    await user.click(screen.getByRole("button", { name: "Prescriptions" }));
+
+    expect(await screen.findByText(/Tab Amoxicillin 500 mg/)).toBeInTheDocument();
+    // A superseded version is SHOWN and labelled, never hidden: "what was this patient actually
+    // given in March" may well be the superseded row.
+    expect(screen.getByText(/Tab Metformin 500 mg/)).toBeInTheDocument();
+    expect(screen.getByText("Superseded")).toBeInTheDocument();
+    // E-7 — a prescription from a doctor who has left is readable; authorship is history.
+    expect(screen.getByText("Dr A Left")).toBeInTheDocument();
+  });
+
+  it("T1: the vitals history renders OLDEST first, so it reads as a trend, and flags a danger row", async () => {
+    mockRoutes(withHistory());
+    const user = userEvent.setup();
+    await openHistoryTab(user);
+
+    await user.click(screen.getByRole("button", { name: "Vitals" }));
+
+    const panel = await screen.findByTestId("vitals-history");
+    const text = panel.textContent ?? "";
+    expect(text.indexOf("2026-03-11")).toBeLessThan(text.indexOf("2026-07-02"));
+    expect(text).toContain("168/104");
+    expect(within(panel).getByText("flagged")).toBeInTheDocument();
+  });
+
+  /**
+   * T7 — §1.3 guarantees several panels are empty on day one (zero medicines are seeded and the
+   * `pharmacy` role has no holders), so a spinner that never resolves is the worst answer available.
+   */
+  it("T7: an empty history says so in a sentence rather than spinning", async () => {
+    mockRoutes(withHistory({ "GET /api/opd/patients/p-1/prescriptions": { status: 200, body: { items: [] } } }));
+    const user = userEvent.setup();
+    await openHistoryTab(user);
+
+    await user.click(screen.getByRole("button", { name: "Prescriptions" }));
+    expect(await screen.findByText(/No prescription has been issued to this patient/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * PLAN 07d T5 / DD4 — **ADVISED INVESTIGATIONS ARE ADVICE, AND EVERY SURFACE SAYS SO.**
+ *
+ * There is no lab or radiology module in this system — no order table, no result table, no
+ * accession (measured, §2). So the one thing these assertions defend above all others is that
+ * nothing here implies a pipeline that does not exist: the screen says it, the printed slip says
+ * it, and the price is a snapshot the counter re-confirms rather than a promise.
+ */
+const PRICE_LIST = {
+  items: [
+    { serviceId: "svc-usg", code: "USG-ABD", name: "Ultrasound abdomen", category: "procedure", pricePaise: 120000 },
+    { serviceId: "svc-cbc", code: "LAB-CBC", name: "Complete blood count", category: "procedure", pricePaise: 35000 },
+  ],
+};
+
+describe("07d T5 — advised investigations", () => {
+  beforeEach(() => {
+    setToken(null);
+    localStorage.clear();
+    FakeWebSocket.reset();
+    resetRealtimeClientForTests();
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+    setToken("t-1");
+  });
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  function routes(over: Record<string, Handler> = {}): Record<string, Handler> {
+    return {
+      ...baseRoutes(),
+      "GET /api/tariff/price-list": { status: 200, body: PRICE_LIST },
+      "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+      ...over,
+    };
+  }
+
+  it("says on the SCREEN that this creates no order — before a doctor assumes one exists", async () => {
+    mockRoutes(routes());
+    await openPanel(userEvent.setup());
+
+    const panel = await screen.findByTestId("advised-tests");
+    expect(within(panel).getByText(/create no order and book no sample/i)).toBeInTheDocument();
+    expect(within(panel).getByText("No investigation advised.")).toBeInTheDocument();
+  });
+
+  it("searches the priced catalogue and shows the price beside each service", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.type(screen.getByLabelText("Search the priced service catalogue"), "ultra");
+
+    expect(await screen.findByText("Ultrasound abdomen — ₹1,200.00")).toBeInTheDocument();
+    // A two-character floor: a catalogue search that fires on one letter is a list of everything.
+    expect(screen.queryByText(/Complete blood count/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * The selection is SAVED through the consult-note route, which is what makes it free of new
+   * authority: that route already requires the encounter's own treating doctor and an
+   * `in_consultation` state.
+   */
+  it("advising a test saves it on the consult note, with the price as a SNAPSHOT", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.type(screen.getByLabelText("Search the priced service catalogue"), "ultra");
+    await user.click(await screen.findByRole("button", { name: /Ultrasound abdomen/ }));
+
+    await waitFor(() => {
+      expect(within(screen.getByTestId("advised-chosen")).getByText("Ultrasound abdomen")).toBeInTheDocument();
+    });
+    const put = fetchCalls().filter((c) => c.method === "PUT" && c.path.endsWith("/consult/note")).at(-1);
+    expect(put?.body).toContain('"serviceId":"svc-usg"');
+    // The PRICE travels with it — a reference resolved later would make the printed slip a promise
+    // about today's tariff rather than a quotation from this afternoon (E-9).
+    expect(put?.body).toContain('"pricePaise":120000');
+  });
+
+  it("an advised test can be taken back off, and the removal is saved too", async () => {
+    mockRoutes(routes());
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.type(screen.getByLabelText("Search the priced service catalogue"), "ultra");
+    await user.click(await screen.findByRole("button", { name: /Ultrasound abdomen/ }));
+    await screen.findByTestId("advised-chosen");
+
+    await user.click(screen.getByRole("button", { name: "Remove Ultrasound abdomen" }));
+
+    await waitFor(() => { expect(screen.getByText("No investigation advised.")).toBeInTheDocument(); });
+    const put = fetchCalls().filter((c) => c.method === "PUT" && c.path.endsWith("/consult/note")).at(-1);
+    expect(put?.body).toContain('"advisedTests":[]');
+  });
+
+  /** E-10 — a service the hospital has withdrawn never appears; the catalogue is the source. */
+  it("a catalogue with nothing matching says why, rather than showing an empty box", async () => {
+    mockRoutes(routes({ "GET /api/tariff/price-list": { status: 200, body: { items: [] } } }));
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    await user.type(screen.getByLabelText("Search the priced service catalogue"), "ultra");
+    expect(await screen.findByText(/The catalogue is curated in the tariff, not here/i)).toBeInTheDocument();
   });
 });

@@ -15,6 +15,20 @@ import type { DoctorRow } from "./masters";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /** The consult record itself — every field optional, so a doctor may save the note in as many passes as they like. */
+/**
+ * PLAN 07d T5 / DD4 — ONE ADVISED TEST. `pricePaise` is a SNAPSHOT taken at the moment of advice,
+ * not a reference resolved at print time: E-9 rules that the slip carries an as-of date and the
+ * counter reprices, and a snapshot is what makes the printed sheet honest about being a quotation
+ * from a particular afternoon. `serviceId` is kept so Plan 17 can read the demand signal without
+ * matching on names.
+ */
+export type AdvisedTest = {
+  serviceId: string;
+  code: string;
+  name: string;
+  pricePaise: number;
+};
+
 export type ConsultNote = {
   chiefComplaint?: string | null;
   diagnosis?: string | null;
@@ -23,11 +37,19 @@ export type ConsultNote = {
   admissionAdvised?: boolean;
   referralTo?: string | null;
   referralNote?: string | null;
+  /**
+   * PLAN 07d T5 — advised tests ride the CONSULT NOTE rather than a route of their own, and that is
+   * what makes them free of new authority: `saveConsultNote` already requires the encounter's own
+   * treating doctor and an `in_consultation` state, so nobody else can write them and they cannot
+   * be added to a finished visit.
+   */
+  advisedTests?: AdvisedTest[] | null;
 };
 
 /** The encounter columns a note writes — the same set moveEncounter's patch accepts, so a completion is ONE update. */
 type NoteColumns = Partial<Pick<EncounterRow,
-  "chiefComplaint" | "diagnosis" | "icd10Code" | "advice" | "admissionAdvised" | "referralTo" | "referralNote">>;
+  "chiefComplaint" | "diagnosis" | "icd10Code" | "advice" | "admissionAdvised" | "referralTo" | "referralNote"
+  | "advisedTests">>;
 
 function noteColumns(note: ConsultNote | undefined): NoteColumns {
   const patch: NoteColumns = {};
@@ -39,6 +61,7 @@ function noteColumns(note: ConsultNote | undefined): NoteColumns {
   if (note.admissionAdvised !== undefined) patch.admissionAdvised = note.admissionAdvised;
   if (note.referralTo !== undefined) patch.referralTo = note.referralTo;
   if (note.referralNote !== undefined) patch.referralNote = note.referralNote;
+  if (note.advisedTests !== undefined) patch.advisedTests = note.advisedTests;
   return patch;
 }
 

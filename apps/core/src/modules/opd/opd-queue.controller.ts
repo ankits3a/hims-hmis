@@ -40,6 +40,19 @@ const consultNoteBody = z.object({
   admissionAdvised: z.boolean().optional(),
   referralTo: z.string().max(200).nullable().optional(),
   referralNote: z.string().max(2000).nullable().optional(),
+  /**
+   * PLAN 07d T5 / DD4 — advised tests, bounded on the way in. The cap of 20 is not arbitrary: it is
+   * a consultation's worth of advice, and an unbounded array on a jsonb column is a request body
+   * somebody can make arbitrarily large. `pricePaise` is a NON-NEGATIVE INTEGER for the reason
+   * money is paise everywhere in this tree — a float here would print a rounded rupee on a slip a
+   * patient is quoted from.
+   */
+  advisedTests: z.array(z.object({
+    serviceId: z.string().min(1).max(64),
+    code: z.string().min(1).max(64),
+    name: z.string().min(1).max(300),
+    pricePaise: z.number().int().nonnegative(),
+  })).max(20).nullable().optional(),
 });
 const consultCompleteBody = z.object({
   note: consultNoteBody.optional(),

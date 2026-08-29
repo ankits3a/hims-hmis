@@ -265,6 +265,11 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
     expect(print.encounter).toEqual({
       id: enc.id, visitNo: enc.visitNo, serviceDate: "2026-08-17", diagnosis: "Acute pharyngitis", icd10Code: "J02.9",
       advice: "fluids", followUpDays: null, chiefComplaint: "fever 3d",
+      // PLAN 07d T5 — `[]` when the doctor advised none, so the renderer needs no null branch. This
+      // assertion is `toEqual` and not `toMatchObject` on purpose (see the two-numerator note in
+      // the issue test above), and it CAUGHT this field arriving: a payload that grew something
+      // nobody decided to add should fail here, which is exactly what it did.
+      advisedTests: [],
     });
     expect(print.vitals).toMatchObject({ sbp: 120, band: "adult", dangerFlags: [] });
     expect(print.lines).toEqual(TWO_LINES);

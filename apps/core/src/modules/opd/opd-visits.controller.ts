@@ -8,6 +8,8 @@ import { opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
 import { abandonVisit, getVisit, listVisits, openVisit, patientTimeline, reEnterVisit } from "./encounters";
+import { patientRxHistory, patientVitalsHistory } from "./history";
+import type { RxHistoryItem, VitalsHistoryItem } from "./history";
 import { walkIn } from "./walk-in";
 import type { WalkInInput, WalkInResult } from "./walk-in";
 import { OpdError } from "./errors";
@@ -280,6 +282,45 @@ export class OpdVisitsController {
   async timeline(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<{ items: TimelineItem[] }> {
     try {
       return { items: await patientTimeline(this.db, actor, patientId) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * PLAN 07d T1 — THE TWO CROSS-VISIT HISTORIES, gated on `opd.consult` and NOT on
+   * `opd.visits.read`.
+   *
+   * The timeline above is `opd.visits.read`, which `front_office` holds, and that is right for what
+   * it returns: dates, departments, a diagnosis line and a count — the shape a clerk needs to answer
+   * "when was this patient last here". These two return the CLINICAL RECORD: what a patient was
+   * prescribed across every visit they have ever made, and every vitals reading ever taken. A
+   * registration clerk has no reason to read either, and `opd.consult` is the permission that means
+   * "this person conducts consultations".
+   *
+   * That is a deliberate NARROWING relative to the surface beside them, recorded here because a
+   * permission chosen quietly is how a permission model rots (07d DD6's own argument, applied to
+   * the strings this task does not add).
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("patients/:patientId/prescriptions")
+  async rxHistory(
+    @CurrentActor() actor: Actor, @Param("patientId") patientId: string,
+  ): Promise<{ items: RxHistoryItem[] }> {
+    try {
+      return { items: await patientRxHistory(this.db, actor, patientId) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.consult", "hospital")
+  @Get("patients/:patientId/vitals")
+  async vitalsHistory(
+    @CurrentActor() actor: Actor, @Param("patientId") patientId: string,
+  ): Promise<{ items: VitalsHistoryItem[] }> {
+    try {
+      return { items: await patientVitalsHistory(this.db, actor, patientId) };
     } catch (e) {
       toHttp(e);
     }

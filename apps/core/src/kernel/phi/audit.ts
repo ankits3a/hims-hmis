@@ -14,7 +14,18 @@ import type { Db } from "../db/client";
 /** The surfaces that read a patient's record. Extended by each module that adds one. */
 export type PhiSurface =
   | "patient.detail" | "patient.allergies"
-  | "opd.timeline" | "opd.vitals" | "opd.prescriptions" | "opd.visit";
+  | "opd.timeline" | "opd.vitals" | "opd.prescriptions" | "opd.visit"
+  /**
+   * PLAN 07d T1 / DD5 — THE TWO CROSS-VISIT SURFACES, and they are their own names rather than a
+   * reuse of `opd.vitals` / `opd.prescriptions`.
+   *
+   * Those two are ENCOUNTER-scoped: one visit, one consultation, the record the doctor is writing.
+   * These are PATIENT-scoped and span the merge chain — a doctor opening them reads every
+   * prescription this person has ever been issued, across departments and across doctors who have
+   * left. That is a materially larger read and an audit log that could not tell the two apart would
+   * answer "what did they actually see" wrong, which is the only question it exists for.
+   */
+  | "opd.rx_history" | "opd.vitals_history";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

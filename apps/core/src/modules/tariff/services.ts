@@ -4,6 +4,7 @@ import type { Actor } from "@hmis/contracts";
 import { regulatedPrices, services } from "../../kernel/db/schema";
 import { assertPaise } from "./money";
 import { TariffError } from "./errors";
+import { loadPricingContext } from "./context";
 import type { Db, Tx } from "../../kernel/db/client";
 
 export type ServiceRow = typeof services.$inferSelect;
@@ -130,4 +131,46 @@ export async function listRegulatedPrices(db: Db, serviceId: string): Promise<Re
     .from(regulatedPrices)
     .where(eq(regulatedPrices.serviceId, serviceId))
     .orderBy(desc(regulatedPrices.effectiveFrom), desc(regulatedPrices.seq));
+}
+
+/**
+ * PLAN 07d T5 / DD4 — **THE PRICE LIST: WHAT A SERVICE COSTS TODAY, AS A READ.**
+ *
+ * A doctor advising an ultrasound should be able to tell the patient what it costs, and the price
+ * is the patient's first question. `GET /tariff/services` returns the CATALOGUE and carries no
+ * price; `POST /billing/invoices/preview` prices anything but is gated on `billing.invoice.issue`,
+ * which a doctor does not hold and should not — pricing a draft invoice is the counter's act.
+ *
+ * So this is the read in between: the ACTIVE tariff version's price for every active service, on
+ * `tariff.read`, computing nothing. It is deliberately NOT a quotation engine — no discounts, no
+ * GST, no regulated clamp, no patient. Those are `priceInvoiceLines`'s job and they need a payer, a
+ * patient and an encounter. What a printed slip needs is the list price and the day it was read on,
+ * which is what E-9 means by "the slip carries the as-of date and the counter reprices".
+ *
+ * A hospital with no activated tariff version has no prices to publish, and this returns an empty
+ * list rather than raising: on day one that is the true answer, and an error would make an unusable
+ * screen out of a merely empty one.
+ */
+export type PriceListRow = {
+  serviceId: string;
+  code: string;
+  name: string;
+  category: string;
+  pricePaise: number;
+};
+
+export async function listPriceList(db: Db, at: Date = new Date()): Promise<PriceListRow[]> {
+  let ctx;
+  try {
+    ctx = await loadPricingContext(db, { at });
+  } catch {
+    return [];
+  }
+  const rows: PriceListRow[] = [];
+  for (const [serviceId, pricePaise] of Object.entries(ctx.tariff.items)) {
+    const info = ctx.services[serviceId];
+    if (info === undefined || !info.active) continue;
+    rows.push({ serviceId, code: info.code, name: info.name, category: info.category, pricePaise });
+  }
+  return rows.sort((a, b) => (a.name < b.name ? -1 : 1));
 }

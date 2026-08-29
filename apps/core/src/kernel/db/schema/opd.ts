@@ -243,6 +243,30 @@ export const opdEncounters = pgTable(
     icd10Code: text("icd10_code"), // §11.19-E fix 31: capturable at consult, not only at MRD coding
     advice: text("advice"),
     admissionAdvised: boolean("admission_advised").notNull().default(false),
+    /**
+     * PLAN 07d T5 / DD4 — **ADVISED TESTS, WHICH ARE ADVICE AND NOT AN ORDER.**
+     *
+     * `AdvisedTest[]`: the priced services a doctor selected during the consultation, each carrying
+     * the price AS OF THE MOMENT OF ADVICE. It creates no order, books no sample and returns no
+     * result — there is no lab or radiology module in this system, no order table, no result table
+     * and no accession (measured, §2). What it is instead is the thing an Indian hospital actually
+     * does before a LIMS lands: the doctor writes the tests on the slip with what they cost, the
+     * patient takes it to the counter, and somebody bills them.
+     *
+     * ═══ THE PRICE IS COPIED, NOT REFERENCED, AND THAT IS THE DECISION ═══
+     *
+     * A price stored beside the service id is a snapshot; a price looked up at print time is
+     * whatever the tariff says today. E-9 is explicit that the slip carries the AS-OF date and the
+     * counter reprices — so the snapshot is what makes the printed sheet honest about being a
+     * quotation from a particular afternoon rather than a promise.
+     *
+     * A COLUMN, NOT A TABLE. DD7 forbids new tables and this respects it: the purpose of that rule
+     * is to stop this phase building the ordering pipeline that belongs to Plan 17, and a list of
+     * names and prices on the encounter is the opposite of an order. It is also what makes the
+     * DEMAND SIGNAL real — DD4 says the selections tell Plan 17 which tests to carry first, and a
+     * selection that was never persisted tells nobody anything.
+     */
+    advisedTests: jsonb("advised_tests"),
     referralTo: text("referral_to"),
     referralNote: text("referral_note"),
     followUpDays: integer("follow_up_days"), // stamped at completion: config default or an extension value

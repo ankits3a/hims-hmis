@@ -10,7 +10,11 @@ import type {
   WireDoctor, WireEncounter, WireOpdConfig, WirePatientSummary, WirePrescription, WireQueueEntry,
   WireQueueEntryView, WireQueueView, WireRxPrint, WireTimelineItem, WireVitals,
   WireDuplicateHit, WireInteractionHit, WireRxNotice,
+  WireRxHistoryItem, WireVitalsHistoryItem,
+  WireAdvisedTest, WirePriceListRow,
 } from "../lib/opd-api";
+import { Link } from "@tanstack/react-router";
+import { fmtPaise } from "../lib/format";
 import { useRealtime } from "../lib/realtime";
 import { RxPrint } from "../components/rx-print";
 import { CheckboxField, FormKit, SelectField, TextField } from "../components/form-kit";
@@ -159,6 +163,11 @@ function noteBodyOf(n: NoteState): Record<string, string | null> {
 export function OpdConsult(): React.ReactElement {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  /** PLAN 07d T1 — which of the three histories the tab is showing. Drives the lazy fetches below. */
+  const [historyView, setHistoryView] = useState<"visits" | "rx" | "vitals">("visits");
+  /** PLAN 07d T5 — the tests the doctor has advised this consultation. Saved with the note. */
+  const [advisedTests, setAdvisedTests] = useState<WireAdvisedTest[]>([]);
+  const [testQuery, setTestQuery] = useState("");
   const today = todayIst();
 
   const [active, setActive] = useState<Active | null>(null);
@@ -277,6 +286,53 @@ export function OpdConsult(): React.ReactElement {
     queryFn: () => api<{ items: WireTimelineItem[] }>("GET", `/opd/patients/${patientId ?? ""}/timeline`),
     enabled: patientId !== null,
   });
+  /**
+   * PLAN 07d T1 — THE TWO READS THE DOCTOR DID NOT HAVE.
+   *
+   * Before this, the history tab was one line per past visit — date, department, doctor, diagnosis —
+   * and there was **no way to read a prior prescription at all**. The only cross-encounter
+   * prescription query in the tree was private to `runRxChecks`, used for interaction checking and
+   * never shown to anybody. A doctor who wanted to know what this patient was last given could not
+   * find out from this system.
+   *
+   * Both are fetched LAZILY — `enabled` on the tab being open — because they are the largest PHI
+   * reads the application makes, each writes an access-log row, and firing them on every consult
+   * screen render would fill the DPDP register with reads nobody performed. A read that was never
+   * looked at should not be recorded as one.
+   */
+  const rxHistory = useQuery({
+    queryKey: ["opd", "rx-history", patientId ?? ""],
+    queryFn: () => api<{ items: WireRxHistoryItem[] }>("GET", `/opd/patients/${patientId ?? ""}/prescriptions`),
+    enabled: patientId !== null && historyView === "rx",
+  });
+  const vitalsHistory = useQuery({
+    queryKey: ["opd", "vitals-history", patientId ?? ""],
+    queryFn: () => api<{ items: WireVitalsHistoryItem[] }>("GET", `/opd/patients/${patientId ?? ""}/vitals`),
+    enabled: patientId !== null && historyView === "vitals",
+  });
+
+  /**
+   * PLAN 07d T5 / DD4 + spike S2 — THE PRICED SERVICE CATALOGUE, FLAT AND SEARCHABLE.
+   *
+   * S2 asked whether `services.category` could group this list. Measured: it is free text with no
+   * CHECK, and a fresh database holds TWO service rows, both OPD consultation. The spike's own
+   * ruling for that answer is that T5 ships behind a category vocabulary this phase does NOT invent
+   * — the vocabulary belongs to tariff. So this is a flat search over active services, and the
+   * finding is routed rather than patched here.
+   *
+   * `tariff.read` is the grant DD6 makes for exactly this (README, Plan 07d T5).
+   */
+  const services = useQuery({
+    queryKey: ["tariff", "price-list"],
+    queryFn: () => api<{ items: WirePriceListRow[] }>("GET", "/tariff/price-list"),
+    enabled: active !== null,
+  });
+  const serviceMatches = (services.data?.items ?? [])
+    .filter((sv) => testQuery.trim().length >= 2
+      && (sv.name.toLowerCase().includes(testQuery.trim().toLowerCase())
+        || sv.code.toLowerCase().includes(testQuery.trim().toLowerCase())))
+    .filter((sv) => !advisedTests.some((a) => a.serviceId === sv.serviceId))
+    .slice(0, 8);
 
   const encounter = visit.data?.encounter ?? null;
   const vitalsRows = visit.data?.vitals ?? [];
@@ -397,6 +453,23 @@ export function OpdConsult(): React.ReactElement {
   };
 
   // ——— the note: autosaved on blur, and only when it actually changed ———
+
+  /**
+   * PLAN 07d T5 — advised tests are saved through the CONSULT NOTE, not a route of their own. That
+   * is what makes them free of new authority: `saveConsultNote` already requires the encounter's
+   * own treating doctor and an `in_consultation` state, so nobody else can write them and they
+   * cannot be attached to a finished visit.
+   */
+  const saveAdvised = async (next: WireAdvisedTest[]): Promise<void> => {
+    setAdvisedTests(next);
+    if (active === null) return;
+    setNoteError(null);
+    try {
+      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...noteBodyOf(note), advisedTests: next });
+    } catch (e) {
+      setNoteError(opdErrorMessage(e));
+    }
+  };
 
   const saveNote = async (): Promise<void> => {
     if (active === null) return;
@@ -708,7 +781,25 @@ export function OpdConsult(): React.ReactElement {
           </div>
           <ErrorLine message={queueError} />
 
-          <h2 className="pt-2 text-sm font-semibold">{t("opdConsult.queue")}</h2>
+          {/*
+            PLAN 07d T2 — QUEUE DEPTH, WHICH WAS FREE. `summaryByDoctor` has always returned
+            `waitingCount`; the cockpit rendered the LIST and never the number, so a doctor deciding
+            whether to take a tea break had to count rows. It is live on the same realtime topic the
+            list already subscribes to.
+          */}
+          <div className="flex items-baseline gap-3 pt-2">
+            <h2 className="text-sm font-semibold">{t("opdConsult.queue")}</h2>
+            {view === null ? null : (
+              <span data-testid="queue-depth" className="text-xs text-muted-foreground">
+                {t("opdConsult.waitingCount", { waiting: ordered.length })}
+              </span>
+            )}
+            {/*
+              PLAN 07d T6 — THE DOCTOR'S OWN DAY, ONE CLICK AWAY. 07c built the brief and put it on
+              `/my-day`; a doctor who has to navigate to it from the front door will not, mid-clinic.
+            */}
+            <Link to="/my-day" className="ml-auto text-xs underline">{t("opdConsult.myDay")}</Link>
+          </div>
           {view === null && queue.data !== undefined && (
             <p className="text-sm text-neutral-500">{t("opdConsult.noSession")}</p>
           )}
@@ -953,16 +1044,186 @@ export function OpdConsult(): React.ReactElement {
                 </TabsContent>
 
                 <TabsContent value="history">
-                  <ul data-testid="timeline" className="space-y-1 text-sm">
-                    {timelineItems.length === 0 && <li className="text-neutral-500">{t("opdConsult.noHistory")}</li>}
-                    {timelineItems.map((item) => (
-                      <li key={item.encounterId} data-testid={`timeline-row-${item.encounterId}`}>
-                        {item.serviceDate} · {item.departmentName ?? "—"} · {item.doctorName ?? "—"} · {item.diagnosis ?? "—"}
-                      </li>
+                  {/*
+                    PLAN 07d T1 — THREE VIEWS OF THE SAME PATIENT, and the two new ones are the point
+                    of the task. Visits is what existed; prescriptions and vitals are what a doctor
+                    has been unable to see since this application shipped.
+                  */}
+                  <div className="mb-2 flex gap-1" role="group" aria-label={t("opdConsult.historyView")}>
+                    {(["visits", "rx", "vitals"] as const).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        aria-pressed={v === historyView}
+                        className={`rounded border px-2 py-0.5 text-xs ${v === historyView ? "bg-accent font-medium" : ""}`}
+                        onClick={() => { setHistoryView(v); }}
+                      >
+                        {t(`opdConsult.history.${v}`)}
+                      </button>
                     ))}
-                  </ul>
+                  </div>
+
+                  {historyView === "visits" && (
+                    <ul data-testid="timeline" className="space-y-1 text-sm">
+                      {timelineItems.length === 0 && <li className="text-neutral-500">{t("opdConsult.noHistory")}</li>}
+                      {timelineItems.map((item) => (
+                        <li key={item.encounterId} data-testid={`timeline-row-${item.encounterId}`}>
+                          {item.serviceDate} · {item.departmentName ?? "—"} · {item.doctorName ?? "—"} · {item.diagnosis ?? "—"}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {historyView === "rx" && (
+                    <div data-testid="rx-history" className="space-y-2 text-sm">
+                      {rxHistory.isPending && <p className="text-neutral-500">{t("app.loading")}</p>}
+                      {!rxHistory.isPending && (rxHistory.data?.items ?? []).length === 0 && (
+                        <p className="text-neutral-500">{t("opdConsult.noRxHistory")}</p>
+                      )}
+                      {(rxHistory.data?.items ?? []).map((rx) => (
+                        <div key={rx.prescriptionId} className="rounded border p-2">
+                          <div className="flex flex-wrap items-baseline gap-2 text-xs text-muted-foreground">
+                            <span>{rx.serviceDate}</span>
+                            <span>{rx.doctorName ?? "—"}</span>
+                            {/*
+                              A SUPERSEDED VERSION IS SHOWN AND LABELLED, never hidden. "What was
+                              this patient actually given in March" may well be the superseded row,
+                              and a history that showed only the live version would quietly rewrite
+                              the past.
+                            */}
+                            {rx.status !== "active" && (
+                              <span className="rounded border border-state-waiting px-1 text-state-waiting">
+                                {t(`opdConsult.rxStatus.${rx.status}`)}
+                              </span>
+                            )}
+                          </div>
+                          <ul className="mt-1 space-y-0.5">
+                            {(Array.isArray(rx.lines) ? rx.lines : []).map((line, i) => (
+                              <li key={`${rx.prescriptionId}-${String(i)}`}>
+                                {line.drug}{line.dose === null ? "" : ` · ${line.dose}`}
+                                {line.frequency === null ? "" : ` · ${line.frequency}`}
+                                {line.durationDays === null ? "" : ` · ${t("opdConsult.forDays", { days: line.durationDays })}`}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {historyView === "vitals" && (
+                    <div data-testid="vitals-history" className="space-y-1 text-sm">
+                      {vitalsHistory.isPending && <p className="text-neutral-500">{t("app.loading")}</p>}
+                      {!vitalsHistory.isPending && (vitalsHistory.data?.items ?? []).length === 0 && (
+                        <p className="text-neutral-500">{t("opdConsult.noVitalsHistory")}</p>
+                      )}
+                      {/*
+                        OLDEST FIRST, because this is read as a TREND and a trend read backwards is a
+                        trend nobody sees. The server returns it in this order; the screen does not
+                        re-sort it.
+                      */}
+                      {(vitalsHistory.data?.items ?? []).map((v) => (
+                        <div key={v.vitalsId} className="flex flex-wrap gap-x-3 tabular-nums">
+                          <span className="text-muted-foreground">{v.serviceDate}</span>
+                          {/*
+                            SHORT labels, in this screen's own namespace. `opdVitals.field.*` are the
+                            FORM labels ("SBP (mmHg)") and are correct there and wrong in a dense
+                            trend row — and `opdVitals.bp` does not exist at all, which is what a
+                            first draft of this block referenced and would have rendered as a raw key.
+                          */}
+                          <span>{t("opdConsult.vitalsBp")} {v.sbp ?? "—"}/{v.dbp ?? "—"}</span>
+                          <span>{t("opdConsult.vitalsPulse")} {v.pulse ?? "—"}</span>
+                          <span>{t("opdConsult.vitalsSpo2")} {v.spo2 ?? "—"}</span>
+                          {Array.isArray(v.dangerFlags) && v.dangerFlags.length > 0 && (
+                            <span className="text-state-danger">{t("opdConsult.flagged")}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </TabsContent>
               </Tabs>
+
+              {/*
+                PLAN 07d T5 / DD4 — **ADVISED INVESTIGATIONS: A CATALOGUE AND A PRICE, NOT AN ORDER.**
+
+                There is no lab or radiology module in this system — no order table, no result table,
+                no accession — and this does not pretend otherwise. The doctor picks from the priced
+                service catalogue and the selections print on the prescription as ADVICE. That is
+                how an Indian hospital works before a LIMS lands, it answers the question the
+                patient actually asks at the chair, and the selections become the demand signal that
+                tells Plan 17 which tests to carry first.
+
+                The screen SAYS all of that, in a sentence, where a doctor would otherwise assume a
+                pipeline exists. A UI that implies an order somebody must then chase is worse than
+                one that admits there is none.
+              */}
+              {active !== null && (
+                <div data-testid="advised-tests" className="space-y-2 rounded border p-3">
+                  <h2 className="text-sm font-medium">{t("opdConsult.advisedTests")}</h2>
+                  <p className="text-xs text-muted-foreground">{t("opdConsult.advisedTestsNote")}</p>
+
+                  <input
+                    className="w-full rounded border px-2 py-1 text-sm"
+                    placeholder={t("opdConsult.advisedTestsSearch")}
+                    aria-label={t("opdConsult.advisedTestsSearch")}
+                    value={testQuery}
+                    onChange={(e) => { setTestQuery(e.target.value); }}
+                  />
+
+                  {/*
+                    E-10 — an INACTIVE service never appears: the catalogue is the source, and a
+                    hospital cannot advise a test it has withdrawn. `listPriceList` filters them out
+                    server-side, so this list cannot show one even by accident.
+                  */}
+                  {serviceMatches.length > 0 && (
+                    <ul className="space-y-1 text-sm">
+                      {serviceMatches.map((sv) => (
+                        <li key={sv.serviceId}>
+                          <button
+                            type="button"
+                            className="w-full rounded border px-2 py-1 text-left hover:bg-accent"
+                            onClick={() => {
+                              void saveAdvised([...advisedTests, {
+                                serviceId: sv.serviceId, code: sv.code, name: sv.name, pricePaise: sv.pricePaise,
+                              }]);
+                              setTestQuery("");
+                            }}
+                          >
+                            {sv.name} — {fmtPaise(sv.pricePaise)}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {/* §1.3's promise: several panels are empty on day one, and each says why. */}
+                  {testQuery.trim().length >= 2 && serviceMatches.length === 0 && (
+                    <p className="text-xs text-muted-foreground">{t("opdConsult.advisedTestsNoMatch")}</p>
+                  )}
+
+                  {advisedTests.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">{t("opdConsult.advisedTestsEmpty")}</p>
+                  ) : (
+                    <ul data-testid="advised-chosen" className="space-y-1 text-sm">
+                      {advisedTests.map((a) => (
+                        <li key={a.serviceId} className="flex items-baseline gap-2">
+                          <span>{a.name}</span>
+                          <span className="tabular-nums text-muted-foreground">{fmtPaise(a.pricePaise)}</span>
+                          <button
+                            type="button"
+                            className="ml-auto text-xs underline"
+                            aria-label={t("opdConsult.advisedTestsRemove", { name: a.name })}
+                            onClick={() => { void saveAdvised(advisedTests.filter((x) => x.serviceId !== a.serviceId)); }}
+                          >
+                            {t("opdConsult.remove")}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
 
               {/* (c) completion */}
               <div className="space-y-2 rounded border p-3">

@@ -12,6 +12,7 @@ import { loadOpdConfig } from "./config";
 import { requireTreatingDoctor } from "./consultation";
 import { getEncounter } from "./encounters";
 import { OpdError } from "./errors";
+import type { AdvisedTest } from "./consultation";
 import { visibleEncounterFor } from "./read-gate";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { prescriptionIssued, rxQrSignatureFailed } from "./events";
@@ -522,6 +523,13 @@ export type RxPrintData = {
   encounter: {
     id: string; visitNo: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
     advice: string | null; followUpDays: number | null; chiefComplaint: string | null;
+    /**
+     * PLAN 07d T5 / DD4 — the advised tests, printed as ADVICE. They ride the print payload because
+     * the printed slip is where a patient reads them and where they take them to the counter — and
+     * `advisedAsOf` is the service date rather than a fresh timestamp, so the sheet says which day's
+     * prices it is quoting (E-9: the slip carries the as-of date, the counter reprices).
+     */
+    advisedTests: AdvisedTest[];
   };
   vitals: VitalsRow | null;
   lines: RxLine[];
@@ -561,6 +569,8 @@ export async function getPrescriptionPrint(db: Db, cfg: AppConfig, actor: Actor,
     encounter: {
       id: encounter.id, visitNo: encounter.visitNo, serviceDate: encounter.serviceDate, diagnosis: encounter.diagnosis, icd10Code: encounter.icd10Code,
       advice: encounter.advice, followUpDays: encounter.followUpDays, chiefComplaint: encounter.chiefComplaint,
+      // Read back verbatim; `[]` when the doctor advised none, so the renderer needs no null branch.
+      advisedTests: Array.isArray(encounter.advisedTests) ? (encounter.advisedTests as AdvisedTest[]) : [],
     },
     vitals: vitals[vitals.length - 1] ?? null, // the LATEST reading — a danger flag never auto-clears (D4)
     lines: row.lines as RxLine[],

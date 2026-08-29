@@ -11,7 +11,7 @@ import { WorkflowError } from "../../kernel/workflow/instances";
 import { withTx } from "../../kernel/db/client";
 import { TariffError } from "./errors";
 import { DISCOUNT_CATEGORIES } from "./types";
-import { appendRegulatedPrice, createService, listRegulatedPrices, listServices, updateService } from "./services";
+import { appendRegulatedPrice, createService, listRegulatedPrices, listServices, updateService, listPriceList } from "./services";
 import {
   activateVersion, createDraftVersion, getVersion, listVersions, setTariffItem, submitVersion,
 } from "./versions";
@@ -20,6 +20,7 @@ import { loadPricingContext } from "./context";
 import { listAdjustmentRules, upsertAdjustmentRule } from "./rules";
 import { getGstSettings, listGstCategories, upsertGstCategory, upsertGstSettings } from "./gst-config";
 import type { TariffErrorCode } from "./errors";
+import type { PriceListRow } from "./services";
 import type { Db } from "../../kernel/db/client";
 
 // Errors → HTTP, defined once (the patients toHttp convention). The code is folded into the
@@ -188,6 +189,18 @@ export class TariffController {
     } catch (e) {
       toHttp(e);
     }
+  }
+
+  /**
+   * PLAN 07d T5 / DD4 — the active version's list price per active service, on `tariff.read`.
+   * See `listPriceList` for why this is not `POST /billing/invoices/preview` (that route needs
+   * `billing.invoice.issue`, which is the counter's authority and not a prescriber's) and why it
+   * computes no discount, GST or clamp.
+   */
+  @RequirePermission("tariff.read", "hospital")
+  @Get("price-list")
+  async priceListRoute(): Promise<{ items: PriceListRow[] }> {
+    return { items: await listPriceList(this.db) };
   }
 
   @RequirePermission("tariff.read", "hospital")
