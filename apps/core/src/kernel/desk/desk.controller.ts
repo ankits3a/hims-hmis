@@ -26,6 +26,23 @@ function istDay(at: Date): string {
   return new Date(at.getTime() + IST_UTC_OFFSET_MINUTES * 60 * 1000).toISOString().slice(0, 10);
 }
 
+/**
+ * PLAN 07c T2 A4 / E-5 — A REPORT FOR A DAY THAT IS STILL HAPPENING SAYS SO.
+ *
+ * A shift report is printed, signed and filed. One pulled at 14:00 and one pulled at 21:00 are
+ * different documents with the same title and the same date, and the mid-shift one is not the
+ * close — it is a snapshot that will be wrong within the hour. The word for that is PROVISIONAL,
+ * and it belongs to the SERVER rather than to the screen: the screen, the print and the CSV are
+ * three renderings of one model (DD5), and a flag computed in each of them is three chances for the
+ * paper in the file to disagree with the file on the disk.
+ *
+ * A FUTURE date is provisional too, and deliberately so — nothing about it is settled yet, and the
+ * alternative (calling an empty future day "final") is the one reading that is definitely wrong.
+ */
+function isProvisional(date: string, now: Date): boolean {
+  return date >= istDay(now);
+}
+
 const deskQuery = z.object({ date: z.string().length(10).optional() });
 
 /**
@@ -69,13 +86,16 @@ export class DeskController {
    * id. Self-scoping is structural rather than a check a later edit can drop.
    */
   @Get("report")
-  async report(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ date: string; sections: ReportSection[] }> {
+  async report(
+    @CurrentActor() actor: Actor, @Query() query: unknown,
+  ): Promise<{ date: string; provisional: boolean; sections: ReportSection[] }> {
     const q = deskQuery.parse(query);
     const now = new Date();
     const date = q.date ?? istDay(now);
-    if (actor.type !== "user") return { date, sections: [] };
+    const provisional = isProvisional(date, now);
+    if (actor.type !== "user") return { date, provisional, sections: [] };
     const providers = collectDeskProviders(this.registry);
-    return { date, ...(await loadReport(providers, { db: this.db, actor, date, now })) };
+    return { date, provisional, ...(await loadReport(providers, { db: this.db, actor, date, now })) };
   }
 
   /**
@@ -101,7 +121,12 @@ export class DeskController {
     const providers = collectDeskProviders(this.registry);
     const { sections } = await loadReport(providers, { db: this.db, actor, date, now });
 
-    const lines: string[][] = [];
+    /*
+     * THE FILE CARRIES THE SAME MARKER THE SCREEN DOES (T2 A4). A CSV outlives the screen it was
+     * pulled from — it is mailed, imported and reconciled weeks later — so a mid-shift export that
+     * does not say it is mid-shift is the one copy nobody can tell apart from the close.
+     */
+    const lines: string[][] = [[`report.date`, date], [`report.status`, isProvisional(date, now) ? "provisional" : "final"], []];
     for (const section of sections) {
       lines.push([section.titleKey]);
       lines.push(section.columnKeys);

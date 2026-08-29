@@ -35,7 +35,7 @@ export function LoginScreen(): React.ReactElement {
     setFailed(false);
     try {
       await login(data.username, data.password);
-      await navigate({ to: "/registration" });
+      await navigate({ to: "/" });
     } catch (e) {
       /**
        * PLAN 11e T6 / D6 — THE FORCED-CHANGE FORK.

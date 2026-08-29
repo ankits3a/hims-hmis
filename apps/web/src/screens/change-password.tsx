@@ -53,7 +53,7 @@ export function ChangePassword(): React.ReactElement {
     }
     try {
       await changePassword({ currentPassword: v.currentPassword, newPassword: v.newPassword });
-      await navigate({ to: "/registration" });
+      await navigate({ to: "/" });
     } catch (e) {
       setError(adminErrorMessage(e));
     }

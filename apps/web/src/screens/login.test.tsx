@@ -54,6 +54,10 @@ describe("LoginScreen", () => {
     expect(calls.some((c) => c.startsWith("POST /api/auth/login"))).toBe(true);
     expect(calls).toContain("GET /api/auth/me");
     expect(calls[0]).toContain('"username":"clerk1"');
+    // PLAN 07c T4 — a successful sign-in lands on `/`, the person's own desk. It used to land on
+    // `/registration`, which for a doctor or a cashier was somebody else's screen and, before the
+    // index route was fixed, was ALSO where `/` sent them straight back to.
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: "/" }));
   });
 
   it("shows the sign-in-failed alert when the credentials are rejected", async () => {

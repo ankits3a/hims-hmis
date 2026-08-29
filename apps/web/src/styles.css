@@ -46,6 +46,26 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /*
+   * PLAN 07c T7 / DD10 — FOUR SEMANTIC STATE TOKENS, AND COLOUR MEANS STATE AND NOTHING ELSE.
+   *
+   * Everything above this line is greyscale on purpose (`--chart-1..5` included, which is why DD7
+   * refuses to ship charts drawn in five shades of grey). Introducing colour is therefore a
+   * decision about MEANING rather than about decoration, and the decision is that a hue on this
+   * screen always answers "what state is this in": somebody is waiting, something is dangerous,
+   * something is settled, something is live. A brand accent, a "primary" button in blue, a coloured
+   * card border — none of those are states, and none of them get a token here.
+   *
+   * FOUR, and not more, because the desk is read at a glance across a counter: a person can hold
+   * four meanings and cannot hold nine. Chroma is kept low enough to survive the cheap TN panels on
+   * hospital desks, and every token has a dark-mode partner below — a hue that is legible on white
+   * is routinely invisible on near-black, and the whole point of a state colour is that it is seen.
+   */
+  --state-waiting: oklch(0.68 0.13 70);
+  --state-danger: oklch(0.577 0.245 27.325);
+  --state-settled: oklch(0.58 0.12 155);
+  --state-live: oklch(0.6 0.11 230);
 }
 
 .dark {
@@ -80,6 +100,12 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* PLAN 07c T7 — the same four meanings, lifted for a near-black ground. */
+  --state-waiting: oklch(0.8 0.13 70);
+  --state-danger: oklch(0.704 0.191 22.216);
+  --state-settled: oklch(0.75 0.12 155);
+  --state-live: oklch(0.75 0.11 230);
 }
 
 @theme inline {
@@ -118,6 +144,11 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  /* PLAN 07c T7 — without this mapping Tailwind v4 silently drops `text-state-waiting` et al. */
+  --color-state-waiting: var(--state-waiting);
+  --color-state-danger: var(--state-danger);
+  --color-state-settled: var(--state-settled);
+  --color-state-live: var(--state-live);
 }
 
 @layer base {

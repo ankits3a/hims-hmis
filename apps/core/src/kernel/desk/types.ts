@@ -35,6 +35,16 @@ export type DeskStat = {
   /** "median 41", "prior ₹2.61L" — omitted when no honest baseline exists yet (07c DD8). */
   compare?: string | null;
   tone?: "up" | "down" | "flat";
+  /**
+   * PLAN 07c T4 — WHERE THE ROWS BEHIND THIS FIGURE ARE, as an app path.
+   *
+   * A number with nothing behind it is decoration, and DD1's whole argument for composing a desk
+   * from permissions is that the desk is a place you LAUNCH from. "12 waiting" that cannot be
+   * opened tells a clerk something they will now go and find somewhere else — which is the three
+   * route changes per patient this plan series exists to remove. A stat may legitimately have no
+   * drill (a ratio, a session count), and `null` says so rather than a dead link saying it badly.
+   */
+  href?: string | null;
 };
 
 /** One thing that needs a person. Rows are the work; stats are the pulse. */
@@ -60,6 +70,23 @@ export type DeskCard = {
   titleKey: string;
   rows?: DeskRow[];
   stats?: DeskStat[];
+  /**
+   * PLAN 07c T4 / DD11 — THE REALTIME TOPICS THAT MAKE THIS CARD STALE, declared by the module
+   * that owns the card because the kernel cannot know them.
+   *
+   * The desk is a "now" surface at a counter, and a home screen that shows a number frozen at the
+   * moment it was opened is worse than one that shows nothing: nobody distrusts it. The module
+   * already knows which topics its own events land on — OPD's are `queue:<doctorId>:<date>` — so
+   * it names them here and the client subscribes to the union and refetches.
+   *
+   * A topic named here must be one the CALLER may subscribe to. That is not a check this seam
+   * makes: the gateway refuses a topic whose space the caller lacks the permission for, and the
+   * card's own `permission` is what already decided whether this provider ran at all. A provider
+   * naming a topic outside its own space would produce a `forbidden_topic` frame and a card that
+   * never refreshes — visible in the browser console, and the reason a provider should name only
+   * topics from the space its own module declares.
+   */
+  topics?: string[];
 };
 
 export type DeskProviderCtx = {

@@ -312,8 +312,15 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // The number moved BY EXECUTION rather than by prediction, exactly as the paragraphs above
     // record for 16a, 14 and 15: the run that added it failed here with `Received length: 33`
     // against the pinned 32.
-    expect(routes).toHaveLength(33);
+    // PLAN 07c T4 — 34 with `/my-day`, the person's own day: read it, print it, export it. `/` was
+    // ALREADY in this census and stays at one entry — it stopped being a `throw redirect` and
+    // became a component, which changes what the route DOES and not how many there are. The number
+    // moved BY EXECUTION rather than by prediction, exactly as the paragraphs above record for 16a,
+    // 14, 15 and 07b: the run that added `/my-day` failed here with `Received length: 34` against
+    // the pinned 33.
+    expect(routes).toHaveLength(34);
     expect(routes).toContain("/counter");
+    expect(routes).toContain("/my-day");
     expect(routes).toContain("/ot/list");
     expect(routes).toContain("/ot/book");
     expect(routes).toContain("/ot/recovery");

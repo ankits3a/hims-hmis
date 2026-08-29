@@ -281,6 +281,13 @@
       "when": 1787947301720,
       "tag": "0039_receipt_change_given",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1787983541920,
+      "tag": "0040_queue_session_actors",
+      "breakpoints": true
     }
   ]
 }

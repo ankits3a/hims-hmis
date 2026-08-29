@@ -68,3 +68,51 @@ export async function api<T>(method: string, path: string, body?: unknown, idemp
   if (!res.ok) throw new ApiError(res.status, parsed);
   return parsed as T;
 }
+
+/**
+ * PLAN 07c T3 — THE CLIENT HALF OF THE APP'S FIRST EXPORT, AND IT LIVES IN THIS FILE ON PURPOSE.
+ *
+ * `api()` parses JSON, so it cannot carry a CSV; the obvious move is a `fetch` in a download hook
+ * beside the screen that uses it. **That is forbidden, and a test enforces it**:
+ * `caddyfile-parity.test.ts` asserts `fetchCallingModules()` equals exactly `["lib/api.ts"]`,
+ * because the one-door property is what makes `API_BASE`, the `Authorization` header and the 401
+ * handling total rather than conventional (11g / DD1). A screen that reached for `fetch` directly
+ * would skip all three in one line, and in production its request would land on the SPA handler and
+ * come back as `index.html` with a 200. So the second door is built here, next to the first.
+ *
+ * ═══ THE SERVER NAMES THE FILE ═══
+ *
+ * `Content-Disposition` is READ rather than reconstructed. The server already sanitises the name
+ * (`kernel/report/csv.ts` — everything outside `[A-Za-z0-9._-]` becomes a dash, so a report title
+ * carrying a slash cannot steer a path), and a client that invented its own would drift from the
+ * `report.exported` event the export writes. `fallbackName` covers an edge that strips the header,
+ * which is a real deployment rather than a hypothetical.
+ */
+function filenameFromDisposition(header: string | null): string | null {
+  if (header === null) return null;
+  const quoted = /filename\s*=\s*"([^"]+)"/.exec(header);
+  const bare = /filename\s*=\s*([^;]+)/.exec(header);
+  return (quoted?.[1] ?? bare?.[1])?.trim() ?? null;
+}
+
+export async function apiDownload(path: string, fallbackName: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (token !== null) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}${path}`, { method: "GET", headers });
+  if (res.status === 401) setToken(null); // guard bounces to /login on next navigation
+  if (!res.ok) throw new ApiError(res.status, await res.text());
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filenameFromDisposition(res.headers.get("Content-Disposition")) ?? fallbackName;
+  /*
+   * In the tree before the click and out of it after: a click on an anchor that is not in the
+   * document is ignored by Firefox. The object URL is revoked in the same turn, because a blob that
+   * is never revoked is a leak that grows with every export of a long day.
+   */
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

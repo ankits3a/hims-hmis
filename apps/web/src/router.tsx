@@ -1,18 +1,22 @@
 import {
   Link, Outlet, createRootRoute, createRoute, createRouter, redirect, useNavigate,
 } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getToken } from "./lib/api";
 import { useAuth } from "./lib/auth";
 import { KeyboardProvider, ShortcutLegend } from "./lib/keyboard";
 import { PaletteProvider } from "./components/command-palette";
 import { switchLanguage } from "./lib/i18n";
+import { applyTheme, setTheme, storedTheme } from "./lib/theme";
 import i18next from "./lib/i18n";
 import { AlertsBell } from "./components/alerts-bell";
 import { ModeBanner } from "./components/mode-banner";
 import { LoginScreen } from "./screens/login";
 import { PatientInHandProvider } from "./lib/patient-in-hand";
 import { PatientStrip } from "./components/patient-strip";
+import { Desk } from "./screens/desk";
+import { MyDay } from "./screens/my-day";
 import { CounterDesk } from "./screens/counter-desk";
 import { RegistrationDesk } from "./screens/registration-desk";
 import { PatientDetail } from "./screens/patient-detail";
@@ -150,13 +154,26 @@ function Shell(): React.ReactElement {
   const { t } = useTranslation();
   const { logout, can } = useAuth();
   const navigate = useNavigate();
+  /*
+   * PLAN 07c T7 — the dark theme, finally driven. It is applied on mount as well as on click,
+   * because the class lives on `<html>` and a full page load starts without it: without this effect
+   * a person who chose dark would get one white flash of the whole application on every reload.
+   */
+  const [theme, setThemeState] = useState(storedTheme);
+  useEffect(() => { applyTheme(theme); }, [theme]);
   return (
     <PatientInHandProvider>
       <PaletteProvider>
       <KeyboardProvider>
       <div className="flex min-h-screen flex-col">
         <header className="no-print flex items-center gap-6 border-b px-4 py-2">
-          <span className="font-semibold">{t("app.title")}</span>
+          {/*
+            PLAN 07c T4 — THE TITLE IS THE WAY HOME. `/` carries no permission and belongs to no
+            module, so it cannot live in `NAV` (every row there is a `path`+`permission` pair that
+            `nav-parity.test.ts` compares against a module manifest). The universal affordance for
+            "take me to the front page" is the product name in the corner, and it is now that.
+          */}
+          <Link to="/" className="font-semibold hover:underline">{t("app.title")}</Link>
           {/*
             PLAN 11g / DD1 — `<Link>`, NOT `<a href>`, AND THIS IS THE UX HALF RATHER THAN THE FIX.
             A raw anchor is a full browser page load. Before the `/api/*` split that meant every
@@ -199,6 +216,17 @@ function Shell(): React.ReactElement {
             <AlertsBell />
             <button type="button" onClick={() => switchLanguage(i18next.language === "hi" ? "en" : "hi")}>
               {t("app.language")}
+            </button>
+            <button
+              type="button"
+              aria-label={t("app.theme")}
+              onClick={() => {
+                const next = theme === "dark" ? "light" : "dark";
+                setTheme(next);
+                setThemeState(next);
+              }}
+            >
+              {theme === "dark" ? t("app.themeLight") : t("app.themeDark")}
             </button>
             <button
               type="button"
@@ -258,12 +286,34 @@ const authedRoute = createRoute({
   component: Shell,
 });
 
+/**
+ * PLAN 07c T4 — `/` IS A HOME NOW, AND THE REDIRECT THAT MADE IT SOMEBODY ELSE'S SCREEN IS GONE.
+ *
+ * This route used to be `throw redirect({ to: "/registration" })`, unconditionally, for every
+ * authenticated user. A doctor, a cashier, a storekeeper and the administrator all landed on the
+ * patient REGISTRATION desk; role changed only which navigation links were hidden. It is the
+ * headline defect of this plan series — the application had no front door, only somebody's
+ * workbench with everyone else's name on the label.
+ *
+ * `Desk` renders the union of the cards the caller's PERMISSIONS unlock (DD1), so the person who
+ * used to be redirected here correctly sees the registration counter's cards, and everybody else
+ * stops seeing them.
+ */
 const indexRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/",
-  beforeLoad: () => {
-    throw redirect({ to: "/registration" });
-  },
+  component: Desk,
+});
+
+/**
+ * PLAN 07c T2/T3/T5 — the person's own day: read it, print it, export it. There is no `userId` in
+ * this path and none in the route it reads (`GET /me/report`), which is DD4's self-scoping as a
+ * property of the URL space rather than as a check somebody can forget.
+ */
+const myDayRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/my-day",
+  component: MyDay,
 });
 
 /**
@@ -506,7 +556,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, counterDeskRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, counterDeskRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,

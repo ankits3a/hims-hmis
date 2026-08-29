@@ -9,6 +9,10 @@ export const OPD_TOPIC_SPACES: TopicSpace[] = [
 export const OPD_REALTIME_NAMES = [
   "queue.called", "queue.skipped", "patient.checked_in", "visit.opened", "visit.abandoned", "visit.transferred",
   "vitals.recorded", "vitals.danger_flagged", "consultation.started", "consultation.completed",
+  // PLAN 07c T6 — the doctor-day opening and closing. They route on the same `queue:<doctorId>:<date>`
+  // topic as everything else in the hall, which is what makes the desk's hall card go live on the
+  // one fact it most needs: a session that has not opened yet.
+  "queue_session.opened", "queue_session.closed",
 ];
 type P = { doctorId?: string; fromDoctorId?: string; toDoctorId?: string; serviceDate?: string; roomId?: string | null; encounterId?: string };
 

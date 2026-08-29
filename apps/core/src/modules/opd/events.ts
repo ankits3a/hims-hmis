@@ -88,6 +88,30 @@ export const vitalsDangerFlagged = defineEvent("vitals.danger_flagged", MODULE, 
   flags: z.array(dangerFlagSchema).min(1),
 }));
 
+/**
+ * PLAN 07c T6 — THE DOCTOR-DAY OPENING AND CLOSING, WHICH NOTHING EMITTED BEFORE.
+ *
+ * `setSessionStatus` was the only writer of `opd_queue_sessions.status` and it appended NO event,
+ * so the single most useful thing a supervisor's desk can show — a session opened late, with no
+ * delay declared — could not be computed from anything. It is not a missing audit trail so much as
+ * a missing ALARM: a queue that was never opened raises no waiting alert, because nobody is waiting
+ * on a queue that does not exist.
+ *
+ * They carry the full `where` block so `opdTopicsFor` routes them to `queue:<doctorId>:<date>` like
+ * every other queue fact — minus `tokenNo`, which a session has none of. `scheduledStart` is the
+ * template's own start time when the doctor-day has a schedule, so a consumer can compute lateness
+ * without a second query; null when the doctor is unscheduled, where "late" has no meaning.
+ */
+export const queueSessionOpened = defineEvent("queue_session.opened", MODULE, z.object({
+  sessionId: id, doctorId: id, serviceDate: isoDate, roomId: z.string().nullable(),
+  openedAt: iso, scheduledStart: z.string().nullable(),
+}));
+
+export const queueSessionClosed = defineEvent("queue_session.closed", MODULE, z.object({
+  sessionId: id, doctorId: id, serviceDate: isoDate, roomId: z.string().nullable(),
+  closedAt: iso, seen: z.number().int().nonnegative(),
+}));
+
 export const queueCalled = defineEvent("queue.called", MODULE, z.object({
   encounterId: id, patientId: id, entryId: id, ...where,
   callCount: z.number().int().positive(),

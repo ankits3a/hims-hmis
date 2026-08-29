@@ -174,6 +174,26 @@ export const opdQueueSessions = pgTable(
     callsMade: integer("calls_made").notNull().default(0), // drives the E-32 every-Nth interleave
     openedAt: timestamp("opened_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
+    /**
+     * PLAN 07c T6 — WHO OPENED AND WHO CLOSED THE DOCTOR-DAY.
+     *
+     * Measured at kickoff: this table stamped WHEN and never WHO, and `setSessionStatus` — its only
+     * writer — appended no event at all. So *"who opened Dr Rao's queue this morning"* was
+     * unanswerable from any table and from the event log alike, and the consequence is bigger than a
+     * missing audit column: **a session that never opened produces no waiting alert**, because
+     * nobody can be waiting on a queue that does not exist yet. Silent lateness was the one thing a
+     * supervisor's desk most needed to show and the one thing nothing in the system recorded.
+     *
+     * NULLABLE, and permanently so: every row written before this migration has no answer, and a
+     * backfilled guess about who opened a queue three weeks ago would be worse than the gap. Null
+     * means "not recorded", which is true.
+     *
+     * PLAIN TEXT, NO FOREIGN KEY — this file's own header rule, followed rather than re-litigated:
+     * no OPD table references `users`, so the twelve of them stay in ONE truncate group in
+     * `test/helpers/db.ts`. `opened_by` on `opd_encounters` is stored the same way.
+     */
+    openedBy: text("opened_by"),
+    closedBy: text("closed_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("opd_queue_sessions_doctor_date_ux").on(t.doctorId, t.serviceDate)],

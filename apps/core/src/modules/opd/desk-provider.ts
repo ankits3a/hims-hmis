@@ -30,10 +30,18 @@ async function hallCard(ctx: DeskProviderCtx): Promise<DeskCard> {
     key: "opd.hall",
     band: "now",
     titleKey: "desk.opd.hall",
+    /**
+     * PLAN 07c T4 / DD11 — the hall is live, and every doctor's queue is a topic it changes on.
+     * One subscription per scheduled doctor is the honest set: `opdTopicsFor` routes every queue
+     * and visit event to `queue:<doctorId>:<serviceDate>` and there is no whole-hall topic to
+     * lean on. All of them sit in the `queue` space, which is gated on `opd.queue.read` — this
+     * provider's own permission, so a caller holding this card can always subscribe to them.
+     */
+    topics: summaries.map((s) => `queue:${s.doctor.id}:${ctx.date}`),
     stats: [
-      { key: "desk.opd.waiting", value: String(waiting) },
-      { key: "desk.opd.withVitals", value: String(withVitals) },
-      { key: "desk.opd.sessionsOpen", value: `${String(openSessions)} / ${String(summaries.length)}` },
+      { key: "desk.opd.waiting", value: String(waiting), href: "/opd/desk" },
+      { key: "desk.opd.withVitals", value: String(withVitals), href: "/opd/vitals" },
+      { key: "desk.opd.sessionsOpen", value: `${String(openSessions)} / ${String(summaries.length)}`, href: "/opd/desk" },
     ],
     /**
      * A DOCTOR WHO HAS NOT OPENED THEIR SESSION IS THE ONE THING THIS CARD NAMES, and it names a
@@ -69,10 +77,11 @@ async function myQueueCard(ctx: DeskProviderCtx, doctorId: string): Promise<Desk
     key: "opd.myQueue",
     band: "now",
     titleKey: "desk.opd.myQueue",
+    topics: [`queue:${doctorId}:${ctx.date}`],
     stats: [
-      { key: "desk.opd.waiting", value: String(mine?.waitingCount ?? 0) },
-      { key: "desk.opd.nowServing", value: mine?.nowServing === null || mine === undefined ? "—" : String(mine.nowServing) },
-      { key: "desk.opd.seen", value: String(seen[0]?.n ?? 0) },
+      { key: "desk.opd.waiting", value: String(mine?.waitingCount ?? 0), href: "/opd/consult" },
+      { key: "desk.opd.nowServing", value: mine?.nowServing === null || mine === undefined ? "—" : String(mine.nowServing), href: "/opd/consult" },
+      { key: "desk.opd.seen", value: String(seen[0]?.n ?? 0), href: "/my-day" },
     ],
   };
 }
@@ -96,8 +105,14 @@ async function myVisitsCard(ctx: DeskProviderCtx): Promise<DeskCard> {
     band: "today",
     titleKey: "desk.opd.myVisits",
     stats: [
-      { key: "desk.opd.opened", value: String(opened[0]?.n ?? 0) },
-      { key: "desk.opd.stillHere", value: String(live[0]?.n ?? 0) },
+      /**
+       * PLAN 07c T4 — BOTH FIGURES DRILL, AND THEY DRILL TO DIFFERENT PLACES. "Opened" is the
+       * person's own day and its rows are the report this provider already composes (T2), so it
+       * goes to `/my-day`. "Still here" is work in the hall right now, and its rows are the
+       * queue board. Sending both to the same screen would make one of the two a lie.
+       */
+      { key: "desk.opd.opened", value: String(opened[0]?.n ?? 0), href: "/my-day" },
+      { key: "desk.opd.stillHere", value: String(live[0]?.n ?? 0), href: "/opd/desk" },
     ],
   };
 }

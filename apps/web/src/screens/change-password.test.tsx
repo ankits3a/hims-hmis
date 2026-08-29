@@ -62,7 +62,10 @@ describe("ChangePassword", () => {
     renderWithProviders(<ChangePassword />);
     await fill("issued-by-admin", "the-one-i-chose", "the-one-i-chose");
 
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: "/registration" }));
+    // PLAN 07c T4 — `/`, not `/registration`. Landing a forced password change on the patient
+    // registration desk was the same defect as the index redirect: the first screen a person saw
+    // after being let in was somebody else's workbench. `/` is now their own desk.
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: "/" }));
     expect(bodyOf("/api/auth/change-password")).toEqual({
       currentPassword: "issued-by-admin", newPassword: "the-one-i-chose",
     });
@@ -114,7 +117,10 @@ describe("ChangePassword", () => {
     renderWithProviders(<ChangePassword />);
     await fill("issued-by-admin", "the-one-i-chose", "the-one-i-chose");
 
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: "/registration" }));
+    // PLAN 07c T4 — `/`, not `/registration`. Landing a forced password change on the patient
+    // registration desk was the same defect as the index redirect: the first screen a person saw
+    // after being let in was somebody else's workbench. `/` is now their own desk.
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: "/" }));
     const call = vi.mocked(fetch).mock.calls.find(([input]) => {
       const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       return raw.split("?")[0] === "/api/auth/change-password";

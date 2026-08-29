@@ -6,7 +6,10 @@
     "title": "HMIS",
     "logout": "Log out",
     "language": "हिन्दी",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "theme": "Theme",
+    "themeDark": "Dark",
+    "themeLight": "Light"
   },
   "nav": {
     "formularyAdmin": "Formulary",
@@ -1555,5 +1558,58 @@
     "onCredit": "Billed on credit — amount owed",
     "freeFollowUp": "Free follow-up — nothing to pay",
     "nextStep": "Please go to the vitals desk next."
+  },
+  "desk": {
+    "title": "My desk",
+    "live": "Live",
+    "offline": "Not live — figures may be stale",
+    "empty": "Nothing is on your desk yet — your account holds no permission that opens a card. Ask an administrator.",
+    "myDay": "My day — read, print or export",
+    "band": {
+      "now": "Now",
+      "today": "Today",
+      "close": "Close"
+    },
+    "opd": {
+      "hall": "OPD hall",
+      "myQueue": "My queue",
+      "myVisits": "Visits I opened",
+      "waiting": "Waiting",
+      "withVitals": "Vitals done",
+      "sessionsOpen": "Sessions open",
+      "nowServing": "Now serving",
+      "seen": "Seen",
+      "opened": "Opened",
+      "stillHere": "Still here",
+      "notStarted": "Session not started"
+    }
+  },
+  "report": {
+    "opd": {
+      "myVisits": "Visits I opened"
+    },
+    "col": {
+      "time": "Time",
+      "visitNo": "Visit no",
+      "uhid": "UHID",
+      "patient": "Patient",
+      "type": "Type",
+      "status": "Status"
+    }
+  },
+  "myDay": {
+    "title": "My day",
+    "date": "Date",
+    "provisional": "Provisional",
+    "provisionalNote": "This day is not closed — figures may still change.",
+    "print": "Print",
+    "export": "Download CSV",
+    "exportFailed": "The export could not be prepared. Try again, or ask an administrator.",
+    "noRows": "Nothing recorded",
+    "empty": "Nothing was recorded against your account on this day.",
+    "docTitle": "Daily report",
+    "docFor": "For {{date}}",
+    "signedBy": "Signed",
+    "receivedBy": "Received by"
   }
 }

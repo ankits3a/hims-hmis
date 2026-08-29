@@ -53,6 +53,38 @@ describe("opd desk provider (07c)", () => {
     expect(JSON.stringify(hall)).not.toContain("Asha");
   });
 
+  /**
+   * PLAN 07c T4 A2 — EVERY FIGURE IS A DOOR, AND THE PROVIDER IS WHAT DECIDES WHERE IT OPENS.
+   *
+   * The client renders `href` and knows nothing about OPD; if this provider stops emitting one, the
+   * figure silently becomes decoration and the screen has no way to notice. So the pairing is
+   * asserted HERE, where the knowledge is — and the two `myVisits` figures go to DIFFERENT places
+   * on purpose: "opened" is the person's own day (`/my-day`), "still here" is work in the hall.
+   */
+  it("A2: every stat carries the drill target its rows actually live behind", async () => {
+    const cards = await opdDeskProvider.load(ctxFor(clerk));
+    const byKey = new Map(cards.flatMap((c) => c.stats ?? []).map((s) => [s.key, s.href]));
+    expect(Object.fromEntries(byKey)).toEqual({
+      "desk.opd.waiting": "/opd/desk",
+      "desk.opd.withVitals": "/opd/vitals",
+      "desk.opd.sessionsOpen": "/opd/desk",
+      "desk.opd.opened": "/my-day",
+      "desk.opd.stillHere": "/opd/desk",
+    });
+  });
+
+  /**
+   * PLAN 07c T4 A3 / DD11 — the card names the topics that make it stale, because the kernel cannot.
+   * Every one must sit in the `queue` space, which is gated on this provider's own permission: a
+   * topic from another module's space would be refused by the gateway and the card would quietly
+   * never refresh.
+   */
+  it("A3: the hall card declares a queue topic per doctor, all inside its own topic space", async () => {
+    const hall = (await opdDeskProvider.load(ctxFor(clerk))).find((c) => c.key === "opd.hall");
+    expect(hall?.topics).toEqual([`queue:${dra.doctorId}:${DATE}`]);
+    expect(hall?.topics?.every((t) => t.startsWith("queue:"))).toBe(true);
+  });
+
   it("my-visits counts only what THIS person opened", async () => {
     const a = await mkPatient(db, clerk.actor, { phone: "9876540003" });
     const b = await mkPatient(db, other.actor, { phone: "9876540004" });
