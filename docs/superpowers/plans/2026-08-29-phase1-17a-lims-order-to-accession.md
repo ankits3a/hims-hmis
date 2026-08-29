@@ -503,6 +503,24 @@ files. Nothing this phase needs a migration for — row 1's trap does not fire.
 | **kickoff (session 2 — FRESH, the seed read alone)** | 14,908,000 | **92,000** |
 | **T4 committed (`fba0d72`)** | 14,725,000 | **275,000** (of which 92,000 is the seed ⇒ **~183,000 marginal**) |
 | **T5 code-complete, full verify launched** | 14,499,000 | **226,000** |
+| **T5 committed (`b54acfd`)** | 14,477,000 | **248,000** |
+
+**THE PHASE, THROUGH THREE COMMITTED TASKS: ~655,000 against a 1,350,000 stop-loss — 51%.**
+`132,000` (T3, in the session that authored the plan) `+ 523,000` (this session: 92,000 of seed,
+183,000 for T4, 248,000 for T5). **The CLOSE says the direction plainly rather than banking the
+headroom, because a ceiling wrong in this direction misprices the next lane ruling exactly as the
+last one did with the sign flipped:**
+
+- **the per-phase fixed term of 90,000 was RIGHT** — a fresh session paid 92,000 to read in;
+- **the per-CRITICAL-task term of 330,000 is roughly DOUBLE what these tasks cost**: T4 at ~183,000
+  and T5 at ~248,000, and T5 is the more expensive one *because* it carried nine files of job
+  registration, thirteen mutants, a four-deep concurrency investigation and a full-verify triage —
+  i.e. the expensive task still came in 25% under the term;
+- **the review term of 260,000 is UNSPENT and still owed** (§9.6), so the phase's true total is not
+  yet known. On 22c-A's and phase 0's measured comparables the two passes land near it.
+
+**The honest amendment for the next stop-loss: a CRITICAL task in a LIGHT lane measures nearer
+200,000 than 330,000 when the phase inherits its spike, and the fixed term is the one that holds.**
 
 > **THE FRESH-SESSION SEED IS THE NUMBER THE STOP-LOSS GOT RIGHT, AND IT IS WORTH SAYING SO.**
 > §6 budgeted a **per-phase fixed ≈ 90,000** for the reading order, the pre-flight and the §2
@@ -914,6 +932,13 @@ is in the tree that produced every number above and in none of the commits).
 during and after the run.
 
 ### 9.6 The close review: pass 1 (fresh) and 9.6.2 (pass 2, fresh, over the fixes, a verdict per fix)
+
+**NOT RUN — AND THE PHASE IS NOT CLOSED UNTIL IT IS.** T3, T4 and T5 are committed and green;
+§9.6's two FRESH passes (§2.136, §2.140 — never one, never resumed) are the remaining obligation,
+and the brief the HANDOFF section already carries is the brief they take, unchanged. The
+`hmis_17a_scratch` database is therefore **deliberately NOT dropped**: §9.5 names it as the database
+of every run claimed above, and dropping it before a reviewer can ask for a re-measurement would
+erase the audit trail §2.137 exists to preserve. It is dropped by explicit name when §9.6 closes.
 ### 9.7 Actuals — **the token balance at every task boundary** (v3 §6 as amended; recorded only after §9.6 exists)
 ### 9.8 The question this phase existed to answer
 
