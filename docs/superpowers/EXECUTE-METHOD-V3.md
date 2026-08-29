@@ -259,6 +259,27 @@ separates them in its message — is the shape to copy.
    arithmetic. An edit mid-run silently invalidates the only evidence the commit is allowed to cite,
    and the sole honest recovery is to discard the result and pay for the run again.
 
+**AMENDED 2026-08-29 after Plan 07c — THE RUN HAS A CHEAP PREFIX, AND PAYING IT FIRST IS RULE 6.**
+
+Plan 07c paid for **eight verify launches to produce three commits**. Five came back red. One was a
+host OOM (unpreventable, correctly re-run rather than explained away) and one was a known
+pre-existing flake — but **three were preventable in under two minutes**, and both mechanisms are
+now rules because neither is a matter of care:
+
+6. **Run the cheap stages before you launch the expensive one.** `pnpm verify` is
+   `typecheck && lint && test`. A launch that dies on an unused variable dies in sixty seconds of
+   wall clock and costs the same TURNS as one that dies in the last suite — the launch, the waiter,
+   the notification, the log read, the fix, and a fresh twenty-minute run. So:
+   `pnpm typecheck && pnpm lint && echo "PREFLIGHT OK"` first, exit value read (ledger §2.132).
+
+7. **A new REGISTRATION moves censuses that a count-grep cannot find.** This repository pins its
+   registries on purpose — jobs, manifests, permissions, SPA routes — so that adding one is a
+   decision. But several of those pins are written as NAMED ARRAYS rather than counts, and one needs
+   a spy and a fake-clock instant besides. `grep "toHaveLength(12)"` found two of the four job
+   censuses and none of the extra edits. **Grep for an existing SIBLING's identifier instead** —
+   `grep -rn "retentionSweep" apps/core --include=*.ts` — because a sibling's name appears in every
+   place the new one must, whatever shape that place is written in (ledger §2.131).
+
 And one that binds the session's own turns: **arm exactly ONE blocking waiter on the exit file and
 then stop asking.** Every hand-poll of a long run costs a full context re-read to learn a single
 byte (§2.130). If there is nothing to do that cannot touch the frozen tree, that is rule 4 telling

@@ -788,6 +788,71 @@ exactly one blocking waiter —
 genuinely nothing to do that does not touch the tree, that is the signal to fold another task into
 the run (§2.129), not to check on it again.
 
+**2.131 — A NEW REGISTRATION MOVES CENSUSES THAT A COUNT-GREP CANNOT FIND. GREP FOR A SIBLING'S NAME, NOT FOR THE NUMBER.** *(Plan 07c close, 2026-08-29)*
+
+Plan 07c added a **thirteenth scheduler job** (`rollupUserDayFacts`) and a **sixteenth manifest**
+(`deskManifest`). Both are registrations this repository deliberately makes expensive: a census
+pins them so that adding one is a decision rather than a drift.
+
+The session found the censuses the cheap way and got it wrong twice, and the reason is mechanical:
+
+- `grep -rn "toHaveLength(12)"` found **two** job censuses — `jobs.test.ts` and
+  `alerts-parity.test.ts`. It could not find the other two, because `scheduler.test.ts` and
+  `test/worker-runtime.e2e.test.ts` express theirs as a **NAMED ARRAY** (`const THE_TWELVE = [...]`)
+  with no count to match. `scheduler.test.ts` needs two further edits a count-grep cannot suggest
+  at all: a **spy** in `spyOnTheTwelve`, and a **daily instant** in the fake-clock walk.
+- The same shape repeated for the manifest: `manifests.test.ts` carries two counts *and* a key list,
+  *and* a "the worker's registry differs in exactly four ways" array — and `seed-roles.test.ts`
+  carries seven separate pins (per-module permission counts, the role-model grant total, the
+  distinct-permission count, the reachability sum, the not-yet-modelled list, and TWO
+  `granted.length` arrays in the executed V5 idempotence test).
+
+Cost: **two of this phase's five red verify runs**, at roughly twenty minutes each, for a fix that
+took under two minutes once the failure named the file.
+
+The irony is that the censuses worked exactly as designed — each failed loudly with the received
+value beside the expected one. What failed was the SEARCH for them.
+
+**Mechanical form.** Before adding a registration, grep for an existing **SIBLING's identifier**
+rather than for the count:
+
+```
+grep -rn "retentionSweep" apps/core --include=*.ts     # every job census, spy and clock walk
+grep -rn '"formulary"' apps/core --include=*.test.ts   # every manifest census
+grep -rn "materials.stock.read" apps/core README.md    # every permission census and README table
+```
+
+A sibling's NAME appears in every place the new one must, whatever shape that place is written in.
+A count appears only where somebody happened to write a count.
+
+**2.132 — TYPECHECK AND LINT BEFORE YOU LAUNCH THE TWENTY-MINUTE RUN. THEY COST SECONDS AND THEY RUN FIRST ANYWAY.** *(Plan 07c close, 2026-08-29)*
+
+`pnpm verify` is `typecheck && lint && test`. One of this phase's verify launches died on a single
+unused variable — a `const dateQuery = z.object(...)` left behind when a route was folded into
+another — and it died in about sixty seconds, before a test ran.
+
+Sixty seconds is cheap. What was not cheap is everything around it: the launch turn, the blocking
+waiter, the notification, reading the log, the fix, and a fresh twenty-minute run. **A LIGHT phase's
+unit of cost is the verify RUN (§2.129), and a run that dies in the first stage costs nearly as much
+session time as one that dies in the last** — the wall clock is shorter, the turns are the same.
+
+The phase's whole record, stated plainly, because the ratio is the lesson: **eight verify launches
+for three commits. Five red.** One was a host OOM (`dmesg` named the pid; unpreventable and
+correctly re-run rather than explained away). One was a known pre-existing flake. **Three were
+preventable in under two minutes** — one by this rule, two by §2.131.
+
+**Mechanical form.** Immediately before `setsid nohup … pnpm verify`, run the two stages that are
+fast and deterministic, and read their exit VALUE:
+
+```
+pnpm typecheck && pnpm lint && echo "PREFLIGHT OK"
+```
+
+Then add the census suites any new registration moves (§2.131) — `jest` on three named files is
+under a minute. Only then launch the run. This is not a substitute for verify; it is the cheap
+prefix of it, paid before the expensive suffix.
+
+
 
 ## 3. Plan-authoring defects
 
