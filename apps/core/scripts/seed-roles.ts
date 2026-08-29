@@ -784,6 +784,31 @@ export const NOT_YET_MODELLED: readonly NotYetModelled[] = [
       "spec section 14 confidential/VIP visibility beyond normal RBAC — it wants an owner ruling " +
       "about WHO may see a confidential record, and Plan 11d does not have one",
   },
+  // ──────────────── PLAN 22c-A T1/DD7 — the privacy WRITE split, held by nobody ────────────────
+  // These two are the deliberate half of the same argument `patients.confidential.read` makes
+  // above. Measured in production on 2026-08-29 (spike S5): SEVENTEEN of thirty-five users hold
+  // `patients.update`, which today carries the power to set `is_confidential`, while
+  // `patients.confidential.read` is held by ZERO roles. Seventeen people can hide a patient from
+  // every search surface in the hospital and nobody can read them back. Splitting the write out
+  // is what closes that door; granting the new string to any role in the same commit would leave
+  // the door exactly as wide and call it a fix.
+  {
+    permission: "patients.confidential.write",
+    reason:
+      "PLAN 22c-A DD7 — deliberately granted to NO role by the phase that declares it. Who may " +
+      "make a patient confidential is the same owner ruling `patients.confidential.read` above is " +
+      "still waiting for, and it is a Class-A grant: the runbook hands it to the owner rather " +
+      "than a phase minting the authority for itself",
+  },
+  {
+    permission: "patients.deceased.write",
+    reason:
+      "PLAN 22c-A DD7 — same split, colder path. `deceased_at` is a hard stop the notifications " +
+      "gateway reads at SEND time that beats urgency and beats everything else in the suppression " +
+      "gauntlet, so whoever holds this can silence every message to a living patient's family. " +
+      "Phase 1 has no death-recording flow to hang it on; IPD's death cascade is where it gets a " +
+      "holder, and until then no role should be able to set it by way of fixing a typo",
+  },
   {
     permission: "approvals.requests.create",
     reason:

@@ -550,7 +550,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       auth: 7, // 11e's six + `auth.elevation.review` (the elevation-review queue)
       workflow: 8,
       approvals: 4,
-      patients: 5,
+      patients: 7, // PLAN 22c-A T1 — 5 -> 7: the privacy write split (DD7), both held by nobody
       tariff: 5,
       opd: 14,
       billing: 14,
@@ -599,7 +599,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // argument — the mechanism is built and audited, and who holds it is an owner/DPO ruling.
       desk: 2,
     });
-    expect(installedRegistry().allPermissions()).toHaveLength(105);
+    expect(installedRegistry().allPermissions()).toHaveLength(107); // PLAN 22c-A T1: 105 -> 107
   });
 
   it("the role model is twenty-five roles, one hundred and sixty-eight grants, eighty-five distinct permissions", () => {
@@ -727,8 +727,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     }
   });
 
-  it("the reachability census closes: 105 declared = 91 held + 14 not yet modelled", () => {
-    expect(installedRegistry().allPermissions()).toHaveLength(105);
+  it("the reachability census closes: 107 declared = 91 held + 16 not yet modelled", () => {
+    expect(installedRegistry().allPermissions()).toHaveLength(107);
     // 42 + 13 until the 2026-08-23 ruling moved the four `workflow.definitions.*` strings across;
     // 46 + 13 until Plan 09 declared fourteen and DD18 granted four of them.
     // 50 until `auth.elevation.review` was declared; it is held from the first deploy because
@@ -763,9 +763,17 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // OWNER RULING 2026-08-29 — `staff.reports.drill` LEAVES the not-yet-modelled list (15 -> 14)
     // and joins the held set (90 -> 91). It is the only string this ruling moves: every other
     // permission the two rulings grant was already held by some other role.
+    // PLAN 22c-A T1 — 105 -> 107 declared, held UNCHANGED at 91, and NOT_YET_MODELLED 14 -> 16.
+    // Both new strings land on the unheld side ON PURPOSE (DD7), which makes this the second
+    // phase running to move that list — and unlike 07c's single row, this one adds two and grants
+    // nothing. That is the whole content of the privacy write split: `patients.confidential.write`
+    // and `patients.deceased.write` exist so that `patients.update` stops carrying them, and
+    // granting either one here would have re-opened the door the split closes. The owner's grant
+    // is a runbook step, and until it happens NOBODY can set those fields — which is strictly
+    // safer than today, where seventeen users can.
     expect(heldPermissions()).toHaveLength(91);
-    expect(NOT_YET_MODELLED).toHaveLength(14);
-    expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(105);
+    expect(NOT_YET_MODELLED).toHaveLength(16);
+    expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(107);
   });
 
   it("the README carries exactly four permission tables, of the measured shapes", () => {
@@ -985,6 +993,16 @@ describe("seed:roles — the reachability invariant (V1, V2)", () => {
       "partners.receivable.operate",
       "partners.statement.import",
       "patients.confidential.read",
+      // PLAN 22c-A T1 — `patients.confidential.write` and `patients.deceased.write` JOIN, and they
+      // join beside `patients.confidential.read` for the same reason it is here: who may make a
+      // patient invisible, and who may mark one dead, are owner rulings rather than engineering
+      // choices. What is new is the direction. `confidential.read` has always been unheld because
+      // nobody ruled; these two are unheld because the phase that created them REMOVED the power
+      // from `patients.update`, where seventeen production users held it by accident of it being
+      // the same permission as fixing a phone number (spike S5). An entry here is usually a gap;
+      // these two are a door being closed and left locked until the owner picks who gets the key.
+      "patients.confidential.write",
+      "patients.deceased.write",
       // `staff.reports.drill` LEFT this list on 2026-08-29, one day after it joined it: the owner
       // named who may open patient rows from a colleague's shift, and it is `staff_auditor` — a
       // role of its own, held by one person. It is the shortest stay any entry has had, and it is
@@ -1137,7 +1155,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     // registered directly after `duty_manager`.
     expect(first.roles.map((r) => r.granted.length)).toEqual([12, 14, 5, 11, 7, 1, 8, 11, 18, 10, 10, 1, 2, 3, 2, 3, 1, 11, 6, 11, 4, 4, 4, 3, 6]);
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
-    expect(first.declared).toBe(105);
+    expect(first.declared).toBe(107); // PLAN 22c-A T1 — the two DD7 privacy-write strings
     // MEASURED from role_permissions, not derived from the model. On this database only seed:roles
     // has run, so what is held is exactly what the model granted — 57, not the 63 the model CLAIMS
     // once seed:admin and seed:ops have also run. That SEVEN-permission gap IS MAJOR 1 (it was ten
@@ -1147,7 +1165,8 @@ describe("seed:roles — executed against a database (V5)", () => {
     expect(first.held).toBe(85);
     expect(first.held).toBe(modelPermissions().length);
     expect(heldPermissions()).toHaveLength(91);
-    expect(first.notYetModelled).toBe(14);
+    // PLAN 22c-A T1 — 14 -> 16. Both additions are DD7's privacy write split, unheld on purpose.
+    expect(first.notYetModelled).toBe(16);
     expect(first.expectedElsewhereAbsent).toBe(6);
     // And the census RECONCILES against the catalog, which is the property that makes it evidence:
     // 83 held + 14 unmodelled + 6 expected-elsewhere = 103 declared (Plan 15 T2 moved the first by
