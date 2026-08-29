@@ -853,6 +853,46 @@ under a minute. Only then launch the run. This is not a substitute for verify; i
 prefix of it, paid before the expensive suffix.
 
 
+**2.133 — A RULE APPLIED TO A LIST OF FILES YOU ALREADY KNOW IS NOT THE RULE. GREP THE TREE.** *(Plan 07c/07d deploy, 2026-08-29)*
+
+§2.131 was written earlier the same day: when adding a registration, grep for an existing **SIBLING's
+identifier** rather than for a count, because several censuses are named arrays with no number to
+match. Hours later, adding a twenty-fifth role, this session ran that grep — as:
+
+```
+grep -rn 'duty_manager' apps/core/test/seed-roles.test.ts apps/core/scripts/seed-roles.ts README.md
+```
+
+**Three named files, all of which were already open.** It found nothing new, because it could not:
+the search space was the answer already known. A FIFTH census went unnoticed until the verify went
+red — `test/seed-staff.test.ts`'s `KNOWN_ROLE_KEYS`, which DERIVES from `ROLE_MODEL` (so it gains a
+new role for free) while pinning the count by hand (so it fails). The command the rule actually
+prescribes finds it first:
+
+```
+grep -rn 'duty_manager' apps/core --include=*.ts -l
+```
+
+The rule was right and the application was hollow. It is the same shape as §2.88's *"a leg must read
+something that is not the thing under test"*, one level up: **a search whose scope is drawn from
+what you already believe cannot correct that belief.**
+
+**Mechanical form.** A census grep names a DIRECTORY and a glob, never a file list. If you catch
+yourself typing the second path, you have stopped searching and started confirming.
+
+**And the census count for a ROLE registration is now known and written down** — five test files
+plus a production config, none of which share a shape:
+
+| place | how it pins | grep finds it by |
+|---|---|---|
+| `scripts/seed-roles.ts` | the model itself | — |
+| `test/seed-roles.test.ts` | 9 separate pins (counts, arrays, sums, README prose) | role name |
+| `src/kernel/modules/manifests.test.ts` | 2 counts + a key list | manifest key |
+| `test/seed-staff.test.ts` | a DERIVED array + a hand-pinned count | role name |
+| `src/kernel/worker/scheduler.test.ts` | named array + a spy + a clock instant | job name |
+| `docker/prod/prometheus/alerts.yml` | a regex alternation + an `absent()` chain | job name |
+
+
 
 ## 3. Plan-authoring defects
 

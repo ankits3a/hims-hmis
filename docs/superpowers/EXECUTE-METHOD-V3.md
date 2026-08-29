@@ -280,6 +280,14 @@ now rules because neither is a matter of care:
    `grep -rn "retentionSweep" apps/core --include=*.ts` — because a sibling's name appears in every
    place the new one must, whatever shape that place is written in (ledger §2.131).
 
+   **AMENDED 2026-08-29, the same day, because the rule was followed and still missed one.** The
+   grep must name a **DIRECTORY and a glob**, never a file list. A session that ran
+   `grep -rn 'duty_manager' <three files it already had open>` learned nothing it did not already
+   know, and a fifth census — `seed-staff.test.ts`'s derived-but-hand-counted `KNOWN_ROLE_KEYS` —
+   went red in the verify instead. **A search whose scope is drawn from what you already believe
+   cannot correct that belief** (ledger §2.133). If you are typing the second file path, you have
+   stopped searching and started confirming.
+
 And one that binds the session's own turns: **arm exactly ONE blocking waiter on the exit file and
 then stop asking.** Every hand-poll of a long run costs a full context re-read to learn a single
 byte (§2.130). If there is nothing to do that cannot touch the frozen tree, that is rule 4 telling
