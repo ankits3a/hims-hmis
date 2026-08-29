@@ -37,6 +37,10 @@ const CONFLICT_CODES = new Set([
   "patient_not_active", "merge_same_patient", "merge_already_requested", "merge_not_requested",
   "merge_not_executed", "approval_not_granted", "unmerge_already_requested", "unmerge_not_requested",
   "allergy_not_active", "guardian_not_active",
+  // PLAN 22c-A T7 — an assurance move that is not an increase is a STATE conflict, not a malformed
+  // body: the caller asked for a level the record is already at or above. Found by the full core
+  // suite, which the narrow runs had not reached.
+  "assurance_not_increasing",
 ]);
 
 /** Patients errors → HTTP, defined once. Unrecognized errors rethrow — a 500 is a genuine bug, loudly. */
@@ -161,7 +165,18 @@ const patchBody = registerBody
     evidenceRef: z.string().max(200).nullable().optional(),
     /** The assurance level the presented evidence supports (DD5) — decides whether the stamp drops. */
     evidencedAt: z.enum(IDENTITY_ASSURANCE).optional(),
-  });
+  })
+  /**
+   * SECOND CLOSE REVIEW — `.strict()` CLOSES C1's CLASS, not just C1's instance.
+   *
+   * C1 was "zod silently stripped an unknown key and the clerk got HTTP 200 with nothing written."
+   * Adding the one missing field fixed that field. It did not fix the MECHANISM: a client sending
+   * `administrative_gender` in snake_case — a plausible integration, or a future mobile client —
+   * would still get 200, `changed: []`, no column, no version and no event. Silence on an unknown
+   * key is the wrong default for a surface that amends a person's legal identity. Every key the
+   * shipped form sends is declared above, so this refuses only what was already being discarded.
+   */
+  .strict();
 
 /** PLAN 22c-A T7 — the assurance upgrade is its own act, with its own body. */
 const assuranceBody = z.object({

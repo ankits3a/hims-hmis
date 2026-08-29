@@ -327,7 +327,19 @@ describe("patients e2e", () => {
         .expect(403);
     });
 
-    it("m9 — REGISTERING a confidential patient needs the same permission as flagging one", async () => {
+    it("m9 — REGISTERING a confidential patient still needs only `patients.register` (RULED)", async () => {
+      /**
+       * THIS TEST ASSERTED 403 UNTIL THE SECOND CLOSE REVIEW CALLED IT, and it was the clearest
+       * kind of defect: I gated registration in response to the first review's m9, saw the gate
+       * break eight shipped tests, reverted the gate — and left this test behind asserting the
+       * behaviour I had just decided against. A test that outlives the decision it encodes does
+       * not merely fail; it documents the opposite of the ruling to whoever reads it next.
+       *
+       * The ruling, restated where it is now enforced: `POST /patients` accepts `isConfidential`
+       * under `patients.register` alone, because marking a VIP or a staff-as-patient confidential
+       * AT THE COUNTER is an ordinary front-office act. DD7's permission governs changing an
+       * EXISTING patient's privacy flag — a decision about a record others may already have seen.
+       */
       const { id: plainId } = await createUser(db, { username: "regonly", fullName: "Reg", password: "p1234567" });
       const { token: plainToken } = await createSession(db, cfg, plainId);
       await createRole(db, "register_only", "Register only");
@@ -335,9 +347,16 @@ describe("patients e2e", () => {
         await grantPermissionToRole(db, registry, "register_only", p);
       }
       await assignRole(db, { userId: plainId, roleKey: "register_only", scopeType: "hospital" });
-      await request(app.getHttpServer())
+      const res = await request(app.getHttpServer())
         .post("/patients").set(...auth(plainToken))
         .send({ name: "VIP", sex: "male", isConfidential: true, alias: "P-9001", language: "hi" })
+        .expect(201);
+      expect(res.body.patient.isConfidential).toBe(true);
+
+      // …and the SAME actor cannot change that flag afterwards. This is the asymmetry, in one test.
+      await request(app.getHttpServer())
+        .patch(`/patients/${res.body.patient.id as string}`).set(...auth(plainToken))
+        .send({ isConfidential: false })
         .expect(403);
     });
 

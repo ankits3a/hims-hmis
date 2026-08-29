@@ -192,9 +192,10 @@ export function assuranceAfterAmendment(
    */
   if (evidencedAt === null) return "staff_verified";
   if (assuranceRank(evidencedAt) < currentRank) return "staff_verified";
-  if (assuranceRank(evidencedAt) >= assuranceRank("id_verified") && (evidenceRef ?? "").trim() === "") {
-    return "staff_verified";
-  }
+  // By this line `evidencedAt` already ranks at or above `current`, and `current` is already above
+  // `staff_verified` — so it is necessarily at `id_verified` or higher and the rank test the first
+  // draft carried here was unconditionally true. What remains is the part that decides anything.
+  if ((evidenceRef ?? "").trim() === "") return "staff_verified";
   return current;
 }
 
@@ -235,10 +236,22 @@ export async function upgradeAssurance(
   if (assuranceRank(toLevel) >= assuranceRank("id_verified") && (evidenceRef ?? "").trim() === "") {
     throw new PatientError("evidence_required", `${toLevel} needs an evidence reference`);
   }
-  await tx
+  const updated = await tx
     .update(patients)
-    .set({ identityAssurance: toLevel, updatedBy: actor.id, updatedAt: sql`now()` })
-    .where(and(eq(patients.id, patientId), eq(patients.status, "active")));
+    .set({ identityAssurance: toLevel, updatedBy: actor.id, updatedAt: sql`clock_timestamp()` })
+    .where(and(eq(patients.id, patientId), eq(patients.status, "active")))
+    .returning({ id: patients.id });
+  /**
+   * SECOND CLOSE REVIEW — THE ROW-COUNT GUARD. `updatePatient` has had this since it was written;
+   * this path did not. Without it, a patient frozen by a concurrent merge between the SELECT above
+   * and this UPDATE produces zero affected rows, and the code below would still commit an event
+   * asserting `staff_verified → abha_verified` against real evidence and return 201. The audit
+   * trail M3 exists to create would record an upgrade that never happened, which is worse than the
+   * silence M3 replaced.
+   */
+  if (updated.length === 0) {
+    throw new PatientError("patient_not_active", "patient was frozen concurrently");
+  }
   /**
    * CLOSE REVIEW M3 — AN UPGRADE WAS WRITING NO EVENT AT ALL, and this is the more
    * security-sensitive direction of the ladder. `identityAssuranceChanged` declares

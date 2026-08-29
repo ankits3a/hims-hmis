@@ -337,7 +337,20 @@ export async function updatePatient(
   if (actor.type !== "user") {
     throw new PatientError("user_actor_required", "only user actors update patients");
   }
-  const rows = await tx.select().from(patients).where(eq(patients.id, patientId));
+  /**
+   * SECOND CLOSE REVIEW — THE READ TAKES THE ROW LOCK, so `current` is authoritative for the whole
+   * transaction rather than a snapshot that goes stale at the UPDATE.
+   *
+   * m7 fixed the version ROW to read its assurance off the RETURNING clause, but the drop
+   * DECISION and the drop EVENT are still computed from `current`, and under READ COMMITTED a
+   * concurrent `upgradeAssurance` can move the record between this read and the UPDATE. The
+   * concrete miss: P reads as `staff_verified`, a concurrent upgrade commits it to
+   * `abha_verified`, `assuranceAfterAmendment` short-circuits on the stale value and returns it
+   * unchanged — so DD5's drop silently does not apply, and an unevidenced name change lands on a
+   * record still stamped `abha_verified`. Locking here serialises the whole amendment against any
+   * other writer of this patient and removes the class rather than the instance.
+   */
+  const rows = await tx.select().from(patients).where(eq(patients.id, patientId)).for("update");
   const current = rows[0];
   if (!current) throw new PatientError("patient_not_found", `unknown patient ${patientId}`);
   if (current.status !== "active") {
@@ -442,11 +455,22 @@ export async function updatePatient(
    * a second later gets v2.valid_from = T-1s. From then on, for every `at >= T`, the resolver
    * returns v1 — so every document renders the PRE-amendment identity, permanently. That is the
    * Medanta bug produced by the table built to prevent it, and because versions are append-only
-   * it cannot be repaired in place. `now()` costs nothing and removes the second clock entirely.
+   * it cannot be repaired in place.
+   *
+   * SECOND CLOSE REVIEW — AND IT IS `clock_timestamp()`, NOT `now()`. The first fix reached for
+   * `now()`, which in Postgres is `transaction_timestamp()`: evaluated at BEGIN, not when the
+   * statement runs. That removes the cross-container clock and leaves the ordering hazard intact
+   * INSIDE one database. Two clerks amend the same patient; transaction A begins first but is slow
+   * (a permission lookup, a few queries), B begins later, reaches its UPDATE first, takes the row
+   * lock and writes `valid_from = t(B)`; A then acquires the lock and writes `valid_from = t(A)`,
+   * which is EARLIER. The newest version now sorts second and the resolver returns the superseded
+   * identity forever — the same failure, no NTP drift required. `clock_timestamp()` is wall-clock
+   * at statement execution, so it is monotonic in lock-acquisition order, which is the property
+   * this column actually needs.
    */
   const updated = await tx
     .update(patients)
-    .set({ ...set, updatedBy: actor.id, updatedAt: sql`now()` })
+    .set({ ...set, updatedBy: actor.id, updatedAt: sql`clock_timestamp()` })
     .where(and(eq(patients.id, patientId), eq(patients.status, "active")))
     .returning();
   if (updated.length === 0) {
