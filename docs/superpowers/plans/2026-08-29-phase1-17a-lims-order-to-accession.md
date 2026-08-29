@@ -477,8 +477,19 @@ files. Nothing this phase needs a migration for — row 1's trap does not fire.
 
 | boundary | balance | delta |
 |---|---|---|
-| kickoff | 15,000,000 | — |
+| kickoff (session 1) | 15,000,000 | — |
 | T3 committed | 14,874,000 | **126,000** |
+| **kickoff (session 2 — FRESH, the seed read alone)** | 14,908,000 | **92,000** |
+| **T4 committed (`fba0d72`)** | 14,725,000 | **275,000** (of which 92,000 is the seed ⇒ **~183,000 marginal**) |
+
+> **THE FRESH-SESSION SEED IS THE NUMBER THE STOP-LOSS GOT RIGHT, AND IT IS WORTH SAYING SO.**
+> §6 budgeted a **per-phase fixed ≈ 90,000** for the reading order, the pre-flight and the §2
+> re-measure. Session 1 paid ~6,000 for it because it had already read everything while authoring;
+> session 2 — the FRESH session §0 actually asks for — paid **92,000**. So the fixed term was not
+> merely defensible, it was accurate to within 2%, and the reason session 1's T3 delta looked cheap
+> is the inheritance §6 already names. **The per-CRITICAL-task term of 330,000 is the one that is
+> loose**: T4 came in at ~183,000 marginal, and T4 is the task that carried the money seam, the
+> idempotency rows, ten mutants and a red-main repair the plan never budgeted.
 
 > **AND THE CAVEAT THAT MUST BE READ WITH EVERY NUMBER IN THAT TABLE.** §0 says execute this phase in
 > a FRESH session. **This one is not**: it is the session that executed Plan 17's T1/T2, ran the
@@ -530,10 +541,11 @@ this session and are unchanged.
 | # | SHA | task | what landed |
 |---|---|---|---|
 | 1 | `b06e3d6` | **T3** | `catalogue.ts`, `ranges.ts`, `formula.ts`, `reflex.ts`, `duplicates.ts` + suites; `scripts/seed-lab-catalogue.ts`; `test/fixtures/lab-catalogue.json` (64 orderables, 130 analytes, 124 ranges, 3 INACTIVE reflex rules); the module index widened |
+| 2 | `fba0d72` | **T4** | `desk.ts` (566 lines), `workflow-def.ts`, `definitions.ts` + three suites; `openLabWalkin`/`openLabWalkinInTx` in `modules/opd/encounters.ts`; both module indexes widened; `test/helpers/lab.ts` (the shared fixture, F9). 1,560 insertions, 0 deletions |
+| 3 | `7dd039c` | **T4** | the eleventh IST clock declared — **`main` had been red since T3** (F10) |
 
-**T4 and T5 ARE NOT STARTED.** T4's precondition is discharged (F7, below) and no `desk.ts`,
-`workflow-def.ts`, `definitions.ts`, `collection.ts`, `specimens.ts`, `accession.ts` or `sweeps.ts`
-exists yet. `openLabWalkin` is not written and `modules/opd/encounters.ts` is untouched.
+**T5 IS NOT STARTED.** No `collection.ts`, `specimens.ts`, `accession.ts` or `sweeps.ts` exists, no
+worker job is registered, and the five job censuses of §2 row 8 are unmoved.
 
 ### 9.2 Findings
 
@@ -571,7 +583,62 @@ records it as the optimisation the first caller who measures a slow desk should 
 `../patients/registration`; modules may import only another module's `index.ts`. Both helpers were
 already on that index and `modules/membership/recognition.ts` uses the same pair the same way.
 
-**F7 — PROVED, AND IT WAS THE ONE THING THAT COULD HAVE CHANGED THE DESIGN.** See §9.3.
+**F7 — PROVED, AND IT WAS THE ONE THING THAT COULD HAVE CHANGED THE DESIGN.** See §9.3. **T4 A3
+now asserts it over the REAL pair** and the mutant is quoted in §9.4.
+
+**F8 — THE TWO `.json` DEFINITION FILES IN T4's FILES LIST CANNOT EXIST IN THIS REPOSITORY.**
+`tsconfig.base.json` sets no `resolveJsonModule`, so `import … from "./definitions/lab_item.json"`
+does not compile; the only shipped precedent, `modules/opd/workflow-def.ts`, is a TypeScript const
+for exactly that reason, and `createDraft`/`defineWorkflow` both take `unknown`. Shipping the JSONs
+*as well* would put two hand-maintained copies of one definition in the tree (§2.54 at file scope);
+shipping them *instead* would need a compiler-option change in a file T4 does not own. **Shipped as
+`LAB_ITEM_DEFINITION_JSON` / `LAB_SPECIMEN_DEFINITION_JSON` consts in `workflow-def.ts`**, and 17b
+inherits the const names rather than two paths.
+
+**F9 — `test/helpers/lab.ts` IS A FILES-LIST DEVIATION, AND IT IS DECLARED RATHER THAN SMUGGLED.**
+T4 and T5 both need the same eleven-step fixture (catalogue, GST category, a second tariff version,
+`LAB` department, pathologist `opd_doctors` row, both lab definitions, the OPD visit definition,
+sixteen grants). Two copies would drift by construction. It is the `test/helpers/opd.ts` /
+`billing.ts` precedent; T4's diff carries a file its Files list does not name.
+
+**F10 — `main` WAS RED FROM T3's PUSH UNTIL `7dd039c`, AND THE NARROW-SUITE ECONOMY IS WHY.**
+T3's `ranges.ts` is the ELEVENTH copy of the hospital's IST offset, and
+`test/ist-clock-parity.test.ts` exists to redden when an undeclared one appears. It did:
+`1 failed, 2871 passed` on `b06e3d6`, and `e40fc08` inherited it. **The phase's own suite could not
+have caught it** — that census lives in `test/`, not beside the code it counts, so
+`jest src/modules/lab` never runs it. This is §2.131/§2.138's class with one new edge: *a census
+that lives outside the module it counts is invisible to a task that runs only its module's suite.*
+AGENT-RULES §2.8's narrow-suite economy is still right; the correction is that **reading CI by full
+SHA at the task boundary is not optional**, and it is what found this. `ranges.ts` itself needed no
+change — it already carried the written argument the census asks for.
+
+**F11 — A1's MUTANT DIED BY THE DUPLICATE DETECTOR, NOT BY A SECOND ORDER NUMBER, AND THAT IS A
+FACT ABOUT THIS SYSTEM WORTH KEEPING.** The Assertion Book predicted `L…0001` and `L…0002`. What
+actually happened when the wrapper was bypassed is `LabError: CBC was ordered 0 h ago
+(L2608290001)` — the lab's own duplicate detector caught the replay first. **It is NOT a reason to
+call the wrapper redundant.** The detector only fires within its window and only on analyte
+overlap, so a replayed order for a DIFFERENT orderable, or the same one 25 hours later, still
+double-bills; and the detector's refusal reaches a counter as "this was already ordered", which is
+the wrong sentence for a page reload. Recorded because a later reader measuring the two guards
+against each other would otherwise reach the opposite conclusion from one green test.
+
+**F12 — `invoice_lines.id` IS MINTED INSIDE `issueInvoice` AND IS NOT THE CALLER'S `lineId`.**
+`invoices.ts:863` writes `id: newId()`; the caller-supplied `lineId` survives only as the discount
+approval subject. So `lab_items.invoice_line_id` cannot be known at call time and is READ BACK,
+ordered by `line_no`, mapped positionally against the input array — which is sound only because
+`priceInvoiceLines` maps over `draft.lines` and does not reorder. `desk.ts` pins that with a length
+check that refuses rather than mis-links, because a lab item pointing at the wrong invoice line is
+a report released against somebody else's payment. **If a later phase ever makes pricing reorder or
+merge lines, this is the call site that breaks silently**, and the length check is the only thing
+that would not.
+
+**F13 — `openLabWalkin` REFUSES A LAB WITH TWO ACTIVE PATHOLOGISTS RATHER THAN PICKING ONE, AND
+THAT IS AN OWNER-FACING CONSEQUENCE.** `ordering_clinician_id` is the doctor answerable in a
+medico-legal chain; choosing between two by row order would put a name on a report by accident. So
+the counter must name one when the `LAB` department has more than one active `opd_doctors` row.
+17a ships no route, so nothing is blocked today — **17b's controller must expose that field**, and
+§9.9's runbook act should create ONE pathologist-of-record row unless the owner wants the counter
+choosing per walk-in.
 
 ### 9.4 The Assertion Book, corrected by execution
 
@@ -594,8 +661,54 @@ isolated, deleted before the commit (`git status --porcelain` carries no `*.muta
 pure modules, so a test-before-code red is an unresolved-import error, which §2.5 says proves
 nothing. The four genuine reds of F4 are quoted above.
 
-**T4 and T5's Books are UNEXECUTED.** T4 A3's precondition is now proved (§9.3), so the row asserts
-the seam over the real `placeOrder` + `issueInvoice` pair rather than over a probe.
+**T4 — TEN ROWS, TEN MUTANTS BUILT, TEN DIED.** Each was a scratch module beside the source, run
+isolated, deleted before the commit (`git status --porcelain` carries no `*.mutant.*`). **A3 was
+built first**, as §5 T4 requires, and it is the row that would have changed the design.
+
+| row | mutant | expected vs received |
+|---|---|---|
+| **A3** ⚑ | the invoice made best-effort — caught and skipped, the order stands | **`Received promise resolved instead of rejected`, resolving to `orderNo: "L2608290001"` with `invoiceId: null`** — an order for two tests that no invoice will ever bill |
+| **A1** | the idempotency wrapper bypassed | `LabError: CBC was ordered 0 h ago (L2608290001)` — **the DUPLICATE DETECTOR caught the replay, not a second order number** (finding F11) |
+| **A1b** | the claim taken AFTER the work | `Expected [1,1,1,1,1,1,1,1], Received [2,2,2,2,2,2,2,2]` — two orders in **every one** of eight rounds |
+| **A2** | the body hash not compared | resolved instead of refusing, returning `invoiceNo "INV/26-27/000001"`, `netPayablePaise 30000` — **the one-test invoice handed back for a two-test basket** |
+| **A4** | `restricted` left at its default | `Expected: true, Received: false` — an HIV item the kernel reader then shows to the ward clerk |
+| **A5** | unknown service ids skipped silently | resolved with 2 items and `netPayablePaise 60000` — **the patient billed for two of the three tests the doctor advised**, with nothing saying the third is missing |
+| **A6** | `INSERT INTO order_items` on the parent | `Expected: not "01M17SAR9716KCHEJ4PKEYDKSS", Received: the same id` — the add-on became a row on the parent order, behind `placeOrder`'s back: no `order.placed`, no authority, no permission check |
+| **A7** | the sentinel omitted | `error: new row for relation "orders" violates check constraint "orders_external_referrer_ck"` — **the BICONDITIONAL CHECK, exactly as S3 predicted, and the desk is unusable for walk-ins** |
+| **A8** | a shortcut transition added | `ordered→resulted` `Expected: false, Received: true`; into-`verified` `Expected ["resulted"], Received ["in_analysis", "resulted"]` |
+| **A9** | the department lookup skipped, the column left null | resolved to a visit `V2608300001` carrying **`"departmentId": null, "doctorId": null`** — every departmental report and every `intendedPayer` read silently loses the lab |
+
+**TWO ROWS DIED AT A GUARD RATHER THAN AT THEIR OWN ASSERTION, AND BOTH ARE DISCLOSED.** A7 dies at
+the Postgres CHECK — which is what the Book itself predicted, so the discriminator is the intended
+one. A1 dies at the duplicate detector (F11). Neither was rewritten to manufacture a prettier kill.
+
+**TWO MUTANTS HAD TO BE REPAIRED BEFORE THEY PROVED ANYTHING**, per rule 21, and both are the
+failure modes that rule names: A3's first build died inside `defineEvent`'s zod payload
+(`invoiceId` `too_small`) rather than at the count assertion, and A1's first build died at
+`TS18048: 'key' is possibly 'undefined'` — **a TYPECHECK death, which proves nothing**. Both were
+rebuilt to reach the assertion.
+
+**FAIL-FIRST:** discharged by the mutants and SAID so. `desk.ts`, `workflow-def.ts` and
+`definitions.ts` are brand-new modules, so a test-before-code red is an unresolved-import error,
+which §2.5 says proves nothing. **Four genuine reds were met and are quoted below (F14).**
+
+**T5's Book is UNEXECUTED.**
+
+**F14 — FOUR REDS ON THE WAY TO T4's GREEN, AND ALL FOUR WERE THE FIXTURE OR THE TEST.** F4's
+lesson, repeated one task later and worth the line:
+- `PRICED_LAB_CODES` named `FT4`, which is an ANALYTE inside `TFT` and not an orderable — so
+  `setTariffItem` hit `tariff_items_service_id_services_id_fk` for a `services` row the catalogue
+  never created. The census the fixture needed was the fixture's own orderable list, not a
+  remembered name;
+- A1b re-seeded the whole eleven-step fixture inside its own loop and blew the 15 s timeout at
+  round one. Rewritten to run eight rounds against ONE fixture with a different orderable each
+  round, counting the **delta** rather than the total — which is also what keeps the duplicate
+  detector out of a concurrency measurement;
+- that timeout then left `opd_config` half-seeded, so the NEXT test failed on
+  `duplicate key value violates unique constraint "opd_config_pkey"` — a cascade, not a defect;
+- the fixture never activated the **OPD visit** definition, so both `openLabWalkin` rows died on
+  `no active definition for "opd_visit"`. `openVisitInTx` calls `startInstance`, and A9 asserts the
+  DEPARTMENT refusal — a walk-in dying on a missing workflow definition would have asserted nothing.
 
 ### 9.5 Mechanical verification — name the `TEST_DATABASE_URL` database of every run claimed (§2.137)
 
@@ -605,9 +718,18 @@ CLOSE drops them by explicit name and says so.
 
 | run | result |
 |---|---|
-| `jest src/modules/lab` (9 suites) | **57/57 passed, exit 0** |
-| PREFLIGHT `pnpm typecheck` | **exit 0** |
-| PREFLIGHT `pnpm lint` | **exit 0** (2 pre-existing warnings, 0 errors) |
+| `jest src/modules/lab` (9 suites) — T3 | **57/57 passed, exit 0** |
+| PREFLIGHT `pnpm typecheck` — T3 | **exit 0** |
+| PREFLIGHT `pnpm lint` — T3 | **exit 0** (2 pre-existing warnings, 0 errors) |
+| **T4 acceptance:** `jest src/modules/lab src/modules/opd/encounters.test.ts src/modules/billing/idempotency.test.ts` | **14 suites, 104/104 passed, exit 0** |
+| `pnpm typecheck` — T4 | **exit 0** |
+| `pnpm lint` — T4 | **exit 0** (the same 2 pre-existing warnings, 0 errors) |
+| `jest test/ist-clock-parity.test.ts` — the F10 repair | **3/3 passed, exit 0** |
+
+**CI, READ BY FULL SHA — AND IT IS WHY F10 IS IN THIS DOCUMENT.** `b06e3d6` (T3): **failure**
+(`1 failed, 2871 passed`). `e40fc08`: **failure**, inherited. `7dd039c` carries the repair. The T3
+handoff said its verdict was "the successor's to read"; reading it was the first thing this session
+did after T4's own green, and it found a red `main` that had stood for ~40 minutes.
 
 **No full `pnpm verify` has run for this phase yet** — it is owed once T4 and T5 are code-complete,
 folded into ONE run per v3 §9.9 rule 4. CI is green on `b06e3d6`'s parent chain; `b06e3d6` itself
