@@ -3,6 +3,8 @@ import type { Actor } from "@hmis/contracts";
 import { newId } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import { patientIdentityVersions, patients } from "../../kernel/db/schema";
+import { appendEvent } from "../../kernel/events/append";
+import { identityAssuranceChanged } from "./events";
 import { PatientError } from "./uhid";
 
 /**
@@ -112,6 +114,23 @@ export async function mintIdentityVersion(
     createdBy: string;
   },
 ): Promise<{ versionId: string; version: number }> {
+  /**
+   * CLOSE REVIEW m6 — THE LOCK IS TAKEN HERE, NOT INHERITED FROM THE CALLER.
+   *
+   * This project runs READ COMMITTED (`db.transaction` with no isolation option), under which a
+   * bare `max(version)`-then-INSERT lets two concurrent amendments read the same max; the loser
+   * raises a bare `23505` that `toHttp` does not recognise, so the clerk gets a 500 rather than
+   * the "loud failure" the old docblock promised. Both callers today happen to be safe — each
+   * updates or inserts the `patients` row first, taking its lock — but by the ordering of
+   * unrelated statements rather than by anything this function does. kernel-D and 22c-B will mint
+   * without that precondition and would inherit the 500. One `FOR UPDATE` makes the guarantee
+   * belong to the function that needs it.
+   */
+  await tx
+    .select({ id: patients.id })
+    .from(patients)
+    .where(eq(patients.id, input.patientId))
+    .for("update");
   const [maxRow] = await tx
     .select({ max: sql<number | null>`max(${patientIdentityVersions.version})` })
     .from(patientIdentityVersions)
@@ -149,11 +168,34 @@ export async function mintIdentityVersion(
  * that is worth exactly one rung. The drop is skipped when the amendment carries evidence at or
  * above the record's current level.
  */
-export function assuranceAfterAmendment(current: string, evidencedAt: string | null): string {
+export function assuranceAfterAmendment(
+  current: string,
+  evidencedAt: string | null,
+  evidenceRef: string | null = null,
+): string {
   const currentRank = assuranceRank(current);
   if (currentRank <= assuranceRank("staff_verified")) return current;
-  if (evidencedAt !== null && assuranceRank(evidencedAt) >= currentRank) return current;
-  return "staff_verified";
+  /**
+   * CLOSE REVIEW M2 — `evidencedAt` ARRIVES OFF THE HTTP BODY AND IS A CLAIM, NOT A CHECK.
+   *
+   * Before this guard, any of the seventeen production users holding `patients.update` could send
+   * `{"name":"Different Person","evidencedAt":"abha_verified"}` against an `abha_verified` record
+   * and hold the stamp: the rank comparison passed, no drop was computed, no
+   * `identity_assurance_changed` event fired, and the minted version recorded
+   * `identityAssurance: "abha_verified"` with `evidenceRef: null`. The record then claimed
+   * ABHA-grade verification of a name nobody had checked, and the only trace was a null column.
+   *
+   * The asymmetry gave it away: `upgradeAssurance` REFUSES to reach `id_verified` or above without
+   * a non-empty evidence reference, while this path would HOLD those levels on a bare assertion.
+   * The cheap door was strictly weaker than the expensive one. It now applies the same rule —
+   * a claim at `id_verified` or above must name what was seen.
+   */
+  if (evidencedAt === null) return "staff_verified";
+  if (assuranceRank(evidencedAt) < currentRank) return "staff_verified";
+  if (assuranceRank(evidencedAt) >= assuranceRank("id_verified") && (evidenceRef ?? "").trim() === "") {
+    return "staff_verified";
+  }
+  return current;
 }
 
 /**
@@ -195,8 +237,27 @@ export async function upgradeAssurance(
   }
   await tx
     .update(patients)
-    .set({ identityAssurance: toLevel, updatedBy: actor.id, updatedAt: new Date() })
+    .set({ identityAssurance: toLevel, updatedBy: actor.id, updatedAt: sql`now()` })
     .where(and(eq(patients.id, patientId), eq(patients.status, "active")));
+  /**
+   * CLOSE REVIEW M3 — AN UPGRADE WAS WRITING NO EVENT AT ALL, and this is the more
+   * security-sensitive direction of the ladder. `identityAssuranceChanged` declares
+   * `reason: "amendment_drop" | "upgrade"` and only the drop had an emitter; the `"upgrade"`
+   * branch was dead. A clerk could raise a record to `abha_verified` and the event stream would
+   * hold no record of who vouched for that person or against what evidence — the only residue was
+   * `patients.updated_by`, which the next unrelated phone edit overwrites. An identity-fraud
+   * enquiry six months later would have had nothing to read.
+   */
+  await appendEvent(
+    tx,
+    identityAssuranceChanged.make({
+      actor, patientId,
+      payload: {
+        patientId, from: current.identityAssurance, to: toLevel,
+        reason: "upgrade", evidenceRef: evidenceRef ?? null,
+      },
+    }),
+  );
   return { from: current.identityAssurance, to: toLevel };
 }
 

@@ -136,7 +136,10 @@ type Row = {
  * row, its absence would be a name leak rather than a missing feature.
  */
 function toHit(r: Row, canSeeConfidential: boolean): SearchHit {
-  const meta: Record<string, string> = { uhid: r.uhid, sex: r.administrativeGender };
+  // CLOSE REVIEW m12 — the key is renamed with the value. Everywhere else on this payload `sex`
+  // was removed precisely so a display surface could not read the clinical field by habit; leaving
+  // the old NAME over the new VALUE here is the same hazard pointing the other way.
+  const meta: Record<string, string> = { uhid: r.uhid, administrativeGender: r.administrativeGender };
   if (r.phone !== null) meta.phone = `•••••• ${r.phone.slice(-4)}`;
   if (r.dob !== null) meta.age = `${ageYears(r.dob)}y`;
   // EXACTLY `getPatientSummaries`' `restricted` computation, and the same consequence: a

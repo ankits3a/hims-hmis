@@ -268,7 +268,9 @@ function DemographicsSection({ patient }: { patient: PatientRow }): React.ReactE
      * clinical correction, and asking for an identity reason to fix it would be the DD4 confusion
      * this phase exists to remove.
      */
-    const CLASS_I = ["name", "dob", "administrativeGender", "abhaNumber"];
+    // CLOSE REVIEW n16 — kept in step with `modules/patients/identity.ts`'s CLASS_I, which
+    // includes `dobEstimated`. No control writes it today; the lists drifting apart is the defect.
+    const CLASS_I = ["name", "dob", "dobEstimated", "administrativeGender", "abhaNumber"];
     const touchesIdentity = Object.keys(patch).some((k) => CLASS_I.includes(k));
     if (touchesIdentity && (values.reasonClass ?? "") === "") {
       setServerError(t("patient.reasonRequired"));
@@ -316,11 +318,11 @@ function DemographicsSection({ patient }: { patient: PatientRow }): React.ReactE
               label={t("patient.amendmentReason")}
               options={[
                 { value: "", label: "—" },
-                { value: "clerical_error", label: t("patient.reason.clerical_error") },
-                { value: "legal_change", label: t("patient.reason.legal_change") },
-                { value: "document_correction", label: t("patient.reason.document_correction") },
-                { value: "patient_request", label: t("patient.reason.patient_request") },
-                { value: "merge_reconciliation", label: t("patient.reason.merge_reconciliation") },
+                { value: "clerical_error", label: t("patient.amendmentReasons.clerical_error") },
+                { value: "legal_change", label: t("patient.amendmentReasons.legal_change") },
+                { value: "document_correction", label: t("patient.amendmentReasons.document_correction") },
+                { value: "patient_request", label: t("patient.amendmentReasons.patient_request") },
+                { value: "merge_reconciliation", label: t("patient.amendmentReasons.merge_reconciliation") },
               ]}
             />
             <SelectField

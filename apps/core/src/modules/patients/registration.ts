@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import {
   assuranceAfterAmendment, isAmendmentReason, mintIdentityVersion, touchesIdentity,
@@ -88,6 +88,29 @@ export async function registerPatient(
     dobEstimated = true;
   }
   const isConfidential = input.isConfidential ?? false;
+  /**
+   * CLOSE REVIEW m9 — THE ASYMMETRY IS DELIBERATE, AND IT IS RULED HERE RATHER THAN LEFT SILENT.
+   *
+   * T5 stopped `patients.update` from setting `is_confidential`. This path — `POST /patients` —
+   * deliberately still accepts the flag under `patients.register` alone, held by twelve production
+   * users. The close reviewer was right that neither DD7 nor A15–A17 disclosed that, and this
+   * comment is the disclosure.
+   *
+   * WHY THE ASYMMETRY STANDS, decided on Indian corporate-hospital practice per the owner's
+   * standing instruction: marking a VIP or a staff-as-patient confidential AT THE COUNTER, as part
+   * of taking the record, is an ordinary front-office act and every hospital's registration desk
+   * does it. Changing an EXISTING patient's privacy flag is a different act — it is a privacy
+   * decision about a record that already exists and that other people may already have seen — and
+   * that is what DD7's permission governs. Gating registration too would block a normal workflow
+   * to close a door that registration does not open: a patient flagged at creation was never
+   * visible under a name anyone had relied on.
+   *
+   * WHAT THE OWNER SHOULD KNOW ANYWAY, because it is the real consequence:
+   * `patients.confidential.read` is held by ZERO roles, so a patient flagged at registration is a
+   * record nobody in the hospital can read by name until that grant happens. The grant is already
+   * a required runbook step for this phase's deploy; this is a second reason it cannot be
+   * deferred, not a separate ruling.
+   */
   if (isConfidential && (input.alias ?? "").trim() === "") {
     throw new PatientError("alias_required", "a confidential patient needs an alias for public surfaces (§14)");
   }
@@ -338,11 +361,6 @@ export async function updatePatient(
   }
   if (changes.length === 0) return { patient: current, changed: [] };
 
-  const resultingConfidential = (set.isConfidential as boolean | undefined) ?? current.isConfidential;
-  const resultingAlias = "alias" in set ? (set.alias as string | null) : current.alias;
-  if (resultingConfidential && (resultingAlias ?? "").trim() === "") {
-    throw new PatientError("alias_required", "a confidential patient needs an alias (§14)");
-  }
 
   if (ctx.reasonClass !== undefined && !isAmendmentReason(ctx.reasonClass)) {
     throw new PatientError("reason_required", `unknown amendment reason "${ctx.reasonClass}"`);
@@ -392,16 +410,43 @@ export async function updatePatient(
    * new name sits under the old assurance — that window is the only thing a separate UPDATE
    * would have added.
    */
+  /**
+   * CLOSE REVIEW n14 — the alias rule moved BELOW the permission gate. A clerk holding only
+   * `patients.update` who sent `{isConfidential: true}` used to get `alias_required`, which tells
+   * them the flag itself was accepted and only the alias was missing. The denial should come
+   * first: they may not set the field at all.
+   */
+  const resultingConfidential = (set.isConfidential as boolean | undefined) ?? current.isConfidential;
+  const resultingAlias = "alias" in set ? (set.alias as string | null) : current.alias;
+  if (resultingConfidential && (resultingAlias ?? "").trim() === "") {
+    throw new PatientError("alias_required", "a confidential patient needs an alias (§14)");
+  }
+
   const changedFields = changes.map((c) => c.field);
   const identityChanged = touchesIdentity(changedFields);
   const resultingAssurance = identityChanged
-    ? assuranceAfterAmendment(current.identityAssurance, ctx.evidencedAt ?? null)
+    ? assuranceAfterAmendment(current.identityAssurance, ctx.evidencedAt ?? null, ctx.evidenceRef ?? null)
     : current.identityAssurance;
   if (resultingAssurance !== current.identityAssurance) set.identityAssurance = resultingAssurance;
 
+  /**
+   * CLOSE REVIEW M5 — `updatedAt` IS THE DATABASE'S CLOCK, NOT NODE'S, AND THAT IS LOAD-BEARING.
+   *
+   * A version's `valid_from` is this column for v2+, `patients.created_at` for v1, and
+   * `patients.created_at` again for the rows 0043 backfilled. The latter two are `defaultNow()`,
+   * i.e. Postgres. With `new Date()` here, one patient's version history was timestamped by TWO
+   * INDEPENDENT CLOCKS in one monotonic sequence — and `resolveIdentityAt` sorts on `valid_from`.
+   *
+   * The failure that buys: the app container drifts a second or two behind the database (ordinary
+   * NTP divergence; they are separate containers). A patient registered at DB-time T and amended
+   * a second later gets v2.valid_from = T-1s. From then on, for every `at >= T`, the resolver
+   * returns v1 — so every document renders the PRE-amendment identity, permanently. That is the
+   * Medanta bug produced by the table built to prevent it, and because versions are append-only
+   * it cannot be repaired in place. `now()` costs nothing and removes the second clock entirely.
+   */
   const updated = await tx
     .update(patients)
-    .set({ ...set, updatedBy: actor.id, updatedAt: new Date() })
+    .set({ ...set, updatedBy: actor.id, updatedAt: sql`now()` })
     .where(and(eq(patients.id, patientId), eq(patients.status, "active")))
     .returning();
   if (updated.length === 0) {
@@ -431,7 +476,16 @@ export async function updatePatient(
         administrativeGender: row.administrativeGender,
         abhaNumber: row.abhaNumber,
       },
-      identityAssurance: resultingAssurance,
+      /**
+       * CLOSE REVIEW m7 — READ THE ASSURANCE OFF THE RETURNING ROW, never off the snapshot taken
+       * before the UPDATE. `current` is read at the top of this function and is stale by the time
+       * the UPDATE returns: two concurrent amendments serialize on the row lock, and the second
+       * one's `current.identityAssurance` predates the first one's drop. Computing the version's
+       * stamp from it wrote a level into the history that the patient never held — the master
+       * would say `staff_verified` while version 3 claimed `id_verified`. The returned row is the
+       * only value that is true at write time.
+       */
+      identityAssurance: row.identityAssurance,
       validFrom: row.updatedAt,
       reasonClass: ctx.reasonClass ?? null,
       evidenceRef: ctx.evidenceRef ?? null,

@@ -28,6 +28,8 @@ const PATIENT = {
   dob: "1990-04-02T00:00:00.000Z",
   dobEstimated: false,
   sex: "female",
+  administrativeGender: "female",
+  identityAssurance: "id_verified",
   addressLine: "12 MG Road",
   district: "Pune",
   stateName: "Maharashtra",
@@ -81,7 +83,7 @@ const GUARDIANS = {
 };
 
 const QR = {
-  payload: "1.p-1.1.abc123", uhid: "HMS0000001234", name: "Asha Devi", sex: "female",
+  payload: "1.p-1.1.abc123", uhid: "HMS0000001234", name: "Asha Devi", administrativeGender: "female",
   dob: "1990-04-02T00:00:00.000Z",
 };
 
@@ -359,5 +361,61 @@ describe("PatientDetail", () => {
 
     expect(JSON.parse(sessionStorage.getItem("hmis.inHand") ?? "{}")).toMatchObject({ patientId: "p-1" });
     expect(navigate).toHaveBeenCalledWith({ to: "/opd/desk" });
+  });
+});
+/**
+ * PLAN 22c-A — CLOSE REVIEW m13. T7's UI shipped with zero coverage: the assurance stamp, the
+ * administrative-gender select, the reason select and the client-side Class-I gate. That hole is
+ * also what let C1 (the server silently dropping `administrativeGender`) reach a reviewer instead
+ * of a test — nothing here ever drove the field end to end.
+ */
+describe("22c-A T7 — the amendment surface", () => {
+  function open(): void {
+    stubFetch({
+      "GET /api/patients/p-1": { patient: PATIENT, resolvedFrom: null },
+      "GET /api/patients/p-1/allergies": { items: [] },
+      "GET /api/patients/p-1/guardians": { items: [] },
+      "GET /api/patients/p-1/qr": QR,
+    });
+    renderWithProviders(<PatientDetail />);
+  }
+  const patches = (): Record<string, unknown>[] =>
+    fetchCalls()
+      .filter((c) => c.method === "PATCH")
+      .map((c) => JSON.parse(c.body) as Record<string, unknown>);
+
+  it("shows the identity assurance stamp", async () => {
+    open();
+    expect(await screen.findByTestId("identity-assurance")).toHaveTextContent(/ID verified/i);
+  });
+
+  it("REFUSES to save a Class I change with no reason, and never calls the API", async () => {
+    open();
+    const name = await screen.findByLabelText("Full name");
+    await userEvent.clear(name);
+    await userEvent.type(name, "Asha Sharma");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(screen.getByText(/needs a reason/i)).toBeInTheDocument());
+    expect(patches()).toHaveLength(0);
+  });
+
+  it("sends administrativeGender WITH its reason once one is chosen", async () => {
+    // The round-trip that C1 broke on the server: the field must leave the browser named.
+    open();
+    await userEvent.selectOptions(await screen.findByLabelText("Administrative gender"), "other");
+    await userEvent.selectOptions(screen.getByLabelText("Reason for amendment"), "legal_change");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(patches()).toHaveLength(1));
+    expect(patches()[0]).toMatchObject({ administrativeGender: "other", reasonClass: "legal_change" });
+  });
+
+  it("a Class II edit still saves with no reason — the desk does not justify a typo fix", async () => {
+    open();
+    const phone = await screen.findByLabelText("Mobile number");
+    await userEvent.clear(phone);
+    await userEvent.type(phone, "9000000000");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(patches()).toHaveLength(1));
+    expect(patches()[0]).not.toHaveProperty("reasonClass");
   });
 });

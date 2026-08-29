@@ -162,13 +162,7 @@
     "moderate": "मध्यम",
     "severe": "गंभीर",
     "markError": "गलती से दर्ज",
-    "reason": {
-      "clerical_error": "लिपिकीय त्रुटि",
-      "legal_change": "कानूनी परिवर्तन (NALSA / विवाह / राजपत्र)",
-      "document_correction": "दस्तावेज़ के अनुसार सुधार",
-      "patient_request": "मरीज़ के अनुसार रिकॉर्ड गलत है",
-      "merge_reconciliation": "डुप्लिकेट सुलझाते समय तय हुआ"
-    },
+    "reason": "कारण",
     "guardians": "अभिभावक",
     "addGuardian": "अभिभावक जोड़ें",
     "endGuardian": "समाप्त करें",
@@ -193,7 +187,14 @@
     "administrativeGender": "प्रशासनिक लिंग",
     "amendmentReason": "संशोधन का कारण",
     "identityAssurance": "पहचान आश्वासन",
-    "reasonRequired": "नाम, जन्म तिथि या प्रशासनिक लिंग बदलने के लिए कारण आवश्यक है।"
+    "reasonRequired": "नाम, जन्म तिथि या प्रशासनिक लिंग बदलने के लिए कारण आवश्यक है।",
+    "amendmentReasons": {
+      "clerical_error": "लिपिकीय त्रुटि",
+      "legal_change": "कानूनी परिवर्तन (NALSA / विवाह / राजपत्र)",
+      "document_correction": "दस्तावेज़ के अनुसार सुधार",
+      "patient_request": "मरीज़ के अनुसार रिकॉर्ड गलत है",
+      "merge_reconciliation": "डुप्लिकेट सुलझाते समय तय हुआ"
+    }
   },
   "merge": {
     "title": "मर्ज समीक्षा",

@@ -12,7 +12,8 @@ import { authManifest } from "../src/kernel/auth/manifest";
 import { workflowManifest } from "../src/kernel/workflow/manifest";
 import { approvalsManifest } from "../src/kernel/approvals/manifest";
 import { patientsManifest } from "../src/modules/patients";
-import { registrationConfig } from "../src/kernel/db/schema";
+import { registrationConfig, patientIdentityVersions, events } from "../src/kernel/db/schema";
+import { eq } from "drizzle-orm";
 import { resolveIdentityAt } from "../src/modules/patients/identity";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { loadConfig, requireEnv } from "../src/kernel/config";
@@ -246,6 +247,98 @@ describe("patients e2e", () => {
       const stillAsIssued = await resolveIdentityAt(db, id, atIssue);
       expect(stillAsIssued!.name).toBe("Asha Devi");
       expect(stillAsIssued!.version).toBe(1);
+    });
+
+    /**
+     * CLOSE REVIEW C1 — THE ROUND-TRIP THAT WAS MISSING, and its absence is why a CRITICAL shipped.
+     * Every other test amends `administrativeGender` by calling `updatePatient` directly; the wire
+     * was never exercised, and the wire was where the field was being silently dropped.
+     */
+    it("C1 — PATCHing administrative gender over HTTP actually writes it and mints a version", async () => {
+      const id = await registerAsha();
+      const res = await request(app.getHttpServer())
+        .patch(`/patients/${id}`).set(...auth(clerkToken))
+        .send({ administrativeGender: "other", reasonClass: "legal_change", evidenceRef: "NALSA-2026-42" })
+        .expect(200);
+      // The old defect returned 200 with `changed: []` and wrote nothing.
+      expect(res.body.changed).toEqual(["administrativeGender"]);
+
+      const read = await request(app.getHttpServer())
+        .get(`/patients/${id}`).set(...auth(clerkToken)).expect(200);
+      expect(read.body.patient.administrativeGender).toBe("other");
+
+      const versions = await db.select().from(patientIdentityVersions)
+        .where(eq(patientIdentityVersions.patientId, id));
+      expect(versions).toHaveLength(2);
+      expect(versions.find((v) => v.version === 2)!.administrativeGender).toBe("other");
+      expect(versions.find((v) => v.version === 2)!.reasonClass).toBe("legal_change");
+    });
+
+    it("C1 — and it still refuses to change gender without a reason", async () => {
+      const id = await registerAsha();
+      await request(app.getHttpServer())
+        .patch(`/patients/${id}`).set(...auth(clerkToken))
+        .send({ administrativeGender: "other" })
+        .expect(400);
+    });
+
+    it("M2 — `evidencedAt` alone cannot hold the stamp; it needs the reference too", async () => {
+      const id = await registerAsha();
+      await request(app.getHttpServer())
+        .post(`/patients/${id}/assurance`).set(...auth(clerkToken))
+        .send({ toLevel: "abha_verified", evidenceRef: "ABHA-11-2222-3333-4444" }).expect(201);
+
+      // A bare claim, with nothing named as evidence, must NOT hold abha_verified.
+      await request(app.getHttpServer())
+        .patch(`/patients/${id}`).set(...auth(clerkToken))
+        .send({ name: "Different Person", reasonClass: "clerical_error", evidencedAt: "abha_verified" })
+        .expect(200);
+      const read = await request(app.getHttpServer())
+        .get(`/patients/${id}`).set(...auth(clerkToken)).expect(200);
+      expect(read.body.patient.identityAssurance).toBe("staff_verified");
+    });
+
+    it("M3 — an assurance UPGRADE writes an event naming who vouched and against what", async () => {
+      const id = await registerAsha();
+      await request(app.getHttpServer())
+        .post(`/patients/${id}/assurance`).set(...auth(clerkToken))
+        .send({ toLevel: "id_verified", evidenceRef: "AADHAAR-XXXX-1234" }).expect(201);
+      const evts = await db.select().from(events).where(eq(events.name, "patient.identity_assurance_changed"));
+      expect(evts).toHaveLength(1);
+      expect(evts[0]!.payload).toMatchObject({
+        from: "staff_verified", to: "id_verified", reason: "upgrade", evidenceRef: "AADHAAR-XXXX-1234",
+      });
+    });
+
+    it("m8 — a privacy-write denial is 403, not 400", async () => {
+      // `reg_desk` holds every patients permission in this harness, so a second actor without the
+      // new string is what exercises the refusal.
+      const { id: plainId } = await createUser(db, { username: "plainclerk", fullName: "Plain", password: "p1234567" });
+      const { token: plainToken } = await createSession(db, cfg, plainId);
+      await createRole(db, "update_only", "Update only");
+      for (const p of ["patients.register", "patients.read", "patients.update"]) {
+        await grantPermissionToRole(db, registry, "update_only", p);
+      }
+      await assignRole(db, { userId: plainId, roleKey: "update_only", scopeType: "hospital" });
+      const id = await registerAsha();
+      await request(app.getHttpServer())
+        .patch(`/patients/${id}`).set(...auth(plainToken))
+        .send({ isConfidential: true, alias: "P-4821" })
+        .expect(403);
+    });
+
+    it("m9 — REGISTERING a confidential patient needs the same permission as flagging one", async () => {
+      const { id: plainId } = await createUser(db, { username: "regonly", fullName: "Reg", password: "p1234567" });
+      const { token: plainToken } = await createSession(db, cfg, plainId);
+      await createRole(db, "register_only", "Register only");
+      for (const p of ["patients.register", "patients.read"]) {
+        await grantPermissionToRole(db, registry, "register_only", p);
+      }
+      await assignRole(db, { userId: plainId, roleKey: "register_only", scopeType: "hospital" });
+      await request(app.getHttpServer())
+        .post("/patients").set(...auth(plainToken))
+        .send({ name: "VIP", sex: "male", isConfidential: true, alias: "P-9001", language: "hi" })
+        .expect(403);
     });
 
     it("the assurance route raises the stamp, and an unevidenced amendment drops it again (DD5)", async () => {

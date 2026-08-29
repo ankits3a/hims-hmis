@@ -162,13 +162,7 @@
     "moderate": "Moderate",
     "severe": "Severe",
     "markError": "Entered in error",
-    "reason": {
-      "clerical_error": "Clerical error",
-      "legal_change": "Legal change (NALSA / marriage / gazette)",
-      "document_correction": "Corrected against a document",
-      "patient_request": "Patient says the record is wrong",
-      "merge_reconciliation": "Settled while resolving a duplicate"
-    },
+    "reason": "Reason",
     "guardians": "Guardians",
     "addGuardian": "Add guardian",
     "endGuardian": "End",
@@ -193,7 +187,14 @@
     "administrativeGender": "Administrative gender",
     "amendmentReason": "Reason for amendment",
     "identityAssurance": "Identity assurance",
-    "reasonRequired": "Changing name, date of birth or administrative gender needs a reason."
+    "reasonRequired": "Changing name, date of birth or administrative gender needs a reason.",
+    "amendmentReasons": {
+      "clerical_error": "Clerical error",
+      "legal_change": "Legal change (NALSA / marriage / gazette)",
+      "document_correction": "Corrected against a document",
+      "patient_request": "Patient says the record is wrong",
+      "merge_reconciliation": "Settled while resolving a duplicate"
+    }
   },
   "merge": {
     "title": "Merge review",

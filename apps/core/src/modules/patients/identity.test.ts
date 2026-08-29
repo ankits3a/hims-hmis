@@ -78,11 +78,16 @@ describe("the assurance ladder (DD2)", () => {
   it("A8 — an unevidenced amendment drops to staff_verified, and an evidenced one does not", () => {
     expect(assuranceAfterAmendment("id_verified", null)).toBe("staff_verified");
     expect(assuranceAfterAmendment("abha_verified", null)).toBe("staff_verified");
-    // Evidence at or above the record's current level holds the stamp.
-    expect(assuranceAfterAmendment("id_verified", "id_verified")).toBe("id_verified");
-    expect(assuranceAfterAmendment("abha_verified", "abha_verified")).toBe("abha_verified");
-    // Weaker evidence does not.
-    expect(assuranceAfterAmendment("abha_verified", "id_verified")).toBe("staff_verified");
+    // CLOSE REVIEW M2 — evidence at or above the record's level holds the stamp ONLY when the
+    // amendment also NAMES what was seen. `evidencedAt` arrives off the HTTP body and is a claim;
+    // without a reference it is a claim about nothing, and it used to be enough on its own.
+    expect(assuranceAfterAmendment("id_verified", "id_verified", "PASSPORT-9911")).toBe("id_verified");
+    expect(assuranceAfterAmendment("abha_verified", "abha_verified", "ABHA-11-2222")).toBe("abha_verified");
+    // A bare claim with nothing named drops the stamp, at every level that requires evidence.
+    expect(assuranceAfterAmendment("id_verified", "id_verified", null)).toBe("staff_verified");
+    expect(assuranceAfterAmendment("abha_verified", "abha_verified", "   ")).toBe("staff_verified");
+    // Weaker evidence does not hold a stronger stamp, reference or not.
+    expect(assuranceAfterAmendment("abha_verified", "id_verified", "PASSPORT-9911")).toBe("staff_verified");
     // The floor never rises: a record already at or below staff_verified is untouched.
     expect(assuranceAfterAmendment("staff_verified", null)).toBe("staff_verified");
     expect(assuranceAfterAmendment("self_declared", null)).toBe("self_declared");
@@ -321,7 +326,14 @@ describe("the resolver (T6, DD6) — as-of, on a fixture", () => {
     await withTx(db, (tx) =>
       updatePatient(tx, CLERK, id, { dob: new Date(Date.UTC(1990, 0, 1)) }, { reasonClass: "clerical_error" }));
     const asOf = await resolveIdentityAt(db, id, await justBefore(id, 2));
-    expect(asOf!.dob!.getTime()).not.toBe(Date.UTC(1990, 0, 1));
+    // CLOSE REVIEW n15 — assert the VALUE, not a negation. `not.toBe(1990)` passed for any wrong
+    // answer, a corrupted one included. The fixture registers with `ageYears: 30`, so v1's dob is
+    // the estimated one minted at registration, and that is what a document dated then must show.
+    const rows = await db.select().from(patientIdentityVersions)
+      .where(eq(patientIdentityVersions.patientId, id));
+    const v1 = rows.find((r) => r.version === 1)!; // an unordered select returned v2 first
+    expect(asOf!.dob!.getTime()).toBe(v1.dob!.getTime());
+    expect(asOf!.dob!.getUTCFullYear()).toBe(new Date().getUTCFullYear() - 30);
   });
 
   it("returns null for a patient with no versions at all", async () => {

@@ -26,6 +26,13 @@ import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
 
 const NOT_FOUND_CODES = new Set(["patient_not_found", "unknown_merge_request", "allergy_not_found", "guardian_not_found"]);
+/**
+ * PLAN 22c-A — CLOSE REVIEW m8. The two privacy-write denials are FORBIDDEN, not BAD REQUEST.
+ * They fell through `toHttp`'s default and arrived as 400s, indistinguishable — to a client or to
+ * a log aggregator — from a malformed body. These are exactly the two an Indian hospital would
+ * want alerting on: an attempted write to the confidential flag or to the deceased hard stop.
+ */
+const FORBIDDEN_CODES = new Set(["confidential_write_denied", "deceased_write_denied"]);
 const CONFLICT_CODES = new Set([
   "patient_not_active", "merge_same_patient", "merge_already_requested", "merge_not_requested",
   "merge_not_executed", "approval_not_granted", "unmerge_already_requested", "unmerge_not_requested",
@@ -37,6 +44,7 @@ function toHttp(e: unknown): never {
   if (e instanceof SodViolationError) throw new ForbiddenException(e.message);
   if (e instanceof PatientError) {
     if (NOT_FOUND_CODES.has(e.code)) throw new NotFoundException(e.message);
+    if (FORBIDDEN_CODES.has(e.code)) throw new ForbiddenException(e.message);
     if (e.code === "photo_too_large") throw new PayloadTooLargeException(e.message);
     if (CONFLICT_CODES.has(e.code)) throw new ConflictException(e.message);
     throw new BadRequestException(e.message);
@@ -122,6 +130,22 @@ const patchBody = registerBody
     // Strict ISO-8601 (not z.coerce.date()): the deceased hard stop is CRITICAL machinery and
     // the wire contract should reject a loosely-parsed date rather than silently accept one.
     deceasedAt: z.string().datetime().nullable().optional(),
+    /**
+     * PLAN 22c-A — CLOSE REVIEW C1 (CRITICAL). **THIS LINE WAS MISSING AND IT MADE THE WHOLE
+     * PHASE UNREACHABLE THROUGH ITS OWN ROUTE.**
+     *
+     * `patchBody` derives from `registerBody`, which declares `sex` and — correctly, because the
+     * counter captures one value — does NOT declare `administrativeGender`. zod strips unknown
+     * keys, so a PATCH carrying the field had it removed before `updatePatient` ever saw it. The
+     * resulting `patch` was empty, `touchesIdentity` was false so the reason gate did not fire,
+     * `changes.length === 0` returned early, and the clerk got **HTTP 200 with nothing written**:
+     * no column, no version, no event, no error. The one field DD4 exists to protect, and A12
+     * asserts on, could not be amended by the only surface a human uses.
+     *
+     * Every test that amends it called `updatePatient` directly. That is what a test suite looks
+     * like when it verifies a function and forgets the wire.
+     */
+    administrativeGender: sexEnum.optional(),
     /**
      * PLAN 22c-A T7 — THE AMENDMENT CONTEXT, AND `reasonClass` IS AN ENUM RATHER THAN FREE TEXT
      * (series R-018; the shipped precedent is `refunds.ts`'s `reasonClass`). Free text on an

@@ -15,6 +15,7 @@ import { seedSodPairs } from "./sod";
 import { PermissionGuard } from "./guards";
 
 import { registerPatient, updatePatient, getPatientSummaries } from "../../modules/patients/registration";
+import { registrationConfig, patients as patientsTable } from "../db/schema";
 import { createMergeRequest, executeMerge, requestUnmerge, executeUnmerge } from "../../modules/patients/merge";
 import { linkGuardian, updateGuardianAuthority, endGuardian } from "../../modules/patients/guardians";
 import { addAllergy, markAllergyEnteredInError } from "../../modules/patients/allergies";
@@ -298,13 +299,36 @@ describe("A5b — PermissionGuard refuses a patient actor at the HTTP boundary",
 });
 
 describe("D11 — the aliasing class the review found (recorded, not yet reachable)", () => {
-  it("getPatientSummaries does NOT refuse a patient actor — it aliases, which IS the finding", async () => {
-    // The one summary reader with no `user_actor_required` guard in front of it. `hasPermission`
-    // against a patient_credentials id returns FALSE, so a confidential patient reading their own
-    // record would see `P-4821` instead of their name (review D11; four specimens live today).
-    // Nothing in THIS phase routes a patient actor here — no route opens (DD1) — so what is
-    // asserted is that the behaviour is understood and pinned, not that it is already correct.
-    // 22c-E owns the fix, and this test is what will fail loudly when it lands.
-    await expect(getPatientSummaries(db, PATIENT, [])).resolves.toEqual([]);
+  it("getPatientSummaries does NOT refuse a patient actor — it ALIASES, which IS the finding", async () => {
+    /**
+     * CLOSE REVIEW m10 — THIS TEST USED TO PASS AN EMPTY ARRAY AND THEREFORE ASSERTED NOTHING.
+     * `getPatientSummaries` returns `[]` before it ever looks at the actor, so the old form was
+     * green against the current code, against a fixed 22c-E, and against a build that threw only
+     * for non-empty input. It now uses a real CONFIDENTIAL patient, which is the only shape that
+     * exhibits D11: `hasPermission` against a `patient_credentials` id returns FALSE, so a
+     * confidential patient reading their OWN record is aliased to themselves.
+     *
+     * Nothing routes a patient actor here yet — no route opens in this phase (DD1) — so what is
+     * pinned is the behaviour 22c-E must change. When it does, this test fails and says why.
+     */
+    await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "t" }).onConflictDoNothing();
+    const { patient } = await withTx(db, (tx) =>
+      registerPatient(tx, { type: "user", id: "01USERCLERK00000000000001" }, {
+        name: "VIP Patient", sex: "female", ageYears: 40,
+      } as never));
+
+    const [summary] = await getPatientSummaries(db, PATIENT, [patient.id]);
+    // A non-confidential patient is returned by name to anybody, so this half is unremarkable…
+    expect(summary!.name).toBe("VIP Patient");
+    expect(summary!.restricted).toBe(false);
+
+    // …and this is D11 itself. The patient actor's id is a `patient_credentials` row, so the
+    // permission lookup finds no user and returns false, which the summary reads as "may not see".
+    await db.update(patientsTable).set({ isConfidential: true, alias: "P-4821" })
+      .where(eq(patientsTable.id, patient.id));
+    const [restricted] = await getPatientSummaries(db, PATIENT, [patient.id]);
+    expect(restricted!.restricted).toBe(true);
+    expect(restricted!.name).toBeNull();
+    expect(restricted!.alias).toBe("P-4821");
   });
 });

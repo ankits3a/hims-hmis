@@ -161,7 +161,11 @@ describe("A18 — the shipped alias rule survives the split", () => {
     ).rejects.toMatchObject({ code: "alias_required" });
   });
 
-  it("and at registration, unchanged", async () => {
+  it("and at registration, unchanged — registration may still SET the flag (see m9)", async () => {
+    // CLOSE REVIEW m9, ruled: `POST /patients` deliberately still accepts `isConfidential` under
+    // `patients.register` alone. Marking a VIP confidential as part of taking the record is an
+    // ordinary front-office act; DD7 governs changing an EXISTING patient's privacy flag. The
+    // alias rule is what still binds here, and it binds unchanged.
     const privacy = await actorHolding(["patients.register"]);
     await expect(
       withTx(db, (tx) =>
