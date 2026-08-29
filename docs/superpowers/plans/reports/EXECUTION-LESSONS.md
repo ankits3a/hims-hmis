@@ -1056,6 +1056,96 @@ Pass 1 found a confidentiality CRITICAL: the restricted-item filter filtered ITE
 
 ---
 
+**2.141 — THE STOP-LOSS'S PER-TASK TERM IS MEASURED FROM A NUMBER THAT EXCLUDES THE MAIN SESSION, SO IN A LIGHT PHASE IT BUDGETS THE ONE COST THAT IS NOT THERE.** *(Plan 17 LIMS core, stopped at the T2 boundary, 2026-08-29 — and the first in-session MEASUREMENT of main-session cost, runbook O3's open item since Plan 11e)*
+
+`EXECUTE-METHOD-V3` §6 sets a phase's stop-loss as
+`1.5 × (per-task rate × task count) + one full reviewer pass per remediation cycle`, and every LIGHT
+phase since 16a has taken the per-task rate from `token-baselines.json`. **Every row in that file is
+SUBAGENT tokens**, and the file says so in its own first line. In a LIGHT phase the subagents ARE
+the reviewers — 16a's 181,605 is one close reviewer over nine tasks it did not write — so the rate
+that gets multiplied by the task count is a REVIEW rate wearing a task rate's clothes. Plan 17's own
+phase document states the bias in one sentence and then does the multiplication anyway: *"in a LIGHT
+phase `subagentTokens` IS the reviewer, so this is review cost in execution clothing; main-session
+cost is unmeasurable from inside."*
+
+**THE MEASUREMENT.** Plan 17 set 730,000 from `1.5 × (20,178 × 9) = 272,403` plus a 458,491 review
+term. It then spent **~482,000 tokens on TWO ROUTINE TASKS with ZERO subagents** — 66% of the whole
+stop-loss, and 1.8× the entire nine-task term, before a single CRITICAL task or either reviewer had
+run. Per task that is ~241,000 against a budgeted 30,267 (the 20,178 rate with its 1.5× applied):
+**eight times over, and 24× the un-multiplied rate.** The two tasks delivered were the CHEAP ones:
+one migration and one module skeleton, no mutants owed at either, no concurrency rows to measure.
+
+**AND THE HALF THAT IS NEW RATHER THAN A RE-STATEMENT.** Runbook O3 has said since Plan 11e that
+main-session cost is *"unmeasurable from inside"*, and every baseline note since repeats it. **It is
+no longer true.** A session with a token budget can read its own remaining balance between two
+points and subtract. That is not `/cost` — it includes the harness's own overhead and cannot be
+attributed per task without more care — but it is a figure where there was none, and it is within
+the reach of any session that chooses to take it.
+
+**WHY THE UNDERESTIMATE IS STRUCTURAL AND NOT THIS PHASE BEING SLOW.** A LIGHT phase moves the
+coding INTO the main session; the whole lane is defined by that move. So the term that scales with
+TASKS is precisely the term that measures nothing, and the term that measures something (review)
+scales with what the tasks got wrong. **A formula whose only measured input is the reviewer cannot
+bound a lane whose defining property is that the reviewer is not doing the work.** Every LIGHT phase
+that came in under its stop-loss did so on the review term alone — 14 at 458,491 against 675,000,
+15 at 463,509 against 730,000, 17 phase 0 at 348,043 against 458,491 — and in each of those the
+main-session spend was never in the number at all. **They were not under budget. They were
+unmeasured.**
+
+**MECHANICAL FORM — two lines, and the first costs one subtraction:**
+
+> **(1) Every session executing a phase records its own token balance at kickoff and at each task
+> boundary, and writes the deltas into CLOSE.** Three phases of that turns the per-task rate into a
+> measured number instead of a borrowed one.
+>
+> **(2) Until that exists, a LIGHT phase's stop-loss carries a THIRD term — the main-session
+> term — and it is the largest of the three.** From this phase's only data point, a ROUTINE task
+> costs ~240k of main session including its share of the one-off reading; price a phase at
+> `main-session term ≈ 200k × task count`, say it is a single measurement, and revise it at the next
+> close. `token-baselines.json` gains a `mainSessionTokens` field so the next audit compares rather
+> than guesses.
+
+**AND THE RULE THAT FALLS OUT OF IT, WHICH MATTERS MORE THAN THE ARITHMETIC.** A nine-task
+full-module build is not a LIGHT phase at the current per-task cost; it is two. Plan 17 recommends
+its own re-cut at close — T3–T5 (order to accession) and T6–T9 (result to report) — because the
+alternative is a stop-loss that fires at 66% through task two, which is exactly what happened.
+**A lane ruling made on task COUNT without a main-session rate to multiply it by is a guess, and
+§2.95's lesson — "a caveat is not a calculation" — applies to the lane decision and not only to the
+ceiling.**
+
+---
+
+**2.142 — TWO LANES SHARING A CHECKOUT IS A KNOWN HAZARD; TWO LANES SHARING A *FILE* NEEDS A DIFFERENT TOOL, AND `git add <path>` IS NOT IT.** *(Plan 17 LIMS core T1/T2, 2026-08-29)*
+
+The parallel-session protocol §3 rule 1 says *"stage explicitly, by path. Never `git add -A`."* That
+rule was written for two lanes touching different FILES, and it is sufficient there. Plan 17 and
+Plan 18a touched **the same four files**: `drizzle/meta/_journal.json` (one migration entry each),
+`kernel/db/schema/index.ts` (one export block each), `kernel/orders/parity.test.ts` (two different
+censuses in one file) and `test/helpers/db.ts` (each lane's tables in `truncateAll`). **`git add
+<path>` stages a whole file**, so obeying the rule literally would have swept the other lane's
+uncommitted work into this phase's commit.
+
+**AND THAT SWEEP WAS NOT MERELY UNTIDY, IT WAS A RED `main`.** The other lane's `truncateAll` hunk
+names `pcpndt_form_f` and `pcpndt_registered_persons`; their migration was on disk and UNTRACKED.
+Committing the helper without the migration ships a `truncateAll` that references tables no
+migration creates, which fails on the FIRST `setupTestDb` of every suite on a fresh database —
+every DB test in the workspace, on CI, for everyone.
+
+**MECHANICAL FORM — stage HEAD-plus-your-hunks as a blob, never the worktree file:**
+
+```
+git show HEAD:<path> | <apply ONLY your edit> | git hash-object -w --stdin --path <path>
+git update-index --cacheinfo 100644,<sha>,<path>
+```
+
+The worktree keeps both lanes' edits; the INDEX gets yours alone; `git diff --cached --stat <path>`
+confirms the hunk count before committing. Two cautions bought by doing it: pipe the content through
+ONE interpreter (a heredoc inside a `$(…)` substitution silently feeds the heredoc to the wrong
+stdin, which staged an empty blob and showed as **84 deletions** in `--stat` — read that stat every
+time), and the committed tree then differs from the tested worktree, so **CI-by-full-SHA is the
+load-bearing evidence for such a commit and the local run is corroboration.**
+
+
 ## 3. Plan-authoring defects
 
 Fix these when writing the next plan, not when executing it.

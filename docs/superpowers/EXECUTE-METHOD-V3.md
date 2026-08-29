@@ -142,6 +142,37 @@ Instead:
   > on an idle host, red on a busy runner, i.e. §2.99 about to repeat. **A stop-loss that halts the
   > second pass is a stop-loss that ships the defect the first pass created.**
 
+  > **AMENDED 2026-08-29 (ledger §2.141, Plan 17 LIMS core) — THE FORMULA HAS A THIRD TERM, AND IT IS
+  > THE LARGEST. THE TWO IT ALREADY HAD BOTH MEASURE THE REVIEWER.**
+  >
+  > Every LIGHT phase since 16a has taken its per-task rate from `token-baselines.json`, and **every
+  > row in that file is SUBAGENT tokens** — which in a LIGHT phase means the close reviewer, an agent
+  > that wrote none of the code. So `per-task rate × task count` multiplies a REVIEW rate by a TASK
+  > count, and the review term then adds the same reviewer a second time. **Neither term has ever
+  > contained the main session, which in this lane is where all the coding happens.**
+  >
+  > Plan 17 measured it: `1.5 × (20,178 × 9) = 272,403` for nine tasks, against **~482,000 actually
+  > spent on TWO ROUTINE tasks with zero subagents** — 66% of the whole 730,000 stop-loss before a
+  > CRITICAL task or either reviewer had run. Eight times the budgeted per-task figure, on the two
+  > cheapest tasks in the phase.
+  >
+  > **The formula is therefore:**
+  > `stop-loss = main-session term + 1.5 × (per-task subagent rate × task count) + one reviewer pass per cycle`,
+  > with `main-session term ≈ 200,000 × task count` until better data exists — **one measurement, from
+  > one phase, and it is to be revised at every close rather than trusted.**
+  >
+  > **And the obligation that makes it improvable: a session executing a phase RECORDS ITS OWN TOKEN
+  > BALANCE at kickoff and at every task boundary, and writes the deltas into CLOSE.** Runbook O3 has
+  > called main-session cost "unmeasurable from inside" since Plan 11e; that is no longer true — a
+  > session with a token budget can read its own remaining balance and subtract. It is not `/cost`
+  > and it includes harness overhead, and it is a figure where there was none.
+  >
+  > **THE CONSEQUENCE FOR THE LANE RULING, WHICH MATTERS MORE THAN THE CEILING.** At ~200k per task
+  > of main session, a NINE-task full-module build is not one LIGHT phase, it is two. §2 calls that
+  > shape LIGHT's *edge*; the arithmetic says the edge is around five tasks. **Cut at a seam the
+  > CONTRACT already freezes, so the halves are independently reviewable** — Plan 17's own close
+  > recommends T3–T5 (order to accession) and T6–T9 (result to report) on exactly that test.
+
 ## 7. The pilot, and what refutes it
 
 **The first post-11d phase runs under v3.** Its lane is ruled by §2 honestly — if the
