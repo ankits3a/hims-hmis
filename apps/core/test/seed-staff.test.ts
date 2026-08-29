@@ -133,7 +133,7 @@ function row(
 }
 
 describe("seed:staff — the census, stated before anything is compared (§2.49)", () => {
-  it("KNOWN_ROLE_KEYS is the twenty-six keys some seed script in this tree can create", () => {
+  it("KNOWN_ROLE_KEYS is the twenty-seven keys some seed script in this tree can create", () => {
     expect(KNOWN_ROLE_KEYS).toEqual([
       "admin",
       // PLAN 15 / DD14, 2026-08-28 — the six OT roles arrive for FREE by the same derivation, and
@@ -170,6 +170,11 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "owner",
       "pharmacy",
       "recovery_nurse",
+      // OWNER RULING 2026-08-29 (Plan 07c T9 / DD14) — `staff_auditor` joins by DERIVATION: this
+      // list is `ROLE_MODEL ∪ GRANTED_BY_OTHER_SEEDS ∪ OPD_ROLE_KEYS`, sorted, so a new model role
+      // arrives here for free and this census is where it announces itself. It is the FIFTH place a
+      // role registration has to be admitted, and the one a file-scoped grep missed.
+      "staff_auditor",
       "storekeeper",
       "surgeon",
       // Group A, 2026-08-26 — three roles for permissions that had guarded live routes with no
@@ -183,7 +188,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
     for (const r of ROLE_MODEL) expect(KNOWN_ROLE_KEYS).toContain(r.roleKey);
     for (const g of GRANTED_BY_OTHER_SEEDS) expect(KNOWN_ROLE_KEYS).toContain(g.roleKey);
     for (const o of OPD_ROLE_KEYS) expect(KNOWN_ROLE_KEYS).toContain(o.key);
-    expect(KNOWN_ROLE_KEYS).toHaveLength(26);
+    expect(KNOWN_ROLE_KEYS).toHaveLength(27);
   });
 
   it("the vocabulary is WIDER than what seed:roles creates, which is what makes two refusals distinct", () => {

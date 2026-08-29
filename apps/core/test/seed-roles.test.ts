@@ -277,6 +277,14 @@ const RESOURCES_PAIRS: readonly string[] = [
  * reads to learn who may do what, and a grant that lives only in code is a grant nobody can review.
  */
 /** PLAN 07d T5 — the README prose line that authorises the doctor's tariff grant. Quoted, not paraphrased. */
+/** PLAN 07c T9 — the README prose line authorising the 2026-08-29 drill ruling. Quoted, not paraphrased. */
+const STAFF_AUDITOR_README_PROSE =
+  "`staff_auditor`, carries `staff.reports.read` AND `staff.reports.drill`, and it is assigned to **one";
+
+/** PLAN 07b O-1 — the README prose line authorising the counter cover. Quoted, not paraphrased. */
+const COUNTER_COVER_README_PROSE =
+  "who covers a locked-out counter (owner ruling, 2026-08-29): the billing manager.";
+
 const DOCTOR_TARIFF_README_PROSE =
   "gains `tariff.read`, because a doctor advising an ultrasound should be able to tell the patient what";
 
@@ -331,16 +339,46 @@ const OT_PAIRS: readonly string[] = [
  */
 const DOCTOR_TARIFF_PAIRS: readonly string[] = ["doctor/tariff.read"];
 
+/**
+ * PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29. The THIRTEENTH non-table set: a role of its own,
+ * carrying both staff-report strings, so the person who may open patient rows from a colleague's
+ * shift is exactly ONE named human rather than everybody who happens to hold a supervisory role.
+ */
+const STAFF_AUDITOR_PAIRS: readonly string[] = [
+  "staff_auditor/staff.reports.read",
+  "staff_auditor/staff.reports.drill",
+];
+
+/**
+ * PLAN 07b O-1 — OWNER RULING 2026-08-29. The FOURTEENTH non-table set, and the largest single
+ * addition to this list: seven strings that let a `billing_manager` WORK A COUNTER.
+ *
+ * A variance lockout closes the whole front door under ruling R-4's one-staffer counter, and the
+ * owner named this role as the cover. These are exactly what `counter-desk.tsx` calls to complete
+ * one walk-in — not `front_office` + `cashier` wholesale, and deliberately without
+ * `billing.credit.extend`: this role approves billing exceptions and a stopgap cover has no
+ * business creating one it could then approve.
+ */
+const COUNTER_COVER_PAIRS: readonly string[] = [
+  "billing_manager/opd.masters.read",
+  "billing_manager/opd.queue.read",
+  "billing_manager/patients.read",
+  "billing_manager/patients.register",
+  "billing_manager/opd.visits.open",
+  "billing_manager/billing.invoice.issue",
+  "billing_manager/billing.session.own",
+];
+
 const STAFF_REPORT_PAIRS: readonly string[] = [
   "front_office_supervisor/staff.reports.read",
   "medical_superintendent/staff.reports.read",
 ];
 
-/** All twelve non-table sets. A model row outside this union fails V3's last leg. */
+/** All fourteen non-table sets. A model row outside this union fails V3's last leg. */
 const NON_TABLE_PAIRS: readonly string[] = [
   ...RULING_7_PAIRS, ...WORKFLOW_RULING_PAIRS, ...PLAN_09_PAIRS, ...GROUP_C_PAIRS, ...GROUP_A_PAIRS,
   ...MERGE_LANE_PAIRS, ...GROUP_B_PAIRS, ...FORMULARY_PAIRS, ...RESOURCES_PAIRS, ...OT_PAIRS,
-  ...STAFF_REPORT_PAIRS, ...DOCTOR_TARIFF_PAIRS,
+  ...STAFF_REPORT_PAIRS, ...DOCTOR_TARIFF_PAIRS, ...STAFF_AUDITOR_PAIRS, ...COUNTER_COVER_PAIRS,
 ];
 
 type GrantTable = {
@@ -564,7 +602,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     expect(installedRegistry().allPermissions()).toHaveLength(105);
   });
 
-  it("the role model is twenty-four roles, one hundred and fifty-nine grants, eighty-four distinct permissions", () => {
+  it("the role model is twenty-five roles, one hundred and sixty-eight grants, eighty-five distinct permissions", () => {
     expect(ROLE_MODEL.map((r) => r.roleKey)).toEqual([
       "front_office",
       "front_office_supervisor",
@@ -582,6 +620,11 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // model row at all. It joins for ONE string — the temp-role mechanism built for the night
       // shift — and that row was unsafe to write before the elevation ceiling landed.
       "duty_manager",
+      // OWNER RULING 2026-08-29 (Plan 07c T9 / DD14) — the TWENTY-FIFTH role, registered directly
+      // after the duty manager. It exists so `staff.reports.drill` reaches exactly ONE named
+      // person: adding the string to `duty_manager`, which that person already holds, would have
+      // handed patient rows from every shift to three people and undone DD14's whole point.
+      "staff_auditor",
       // Group A, 2026-08-26: three roles for permissions that previously had NO holder, so their
       // live routes answered 403 to every account on the deployment.
       "tariff_editor",
@@ -632,7 +675,11 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // as `CROC500` in three stores is curating half a fact.
       pharmacy: 8,
       cashier: 11,
-      billing_manager: 11,
+      // PLAN 07b O-1, OWNER RULING 2026-08-29 — 11 -> 18. Seven strings that let this role WORK A
+      // COUNTER while a cashier's drawer is locked pending its variance approval. Under R-4's
+      // one-staffer counter that lockout closes the hospital's front door, and a cover that first
+      // needs a temp-role grant from somebody who may not be on site is a cover on paper.
+      billing_manager: 18,
       // Group A, 2026-08-26: +4 — tariff.read, the activator key, tariff config, and approval-type
       // governance. `owner` is now the activator for BOTH ceremonies, workflow and price list.
       // Group B then added +3: the invoice, the daybook and the cashier sessions. NOT patients.read.
@@ -644,6 +691,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // role card #39), not the technical administrator's.
       medical_superintendent: 10,
       duty_manager: 1,
+      // OWNER RULING 2026-08-29 — two strings, one role, one holder: the figures and the rows.
+      staff_auditor: 2,
       tariff_editor: 3,
       membership_admin: 2,
       mrd_officer: 3,
@@ -664,9 +713,13 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     });
     // PLAN 07c T9 — 156 → 158: `staff.reports.read` to `front_office_supervisor` and to
     // `medical_superintendent`. Two grants, one string, no new role.
-    expect(modelPairs()).toHaveLength(159);
+    // 159 -> 168: the 2026-08-29 rulings add `staff_auditor`'s two and the counter cover's seven.
+    expect(modelPairs()).toHaveLength(168);
     // PLAN 07c T9 — 83 → 84 DISTINCT: one new string (`staff.reports.read`) across two roles.
-    expect(modelPermissions()).toHaveLength(84);
+    // 84 -> 85 DISTINCT: only `staff.reports.drill` is new to the MODEL. Every other string the
+    // two rulings grant was already held by another role — the counter cover moves WHO may act,
+    // not WHAT the system can do.
+    expect(modelPermissions()).toHaveLength(85);
     // No role lists the same permission twice — a duplicate would inflate the counts above
     // without changing a single row of `role_permissions`.
     for (const role of ROLE_MODEL) {
@@ -674,7 +727,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     }
   });
 
-  it("the reachability census closes: 105 declared = 90 held + 15 not yet modelled", () => {
+  it("the reachability census closes: 105 declared = 91 held + 14 not yet modelled", () => {
     expect(installedRegistry().allPermissions()).toHaveLength(105);
     // 42 + 13 until the 2026-08-23 ruling moved the four `workflow.definitions.*` strings across;
     // 46 + 13 until Plan 09 declared fourteen and DD18 granted four of them.
@@ -707,8 +760,11 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // rather than being buried in it: `staff.reports.drill` is granted to nobody ON PURPOSE (DD14
     // splits the figures from the rows), so unlike the last three phases this one does add a
     // permission that no role holds — with a reason, which is what the list is for.
-    expect(heldPermissions()).toHaveLength(90);
-    expect(NOT_YET_MODELLED).toHaveLength(15);
+    // OWNER RULING 2026-08-29 — `staff.reports.drill` LEAVES the not-yet-modelled list (15 -> 14)
+    // and joins the held set (90 -> 91). It is the only string this ruling moves: every other
+    // permission the two rulings grant was already held by some other role.
+    expect(heldPermissions()).toHaveLength(91);
+    expect(NOT_YET_MODELLED).toHaveLength(14);
     expect(heldPermissions().length + NOT_YET_MODELLED.length).toBe(105);
   });
 
@@ -837,7 +893,12 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // PLAN 14 / DD11 appends two: neither `materials_head` nor `storekeeper` is an OPD station, so
     // neither belongs in `OPD_ROLE_KEYS` — a store is not a consulting room.
     expect(modelKeys.filter((k) => !opdKeys.includes(k))).toEqual([
-      "pharmacy", "cashier", "billing_manager", "tariff_editor", "membership_admin", "mrd_officer",
+      "pharmacy", "cashier", "billing_manager",
+      // OWNER RULING 2026-08-29 — `staff_auditor` is declared locally: it is not an OPD station, it
+      // is a governance seat, held by ONE person by design (DD14). This list is in ROLE_MODEL
+      // order, and the role is registered directly after `duty_manager`.
+      "staff_auditor",
+      "tariff_editor", "membership_admin", "mrd_officer",
       "biomedical_engineer", "materials_head", "storekeeper",
       // PLAN 15 / DD14 appends six: a theatre is not a consulting room either, and `surgeon` and
       // `anaesthetist` in particular are NOT `doctor` — `doctor` is an OPD station key, these two
@@ -851,7 +912,9 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     expect(Object.keys(LOCAL_ROLE_TITLES).sort()).toEqual([
       "anaesthetist", "billing_manager", "biomedical_engineer", "cashier", "daycare_coordinator",
       "materials_head", "membership_admin", "mrd_officer", "ot_incharge", "ot_nurse", "pharmacy",
-      "recovery_nurse", "storekeeper", "surgeon", "tariff_editor",
+      // OWNER RULING 2026-08-29 — this list is SORTED, so `staff_auditor` lands between the
+      // recovery nurse and the storekeeper. It is a governance seat with one holder, not a station.
+      "recovery_nurse", "staff_auditor", "storekeeper", "surgeon", "tariff_editor",
     ]);
     expect(Object.keys(LOCAL_ROLE_TITLES).filter((k) => opdKeys.includes(k))).toEqual([]);
     for (const key of modelKeys) expect(roleTitle(key).length).toBeGreaterThan(0);
@@ -922,13 +985,10 @@ describe("seed:roles — the reachability invariant (V1, V2)", () => {
       "partners.receivable.operate",
       "partners.statement.import",
       "patients.confidential.read",
-      // PLAN 07c T9 / DD14 — the FIFTEENTH, and the first addition to this list in four phases. It
-      // sits here because the list is SORTED, and it sits BESIDE `patients.confidential.read` by
-      // more than alphabetical accident: both are reads of patient identity that the mechanism
-      // fully supports and that nobody holds, because who may perform them is a ruling rather than
-      // a default. It is a DECISION rather than a gap — `staff.reports.read` IS granted, and DD14
-      // splits the figures from the rows precisely so that this one can be withheld on its own.
-      "staff.reports.drill",
+      // `staff.reports.drill` LEFT this list on 2026-08-29, one day after it joined it: the owner
+      // named who may open patient rows from a colleague's shift, and it is `staff_auditor` — a
+      // role of its own, held by one person. It is the shortest stay any entry has had, and it is
+      // what this list is FOR: a permission parked here with a reason, until somebody rules.
       // `patients.merge` LEFT on 2026-08-26 — not because a ruling arrived (it had one) but
       // because `seed:patients` finally registered `patient_merge`, so the grant means something.
       // The four `workflow.definitions.*` strings left this list on 2026-08-23 — see
@@ -959,7 +1019,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(fromModel).toEqual(fromReadme);
   });
 
-  it("V3: the rulings' sixty pairs are exactly the model's non-table rows, with every README prose line quoted", () => {
+  it("V3: the rulings' seventy pairs are exactly the model's non-table rows, with every README prose line quoted", () => {
     const fromReadme = new Set([
       ...tablePairs(opdTable), ...tablePairs(billingTable), ...tablePairs(materialsTable),
       ...tablePairs(otTable),
@@ -982,7 +1042,9 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     // not a grid, and the sentence is owner ruling O-2.
     // 60 -> 61 after Plan 07d T5: `doctor/tariff.read` (DD6). A tariff string held by an OPD role
     // belongs to neither README table by construction.
-    expect(NON_TABLE_PAIRS).toHaveLength(61);
+    // 61 -> 70 after the 2026-08-29 owner rulings: `staff_auditor`'s two and the seven that let a
+    // `billing_manager` cover a locked-out counter (07b O-1).
+    expect(NON_TABLE_PAIRS).toHaveLength(70);
     expect(nonTable.filter((p) => p.includes("/materials."))).toEqual([]);
     expect(nonTable.filter((p) => p.startsWith("ot_") || p.startsWith("surgeon/") || p.startsWith("anaesthetist/") || p.startsWith("recovery_nurse/") || p.startsWith("daycare_coordinator/"))).toEqual([]);
     // Plan 15 / DD14's own source sentence, held to exactly the standard of the nine below.
@@ -991,6 +1053,9 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(STAFF_REPORT_README_PROSE);
     // Plan 07d / DD6's own source sentence, held to exactly the standard of the ten below.
     expect(readme).toContain(DOCTOR_TARIFF_README_PROSE);
+    // The two 2026-08-29 owner rulings, held to exactly the standard of the eleven below.
+    expect(readme).toContain(STAFF_AUDITOR_README_PROSE);
+    expect(readme).toContain(COUNTER_COVER_README_PROSE);
     // Plan 13 / DD14's own source sentence, held to exactly the standard of the eight below.
     expect(readme).toContain(RESOURCES_README_PROSE);
     // Plan 16a / DD10's own source sentence, held to exactly the standard of the seven below.
@@ -1045,7 +1110,7 @@ describe("seed:roles — executed against a database (V5)", () => {
 
   it("V5: is idempotent — the second run creates nothing, grants nothing, and still reports the census", async () => {
     const first = await seedRoles(db);
-    expect(first.roles.map((r) => r.created)).toEqual(Array(24).fill(true));
+    expect(first.roles.map((r) => r.created)).toEqual(Array(25).fill(true));
     // The last two are the governance roles the 2026-08-23 ruling added: `owner` 3, `medical_
     // superintendent` 2. `opd_admin` went 4 -> 6 with the two definition-drafting strings. Plan
     // 09 / DD18 then moved four: front_office 9 -> 12, its supervisor 10 -> 13, cashier 8 -> 11,
@@ -1067,7 +1132,10 @@ describe("seed:roles — executed against a database (V5)", () => {
     // visible half of that correction (finding T2-d).
     // PLAN 07c T9 — the SECOND and ELEVENTH entries move (front_office_supervisor 13 → 14,
     // medical_superintendent 9 → 10), both by `staff.reports.read`.
-    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 14, 5, 11, 7, 1, 8, 11, 11, 10, 10, 1, 3, 2, 3, 1, 11, 6, 11, 4, 4, 4, 3, 6]);
+    // OWNER RULINGS 2026-08-29 — two entries move and one is INSERTED, in ROLE_MODEL order:
+    // `billing_manager` 11 -> 18 (the counter cover, 07b O-1) and a new `staff_auditor` at 2,
+    // registered directly after `duty_manager`.
+    expect(first.roles.map((r) => r.granted.length)).toEqual([12, 14, 5, 11, 7, 1, 8, 11, 18, 10, 10, 1, 2, 3, 2, 3, 1, 11, 6, 11, 4, 4, 4, 3, 6]);
     expect(first.roles.every((r) => r.already.length === 0)).toBe(true);
     expect(first.declared).toBe(105);
     // MEASURED from role_permissions, not derived from the model. On this database only seed:roles
@@ -1075,10 +1143,11 @@ describe("seed:roles — executed against a database (V5)", () => {
     // once seed:admin and seed:ops have also run. That SEVEN-permission gap IS MAJOR 1 (it was ten
     // until Group C moved three `auth.*` strings into the model), and before the 2026-08-23 fix
     // this line read the model's claim against a database holding the grants.
-    expect(first.held).toBe(84);
+    // 84 -> 85: `staff.reports.drill` is the one string these rulings add to the MODEL.
+    expect(first.held).toBe(85);
     expect(first.held).toBe(modelPermissions().length);
-    expect(heldPermissions()).toHaveLength(90);
-    expect(first.notYetModelled).toBe(15);
+    expect(heldPermissions()).toHaveLength(91);
+    expect(first.notYetModelled).toBe(14);
     expect(first.expectedElsewhereAbsent).toBe(6);
     // And the census RECONCILES against the catalog, which is the property that makes it evidence:
     // 83 held + 14 unmodelled + 6 expected-elsewhere = 103 declared (Plan 15 T2 moved the first by
@@ -1092,10 +1161,10 @@ describe("seed:roles — executed against a database (V5)", () => {
     // `createRole` is a BARE INSERT and is not idempotent; the guard around it is what makes this
     // run exit rather than die on a duplicate key.
     const second = await seedRoles(db);
-    expect(second.roles.map((r) => r.created)).toEqual(Array(24).fill(false));
+    expect(second.roles.map((r) => r.created)).toEqual(Array(25).fill(false));
     expect(second.roles.every((r) => r.granted.length === 0)).toBe(true);
     // PLAN 07c T9 — the same two entries as the first run's `granted` census above.
-    expect(second.roles.map((r) => r.already.length)).toEqual([12, 14, 5, 11, 7, 1, 8, 11, 11, 10, 10, 1, 3, 2, 3, 1, 11, 6, 11, 4, 4, 4, 3, 6]);
+    expect(second.roles.map((r) => r.already.length)).toEqual([12, 14, 5, 11, 7, 1, 8, 11, 18, 10, 10, 1, 2, 3, 2, 3, 1, 11, 6, 11, 4, 4, 4, 3, 6]);
 
     // And the database holds the model exactly once.
     const written = await db
@@ -1162,7 +1231,7 @@ describe("seed:roles — executed against a database (V5)", () => {
     // A role with no holder is REPORTED rather than silently absent — grants without holders are
     // still 403 for every user on the deployment, and the verdict line has to say so.
     expect(report.ready).toBe(false);
-    expect(report.problems.join(" ")).toContain("NO USER HOLDS ANY OF THE 24 ROLES");
+    expect(report.problems.join(" ")).toContain("NO USER HOLDS ANY OF THE 25 ROLES");
   });
 
   /**

@@ -1075,6 +1075,28 @@ string to a role that does not exist would make it a permission nobody can ever 
 roles are created by `seed:roles` with grants and **no holders**, the `pharmacy` and `storekeeper`
 precedent.
 
+**Plan 07c T9 / DD14 — who may open the patient rows (owner ruling, 2026-08-29).** A new role,
+`staff_auditor`, carries `staff.reports.read` AND `staff.reports.drill`, and it is assigned to **one
+named person**. The obvious shortcut was to add the drill to `duty_manager`, which that person
+already holds — and that would have handed patient rows from every shift to three people instead of
+one, undoing the narrowness DD14 exists to create. A permission designed to be narrow must not be
+widened by the convenience of an existing role. Every drill still writes a `staff_report.drilled`
+row naming the auditor, the subject and the stated reason.
+
+**Plan 07b O-1 — who covers a locked-out counter (owner ruling, 2026-08-29): the billing manager.**
+A paise mismatch at close moves a cashier session to `closing` and locks that person out of all
+counter work until a `billing_manager` grants a variance approval. Under ruling R-4 — one staffer on
+the counter, because traffic is low — that closes registration and visit-opening too, and therefore
+the hospital's front door. The control is correct and stays; what was missing was a named cover.
+`billing_manager` gains the seven strings `counter-desk.tsx` actually calls to complete one walk-in
+(`opd.masters.read`, `opd.queue.read`, `patients.read`, `patients.register`, `opd.visits.open`,
+`billing.invoice.issue`, `billing.session.own`) as **standing** permissions rather than a temp-role
+grant, because a cover that first needs a duty manager on site at 21:00 to arrange it is a cover
+that exists on paper. It deliberately does NOT gain `billing.credit.extend`: this role approves
+billing exceptions and a stopgap cover has no business creating one it could then approve. The
+segregation that matters is untouched — `assertNotSodPair` compares the two PEOPLE on one approval,
+so a manager covering a counter still cannot approve their own variance.
+
 **Plan 07d T5 / DD6 — advised investigations (owner ruling O-2 of 07d, 2026-08-28).** `doctor`
 gains `tariff.read`, because a doctor advising an ultrasound should be able to tell the patient what
 it costs without walking them to the counter — and the price is the patient's first question. The

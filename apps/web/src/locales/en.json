@@ -1578,7 +1578,8 @@
     "surplus": "₹{{amount}} more than the bill.",
     "changeGiven": "Handed back as change",
     "changeHint": "Whatever you do not hand back stays on the patient's account as an advance. Say which — the drawer is counted on this.",
-    "surplusNoCash": "More than the bill was tendered, but not in cash — the surplus stays on the patient's account. Returning money on a card payment is a refund."
+    "surplusNoCash": "More than the bill was tendered, but not in cash — the surplus stays on the patient's account. Returning money on a card payment is a refund.",
+    "drawerLockedCover": "Meanwhile the counter is covered by a billing manager, who can register, open a visit and take payment on their own drawer. Ask them to cover rather than closing the desk."
   },
   "counterSlip": {
     "token": "Token",

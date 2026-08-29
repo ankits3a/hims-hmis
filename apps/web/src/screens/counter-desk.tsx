@@ -199,14 +199,23 @@ export function CounterDesk(): React.ReactElement {
           {drawerLocked
             ? (
               /*
-               * O-1, ROUTED TO THE OWNER AND STILL OPEN. A paise mismatch at close moves the session
-               * to `closing` and locks this cashier out of ALL counter work until a billing manager
-               * grants a variance approval. With ONE person on the counter (ruling R-4) that closes
-               * registration and visit-opening too — the hospital's front door, not just the till.
-               * The control is correct and stays; the screen says plainly what is needed and who by,
-               * rather than answering `no_open_session` and letting the clerk read it as a bug.
+               * O-1, ANSWERED BY THE OWNER 2026-08-29: THE BILLING MANAGER COVERS.
+               *
+               * A paise mismatch at close moves the session to `closing` and locks this cashier out
+               * of ALL counter work until a billing manager grants a variance approval. With ONE
+               * person on the counter (ruling R-4) that closes registration and visit-opening too —
+               * the hospital's front door, not just the till. The control is correct and stays.
+               *
+               * What was missing was a NAMED COVER, and the screen now carries it. The banner says
+               * two things rather than one: what unblocks THIS person (the approval), and who can
+               * keep the counter running meanwhile. `billing_manager` holds the seven counter
+               * strings as standing permissions precisely so that second sentence is actionable —
+               * see README, "who covers a locked-out counter".
                */
-              <p data-testid="drawer-locked">{t("counter.drawerLocked")}</p>
+              <div className="space-y-1">
+                <p data-testid="drawer-locked">{t("counter.drawerLocked")}</p>
+                <p data-testid="drawer-cover">{t("counter.drawerLockedCover")}</p>
+              </div>
             )
             : (
               <div className="space-y-2">

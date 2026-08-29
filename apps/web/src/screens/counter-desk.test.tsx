@@ -254,6 +254,13 @@ describe("CounterDesk (07b T3)", () => {
       mockRoutes(base({ "GET /api/billing/sessions/current": ok({ session: { id: "s-1", status: "closing" } }) }));
       renderWithProviders(<CounterDesk />);
       expect(await screen.findByTestId("drawer-locked")).toHaveTextContent(/variance approval/i);
+      /*
+       * PLAN 07b O-1, ANSWERED 2026-08-29. The banner said what UNBLOCKS this cashier and never who
+       * could keep the counter running meanwhile — and under ruling R-4's one-staffer counter, that
+       * silence is the hospital's front door closing. It now names the cover, and the
+       * `billing_manager` role holds the seven counter strings that make the sentence actionable.
+       */
+      expect(screen.getByTestId("drawer-cover")).toHaveTextContent(/covered by a billing manager/i);
     });
 
     it("an open drawer shows no blocker at all", async () => {

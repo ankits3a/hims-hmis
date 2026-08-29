@@ -126,8 +126,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * PLAN 07c T9 / DD14 — the supervisor's named-staff view, and this is the role the phrase
        * "the supervisor" in that ruling actually means. It buys the FIGURES: what a named person
        * did, how much they collected, how their week compares to their own median. It does NOT buy
-       * the patient rows behind those figures — `staff.reports.drill` is a separate string and it
-       * is deliberately held by nobody (see `NOT_YET_MODELLED`).
+       * the patient rows behind those figures — `staff.reports.drill` is a SEPARATE string, and the
+       * owner ruled on 2026-08-29 that it goes to `staff_auditor` and to nobody else. This role is
+       * three people; that one is one person. The split is DD14 working.
        */
       "staff.reports.read",
     ],
@@ -300,6 +301,45 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "billing_manager",
     permissions: [
+      /**
+       * ═══ PLAN 07b O-1, ANSWERED BY THE OWNER 2026-08-29: THE BILLING MANAGER COVERS ═══
+       *
+       * A paise mismatch at close moves a cashier session to `closing` and locks that person out of
+       * ALL counter work until a `billing_manager` grants a variance approval. Under ruling R-4 —
+       * ONE staffer on the counter, because traffic is low — that closes registration and
+       * visit-opening too, not just billing. It closes the hospital's front door.
+       *
+       * The control is correct and stays. What O-1 asked was **who covers**, and whether they hold
+       * counter standing or are granted it at the moment. The owner named `billing_manager`, and
+       * the seven strings below are STANDING rather than a temp-role grant for one reason: the
+       * counter is DOWN while the cover is arranged. A cover that first needs a `duty_manager` to
+       * be on site at 21:00 to grant a temp role is a cover that exists on paper.
+       *
+       * ═══ WHY THESE SEVEN AND NOT `front_office` + `cashier` WHOLESALE ═══
+       *
+       * They are exactly what `counter-desk.tsx` calls to work one walk-in end to end: the
+       * department list, the queue summary, patient search, the walk-in (which asserts
+       * `patients.register` inside the service — the stacked-decorator finding), the fee quote, the
+       * invoice, and the manager's OWN drawer. `billing.credit.extend` is DELIBERATELY NOT among
+       * them: a credit-extended invoice is a billing exception, this role approves billing
+       * exceptions, and a stopgap cover has no business creating one it could then approve.
+       *
+       * ═══ THE SoD CONTROL THAT MATTERS STILL HOLDS, AND IT WAS CHECKED ═══
+       *
+       * `assertNotSodPair(REQUESTER_APPROVER_PAIR, requester, actor)` in
+       * `kernel/approvals/decisions.ts` compares the two PEOPLE on one item, not the roles a person
+       * holds. So a manager covering a counter still cannot approve their own variance — which is
+       * the whole reason the lockout exists. Holding both roles is not the violation; acting on
+       * both sides of one approval is, and that is refused in its own transaction with a
+       * `sod.violation_blocked` row.
+       */
+      "opd.masters.read",
+      "opd.queue.read",
+      "patients.read",
+      "patients.register",
+      "opd.visits.open",
+      "billing.invoice.issue",
+      "billing.session.own",
       "billing.invoice.read",
       "billing.allocation.reverse",
       "billing.session.read",
@@ -475,6 +515,27 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // role means.
   // ------------------------------------------------------------------------------------------
   { roleKey: "duty_manager", permissions: ["auth.temp_role.grant"] },
+  /**
+   * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
+   *
+   * `staff.reports.drill` reveals the PATIENT ROWS behind a colleague's figures. 07c shipped it
+   * held by nobody on purpose, because who may read another person's shift is a question for
+   * whoever is answerable under DPDP rather than a default. The owner has now answered it.
+   *
+   * **IT IS ITS OWN ROLE, ASSIGNED TO ONE PERSON, AND THAT IS THE POINT.** The obvious shortcut was
+   * to add the permission to `duty_manager`, which the named person already holds — and that would
+   * have handed patient rows from every shift to THREE people instead of one, undoing the narrowness
+   * DD14 exists to create. A permission whose whole design is "deliberately narrow" must not be
+   * widened by the convenience of an existing role.
+   *
+   * It carries `staff.reports.read` as well, because drilling without reading is incoherent: the
+   * drill opens the rows BEHIND a figure, and a holder who cannot see the figure has nothing to
+   * drill from.
+   *
+   * `seed:roles` mints the role and assigns NOBODY (this file's own header rule). Handing it to a
+   * human is a separate, deliberate act — the runbook records who.
+   */
+  { roleKey: "staff_auditor", permissions: ["staff.reports.read", "staff.reports.drill"] },
   // ------------------------------------------------------------------------------------------
   // GROUP A, owner ruling 2026-08-26 — THREE ROLES FOR PERMISSIONS THAT HAD NO HOLDER AT ALL.
   //
@@ -718,28 +779,6 @@ export const NOT_YET_MODELLED: readonly NotYetModelled[] = [
       "routes; granting them would mint authority no role needs (owner ruling 2026-08-23)",
   })),
   {
-    /**
-     * PLAN 07c T9 / DD14 — **THE ROWS BEHIND THE FIGURES SHIP HELD BY NOBODY, AND THAT IS THE
-     * DECISION RATHER THAN AN OMISSION.**
-     *
-     * `staff.reports.read` is granted (to `front_office_supervisor` and `medical_superintendent`):
-     * counts, money and timings are hospital work product and a supervisor needs them. This string
-     * is the other half — it reveals the PATIENT ROWS from somebody else's shift — and DD14 splits
-     * them precisely so that a hospital cannot hand out the second by accident while granting the
-     * first. A deployment that granted both together would have decided, without noticing, that
-     * every shift supervisor may read every patient list in the building.
-     *
-     * It sits beside `patients.confidential.read` on the identical argument: the mechanism is
-     * built, tested and audited (`staff_report.drilled` names the supervisor, the subject and the
-     * stated reason), and WHO holds it is a question for the person answerable under DPDP, not for
-     * the phase that built it.
-     */
-    permission: "staff.reports.drill",
-    reason:
-      "07c DD14 splits the figures from the rows on purpose — this string reveals patient rows " +
-      "from another person's shift, so who holds it is an owner/DPO ruling and not a default",
-  },
-  {
     permission: "patients.confidential.read",
     reason:
       "spec section 14 confidential/VIP visibility beyond normal RBAC — it wants an owner ruling " +
@@ -844,6 +883,10 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   anaesthetist: "Anaesthetist (signs the case in; the other half of the override)",
   ot_nurse: "OT Nurse (cockpit, counts and implant scanning; does not discharge)",
   recovery_nurse: "Recovery Nurse (PACU scoring and the escort-gated discharge)",
+  // OWNER RULING 2026-08-29 (Plan 07c T9 / DD14). Not an OPD station — a governance seat, held by
+  // ONE person on purpose. The key is what the code matches on; if the org chart calls the person
+  // something else, the TITLE changes here and the key does not.
+  staff_auditor: "Staff Auditor (reads a named colleague's figures, and may open the patient rows behind them)",
   daycare_coordinator: "Day-care Coordinator (books cases, chases gates, publishes the list)",
 };
 
