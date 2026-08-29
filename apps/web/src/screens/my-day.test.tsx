@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MyDay } from "./my-day";
 import { renderWithProviders } from "../test-utils";
 import { setToken } from "../lib/api";
+import { todayIst } from "../lib/opd-api";
 
 /**
  * PLAN 07c T2/T3/T5 — MY DAY: the screen, the paper and the file are ONE model (DD5).
@@ -64,9 +65,43 @@ function stubObjectUrls(): { created: Blob[]; revoked: string[] } {
   return { created, revoked };
 }
 
-afterEach(() => { setToken(null); vi.unstubAllGlobals(); });
+/**
+ * ═══ THE CLOCK IS FROZEN, AND IT IS A FIX RATHER THAN A CONVENIENCE ═══
+ *
+ * `MyDay` takes its date from the REAL clock — `useState(todayIst())`, and `todayIst` is arithmetic
+ * over `new Date()`. Every fixture in this file is dated 2026-08-29 and two assertions read that
+ * date back out of the request URL. **So this suite passed for eighteen and a half hours a day and
+ * failed for five and a half**: after 18:30 UTC the IST calendar date rolls over, the screen
+ * correctly asks for the NEXT day, and the assertions for `date=2026-08-29` fail. Four consecutive
+ * commits went CI-red that way on 2026-08-29 — none of which touched `apps/web` — and every commit
+ * pushed in that window would have.
+ *
+ * **The SCREEN is right and the TEST froze a day.** At 00:50 IST the user's day IS the new one, and
+ * a "my day" screen that showed yesterday because a test preferred it would be the real defect. So
+ * the clock is driven here, which is Plan 07c's own recorded resolution of the same class of flake
+ * ("fixed by driving the clock in the test, not by a seam in the component") and the shape
+ * `opd-appointments.test.tsx` and `alerts-bell.test.tsx` already use.
+ *
+ * Midday IST, deliberately: far from both boundaries, so neither a UTC nor an IST rollover can
+ * reach it.
+ */
+const NOW_ISO = "2026-08-29T06:30:00.000Z"; // 12:00 IST on 2026-08-29
+const FIXTURE_DAY = "2026-08-29";
+
+beforeEach(() => { vi.setSystemTime(new Date(NOW_ISO)); });
+afterEach(() => { setToken(null); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("07c T2/T3/T5 — my day", () => {
+  /**
+   * THE GUARD ON THE SUITE'S OWN PREMISE. It asserts the frozen instant against the SAME function
+   * the screen calls, so a future edit to `NOW_ISO` fails HERE, in one line that says why, rather
+   * than in two URL assertions eighty lines apart whose message is about a missing string.
+   */
+  it("the frozen clock is the day these fixtures are dated", () => {
+    expect(todayIst(new Date(NOW_ISO))).toBe(FIXTURE_DAY);
+    expect(todayIst()).toBe(FIXTURE_DAY);
+  });
+
   it("renders the server's sections, with the column keys translated and the totals row kept", async () => {
     mount({ date: "2026-08-29", provisional: false, sections: [SECTION] });
 
