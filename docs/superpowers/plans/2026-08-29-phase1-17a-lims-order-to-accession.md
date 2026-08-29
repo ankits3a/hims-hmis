@@ -414,6 +414,27 @@ five censuses of row 8; fail-first owed and quoted.
 7. **No route, no screen, no controller exists.** 17b mounts all of them, and 22c-A's C1 (a field
    missing from the wire schema returned 200 and wrote nothing) is 17b's to prove over HTTP.
 
+**ADDED AT EXECUTION — five sentences 17b needs and cannot read off the design:**
+
+8. **`printLabels` is `Db`-FIRST; `collect`, `receive` and `reject` are `Tx`-FIRST.** The asymmetry
+   is load-bearing, not an oversight: `printLabels` is the only one that must WRITE on its refusal
+   path (`lab.tube_mismatch_flagged`, F20), and a flag appended on the transaction that is about to
+   roll back is a flag that never existed. 17b's controller wraps each in `withIdempotency` exactly
+   the same way regardless.
+9. **The tube's state machine is `lab_specimens.status`, not a workflow instance** (F15). The
+   `lab_specimen` DEFINITION is drafted and activated by `activateLabDefinitions` and validates under
+   `defineWorkflow`, and nothing instances it, because the table has no `instance_id`. 17b must read
+   the column, and a phase that adds the column should add it with F1's window.
+10. **`receive` is defended four deep and only its own CAS produces a readable refusal** (F21). If
+    17b ever bypasses `receive` to move an item to `in_progress`, the concurrency safety survives and
+    the SENTENCE at the bench does not.
+11. **The two sweeps are `(db, now, …)` and neither places an order** (DD8). `sweepLabNonReturn`
+    additionally takes `decls`, because `advanceOrderItem` validates against the INSTALLED manifests
+    and the worker installs its own set.
+12. **A redrawn tube's item goes `recollection_pending → awaiting_collection → collected`, two hops**
+    (F23), and the shortcut edge must never be added — the intermediate state is what the seven-day
+    sweep measures.
+
 ---
 
 ## 7. Edge cases this phase owns
@@ -481,6 +502,7 @@ files. Nothing this phase needs a migration for — row 1's trap does not fire.
 | T3 committed | 14,874,000 | **126,000** |
 | **kickoff (session 2 — FRESH, the seed read alone)** | 14,908,000 | **92,000** |
 | **T4 committed (`fba0d72`)** | 14,725,000 | **275,000** (of which 92,000 is the seed ⇒ **~183,000 marginal**) |
+| **T5 code-complete, full verify launched** | 14,499,000 | **226,000** |
 
 > **THE FRESH-SESSION SEED IS THE NUMBER THE STOP-LOSS GOT RIGHT, AND IT IS WORTH SAYING SO.**
 > §6 budgeted a **per-phase fixed ≈ 90,000** for the reading order, the pre-flight and the §2
@@ -544,8 +566,7 @@ this session and are unchanged.
 | 2 | `fba0d72` | **T4** | `desk.ts` (566 lines), `workflow-def.ts`, `definitions.ts` + three suites; `openLabWalkin`/`openLabWalkinInTx` in `modules/opd/encounters.ts`; both module indexes widened; `test/helpers/lab.ts` (the shared fixture, F9). 1,560 insertions, 0 deletions |
 | 3 | `7dd039c` | **T4** | the eleventh IST clock declared — **`main` had been red since T3** (F10) |
 
-**T5 IS NOT STARTED.** No `collection.ts`, `specimens.ts`, `accession.ts` or `sweeps.ts` exists, no
-worker job is registered, and the five job censuses of §2 row 8 are unmoved.
+| 4 | *(T5)* | **T5** | `collection.ts`, `specimens.ts`, `accession.ts`, `sweeps.ts` + four suites (incl. `accession.concurrency.test.ts`); two `scheduler.register` entries; `WORKER_LAB_SWEEP_INTERVAL_MS` + the widened `JobIntervals` `Pick`; FOUR job censuses, THREE `JobIntervals` literals and `docker/prod/prometheus/alerts.yml` |
 
 ### 9.2 Findings
 
@@ -640,6 +661,94 @@ the counter must name one when the `LAB` department has more than one active `op
 §9.9's runbook act should create ONE pathologist-of-record row unless the owner wants the counter
 choosing per walk-in.
 
+**F15 — `lab_specimens` HAS NO `instance_id`, SO THE `lab_specimen` DEFINITION IS DECLARED AND
+NEVER INSTANCED.** DD4 rules two state machines and T4 ships both; `lab_items.instance_id` holds the
+item's, and the tube's table carries no such column. §2 row 1 rules a needed column a defect to
+REPORT rather than a migration to write, so it is reported: **`lab_specimens.status` IS the tube's
+machine** (`labelled → collected → in_transit → received → stored → rejected → disposed`), enforced
+by `lab_specimens_status_ck` and moved only by CAS. `workflow-def.test.ts` pins the definition's
+state list against that vocabulary so the two cannot drift while they are separate. The proper fix
+is one nullable column, and whichever phase next writes a lab migration should carry it with F1's.
+
+**F16 — NO OPD EXPORT MAPS A `V` NUMBER TO ITS QUEUE TOKEN, so `collectionQueue` returns the
+ENCOUNTER NUMBER and not "the token" §5 T5 asks for.** `modules/opd/index.ts` exports `getVisit`
+and `getEncounter`, both keyed by `opd_encounters.id`; the token lives on `opd_queue_entries` and
+nothing exported reaches it from a visit NUMBER. Reading that table directly is a §4 module-isolation
+breach — the same one the lint rule caught in T3 (F5) — and T5's Files list names no OPD file, so
+widening the OPD index is out of scope here. **The phlebotomy list therefore keys on the `S` number
+and carries the `V`**, which is what a paper worklist actually needs; 17b's screen can call the OPD
+route for a token if the counter wants one.
+
+**F17 — `defineWorkflow` CANNOT EXPRESS A PER-PRIORITY SLA.** §5 T5 measures the breach against
+*"the ACTIVE definition's SLA for its priority"*. `definition.ts`'s schema carries ONE `sla` per
+state and no priority dimension, so that SLA does not exist as written. Shipped: the state's SLA is
+the base, and a STAT item is held additionally to its orderable's own `tat_minutes_stat` — the
+tighter of the two. That keeps a STAT troponin out of a routine LFT's four-hour analysis window,
+which is the clinical content of the sentence, without inventing a kernel schema.
+
+**F18 — THE FILES LIST SAYS `apps/core/src/config.ts`; THE FILE IS `apps/core/src/kernel/config.ts`.**
+Trivial, recorded because a successor grepping the named path finds nothing.
+
+**F19 — REGISTERING A JOB TOUCHES NINE PLACES AND NO FILES LIST HAS EVER NAMED THEM ALL. THIS IS
+THE THIRD PHASE TO RECORD IT.** §5 T5 names `jobs.ts`, `config.ts` and five censuses. The actual
+edit set for two jobs was: `jobs.ts` (the registrations **and** the widened `JobIntervals` `Pick`),
+`kernel/config.ts` (the env key, the `AppConfig` field, the parse), **four** job censuses
+(`jobs.test.ts`, `scheduler.test.ts`, `worker-runtime.e2e.test.ts`, `alerts-parity.test.ts`),
+**three** `JobIntervals` object literals (the two in `jobs.test.ts`, one in `scheduler.test.ts`, one
+in `retention/sweep.test.ts`), and **`docker/prod/prometheus/alerts.yml`** — which no Files list in
+this repository has ever named and which `alerts-parity.test.ts` turns into a red test rather than a
+silent monitoring hole. `manifests.test.ts`, which §2 row 8 lists, did NOT move: T2 already installed
+the lab manifest in the worker for exactly this reason.
+
+**The three `JobIntervals` literals announced themselves by TYPE**, precisely as `jobs.ts`'s own
+docstring predicts (`TS2741: Property 'workerLabSweepIntervalMs' is missing`). The four censuses and
+the alert rules did not, and had to be found by running them. **The generalisable rule for the next
+plan: a task that registers a job names nine files, and the typechecker finds three of them.**
+
+**F20 — THE TUBE-MISMATCH FLAG WAS ROLLED BACK BY ITS OWN REFUSAL.** `printLabels` appended
+`lab.tube_mismatch_flagged` and then threw ON THE SAME TRANSACTION, so the rollback took the audit
+record with it and a near-miss left no trace whatever. The test caught it (`Received length: 0`).
+**Fixed: `printLabels` is `Db`-first and writes the flag on its own transaction before refusing** —
+the only one of the four T5 acts that must WRITE on its refusal path, which is why it alone has that
+shape. NABL asks for the count of these; a control nobody can count is a control nobody can audit.
+
+**F21 — THE THREE SURVIVING MUTANTS AND WHAT THEY FOUND.** See §9.4.
+
+**F22 — `errors.test.ts`'s DERIVED CENSUS CAUGHT `tube_mismatch` IN THE WRONG FILE, AND IT WAS
+RIGHT.** T2's `OWNED_BY` map records, from the phase document's own Produces list, that
+`tube_mismatch` is thrown by `collection.ts`. The first implementation put `printLabels` — and the
+scan — in `specimens.ts`. The census went red with no edit to itself at any point, which is exactly
+what its header promises. **Resolved by moving the DD10 guard to `collection.ts`** as
+`assertRightPatient`, which is also where a reader looks for it: the right-patient scan is a
+collection-desk control, not a property of the tube. **This is the SECOND time in one phase that a
+derived census corrected the work** (F10 was the first), and both were invisible to the module's own
+narrow suite.
+
+**F23 — A REDRAWN TUBE TAKES TWO WORKFLOW HOPS, AND THE SHORTCUT MUST NOT BE ADDED.** After
+`reject`, the item sits in `recollection_pending` and its replacement tube was labelled by the
+rejection rather than by a `printLabels` call — so `collect` had no path to `collected`. The machine
+has no `recollection_pending → collected` edge and **must not gain one**: that intermediate state is
+what the seven-day non-return sweep measures the age of (A4), and a shortcut would make a redrawn
+tube indistinguishable from one nobody ever came back for. `collect` performs both hops explicitly.
+
+**F24 — SIX GENUINE REDS ON THE WAY TO T5's GREEN. FOUR WERE THE FIXTURE OR THE TEST; TWO WERE THE
+CODE.** F4's and F14's lesson, a third time:
+- **the code, twice:** F20's rolled-back flag, and F23's missing hop;
+- `order_items.status` starts at **`placed`**, not `pending` — every one of the four new modules
+  filtered on the wrong word and `printLabels` found nothing to label. The envelope's vocabulary is
+  `placed | in_progress | completed | cancelled` and the lab's own eleven stages are a different
+  list; conflating them is the exact confusion DD4's projection points exist to prevent;
+- the fixture drew blood as `lab_reception`, and the engine refused: *"transition
+  awaiting_collection→collected allows roles: phlebotomist, lab_technician, nurse"*. **That is S4
+  working, not a defect** — a counter clerk may not draw blood — and the fixture gained a `bench`
+  login holding `lab_technician` + `phlebotomist`;
+- A2's eight rounds silently measured only FOUR, because the reused code pairs tripped the duplicate
+  detector and the round was skipped. §2.3 says the stated count is a FLOOR to keep running toward,
+  never a window to engineer, so the fixture gained sixteen analyte-DISJOINT orderables and the test
+  asserts both callers survive each round rather than tolerating a short one;
+- `HIV` had to leave those sixteen: it is `consent_required`, so `deskOrder` correctly refuses it
+  without a consent block (T4 A4) and the round placed one order instead of two.
+
 ### 9.4 The Assertion Book, corrected by execution
 
 **T3 — nine rows, nine mutants BUILT, nine DIED.** Each was a scratch module beside the source, run
@@ -692,7 +801,51 @@ rebuilt to reach the assertion.
 `definitions.ts` are brand-new modules, so a test-before-code red is an unresolved-import error,
 which §2.5 says proves nothing. **Four genuine reds were met and are quoted below (F14).**
 
-**T5's Book is UNEXECUTED.**
+**T5 — NINE ROWS, THIRTEEN MUTANTS BUILT, THIRTEEN DIED — BUT FOUR OF THEM ONLY AFTER THE
+ASSERTION WAS SHARPENED, AND THAT IS THE MOST USEFUL THING THIS TASK LEARNED.**
+
+| row | mutant | expected vs received |
+|---|---|---|
+| **A1** | `receive`'s CAS removed | **SURVIVED** on the counting leg; `Expected ["already_received"], Received ["unknown_transition"]` on the refusal leg — see F21 |
+| **A1b** | `receive`'s CAS **and** the envelope's `advanceOrderItem` CAS removed | **SURVIVED** on counting; same kill on the refusal leg |
+| **A1c** | all THREE removed — `receive`'s, the envelope's, and the workflow engine's own single-winner | **SURVIVED** on counting; same kill on the refusal leg |
+| **A2** | `nextEpisodeNo` pre-read, then written (read-then-write) | `error: duplicate key value violates unique constraint "episode_series_series_key_service_date_pk"` — the two printers collided on the COUNTER, one table earlier than the Book predicted |
+| **A3** | `issueInvoice` on the recollection | `Expected 1, Received 2` invoice lines — **the patient billed twice because the lab dropped the tube** |
+| **A4** | the boundary off by a day | the −6 d 23 h rejection was cancelled: `Expected []`, received a cancellation and a credit note |
+| **A4b** | the credit note skipped | `Expected 1, Received 0` — the item cancelled and the money kept for a test the hospital has just decided it will never do |
+| **A5** | the refusal moved BELOW the inserts | **SURVIVED** — see F21's twin below |
+| **A5b** | the mismatch made a WARNING rather than a refusal | resolved instead of rejecting, **returning a real tube `S2608290001` labelled for the wrong person** |
+| **A6** | the identity re-check skipped when unscanned | resolved: `{specimenNo: "S2608290001", tatStartedAt: …}` — an unscanned ward tube accessioned with nobody named |
+| **A7** | `tat_started_at` from `placed_at` | `Expected "2026-08-30T01:50:15.905Z", Received "2026-08-29T22:50:15.837Z"` — the clock started three hours early, charging the lab for the ward's transport |
+| **A8** | emit every sweep | `Expected length 1, Received length 2` — two `lab.sla_breached` events for one (item, stage) |
+| **A9** | receive anyway | `Expected "no_active_order", Received "illegal_transition"` — **exactly the Book's prediction**: the bench meets a raw state-machine error |
+
+**F21 — THREE MUTANTS SURVIVED, AND THE REASON IS WORTH MORE THAN THE KILLS.**
+A1's Book row asserts *"exactly ONE `lab.specimen_received` and ONE `order_item.started` per item"*.
+Removing `receive`'s CAS did not break it. Removing the ENVELOPE's `advanceOrderItem` CAS as well
+did not break it. Removing the WORKFLOW ENGINE's single-winner too did not break it. **What actually
+holds the line is the fourth guard nobody counted: the `lab_item` definition has no
+`accessioned → accessioned` edge, so the loser dies at `unknown_transition` before it can emit** —
+a state-machine legality table, not a compare-and-swap, with Postgres row locking serialising the
+two writers into it.
+
+So the shipped code is not wrong; it is defended four deep, and no single-guard mutant can kill that
+assertion. AGENT-RULES §3 forbids fixing a survivor silently and rule 21 forbids claiming an
+assertion discriminates without watching a mutant fail, so the row was **sharpened rather than
+declared green**: it now also asserts what `receive`'s OWN CAS uniquely owns — that the loser reads
+**`already_received`**, a sentence a bench can act on, instead of `unknown_transition`, an error
+about a machine it has never heard of, on the busiest surface in the laboratory. All three mutants
+die on that leg.
+
+**A5 is the same shape.** *"Writes no `lab_specimens` row"* survived moving the refusal below the
+inserts — because the throw rolls the transaction back and takes the row with it. The claim that
+needs the ORDERING is the one A5b makes: an implementation that labels the tube and merely WARNS
+(the shape a "don't block the counter" fix takes) returns a real `S` number for the wrong person,
+and that mutant dies.
+
+**FAIL-FIRST:** discharged by the mutants and SAID so; `collection.ts`, `specimens.ts`,
+`accession.ts` and `sweeps.ts` are new modules, so a test-before-code red is an unresolved-import
+error (§2.5). **Six genuine reds are quoted in F24.**
 
 **F14 — FOUR REDS ON THE WAY TO T4's GREEN, AND ALL FOUR WERE THE FIXTURE OR THE TEST.** F4's
 lesson, repeated one task later and worth the line:
@@ -731,14 +884,74 @@ CLOSE drops them by explicit name and says so.
 handoff said its verdict was "the successor's to read"; reading it was the first thing this session
 did after T4's own green, and it found a red `main` that had stood for ~40 minutes.
 
-**No full `pnpm verify` has run for this phase yet** — it is owed once T4 and T5 are code-complete,
-folded into ONE run per v3 §9.9 rule 4. CI is green on `b06e3d6`'s parent chain; `b06e3d6` itself
-was pushed at 21:2x UTC and its verdict is the successor's to read by full SHA.
+| **T5 acceptance:** `jest src/modules/lab` (15 suites) | **103/103 passed, exit 0** |
+| `jest src/kernel/worker test/alerts-parity.test.ts test/worker-runtime.e2e.test.ts src/kernel/retention/sweep.test.ts` — the five job censuses | **passed, exit 0** |
+| `pnpm typecheck` — T5 | **exit 0** |
+| `pnpm lint` — T5 | **exit 0** (the same 2 pre-existing warnings, 0 errors) |
+
+**THE ONE FULL `pnpm verify` (v3 §9.9 rule 4), AND ITS EXIT VALUE WAS 1. THE READING IS RULE 20's,
+AND THE EVIDENCE IS BELOW RATHER THAN THE CONCLUSION.**
+
+Run detached with its exit value in a file (rule 18), on `hmis_17a_scratch`:
+**`Test Suites: 11 failed, 293 passed, 304 total; Tests: 27 failed, 2936 passed, 2963 total`,
+exit 1.**
+
+| what was measured | what it says |
+|---|---|
+| the failure signatures, counted | **44 `Exceeded timeout of 15000 ms for a hook` + 6 for a test; 4 duplicate-key errors that are cascades from half-run `beforeEach` hooks. ZERO assertion failures.** |
+| the load average during the run | **10.74**, and **13.77 twenty minutes later with `pgrep -af jest` matching only my own probe shell** — the box was carrying work that was not mine, and rule 8 forbids inferring whose |
+| the eleven failing suites, RE-RUN IN ISOLATION at load 2.9 | **84/84 passed, exit 0**, in two batches — `advance.test.ts`, `charge-rules`, `patient-identity`, `opd` schema, `accrual-view`, `check-config-present`, then `ops-lifecycle.e2e`, both `approval-types`, `totp`, `seed-admin` |
+| the failing set's CONTENT | `totp`, `seed-admin`, `opd` schema round-trip, `ops-lifecycle`, `patient-identity` — **not one of them touches an order, a lab table, a worker job or an alert rule** |
+| CI by full SHA on `c7604e6` (T4 + the census repair) | **success** — 296 suites on hardware nobody else is sharing |
+
+**So the exit 1 is CONTENTION and it is reported as such rather than as a green run.** What would
+have made it a defect is an assertion failure or a failing suite that touches this phase's surface,
+and there is neither. **CI by full SHA is the load-bearing evidence for T5** (§2.142's rule for a
+commit whose tested worktree differs from its committed tree — Lane B's uncommitted radiology work
+is in the tree that produced every number above and in none of the commits).
+
+**I observed interference and say so** (rule 20): the box was under load I did not create, before,
+during and after the run.
 
 ### 9.6 The close review: pass 1 (fresh) and 9.6.2 (pass 2, fresh, over the fixes, a verdict per fix)
 ### 9.7 Actuals — **the token balance at every task boundary** (v3 §6 as amended; recorded only after §9.6 exists)
 ### 9.8 The question this phase existed to answer
-### 9.9 Deploy block — the `LAB` department, the pathologist-of-record as an `opd_doctors` row, the production catalogue seed, the definitions activation, the bench rows, the four roles' grants — written when the owner authorises, never before
+
+**"Can a lab be configured, ordered at, and accessioned — with the money right and the patient
+right — before anything can be resulted?"** Yes, and the three things that decided it were not the
+ones the plan expected.
+
+**The plan expected F7 to be the risk**, and it was answered before T4 wrote a line: the savepoint
+nests, so DD6's one transaction holds. T4 was then an ordinary implementation task, exactly as the
+re-cut predicted, and A3 asserts the seam over the real pair.
+
+**What actually cost the most was CENSUSES NOBODY'S FILES LIST NAMED.** Three separate ones
+corrected this phase — the IST clock (F10, which had `main` red for forty minutes and was invisible
+to the module's own suite), the lab error map (F22, which put the right-patient scan in the wrong
+file), and the nine-file job registration (F19, third phase running). All three are DERIVED
+expectations that read the tree rather than a list, and all three worked exactly as their authors
+designed. **The lesson is not "write better Files lists" — it is that a derived census is the only
+kind that survives a Files list being wrong**, and this phase is the argument for writing more of
+them.
+
+**And the mutant discipline paid in an unexpected direction.** Thirteen T5 mutants, and the four
+most valuable were the ones that SURVIVED (F21): they proved that `receive`'s single-winner property
+is defended four deep, that no single-guard mutant can kill it, and that what `receive`'s own CAS
+uniquely owns is the sentence a bench reads rather than the invariant. A row declared green on the
+first kill would have recorded none of that.
+### 9.9 Deploy block — written when the owner authorises, never before
+
+**NOT AUTHORISED, NOT WRITTEN.** What execution established the runbook will have to contain, so the
+list is not re-derived: the `LAB` `opd_departments` row (production has twelve departments and no
+`LAB`, S5 — `openLabWalkin` refuses `unknown_department` until it exists); **exactly ONE** active
+pathologist-of-record as an `opd_doctors` row in it (F13 — two make the desk refuse rather than
+choose); the production catalogue seed from the owner's spreadsheet, never `seed-lab-catalogue.ts`,
+whose ranges are invented (§4A item 3); `activateLabDefinitions(db, activator)` for the two Class-C
+machines; the `resources` rows of kind `bench` matching the catalogue's `bench_key` (S11 — zero
+exist, and the worklist is correctly empty until they do); the four roles' grants; and
+`WORKER_LAB_SWEEP_INTERVAL_MS` if the 60 000 default is not wanted. **`docker/prod/prometheus/alerts.yml`
+changed in this phase and ships with the deploy** — the two new jobs are in both staleness legs and
+the `absent()` chain, so a worker that never starts them pages rather than going quiet.
 
 ---
 

@@ -46,3 +46,16 @@ export {
 export type { LabItemState, LabSpecimenState } from "./workflow-def";
 export { activateLabDefinitions, LAB_DEFINITIONS, LAB_DEF_KEYS } from "./definitions";
 export type { ActivateLabDefinitionsReport } from "./definitions";
+// ── PLAN 17a T5 — collection, accession, and the two worker sweeps ──
+// The phase STOPS at `receive`, which is DD4's first projection point: the item's `accessioned`
+// becomes the envelope's `in_progress` and the TAT clock starts. 17b begins by reading that triple.
+export { assertRightPatient, collect, collectionQueue } from "./collection";
+export type { CollectInput, CollectionQueueRow } from "./collection";
+export { getSpecimenByNo, printLabels } from "./specimens";
+export type { PrintedSpecimen, PrintLabelsInput, PrintLabelsResult } from "./specimens";
+export { orderableCodesFor, receive, reject } from "./accession";
+export type { ReceiveInput, ReceiveResult, RejectInput, RejectResult } from "./accession";
+export {
+  LAB_NON_RETURN_ACTOR, LAB_SLA_ACTOR, NON_RETURN_DAYS, sweepLabNonReturn, sweepLabSla,
+} from "./sweeps";
+export type { NonReturnSweepReport, SlaSweepReport } from "./sweeps";

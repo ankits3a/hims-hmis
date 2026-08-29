@@ -19,6 +19,7 @@ import { upsertGstCategory } from "../../src/modules/tariff/gst-config";
 import { activateVersion, createDraftVersion, setTariffItem, submitVersion } from "../../src/modules/tariff";
 import { approveRequest } from "../../src/kernel/approvals/decisions";
 import { seedLabCatalogue, serviceIdForLabCode } from "../../scripts/seed-lab-catalogue";
+import { collect, deskOrder, printLabels } from "../../src/modules/lab";
 import { seedBillingBase } from "./billing";
 import { activateOpdVisitDefinition, ensureRole, mkUser, seedOpdBase } from "./opd";
 import type { Actor } from "@hmis/contracts";
@@ -54,6 +55,13 @@ export type LabDeskFixture = {
   desk: { id: string; token: string; actor: Actor };
   /** The pathologist of record — an `opd_doctors` row in the `LAB` department (DD15/S2). */
   pathologist: { id: string; token: string; actor: Actor; doctorId: string };
+  /**
+   * THE BENCH — `lab_technician` + `phlebotomist`, and it is a DIFFERENT login from the desk on
+   * purpose. `awaiting_collection → collected` declares `phlebotomist, lab_technician, nurse` and
+   * the engine checks a `user` actor's roles itself (S4), so a fixture that drew blood as the
+   * counter clerk would be asserting against a definition nobody could satisfy in a real lab.
+   */
+  bench: { id: string; token: string; actor: Actor };
   labDepartmentId: string;
   patientId: string;
   /** A second registration of the same person, MERGED into `patientId` (T3 A6's shape). */
@@ -63,9 +71,29 @@ export type LabDeskFixture = {
   unregister: () => void;
 };
 
+/**
+ * Twenty-two orderables the tariff prices, chosen so that the first SIXTEEN share NO analyte with
+ * one another — T5 A2 needs eight concurrent PAIRS and the duplicate detector legitimately refuses
+ * the second order of an overlapping test within its window, which would silently shrink the
+ * measured rounds rather than fail (§2.3: report the OBSERVED rate, never engineer the window).
+ */
 const PRICED_LAB_CODES = [
-  "CBC", "LFT", "RFT", "LIPID", "HIV", "HBSAG", "TSH", "TFT", "GLUF", "FEVER", "WIDAL", "UPT",
+  "CBC", "LFT", "RFT", "LIPID", "TSH", "GLUF", "UPT", "HBSAG",
+  "HIV", "HCV", "VDRL", "PSA", "VITD", "B12", "FOLATE", "FERRITIN",
+  "ESR", "TFT", "FEVER", "WIDAL", "CRP", "AMYLASE",
 ] as const;
+
+/**
+ * The sixteen with no shared analyte, in pairs — A2's eight rounds.
+ *
+ * **`HIV` is deliberately absent** even though it is analyte-disjoint: it is `consent_required`, so
+ * `deskOrder` refuses it without a consent block (T4 A4) and the round would place one order
+ * instead of two. That is the desk working correctly and it is not what A2 is measuring.
+ */
+export const NON_OVERLAPPING_PAIRS: readonly (readonly [string, string])[] = [
+  ["CBC", "LFT"], ["RFT", "LIPID"], ["TSH", "GLUF"], ["UPT", "HBSAG"],
+  ["HCV", "VDRL"], ["PSA", "VITD"], ["B12", "FOLATE"], ["FERRITIN", "CRP"],
+];
 
 /**
  * Everything a desk test needs, in one call. Idempotent per suite: call after `truncateAll`.
@@ -111,8 +139,18 @@ export async function seedLabDeskBase(db: Db, encounterNo = "V2608290001"): Prom
     await grantPermissionToRole(db, registry, "pathologist", p);
   }
 
+  for (const p of [
+    "lab.catalogue.read", "lab.worklist.read", "lab.accession.operate", "lab.collection.operate",
+    ORDERS_PLACE, "orders.read", "orders.cancel", "billing.credit.extend",
+    "billing.invoice.issue", "billing.invoice.read", "patients.read", "lab.orders.place",
+  ]) {
+    await grantPermissionToRole(db, registry, "lab_technician", p);
+    await grantPermissionToRole(db, registry, "phlebotomist", p);
+  }
+
   const desk = await mkUser(db, "lab.counter", ["lab_reception"]);
   const pathologistUser = await mkUser(db, "dr.iyer", ["pathologist"]);
+  const bench = await mkUser(db, "lab.bench", ["lab_technician", "phlebotomist"]);
 
   const labDepartmentId = newId();
   await db.insert(opdDepartments).values({
@@ -173,6 +211,7 @@ export async function seedLabDeskBase(db: Db, encounterNo = "V2608290001"): Prom
     registry,
     decls: collectOrderKinds(registry),
     desk,
+    bench,
     pathologist: { ...pathologistUser, doctorId: labDoctorId },
     labDepartmentId,
     patientId,
@@ -189,3 +228,50 @@ export async function deactivateLabDepartment(db: Db, departmentId: string): Pro
 }
 
 export { serviceIdForLabCode };
+
+/**
+ * PLAN 17a T5 — THE CHAIN A COLLECTION OR ACCESSION TEST STARTS FROM: order, label, (draw).
+ *
+ * It goes through the REAL `deskOrder` and `printLabels` rather than inserting rows, because every
+ * T5 assertion is about what those two left behind — a hand-rolled `lab_specimens` row with no
+ * `lab_specimen_items` link would make `receive` assert nothing at all.
+ */
+export async function deskAndLabel(
+  db: Db,
+  fx: LabDeskFixture,
+  codes: readonly string[] = ["CBC"],
+  over: { draw?: boolean; wristbandScanned?: boolean; priority?: "routine" | "urgent" | "stat" } = {},
+): Promise<{
+  orderId: string; orderGroupId: string; itemIds: string[];
+  specimens: { specimenId: string; specimenNo: string; itemIds: string[] }[];
+}> {
+  const placed = await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
+    patientId: fx.patientId,
+    encounterNo: fx.encounterNo,
+    serviceDate: fx.serviceDate,
+    orderingClinicianId: fx.pathologist.id,
+    priority: over.priority,
+    items: codes.map((c) => ({ serviceId: serviceIdForLabCode(c) })),
+    credit: { reason: "counter order" },
+  }));
+  const patient = (await db.select().from(patients).where(eq(patients.id, fx.patientId)))[0]!;
+  const { specimens } = await printLabels(db, fx.bench.actor, {
+    orderGroupId: placed.orderGroupId, scannedUhid: patient.uhid,
+  });
+  if (over.draw !== false) {
+    for (const s of specimens) {
+      await withTx(db, (tx) => collect(tx, fx.bench.actor, {
+        specimenId: s.specimenId, wristbandScanned: over.wristbandScanned ?? true,
+      }));
+    }
+  }
+  return {
+    orderId: placed.orderId, orderGroupId: placed.orderGroupId, itemIds: placed.itemIds,
+    specimens: specimens.map((s) => ({ specimenId: s.specimenId, specimenNo: s.specimenNo, itemIds: s.itemIds })),
+  };
+}
+
+/** The patient's UHID, for a scan a test needs to get right or deliberately wrong. */
+export async function uhidOf(db: Db, patientId: string): Promise<string> {
+  return (await db.select().from(patients).where(eq(patients.id, patientId)))[0]!.uhid;
+}

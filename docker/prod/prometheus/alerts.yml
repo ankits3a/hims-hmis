@@ -28,7 +28,7 @@ groups:
       - alert: HmisSchedulerJobStaleInterval
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|sweepInterfaceHeartbeats|flagLateSurgeons"
+            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla"
           } > 300
         for: 2m
         labels:
@@ -39,14 +39,14 @@ groups:
             {{ $labels.job }} last started {{ $value | humanizeDuration }} ago. Check
             `docker compose -p hmis-prod logs worker`.
 
-      # Leg 1b — the SIX `dailyIst` jobs (five until Plan 14 T8 added `sweepBatchExpiry` at 06:30). Each runs once every ~24h by design
+      # Leg 1b — the EIGHT `dailyIst` jobs (six until Plan 07c T8, eight since 17a T5 added `sweepLabNonReturn` at 07:00). Each runs once every ~24h by design
       # (kernel/worker/scheduler.ts's `isDailyDue`), so staleness legitimately climbs to ~24h
       # between runs; 26h (93600s) gives a two-hour margin for scheduling jitter before treating
       # a missed day as an incident.
       - alert: HmisSchedulerJobStaleDaily
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts"
+            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn"
           } > 93600
         for: 5m
         labels:
@@ -59,7 +59,7 @@ groups:
 
       # Leg 2 — THE BLIND SPOT (spike finding 6, flag ⑨). A job that has NEVER started has no row
       # in scheduler_heartbeats at all, so it has no series for leg 1 to threshold against — that
-      # is precisely what leg 1 cannot see. `absent()` over each of the ELEVEN expected job names
+      # is precisely what leg 1 cannot see. `absent()` over each of the FIFTEEN expected job names
       # closes it: every term that matches carries that job's own name as $labels.job (from the
       # positive equality matcher inside it), so `or` fires one alert instance PER missing job
       # rather than one alert for all of them together.
@@ -88,6 +88,13 @@ groups:
           # this chain; the INTERVAL leg does not move. A brief that quietly goes on serving
           # last week's rollup is exactly the kind of silence leg 2 exists to break.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="rollupUserDayFacts"})
+          # PLAN 17a T5 / DD20 — the FOURTEENTH and FIFTEENTH jobs. The non-return sweep is DAILY
+          # (07:00 IST) and joins leg 1b; the SLA sweep is an INTERVAL job (60s) and joins leg 1a.
+          # Both are silent-when-healthy, which is leg 2's whole subject: a non-return sweep that
+          # stopped means patients stay billed for tests nobody will ever run, and an SLA sweep
+          # that stopped means the lab looks like it is meeting every turnaround time it has.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepLabNonReturn"})
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepLabSla"})
         for: 5m
         labels:
           severity: critical

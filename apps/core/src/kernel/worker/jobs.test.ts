@@ -158,6 +158,7 @@ describe("registerAllJobs threads NOTIFY_STUCK_AFTER_MS to the pump (Book R2)", 
     // THE SHIPPED DEFAULT, PASSED EXPLICITLY — this block is about the pump; where a DISTINCT
     // value is asserted to reach the tenth job is the V12 block at the bottom of this file.
     workerInterfaceSweepIntervalMs: 60_000,
+    workerLabSweepIntervalMs: 60_000,
   };
 
   let db: Db;
@@ -298,6 +299,7 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
     retentionEventsMonths: 120,
     notifyRetainDays: 180,
     workerInterfaceSweepIntervalMs: INTERFACE_SWEEP_EVERY_MS,
+    workerLabSweepIntervalMs: 60_000,
   };
 
   let db: Db;
@@ -333,12 +335,24 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
     // **THIS FILE IS NOT IN PLAN 15 T4's FILES LIST** — a census the task moves, recorded as
     // finding T4-b with the timeout below rather than fixed silently.
     // PLAN 07c T8 — 13 with `rollupUserDayFacts`, the nightly per-user roll (see `jobs.ts`).
-    expect(specs).toHaveLength(13);
+    // PLAN 17a T5 / DD20 — 15 with the two lab sweeps. **THIS FILE IS NOT IN 17a T5's FILES LIST
+    // EITHER**, which is the same finding Plan 15 T4 recorded three lines above and Plan 14 T8
+    // recorded before that: a task that registers a job edits `jobs.ts`, FOUR censuses and
+    // `alerts.yml`, and no Files list has yet named all six. Recorded rather than fixed silently.
+    expect(specs).toHaveLength(15);
     expect(specs).toContainEqual(
       expect.objectContaining({ name: "flagLateSurgeons", every: 60_000 }),
     );
-    expect(specs[specs.length - 1]).toEqual(
+    // The interface sweep is no longer LAST — the two lab sweeps are registered after it — so it is
+    // addressed by name, exactly as the paragraph above said it would have to be.
+    expect(specs).toContainEqual(
       expect.objectContaining({ name: "sweepInterfaceHeartbeats", every: INTERFACE_SWEEP_EVERY_MS }),
+    );
+    expect(specs[specs.length - 1]).toEqual(
+      expect.objectContaining({ name: "sweepLabSla", every: 60_000 }),
+    );
+    expect(specs).toContainEqual(
+      expect.objectContaining({ name: "sweepLabNonReturn", dailyIst: "07:00" }),
     );
     // …and the new job is registered on the hospital clock rather than on a cadence, which is the
     // property that distinguishes a calendar-distance sweep from an interval one.

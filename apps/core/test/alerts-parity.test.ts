@@ -114,10 +114,17 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // job edits four places in one commit: `jobs.ts`, both censuses, `alerts.yml`, and that
         // number" — and Plan 14 T8's Files list named only two of the four. Finding F14.
         "sweepBatchExpiry",
+        // PLAN 17a T5 / DD20 — the FOURTEENTH and FIFTEENTH. `sweepLabNonReturn` is DAILY
+        // (`dailyIst("07:00")`) so it joins leg 1b's alternation; `sweepLabSla` is an INTERVAL job
+        // (`every(60_000)`) so it joins leg 1a's. **The docstring above predicted this edit for a
+        // third time** — "a task that registers a job edits four places in one commit" — and 17a
+        // T5's Files list, like Plan 14 T8's, named only some of them. Finding F19.
+        "sweepLabNonReturn",
+        "sweepLabSla",
       ].sort(),
     );
-    expect(registered).toHaveLength(13);
-    expect(new Set(registered).size).toBe(13); // no job registered twice
+    expect(registered).toHaveLength(15);
+    expect(new Set(registered).size).toBe(15); // no job registered twice
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

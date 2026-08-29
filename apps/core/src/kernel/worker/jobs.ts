@@ -8,6 +8,8 @@ import { sweepExpiredTempRoles } from "../auth/temp-roles";
 import { sweepGuardianMajority } from "../../modules/patients/guardians";
 import { sweepAppointmentNoShows } from "../../modules/opd/appointments";
 import { sweepBatchExpiry } from "../../modules/materials";
+import { sweepLabNonReturn, sweepLabSla } from "../../modules/lab";
+import { collectOrderKinds } from "../orders/kinds";
 import { flagLateSurgeons } from "../../modules/ot";
 import { runDailyClose } from "../../modules/billing/daily-close";
 import { runNotifyPump } from "../notify/pump";
@@ -39,6 +41,8 @@ const CREATE_EVENT_PARTITIONS_IST = "00:15";
  * calendar distance must be measured at a fixed hospital hour rather than every N milliseconds.
  */
 const BATCH_EXPIRY_IST = "06:30";
+/** PLAN 17a T5 / DD20 — the lab reception's "never came back" worklist, at the start of a shift. */
+const LAB_NON_RETURN_IST = "07:00";
 // Plan 11a D6: an hour after the new month's partitions exist and well inside the quiet window —
 // a partition DROP takes ACCESS EXCLUSIVE on `events`, which is not a lock to take during a
 // clinic. Like its neighbours it is a code constant, not a deployment knob: WHAT retention does
@@ -141,6 +145,12 @@ export type JobIntervals = Pick<
   // `retention/sweep.test.ts`). That is the typechecker announcing a new job to every census
   // literal, which is exactly what a widened `Pick` is for.
   | "workerInterfaceSweepIntervalMs"
+  // PLAN 17a T5 / DD20 — the FIFTEENTH job's cadence (`WORKER_LAB_SWEEP_INTERVAL_MS`, default
+  // 60 000). A real `every` cadence, so amendment 7's warning applies in its original form and all
+  // THREE `JobIntervals` object literals in the suite stopped compiling until each admitted it.
+  // The FOURTEENTH job — the non-return sweep — is `dailyIst` and widened nothing, which is the
+  // eighth job's shape: the two land in one commit and only one of them is a type event.
+  | "workerLabSweepIntervalMs"
 >;
 
 /**
@@ -353,5 +363,35 @@ export function registerAllJobs(
     name: "sweepInterfaceHeartbeats",
     every: intervals.workerInterfaceSweepIntervalMs,
     run: async (now) => { await sweepInterfaceHeartbeats(db, now); },
+  });
+  /**
+   * PLAN 17a T5 / DD20 — THE FOURTEENTH AND FIFTEENTH JOBS, and they land in ONE commit with all
+   * four censuses and `alerts.yml`, which is the edit Plan 14 T8's Files list named only half of
+   * (its finding F14, and the docstring in `alerts-parity.test.ts` predicted it in advance).
+   *
+   * ═══ NEITHER PLACES AN ORDER (DD8) ═══
+   *
+   * Both call `advanceOrderItem` and emit; neither resolves an encounter. The worker registers NO
+   * encounter resolver (phase 0 §6A.1), so a `placeOrder` from here would fail with
+   * `unknown_encounter` for a visit that exists — the right failure, and the reason the reflex
+   * placement 17b ships runs inside the VERIFYING transaction rather than in a sweep.
+   *
+   * `collectOrderKinds(registry)` rather than a captured constant: `advanceOrderItem` validates
+   * against the declarations of the INSTALLED manifests, and this process installs its own set.
+   * The call also fails loudly at boot if two manifests claim one kind, in the WORKER as well as
+   * in the API — which is the half phase 0 could not exercise because nothing claimed a kind.
+   */
+  const orderKinds = collectOrderKinds(registry);
+  scheduler.register({
+    name: "sweepLabNonReturn",
+    // 07:00 IST, half an hour after the batch-expiry sweep: a lab reception reads the
+    // "never came back" worklist at the start of the shift, alongside yesterday's expiries.
+    dailyIst: LAB_NON_RETURN_IST,
+    run: async (now) => { await sweepLabNonReturn(db, now, orderKinds); },
+  });
+  scheduler.register({
+    name: "sweepLabSla",
+    every: intervals.workerLabSweepIntervalMs,
+    run: async (now) => { await sweepLabSla(db, now); },
   });
 }

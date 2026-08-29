@@ -95,6 +95,12 @@ const configSchema = z.object({
   // `kernel/worker/jobs.ts`'s registration, asserted in `worker/jobs.test.ts` (Book V12) with a
   // value that is NOT this default. Asserting that it PARSES would discharge nothing.
   WORKER_INTERFACE_SWEEP_INTERVAL_MS: z.coerce.number().int().positive().default(60000),
+  // PLAN 17a T5 / DD20 — how often the lab SLA sweep looks. 60 000 rather than the obvious five
+  // minutes, and `docker/prod/prometheus/alerts.yml` leg 1a is the reason: it thresholds every
+  // INTERVAL job at 300 s staleness, so a 300 000 ms job pages the on-call the first time it is one
+  // tick late, for ever. Plan 15 T4 chose 60 000 for the same constraint and recorded the same
+  // reasoning; widening a live production alert to suit a new job is the wrong trade.
+  WORKER_LAB_SWEEP_INTERVAL_MS: z.coerce.number().int().positive().default(60000),
   /**
    * PLAN 11h T9 — THE ONE CHOKE MODULE'S CONFIGURATION (deferred note 5, owner ruling 2026-08-25).
    *
@@ -179,6 +185,7 @@ export type AppConfig = {
   // Plan 11c D6. Reaches `sweepInterfaceHeartbeats` — the tenth job — through `worker/jobs.ts`'s
   // registration and nowhere else, which is where GC10 is discharged rather than at the parse.
   workerInterfaceSweepIntervalMs: number;
+  workerLabSweepIntervalMs: number;
   searchRateLimit: number;
   searchRateWindowSec: number;
   speechProvider: "" | "workers-ai";
@@ -220,6 +227,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     retentionEventsMonths: parsed.RETENTION_EVENTS_MONTHS,
     notifyRetainDays: parsed.NOTIFY_RETAIN_DAYS,
     workerInterfaceSweepIntervalMs: parsed.WORKER_INTERFACE_SWEEP_INTERVAL_MS,
+    workerLabSweepIntervalMs: parsed.WORKER_LAB_SWEEP_INTERVAL_MS,
     searchRateLimit: parsed.SEARCH_RATE_LIMIT,
     searchRateWindowSec: parsed.SEARCH_RATE_WINDOW_SEC,
     speechProvider: parsed.SPEECH_PROVIDER,

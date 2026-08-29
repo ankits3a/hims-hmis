@@ -15,6 +15,7 @@ import { patientsManifest } from "../../modules/patients";
 import { tariffManifest } from "../../modules/tariff";
 import { opdManifest } from "../../modules/opd";
 import { billingManifest } from "../../modules/billing";
+import * as labSweepsMod from "../../modules/lab/sweeps";
 import * as dispatcherMod from "../events/dispatcher";
 import * as timersMod from "../workflow/timers";
 import * as tempRolesMod from "../auth/temp-roles";
@@ -286,10 +287,25 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("rollupUserDayFacts");
       return { users: 0, days: 0, rows: 0 };
     }),
+    // THE FOURTEENTH AND FIFTEENTH (PLAN 17a T5 / DD20). Stubbed for the reason every sweep above
+    // is stubbed: un-stubbed, the non-return sweep CANCELS order items and issues CREDIT NOTES and
+    // the SLA sweep APPENDS `lab.sla_breached`, inside a fake-clock unit test that is about the
+    // CLOCK. Their behaviour is asserted DIRECTLY in `modules/lab/sweeps.test.ts`, where the
+    // seven-day boundary and the emit-once index are the subject. Spied on `modules/lab/sweeps`
+    // rather than on the module index, because that is where the binding `jobs.ts` reaches through
+    // actually lives — the eleventh job's own note, and it applies unchanged.
+    jest.spyOn(labSweepsMod, "sweepLabNonReturn").mockImplementation(async () => {
+      invoked.push("sweepLabNonReturn");
+      return { cancelled: [], creditNotes: [] };
+    }),
+    jest.spyOn(labSweepsMod, "sweepLabSla").mockImplementation(async () => {
+      invoked.push("sweepLabSla");
+      return { breached: [] };
+    }),
   ];
 }
 
-const THE_THIRTEEN = [
+const THE_FIFTEEN = [
   "runDispatchCycle",
   "runDueTimers",
   "sweepExpiredTempRoles",
@@ -311,6 +327,15 @@ const THE_THIRTEEN = [
   "rollupUserDayFacts",
   "retentionSweep",
   "sweepInterfaceHeartbeats",
+  /**
+   * PLAN 17a T5 / DD20 — the FOURTEENTH and FIFTEENTH, registered together after the interface
+   * sweep, which is where `jobs.ts` puts them. `sweepLabNonReturn` is `dailyIst("07:00")` and
+   * widened nothing; `sweepLabSla` is `every(WORKER_LAB_SWEEP_INTERVAL_MS)` and widened the `Pick`,
+   * so the three `JobIntervals` literals announced it and this list did not. That asymmetry is why
+   * this array exists.
+   */
+  "sweepLabNonReturn",
+  "sweepLabSla",
 ];
 
 /**
@@ -417,6 +442,7 @@ describe("Scheduler", () => {
       // interval neighbours, is hours rather than the shipped 60 s default — at 60 s a nine-hour
       // advance would tick this sweep ~545 times, each doing a REAL heartbeat write.
       workerInterfaceSweepIntervalMs: 7 * 60 * 60 * 1000,
+      workerLabSweepIntervalMs: 60_000,
     };
 
     // The SHIPPED default (D9), passed explicitly. `isDailyDue()` gates its (only) DB read
@@ -509,9 +535,13 @@ describe("Scheduler", () => {
       // retention sweep, which is where `jobs.ts` puts it and why: a partition DROP takes ACCESS
       // EXCLUSIVE on `events` and there is nothing to gain by queueing the roll behind it.
       8 * HOUR_MS + 30 * MINUTE_MS,
-      // PLAN 14 T8 — 13:00Z 08-22 = 06:30 IST 08-22 · sweepBatchExpiry. The LAST daily instant in
-      // the walk, which is why the 25-hour span the block above insists on is still exactly enough.
+      // PLAN 14 T8 — offset 13 h = 01:00Z 08-22 = 06:30 IST 08-22 · sweepBatchExpiry.
       13 * HOUR_MS,
+      // PLAN 17a T5 / DD20 — offset 13 h 30 m = 01:30Z 08-22 = 07:00 IST 08-22 · sweepLabNonReturn.
+      // Now the LAST daily instant in the walk, half an hour after the batch sweep, which is where
+      // `jobs.ts` puts it: a lab reception reads the "never came back" worklist alongside
+      // yesterday's expiries at the start of the same shift.
+      13 * HOUR_MS + 30 * MINUTE_MS,
     ];
 
     /** Total fake time advanced: past the last daily instant AND past the 9 h longest cadence. */
@@ -537,6 +567,9 @@ describe("Scheduler", () => {
       CENSUS_INTERVALS.workerTempRolesIntervalMs,
       CENSUS_INTERVALS.workerNotifyIntervalMs,
       CENSUS_INTERVALS.workerInterfaceSweepIntervalMs,
+      // PLAN 17a T5 — the lab SLA sweep's cadence. A real `every`, so it belongs here; the
+      // non-return sweep is `dailyIst` and belongs in DAILY_INSTANTS_MS above.
+      CENSUS_INTERVALS.workerLabSweepIntervalMs,
     ];
 
     /**
@@ -569,7 +602,7 @@ describe("Scheduler", () => {
         .map(([atMs, daily]) => ({ atMs, daily }));
     })();
 
-    it("invokes all thirteen jobs across a stepwise advance from a pinned instant", async () => {
+    it("invokes all fifteen jobs across a stepwise advance from a pinned instant", async () => {
       expect(process.env.DATABASE_URL).toBeUndefined(); // CI's environment, reproduced here
       const invoked: string[] = [];
       const spies = spyOnTheThirteen(invoked);
@@ -579,7 +612,7 @@ describe("Scheduler", () => {
       try {
         const scheduler = new Scheduler(fresh.db, fresh.pool, stubLocks(), CENSUS_DAILY_TICK_MS);
         registerAllJobs(scheduler, fresh.db, registry, {}, CENSUS_INTERVALS);
-        expect(scheduler.jobs()).toEqual(THE_THIRTEEN);
+        expect(scheduler.jobs()).toEqual(THE_FIFTEEN);
 
         // Fake milliseconds advanced so far, measured from the pin. The walk only moves forward,
         // so a target already behind the cursor is a no-op rather than a rewind.
@@ -615,18 +648,18 @@ describe("Scheduler", () => {
         // and the post-await re-check then correctly drops any run whose read had not come back,
         // so calling it too early is exactly how this census came back short on CI twice while
         // being green on the build host every single time.
-        const settled = await settleUntil(() => new Set(invoked).size >= THE_THIRTEEN.length);
+        const settled = await settleUntil(() => new Set(invoked).size >= THE_FIFTEEN.length);
         await scheduler.stop();
         // Reported, not asserted: on a bound hit the assertion below fails on its own SET and
         // names the missing jobs, which is a better failure message than a bare timeout.
         if (!settled) {
           // eslint-disable-next-line no-console
           console.warn(
-            `census: settleUntil hit its bound with ${new Set(invoked).size}/${THE_THIRTEEN.length} invoked`,
+            `census: settleUntil hit its bound with ${new Set(invoked).size}/${THE_FIFTEEN.length} invoked`,
           );
         }
 
-        expect(new Set(invoked)).toEqual(new Set(THE_THIRTEEN));
+        expect(new Set(invoked)).toEqual(new Set(THE_FIFTEEN));
         expect(scheduler.leakedErrors()).toEqual([]);
       } finally {
         jest.useRealTimers();

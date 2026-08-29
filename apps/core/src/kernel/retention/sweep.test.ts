@@ -724,6 +724,7 @@ describe("retentionSweep", () => {
       // EXPLICITLY: nothing in this file registers, runs or observes the interface sweep, and
       // nothing about retention's semantics changes because of it (plan GC4).
       workerInterfaceSweepIntervalMs: 60_000,
+      workerLabSweepIntervalMs: 60_000,
       ...retention,
     });
 

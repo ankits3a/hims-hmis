@@ -97,7 +97,7 @@ const T6_DEF = {
  * operator sets), so a literal somewhere did stop compiling — just not this file, which passes the
  * whole `AppConfig`. This list remains the only guard here.
  */
-const THE_THIRTEEN = [
+const THE_FIFTEEN = [
   "runDispatchCycle",
   "runDueTimers",
   "sweepExpiredTempRoles",
@@ -127,6 +127,15 @@ const THE_THIRTEEN = [
   // literals — but not to THIS file, which passes the whole `AppConfig` and satisfies any Pick
   // structurally. This list remains the only guard here.
   "sweepInterfaceHeartbeats",
+  /**
+   * PLAN 17a T5 / DD20 — the FOURTEENTH and FIFTEENTH, registered together after the interface
+   * sweep, which is where `jobs.ts` puts them. `sweepLabNonReturn` is `dailyIst("07:00")` and
+   * widened nothing; `sweepLabSla` is `every(WORKER_LAB_SWEEP_INTERVAL_MS)` and widened the `Pick`,
+   * so the three `JobIntervals` literals announced it and this list did not. That asymmetry is why
+   * this array exists.
+   */
+  "sweepLabNonReturn",
+  "sweepLabSla",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -418,7 +427,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
     }
   });
 
-  it("(a) boots the worker context, and its Scheduler names EXACTLY the thirteen jobs", async () => {
+  it("(a) boots the worker context, and its Scheduler names EXACTLY the fifteen jobs", async () => {
     const ctx = await NestFactory.createApplicationContext(WorkerModule, { logger: false });
     try {
       const workerDb = ctx.get<Db>(DB);
@@ -437,7 +446,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
 
       // THE CENSUS. `toEqual` on the whole array is the point: it is exactly these thirteen, in
       // registration order — not "at least", not "these among others".
-      expect(scheduler.jobs()).toEqual(THE_THIRTEEN);
+      expect(scheduler.jobs()).toEqual(THE_FIFTEEN);
       // The scheduler was never started, so nothing was scheduled and nothing needs stopping.
       expect(scheduler.leakedErrors()).toEqual([]);
     } finally {
