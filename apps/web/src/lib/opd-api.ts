@@ -56,7 +56,7 @@ export type WireOpdConfig = {
 
 export type WirePatientSummary = {
   requestedId: string; id: string; uhid: string; name: string | null; alias: string | null;
-  restricted: boolean; sex: string; dob: string | null;
+  restricted: boolean; administrativeGender: string; dob: string | null;
 };
 
 // ——— appointments and slots ———
@@ -198,7 +198,7 @@ export type WirePrescription = {
 
 export type WireRxPrint = {
   letterhead: { name: string; addressLines: string[] };
-  patient: { uhid: string; name: string | null; alias: string | null; restricted: boolean; ageYears: number | null; sex: string };
+  patient: { uhid: string; name: string | null; alias: string | null; restricted: boolean; ageYears: number | null; administrativeGender: string };
   doctor: { displayName: string; registrationNo: string | null; departmentName: string | null };
   encounter: {
     id: string; visitNo: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;

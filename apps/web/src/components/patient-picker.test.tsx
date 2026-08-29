@@ -4,7 +4,7 @@ import { renderWithProviders, stubFetch } from "../test-utils";
 import { PatientPicker } from "./patient-picker";
 
 const HIT = {
-  id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", phone: "9876500000", sex: "female",
+  id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", phone: "9876500000", administrativeGender: "female",
   dob: "1990-04-02T00:00:00.000Z", isConfidential: false, hasPhoto: false,
 };
 
@@ -56,7 +56,7 @@ describe("PatientPicker", () => {
     const row = await screen.findByRole("button", { name: /Asha Devi/ });
     await user.click(row);
 
-    expect(onPick).toHaveBeenCalledWith({ id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", sex: "female", dob: "1990-04-02T00:00:00.000Z" });
+    expect(onPick).toHaveBeenCalledWith({ id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", administrativeGender: "female", dob: "1990-04-02T00:00:00.000Z" });
     await waitFor(() =>
       expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).startsWith("/api/patients/search?q=98765"))).toBe(true),
     );
@@ -67,7 +67,7 @@ describe("PatientPicker", () => {
       "POST /api/patients/qr/verify": (init?: RequestInit) => {
         const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as { payload: string };
         return body.payload === "GOOD-QR"
-          ? { ok: true, patient: { id: "p-2", uhid: "HMS0000005678", name: "Ravi Kumar", sex: "male", dob: null } }
+          ? { ok: true, patient: { id: "p-2", uhid: "HMS0000005678", name: "Ravi Kumar", administrativeGender: "male", dob: null } }
           : { ok: false, reason: "malformed" };
       },
     });
@@ -77,7 +77,7 @@ describe("PatientPicker", () => {
 
     fireEvent.paste(scanBox, { clipboardData: { getData: () => "GOOD-QR" } as unknown as DataTransfer });
     await waitFor(() =>
-      expect(onPick).toHaveBeenCalledWith({ id: "p-2", uhid: "HMS0000005678", name: "Ravi Kumar", sex: "male", dob: null }),
+      expect(onPick).toHaveBeenCalledWith({ id: "p-2", uhid: "HMS0000005678", name: "Ravi Kumar", administrativeGender: "male", dob: null }),
     );
 
     fireEvent.paste(scanBox, { clipboardData: { getData: () => "BAD-QR" } as unknown as DataTransfer });
@@ -89,7 +89,7 @@ describe("PatientPicker", () => {
     vi.useFakeTimers();
     stubFetch({
       "POST /api/patients/qr/verify": {
-        ok: true, patient: { id: "p-3", uhid: "HMS0000009012", name: "Sita Kumari", sex: "female", dob: null },
+        ok: true, patient: { id: "p-3", uhid: "HMS0000009012", name: "Sita Kumari", administrativeGender: "female", dob: null },
       },
     });
     const onPick = vi.fn();
@@ -111,7 +111,7 @@ describe("PatientPicker", () => {
 
     expect(qrVerifyCalls()).toHaveLength(1);
     expect(onPick).toHaveBeenCalledWith({
-      id: "p-3", uhid: "HMS0000009012", name: "Sita Kumari", sex: "female", dob: null,
+      id: "p-3", uhid: "HMS0000009012", name: "Sita Kumari", administrativeGender: "female", dob: null,
     });
 
     // "the SAME verify call the paste lane fires" — asserted as an identity, not as a resemblance:
@@ -132,7 +132,7 @@ describe("PatientPicker", () => {
       "POST /api/patients/qr/verify": (init?: RequestInit) => {
         const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as { payload: string };
         return body.payload === "HMS0000001234"
-          ? { ok: true, patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", sex: "female", dob: null } }
+          ? { ok: true, patient: { id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", administrativeGender: "female", dob: null } }
           : { ok: false, reason: "malformed" };
       },
     });
@@ -156,7 +156,7 @@ describe("PatientPicker", () => {
     expect(qrVerifyCalls()).toHaveLength(1);
     expect(qrVerifyCalls()[0]!.body).toBe('{"payload":"HMS0000001234"}');
     expect(onPick).toHaveBeenCalledWith({
-      id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", sex: "female", dob: null,
+      id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", administrativeGender: "female", dob: null,
     });
 
     /**

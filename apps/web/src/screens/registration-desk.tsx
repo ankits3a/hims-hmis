@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type SearchHit = {
-  id: string; uhid: string; name: string; phone: string | null; sex: string;
+  id: string; uhid: string; name: string; phone: string | null; administrativeGender: string;
   dob: string | null; isConfidential: boolean; hasPhoto: boolean;
 };
 
@@ -57,7 +57,7 @@ function AttachDialog({
             <div><dt className="inline font-medium">{t("card.uhid")}: </dt><dd className="inline font-mono">{hit.uhid}</dd></div>
             <div><dt className="inline font-medium">{t("register.name")}: </dt><dd className="inline">{hit.name}</dd></div>
             <div><dt className="inline font-medium">{t("register.phone")}: </dt><dd className="inline">{hit.phone ?? "—"}</dd></div>
-            <div><dt className="inline font-medium">{t("card.sex")}: </dt><dd className="inline">{hit.sex}</dd></div>
+            <div><dt className="inline font-medium">{t("card.sex")}: </dt><dd className="inline">{hit.administrativeGender}</dd></div>
             <div><dt className="inline font-medium">{t("card.dob")}: </dt><dd className="inline">{hit.dob?.slice(0, 10) ?? "—"}</dd></div>
           </dl>
         </div>

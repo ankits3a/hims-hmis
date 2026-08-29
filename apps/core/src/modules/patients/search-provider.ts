@@ -60,7 +60,7 @@ export const patientSearchProvider: SearchProvider = {
           name: patients.name,
           alias: patients.alias,
           phone: patients.phone,
-          sex: patients.sex,
+          administrativeGender: patients.administrativeGender,
           dob: patients.dob,
           isConfidential: patients.isConfidential,
         })
@@ -93,7 +93,7 @@ export const patientSearchProvider: SearchProvider = {
           name: patients.name,
           alias: patients.alias,
           phone: patients.phone,
-          sex: patients.sex,
+          administrativeGender: patients.administrativeGender,
           dob: patients.dob,
           isConfidential: patients.isConfidential,
         })
@@ -118,7 +118,7 @@ export const patientSearchProvider: SearchProvider = {
 
 type Row = {
   id: string; uhid: string; name: string; alias: string | null; phone: string | null;
-  sex: string; dob: Date | null; isConfidential: boolean;
+  administrativeGender: string; dob: Date | null; isConfidential: boolean;
 };
 
 /**
@@ -136,7 +136,7 @@ type Row = {
  * row, its absence would be a name leak rather than a missing feature.
  */
 function toHit(r: Row, canSeeConfidential: boolean): SearchHit {
-  const meta: Record<string, string> = { uhid: r.uhid, sex: r.sex };
+  const meta: Record<string, string> = { uhid: r.uhid, sex: r.administrativeGender };
   if (r.phone !== null) meta.phone = `•••••• ${r.phone.slice(-4)}`;
   if (r.dob !== null) meta.age = `${ageYears(r.dob)}y`;
   // EXACTLY `getPatientSummaries`' `restricted` computation, and the same consequence: a
@@ -150,7 +150,7 @@ function toHit(r: Row, canSeeConfidential: boolean): SearchHit {
     title: label,
     // Age and the last four are the DISAMBIGUATORS: two "Ramesh Kumar" of different ages are a
     // patient-safety problem at the desk, not a cosmetic one.
-    subtitle: `${r.uhid} · ${r.sex}${r.dob === null ? "" : ` · ${ageYears(r.dob)}y`}`,
+    subtitle: `${r.uhid} · ${r.administrativeGender}${r.dob === null ? "" : ` · ${ageYears(r.dob)}y`}`,
     meta,
     href: `/patients/${r.id}`,
   };

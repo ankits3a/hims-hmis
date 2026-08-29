@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type SearchHit = {
-  id: string; uhid: string; name: string; phone: string | null; sex: string;
+  id: string; uhid: string; name: string; phone: string | null; administrativeGender: string;
   dob: string | null; isConfidential: boolean; hasPhoto: boolean;
 };
 
@@ -19,7 +19,7 @@ type PatientRow = {
   name: string;
   phone: string | null;
   dob: string | null;
-  sex: string;
+  administrativeGender: string;
   addressLine: string | null;
   abhaAddress: string | null;
   abhaNumber: string | null;
@@ -127,7 +127,7 @@ function ComparisonTable({
     { label: t("register.name"), left: left.name, right: right.name },
     { label: t("register.phone"), left: left.phone ?? "—", right: right.phone ?? "—" },
     { label: t("register.dob"), left: left.dob?.slice(0, 10) ?? "—", right: right.dob?.slice(0, 10) ?? "—" },
-    { label: t("card.sex"), left: left.sex, right: right.sex },
+    { label: t("card.sex"), left: left.administrativeGender, right: right.administrativeGender },
     { label: t("register.address"), left: left.addressLine ?? "—", right: right.addressLine ?? "—" },
     {
       label: t("patient.abha"),

@@ -43,7 +43,7 @@ const DATA: WireInvoicePrint = {
   lines: LINES,
   patient: {
     requestedId: "p-1", id: "p-1", uhid: "HMS0000001234",
-    name: null, alias: "Patient 4821", restricted: true, sex: "female", dob: null,
+    name: null, alias: "Patient 4821", restricted: true, administrativeGender: "female", dob: null,
   },
   settlement: { state: "partial", outstandingPaise: 34000 },
   qrPayload: "bil1.invoice.inv-1.Zm9vYmFyYmF6cXV4",
@@ -104,7 +104,7 @@ describe("InvoicePrint", () => {
           ...DATA,
           patient: {
             requestedId: "p-2", id: "p-2", uhid: "HMS0000005678",
-            name: "Asha Devi", alias: null, restricted: false, sex: "female", dob: null,
+            name: "Asha Devi", alias: null, restricted: false, administrativeGender: "female", dob: null,
           },
         }}
       />,

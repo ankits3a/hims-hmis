@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { events, patientGuardians, patients, registrationConfig } from "../../kernel/db/schema";
+import { events, patientGuardians, patients, registrationConfig, users } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { createUser } from "../../kernel/auth/identity";
 import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
@@ -27,6 +27,22 @@ describe("registration service", () => {
   });
 
   const baseInput = { name: "Asha Devi", sex: "female" as const, phone: "9876543210" };
+
+  /** Grants `patients.deceased.write` to an existing actor id (22c-A T5's split). */
+  async function grantDeceasedWrite(userId: string): Promise<void> {
+    const reg = new ModuleRegistry();
+    reg.install(patientsManifest);
+    await syncPermissions(db, reg);
+    // `clerk` is a bare actor id, not a users row, and `role_assignments` FKs `users`. The row is
+    // inserted rather than the actor swapped, so the test keeps asserting against the SAME actor
+    // it has always used and the diff stays about the permission.
+    await db.insert(users).values({
+      id: userId, username: `u-${userId}`, fullName: "Clerk", passwordHash: "x",
+    }).onConflictDoNothing();
+    await createRole(db, "deceased_writer", "Deceased writer");
+    await grantPermissionToRole(db, reg, "deceased_writer", "patients.deceased.write");
+    await assignRole(db, { userId, roleKey: "deceased_writer", scopeType: "hospital" });
+  }
 
   it("registers a patient: UHID allocated, row inserted, patient.registered with full envelope", async () => {
     const { patient } = await withTx(db, (tx) => registerPatient(tx, clerk, baseInput));
@@ -132,6 +148,16 @@ describe("registration service", () => {
     expect(patient.promotionalOptIn).toBe(true);
     expect(patient.deceasedAt).toBeNull();
 
+    /**
+     * PLAN 22c-A T5/DD7 — `deceasedAt` left `patients.update` and now needs
+     * `patients.deceased.write`. This test is about the EVENT DIFF rather than about authority, so
+     * the actor is given the permission instead of the assertion being weakened. `deceased_at` is a
+     * hard stop the notifications gateway reads at SEND time; whoever can set it can silence every
+     * message to a living patient's family, which is why it is no longer the same permission as
+     * fixing a phone number.
+     */
+    await grantDeceasedWrite(clerk.id);
+
     const markedAt = "2026-08-20T10:15:00.000Z";
     const marked = await withTx(db, (tx) => updatePatient(tx, clerk, patient.id, { deceasedAt: markedAt }));
     expect(marked.changed).toEqual(["deceasedAt"]);
@@ -223,11 +249,12 @@ describe("Plan 07 read helpers: summaries + merged losers", () => {
 
   const baseInput = { name: "Asha Devi", sex: "female" as const, phone: "9876543210" };
 
-  it("getPatientSummaries: a confidential row returns alias + restricted for a clerk without the permission, the name with it; uhid/sex/dob always", async () => {
+  it("getPatientSummaries: a confidential row returns alias + restricted for a clerk without the permission, the name with it; uhid/administrative gender/dob always", async () => {
     const { patient: plain } = await withTx(db, (tx) => registerPatient(tx, clerk, { ...baseInput }));
     const { patient: vip } = await withTx(db, (tx) => registerPatient(tx, clerk, { ...baseInput, name: "VIP Person", phone: "9876500001", isConfidential: true, alias: "Patient A", ageYears: 40 }));
     const before = await getPatientSummaries(db, clerk, [vip.id, plain.id]);
-    expect(before.find((s) => s.id === vip.id)).toEqual({ requestedId: vip.id, id: vip.id, uhid: vip.uhid, name: null, alias: "Patient A", restricted: true, sex: "female", dob: vip.dob });
+    expect(before.find((s) => s.id === vip.id)).toEqual({ requestedId: vip.id, id: vip.id, uhid: vip.uhid, name: null, alias: "Patient A", // PLAN 22c-A T4/DD4 — the summary carries ADMINISTRATIVE GENDER; `sex` is not on this payload
+      restricted: true, administrativeGender: "female", dob: vip.dob });
     expect(before.find((s) => s.id === plain.id)).toMatchObject({ name: "Asha Devi", alias: null, restricted: false });
     // grant the permission → the name appears (patientsManifest + registry are already imported by this file)
     const registry = new ModuleRegistry(); registry.install(patientsManifest);

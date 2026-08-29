@@ -11,14 +11,15 @@ import { PatientPhoto } from "../screens/registration-desk";
  * `onPick` is deliberately pinned to their intersection so it stays a stable, reusable contract for
  * T13's walk-in open as well as this task's booking flow.
  */
-export type PatientPickerHit = { id: string; uhid: string; name: string | null; sex: string; dob: string | null };
+// PLAN 22c-A T4/DD4 — the picker is a display surface; every field here is display.
+export type PatientPickerHit = { id: string; uhid: string; name: string | null; administrativeGender: string; dob: string | null };
 
 type SearchHit = {
-  id: string; uhid: string; name: string; phone: string | null; sex: string;
+  id: string; uhid: string; name: string; phone: string | null; administrativeGender: string;
   dob: string | null; isConfidential: boolean; hasPhoto: boolean;
 };
 type QrVerifyResult =
-  | { ok: true; patient: { id: string; uhid: string; name: string; sex: string; dob: string | null } }
+  | { ok: true; patient: { id: string; uhid: string; name: string; administrativeGender: string; dob: string | null } }
   | { ok: false; reason: string };
 
 function useDebounced(value: string, ms: number): string {
@@ -90,7 +91,7 @@ export function PatientPicker(
     try {
       const res = await api<QrVerifyResult>("POST", "/patients/qr/verify", { payload });
       if (res.ok) {
-        pick({ id: res.patient.id, uhid: res.patient.uhid, name: res.patient.name, sex: res.patient.sex, dob: res.patient.dob });
+        pick({ id: res.patient.id, uhid: res.patient.uhid, name: res.patient.name, administrativeGender: res.patient.administrativeGender, dob: res.patient.dob });
         setScan("");
       } else {
         setScanError(true);
@@ -122,7 +123,7 @@ export function PatientPicker(
           <button
             key={hit.id}
             type="button"
-            onClick={() => { pick({ id: hit.id, uhid: hit.uhid, name: hit.name, sex: hit.sex, dob: hit.dob }); }}
+            onClick={() => { pick({ id: hit.id, uhid: hit.uhid, name: hit.name, administrativeGender: hit.administrativeGender, dob: hit.dob }); }}
             className="flex w-full items-center gap-2 rounded border p-1 text-left hover:bg-neutral-50"
           >
             {hit.hasPhoto ? (

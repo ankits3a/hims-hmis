@@ -138,7 +138,7 @@ export type WireInvoiceLine = {
 export type WireBillingPatient = {
   requestedId: string; id: string; uhid: string;
   name: string | null; alias: string | null; restricted: boolean;
-  sex: string; dob: string | null;
+  administrativeGender: string; dob: string | null;
 };
 
 /** `GET /billing/invoices/:id/print` — letterhead, alias-safe patient, stored lines, signed QR. */

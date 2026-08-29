@@ -257,7 +257,7 @@ describe("opd prescriptions (allergy hard-warning, versions, the signed e-Rx QR 
     const print = await getPrescriptionPrint(db, testCfg, dra.actor, issued.prescriptionId);
 
     expect(print.letterhead).toEqual({ name: "CRK MEDICAL COLLEGE & HOSPITAL", addressLines: ["CHAURASIA CHOWK, HAJIPUR, BIHAR 844101"] });
-    expect(print.patient).toEqual({ uhid: patient.uhid, name: "Asha Devi", alias: null, restricted: false, ageYears: 30, sex: "female" });
+    expect(print.patient).toEqual({ uhid: patient.uhid, name: "Asha Devi", alias: null, restricted: false, ageYears: 30, administrativeGender: "female" });
     expect(print.doctor).toEqual({ displayName: "Dr dra", registrationNo: "BMC/12345", departmentName: "General Medicine" });
     // The visit number reaches the printed e-Rx: it is the cross-reference a lab requisition or a
     // pharmacy slip quotes back, so its absence from this payload would be silent until it wasn't.

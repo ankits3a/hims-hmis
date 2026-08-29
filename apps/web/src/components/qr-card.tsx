@@ -2,7 +2,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 
-export type QrCardData = { payload: string; uhid: string; name: string; sex: string; dob: string | null };
+// PLAN 22c-A T4/DD4 — the card is a document surface: it carries administrative gender.
+export type QrCardData = { payload: string; uhid: string; name: string; administrativeGender: string; dob: string | null };
 
 /** The printed patient card (§15: print is a first-class surface; every printed doc carries its signed QR). */
 export function QrCard({ data }: { data: QrCardData }): React.ReactElement {
@@ -17,7 +18,7 @@ export function QrCard({ data }: { data: QrCardData }): React.ReactElement {
             <p className="truncate text-lg font-semibold">{data.name}</p>
             <p className="font-mono text-base">{data.uhid}</p>
             <p className="text-sm text-neutral-600">
-              {t("card.sex")}: {data.sex}
+              {t("card.sex")}: {data.administrativeGender}
               {data.dob !== null ? ` · ${t("card.dob")}: ${data.dob.slice(0, 10)}` : ""}
             </p>
           </div>

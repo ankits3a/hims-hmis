@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
  * like a loading state that never finishes.
  */
 type StripPatient = {
-  id: string; uhid: string; name: string | null; sex: string;
+  id: string; uhid: string; name: string | null; administrativeGender: string;
   isConfidential: boolean; alias: string | null;
 };
 
@@ -68,7 +68,7 @@ export function PatientStrip(): React.ReactElement | null {
       {row !== undefined && !restricted && (
         <>
           <span className="text-neutral-600" data-testid="strip-uhid">{row.uhid}</span>
-          <span className="text-neutral-600">{t(`sex.${row.sex}`, row.sex)}</span>
+          <span className="text-neutral-600">{t(`sex.${row.administrativeGender}`, row.administrativeGender)}</span>
         </>
       )}
       {inHand.encounterId !== null && (

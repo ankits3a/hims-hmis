@@ -7,7 +7,7 @@ const DATA = {
   payload: "1.p-1.3.6f2a9c",
   uhid: "HMS0000001234",
   name: "Asha Devi",
-  sex: "female",
+  administrativeGender: "female",
   dob: "1990-04-02T00:00:00.000Z",
 };
 

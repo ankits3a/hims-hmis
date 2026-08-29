@@ -81,7 +81,7 @@ const SESSION = {
 };
 
 function summary(id: string, uhid: string, name: string | null, over: Record<string, unknown> = {}): Record<string, unknown> {
-  return { requestedId: id, id, uhid, name, alias: null, restricted: false, sex: "female", dob: "1992-03-04", ...over };
+  return { requestedId: id, id, uhid, name, alias: null, restricted: false, administrativeGender: "female", dob: "1992-03-04", ...over };
 }
 
 function entry(over: Record<string, unknown>): Record<string, unknown> {
@@ -154,7 +154,7 @@ const VISIT = {
 };
 
 const PATIENT_DETAIL = {
-  patient: { uhid: "HMS0000000020", name: "Asha Devi", alias: null, dob: "1992-03-04", sex: "female" },
+  patient: { uhid: "HMS0000000020", name: "Asha Devi", alias: null, dob: "1992-03-04", administrativeGender: "female" },
   resolvedFrom: null,
 };
 const ALLERGIES = [
@@ -172,7 +172,7 @@ const TIMELINE = [
 
 const PRINT_DATA = {
   letterhead: CONFIG.letterhead,
-  patient: { uhid: "HMS0000000020", name: "Asha Devi", alias: null, restricted: false, ageYears: 34, sex: "female" },
+  patient: { uhid: "HMS0000000020", name: "Asha Devi", alias: null, restricted: false, ageYears: 34, administrativeGender: "female" },
   doctor: { displayName: "Dr Meera Rao", registrationNo: "BMC/12345", departmentName: "General medicine" },
   encounter: {
     id: "enc-1", serviceDate: TODAY, diagnosis: "Acute pharyngitis", icd10Code: "J02.9",

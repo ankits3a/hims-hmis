@@ -10,6 +10,7 @@ import { hasPermission } from "../../kernel/auth/permissions";
 import { activeBreakGlass } from "../../kernel/auth/break-glass";
 import { patientGuardians, patients } from "../../kernel/db/schema";
 import { allocateUhid, PatientError } from "./uhid";
+import type { PatientErrorCode } from "./uhid";
 import {
   guardianLinked, identityAssuranceChanged, identityVersionMinted, patientRegistered, patientUpdated,
 } from "./events";
@@ -348,6 +349,40 @@ export async function updatePatient(
   }
 
   /**
+   * PLAN 22c-A T5/DD7 — THE PRIVACY WRITE SPLIT, ENFORCED HERE RATHER THAN ON THE ROUTE.
+   *
+   * Measured in production at kickoff (spike S5): `patients.update` is held by five roles and
+   * SEVENTEEN of thirty-five users, and it currently carries the power to set `is_confidential` —
+   * while `patients.confidential.read` is held by ZERO roles and ZERO users. Read together, those
+   * two facts describe a live one-way door: seventeen people can hide a patient from every search
+   * surface in the hospital, and nobody can read that patient back except through break-glass.
+   * Fixing a mistyped phone number and making a person disappear are, today, the same permission.
+   *
+   * `deceased_at` is the same argument on a colder path. The notifications gateway reads it at
+   * SEND time as a hard stop that beats urgency and beats everything else in the suppression
+   * gauntlet, so whoever can set it can silence every message to a living patient's family.
+   *
+   * THE CHECK IS IN THE DOMAIN FUNCTION, NOT THE CONTROLLER, and that placement is the decision.
+   * A guard on `PATCH /patients/:id` protects the route; a guard here protects the FIELD, and the
+   * merge path, the walk-in path and every future caller travel through this function without
+   * anybody having to remember. The `as Db` cast follows `display-name.ts:53` — `hasPermission`
+   * only reads, and a Tx reads fine; the type is narrower than the requirement.
+   */
+  const gated: ReadonlyArray<readonly [field: string, permission: string, code: PatientErrorCode]> = [
+    ["isConfidential", "patients.confidential.write", "confidential_write_denied"],
+    ["deceasedAt", "patients.deceased.write", "deceased_write_denied"],
+  ];
+  for (const [field, permission, code] of gated) {
+    if (!changes.some((c) => c.field === field)) continue;
+    if (!(await hasPermission(tx as unknown as Db, actor.id, permission, "hospital"))) {
+      throw new PatientError(
+        code,
+        `${field} needs ${permission} — \`patients.update\` no longer reaches it (22c-A DD7)`,
+      );
+    }
+  }
+
+  /**
    * PLAN 22c-A T3/DD5 — THE ASSURANCE DROP IS COMPUTED BEFORE THE WRITE AND APPLIED IN IT.
    *
    * An unevidenced Class I amendment on a record above `staff_verified` lowers the stamp to
@@ -510,7 +545,14 @@ export async function resolvePatientId(db: Db | Tx, patientId: string): Promise<
  * physically serving the patient need them (§14 privacy surface; D-37: nothing prioritises on any of this).
  */
 export type PatientSummary = {
-  requestedId: string; id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean; sex: string; dob: Date | null;
+  requestedId: string; id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean;
+  /**
+   * PLAN 22c-A T4/DD4 — SUMMARIES CARRY ADMINISTRATIVE GENDER, NOT CLINICAL SEX, and the field is
+   * renamed rather than re-sourced so no display surface can read the wrong one by habit. Every
+   * consumer of this payload is a display, document or search surface (measured: spike S6 found no
+   * clinical reader anywhere in the tree). A clinical module reads `patients.sex` from the row.
+   */
+  administrativeGender: string; dob: Date | null;
 };
 
 export async function getPatientSummaries(db: Db, actor: Actor, patientIds: string[]): Promise<PatientSummary[]> {
@@ -534,7 +576,8 @@ export async function getPatientSummaries(db: Db, actor: Actor, patientIds: stri
     }
     out.push({
       requestedId, id: row.id, uhid: row.uhid,
-      name: restricted ? null : row.name, alias: restricted ? row.alias : null, restricted, sex: row.sex, dob: row.dob,
+      name: restricted ? null : row.name, alias: restricted ? row.alias : null, restricted,
+      administrativeGender: row.administrativeGender, dob: row.dob,
     });
   }
   return out;

@@ -11,7 +11,7 @@ const DATA: WireRxPrint = {
     name: "CRK MEDICAL COLLEGE & HOSPITAL",
     addressLines: ["CHAURASIA CHOWK, HAJIPUR", "BIHAR 844101"],
   },
-  patient: { uhid: "HMS0000000020", name: "Asha Devi", alias: null, restricted: false, ageYears: 34, sex: "female" },
+  patient: { uhid: "HMS0000000020", name: "Asha Devi", alias: null, restricted: false, ageYears: 34, administrativeGender: "female" },
   doctor: { displayName: "Dr Meera Rao", registrationNo: "BMC/12345", departmentName: "General Medicine" },
   encounter: {
     id: "enc-1", visitNo: "V2608180001", serviceDate: "2026-08-18", diagnosis: "Acute pharyngitis", icd10Code: "J02.9",

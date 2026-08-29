@@ -518,7 +518,7 @@ export async function verifyPrescriptionQr(db: Db, cfg: AppConfig, actor: Actor,
 
 export type RxPrintData = {
   letterhead: Letterhead;
-  patient: { uhid: string; name: string | null; alias: string | null; restricted: boolean; ageYears: number | null; sex: string };
+  patient: { uhid: string; name: string | null; alias: string | null; restricted: boolean; ageYears: number | null; administrativeGender: string };
   doctor: { displayName: string; registrationNo: string | null; departmentName: string | null };
   encounter: {
     id: string; visitNo: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
@@ -563,7 +563,19 @@ export async function getPrescriptionPrint(db: Db, cfg: AppConfig, actor: Actor,
     letterhead: opdCfg.letterhead,
     patient: {
       uhid: summary!.uhid, name: summary!.name, alias: summary!.alias, restricted: summary!.restricted,
-      ageYears: summary!.dob === null ? null : ageYearsAt(summary!.dob, row.issuedAt), sex: summary!.sex,
+      /**
+       * PLAN 22c-A T4/DD4 — the e-Rx prints ADMINISTRATIVE GENDER. A prescription is a document,
+       * and a document says who the person is rather than what their reference ranges are.
+       *
+       * `ageYears` beside it is already computed as-of-ISSUE (`row.issuedAt`), and has been since
+       * this function was written — spike S4 measured it. `name` and this field are still read
+       * from the LIVE summary, so one document currently renders two different as-of dates: the
+       * Medanta failure (`01-MEDANTA-TEARDOWN.md` P1) in miniature, in our own tree. kernel-D T6
+       * owns closing that with `resolveIdentityAt`; this task's job was only to make sure the
+       * value being printed is the right COLUMN when it does.
+       */
+      ageYears: summary!.dob === null ? null : ageYearsAt(summary!.dob, row.issuedAt),
+      administrativeGender: summary!.administrativeGender,
     },
     doctor: { displayName: doctor!.displayName, registrationNo: doctor!.registrationNo, departmentName: department?.name ?? null },
     encounter: {

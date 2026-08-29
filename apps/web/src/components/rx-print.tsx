@@ -68,7 +68,7 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
         <section className="grid grid-cols-2 gap-1 border-y py-2 text-sm">
           <p data-testid="rx-patient-name">{name}</p>
           <p className="font-mono text-xs">{t("rx.uhid")}: {p.uhid}</p>
-          <p data-testid="rx-patient-age">{t("rx.age")}: {p.ageYears ?? "—"} · {t("rx.sex")}: {p.sex}</p>
+          <p data-testid="rx-patient-age">{t("rx.age")}: {p.ageYears ?? "—"} · {t("rx.sex")}: {p.administrativeGender}</p>
           <p data-testid="rx-date">{t("rx.date")}: {data.encounter.serviceDate}</p>
           {/*
             The visit number is the cross-reference a lab requisition or a pharmacy slip will quote

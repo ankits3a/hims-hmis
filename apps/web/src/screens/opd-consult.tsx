@@ -59,7 +59,7 @@ type VisitDetail = {
   prescriptions: WirePrescription[];
   patient: WirePatientSummary | null;
 };
-type PatientDetailRow = { uhid: string; name: string | null; alias: string | null; dob: string | null; sex: string };
+type PatientDetailRow = { uhid: string; name: string | null; alias: string | null; dob: string | null; administrativeGender: string };
 type AllergyRow = { id: string; substance: string; severity: "mild" | "moderate" | "severe" | null; status: string };
 type AllergyMatch = { lineIndex: number; substance: string };
 type AllergyOverride = AllergyMatch & { reason: string };
@@ -833,7 +833,7 @@ export function OpdConsult(): React.ReactElement {
                       {patient.data?.patient.uhid ?? active.summary?.uhid ?? "—"}
                     </p>
                     <p data-testid="panel-patient-age" className="text-sm text-neutral-600">
-                      {t("opdConsult.age", { age: ageYears ?? "—" })} · {patient.data?.patient.sex ?? "—"}
+                      {t("opdConsult.age", { age: ageYears ?? "—" })} · {patient.data?.patient.administrativeGender ?? "—"}
                     </p>
                   </>
                 )}

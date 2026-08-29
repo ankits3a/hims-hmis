@@ -71,7 +71,7 @@ function bandFor(ageYears: number | null, cfg: DangerRangesConfig): BandConfig {
 
 // ——— wire shapes this screen reads that aren't in opd-api.ts (patients.controller.ts / allergies.ts) ———
 
-type PatientDetailRow = { uhid: string; name: string | null; alias: string | null; dob: string | null; sex: string };
+type PatientDetailRow = { uhid: string; name: string | null; alias: string | null; dob: string | null; administrativeGender: string };
 type AllergyRow = { id: string; substance: string; severity: "mild" | "moderate" | "severe" | null; status: string };
 
 type WorklistItem = Omit<WireEncounter, "patient"> & {
@@ -310,7 +310,7 @@ export function OpdVitals(): React.ReactElement {
                     </h2>
                     <p className="font-mono text-xs text-neutral-600">{patientQuery.data.patient.uhid}</p>
                     <p className="text-sm text-neutral-600">
-                      {t("opdVitals.age", { age: ageYears ?? "—" })} · {patientQuery.data.patient.sex}
+                      {t("opdVitals.age", { age: ageYears ?? "—" })} · {patientQuery.data.patient.administrativeGender}
                     </p>
                   </>
                 )}

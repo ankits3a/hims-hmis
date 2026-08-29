@@ -13,7 +13,7 @@ export type PatientSearchResult = {
   uhid: string;
   name: string;
   phone: string | null;
-  sex: string;
+  administrativeGender: string; // T4/DD4 — search is a display surface
   dob: Date | null;
   isConfidential: boolean;
   hasPhoto: boolean;
@@ -220,7 +220,7 @@ export async function searchPatients(
       uhid: patients.uhid,
       name: patients.name,
       phone: patients.phone,
-      sex: patients.sex,
+      administrativeGender: patients.administrativeGender,
       dob: patients.dob,
       isConfidential: patients.isConfidential,
       photoPatientId: patientPhotos.patientId, // ONLY the id column — bytes never load here
@@ -236,7 +236,7 @@ export async function searchPatients(
     uhid: r.uhid,
     name: r.name,
     phone: r.phone,
-    sex: r.sex,
+    administrativeGender: r.administrativeGender,
     dob: r.dob,
     isConfidential: r.isConfidential,
     hasPhoto: r.photoPatientId !== null,

@@ -19,7 +19,7 @@ export function buildQrPayload(cfg: AppConfig, p: { id: string; uhid: string; qr
 }
 
 export type QrVerifyResult =
-  | { ok: true; patient: { id: string; uhid: string; name: string; sex: string; dob: Date | null } }
+  | { ok: true; patient: { id: string; uhid: string; name: string; administrativeGender: string; dob: Date | null } }
   | { ok: false; reason: "malformed" | "invalid_signature" | "stale_version" | "unknown_patient" };
 
 /**
@@ -86,7 +86,7 @@ export async function verifyQrScan(
   const name = await displayNameFor(db, actor, resolved);
   return {
     ok: true,
-    patient: { id: resolved.id, uhid: resolved.uhid, name, sex: resolved.sex, dob: resolved.dob },
+    patient: { id: resolved.id, uhid: resolved.uhid, name, administrativeGender: resolved.administrativeGender, dob: resolved.dob },
   };
 }
 
