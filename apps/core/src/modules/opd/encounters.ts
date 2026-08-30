@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
-import { nextEpisodeNo } from "../../kernel/episodes/series";
+import { EPISODE_SERIAL_DIGITS, EPISODE_SERIES, nextEpisodeNo } from "../../kernel/episodes/series";
 import { withTx } from "../../kernel/db/client";
 import {
   opdDepartments, opdDoctors, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions, opdVitals,
@@ -244,7 +244,56 @@ export async function moveEncounter(
   return rows[0]!;
 }
 
+/**
+ * A well-formed visit NUMBER — `V` + `YYMMDD` + the four-digit daily serial. Built from the episode
+ * constants rather than written out, so a change to either cannot leave this pattern behind.
+ */
+const VISIT_NO_RE = new RegExp(`^${EPISODE_SERIES.visit}\\d{${6 + EPISODE_SERIAL_DIGITS}}$`);
+
+/** The encounter behind a visit NUMBER (`V2608290001`), which is not its row id. */
+export async function getEncounterByVisitNo(db: Db | Tx, visitNo: string): Promise<EncounterRow | null> {
+  const rows = await db.select().from(opdEncounters).where(eq(opdEncounters.visitNo, visitNo));
+  return rows[0] ?? null;
+}
+
+/**
+ * ONE ENCOUNTER, BY ROW ID **OR** BY VISIT NUMBER — and the second half is a defect repair.
+ *
+ * ═══ WHAT WAS BROKEN, PROVED BY EXECUTION BEFORE IT WAS FIXED ═══
+ *
+ * `opd.module.ts` registers this module's encounter resolver under the prefix
+ * `EPISODE_SERIES.visit` (`"V"`), so `resolveEncounterByPrefix` hands it a visit NUMBER — and the
+ * resolver called `getEncounter`, which read `opd_encounters.id`. **That column is a `newId()`
+ * ULID; the visit number lives in `visit_no`.** So the resolver returned
+ * `{matched: true, resolved: null}` for every real visit, and `placeOrder` refused
+ * `unknown_encounter` for a lab order placed on a genuine OPD encounter — 17a T4's `deskOrder`
+ * passes a caller-supplied `encounterNo` straight through. `modules/ot`'s resolver, one file over,
+ * reads `daycare_encounters.encounter_no` and is correct; this was a divergence between two
+ * implementations of one seam, not a design.
+ *
+ * Nothing caught it because every suite that reaches this seam registers its OWN fake `V` resolver
+ * — phase 0's four order suites, `duplicates.test.ts`, and 17a's `test/helpers/lab.ts`. The fixture
+ * supplied the answer the code got wrong. `encounter-resolver.test.ts` registers the REAL
+ * registration against a REAL visit, which is the one arrangement that can see it, and it was
+ * written RED first: `expect(received).not.toBeNull() / Received: null`.
+ *
+ * ═══ WHY THE FIX IS HERE AND NOT IN THE RESOLVER, WHICH IS WHERE IT BELONGS ═══
+ *
+ * The one-line repair is in `opd.module.ts`'s resolver body. **17a §8 freezes `modules/opd/*`
+ * except `encounters.ts` and `index.ts`**, and a frozen path is not something to edit quietly. So
+ * the repair lands in the reader the resolver already calls, which this phase does own, and the
+ * deviation is disclosed rather than taken: **a later phase that owns `opd.module.ts` should move
+ * the discrimination into the resolver and narrow this reader back to its row id.**
+ *
+ * ═══ THE DISCRIMINATION IS BY SHAPE, AND THAT IS WHAT KEEPS IT SAFE ═══
+ *
+ * A ULID can never match `VISIT_NO_RE`, so every existing caller — all of which pass a row id
+ * (`invoice.encounterId`, `entry.encounterId`, the OPD controllers) — takes exactly the path it
+ * took before. Billing's own fallback is unaffected for the same reason: a bare row id matches no
+ * registered prefix, falls through, and is read by id here as it always was.
+ */
 export async function getEncounter(db: Db | Tx, id: string): Promise<EncounterRow | null> {
+  if (VISIT_NO_RE.test(id)) return await getEncounterByVisitNo(db, id);
   const rows = await db.select().from(opdEncounters).where(eq(opdEncounters.id, id));
   return rows[0] ?? null;
 }
