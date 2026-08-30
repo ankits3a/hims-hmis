@@ -6,6 +6,8 @@
 
 **THE RULING, in one paragraph.** 18a is **the spine — one imaging study walks end to end through the real seams**: a doctor (or a walk-in slip) places an `imaging` order on the kernel envelope by adding ONE manifest field; the reception schedules it against a modality `device` resource with a slot the database refuses to double-book; the patient checks in and passes a declared set of safety gates, each a child workflow instance transcribed from Plan 15's DD5; the technologist starts acquisition, which occupies the device and moves the envelope item to `in_progress`; the acquired study carries its accession number, dose and contrast facts, and emits `imaging.study_acquired`; the radiologist drafts, signs under a fresh second factor, and publishes an immutable versioned report, which completes the envelope item and closes the order. **PCPNDT is structural in this slice, not optional**: the module `pcpndt` — a kernel-adjacent manifest of its own, built HERE and adopted unchanged by 15b and 62 — holds registrations, registered machines and persons, and a gap-free Form F register; an applicable ultrasound is `restricted` at placement, its Form F gate can be neither waived nor overridden by anybody, and the scan cannot reach `acquired` without a recorded Form F. **No PACS** (18b), **no AERB/dose registers** (18c), and the rest of the brainstorm's §14 list — monthly returns and inspections, contrast reaction/ADR chain, portable ward rounds, teleradiology, the release desk, outside-study register, KPIs and automations — is named in §1.3 and §6.9 as the follow-on slices this spine makes buildable, so 18b does not find a half-PACS and nobody finds a half-register.
 
+**STATUS 2026-08-30: PAUSED BY OWNER RULING AT T1 OF NINE — see [§9.9](#99-handoff--lane-b-paused-by-owner-ruling-2026-08-30-v3-96).** Lane A executed Plan 17 in the same checkout and held its shared files uncommitted; the migration journal is not hunk-separable, so T1 could not land without carrying another lane's work. **T1 is code-complete, typechecked and GREEN (exit 0, 61/61 on `hmis_lane_b_scratch_1`) and is held UNCOMMITTED**, migration `0047_radiology_core` with it. Nothing in this phase is committed except this document. Read §9.9 before touching anything.
+
 **Roadmap:** [`2026-08-11-phase1-plan-series.md`](2026-08-11-phase1-plan-series.md) — Track A, `17 → 18a`. **Numbering:** [`00-INDEX-AND-SYNTHESIS.md`](../brainstorms/2026-08-27-department-series/00-INDEX-AND-SYNTHESIS.md) §3 (18a core · 18b PACS · 18c dose/RT; 63 cath lab; 64 RT; 62 maternity consumes Form F via `pcpndt`). **Envelope contract inherited, not restated:** [`2026-08-29-phase1-17-order-envelope.md`](2026-08-29-phase1-17-order-envelope.md) §6 (the seven sentences), §6A (the eight things it does not do), §8 (what it froze), and its §4.1 for a column name. **Brainstorm argued from and not restated:** 01 §1 (scope table row 2 — *"radiology owns the imaging-specific tables hanging off the order"*), §3 WF-IMG-01/02/03/05 (the spine's four workflows), §4 (the table sketch), §5 (the 120-row catalogue — §7 below draws from it), §13 (owner rulings O-1..O-13), §14, §15.1/§15.2.
 
 **Slot:** the repo journal carries **46** entries (`0000`–`0045`), measured 2026-08-29 17:50 UTC — `0045_order_envelope_integrity` is phase 0's close-pass migration. **This phase writes `0046`.** That number is a MEASUREMENT, not a reservation: **Lane A wants the same number**, and whichever lane generates second re-measures, takes the next free one, and renumbers NOTHING already pushed (protocol §7; EXECUTE-PROMPT §4).
@@ -417,20 +419,371 @@ A downstream plan may write its phase doc against these sentences without readin
 
 ### 9.0 Kickoff — the pre-flight, §2 re-measured, the migration number taken, the test databases NAMED
 
+**Executed 2026-08-29 18:25 UTC on the build host, in `/opt/hmis`, by the Lane B execution session.**
+
+**Pre-flight (protocol §2), READ rather than run:**
+
+| probe | result | reading |
+|---|---|---|
+| `ps -eo pid,etimes,cmd \| grep -E "jest\|vitest\|deploy\.sh"` | no matches beyond the probe's own shell (rule 20) | **Lane A is not running.** No suite, no deploy |
+| `git status --short` | `?? .ci-watch.log`, `?? docs/design/` | **Neither is mine.** Untracked, present before this session opened, left exactly as found — never staged, never tidied |
+| `git log --oneline -5` / `git status -sb` | `dd6f869` at `## main...origin/main`, no ahead/behind | current, nothing to rebase |
+| `ls apps/core/drizzle \| tail -3` | `0043`, `0044`, `0045` | **`0046` is free** |
+| `uptime` | load average 0.85 | idle; the 18.70 that produced §2.137's 105 failures is not today's box |
+
+**§2 re-measured, every row, with the row's own command. LANE A HAS EXECUTED NOTHING** — the only
+commits since the fork are the two plan documents (`a7d1673`, `dd6f869`) and the owner ruling
+(`b657a66`). **Lane B is therefore FIRST on all four shared files and on both kernel seams.**
+
+| # | value at write time | value at kickoff | moved? |
+|---|---|---|---|
+| 1 | 46 (`0000`–`0045`) | **46, `0045_order_envelope_integrity`** | no — **this phase takes `0046`** |
+| 2 | `[]` | `[]` (parity.test.ts:28) | no |
+| 3 | 17 manifests; worker omits six; worker keys 12 | **17** (`:113` list, `:144`/`:149` counts, `:256` six-omitted, `:289` twelve) | no |
+| 4 | `allPermissions` 111; pairs 170; modelled 87; 111 = 93 held + 18 not-modelled | **111 / 170 / 87 / 93 + 18** (lines 633, 755, 760, 769, 822, 823) | no |
+| 5 | `seed-roles.ts` dirty in tree | **clean** — `b657a66` landed it | resolved |
+| 6 | `device` claimed by nobody | **0 claimants**; `resources_kind_ck` admits it (`schema/resources.ts:159`) | no |
+| 7 | Form F / PCPNDT in code | **2 lines**, both OT saying it is absent | no |
+| 8 | `recordPhiAccess` in `kernel/orders/read.ts` | **0** | no — **T3 writes the call** |
+| 9 | `addOrderItem` | **0**, and it stays 0 (DD10c) | no |
+| 10 | controllers mounting the order seam | **0** | no |
+| 11 | `PhiSurface` members | **8**, closed union, no CHECK (S1) | no |
+| 12 | episode series keys | **8**; `R` reserved and unused | no |
+| 13 | `secondFactorFresh(session, windowMinutes, now?)` at `totp.ts:48` | confirmed | no |
+| 14 | `walkIn` at `walk-in.ts:80` | confirmed | no |
+| 15 | `listAllergies(db, patientId)` at `allergies.ts:56` | confirmed | no |
+| 16 | `withIdempotency` from `billing/index.ts:17` | confirmed | no |
+| 17 | `OT_WORKFLOW_DEFINITIONS` pinned at `workflow-def.test.ts:18`, installed by `test/helpers/ot.ts:233` | confirmed | no |
+| 18 | 13 scheduler jobs | **13** (`jobs.test.ts:336`, `scheduler.test.ts:292`) — this phase adds none | no |
+| 19 | ledger §5 at line 1485 | **1485** | no |
+| 20 | host idle | load 0.85, no jest | no |
+
+**THE MIGRATION NUMBER TAKEN: `0046`.** Re-measured immediately before and immediately after
+`db:generate` (T1), per protocol §7.
+
+**THE TEST DATABASES, NAMED (v3 §9.9 rule 8, ledger §2.137).** Every count this phase claims was
+taken with:
+
+```
+TEST_DATABASE_URL="postgres://hmis:hmis@localhost:5433/hmis_lane_b_scratch"
+```
+
+`setupTestDb` appends `_<JEST_WORKER_ID>`, so the databases actually created and used are
+**`hmis_lane_b_scratch_1` … `hmis_lane_b_scratch_<N>`** (N = the worker count of the run). They are
+dropped in the same task that creates them (AGENT-RULES rule 7); the names are recorded here and in
+every commit message so that `exit 0` is a claim about a database a reviewer can name even after it
+is gone.
+
 ### 9.3 The spike answers (S1–S8), answered at kickoff, before T1
+
+**S1 — `phi_access_log.surface` carries NO CHECK.** `schema/phi-access.ts:57` is a bare
+`text("surface").notNull()`; the file contains no `check(`, and `0038_phi_access_log.sql` creates the
+table without one. `PhiSurface` is a TypeScript union only. **Effect on T1:** none — `0046` widens no
+CHECK. **Effect on T3:** the PHI edit is the type union alone.
+
+**S2 — `resolveEncounterByPrefix` returns `{patientId, intendedPayer}` and NO status. AND THE SPIKE
+FOUND A DEFECT IN THE SHIPPED RESOLVER — see §9.2 F1.** `EncounterResolver`'s return type
+(`encounter-resolvers.ts:49-52`) carries two fields. **Effect on T3:** the DD9 encounter-status guard
+needs a reader OPD does not export — `getEncounter(db, id)` (`encounters.ts:132`) queries
+`opd_encounters.id`, a `newId()` ULID, **not** `visit_no`. So T3 takes the ONE authorised OPD export.
+
+**S3 — `occupantType` is FREE TEXT; `assignResource` already refuses a down device.**
+`resources.occupant_type` (`schema/resources.ts:136`) has no CHECK, so `imaging_study` needs no
+admission. More usefully, `assignResource` (`registry.ts:475`) refuses any resource whose status is
+neither `decl.initial` nor `decl.onRelease` — with DD6's `initial='available'`/`onRelease='available'`
+that means **`down`, `qa_blocked`, `maintenance`, `retired` and `in_use` are all refused
+`already_occupied` by the kernel**, and G2 at acquisition start costs T7 no code of its own.
+`releaseResource` (`:504`) sets `onRelease` and nulls the triad, which is T7 A7 exactly.
+**Effect on T4:** unchanged — scheduling does not assign, so T4 still writes its own status check.
+
+**S4 — NONE of the four roles exists, and the phase document names a role key that does not exist
+either.** `seed-roles.ts` declares 27 `roleKey`s; `grep -n 'radiolog\|radiograph\|sonolog\|pcpndt'`
+returns **nothing**. So `radiologist`, `radiographer`, `radiology_receptionist` and `pcpndt_incharge`
+are all DECLARED, not granted. **CORRECTION to T2:** the doctor role in this repository is
+**`doctor`** (`seed-roles.ts:150`), not `consultant`; the grants T2 assigns to "consultant" are
+assigned to `doctor`. `billing_manager` (`:302`) exists and takes `radiology.bill_decisions.manage`.
+
+**S5 — one caller, and the window is config.** `secondFactorFresh` is called in exactly one
+non-test place: `PermissionGuard` at `auth/guards.ts:117`, with
+`this.cfg.secondFactorWindowMinutes` — `SECOND_FACTOR_WINDOW_MINUTES`, **default 5** (`config.ts:41`).
+**Effect on T8:** W is that config value, read from `AppConfig`; no second window is invented
+(§2.54). The declarative half exists too — `@RequirePermission(perm, { secondFactor: true })`
+(`decorators.ts:22`) — so the sign route carries both: the guard challenges, and `signReport` itself
+re-checks the session it is handed.
+
+**S6 — production has SIX services in THREE categories and NOT ONE of them is imaging; and
+`advised_tests` is empty everywhere.** Read-only SQL on `hmis-prod-db-1`:
+`services` = `consultation` ×4, `investigation` ×1 (`SYN-LAB-CBC`), `procedure` ×1; `opd_encounters`
+= 13 rows, **0** with a non-empty `advised_tests`. **Effect on T4, and it is a real change:** the
+twenty study types have no tariff services to bind to, so `seed-radiology.ts` must **find-or-create**
+the service rows itself, on `services_code_ux`, the `seed-ot.ts` idempotency pattern. **DECIDED**
+(owner standing rule 2026-08-28): they take `category: 'investigation'` — the category the existing
+investigation service already uses — because a new category would key a new `gst_config` row, and GST
+rates are a CA sign-off, i.e. money, i.e. routed and not invented. **And the 07d counter-conversion
+promise has nothing to convert today**, which is a fact about the pilot's data, not a defect.
+
+**S7 — `enqueueNotification` never looks at a channel; it throws on FOUR shapes, all before SQL.**
+`enqueue.ts:68-131`: unregistered template key (`templateByKey` throws), `promotional` class,
+patient-audience with no `patientId` (or with a `userId`), non-patient audience with no `userId`. **A
+patient with no phone enqueues perfectly well** — the pump discovers that later. The only SQL is one
+insert with `onConflictDoNothing`, returning `null` on a dedupe hit. **Effect on T8:** every refusal
+shape is a JS throw raised *before* any statement, so the enclosing transaction is unpoisoned and
+`publishReport` can catch it and still publish (A7). A genuine SQL failure inside the enqueue would
+still abort the transaction — correctly, and the test says so.
+
+**S8 — Lane A has landed NOTHING.** Rows 3, 4, 8, 9 and 11 all stand at their write-time values and
+`git log --oneline -5` carries no Lane A code commit. **Lane B is first**, and therefore:
+`0046` is ours; **T3 WRITES** the two `recordPhiAccess` calls in `kernel/orders/read.ts` with the
+agreed surface `orders.patient`; **T3 WRITES** the `PhiSurface` widening, adding `orders.patient`
+plus this lane's four names (`imaging.worklist`, `imaging.study`, `imaging.report`, `pcpndt.form_f`)
+and leaving Lane A to append `lab.results` / `lab.report` to the union rather than re-write the call.
+Manifest census moves 17 → **19**; `allPermissions` 111 → **131**.
 
 ### 9.1 The commits
 
+**ONE, and it carries no code: this document.** The owner RULED on 2026-08-30 that Lane B pauses
+(see §9.6). T1 is code-complete and green and is **deliberately held uncommitted** — the ruling's own
+words were *"migration `0047` held"*.
+
+| # | commit | what |
+|---|---|---|
+| 1 | *(this doc)* | kickoff, spike answers, T1's evidence, the findings, and the handoff |
+
 ### 9.2 Findings
+
+**F1 — A LIVE DEFECT IN SHIPPED CODE: `registerOpdEncounterResolver` CANNOT RESOLVE ANY `V…` NUMBER.**
+*(found by spike S2, before T1; not fixed by this phase — it belongs to whoever mounts the first
+route that places an order on an OPD visit)*
+
+`opd.module.ts:59` registers the resolver under prefix `EPISODE_SERIES.visit` (`"V"`), so
+`resolveEncounterByPrefix` hands it a visit NUMBER — `V2608290001`. It calls
+`getEncounter(db, encounterId)`, and `encounters.ts:132` is
+`where(eq(opdEncounters.id, id))` — `opd_encounters.id` is a `newId()` ULID (`encounters.ts:77`),
+never `visit_no`. **Nothing in `apps/core/src` reads that table by visit number at all**
+(`grep -rn 'eq(opdEncounters.visitNo' apps/core/src` → 0). The OT's resolver, one file over, reads
+`daycareEncounters.encounterNo` correctly — so this is a divergence between two implementations of
+one seam, not a design.
+
+It has never been caught because **every phase-0 order suite registers its own fake `V` resolver**
+(`place.test.ts:79`, `advance.test.ts:64`, `read.test.ts:74`, `envelope.e2e.test.ts:78`), and
+billing never reaches it: billing passes bare row ids, which match no prefix and fall through to its
+own OPD fallback. Row 10 measured **0 controllers mounting the order seam**, so the defect is latent
+rather than live in production today.
+
+**Consequence for whoever resumes:** `placeOrder` on a real `V…` encounter returns
+`{matched: true, resolved: null}` → `unknown_encounter`. T3 and T9's end-to-end proof are the first
+callers that would hit it. The fix is one line (read by `visitNo`), but it is in `modules/opd/*`,
+which this phase's EXECUTE-PROMPT §3 freezes beyond the ONE export S2 may require — so it is
+reported rather than taken. **It should be proved by execution, not by reading**, and the test that
+proves it is the regression test.
+
+**F2 — THE T1 SUITE CAUGHT TWO DEFECTS IN ITSELF, AND BOTH ARE WORTH THE RECORD.** Neither was a
+defect in the migration; both were assertions that could not mean what they said.
+
+- **A bogus `status` tripped the WRONG constraint.** `form({status: 'draft'})` was written to prove
+  `pcpndt_form_f_status_ck`, and Postgres answered with `pcpndt_form_f_recorded_shape_ck` — because
+  any status that is not `open` also requires a signer, and **Postgres does not promise which of two
+  violated CHECKs it reports.** The row must otherwise be VALID for a vocabulary assertion to be
+  about the vocabulary. Fixed by signing the form.
+- **THE IMMUTABILITY TRIGGER CORRECTLY PERMITS A NO-OP UPDATE, and the first draft asserted it did
+  not.** The trigger compares WHOLE ROWS (§9.4), so `set person_id = <the id it already has>`
+  mutates nothing and is not refused. Proved at the database rather than reasoned about: a
+  hand-issued `UPDATE … SET person_id = 'PE1'` on a row whose `person_id` is already `PE1` succeeds,
+  and the same statement with a different value raises `pcpndt_form_f_immutable`. **A BEFORE ROW
+  trigger also runs ahead of foreign-key checking** — confirmed the same way — so the freeze answers
+  before the FK, which is what lets the assertion use ids that exist nowhere. Both halves are now
+  assertions in their own right.
+
+**F3 — PRODUCTION HAS NO IMAGING SERVICE AND `advised_tests` IS EMPTY (spike S6). CHANGES T4.**
+Read-only SQL on `hmis-prod-db-1`: six `services` rows in three categories — `consultation` ×4,
+`investigation` ×1 (`SYN-LAB-CBC`), `procedure` ×1 — and 13 `opd_encounters`, **zero** with a
+non-empty `advised_tests`. So the twenty study types have nothing to bind to and
+`seed-radiology.ts` must **find-or-create** its own tariff rows on `services_code_ux`
+(`seed-ot.ts`'s idempotency pattern). **DECIDED:** `category: 'investigation'`, matching the
+existing investigation service, because a new category keys a new `gst_config` row and a GST rate is
+a CA sign-off — money, therefore routed and not invented (owner standing rule 2026-08-28). And 07d's
+counter-conversion promise has nothing to convert today: a fact about the pilot's data, not a defect.
+
+**F4 — THE PHASE DOCUMENT NAMES A ROLE THAT DOES NOT EXIST (spike S4). CHANGES T2.** `seed-roles.ts`
+declares 27 `roleKey`s and none of `radiologist`, `radiographer`, `radiology_receptionist`,
+`pcpndt_incharge` is among them — all four are DECLARED by T2, not granted. **And the doctor role in
+this repository is `doctor` (`seed-roles.ts:150`), not `consultant`**, which is the key T2's own text
+uses. `billing_manager` (`:302`) exists and takes `radiology.bill_decisions.manage`.
+
+**F5 — §4.1 AND DD5 DISAGREE BY ONE WORD ABOUT THE SLOT PREDICATE, AND §4.1 WINS.** DD5 writes the
+partial unique as `WHERE status NOT IN ('cancelled','rescheduled')`; §4.1's table spec adds
+`'no_show'`. **`no_show` is included**, and the reason decides it rather than the ordering of the
+two paragraphs: the machine is idle whether the patient cancelled or simply did not come, so a
+no-show that held its slot would take a working machine out of the day's list for no clinical
+reason. Both freeing statuses are proved by execution (T1, `it.each`).
+
+**F6 — LANE COLLISION: FIVE SHARED FILES AND A NON-SEPARABLE JOURNAL.** Recorded in full in §9.6.
 
 ### 9.4 The Assertion Book, corrected by execution
 
+**T1 is ROUTINE, so no mutants are owed** (AGENT-RULES §3) and none were built; the report says so
+rather than manufacturing one. What T1 owed instead was that **every CHECK is refused by Postgres
+and the refusal READ** (the 07c pattern), that **both triggers refuse UPDATE and DELETE**, that the
+**partial slot unique refuses a second live study and ACCEPTS after a cancel**, and that
+**`truncateAll` empties all eleven tables.** All four were executed. Three corrections the execution
+forced:
+
+| # | as authored | as executed, and why |
+|---|---|---|
+| 1 | *"the two triggers"* freeze a named column list | **They freeze WHOLE ROWS minus a named pair** — `(to_jsonb(NEW) - 'status' - 'published_at') IS DISTINCT FROM (to_jsonb(OLD) - …)`. `0045` exists *because* `0044`'s enumerated freeze list was incomplete (`authority` and `external_referrer_id` were left mutable and turned a clinician order into a referral fee). Inverting it means the plan's own mutants — *"the trigger omits `body`"* (T8 A5), *"omits `sections`"* (T6 A4) — **cannot be written by omission**, and a column a LATER migration adds is frozen by default rather than silently mutable. |
+| 2 | M4's dose CHECK: *"one dose field NOT NULL **or** `dose_manual` is set"* | **`dose_manual` is a PROVENANCE flag and does not excuse the number.** A machine with no dose SR is precisely the case M4 exists for — the technologist reads the console and types it — so `dose_manual = true` with every number null is the defect the CHECK is named after, not the exemption from it. The strict reading is shipped and both halves are asserted. |
+| 3 | §4.1: `imaging_definitions`, `pcpndt_registrations`, `pcpndt_form_f_serials` *"take their own"* truncate statement | **Constraint EXISTENCE decides, not the authoring sketch** (§3.35/§3.12). `pcpndt_form_f_serials.machine_id` is an FK into the machine list, so it rides the register's statement; `imaging_studies` is named in **three** statements (patients/orders/resources/invoice_lines, services, and its own children follow it everywhere). Only `imaging_definitions` genuinely takes its own. Proved by inserting one row in each of the eleven, truncating, and counting zero — the author prompt's rule made executable, which is the only form of it that cannot go stale. |
+
+Two assertions were added that the book did not ask for, both bought by F2: **a no-op UPDATE is
+permitted** (the trigger freezes change, not statements) and **an acquired ionising study is refused
+even with `dose_manual` set**.
+
 ### 9.5 Mechanical verification — with the `TEST_DATABASE_URL` database named beside every count (§2.137)
+
+**THE DATABASE: `hmis_lane_b_scratch_1`**, created by `setupTestDb` from
+`TEST_DATABASE_URL="postgres://hmis:hmis@localhost:5433/hmis_lane_b_scratch"` with
+`JEST_WORKER_ID=1` (`--runInBand`). Migration `0047_radiology_core` **is applied there and nowhere
+else**; it has been applied to no other database on this host and to nothing in production
+(AGENT-RULES §6's reporting obligation, discharged here).
+
+**It is deliberately NOT dropped**, which is rule 7's *"say so rather than leaving it silently"*
+branch rather than a lapse — the 17a precedent (`hmis_17a_scratch`, held for the same reason). A
+paused phase whose evidence database has been destroyed is exactly §2.137's specimen: the successor
+would have `exit 0` and nothing to inspect.
+
+| check | result |
+|---|---|
+| `pnpm typecheck` (whole workspace, over Lane A's landed tree) | **exit 0**, re-run 2026-08-30 after `8ea802a` |
+| T1's four suites, detached, exit value READ FROM A FILE (`.lane-b-t1.exit`) | **exit 0 — 4 suites, 61 tests, 61 passed**, on `hmis_lane_b_scratch_1` |
+| `radiology.test.ts` | PASS — every CHECK refused and read; the report trigger refuses UPDATE of `body`/`impression`/`signer_id`/`laterality`/`version` and refuses DELETE; the slot unique refuses a second live study and RELEASES on each of `cancelled`/`rescheduled`/`no_show` |
+| `pcpndt.test.ts` | PASS — the Form F trigger refuses nine columns and DELETE; the gap-free serial refuses a duplicate per machine-year; **`truncateAll` empties all eleven tables** (one row inserted in each first, so "empty afterwards" means something) |
+| `series.test.ts`, `parity.test.ts` | PASS — both `EPISODE_SERIES` censuses moved to nine keys |
+| migration number, re-measured immediately BEFORE and AFTER `db:generate` (protocol §7) | before: 47 entries, last `0046_lab_core` (Lane A's). after: 48, last `0047_bent_mandrill` → renamed `0047_radiology_core`, journal retagged, snapshot renamed. **`0047` was free and still is.** |
+| generated SQL read rather than predicted (rule 21's discipline) | 11 `CREATE TABLE`, 12 indexes, 10 unique indexes, **no `lab_*` object** — the three `lab_`/`ot_` grep hits are false positives inside `not_given`, `not_pregnant` and `not in` |
+| `pnpm verify` (full workspace) | **NOT RUN, and deliberately.** Lane A held ~20 files dirty and a full verify of its own in flight for the whole of this session's window; a run over that tree is unattributable to either lane (§2.137, and the 2026-08-29 lane-collision note). CI by full SHA is the honest instrument and there is no SHA to watch, because nothing was committed. |
+| CI | **N/A — no code commit exists.** |
 
 ### 9.6 The independent close review — FRESH
 
+**NOT RUN. The phase is paused at T1 of nine and there is nothing to close.** Both reviewer passes
+(§9.6 and §9.6.2) remain owed in full, and the stop-loss's review term — 463,509 of the 736,000 — is
+entirely unspent.
+
+---
+
 ### 9.6.2 The SECOND close review — over the remediation diff only, FRESH
+
+**NOT RUN** — it reviews a remediation that does not exist yet.
 
 ### 9.7 Actuals, recorded only after §9.6 exists (v3 §9.4)
 
+**NOT RECORDED, and that is the rule rather than an omission** (v3 §9.4: a LIGHT phase's saving is
+not a saving until its reviewer has run). What can be said: the phase is paused at **T1 of nine**,
+no reviewer has run, and the review term — **463,509 of the 736,000 stop-loss** — is entirely
+unspent. A resumed session should price itself from a fresh baseline, not from this one, because
+**a paused lane's largest cost was not its code**: it was reading a shared tree that changed under it
+and re-measuring facts that had already moved.
+
 ### 9.8 The question this phase existed to answer
+
+**Still open.** The question was *what shape the first radiology slice takes on an envelope that
+already exists and a statutory table that does not.* T1 answers the second half in the only way that
+counts — **the statutory table now exists, with a gap-free serial series per machine per year, a
+whole-row immutability trigger, and a Form F that no role, flag or hour of the night can reach
+around** — and the first half is untouched: no manifest claims `imaging`, so the envelope still has
+zero consumers and `parity.test.ts` still reads `['lab']` rather than `['imaging','lab']`.
+
+---
+
+## 9.9 HANDOFF — Lane B paused by owner ruling, 2026-08-30 (v3 §9.6)
+
+**THE RULING.** Lane A (Plan 17 → re-cut into 17a/17b) executed in `/opt/hmis` at the same time as
+this session and, for the whole of the window, held the checkout's shared files uncommitted. The
+owner was given four options and chose **"pause Lane B entirely"** in these words: *stop, write the
+handoff note, resume once Plan 17 is closed and pushed.* This section is that note.
+
+### What is true about the code, stated the way §9.6 requires
+
+**T1 is CODE-COMPLETE, TYPECHECKED AND GREEN**, and the evidence is a suite run with its exit value
+read from a file, not a description: **exit 0, 4 suites, 61/61, on `hmis_lane_b_scratch_1`**, re-run
+on 2026-08-30 against Lane A's landed tree at `8ea802a`. Nothing below is "written but unrun".
+
+**NOTHING IS COMMITTED EXCEPT THIS DOCUMENT.** The ruling said `0047` is HELD. So the successor
+inherits a working tree, not a branch, and the FIRST act of the next session is to decide whether
+that tree still applies — Lane A has been moving fast, and `test/helpers/db.ts`, `schema/index.ts`
+and `_journal.json` are the three files most likely to have moved under it.
+
+### The exact inventory being held
+
+**Untracked (mine, complete, none of it scratch):**
+
+- `apps/core/drizzle/0047_radiology_core.sql` + `drizzle/meta/0047_snapshot.json` — 11 tables, 22
+  indexes, the CHECKs, the two partial uniques, and the two hand-carried triggers.
+- `apps/core/src/kernel/db/schema/radiology.ts`, `pcpndt.ts` (+ both `.test.ts`).
+- `apps/core/src/modules/radiology/` — `manifest.ts`, `kinds.ts`, `events.ts`, `workflow-def.ts`,
+  `approval-types.ts`, `errors.ts`, `index.ts`. **This is T2's own half, written and typechecking,
+  with NO test of its own yet — treat it as WRITTEN, not proved.**
+- `apps/core/src/modules/pcpndt/` — `manifest.ts`, `errors.ts`, `events.ts`, `index.ts`. Same status.
+
+**Modified (mine; every one verified to carry my hunks ONLY, `git diff` per path):**
+
+| file | my change | collision risk on resume |
+|---|---|---|
+| `drizzle/meta/_journal.json` | one entry, `idx 47`, `0047_radiology_core` | **HIGH** — re-measure before anything |
+| `schema/index.ts` | exports `./radiology`, `./pcpndt` | medium |
+| `test/helpers/db.ts` | eleven names across three statements + one new | **HIGH** — Lane A appends here too |
+| `kernel/episodes/series.ts` | `imaging_study: "X"` + its reasoning | low |
+| `schema/episodes.ts` | the `series_key` comment | low |
+| `episodes/series.test.ts`, `orders/parity.test.ts` | both `EPISODE_SERIES` censuses → nine keys | medium |
+
+**Scratch: none.** `.lane-b-*.log`/`.exit` deleted; `git status --porcelain` carries no scratch of
+mine. `.ci-watch.log`, `.g.log`, `.g.exit`, `.full.log`, `docs/design/` and
+`2026-08-29-EXECUTE-PROMPT-flow3-front-desk.md` are **not mine** and were never touched.
+
+### The database, and the one irreversible thing this session did
+
+`0047_radiology_core` **has been generated and APPLIED** — to `hmis_lane_b_scratch_1` only, and to
+nothing else on this host. Not `hmis_dev`, not `hmis_test_*`, not production (prod is at 46 and this
+session made no production write; S6 was a read-only `SELECT`). AGENT-RULES §6 requires that be
+reported rather than left implicit, and it is the one act of this session that a `git checkout`
+would not undo. The database is **held, not dropped** (§9.5).
+
+### What the next session must do, in this order
+
+1. **Re-run the kickoff pre-flight and re-measure §2 in full.** Every row. Lane A has landed at
+   least eleven commits since §9.0 was written, `lab` now claims an order kind, and **rows 2, 3, 4,
+   8, 9 and 11 have certainly moved.**
+2. **Re-measure the migration number.** `0047` was free at 07:15 UTC on 2026-08-30. If Lane A has
+   taken it, renumber MINE — rename the `.sql`, rename the snapshot, retag the journal entry — and
+   never the one already pushed (protocol §7).
+3. **Re-answer S8, because its answer has already flipped once.** At kickoff Lane B was first on both
+   kernel seams. By 18:50 the same day Lane A had `kernel/orders/read.ts` and `kernel/phi/audit.ts`
+   open. **If Lane A has landed the `recordPhiAccess` call with surface `orders.patient`, T3 REUSES
+   it and appends ONLY `imaging.worklist`, `imaging.study`, `imaging.report`, `pcpndt.form_f` to
+   `PhiSurface`** — it does not write a second call (§2.54).
+4. **Re-run T1's four suites before trusting a line of it** (§9.6's own corollary: a handoff's green
+   is a claim about a tree that has since changed). Name the database in the commit message.
+5. Then T2's censuses — the part that was blocked. **Grep the SIBLING and grep the LIST** (§2.131 /
+   §2.138): `grep -rn "otManifest" apps/core --include=*.ts` for the places that NAME one, and
+   `grep -rn "ALL_MANIFESTS" apps/core --include=*.ts` for the places that COUNT them. Lane A's own
+   close reports that three derived censuses caught what its Files lists missed, and that one of them
+   left `main` red for forty minutes.
+6. Apply **F3 and F4** before writing T4's seed and T2's roles — they change both.
+
+### What this session learned that the METHOD does not yet carry
+
+**Two lanes in one checkout do not fail on the files the protocol names; they fail on the
+ARTEFACTS THAT CANNOT BE SPLIT.** §4 anticipated four shared files and gave a good rule for each —
+*"stage only your hunks by path"*. That rule works for a census and a truncate list. **It cannot work
+for `drizzle/meta/_journal.json`**, and that single file is what stopped this lane: committing my
+`0047` row means either orphaning Lane A's uncommitted `0046` row — which turns `origin/main` red and
+breaks the next production deploy — or committing their migration for them. There is no third
+option, and no amount of care at the diff level produces one.
+
+The protocol's *"whoever lands second pulls and re-reads"* also assumes **the first lane LANDS**.
+Lane A ran T1→T2→T3 behind a single batched verify — which is exactly what v3 §9.9 rule 4 tells it to
+do — so for ninety minutes there was nothing to pull and a growing set of files nobody could touch.
+**§9.9 rule 4 (batch the verify) and protocol §4 (land second) are in direct tension, and nothing
+says so.** That is the finding worth carrying into the ledger, and it is cheap: a lane that shares a
+checkout should commit its MIGRATION as soon as it is green, ahead of the batch it belongs to,
+because the journal is the one artefact the other lane cannot work around.
