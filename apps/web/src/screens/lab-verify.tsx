@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
 import {
-  flagTone, getReport, labErrorText, printReport, publishableOrders, publishReport, requestRerun,
-  verifyResult, verifyWorklist,
+  amendReport, flagTone, getReport, labErrorText, printReport, publishableOrders, publishReport,
+  requestRerun, verifyResult, verifyWorklist,
 } from "../lib/lab-api";
 import { LabReportPrint } from "../components/lab-report-print";
 import { Button } from "@/components/ui/button";
@@ -65,12 +65,36 @@ export function LabVerify(): React.ReactElement {
     onError: (e: unknown) => setError(labErrorText(e)),
   });
 
+  /**
+   * ═══ THE CHANNEL FOLLOWS THE REPORT (pass 2, F16) ═══
+   *
+   * `channel` was initialised to `"print"` and never reset, so for a `sensitive` report — published
+   * `['in_person']` only, which is DD14's whole point — the `<select>` had no matching option and
+   * rendered BLANK. A clerk who did not notice pressed Print, sent `channel: "print"`, and got
+   * "published for in_person only". The fix that was meant to make a sensitive report handable
+   * still required the clerk to deduce that a blank dropdown must be touched. It also persisted
+   * across reports once changed.
+   */
+  const openReport = async (reportId: string): Promise<void> => {
+    const view = await getReport(reportId);
+    setOpen(view);
+    setChannel((view.channels[0] ?? "in_person") as typeof channel);
+    setCollector("");
+  };
+
   const publish = useMutation({
-    mutationFn: (v: { orderId: string; partial: boolean }) =>
-      publishReport(v.orderId, newIdempotencyKey(), v.partial),
+    mutationFn: (v: { orderId: string; partial: boolean; amendsReportId: string | null }) =>
+      v.amendsReportId === null
+        ? publishReport(v.orderId, newIdempotencyKey(), v.partial)
+        /**
+         * 02 D7's SECOND LEG (pass 2, F9). A partial version already stands, so the rest is issued
+         * as an AMENDMENT — which is the only instrument DD13 offers and the one the queue could
+         * not reach before, because an order with any published report dropped out of it for ever.
+         */
+        : amendReport(v.amendsReportId, "added_analyte", newIdempotencyKey()),
     onSuccess: async (r) => {
       setError(null);
-      setOpen(await getReport(r.reportId));
+      await openReport(r.reportId);
       refresh();
     },
     onError: (e: unknown) => setError(labErrorText(e)),
@@ -92,7 +116,7 @@ export function LabVerify(): React.ReactElement {
     ),
     onSuccess: async () => {
       setError(null);
-      if (open !== null) setOpen(await getReport(open.reportId));
+      if (open !== null) await openReport(open.reportId);
       refresh();
     },
     onError: (e: unknown) => setError(labErrorText(e)),
@@ -105,7 +129,9 @@ export function LabVerify(): React.ReactElement {
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold">{t("lab.verify.queue")}</h2>
-        {(queue.data ?? []).length === 0 && <p className="text-sm">{t("lab.verify.empty")}</p>}
+        {queue.isError
+          ? <p role="alert" className="text-sm font-semibold">{t("lab.verify.unavailable")}</p>
+          : (queue.data ?? []).length === 0 && <p className="text-sm">{t("lab.verify.empty")}</p>}
         {(queue.data ?? []).map((row) => (
           <article key={row.orderItemId} className="space-y-1 rounded border p-2">
             <header className="flex flex-wrap items-baseline gap-2 text-sm">
@@ -147,24 +173,34 @@ export function LabVerify(): React.ReactElement {
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold">{t("lab.verify.publishQueue")}</h2>
-        {(publishable.data ?? []).length === 0 && (
-          <p className="text-sm">{t("lab.verify.publishEmpty")}</p>
-        )}
+        {publishable.isError
+          ? <p role="alert" className="text-sm font-semibold">{t("lab.verify.unavailable")}</p>
+          : (publishable.data ?? []).length === 0 && (
+            <p className="text-sm">{t("lab.verify.publishEmpty")}</p>
+          )}
         {(publishable.data ?? []).map((o) => (
           <article key={o.orderId} className="flex flex-wrap items-baseline gap-2 rounded border p-2 text-sm">
             <span className="font-mono">{o.orderNo}</span>
             <span>{o.patientDisplay}</span>
             <span className="text-xs">{o.orderables.join(", ")}</span>
             <span className="text-xs">{o.completedCount}/{o.itemCount}</span>
-            {o.complete ? (
+            {o.amendsReportId != null ? (
+              /* A PARTIAL version stands and the rest has finished — issue it as an amendment. */
               <Button type="button" disabled={publish.isPending}
-                onClick={() => publish.mutate({ orderId: o.orderId, partial: false })}>
+                onClick={() => publish.mutate({
+                  orderId: o.orderId, partial: !o.complete, amendsReportId: o.amendsReportId,
+                })}>
+                {t("lab.verify.publishRest")}
+              </Button>
+            ) : o.complete ? (
+              <Button type="button" disabled={publish.isPending}
+                onClick={() => publish.mutate({ orderId: o.orderId, partial: false, amendsReportId: null })}>
                 {t("lab.verify.publish")}
               </Button>
             ) : (
               /* 02 D7 — what has finished at 24 h, said on the row rather than guessed. */
               <Button type="button" disabled={publish.isPending}
-                onClick={() => publish.mutate({ orderId: o.orderId, partial: true })}>
+                onClick={() => publish.mutate({ orderId: o.orderId, partial: true, amendsReportId: null })}>
                 {t("lab.verify.publishPartial")}
               </Button>
             )}

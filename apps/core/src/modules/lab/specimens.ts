@@ -71,6 +71,17 @@ export type PrintedSpecimen = {
 
 export type PrintLabelsResult = { specimens: PrintedSpecimen[] };
 
+/**
+ * What a scanner at the bench door may read back — the named columns of F18's fix, and not the row.
+ * `patient_id` is deliberately absent: this route takes no actor and can neither alias a sealed
+ * identity nor log the read, so it must not carry one.
+ */
+export type SpecimenView = {
+  id: string; specimenNo: string; orderGroupId: string; specimenType: string; container: string;
+  status: string; labelSource: string; collectedAt: Date | null; receivedAt: Date | null;
+  rejectionReason: string | null; serviceDate: string;
+};
+
 type DrawableItem = {
   itemId: string; serviceId: string; instanceId: string; patientId: string; serviceDate: string;
 };
@@ -258,8 +269,24 @@ async function printLabelsInTx(
 export async function getSpecimenByNo(
   exec: Db | Tx,
   specimenNo: string,
-): Promise<{ specimen: typeof labSpecimens.$inferSelect; itemIds: string[] } | null> {
-  const specimen = (await (exec as Db).select().from(labSpecimens)
+): Promise<{ specimen: SpecimenView; itemIds: string[] } | null> {
+  /**
+   * ═══ THE COLUMNS ARE NAMED — CLOSE REVIEW PASS 2, F18 ═══
+   *
+   * `select()` with no projection on a route that takes no `@CurrentActor()` (and so can apply no
+   * alias rule and write no `phi_access_log` row) is the construct C1 condemned. `lab_specimens`
+   * carries no name column TODAY, which is why nothing leaks — but it carries `patient_id`,
+   * `collected_by`, `wristband_scanned` and `downtime_kit_serial`, it is reachable by guessing a
+   * sequential `S` number, and a column added later would join this response by default.
+   */
+  const specimen = (await (exec as Db).select({
+    id: labSpecimens.id, specimenNo: labSpecimens.specimenNo,
+    orderGroupId: labSpecimens.orderGroupId, specimenType: labSpecimens.specimenType,
+    container: labSpecimens.container, status: labSpecimens.status,
+    labelSource: labSpecimens.labelSource, collectedAt: labSpecimens.collectedAt,
+    receivedAt: labSpecimens.receivedAt, rejectionReason: labSpecimens.rejectionReason,
+    serviceDate: labSpecimens.serviceDate,
+  }).from(labSpecimens)
     .where(eq(labSpecimens.specimenNo, specimenNo)))[0];
   if (!specimen) return null;
   const links = await (exec as Db)

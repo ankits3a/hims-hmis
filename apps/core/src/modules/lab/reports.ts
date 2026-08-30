@@ -136,7 +136,8 @@ async function buildSnapshot(
   order: typeof orders.$inferSelect,
   actor: Actor,
   now: Date,
-  partial: boolean,
+  /** PERMISSION to include an order with unfinished items — never the flag (pass 2, F1). */
+  allowUnfinished: boolean,
 ): Promise<{ snapshot: ReportSnapshot; sensitive: boolean; itemIds: string[]; complete: boolean }> {
   const items = await tx
     .select({
@@ -172,7 +173,7 @@ async function buildSnapshot(
    * can tell "the rest is coming" from "this is all there was".
    */
   const unfinished = reportable.filter((i) => i.status !== "completed");
-  if (unfinished.length > 0 && !partial) {
+  if (unfinished.length > 0 && !allowUnfinished) {
     throw new LabError(
       "report_not_publishable",
       `${unfinished.length} of ${reportable.length} tests on order ${order.orderNo} are not ` +
@@ -180,7 +181,7 @@ async function buildSnapshot(
       { unfinishedItemIds: unfinished.map((i) => i.orderItemId) },
     );
   }
-  const included = partial ? reportable.filter((i) => i.status === "completed") : reportable;
+  const included = allowUnfinished ? reportable.filter((i) => i.status === "completed") : reportable;
   if (included.length === 0) {
     throw new LabError(
       "report_not_publishable",
@@ -310,7 +311,7 @@ export async function publishReport(
 ): Promise<PublishedReport> {
   await assertMay(db, actor, LAB_REPORTS_PUBLISH, "publish a lab report");
   const published = await withTx(db, (tx) => publishInTx(tx, actor, {
-    orderId: input.orderId, partial: input.partial === true,
+    orderId: input.orderId, allowUnfinished: input.partial === true,
     priorVersionId: null, amendmentReasonCode: null,
   }, now));
   return { ...published, notificationId: await notifyReady(db, published, now) };
@@ -318,7 +319,16 @@ export async function publishReport(
 
 type PublishInTxInput = {
   orderId: string;
-  partial: boolean;
+  /**
+   * ═══ PERMISSION TO PUBLISH WITH UNFINISHED ITEMS — NOT THE FLAG ON THE ROW (PASS 2, F1) ═══
+   *
+   * These were one field called `partial`, and M4's fix passed `false` from `amendReport` — which
+   * silently closed the gate at `buildSnapshot`. An order published partial at 24 h (CBC signed,
+   * LFT analyser down) could then never be AMENDED: correcting the haemoglobin and reissuing was
+   * refused *"1 of 2 tests are not finished"*, so the version carrying the wrong value stayed the
+   * published one. The two meanings are now two names, and the flag is derived from the contents.
+   */
+  allowUnfinished: boolean;
   priorVersionId: string | null;
   amendmentReasonCode: string | null;
 };
@@ -374,7 +384,8 @@ async function publishInTx(
     }
   }
 
-  const { snapshot, sensitive, itemIds, complete } = await buildSnapshot(tx, order, actor, now, input.partial);
+  const { snapshot, sensitive, itemIds, complete } =
+    await buildSnapshot(tx, order, actor, now, input.allowUnfinished);
   /**
    * ═══ `partial` IS RECOMPUTED FROM WHAT WENT ON THE PAGE, NEVER CARRIED FORWARD (C.R. M4) ═══
    *
@@ -437,7 +448,8 @@ async function publishInTx(
         actor, patientId: snapshot.patient.id, encounterId: order.encounterNo, correlationId: order.id,
         payload: {
           reportId, orderId: order.id, patientId: snapshot.patient.id, version,
-          partial: input.partial, channels, signedBy: actor.id,
+          /** THE DERIVED FLAG (pass 2, F11) — the event and the document must not disagree. */
+          partial, channels, signedBy: actor.id,
         },
       })
     : labReportAmended.make({
@@ -540,8 +552,13 @@ export async function amendReport(
     .from(labReports).where(eq(labReports.id, input.reportId));
   if (!found) throw new LabError("unknown_report", `no lab report ${input.reportId}`);
 
+  /**
+   * `allowUnfinished: true` — an AMENDMENT is never blocked by a sibling that has not finished
+   * (F1). It is a correction to what is already on the page, and the derived `partial` below says
+   * whether the page is now everything.
+   */
   const published = await withTx(db, (tx) => publishInTx(tx, actor, {
-    orderId: found.orderId, partial: false,
+    orderId: found.orderId, allowUnfinished: true,
     priorVersionId: input.reportId, amendmentReasonCode: input.reasonCode,
   }, now));
   return { ...published, notificationId: await notifyReady(db, published, now) };
@@ -627,6 +644,12 @@ export async function printReport(
     );
   }
 
+  /**
+   * The approval is VALIDATED here for the refusal's sake — a caller with a wrong approval should
+   * be told before anything else happens — and SPENT inside the write transaction below (pass 2,
+   * F10), because a check on `db` and an insert in a later transaction is a TOCTOU that two clerks
+   * releasing the same held report at the same moment both pass.
+   */
   const releasedByApproval = input.approvalId === undefined
     ? false
     : await assertReleaseApproval(db, input.approvalId, report.orderId);
@@ -661,6 +684,17 @@ export async function printReport(
   }
 
   return await withTx(db, async (tx) => {
+    if (releasedByApproval) {
+      /**
+       * ═══ SERIALISED ON THE APPROVAL, AND RE-CHECKED UNDER IT (PASS 2, F10) ═══
+       *
+       * `pg_advisory_xact_lock` is the house pattern (`desk.ts`'s group guard, `kernel/ops/mode.ts`)
+       * and it is taken FIRST, so two clerks releasing the same held report queue rather than both
+       * reading zero deliveries and both handing the document over on one decision.
+       */
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.approvalId!}))`);
+      await assertReleaseApproval(tx, input.approvalId!, report.orderId);
+    }
     const deliveryId = newId();
     await tx.insert(labReportDeliveries).values({
       id: deliveryId,
@@ -721,7 +755,12 @@ export async function printReport(
 }
 
 /** DD6 — the release is a GRANTED `lab_release_unpaid` approval **about this order** and nothing else. */
-async function assertReleaseApproval(db: Db, approvalId: string, orderId: string): Promise<boolean> {
+async function assertReleaseApproval(
+  exec: Db | Tx,
+  approvalId: string,
+  orderId: string,
+): Promise<boolean> {
+  const db = exec as Db;
   const [approval] = await db.select().from(approvals).where(eq(approvals.id, approvalId));
   if (!approval) {
     throw new LabError("release_approval_invalid", `no approval ${approvalId}`);

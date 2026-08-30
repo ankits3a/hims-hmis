@@ -52,7 +52,7 @@ export type { ActivateLabDefinitionsReport } from "./definitions";
 export { assertRightPatient, collect, collectionQueue } from "./collection";
 export type { CollectInput, CollectionQueueRow } from "./collection";
 export { getSpecimenByNo, printLabels } from "./specimens";
-export type { PrintedSpecimen, PrintLabelsInput, PrintLabelsResult } from "./specimens";
+export type { PrintedSpecimen, PrintLabelsInput, PrintLabelsResult, SpecimenView } from "./specimens";
 export { orderableCodesFor, receive, reject } from "./accession";
 export type { ReceiveInput, ReceiveResult, RejectInput, RejectResult } from "./accession";
 export {

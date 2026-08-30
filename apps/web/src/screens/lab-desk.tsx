@@ -99,9 +99,17 @@ export function LabDesk(): React.ReactElement {
        * server rather than quietly extended as credit. BILL LATER ⇒ the credit block, which is what
        * DD6 exists for — the tube is drawn either way.
        */
-      ...(payNow && priced !== null
-        ? { receipt: { tenders: [{ mode: tender, amountPaise: priced.totals.netPayablePaise }] } }
-        : { credit: { reason: t("lab.desk.creditReason") } }),
+      /**
+       * A ZERO BILL TAKES NO TENDER (pass 2, F15). `amountPaise` is `.int().positive()` at the
+       * route, so a fully-covered basket sent `{ amountPaise: 0 }` and got a zod 400 — with
+       * "Pay now" ticked by default, the clerk had to work out that UNticking it was the way
+       * through a bill of ₹0. Nothing is owed, so nothing is tendered and no credit is extended.
+       */
+      ...(priced !== null && priced.totals.netPayablePaise === 0
+        ? {}
+        : payNow && priced !== null
+          ? { receipt: { tenders: [{ mode: tender, amountPaise: priced.totals.netPayablePaise }] } }
+          : { credit: { reason: t("lab.desk.creditReason") } }),
     }, idempotencyKey),
     onSuccess: (order) => {
       setPlaced(order);
@@ -171,7 +179,15 @@ export function LabDesk(): React.ReactElement {
               </span>
               <Button type="button" onClick={() => {
                 setBasket((b) => (b.some((x) => x.serviceId === o.serviceId) ? b : [...b, o]));
+                /**
+                 * THE PRICE DIES WITH THE BASKET (pass 2, F14). It did not, so a clerk who priced
+                 * CBC+LFT at ₹550 and then added a vitamin D sent a tender of ₹550 against an
+                 * ₹1,450 invoice — refused by billing with a number the clerk never chose, and the
+                 * only escape was to press Check again, which nothing on the screen said.
+                 */
                 setWarnings(null);
+                setPriced(null);
+                setAcknowledged([]);
               }}>{t("lab.desk.add")}</Button>
             </li>
           ))}
@@ -261,7 +277,7 @@ export function LabDesk(): React.ReactElement {
           disabled={
             basket.length === 0 || missingConsent.length > 0 || unacknowledged.length > 0
             /** Taking money needs a PRICE, and the price is the server's. */
-            || (payNow && priced === null) || place.isPending
+            || (payNow && priced === null) || place.isPending || check.isPending
           }
           onClick={() => place.mutate()}
         >

@@ -72,7 +72,32 @@ export async function deliveryAllowed(
     .from(orders).where(eq(orders.id, orderId));
   if (!order) throw new LabError("unknown_item", `no order ${orderId}`);
 
-  const lines = await billedLabLines(exec, orderId);
+  /**
+   * ═══ CLOSE REVIEW PASS 2, F22 / PASS 1's §9 ANSWER — THE GRAIN IS THE CLINICAL ACT ═══
+   *
+   * DD23 made the interlock invoice-grained over ONE ORDER's lab lines, and pass 1's answer to the
+   * §9 brief found the charge that leaves out: **the reflex's own.** DD9 makes a reflex a NEW ORDER
+   * with its own credit invoice, so a TSH paid ₹300 in cash reflexing an unpaid FT4 left
+   * `deliveryAllowed(the TSH order)` reading `settled` while ₹450 stood — same patient, same tube,
+   * same visit, minutes apart, and the counter hands the TSH report over.
+   *
+   * **DD23 is AMENDED to the ORDER GROUP**, which is phase 0 DD2's "one clinical act": the set of
+   * orders a patient is collecting reports for. It over-blocks — a paid CBC is held while an unpaid
+   * reflex on the same act stands — and DD23's own ruling is that over-blocking is the safe
+   * direction, because the alternative is handing over a document against money the hospital has
+   * not been paid. A counter clerk reads "₹450 outstanding on this visit's tests", which is a
+   * sentence they can act on at the cash window.
+   *
+   * Recorded as §9.2 F45 and in the gate report as a ruling made at close review under the owner's
+   * standing rule: when confused, take the most logical Indian-corporate-hospital choice.
+   */
+  const [group] = await (exec as Db)
+    .select({ orderGroupId: orders.orderGroupId }).from(orders).where(eq(orders.id, orderId));
+  const siblings = group === undefined ? [orderId] : (await (exec as Db)
+    .select({ id: orders.id }).from(orders)
+    .where(eq(orders.orderGroupId, group.orderGroupId))).map((o) => o.id);
+
+  const lines = (await Promise.all(siblings.map((id) => billedLabLines(exec, id)))).flat();
   const invoiceIds = [...new Set(lines.map((l) => l.invoiceId).filter((id): id is string => id !== null))];
 
   /**
@@ -95,12 +120,19 @@ export async function deliveryAllowed(
    * who settles the whole of this order, and one self-pay line is one bill somebody owes.
    */
   /**
-   * THE SERIES LETTER, EXACTLY (close review m8). `startsWith("D")` is safe against today's
-   * `EPISODE_SERIES` letters and would silently exempt every lab report of a future multi-letter
-   * series that happened to begin `D` — an exemption granted by a naming coincidence. An episode
-   * number is `<letter><YYMMDD><4 digits>`, so the letter is character zero and nothing else.
+   * ═══ THE WHOLE SERIES PREFIX, EXACTLY — CLOSE REVIEW PASS 2, F13 ═══
+   *
+   * m8 replaced `startsWith("D")` with `includes(slice(0,1))` and the two are IDENTICAL for the
+   * hazard it named (`"DC2608300001"` matches both), while the change quietly broke the opposite
+   * case: a future multi-letter exempt prefix (`"DC"`) would have matched `startsWith` and cannot
+   * match a one-character slice. The fix inverted its own justification.
+   *
+   * An episode number is `<PREFIX><YYMMDD><4 digits>` (`series.ts`'s `formatEpisodeNo`), so the
+   * prefix is the leading letters and nothing else. Extracting it and comparing for EQUALITY is
+   * right in both directions: `"D"` never matches `"DC…"`, and a `"DC"` entry would.
    */
-  const exemptByEncounter = EXEMPT_ENCOUNTER_PREFIXES.includes(order.encounterNo.slice(0, 1));
+  const seriesPrefix = /^[A-Z]+/.exec(order.encounterNo)?.[0] ?? "";
+  const exemptByEncounter = EXEMPT_ENCOUNTER_PREFIXES.includes(seriesPrefix);
   const exemptByPayer = rows.length > 0 && rows.every((r) => EXEMPT_PAYERS.includes(r.intendedPayer));
   if (exemptByEncounter || exemptByPayer) {
     return { allowed: true, reason: "exempt_payer", unpaidInvoiceIds: [], outstandingPaise: 0 };

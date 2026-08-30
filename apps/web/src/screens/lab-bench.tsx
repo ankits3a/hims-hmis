@@ -114,13 +114,22 @@ export function LabBench(): React.ReactElement {
          * "no answer" even when a message was left with a ward clerk. The ladder is the record of
          * what the laboratory actually tried; the person who tried says what happened.
          */
-        : { attempt: { contact: contacts[v.callId]!, outcome: v.outcome } }),
+        /**
+         * A READ-BACK MEANS SOMEBODY SPOKE (pass 2, F21). Leaving the dropdown alone recorded
+         * `no_answer` on the very call the read-back closes — the ladder contradicting itself in
+         * the medico-legal record.
+         */
+        : { attempt: {
+            contact: contacts[v.callId]!,
+            outcome: (readbacks[v.callId] ?? "") === "" ? v.outcome : "spoke",
+          } }),
       ...((readbacks[v.callId] ?? "") === "" ? {} : { readback: readbacks[v.callId]! }),
     }),
     onSuccess: (_r, v) => {
       setError(null);
       setContacts((c) => ({ ...c, [v.callId]: "" }));
       setReadbacks((r) => ({ ...r, [v.callId]: "" }));
+      setOutcomes((o) => ({ ...o, [v.callId]: "no_answer" }));
       refresh();
     },
     onError: (e: unknown) => setError(labErrorText(e)),
@@ -174,7 +183,21 @@ export function LabBench(): React.ReactElement {
       {error !== null && <p role="alert" className="text-sm font-semibold">{error}</p>}
       {notice !== null && <p role="status" className="text-sm font-semibold">{notice}</p>}
 
-      {(criticals.data ?? []).length > 0 && (
+      {/*
+        ═══ CLOSE REVIEW PASS 2, F3 — AND THIS IS THE PANEL WITH THE HIGHEST CLINICAL COST ═══
+
+        Web C1 was fixed on the consult panel and left standing HERE, in a file the same commit
+        rewrote. A 401 on a lapsed overnight session, a 403 from the new in-function
+        `lab.criticals.close` gate, or a 500 made the red banner VANISH — and a bench with no banner
+        looks exactly like a bench with no open critical calls, while a potassium of 6.8 sits open
+        and there is no other surface in the system that shows the ladder.
+      */}
+      {criticals.isError && (
+        <p role="alert" className="rounded border-2 border-red-600 p-2 text-sm font-bold">
+          {t("lab.bench.criticalsUnavailable")}
+        </p>
+      )}
+      {!criticals.isError && (criticals.data ?? []).length > 0 && (
         <section className="space-y-2 rounded border-2 border-red-600 p-2">
           <h2 className="text-sm font-bold">{t("lab.bench.criticalsOpen")}</h2>
           {(criticals.data ?? []).map((c) => (
@@ -183,6 +206,20 @@ export function LabBench(): React.ReactElement {
               <p className="font-semibold">
                 {c.patientDisplay} · {c.analyteCode} {c.value} {c.unit ?? ""} {c.flag ?? ""}
               </p>
+              {/*
+                THE VALUE MAY HAVE BEEN RETRACTED SINCE THE CALL OPENED (pass 2, F17). The call
+                stays OPEN — somebody was told the old number and must be told the correction — and
+                the ladder says both, so the nurse knows what to say.
+              */}
+              {/* `!= null` catches BOTH an absent field and a null one — a screen must not crash
+                   on a response shape that is merely older than it is. */}
+              {c.supersededBy != null && (
+                <p className="font-bold">
+                  {t("lab.bench.retracted", {
+                    value: c.supersededBy.value, flag: c.supersededBy.flag ?? "",
+                  })}
+                </p>
+              )}
               <p className="text-xs">
                 {c.orderNo} · {t("lab.bench.callOpenedAt")} {c.openedAt} ·{" "}
                 {t("lab.bench.attempts")}: {c.attempts.length}
@@ -216,7 +253,9 @@ export function LabBench(): React.ReactElement {
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold">{t("lab.bench.worklist")}</h2>
-        {(work.data ?? []).length === 0 && <p className="text-sm">{t("lab.bench.empty")}</p>}
+        {work.isError
+          ? <p role="alert" className="text-sm font-semibold">{t("lab.bench.worklistUnavailable")}</p>
+          : (work.data ?? []).length === 0 && <p className="text-sm">{t("lab.bench.empty")}</p>}
         {(work.data ?? []).map((row) => (
           <article key={row.orderItemId} className="space-y-1 rounded border p-2">
             <header className="flex flex-wrap items-baseline gap-2 text-sm">

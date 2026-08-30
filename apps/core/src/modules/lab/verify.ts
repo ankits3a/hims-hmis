@@ -383,7 +383,7 @@ async function placeReflexOrders(
        * charge is the person who signed the result that caused it.
        */
       const invoice = await issueInvoice(
-        tx as unknown as Db,
+        sp as unknown as Db,
         actor,
         {
           draftId: newId(),
@@ -394,7 +394,7 @@ async function placeReflexOrders(
         },
         now,
       );
-      const [billedLine] = await tx
+      const [billedLine] = await sp
         .select({ id: invoiceLines.id })
         .from(invoiceLines).where(eq(invoiceLines.invoiceId, invoice.invoiceId));
 
@@ -461,6 +461,23 @@ async function placeReflexOrders(
         ruleId: match.ruleId, addedServiceId: match.addsServiceId,
         code: e.code, reason: e.message,
       });
+      /**
+       * ═══ CLOSE REVIEW PASS 2, F6 — A REFUSAL NOBODY IS TOLD ABOUT IS NOT A CONTROL ═══
+       *
+       * The first version of this fix returned the refusal and nothing read it. Everything inside
+       * the savepoint rolls back, so a TSH of 9.8 with reflex consent, on a deployment where the
+       * reflexed test has no tariff row, signed cleanly and SILENTLY did not order it — with "how
+       * often does a reflex fail to place" unanswerable. That is F20/F27's lesson in the one place
+       * in this module that had not applied it.
+       *
+       * What this phase CAN do, it does: the refusal is returned in `VerifyResultOutcome` and the
+       * verify screen shows it beside the signature. What it cannot do is append an event —
+       * `LAB_EVENTS` is closed (T2's frozen file, §8) and none of its twenty-two names means "a
+       * rule fired and could not be acted on"; emitting `lab.reflex_added` would be a lie about an
+       * order that does not exist. **The durable record is owed and is recorded as §9.2 F44**, with
+       * the runbook's pilot harvest counting it by hand until the phase that may edit `events.ts`
+       * declares `lab.reflex_refused`.
+       */
     }
 
   }
@@ -506,11 +523,24 @@ async function completeItemIfSigned(
    * through any shipped route.
    *
    * **`kernel/orders/advance.ts` documents this identical defect one level up** — its own close
-   * review C1 — and fixed it with `select id from orders … for update`. The pattern was not applied
-   * here; it is now. **The lock order is item → order for every caller in this module**, the same
-   * order `closeHeaderIfDone` takes, so there is no cycle to deadlock on.
+   * review C1 — and fixed it with a `FOR UPDATE`. The pattern is applied here.
+   *
+   * ═══ ON THE **ITEM**, NOT ON THE ORDER — CLOSE REVIEW PASS 2, F4 ═══
+   *
+   * The first version of this fix locked the ORDER and then called `advanceOrderItem`, which locks
+   * the ITEM (its CAS) and then the order (`closeHeaderIfDone`). That is order → item → order,
+   * against a module in which `cancelLabItem` and `sweepLabNonReturn` both go item → order through
+   * the same function. Two of them on one order deadlock:
+   *
+   *     T1 verify:  locks ORDER O                         → waits for item A
+   *     T2 cancel:  locks ITEM  A (advanceOrderItem's CAS) → waits for order O
+   *     → 40P01, which no `LabError` maps, so it reaches a bench as a 500.
+   *
+   * The race this needs to serialise is two verifies of two RESULTS OF ONE ITEM, so the item is
+   * both the right grain and the right lock: it contends with nothing on a sibling item, and the
+   * direction stays item → order for every writer in the module.
    */
-  await tx.execute(sql`select id from orders where id = ${ctx.orderId} for update`);
+  await tx.execute(sql`select id from order_items where id = ${ctx.orderItemId} for update`);
 
   const analytes = await analytesFor(tx, ctx.serviceId);
   const signed = await tx

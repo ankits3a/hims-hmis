@@ -83,7 +83,21 @@ describe("the lab delivery interlock (17b T7)", () => {
     expect(verdict.unpaidInvoiceIds).toEqual([second.invoiceId]);
   });
 
-  it("A1: a reflex order carries its OWN bill, and its own report is held while that bill is unpaid", async () => {
+  it("A1 / F22: a PAID desk order is HELD while the reflex it caused is unpaid — the grain is the ACT", async () => {
+    /**
+     * ═══ DD23 AS AMENDED AT CLOSE REVIEW (§9.2 F45) — THE ORDER GROUP, NOT THE ORDER ═══
+     *
+     * Pass 1's answer to the §9 brief found the charge the old sum left out: **the reflex's own.**
+     * DD9 makes a reflex a NEW ORDER with its own credit invoice, so a TSH paid ₹300 in cash that
+     * reflexed an unpaid FT4 read `settled` on the order the counter was handing over — same
+     * patient, same tube, same visit, minutes apart.
+     *
+     * The grain is now the ORDER GROUP, which is phase 0 DD2's "one clinical act": the set of
+     * orders a patient collects reports for. It OVER-blocks — a paid CBC is held while an unpaid
+     * reflex on the same act stands — and over-blocking is DD23's own stated safe direction,
+     * because the alternative is handing a document over against money the hospital was not paid.
+     * The mutant is the old rule: `billedLabLines(orderId)` alone, which releases the TSH report.
+     */
     await activateTshReflex(db);
     const run = await runLabOrder(db, fx, ["TSH"], {
       at: AT, reflexConsent: true, values: { TSH: "9.0" },
@@ -94,10 +108,20 @@ describe("the lab delivery interlock (17b T7)", () => {
     expect(allInvoices.length).toBeGreaterThan(1);
     const reflexInvoiceId = allInvoices.map((i) => i.id).find((id) => id !== run.invoiceId)!;
 
-    expect((await deliveryAllowed(db, run.orderId)).reason).toBe("settled");
+    /** THE DESK ORDER'S OWN BILL IS PAID IN FULL, AND ITS REPORT IS STILL HELD. */
+    const deskVerdict = await deliveryAllowed(db, run.orderId);
+    expect([deskVerdict.allowed, deskVerdict.reason]).toEqual([false, "unpaid_invoices"]);
+    expect(deskVerdict.unpaidInvoiceIds).toEqual([reflexInvoiceId]);
+    expect(deskVerdict.outstandingPaise).toBeGreaterThan(0);
+
+    /** And so is the reflex order's — one act, one verdict, whichever order you ask about. */
     const reflexVerdict = await deliveryAllowed(db, await orderIdOfItemInvoice(db, reflexInvoiceId));
-    expect([reflexVerdict.allowed, reflexVerdict.reason, reflexVerdict.unpaidInvoiceIds])
-      .toEqual([false, "unpaid_invoices", [reflexInvoiceId]]);
+    expect(reflexVerdict.unpaidInvoiceIds).toEqual([reflexInvoiceId]);
+
+    /** Clearing the reflex's bill releases BOTH, because it was always one conversation. */
+    const [reflexInvoice] = allInvoices.filter((i) => i.id === reflexInvoiceId);
+    await settleInvoice(db, cashier, fx.patientId, reflexInvoiceId, reflexInvoice!.netPayablePaise, AT);
+    expect((await deliveryAllowed(db, run.orderId)).reason).toBe("settled");
   });
 
   /* ═════════ A1b — "SOME MONEY ARRIVED" IS NOT "SETTLED", AND THE GRAIN IS THE INVOICE ═════════ */

@@ -1,10 +1,10 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, ne } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
   labAnalytes, labItems, labOrderableAnalytes, labOrderables, labReports, labResults,
   labSpecimenItems, labSpecimens, orderItems, orders, patients, workflowInstances,
 } from "../../kernel/db/schema";
-import { displayName } from "../patients";
+import { canonicalNames } from "./criticals";
 import { LabError } from "./errors";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -130,16 +130,16 @@ export async function labWorklist(
     .where(inArray(labOrderableAnalytes.serviceId, [...new Set(rows.map((r) => r.serviceId))]))
     .orderBy(asc(labOrderableAnalytes.position));
 
+  /** THE CANONICAL PATIENT DECIDES THE ALIAS (pass 2, F8) — see `canonicalNames`' own header. */
+  const canonical = await canonicalNames(db, rows.map((r) => r.patientId), canSeeConfidential);
+
   return rows.map((r) => ({
     orderItemId: r.orderItemId,
     orderId: r.orderId,
     orderNo: r.orderNo,
     encounterNo: r.encounterNo,
-    patientId: r.patientId,
-    patientDisplay: displayName(
-      { name: r.patientName, alias: r.patientAlias, isConfidential: r.patientConfidential },
-      canSeeConfidential,
-    ),
+    patientId: canonical.get(r.patientId)?.id ?? r.patientId,
+    patientDisplay: canonical.get(r.patientId)?.display ?? "—",
     serviceId: r.serviceId,
     orderableCode: r.orderableCode,
     orderableName: r.orderableName,
@@ -197,6 +197,8 @@ export type PublishableOrder = {
   itemCount: number;
   completedCount: number;
   orderables: string[];
+  /** Non-null when a PARTIAL version already stands — the screen AMENDS it (pass 2, F9). */
+  amendsReportId: string | null;
 };
 
 /**
@@ -212,7 +214,14 @@ export type PublishableOrder = {
  * which carry no published report yet. `complete` distinguishes a full report from 02 D7's partial,
  * so the screen can offer the right one rather than guessing.
  */
-export async function publishableOrders(db: Db, actor: Actor): Promise<PublishableOrder[]> {
+/** A publish queue is a TODAY list. Older orders are reprints, reached from the patient's record. */
+export const PUBLISH_QUEUE_DAYS = 7;
+
+export async function publishableOrders(
+  db: Db,
+  actor: Actor,
+  now: Date = new Date(),
+): Promise<PublishableOrder[]> {
   if (actor.type !== "user") {
     throw new LabError("user_actor_required", `a ${actor.type} actor may not read the publish queue`);
   }
@@ -221,39 +230,65 @@ export async function publishableOrders(db: Db, actor: Actor): Promise<Publishab
   }
   const canSeeConfidential = await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
 
+  /**
+   * ═══ BOUNDED, AND IT OFFERS 02 D7's SECOND LEG — CLOSE REVIEW PASS 2, F9 ═══
+   *
+   * The first version had no status filter, no window and no limit: every lab order item ever
+   * created, joined four ways, materialised in JS on a screen that refetches after every signature.
+   * That is the class M6 was fixed for, reintroduced on the verify screen's hot path.
+   *
+   * And it excluded any order carrying a `published` report — so the moment a PARTIAL v1 existed
+   * the order dropped out for ever and there was no screen path to publish the rest. Web C3's
+   * defect ("no report could be published from any screen"), reproduced one version later. An order
+   * whose current published version is PARTIAL stays on the queue, flagged, and the screen amends it.
+   */
+  const since = new Date(now.getTime() - PUBLISH_QUEUE_DAYS * 86_400_000);
   const rows = await db
     .select({
       orderId: orders.id, orderNo: orders.orderNo, encounterNo: orders.encounterNo,
       serviceDate: orders.serviceDate, patientId: orders.patientId,
-      patientName: patients.name, patientAlias: patients.alias,
-      patientConfidential: patients.isConfidential,
       itemStatus: orderItems.status, orderableCode: labOrderables.code,
     })
     .from(orderItems)
     .innerJoin(orders, eq(orders.id, orderItems.orderId))
     .innerJoin(labItems, eq(labItems.orderItemId, orderItems.id))
     .innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
-    .innerJoin(patients, eq(patients.id, orders.patientId))
-    .where(eq(orders.kind, "lab"))
+    .where(and(
+      eq(orders.kind, "lab"),
+      /** A queue is a TODAY thing. An order older than the window is a reprint, not a publish. */
+      gte(orders.placedAt, since),
+      /** Nothing to publish while an item has not been picked up at all. */
+      ne(orderItems.status, "placed"),
+    ))
     .orderBy(asc(orders.placedAt));
   if (rows.length === 0) return [];
 
-  /** Orders that already carry a published version are not offered — an amendment is a other act. */
-  const published = new Set(
-    (await db.select({ orderId: labReports.orderId }).from(labReports)
-      .where(eq(labReports.status, "published"))).map((r) => r.orderId),
-  );
+  /**
+   * A COMPLETE published version closes the queue entry; a PARTIAL one does not. `version` picks
+   * the current row when several exist, and only `published` counts — a `superseded` version is
+   * history.
+   */
+  const publishedRows = await db
+    .select({ orderId: labReports.orderId, partial: labReports.partial, id: labReports.id })
+    .from(labReports)
+    .where(and(
+      eq(labReports.status, "published"),
+      inArray(labReports.orderId, [...new Set(rows.map((r) => r.orderId))]),
+    ));
+  const publishedBy = new Map(publishedRows.map((r) => [r.orderId, r] as const));
+
+  const canonical = await canonicalNames(db, rows.map((r) => r.patientId), canSeeConfidential);
 
   const byOrder = new Map<string, PublishableOrder & { reportable: number }>();
   for (const r of rows) {
-    if (published.has(r.orderId)) continue;
+    const already = publishedBy.get(r.orderId);
+    if (already && !already.partial) continue;
     const entry = byOrder.get(r.orderId) ?? {
       orderId: r.orderId, orderNo: r.orderNo, encounterNo: r.encounterNo,
-      patientId: r.patientId,
-      patientDisplay: displayName(
-        { name: r.patientName, alias: r.patientAlias, isConfidential: r.patientConfidential },
-        canSeeConfidential,
-      ),
+      patientId: canonical.get(r.patientId)?.id ?? r.patientId,
+      patientDisplay: canonical.get(r.patientId)?.display ?? "—",
+      /** Set when a PARTIAL version already stands: the screen AMENDS rather than publishes. */
+      amendsReportId: already?.id ?? null,
       serviceDate: r.serviceDate, complete: true, itemCount: 0, completedCount: 0,
       orderables: [], reportable: 0,
     };

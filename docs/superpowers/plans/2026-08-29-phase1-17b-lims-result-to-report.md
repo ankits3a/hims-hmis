@@ -597,6 +597,23 @@ and `shell-nav.test.tsx`. `apps/core/test/caddyfile-parity.test.ts` pins the SPA
 before this phase, 39 after — and it is the file five previous phases have each had to join. Found
 by grepping for `router.tsx` rather than for a sibling's name, which is §2.138's own instruction.
 
+**F45 — DD23's GRAIN IS AMENDED TO THE ORDER GROUP, AND IT IS A RULING I MADE AT CLOSE REVIEW.**
+DD23 made the interlock invoice-grained over ONE ORDER's lab lines. Pass 1's answer to the §9 brief
+named the charge that leaves out — **the reflex's own**: DD9 makes a reflex a new order with its own
+credit invoice, so a TSH paid ₹300 in cash reflexing an unpaid FT4 read `settled` on the very order
+the counter was handing over. Same patient, same tube, same visit, minutes apart. The grain is now
+the ORDER GROUP (phase 0 DD2's "one clinical act"), which is the set of reports a patient collects.
+It OVER-blocks and DD23's own ruling is that over-blocking is the safe direction. **Taken under the
+owner's standing rule** — when confused, the most logical Indian-corporate-hospital choice — and
+flagged here and in the gate report because it changes a design decision the plan had already made.
+
+**F44 — A REFLEX THAT CANNOT BE BILLED IS REPORTED TO THE SCREEN AND TO NO DURABLE RECORD.** M1's
+repair returns the refusal in `VerifyResultOutcome` and the verify screen shows it, but `LAB_EVENTS`
+is closed (T2's frozen file) and none of its twenty-two names means *"a rule fired and could not be
+acted on"* — emitting `lab.reflex_added` would be a lie about an order that does not exist. The
+phase that may edit `events.ts` declares `lab.reflex_refused`; until then the runbook's pilot
+harvest counts it by hand.
+
 **F43 — SIX OF SIXTEEN REALTIME NAMES COULD NEVER PRODUCE A TOPIC.** `lab.specimen_collected`,
 `lab.specimen_received`, `lab.specimen_rejected`, `lab.recollection_requested`, `lab.result_entered`
 and `lab.result_verified` declare neither `orderId` nor `orderGroupId` in their payloads
@@ -740,9 +757,58 @@ screen**; the desk sent `credit` on every order, so the interlock held 100% of r
 already in the drawer; and the critical panel shared one contact/read-back across all open calls, so
 a read-back typed for one patient could close another's.
 
-#### 9.6.2 Pass 2 (FRESH, over the fixes)
+#### 9.6.2 Pass 2 (FRESH, over the fixes) — **four of thirteen fixes were wrong, and the fixing commit introduced two defects of its own**
 
-Filled after the remediation.
+**This is §2.140 confirmed on a second consecutive phase.** 17a's pass 2 found three of pass 1's
+five fixes defective; this one certified **nine of thirteen sound** and condemned four, plus two
+NEW defects that did not exist before the remediation.
+
+**THE TWO THE FIXING COMMIT CREATED:**
+
+- **F1 — M4's fix broke a working path.** `partial` was ONE field carrying TWO meanings: the flag on
+  the row AND `buildSnapshot`'s permission to publish with unfinished items. `amendReport` began
+  passing `false`, which closed the gate — so a report published partial at 24 h could **never be
+  amended**: correcting a haemoglobin and reissuing was refused *"1 of 2 tests are not finished"*,
+  and the version carrying the wrong value stayed the published one. The two meanings are now
+  `allowUnfinished` and a derived `partial`.
+- **F3 — web C1 was fixed on the consult panel and left standing on the bench's critical-call
+  panel**, in a file the same commit rewrote. A 401 on a lapsed overnight session, or a 403 from the
+  gate that same commit added, made the red banner VANISH — and a bench with no banner looks exactly
+  like a bench with no open critical calls, while a potassium of 6.8 sits open and no other surface
+  in the system shows the ladder.
+
+**THE FOUR CONDEMNED FIXES:**
+
+- **C3 was applied to the entry path only.** `computeFormulaAnalytes` has one caller and it is not
+  `amendResult` — so C3's own clinical scenario still published *cholesterol 150, LDL 426*, on the
+  path the fix's commit message called "the one path where the value is KNOWN to have been wrong".
+- **C4's lock was in the wrong DIRECTION.** It took the ORDER and then called `advanceOrderItem`,
+  which takes item → order — against a module where `cancelLabItem` and `sweepLabNonReturn` both go
+  item → order. My own comment claimed item → order while the code did the opposite; two of them on
+  one order deadlock into a `40P01` that no `LabError` maps, i.e. a 500. **It locks the ITEM now**,
+  which is also the right grain: the race is two verifies of two results of ONE item.
+- **M1 turned a loud failure into a silent one.** The reflex refusal was returned to nobody and
+  everything inside the savepoint rolls back, so a TSH that could not order its FT4 signed cleanly
+  and wrote nothing anywhere — F20/F27's own lesson, in the one place in the module that had not
+  applied it.
+- **m1 guarded the rung and not the READ-BACK**, which writes the same array. A nurse holding a
+  stale `attempts` closed a call over a colleague's recorded rung: the medico-legal record then says
+  the hospital telephoned nobody before the read-back.
+
+**AND F5 — the entry-side twin of C4, untouched by the first remediation and the MORE FREQUENT
+race.** Two technologists keying the last two analytes of one CBC left the item at `in_analysis`,
+invisible to the pathologist's queue for ever. C4's case (two pathologists signing simultaneously)
+is rare; this one is routine, and the first fix took the rare one.
+
+**Nine certified sound:** C1, C2, M2, M3, M5/F43 (pass 2 checked all ten surviving names against
+`events.ts` and `labTopicsFor`), M6, M7 (verified against `0046`'s trigger), M9, m2, m7, the
+wristband default, the per-call keying of the critical panel, the idempotency key's stability across
+a double-click, and the A4 preview being genuinely unmounted while a report is held.
+
+**Cost, both passes FRESH:** pass 1 **238,225** tokens / 63 calls = **3,781 per call**; pass 2
+**245,017** / 52 = **4,712 per call**. §2.136's finding holds — a fresh reviewer is an order of
+magnitude cheaper per call than a resumed chain — and §2.140's holds too: **the second pass was not
+optional, and it would not have been optional at a third of the price.**
 
 ### 9.7 Actuals — the token balance at every task boundary (v3 §6)
 

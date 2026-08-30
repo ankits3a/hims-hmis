@@ -1789,7 +1789,8 @@
       "patient": "Patient",
       "container": "Container",
       "waiting": "Waiting (min)",
-      "empty": "Nobody is waiting."
+      "empty": "Nobody is waiting.",
+      "unavailable": "The collection queue could not be loaded."
     },
     "bench": {
       "title": "Bench",
@@ -1831,7 +1832,10 @@
       "reason_leaked": "Leaked",
       "reason_contaminated": "Contaminated",
       "reason_delayed_transport": "Delayed in transport",
-      "reason_temperature_excursion": "Temperature excursion"
+      "reason_temperature_excursion": "Temperature excursion",
+      "criticalsUnavailable": "The open critical-call list could not be loaded. This is NOT a statement that there are none — check your access and retry.",
+      "worklistUnavailable": "The worklist could not be loaded.",
+      "retracted": "RETRACTED — the current value is {{value}} {{flag}}. Tell the clinician the correction."
     },
     "verify": {
       "title": "Verify & report",
@@ -1852,7 +1856,9 @@
       "channel_print": "Printed copy",
       "channel_in_person": "In person",
       "channel_whatsapp": "WhatsApp",
-      "heldNoPreview": "The report is held. It is shown and printed once the bill is settled or a billing manager releases it."
+      "heldNoPreview": "The report is held. It is shown and printed once the bill is settled or a billing manager releases it.",
+      "unavailable": "The queue could not be loaded.",
+      "publishRest": "Publish the rest (amendment)"
     },
     "print": {
       "department": "Department of Laboratory Medicine",

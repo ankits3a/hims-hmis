@@ -71,6 +71,8 @@ export type WireCriticalCall = {
   /** WHOSE value it is and WHAT it was — a ladder without these is a ladder nobody can work. */
   patientDisplay: string; patientId: string; orderNo: string; encounterNo: string;
   analyteCode: string; value: string; unit: string | null; flag: string | null;
+  /** Non-null when the value has been RETRACTED by an amendment since the call opened (F17). */
+  supersededBy: { value: string; flag: string | null } | null;
 };
 
 export type WirePublishable = {
@@ -78,6 +80,8 @@ export type WirePublishable = {
   patientId: string; patientDisplay: string; serviceDate: string;
   /** False ⇒ only 02 D7's PARTIAL report is available; the rest follows as a later version. */
   complete: boolean; itemCount: number; completedCount: number; orderables: string[];
+  /** Non-null when a PARTIAL version already stands — the screen AMENDS it (pass 2, F9). */
+  amendsReportId: string | null;
 };
 
 export type WirePricedDraft = {
@@ -239,10 +243,20 @@ export const publishReport = (
 export const getReport = (reportId: string): Promise<WireReportView> =>
   api("GET", `/lab/reports/${reportId}`);
 
-export const reportVersions = (orderId: string): Promise<{
-  versions: { id: string; version: number; status: string; publishedAt: string | null }[];
-  delivery: WireDeliveryVerdict;
-}> => api("GET", `/lab/reports/order/${orderId}`);
+/** The named projection C1 left behind — `reportId`, never `id`, and NO snapshot (pass 2, F19). */
+export type WireReportVersion = {
+  reportId: string; version: number; status: string; partial: boolean;
+  channels: string[]; printCount: number; priorVersionId: string | null;
+  amendmentReasonCode: string | null; publishedAt: string | null; signedBy: string | null;
+};
+
+export const reportVersions = (orderId: string): Promise<{ versions: WireReportVersion[] }> =>
+  api("GET", `/lab/reports/order/${orderId}`);
+
+export const amendReport = (
+  reportId: string, reasonCode: string, key: string,
+): Promise<{ reportId: string; version: number }> =>
+  api("POST", `/lab/reports/${reportId}/amend`, { reasonCode }, key);
 
 export const printReport = (
   reportId: string, body: { channel: string; collectorIdentity?: string }, key: string,

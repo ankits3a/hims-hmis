@@ -105,6 +105,8 @@ it("02 §3.6 — the open call panel says a READ-BACK is what closes it", async 
       /** The ladder NAMES its subject — close review C5. A nurse cannot telephone from an id. */
       patientDisplay: "Ram Kumar", patientId: "p-1", orderNo: "L2608300001",
       encounterNo: "V2608290001", analyteCode: "K", value: "6.8", unit: "mmol/L", flag: "HH",
+      /** Not retracted — F17's field, present and null on an ordinary open call. */
+      supersededBy: null,
     }] },
     "POST /api/lab/bench/criticals/c-1/ack": { status: 201, body: { closed: true, attempts: 2 } },
   });

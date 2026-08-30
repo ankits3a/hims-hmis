@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
   labAnalytes, labCriticalCalls, labResults, orderItems, orders, patients,
@@ -139,15 +139,30 @@ export async function acknowledgeCritical(
    * ward, and the loser is a conflict rather than a failure — `critical_already_closed` tells them
    * the call was already answered instead of writing a second closer over the first.
    */
+  /**
+   * ═══ CLOSE REVIEW PASS 2, F7 — THE CLOSE WRITES `attempts` TOO, SO IT NEEDS THE SAME GUARD ═══
+   *
+   * m1 guarded the rung and left the read-back unguarded, and the read-back writes the SAME array,
+   * read at the top of this function. 02:10, call open with no rungs: nurse B opens the panel and
+   * reads `[]`; nurse A records "ward ext. 214, no answer"; nurse B gets the read-back and submits
+   * it — the CAS on `closed_at IS NULL` still holds, and `attempts: []` goes over nurse A's rung.
+   * **The medico-legal record then says the hospital telephoned nobody before the read-back**,
+   * which is the evidence loss m1's own comment names, in the direction it names.
+   */
   const won = await tx
     .update(labCriticalCalls)
     .set({ attempts, readbackText: readback, closedBy: actor.id, closedAt: now })
-    .where(and(eq(labCriticalCalls.id, input.callId), isNull(labCriticalCalls.closedAt)))
+    .where(and(
+      eq(labCriticalCalls.id, input.callId),
+      isNull(labCriticalCalls.closedAt),
+      eq(sql`jsonb_array_length(${labCriticalCalls.attempts})`, priorAttempts.length),
+    ))
     .returning({ id: labCriticalCalls.id });
   if (won.length === 0) {
     throw new LabError(
       "critical_already_closed",
-      `critical call ${input.callId} was closed concurrently by another caller`,
+      `critical call ${input.callId} was worked concurrently — re-read the ladder before closing ` +
+        "it, because a rung recorded meanwhile would otherwise be lost",
     );
   }
 
@@ -194,6 +209,16 @@ export type OpenCriticalCall = {
   value: string;
   unit: string | null;
   flag: string | null;
+  /**
+   * ═══ CLOSE REVIEW PASS 2, F17 — THE VALUE MAY HAVE BEEN RETRACTED SINCE THE CALL OPENED ═══
+   *
+   * A potassium signed 6.9 at 22:00 opens a call; amended to 4.2 at 09:00, the call is still open
+   * and this row still reads 6.9 — so the handover telephones a ward about a number the laboratory
+   * has formally withdrawn. **The call is NOT auto-closed**: somebody was told 6.9 and must be told
+   * the correction, which is what the read-back then records. What the ladder owes is the truth,
+   * and that is both numbers.
+   */
+  supersededBy: { value: string; flag: string | null } | null;
 };
 
 /**
@@ -222,22 +247,40 @@ export async function openCriticalCalls(db: Db, actor: Actor): Promise<OpenCriti
     .select({
       call: labCriticalCalls,
       result: labResults,
+      patientIdRaw: orders.patientId,
       analyteCode: labAnalytes.code,
       orderNo: orders.orderNo,
       encounterNo: orders.encounterNo,
-      patientId: orders.patientId,
-      patientName: patients.name,
-      patientAlias: patients.alias,
-      patientConfidential: patients.isConfidential,
     })
     .from(labCriticalCalls)
     .innerJoin(labResults, eq(labResults.id, labCriticalCalls.resultId))
     .innerJoin(labAnalytes, eq(labAnalytes.id, labResults.analyteId))
     .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
     .innerJoin(orders, eq(orders.id, orderItems.orderId))
-    .innerJoin(patients, eq(patients.id, orders.patientId))
     .where(isNull(labCriticalCalls.closedAt))
     .orderBy(labCriticalCalls.openedAt);
+  if (rows.length === 0) return [];
+
+  /**
+   * ═══ THE CANONICAL PATIENT DECIDES THE ALIAS — CLOSE REVIEW PASS 2, F8 ═══
+   *
+   * This joined `patients` on the RAW `orders.patient_id`, which is the defect m3 named on
+   * `getReport` and which this reader reintroduced in the same commit that fixed it: a VIP
+   * registered twice, merged, and sealed on the SURVIVING record has `is_confidential = false` on
+   * the loser, so every order placed under the loser id rendered the legal name on the ladder.
+   * `merge.ts` does not repoint `orders.patient_id`, so the raw id is never the authority.
+   */
+  const canonical = await canonicalNames(db, rows.map((r) => r.patientIdRaw), canSeeConfidential);
+
+  /** The current value for each result on the ladder — F17's retraction, read once. */
+  const superseded = await db
+    .select({ supersedes: labResults.supersedesResultId, value: labResults.valueNumeric,
+      valueText: labResults.valueText, valueCoded: labResults.valueCoded, flag: labResults.flag })
+    .from(labResults)
+    .where(inArray(labResults.supersedesResultId, rows.map((r) => r.call.resultId)));
+  const supersededBy = new Map(superseded.map((x) => [x.supersedes!, {
+    value: x.value ?? x.valueText ?? x.valueCoded ?? "", flag: x.flag,
+  }] as const));
 
   return rows.map((r) => ({
     id: r.call.id,
@@ -245,16 +288,37 @@ export async function openCriticalCalls(db: Db, actor: Actor): Promise<OpenCriti
     openedAt: r.call.openedAt.toISOString(),
     openedBy: r.call.openedBy,
     attempts: r.call.attempts as CriticalAttempt[],
-    patientDisplay: displayName(
-      { name: r.patientName, alias: r.patientAlias, isConfidential: r.patientConfidential },
-      canSeeConfidential,
-    ),
-    patientId: r.patientId,
+    patientDisplay: canonical.get(r.patientIdRaw)?.display ?? "—",
+    patientId: canonical.get(r.patientIdRaw)?.id ?? r.patientIdRaw,
     orderNo: r.orderNo,
     encounterNo: r.encounterNo,
     analyteCode: r.analyteCode,
     value: r.result.valueNumeric ?? r.result.valueText ?? r.result.valueCoded ?? "",
     unit: r.result.unit,
     flag: r.result.flag,
+    supersededBy: supersededBy.get(r.call.resultId) ?? null,
   }));
+}
+
+/**
+ * ═══ THE NAME EACH RAW PATIENT ID RESOLVES TO, FOR THE CALLER WHO IS ASKING ═══
+ *
+ * Shared by the three multi-patient readers in this module (this file, `worklist.ts`'s two), because
+ * m3 established the rule at `getReport` and pass 2 found two readers that had not applied it. One
+ * `resolvePatientId` per DISTINCT raw id, which is at most the number of people on the list.
+ */
+export async function canonicalNames(
+  db: Db,
+  rawIds: readonly string[],
+  canSeeConfidential: boolean,
+): Promise<Map<string, { id: string; display: string }>> {
+  const out = new Map<string, { id: string; display: string }>();
+  for (const raw of new Set(rawIds)) {
+    const id = (await resolvePatientId(db, raw)) ?? raw;
+    const [row] = await db
+      .select({ name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential })
+      .from(patients).where(eq(patients.id, id));
+    out.set(raw, { id, display: row ? displayName(row, canSeeConfidential) : "—" });
+  }
+  return out;
 }

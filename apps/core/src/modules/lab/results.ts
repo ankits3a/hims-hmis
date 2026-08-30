@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
@@ -802,6 +802,22 @@ async function projectItemState(
   ctx: ResultContext,
   analytes: (typeof labAnalytes.$inferSelect)[],
 ): Promise<string> {
+  /**
+   * ═══ CLOSE REVIEW PASS 2, F5 — THE ENTRY-SIDE TWIN OF C4, AND THE MORE FREQUENT RACE ═══
+   *
+   * The sibling count below is a plain READ under READ COMMITTED. Two technologists keying the last
+   * two analytes of one CBC at two benches each saw only their own row, so NEITHER transitioned
+   * `in_analysis → resulted` — and `verifyWorklist` filters on exactly that state, so the item never
+   * reached the pathologist's queue with every value keyed. It sat on the bench worklist for ever,
+   * and the bench screen has no Verify button.
+   *
+   * **The ITEM is locked, not the order** (F4): `advanceOrderItem` takes item → order, so a caller
+   * that took the order first would invert the module's lock order against `cancelLabItem` and the
+   * non-return sweep, and two of them on one order would deadlock. Locking the item serialises the
+   * two keystrokes, contends with nothing on a sibling item, and keeps one direction everywhere.
+   */
+  await tx.execute(sql`select id from order_items where id = ${ctx.orderItemId} for update`);
+
   const [instance] = await tx
     .select({ currentState: workflowInstances.currentState })
     .from(workflowInstances).where(eq(workflowInstances.id, ctx.instanceId));
@@ -926,6 +942,22 @@ export async function amendResult(
 
   const [analyte] = await tx.select().from(labAnalytes).where(eq(labAnalytes.id, prior.analyteId));
   if (!analyte) throw new LabError("unknown_analyte", `no analyte ${prior.analyteId}`);
+  /**
+   * ═══ CLOSE REVIEW PASS 2, F12 — A CALCULATED ANALYTE IS NOT HAND-CORRECTED ═══
+   *
+   * `enterResult` refuses a `formula` analyte by name and this function did not, so
+   * `POST /lab/results/amend` on an LDL row wrote it as `value_text` with `value_numeric` NULL —
+   * DD3 bypassed, the report printing a text LDL, `siblingValues` no longer seeing it, and any
+   * formula over it silently ceasing to compute. **A derived value is corrected by correcting its
+   * inputs**, which is what the recomputation below then does.
+   */
+  if (analyte.resultType === "formula") {
+    throw new LabError(
+      "catalogue_invalid",
+      `${analyte.code} is a CALCULATED analyte — correct the values it is computed from and it ` +
+        "will be recomputed (DD3); a hand-keyed derived number is a number nobody measured",
+    );
+  }
 
   /**
    * `resultContext` asserts the item is RESULTABLE and this one is not — it is `completed`, which
@@ -933,18 +965,33 @@ export async function amendResult(
    * and the ENVELOPE is deliberately not touched: the department finished, and a correction does
    * not un-finish it.
    */
-  const [row] = await tx
+  const [base] = await tx
     .select({
-      orderId: orders.id, encounterNo: orders.encounterNo, patientId: orders.patientId,
+      orderId: orders.id, orderGroupId: orders.orderGroupId, encounterNo: orders.encounterNo,
+      serviceDate: orders.serviceDate, patientId: orders.patientId,
       serviceId: orderItems.serviceId, instanceId: labItems.instanceId,
     })
     .from(orderItems)
     .innerJoin(orders, eq(orders.id, orderItems.orderId))
     .innerJoin(labItems, eq(labItems.orderItemId, orderItems.id))
     .where(eq(orderItems.id, prior.orderItemId));
-  if (!row) throw new LabError("unknown_item", `no lab order item ${prior.orderItemId}`);
+  if (!base) throw new LabError("unknown_item", `no lab order item ${prior.orderItemId}`);
 
-  const canonical = (await resolvePatientId(tx, row.patientId)) ?? row.patientId;
+  const canonical = (await resolvePatientId(tx, base.patientId)) ?? base.patientId;
+  const [orderable] = await tx.select().from(labOrderables)
+    .where(eq(labOrderables.serviceId, base.serviceId));
+  if (!orderable) throw new LabError("unknown_orderable", `no lab orderable for ${base.serviceId}`);
+  const [subjectRow] = await tx
+    .select({ dob: patients.dob, administrativeGender: patients.administrativeGender })
+    .from(patients).where(eq(patients.id, canonical));
+  const row = {
+    ...base,
+    orderable,
+    subject: {
+      dob: subjectRow?.dob ? isoDay(subjectRow.dob) : null,
+      sex: subjectRow?.administrativeGender ?? null,
+    },
+  };
   const numeric = analyte.resultType === "numeric" ? parseNumeric(input.value, analyte.code) : null;
   if (numeric !== null && outsideAbsurdEnvelope(numeric, analyte)) {
     throw new LabError(
@@ -1038,9 +1085,7 @@ export async function amendResult(
    * is precisely the event 28a's register exists to receive, and `writeResult`'s own header calls
    * under-reporting a notifiable disease a statutory failure rather than a tidiness one.
    */
-  const [orderable] = await tx.select({ notifiable: labOrderables.notifiable, serviceId: labOrderables.serviceId })
-    .from(labOrderables).where(eq(labOrderables.serviceId, row.serviceId));
-  if (orderable?.notifiable === true) {
+  if (row.orderable.notifiable) {
     await appendEvent(tx, labNotifiableFlagged.make({
       actor,
       patientId: canonical,
@@ -1050,6 +1095,38 @@ export async function amendResult(
         serviceId: row.serviceId, analyteId: prior.analyteId,
       },
     }));
+  }
+
+  /**
+   * ═══ CLOSE REVIEW PASS 2, F2 — THE DERIVED ANALYTES ARE RECOMPUTED HERE TOO ═══
+   *
+   * C3 fixed the recomputation and wired it into `enterResult` alone — and `amendResult` is the
+   * path C3's own scenario runs on. A lipid profile signed and published with a transposed
+   * cholesterol of 500 (LDL 426), corrected here to 150, published as v2: `buildSnapshot` takes the
+   * latest verified row per analyte and the LDL is untouched, so the AMENDED, signed A4 reads
+   * *cholesterol 150, LDL 426*. C3's clinical scenario, verbatim, on the path the fix's own commit
+   * message called "the one path where the value is KNOWN to have been wrong".
+   */
+  const analytes = await analytesFor(tx, row.serviceId);
+  const computed = await computeFormulaAnalytes(tx, actor, {
+    orderItemId: prior.orderItemId, orderId: row.orderId, orderGroupId: row.orderGroupId,
+    encounterNo: row.encounterNo, serviceDate: row.serviceDate, serviceId: row.serviceId,
+    instanceId: row.instanceId, itemStatus: "in_progress",
+    rawPatientId: row.patientId, patientId: canonical,
+    specimenId: prior.specimenId ?? "", collectedAt: prior.enteredAt,
+    orderable: row.orderable, subject: row.subject,
+  }, analytes, prior.entryMode as LabEntryMode, now);
+
+  /**
+   * A RECOMPUTED DERIVED VALUE IS SIGNED BY THE AMENDING PATHOLOGIST TOO. `writeResult` leaves it
+   * `unverified` — correct for the bench, wrong here, because an amendment is a signed act and an
+   * unsigned LDL beside a signed cholesterol would drop off the very report this amendment exists
+   * to reissue (`buildSnapshot` takes VERIFIED rows only).
+   */
+  for (const c of computed) {
+    await tx.update(labResults)
+      .set({ verificationStatus: "verified", verifiedBy: actor.id, verifiedAt: now })
+      .where(eq(labResults.id, c.resultId));
   }
 
   return { resultId, analyteId: prior.analyteId, flag, deltaFlagged: false, criticalCallId };

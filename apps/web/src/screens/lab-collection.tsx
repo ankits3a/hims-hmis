@@ -146,7 +146,9 @@ export function LabCollection(): React.ReactElement {
             ))}
           </tbody>
         </table>
-        {(queue.data ?? []).length === 0 && <p className="text-sm">{t("lab.collection.empty")}</p>}
+        {queue.isError
+          ? <p role="alert" className="text-sm font-semibold">{t("lab.collection.unavailable")}</p>
+          : (queue.data ?? []).length === 0 && <p className="text-sm">{t("lab.collection.empty")}</p>}
       </section>
     </div>
   );

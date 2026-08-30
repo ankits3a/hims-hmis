@@ -62,6 +62,8 @@ const PUBLISHABLE = {
   orderId: "o-1", orderNo: "L2608300001", encounterNo: "V2608290001",
   patientId: "p-1", patientDisplay: "Ram Kumar", serviceDate: "2026-08-30",
   complete: true, itemCount: 1, completedCount: 1, orderables: ["TSH"],
+  /** No partial version stands, so this row PUBLISHES rather than amends (pass 2, F9). */
+  amendsReportId: null,
 };
 
 const heldReport = {
