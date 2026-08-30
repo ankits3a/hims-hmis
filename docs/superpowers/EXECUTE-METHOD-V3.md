@@ -173,6 +173,31 @@ Instead:
   >           + review term × (1 + remediation factor)          ← ≈ 1.0 measured on 17a
   > ```
   >
+  > > **AMENDED AGAIN 2026-08-30 (ledger §2.145, Plan 17b) — THE REMEDIATION FACTOR IS 2.0, NOT 1.0,
+  > > AND THE REASON IS A RATE RATHER THAN AN IMPRESSION.**
+  > >
+  > > 1.0 pays for repairing what pass 1 finds. It pays NOTHING for repairing what pass 2 finds —
+  > > and pass 2 finds a great deal, because a third of pass 1's fixes are wrong:
+  > >
+  > > | phase | pass 1 fixes | condemned by pass 2 | new defects the fixing commit made |
+  > > |---|---|---|---|
+  > > | 17a | 5 | 3 | 1 |
+  > > | 17b | 13 | 4 | 2 |
+  > >
+  > > **17b measured: ~965,000 for the review lane against ~645,000 for all four tasks' coding.**
+  > > Two fresh passes (238,225 + 245,017) plus two remediation rounds in the main session. The
+  > > review lane was 1.5× the coding, and the phase closed at ~85% of a stop-loss whose review term
+  > > was set with a factor of 1.0.
+  > >
+  > > ```
+  > >           + review term × (1 + 2.0)                        ← measured across 17a and 17b
+  > > ```
+  > >
+  > > **This is not a licence to skip the second pass — it is the arithmetic that makes the second
+  > > pass affordable.** On 17b it condemned four fixes, caught two defects the remediation itself
+  > > introduced, and found a race fixed on the rare twin and left on the routine one. A stop-loss
+  > > that halts before it is a stop-loss that ships all of that.
+  >
   > **And the reporting rule, because a caveat did not survive its own summary.** 17a reported "51%
   > of stop-loss" at its T5 boundary with the review term correctly named as unspent — and then said
   > "roughly three times what the phase needs" in prose one paragraph later. The first number was

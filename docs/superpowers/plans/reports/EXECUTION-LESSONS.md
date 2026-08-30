@@ -1115,6 +1115,51 @@ ceiling.**
 
 ---
 
+**2.145 — THE SECOND REVIEW PASS CONDEMNS A THIRD OF THE FIRST PASS'S FIXES, TWO PHASES RUNNING. BUDGET REMEDIATION TWICE, NOT ONCE.** *(Plan 17b LIMS result→report, closed 2026-08-30 — §2.140's third specimen, and the first with a RATE)*
+
+§2.140 established that a critical fix can be incomplete in its own dimension and that the fix
+itself can open the next door. It had one specimen. There are now two, and they agree:
+
+| phase | pass 1 fixes | condemned by pass 2 | NEW defects the fixing commit created |
+|---|---|---|---|
+| 17a | 5 | **3** | 1 (a live confidentiality leak) |
+| 17b | 13 | **4** | **2** |
+
+**Roughly a third of a first pass's fixes are wrong, and the fixing commit reliably introduces one
+or two of its own.** That is not a risk to note; it is a rate to budget. 17b's two:
+
+- **`partial` was ONE FIELD CARRYING TWO MEANINGS** — the flag on the report row AND the
+  permission to publish with unfinished items. The fix for "a completed partial stays stamped
+  partial" passed `false` for the flag and silently closed the gate, so a partial report could never
+  be AMENDED and the version carrying a wrong haemoglobin stayed published. **A fix that sets a
+  parameter must ask what else that parameter is.**
+- **A CLASS FIXED AT ONE SITE AND LEFT AT ITS SIBLING, IN THE SAME COMMIT.** "A failed query renders
+  as a clinical negative" was repaired on the consult panel and left standing on the critical-call
+  panel — a file the same commit rewrote — where a 401 made the red banner vanish and a bench with
+  no banner looks exactly like a bench with no open critical calls.
+
+**And a third shape §2.140 does not name: A FIX CAN BE APPLIED TO THE WRONG ONE OF TWO TWINS.** The
+unlocked sibling-count race was fixed on the VERIFY side (two pathologists signing the last two
+analytes — rare) and left on the ENTRY side (two technologists keying them — routine). The reviewer
+found it by asking "where else does this shape exist", which is the §5 habit that also found §3.43.
+
+**MECHANICAL FORM — three checks, each cheap, each bought by a real defect:**
+
+> 1. **For every parameter a fix SETS, grep its name in the callee and read every use.** `partial`
+>    had two, twelve lines apart.
+> 2. **For every class of defect a fix closes, grep the class across the module and fix every
+>    instance IN THE SAME COMMIT** — `results.data ?? []` returned four hits and three were left.
+> 3. **When a fix serialises a race, name the OTHER function with the same shape.** Ask which of the
+>    two is more frequent, and fix that one first.
+
+**AND BUDGET THE REVIEW LANE AS THE LARGEST TERM.** 17b: pass 1 **238,225** / 63 calls, pass 2
+**245,017** / 52 calls, and the two remediation rounds cost the main session roughly as much again —
+**~965,000 for the review lane against ~645,000 for all four tasks' coding.** §2.143 amended the
+formula to `review × (1 + remediation factor)` with a factor of 1.0; the measured factor here is
+**~1.0 for pass 1 alone and ~2.0 once pass 2's remediation is counted.** The next stop-loss uses 2.0.
+
+---
+
 **2.144 — TWO LANES SPENT SIX FULL VERIFIES CALLING THE INSTRUMENT BROKEN. IT WAS ONE TEST AT 72% OF ITS DEFAULT BUDGET ON AN IDLE BOX, AND A CASCADE HID IT.** *(Plan 17a close-out, 2026-08-30 — §2.99's third specimen, and the first one nobody could see)*
 
 `pnpm verify` on the build host failed six consecutive times across two lanes, with **11, then 15,

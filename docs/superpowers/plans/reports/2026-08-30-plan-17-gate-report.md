@@ -115,6 +115,39 @@ runner's own summary line.
 
 ---
 
+## 4A. What the two close reviews found, because it is the most important number here
+
+**Twenty-three mutants were built and twenty-three died. They found none of what follows.** Neither
+did green narrow suites, a green e2e over every route, or a green workspace verify. Every item below
+was found by a fresh human-shaped reader looking at the code.
+
+| pass | found | cost |
+|---|---|---|
+| **1** (fresh) | **4 CRITICAL + 9 MAJOR + 8 MINOR** on the server, **5 CRITICAL** on the screens | 238,225 tokens / 63 calls |
+| **2** (fresh, over the fixes) | **4 of 13 fixes condemned**, **2 NEW defects the fixing commit created**, 22 findings | 245,017 / 52 calls |
+
+**The four that would have hurt a patient:**
+
+- A sealed patient's **legal name, UHID and date of birth** returned to any holder of
+  `lab.results.read` by a sibling route with no alias rule and no audit row — while the reader
+  beside it did both.
+- A **corrected critical potassium opened no telephone call**, on the one path where the value is
+  known to have been wrong.
+- A rerun that corrected a cholesterol left the derived LDL computed from the number it replaced:
+  a signed report reading *cholesterol 150, LDL 426*.
+- Two pathologists signing the last two analytes of one panel **stranded the item permanently**,
+  with no recovery through any shipped route.
+
+**And the one that would have stopped the laboratory working at all:** the Publish button sat on a
+worklist row that vanishes at the exact moment publishing becomes legal. **No report could be
+published from any screen in the system.** Two mutually exclusive conditions, and nothing in the
+phase exercised the pair.
+
+**Pass 2 is the reason four of pass 1's thirteen fixes are not in production**, including one that
+made a partial report un-amendable — so a version carrying a wrong haemoglobin would have stayed the
+published one. That is ledger §2.140's third specimen and the first with a rate: **across 17a and
+17b, roughly a third of a first pass's fixes are wrong.**
+
 ## 5. The findings this phase carries forward
 
 | # | finding | who owns it |
@@ -130,6 +163,10 @@ runner's own summary line.
 | F37 | the `lab_item` definition has **no `resulted → cancelled` and no `verified → cancelled` edge**, so DD7's middle leg leaves the lab instance where it stands. Harmless — every worklist and sweep keys off the ENVELOPE — and stated rather than hidden. | a phase that may edit `workflow-def.ts` |
 | F38 | **FIXED.** DD13's superseding row had no writer: the trigger refuses the UPDATE and `enterResult` refuses a `completed` item. `amendResult` is that writer. | closed |
 | F39 | **fifteen permissions and no ROLE is a login that cannot draw blood.** Found by the e2e and by nothing else; the runbook's §0 exists for it. | the runbook |
+| F42 | `verify.ts` is the **twelfth** IST clock, declared with a written argument. The census found it; the module's own suite could not. | closed |
+| F43 | six of sixteen realtime names could never produce a topic; they are removed rather than left as a promise nothing keeps. | a phase that may edit `events.ts` |
+| F44 | a reflex that cannot be billed reaches the SCREEN and no durable record — `LAB_EVENTS` is closed and none of its names means "a rule fired and could not be acted on". The runbook's pilot harvest counts it by hand. | a phase that may edit `events.ts` |
+| F45 | **DD23's grain is amended from the ORDER to the ORDER GROUP.** A TSH paid in cash that reflexed an unpaid FT4 read `settled` on the very order the counter was handing over. It over-blocks, which is DD23's own safe direction — **but it changes a design decision the plan had already made, and it was taken at close review under the owner's standing rule rather than by the plan.** | **the owner, to confirm or reverse** |
 
 **And DD23's multi-invoice loop is defensive rather than exercised by any shipped writer**: today
 one lab order carries exactly one invoice, because `deskOrder` bills all of an order's items
