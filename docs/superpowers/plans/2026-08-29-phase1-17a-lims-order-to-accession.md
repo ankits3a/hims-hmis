@@ -767,6 +767,52 @@ path they took before and billing's bare-row-id fallback is untouched. **A later
 `opd.module.ts` should move the discrimination into the resolver and narrow `getEncounter` back**;
 that instruction is in the function's own header, not only here.
 
+**F27 — `issueInvoice`'s `cash_threshold_blocked` AUDIT EVENT IS LOST THROUGH THE DESK'S CAST, AND
+IT IS F20's DEFECT ONE MODULE OVER.** `invoices.ts:1042` appends the §269ST refusal event via
+`withTx(db, …)` inside its own `catch`, on the reasoning that its transaction is already gone. Under
+`deskOrder`'s `tx as unknown as Db` that `db` is a **`Tx`**, so the event lands on a savepoint of a
+transaction that is about to roll back: a lab desk offered ₹2,10,000 in cash is refused correctly and
+**no row anywhere records that it happened.** Not fixed — `modules/billing/*` is frozen for this
+phase — and pass 2 confirmed there is no repair reachable from a file 17a owns. **The fix is the
+shape `printLabels` already proves (F20): `deskOrder` must take a `Db` as well as its `Tx`, and it
+belongs to whichever phase owns the controller.** 17b wires the receipt path, so 17b is that phase.
+
+**F28 — AUTHORIZATION REFUSALS BORROW `unknown_service` (404) AND `catalogue_invalid` (422).**
+`errors.ts`'s own header rules that a later task needing a code the union lacks has found a plan
+defect to REPORT, and may not borrow a neighbouring one. T3 and T4 borrowed: `desk.ts` now uses
+`unknown_service` for a non-user actor, a missing permission, an empty basket, an orphan orderable
+AND an internal invariant abort. `errors.test.ts` stays green because it checks declared-vs-thrown in
+both directions and never exclusivity. **The union needs a `permission_denied`; adding it is T2's
+file and therefore a defect for 17b to carry.** (The lab worklist's own gates were moved to the
+ENVELOPE's `actor_cannot_read` / `permission_denied` in `b8b03a6` rather than borrowing further —
+pass 2 finding 5.)
+
+**F29 — THE DUPLICATE CHECK IS A READ-THEN-REFUSE ACROSS TRANSACTIONS.** `deskOrder` treats
+`duplicateWarnings` as a guard, but it is an unlocked `SELECT` with no unique constraint behind it:
+two counters placing the same CBC for one patient within a second both see nothing and both bill.
+An advisory lock on the patient row inside `desk.ts` would close it — so "cannot be fixed here" would
+be false — and the reason it is deferred is SEVERITY, stated plainly: the duplicate gate is an
+*acknowledgeable warning*, so a lost race costs a reversible double-bill, against a new serialisation
+point on the desk's hottest path. **17b mounts the route where `withIdempotency` lands and should
+rule on it there.**
+
+**F30 — THE REDRAW NOW WRITES `cancelled_from = 'in_progress'` AND REFUNDS IN FULL, WHICH IS THE
+DISCRIMINATOR O-4 READS.** `transitions.ts` records that O-4's money rule ("the charge stands if it
+was analysed") reads `cancelled_from`. Before pass 1's C1 fix a post-accession reject was
+unreachable, so an abandoned redraw was always cancelled from `placed`. It is now the normal path,
+and the non-return sweep cancels from `in_progress` while issuing a 100% credit note — recording
+"work had started, the charge stands" on the row and refunding anyway. Nothing reads the column
+today. **It is latent in the one column whose stated purpose is to decide exactly this question, and
+17b/O-4 is what will read it.**
+
+**F31 — THE M8 CENSUS BINDS THE STATE LIST AND NOT THE TRANSITIONS.** `lab_specimens` has no
+`instance_id` (F15), so no status write routes through `transition()` — `printLabels`, `collect`,
+`receive` and `reject` all write string literals. The specimen definition's `transitions` array is
+therefore unenforced documentation, and `reject` would happily write `stored → rejected`, an edge it
+does not declare. Unreachable today because nothing writes `stored`. A second census leg — the four
+writers' literal targets scanned out of source against the declared edges — is what would bind it,
+and it is the same technique the test already uses for the state list.
+
 **F26 — `recordPhiAccess` ON `kernel/orders/read.ts` WAS ALREADY LANDED BY PHASE 0, NOT BY THIS
 LANE.** Lane B's §4 treats it as an unclaimed seam whose first lane writes the call. It is at
 `read.ts:310` and `:347` with `surface: "orders.patient"`, shipped in `9ba2482` and hardened in
@@ -974,14 +1020,63 @@ is in the tree that produced every number above and in none of the commits).
 **I observed interference and say so** (rule 20): the box was under load I did not create, before,
 during and after the run.
 
-### 9.6 The close review: pass 1 (fresh) and 9.6.2 (pass 2, fresh, over the fixes, a verdict per fix)
+### 9.6 The close review — BOTH PASSES RUN, BOTH FRESH, AND THE SECOND ONE EARNED ITS KEEP
 
-**NOT RUN — AND THE PHASE IS NOT CLOSED UNTIL IT IS.** T3, T4 and T5 are committed and green;
-§9.6's two FRESH passes (§2.136, §2.140 — never one, never resumed) are the remaining obligation,
-and the brief the HANDOFF section already carries is the brief they take, unchanged. The
-`hmis_17a_scratch` database is therefore **deliberately NOT dropped**: §9.5 names it as the database
-of every run claimed above, and dropping it before a reviewer can ask for a re-measurement would
-erase the audit trail §2.137 exists to preserve. It is dropped by explicit name when §9.6 closes.
+**Two passes, both FRESH, never resumed (§2.136, §2.140). Both read-only, running no tests — the
+22c-A precedent, where two read-only reviewers confirmed migrations, lock order and HTTP mappings by
+READING and each found a CRITICAL.** Pass 1 took the operand brief the HANDOFF carries verbatim;
+pass 2's subject was **the remediation**, with a verdict demanded per fix.
+
+**THE HEADLINE, AND IT IS §2.140's ARGUMENT WITH A SECOND SPECIMEN: TWO OF PASS 1's FIVE FIXES WERE
+THEMSELVES THE NEXT DEFECT.** A phase that had stopped after one pass would have shipped a
+confidentiality oracle it had just created and a silent-failure path where a monitored one used to
+be.
+
+#### 9.6.1 Pass 1 — two CRITICALs, seven MAJORs, both criticals on the recollection path
+
+| # | finding | disposition |
+|---|---|---|
+| **C1** | **A tube rejected AFTER accession stranded the item and kept the money.** `reject`'s live set read `order_items.status = 'placed'` alone; `receive` had already set `in_progress`. **Haemolysis is found at the CENTRIFUGE**, so the guard written for "every test was cancelled" fired on the ORDINARY clinical path: no replacement tube, no recollection, links left ACTIVE on a rejected specimen so nothing could ever be relabelled, the item invisible to every sweep and worklist, and the patient's money kept for a test that could not be run. It also made `accessioned → recollection_pending` unreachable in practice. | **FIXED** `1e57d65`, proved RED first: `Expected ["01M19…"], Received []` |
+| **C2** | **The non-return sweep cancelled in one transaction and refunded in another.** Any throw between them left the item cancelled, unrefunded and unrecoverable — `due` requires the very state the commit had just left. The code defended the split as "a worklist item"; **there was no worklist.** | **FIXED** `1e57d65` |
+| **M3** | **`collectionQueue` was an ungated bulk PHI read** — no permission, no actor gate, no `restricted` filter, serving every labelled patient's name, UHID, `V` number and `["HIV"]`/`["HBSAG"]`/`["VDRL"]` to any caller. | **FIXED** `1e57d65`, then **re-fixed** in `b8b03a6` — see pass 2 finding 1 |
+| **M5** | **`printLabels` validated the scan against `items[0]`'s patient** while `orderGroupId` is free caller input: two patients, one tube, results attributed to the wrong person. | **FIXED** both ends, then corrected for the merge chain in `b8b03a6` |
+| **M8** | **F15's drift-guard did not guard.** The test pinned the definition against a constant in its own file, and the two vocabularies had ALREADY drifted — `awaiting_collection` where the CHECK says `labelled`, which is what `printLabels` writes. | **FIXED** `1e57d65`; the census now reads the CHECK out of the schema source |
+| M4 | `issueInvoice`'s `cash_threshold_blocked` compensating audit event is written to a savepoint that is about to roll back, through `deskOrder`'s cast — a §269ST refusal leaves no record. | **REPORTED** (F27) — `modules/billing/*` is frozen; pass 2 confirmed the decision |
+| M6 | `lab_sla_breaches_item_stage_ux` is `(item, stage)`, so a RE-ENTERED stage never alerts again. | **REPORTED, THEN OVERTURNED BY PASS 2 AND FIXED** — see below |
+| M7 | Authorization refusals borrow `unknown_service` (404) and `catalogue_invalid` (422). | **REPORTED** (F28) — `errors.ts` is T2's and its header forbids widening |
+| M9 | The duplicate check is a read-then-refuse with no lock: two concurrent desks both place. | **REPORTED** (F29) |
+
+#### 9.6.2 Pass 2 — over the fixes, and three of its findings are defects the REMEDIATION introduced
+
+| # | finding | disposition |
+|---|---|---|
+| **1** | **The M3 redaction was a COUNTING ORACLE.** Restricted codes were filtered out of `orderableCodes` while `itemIds` stayed beside them, so `orderableCodes.length < itemIds.length` **proves** a restricted test exists — and with one item and an empty array the reader learns the patient's only test is one of six, narrowed further by the container `printLabels` chose from that orderable's own catalogue row. **This is `hasHiddenItems` — the boolean `kernel/orders/read.ts` deleted for being too revealing — rebuilt out of two fields, one level down from where the kernel enforces the rule.** The new test asserted the leak rather than closing it. | **FIXED** `b8b03a6`: no codes on ANY row without clearance |
+| **2** | **The C2 try/catch moved a MONITORED failure to a discarded one.** `scheduler.ts` catches a throwing run, writes an ERROR heartbeat and appends `sweep.failed`; `alerts.yml` carries both lab jobs (F19); `jobs.ts` drops the return value. A deterministic failure — no `credit_note` series for the new financial year — would have refunded nobody, for ever, with a **green heartbeat and no page.** | **FIXED** `b8b03a6`: the batch completes, then throws |
+| **3** | **M6 needed no migration.** `lab_sla_breaches` already carries `due_at`; an `onConflictDoUpdate` guarded on it separates "already announced" from "entered again". **And C1's fix is what makes it bite** — reject → redraw → reject again is now the ordinary difficult-draw case, and the second `recollection_pending` breach never alerted. | **FIXED** `b8b03a6`; pass 1's "report, don't fix" was WRONG |
+| **4** | **Both one-patient guards compared raw `patients.id`, and `merge.ts` does not repoint `orders.patient_id`.** One person legitimately has orders under two ids, so a merged patient's own add-on looked like a second person and `printLabels` refused the whole group **for ever, with the money already taken.** | **FIXED** `b8b03a6` — both guards resolve the chain |
+| **5** | **The remediation borrowed error codes after declining to fix M7 for that exact reason** — `no_active_order` twice for authorization, serving a 403-shaped denial as **409 "re-read and retry"**, so a well-behaved client would poll a worklist it can never see. | **FIXED** `b8b03a6` — the ENVELOPE's own `actor_cannot_read` / `permission_denied` |
+| 6,7,9,10,11 | The desk's group check was racy; the skipped envelope projection removed the only guard on a concurrently-cancelled item; `reject`'s comment named `pending`, not an envelope state; `creditNotes` was reported from inside the transaction; a second accession wiped the first's identity re-check. | **ALL FIXED** `b8b03a6` |
+| 8,12,13 | `cancelled_from = 'in_progress'` + a full refund is the discriminator O-4 will read; the M8 census binds the state LIST but not the transitions; the `drawableItems` widening is inert today. | **REPORTED** — F30, F31 |
+
+**PASS 2's VERDICTS PER FIX:** C1 **SOUND BUT INCOMPLETE** (lifecycle traced legal end to end, all
+five widenings admit no row they should not, `notYetStarted` fails closed); C2 **SOUND BUT
+INCOMPLETE** (the savepoint nesting genuinely holds for `issueCreditNote` — no catch, no
+compensating lane, so M4's shape does not recur); M3 **SOUND BUT INCOMPLETE**; M5 **SOUND BUT
+INCOMPLETE**; M8 **SOUND**. Every "incomplete" is closed in `b8b03a6`.
+
+**ON THE FOUR "REPORT, DON'T FIX" DECISIONS:** pass 2 called M4 **defensible**, M7 **defensible as
+to the freeze but violated in practice** (which `b8b03a6` corrects), M9 **defensible on severity but
+not on reachability** — an advisory lock was available inside T4's own file, and the honest reason
+is that an acknowledgeable warning's lost race costs a reversible double-bill against a new
+serialisation point on the desk's hottest path — and **M6 NOT defensible**, which is why it is now
+fixed.
+
+**THE METHOD FINDING.** §2.140 said the second reviewer is not optional and produced the rule
+*"when a fix REMOVES a disclosure, enumerate every OTHER field on the same response that is a
+function of the removed one"*. This phase is that rule's second specimen, and the sharper form it
+earns: **a remediation is not a smaller diff than the work, it is the same kind of work, and it
+carries the same defect rate.** Two of pass 1's five fixes introduced a new defect; one of pass 1's
+four deferrals was wrong. A single-pass close would have shipped all three.
 ### 9.7 Actuals — **the token balance at every task boundary** (v3 §6 as amended; recorded only after §9.6 exists)
 ### 9.8 The question this phase existed to answer
 
