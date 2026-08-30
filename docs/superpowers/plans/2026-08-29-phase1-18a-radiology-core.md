@@ -6,7 +6,7 @@
 
 **THE RULING, in one paragraph.** 18a is **the spine — one imaging study walks end to end through the real seams**: a doctor (or a walk-in slip) places an `imaging` order on the kernel envelope by adding ONE manifest field; the reception schedules it against a modality `device` resource with a slot the database refuses to double-book; the patient checks in and passes a declared set of safety gates, each a child workflow instance transcribed from Plan 15's DD5; the technologist starts acquisition, which occupies the device and moves the envelope item to `in_progress`; the acquired study carries its accession number, dose and contrast facts, and emits `imaging.study_acquired`; the radiologist drafts, signs under a fresh second factor, and publishes an immutable versioned report, which completes the envelope item and closes the order. **PCPNDT is structural in this slice, not optional**: the module `pcpndt` — a kernel-adjacent manifest of its own, built HERE and adopted unchanged by 15b and 62 — holds registrations, registered machines and persons, and a gap-free Form F register; an applicable ultrasound is `restricted` at placement, its Form F gate can be neither waived nor overridden by anybody, and the scan cannot reach `acquired` without a recorded Form F. **No PACS** (18b), **no AERB/dose registers** (18c), and the rest of the brainstorm's §14 list — monthly returns and inspections, contrast reaction/ADR chain, portable ward rounds, teleradiology, the release desk, outside-study register, KPIs and automations — is named in §1.3 and §6.9 as the follow-on slices this spine makes buildable, so 18b does not find a half-PACS and nobody finds a half-register.
 
-**STATUS 2026-08-30: PAUSED BY OWNER RULING AT T1 OF NINE — see [§9.9](#99-handoff--lane-b-paused-by-owner-ruling-2026-08-30-v3-96).** Lane A executed Plan 17 in the same checkout and held its shared files uncommitted; the migration journal is not hunk-separable, so T1 could not land without carrying another lane's work. **T1 is code-complete, typechecked and GREEN (exit 0, 61/61 on `hmis_lane_b_scratch_1`) and is held UNCOMMITTED**, migration `0047_radiology_core` with it. Nothing in this phase is committed except this document. Read §9.9 before touching anything.
+**STATUS 2026-08-30: PAUSED AT T1 OF NINE — AND T1 IS NOW COMMITTED AND PUSHED.** Lane A executed Plan 17/17a in the same checkout; the migration journal is not hunk-separable, so for a day T1 could not land without carrying another lane's work. **That blocker cleared when Lane A committed `0046`**, and the owner then authorised landing rather than holding. **T1 is committed at `d5abf6a` (green, exit 0, 61/61 on `hmis_lane_b_scratch_1`) and T2's declared surface at `997ab18` (typechecked, NO tests yet — WRITTEN, not proved).** Both are inert: no manifest claims `imaging`, so nothing in production behaves differently. T2's censuses, T3–T9 and both close reviews are all still owed. Read [§9.9](#99-handoff--lane-b-paused-by-owner-ruling-2026-08-30-v3-96) before touching anything.
 
 **Roadmap:** [`2026-08-11-phase1-plan-series.md`](2026-08-11-phase1-plan-series.md) — Track A, `17 → 18a`. **Numbering:** [`00-INDEX-AND-SYNTHESIS.md`](../brainstorms/2026-08-27-department-series/00-INDEX-AND-SYNTHESIS.md) §3 (18a core · 18b PACS · 18c dose/RT; 63 cath lab; 64 RT; 62 maternity consumes Form F via `pcpndt`). **Envelope contract inherited, not restated:** [`2026-08-29-phase1-17-order-envelope.md`](2026-08-29-phase1-17-order-envelope.md) §6 (the seven sentences), §6A (the eight things it does not do), §8 (what it froze), and its §4.1 for a column name. **Brainstorm argued from and not restated:** 01 §1 (scope table row 2 — *"radiology owns the imaging-specific tables hanging off the order"*), §3 WF-IMG-01/02/03/05 (the spine's four workflows), §4 (the table sketch), §5 (the 120-row catalogue — §7 below draws from it), §13 (owner rulings O-1..O-13), §14, §15.1/§15.2.
 
@@ -541,13 +541,27 @@ Manifest census moves 17 → **19**; `allPermissions` 111 → **131**.
 
 ### 9.1 The commits
 
-**ONE, and it carries no code: this document.** The owner RULED on 2026-08-30 that Lane B pauses
-(see §9.6). T1 is code-complete and green and is **deliberately held uncommitted** — the ruling's own
-words were *"migration `0047` held"*.
+Four. Two carry code and both are additive and inert — **no manifest claims `imaging`**, so
+`collectOrderKinds` still returns `['lab']` and no shipped behaviour changes.
 
 | # | commit | what |
 |---|---|---|
-| 1 | *(this doc)* | kickoff, spike answers, T1's evidence, the findings, and the handoff |
+| 1 | `2466b46` | the pause: kickoff, spike answers, T1's evidence, findings F1–F6, the handoff |
+| 2 | `9b899ae` | F7, and the correction to this document's own CI claim |
+| 3 | **`d5abf6a`** | **T1 — eleven tables, `0047_radiology_core`, the `X` accession series, the two whole-row immutability triggers, `truncateAll` across three statements, both `EPISODE_SERIES` censuses. GREEN: exit 0, 4 suites, 61/61, on `hmis_lane_b_scratch_1`** |
+| 4 | **`997ab18`** | **T2 PARTIAL — the two module skeletons (manifests, kinds, events, workflow definitions, approval type, error unions). Typechecked and linted; NO tests of their own yet. Installed by nobody: neither manifest is in `ALL_MANIFESTS`** |
+
+Also on `main` from this lane, addressed to Lane A rather than to this phase:
+`26d1a1b` (the coordination contract) and `57b93fa` (the reply — F26's attribution, the
+`advance.test.ts` cascade, and the frozen-file escalation).
+
+**Why T1 landed after all.** The blocker was never a shared census — it was
+`drizzle/meta/_journal.json`, which cannot be split by hunk: committing `0047` while Lane A's
+`0046` row sat uncommitted meant either orphaning theirs (red `main`, broken deploy) or committing
+their migration for them. **Lane A committed `0046` in `39beff0`, and the blocker evaporated** — the
+journal diff became one entry, its own. The owner then ruled that the work should land rather than
+sit uncommitted in a tree another lane was actively working in, which is the more fragile of the two
+parking spots by a wide margin.
 
 ### 9.2 Findings
 
@@ -681,6 +695,8 @@ would have `exit 0` and nothing to inspect.
 | `series.test.ts`, `parity.test.ts` | PASS — both `EPISODE_SERIES` censuses moved to nine keys |
 | migration number, re-measured immediately BEFORE and AFTER `db:generate` (protocol §7) | before: 47 entries, last `0046_lab_core` (Lane A's). after: 48, last `0047_bent_mandrill` → renamed `0047_radiology_core`, journal retagged, snapshot renamed. **`0047` was free and still is.** |
 | generated SQL read rather than predicted (rule 21's discipline) | 11 `CREATE TABLE`, 12 indexes, 10 unique indexes, **no `lab_*` object** — the three `lab_`/`ot_` grep hits are false positives inside `not_given`, `not_pregnant` and `not in` |
+| preflight `pnpm typecheck && pnpm lint` before the T1 commit (v3 §9.9 rule 6) | **exit 0**, 2 warnings, both in files this phase does not touch |
+| T1's four suites re-run against Lane A's tree at `57b93fa`, immediately before committing (rule 12) | **exit 0 — 61/61 on `hmis_lane_b_scratch_1`** |
 | `pnpm verify` (full workspace) | **NOT RUN, and deliberately.** Lane A held ~20 files dirty and a full verify of its own in flight for the whole of this session's window; a run over that tree is unattributable to either lane (§2.137, and the 2026-08-29 lane-collision note). CI by full SHA is the honest instrument and there is no SHA to watch, because nothing was committed. |
 | CI | **WATCHED, NOT OBTAINED.** Run `33298979243` for `2466b46` was last seen `in_progress`; the verdict was never read because this session exhausted the host's unauthenticated API quota polling for it (F7). It is a docs-only commit and cannot be red on account of its own content, but **that is an argument, not a verdict, and it is recorded as one.** The next session should re-read it: `curl -s "https://api.github.com/repos/ankits3a/hims-hmis/actions/runs?head_sha=2466b46119e587ba4b148d5e5498396a6ce8aed6"`. |
 
@@ -718,72 +734,71 @@ zero consumers and `parity.test.ts` still reads `['lab']` rather than `['imaging
 
 ## 9.9 HANDOFF — Lane B paused by owner ruling, 2026-08-30 (v3 §9.6)
 
-**THE RULING.** Lane A (Plan 17 → re-cut into 17a/17b) executed in `/opt/hmis` at the same time as
-this session and, for the whole of the window, held the checkout's shared files uncommitted. The
-owner was given four options and chose **"pause Lane B entirely"** in these words: *stop, write the
-handoff note, resume once Plan 17 is closed and pushed.* This section is that note.
+**THE RULING, AND ITS AMENDMENT.** Lane A (Plan 17 → 17a/17b) executed in `/opt/hmis` at the same
+time as this session and, for the whole of the first window, held the checkout's shared files
+uncommitted. The owner was given four options and chose **"pause Lane B entirely"** — stop, write the
+handoff, resume once Plan 17 is closed. **On 2026-08-30 the owner amended it: land the work rather
+than lose it.** This section is the note as amended.
 
-### What is true about the code, stated the way §9.6 requires
+### What is true about the code
 
-**T1 is CODE-COMPLETE, TYPECHECKED AND GREEN**, and the evidence is a suite run with its exit value
-read from a file, not a description: **exit 0, 4 suites, 61/61, on `hmis_lane_b_scratch_1`**, re-run
-on 2026-08-30 against Lane A's landed tree at `8ea802a`. Nothing below is "written but unrun".
+**T1 IS COMMITTED, PUSHED AND GREEN** (`d5abf6a`), and the evidence is a run with its exit value read
+from a file rather than a description: preflight `pnpm typecheck && pnpm lint` **exit 0**, then four
+suites detached — **exit 0, 4 suites, 61/61, on `hmis_lane_b_scratch_1`**, against Lane A's tree at
+`57b93fa`.
 
-**NOTHING IS COMMITTED EXCEPT THIS DOCUMENT.** The ruling said `0047` is HELD. So the successor
-inherits a working tree, not a branch, and the FIRST act of the next session is to decide whether
-that tree still applies — Lane A has been moving fast, and `test/helpers/db.ts`, `schema/index.ts`
-and `_journal.json` are the three files most likely to have moved under it.
+**T2's DECLARED SURFACE IS COMMITTED AND IS NOT PROVED** (`997ab18`). Eleven files that typecheck and
+lint and have **no test of their own**. §9.6's corollary applies to them exactly: *uncompiled, unrun
+code is unknown code, however well described* — these compile, but nothing asserts their behaviour.
+**Treat them as WRITTEN.**
 
-### The exact inventory being held
+**BOTH ARE INERT, which is what made landing them safe rather than premature.** Neither manifest is
+in `ALL_MANIFESTS`; nothing imports either module's `index.ts`; `collectOrderKinds` and
+`collectResourceKinds` read the REGISTRY, not the directory. So `imaging` is still an unclaimed order
+kind, `device` is still an unclaimed resource kind, the permission/manifest/role censuses have not
+moved, and eleven tables exist with no writer — which is `0044`/`0045`'s own posture (claimed kinds
+`[]`) one phase on. **The next production deploy will create eleven empty radiology tables.** That is
+expected and stated here so nobody discovers it in a deploy log.
 
-**Untracked (mine, complete, none of it scratch):**
+### What is NOT done — the honest boundary
 
-- `apps/core/drizzle/0047_radiology_core.sql` + `drizzle/meta/0047_snapshot.json` — 11 tables, 22
-  indexes, the CHECKs, the two partial uniques, and the two hand-carried triggers.
-- `apps/core/src/kernel/db/schema/radiology.ts`, `pcpndt.ts` (+ both `.test.ts`).
-- `apps/core/src/modules/radiology/` — `manifest.ts`, `kinds.ts`, `events.ts`, `workflow-def.ts`,
-  `approval-types.ts`, `errors.ts`, `index.ts`. **This is T2's own half, written and typechecking,
-  with NO test of its own yet — treat it as WRITTEN, not proved.**
-- `apps/core/src/modules/pcpndt/` — `manifest.ts`, `errors.ts`, `events.ts`, `index.ts`. Same status.
-
-**Modified (mine; every one verified to carry my hunks ONLY, `git diff` per path):**
-
-| file | my change | collision risk on resume |
-|---|---|---|
-| `drizzle/meta/_journal.json` | one entry, `idx 47`, `0047_radiology_core` | **HIGH** — re-measure before anything |
-| `schema/index.ts` | exports `./radiology`, `./pcpndt` | medium |
-| `test/helpers/db.ts` | eleven names across three statements + one new | **HIGH** — Lane A appends here too |
-| `kernel/episodes/series.ts` | `imaging_study: "X"` + its reasoning | low |
-| `schema/episodes.ts` | the `series_key` comment | low |
-| `episodes/series.test.ts`, `orders/parity.test.ts` | both `EPISODE_SERIES` censuses → nine keys | medium |
-
-**Scratch: none.** `.lane-b-*.log`/`.exit` deleted; `git status --porcelain` carries no scratch of
-mine. `.ci-watch.log`, `.g.log`, `.g.exit`, `.full.log`, `docs/design/` and
-`2026-08-29-EXECUTE-PROMPT-flow3-front-desk.md` are **not mine** and were never touched.
+- **T2's censuses.** Installing the two manifests (17 → 19), the twenty permissions (111 → 131), the
+  four new roles, the README parity table, the worker install, the notification template. **None of
+  it is started.**
+- **T3–T9 entirely**: placement + idempotency + the consumer, scheduling, the gates, the PCPNDT
+  functions, acquisition, reports, the five screens and the e2e.
+- **Both close-review passes** (§9.6, §9.6.2) — the whole 463,509 review term is unspent.
+- **No full `pnpm verify` was run by this lane**, deliberately: `kernel/orders/advance.test.ts` is a
+  standing red on this host (two timeout rows plus two cascade failures through a non-idempotent
+  fixture), it is frozen for both lanes, and a full run over a tree Lane A was also using would be
+  unattributable to either. The narrow suites plus preflight are what this lane can honestly claim.
 
 ### The database, and the one irreversible thing this session did
 
-`0047_radiology_core` **has been generated and APPLIED** — to `hmis_lane_b_scratch_1` only, and to
-nothing else on this host. Not `hmis_dev`, not `hmis_test_*`, not production (prod is at 46 and this
-session made no production write; S6 was a read-only `SELECT`). AGENT-RULES §6 requires that be
-reported rather than left implicit, and it is the one act of this session that a `git checkout`
-would not undo. The database is **held, not dropped** (§9.5).
+`0047_radiology_core` is applied to **`hmis_lane_b_scratch_1` and to nothing else on this host** —
+not `hmis_dev`, not `hmis_test_*`, not production (prod is at 46; this session made no production
+write, and S6 was a read-only `SELECT`). AGENT-RULES §6 requires that be reported rather than left
+implicit. The database is **held, not dropped** (rule 7's "say so" branch, the `hmis_17a_scratch`
+precedent): it is the only place the migration can be inspected, and §2.137's specimen is a reviewer
+finding the proof already destroyed. **Lane A has been asked in writing to leave it alone.**
 
 ### What the next session must do, in this order
 
-1. **Re-run the kickoff pre-flight and re-measure §2 in full.** Every row. Lane A has landed at
-   least eleven commits since §9.0 was written, `lab` now claims an order kind, and **rows 2, 3, 4,
-   8, 9 and 11 have certainly moved.**
-2. **Re-measure the migration number.** `0047` was free at 07:15 UTC on 2026-08-30. If Lane A has
-   taken it, renumber MINE — rename the `.sql`, rename the snapshot, retag the journal entry — and
-   never the one already pushed (protocol §7).
+1. **Re-run the kickoff pre-flight and re-measure §2 in full.** Every row. Lane A has landed many
+   commits since §9.0 was written, `lab` claims an order kind, and **rows 2, 3, 4, 8, 9 and 11 have
+   moved.**
+2. **The migration number is SETTLED — `0047` is pushed.** Nothing to renumber and nothing to hold.
+   T1's tables exist on `main`. The next migration this phase needs (a gate-kind widening, say) takes
+   whatever is free THEN, measured before and after `db:generate`.
 3. **Re-answer S8, because its answer has already flipped once.** At kickoff Lane B was first on both
    kernel seams. By 18:50 the same day Lane A had `kernel/orders/read.ts` and `kernel/phi/audit.ts`
    open. **If Lane A has landed the `recordPhiAccess` call with surface `orders.patient`, T3 REUSES
    it and appends ONLY `imaging.worklist`, `imaging.study`, `imaging.report`, `pcpndt.form_f` to
    `PhiSurface`** — it does not write a second call (§2.54).
-4. **Re-run T1's four suites before trusting a line of it** (§9.6's own corollary: a handoff's green
-   is a claim about a tree that has since changed). Name the database in the commit message.
+4. **Re-run T1's four suites before building on them** — a green is a claim about a tree that has
+   since changed. **And write T2's tests first:** `997ab18`'s eleven files are the only unproved code
+   this lane shipped, and the phase document's T2 Files list already names `workflow-def.test.ts`,
+   `kinds.test.ts` and `events.test.ts`. Name the database in every commit message.
 5. Then T2's censuses — the part that was blocked. **Grep the SIBLING and grep the LIST** (§2.131 /
    §2.138): `grep -rn "otManifest" apps/core --include=*.ts` for the places that NAME one, and
    `grep -rn "ALL_MANIFESTS" apps/core --include=*.ts` for the places that COUNT them. Lane A's own
