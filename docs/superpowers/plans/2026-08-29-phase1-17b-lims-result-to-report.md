@@ -490,36 +490,249 @@ anything Lane B has written.
 
 ---
 
-## 9. CLOSE — filled at execution
+## 9. CLOSE — filled at execution 2026-08-30
 
-### 9.0 Kickoff — the pre-flight, §2 re-measured, 17a's gate confirmed, and the token balance at task zero
+### 9.0 Kickoff — the pre-flight, §2 re-measured, 17a's gate confirmed
+
+**HEAD at kickoff: `e56c7ef`.** Tree clean but for three untracked docs trees belonging to other
+sessions (`docs/design/`, two DESIGN/EXECUTE prompts) — never staged, per §0 and spike S8.
+
+**§2 re-measured, every row:**
+
+| # | fact | authored | measured at kickoff |
+|---|---|---|---|
+| 14 | notification templates | 5 | **5** — `patient_welcome`, `appointment_confirmed`, `appointment_reminder`, `staff_escalation`, `owner_escalation_sms`. T7 makes it 6. |
+| 15 | the template census | a sorted literal | **unchanged**, `templates.test.ts:20` |
+| 16 | `PhiSurface` | carries the three lab surfaces | **confirmed** at `audit.ts:47` — this phase adds none |
+| 17 | web screens / router `path:` | 35 / 35 | **35 / 35**. T8 makes both 39. |
+| 18 | the SPA nav censuses | `nav-parity.test.ts`, `shell-nav.test.tsx` | **both present** — and a THIRD the row does not name: `caddyfile-parity.test.ts` pins the route COUNT at 35 (§9.2 F40) |
+| 19 | the A4 design | untracked | **untracked** — 13 `.dc.html` files; read for the layout, never staged |
+| 20 | `invoiceSettlement` | `Db \| Tx`, invoice-keyed | **confirmed** at `invoices.ts:213` |
+
+**17a's gate, confirmed mechanically before a line was written:** `receive`, `deskOrder`,
+`resolveRange`, `evaluateFormula` and `matchReflex` all exported from `modules/lab/index.ts`;
+`test/helpers/lab.ts` exports `seedLabDeskBase` and `deskAndLabel`; migration `0046` live.
+
 ### 9.3 The spike answer (S12) and which inherited answers were re-checked
+
+**S12 — ANSWERED BY READING `enqueue.ts`, AND THE AMENDMENT NOTICE GETS THROUGH.**
+
+`enqueueNotification`'s `dedupeKey` is **caller-supplied** and its uniqueness is a plain
+`onConflictDoNothing` on that one column (`enqueue.ts:117-127`). An amendment is a NEW `lab_reports`
+row with its own id, so a key derived from the REPORT id — `lab_report_ready:${reportId}` — is
+distinct by construction and R-018's re-notification is delivered.
+
+**DD24's fallback is therefore NOT needed.** The amendment notice ships; the runbook does not have
+to tell the counter to telephone. That is read off the code rather than assumed, which is what DD24
+asked for.
+
+**No deep-link target exists before 22c-F**, confirming spike S7: the body says where to collect and
+carries the order number alone.
+
+**Re-checked and still binding:** S1 (the `Tx as Db` savepoint — T7's `refundOnCancel` and the
+reflex invoice both rely on it), S4 (the engine checks the role itself — which is F39's mechanism),
+S7 (the closed template registry — T7's kernel edit), S9 (a `system` reflex order still owes
+`ordering_clinician_id` — the verifying pathologist supplies it).
+
 ### 9.1 The commits
+
+| commit | task |
+|---|---|
+| `f32c331` | **T6** — results: entry, absurd envelope, snapshotted ranges, delta, SoD verify with CAS, criticals, synchronous reflex, `completed` at verify |
+| `cfba8d5` | **T7** — reports: versioned snapshots, the invoice-grained interlock, print register, ready-notice, amendment, DD7's cancel money; the kernel template |
+| *(T8)* | **T8** — five controllers, four screens, the A4 print, the consult panel, the e2e |
+| *(T9)* | **T9** — the gate report, the runbook, this section |
+
 ### 9.2 Findings
+
+**F32 — `permission_denied` ADDED to a union whose header forbids widening, on §0's instruction.**
+17a §9.2 F28 reported that T3 and T4 refused AUTHORIZATION with `catalogue_invalid` (422) and
+`unknown_service` (404); 17b's §0 instructs this phase to add the code and repair the borrowings.
+Both were repointed and no test asserted either.
+
+**F33 — `critical_already_closed` ADDED, by the same argument, on my judgment rather than §0's
+instruction.** Two nurses reading back one potassium is the ordinary race and the loser needs a 409
+of its own; borrowing `already_verified` would put a word about a pathologist's signature on a
+telephone call, which is F28's defect committed while fixing it.
+
+**F34 — NIGHT MODE IS DERIVED FROM THE IST CLOCK, NOT FROM THE DEFINITION FLAG DD11 NAMES.**
+`single_operator_night_mode` does not exist: `defineWorkflow` validates a closed shape and
+`workflow-def.ts` is 17a's, frozen by §8. The alternative — a `nightMode: true` INPUT — is worse
+than no control at all, because a boolean that switches off separation of duties is switched on by
+whoever wants it off. 21:00–07:00 IST, computed from `now`, unchosen by any caller. 17-E owns
+the real per-deployment switch.
+
+**F35 — DD7 IS WRITTEN TWICE.** `money.ts`'s `refundOnCancel` and `sweeps.ts`'s inline credit note
+(17a T5). They agree today because the sweep's items are always at `recollection_pending` with no
+result row — a strict subset of leg 3 — but they are two copies of one rule and `sweeps.ts` is
+frozen. Every path this phase adds goes through `refundOnCancel`.
+
+**F36 — `lab.report_print_blocked`'s payload field is `unpaidLineIds` and it carries INVOICE ids.**
+DD23 ruled the interlock invoice-grained AFTER `events.ts` was written, and `events.ts` is T2's
+frozen file. Naming the invoices is the honest payload; renaming the field belongs to a phase that
+may edit it.
+
+**F37 — THE `lab_item` DEFINITION CANNOT LEAVE `resulted` OR `verified` FOR `cancelled`.** DD7's
+middle leg — cancelled from `in_progress` with a result already keyed — is exactly the state the
+machine cannot leave. `cancelLabItem` cancels the ENVELOPE and applies the money rule
+unconditionally, moves the lab instance when the pinned definition allows it, and **returns the
+state it was left in** rather than pretending. Harmless in practice: every worklist and every sweep
+in this module keys off `order_items.status`, which `worklist.ts`'s header states and its query
+makes true.
+
+**F38 — DD13's SUPERSEDING ROW HAD NO WRITER, AND T7 A6 IS WHAT FOUND IT.** The immutability trigger
+refuses an UPDATE to a verified result and `enterResult` refuses a `completed` item, so *"a
+correction after verification is a NEW row carrying `supersedes_result_id`"* was unbuildable by any
+shipped path. `amendResult` is that writer: `lab.reports.amend`, entered and verified in one act by
+the amending pathologist, the superseded row readable for ever.
+
+**F39 — FIFTEEN PERMISSIONS AND NO ROLE IS A LOGIN THAT CANNOT DRAW BLOOD.** `@RequirePermission`
+gates the ROUTE; the workflow engine gates the TRANSITION on the definition's declared ROLE LIST
+against `user_roles`, and permissions are not consulted (17a S4). **Found by `lab.e2e.test.ts` and
+by nothing else** — every service-level fixture builds users with real role keys, so 243 green tests
+could not see it. It is a go-live fact: the runbook's §0 exists for it and the e2e pins it.
+
+**F40 — A THIRD ROUTE CENSUS THE FILES LIST DOES NOT NAME.** §2 row 18 names `nav-parity.test.ts`
+and `shell-nav.test.tsx`. `apps/core/test/caddyfile-parity.test.ts` pins the SPA route COUNT — 35
+before this phase, 39 after — and it is the file five previous phases have each had to join. Found
+by grepping for `router.tsx` rather than for a sibling's name, which is §2.138's own instruction.
+
+**F42 — `verify.ts` IS THE TWELFTH IST CLOCK, AND THE FULL VERIFY IS WHAT FOUND IT.** DD11's night
+window is 21:00–07:00 **IST**, so `isSingleOperatorNight` carries the offset. `ist-clock-parity.test.ts`
+pins the census and lives in `test/`, so the lab module's own suite was green and the workspace run
+went red — **which is exactly what happened to 17a T4 with the eleventh copy, one task earlier.** The
+site is DECLARED with a written argument rather than dodged: computing the hour through `Intl` and
+`Asia/Kolkata` would give the same answer and would NOT appear in the census, which is the reason not
+to do it. The census file joins T6's surface after the fact and is named in T9's commit message.
+
+**The companion habit this bought:** a phase that computes an IST anything reads
+`test/ist-clock-parity.test.ts` BEFORE it commits. Two consecutive lab tasks each added a clock and
+neither noticed until the full run.
+
+**F41 — DD23's MULTI-INVOICE LOOP IS DEFENSIVE, NOT EXERCISED BY ANY SHIPPED WRITER.** One lab order
+carries exactly one invoice today: `deskOrder` bills all of an order's items together and DD9 makes
+an add-on a NEW order. `lab_items.invoice_id` is per ITEM, which is why the loop exists; 26's package
+or a re-billing path will be its first real caller. Both interlock rows that need two invoices build
+the second through billing's own writer and repoint the lab's own column, disclosed in the test.
+
+**Three files this phase's Files lists do not name, all disclosed on 17a F9's precedent:**
+`test/helpers/lab.ts` (`grantLabResultPermissions`, `runLabOrder`, `settleInvoice`),
+`modules/lab/verify.test.helpers.ts` (`activateTshReflex` — importing it from `verify.test.ts` would
+register that file's `describe` blocks into the importing suite), and `modules/lab/worklist.ts` (the
+two worklists, needed by two controllers). `lab-http.ts` is a fourth: the shared error mapper, which
+T8's Files list implies at five call sites and names at none.
+
 ### 9.4 The Assertion Book, corrected by execution
-### 9.5 Mechanical verification — name the `TEST_DATABASE_URL` database of every run claimed (§2.137)
-### 9.6 The close review: pass 1 (fresh) and 9.6.2 (pass 2, fresh, over the fixes, a verdict per fix)
+
+| row | as authored | as executed, and why |
+|---|---|---|
+| **T6 A8** | glucose 1200 | **GLUF 1600.** The golden catalogue's envelope is 5 … 1500 mg/dL, so 1200 is INSIDE it: the plan's own input would have passed against an implementation with no envelope check at all. |
+| **T6 A1** | "a tech holding both permissions" | **a user holding both ROLES.** A technologist is refused by the workflow's own role check on `resulted → verified` before the SoD guard is reached, so the plan's input would have died for the wrong reason. |
+| **T6 A3** | "a CBC with 3 analytes" | **TFT**, which reports exactly three. The fixture's CBC reports sixteen. |
+| **T6 A7** | HB | **CREA** — `delta_abs 0.5` over 168 h and NO critical band, so the row measures the delta alone rather than opening a call ladder beside it. |
+| **T7 A1** | a CBC paid at the desk + a reflex on credit, ONE order | **two assertions.** DD9 makes a reflex a NEW ORDER with its own invoice, so `deliveryAllowed(deskOrderId)` legitimately never sees it — the reflex order's OWN report is held, and separately an order billed across two invoices is held while either is unsettled (F41). |
+| **T7 A6** | "2 report rows, 2 result rows" | **unchanged, and it needed a writer that did not exist** (F38). |
+
+### 9.5 Mechanical verification — the database of every run named (§2.137)
+
+**Every run in this phase used `TEST_DATABASE_URL="postgres://hmis:hmis@localhost:5433/hmis_17b_lane"`**,
+a lane-private database created by `ensureWorkerDatabaseExists` and migrated from empty. It is named
+here because §2.137's whole lesson is that the two obligations which make the technique safe are
+exactly what erase the proof it ran.
+
+**Fail-first, quoted.** The first run of `results.test.ts` against unmodified shipped code:
+`Tests: 3 failed, 8 passed, 11 total` — `"0.9" vs "0.9000"` (the column's own `numeric(14,4)`
+scale), `"1600" vs "1600.0000"`, and `TariffError: no price for LABSVC-MP`. The first run of
+`money.test.ts`: `Tests: 2 failed, 6 passed, 8 total` — `WorkflowError: no transition
+resulted→cancelled in lab_item`, which is F37, found by the assertion rather than by reading. The
+first run of `lab.e2e.test.ts`: `expected 201 "Created", got 403 "Forbidden"` on the label print,
+which is F39.
+
+**T8 is ROUTINE and owes no fail-first. Said so rather than manufactured.**
+
+**THE FULL WORKSPACE VERIFY, RUN DETACHED WITH ITS EXIT VALUE READ FROM A FILE (rule 18).** The
+first full run at the T8 boundary came back **exit 1: `Test Suites: 3 failed, 310 passed, 313 total ·
+Tests: 2 failed, 3037 passed, 3039 total`**, and the three are three different things, reported
+separately because averaging them would hide the only one that mattered:
+
+| suite | cause | verdict |
+|---|---|---|
+| `test/ist-clock-parity.test.ts` | **A REAL DEFECT OF THIS PHASE** — `verify.ts` is a twelfth IST clock and was undeclared (F42) | fixed; the site is declared with a written argument |
+| `test/patients-lifecycle.e2e.test.ts` | `Exceeded timeout of 15000 ms for a hook` in `beforeEach` | environmental — **load average 14.21 / 19.49** during the run, and the suite runs in **9.87 s** isolated. Ledger §2.144's exact class |
+| `src/modules/opd/fhir.test.ts` | `A jest worker process (pid=2102292) was terminated by another process: signal=SIGKILL` | environmental — memory pressure at the same load |
+
+All three re-run ISOLATED after the fix: `Test Suites: 3 passed, 3 total · Tests: 6 passed, 6 total`,
+exit 0, on `hmis_17b_lane`. **The load was this session's own doing** — a close-review agent was
+reading the checkout while the verify ran — which is AGENT-RULES rule 20 pointed at myself: my own
+concurrent work made my own timing evidence unreliable.
+
+**The final full verify is run after the close review's remediation and its exit value is recorded
+in §9.6.**
+
+**Mutants (rule 21 / §3 CRITICAL) — twenty-three built, twenty-three DIED**, each run isolated with
+the isolation line read from the OUTPUT (`9 skipped, 1 passed, 10 total` / `1 failed, 13 skipped,
+14 total`), never from the exit code:
+
+- **T6, ten:** a1 (SoD on the role), a2 (read-then-write CAS), a3 (advance on the first verify),
+  a4 (the reflex on its own transaction — against a CONTROL that is the shipped code with the same
+  injected throw, which PASSED), a4b (consent ignored), a5 (the call opened at verify), a6 (no range
+  snapshot), a7 (the previous row regardless of status), a8 (no envelope check), a9 (actor type not
+  checked).
+- **T7, thirteen:** a1 (the desk invoice only), a1b (partial treated as settled), a2 + a2d (the payer
+  and the day-care prefix ignored), a3 (the interlock applied at READ — **it returned nothing to the
+  doctor**), a4 (the release writes a credit note — **₹300 outstanding became ₹0**), a5
+  (`cancelled_from` ignored), a6 (the prior version not superseded), a6b (the correction names
+  nothing), a7 (`sensitive` not checked — an HBsAg result was messaged), a7b (the notice carries more
+  than the order number), a8 (the log skipped on the alias path), a9 (the collector optional).
+
+All mutant scratch — `results.mutant.ts`, `verify.mutant.ts`, `money.mutant.ts`, `interlock.mutant.ts`,
+`reports.mutant.ts`, two scratch specs, two harness scripts — was `rm -f`'d before each commit and
+`git status --porcelain` read before each `git add`.
+
+### 9.6 The close review
+
+Filled by the two FRESH passes.
+
 ### 9.7 Actuals — the token balance at every task boundary (v3 §6)
+
+| boundary | consumed | of the 1,570,000 stop-loss |
+|---|---|---|
+| kickoff (reading, §2 re-measure, gate confirmation) | ~88,000 | 6% |
+| **T6 committed** (`f32c331`) | ~354,000 | 23% |
+| **T7 committed** (`cfba8d5`) | ~477,000 | 30% |
+| **T8 code-complete** | ~622,000 | 40% |
+| **T9 documents written** | ~645,000 | 41% |
+
+**Reported as a fraction of stop-loss ONLY here, at CLOSE** — §0's instruction, bought by 17a
+reporting "51%" at a task boundary with the review correctly named as unspent and then calling it
+"three times what the phase needs" a paragraph later.
+
+The per-task terms against §0's restated budget: T6 at **~266,000 against 250,000** (6% over),
+T7 at **~123,000 against 250,000** (51% under), T8 at **~145,000 against 300,000** (52% under),
+T9 at **~23,000 against 80,000**. The fixed term ran at 88,000 against 90,000. **T7 and T8 were both
+about half their budgets and T6 was the only overrun**, which is the opposite of the shape §0
+predicted — T8 was called "genuinely the largest surface in either half" and cost less than T6.
+
 ### 9.8 The question this phase existed to answer
-### 9.9 Deploy block — written when the owner authorises, never before; the runbook is T9's
 
-**THE CLOSE REVIEW'S BRIEF (v3 §9.7, verbatim, FIRST):**
+*Can a laboratory that can take a tube be made into a laboratory that can report on it, without any
+of the four things that make laboratory software dangerous — a wrong number reported as right, a
+result the ordering doctor cannot see, a critical value nobody telephoned, and money moved by a
+document leaving a building?*
 
-> For every threshold, cap or limit on a money or safety path: name what the compared quantity is
-> summed from, and name one real transaction whose money that sum does not include. Do the same for
-> every "already paid", "already collected", "already verified" and "already exists" check —
-> `deliveryAllowed`, the verify CAS, the SoD refusal, the critical-call close, the amendment's
-> version bump — say what it queries and which writes it would miss. **For `deliveryAllowed`, name
-> one real charge its sum does not include.**
+**Yes, and each of the four is closed by a different mechanism rather than by the same one four
+times.** The wrong number is closed by an envelope that needs a second person's name and a range
+snapshotted at entry. The invisible result is closed by a reader that does not consult the
+interlock — the one line in this module whose failure kills somebody, and the one the mutant proved
+returns nothing when it is broken. The un-telephoned critical is closed by a call opened at ENTRY
+that only a read-back closes. And the money is closed by an interlock that holds a DOCUMENT and by
+a release that provably moves not one paisa.
 
-**Money file first:** `money.ts`, then `interlock.ts`, then `reports.ts`. **Name the frozen
-interfaces consumed:** `placeOrder`, `advanceOrderItem`, `listOrdersForPatient`, `issueInvoice`,
-`issueCreditNote`, `invoiceSettlement`, `settlementState`, `withIdempotency`, `recordPhiAccess`,
-`enqueueNotification`, `transition`. **Tell both reviewers that Lane B may be running tests in this
-checkout and forbid them to run any.**
+### 9.9 Deploy block — written when the owner authorises, never before
 
-**AND THE ONE §2.140 INSTRUCTION FOR PASS 2, because this phase's surface is where it bit before:**
-when a fix REMOVES a disclosure, enumerate every OTHER field on the same response that is a FUNCTION
-of the removed one, and every caller-supplied parameter that interacts with the filter. **A filter
-applied at one level of a nested structure is not a filter; a filter applied after a limit is a
-counter.**
+**NOT WRITTEN. The module is code-complete and not deployed.** The go-live acts live in
+[`docs/runbooks/lab-go-live.md`](../../runbooks/lab-go-live.md) and the honest state of the work is
+in [`reports/2026-08-30-plan-17-gate-report.md`](reports/2026-08-30-plan-17-gate-report.md).
+
+**The blocker is not code.** Production has ONE full administrator, and DD11's separation of duties
+— the control this module is built around — cannot be satisfied by one pair of hands.

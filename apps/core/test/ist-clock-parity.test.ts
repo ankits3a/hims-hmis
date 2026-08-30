@@ -62,6 +62,16 @@ import { IST_UTC_OFFSET_MINUTES } from "../src/kernel/approvals/cumulative";
  * a task that runs only its module's suite*. The narrow-suite economy of AGENT-RULES §2.8 is still
  * right; the correction is to read CI by full SHA at the task boundary, which is what found this.
  * Declared here by 17a T4, with `ranges.ts`'s own written argument standing as the justification.
+ *
+ * ═══ THE TWELFTH ARRIVED, 2026-08-30 (Plan 17b T6) — AND THE SHAPE REPEATED EXACTLY ═══
+ *
+ * `modules/lab/verify.ts` carries the offset because DD11's single-operator night window is
+ * 21:00–07:00 **IST**. Same story as the eleventh, one task later: the module's own suite was green,
+ * this census only runs in the workspace suite, and the full verify is what found it. The lesson is
+ * not new and the friction worked — but it is worth recording that **two consecutive lab tasks each
+ * added a clock and neither noticed until the full run**, which says the narrow-suite economy of
+ * AGENT-RULES §2.8 needs one companion habit: a phase that computes an IST anything reads THIS file
+ * before it commits, not after.
  */
 
 const IST_OFFSET_MS = 19_800_000; // 5h30m. Design law, no DST.
@@ -86,6 +96,20 @@ const SITES: { file: string; expr: string }[] = [
   // importing, and it is the `grn.ts` argument one module over: the lab must not depend on the
   // outpatient department to know what day it is.
   { file: "src/modules/lab/ranges.ts", expr: "5.5 * 60 * 60 * 1000" },
+  // PLAN 17b T6 — THE TWELFTH, and it was caught by this census in the full verify exactly as the
+  // paragraph above records for the eleventh: the module's own suite was green and this file only
+  // runs in the workspace run. Declared here rather than worked around.
+  //
+  // `verify.ts` decides whether a single operator may release their own result, and DD11 makes that
+  // a property of the SHIFT: 21:00–07:00 IST. The window has to be read off the clock the hospital
+  // works to, and the alternative — accepting `nightMode: true` as caller input — is a boolean that
+  // switches off separation of duties for whoever wants it off (§9.2 F34).
+  //
+  // **It is the OFFSET and not `Intl` with `Asia/Kolkata` deliberately.** Formatting an hour through
+  // the IANA zone would compute the same answer and would NOT appear in this census, which is the
+  // whole reason not to do it: a reader asking "where does the laboratory decide what time it is"
+  // must find this line. One mechanism, counted in one place, argued for in writing.
+  { file: "src/modules/lab/verify.ts", expr: "5.5 * 60 * 60 * 1000" },
 ];
 
 /** A product of number literals, with `IST_UTC_OFFSET_MINUTES` resolved. No eval, no Function. */

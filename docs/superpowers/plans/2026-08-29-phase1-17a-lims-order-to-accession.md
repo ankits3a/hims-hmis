@@ -1198,6 +1198,21 @@ uniquely owns is the sentence a bench reads rather than the invariant. A row dec
 first kill would have recorded none of that.
 ### 9.9 Deploy block — written when the owner authorises, never before
 
+> **AMENDED 2026-08-30 BY 17b T9 — THE RUNBOOK NOW EXISTS AND IT IS THE AUTHORITY.**
+>
+> Everything this section lists has been carried into
+> [`docs/runbooks/lab-go-live.md`](../../runbooks/lab-go-live.md), in order, with what proves each
+> step. **Read that, not this**: this paragraph is the record of what 17a knew at its own close, and
+> the runbook adds four things 17a could not have known — the three kernel `orders.*` grants, the
+> `billing.credit.extend` grant DD6 makes unavoidable, the drill scripts, and above all **F39: a
+> login holding all fifteen lab permissions and none of the four lab ROLE KEYS cannot draw blood**,
+> because the workflow engine checks `user_roles` and never consults permissions. The honest state
+> of the whole module is
+> [`reports/2026-08-30-plan-17-gate-report.md`](reports/2026-08-30-plan-17-gate-report.md).
+>
+> **The go-live blocker is not code**: production still has ONE full administrator, and DD11's
+> separation of duties cannot be satisfied by one pair of hands.
+
 **NOT AUTHORISED, NOT WRITTEN.** What execution established the runbook will have to contain, so the
 list is not re-derived: the `LAB` `opd_departments` row (production has twelve departments and no
 `LAB`, S5 — `openLabWalkin` refuses `unknown_department` until it exists); **exactly ONE** active
