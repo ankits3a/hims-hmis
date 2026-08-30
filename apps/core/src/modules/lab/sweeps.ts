@@ -140,6 +140,7 @@ export async function sweepLabNonReturn(
      * The per-item try/catch is the other half: one item's billing refusal must not abort the batch
      * behind it, which was the second way this loop lost work.
      */
+    let creditNoteId: string | null = null;
     try {
       await withTx(db, async (tx: Tx) => {
       await transition(tx, item.instanceId, "cancelled", actor);
@@ -176,9 +177,13 @@ export async function sweepLabNonReturn(
           reason: `lab test cancelled: no recollection within ${NON_RETURN_DAYS} days`,
           lines: [{ invoiceLineId: item.invoiceLineId, qty: 1 }],
         });
-        report.creditNotes.push({ orderItemId: item.orderItemId, creditNoteId: note.creditNoteId });
+        creditNoteId = note.creditNoteId;
       }
       });
+      /** Pushed AFTER the commit — a COMMIT failure must not report a note that rolled back. */
+      if (creditNoteId !== null) {
+        report.creditNotes.push({ orderItemId: item.orderItemId, creditNoteId });
+      }
       report.cancelled.push({
         orderItemId: item.orderItemId,
         specimenNo: specimenNoByItem.get(item.orderItemId) ?? "",
@@ -194,6 +199,28 @@ export async function sweepLabNonReturn(
       });
     }
 
+  }
+
+  /**
+   * ═══ AND THE BATCH ESCALATES — close review pass 2, finding 2 ═══
+   *
+   * The per-item catch is right: one billing refusal must not abort the items behind it. But
+   * swallowing it moved the failure from the channel that is MONITORED to the one that is
+   * discarded. `scheduler.ts` catches a throwing run, writes an ERROR heartbeat and appends
+   * `sweep.failed`, and `alerts.yml` carries both lab jobs in the staleness and `absent()` chains
+   * (F19) — while `jobs.ts` drops this function's return value on the floor. So a deterministic
+   * failure (no `credit_note` series for the new financial year, say) would have refunded nobody,
+   * for ever, with a green heartbeat and no page. The first remediation's header claimed the
+   * failure would be "loud, and still visible"; it was neither.
+   *
+   * Throwing AFTER the loop keeps both properties: every item is still attempted, and the
+   * scheduler's existing alerting does the escalating.
+   */
+  if (report.failed.length > 0) {
+    throw new Error(
+      `sweepLabNonReturn: ${report.failed.length} of ${due.length} items could not be cancelled ` +
+        `and refunded — ${report.failed.map((f) => `${f.orderItemId}: ${f.reason}`).join("; ")}`,
+    );
   }
 
   return report;
@@ -275,9 +302,26 @@ export async function sweepLabSla(
         id: newId(), orderItemId: item.orderItemId, stage: item.currentState,
         dueAt, breachedAt: now, notified: false,
       })
-      .onConflictDoNothing({ target: [labSlaBreaches.orderItemId, labSlaBreaches.stage] })
+      /**
+       * ═══ ONCE PER *ENTRY*, NOT ONCE PER STAGE EVER — close review pass 2, finding 3 ═══
+       *
+       * `lab_sla_breaches_item_stage_ux` is `(item, stage)`, and the first pass reported this as
+       * needing a migration. It does not: the row already carries `due_at`, and a RE-ENTERED stage
+       * has a strictly later one, so an upsert guarded on `due_at` distinguishes "already told you
+       * about this breach" from "this stage was entered again and breached again".
+       *
+       * It matters now in a way it did not before, and CRITICAL 1's fix is why: reject → redraw →
+       * reject again is the ordinary difficult-draw case, and `recollection_pending` carries a
+       * 24-hour ACTIVE escalation to `lab_reception`. Without this, the patient who was stuck twice
+       * is exactly the one nobody is paged about.
+       */
+      .onConflictDoUpdate({
+        target: [labSlaBreaches.orderItemId, labSlaBreaches.stage],
+        set: { dueAt, breachedAt: now, notified: false },
+        setWhere: lt(labSlaBreaches.dueAt, dueAt),
+      })
       .returning({ id: labSlaBreaches.id });
-    /** Already recorded for this (item, stage) — the second sweep says nothing. */
+    /** No row back ⇒ this exact breach was already announced. The second sweep says nothing. */
     if (inserted.length === 0) continue;
 
     await withTx(db, (tx: Tx) => appendEvent(tx, labSlaBreached.make({

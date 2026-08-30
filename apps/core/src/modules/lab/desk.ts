@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
@@ -8,6 +8,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { placeOrder } from "../../kernel/orders/place";
 import { startInstance } from "../../kernel/workflow/instances";
 import { issueInvoice } from "../billing";
+import { resolvePatientId } from "../patients";
 import { duplicateWarnings } from "./duplicates";
 import { LabError } from "./errors";
 import { labAttributionUnverifiedFlagged, labOrderDesked } from "./events";
@@ -251,11 +252,35 @@ export async function deskOrder(
    * merely un-labellable.
    */
   if (input.orderGroupId !== undefined) {
-    const foreign = await tx
+    /**
+     * ═══ SERIALISED, AND COMPARED ON THE CANONICAL PATIENT — close review pass 2, findings 4 & 6 ═══
+     *
+     * Two corrections to the first remediation, and the first is the dangerous one.
+     *
+     * **The merge chain.** `patients/merge.ts` moves allergies and guardians and does NOT repoint
+     * `orders.patient_id` — so one PERSON legitimately has orders under two ids, which is precisely
+     * why `duplicates.ts` resolves the chain before it looks. Comparing raw ids made a merged
+     * patient's own add-on look like a second person, and `printLabels` then refused the whole
+     * group for ever with the money already taken. A safety guard that fails closed on the
+     * legitimate act is worse than the hole it closes.
+     *
+     * **The race.** A bare `SELECT` under READ COMMITTED lets two calls carrying the same NEW group
+     * id both read zero rows and both place — which is exactly the "the clerk's screen still holds
+     * the group id" case this guard is for. The advisory lock is the house pattern
+     * (`kernel/ops/mode.ts`, `users-admin.controller.ts`), taken first and released at commit, so it
+     * introduces no new lock ordering.
+     */
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.orderGroupId}))`);
+    const canonical = (await resolvePatientId(tx, input.patientId)) ?? input.patientId;
+    const existing = await tx
       .select({ patientId: orders.patientId })
       .from(orders)
-      .where(and(eq(orders.orderGroupId, input.orderGroupId), ne(orders.patientId, input.patientId)))
-      .limit(1);
+      .where(eq(orders.orderGroupId, input.orderGroupId));
+    const foreign: { patientId: string }[] = [];
+    for (const row of existing) {
+      const rowCanonical = (await resolvePatientId(tx, row.patientId)) ?? row.patientId;
+      if (rowCanonical !== canonical) foreign.push(row);
+    }
     if (foreign.length > 0) {
       throw new LabError(
         "unknown_service",

@@ -3,7 +3,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { deskAndLabel, seedLabDeskBase, serviceIdForLabCode, uhidOf } from "../../../test/helpers/lab";
 import { withTx } from "../../kernel/db/client";
 import {
-  events, invoiceLines, labItems, labSpecimenItems, labSpecimens, orderItems,
+  events, invoiceLines, labItems, labSpecimenItems, labSpecimens, orderItems, orders,
 } from "../../kernel/db/schema";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { deskOrder } from "./desk";
@@ -241,6 +241,39 @@ describe("lab accession (17a T5)", () => {
       orderGroupId: first.orderGroupId,
       items: [{ serviceId: serviceIdForLabCode("LFT") }],
     }))).rejects.toThrow(LabError);
+  });
+
+  /**
+   * ═══ PASS 2, FINDING 4 — THE ONE-PATIENT GUARD MUST FOLLOW THE MERGE CHAIN ═══
+   *
+   * `merge.ts` does not repoint `orders.patient_id`, so one PERSON legitimately has orders under a
+   * winner id and a loser id. Comparing raw ids made that look like two people: the desk refused a
+   * merged patient's own add-on, and `printLabels` refused the whole group for ever with the money
+   * already taken. A safety guard that fails closed on the legitimate act is worse than the hole.
+   */
+  it("PASS 2 finding 4: a group spanning a MERGE is one person, and still labels", async () => {
+    const first = await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
+      patientId: fx.patientId, encounterNo: fx.encounterNo, serviceDate: fx.serviceDate,
+      orderingClinicianId: fx.pathologist.id, credit: { reason: "counter" },
+      items: [{ serviceId: serviceIdForLabCode("CBC") }],
+    }));
+    /** The same person under their pre-merge registration — `mergedLoserId` resolves to `patientId`. */
+    await db.update(orders).set({ patientId: fx.mergedLoserId }).where(eq(orders.id, first.orderId));
+
+    const added = await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
+      patientId: fx.patientId, encounterNo: fx.encounterNo, serviceDate: fx.serviceDate,
+      orderingClinicianId: fx.pathologist.id, credit: { reason: "counter" },
+      orderGroupId: first.orderGroupId,
+      items: [{ serviceId: serviceIdForLabCode("LFT") }],
+    }));
+    expect(added.orderGroupId).toBe(first.orderGroupId);
+
+    /** And the tubes print — before the fix this refused `tube_mismatch` for BOTH orders. */
+    const uhid = await uhidOf(db, fx.patientId);
+    const { specimens } = await printLabels(db, fx.bench.actor, {
+      orderGroupId: first.orderGroupId, scannedUhid: uhid,
+    });
+    expect(specimens.length).toBeGreaterThan(0);
   });
 
   /* ───────────── A9 — A TUBE WHOSE EVERY ITEM IS CANCELLED ───────────── */

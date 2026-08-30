@@ -168,9 +168,15 @@ export async function receive(
   }
 
   const instances = await tx
-    .select({ orderItemId: labItems.orderItemId, instanceId: labItems.instanceId })
+    .select({
+      orderItemId: labItems.orderItemId, instanceId: labItems.instanceId,
+      identityRecheckBy: labItems.identityRecheckBy,
+    })
     .from(labItems)
     .where(inArray(labItems.orderItemId, liveIds));
+  const existingRecheckBy = new Map(
+    instances.filter((r) => r.identityRecheckBy !== null).map((r) => [r.orderItemId, r.identityRecheckBy!]),
+  );
 
   for (const row of instances) {
     /** The lab's own machine first, then the envelope's — DD4's projection, in that order. */
@@ -182,9 +188,36 @@ export async function receive(
      */
     if (notYetStarted.has(row.orderItemId)) {
       await advanceOrderItem(tx, actor, decls, row.orderItemId, "in_progress", { at: now });
+    } else {
+      /**
+       * ═══ THE SKIPPED PROJECTION STILL CHECKS WHAT IT SKIPS — pass 2, finding 7 ═══
+       *
+       * `advanceOrderItem` was the only thing re-reading the envelope inside this loop, so skipping
+       * it for an already-started item removed the guard as well as the write. If the non-return
+       * sweep cancelled the item between the live-set read and here, the bench would start a test
+       * the envelope says was withdrawn and refunded. Re-assert instead of assuming.
+       */
+      const [current] = await tx
+        .select({ status: orderItems.status })
+        .from(orderItems)
+        .where(eq(orderItems.id, row.orderItemId));
+      if (current?.status !== "in_progress") {
+        throw new LabError(
+          "no_active_order",
+          `order item ${row.orderItemId} is ${current?.status ?? "gone"} and cannot be accessioned`,
+        );
+      }
     }
     await tx.update(labItems)
-      .set({ tatStartedAt: now, identityRecheckBy: input.identityRecheckBy ?? null })
+      /**
+       * `?? existing` — pass 2, finding 11. The redraw path is reachable now, and writing `null`
+       * here wiped the identity re-check a PREVIOUS accession recorded (02 A2/A6's control, and
+       * NABL asks who performed it) whenever the replacement happened to be wristband-scanned.
+       */
+      .set({
+        tatStartedAt: now,
+        identityRecheckBy: input.identityRecheckBy ?? existingRecheckBy.get(row.orderItemId) ?? null,
+      })
       .where(eq(labItems.orderItemId, row.orderItemId));
   }
 
@@ -323,8 +356,11 @@ export async function reject(
 
   /**
    * The items go to `recollection_pending`, which is the state DD20's seven-day sweep measures the
-   * age of. They stay `pending` on the ENVELOPE: nothing has started, and a ward reading the order
-   * should see a test still owed rather than one in progress.
+   * age of. **The ENVELOPE is deliberately left where it is** — `placed` for a tube rejected before
+   * accession, `in_progress` for one rejected after, which is correct in both cases: the department
+   * genuinely has the work once it has accessioned it, and `transitions.ts` rules that every lab
+   * stage lives INSIDE `in_progress`. (An earlier version of this comment said the items "stay
+   * `pending`", which is not one of the envelope's four states at all — pass 2, finding 9.)
    */
   const instances = await tx
     .select({ orderItemId: labItems.orderItemId, instanceId: labItems.instanceId })

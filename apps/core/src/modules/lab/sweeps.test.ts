@@ -177,13 +177,17 @@ describe("the lab worker sweeps (17a T5)", () => {
 
   it("MAJOR 3: the collection queue requires lab.worklist.read and refuses a non-user actor", async () => {
     await deskAndLabel(db, fx, ["CBC"], { draw: false });
-    /** A system actor has no business rendering a worklist of named patients and their UHIDs. */
+    /**
+     * The ENVELOPE's refusals, not a borrowed lab code (pass 2, finding 5): `actor_cannot_read` and
+     * `permission_denied` are what `kernel/orders/read.ts` uses for exactly these two gates, and
+     * they carry 403 rather than the 409 "re-read and retry" the first remediation served.
+     */
     await expect(collectionQueue(db, { type: "system", id: "some-job" }, { serviceDate: fx.serviceDate }))
-      .rejects.toThrow(LabError);
+      .rejects.toMatchObject({ code: "actor_cannot_read" });
     /** A real user holding nothing is refused by permission, not served. */
     const nobody = await mkUser(db, "holds.nothing", []);
     await expect(collectionQueue(db, nobody.actor, { serviceDate: fx.serviceDate }))
-      .rejects.toThrow(LabError);
+      .rejects.toMatchObject({ code: "permission_denied" });
   }, 120_000);
 
   it("MAJOR 3: a restricted test's CODE is omitted from the worklist, and the tube still appears", async () => {
@@ -203,6 +207,42 @@ describe("the lab worker sweeps (17a T5)", () => {
     /** AND THE TEST NAME IS NOT: the existence of the HIV test is the sensitive fact (DD11). */
     expect(queue[0]!.orderableCodes).toEqual([]);
   }, 120_000);
+
+  /**
+   * ═══ PASS 2, FINDING 1 — THE OMISSION MUST NOT BE COUNTABLE ═══
+   *
+   * The first remediation filtered restricted codes out and left `itemIds` beside them, so
+   * `orderableCodes.length < itemIds.length` proved a restricted test existed — the
+   * `hasHiddenItems` boolean the kernel deleted, rebuilt from two fields. A row carrying a
+   * restricted test must be INDISTINGUISHABLE from one that does not.
+   */
+  it("PASS 2 finding 1: a restricted row is indistinguishable from an unrestricted one", async () => {
+    await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
+      patientId: fx.patientId, encounterNo: fx.encounterNo, serviceDate: fx.serviceDate,
+      orderingClinicianId: fx.pathologist.id, credit: { reason: "counter" },
+      items: [{ serviceId: serviceIdForLabCode("HIV"), consent: { recordedBy: fx.desk.id } }],
+    }));
+    await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
+      patientId: fx.otherPatientId, encounterNo: fx.otherEncounterNo, serviceDate: fx.serviceDate,
+      orderingClinicianId: fx.pathologist.id, credit: { reason: "counter" },
+      items: [{ serviceId: serviceIdForLabCode("CBC") }],
+    }));
+    for (const group of await db.select().from(orders)) {
+      const uhid = await uhidOf(db, group.patientId);
+      await printLabels(db, fx.bench.actor, { orderGroupId: group.orderGroupId, scannedUhid: uhid });
+    }
+
+    const queue = await collectionQueue(db, fx.bench.actor, { serviceDate: fx.serviceDate });
+    expect(queue).toHaveLength(2);
+    /**
+     * NEITHER row carries a code — not "the restricted one is empty and the other is not", which is
+     * the difference a reader counts. The bench holds `lab.worklist.read` and not
+     * `orders.read.restricted`, which `seed-roles.ts` grants to no lab role by owner ruling.
+     */
+    expect(queue.map((q) => q.orderableCodes)).toEqual([[], []]);
+    /** And the length relation that WAS the oracle now holds identically on both rows. */
+    expect(queue.map((q) => q.orderableCodes.length - q.itemIds.length)).toEqual([-1, -1]);
+  }, 180_000);
 
   it("a drawn tube leaves the collection queue", async () => {
     const placed = await deskAndLabel(db, fx, ["CBC"]);

@@ -7,6 +7,7 @@ import { nextEpisodeNo } from "../../kernel/episodes/series";
 import { LIVE_ITEM_STATUSES } from "../../kernel/orders/transitions";
 import { appendEvent } from "../../kernel/events/append";
 import { transition } from "../../kernel/workflow/instances";
+import { resolvePatientId } from "../patients";
 import { LabError } from "./errors";
 import { labLabelPrinted } from "./events";
 import { assertRightPatient } from "./collection";
@@ -146,7 +147,16 @@ async function printLabelsInTx(
    * is labelled for Ram Kumar and 17b would result Ram Kumar Yadav's test against it. DD10 exists
    * for exactly this (E1, two Ram Kumars) and a guard that checks one row of N is not that guard.
    */
-  const patientIds = [...new Set(items.map((i) => i.patientId))];
+  /**
+   * CANONICAL ids, not raw ones — close review pass 2, finding 4. `merge.ts` does not repoint
+   * `orders.patient_id`, so one person's group legitimately carries two ids across a merge, and
+   * comparing raw ids refused the label for BOTH orders with the money already taken.
+   */
+  const canonicalOf = new Map<string, string>();
+  for (const raw of new Set(items.map((i) => i.patientId))) {
+    canonicalOf.set(raw, (await resolvePatientId(tx, raw)) ?? raw);
+  }
+  const patientIds = [...new Set([...canonicalOf.values()])];
   if (patientIds.length > 1) {
     throw new LabError(
       "tube_mismatch",

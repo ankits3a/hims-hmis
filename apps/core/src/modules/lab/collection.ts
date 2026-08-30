@@ -9,6 +9,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { LIVE_ITEM_STATUSES } from "../../kernel/orders/transitions";
 import { transition } from "../../kernel/workflow/instances";
 import { displayNameFor } from "../patients";
+import { OrderError } from "../../kernel/orders/errors";
 import { LabError } from "./errors";
 import { labSpecimenCollected, labTubeMismatchFlagged } from "./events";
 import type { Actor } from "@hmis/contracts";
@@ -128,11 +129,31 @@ export async function collectionQueue(
    * and `agent` outright for the same reason, and `hasPermission` handed a non-user id returns
    * false, which would report "this user lacks the permission" about something that is not a user.
    */
+  /**
+   * ═══ THE KERNEL'S OWN REFUSALS, NOT A BORROWED LAB CODE — close review pass 2, finding 5 ═══
+   *
+   * The first remediation threw `LabError("no_active_order")` here, which maps to **409** — the
+   * CAS-loser status whose documented meaning is "re-read and retry". A client told it lacks a
+   * permission would have polled a worklist it can never be allowed to see. Worse, `errors.ts`'s
+   * own header forbids a later task borrowing a neighbouring code, and pass 1 had already reported
+   * that practice as MAJOR 7: declining to fix it and then extending it is not defensible.
+   *
+   * This function reads `order_items`, so the ENVELOPE's vocabulary is the right one and it already
+   * carries both refusals with the right statuses — `kernel/orders/read.ts:121` refuses a
+   * non-user actor with exactly `actor_cannot_read`, for exactly this reason.
+   */
   if (actor.type !== "user") {
-    throw new LabError("no_active_order", `a ${actor.type} actor may not read the collection worklist`);
+    throw new OrderError(
+      "actor_cannot_read",
+      `a ${actor.type} actor may not read the collection worklist — a reader that cannot verify ` +
+        "its subject must not serve one",
+    );
   }
   if (!(await hasPermission(db, actor.id, LAB_WORKLIST_READ, "hospital"))) {
-    throw new LabError("no_active_order", `reading the collection worklist requires ${LAB_WORKLIST_READ}`);
+    throw new OrderError(
+      "permission_denied",
+      `reading the collection worklist requires ${LAB_WORKLIST_READ}`,
+    );
   }
   const canSeeRestricted = await hasPermission(db, actor.id, ORDERS_READ_RESTRICTED, "hospital");
   const specimens = await db
@@ -208,8 +229,22 @@ export async function collectionQueue(
       priority,
       /** One fasting test on the tube makes the whole draw a fasting draw. */
       requiresFasting: mine.some((m) => m.requiresFasting),
-      /** DD11 — omitted, not flagged: the EXISTENCE of the test is the sensitive fact. */
-      orderableCodes: mine.filter((m) => canSeeRestricted || !m.restricted).map((m) => m.code),
+      /**
+       * ═══ ALL OR NOTHING, AND PASS 2 IS WHY — close review pass 2, finding 1 ═══
+       *
+       * The first remediation filtered restricted codes OUT of this array and left `itemIds`
+       * unfiltered beside it. That is a counting oracle: `orderableCodes.length < itemIds.length`
+       * PROVES a restricted test exists, and with one item and an empty array the reader learns the
+       * patient's only test is one of six — narrowed further by the container, since `printLabels`
+       * chose it from the restricted orderable's own catalogue row. Removing the field for the
+       * restricted rows re-created the `hasHiddenItems` boolean `kernel/orders/read.ts` deleted.
+       *
+       * So a reader without clearance gets NO codes on ANY row, and every row looks alike. A
+       * phlebotomist draws from `specimenType`, `container`, `requiresFasting` and `priority`; the
+       * header's argument — nothing about a worklist requires knowing it is an HIV test — applies
+       * just as well to a CBC.
+       */
+      orderableCodes: canSeeRestricted ? mine.map((m) => m.code) : [],
       itemIds: mine.map((m) => m.itemId),
     });
   }
