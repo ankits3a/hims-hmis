@@ -54,6 +54,26 @@ export const EPISODE_SERIES = {
    * number for one tube (adversarial finding F17).
    */
   daycare: "D",
+  /**
+   * PLAN 18a T1 / DD3 — THE IMAGING STUDY'S ACCESSION NUMBER, and it is a SECOND number for
+   * radiology rather than a reuse of `R`.
+   *
+   * `radiology_order` (`R`) numbers the ORDER. A study needs its own, for the reason the file
+   * header already gives about tubes: **one order yields several studies.** "CT chest + CT abdomen"
+   * is one `R` number, two order items, two studies, two machines, two reports and two accessions —
+   * and overloading `R` would leave the second study unnameable on a label, in a worklist, or in a
+   * DICOM tag. Phase 0 §6.7 states the rule in as many words: *"specimens, studies, dispenses number
+   * themselves from their own series; `order_no` is never overloaded to name a tube."*
+   *
+   * **`X` RATHER THAN `I`, AND THE REASON IS A PRINTED LABEL (catalogue A9).** `I` and `1` are one
+   * glyph on a dry-thermal accession label read at arm's length in a dark scanner room, and the
+   * accession is the string a technologist types back into a console. `X` collides with no letter
+   * in use (`V A L S R P D` and the `GRN` exception) and with none reserved.
+   *
+   * The format is unchanged, which is what keeps it DICOM-safe: `X2608290001` is 11 characters,
+   * inside the 16-character accession limit 18b will write it into.
+   */
+  imaging_study: "X",
 } as const;
 
 export type EpisodeSeriesKey = keyof typeof EPISODE_SERIES;

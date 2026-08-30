@@ -141,7 +141,17 @@ export async function truncateAll(db: Db): Promise<void> {
   // two rules above, each group's OWN statement must carry the name, and the second truncate
   // of an already-empty table is a no-op. Precedent: `approvals` sits in two statements above.
   await db.execute(
-    sql`truncate table notifications, alerts, break_glass_grants, temp_role_grants, user_totp, auth_sessions,
+    // PLAN 18a T1 — `pcpndt_registered_persons.user_id` REFERENCES `users.id`, the only foreign key
+    // this phase points at that table, so §3.35/§3.12 put it in THIS statement — and `pcpndt_form_f`
+    // comes with it because `pcpndt_form_f.person_id` points AT the person row. The
+    // `notifications`/`approvals` precedent of a name in two statements, for the same reason.
+    //
+    // The registered PERSON is an FK and the registration's IN-CHARGE is deliberately not: the
+    // person row answers "may this login acquire this scan" at `startAcquisition`, and a dangling
+    // id there is a scan attributed to nobody. The in-charge is a stewardship record, and an FK
+    // would turn deactivating a leaver into a foreign-key problem on a statutory row.
+    sql`truncate table pcpndt_form_f, pcpndt_registered_persons,
+        notifications, alerts, break_glass_grants, temp_role_grants, user_totp, auth_sessions,
         role_assignments, role_permissions, agents, sod_pairs, permissions, roles, users`,
   );
   // `retention_legal_holds` (Plan 11a D6) joins THIS statement and only this one: its single FK
@@ -266,6 +276,8 @@ export async function truncateAll(db: Db): Promise<void> {
         resource_status_history, resources,
         ot_incidents, ot_deposit_holds, ot_definitions, pacu_scores, ot_specimens, ot_case_implants,
         ot_counts, ot_checklist_runs, ot_case_gates, ot_lists, ot_cases, daycare_encounters,
+        imaging_critical_findings, imaging_reports, imaging_bill_decisions, imaging_safety_screenings,
+        imaging_studies, pcpndt_form_f, pcpndt_form_f_serials, pcpndt_registered_machines,
         order_item_transitions, order_items, orders,
         lab_sla_breaches, lab_critical_calls, lab_report_deliveries, lab_reports,
         lab_results, lab_specimen_items, lab_specimens, lab_items,
@@ -299,20 +311,53 @@ export async function truncateAll(db: Db): Promise<void> {
   //
   // `orders` is deliberately NOT in this statement: nothing in the tariff group points at it, and
   // truncating a table requires the tables that POINT AT it, never its own parents.
+  //
+  // ───────── PLAN 18a T1 — THE STUDY IS NAMED IN **THREE** STATEMENTS, AND MUST BE ─────────
+  //
+  // §3.35/§3.12 again, and `imaging_studies` is the most connected table this repository has:
+  // `patient_id` → `patients`, `order_id`/`order_item_id` → the envelope, `device_resource_id` →
+  // `resources` and `invoice_line_id` → `billing.invoice_lines` (all four in the big statement
+  // above) AND `service_id` → `services`, which is HERE. So it is named in both, and the four
+  // tables that point AT it — reports, screenings, bill decisions, and critical findings via
+  // reports — are named wherever it is.
+  //
+  // The second truncate of an already-empty table is a no-op. A MISSING name is
+  // `cannot truncate a table referenced in a foreign key constraint` — a STATIC check that does not
+  // care whether either table holds a row, so it breaks every suite in the workspace from the first
+  // `truncateAll` rather than leaking one fixture into one test.
   await db.execute(
     sql`truncate table order_item_transitions, order_items,
+        imaging_critical_findings, imaging_reports, imaging_bill_decisions,
+        imaging_safety_screenings, imaging_studies,
         lab_sla_breaches, lab_critical_calls, lab_report_deliveries, lab_reports,
         lab_results, lab_specimen_items, lab_specimens, lab_items,
         lab_orderable_analytes, lab_reflex_rules, lab_orderables,
         tariff_items, regulated_prices, adjustment_rules, gst_config, gst_settings,
         tariff_versions, services`,
   );
+  // ───────── PLAN 18a T1 — the PCPNDT register's own group, and `imaging_definitions` alone ─────────
+  //
+  // `pcpndt_registrations` is pointed at by the machine and person lists and by nothing else, so the
+  // register is its own group — and every table that points into it, transitively, is named here:
+  // machines and persons at the registration, serials and forms at the machine, forms at the person.
+  //
+  // `imaging_definitions` references NOTHING and nothing references it: `approval_id`, `drafted_by`
+  // and `published_by` are plain text (the `ot_definitions` precedent), so by §3.35 it has no claim
+  // on any group's statement and takes its own — the `search_audit` / `import_quarantine` pattern.
+  // It MUST be here: a leftover ACTIVE `study_types` version would make the next suite's
+  // `activeDefinition` return a body that test never wrote, and
+  // `imaging_definitions_one_active_ux` would refuse that suite's own publish.
+  await db.execute(
+    sql`truncate table pcpndt_form_f, pcpndt_form_f_serials, pcpndt_registered_machines,
+        pcpndt_registered_persons, pcpndt_registrations`,
+  );
+  await db.execute(sql`truncate table imaging_definitions`);
   // ───────── PLAN 17 T1 — THE ANALYTE ISLAND, AND WHY IT NEEDS ITS OWN STATEMENT ─────────
   //
-  // §3.35/§3.12, third and fourth application in this file: `lab_analytes` and
-  // `lab_reference_ranges` point at NOTHING that any statement above truncates — the catalogue's
-  // measurable quantities are a master of their own — so no group has a claim on them and they take
-  // their own statement (16a F2's island rule).
+  // §3.35/§3.12 again, and this is the 16a F2 case rather than the `order_items` one above.
+  // `lab_analytes` and `lab_reference_ranges` point at NOTHING that any statement above truncates —
+  // the catalogue's measurable quantities are a master of their own — so no group has a claim on
+  // them and they take their own statement.
   //
   // The four names that ride WITH them are Postgres's PRESENCE rule, not a second truncate of the
   // same rows: `lab_orderable_analytes`, `lab_results` and `lab_reflex_rules` all carry an

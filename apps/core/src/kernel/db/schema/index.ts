@@ -63,3 +63,15 @@ export * from "./orders";
 // tables are the lab's EXTENSION of the order envelope, keyed `order_item_id`, and phase 0 §8.1
 // forbids them adding a column to it.
 export * from "./lab";
+// PLAN 18a T1 — radiology & imaging, and the PCPNDT register. LAST, because between them they are
+// downstream of SIX of the files above: `imaging_studies` references `patients`, `orders` /
+// `order_items` (it is an EXTENSION of the envelope, keyed `order_item_id`, phase 0 §8.1),
+// `tariff.services`, `resources` (a modality is a `device` registry row, DD6) and
+// `billing.invoice_lines` (DD12 — the study LINKS to a line the counter raised and composes no
+// invoice of its own). `pcpndt.ts` reads `resources`, `patients` and `auth.users`.
+//
+// `pcpndt` is exported BESIDE radiology rather than inside it because it is its own MANIFEST (DD1):
+// 15b and 62 install the statutory register without installing radiology, and
+// `pcpndt_form_f.study_id` is deliberately plain text for exactly that reason (§6.5).
+export * from "./radiology";
+export * from "./pcpndt";

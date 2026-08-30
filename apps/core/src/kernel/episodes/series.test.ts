@@ -34,10 +34,10 @@ describe("formatEpisodeNo (pure)", () => {
    * bare `G` later would make `G` + `RN2608` + `250007` parse as a G-series number of a different
    * day, silently, in any reader that slices by position.
    */
-  it("the key census is the eight reserved document types, and no more", () => {
+  it("the key census is the nine reserved document types, and no more", () => {
     expect(Object.keys(EPISODE_SERIES).sort()).toEqual([
-      "appointment", "daycare", "grn", "lab_order", "lab_specimen", "pharmacy_dispense",
-      "radiology_order", "visit",
+      "appointment", "daycare", "grn", "imaging_study", "lab_order", "lab_specimen",
+      "pharmacy_dispense", "radiology_order", "visit",
     ]);
   });
 

@@ -84,12 +84,20 @@ describe("the order envelope's parity pins", () => {
    * tube serves several tests, so a single number cannot express a haemolysed sample being redrawn
    * without cancelling the whole order.
    */
+  /**
+   * AMENDED BY PLAN 18a T1 — the CENSUS moved and the CLAIM did not. Phase 0 added no series and
+   * still adds none; 18a added `imaging_study` (`X`), which is a STUDY's accession and not an order
+   * kind's letter, so the two assertions below about `lab_order` and `radiology_order` are
+   * untouched and only the key list grew. The census is here rather than only in
+   * `episodes/series.test.ts` precisely so that a phase claiming an order kind cannot quietly mint
+   * from a letter nobody reserved.
+   */
   it("the letters an order kind may mint from already exist, and this phase added none", () => {
     expect(EPISODE_SERIES.lab_order).toBe("L");
     expect(EPISODE_SERIES.radiology_order).toBe("R");
     expect(Object.keys(EPISODE_SERIES).sort()).toEqual([
-      "appointment", "daycare", "grn", "lab_order", "lab_specimen", "pharmacy_dispense",
-      "radiology_order", "visit",
+      "appointment", "daycare", "grn", "imaging_study", "lab_order", "lab_specimen",
+      "pharmacy_dispense", "radiology_order", "visit",
     ]);
   });
 });

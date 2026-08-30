@@ -27,7 +27,11 @@ import { bigint, date, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
 export const episodeSeries = pgTable(
   "episode_series",
   {
-    seriesKey: text("series_key").notNull(), // 'visit'|'appointment'|'lab_order'|'lab_specimen'|'radiology_order'|'pharmacy_dispense'
+    // 'visit'|'appointment'|'lab_order'|'lab_specimen'|'radiology_order'|'pharmacy_dispense'|'grn'|
+    // 'daycare'|'imaging_study'. THE LIST IN `episodes/series.ts` IS THE ONE THAT BINDS — this
+    // comment is a reading aid and `EPISODE_SERIES` is the fact (Plan 18a T1 added `imaging_study`,
+    // the study's `X` accession, which is a SECOND radiology number and not a reuse of `R`).
+    seriesKey: text("series_key").notNull(),
     serviceDate: date("service_date", { mode: "string" }).notNull(),
     nextNo: bigint("next_no", { mode: "number" }).notNull().default(1),
   },
