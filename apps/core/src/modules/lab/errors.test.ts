@@ -58,6 +58,13 @@ function throwSites(): Map<string, Set<string>> {
 
 /** The file that must throw each code, from the phase document's Produces lists. */
 const OWNED_BY: Record<LabErrorCode, string> = {
+  /**
+   * PLAN 17b T6 (F28) — the cross-cutting authorization refusal, and it is owned by `results.ts`
+   * because that is the first file 17b lands that throws it. `catalogue.ts` and `desk.ts` throw it
+   * too now (their borrowings, repaired); direction 1 only requires the OWNING file to.
+   */
+  permission_denied: "results.ts",
+
   unknown_orderable: "catalogue.ts",
   unknown_analyte: "catalogue.ts",
   foetal_sex_refused: "catalogue.ts",
@@ -84,6 +91,7 @@ const OWNED_BY: Record<LabErrorCode, string> = {
   user_actor_required: "verify.ts",
   item_not_resultable: "results.ts",
   unknown_result: "results.ts",
+  critical_already_closed: "criticals.ts",
 
   report_print_blocked: "reports.ts",
   collector_identity_required: "reports.ts",
@@ -141,12 +149,13 @@ describe("the lab error union (Plan 17 T2)", () => {
     // A compare-and-set loser is a CONFLICT: the caller's correct response is to re-read, not to
     // fix its body.
     expect(LAB_ERROR_CODES.filter((c) => labHttpStatus(c) === 409).sort()).toEqual([
-      "addon_specimen_disposed", "already_received", "already_verified", "item_not_cancellable",
-      "item_not_resultable", "no_active_order", "report_not_amendable", "specimen_not_receivable",
+      "addon_specimen_disposed", "already_received", "already_verified", "critical_already_closed",
+      "item_not_cancellable", "item_not_resultable", "no_active_order", "report_not_amendable",
+      "specimen_not_receivable",
     ]);
     // 403 is about WHO is acting — the same pair of hands twice, or a machine where a human is required.
     expect(LAB_ERROR_CODES.filter((c) => labHttpStatus(c) === 403).sort()).toEqual([
-      "absurd_override_same_actor", "sod_violation", "user_actor_required",
+      "absurd_override_same_actor", "permission_denied", "sod_violation", "user_actor_required",
     ]);
     /**
      * `report_print_blocked` IS 422 AND NOT 402, and the distinction is operational rather than

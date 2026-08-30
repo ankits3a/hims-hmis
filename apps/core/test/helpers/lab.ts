@@ -287,3 +287,32 @@ export async function deskAndLabel(
 export async function uhidOf(db: Db, patientId: string): Promise<string> {
   return (await db.select().from(patients).where(eq(patients.id, patientId)))[0]!.uhid;
 }
+
+/**
+ * PLAN 17b T6 — THE RESULT-SIDE GRANTS, AND THIS FILE IS WHERE THEY GO FOR 17a's OWN REASON (F9).
+ *
+ * `seedLabDeskBase` grants the DESK and ACCESSION permissions and deliberately stops there: it is
+ * 17a's fixture and 17a mounts nothing that results. Four suites in 17b need the same six grants,
+ * and the alternative is four copies that drift by construction (§2.54) or one test file importing
+ * another — which registers the imported file's `describe` blocks into the importing suite.
+ *
+ * **Disclosed rather than smuggled: T6's Files list says `{results,verify,criticals}.ts + tests` and
+ * names no helper**, exactly as T4's and T5's did when `seedLabDeskBase` was written (17a F9).
+ */
+export async function grantLabResultPermissions(db: Db, fx: LabDeskFixture): Promise<void> {
+  /** The BENCH keys numbers and works the call ladder. It may not sign — that is the whole of DD11. */
+  for (const p of ["lab.results.enter", "lab.results.read", "lab.criticals.close"]) {
+    await grantPermissionToRole(db, fx.registry, "lab_technician", p);
+  }
+  /** The PATHOLOGIST signs, publishes, prints and amends — and may key a number in a small lab. */
+  for (const p of [
+    "lab.results.enter", "lab.results.verify", "lab.results.read", "lab.criticals.close",
+    "lab.reports.publish", "lab.reports.print", "lab.reports.amend",
+  ]) {
+    await grantPermissionToRole(db, fx.registry, "pathologist", p);
+  }
+  /** The COUNTER hands reports over and reads the worklist; it signs nothing. */
+  for (const p of ["lab.reports.print", "lab.results.read", "lab.worklist.read"]) {
+    await grantPermissionToRole(db, fx.registry, "lab_reception", p);
+  }
+}

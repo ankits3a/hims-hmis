@@ -59,3 +59,19 @@ export {
   LAB_NON_RETURN_ACTOR, LAB_SLA_ACTOR, NON_RETURN_DAYS, sweepLabNonReturn, sweepLabSla,
 } from "./sweeps";
 export type { NonReturnSweepReport, SlaSweepReport } from "./sweeps";
+// ── PLAN 17b T6 — the number, the signature, the call ladder ──
+// `enterResult` is `Tx`-first and `verifyResult` is `Db`-first, and the asymmetry is the same one
+// 17a §6.8 records for `printLabels`: verification must WRITE on its refusal path
+// (`lab.sod_violation_blocked`), and an audit row appended on the transaction that is about to roll
+// back is an audit row that never existed (F20, and F27 one module over).
+export { enterResult, requestRerun, resultContext, LAB_RESULTS_ENTER } from "./results";
+export type {
+  EnteredResult, EnterResultInput, EnterResultOutcome, LabEntryMode, RequestRerunInput,
+} from "./results";
+export {
+  isSingleOperatorNight, verifyResult, LAB_REFLEX_ACTOR, LAB_RESULTS_VERIFY,
+  NIGHT_MODE_FROM_HOUR_IST, NIGHT_MODE_TO_HOUR_IST,
+} from "./verify";
+export type { ReflexPlacement, VerifyResultInput, VerifyResultOutcome } from "./verify";
+export { acknowledgeCritical, openCriticalCalls, LAB_CRITICALS_CLOSE } from "./criticals";
+export type { AcknowledgeCriticalInput, AcknowledgeCriticalOutcome, CriticalAttempt } from "./criticals";

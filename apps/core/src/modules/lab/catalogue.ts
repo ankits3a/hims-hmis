@@ -38,11 +38,19 @@ async function assertMayManage(exec: Db | Tx, actor: Actor): Promise<void> {
    * "this user does not hold the permission" about something that is not a user (22c-A review D11's
    * aliasing argument, one door over).
    */
+  /**
+   * ═══ `permission_denied`, NOT `catalogue_invalid` — 17b T6 repairing 17a §9.2 F28 ═══
+   *
+   * These two refusals were `catalogue_invalid` (422) because the union carried no authorization
+   * code when T3 was written and its header forbids a task widening it. 17b's §0 instructs the
+   * repair; the code exists now. A curator who lacks the grant was being told their catalogue entry
+   * was malformed, which sends them to fix a payload that was never the problem.
+   */
   if (actor.type !== "user") {
-    throw new LabError("catalogue_invalid", `a ${actor.type} actor may not curate the catalogue`);
+    throw new LabError("permission_denied", `a ${actor.type} actor may not curate the catalogue`);
   }
   if (!(await hasPermission(exec as Db, actor.id, MANAGE, "hospital"))) {
-    throw new LabError("catalogue_invalid", `curating the catalogue requires ${MANAGE}`);
+    throw new LabError("permission_denied", `curating the catalogue requires ${MANAGE}`);
   }
 }
 

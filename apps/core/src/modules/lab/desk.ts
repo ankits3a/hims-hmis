@@ -146,11 +146,19 @@ async function assertMayDesk(exec: Db | Tx, actor: Actor): Promise<void> {
    * about something that is not a user (22c-A review D11's aliasing argument). The desk is a
    * counter with a person behind it; there is no automated desking.
    */
+  /**
+   * ═══ `permission_denied`, NOT `unknown_service` — 17b T6 repairing 17a §9.2 F28 ═══
+   *
+   * A clerk without `lab.desk.operate` was told 404 *"no such service"*, indistinguishable at the
+   * wire from a real orphan `serviceId` (A5's refusal) — so a counter meeting it would go hunting
+   * the catalogue for a row that was never missing. The union carried no authorization code when T4
+   * was written; 17b's §0 instructs the repair and the code exists now.
+   */
   if (actor.type !== "user") {
-    throw new LabError("unknown_service", `a ${actor.type} actor may not order at the lab desk`);
+    throw new LabError("permission_denied", `a ${actor.type} actor may not order at the lab desk`);
   }
   if (!(await hasPermission(exec as Db, actor.id, LAB_DESK_OPERATE, "hospital"))) {
-    throw new LabError("unknown_service", `ordering at the lab desk requires ${LAB_DESK_OPERATE}`);
+    throw new LabError("permission_denied", `ordering at the lab desk requires ${LAB_DESK_OPERATE}`);
   }
 }
 

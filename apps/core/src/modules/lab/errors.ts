@@ -35,6 +35,28 @@
  *     guard is below the service.
  */
 export const LAB_ERROR_CODES = [
+  /**
+   * ═══ TWO CODES 17b ADDS, AND THE UNION'S OWN HEADER SAYS A LATER TASK MAY NOT ═══
+   *
+   * The header above rules that a task needing a code this union lacks has found a PLAN DEFECT and
+   * reports it rather than widening. 17a DID report it — §9.2 F28 — and 17b's executor seed (§0,
+   * written by the session that closed 17a) instructs this phase to add the code and repair the
+   * borrowings in as many words. So this is the reported defect being FIXED at the phase that was
+   * told to fix it, not a task helping itself; both codes are named in T6's commit message and both
+   * are disclosed in §9.2.
+   *
+   * · **`permission_denied` (F28).** T3 and T4 refused AUTHORIZATION with `catalogue_invalid` (422)
+   *   and `unknown_service` (404) — "this orderable does not exist" told to a clerk who simply
+   *   lacks a grant, and a 404 that a caller cannot distinguish from a real missing row. `errors.test.ts`
+   *   checks declared-vs-thrown in BOTH directions and had nothing to object to, which is exactly
+   *   why it went unnoticed for two tasks. The borrowings in `catalogue.ts` and `desk.ts` are
+   *   repointed here, and no test asserted either of them.
+   * · **`critical_already_closed`.** `acknowledgeCritical` closes a call on a read-back with a CAS
+   *   on `closed_at IS NULL`, and two nurses reading back the same potassium is the ordinary race.
+   *   The loser needs a 409 of its own: borrowing `already_verified` would put a word about a
+   *   pathologist's signature on a telephone call, which is F28's defect committed while fixing it.
+   */
+  "permission_denied",
   // ── catalogue (T3) ──
   "unknown_orderable",
   "unknown_analyte",
@@ -62,6 +84,7 @@ export const LAB_ERROR_CODES = [
   "user_actor_required",
   "item_not_resultable",
   "unknown_result",
+  "critical_already_closed",
   // ── reports (T7) ──
   "report_print_blocked",
   "collector_identity_required",
@@ -91,8 +114,9 @@ export class LabError extends Error {
  * · **409** for the state races (`already_received`, `already_verified`) — a CAS loser is a
  *   conflict, not a bad request, and the caller's correct response is to re-read rather than to fix
  *   its body.
- * · **403** for the two authority refusals: `sod_violation` and `absurd_override_same_actor` are
- *   both about WHO is acting (the same pair of hands twice), which is what 403 means.
+ * · **403** for the three authority refusals: `sod_violation` and `absurd_override_same_actor` are
+ *   both about WHO is acting (the same pair of hands twice), which is what 403 means — and
+ *   `permission_denied` is the plain one the union spent two tasks without (F28).
  * · **422** for every clinical hard stop — `consent_required`, `tube_mismatch`,
  *   `identity_recheck_required`, `absurd_value`, `report_print_blocked`. These ARE the refusals this
  *   phase exists to make unskippable, and the screen's job is to name the rule, which a 4xx body does.
@@ -101,6 +125,9 @@ export class LabError extends Error {
  *   take money at the wrong window.
  */
 const STATUS: Record<LabErrorCode, number> = {
+  /** 403 — the caller is known and is not allowed. Never 404: a missing grant is not a missing row. */
+  permission_denied: 403,
+
   unknown_orderable: 404,
   unknown_analyte: 404,
   foetal_sex_refused: 422,
@@ -127,6 +154,7 @@ const STATUS: Record<LabErrorCode, number> = {
   user_actor_required: 403,
   item_not_resultable: 409,
   unknown_result: 404,
+  critical_already_closed: 409,
 
   report_print_blocked: 422,
   collector_identity_required: 422,
