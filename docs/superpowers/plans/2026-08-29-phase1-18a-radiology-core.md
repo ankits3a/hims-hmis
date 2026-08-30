@@ -685,6 +685,12 @@ states a separation, it must be asserted on the plane the engine actually reads.
 
 **F10 — `consultant` IS NOT A ROLE IN THIS REPOSITORY. DECIDED: the grants go to `doctor`.**
 
+**This was not a discovery — the KICKOFF SPIKE had already found it and said so**, and it is
+recorded here as the DECISION it needed rather than as a new finding: the spike's T2 note reads
+*"none of `radiologist`/`radiographer`/`radiology_receptionist`/`pcpndt_incharge` exists, and the
+doctor role here is `doctor`, not `consultant` as the phase doc's T2 text says."* The spike named
+the discrepancy; nobody had yet ruled on which way to resolve it.
+
 §5 T2's role sketch names `consultant (+ orders.place, orders.read, radiology.orders.place,
 radiology.reports.read)`. There is no such role: the treating clinician has been `doctor` since
 Plan 02, `lab.orders.place` was granted there for the same reason, and `doctor` is the key the
@@ -820,9 +826,25 @@ signature and 17b's run-2 shape exactly.
 `until load < 6` guard rather than launched immediately, because re-running under the same
 contention would have measured the contention again (rule 20, pointed at my own instrument).
 
-**WHAT IS THEREFORE NOT YET TRUE: no single full-workspace run has been observed green on this
-tree.** The composite above is a composite and is reported as one. That is 17b's own unfinished
-obligation arriving one phase later, and it is stated rather than averaged.
+**A SECOND FULL VERIFY, RUN AFTER THE `seed-staff` FIX ON A QUIETER BOX: `exit 1`, and it is ONE
+TEST.** `Test Suites: 1 failed, 315 passed, 316 total · Tests: 1 failed, 3085 passed, 3086 total`,
+with `apps/web` green and typecheck and lint clean. Twenty-six failures became one, which is the
+measurement that separates the census miss from the contention: the real defect was fixed and did
+not come back, and the twenty-five load artifacts did not recur at load ~9 where they had at 17–31.
+
+**The one is `test/perf-search.test.ts` — a PERFORMANCE test, and it failed on the leg that exists
+to stop the budget being met vacuously**: `expect(res.groups.every((g) => !g.timedOut && !g.errored))`.
+A federated provider timed out under parallel load. Re-run ISOLATED at `-w 1`: **exit 0, 3 tests,
+federated timings 38.0 / 39.0 / 33.8 / 29.8 / 30.4 ms against a 300 ms budget** — an order of
+magnitude inside it. It is unrelated to this task by construction: it fans out over patient search
+and touches no manifest, permission or role.
+
+**WHAT IS THEREFORE STILL NOT TRUE: no single full-workspace run has been observed green on this
+tree.** The evidence above is a composite and is reported as one. It is 17b's own unfinished
+obligation arriving one phase later, with one difference worth naming — **the remaining obstacle is
+a load-sensitive performance assertion on a shared box carrying eighteen `claude` processes, not an
+unexplained failure.** A green single run is gated on the box being quiet, and this session did not
+get a quiet enough window to observe one.
 
 
 **THE DATABASE: `hmis_lane_b_scratch_1`**, created by `setupTestDb` from
