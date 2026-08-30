@@ -80,7 +80,13 @@ difference between a red run you can read and a red run you have to bisect.
 
 ---
 
-## 3. ESCALATION — `advance.test.ts` is frozen for BOTH lanes and is a standing red CI
+## 3. ESCALATION — `advance.test.ts` is frozen for BOTH lanes and nobody owns it
+
+> **AMENDED — see §6. The claim below that this is a "standing red CI" and that it "will block
+> Lane B's T1" is WRONG and was refuted by evidence forty minutes later: CI went GREEN through it.
+> What is broken is the LOCAL VERIFY on this host under load, not CI. The escalation stands; its
+> premise is smaller than this section states. The body is left as written because a correction that
+> edits away what it corrects teaches nobody anything.**
 
 This is the one thing neither of us can close, and it needs one line of owner authorisation.
 
@@ -123,7 +129,14 @@ someone to reach into a frozen path.
 
 ## 5. What Lane B does next
 
-Nothing, until Plan 17 is closed and pushed — that is the owner's ruling and it has not changed.
+**AMENDED 2026-08-30 11:40:** the owner has since ruled that Lane B's work should LAND rather than
+sit uncommitted in a tree Lane A is working in. **T1 is committed and green at `d5abf6a`; T2's
+declared surface — typechecked, no tests yet — at `997ab18`; CI green by full SHA at `a57e7e4`.**
+Both are inert (no manifest claims `imaging`), so nothing of Lane A's behaviour changes. Lane B is
+otherwise still paused, and Lane A's next migration is now **`0048`**, unchanged.
+
+Beyond that: nothing, until Plan 17 is closed and pushed — that is the owner's ruling and it has not
+changed.
 When it is, Lane B resumes from
 [`../2026-08-29-phase1-18a-radiology-core.md`](../2026-08-29-phase1-18a-radiology-core.md) §9.9,
 whose step 3 is *"re-answer S8, because its answer has already flipped once."* **It has now flipped a
@@ -133,3 +146,33 @@ appends only `imaging.worklist`, `imaging.study`, `imaging.report`, `pcpndt.form
 That is the seam rule working three times in three days on the same two lines of code, which is
 about as good an argument for measuring at kickoff instead of remembering as this project has
 produced.
+
+
+---
+
+## 6. CORRECTION TO §3, ADDED 2026-08-30 11:40 UTC — IT IS NOT A STANDING CI RED
+
+§3 said the flake *"will block Lane B's T1 the moment it lands"* and framed it as red CI. **Both
+halves were wrong, and the evidence is Lane B's own push.**
+
+CI run `33308463171` on `a57e7e4` — the tree carrying 18a's T1, its module skeletons and its phase
+document — came back **`completed | success`. Full green, `advance.test.ts` included.**
+
+**The mechanism, narrowed:** the four failures are a function of the HOST and the LOAD, not the file.
+They fail during a full parallel verify on this build box with a second lane active; they pass 26/26
+isolated on the same box; they pass on GitHub's runner. So:
+
+- **the escalation stands, but its premise is smaller than stated** — what is broken is the LOCAL
+  VERIFY as an instrument, which two lanes both need and neither can currently get green. Worth the
+  one-line fix; not worth calling it a blocker on CI grounds.
+- **17a does NOT need the fix to close on CI.** Its §9.5 can cite a green CI run by full SHA. The
+  local `exit 1` is honestly recorded as what it is: four rows of a frozen file, host-and-load
+  specific, green in isolation and green in CI.
+
+Lane B apologises for the overstatement — it was asserted before the evidence existed, which is
+precisely the thing this project's rules exist to prevent, and it is recorded as **F8** in 18a's own
+findings rather than quietly corrected here.
+
+**The general rule worth keeping from it:** a red on the build host and a red in CI are two different
+claims and neither implies the other. §2.55 is the case where a green local verify hid a red CI; this
+is the same coin's other face. **Name the box.**

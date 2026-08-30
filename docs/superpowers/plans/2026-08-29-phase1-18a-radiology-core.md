@@ -6,7 +6,7 @@
 
 **THE RULING, in one paragraph.** 18a is **the spine — one imaging study walks end to end through the real seams**: a doctor (or a walk-in slip) places an `imaging` order on the kernel envelope by adding ONE manifest field; the reception schedules it against a modality `device` resource with a slot the database refuses to double-book; the patient checks in and passes a declared set of safety gates, each a child workflow instance transcribed from Plan 15's DD5; the technologist starts acquisition, which occupies the device and moves the envelope item to `in_progress`; the acquired study carries its accession number, dose and contrast facts, and emits `imaging.study_acquired`; the radiologist drafts, signs under a fresh second factor, and publishes an immutable versioned report, which completes the envelope item and closes the order. **PCPNDT is structural in this slice, not optional**: the module `pcpndt` — a kernel-adjacent manifest of its own, built HERE and adopted unchanged by 15b and 62 — holds registrations, registered machines and persons, and a gap-free Form F register; an applicable ultrasound is `restricted` at placement, its Form F gate can be neither waived nor overridden by anybody, and the scan cannot reach `acquired` without a recorded Form F. **No PACS** (18b), **no AERB/dose registers** (18c), and the rest of the brainstorm's §14 list — monthly returns and inspections, contrast reaction/ADR chain, portable ward rounds, teleradiology, the release desk, outside-study register, KPIs and automations — is named in §1.3 and §6.9 as the follow-on slices this spine makes buildable, so 18b does not find a half-PACS and nobody finds a half-register.
 
-**STATUS 2026-08-30: PAUSED AT T1 OF NINE — AND T1 IS NOW COMMITTED AND PUSHED.** Lane A executed Plan 17/17a in the same checkout; the migration journal is not hunk-separable, so for a day T1 could not land without carrying another lane's work. **That blocker cleared when Lane A committed `0046`**, and the owner then authorised landing rather than holding. **T1 is committed at `d5abf6a` (green, exit 0, 61/61 on `hmis_lane_b_scratch_1`) and T2's declared surface at `997ab18` (typechecked, NO tests yet — WRITTEN, not proved).** Both are inert: no manifest claims `imaging`, so nothing in production behaves differently. T2's censuses, T3–T9 and both close reviews are all still owed. Read [§9.9](#99-handoff--lane-b-paused-by-owner-ruling-2026-08-30-v3-96) before touching anything.
+**STATUS 2026-08-30: PAUSED AT T1 OF NINE — AND T1 IS NOW COMMITTED AND PUSHED.** Lane A executed Plan 17/17a in the same checkout; the migration journal is not hunk-separable, so for a day T1 could not land without carrying another lane's work. **That blocker cleared when Lane A committed `0046`**, and the owner then authorised landing rather than holding. **T1 is committed at `d5abf6a` (green, exit 0, 61/61 on `hmis_lane_b_scratch_1`) and T2's declared surface at `997ab18` (typechecked, NO tests yet — WRITTEN, not proved).** Both are inert: no manifest claims `imaging`, so nothing in production behaves differently. T2's censuses, T3–T9 and both close reviews are all still owed. **CI is GREEN by full SHA** (`33308463171` on `a57e7e4`). Read [§9.9](#99-handoff--lane-b-paused-by-owner-ruling-2026-08-30-v3-96) before touching anything.
 
 **Roadmap:** [`2026-08-11-phase1-plan-series.md`](2026-08-11-phase1-plan-series.md) — Track A, `17 → 18a`. **Numbering:** [`00-INDEX-AND-SYNTHESIS.md`](../brainstorms/2026-08-27-department-series/00-INDEX-AND-SYNTHESIS.md) §3 (18a core · 18b PACS · 18c dose/RT; 63 cath lab; 64 RT; 62 maternity consumes Form F via `pcpndt`). **Envelope contract inherited, not restated:** [`2026-08-29-phase1-17-order-envelope.md`](2026-08-29-phase1-17-order-envelope.md) §6 (the seven sentences), §6A (the eight things it does not do), §8 (what it froze), and its §4.1 for a column name. **Brainstorm argued from and not restated:** 01 §1 (scope table row 2 — *"radiology owns the imaging-specific tables hanging off the order"*), §3 WF-IMG-01/02/03/05 (the spine's four workflows), §4 (the table sketch), §5 (the 120-row catalogue — §7 below draws from it), §13 (owner rulings O-1..O-13), §14, §15.1/§15.2.
 
@@ -633,6 +633,33 @@ reason. Both freeing statuses are proved by execution (T1, `it.each`).
 
 **F6 — LANE COLLISION: FIVE SHARED FILES AND A NON-SEPARABLE JOURNAL.** Recorded in full in §9.9.
 
+**F8 — `advance.test.ts` IS A BUILD-HOST-UNDER-LOAD FLAKE, NOT A STANDING CI RED, AND THIS LANE
+PREDICTED THE WRONG THING.** *(recorded because the prediction was stated to the owner and to Lane A
+before the evidence arrived)*
+
+Lane A's full `pnpm verify` on this host failed four rows of `kernel/orders/advance.test.ts`; Lane B
+diagnosed the shape (two `Exceeded timeout of 15000 ms`, two CASCADE — a duplicate key at
+`seedFixture:55` and a deep-equality — because the aborted timeouts leave rows behind), and then
+**asserted that it "will block Lane B's T1 the moment it lands"**.
+
+**It did not.** CI run `33308463171` on `a57e7e4` — the tree carrying T1, T2's surface and this
+document — came back `completed | success`. Full green, `advance.test.ts` included.
+
+**The mechanism, restated correctly:** the failure is a function of the HOST and the LOAD, not of the
+file. Twelve-round concurrency measurements against a 15-second default timeout fail on this build
+box during a full parallel verify with a second lane active; they pass 26/26 in isolation on the same
+box, and they pass on GitHub's runner. **So the escalation's premise needs narrowing: it is a LOCAL
+VERIFY instrument that is broken, not CI.** That is still worth fixing — a `pnpm verify` nobody can
+get green is an instrument two lanes lose — but it blocks no phase from closing on CI grounds, and
+Lane B was wrong to say it would.
+
+**The general rule this is a specimen of, and it is the one worth keeping:** *"a red on the build
+host and a red in CI are two different claims, and neither implies the other."* §2.55's lesson is
+that a green local verify can hide a red CI; this is the same coin's other face, and the honest move
+in both directions is to name the box.
+
+---
+
 **F7 — THE BUILD HOST HAS SIXTY UNAUTHENTICATED GITHUB API CALLS AN HOUR, AND BOTH LANES SPEND FROM
 THE SAME BUCKET.** *(self-inflicted, and recorded because the mechanism is not)*
 
@@ -698,7 +725,7 @@ would have `exit 0` and nothing to inspect.
 | preflight `pnpm typecheck && pnpm lint` before the T1 commit (v3 §9.9 rule 6) | **exit 0**, 2 warnings, both in files this phase does not touch |
 | T1's four suites re-run against Lane A's tree at `57b93fa`, immediately before committing (rule 12) | **exit 0 — 61/61 on `hmis_lane_b_scratch_1`** |
 | `pnpm verify` (full workspace) | **NOT RUN, and deliberately.** Lane A held ~20 files dirty and a full verify of its own in flight for the whole of this session's window; a run over that tree is unattributable to either lane (§2.137, and the 2026-08-29 lane-collision note). CI by full SHA is the honest instrument and there is no SHA to watch, because nothing was committed. |
-| CI | **WATCHED, NOT OBTAINED.** Run `33298979243` for `2466b46` was last seen `in_progress`; the verdict was never read because this session exhausted the host's unauthenticated API quota polling for it (F7). It is a docs-only commit and cannot be red on account of its own content, but **that is an argument, not a verdict, and it is recorded as one.** The next session should re-read it: `curl -s "https://api.github.com/repos/ankits3a/hims-hmis/actions/runs?head_sha=2466b46119e587ba4b148d5e5498396a6ce8aed6"`. |
+| CI | **GREEN, by full SHA.** Run `33308463171` on `a57e7e4` — `completed | success`, the tree carrying T1, T2's surface and this document. The earlier `2466b46` verdict was never obtained (F7); this one was, with one watcher at a 70-second interval. **And it refutes F8 below.** |
 
 ### 9.6 The independent close review — FRESH
 
