@@ -732,6 +732,49 @@ shape. NABL asks for the count of these; a control nobody can count is a control
 
 **F21 — THE THREE SURVIVING MUTANTS AND WHAT THEY FOUND.** See §9.4.
 
+**F25 — THE OPD ENCOUNTER RESOLVER COULD NOT RESOLVE A SINGLE REAL `V` NUMBER, AND 17a T4 SHIPPED
+THE CALLER THAT TRIPS IT.** Reported by Lane B's 18a kickoff spike
+([`reports/2026-08-30-lane-b-held-coordination.md`](reports/2026-08-30-lane-b-held-coordination.md)
+§5), **verified here by execution rather than accepted**, and fixed in `d1f316b`.
+
+`opd.module.ts` registers the resolver under prefix `EPISODE_SERIES.visit` (`"V"`), so
+`resolveEncounterByPrefix` hands it a visit NUMBER — and it resolved that through `getEncounter`,
+which read `opd_encounters.id`, a `newId()` ULID. The visit number lives in `visit_no`. So the
+resolver returned `{matched: true, resolved: null}` for every real visit and `placeOrder` refused
+`unknown_encounter`. **`desk.ts` passes a caller-supplied `encounterNo` straight into `placeOrder`,
+so in production a lab order on a genuine OPD visit died at the counter.** `modules/ot`'s resolver
+reads `daycare_encounters.encounter_no` and is correct — a divergence between two implementations of
+one seam, not a design.
+
+**THE RED, QUOTED, AGAINST SHIPPED CODE BEFORE THE FIX:**
+`expect(received).not.toBeNull() / Received: null`, and `Expected: "tpa", Received: undefined`.
+Green after: 5/5. `src/modules/opd/encounter-resolver.test.ts` is the regression test and it is the
+only suite in the repository that registers the REAL resolver against a REAL visit.
+
+**WHY NOTHING CAUGHT IT FOR SIX PHASES, AND IT IS THIS PHASE'S OWN FIXTURE AMONG THEM.** Every suite
+that reaches this seam registers its own fake `V` resolver — phase 0's four order suites,
+`duplicates.test.ts`, and **`test/helpers/lab.ts`, which T4 wrote**. That isolation is legitimate for
+those tests and it is exactly what hid the defect: the fixture supplied the answer the code got
+wrong. **The generalisable form, and it is sharper than F10's and F22's:** a fixture that stands in
+for a production REGISTRATION tests everything except whether the registration works. Where a seam is
+registered once at boot and stubbed everywhere else, one suite must use the real one.
+
+**DEVIATION, DISCLOSED.** The one-line repair belongs in `opd.module.ts`'s resolver body, and §8 of
+this document freezes `modules/opd/*` except `encounters.ts` and `index.ts`. Rather than edit a
+frozen path quietly, the repair landed in the reader the resolver already calls, discriminating **by
+shape** — a ULID cannot match `VISIT_NO_RE`, so all eighteen existing `getEncounter` callers take the
+path they took before and billing's bare-row-id fallback is untouched. **A later phase that owns
+`opd.module.ts` should move the discrimination into the resolver and narrow `getEncounter` back**;
+that instruction is in the function's own header, not only here.
+
+**F26 — `recordPhiAccess` ON `kernel/orders/read.ts` WAS ALREADY LANDED BY PHASE 0, NOT BY THIS
+LANE.** Lane B's §4 treats it as an unclaimed seam whose first lane writes the call. It is at
+`read.ts:310` and `:347` with `surface: "orders.patient"`, shipped in `9ba2482` and hardened in
+`6bd3016`. 17a made no edit under `kernel/orders/` and added no `PhiSurface` name (`lab.results` and
+`lab.report` arrive with 17b's callers). Recorded because Lane B's own note says that spike answer
+has already flipped once, and "already landed, by phase 0" is a different fact from "landed by Lane
+A".
+
 **F22 — `errors.test.ts`'s DERIVED CENSUS CAUGHT `tube_mismatch` IN THE WRONG FILE, AND IT WAS
 RIGHT.** T2's `OWNED_BY` map records, from the phase document's own Produces list, that
 `tube_mismatch` is thrown by `collection.ts`. The first implementation put `printLabels` — and the
