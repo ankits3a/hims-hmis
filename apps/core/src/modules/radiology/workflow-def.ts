@@ -128,10 +128,37 @@ export const imagingGateDefinition: WorkflowDefinition = defineWorkflow({
     { name: "overridden", terminal: true },
   ],
   transitions: [
+    /**
+     * ═══ FINDING F9 — `radiology_receptionist` IS NOT ON THIS EDGE, AND WAS ═══
+     *
+     * `997ab18` shipped this transition naming the receptionist, in the same commit whose
+     * `manifest.ts` states the opposite in as many words: *"The person who books the scan and takes
+     * the money does not get to record that the patient is not pregnant."* §5 T2 says it again as
+     * the first of three separations the reviewer checks. The two files disagreed and nothing
+     * caught it, because neither had a test — the handoff's §3 "treat them as WRITTEN" case,
+     * arriving exactly where it said it would.
+     *
+     * **The seed could not have caught this, and that is the point.** T2 A3 asserts the separation
+     * on the PERMISSION registry (`radiology_receptionist` does not hold `radiology.gates.satisfy`),
+     * but `advanceInstance` (`kernel/workflow/instances.ts:115`) gates a transition on
+     * `actorHoldsAnyRole` against `role_assignments` and consults NO permission at any point. That
+     * is Plan 17b's F39 seen from the other side: two enforcement planes, and a separation stated
+     * only on the plane that is not consulted is not a separation at all. A receptionist holding
+     * the role key would have driven `pregnancy_screen` to `satisfied` with every census green.
+     *
+     * **One definition covers every gate KIND**, so there is no per-kind role list to retreat to: a
+     * role named here can satisfy `pregnancy_screen`, `mri_safety` and `form_f` alike. An
+     * administrative gate the receptionist legitimately clears is not expressible on this edge, and
+     * the safe direction when it cannot be expressed is to leave the role off.
+     *
+     * `doctor` stays: the referring clinician takes contrast consent and answers the renal
+     * question. `radiologist` stays — T5 A5 requires it (`prior_contrast_reaction` is satisfiable
+     * only with a radiologist's reason).
+     */
     {
       from: "open",
       to: "satisfied",
-      roles: ["radiographer", "radiologist", "radiology_receptionist", "doctor", "system"],
+      roles: ["radiographer", "radiologist", "doctor", "system"],
     },
     // Only the kinds the active `study_types` body marks `waivable` — `waiveGate` enforces that,
     // and `identity_two_factor` and `form_f` are never among them (T5 A6, T5 A2).

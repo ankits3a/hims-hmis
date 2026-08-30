@@ -133,7 +133,7 @@ function row(
 }
 
 describe("seed:staff — the census, stated before anything is compared (§2.49)", () => {
-  it("KNOWN_ROLE_KEYS is the thirty-one keys some seed script in this tree can create", () => {
+  it("KNOWN_ROLE_KEYS is the thirty-five keys some seed script in this tree can create", () => {
     expect(KNOWN_ROLE_KEYS).toEqual([
       "admin",
       // PLAN 15 / DD14, 2026-08-28 — the six OT roles arrive for FREE by the same derivation, and
@@ -180,8 +180,21 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "owner",
       // PLAN 17 T2 / DD16 — see the lab note above; `pathologist` and `phlebotomist` sort here.
       "pathologist",
+      // PLAN 18a T2, 2026-08-30 — the four radiology roles, and they arrive here for FREE because
+      // `KNOWN_ROLE_KEYS` is DERIVED from `ROLE_MODEL ∪ GRANTED_BY_OTHER_SEEDS ∪ OPD_ROLE_KEYS`
+      // rather than hand-listed. What this array pins is that somebody NOTICED the vocabulary grew.
+      // The consequence is real: `seed:staff` REFUSES a roster naming a key outside this list, so
+      // until it carried these four, the roster hiring the hospital's first radiographer — without
+      // whom no scan is acquired at all — would have been rejected as a typo and the WHOLE roster
+      // refused rather than half-provisioned. **THIS FILE IS NOT IN 18a T2's FILES LIST** (finding
+      // F11, the fourth census file in that finding); the census is pinned here and the task that
+      // moves it says so.
+      "pcpndt_incharge",
       "pharmacy",
       "phlebotomist",
+      "radiographer",
+      "radiologist",
+      "radiology_receptionist",
       "recovery_nurse",
       // OWNER RULING 2026-08-29 (Plan 07c T9 / DD14) — `staff_auditor` joins by DERIVATION: this
       // list is `ROLE_MODEL ∪ GRANTED_BY_OTHER_SEEDS ∪ OPD_ROLE_KEYS`, sorted, so a new model role
@@ -201,7 +214,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
     for (const r of ROLE_MODEL) expect(KNOWN_ROLE_KEYS).toContain(r.roleKey);
     for (const g of GRANTED_BY_OTHER_SEEDS) expect(KNOWN_ROLE_KEYS).toContain(g.roleKey);
     for (const o of OPD_ROLE_KEYS) expect(KNOWN_ROLE_KEYS).toContain(o.key);
-    expect(KNOWN_ROLE_KEYS).toHaveLength(31);
+    expect(KNOWN_ROLE_KEYS).toHaveLength(35); // PLAN 18a T2 — 31 -> 35 with radiology's four
   });
 
   it("the vocabulary is WIDER than what seed:roles creates, which is what makes two refusals distinct", () => {

@@ -135,8 +135,14 @@ describe("the resource kind seam (Plan 13 T2)", () => {
     // inverse of the OT's argument for leaving `device` unclaimed. **THIS FILE IS NOT IN PLAN 17
     // T2's FILES LIST** — it pins a census that task moves, recorded as finding F6 rather than
     // fixed silently, exactly as Plan 15 recorded T2-f and Plan 14 recorded F11.
+    // PLAN 18a T2 — TEN, and `device` is the LAST of the ten names `resources_kind_ck` admits to
+    // find a declarer. Radiology claims it for the whole hospital: `collectResourceKinds` refuses a
+    // SECOND declaration, so the cath lab (63) and biomedical engineering (29) inherit this
+    // vocabulary rather than writing their own. THIS FILE IS NOT IN 18a T2's FILES LIST either — it
+    // pins a census that task moves, recorded as finding F11 rather than fixed silently, the same
+    // way Plan 17 recorded F6 and Plan 15 recorded T2-f.
     expect(collectResourceKinds(registryOf(...ALL_MANIFESTS)).map((d) => d.kind))
-      .toEqual(["floor", "ward", "hall", "room", "bed", "store", "theatre", "bench", "analyzer"]);
+      .toEqual(["floor", "ward", "hall", "room", "bed", "store", "theatre", "bench", "analyzer", "device"]);
   });
 
   /**
@@ -182,13 +188,43 @@ describe("the resource kind seam (Plan 13 T2)", () => {
    * is 15c's and the C-arm 15d's. The `theatre` half of the old assertion is now the leg above, and
    * both directions are still pinned: `theatre` present, `device` absent, both legal strings.
    */
-  it("an undeclared kind is absent rather than refused — `device` is legal in the table and not yet a kind this hospital has", () => {
+  it("the collected set is what manifests DECLARE, not what the CHECK admits — now that the two coincide", () => {
     const decls = collectResourceKinds(registryOf(...ALL_MANIFESTS));
-    expect(findKindDecl(decls, "device")).toBeUndefined();
+
+    /**
+     * ═══ PLAN 18a T2 — THIS ASSERTION LOST ITS SUBJECT, AND IS REWRITTEN RATHER THAN DELETED ═══
+     *
+     * It used to read *"`device` is legal in the table and not yet a kind this hospital has"*.
+     * `device` was the last of the ten unclaimed names, and radiology claims it — so there is no
+     * legal-but-undeclared kind left to point at, and the old assertion would now be pinning a
+     * falsehood.
+     *
+     * The PROPERTY it existed for is untouched and is what this asserts instead: the collector
+     * reads MANIFESTS, never `RESOURCE_KIND_VALUES`. Proved by removing manifests and watching the
+     * collected set shrink while the CHECK vocabulary does not move — which is the same fact the
+     * old test made with `device`, stated in a way that survives every kind being claimed.
+     *
+     * If a future migration widens `resources_kind_ck` with an eleventh name, that name is legal
+     * and undeclared on the day it lands, and the first leg below starts failing usefully again.
+     */
+    expect(decls.map((d) => d.kind).sort()).toEqual([...RESOURCE_KINDS].sort());
+
+    const withoutOt = collectResourceKinds(registryOf(...ALL_MANIFESTS.filter((m) => m.key !== "ot")));
+    expect(findKindDecl(withoutOt, "theatre")).toBeUndefined();
+    expect(RESOURCE_KINDS).toContain("theatre");
+
+    const withoutRadiology = collectResourceKinds(
+      registryOf(...ALL_MANIFESTS.filter((m) => m.key !== "radiology")),
+    );
+    expect(findKindDecl(withoutRadiology, "device")).toBeUndefined();
     expect(RESOURCE_KINDS).toContain("device");
-    // …and the kind Plan 15 DID claim is present, with the vocabulary the mini-OT declared: the
-    // seam let a module add a kind with no kernel edit, which is what Plan 13 built it for.
+
+    // …and the kind Plan 15 claimed is present with the vocabulary the mini-OT declared: the seam
+    // let a module add a kind with no kernel edit, which is what Plan 13 built it for.
     expect(findKindDecl(decls, "theatre")?.onRelease).toBe("turnover");
+    // Radiology's, for the same reason and with the difference that matters: a gantry releases to
+    // `available` where a theatre releases to `turnover`.
+    expect(findKindDecl(decls, "device")?.onRelease).toBe("available");
   });
 
   /**
@@ -214,7 +250,7 @@ describe("the resource kind seam (Plan 13 T2)", () => {
     // declaration that could have tripped this guard — its vocabulary is `in_use`-centred exactly
     // as the theatre's is — and the third if you count that `bench`'s own `occupied` is the word
     // `occupied`, which is the most natural thing to have written as an initial status.
-    expect(collectResourceKinds(registryOf(...ALL_MANIFESTS))).toHaveLength(9);
+    expect(collectResourceKinds(registryOf(...ALL_MANIFESTS))).toHaveLength(10);
   });
 
   it("a manifest with no resourceKinds contributes nothing and is not an error", () => {

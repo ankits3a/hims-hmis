@@ -17,6 +17,8 @@ import { resourcesManifest } from "../resources/manifest";
 import { materialsManifest } from "../../modules/materials";
 import { otManifest } from "../../modules/ot";
 import { labManifest } from "../../modules/lab";
+import { pcpndtManifest } from "../../modules/pcpndt";
+import { radiologyManifest } from "../../modules/radiology";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -150,4 +152,16 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
    * `modules/lab/kinds.ts` says why it is nonetheless declared here.
    */
   labManifest,
+  /**
+   * PLAN 18a T2 — **`pcpndt` BEFORE `radiology`, and the order is load-bearing.**
+   *
+   * The statutory register is its own module precisely so 15b (gynae day-care ultrasound) and 62
+   * (maternity) can install it WITHOUT installing radiology — one gap-free Form F serial series per
+   * machine per year, for one inspector reading one register, whichever department held the probe.
+   * Radiology's `order.placed` consumer (T3) evaluates DD14's applicability rule and reaches into
+   * pcpndt; pcpndt reaches into nothing. The dependency runs one way, and this list is written in
+   * that direction so a reader sees which module may import which.
+   */
+  pcpndtManifest,
+  radiologyManifest,
 ];

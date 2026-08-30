@@ -176,6 +176,42 @@ export const notificationTemplates: Record<string, NotificationTemplate> = {
         `${paramStr(params, "orderNo")} की आपकी प्रयोगशाला रिपोर्ट तैयार है। कृपया इसे अस्पताल के रिसेप्शन से प्राप्त करें। यह संदेश और एक फोटो पहचान पत्र साथ लाएँ।`,
     },
   },
+
+  /**
+   * ═══ PLAN 18a T2 — THE IMAGING REPORT NOTICE, AND IT CARRIES THE ORDER NUMBER AND NOTHING ELSE ═══
+   *
+   * The lab's twin above is the template this is modelled on, deliberately down to the omissions.
+   *
+   * **It names no study, no modality and no body part.** "Your CT head report is ready" on a lock
+   * screen tells whoever is holding the phone that this person had a head scan, and a message a
+   * husband reads is the exact disclosure DD11's alias rules exist to prevent. An obstetric
+   * ultrasound makes that concrete in the worst way: in a PCPNDT context a notice naming the study
+   * is a notice about a pregnancy, sent to a household. So the notice is a TOKEN — an order number
+   * and an instruction to come to a counter — and the report itself is handed over in person
+   * against an ID.
+   *
+   * `transactional`, so it is not subject to the marketing consent gate: a person who asked for a
+   * scan is expecting to hear that it is ready, and D3's quiet-hours rule does not apply to a
+   * document they are waiting for.
+   *
+   * 72 hours, the lab's number and for the lab's reason: a report is collected at a counter, and a
+   * notice older than three days is one the patient has either acted on or forgotten.
+   */
+  imaging_report_ready: {
+    key: "imaging_report_ready",
+    version: 1,
+    class: "transactional",
+    audience: "patient",
+    urgency: "routine",
+    waApprovalStatus: "not_submitted",
+    expiresAt: (_params, occurredAt) => new Date(occurredAt.getTime() + 72 * HOUR_MS),
+    render: {
+      en: (params) =>
+        `Your imaging report for ${paramStr(params, "orderNo")} is ready. Please collect it from the hospital reception. Bring this message and a photo ID.`,
+      hi: (params) =>
+        `${paramStr(params, "orderNo")} की आपकी इमेजिंग रिपोर्ट तैयार है। कृपया इसे अस्पताल के रिसेप्शन से प्राप्त करें। यह संदेश और एक फोटो पहचान पत्र साथ लाएँ।`,
+    },
+  },
 };
 
 export function templateByKey(key: string): NotificationTemplate {

@@ -222,6 +222,24 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "orders.place",
       "orders.read",
       "orders.cancel",
+      /**
+       * ═══ PLAN 18a T2 — THE REFERRING CLINICIAN'S HALF, AND THE ROLE IS `doctor` ═══
+       *
+       * §5 T2's role sketch names this role `consultant`. **There is no `consultant` role in this
+       * repository** — the treating clinician has been `doctor` since Plan 02, it is the key the
+       * imaging workflow's own transitions name (`scheduled → cancelled`, `open → satisfied`), and
+       * `lab.orders.place` was granted here rather than to an invented sibling for the same reason.
+       * Declaring a second clinician role would split every future grant across two keys and make
+       * "can the treating doctor do this?" a question with two answers. **DECIDED: grant to
+       * `doctor`; recorded as finding F10.**
+       *
+       * `radiology.reports.read` and not `radiology.worklist.read`: the doctor reads the REPORT of
+       * the patient in front of them. The worklist is a departmental queue and, per DD11, a
+       * confidentiality-bearing one — a doctor browsing every scan in the hospital is exactly the
+       * read the alias rules exist to prevent.
+       */
+      "radiology.orders.place",
+      "radiology.reports.read",
     ],
   },
   {
@@ -339,6 +357,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * the balance would make the interlock a discount mechanism, which is 02 O-1's opposite.
        */
       "lab.reports.release_unpaid",
+      /**
+       * PLAN 18a T2 — the imaging BILL-DECISION queue (T7). A repeat scan, a contrast escalation
+       * and an abandoned acquisition each raise a question that is only ever answered in money:
+       * does the patient pay for the second film? That is this office's decision for the same
+       * reason the release above is, and `radiology_receptionist` holds it too because the desk
+       * settles the ordinary case at the counter without a queue.
+       */
+      "radiology.bill_decisions.manage",
       /**
        * ═══ PLAN 07b O-1, ANSWERED BY THE OWNER 2026-08-29: THE BILLING MANAGER COVERS ═══
        *
@@ -893,6 +919,134 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "billing.credit.extend",
     ],
   },
+  /**
+   * ═══ PLAN 18a T2 — THE FOUR RADIOLOGY ROLES, AND THE THREE SEPARATIONS THEY ENCODE ═══
+   *
+   * All four are DECLARED by this phase and production holds ZERO humans in each (S4). That is the
+   * `formulary`/`materials`/`ot` shape: the menu entries exist, every one is gated on a permission
+   * whose only holders are these roles, and the window stays empty until somebody is assigned.
+   *
+   * **The three separations are the point, and a permission census cannot see any of them** — it
+   * counts to 146 whether or not `radiographer` can sign. T2 A3 pins all three BY NAME in
+   * `test/seed-roles.test.ts`, and the gate separation is additionally pinned in
+   * `modules/radiology/workflow-def.test.ts` because the workflow engine gates on ROLE KEYS and
+   * never consults a permission (finding F9 — the two planes must both say no).
+   */
+  {
+    roleKey: "radiologist",
+    permissions: [
+      /**
+       * The clinical head of the department: reads the worklist, reports, signs, amends, and
+       * acknowledges criticals. **`radiology.gates.override` and NOT `radiology.gates.satisfy`** —
+       * DD7 makes the radiologist the second clinical opinion on a gate the technologist raised,
+       * and `overrideGate` demands a reason and events it. Satisfying a gate is the floor's act;
+       * overriding one is the clinician's, and they are different permissions because they are
+       * different decisions with different evidence.
+       *
+       * `pcpndt.form_f.write` because the sonologist IS a radiologist and is the registered person
+       * who signs the Form F. **NOT `pcpndt.form_f.verify`** — see `pcpndt_incharge` below.
+       */
+      "radiology.worklist.read",
+      "radiology.gates.override",
+      "radiology.acquire",
+      "radiology.reports.write",
+      "radiology.reports.sign",
+      "radiology.reports.amend",
+      "radiology.reports.read",
+      "radiology.criticals.ack",
+      "radiology.definitions.read",
+      /**
+       * The study-type book — gate sets, pregnancy policy, critical categories — is a CLINICAL
+       * document, and NABL and the AERB both ask who signed it off. The lab's precedent is exact:
+       * `lab.catalogue.manage` went to the `pathologist` and for the same reason.
+       *
+       * This does not let the radiologist publish alone. `imaging_definition_publish` names
+       * `medical_superintendent` as approver with `actFirstAllowed: false`, so the drafter and the
+       * activator are different people by construction (T4's governance). The permission buys the
+       * right to DRAFT; the MS decides whether it goes live.
+       */
+      "radiology.definitions.manage",
+      "pcpndt.form_f.read",
+      "pcpndt.form_f.write",
+      "pcpndt.registrations.read",
+      "orders.read",
+    ],
+  },
+  {
+    roleKey: "radiographer",
+    permissions: [
+      /**
+       * The technologist: checks the patient in, satisfies the safety gates with evidence,
+       * acquires. **NOT `radiology.reports.sign`** — the separation the whole department exists
+       * around, and T2 A3's mutant is precisely a grant of it here: the census still counts to 146
+       * and the separation is gone.
+       *
+       * `pcpndt.form_f.read` and not `.write`: the radiographer must be able to see that a Form F
+       * exists before acquiring (DD14's cannot-close rule refuses the acquisition without one), and
+       * writing the statutory declaration is the registered person's act.
+       */
+      "radiology.worklist.read",
+      "radiology.checkin",
+      "radiology.gates.satisfy",
+      "radiology.acquire",
+      "radiology.reports.read",
+      "radiology.definitions.read",
+      "pcpndt.form_f.read",
+      "orders.read",
+    ],
+  },
+  {
+    roleKey: "radiology_receptionist",
+    permissions: [
+      /**
+       * The counter: places the order the outside slip carries, schedules it, takes the money and
+       * works the bill-decision queue.
+       *
+       * **NOT `radiology.gates.satisfy`.** The person who books the scan and takes the money does
+       * not get to record that the patient is not pregnant. This is the first of the three
+       * separations, it is pinned by name in `seed-roles.test.ts`, and — because the workflow
+       * engine reads role keys rather than permissions — the role is also absent from the
+       * `imaging_gate` definition's `open → satisfied` transition (F8). Withholding it here alone
+       * would have been a separation that did not hold.
+       *
+       * **NOT `radiology.checkin` either**: check-in is where the gate set OPENS from the patient's
+       * sex, age and the study type's flags, and it is the radiographer's act at the console.
+       */
+      "radiology.orders.place",
+      "radiology.schedule",
+      "radiology.worklist.read",
+      "radiology.bill_decisions.manage",
+      "radiology.definitions.read",
+      "orders.place",
+      "orders.read",
+      "patients.register",
+      "patients.read",
+      "billing.invoice.issue",
+      "billing.invoice.read",
+      "billing.receipt.record",
+      "billing.session.own",
+    ],
+  },
+  {
+    roleKey: "pcpndt_incharge",
+    permissions: [
+      /**
+       * The statutory officer. Manages the facility registration, the registered machines and the
+       * registered persons, and VERIFIES the Form F.
+       *
+       * **NOT `pcpndt.form_f.write`.** The in-charge verifies what others wrote — the third
+       * separation. `verifyFormF` additionally refuses when the verifier IS `signed_by`
+       * (`same_actor`), so the rule survives one person holding two roles, which is the state a
+       * hospital with one sonologist will actually be in. An officer who could write and
+       * self-verify a statutory declaration is a single point of failure with a criminal statute
+       * behind it.
+       */
+      "pcpndt.registrations.manage",
+      "pcpndt.registrations.read",
+      "pcpndt.form_f.read",
+      "pcpndt.form_f.verify",
+    ],
+  },
 ];
 
 /**
@@ -1119,6 +1273,13 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   lab_technician: "Lab Technician (accessions, runs the bench and keys results; never verifies)",
   phlebotomist: "Phlebotomist (calls the queue, scans the patient, draws and labels the tube)",
   lab_reception: "Lab Reception (orders, bills, prints and hands over; reads no result)",
+  // PLAN 18a T2 — the four radiology roles. Each title names the SEPARATION the role is defined by,
+  // because a staffing card is where a hospital administrator decides who to assign, and "can this
+  // person sign a report?" is the question the card has to answer without reading the code.
+  radiologist: "Radiologist (reports, signs, amends; overrides a gate with a reason; writes Form F)",
+  radiographer: "Radiographer (checks in, satisfies the safety gates, acquires; signs no report)",
+  radiology_receptionist: "Imaging Reception (orders, schedules, bills; satisfies no safety gate)",
+  pcpndt_incharge: "PCPNDT In-charge (registration, machines, persons; VERIFIES Form F, writes none)",
 };
 
 /** The title for a model role key. Throws rather than inventing one — an unresolved role is a defect. */

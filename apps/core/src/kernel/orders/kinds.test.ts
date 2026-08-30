@@ -148,7 +148,7 @@ describe("the order kind seam (Plan 17 phase 0 T2)", () => {
      * order is manifest INSTALL order, so a second claimant lands after `lab` rather than anywhere
      * else. `medication` and `package` stay unclaimed.
      */
-    it("ALL_MANIFESTS claims exactly one order kind today: the lab's", () => {
+    it("ALL_MANIFESTS claims exactly two order kinds today: the lab's and radiology's", () => {
       const registry = new ModuleRegistry();
       for (const m of ALL_MANIFESTS) registry.install(m);
       expect(collectOrderKinds(registry)).toEqual([{
@@ -158,6 +158,24 @@ describe("the order kind seam (Plan 17 phase 0 T2)", () => {
         requiresClinician: true,
         requiresIndication: false,
         selfOrderable: false,
+      }, {
+        /**
+         * PLAN 18a T2 — the second claimant, appended in manifest INSTALL order as the header
+         * above said it would be.
+         *
+         * **`requiresIndication: true` is the one field that differs from the lab's, and it is the
+         * radiation-justification rule expressed as a DECLARATION.** `placeOrder` refuses an
+         * imaging order carrying no reason and this module writes no guard of its own for it — a
+         * CT with no stated indication is a dose nobody can justify to an AERB inspector. A silent
+         * flip to `false` would make that refusal disappear with nothing else changing, which is
+         * why the whole declaration is asserted rather than just the kind name.
+         */
+        kind: "imaging",
+        seriesKey: "radiology_order",
+        placePermission: "radiology.orders.place",
+        requiresClinician: true,
+        requiresIndication: true,
+        selfOrderable: false,
       }]);
     });
   });
@@ -166,8 +184,10 @@ describe("the order kind seam (Plan 17 phase 0 T2)", () => {
     it("returns the declaration for a claimed kind and undefined for one nobody claimed", () => {
       const decls = collectOrderKinds(registryOf(claimant("lab")));
       expect(findOrderKindDecl(decls, "lab")?.seriesKey).toBe("lab_order");
-      // `imaging` is a legal string and is not a kind THIS hospital has until 18a installs its
-      // manifest. `placeOrder` turns this `undefined` into `unknown_kind` (T3).
+      // `imaging` is absent from THIS registry, which holds one synthetic `lab` claimant — the
+      // point being that the collector answers about what is INSTALLED, not about what is legal.
+      // (18a has since claimed `imaging` in `ALL_MANIFESTS`; this fixture deliberately does not
+      // use `ALL_MANIFESTS`.) `placeOrder` turns this `undefined` into `unknown_kind`.
       expect(findOrderKindDecl(decls, "imaging")).toBeUndefined();
     });
   });

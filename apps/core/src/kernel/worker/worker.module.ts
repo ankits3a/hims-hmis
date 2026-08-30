@@ -25,6 +25,8 @@ import {
   patientMergedConsumer,
 } from "../../modules/ot";
 import { labManifest } from "../../modules/lab";
+import { pcpndtManifest } from "../../modules/pcpndt";
+import { radiologyManifest } from "../../modules/radiology";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";
@@ -141,6 +143,27 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
          * loudly with `unknown_encounter`, which is the right failure.
          */
         registry.install(labManifest);
+        /**
+         * PLAN 18a T2 — RADIOLOGY AND THE PCPNDT REGISTER, BOTH INSTALLED IN THE WORKER, and
+         * neither for a job or a subscription: at this commit both declare `subscriptions: []` and
+         * add NO scheduler job (the census stays where it is).
+         *
+         * They are here for `hasPermission`. T3's `order.placed` consumer runs in THIS process and
+         * evaluates DD14's applicability rule — an applicable scan on an unregistered machine is
+         * refused there — so the worker's registry must carry the twenty `radiology.*`/`pcpndt.*`
+         * permissions for that question to have an answer at all. A registry that does not know a
+         * permission does not deny it loudly; it denies it as though the permission were a typo.
+         *
+         * `radiologyManifest` also declares `resourceKinds` (`device`) and `orderKinds`
+         * (`imaging`), so both collector calls below now reconcile THREE kind-declaring manifests
+         * and TWO order kinds in this process. A duplicate `device` declaration or an `imaging`
+         * `seriesKey` outside `EPISODE_SERIES` stops the worker's boot from here, not just the
+         * API's.
+         *
+         * `pcpndt` before `radiology`, the same order as `ALL_MANIFESTS` and for the same reason.
+         */
+        registry.install(pcpndtManifest);
+        registry.install(radiologyManifest);
         // ══ PLAN 13 CLOSE / M2's CARRY-FORWARD, CLOSED HERE (Plan 14 DD2, Spike Q6) ══
         //
         // This is `app.module.ts:73`'s line, in the process that did not have it. Plan 13's close

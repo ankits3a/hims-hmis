@@ -18,6 +18,8 @@ import { partnersManifest } from "../../modules/partners";
 import { formularyManifest } from "../../modules/formulary";
 import { materialsManifest } from "../../modules/materials";
 import { otManifest } from "../../modules/ot";
+import { pcpndtManifest } from "../../modules/pcpndt";
+import { radiologyManifest } from "../../modules/radiology";
 import { labManifest } from "../../modules/lab";
 
 /**
@@ -67,6 +69,8 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   materialsManifest,
   otManifest,
   labManifest,
+  pcpndtManifest,
+  radiologyManifest,
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -111,7 +115,7 @@ function manifestKeys(identifiers: string[], label: string): string[] {
 }
 
 describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
-  it("declares exactly eighteen manifests, by key, in app.module.ts's original install order", () => {
+  it("declares exactly twenty manifests, by key, in app.module.ts's original install order", () => {
     expect(ALL_MANIFESTS.map((m) => m.key)).toEqual([
       "auth",
       "workflow",
@@ -146,13 +150,24 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // the FIRST manifest to claim an order kind (`lab`), which is phase 0's contract taken up
       // with one field and no kernel edit.
       "lab",
+      // PLAN 18a T2 — appended as a PAIR, so the eighteen above keep the order they were installed
+      // in. `pcpndt` precedes `radiology` because the dependency runs that way: radiology's
+      // `order.placed` consumer evaluates DD14's applicability rule and reaches into the statutory
+      // register, and the register reaches into nothing. 15b and 62 install `pcpndt` WITHOUT
+      // radiology, which is the whole reason it is a module of its own rather than a table inside
+      // one.
+      "pcpndt",
+      // The SECOND manifest to claim an order kind (`imaging`), and the first to claim a RESOURCE
+      // kind that no manifest had claimed before (`device` — the vocabulary the cath lab and
+      // biomedical engineering inherit, because `collectResourceKinds` refuses a second declarer).
+      "radiology",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(18);
+    expect(ALL_MANIFESTS).toHaveLength(20);
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(18);
+    expect(registry.all()).toHaveLength(20);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -296,7 +311,14 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // the first manifest in either process to declare `orderKinds`, so `collectOrderKinds` in
       // `worker.module.ts` is a live check from this commit rather than a call over an empty set.
       "lab",
+      // PLAN 18a T2 — installed in BOTH, and for a reason neither `ot` nor `lab` had: at this
+      // commit both declare `subscriptions: []` and add NO scheduler job. They are in the worker
+      // for `hasPermission` — T3's `order.placed` consumer runs in that process and asks whether an
+      // actor holds `pcpndt.*`, and a registry that has never seen a permission cannot answer.
+      // `pcpndt` before `radiology`, the same order and the same reason as `ALL_MANIFESTS`.
+      "pcpndt",
+      "radiology",
     ]);
-    expect(workerKeys).toHaveLength(13);
+    expect(workerKeys).toHaveLength(15);
   });
 });

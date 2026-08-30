@@ -16,16 +16,46 @@ describe("the notification template registry (D8)", () => {
     }
   });
 
-  it("ships D8's five catalog templates plus the lab's report-ready notice, nothing else", () => {
+  it("ships D8's five catalog templates plus the lab's and imaging's report-ready notices, nothing else", () => {
     expect(Object.keys(notificationTemplates).sort()).toEqual([
       "appointment_confirmed",
       "appointment_reminder",
+      /** PLAN 18a T2 — the imaging twin of the lab's notice, same shape and same omissions. */
+      "imaging_report_ready",
       "owner_escalation_sms",
       /** PLAN 17 §9.2 F3 / 17b T7 — the fourth kernel edit of the lab's build (spike S7). */
       "patient_lab_report_ready",
       "patient_welcome",
       "staff_escalation",
     ]);
+  });
+
+  /**
+   * ═══ PLAN 18a T2 — THE IMAGING NOTICE CARRIES NO CLINICAL CONTENT EITHER ═══
+   *
+   * The lab's assertion below, transcribed for the modality vocabulary. The case that makes it
+   * matter more here than there: an obstetric ultrasound notice naming the study is a notice about
+   * a PREGNANCY, delivered to a household telephone. In a PCPNDT context that is not a privacy
+   * inconvenience, it is the disclosure the statute is written about.
+   */
+  it("renders the imaging report-ready notice from the order number alone, naming no modality", () => {
+    const template = notificationTemplates.imaging_report_ready!;
+    const params = { orderNo: "R2608300012" };
+    for (const lang of ["en", "hi"] as const) {
+      const body = template.render[lang](params);
+      expect(body).toContain("R2608300012");
+      /**
+       * No modality, no body part, no finding. **Word-bounded on purpose**: the first draft of this
+       * assertion used a bare `/CT/i` and failed against the shipped string, because "colle(ct) it
+       * from the hospital reception" contains it. A substring match over a two-letter modality is a
+       * test that fails on ordinary English, not a test that catches a leak.
+       */
+      expect(body).not.toMatch(/\b(CT|MRI|USG|x-?ray|ultrasound|mammograph\w*|obstetric\w*|pregnan\w*|head|abdomen)\b/i);
+    }
+    expect([template.audience, template.class, template.channels])
+      .toEqual(["patient", "transactional", undefined]);
+    expect(template.expiresAt(params, OCCURRED_AT).toISOString())
+      .toBe(new Date(OCCURRED_AT.getTime() + 72 * 60 * 60 * 1000).toISOString());
   });
 
   /**
@@ -66,7 +96,7 @@ describe("the notification template registry (D8)", () => {
   it("leaves channels unset (default ladder) on the other four templates", () => {
     for (const key of [
       "patient_welcome", "appointment_confirmed", "appointment_reminder", "staff_escalation",
-      "patient_lab_report_ready",
+      "patient_lab_report_ready", "imaging_report_ready",
     ]) {
       expect(notificationTemplates[key]!.channels).toBeUndefined();
     }

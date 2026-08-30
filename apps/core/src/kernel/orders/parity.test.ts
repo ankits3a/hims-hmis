@@ -35,10 +35,17 @@ describe("the order envelope's parity pins", () => {
    * `medication` (Plan 16) and `package` (Plan 26) stay reserved by name and claimed by nobody;
    * 18a appends `imaging` and rebases if it lands second.
    */
-  it("exactly one installed manifest claims an order kind today: the lab's", () => {
+  /**
+   * PLAN 18a T2 — **TWO CLAIMED KINDS, and `imaging` is the second.** The header above said this
+   * line would move when 18a installed the manifest that claims it; this is that commit. Order is
+   * `ALL_MANIFESTS`' own — `lab` was appended at Plan 17 T2, `radiology` after it.
+   *
+   * `medication` (Plan 16) and `package` (Plan 26) stay reserved and claimed by nobody.
+   */
+  it("exactly two installed manifests claim an order kind today: the lab's and radiology's", () => {
     const registry = new ModuleRegistry();
     for (const m of ALL_MANIFESTS) registry.install(m);
-    expect(collectOrderKinds(registry).map((d) => d.kind)).toEqual(["lab"]);
+    expect(collectOrderKinds(registry).map((d) => d.kind)).toEqual(["lab", "imaging"]);
   });
 
   /**

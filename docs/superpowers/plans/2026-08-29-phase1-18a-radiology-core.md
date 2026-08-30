@@ -660,6 +660,68 @@ in both directions is to name the box.
 
 ---
 
+**F9 — A SEPARATION THE PLAN STATES TWICE WAS DEFEATED BY THE WORKFLOW DEFINITION IN THE SAME
+COMMIT THAT STATED IT.** *(found by writing T2's tests before building on T2's code; fixed here)*
+
+`997ab18` shipped `imagingGateDefinition` with `open → satisfied` naming
+**`radiology_receptionist`**, in the same commit whose `manifest.ts` says the opposite in as many
+words — *"The person who books the scan and takes the money does not get to record that the patient
+is not pregnant"* — and which §5 T2 lists as the FIRST of three separations the reviewer checks.
+
+**The census could not have caught it, and neither could T2 A3 as written.** A3 asserts the
+separation on the PERMISSION registry. `advanceInstance` (`kernel/workflow/instances.ts:115`) gates a
+transition on `actorHoldsAnyRole` against `role_assignments` / `temp_role_grants` and **consults no
+permission at any point**. That is Plan 17b's F39 seen from the other side: two enforcement planes,
+and a separation stated only on the plane that is not consulted is not a separation. A receptionist
+holding the role key would have driven `pregnancy_screen`, `mri_safety` and `form_f` alike to
+`satisfied` with every census green — one definition covers every gate KIND, so there is no per-kind
+role list to retreat to.
+
+**Fixed**: the role is off the edge, and the assertion now lives on BOTH planes —
+`seed-roles.test.ts` for the permission, `modules/radiology/workflow-def.test.ts` for the
+definition. `doctor` and `radiologist` stay (T5 A5 needs the radiologist; the referring clinician
+takes contrast consent). **The general lesson is worth more than the fix: wherever this repository
+states a separation, it must be asserted on the plane the engine actually reads.**
+
+**F10 — `consultant` IS NOT A ROLE IN THIS REPOSITORY. DECIDED: the grants go to `doctor`.**
+
+§5 T2's role sketch names `consultant (+ orders.place, orders.read, radiology.orders.place,
+radiology.reports.read)`. There is no such role: the treating clinician has been `doctor` since
+Plan 02, `lab.orders.place` was granted there for the same reason, and `doctor` is the key the
+imaging workflow's own transitions name. Declaring a second clinician role would split every future
+grant across two keys and make *"can the treating doctor do this?"* a question with two answers.
+Taken under the owner's standing rule; recorded rather than silently reinterpreted.
+
+`doctor` gains `radiology.orders.place` and `radiology.reports.read` — **the report, not the
+worklist**, because the worklist is a departmental queue and DD11 makes it confidentiality-bearing.
+
+**F11 — THREE CENSUS FILES THAT T2 MOVES ARE IN NO TASK'S FILES LIST.** *(the §2.138 pattern, third
+specimen)*
+
+`kernel/resources/kinds.test.ts`, `kernel/orders/kinds.test.ts`, `kernel/orders/parity.test.ts` and
+**`test/seed-staff.test.ts`** all pin counts this task moves, and none is named in T2's Files list.
+The fourth was found by the FULL VERIFY rather than by either grep, and it is the one with a
+consequence a reader can feel: `seed:staff` REFUSES a roster naming a role key outside
+`KNOWN_ROLE_KEYS`, so until it carried these four, the roster hiring the hospital's first
+radiographer would have been rejected as a typo and the whole roster refused rather than
+half-provisioned.
+
+The first three were found by the list-grep (`grep -rln "ALL_MANIFESTS"`) rather than by grepping
+for a sibling's name — which is exactly what that rule exists for, since each derives from the list
+instead of naming a member of it. **The fourth was found by neither grep**, because `seed-staff.ts`
+derives `KNOWN_ROLE_KEYS` from `ROLE_MODEL` and never mentions `ALL_MANIFESTS` at all: a census one
+hop further out than the rule's own search reaches. That is the finding worth carrying — §2.138's
+two greps are necessary and are not sufficient, and the instrument that caught the fourth was the
+FULL WORKSPACE VERIFY. All four are recorded rather than fixed silently, the way Plan 17 recorded F6
+and Plan 15 recorded T2-f.
+
+**One of them lost its subject rather than its number.** `resources/kinds.test.ts` asserted
+*"`device` is legal in the table and not yet a kind this hospital has"* — and `device` was the LAST
+of the ten names `resources_kind_ck` admits to find a declarer. There is no legal-but-undeclared kind
+left to point at. The test is REWRITTEN to assert the property it existed for (the collector reads
+manifests, never `RESOURCE_KIND_VALUES` — proved by removing a manifest and watching the set shrink
+while the CHECK does not move), rather than deleted or pinned to a falsehood.
+
 **F7 — THE BUILD HOST HAS SIXTY UNAUTHENTICATED GITHUB API CALLS AN HOUR, AND BOTH LANES SPEND FROM
 THE SAME BUCKET.** *(self-inflicted, and recorded because the mechanism is not)*
 
@@ -701,6 +763,67 @@ permitted** (the trigger freezes change, not statements) and **an acquired ionis
 even with `dose_manual` set**.
 
 ### 9.5 Mechanical verification — with the `TEST_DATABASE_URL` database named beside every count (§2.137)
+
+**T2 — RESUMED AND COMPLETED 2026-08-30. Every count below was taken with
+`TEST_DATABASE_URL="postgres://hmis:hmis@localhost:5433/hmis_lane_b_scratch"`**, the same lane
+database T1 used (`setupTestDb` appends `_<JEST_WORKER_ID>`).
+
+**The resume checklist was executed in its own order, and step 1 changed the task.** All twenty §2
+rows were re-measured before any code was written; **eleven had moved** since the pause, all by Lane
+A's lab work: migrations 46 → **48** (`0047_radiology_core` is this lane's own, so the next free
+number is `0048`), claimed order kinds `[]` → **`["lab"]`**, manifests 17 → **18**, `allPermissions`
+111 → **126**, worker manifest keys 12 → **13**, `PhiSurface` 8 → **11**, controllers on the order
+seam 0 → **3**, scheduler jobs 13 → **15**, ledger §5 line 1485 → **1708**, and
+`recordPhiAccess` in `kernel/orders/read.ts` **0 → 5**. That last one settles spike S8 for the third
+time and in the direction the handoff predicted: **the call EXISTS, landed by Lane A in `39beff0` —
+REUSE it, write no second call.**
+
+**T1 was re-proved before anything was built on it** (checklist step 5 — a green is a claim about a
+tree that has since changed): `radiology.test.ts`, `pcpndt.test.ts`, `series.test.ts`,
+`parity.test.ts` → **4 suites, 61 tests, exit 0**.
+
+**T2's tests were written BEFORE the install work** (checklist step 4), and that ordering is what
+found **F9**. The fail-first run of the three new files came back **exit 1, 2 failed / 31 passed**:
+one was the F9 defect (`open → satisfied` naming `radiology_receptionist`) and one was this
+session's own test reaching for the kernel's resource kinds through the manifest collector, which
+does not carry them. After the fix: **3 suites, 33 tests, exit 0.**
+
+| run | result |
+|---|---|
+| the three new T2 suites, fail-first | **exit 1 — 2 failed / 31 passed** (F9, plus one defect in the test itself) |
+| the three new T2 suites, after the F9 fix | **3 suites / 33 tests, exit 0** |
+| the census suites the install moves (manifests, notify, orders, resources, radiology) | **8 suites / 84 tests, exit 0** |
+| `test/seed-roles.test.ts` | **16 suites-worth of assertions, 16 tests, exit 0** |
+| the broad affected set (worker, modules, orders, resources, notify, nav-parity, roles-catalog, me, resources e2e) | **28 suites / 309 tests, exit 0** |
+| `pnpm typecheck` | **exit 0** |
+| `pnpm lint` | **0 errors** (2 pre-existing warnings). It caught a REAL rule: `events.test.ts` imported `../pcpndt/events` by file, and spec §4 admits only a module's `index.ts` — the very rule that keeps `pcpndt` installable by 15b without radiology |
+
+**THE FULL WORKSPACE VERIFY — RUN, RED, AND DIAGNOSED RATHER THAN RE-RUN UNTIL GREEN.**
+`exit 1`, read from `/opt/hmis/.verify.exit`: **`Test Suites: 26 failed, 290 passed, 316 total ·
+Tests: 30 failed, 3028 passed, 3058 total`**, with `apps/web` **61 files / 374 tests passed** and
+typecheck and lint both clean.
+
+**One of the twenty-six was real, and it is F11's fourth file.** `test/seed-staff.test.ts` pins
+`KNOWN_ROLE_KEYS` at thirty-one; the four new roles make it thirty-five. Neither §2.138 grep could
+have found it — that file derives its census from `ROLE_MODEL` and never names `ALL_MANIFESTS`.
+**The full verify was the only instrument that found it**, which is the argument for running one at
+a task boundary rather than trusting a targeted batch.
+
+**The other twenty-five were host contention, and the evidence is not an impression.** The run
+executed at **load average 17 → 31 with eighteen `claude` processes alive on this box**; the
+contention census reads **46 × `Exceeded timeout of 15000 ms`, 10 × `SIGKILL`ed jest workers, 4 ×
+duplicate key** — and suite times of 87–98 s against a normal 5–70 s. It is ledger §2.137's
+signature and 17b's run-2 shape exactly.
+
+**All twenty-six re-ran ISOLATED at `-w 2`, on the fixed tree, once the box was idle: `26 suites,
+201 tests passed, exit 0`, at load average 2.47.** The re-run was queued behind an
+`until load < 6` guard rather than launched immediately, because re-running under the same
+contention would have measured the contention again (rule 20, pointed at my own instrument).
+
+**WHAT IS THEREFORE NOT YET TRUE: no single full-workspace run has been observed green on this
+tree.** The composite above is a composite and is reported as one. That is 17b's own unfinished
+obligation arriving one phase later, and it is stated rather than averaged.
+
 
 **THE DATABASE: `hmis_lane_b_scratch_1`**, created by `setupTestDb` from
 `TEST_DATABASE_URL="postgres://hmis:hmis@localhost:5433/hmis_lane_b_scratch"` with

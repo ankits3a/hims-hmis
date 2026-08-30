@@ -1127,6 +1127,60 @@ an invoice leaving a remainder unless the caller holds it, and DD6 has the lab i
 invoices for the reflex, add-on and walk-in lines the counter never sees. All four new roles are
 created by `seed:roles` with grants and **no holders**, the `pharmacy` and `storekeeper` precedent.
 
+**Radiology and the PCPNDT register (Plan 18a T2) declare twenty permissions across four new roles,
+and the SHAPE is three separations.** `radiology.reports.sign` is the `radiologist`'s alone: the
+technologist acquires and the radiologist reports, which is the division the whole department is
+built around, and a `radiographer` who could sign would put a signature on their own work.
+`radiology_receptionist` holds NO `radiology.gates.satisfy` — the person who books the scan and takes
+the money does not get to record that the patient is not pregnant — and because the workflow engine
+gates transitions on ROLE KEYS rather than on permissions, that role is also absent from the
+`imaging_gate` definition's `open → satisfied` transition; withholding the permission alone would
+have been a separation that did not hold. `pcpndt_incharge` holds `pcpndt.form_f.verify` and NOT
+`pcpndt.form_f.write`: the in-charge verifies what others wrote, and an officer who could write and
+self-verify a statutory declaration is a single point of failure with a criminal statute behind it.
+`radiology.gates.override` is the radiologist's and is a different permission from `.satisfy` because
+it is a different decision — DD7 makes the radiologist the second clinical opinion on a gate the
+floor raised, and the override demands a reason and is evented.
+
+| Permission | radiologist | radiographer | radiology_receptionist | pcpndt_incharge |
+|---|---|---|---|---|
+| `radiology.orders.place` | | | ✓ | |
+| `radiology.worklist.read` | ✓ | ✓ | ✓ | |
+| `radiology.schedule` | | | ✓ | |
+| `radiology.checkin` | | ✓ | | |
+| `radiology.gates.satisfy` | | ✓ | | |
+| `radiology.gates.override` | ✓ | | | |
+| `radiology.acquire` | ✓ | ✓ | | |
+| `radiology.reports.write` | ✓ | | | |
+| `radiology.reports.sign` | ✓ | | | |
+| `radiology.reports.amend` | ✓ | | | |
+| `radiology.reports.read` | ✓ | ✓ | | |
+| `radiology.definitions.read` | ✓ | ✓ | ✓ | |
+| `radiology.definitions.manage` | ✓ | | | |
+| `radiology.bill_decisions.manage` | | | ✓ | |
+| `radiology.criticals.ack` | ✓ | | | |
+| `pcpndt.registrations.manage` | | | | ✓ |
+| `pcpndt.registrations.read` | ✓ | | | ✓ |
+| `pcpndt.form_f.write` | ✓ | | | |
+| `pcpndt.form_f.read` | ✓ | ✓ | | ✓ |
+| `pcpndt.form_f.verify` | | | | ✓ |
+
+Thirteen grants are held outside that table. **`doctor` gains `radiology.orders.place` and
+`radiology.reports.read`** — the referring clinician orders the scan and reads the REPORT, and not
+`radiology.worklist.read`, because the worklist is a departmental queue and a doctor browsing every
+scan in the hospital is the read the alias rules exist to prevent. **`billing_manager` gains
+`radiology.bill_decisions.manage`**, alongside the receptionist, because a repeat film and a contrast
+escalation are questions answered in money and that is the money office's call. `radiologist` and
+`radiographer` each gain the kernel's `orders.read`, and `radiology_receptionist` gains
+`orders.place` and `orders.read` — `placeOrder` requires the kernel permission AND the kind's own, so
+either alone is authority over nothing. `radiology_receptionist` also carries the counter strings its
+desk needs — `patients.register`, `patients.read`, `billing.invoice.issue`, `billing.invoice.read`,
+`billing.receipt.record`, `billing.session.own` — the `lab_reception` precedent, for the same reason:
+a desk that could schedule but not bill would be a split with nothing to compensate for it. It does
+NOT gain `patients.update` or `billing.credit.extend`: imaging bills at the counter before the scan,
+so no imaging path issues an invoice that leaves a remainder. All four new roles are created by
+`seed:roles` with grants and **no holders**, the `pharmacy` and `storekeeper` precedent.
+
 **Plan 07c T9 / DD14 — who may open the patient rows (owner ruling, 2026-08-29).** A new role,
 `staff_auditor`, carries `staff.reports.read` AND `staff.reports.drill`, and it is assigned to **one
 named person**. The obvious shortcut was to add the drill to `duty_manager`, which that person
