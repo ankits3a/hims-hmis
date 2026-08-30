@@ -617,7 +617,28 @@ two paragraphs: the machine is idle whether the patient cancelled or simply did 
 no-show that held its slot would take a working machine out of the day's list for no clinical
 reason. Both freeing statuses are proved by execution (T1, `it.each`).
 
-**F6 — LANE COLLISION: FIVE SHARED FILES AND A NON-SEPARABLE JOURNAL.** Recorded in full in §9.6.
+**F6 — LANE COLLISION: FIVE SHARED FILES AND A NON-SEPARABLE JOURNAL.** Recorded in full in §9.9.
+
+**F7 — THE BUILD HOST HAS SIXTY UNAUTHENTICATED GITHUB API CALLS AN HOUR, AND BOTH LANES SPEND FROM
+THE SAME BUCKET.** *(self-inflicted, and recorded because the mechanism is not)*
+
+This session polled the Actions API for a CI verdict, then left a watcher running and started a
+second one. The result: `{"message": "API rate limit exceeded for 62.238.106.231"}`,
+`{'limit': 60, 'remaining': 0, 'used': 60}`, **and no CI verdict obtained at all** — the last
+observed state was `in_progress`.
+
+The self-inflicted half is §2.130 exactly (*"arm exactly ONE blocking waiter and then stop
+asking"*), and it is the ordinary lesson. **The half worth keeping is that the quota is per IP, not
+per session.** `ci-watch-host.sh` works because the repository is public and the unauthenticated
+endpoint answers over plain `curl` (§2.33's archive note) — but sixty calls an hour is the whole
+budget for the HOST, so two lanes watching two SHAs share it, and a lane that polls hard can starve
+the other lane's watcher of the one instrument §2.55 says is not optional. A twenty-second poll loop
+alone is 180 calls an hour, three times the ceiling.
+
+**MECHANICAL FORM:** poll CI no faster than once a minute, run ONE watcher, and when the API answers
+`none|none` treat it as *"ask again later"* rather than as a verdict — an empty `workflow_runs` array
+and a rate-limit refusal are indistinguishable at the shape level, and only one of them means
+anything about the build.
 
 ### 9.4 The Assertion Book, corrected by execution
 
@@ -661,7 +682,7 @@ would have `exit 0` and nothing to inspect.
 | migration number, re-measured immediately BEFORE and AFTER `db:generate` (protocol §7) | before: 47 entries, last `0046_lab_core` (Lane A's). after: 48, last `0047_bent_mandrill` → renamed `0047_radiology_core`, journal retagged, snapshot renamed. **`0047` was free and still is.** |
 | generated SQL read rather than predicted (rule 21's discipline) | 11 `CREATE TABLE`, 12 indexes, 10 unique indexes, **no `lab_*` object** — the three `lab_`/`ot_` grep hits are false positives inside `not_given`, `not_pregnant` and `not in` |
 | `pnpm verify` (full workspace) | **NOT RUN, and deliberately.** Lane A held ~20 files dirty and a full verify of its own in flight for the whole of this session's window; a run over that tree is unattributable to either lane (§2.137, and the 2026-08-29 lane-collision note). CI by full SHA is the honest instrument and there is no SHA to watch, because nothing was committed. |
-| CI | **N/A — no code commit exists.** |
+| CI | **WATCHED, NOT OBTAINED.** Run `33298979243` for `2466b46` was last seen `in_progress`; the verdict was never read because this session exhausted the host's unauthenticated API quota polling for it (F7). It is a docs-only commit and cannot be red on account of its own content, but **that is an argument, not a verdict, and it is recorded as one.** The next session should re-read it: `curl -s "https://api.github.com/repos/ankits3a/hims-hmis/actions/runs?head_sha=2466b46119e587ba4b148d5e5498396a6ce8aed6"`. |
 
 ### 9.6 The independent close review — FRESH
 
