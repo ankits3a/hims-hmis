@@ -27,6 +27,13 @@ function mockRoutes(handlers: Record<string, Reply | (() => Reply)>): void {
   }));
 }
 
+/** What billing's own `previewInvoice` returns — the desk quotes this and never totals a basket. */
+const PRICED = {
+  tariffVersionId: "tv-1", intendedPayer: "self",
+  totals: { grossPaise: 30000, discountPaise: 0, taxableBasePaise: 30000,
+    cgstPaise: 0, sgstPaise: 0, roundingPaise: 0, netPayablePaise: 30000 },
+};
+
 const CATALOGUE = [
   { serviceId: "svc-tsh", code: "TSH", nameEn: "Thyroid stimulating hormone", nameHi: null,
     discipline: "biochemistry", specimenType: "serum", container: "sst",
@@ -42,6 +49,8 @@ afterEach(() => { setToken(null); vi.unstubAllGlobals(); });
 it("DD14 — a consent-class test cannot be ordered until the consent NAMES somebody", async () => {
   mockRoutes({
     "GET /api/lab/catalogue/search": { status: 200, body: CATALOGUE },
+    "POST /api/lab/catalogue/duplicates": { status: 200, body: [] },
+    "POST /api/lab/desk/preview": { status: 200, body: PRICED },
     "POST /api/lab/desk/orders": { status: 201, body: {
       orderId: "o-1", orderNo: "L2608300001", orderGroupId: "g-1", itemIds: ["i-1"],
       invoice: { invoiceId: "inv-1", invoiceNo: "INV-1", netPayablePaise: 30000,
@@ -64,8 +73,16 @@ it("DD14 — a consent-class test cannot be ordered until the consent NAMES some
   expect(screen.getByText(/Consent is required/)).toBeInTheDocument();
 
   await userEvent.type(screen.getByLabelText("Consent taken by HIV"), "Nurse Priya");
-  expect(screen.getByRole("button", { name: "Place order" })).toBeEnabled();
+  /**
+   * STILL DISABLED: "collect payment now" is the default and it needs a PRICE, which is the
+   * server's (close review, web C4). A desk that placed before pricing was the reason every lab
+   * order shipped as an unpaid credit invoice and the interlock then held every report.
+   */
+  expect(screen.getByRole("button", { name: "Place order" })).toBeDisabled();
+  await userEvent.click(screen.getByRole("button", { name: "Check" }));
+  await waitFor(() => expect(screen.getByText(/Net payable: ₹300.00/)).toBeInTheDocument());
 
+  expect(screen.getByRole("button", { name: "Place order" })).toBeEnabled();
   await userEvent.click(screen.getByRole("button", { name: "Place order" }));
   await waitFor(() => expect(screen.getByText(/L2608300001/)).toBeInTheDocument());
 });
@@ -76,6 +93,7 @@ it("02 D11 — an unacknowledged duplicate blocks the order until the clerk tick
     "POST /api/lab/catalogue/duplicates": { status: 200, body: [
       { serviceId: "svc-tsh", duplicateOfItemId: "i-old", reason: "TSH was ordered 4 h ago (L2608290007)" },
     ] },
+    "POST /api/lab/desk/preview": { status: 200, body: PRICED },
   });
   renderWithProviders(<LabDesk />);
 
@@ -94,6 +112,8 @@ it("02 D11 — an unacknowledged duplicate blocks the order until the clerk tick
 it("shows the server's refusal verbatim rather than inventing a message", async () => {
   mockRoutes({
     "GET /api/lab/catalogue/search": { status: 200, body: CATALOGUE },
+    "POST /api/lab/catalogue/duplicates": { status: 200, body: [] },
+    "POST /api/lab/desk/preview": { status: 200, body: PRICED },
     "POST /api/lab/desk/orders": { status: 404, body: {
       statusCode: 404, code: "unknown_service",
       message: "no lab orderable for svc-x — the advised test is not in this hospital's catalogue",
@@ -102,6 +122,8 @@ it("shows the server's refusal verbatim rather than inventing a message", async 
   renderWithProviders(<LabDesk />);
   await waitFor(() => expect(screen.getByText(/Thyroid/)).toBeInTheDocument());
   await userEvent.click(screen.getAllByRole("button", { name: "Add" })[0]!);
+  await userEvent.click(screen.getByRole("button", { name: "Check" }));
+  await waitFor(() => expect(screen.getByText(/Net payable/)).toBeInTheDocument());
   await userEvent.click(screen.getByRole("button", { name: "Place order" }));
   await waitFor(() =>
     expect(screen.getByRole("alert")).toHaveTextContent(/not in this hospital's catalogue/));

@@ -304,10 +304,29 @@ export async function enterResult(
     absurdOverriddenBy = override.by;
   }
 
+  /**
+   * ═══ CLOSE REVIEW M3 — THE SUPERSESSION CHAIN IS DERIVED, NOT REMEMBERED ═══
+   *
+   * `EnterResultInput` declared `supersedesResultId` and `rerunOf` and `requestRerun`'s header said
+   * they were *"set by the caller"*. **There was no such caller**: `enterResult` has one call site,
+   * the bench route, and its zod schema named neither — so zod stripped them and every re-keyed
+   * value was written with a NULL chain. An NABL auditor following `supersedes_result_id` back to
+   * the number that was wrong found nothing, on the one path that exists to answer that question.
+   *
+   * A field a caller must remember is a field a caller forgets, and 22c-A's C1 is the same shape one
+   * layer out. So the chain is computed HERE, from the rows: a value keyed for an analyte that
+   * already carries one supersedes it, which is exactly what a rerun is. The caller-supplied fields
+   * remain as an override for a path that genuinely knows better; nothing in this phase uses them.
+   */
+  const [priorForAnalyte] = await tx.select({ id: labResults.id })
+    .from(labResults)
+    .where(and(eq(labResults.orderItemId, ctx.orderItemId), eq(labResults.analyteId, analyte.id)))
+    .orderBy(desc(labResults.enteredAt)).limit(1);
   const primary = await writeResult(tx, actor, ctx, {
     analyte, value: input.value, numeric, unit: input.unit ?? analyte.unit,
     entryMode: input.entryMode, remarks: input.remarks ?? null, absurdOverriddenBy,
-    supersedesResultId: input.supersedesResultId ?? null, rerunOf: input.rerunOf ?? null,
+    supersedesResultId: input.supersedesResultId ?? priorForAnalyte?.id ?? null,
+    rerunOf: input.rerunOf ?? priorForAnalyte?.id ?? null,
   }, now);
 
   /**
@@ -327,6 +346,16 @@ export async function enterResult(
 }
 
 function parseNumeric(value: string, code: string): number {
+  /**
+   * `Number("")` IS `0`, AND IT IS FINITE (close review M9). A value of one space passed the route's
+   * `z.string().min(1)`, parsed to 0 here, and was then written back as `""` into a
+   * `numeric(14,4)` column — a raw `invalid input syntax for type numeric` that no error class in
+   * `toHttp` recognises, so it reached the bench as a **500**. That is the fourth instance of the
+   * escape this module's own mapper says the repository has shipped three times.
+   */
+  if (value.trim() === "") {
+    throw new LabError("catalogue_invalid", `${code}: a result needs a value, and this one is blank`);
+  }
   const n = Number(value.trim());
   if (!Number.isFinite(n)) {
     throw new LabError(
@@ -507,12 +536,28 @@ async function deltaAgainstPreviousVerified(
   if (windowHours <= 0) return null;
   const since = new Date(now.getTime() - windowHours * 3600_000);
 
+  /**
+   * ═══ THE PATIENT IS IN THE `WHERE` CLAUSE, NOT IN A JS LOOP (CLOSE REVIEW M6) ═══
+   *
+   * This query used to name the analyte, the status, the window and NO PATIENT AT ALL, and then
+   * resolve the merge chain per candidate in JavaScript until a canonical match was found. On a
+   * hospital doing 400 CBCs a day with haemoglobin's 168-hour window that is ~2,800 rows across
+   * ~2,500 distinct patients — and a FIRST-TIME patient's entry runs the loop to the end, issuing
+   * ~2,500 sequential round-trips **inside the entry transaction, holding it open**, on the bench's
+   * hot path. The old comment called the loop "short by construction"; it is short in the number of
+   * ANALYTES and unbounded in the number of PATIENTS.
+   *
+   * The chain is walked ONCE, forwards, before the query: every id that merges into this canonical
+   * patient, transitively. That set is what SQL filters on, and it is small by construction — it is
+   * one person's registrations.
+   */
+  const chain = await mergeChainOf(tx, ctx.patientId);
+
   const candidates = await tx
     .select({
       id: labResults.id,
       valueNumeric: labResults.valueNumeric,
       enteredAt: labResults.enteredAt,
-      patientId: orders.patientId,
     })
     .from(labResults)
     .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
@@ -522,40 +567,58 @@ async function deltaAgainstPreviousVerified(
       eq(labResults.verificationStatus, "verified"),
       gte(labResults.enteredAt, since),
       isNotNull(labResults.valueNumeric),
+      inArray(orders.patientId, chain),
     ))
-    .orderBy(desc(labResults.enteredAt));
+    .orderBy(desc(labResults.enteredAt))
+    .limit(1);
 
-  /**
-   * The merge chain is resolved PER CANDIDATE rather than pushed into the WHERE clause, because
-   * `resolvePatientId` walks a chain of arbitrary depth and SQL cannot. `desk.ts` resolves its
-   * group guard the same way for the same reason; the candidate set is one analyte inside one
-   * window, so the loop is short by construction.
-   */
-  const seen = new Map<string, string>();
-  for (const row of candidates) {
-    let canonical = seen.get(row.patientId);
-    if (canonical === undefined) {
-      canonical = (await resolvePatientId(tx, row.patientId)) ?? row.patientId;
-      seen.set(row.patientId, canonical);
-    }
-    if (canonical !== ctx.patientId) continue;
+  const row = candidates[0];
+  if (!row || row.valueNumeric === null) return null;
+  const prior = Number(row.valueNumeric);
+  if (!Number.isFinite(prior)) return null;
+  const moved = Math.abs(value - prior);
+  const movedPct = prior === 0 ? Infinity : (moved / Math.abs(prior)) * 100;
+  const flagged = (abs !== null && moved >= abs) || (pct !== null && movedPct >= pct);
+  return flagged ? { priorResultId: row.id, priorValue: row.valueNumeric } : null;
+}
 
-    const prior = Number(row.valueNumeric);
-    if (!Number.isFinite(prior)) continue;
-    const moved = Math.abs(value - prior);
-    const movedPct = prior === 0 ? Infinity : (moved / Math.abs(prior)) * 100;
-    const flagged = (abs !== null && moved >= abs) || (pct !== null && movedPct >= pct);
-    return flagged ? { priorResultId: row.id, priorValue: row.valueNumeric! } : null;
+/**
+ * EVERY PATIENT ID THAT IS THIS PERSON — the canonical one and every registration merged into it,
+ * transitively. `merge.ts` does not repoint `orders.patient_id`, so one person legitimately holds
+ * orders under several ids and a delta keyed on the canonical one alone would miss yesterday's
+ * haemoglobin entirely (02 A3).
+ *
+ * Walked FORWARDS from the canonical row rather than resolved per candidate: the set is one
+ * person's registrations, which is small, where the candidate set is every patient in the window.
+ * The loop is bounded by the chain's own depth and cannot revisit an id.
+ */
+async function mergeChainOf(tx: Tx, canonicalId: string): Promise<string[]> {
+  const ids = new Set([canonicalId]);
+  let frontier = [canonicalId];
+  while (frontier.length > 0) {
+    const losers = await tx
+      .select({ id: patients.id })
+      .from(patients)
+      .where(inArray(patients.mergedIntoPatientId, frontier));
+    frontier = losers.map((l) => l.id).filter((id) => !ids.has(id));
+    for (const id of frontier) ids.add(id);
   }
-  return null;
+  return [...ids];
 }
 
 /* ──────────────────────────────── the critical call ladder ──────────────────────────────── */
 
+/**
+ * The subject a call is opened ABOUT. A narrow shape rather than a `ResultContext`, because
+ * `amendResult` opens the ladder for a `completed` item and `resultContext` refuses one — the
+ * function that decides an item is resultable must not also be the only way to name its patient.
+ */
+type CallSubject = { orderItemId: string; orderId: string; encounterNo: string; patientId: string };
+
 async function openCriticalCall(
   tx: Tx,
   actor: Actor,
-  ctx: ResultContext,
+  ctx: CallSubject,
   input: { resultId: string; analyteId: string; value: string; band: "low" | "high" },
   now: Date,
 ): Promise<string> {
@@ -596,17 +659,31 @@ async function computeFormulaAnalytes(
   const formulas = analytes.filter((a) => a.resultType === "formula");
   if (formulas.length === 0) return [];
 
-  const done = new Set(
-    (await tx.select({ analyteId: labResults.analyteId }).from(labResults)
-      .where(eq(labResults.orderItemId, ctx.orderItemId))).map((r) => r.analyteId),
-  );
+  /**
+   * ═══ CLOSE REVIEW C3 — "ALREADY WRITTEN" IS NOT "STILL CURRENT" ═══
+   *
+   * `done` used to count ANY row for the analyte, so a rerun that corrected an INPUT left the
+   * derived value computed from the superseded one. Total cholesterol keyed 500 (a transposition of
+   * 150), HDL 50, TG 120 wrote LDL = 426; the rerun corrected the cholesterol to 150 and the LDL was
+   * SKIPPED, so a signed report read *cholesterol 150, LDL 426* — an arithmetically impossible pair
+   * a cardiologist would act on. `siblingValues` already argues that the newest row is the current
+   * value; that is true of the inputs and was false of the outputs, because the outputs were never
+   * rewritten.
+   *
+   * A formula analyte is therefore recomputed whenever its current value DISAGREES with what its
+   * current inputs imply — and the recomputation is a SUPERSEDING row (DD13), never an edit, so the
+   * number a report was signed against stays readable.
+   */
+  const currentRows = await tx.select().from(labResults)
+    .where(eq(labResults.orderItemId, ctx.orderItemId)).orderBy(labResults.enteredAt);
+  const currentByAnalyte = new Map<string, typeof labResults.$inferSelect>();
+  for (const row of currentRows) currentByAnalyte.set(row.analyteId, row);
   const written: EnteredResult[] = [];
 
   for (let pass = 0; pass < formulas.length; pass += 1) {
     const siblings = await siblingValues(tx, ctx, analytes);
     let progressed = false;
     for (const analyte of formulas) {
-      if (done.has(analyte.id)) continue;
       const outcome = evaluateFormula(analyte, siblings);
       /**
        * A MISSING INPUT IS NOT A FAILURE, IT IS A WAIT. `evaluateFormula` reports a missing sibling
@@ -620,7 +697,21 @@ async function computeFormulaAnalytes(
       const value = outcome.computed
         ? roundTo(outcome.value, analyte.decimals)
         : outcome.reason;
-      written.push(await writeResult(tx, actor, ctx, {
+
+      /**
+       * NOTHING TO DO WHEN THE CURRENT ROW ALREADY SAYS THIS. The comparison is on the RENDERED
+       * value, which is what a report prints and what `siblingValues` reads back — comparing the
+       * float would make a re-entry of the same number write a superseding row every time.
+       */
+      const existing = currentByAnalyte.get(analyte.id);
+      const existingValue = existing
+        ? (existing.valueNumeric ?? existing.valueText ?? existing.valueCoded ?? "")
+        : null;
+      if (existing && existingValue === (outcome.computed ? `${Number(value)}` : value)) continue;
+      if (existing && existingValue !== null && Number(existingValue) === Number(value)
+          && outcome.computed) continue;
+
+      const superseded = await writeResult(tx, actor, ctx, {
         analyte,
         value,
         numeric: outcome.computed ? Number(value) : null,
@@ -628,10 +719,13 @@ async function computeFormulaAnalytes(
         entryMode,
         remarks: null,
         absurdOverriddenBy: null,
-        supersedesResultId: null,
+        /** DD13 — a recomputation REPLACES rather than edits, and names what it replaced. */
+        supersedesResultId: existing?.id ?? null,
         rerunOf: null,
-      }, now));
-      done.add(analyte.id);
+      }, now);
+      written.push(superseded);
+      const [fresh] = await tx.select().from(labResults).where(eq(labResults.id, superseded.resultId));
+      if (fresh) currentByAnalyte.set(analyte.id, fresh);
       progressed = true;
     }
     if (!progressed) break;
@@ -860,6 +954,18 @@ export async function amendResult(
     );
   }
 
+  /**
+   * ═══ THE CORRECTED VALUE IS FLAGGED AGAINST THE RANGE IT WAS SIGNED AGAINST ═══
+   *
+   * The range on the prior row, and the analyte's own critical band. A correction is a statement
+   * about the VALUE, not about the range book, so re-resolving the range here would silently
+   * re-flag against whatever the curator has done since.
+   */
+  const flag = numeric === null ? prior.flag : flagFor(numeric, {
+    refRangeId: prior.refRangeId, low: prior.refLow, high: prior.refHigh, text: prior.refText,
+    criticalLow: analyte.criticalLow, criticalHigh: analyte.criticalHigh, note: prior.refNote,
+  });
+
   const resultId = newId();
   await tx.insert(labResults).values({
     id: resultId,
@@ -871,10 +977,7 @@ export async function amendResult(
     valueCoded: numeric === null && analyte.resultType === "coded" ? input.value : null,
     unit: input.unit ?? prior.unit,
     /** The RANGE IS THE ONE IT WAS SIGNED AGAINST — the correction is to the value, not to the book. */
-    flag: numeric === null ? prior.flag : flagFor(numeric, {
-      refRangeId: prior.refRangeId, low: prior.refLow, high: prior.refHigh, text: prior.refText,
-      criticalLow: analyte.criticalLow, criticalHigh: analyte.criticalHigh, note: prior.refNote,
-    }),
+    flag,
     refLow: prior.refLow,
     refHigh: prior.refHigh,
     refText: prior.refText,
@@ -903,9 +1006,51 @@ export async function amendResult(
     correlationId: row.orderId,
     payload: {
       resultId, orderItemId: prior.orderItemId, analyteId: prior.analyteId, enteredBy: actor.id,
-      flag: null, entryMode: prior.entryMode, absurdOverridden: false,
+      flag, entryMode: prior.entryMode, absurdOverridden: false,
     },
   }));
 
-  return { resultId, analyteId: prior.analyteId, flag: null, deltaFlagged: false, criticalCallId: null };
+  /**
+   * ═══ CLOSE REVIEW C2 — A CORRECTED VALUE OPENS THE CALL LADDER LIKE ANY OTHER (DD12) ═══
+   *
+   * This function shipped computing a flag and then throwing it away: it returned `flag: null`,
+   * evented `flag: null`, opened no `lab_critical_calls` row and emitted no
+   * `lab.result_critical_flagged`. **The path where the value is KNOWN to have been wrong was the
+   * one path with no telephone call.** A potassium signed at 22:00 as 4.2 and corrected to 6.9 at
+   * 09:00 produced a critical result on a signed report that nobody was told about, and the open-
+   * ladder handover list did not show it.
+   *
+   * `writeResult` opens the ladder for every other value in this module; an amendment is not an
+   * exception to DD12 and there is no reading of 02 F1 under which it could be.
+   */
+  const criticalCallId = flag === "LL" || flag === "HH"
+    ? await openCriticalCall(tx, actor, {
+        orderItemId: prior.orderItemId, orderId: row.orderId,
+        encounterNo: row.encounterNo, patientId: canonical,
+      }, {
+        resultId, analyteId: prior.analyteId, value: input.value.trim(),
+        band: flag === "LL" ? "low" : "high",
+      }, now)
+    : null;
+
+  /**
+   * AND THE NOTIFIABLE FLAG, for the same reason. Correcting a dengue NS1 from negative to positive
+   * is precisely the event 28a's register exists to receive, and `writeResult`'s own header calls
+   * under-reporting a notifiable disease a statutory failure rather than a tidiness one.
+   */
+  const [orderable] = await tx.select({ notifiable: labOrderables.notifiable, serviceId: labOrderables.serviceId })
+    .from(labOrderables).where(eq(labOrderables.serviceId, row.serviceId));
+  if (orderable?.notifiable === true) {
+    await appendEvent(tx, labNotifiableFlagged.make({
+      actor,
+      patientId: canonical,
+      correlationId: row.orderId,
+      payload: {
+        resultId, orderItemId: prior.orderItemId, patientId: canonical,
+        serviceId: row.serviceId, analyteId: prior.analyteId,
+      },
+    }));
+  }
+
+  return { resultId, analyteId: prior.analyteId, flag, deltaFlagged: false, criticalCallId };
 }

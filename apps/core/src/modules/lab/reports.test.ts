@@ -17,8 +17,10 @@ import { patientBalance } from "../billing";
 import { registerLabApprovalTypes, RELEASE_UNPAID_APPROVAL_TYPE } from "./approval-types";
 import {
   amendReport, getReport, listResultsForEncounter, printReport, publishReport, releaseUnpaid,
+  reportVersions,
 } from "./reports";
 import { amendResult } from "./results";
+import { verifyResult } from "./verify";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -330,6 +332,130 @@ describe("lab reports — publish, interlock, print, amend (17b T7)", () => {
     const stranger = await mkUser(db, "ward.clerk", ["nurse"]);
     await expect(listResultsForEncounter(db, stranger.actor, fx.encounterNo, AT))
       .rejects.toMatchObject({ code: "permission_denied" });
+  });
+
+  /* ══════════════════ THE CLOSE REVIEW'S FIXES, PINNED ══════════════════ */
+
+  it("C1: the version history carries NO snapshot — a sealed name cannot leak through it", async () => {
+    await db.update(patients).set({ isConfidential: true, alias: "Patient A" })
+      .where(eq(patients.id, fx.patientId));
+    const run = await runLabOrder(db, fx, ["TSH"], { at: AT });
+    await publishReport(db, fx.pathologist.actor, { orderId: run.orderId }, AT);
+
+    const versions = await reportVersions(db, run.orderId);
+    expect(versions).toHaveLength(1);
+    /**
+     * `select()` with no projection returned every column including `snapshot`, which carries the
+     * LEGAL name by design (E4). This reader has no alias rule and writes no PHI row, so the only
+     * safe shape is one that cannot carry the document at all.
+     */
+    expect(Object.keys(versions[0]!).sort()).toEqual([
+      "amendmentReasonCode", "channels", "partial", "printCount", "priorVersionId", "publishedAt",
+      "reportId", "signedBy", "status", "version",
+    ]);
+    expect(JSON.stringify(versions)).not.toContain("Ram Kumar");
+    expect(JSON.stringify(versions)).not.toContain("HMS-00000101-7");
+  });
+
+  it("M2: two concurrent amendments — one wins, the loser is refused report_not_amendable", async () => {
+    const run = await runLabOrder(db, fx, ["TSH"], { at: AT, values: { TSH: "2.5" } });
+    const v1 = await publishReport(db, fx.pathologist.actor, { orderId: run.orderId }, AT);
+    const later = new Date(AT.getTime() + 3600_000);
+
+    const settled = await Promise.allSettled([
+      amendReport(db, fx.pathologist.actor, { reportId: v1.reportId, reasonCode: "clerical" }, later),
+      amendReport(db, fx.pathologist.actor, { reportId: v1.reportId, reasonCode: "clerical" }, later),
+    ]);
+    expect(settled.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const loser = settled.find((r) => r.status === "rejected");
+    expect((loser as PromiseRejectedResult).reason).toMatchObject({ code: "report_not_amendable" });
+
+    /** EXACTLY ONE published version — two would let the counter and the ward read different pages. */
+    const reports = await db.select().from(labReports).where(eq(labReports.orderId, run.orderId));
+    expect(reports.filter((r) => r.status === "published")).toHaveLength(1);
+    expect(reports).toHaveLength(2);
+  });
+
+  it("M4: a PARTIAL report that is later completed publishes as COMPLETE, not partial", async () => {
+    /**
+     * ═══ `partial` IS ITEM-GRAINED, AND THE FIRST VERSION OF THIS TEST GOT THAT WRONG (§9.4) ═══
+     *
+     * It used one TFT — three ANALYTES on ONE item — and signed one of them, expecting a partial
+     * report. `buildSnapshot` includes an ITEM only when it is `completed`, and an item completes
+     * only when its last analyte is signed, so a one-item order has no partial state at all: the
+     * publish was refused *"a partial report of nothing is not a report"*, which is the code
+     * correctly describing the fixture. **02 D7's real case is two tests and one analyser down**,
+     * which is what this builds.
+     */
+    const run = await runLabOrder(db, fx, ["TSH", "GLUF"], { at: AT, verify: false });
+    const rows = await db.select().from(labResults);
+    const tshRow = rows.find((r) => r.orderItemId === run.itemIds[0]!)!;
+    const glufRow = rows.find((r) => r.orderItemId === run.itemIds[1]!)!;
+    /** The TSH is signed; the glucose analyser is down. */
+    await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: tshRow.id }, AT);
+
+    const v1 = await publishReport(db, fx.pathologist.actor, { orderId: run.orderId, partial: true }, AT);
+    expect(v1.partial).toBe(true);
+
+    /** The analyser comes back the next morning and the glucose is signed. */
+    await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: glufRow.id }, AT);
+    const later = new Date(AT.getTime() + 3600_000);
+    const v2 = await amendReport(db, fx.pathologist.actor, {
+      reportId: v1.reportId, reasonCode: "added_analyte",
+    }, later);
+
+    /**
+     * `partial` was carried forward from the prior version, so 02 D7's own path inverted itself: a
+     * COMPLETE report stamped PARTIAL, and the A4 prints that word. It is derived from the contents.
+     */
+    expect(v2.partial).toBe(false);
+    const [row] = await db.select().from(labReports).where(eq(labReports.id, v2.reportId));
+    expect([row!.partial, (row!.snapshot as { partial: boolean }).partial]).toEqual([false, false]);
+  });
+
+  it("M8: a granted release is spent ONCE — the second hand-over needs a second decision", async () => {
+    await registerLabApprovalTypes(db, fx.pathologist.actor);
+    const run = await runLabOrder(db, fx, ["TSH"], { at: AT });
+    const report = await publishReport(db, fx.pathologist.actor, { orderId: run.orderId }, AT);
+    const { approvalId } = await withTx(db, (tx) => requestApproval(tx, fx.desk.actor, {
+      typeKey: RELEASE_UNPAID_APPROVAL_TYPE,
+      subject: { type: "lab_report", id: run.orderId }, patientId: fx.patientId,
+    }));
+    await approveRequest(db, billingManager.actor, { approvalId, note: "carry it" });
+
+    await releaseUnpaid(db, billingManager.actor, {
+      reportId: report.reportId, approvalId, collectorIdentity: "the patient",
+    }, AT);
+
+    /**
+     * `approvals` carries no expiry and nothing marked this consumed, so one grant made in August
+     * for a ₹300 balance released the same order's report in September — by which time an amendment
+     * had produced a v2 and more work had landed on the invoice.
+     */
+    await expect(releaseUnpaid(db, billingManager.actor, {
+      reportId: report.reportId, approvalId, collectorIdentity: "an uncle",
+    }, new Date(AT.getTime() + 86_400_000)))
+      .rejects.toMatchObject({ code: "release_approval_invalid" });
+    expect(await db.select().from(labReportDeliveries)).toHaveLength(1);
+  });
+
+  it("M7: two concurrent prints leave TWO register rows and a print count of TWO", async () => {
+    const run = await runLabOrder(db, fx, ["TSH"], { at: AT });
+    const report = await publishReport(db, fx.pathologist.actor, { orderId: run.orderId }, AT);
+    await settleInvoice(db, cashier, fx.patientId, run.invoiceId, run.netPayablePaise, AT);
+
+    await Promise.all([
+      printReport(db, fx.desk.actor, {
+        reportId: report.reportId, channel: "print", collectorIdentity: "the patient",
+      }, AT),
+      printReport(db, fx.desk.actor, {
+        reportId: report.reportId, channel: "in_person", collectorIdentity: "a relative",
+      }, AT),
+    ]);
+    expect(await db.select().from(labReportDeliveries)).toHaveLength(2);
+    /** The count was `report.printCount + 1` read outside the transaction: both wrote 1. */
+    const [row] = await db.select().from(labReports).where(eq(labReports.id, report.reportId));
+    expect(row!.printCount).toBe(2);
   });
 
   /* ═══════════════ the item's own machine reaches its terminal state ═══════════════ */

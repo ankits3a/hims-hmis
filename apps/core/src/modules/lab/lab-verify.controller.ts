@@ -12,7 +12,7 @@ import {
 } from "./reports";
 import { amendResult, requestRerun } from "./results";
 import { verifyResult } from "./verify";
-import { verifyWorklist } from "./worklist";
+import { publishableOrders, verifyWorklist } from "./worklist";
 import { idSchema, LAB_IDEMPOTENT_ROUTES, LAB_REPORT_ROUTES, parsed, toHttp } from "./lab-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -40,7 +40,8 @@ import type { ModuleRegistry } from "../../kernel/modules/loader";
 const rerunBody = z.object({ resultId: idSchema, reason: z.string().max(300).optional() });
 const publishBody = z.object({ orderId: idSchema, partial: z.boolean().optional() });
 const printBody = z.object({
-  channel: z.enum(["print", "whatsapp", "in_person", "doctor_screen"]),
+  /** `doctor_screen` is not a hand-over this route can make — see `PrintReportInput` (m2). */
+  channel: z.enum(["print", "whatsapp", "in_person"]),
   collectorIdentity: z.string().max(200).optional(),
 });
 const releaseBody = z.object({
@@ -95,17 +96,41 @@ export class LabVerifyController {
     } catch (e) { toHttp(e); }
   }
 
-  /** A rerun is free and is a state move — no order, no invoice, no credit note. */
+  /**
+   * A rerun is free and is a state move — no order, no invoice, no credit note. **It still carries
+   * an idempotency key** (close review m7): it is a workflow transition, and a double-submit that
+   * lost the race would surface `stale_transition` to a pathologist who pressed one button once.
+   */
   @Post("verify/rerun")
   @RequirePermission("lab.results.verify", "hospital")
-  async rerun(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+  async rerun(
+    @CurrentActor() actor: Actor,
+    @Body() body: unknown,
+    @Headers("idempotency-key") key?: string,
+  ): Promise<unknown> {
     const input = parsed(rerunBody, body);
     try {
-      return await withTx(this.db, (tx) => requestRerun(tx, actor, input));
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: LAB_REPORT_ROUTES.rerun, key },
+        input,
+        () => withTx(this.db, (tx) => requestRerun(tx, actor, input)),
+      );
     } catch (e) { toHttp(e); }
   }
 
   /* ───────────────────────────── the document ───────────────────────────── */
+
+  /**
+   * The orders a report can actually be published for (close review, web C3). It is a SEPARATE
+   * queue from the verify worklist because the two conditions are mutually exclusive: an item
+   * leaves the verify queue at the very moment it becomes publishable.
+   */
+  @Get("reports/publishable")
+  @RequirePermission("lab.worklist.read", "hospital")
+  async publishable(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await publishableOrders(this.db, actor); } catch (e) { toHttp(e); }
+  }
 
   @Post("reports")
   @RequirePermission("lab.reports.publish", "hospital")
@@ -185,13 +210,28 @@ export class LabVerifyController {
     } catch (e) { toHttp(e); }
   }
 
-  /** R-018 — the corrected VALUE first, then the new report version over it. Two acts, two routes. */
+  /**
+   * R-018 — the corrected VALUE first, then the new report version over it. Two acts, two routes.
+   *
+   * **Idempotent** (close review m7): `amendResult` inserts an unconditional new `lab_results` row,
+   * so a double-submit wrote TWO superseding rows for one correction and the second superseded the
+   * first — an audit chain with a phantom link in it.
+   */
   @Post("results/amend")
   @RequirePermission("lab.reports.amend", "hospital")
-  async correct(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+  async correct(
+    @CurrentActor() actor: Actor,
+    @Body() body: unknown,
+    @Headers("idempotency-key") key?: string,
+  ): Promise<unknown> {
     const input = parsed(amendResultBody, body);
     try {
-      return await withTx(this.db, (tx) => amendResult(tx, actor, input));
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: LAB_REPORT_ROUTES.amendResult, key },
+        input,
+        () => withTx(this.db, (tx) => amendResult(tx, actor, input)),
+      );
     } catch (e) { toHttp(e); }
   }
 

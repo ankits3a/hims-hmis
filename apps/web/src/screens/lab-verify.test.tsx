@@ -57,6 +57,13 @@ const snapshot = {
   }],
 };
 
+/** An order whose every item has finished — the shape the publish queue serves (web C3). */
+const PUBLISHABLE = {
+  orderId: "o-1", orderNo: "L2608300001", encounterNo: "V2608290001",
+  patientId: "p-1", patientDisplay: "Ram Kumar", serviceDate: "2026-08-30",
+  complete: true, itemCount: 1, completedCount: 1, orderables: ["TSH"],
+};
+
 const heldReport = {
   reportId: "rep-1", orderId: "o-1", version: 1, status: "published", partial: false,
   channels: ["print", "whatsapp", "in_person"], printCount: 0, priorVersionId: null,
@@ -70,6 +77,7 @@ afterEach(() => { setToken(null); vi.unstubAllGlobals(); });
 it("DD11 — a verifier who keyed the number is refused, and the message says why", async () => {
   mockRoutes({
     "GET /api/lab/verify/worklist": { status: 200, body: QUEUE },
+    "GET /api/lab/reports/publishable": { status: 200, body: [] },
     "POST /api/lab/verify/results/r-1": { status: 403, body: {
       statusCode: 403, code: "sod_violation",
       message: "result r-1 was keyed by this same user — a result is signed by a second pair of hands, and holding both permissions is not the same as being two people",
@@ -84,11 +92,17 @@ it("DD11 — a verifier who keyed the number is refused, and the message says wh
 
 it("DD23 — the print button follows the SERVER's verdict and names the money when it is held", async () => {
   mockRoutes({
-    "GET /api/lab/verify/worklist": { status: 200, body: QUEUE },
+    "GET /api/lab/verify/worklist": { status: 200, body: [] },
+    "GET /api/lab/reports/publishable": { status: 200, body: [PUBLISHABLE] },
     "POST /api/lab/reports": { status: 201, body: { reportId: "rep-1", version: 1 } },
     "GET /api/lab/reports/rep-1": { status: 200, body: heldReport },
   });
   renderWithProviders(<LabVerify />);
+  /**
+   * PUBLISHED FROM THE PUBLISH QUEUE, NOT FROM THE VERIFY WORKLIST (close review, web C3). The two
+   * are mutually exclusive: an item leaves the verify worklist at the exact moment it becomes
+   * publishable, so the button that used to sit there could never be pressed.
+   */
   await waitFor(() => expect(screen.getByText("L2608300001")).toBeInTheDocument());
   await userEvent.click(screen.getByRole("button", { name: "Publish report" }));
 
@@ -97,6 +111,9 @@ it("DD23 — the print button follows the SERVER's verdict and names the money w
   /** Held: disabled EVEN WITH a collector typed — the money verdict is the server's, not the form's. */
   await userEvent.type(screen.getByLabelText("Collected by"), "the patient");
   expect(screen.getByRole("button", { name: "Print and hand over" })).toBeDisabled();
+  /** AND THE A4 IS NOT MOUNTED, so Ctrl+P cannot walk around the register (close review MAJOR). */
+  expect(screen.queryByText("HMS-00000101-7")).not.toBeInTheDocument();
+  expect(screen.getByText(/report is held/i)).toBeInTheDocument();
 });
 
 it("a settled report prints, and the A4 document renders from the snapshot", async () => {
@@ -105,7 +122,8 @@ it("a settled report prints, and the A4 document renders from the snapshot", asy
     delivery: { allowed: true, reason: "settled", unpaidInvoiceIds: [], outstandingPaise: 0 },
   };
   mockRoutes({
-    "GET /api/lab/verify/worklist": { status: 200, body: QUEUE },
+    "GET /api/lab/verify/worklist": { status: 200, body: [] },
+    "GET /api/lab/reports/publishable": { status: 200, body: [PUBLISHABLE] },
     "POST /api/lab/reports": { status: 201, body: { reportId: "rep-1", version: 1 } },
     "GET /api/lab/reports/rep-1": { status: 200, body: settled },
     "POST /api/lab/reports/rep-1/print": { status: 201, body: { deliveryId: "d-1", printCount: 1 } },

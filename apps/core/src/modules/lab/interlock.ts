@@ -94,7 +94,13 @@ export async function deliveryAllowed(
    * because the desk invoice was. `every` rather than `some`: the exemption is a statement about
    * who settles the whole of this order, and one self-pay line is one bill somebody owes.
    */
-  const exemptByEncounter = EXEMPT_ENCOUNTER_PREFIXES.some((p) => order.encounterNo.startsWith(p));
+  /**
+   * THE SERIES LETTER, EXACTLY (close review m8). `startsWith("D")` is safe against today's
+   * `EPISODE_SERIES` letters and would silently exempt every lab report of a future multi-letter
+   * series that happened to begin `D` — an exemption granted by a naming coincidence. An episode
+   * number is `<letter><YYMMDD><4 digits>`, so the letter is character zero and nothing else.
+   */
+  const exemptByEncounter = EXEMPT_ENCOUNTER_PREFIXES.includes(order.encounterNo.slice(0, 1));
   const exemptByPayer = rows.length > 0 && rows.every((r) => EXEMPT_PAYERS.includes(r.intendedPayer));
   if (exemptByEncounter || exemptByPayer) {
     return { allowed: true, reason: "exempt_payer", unpaidInvoiceIds: [], outstandingPaise: 0 };

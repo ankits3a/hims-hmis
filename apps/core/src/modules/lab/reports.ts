@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
@@ -137,7 +137,7 @@ async function buildSnapshot(
   actor: Actor,
   now: Date,
   partial: boolean,
-): Promise<{ snapshot: ReportSnapshot; sensitive: boolean; itemIds: string[] }> {
+): Promise<{ snapshot: ReportSnapshot; sensitive: boolean; itemIds: string[]; complete: boolean }> {
   const items = await tx
     .select({
       orderItemId: orderItems.id, serviceId: orderItems.serviceId, status: orderItems.status,
@@ -276,11 +276,13 @@ async function buildSnapshot(
       orderingClinicianId: order.orderingClinicianId,
       panels,
       signatory: { userId: actor.id, username: signatory?.username ?? actor.id, signedAt: now.toISOString() },
-      partial,
+      partial: unfinished.length > 0,
       notes: [...new Set(notes)],
     },
     sensitive: panels.some((p) => p.sensitive),
     itemIds: included.map((i) => i.orderItemId),
+    /** Every reportable item finished — what `partial` is DERIVED from (C.R. M4). */
+    complete: unfinished.length === 0,
   };
 }
 
@@ -346,16 +348,42 @@ async function publishInTx(
   const existing = await tx.select().from(labReports)
     .where(eq(labReports.orderId, order.id)).orderBy(desc(labReports.version));
   const current = existing.find((r) => r.status === "published");
-  if (current && input.priorVersionId === null) {
-    throw new LabError(
-      "report_not_publishable",
-      `order ${order.orderNo} already has a published report (v${current.version}) — a changed ` +
-        "result is an AMENDMENT, never a second first version",
-      { reportId: current.id, version: current.version },
-    );
+  if (input.priorVersionId === null) {
+    if (current) {
+      throw new LabError(
+        "report_not_publishable",
+        `order ${order.orderNo} already has a published report (v${current.version}) — a changed ` +
+          "result is an AMENDMENT, never a second first version",
+        { reportId: current.id, version: current.version },
+      );
+    }
+  } else {
+    /**
+     * THE AMENDMENT'S PRIOR, RE-READ UNDER THE LOCK (C.R. M2). The loser of a two-amendment race
+     * arrives here and finds the version it was asked to amend already `superseded` by the winner.
+     */
+    const prior = existing.find((r) => r.id === input.priorVersionId);
+    if (!prior) throw new LabError("unknown_report", `no lab report ${input.priorVersionId}`);
+    if (prior.status !== "published") {
+      throw new LabError(
+        "report_not_amendable",
+        `report ${input.priorVersionId} is ${prior.status} — only the CURRENT published version is ` +
+          "amended, and this one has already been replaced",
+        { currentVersionId: current?.id ?? null },
+      );
+    }
   }
 
-  const { snapshot, sensitive, itemIds } = await buildSnapshot(tx, order, actor, now, input.partial);
+  const { snapshot, sensitive, itemIds, complete } = await buildSnapshot(tx, order, actor, now, input.partial);
+  /**
+   * ═══ `partial` IS RECOMPUTED FROM WHAT WENT ON THE PAGE, NEVER CARRIED FORWARD (C.R. M4) ═══
+   *
+   * `amendReport` used to pass `prior.partial` through, so 02 D7's own path inverted itself: a CBC
+   * published partial at 24 h while the LFT analyser was down, then amended once the LFT finished,
+   * produced a COMPLETE report stamped PARTIAL — and the A4 prints that word. The flag is a
+   * statement about THIS version's contents, so it is derived from them.
+   */
+  const partial = !complete;
 
   /**
    * ═══ DD14 — A `sensitive` PANEL FORCES IN-PERSON COLLECTION, ON THE ROW (02 J3) ═══
@@ -380,7 +408,7 @@ async function publishInTx(
     publishChannels: channels,
     amendmentReasonCode: input.amendmentReasonCode,
     priorVersionId: input.priorVersionId,
-    partial: input.partial,
+    partial,
   });
 
   if (input.priorVersionId !== null) {
@@ -422,7 +450,7 @@ async function publishInTx(
   void event;
 
   return {
-    reportId, orderId: order.id, version, partial: input.partial, channels,
+    reportId, orderId: order.id, version, partial, channels,
     priorVersionId: input.priorVersionId, patientId: snapshot.patient.id,
     encounterNo: order.encounterNo, sensitive, orderNo: order.orderNo,
   };
@@ -492,18 +520,29 @@ export async function amendReport(
   now: Date = new Date(),
 ): Promise<PublishedReport> {
   await assertMay(db, actor, LAB_REPORTS_AMEND, "amend a lab report");
-  const [prior] = await db.select().from(labReports).where(eq(labReports.id, input.reportId));
-  if (!prior) throw new LabError("unknown_report", `no lab report ${input.reportId}`);
-  if (prior.status !== "published") {
-    throw new LabError(
-      "report_not_amendable",
-      `report ${input.reportId} is ${prior.status} — only the CURRENT published version is amended`,
-    );
-  }
+
+  /**
+   * ═══ THE ORDER IS READ FIRST ONLY TO FIND IT; THE **DECISION** IS MADE UNDER THE LOCK (C.R. M2) ═══
+   *
+   * This function used to read `prior` here, outside any transaction, refuse a non-published prior,
+   * and then hand `publishInTx` a `priorVersionId` — which makes `publishInTx` skip its own
+   * "already published" refusal. Two registrars amending v1 at the same moment therefore both
+   * passed the check, both took the order lock in turn, and produced **v2 and v3 BOTH `published`**,
+   * each superseding v1. Every CHECK constraint is satisfied by that state and `printReport`
+   * accepts either, so the counter hands over one version while the ward reads another.
+   *
+   * `publishInTx` now resolves the prior version ITSELF, after `FOR UPDATE`. The loser of the race
+   * reads the winner's v2, finds the report it was asked to amend already `superseded`, and is
+   * refused `report_not_amendable` — which is the honest answer to "amend a version somebody else
+   * has already replaced".
+   */
+  const [found] = await db.select({ orderId: labReports.orderId })
+    .from(labReports).where(eq(labReports.id, input.reportId));
+  if (!found) throw new LabError("unknown_report", `no lab report ${input.reportId}`);
 
   const published = await withTx(db, (tx) => publishInTx(tx, actor, {
-    orderId: prior.orderId, partial: prior.partial,
-    priorVersionId: prior.id, amendmentReasonCode: input.reasonCode,
+    orderId: found.orderId, partial: false,
+    priorVersionId: input.reportId, amendmentReasonCode: input.reasonCode,
   }, now));
   return { ...published, notificationId: await notifyReady(db, published, now) };
 }
@@ -512,7 +551,14 @@ export async function amendReport(
 
 export type PrintReportInput = {
   reportId: string;
-  channel: "print" | "whatsapp" | "in_person" | "doctor_screen";
+  /**
+   * `doctor_screen` is deliberately NOT here (close review m2). `publishInTx` only ever stores
+   * `['in_person']` or `['print','whatsapp','in_person']`, so the channel could never match the
+   * stored list and the refusal came back saying *"a confidentiality-class result is collected in
+   * person"* — the wrong reason, about a report that is not sensitive. A doctor reading on screen
+   * goes through `listResultsForEncounter`, which is not a hand-over and writes no delivery row.
+   */
+  channel: "print" | "whatsapp" | "in_person";
   /** 02 J2 — WHO took the report away. Required for a physical hand-over (T7 A9). */
   collectorIdentity?: string;
   /** DD6 — a GRANTED `lab_release_unpaid` approval releases an unsettled order's document. */
@@ -626,9 +672,14 @@ export async function printReport(
       approvalId: releasedByApproval ? input.approvalId! : null,
       at: now,
     });
-    /** `print_count` is the second column the immutability trigger lets move on a published row. */
+    /**
+     * `print_count` is the second column the immutability trigger lets move on a published row —
+     * and it is incremented IN SQL, not read-then-written (C.R. M7). `report` was read on `db`
+     * before this transaction opened, so `report.printCount + 1` made two counter staff printing
+     * the same report both read 0 and both write 1: two rows in the register and a count of one.
+     */
     const [bumped] = await tx.update(labReports)
-      .set({ printCount: report.printCount + 1 })
+      .set({ printCount: sql`${labReports.printCount} + 1` })
       .where(eq(labReports.id, report.id))
       .returning({ printCount: labReports.printCount });
 
@@ -696,6 +747,34 @@ async function assertReleaseApproval(db: Db, approvalId: string, orderId: string
     throw new LabError(
       "release_approval_invalid",
       `approval ${approvalId} was granted for ${approval.subjectId}, not for order ${orderId}`,
+    );
+  }
+
+  /**
+   * ═══ AND IT IS SPENT ONCE (CLOSE REVIEW M8) ═══
+   *
+   * `approvals` carries no expiry and nothing marked this consumed, so a grant made in August for a
+   * ₹300 balance still released the same order's report in September — by which time an amendment
+   * had produced a v2 and ₹4,000 of add-on lab work had landed on the same invoice. DD6 describes a
+   * one-time managerial decision to carry a receivable; what shipped was a standing permanent
+   * exemption keyed to an order id.
+   *
+   * The release register IS the record of use: a delivery row carrying this `approval_id` means the
+   * decision has been acted on. A second hand-over needs a second decision, which is what
+   * `billing_manager` is being asked for.
+   */
+  const [spent] = await db
+    .select({ id: labReportDeliveries.id, at: labReportDeliveries.at })
+    .from(labReportDeliveries)
+    .where(eq(labReportDeliveries.approvalId, approvalId))
+    .limit(1);
+  if (spent) {
+    throw new LabError(
+      "release_approval_invalid",
+      `approval ${approvalId} was already used to hand this order's report over at ` +
+        `${spent.at.toISOString()} — a release is one decision about one hand-over, and the balance ` +
+        "may have moved since",
+      { deliveryId: spent.id },
     );
   }
   return true;
@@ -768,14 +847,21 @@ export async function getReport(
   if (!report) throw new LabError("unknown_report", `no lab report ${reportId}`);
 
   const snapshot = report.snapshot as ReportSnapshot;
+  /**
+   * THE CANONICAL PATIENT, not the snapshotted id (close review m3). The snapshot freezes the
+   * identity as it was at signature (E4) and a merge afterwards does not rewrite it — but the
+   * CONFIDENTIALITY FLAG is a fact about the person NOW. A patient sealed only on the surviving
+   * record would have had their name disclosed from the losing row's `is_confidential = false`.
+   */
+  const canonical = (await resolvePatientId(db, snapshot.patient.id)) ?? snapshot.patient.id;
   const [patient] = await db
     .select({ name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential })
-    .from(patients).where(eq(patients.id, snapshot.patient.id));
+    .from(patients).where(eq(patients.id, canonical));
   const canSeeConfidential = await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
 
   await recordPhiAccess(db, {
     actor,
-    patientId: snapshot.patient.id,
+    patientId: canonical,
     surface: "lab.report",
     encounterId: snapshot.encounterNo,
     sealed: patient?.isConfidential ?? false,
@@ -904,11 +990,47 @@ export async function listResultsForEncounter(
   }));
 }
 
-/** Every version of one order's report, newest first — the amendment history a reprint reads. */
+export type ReportVersionRow = {
+  reportId: string;
+  version: number;
+  status: string;
+  partial: boolean;
+  channels: string[];
+  printCount: number;
+  priorVersionId: string | null;
+  amendmentReasonCode: string | null;
+  publishedAt: string | null;
+  signedBy: string | null;
+};
+
+/**
+ * ═══ THE VERSION HISTORY — AND IT RETURNS NO SNAPSHOT (CLOSE REVIEW C1) ═══
+ *
+ * This function used to be `select()` with no projection, which returns every column INCLUDING
+ * `snapshot` — and `buildSnapshot` deliberately stores the patient's **legal** name, because it is
+ * the signed document. `getReport` is where the alias rule and the PHI log live (T7 A8), and this
+ * was a second reader on the same controller that had neither: a technologist holding
+ * `lab.results.read` and not `patients.confidential.read` read a sealed patient's legal name, UHID
+ * and date of birth, and nothing was written to `phi_access_log`.
+ *
+ * **That is §2.140's own shape** — a disclosure removed at one reader and left standing on a sibling
+ * added in the same commit — and it is the shape 17a's close pass 2 found twice. The columns below
+ * are named EXPLICITLY rather than excluded, so a column added to `lab_reports` later cannot join
+ * this response by default. **A caller that wants the document calls `getReport` and gets logged.**
+ */
 export async function reportVersions(
   exec: Db | Tx,
   orderId: string,
-): Promise<(typeof labReports.$inferSelect)[]> {
-  return (exec as Db).select().from(labReports)
+): Promise<ReportVersionRow[]> {
+  const rows = await (exec as Db)
+    .select({
+      reportId: labReports.id, version: labReports.version, status: labReports.status,
+      partial: labReports.partial, channels: labReports.publishChannels,
+      printCount: labReports.printCount, priorVersionId: labReports.priorVersionId,
+      amendmentReasonCode: labReports.amendmentReasonCode, publishedAt: labReports.publishedAt,
+      signedBy: labReports.signedBy,
+    })
+    .from(labReports)
     .where(eq(labReports.orderId, orderId)).orderBy(desc(labReports.version));
+  return rows.map((r) => ({ ...r, publishedAt: r.publishedAt?.toISOString() ?? null }));
 }

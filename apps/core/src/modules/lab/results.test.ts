@@ -16,6 +16,7 @@ import { duplicateWarnings } from "./duplicates";
 import { enterResult, requestRerun } from "./results";
 import { printLabels } from "./specimens";
 import { verifyResult } from "./verify";
+import { amendResult } from "./results";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -324,6 +325,96 @@ describe("lab results — entry (17b T6)", () => {
     const flagged = await eventsNamed("lab.notifiable_flagged");
     expect(flagged).toHaveLength(1);
     expect(flagged[0]!.payload).toMatchObject({ orderItemId: mpOrder.itemIds[0]! });
+  });
+
+  /* ══════════════════ THE CLOSE REVIEW'S FIXES, PINNED ══════════════════ */
+
+  it("C3: a rerun that corrects an INPUT recomputes the derived value, as a superseding row", async () => {
+    const { itemIds } = await resultable(["LIPID"]);
+    const item = itemIds[0]!;
+    const [tc, hdl, tg, ldl] = await Promise.all(["TC", "HDL", "TG", "LDL"].map((c) => analyteIdFor(c)));
+
+    /** A transposition: 500 for 150. LDL computes to 500 − 50 − 24 = 426. */
+    for (const [id, value] of [[tc, "500"], [hdl, "50"], [tg, "120"]] as const) {
+      await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+        orderItemId: item, analyteId: id!, value, entryMode: "manual",
+      }));
+    }
+    const before = (await rowsFor(item)).filter((r) => r.analyteId === ldl);
+    expect(Number(before.at(-1)!.valueNumeric)).toBe(426);
+
+    /** The bench re-keys the cholesterol. */
+    await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+      orderItemId: item, analyteId: tc!, value: "150", entryMode: "manual",
+    }));
+
+    /**
+     * `done` counted ANY row for the analyte, so the LDL was SKIPPED and a signed report would have
+     * read *cholesterol 150, LDL 426* — an arithmetically impossible pair a cardiologist acts on.
+     */
+    const after = (await rowsFor(item)).filter((r) => r.analyteId === ldl);
+    expect(after).toHaveLength(2);
+    expect(Number(after.at(-1)!.valueNumeric)).toBe(76);
+    /** DD13 — a recomputation REPLACES and NAMES what it replaced. It never edits. */
+    expect(after.at(-1)!.supersedesResultId).toBe(before.at(-1)!.id);
+  });
+
+  it("M3: a re-keyed value names the row it supersedes, without the caller remembering to", async () => {
+    const { itemIds } = await resultable(["TSH"]);
+    const tsh = await analyteIdFor("TSH");
+    const first = await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+      orderItemId: itemIds[0]!, analyteId: tsh, value: "2.0", entryMode: "manual",
+    }));
+    const second = await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+      orderItemId: itemIds[0]!, analyteId: tsh, value: "3.1", entryMode: "manual",
+    }));
+
+    /**
+     * `EnterResultInput` declared these fields and the ROUTE's schema named neither, so zod stripped
+     * them and every re-keyed value was written with a NULL chain — on the one path that exists to
+     * answer "which number did this replace". They are DERIVED now.
+     */
+    const rows = await rowsFor(itemIds[0]!);
+    const newer = rows.find((r) => r.id === second.resultId)!;
+    expect([newer.supersedesResultId, newer.rerunOf]).toEqual([first.resultId, first.resultId]);
+  });
+
+  it("M9: a blank value is a 422 refusal, not a raw numeric error reaching the bench as a 500", async () => {
+    const { itemIds } = await resultable(["TSH"]);
+    const tsh = await analyteIdFor("TSH");
+    /** `Number("")` is 0 and finite, so this parsed, then died in Postgres on an empty numeric. */
+    await expect(withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+      orderItemId: itemIds[0]!, analyteId: tsh, value: "   ", entryMode: "manual",
+    }))).rejects.toMatchObject({ code: "catalogue_invalid" });
+    expect(await rowsFor(itemIds[0]!)).toHaveLength(0);
+  });
+
+  it("C2: an AMENDED critical value opens the call ladder, exactly as a keyed one does", async () => {
+    const { itemIds } = await resultable(["RFT"]);
+    const k = await analyteIdFor("K");
+    /** Signed at 22:00 as a transposition of 6.9. */
+    const entered = await withTx(db, (tx) => enterResult(tx, fx.bench.actor, {
+      orderItemId: itemIds[0]!, analyteId: k, value: "4.2", entryMode: "manual",
+    }));
+    await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: entered.resultId });
+    expect(await db.select().from(labCriticalCalls)).toHaveLength(0);
+
+    const corrected = await withTx(db, (tx) => amendResult(tx, fx.pathologist.actor, {
+      resultId: entered.resultId, value: "6.9",
+    }));
+
+    /**
+     * `amendResult` computed the flag and threw it away: it returned `flag: null`, opened no call
+     * and emitted no event. **The one path where the value is KNOWN to have been wrong was the one
+     * path with no telephone call**, and the open-ladder handover list did not show it.
+     */
+    expect([corrected.flag, corrected.criticalCallId !== null]).toEqual(["HH", true]);
+    const calls = await db.select().from(labCriticalCalls);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.resultId).toBe(corrected.resultId);
+    const flagged = await eventsNamed("lab.result_critical_flagged");
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0]!.payload).toMatchObject({ value: "6.9", band: "high" });
   });
 
   /* ═══════════════════════ the item's own machine, and the rerun ═══════════════════════ */

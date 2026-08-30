@@ -26,6 +26,9 @@ import { Button } from "@/components/ui/button";
  * nobody. The banner names the call and the panel below it is where the attempts and the read-back
  * are recorded. **A call closes on a READ-BACK and on nothing else** (02 §3.6).
  */
+/** 02 §3.6's four rungs. `spoke` is the only one that can carry a read-back. */
+type CallOutcome = "no_answer" | "engaged" | "message_left" | "spoke";
+
 export function LabBench(): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -33,11 +36,27 @@ export function LabBench(): React.ReactElement {
   const [specimenNo, setSpecimenNo] = useState("");
   const [recheckBy, setRecheckBy] = useState("");
   const [rejectReason, setRejectReason] = useState("haemolysed");
+  /**
+   * WHOSE FAULT, chosen (close review, web MAJOR). It was hardcoded `"collection"`, so the quality
+   * register — the whole reason `attributable_to` exists — recorded every haemolysis as the
+   * phlebotomist's, including the ones the laboratory caused in its own centrifuge.
+   */
+  const [attributableTo, setAttributableTo] = useState("collection");
   const [values, setValues] = useState<Record<string, string>>({});
   const [overrideFor, setOverrideFor] = useState<string | null>(null);
   const [overrideBy, setOverrideBy] = useState("");
-  const [contact, setContact] = useState("");
-  const [readback, setReadback] = useState("");
+  /**
+   * ═══ CLOSE REVIEW (web) C5 — ONE SET OF FIELDS PER CALL, KEYED BY CALL ID ═══
+   *
+   * These were two flat strings shared across every open call in the panel, so a read-back typed
+   * while looking at one patient's potassium closed whichever call's Record button was pressed —
+   * by CAS, permanently, with the wrong patient's words in the medico-legal record. The state is
+   * keyed by `callId`, and the ladder now renders the patient, the test and the value the server
+   * sends, so the person telephoning knows who they are telephoning about.
+   */
+  const [contacts, setContacts] = useState<Record<string, string>>({});
+  const [readbacks, setReadbacks] = useState<Record<string, string>>({});
+  const [outcomes, setOutcomes] = useState<Record<string, CallOutcome>>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -59,7 +78,7 @@ export function LabBench(): React.ReactElement {
 
   const refuse = useMutation({
     mutationFn: () => rejectSpecimen(
-      { specimenNo, reason: rejectReason, attributableTo: "collection" }, newIdempotencyKey(),
+      { specimenNo, reason: rejectReason, attributableTo }, newIdempotencyKey(),
     ),
     onSuccess: () => { setError(null); setSpecimenNo(""); refresh(); },
     onError: (e: unknown) => setError(labErrorText(e)),
@@ -84,11 +103,26 @@ export function LabBench(): React.ReactElement {
   });
 
   const ack = useMutation({
-    mutationFn: (callId: string) => acknowledgeCritical(callId, {
-      ...(contact === "" ? {} : { attempt: { contact, outcome: readback === "" ? "no_answer" : "spoke" } }),
-      ...(readback === "" ? {} : { readback }),
+    mutationFn: (v: { callId: string; outcome: CallOutcome }) => acknowledgeCritical(v.callId, {
+      ...((contacts[v.callId] ?? "") === ""
+        ? {}
+        /**
+         * ═══ THE OUTCOME IS CHOSEN, NOT INFERRED (close review, web MAJOR) ═══
+         *
+         * It used to be derived from whether the read-back box was empty — `no_answer` or `spoke`
+         * — so `engaged` and `message_left` were unreachable and every unanswered ring was filed as
+         * "no answer" even when a message was left with a ward clerk. The ladder is the record of
+         * what the laboratory actually tried; the person who tried says what happened.
+         */
+        : { attempt: { contact: contacts[v.callId]!, outcome: v.outcome } }),
+      ...((readbacks[v.callId] ?? "") === "" ? {} : { readback: readbacks[v.callId]! }),
     }),
-    onSuccess: () => { setError(null); setContact(""); setReadback(""); refresh(); },
+    onSuccess: (_r, v) => {
+      setError(null);
+      setContacts((c) => ({ ...c, [v.callId]: "" }));
+      setReadbacks((r) => ({ ...r, [v.callId]: "" }));
+      refresh();
+    },
     onError: (e: unknown) => setError(labErrorText(e)),
   });
 
@@ -114,8 +148,21 @@ export function LabBench(): React.ReactElement {
           {t("lab.bench.rejectReason")}
           <select className="ml-2 rounded border px-2 py-1" value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}>
-            {["haemolysed", "clotted", "insufficient", "wrong_container", "leaked"].map((r) => (
-              <option key={r} value={r}>{r}</option>
+            {/* ALL TEN the schema admits — `unlabelled` and `mislabelled` were unreachable, and
+                they are the two a quality review most wants to count. */}
+            {["haemolysed", "clotted", "insufficient", "wrong_container", "unlabelled",
+              "mislabelled", "leaked", "contaminated", "delayed_transport",
+              "temperature_excursion"].map((r) => (
+              <option key={r} value={r}>{t(`lab.bench.reason_${r}`)}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
+          {t("lab.bench.attributableTo")}
+          <select className="ml-2 rounded border px-2 py-1" value={attributableTo}
+            onChange={(e) => setAttributableTo(e.target.value)}>
+            {["collection", "transport", "lab", "patient"].map((a) => (
+              <option key={a} value={a}>{t(`lab.bench.blame_${a}`)}</option>
             ))}
           </select>
         </label>
@@ -131,16 +178,35 @@ export function LabBench(): React.ReactElement {
         <section className="space-y-2 rounded border-2 border-red-600 p-2">
           <h2 className="text-sm font-bold">{t("lab.bench.criticalsOpen")}</h2>
           {(criticals.data ?? []).map((c) => (
-            <div key={c.id} className="space-y-1 text-sm">
-              <p>{t("lab.bench.callOpenedAt")} {c.openedAt} · {t("lab.bench.attempts")}: {c.attempts.length}</p>
-              <div className="flex flex-wrap gap-2">
+            <div key={c.id} className="space-y-1 border-t pt-2 text-sm first:border-t-0">
+              {/* WHO, WHAT and HOW MUCH — a nurse cannot telephone anybody from an id and a time. */}
+              <p className="font-semibold">
+                {c.patientDisplay} · {c.analyteCode} {c.value} {c.unit ?? ""} {c.flag ?? ""}
+              </p>
+              <p className="text-xs">
+                {c.orderNo} · {t("lab.bench.callOpenedAt")} {c.openedAt} ·{" "}
+                {t("lab.bench.attempts")}: {c.attempts.length}
+              </p>
+              <div className="flex flex-wrap items-end gap-2">
                 <input className="rounded border px-2 py-1" placeholder={t("lab.bench.contact")}
-                  aria-label={t("lab.bench.contact")} value={contact}
-                  onChange={(e) => setContact(e.target.value)} />
+                  aria-label={`${t("lab.bench.contact")} ${c.patientDisplay}`}
+                  value={contacts[c.id] ?? ""}
+                  onChange={(e) => setContacts((x) => ({ ...x, [c.id]: e.target.value }))} />
+                <select className="rounded border px-2 py-1" aria-label={t("lab.bench.outcome")}
+                  value={outcomes[c.id] ?? "no_answer"}
+                  onChange={(e) => setOutcomes((x) => ({ ...x, [c.id]: e.target.value as CallOutcome }))}>
+                  {(["no_answer", "engaged", "message_left", "spoke"] as const).map((o) => (
+                    <option key={o} value={o}>{t(`lab.bench.outcome_${o}`)}</option>
+                  ))}
+                </select>
                 <input className="rounded border px-2 py-1" placeholder={t("lab.bench.readback")}
-                  aria-label={t("lab.bench.readback")} value={readback}
-                  onChange={(e) => setReadback(e.target.value)} />
-                <Button type="button" onClick={() => ack.mutate(c.id)}>{t("lab.bench.record")}</Button>
+                  aria-label={`${t("lab.bench.readback")} ${c.patientDisplay}`}
+                  value={readbacks[c.id] ?? ""}
+                  onChange={(e) => setReadbacks((x) => ({ ...x, [c.id]: e.target.value }))} />
+                <Button type="button" disabled={ack.isPending}
+                  onClick={() => ack.mutate({ callId: c.id, outcome: outcomes[c.id] ?? "no_answer" })}>
+                  {t("lab.bench.record")}
+                </Button>
               </div>
               <p className="text-xs">{t("lab.bench.readbackRule")}</p>
             </div>
@@ -204,7 +270,7 @@ export function LabBench(): React.ReactElement {
                         {overrideFor === cell && (
                           <input
                             className="ml-2 rounded border px-2 py-0.5"
-                            placeholder={t("lab.bench.overrideBy")}
+                            placeholder={t("lab.bench.overrideByHint")}
                             aria-label={t("lab.bench.overrideBy")}
                             value={overrideBy}
                             onChange={(e) => setOverrideBy(e.target.value)}

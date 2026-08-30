@@ -120,7 +120,16 @@ export function LabReportPrint({ report }: { report: WireReportView }): React.Re
   const { t } = useTranslation();
   const s = report.snapshot;
   return (
-    <div className="print-doc w-[760px] space-y-3 rounded-lg border bg-white p-6 text-black">
+    <div className="print-doc lab-report-a4 w-[760px] space-y-3 rounded-lg border bg-white p-6 text-black">
+      {/*
+        ═══ A4, NOT THE SHARED A5 `@page` RULE (close review, web MAJOR) ═══
+
+        `styles.css`'s print block is sized for the prescription and the token slip. A laboratory
+        report is A4 and its own `@media print` rule is scoped to this class, so nothing else on the
+        SPA changes size. The rule lives here, beside the component that needs it, for the reason
+        the component's own header gives about `.print-doc`: a screen must not have to remember it.
+      */}
+      <style>{`@media print { @page { size: A4 portrait; margin: 12mm; } .lab-report-a4 { width: auto; border: 0; padding: 0; } }`}</style>
       <header className="flex items-start justify-between border-b-2 border-black pb-2">
         <div>
           <h2 className="text-lg font-bold">{t("lab.print.department")}</h2>

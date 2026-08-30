@@ -80,7 +80,7 @@ describe("lab critical calls (17b T6)", () => {
     expect((call!.attempts as CriticalAttempt[]).map((a) => a.outcome))
       .toEqual(["no_answer", "engaged", "message_left"]);
     expect([call!.closedAt, call!.readbackText, call!.closedBy]).toEqual([null, null, null]);
-    expect(await openCriticalCalls(db)).toHaveLength(1);
+    expect(await openCriticalCalls(db, fx.bench.actor)).toHaveLength(1);
     expect(await eventsNamed("lab.critical_acknowledged")).toHaveLength(0);
   });
 
@@ -100,7 +100,7 @@ describe("lab critical calls (17b T6)", () => {
     const [call] = await db.select().from(labCriticalCalls).where(eq(labCriticalCalls.id, callId));
     expect(call!.closedBy).toBe(fx.bench.id);
     expect(call!.readbackText).toBe("potassium six point eight, repeat sample sent");
-    expect(await openCriticalCalls(db)).toHaveLength(0);
+    expect(await openCriticalCalls(db, fx.bench.actor)).toHaveLength(0);
 
     const acked = await eventsNamed("lab.critical_acknowledged");
     expect(acked).toHaveLength(1);
@@ -135,6 +135,6 @@ describe("lab critical calls (17b T6)", () => {
       callId, readback: "six point eight",
     }, AT))).rejects.toMatchObject({ code: "permission_denied" });
 
-    expect(await openCriticalCalls(db)).toHaveLength(1);
+    expect(await openCriticalCalls(db, fx.bench.actor)).toHaveLength(1);
   });
 });

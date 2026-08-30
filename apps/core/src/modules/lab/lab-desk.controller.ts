@@ -5,7 +5,7 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { listOrdersForEncounter, listOrdersForPatient } from "../../kernel/orders/read";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
-import { withIdempotency } from "../billing";
+import { previewInvoice, withIdempotency } from "../billing";
 import { addOnOrder } from "./desk";
 import { cancelLabItem, deskOrderAtCounter } from "./money";
 import { idSchema, isoDateSchema, LAB_IDEMPOTENT_ROUTES, parsed, toHttp } from "./lab-http";
@@ -75,6 +75,11 @@ const addOnBody = z.object({
   credit: z.object({ reason: z.string().min(1).max(200), approvalId: idSchema.optional() }).optional(),
 });
 const cancelBody = z.object({ reason: z.string().min(1).max(300) });
+const previewBody = z.object({
+  patientId: idSchema,
+  encounterNo: z.string().min(1).max(32),
+  serviceIds: z.array(idSchema).min(1),
+});
 
 @Controller("lab/desk")
 export class LabDeskController {
@@ -154,6 +159,32 @@ export class LabDeskController {
           orderItemId: itemId, reason: input.reason,
         })),
       );
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * ═══ WHAT THIS BASKET COSTS, BEFORE THE COUNTER ASKS FOR MONEY (close review, web C4) ═══
+   *
+   * The desk screen shipped sending `credit: { reason }` on EVERY order, because it had no way to
+   * know the price — so every lab order became an unpaid credit invoice and the delivery interlock
+   * then held EVERY report for money that was already in the drawer. A control that fires on 100%
+   * of reports is a control a counter learns to release without reading.
+   *
+   * It goes through billing's OWN `previewInvoice`, which is the same pricing the issue path runs
+   * (`priceDraftWithBenefits`), so the number the clerk quotes and the number the invoice charges
+   * cannot disagree. A desk that totalled the basket itself would be the second answer §2.54 exists
+   * to stop, with the patient's bill as the fact that drifts.
+   */
+  @Post("preview")
+  @RequirePermission("lab.desk.operate", "hospital")
+  async preview(@Body() body: unknown): Promise<unknown> {
+    const input = parsed(previewBody, body);
+    try {
+      return await previewInvoice(this.db, {
+        patientId: input.patientId,
+        encounterId: input.encounterNo,
+        lines: input.serviceIds.map((serviceId, i) => ({ lineId: `preview-${String(i)}`, serviceId, qty: 1 })),
+      });
     } catch (e) { toHttp(e); }
   }
 

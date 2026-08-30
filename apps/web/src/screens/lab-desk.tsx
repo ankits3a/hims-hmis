@@ -2,9 +2,13 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
-import { duplicateWarnings, labErrorText, placeLabOrder, searchOrderables } from "../lib/lab-api";
+import {
+  duplicateWarnings, istToday, labErrorText, placeLabOrder, previewLabOrder, searchOrderables,
+} from "../lib/lab-api";
 import { Button } from "@/components/ui/button";
-import type { WireDeskOrder, WireDuplicateWarning, WireOrderable } from "../lib/lab-api";
+import type {
+  WireDeskOrder, WireDuplicateWarning, WireOrderable, WirePricedDraft,
+} from "../lib/lab-api";
 
 /**
  * PLAN 17b T8 — **THE LAB DESK**: what a doctor advised becomes an order and an invoice.
@@ -36,7 +40,7 @@ export function LabDesk(): React.ReactElement {
 
   const [patientId, setPatientId] = useState("");
   const [encounterNo, setEncounterNo] = useState("");
-  const [serviceDate, setServiceDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [serviceDate, setServiceDate] = useState(() => istToday());
   const [clinicianId, setClinicianId] = useState("");
   const [query, setQuery] = useState("");
   const [basket, setBasket] = useState<WireOrderable[]>([]);
@@ -45,8 +49,24 @@ export function LabDesk(): React.ReactElement {
   const [priority, setPriority] = useState<"routine" | "urgent" | "stat">("routine");
   const [acknowledged, setAcknowledged] = useState<string[]>([]);
   const [warnings, setWarnings] = useState<WireDuplicateWarning[] | null>(null);
+  const [idempotencyKey, setIdempotencyKey] = useState(() => newIdempotencyKey());
   const [placed, setPlaced] = useState<WireDeskOrder | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * ═══ CLOSE REVIEW (web) C4 — THE COUNTER CAN TAKE THE MONEY ═══
+   *
+   * This screen shipped sending `credit: { reason: "counter order" }` on EVERY order, so every lab
+   * bill became an unpaid credit invoice and the delivery interlock then held EVERY report — for
+   * money that was in the drawer. A control that fires on 100% of reports is a control a counter
+   * learns to release without reading, which is DD6 inverted.
+   *
+   * The price comes from BILLING's own `previewInvoice` through `/lab/desk/preview`, so the number
+   * quoted and the number charged are the same arithmetic. "Bill later" remains available and is
+   * what a credit patient, a ward order and a walk-in with no cash actually need.
+   */
+  const [payNow, setPayNow] = useState(true);
+  const [tender, setTender] = useState<"cash" | "card" | "upi">("cash");
+  const [priced, setPriced] = useState<WirePricedDraft | null>(null);
 
   const catalogue = useQuery({
     queryKey: ["lab", "catalogue", query],
@@ -54,8 +74,12 @@ export function LabDesk(): React.ReactElement {
   });
 
   const check = useMutation({
-    mutationFn: () => duplicateWarnings(patientId, basket.map((b) => b.serviceId)),
-    onSuccess: (found) => { setWarnings(found); setError(null); },
+    mutationFn: async () => ({
+      warnings: await duplicateWarnings(patientId, basket.map((b) => b.serviceId)),
+      /** The duplicate check and the price are one question at the counter: "what am I placing?" */
+      priced: await previewLabOrder(patientId, encounterNo, basket.map((b) => b.serviceId)),
+    }),
+    onSuccess: (r) => { setWarnings(r.warnings); setPriced(r.priced); setError(null); },
     onError: (e: unknown) => setError(labErrorText(e)),
   });
 
@@ -69,19 +93,38 @@ export function LabDesk(): React.ReactElement {
           ? { serviceId: b.serviceId, consent: { recordedBy: consents[b.serviceId]! } }
           : { serviceId: b.serviceId }
       )),
-      credit: { reason: t("lab.desk.creditReason") },
-    }, newIdempotencyKey()),
+      /**
+       * PAID NOW ⇒ a receipt for exactly the priced net, and NO credit block: `issueInvoice`
+       * refuses a remainder without one, so a tender that does not cover the bill is refused by the
+       * server rather than quietly extended as credit. BILL LATER ⇒ the credit block, which is what
+       * DD6 exists for — the tube is drawn either way.
+       */
+      ...(payNow && priced !== null
+        ? { receipt: { tenders: [{ mode: tender, amountPaise: priced.totals.netPayablePaise }] } }
+        : { credit: { reason: t("lab.desk.creditReason") } }),
+    }, idempotencyKey),
     onSuccess: (order) => {
       setPlaced(order);
       setError(null);
       setBasket([]);
       setWarnings(null);
       setAcknowledged([]);
+      setPriced(null);
+      /** A NEW key for the NEXT attempt — the one just used belongs to the order that landed. */
+      setIdempotencyKey(newIdempotencyKey());
       void qc.invalidateQueries({ queryKey: ["lab"] });
     },
     onError: (e: unknown) => setError(labErrorText(e)),
   });
 
+  /**
+   * ═══ ONE KEY PER ATTEMPT, NOT PER CLICK (close review, web MAJOR) ═══
+   *
+   * A fresh key at every click makes a double-click two DISTINCT requests, which is the exact case
+   * `withIdempotency` exists to absorb. The key is minted once and reused until an order lands, so
+   * a second click on the same basket REPLAYS the first rather than placing a second order. It is
+   * rotated on success.
+   */
   const missingConsent = basket.filter((b) => b.consentRequired && !consents[b.serviceId]);
   const unacknowledged = (warnings ?? []).filter((w) => !acknowledged.includes(w.duplicateOfItemId));
 
@@ -184,13 +227,42 @@ export function LabDesk(): React.ReactElement {
         </section>
       )}
 
+      {priced !== null && (
+        <section className="space-y-1 rounded border p-2 text-sm">
+          <p className="font-semibold">
+            {t("lab.desk.netPayable")}: ₹{(priced.totals.netPayablePaise / 100).toFixed(2)}
+          </p>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={payNow} onChange={(e) => setPayNow(e.target.checked)} />
+            {t("lab.desk.payNow")}
+          </label>
+          {payNow ? (
+            <label className="text-sm">
+              {t("lab.desk.tender")}
+              <select className="ml-2 rounded border px-2 py-1" value={tender}
+                onChange={(e) => setTender(e.target.value as typeof tender)}>
+                <option value="cash">{t("lab.desk.cash")}</option>
+                <option value="card">{t("lab.desk.card")}</option>
+                <option value="upi">{t("lab.desk.upi")}</option>
+              </select>
+            </label>
+          ) : (
+            <p className="text-xs">{t("lab.desk.billLaterNote")}</p>
+          )}
+        </section>
+      )}
+
       <div className="flex gap-2">
         <Button type="button" disabled={basket.length === 0} onClick={() => check.mutate()}>
           {t("lab.desk.checkDuplicates")}
         </Button>
         <Button
           type="button"
-          disabled={basket.length === 0 || missingConsent.length > 0 || unacknowledged.length > 0}
+          disabled={
+            basket.length === 0 || missingConsent.length > 0 || unacknowledged.length > 0
+            /** Taking money needs a PRICE, and the price is the server's. */
+            || (payNow && priced === null) || place.isPending
+          }
           onClick={() => place.mutate()}
         >
           {t("lab.desk.place")}

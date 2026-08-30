@@ -1,8 +1,10 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
-import { labCriticalCalls, labResults, orderItems, orders } from "../../kernel/db/schema";
+import {
+  labAnalytes, labCriticalCalls, labResults, orderItems, orders, patients,
+} from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
-import { resolvePatientId } from "../patients";
+import { displayName, resolvePatientId } from "../patients";
 import { LabError } from "./errors";
 import { labCriticalAcknowledged } from "./events";
 import type { Actor } from "@hmis/contracts";
@@ -79,7 +81,8 @@ export async function acknowledgeCritical(
     );
   }
 
-  const attempts = [...(call.attempts as CriticalAttempt[])];
+  const priorAttempts = call.attempts as CriticalAttempt[];
+  const attempts = [...priorAttempts];
   if (input.attempt) {
     attempts.push({ at: now.toISOString(), by: actor.id, ...input.attempt });
   }
@@ -98,8 +101,34 @@ export async function acknowledgeCritical(
           "neither, and a row that records nothing is not a rung",
       );
     }
-    await tx.update(labCriticalCalls).set({ attempts })
-      .where(eq(labCriticalCalls.id, input.callId));
+    /**
+     * ═══ THE APPEND IS A CAS TOO (CLOSE REVIEW m1) ═══
+     *
+     * `attempts` was read at the top of this function and written back here with no guard, so two
+     * nurses recording rungs in the same minute lost one — and a rung racing the CLOSE could write
+     * an attempt list over a call that had already been answered. The ladder is a medico-legal
+     * record of who was telephoned and when; losing an entry from it is losing the evidence that
+     * the hospital tried.
+     *
+     * `closed_at IS NULL` AND the exact `attempts` this call read: zero rows means somebody else
+     * moved it, and the honest answer is to say so rather than to overwrite.
+     */
+    const appended = await tx
+      .update(labCriticalCalls)
+      .set({ attempts })
+      .where(and(
+        eq(labCriticalCalls.id, input.callId),
+        isNull(labCriticalCalls.closedAt),
+        eq(sql`jsonb_array_length(${labCriticalCalls.attempts})`, priorAttempts.length),
+      ))
+      .returning({ id: labCriticalCalls.id });
+    if (appended.length === 0) {
+      throw new LabError(
+        "critical_already_closed",
+        `critical call ${input.callId} was worked concurrently — re-read the ladder before adding ` +
+          "another rung, because one of them would otherwise be lost",
+      );
+    }
     return { callId: input.callId, resultId: call.resultId, attempts: attempts.length, closed: false };
   }
 
@@ -150,11 +179,82 @@ export async function acknowledgeCritical(
   return { callId: input.callId, resultId: call.resultId, attempts: attempts.length, closed: true };
 }
 
-/** The open ladder — what a shift handover reads (`lab_critical_calls_open_idx`). */
-export async function openCriticalCalls(
-  exec: Db | Tx,
-): Promise<(typeof labCriticalCalls.$inferSelect)[]> {
-  return (exec as Db).select().from(labCriticalCalls)
+export type OpenCriticalCall = {
+  id: string;
+  resultId: string;
+  openedAt: string;
+  openedBy: string;
+  attempts: CriticalAttempt[];
+  /** WHOSE potassium it is, and WHAT it was. A ladder without a patient is a ladder nobody can work. */
+  patientDisplay: string;
+  patientId: string;
+  orderNo: string;
+  encounterNo: string;
+  analyteCode: string;
+  value: string;
+  unit: string | null;
+  flag: string | null;
+};
+
+/**
+ * ═══ THE OPEN LADDER — WHAT A SHIFT HANDOVER READS, AND IT NAMES THE PATIENT ═══
+ *
+ * It used to return the bare `lab_critical_calls` rows: an id, an instant and an attempts array,
+ * with no patient, no test and no value. **A nurse cannot telephone anybody from that** — and the
+ * screen built on it shared one contact/read-back field across every open call, so a read-back
+ * typed for one patient could close a different patient's call by CAS (close review, web C5). The
+ * reader is widened here rather than on the screen, because the screen must not be the thing that
+ * knows which patient a critical value belongs to.
+ *
+ * `displayName` with the CALLER's own clearance: a sealed patient's ladder shows the alias, and a
+ * technologist telephoning about "Patient A" is what DD14 requires of every other reader here.
+ */
+export async function openCriticalCalls(db: Db, actor: Actor): Promise<OpenCriticalCall[]> {
+  if (actor.type !== "user") {
+    throw new LabError("user_actor_required", `a ${actor.type} actor may not read the critical ladder`);
+  }
+  if (!(await hasPermission(db, actor.id, LAB_CRITICALS_CLOSE, "hospital"))) {
+    throw new LabError("permission_denied", `reading the critical ladder requires ${LAB_CRITICALS_CLOSE}`);
+  }
+  const canSeeConfidential = await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
+
+  const rows = await db
+    .select({
+      call: labCriticalCalls,
+      result: labResults,
+      analyteCode: labAnalytes.code,
+      orderNo: orders.orderNo,
+      encounterNo: orders.encounterNo,
+      patientId: orders.patientId,
+      patientName: patients.name,
+      patientAlias: patients.alias,
+      patientConfidential: patients.isConfidential,
+    })
+    .from(labCriticalCalls)
+    .innerJoin(labResults, eq(labResults.id, labCriticalCalls.resultId))
+    .innerJoin(labAnalytes, eq(labAnalytes.id, labResults.analyteId))
+    .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .innerJoin(patients, eq(patients.id, orders.patientId))
     .where(isNull(labCriticalCalls.closedAt))
     .orderBy(labCriticalCalls.openedAt);
+
+  return rows.map((r) => ({
+    id: r.call.id,
+    resultId: r.call.resultId,
+    openedAt: r.call.openedAt.toISOString(),
+    openedBy: r.call.openedBy,
+    attempts: r.call.attempts as CriticalAttempt[],
+    patientDisplay: displayName(
+      { name: r.patientName, alias: r.patientAlias, isConfidential: r.patientConfidential },
+      canSeeConfidential,
+    ),
+    patientId: r.patientId,
+    orderNo: r.orderNo,
+    encounterNo: r.encounterNo,
+    analyteCode: r.analyteCode,
+    value: r.result.valueNumeric ?? r.result.valueText ?? r.result.valueCoded ?? "",
+    unit: r.result.unit,
+    flag: r.result.flag,
+  }));
 }

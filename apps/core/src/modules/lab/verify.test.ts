@@ -6,7 +6,8 @@ import {
 import { mkUser } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
 import {
-  events, labAnalytes, labItems, labResults, labSpecimenItems, orderItems, orders, workflowInstances,
+  events, labAnalytes, labItems, labResults, labSpecimenItems, orderItems, orders, tariffItems,
+  workflowInstances,
 } from "../../kernel/db/schema";
 import { receive } from "./accession";
 import { collect } from "./collection";
@@ -252,6 +253,70 @@ describe("lab results — verification, SoD and reflex (17b T6)", () => {
     const entered = await enter(itemIds[0]!, "TSH", "9.0", fx.bench.actor);
     const out = await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: entered.resultId }, DAY);
     expect(out.reflex).toEqual([]);
+    expect(await db.select().from(orders).where(eq(orders.orderGroupId, orderGroupId))).toHaveLength(1);
+  });
+
+  /* ══════════════════ THE CLOSE REVIEW'S FIXES, PINNED ══════════════════ */
+
+  it("C4: two pathologists signing the LAST TWO analytes still complete the item, exactly once", async () => {
+    const { itemIds } = await resultable(["TFT"]);
+    const item = itemIds[0]!;
+    const ids: string[] = [];
+    for (const [code, value] of [["TSH", "2.0"], ["FT3", "3.1"], ["FT4", "1.2"]] as const) {
+      ids.push((await enter(item, code, value, fx.bench.actor)).resultId);
+    }
+    /** One signed, two outstanding — the state the race needs. */
+    await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: ids[0]! }, DAY);
+
+    /**
+     * ═══ WITHOUT THE ORDER LOCK, NEITHER TRANSACTION SAW THE OTHER'S ANALYTE ═══
+     *
+     * Each counted its own uncommitted write plus the other still `unverified`, so BOTH returned
+     * false and `advanceOrderItem(… 'completed')` never ran. The item then sat on the verify queue
+     * for ever with every value signed and no button that could clear it — a second verify throws
+     * `already_verified` and `publishReport` refuses "not finished" permanently, with no recovery
+     * through any shipped route.
+     */
+    const settled = await Promise.allSettled([
+      verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: ids[1]! }, DAY),
+      verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: ids[2]! }, DAY),
+    ]);
+    expect(settled.filter((r) => r.status === "fulfilled")).toHaveLength(2);
+    expect(settled.filter((r) => r.status === "fulfilled" && r.value.itemCompleted)).toHaveLength(1);
+
+    const [envelope] = await db.select({ status: orderItems.status })
+      .from(orderItems).where(eq(orderItems.id, item));
+    expect(envelope!.status).toBe("completed");
+    /** EXACTLY ONE completion event: two would make the immutability story lie. */
+    expect(await eventsNamed("order_item.completed")).toHaveLength(1);
+  });
+
+  it("M1: a reflex whose invoice cannot be raised does NOT hold the signature", async () => {
+    await activateTshReflex(db);
+    /**
+     * THE ORDINARY GO-LIVE GAP: the reflexed test has no tariff price, because the counter never
+     * SELLS it and nobody noticed. `issueInvoice` throws `TariffError` inside the verifying
+     * transaction, which used to roll the VERIFICATION back — so every TSH with reflex consent was
+     * unsignable, `listResultsForEncounter` showed the treating doctor nothing, and the error named
+     * a test the pathologist never ordered. **Money held a clinical fact**, which is 02 O-1 inverted.
+     */
+    const tft = serviceIdForLabCode("TFT");
+    await db.delete(tariffItems).where(eq(tariffItems.serviceId, tft));
+
+    const { itemIds, orderGroupId } = await resultable(["TSH"], { reflexConsent: true });
+    const entered = await enter(itemIds[0]!, "TSH", "9.0", fx.bench.actor);
+
+    const out = await verifyResult(db, fx.pathologist.actor, fx.decls, { resultId: entered.resultId }, DAY);
+
+    /** THE SIGNATURE STANDS. */
+    const [row] = await db.select().from(labResults).where(eq(labResults.id, entered.resultId));
+    expect(row!.verificationStatus).toBe("verified");
+    expect(out.itemCompleted).toBe(true);
+
+    /** THE REFLEX DID NOT LAND, and the refusal is REPORTED rather than swallowed. */
+    expect(out.reflex).toEqual([]);
+    expect(out.reflexRefused).toHaveLength(1);
+    expect(out.reflexRefused[0]).toMatchObject({ addedServiceId: tft, code: "tariff_item_missing" });
     expect(await db.select().from(orders).where(eq(orders.orderGroupId, orderGroupId))).toHaveLength(1);
   });
 

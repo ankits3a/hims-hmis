@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
 import {
-  flagTone, getReport, labErrorText, printReport, publishReport, requestRerun, verifyResult,
-  verifyWorklist,
+  flagTone, getReport, labErrorText, printReport, publishableOrders, publishReport, requestRerun,
+  verifyResult, verifyWorklist,
 } from "../lib/lab-api";
 import { LabReportPrint } from "../components/lab-report-print";
 import { Button } from "@/components/ui/button";
@@ -37,9 +37,19 @@ export function LabVerify(): React.ReactElement {
 
   const [open, setOpen] = useState<WireReportView | null>(null);
   const [collector, setCollector] = useState("");
+  const [channel, setChannel] = useState<"print" | "in_person" | "whatsapp">("print");
   const [error, setError] = useState<string | null>(null);
 
   const queue = useQuery({ queryKey: ["lab", "verify"], queryFn: verifyWorklist });
+  /**
+   * ═══ CLOSE REVIEW (web) C3 — A SEPARATE QUEUE, BECAUSE THE TWO CONDITIONS EXCLUDE EACH OTHER ═══
+   *
+   * The Publish button used to sit on a `verifyWorklist` row, and that row DISAPPEARS at the exact
+   * moment publishing becomes legal: signing the last analyte advances the item to `completed`,
+   * `verifyWorklist` filters on `resulted`, and `publishReport` refuses anything not `completed`.
+   * **No report could be published from any screen in the system.** This is the queue that can.
+   */
+  const publishable = useQuery({ queryKey: ["lab", "publishable"], queryFn: publishableOrders });
 
   const refresh = (): void => { void qc.invalidateQueries({ queryKey: ["lab"] }); };
 
@@ -56,7 +66,8 @@ export function LabVerify(): React.ReactElement {
   });
 
   const publish = useMutation({
-    mutationFn: (orderId: string) => publishReport(orderId, newIdempotencyKey()),
+    mutationFn: (v: { orderId: string; partial: boolean }) =>
+      publishReport(v.orderId, newIdempotencyKey(), v.partial),
     onSuccess: async (r) => {
       setError(null);
       setOpen(await getReport(r.reportId));
@@ -66,8 +77,18 @@ export function LabVerify(): React.ReactElement {
   });
 
   const hand = useMutation({
-    mutationFn: (reportId: string) => printReport(
-      reportId, { channel: "print", collectorIdentity: collector }, newIdempotencyKey(),
+    mutationFn: (v: { reportId: string; channel: "print" | "in_person" | "whatsapp" }) => printReport(
+      v.reportId,
+      /**
+       * The CHANNEL is chosen from what the report was PUBLISHED for (close review, web MAJOR). It
+       * was hardcoded `"print"`, so a `sensitive` report — published `['in_person']` only, which is
+       * DD14's whole point — could never be handed over at all. `collectorIdentity` is sent for the
+       * two physical channels and omitted for WhatsApp, which the server requires in that direction.
+       */
+      v.channel === "whatsapp"
+        ? { channel: v.channel }
+        : { channel: v.channel, collectorIdentity: collector },
+      newIdempotencyKey(),
     ),
     onSuccess: async () => {
       setError(null);
@@ -120,9 +141,33 @@ export function LabVerify(): React.ReactElement {
                 ))}
               </tbody>
             </table>
-            <Button type="button" onClick={() => publish.mutate(row.orderId)}>
-              {t("lab.verify.publish")}
-            </Button>
+          </article>
+        ))}
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold">{t("lab.verify.publishQueue")}</h2>
+        {(publishable.data ?? []).length === 0 && (
+          <p className="text-sm">{t("lab.verify.publishEmpty")}</p>
+        )}
+        {(publishable.data ?? []).map((o) => (
+          <article key={o.orderId} className="flex flex-wrap items-baseline gap-2 rounded border p-2 text-sm">
+            <span className="font-mono">{o.orderNo}</span>
+            <span>{o.patientDisplay}</span>
+            <span className="text-xs">{o.orderables.join(", ")}</span>
+            <span className="text-xs">{o.completedCount}/{o.itemCount}</span>
+            {o.complete ? (
+              <Button type="button" disabled={publish.isPending}
+                onClick={() => publish.mutate({ orderId: o.orderId, partial: false })}>
+                {t("lab.verify.publish")}
+              </Button>
+            ) : (
+              /* 02 D7 — what has finished at 24 h, said on the row rather than guessed. */
+              <Button type="button" disabled={publish.isPending}
+                onClick={() => publish.mutate({ orderId: o.orderId, partial: true })}>
+                {t("lab.verify.publishPartial")}
+              </Button>
+            )}
           </article>
         ))}
       </section>
@@ -144,7 +189,16 @@ export function LabVerify(): React.ReactElement {
               })}
             </p>
           )}
-          <div className="flex items-end gap-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="text-sm">
+              {t("lab.verify.channel")}
+              <select className="mt-1 block rounded border px-2 py-1" value={channel}
+                onChange={(e) => setChannel(e.target.value as typeof channel)}>
+                {open.channels.map((c) => (
+                  <option key={c} value={c}>{t(`lab.verify.channel_${c}`)}</option>
+                ))}
+              </select>
+            </label>
             <label className="text-sm">
               {t("lab.verify.collector")}
               <input className="mt-1 block rounded border px-2 py-1" value={collector}
@@ -152,11 +206,24 @@ export function LabVerify(): React.ReactElement {
             </label>
             <Button
               type="button"
-              disabled={!open.delivery.allowed || collector.trim() === ""}
-              onClick={() => hand.mutate(open.reportId)}
+              disabled={
+                !open.delivery.allowed || hand.isPending
+                || (channel !== "whatsapp" && collector.trim() === "")
+              }
+              onClick={() => hand.mutate({ reportId: open.reportId, channel })}
             >{t("lab.verify.print")}</Button>
           </div>
-          <LabReportPrint report={open} />
+          {/*
+            ═══ THE DOCUMENT IS RENDERED ONLY WHEN IT MAY BE HANDED OVER (close review, web MAJOR) ═══
+
+            `.print-doc` is what `styles.css` sends to the paper, so mounting the full A4 while the
+            interlock says HELD let anybody press Ctrl+P and walk straight around `printReport` —
+            the register, the collector's name and the whole of DD6. A held report shows its
+            SUMMARY and the money that is holding it; the page itself appears when it is releasable.
+          */}
+          {open.delivery.allowed
+            ? <LabReportPrint report={open} />
+            : <p className="text-sm">{t("lab.verify.heldNoPreview")}</p>}
         </section>
       )}
     </div>

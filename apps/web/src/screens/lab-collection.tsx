@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
-import { collectionQueue, drawSpecimen, labErrorText, printLabels } from "../lib/lab-api";
+import { collectionQueue, drawSpecimen, istToday, labErrorText, printLabels } from "../lib/lab-api";
 import { Button } from "@/components/ui/button";
 import type { WirePrintedSpecimen } from "../lib/lab-api";
 
@@ -27,11 +27,20 @@ export function LabCollection(): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
 
-  const [serviceDate, setServiceDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [serviceDate, setServiceDate] = useState(() => istToday());
   const [orderGroupId, setOrderGroupId] = useState("");
   const [scannedUhid, setScannedUhid] = useState("");
   const [printed, setPrinted] = useState<WirePrintedSpecimen[]>([]);
-  const [wristband, setWristband] = useState(true);
+  /**
+   * ═══ CLOSE REVIEW (web) C2 — DEFAULTED TO `false`, AND THE QUESTION IS ABOVE THE BUTTON ═══
+   *
+   * It defaulted to `true` with the checkbox rendered BELOW the Draw button, so the screen answered
+   * the right-patient question affirmatively before the phlebotomist had read it — and the server
+   * treats the answer as recorded fact and skips the named identity re-check at accession
+   * (`accession.ts`'s 02 A2 guard). A default that asserts a physical act nobody performed is worse
+   * than no field at all. `false` costs a named re-check at the bench, which is the safe direction.
+   */
+  const [wristband, setWristband] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const queue = useQuery({
@@ -95,6 +104,12 @@ export function LabCollection(): React.ReactElement {
       {printed.length > 0 && (
         <section className="space-y-1 rounded border p-2 text-sm">
           <h2 className="font-semibold">{t("lab.collection.printed")}</h2>
+          {/* THE QUESTION IS ASKED BEFORE THE BUTTON THAT ACTS ON IT (close review C2). */}
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={wristband} onChange={(e) => setWristband(e.target.checked)} />
+            {t("lab.collection.wristbandScanned")}
+          </label>
+          {!wristband && <p className="font-semibold">{t("lab.collection.recheckWarning")}</p>}
           <ul className="space-y-1">
             {printed.map((s) => (
               <li key={s.specimenId} className="flex items-center gap-2">
@@ -106,11 +121,6 @@ export function LabCollection(): React.ReactElement {
               </li>
             ))}
           </ul>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={wristband} onChange={(e) => setWristband(e.target.checked)} />
-            {t("lab.collection.wristbandScanned")}
-          </label>
-          {!wristband && <p className="font-semibold">{t("lab.collection.recheckWarning")}</p>}
         </section>
       )}
 

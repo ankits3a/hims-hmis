@@ -88,8 +88,15 @@ it("02 A2 — unticking the wristband warns about the named re-check the bench w
   await userEvent.click(screen.getByRole("button", { name: "Print labels" }));
   await waitFor(() => expect(screen.getByText("S2608300001")).toBeInTheDocument());
 
-  /** The draw is NOT refused — it is recorded, and the consequence is named before it bites. */
-  await userEvent.click(screen.getByRole("checkbox", { name: /Wristband was scanned/ }));
+  /**
+   * IT DEFAULTS TO UNTICKED (close review C2): the screen must not assert a physical act nobody
+   * performed. The warning is therefore visible immediately, ABOVE the Draw button, and the draw is
+   * NOT refused — the consequence is named before it bites.
+   */
+  expect(screen.getByRole("checkbox", { name: /Wristband was scanned/ })).not.toBeChecked();
   expect(screen.getByText(/named identity re-check/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Drawn" })).toBeEnabled();
+
+  await userEvent.click(screen.getByRole("checkbox", { name: /Wristband was scanned/ }));
+  expect(screen.queryByText(/named identity re-check/)).not.toBeInTheDocument();
 });

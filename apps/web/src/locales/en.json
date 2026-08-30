@@ -1764,7 +1764,14 @@
       "placed": "Order placed",
       "invoice": "Invoice",
       "groupId": "Group",
-      "creditReason": "counter order"
+      "creditReason": "counter order",
+      "netPayable": "Net payable",
+      "payNow": "Collect payment now",
+      "tender": "Mode",
+      "cash": "Cash",
+      "card": "Card",
+      "upi": "UPI",
+      "billLaterNote": "The tube is drawn either way. The printed report is held until the bill is settled."
     },
     "collection": {
       "title": "Collection",
@@ -1803,7 +1810,28 @@
       "contact": "Who was called",
       "readback": "Read-back (their words)",
       "record": "Record",
-      "readbackRule": "The call closes only when the clinician repeats the value back."
+      "readbackRule": "The call closes only when the clinician repeats the value back.",
+      "outcome": "Outcome",
+      "outcome_no_answer": "No answer",
+      "outcome_engaged": "Engaged",
+      "outcome_message_left": "Message left",
+      "outcome_spoke": "Spoke",
+      "attributableTo": "Attributable to",
+      "blame_collection": "Collection",
+      "blame_transport": "Transport",
+      "blame_lab": "Laboratory",
+      "blame_patient": "Patient",
+      "overrideByHint": "Second enterer's login id",
+      "reason_haemolysed": "Haemolysed",
+      "reason_clotted": "Clotted",
+      "reason_insufficient": "Insufficient volume",
+      "reason_wrong_container": "Wrong container",
+      "reason_unlabelled": "Unlabelled",
+      "reason_mislabelled": "Mislabelled",
+      "reason_leaked": "Leaked",
+      "reason_contaminated": "Contaminated",
+      "reason_delayed_transport": "Delayed in transport",
+      "reason_temperature_excursion": "Temperature excursion"
     },
     "verify": {
       "title": "Verify & report",
@@ -1816,7 +1844,15 @@
       "report": "Report",
       "collector": "Collected by",
       "print": "Print and hand over",
-      "held": "Held: ₹{{amount}} outstanding on {{count}} invoice(s)."
+      "held": "Held: ₹{{amount}} outstanding on {{count}} invoice(s).",
+      "publishQueue": "Ready to publish",
+      "publishEmpty": "Nothing is ready to publish.",
+      "publishPartial": "Publish what has finished",
+      "channel": "Hand over by",
+      "channel_print": "Printed copy",
+      "channel_in_person": "In person",
+      "channel_whatsapp": "WhatsApp",
+      "heldNoPreview": "The report is held. It is shown and printed once the bill is settled or a billing manager releases it."
     },
     "print": {
       "department": "Department of Laboratory Medicine",
@@ -1854,7 +1890,9 @@
     "consult": {
       "title": "Laboratory results",
       "empty": "No verified laboratory results for this visit.",
-      "unpaidNote": "Results are shown whatever the bill says. The printed report is held separately."
+      "unpaidNote": "Results are shown whatever the bill says. The printed report is held separately.",
+      "unavailable": "Laboratory results could not be loaded — this is NOT a statement that there are none. Retry, or check the laboratory system.",
+      "loading": "Loading laboratory results…"
     }
   }
 }

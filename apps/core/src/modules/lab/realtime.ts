@@ -7,7 +7,8 @@ import type { TopicRouter, TopicSpace } from "../../kernel/realtime/gateway";
  * ═══ TWO SPACES, AND THE SECOND ONE IS THE REASON THIS FILE EXISTS ═══
  *
  *   · `lab:<orderGroupId>` — the clinical act. A counter watching one patient's tests sees the
- *     tube drawn, received, resulted, signed and published without polling.
+ *     order desked, the labels printed, the report published, amended, printed or HELD, and a
+ *     reflex added — the events whose payloads actually name an order (see `LAB_REALTIME_NAMES`).
  *   · `lab_critical` — **the whole department**, gated on `lab.criticals.close`. A potassium of 6.8
  *     at 02:00 has to reach whoever is on the floor, and a topic keyed to the ordering doctor would
  *     reach a person who went home at six (02 F1 / E34).
@@ -29,11 +30,27 @@ export const LAB_TOPIC_SPACES: TopicSpace[] = [
   { prefix: "lab_critical", permission: "lab.criticals.close" },
 ];
 
+/**
+ * ═══ ONLY THE NAMES THIS ROUTER CAN ACTUALLY ROUTE (CLOSE REVIEW M5) ═══
+ *
+ * This list carried sixteen names and SIX of them could never produce a topic:
+ * `lab.specimen_collected`, `lab.specimen_received`, `lab.specimen_rejected`,
+ * `lab.recollection_requested`, `lab.result_entered` and `lab.result_verified` declare neither
+ * `orderId` nor `orderGroupId` in their payloads (`events.ts`), and `TailedEvent` carries only
+ * `{seq, eventId, name, occurredAt, patientId, encounterId, payload}` — no correlation id. So
+ * `labTopicsFor` returned `[]` for every one of them while this file's header promised a counter
+ * would watch "the tube drawn, received, resulted, signed and published".
+ *
+ * `events.ts` is T2's frozen file and the payloads cannot be widened here (§8). **Declaring a name
+ * that routes nowhere is worse than declaring a smaller set**: it is a promise in a manifest that
+ * nothing keeps, and the next phase to read this file would build a screen on it. The six are
+ * REMOVED and recorded as §9.2 F43; the phase that may edit `events.ts` adds `orderGroupId` to
+ * their payloads and puts them back.
+ */
 export const LAB_REALTIME_NAMES = [
-  "lab.order_desked", "lab.label_printed", "lab.specimen_collected", "lab.specimen_received",
-  "lab.specimen_rejected", "lab.recollection_requested", "lab.result_entered",
-  "lab.result_verified", "lab.report_published", "lab.report_amended", "lab.report_printed",
-  "lab.report_print_blocked", "lab.result_critical_flagged", "lab.critical_acknowledged",
+  "lab.order_desked", "lab.label_printed",
+  "lab.report_published", "lab.report_amended", "lab.report_printed", "lab.report_print_blocked",
+  "lab.result_critical_flagged", "lab.critical_acknowledged",
   "lab.reflex_added", "lab.sla_breached",
 ];
 

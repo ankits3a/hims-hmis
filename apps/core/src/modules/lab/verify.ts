@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
@@ -9,7 +9,8 @@ import { appendEvent } from "../../kernel/events/append";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { placeOrder } from "../../kernel/orders/place";
 import { startInstance, transition } from "../../kernel/workflow/instances";
-import { issueInvoice } from "../billing";
+import { BillingError, issueInvoice } from "../billing";
+import { TariffError } from "../tariff";
 import { activeReflexRules, analytesFor } from "./catalogue";
 import { LabError } from "./errors";
 import { matchReflex } from "./reflex";
@@ -85,12 +86,26 @@ export type ReflexPlacement = {
   invoiceId: string;
 };
 
+/**
+ * A reflex rule that FIRED and could not be acted on (close review M1). It is returned rather than
+ * thrown, because the signature it would otherwise have taken with it is a clinical fact and the
+ * refusal is a configuration problem — usually an unpriced test the counter never sells.
+ */
+export type ReflexRefusal = {
+  ruleId: string;
+  addedServiceId: string;
+  code: string;
+  reason: string;
+};
+
 export type VerifyResultOutcome = {
   resultId: string;
   orderItemId: string;
   /** DD11 — a night-mode release lands in the pathologist's morning queue. */
   pathologistReviewPending: boolean;
   reflex: ReflexPlacement[];
+  /** M1 — rules that fired and whose ORDER could not be raised. The signature stood anyway. */
+  reflexRefused: ReflexRefusal[];
   /** T6 A3 — `completed` fires exactly when the LAST analyte of the item is signed. */
   itemCompleted: boolean;
 };
@@ -229,7 +244,8 @@ async function verifyResultInTx(
     },
   }));
 
-  const reflex = await placeReflexOrders(tx, actor, decls, ctx, result, now);
+  const { placed: reflex, refused: reflexRefused } =
+    await placeReflexOrders(tx, actor, decls, ctx, result, now);
   const itemCompleted = await completeItemIfSigned(tx, actor, decls, ctx, now);
 
   return {
@@ -237,6 +253,7 @@ async function verifyResultInTx(
     orderItemId: ctx.orderItemId,
     pathologistReviewPending,
     reflex,
+    reflexRefused,
     itemCompleted,
   };
 }
@@ -264,17 +281,18 @@ async function placeReflexOrders(
   ctx: Awaited<ReturnType<typeof resultContext>>,
   result: typeof labResults.$inferSelect,
   now: Date,
-): Promise<ReflexPlacement[]> {
-  if (result.valueNumeric === null) return [];
+): Promise<{ placed: ReflexPlacement[]; refused: ReflexRefusal[] }> {
+  const none = { placed: [] as ReflexPlacement[], refused: [] as ReflexRefusal[] };
+  if (result.valueNumeric === null) return none;
 
   const [labItem] = await tx
     .select({ reflexConsentedAt: labItems.reflexConsentedAt })
     .from(labItems).where(eq(labItems.orderItemId, ctx.orderItemId));
-  if (!labItem || labItem.reflexConsentedAt === null) return [];
+  if (!labItem || labItem.reflexConsentedAt === null) return none;
 
   const rules = await activeReflexRules(tx, result.analyteId);
   const matches = matchReflex(rules, { analyteId: result.analyteId, valueNumeric: result.valueNumeric });
-  if (matches.length === 0) return [];
+  if (matches.length === 0) return none;
 
   /**
    * NOT TWICE FOR THE SAME PARENT (T6 A4b). A rerun of the trigger analyte re-verifies a value that
@@ -292,114 +310,161 @@ async function placeReflexOrders(
   const alreadyAdded = new Set(already.map((r) => r.serviceId));
 
   const placed: ReflexPlacement[] = [];
+  const refused: ReflexRefusal[] = [];
   for (const match of matches) {
     if (alreadyAdded.has(match.addsServiceId)) continue;
 
     /**
-     * `orderingClinicianId` IS THE VERIFYING PATHOLOGIST (17a S9, spike-answered).
+     * ═══ CLOSE REVIEW M1 — A BILLING FAILURE ON THE REFLEX MUST NOT HOLD THE SIGNATURE ═══
      *
-     * `place.ts:126` checks `requiresClinician` for EVERY actor type, AFTER `resolveAuthority` has
-     * accepted the system actor's `protocolRef` — the two guards are independent. So a reflex order
-     * still owes a doctor, and the honest one is the person whose signature caused it: they are
-     * answerable for the added test.
-     */
-    const order = await placeOrder(tx, LAB_REFLEX_ACTOR, decls, {
-      kind: "lab",
-      patientId: ctx.rawPatientId,
-      encounterNo: ctx.encounterNo,
-      serviceDate: ctx.serviceDate,
-      orderGroupId: ctx.orderGroupId,
-      priority: "routine",
-      orderingClinicianId: actor.id,
-      protocolRef: match.ruleId,
-      placedAt: now,
-      items: [{
-        serviceId: match.addsServiceId,
-        origin: "reflex",
-        parentItemId: ctx.orderItemId,
-        restricted: false,
-      }],
-    });
-    const reflexItemId = order.itemIds[0]!;
-
-    /**
-     * THE MONEY, ON THIS TRANSACTION, AND ISSUED AS THE **VERIFIER** RATHER THAN AS THE SYSTEM.
+     * The placement and its invoice ran on the verifying transaction with no boundary, so ANY
+     * refusal from `issueInvoice` rolled the VERIFICATION back with them. Three of those refusals
+     * are ordinary configuration, not caller error:
      *
-     * `issueInvoice` refuses a remainder without a `credit` block AND requires the ACTOR to hold
-     * `billing.credit.extend` (17a §9.3 S1 / F2, which grants it to `pathologist`). A `system`
-     * actor holds no permissions at all — `hasPermission` takes a `users.id` — so billing the
-     * reflex as the placer would refuse every reflex in the system. The person answerable for the
-     * charge is the person who signed the result that caused it.
+     *   · `TariffError` — the reflexed service has no price in the active version. This one fires
+     *     on an ordinary go-live gap: the counter never SELLS an FT4, so nobody notices it is
+     *     unpriced until a TSH reflexes onto it.
+     *   · `credit_approval_required` — the line exceeds `creditCapPaise`, and the approval it wants
+     *     binds to a `draftId` minted inside this function, so **no approval could ever be granted
+     *     for it**. Unconditionally unsignable.
+     *   · `outstanding_cap_exceeded` — when the cap mode is `block`.
+     *
+     * In every one of those cases the pathologist clicked Verify and read an error naming a test
+     * they never ordered, the TSH stayed `unverified`, and `listResultsForEncounter` — verified-only
+     * — showed the treating doctor NOTHING. **A tariff row silenced a clinical result**, which is
+     * 02 O-1 inverted: money must never hold a clinical fact, and here money held the signature.
+     *
+     * So the whole reflex — placement, invoice, item, tube link, projection, event — runs inside a
+     * SAVEPOINT (`tx.transaction` on a `Tx`). If it fails, the savepoint rolls back and nothing of
+     * the reflex survives; **the verification stands**, and the refusal is RETURNED so the caller
+     * can show it and a human can price the test.
+     *
+     * **T6 A4 is unaffected and still holds**: a throw AFTER the reflex, anywhere in the verifying
+     * transaction, still takes the reflex with it — the savepoint is released, not committed, and
+     * the outer rollback reaches it. The boundary is one-way by construction, which is exactly the
+     * asymmetry the defect needed: the verify may kill the reflex; the reflex may not kill the verify.
      */
-    const invoice = await issueInvoice(
-      tx as unknown as Db,
-      actor,
-      {
-        draftId: newId(),
+    try {
+      await tx.transaction(async (sp) => {
+      /**
+       * `orderingClinicianId` IS THE VERIFYING PATHOLOGIST (17a S9, spike-answered).
+       *
+       * `place.ts:126` checks `requiresClinician` for EVERY actor type, AFTER `resolveAuthority` has
+       * accepted the system actor's `protocolRef` — the two guards are independent. So a reflex order
+       * still owes a doctor, and the honest one is the person whose signature caused it: they are
+       * answerable for the added test.
+       */
+      const order = await placeOrder(sp, LAB_REFLEX_ACTOR, decls, {
+        kind: "lab",
         patientId: ctx.rawPatientId,
+        encounterNo: ctx.encounterNo,
+        serviceDate: ctx.serviceDate,
+        orderGroupId: ctx.orderGroupId,
+        priority: "routine",
+        orderingClinicianId: actor.id,
+        protocolRef: match.ruleId,
+        placedAt: now,
+        items: [{
+          serviceId: match.addsServiceId,
+          origin: "reflex",
+          parentItemId: ctx.orderItemId,
+          restricted: false,
+        }],
+      });
+      const reflexItemId = order.itemIds[0]!;
+
+      /**
+       * THE MONEY, ON THIS TRANSACTION, AND ISSUED AS THE **VERIFIER** RATHER THAN AS THE SYSTEM.
+       *
+       * `issueInvoice` refuses a remainder without a `credit` block AND requires the ACTOR to hold
+       * `billing.credit.extend` (17a §9.3 S1 / F2, which grants it to `pathologist`). A `system`
+       * actor holds no permissions at all — `hasPermission` takes a `users.id` — so billing the
+       * reflex as the placer would refuse every reflex in the system. The person answerable for the
+       * charge is the person who signed the result that caused it.
+       */
+      const invoice = await issueInvoice(
+        tx as unknown as Db,
+        actor,
+        {
+          draftId: newId(),
+          patientId: ctx.rawPatientId,
+          encounterId: ctx.encounterNo,
+          lines: [{ lineId: newId(), serviceId: match.addsServiceId, qty: 1 }],
+          credit: { reason: `reflex rule ${match.ruleId} (${match.because})` },
+        },
+        now,
+      );
+      const [billedLine] = await tx
+        .select({ id: invoiceLines.id })
+        .from(invoiceLines).where(eq(invoiceLines.invoiceId, invoice.invoiceId));
+
+      const { instanceId } = await startInstance(sp, LAB_ITEM_DEF_KEY, {
+        type: "lab_item", id: reflexItemId, patientId: ctx.patientId, encounterId: ctx.encounterNo,
+      });
+      await sp.insert(labItems).values({
+        orderItemId: reflexItemId,
+        instanceId,
+        serviceId: match.addsServiceId,
+        invoiceId: invoice.invoiceId,
+        invoiceLineId: billedLine?.id ?? null,
+        chargeReason: "lab_reflex",
+        /** DD8 — a reflex inherits the consent that allowed it, so a reflex OF a reflex is legitimate. */
+        reflexConsentedAt: now,
+        priority: "routine",
+        collectionSite: "opd",
+        tatStartedAt: now,
+      });
+
+      /**
+       * ═══ IT RIDES THE TUBE THAT IS ALREADY ON THE BENCH ═══
+       *
+       * The specimen has been received — that is what made the trigger result enterable — so the
+       * reflex needs no second draw, and `lab_specimen_items_active_ux` makes this the item's one live
+       * tube. The lab machine is walked to `accessioned` as the SYSTEM actor (which bypasses the role
+       * check, 17a S4) because the physical acts it names have genuinely happened: the blood was drawn
+       * and the tube was accessioned, for a test the hospital decided on afterwards.
+       */
+      await sp.insert(labSpecimenItems).values({
+        specimenId: ctx.specimenId, orderItemId: reflexItemId, active: true,
+      });
+      for (const state of ["awaiting_collection", "collected", "accessioned"]) {
+        await transition(sp, instanceId, state, LAB_REFLEX_ACTOR, { note: `reflex ${match.ruleId}` });
+      }
+      await advanceOrderItem(sp, LAB_REFLEX_ACTOR, decls, reflexItemId, "in_progress", { at: now });
+
+      await appendEvent(sp, labReflexAdded.make({
+        actor: LAB_REFLEX_ACTOR,
+        patientId: ctx.patientId,
         encounterId: ctx.encounterNo,
-        lines: [{ lineId: newId(), serviceId: match.addsServiceId, qty: 1 }],
-        credit: { reason: `reflex rule ${match.ruleId} (${match.because})` },
-      },
-      now,
-    );
-    const [billedLine] = await tx
-      .select({ id: invoiceLines.id })
-      .from(invoiceLines).where(eq(invoiceLines.invoiceId, invoice.invoiceId));
+        correlationId: order.orderId,
+        payload: {
+          ruleId: match.ruleId, ruleVersion: match.ruleVersion, triggerResultId: result.id,
+          parentItemId: ctx.orderItemId, orderId: order.orderId, orderNo: order.orderNo,
+          addedServiceId: match.addsServiceId,
+        },
+      }));
 
-    const { instanceId } = await startInstance(tx, LAB_ITEM_DEF_KEY, {
-      type: "lab_item", id: reflexItemId, patientId: ctx.patientId, encounterId: ctx.encounterNo,
+      placed.push({
+        ruleId: match.ruleId, ruleVersion: match.ruleVersion, orderId: order.orderId,
+        orderNo: order.orderNo, orderItemId: reflexItemId, addedServiceId: match.addsServiceId,
+        invoiceId: invoice.invoiceId,
+      });
     });
-    await tx.insert(labItems).values({
-      orderItemId: reflexItemId,
-      instanceId,
-      serviceId: match.addsServiceId,
-      invoiceId: invoice.invoiceId,
-      invoiceLineId: billedLine?.id ?? null,
-      chargeReason: "lab_reflex",
-      /** DD8 — a reflex inherits the consent that allowed it, so a reflex OF a reflex is legitimate. */
-      reflexConsentedAt: now,
-      priority: "routine",
-      collectionSite: "opd",
-      tatStartedAt: now,
-    });
-
-    /**
-     * ═══ IT RIDES THE TUBE THAT IS ALREADY ON THE BENCH ═══
-     *
-     * The specimen has been received — that is what made the trigger result enterable — so the
-     * reflex needs no second draw, and `lab_specimen_items_active_ux` makes this the item's one live
-     * tube. The lab machine is walked to `accessioned` as the SYSTEM actor (which bypasses the role
-     * check, 17a S4) because the physical acts it names have genuinely happened: the blood was drawn
-     * and the tube was accessioned, for a test the hospital decided on afterwards.
-     */
-    await tx.insert(labSpecimenItems).values({
-      specimenId: ctx.specimenId, orderItemId: reflexItemId, active: true,
-    });
-    for (const state of ["awaiting_collection", "collected", "accessioned"]) {
-      await transition(tx, instanceId, state, LAB_REFLEX_ACTOR, { note: `reflex ${match.ruleId}` });
+    } catch (e) {
+      /**
+       * A refusal the LABORATORY cannot act on is recorded and carried. Anything that is not a
+       * billing or tariff refusal is a genuine fault and is rethrown: a `WorkflowError` here means
+       * the lab's own machine is wrong, and swallowing that would hide a defect behind a warning.
+       */
+      if (!(e instanceof BillingError) && !(e instanceof TariffError)) throw e;
+      refused.push({
+        ruleId: match.ruleId, addedServiceId: match.addsServiceId,
+        code: e.code, reason: e.message,
+      });
     }
-    await advanceOrderItem(tx, LAB_REFLEX_ACTOR, decls, reflexItemId, "in_progress", { at: now });
 
-    await appendEvent(tx, labReflexAdded.make({
-      actor: LAB_REFLEX_ACTOR,
-      patientId: ctx.patientId,
-      encounterId: ctx.encounterNo,
-      correlationId: order.orderId,
-      payload: {
-        ruleId: match.ruleId, ruleVersion: match.ruleVersion, triggerResultId: result.id,
-        parentItemId: ctx.orderItemId, orderId: order.orderId, orderNo: order.orderNo,
-        addedServiceId: match.addsServiceId,
-      },
-    }));
-
-    placed.push({
-      ruleId: match.ruleId, ruleVersion: match.ruleVersion, orderId: order.orderId,
-      orderNo: order.orderNo, orderItemId: reflexItemId, addedServiceId: match.addsServiceId,
-      invoiceId: invoice.invoiceId,
-    });
   }
-  return placed;
+  return { placed, refused };
 }
 
 /* ──────────────── DD4 — the second projection point: `completed` at the last signature ──────────────── */
@@ -423,6 +488,30 @@ async function completeItemIfSigned(
   ctx: Awaited<ReturnType<typeof resultContext>>,
   now: Date,
 ): Promise<boolean> {
+  /**
+   * ═══ CLOSE REVIEW C4 — LOCK THE ORDER BEFORE COUNTING, AND THE CAS ABOVE IS NOT A SUBSTITUTE ═══
+   *
+   * The sibling count below is a plain READ and this repository runs READ COMMITTED. The verify CAS
+   * locks THIS RESULT'S row and nothing else, so two pathologists signing the last two analytes of
+   * one item each saw the OTHER analyte still unverified — the other transaction had not committed:
+   *
+   *     T1: CAS FT3→verified · count: FT3 verified(own), FT4 unverified → not all → return false
+   *     T2: CAS FT4→verified · count: FT4 verified(own), FT3 unverified → not all → return false
+   *     both COMMIT → every analyte signed, `advanceOrderItem(…'completed')` NEVER RUNS.
+   *
+   * The item then sits at `in_progress` with the lab instance at `resulted`, which is exactly the
+   * pair `verifyWorklist` filters on — so it stays on the pathologist's queue for ever with every
+   * value already signed and NO BUTTON THAT CAN CLEAR IT: a second verify throws `already_verified`,
+   * and `publishReport` refuses "1 of 1 tests are not finished" permanently. There is no recovery
+   * through any shipped route.
+   *
+   * **`kernel/orders/advance.ts` documents this identical defect one level up** — its own close
+   * review C1 — and fixed it with `select id from orders … for update`. The pattern was not applied
+   * here; it is now. **The lock order is item → order for every caller in this module**, the same
+   * order `closeHeaderIfDone` takes, so there is no cycle to deadlock on.
+   */
+  await tx.execute(sql`select id from orders where id = ${ctx.orderId} for update`);
+
   const analytes = await analytesFor(tx, ctx.serviceId);
   const signed = await tx
     .select({ analyteId: labResults.analyteId })

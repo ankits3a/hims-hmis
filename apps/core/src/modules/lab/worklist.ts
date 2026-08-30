@@ -1,8 +1,8 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
-  labAnalytes, labItems, labOrderableAnalytes, labOrderables, labResults, labSpecimenItems,
-  labSpecimens, orderItems, orders, patients, workflowInstances,
+  labAnalytes, labItems, labOrderableAnalytes, labOrderables, labReports, labResults,
+  labSpecimenItems, labSpecimens, orderItems, orders, patients, workflowInstances,
 } from "../../kernel/db/schema";
 import { displayName } from "../patients";
 import { LabError } from "./errors";
@@ -183,4 +183,92 @@ export async function benchWorklist(db: Db, actor: Actor): Promise<WorklistRow[]
 /** The pathologist: numbers keyed and awaiting a signature (DD11's queue). */
 export async function verifyWorklist(db: Db, actor: Actor): Promise<WorklistRow[]> {
   return labWorklist(db, actor, ["resulted"]);
+}
+
+export type PublishableOrder = {
+  orderId: string;
+  orderNo: string;
+  encounterNo: string;
+  patientId: string;
+  patientDisplay: string;
+  serviceDate: string;
+  /** Every reportable item finished — a FULL report. False means only 02 D7's partial is available. */
+  complete: boolean;
+  itemCount: number;
+  completedCount: number;
+  orderables: string[];
+};
+
+/**
+ * ═══ CLOSE REVIEW (web) C3 — THE ORDERS A REPORT CAN ACTUALLY BE PUBLISHED FOR ═══
+ *
+ * The verify screen's Publish button sat on a `verifyWorklist` row, and that row DISAPPEARS at the
+ * moment publishing becomes legal: `verifyResult` advances the item to `completed` on the last
+ * signature, `verifyWorklist` filters on `in_progress` + `resulted`, and `publishReport` refuses
+ * anything not `completed`. **The two conditions were mutually exclusive, so no report could be
+ * published from any screen in the system.**
+ *
+ * This is the reader that closes it: lab orders whose items have all reached a terminal state and
+ * which carry no published report yet. `complete` distinguishes a full report from 02 D7's partial,
+ * so the screen can offer the right one rather than guessing.
+ */
+export async function publishableOrders(db: Db, actor: Actor): Promise<PublishableOrder[]> {
+  if (actor.type !== "user") {
+    throw new LabError("user_actor_required", `a ${actor.type} actor may not read the publish queue`);
+  }
+  if (!(await hasPermission(db, actor.id, WORKLIST_READ, "hospital"))) {
+    throw new LabError("permission_denied", `reading the publish queue requires ${WORKLIST_READ}`);
+  }
+  const canSeeConfidential = await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
+
+  const rows = await db
+    .select({
+      orderId: orders.id, orderNo: orders.orderNo, encounterNo: orders.encounterNo,
+      serviceDate: orders.serviceDate, patientId: orders.patientId,
+      patientName: patients.name, patientAlias: patients.alias,
+      patientConfidential: patients.isConfidential,
+      itemStatus: orderItems.status, orderableCode: labOrderables.code,
+    })
+    .from(orderItems)
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .innerJoin(labItems, eq(labItems.orderItemId, orderItems.id))
+    .innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
+    .innerJoin(patients, eq(patients.id, orders.patientId))
+    .where(eq(orders.kind, "lab"))
+    .orderBy(asc(orders.placedAt));
+  if (rows.length === 0) return [];
+
+  /** Orders that already carry a published version are not offered — an amendment is a other act. */
+  const published = new Set(
+    (await db.select({ orderId: labReports.orderId }).from(labReports)
+      .where(eq(labReports.status, "published"))).map((r) => r.orderId),
+  );
+
+  const byOrder = new Map<string, PublishableOrder & { reportable: number }>();
+  for (const r of rows) {
+    if (published.has(r.orderId)) continue;
+    const entry = byOrder.get(r.orderId) ?? {
+      orderId: r.orderId, orderNo: r.orderNo, encounterNo: r.encounterNo,
+      patientId: r.patientId,
+      patientDisplay: displayName(
+        { name: r.patientName, alias: r.patientAlias, isConfidential: r.patientConfidential },
+        canSeeConfidential,
+      ),
+      serviceDate: r.serviceDate, complete: true, itemCount: 0, completedCount: 0,
+      orderables: [], reportable: 0,
+    };
+    entry.itemCount += 1;
+    /** A CANCELLED item is not on the report and does not hold it back (`buildSnapshot`'s rule). */
+    if (r.itemStatus !== "cancelled") {
+      entry.reportable += 1;
+      if (!entry.orderables.includes(r.orderableCode)) entry.orderables.push(r.orderableCode);
+      if (r.itemStatus === "completed") entry.completedCount += 1;
+    }
+    byOrder.set(r.orderId, entry);
+  }
+
+  return [...byOrder.values()]
+    /** At least one finished item, or there is nothing to report even partially. */
+    .filter((o) => o.completedCount > 0)
+    .map(({ reportable, ...o }) => ({ ...o, complete: o.completedCount === reportable }));
 }

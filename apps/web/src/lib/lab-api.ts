@@ -68,7 +68,23 @@ export type WirePrintedSpecimen = {
 export type WireCriticalCall = {
   id: string; resultId: string; openedAt: string; openedBy: string;
   attempts: { at: string; by: string; contact: string; outcome: string }[];
-  readbackText: string | null; closedBy: string | null; closedAt: string | null;
+  /** WHOSE value it is and WHAT it was — a ladder without these is a ladder nobody can work. */
+  patientDisplay: string; patientId: string; orderNo: string; encounterNo: string;
+  analyteCode: string; value: string; unit: string | null; flag: string | null;
+};
+
+export type WirePublishable = {
+  orderId: string; orderNo: string; encounterNo: string;
+  patientId: string; patientDisplay: string; serviceDate: string;
+  /** False ⇒ only 02 D7's PARTIAL report is available; the rest follows as a later version. */
+  complete: boolean; itemCount: number; completedCount: number; orderables: string[];
+};
+
+export type WirePricedDraft = {
+  tariffVersionId: string;
+  intendedPayer: string;
+  totals: { grossPaise: number; discountPaise: number; taxableBasePaise: number;
+    cgstPaise: number; sgstPaise: number; roundingPaise: number; netPayablePaise: number };
 };
 
 export type WireDeliveryVerdict = {
@@ -144,6 +160,12 @@ export const placeLabOrder = (body: DeskOrderRequest, key: string): Promise<Wire
 export const cancelLabItem = (itemId: string, reason: string, key: string): Promise<unknown> =>
   api("POST", `/lab/desk/items/${itemId}/cancel`, { reason }, key);
 
+/** What the basket costs, priced by BILLING's own engine — never totalled on the client (§2.54). */
+export const previewLabOrder = (
+  patientId: string, encounterNo: string, serviceIds: string[],
+): Promise<WirePricedDraft> =>
+  api("POST", "/lab/desk/preview", { patientId, encounterNo, serviceIds });
+
 /* ───────────────────────────────── collection ───────────────────────────────── */
 
 export const collectionQueue = (serviceDate: string): Promise<WireCollectionRow[]> =>
@@ -174,7 +196,10 @@ export const rejectSpecimen = (
 export type EnterResultRequest = {
   orderItemId: string; analyteId: string; value: string;
   entryMode: "manual" | "manual_from_printout";
-  /** 02 H1 — a NAMED second holder of `lab.results.enter`, never a boolean the same person ticks. */
+  /**
+   * 02 H1 — a NAMED second holder of `lab.results.enter`, never a boolean the same person ticks.
+   * It is a `users.id`, which is why the screen asks for a login rather than a name.
+   */
   absurdOverride?: { by: string };
 };
 
@@ -193,14 +218,23 @@ export const acknowledgeCritical = (
 
 export const verifyWorklist = (): Promise<WireWorklistRow[]> => api("GET", "/lab/verify/worklist");
 
+/**
+ * The orders a report can be published for. A SEPARATE queue from the verify worklist, because an
+ * item leaves that worklist at the exact moment it becomes publishable (close review, web C3).
+ */
+export const publishableOrders = (): Promise<WirePublishable[]> =>
+  api("GET", "/lab/reports/publishable");
+
 export const verifyResult = (resultId: string, key: string): Promise<unknown> =>
   api("POST", `/lab/verify/results/${resultId}`, undefined, key);
 
 export const requestRerun = (resultId: string, reason: string): Promise<unknown> =>
   api("POST", "/lab/verify/rerun", { resultId, reason });
 
-export const publishReport = (orderId: string, key: string): Promise<{ reportId: string; version: number }> =>
-  api("POST", "/lab/reports", { orderId }, key);
+export const publishReport = (
+  orderId: string, key: string, partial = false,
+): Promise<{ reportId: string; version: number }> =>
+  api("POST", "/lab/reports", partial ? { orderId, partial: true } : { orderId }, key);
 
 export const getReport = (reportId: string): Promise<WireReportView> =>
   api("GET", `/lab/reports/${reportId}`);
@@ -226,6 +260,22 @@ export const resultsForEncounter = (encounterNo: string): Promise<WireEncounterR
  * exists: a potassium of 6.8 that rendered the same amber as a mildly high one is a number a tired
  * technologist scrolls past.
  */
+/**
+ * ═══ THE IST CALENDAR DAY, NOT THE BROWSER'S UTC ONE (close review, web MAJOR) ═══
+ *
+ * The screens defaulted `serviceDate` to `new Date().toISOString().slice(0, 10)`, which is the UTC
+ * day. Between 00:00 and 05:30 IST that is YESTERDAY — so every order placed on a night shift was
+ * dated to the previous day, missed the collection queue (which filters on `serviceDate`), and
+ * minted its `S` number from the wrong daily counter.
+ *
+ * It formats through `Asia/Kolkata` rather than adding 5.5 hours, because this is a BROWSER and the
+ * offset census in `apps/core` counts the server's copies of the clock; a thirteenth one over here
+ * would be a copy nothing counts. `en-CA` yields `YYYY-MM-DD`.
+ */
+export function istToday(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(now);
+}
+
 export function flagTone(flag: string | null): "critical" | "abnormal" | "normal" | "none" {
   if (flag === "LL" || flag === "HH") return "critical";
   if (flag === "L" || flag === "H" || flag === "A") return "abnormal";
@@ -251,6 +301,19 @@ export function labErrorText(e: unknown): string {
   if (e instanceof ApiError) {
     const body = e.body as { message?: unknown; code?: unknown } | null;
     if (typeof body?.message === "string" && body.message !== "") return body.message;
+    /**
+     * ═══ A ZOD REFUSAL IS AN ARRAY OF ISSUES, AND IT MUST NOT BECOME "HTTP 400" ═══
+     *
+     * Nest's `BadRequestException(issues)` puts the ISSUE LIST in `message`, so the string branch
+     * above misses it and every schema refusal read as a bare status code — a clerk told "HTTP 400"
+     * cannot find the field. Each issue carries its own `path` and `message`; both are shown.
+     */
+    if (Array.isArray(body?.message)) {
+      const issues = (body.message as { path?: unknown[]; message?: unknown }[])
+        .map((i) => `${(i.path ?? []).join(".")}: ${String(i.message ?? "invalid")}`)
+        .filter((line) => line !== ": invalid");
+      if (issues.length > 0) return issues.join("; ");
+    }
     if (typeof body?.code === "string") return body.code;
     return `HTTP ${String(e.status)}`;
   }

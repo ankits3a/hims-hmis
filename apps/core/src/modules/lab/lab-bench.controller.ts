@@ -123,8 +123,8 @@ export class LabBenchController {
   /** DD12 — the open ladder. What a shift handover reads at 07:00, and what nobody may close blind. */
   @Get("criticals")
   @RequirePermission("lab.criticals.close", "hospital")
-  async criticals(): Promise<unknown> {
-    try { return await openCriticalCalls(this.db); } catch (e) { toHttp(e); }
+  async criticals(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await openCriticalCalls(this.db, actor); } catch (e) { toHttp(e); }
   }
 
   @Post("criticals/:callId/ack")

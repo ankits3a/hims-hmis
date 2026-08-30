@@ -73,9 +73,11 @@ export {
   isSingleOperatorNight, verifyResult, LAB_REFLEX_ACTOR, LAB_RESULTS_VERIFY,
   NIGHT_MODE_FROM_HOUR_IST, NIGHT_MODE_TO_HOUR_IST,
 } from "./verify";
-export type { ReflexPlacement, VerifyResultInput, VerifyResultOutcome } from "./verify";
+export type { ReflexPlacement, ReflexRefusal, VerifyResultInput, VerifyResultOutcome } from "./verify";
 export { acknowledgeCritical, openCriticalCalls, LAB_CRITICALS_CLOSE } from "./criticals";
-export type { AcknowledgeCriticalInput, AcknowledgeCriticalOutcome, CriticalAttempt } from "./criticals";
+export type {
+  AcknowledgeCriticalInput, AcknowledgeCriticalOutcome, CriticalAttempt, OpenCriticalCall,
+} from "./criticals";
 // ── PLAN 17b T7 — the money rule, the delivery interlock, and the document ──
 // `money.ts` and `interlock.ts` are the close reviewer's first two files (§9.6): every threshold on
 // this phase's money path is in one of them, and `deliveryAllowed` is the function 22c-F, 24a and
@@ -91,7 +93,8 @@ export {
 } from "./reports";
 export type {
   AmendReportInput, EncounterResultRow, PrintedReport, PrintReportInput, PublishedReport,
-  PublishReportInput, ReleaseUnpaidInput, ReportAnalyteLine, ReportPanel, ReportSnapshot, ReportView,
+  PublishReportInput, ReleaseUnpaidInput, ReportAnalyteLine, ReportPanel, ReportSnapshot,
+  ReportVersionRow, ReportView,
 } from "./reports";
 // ── PLAN 17b T8 — the HTTP surface, the worklists, and the live topics ──
 export { LabCatalogueController } from "./lab-catalogue.controller";
@@ -100,6 +103,6 @@ export { LabCollectionController } from "./lab-collection.controller";
 export { LabBenchController } from "./lab-bench.controller";
 export { LabVerifyController } from "./lab-verify.controller";
 export { LAB_IDEMPOTENT_ROUTES, LAB_REPORT_ROUTES, toHttp as labToHttp } from "./lab-http";
-export { benchWorklist, labWorklist, verifyWorklist } from "./worklist";
-export type { WorklistRow } from "./worklist";
+export { benchWorklist, labWorklist, publishableOrders, verifyWorklist } from "./worklist";
+export type { PublishableOrder, WorklistRow } from "./worklist";
 export { LAB_REALTIME_NAMES, LAB_TOPIC_SPACES, labTopicRouter, labTopicsFor } from "./realtime";

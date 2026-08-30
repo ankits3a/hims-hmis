@@ -597,6 +597,16 @@ and `shell-nav.test.tsx`. `apps/core/test/caddyfile-parity.test.ts` pins the SPA
 before this phase, 39 after — and it is the file five previous phases have each had to join. Found
 by grepping for `router.tsx` rather than for a sibling's name, which is §2.138's own instruction.
 
+**F43 — SIX OF SIXTEEN REALTIME NAMES COULD NEVER PRODUCE A TOPIC.** `lab.specimen_collected`,
+`lab.specimen_received`, `lab.specimen_rejected`, `lab.recollection_requested`, `lab.result_entered`
+and `lab.result_verified` declare neither `orderId` nor `orderGroupId` in their payloads
+(`events.ts`), and `TailedEvent` carries `{seq, eventId, name, occurredAt, patientId, encounterId,
+payload}` — **no correlation id** — so `labTopicsFor` returned `[]` for every one of them while
+`realtime.ts`'s own header promised a counter would watch "the tube drawn, received, resulted,
+signed and published". Found by close review pass 1 (M5). `events.ts` is T2's frozen file, so the
+six are REMOVED from `LAB_REALTIME_NAMES` rather than left as a promise nothing keeps: the phase
+that may edit `events.ts` adds `orderGroupId` to their payloads and puts them back.
+
 **F42 — `verify.ts` IS THE TWELFTH IST CLOCK, AND THE FULL VERIFY IS WHAT FOUND IT.** DD11's night
 window is 21:00–07:00 **IST**, so `isSingleOperatorNight` carries the offset. `ist-clock-parity.test.ts`
 pins the census and lives in `test/`, so the lab module's own suite was green and the workspace run
@@ -632,6 +642,7 @@ T8's Files list implies at five call sites and names at none.
 | **T6 A7** | HB | **CREA** — `delta_abs 0.5` over 168 h and NO critical band, so the row measures the delta alone rather than opening a call ladder beside it. |
 | **T7 A1** | a CBC paid at the desk + a reflex on credit, ONE order | **two assertions.** DD9 makes a reflex a NEW ORDER with its own invoice, so `deliveryAllowed(deskOrderId)` legitimately never sees it — the reflex order's OWN report is held, and separately an order billed across two invoices is held while either is unsettled (F41). |
 | **T7 A6** | "2 report rows, 2 result rows" | **unchanged, and it needed a writer that did not exist** (F38). |
+| **M4's own test** | one TFT, one analyte signed | **two orderables, one analyser down.** `partial` is ITEM-grained: `buildSnapshot` includes an item only when it is `completed`, and an item completes only when its LAST analyte is signed — so a one-item order has no partial state at all and the first version of this row was refused *"a partial report of nothing is not a report"*. The code was describing the fixture correctly; 02 D7's real case is two tests. |
 
 ### 9.5 Mechanical verification — the database of every run named (§2.137)
 
@@ -691,7 +702,47 @@ All mutant scratch — `results.mutant.ts`, `verify.mutant.ts`, `money.mutant.ts
 
 ### 9.6 The close review
 
-Filled by the two FRESH passes.
+#### 9.6.1 Pass 1 (FRESH, forbidden to run tests) — four CRITICALs, nine MAJORs, eight MINORs
+
+**It answered the §9 brief first, and the answer was a finding.** *"For `deliveryAllowed`, name one
+real charge its sum does not include"* → **the reflex test's.** A TSH paid ₹300 in cash at the desk,
+reflexing an FT4 onto a new order with its own unpaid credit invoice, leaves `deliveryAllowed(L-1)`
+reading `settled` while ₹450 stands — because `billedLabLines` is scoped to ONE order and DD9 makes
+a reflex a new one. §9.2 F41 disclosed the mechanism; the reviewer named the consequence, which the
+disclosure did not: **the sum for the order being handed over excludes a charge created by the same
+clinical act, on the same tube, minutes earlier.**
+
+**THE FOUR CRITICALS, ALL REAL, ALL FIXED:**
+
+| # | what it was | what it cost |
+|---|---|---|
+| **C1** | `GET /lab/reports/order/:orderId` returned `select()` with no projection — the raw `snapshot`, which carries the **legal** name by design (E4) | a sealed VIP's legal name, UHID and date of birth to any holder of `lab.results.read`, with **no alias rule and no `phi_access_log` row**. `getReport` applies both; this was a second reader on the same controller with neither. **§2.140's own shape** — a disclosure removed at one reader and left standing on a sibling added in the same commit |
+| **C2** | `amendResult` computed a flag and threw it away: returned `flag: null`, opened no call, emitted no critical or notifiable event | a potassium signed at 22:00 as 4.2 and corrected to 6.9 at 09:00 produced a critical value on a signed report **that nobody was telephoned about**, on the one path where the value is KNOWN to have been wrong |
+| **C3** | `computeFormulaAnalytes` skipped any analyte that already had ANY row | a rerun correcting cholesterol 500 → 150 left the LDL at 426. A signed report reading *cholesterol 150, LDL 426* — arithmetically impossible, and a cardiologist acts on it |
+| **C4** | `completeItemIfSigned`'s fold was an unlocked READ COMMITTED count | two pathologists signing the last two analytes each saw the other's still unverified: **`completed` never fired**, the item sat on the verify queue for ever with every value signed, and `publishReport` refused "not finished" permanently. **No recovery through any shipped route.** `advance.ts` documents this identical defect one level up and fixed it with `FOR UPDATE`; the pattern had not been applied |
+
+**THE NINE MAJORS.** M1 — the reflex's invoice ran unguarded in the verifying transaction, so an
+unpriced reflexed test (an ordinary go-live gap: the counter never SELLS an FT4) made **every TSH
+with reflex consent unsignable** and the treating doctor saw nothing. Money held a clinical fact,
+which is 02 O-1 inverted. M2 — two concurrent amendments left TWO `published` versions. M3 — the
+supersession chain had **no writer**: the route's schema named neither field, so zod stripped them
+and every re-keyed value wrote a NULL chain. M4 — a completed partial stayed stamped PARTIAL for
+ever. M5 — six of sixteen realtime names could never route. M6 — the delta scanned every patient in
+the window, ~2,500 sequential round-trips inside the entry transaction. M7 — `print_count` was a
+read-then-write. M8 — one grant released every version, unlimited times, for ever. M9 — a whitespace
+value became `0`, then `""` in a `numeric`, then a **500**.
+
+**AND THE WEB SLICE, which pass 1 delegated and relayed** — five more CRITICALs, every one real:
+the consult panel rendered a failed query as *"No verified laboratory results"* **to a prescriber**;
+`wristbandScanned` defaulted to `true` with the checkbox below the button; the Publish button sat on
+rows that vanish the moment publishing becomes legal, so **no report could be published from any
+screen**; the desk sent `credit` on every order, so the interlock held 100% of reports for money
+already in the drawer; and the critical panel shared one contact/read-back across all open calls, so
+a read-back typed for one patient could close another's.
+
+#### 9.6.2 Pass 2 (FRESH, over the fixes)
+
+Filled after the remediation.
 
 ### 9.7 Actuals — the token balance at every task boundary (v3 §6)
 

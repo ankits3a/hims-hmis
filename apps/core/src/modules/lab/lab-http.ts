@@ -94,4 +94,7 @@ export const LAB_REPORT_ROUTES = {
   print: "POST /lab/reports/:reportId/print",
   release: "POST /lab/reports/:reportId/release",
   amend: "POST /lab/reports/:reportId/amend",
+  /** Close review m7 — both of these WRITE and both lacked a key. */
+  amendResult: "POST /lab/results/amend",
+  rerun: "POST /lab/verify/rerun",
 } as const;

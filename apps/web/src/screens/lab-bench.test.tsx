@@ -102,7 +102,9 @@ it("02 §3.6 — the open call panel says a READ-BACK is what closes it", async 
     "GET /api/lab/bench/criticals": { status: 200, body: [{
       id: "c-1", resultId: "r-1", openedAt: "2026-08-30T02:00:00.000Z", openedBy: "u-tech",
       attempts: [{ at: "2026-08-30T02:02:00.000Z", by: "u-tech", contact: "ward 3", outcome: "no_answer" }],
-      readbackText: null, closedBy: null, closedAt: null,
+      /** The ladder NAMES its subject — close review C5. A nurse cannot telephone from an id. */
+      patientDisplay: "Ram Kumar", patientId: "p-1", orderNo: "L2608300001",
+      encounterNo: "V2608290001", analyteCode: "K", value: "6.8", unit: "mmol/L", flag: "HH",
     }] },
     "POST /api/lab/bench/criticals/c-1/ack": { status: 201, body: { closed: true, attempts: 2 } },
   });
@@ -112,9 +114,13 @@ it("02 §3.6 — the open call panel says a READ-BACK is what closes it", async 
     expect(screen.getByText("Critical values — telephone now")).toBeInTheDocument());
   expect(screen.getByText(/Attempts: 1/)).toBeInTheDocument();
   expect(screen.getByText(/repeats the value back/)).toBeInTheDocument();
+  /** WHO and WHAT, on the row (close review C5) — the fields are per call, not shared. */
+  expect(screen.getByText(/Ram Kumar · K 6.8 mmol\/L HH/)).toBeInTheDocument();
 
-  await userEvent.type(screen.getByLabelText("Who was called"), "Dr Rao, mobile");
+  await userEvent.type(screen.getByLabelText("Who was called Ram Kumar"), "Dr Rao, mobile");
+  /** The OUTCOME is chosen — `message_left` was unreachable when it was inferred from a blank box. */
+  await userEvent.selectOptions(screen.getByLabelText("Outcome"), "message_left");
   await userEvent.type(screen.getByLabelText(/Read-back/), "potassium six point eight");
   await userEvent.click(screen.getByRole("button", { name: "Record" }));
-  await waitFor(() => expect(screen.getByLabelText("Who was called")).toHaveValue(""));
+  await waitFor(() => expect(screen.getByLabelText("Who was called Ram Kumar")).toHaveValue(""));
 });

@@ -1394,7 +1394,19 @@ function LabResultsPanel({ visitNo }: { visitNo: string | null }): React.ReactEl
     <div data-testid="lab-results" className="space-y-2 rounded border p-3">
       <h2 className="text-sm font-medium">{t("lab.consult.title")}</h2>
       <p className="text-xs text-muted-foreground">{t("lab.consult.unpaidNote")}</p>
-      {rows.length === 0 ? (
+      {/*
+        ═══ CLOSE REVIEW (web) C1 — A FAILED QUERY IS NOT A CLINICAL NEGATIVE ═══
+
+        This panel used to render `results.data ?? []` and print "No verified laboratory results for
+        this visit" whenever the request 401'd, 403'd or 500'd. That sentence is a CLINICAL CLAIM
+        made to a prescriber, and the one thing it must never mean is "the network was unhappy".
+        A doctor who reads it stops looking.
+      */}
+      {results.isError ? (
+        <p role="alert" className="text-xs font-semibold">{t("lab.consult.unavailable")}</p>
+      ) : results.isPending ? (
+        <p className="text-xs text-muted-foreground">{t("lab.consult.loading")}</p>
+      ) : rows.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("lab.consult.empty")}</p>
       ) : (
         <ul className="space-y-1 text-sm">
