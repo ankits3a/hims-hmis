@@ -813,13 +813,23 @@ does not declare. Unreachable today because nothing writes `stored`. A second ce
 writers' literal targets scanned out of source against the declared edges — is what would bind it,
 and it is the same technique the test already uses for the state list.
 
-**F26 — `recordPhiAccess` ON `kernel/orders/read.ts` WAS ALREADY LANDED BY PHASE 0, NOT BY THIS
-LANE.** Lane B's §4 treats it as an unclaimed seam whose first lane writes the call. It is at
-`read.ts:310` and `:347` with `surface: "orders.patient"`, shipped in `9ba2482` and hardened in
-`6bd3016`. 17a made no edit under `kernel/orders/` and added no `PhiSurface` name (`lab.results` and
-`lab.report` arrive with 17b's callers). Recorded because Lane B's own note says that spike answer
-has already flipped once, and "already landed, by phase 0" is a different fact from "landed by Lane
-A".
+**F26 — `recordPhiAccess` ON `kernel/orders/read.ts` IS ALREADY LANDED. ~~BY PHASE 0~~ — **CORRECTED
+2026-08-30: BY THIS LANE, IN `39beff0`.** Lane B's §4 treated it as an unclaimed seam whose first
+lane writes the call. It is at `read.ts:310` and `:347` with `surface: "orders.patient"`, so the
+substance of the finding — **reuse it, write no second call, append only your own `PhiSurface`
+names** — stands unchanged and is what Lane B needs.
+
+**The attribution I gave Lane B was WRONG, and Lane B measured it and corrected me.** I wrote
+"shipped in `9ba2482` and hardened in `6bd3016`" from a plausible reading of the git log rather than
+from a count. Measured properly: `git show <sha>:…/orders/read.ts | grep -c recordPhiAccess` returns
+**0 at `9ba2482`, 0 at `6bd3016`, and 5 at `39beff0`** — Plan 17's own T1/T2 commit, this lane's.
+The wrong sentence is struck rather than deleted, because Lane B's §7 records that this spike answer
+has now flipped **twice** and the record of a wrong answer is what stops it flipping a third time.
+
+**The lesson is mine and it is the one this phase keeps re-learning in other forms:** I applied
+`grep -n` to the file at HEAD and then attributed it from commit MESSAGES. A claim about WHEN
+something landed is a claim about a tree at a SHA, and the only instrument that answers it is
+`git show <sha>:<path>` — the same discipline §2.142 demands for what a commit CONTAINS.
 
 **F22 — `errors.test.ts`'s DERIVED CENSUS CAUGHT `tube_mismatch` IN THE WRONG FILE, AND IT WAS
 RIGHT.** T2's `OWNED_BY` map records, from the phase document's own Produces list, that
@@ -1019,6 +1029,34 @@ is in the tree that produced every number above and in none of the commits).
 
 **I observed interference and say so** (rule 20): the box was under load I did not create, before,
 during and after the run.
+
+#### THE FINAL VERIFY, RUN QUIET AFTER BOTH CLOSE PASSES — AND A CLAIM OF MINE IT REFUTES
+
+Run detached on `hmis_17a_final` with Lane B paused and nothing else of mine running:
+
+**`Test Suites: 1 failed, 304 passed, 305 total; Tests: 4 failed, 2973 passed, 2977 total`, exit 1.**
+
+The single failing suite is `src/kernel/orders/advance.test.ts` — phase 0's, frozen for this phase —
+and its C1/C1b rows are 12-round concurrency measurements against jest's 15-second default. Compare
+the three runs: **11 failing suites, then 15, then 1**, as the box got quieter, with `advance.test.ts`
+the only member of all three sets. **Every suite this phase wrote or touched is green.**
+
+**AND HERE IS WHERE I WAS WRONG.** I told the owner this flake was *"a standing source of red CI"*.
+It is not, and Lane B's F8 has the evidence: CI run `33308463171` on `a57e7e4` returned
+`completed | success` with `advance.test.ts` included, and **CI is `success` on all three of this
+phase's remediation commits — `1e57d65`, `b8b03a6`, `5a2d732`.** The four failures are a function of
+the HOST and the LOAD, not of the file: they fail in a full parallel verify on this build box, pass
+26/26 isolated on the same box, and pass on GitHub's runner.
+
+**What is broken is the LOCAL FULL VERIFY as an instrument — which both lanes need and neither can
+currently get green — and not CI, and not this phase.** I asserted the stronger claim before the
+evidence existed, which is the same error in the same paragraph as F26's. **The general rule, which
+is Lane B's and is worth the ledger: a red on the build host and a red in CI are two different
+claims, and neither implies the other. §2.55 is the case where a green local verify hid a red CI;
+this is the same coin's other face. Name the box.**
+
+The one-line repair (an explicit timeout on C1/C1b, exactly what `jobs.test.ts` carries with its
+§2.99 note) is still worth making by whichever phase owns `kernel/orders/`. It blocks nothing.
 
 ### 9.6 The close review — BOTH PASSES RUN, BOTH FRESH, AND THE SECOND ONE EARNED ITS KEEP
 
