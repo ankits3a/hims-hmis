@@ -59,8 +59,9 @@ runner's own summary line.
   amended by F45 — §5): a paid desk order is held while the reflex it caused is unpaid, because the
   grain is the clinical ACT; an order billed across two invoices is held while either is unsettled;
   a partially-paid mixed invoice blocks and the verdict names the INVOICE; `tpa`/`pmjay`/`corporate`
-  and every `D` encounter deliver with zero receipts. **The group rule is the owner's to confirm or
-  reverse** — `interlock.test.ts`'s two `A1` rows assert both grains in as many words.
+  and every `D` encounter deliver with zero receipts. **The group rule was CONFIRMED BY THE OWNER on
+  2026-08-30 (§5 F45) and is now the decided design, not a standing amendment** —
+  `interlock.test.ts`'s two `A1` rows assert both grains in as many words.
 - **The release moves no money.** `patientOutstandingPaise` identical before and after; the mutant
   that writes a credit note took ₹300 to zero and was killed.
 - **The doctor's read is never held for money** (02 O-1). A mutant that applied the interlock at
@@ -198,7 +199,7 @@ published one. That is ledger §2.140's third specimen and the first with a rate
 | F42 | `verify.ts` is the **twelfth** IST clock, declared with a written argument. The census found it; the module's own suite could not. | closed |
 | F43 | six of sixteen realtime names could never produce a topic; they are removed rather than left as a promise nothing keeps. | a phase that may edit `events.ts` |
 | F44 | a reflex that cannot be billed reaches the SCREEN and no durable record — `LAB_EVENTS` is closed and none of its names means "a rule fired and could not be acted on". The runbook's pilot harvest counts it by hand. | a phase that may edit `events.ts` |
-| F45 | **DD23's grain is amended from the ORDER to the ORDER GROUP.** A TSH paid in cash that reflexed an unpaid FT4 read `settled` on the very order the counter was handing over. It over-blocks, which is DD23's own safe direction — **but it changes a design decision the plan had already made, and it was taken at close review under the owner's standing rule rather than by the plan.** | **the owner, to confirm or reverse** |
+| F45 | **DD23's grain is amended from the ORDER to the ORDER GROUP.** A TSH paid in cash that reflexed an unpaid FT4 read `settled` on the very order the counter was handing over. It over-blocks, which is DD23's own safe direction — **It changed a design decision the plan had already made, so it was put to the owner rather than kept on the plan's authority — with the point that under EITHER grain the unpaid reflex's own report stays blocked, so the group grain's only added effect is holding the PAID sibling too. The owner kept it: one collectable number at the counter, and the approval-release path covers the case that deserves release.** | **CONFIRMED BY THE OWNER 2026-08-30 — kept. Closed.** |
 
 **And DD23's multi-invoice loop is defensive rather than exercised by any shipped writer**: today
 one lab order carries exactly one invoice, because `deskOrder` bills all of an order's items

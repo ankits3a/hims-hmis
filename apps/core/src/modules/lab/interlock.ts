@@ -88,8 +88,14 @@ export async function deliveryAllowed(
    * not been paid. A counter clerk reads "₹450 outstanding on this visit's tests", which is a
    * sentence they can act on at the cash window.
    *
-   * Recorded as §9.2 F45 and in the gate report as a ruling made at close review under the owner's
-   * standing rule: when confused, take the most logical Indian-corporate-hospital choice.
+   * **CONFIRMED BY THE OWNER, 2026-08-30 (§9.2 F45).** It was put to them because it changes a
+   * design decision the plan had already made, with the trade-off stated both ways and with the
+   * point the review left implicit: under EITHER grain the unpaid reflex's OWN report stays
+   * blocked, so the group grain's only added effect is holding the PAID sibling too. The owner
+   * kept it — the counter gets one collectable number while the patient is still there, the
+   * reagent cost of a reflex already run does not leave the building, and `releasedByApproval`
+   * below is the valve for the case that deserves release. **This is the decided design now, not
+   * a standing amendment: do not revert it without a new ruling.**
    */
   const [group] = await (exec as Db)
     .select({ orderGroupId: orders.orderGroupId }).from(orders).where(eq(orders.id, orderId));

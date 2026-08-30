@@ -17,7 +17,8 @@ is filled in). You do NOT need to re-read §0–§8: the work is done.**
 > on `hmis_17b_lane` across seven workers. Recorded in the phase document's **§9.5** and the gate
 > report's **§2**; the scratch files were deleted. **Section 1 below is kept as written** — it is the
 > record of what was and was not known at handoff time, and the procedure in it is what closed it.
-> **The phase's only remaining item is §3: the owner's ruling on F45.**
+> **§3's ruling has since been taken too: the owner CONFIRMED the ORDER GROUP grain on
+> 2026-08-30. Nothing in this phase is now open.**
 
 
 **A full `pnpm verify` has never been observed green since this phase's code landed.** That is the
@@ -120,9 +121,13 @@ The grain is now the order group (phase 0 DD2's "one clinical act"). It **over-b
 DD23's own stated safe direction — but **it changes a design decision the plan had already made**,
 and it was taken under the owner's standing rule rather than on the plan's authority.
 
-**It is flagged in the gate report §5 as the owner's to confirm or reverse.** If the owner reverses
-it, the change is localised: `interlock.ts`'s `deliveryAllowed` (the sibling-orders lookup) and
-`interlock.test.ts`'s A1 row, which asserts the group rule in as many words.
+**RULED 2026-08-30: the owner CONFIRMED the ORDER GROUP grain and it stays as shipped.** It was put
+to them with the trade-off both ways, and with the fact the close review had left implicit — under
+EITHER grain the unpaid reflex's OWN report stays blocked, so the group grain's only added effect is
+holding the paid sibling too. The owner kept it for the collection moment at the counter, the
+reagent cost already spent, and the approval-release valve that covers the harsh case. No code
+changed. (Had it been reversed, the change was localised to `interlock.ts`'s `deliveryAllowed` and
+`interlock.test.ts`'s A1 row.)
 
 ---
 

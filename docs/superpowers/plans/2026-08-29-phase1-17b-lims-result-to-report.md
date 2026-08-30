@@ -607,6 +607,16 @@ It OVER-blocks and DD23's own ruling is that over-blocking is the safe direction
 owner's standing rule** — when confused, the most logical Indian-corporate-hospital choice — and
 flagged here and in the gate report because it changes a design decision the plan had already made.
 
+> **✅ CONFIRMED BY THE OWNER, 2026-08-30.** Put to the owner with the trade-off stated in both
+> directions — collect-at-the-counter against withholding a document already paid for — and with the
+> point the close review had not made explicit: **under EITHER grain the unpaid reflex's OWN report
+> stays blocked**, so no unpaid result is released either way, and the group grain's only added
+> effect is to hold the paid sibling as well. The owner chose to **KEEP THE ORDER GROUP**, on the
+> reasoning that the counter gets one collectable number while the patient is still standing there,
+> the reagent cost of a reflex the lab has already run does not walk out of the building, and the
+> approval-release path already exists for the case that deserves it. **F45 is no longer an open
+> ruling: the shipped code is the decided design.**
+
 **F44 — A REFLEX THAT CANNOT BE BILLED IS REPORTED TO THE SCREEN AND TO NO DURABLE RECORD.** M1's
 repair returns the refusal in `VerifyResultOutcome` and the verify screen shows it, but `LAB_EVENTS`
 is closed (T2's frozen file) and none of its twenty-two names means *"a rule fired and could not be
@@ -732,6 +742,14 @@ timings, so finishing under it is evidence the box was not degraded.
 the host then, not during. Rule 20 cuts both ways: it forbids trusting the timing of a contended
 run, and it equally forbids certifying a quiet one after the fact. (Eighteen `claude` processes are
 alive on this host at the time of writing; a low load average means they are idle, not absent.)
+
+**ONE COMMIT POST-DATES THIS RUN, and it is named rather than absorbed.** After the verify was
+recorded, the owner's F45 ruling was written into `interlock.ts`'s rationale block. The change is
+**comment-only** — proved mechanically, not asserted: every `+`/`-` line in `git diff` on that file
+is a comment line. It was nevertheless re-proved rather than waved through: `pnpm lint` **0 errors**
+(the same 2 pre-existing warnings), `pnpm typecheck` **exit 0**, and `interlock.test.ts` **9 passed,
+9 total, exit 0** on `hmis_17b_lane`. The 313/3052 figures above describe `3275b11`'s tree exactly,
+and nothing has changed since that could move them.
 
 **What this run does NOT retire.** The two red runs were red, and are recorded above as red. This
 is the first and only execution in which the whole workspace passed **in a single run** — the
