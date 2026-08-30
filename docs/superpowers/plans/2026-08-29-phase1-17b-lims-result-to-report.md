@@ -36,6 +36,120 @@ building 17a's fixtures by hand and then discover they disagree with 17a's real 
 
 ## 0. EXECUTOR SEED — read this, then execute
 
+> # ⏩ WHAT CHANGED BETWEEN AUTHORING (2026-08-29) AND NOW (2026-08-30). READ THIS FIRST.
+>
+> **This block is written by the session that closed 17a, so that you do not pay to discover any of
+> it.** The document below it is unchanged except where this block says otherwise. **It is not a
+> substitute for §2's re-measure — it is the list of things that MOVED, so your re-measure knows
+> where to look.**
+>
+> ### THE GATE IS DISCHARGED. 17a IS CLOSED, NOT MERELY CODE-COMPLETE.
+>
+> T3/T4/T5 shipped (`b06e3d6`, `fba0d72`, `b54acfd`), **both** close-review passes ran, their twelve
+> findings were remediated (`1e57d65`, `b8b03a6`), and the token audit is written. CI is green.
+> **Verified mechanically for you** — the three things every fixture here needs all exist and work:
+>
+> | you need | it is | proved by |
+> |---|---|---|
+> | an item `in_progress`, `tat_started_at` set, ONE `active` `lab_specimen_items` row | `receive` from `modules/lab` | `accession.test.ts` A7 |
+> | an invoice the desk raised | `deskOrder` from `modules/lab` | `desk.test.ts` A3 |
+> | `resolveRange` / `evaluateFormula` / `matchReflex` to CALL, not reimplement | exported from `modules/lab` | 17a §6.3 |
+>
+> **Use 17a's real writers to build every fixture.** §0's warning about hand-built fixtures
+> disagreeing with the real ones is now avoidable: `test/helpers/lab.ts` exports `seedLabDeskBase`
+> and `deskAndLabel`, which take an order all the way to a received tube. Start there.
+>
+> ### FIVE OBLIGATIONS 17a HANDS YOU — they are in its §9.2 as F27–F31, and TWO are yours to fix
+>
+> 1. **F27 — `issueInvoice`'s `cash_threshold_blocked` audit event is LOST through `deskOrder`'s
+>    cast, and it is F20's defect one module over.** `invoices.ts:1042` appends the §269ST refusal on
+>    `withTx(db, …)` inside its own `catch`; through the desk's `tx as unknown as Db` that `db` is a
+>    **`Tx`**, so the event lands on a savepoint of a transaction that is about to roll back and a
+>    refusal of ₹2,10,000 in cash leaves **no record anywhere**. 17a could not fix it —
+>    `modules/billing/*` was frozen — and **you wire the receipt path, so it is yours.** The shape
+>    that works is `printLabels`': take a `Db` as well as a `Tx` and write the audit lane on it.
+> 2. **F28 — the error union has no `permission_denied`, and T3/T4 borrowed `unknown_service` (404)
+>    and `catalogue_invalid` (422) for authorization refusals.** `errors.ts` is T2's file and its own
+>    header forbids a later task widening the union — which is why 17a reported it rather than
+>    widening. **You own T8's controllers, so you meet this on every route.** Add the code and its
+>    status, and fix the borrowings; `errors.test.ts` checks declared-vs-thrown in both directions and
+>    will not object, which is exactly why it went unnoticed.
+> 3. **F29 — the duplicate check is a read-then-refuse with no lock.** An advisory lock in `desk.ts`
+>    would close it. 17a deferred on SEVERITY, not reachability: a lost race costs a reversible
+>    double-bill against a new serialisation point on the desk's hottest path. **You mount the route
+>    where `withIdempotency` lands — rule on it there.**
+> 4. **F30 — the redraw now writes `cancelled_from = 'in_progress'` and refunds in full.**
+>    `transitions.ts` records that O-4's money rule reads `cancelled_from`. Nothing reads it today.
+>    **You are the phase that will.**
+> 5. **F31 — the specimen definition's TRANSITIONS are unenforced.** `lab_specimens` has no
+>    `instance_id`, so all four writers set the status by string literal. The state LIST is now bound
+>    to the schema CHECK by a derived census; the EDGES are not.
+>
+> ### GROUND TRUTH THAT MOVED — re-measure all of it, but these are the ones that changed
+>
+> | row | authored as | **now** |
+> |---|---|---|
+> | scheduler jobs | 13 | **15** — 17a T5 added `sweepLabNonReturn` and `sweepLabSla` |
+> | migrations | 46 | **48**; `0047` is Lane B's radiology core. **`0048` is free** |
+> | manifests installed | 18 | **18** — Lane B's radiology/pcpndt skeletons are on `main` and are NOT installed, so nothing of theirs is live |
+> | claimed order kinds | `['lab']` | **`['lab']`**, unchanged |
+> | rows 14, 16, 17, 20 | as written | **all still accurate** — verified 2026-08-30, including row 16: `PhiSurface` really does already carry `orders.patient`, `lab.results` and `lab.report`, so **this phase adds none** |
+>
+> ### THE LANE IS YOURS ALONE NOW
+>
+> **§0 item 4 and §2's "Lane B shares this checkout" are SUPERSEDED. Lane B (Plan 18a) is CLOSED.**
+> Its work is landed and inert; the working tree is clean. You still read `git status --porcelain`
+> before every `git add` — that is just discipline — but the blob-staging technique (§2.142) and the
+> migration-number negotiation are not needed. **Do not drop `hmis_lane_b_scratch_1`**: it is the
+> only place `0047` is applied and Lane B asked in writing for it to stand.
+>
+> ### `pnpm verify` WORKS NOW, AND IT DID NOT WHEN THIS WAS WRITTEN
+>
+> Six consecutive full verifies failed across two lanes and both concluded the instrument was broken.
+> It was one test — `advance.test.ts`'s C1 at **10,847 ms against a 15,000 ms default on an idle
+> box** — plus a fixture cascade that reported one fault as two (ledger **§2.144**, fixed in
+> `cae2f05`). **A full `pnpm verify` is now exit 0: 305 suites, 2977 tests, zero timeouts.** So
+> v3 §9.9 rule 4's one-run-per-block is achievable rather than aspirational. **If a race row of yours
+> lands near its budget, give it an explicit timeout and say the measured idle cost in the comment** —
+> that is now twice-established house practice (`jobs.test.ts`, `advance.test.ts`).
+>
+> ### THE STOP-LOSS IS RESTATED — §6's formula was amended the day 17a closed (ledger §2.143)
+>
+> 17a closed at **~1,241,000 of 1,350,000 (92%)** — and its three terms were **27% under, 100% under
+> and 72% over**. Three errors cancelling is not a validated formula. v3 §6 now says: **delete the
+> task-subagent term in a LIGHT lane** (17a carried 90,801 for agents its own §0 forbade), and **the
+> review term is a MULTIPLIER, `× (1 + remediation factor)`, because nothing pays for REPAIRING what
+> the review finds** — twelve findings across two passes cost roughly the review again.
+>
+> **Restated for this phase, and it is the number to carry:**
+>
+> ```
+> main-session   90,000 fixed
+>              + 250,000 T6   ← 17a measured CRITICAL tasks at 183k and 248k marginal, not 330k
+>              + 250,000 T7
+>              + 300,000 T8   ← genuinely the largest surface in either half
+>              +  80,000 T9
+>              = 970,000
+> task subagents        0     ← LIGHT lane. Do not carry 121,068 for agents you may not spawn
+> review        300,000 × (1 + 1.0) = 600,000
+> ─────────────────────────────────────────
+> STOP-LOSS ≈ 1,570,000
+> ```
+>
+> It lands within 1% of the 1,560,000 below — **for entirely different reasons**, which is the point:
+> lower coding, zero subagents, double review. **Report a fraction of stop-loss only at CLOSE**; 17a
+> reported "51%" at its T5 boundary with the review correctly named as unspent and then said "three
+> times what the phase needs" a paragraph later, and the wrong half was the quotable one.
+>
+> ### AND THE ONE THING 17a WOULD TELL YOU IF IT COULD TELL YOU ONLY ONE
+>
+> **Its two CRITICALs were both money silently vanishing on the ORDINARY clinical path, and neither
+> was found by 32 dead mutants, green suites or green CI. Both were found by a fresh reviewer.**
+> Then the SECOND reviewer found that three of the first pass's five fixes were themselves defective.
+> **Budget both passes, run both fresh, and treat your own remediation as unreviewed code** — because
+> it is.
+
+
 **Read, in this order, before the first tool call:**
 
 1. [`../AGENT-RULES.md`](../AGENT-RULES.md) — in full. Rules 3, 7, 20, 21, §3, §5, §6.
