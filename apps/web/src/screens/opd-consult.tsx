@@ -17,6 +17,7 @@ import { Link } from "@tanstack/react-router";
 import { fmtPaise } from "../lib/format";
 import { useRealtime } from "../lib/realtime";
 import { RxPrint } from "../components/rx-print";
+import { flagTone, resultsForEncounter } from "../lib/lab-api";
 import { CheckboxField, FormKit, SelectField, TextField } from "../components/form-kit";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1225,6 +1226,23 @@ export function OpdConsult(): React.ReactElement {
                 </div>
               )}
 
+              {/*
+                ═══ PLAN 17b T8 / DD21 — **THE ONE LABORATORY PANEL IN THE WHOLE OF OPD** ═══
+
+                Verified results for THIS visit, read straight from the laboratory's own reader. It
+                is the only place this phase touches `modules/opd`, and it is a READ.
+
+                **It is never held for money** (02 O-1). `listResultsForEncounter` does not consult
+                the delivery interlock and this panel does not either: an unpaid self-pay patient's
+                doctor sees every signed number. The interlock holds the printed DOCUMENT the
+                patient takes away, at the counter, and hiding a verified result from the clinician
+                who ordered it is the safety defect DD6 exists to avoid rather than to cause. The
+                note under the heading says so, because a doctor who assumes otherwise stops looking.
+              */}
+              {active !== null && (
+                <LabResultsPanel visitNo={visit.data?.encounter.visitNo ?? null} />
+              )}
+
               {/* (c) completion */}
               <div className="space-y-2 rounded border p-3">
                 <label className="block text-sm font-medium" htmlFor="follow-up">{t("opdConsult.followUp")}</label>
@@ -1352,6 +1370,49 @@ export function OpdConsult(): React.ReactElement {
           {rxPrint !== null && <RxPrint data={rxPrint} />}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/**
+ * DD21's ONE panel. A component rather than an inline block because it owns a query of its own and
+ * the consult screen is already 1300 lines; it is defined here rather than in `components/` because
+ * nothing else mounts it and a shared component with one caller is a file nobody can change safely.
+ */
+function LabResultsPanel({ visitNo }: { visitNo: string | null }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const results = useQuery({
+    queryKey: ["lab", "encounter", visitNo ?? ""],
+    queryFn: () => resultsForEncounter(visitNo!),
+    enabled: visitNo !== null,
+    /** A 403 here means this doctor holds no `lab.results.read`; the panel simply does not render. */
+    retry: false,
+  });
+  if (visitNo === null) return null;
+  const rows = results.data ?? [];
+  return (
+    <div data-testid="lab-results" className="space-y-2 rounded border p-3">
+      <h2 className="text-sm font-medium">{t("lab.consult.title")}</h2>
+      <p className="text-xs text-muted-foreground">{t("lab.consult.unpaidNote")}</p>
+      {rows.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{t("lab.consult.empty")}</p>
+      ) : (
+        <ul className="space-y-1 text-sm">
+          {rows.map((r) => (
+            <li key={`${r.orderItemId}:${r.analyteCode}`} className="flex items-baseline gap-2">
+              <span className="text-muted-foreground">{r.orderableCode}</span>
+              <span>{r.analyteName}</span>
+              <span className={flagTone(r.flag) === "critical" ? "font-bold" : ""}>
+                {r.value} {r.unit ?? ""}
+              </span>
+              {r.flag !== null && r.flag !== "N" && <span className="font-semibold">{r.flag}</span>}
+              <span className="text-xs text-muted-foreground">
+                {r.refLow !== null && r.refHigh !== null ? `${r.refLow} – ${r.refHigh}` : (r.refText ?? "")}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

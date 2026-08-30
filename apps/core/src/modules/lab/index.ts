@@ -93,3 +93,13 @@ export type {
   AmendReportInput, EncounterResultRow, PrintedReport, PrintReportInput, PublishedReport,
   PublishReportInput, ReleaseUnpaidInput, ReportAnalyteLine, ReportPanel, ReportSnapshot, ReportView,
 } from "./reports";
+// ── PLAN 17b T8 — the HTTP surface, the worklists, and the live topics ──
+export { LabCatalogueController } from "./lab-catalogue.controller";
+export { LabDeskController } from "./lab-desk.controller";
+export { LabCollectionController } from "./lab-collection.controller";
+export { LabBenchController } from "./lab-bench.controller";
+export { LabVerifyController } from "./lab-verify.controller";
+export { LAB_IDEMPOTENT_ROUTES, LAB_REPORT_ROUTES, toHttp as labToHttp } from "./lab-http";
+export { benchWorklist, labWorklist, verifyWorklist } from "./worklist";
+export type { WorklistRow } from "./worklist";
+export { LAB_REALTIME_NAMES, LAB_TOPIC_SPACES, labTopicRouter, labTopicsFor } from "./realtime";

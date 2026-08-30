@@ -1,0 +1,227 @@
+import { Body, Controller, Get, Headers, Inject, Param, Post } from "@nestjs/common";
+import { z } from "zod";
+import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
+import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
+import { withTx } from "../../kernel/db/client";
+import { collectOrderKinds } from "../../kernel/orders/kinds";
+import { withIdempotency } from "../billing";
+import { deliveryAllowed } from "./interlock";
+import {
+  amendReport, getReport, listResultsForEncounter, printReport, publishReport, releaseUnpaid,
+  reportVersions,
+} from "./reports";
+import { amendResult, requestRerun } from "./results";
+import { verifyResult } from "./verify";
+import { verifyWorklist } from "./worklist";
+import { idSchema, LAB_IDEMPOTENT_ROUTES, LAB_REPORT_ROUTES, parsed, toHttp } from "./lab-http";
+import type { Actor } from "@hmis/contracts";
+import type { Db } from "../../kernel/db/client";
+import type { ModuleRegistry } from "../../kernel/modules/loader";
+
+/**
+ * PLAN 17b T8 — **THE SIGNATURE AND THE DOCUMENT OVER HTTP.**
+ *
+ * ═══ FOUR PERMISSIONS, FOUR HANDS, AND THE SPLITS ARE DD16's ═══
+ *
+ *   · `lab.results.verify` signs a number.        · `lab.reports.publish` signs the document.
+ *   · `lab.reports.print`  hands it over.         · `lab.reports.amend`   corrects a signed one.
+ *
+ * `lab_reception` holds `print` and none of the other three: a counter clerk hands reports to
+ * patients all day and could never have signed one. `lab.reports.release_unpaid` is held by
+ * `billing_manager` and by nobody in the laboratory — a permission this module declares and no lab
+ * role holds is the honest shape for a control another office exercises (DD6).
+ *
+ * ═══ THE DOCTOR'S READ IS ON THIS CONTROLLER AND CARRIES **NO** INTERLOCK ═══
+ *
+ * `GET /lab/results/encounter/:encounterNo` returns verified results for an unpaid self-pay order.
+ * That is 02 O-1 and it is the one route in this phase whose failure kills somebody rather than
+ * annoying them.
+ */
+const rerunBody = z.object({ resultId: idSchema, reason: z.string().max(300).optional() });
+const publishBody = z.object({ orderId: idSchema, partial: z.boolean().optional() });
+const printBody = z.object({
+  channel: z.enum(["print", "whatsapp", "in_person", "doctor_screen"]),
+  collectorIdentity: z.string().max(200).optional(),
+});
+const releaseBody = z.object({
+  approvalId: idSchema,
+  channel: z.enum(["print", "in_person"]).optional(),
+  collectorIdentity: z.string().min(1).max(200),
+});
+const amendReportBody = z.object({
+  reasonCode: z.enum(["corrected_result", "corrected_demographics", "added_analyte", "clerical"]),
+});
+const amendResultBody = z.object({
+  resultId: idSchema,
+  value: z.string().min(1).max(500),
+  unit: z.string().max(32).nullish(),
+  remarks: z.string().max(500).nullish(),
+});
+
+@Controller("lab")
+export class LabVerifyController {
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    @Inject(MODULE_REGISTRY) private readonly registry: ModuleRegistry,
+  ) {}
+
+  /** As the other two write controllers: the INSTALLED registry, never the manifest catalogue. */
+  private decls() { return collectOrderKinds(this.registry); }
+
+  /* ───────────────────────────── the signature ───────────────────────────── */
+
+  /** DD11's queue: numbers keyed and awaiting a signature, oldest first. */
+  @Get("verify/worklist")
+  @RequirePermission("lab.worklist.read", "hospital")
+  async worklist(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await verifyWorklist(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  @Post("verify/results/:resultId")
+  @RequirePermission("lab.results.verify", "hospital")
+  async sign(
+    @CurrentActor() actor: Actor,
+    @Param("resultId") resultId: string,
+    @Headers("idempotency-key") key?: string,
+  ): Promise<unknown> {
+    try {
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: LAB_IDEMPOTENT_ROUTES.verifyResult, key },
+        { resultId },
+        /** `verifyResult` is `Db`-FIRST: the SoD refusal must be evented outside its own rollback. */
+        () => verifyResult(this.db, actor, this.decls(), { resultId }),
+      );
+    } catch (e) { toHttp(e); }
+  }
+
+  /** A rerun is free and is a state move — no order, no invoice, no credit note. */
+  @Post("verify/rerun")
+  @RequirePermission("lab.results.verify", "hospital")
+  async rerun(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(rerunBody, body);
+    try {
+      return await withTx(this.db, (tx) => requestRerun(tx, actor, input));
+    } catch (e) { toHttp(e); }
+  }
+
+  /* ───────────────────────────── the document ───────────────────────────── */
+
+  @Post("reports")
+  @RequirePermission("lab.reports.publish", "hospital")
+  async publish(
+    @CurrentActor() actor: Actor,
+    @Body() body: unknown,
+    @Headers("idempotency-key") key?: string,
+  ): Promise<unknown> {
+    const input = parsed(publishBody, body);
+    try {
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: LAB_REPORT_ROUTES.publish, key },
+        input,
+        () => publishReport(this.db, actor, input),
+      );
+    } catch (e) { toHttp(e); }
+  }
+
+  @Get("reports/:reportId")
+  @RequirePermission("lab.results.read", "hospital")
+  async report(@CurrentActor() actor: Actor, @Param("reportId") reportId: string): Promise<unknown> {
+    try { return await getReport(this.db, actor, reportId); } catch (e) { toHttp(e); }
+  }
+
+  /** Every version of one order's report, newest first — the history a reprint reads. */
+  @Get("reports/order/:orderId")
+  @RequirePermission("lab.results.read", "hospital")
+  async versions(@Param("orderId") orderId: string): Promise<unknown> {
+    try {
+      return {
+        versions: await reportVersions(this.db, orderId),
+        delivery: await deliveryAllowed(this.db, orderId),
+      };
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("reports/:reportId/print")
+  @RequirePermission("lab.reports.print", "hospital")
+  async print(
+    @CurrentActor() actor: Actor,
+    @Param("reportId") reportId: string,
+    @Body() body: unknown,
+    @Headers("idempotency-key") key?: string,
+  ): Promise<unknown> {
+    const input = parsed(printBody, body);
+    try {
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: LAB_REPORT_ROUTES.print, key },
+        { reportId, ...input },
+        () => printReport(this.db, actor, { reportId, ...input }),
+      );
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * DD6 — `billing_manager`'s decision to carry a receivable. It moves NO money: the dues row is
+   * untouched, because it was already the receivable (T7 A4).
+   */
+  @Post("reports/:reportId/release")
+  @RequirePermission("lab.reports.release_unpaid", "hospital")
+  async release(
+    @CurrentActor() actor: Actor,
+    @Param("reportId") reportId: string,
+    @Body() body: unknown,
+    @Headers("idempotency-key") key?: string,
+  ): Promise<unknown> {
+    const input = parsed(releaseBody, body);
+    try {
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: LAB_REPORT_ROUTES.release, key },
+        { reportId, ...input },
+        () => releaseUnpaid(this.db, actor, { reportId, ...input }),
+      );
+    } catch (e) { toHttp(e); }
+  }
+
+  /** R-018 — the corrected VALUE first, then the new report version over it. Two acts, two routes. */
+  @Post("results/amend")
+  @RequirePermission("lab.reports.amend", "hospital")
+  async correct(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(amendResultBody, body);
+    try {
+      return await withTx(this.db, (tx) => amendResult(tx, actor, input));
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("reports/:reportId/amend")
+  @RequirePermission("lab.reports.amend", "hospital")
+  async amend(
+    @CurrentActor() actor: Actor,
+    @Param("reportId") reportId: string,
+    @Body() body: unknown,
+    @Headers("idempotency-key") key?: string,
+  ): Promise<unknown> {
+    const input = parsed(amendReportBody, body);
+    try {
+      return await withIdempotency(
+        this.db,
+        { actorId: actor.id, route: LAB_REPORT_ROUTES.amend, key },
+        { reportId, ...input },
+        () => amendReport(this.db, actor, { reportId, ...input }),
+      );
+    } catch (e) { toHttp(e); }
+  }
+
+  /* ───────────────── the doctor's read — NEVER held for money (02 O-1) ───────────────── */
+
+  @Get("results/encounter/:encounterNo")
+  @RequirePermission("lab.results.read", "hospital")
+  async forEncounter(
+    @CurrentActor() actor: Actor,
+    @Param("encounterNo") encounterNo: string,
+  ): Promise<unknown> {
+    try { return await listResultsForEncounter(this.db, actor, encounterNo); } catch (e) { toHttp(e); }
+  }
+}

@@ -321,7 +321,13 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // PLAN 07c T9 — 35 with `/staff`, the supervisor's named-staff view (DD14: what, not whom).
     // The number moved BY EXECUTION rather than by prediction, as every paragraph above records:
     // the run that added it failed here with `Received length: 35` against the pinned 34.
-    expect(routes).toHaveLength(35);
+    // PLAN 17b T8 — 39 with the laboratory's four (desk, collection, bench, verify-and-report).
+    // MEASURED by running this file against the tree that carries them, which is what every
+    // paragraph above means by "by execution": the parser was re-run and it counted 39. Unlike the
+    // five phases above, the pin was raised in the same edit as the routes rather than after
+    // watching it fail — so the evidence here is the passing run, and it is stated as such rather
+    // than as a failure this session did not observe.
+    expect(routes).toHaveLength(39);
     expect(routes).toContain("/counter");
     expect(routes).toContain("/my-day");
     // `/staff`, not `/staff/$userId`: the subject is picked on the screen and never enters a URL,

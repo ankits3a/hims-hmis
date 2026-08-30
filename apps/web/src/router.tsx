@@ -49,6 +49,10 @@ import { OtList } from "./screens/ot-list";
 import { OtBook } from "./screens/ot-book";
 import { OtCockpit } from "./screens/ot-cockpit";
 import { OtRecovery } from "./screens/ot-recovery";
+import { LabDesk } from "./screens/lab-desk";
+import { LabCollection } from "./screens/lab-collection";
+import { LabBench } from "./screens/lab-bench";
+import { LabVerify } from "./screens/lab-verify";
 
 /**
  * PLAN 11h T6 — the shell's navigation, PAIRED WITH THE PERMISSION EACH SCREEN'S ROUTE ACTUALLY
@@ -154,6 +158,21 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "opd" },
   { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "opd" },
   { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "opd" },
+  /**
+   * PLAN 17b T8 — THE LABORATORY'S FOUR. Each permission is the one `labManifest.menu` declares,
+   * and `nav-parity.test.ts` compares the two lists precisely so this copy cannot drift: the desk
+   * on `lab.desk.operate`, collection on `lab.collection.operate`, the bench on
+   * `lab.accession.operate`, and verify-and-report on `lab.results.verify`.
+   *
+   * **`lab.results.verify` and not `lab.reports.publish` on the last one**, and the manifest is the
+   * authority: the pathologist's queue is the screen's reason to exist, and a counter clerk who
+   * holds `reports.print` reaches the report through the desk rather than through a signing screen
+   * they may not act on.
+   */
+  { to: "/lab/desk", label: "nav.labDesk", permission: "lab.desk.operate", group: "opd" },
+  { to: "/lab/collection", label: "nav.labCollection", permission: "lab.collection.operate", group: "opd" },
+  { to: "/lab/bench", label: "nav.labBench", permission: "lab.accession.operate", group: "opd" },
+  { to: "/lab/verify", label: "nav.labVerify", permission: "lab.results.verify", group: "opd" },
 ];
 
 function Shell(): React.ReactElement {
@@ -431,6 +450,31 @@ const otRecoveryRoute = createRoute({
   component: OtRecovery,
 });
 
+/** PLAN 17b T8 — the laboratory's four screens. Paths match `labManifest.menu` exactly. */
+const labDeskRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/desk",
+  component: LabDesk,
+});
+
+const labCollectionRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/collection",
+  component: LabCollection,
+});
+
+const labBenchRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/bench",
+  component: LabBench,
+});
+
+const labVerifyRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/verify",
+  component: LabVerify,
+});
+
 const opdAppointmentsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/appointments",
@@ -585,6 +629,11 @@ export const router = createRouter({
       // PLAN 15 T8 — 28 -> 32, the day-care spine. Four ROUTES and three NAV links: the cockpit is
       // per case. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
       otListRoute, otBookRoute, otCockpitRoute, otRecoveryRoute,
+      // PLAN 17b T8 — 35 -> 39, the laboratory. FOUR routes and four NAV links: unlike the OT's
+      // cockpit, every lab screen is a place a person stands all day, so each carries a menu entry.
+      // `caddyfile-parity.test.ts` pins the count and joins this task's Files list, which is the
+      // S11 rule this repository has now applied to itself six times.
+      labDeskRoute, labCollectionRoute, labBenchRoute, labVerifyRoute,
     ]),
   ]),
 });

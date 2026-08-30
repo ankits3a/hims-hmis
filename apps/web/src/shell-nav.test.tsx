@@ -51,6 +51,27 @@ it("offers only the screens the signed-in person holds a permission for", async 
   expect(screen.queryByRole("link", { name: "Formulary" })).not.toBeInTheDocument();
 });
 
+/**
+ * PLAN 17b T8 — THE LABORATORY'S FOUR, AND THE SEPARATION THAT MATTERS AT THE SHELL.
+ *
+ * DD16 splits `lab.results.enter` from `lab.results.verify` so a technologist can key numbers all
+ * day and sign none. The shell has to honour that: a bench technologist is offered the bench and
+ * NOT the signing screen, and offering it would put a person one click from a 403 on the one screen
+ * whose whole purpose they may not act on.
+ */
+it("17b: the bench technologist is offered the bench and NOT verify-and-report", async () => {
+  renderShell(["lab.accession.operate", "lab.results.enter", "lab.worklist.read"]);
+  await waitFor(() => expect(screen.getByRole("link", { name: "Bench" })).toBeInTheDocument());
+  expect(screen.queryByRole("link", { name: "Verify & report" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Lab desk" })).not.toBeInTheDocument();
+});
+
+it("17b: the pathologist is offered verify-and-report", async () => {
+  renderShell(["lab.results.verify"]);
+  await waitFor(() => expect(screen.getByRole("link", { name: "Verify & report" })).toBeInTheDocument());
+  expect(screen.queryByRole("link", { name: "Bench" })).not.toBeInTheDocument();
+});
+
 it("16a: the formulary desk appears for the permission that guards it, and for no other", async () => {
   renderShell(["formulary.manage"]);
   await waitFor(() => expect(screen.getByRole("link", { name: "Formulary" })).toBeInTheDocument());
