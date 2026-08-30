@@ -6,8 +6,7 @@ import {
 import { mkUser } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
 import {
-  events, labAnalytes, labItems, labReflexRules, labResults, labSpecimenItems, orderItems, orders,
-  workflowInstances,
+  events, labAnalytes, labItems, labResults, labSpecimenItems, orderItems, orders, workflowInstances,
 } from "../../kernel/db/schema";
 import { receive } from "./accession";
 import { collect } from "./collection";
@@ -16,6 +15,7 @@ import { duplicateWarnings } from "./duplicates";
 import { enterResult } from "./results";
 import { printLabels } from "./specimens";
 import { isSingleOperatorNight, verifyResult } from "./verify";
+import { activateTshReflex } from "./verify.test.helpers";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -279,11 +279,3 @@ describe("lab results — verification, SoD and reflex (17b T6)", () => {
       .rejects.toMatchObject({ code: "already_verified" });
   });
 });
-
-/** DD8 — the golden catalogue ships every reflex rule INACTIVE; a hospital switches one on. */
-export async function activateTshReflex(db: Db): Promise<void> {
-  const [tsh] = await db.select({ id: labAnalytes.id }).from(labAnalytes)
-    .where(eq(labAnalytes.code, "TSH"));
-  await db.update(labReflexRules).set({ active: true })
-    .where(eq(labReflexRules.analyteId, tsh!.id));
-}

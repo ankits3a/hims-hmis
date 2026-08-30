@@ -138,6 +138,44 @@ export const notificationTemplates: Record<string, NotificationTemplate> = {
         `अत्यावश्यक: "${paramStr(params, "defKey")}" एस्केलेशन चरण ${paramStr(params, "rung")} पर समाप्त (स्थिति "${paramStr(params, "state")}", भूमिका ${paramStr(params, "role")})। कृपया कार्रवाई करें।`,
     },
   },
+
+  /**
+   * ═══ PLAN 17 §9.2 F3 / 17b T7 — **THE FOURTH KERNEL EDIT OF THE LAB'S BUILD, AND THE ONLY ONE
+   * THIS PHASE MAKES.** ═══
+   *
+   * Producer: `lab.report_published` and `lab.report_amended` (modules/lab/reports.ts). The phase
+   * document imagined `modules/lab/notify-templates.ts`; spike S7 found that this registry is a
+   * CLOSED literal with no registration function, so a module cannot register a template and the
+   * append lands here. Disclosed rather than absorbed: Plan 17 said three kernel edits and the true
+   * number is four.
+   *
+   * ═══ TOKEN-ONLY: NO RESULT VALUE, NO ANALYTE NAME, NOT EVEN THE TEST (02 J3 / R-020) ═══
+   *
+   * The body says a report is ready and where to collect it, and that is the whole of it. There is
+   * no patient-facing deep link before 22c-F, so there is nothing to link to — and a WhatsApp
+   * message carrying a haemoglobin, or even the word "HIV", lands on a lock screen that a family
+   * shares (E46). `orderNo` is the counter's own reference and is what a patient reads out at the
+   * window; it names no test.
+   *
+   * D5 — it dies **72 hours** after publication. A report is collected at a counter and a notice
+   * older than three days is a notice the patient has either acted on or forgotten; re-sending it
+   * a week later would be a message about a document already in their hand.
+   */
+  patient_lab_report_ready: {
+    key: "patient_lab_report_ready",
+    version: 1,
+    class: "transactional",
+    audience: "patient",
+    urgency: "routine",
+    waApprovalStatus: "not_submitted",
+    expiresAt: (_params, occurredAt) => new Date(occurredAt.getTime() + 72 * HOUR_MS),
+    render: {
+      en: (params) =>
+        `Your laboratory report for ${paramStr(params, "orderNo")} is ready. Please collect it from the hospital reception. Bring this message and a photo ID.`,
+      hi: (params) =>
+        `${paramStr(params, "orderNo")} की आपकी प्रयोगशाला रिपोर्ट तैयार है। कृपया इसे अस्पताल के रिसेप्शन से प्राप्त करें। यह संदेश और एक फोटो पहचान पत्र साथ लाएँ।`,
+    },
+  },
 };
 
 export function templateByKey(key: string): NotificationTemplate {

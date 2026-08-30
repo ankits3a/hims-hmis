@@ -64,9 +64,10 @@ export type { NonReturnSweepReport, SlaSweepReport } from "./sweeps";
 // 17a §6.8 records for `printLabels`: verification must WRITE on its refusal path
 // (`lab.sod_violation_blocked`), and an audit row appended on the transaction that is about to roll
 // back is an audit row that never existed (F20, and F27 one module over).
-export { enterResult, requestRerun, resultContext, LAB_RESULTS_ENTER } from "./results";
+export { amendResult, enterResult, requestRerun, resultContext, LAB_RESULTS_ENTER } from "./results";
 export type {
-  EnteredResult, EnterResultInput, EnterResultOutcome, LabEntryMode, RequestRerunInput,
+  AmendResultInput, EnteredResult, EnterResultInput, EnterResultOutcome, LabEntryMode,
+  RequestRerunInput,
 } from "./results";
 export {
   isSingleOperatorNight, verifyResult, LAB_REFLEX_ACTOR, LAB_RESULTS_VERIFY,
@@ -75,3 +76,20 @@ export {
 export type { ReflexPlacement, VerifyResultInput, VerifyResultOutcome } from "./verify";
 export { acknowledgeCritical, openCriticalCalls, LAB_CRITICALS_CLOSE } from "./criticals";
 export type { AcknowledgeCriticalInput, AcknowledgeCriticalOutcome, CriticalAttempt } from "./criticals";
+// ── PLAN 17b T7 — the money rule, the delivery interlock, and the document ──
+// `money.ts` and `interlock.ts` are the close reviewer's first two files (§9.6): every threshold on
+// this phase's money path is in one of them, and `deliveryAllowed` is the function 22c-F, 24a and
+// 18a all call rather than re-deriving from invoices (CONTRACT §6.5 as amended by DD23).
+export { billedLabLines, cancelLabItem, chargeReasonFor, deskOrderAtCounter, refundOnCancel } from "./money";
+export type { CancelLabItemInput, LabChargeReason, RefundOutcome } from "./money";
+export { deliveryAllowed, EXEMPT_ENCOUNTER_PREFIXES, EXEMPT_PAYERS } from "./interlock";
+export type { DeliveryVerdict } from "./interlock";
+export {
+  amendReport, getReport, listResultsForEncounter, printReport, publishReport, releaseUnpaid,
+  reportVersions, LAB_REPORTS_AMEND, LAB_REPORTS_PRINT, LAB_REPORTS_PUBLISH, LAB_RESULTS_READ,
+  PATIENT_LAB_REPORT_READY,
+} from "./reports";
+export type {
+  AmendReportInput, EncounterResultRow, PrintedReport, PrintReportInput, PublishedReport,
+  PublishReportInput, ReleaseUnpaidInput, ReportAnalyteLine, ReportPanel, ReportSnapshot, ReportView,
+} from "./reports";

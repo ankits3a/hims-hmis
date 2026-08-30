@@ -16,14 +16,39 @@ describe("the notification template registry (D8)", () => {
     }
   });
 
-  it("ships the five catalog templates named in D8's table, nothing else", () => {
+  it("ships D8's five catalog templates plus the lab's report-ready notice, nothing else", () => {
     expect(Object.keys(notificationTemplates).sort()).toEqual([
       "appointment_confirmed",
       "appointment_reminder",
       "owner_escalation_sms",
+      /** PLAN 17 §9.2 F3 / 17b T7 — the fourth kernel edit of the lab's build (spike S7). */
+      "patient_lab_report_ready",
       "patient_welcome",
       "staff_escalation",
     ]);
+  });
+
+  /**
+   * ═══ 02 J3 / R-020 — THE LAB NOTICE CARRIES NO CLINICAL CONTENT, AND THIS ASSERTS IT ═══
+   *
+   * The template interpolates exactly ONE parameter and it is the order number. A body that named
+   * the test — never mind the value — would put "HIV" on a lock screen a family shares (E46), and
+   * the enqueue site cannot be the only thing standing between a result and a shared telephone.
+   */
+  it("renders the lab report-ready notice from the order number alone, in both languages", () => {
+    const template = notificationTemplates.patient_lab_report_ready!;
+    const params = { orderNo: "L2608290007" };
+    for (const lang of ["en", "hi"] as const) {
+      const body = template.render[lang](params);
+      expect(body).toContain("L2608290007");
+      /** Nothing clinical: no analyte, no value, no flag, no test name. */
+      expect(body).not.toMatch(/haemoglobin|HIV|TSH|mg\/dL|positive|reactive/i);
+    }
+    expect([template.audience, template.class, template.channels])
+      .toEqual(["patient", "transactional", undefined]);
+    /** D5 — the expiry is anchored on the EVENT's instant, never on elapsed time since enqueue. */
+    expect(template.expiresAt(params, OCCURRED_AT).toISOString())
+      .toBe(new Date(OCCURRED_AT.getTime() + 72 * 60 * 60 * 1000).toISOString());
   });
 
   it("templateByKey returns the registered template", () => {
@@ -39,7 +64,10 @@ describe("the notification template registry (D8)", () => {
   });
 
   it("leaves channels unset (default ladder) on the other four templates", () => {
-    for (const key of ["patient_welcome", "appointment_confirmed", "appointment_reminder", "staff_escalation"]) {
+    for (const key of [
+      "patient_welcome", "appointment_confirmed", "appointment_reminder", "staff_escalation",
+      "patient_lab_report_ready",
+    ]) {
       expect(notificationTemplates[key]!.channels).toBeUndefined();
     }
   });

@@ -779,3 +779,133 @@ export async function requestRerun(
   void now;
   return { resultId: input.resultId, orderItemId: result.orderItemId, state };
 }
+
+/* ────────────────── DD13 / E40 — THE SIGNED CORRECTION AFTER PUBLICATION ────────────────── */
+
+export type AmendResultInput = {
+  /** The VERIFIED row this correction replaces. It is never edited and never deleted. */
+  resultId: string;
+  value: string;
+  unit?: string | null;
+  remarks?: string | null;
+};
+
+/**
+ * ═══ 02 H8 / E40 — A PATHOLOGIST CORRECTS A VALUE THEY HAVE ALREADY SIGNED ═══
+ *
+ * `lab_results_immutable` refuses every UPDATE on a verified row, and `enterResult` refuses an item
+ * that has reached `completed`. Both are correct and together they left DD13's own instrument
+ * unbuildable: *"a correction after verification is a NEW row carrying `supersedes_result_id` and a
+ * new report version"* — with nothing able to write that row (§9.2 F38, found by T7 A6).
+ *
+ * This is that writer, and it is deliberately NOT `enterResult` with a flag:
+ *
+ *   · it needs `lab.reports.amend`, not `lab.results.enter` — correcting a published number is an
+ *     amendment, and the permission that gates the amended REPORT gates the value inside it;
+ *   · the new row is entered AND verified by the amending pathologist in one act, because a signed
+ *     correction is one person's statement about their own earlier signature. The entry-time SoD
+ *     would block exactly the person answerable for it, and a control that pushes a 22:00 typo
+ *     correction onto paper protects nobody;
+ *   · the superseded row STAYS readable for ever, which is what makes "which number did the
+ *     patient's doctor act on" answerable after the fact.
+ *
+ * It writes no report. `amendReport` publishes version n+1 over the rows this leaves behind, so a
+ * correction that is never published is a correction nobody acted on — visible, and not delivered.
+ */
+export async function amendResult(
+  tx: Tx,
+  actor: Actor,
+  input: AmendResultInput,
+  now: Date = new Date(),
+): Promise<EnteredResult> {
+  await assertMay(tx, actor, "lab.reports.amend", "amend a signed lab result");
+
+  const [prior] = await tx.select().from(labResults).where(eq(labResults.id, input.resultId));
+  if (!prior) throw new LabError("unknown_result", `no lab result ${input.resultId}`);
+  if (prior.verificationStatus === "unverified") {
+    throw new LabError(
+      "report_not_amendable",
+      `result ${input.resultId} has not been signed — an unsigned number is corrected with a ` +
+        "rerun, not with an amendment",
+    );
+  }
+
+  const [analyte] = await tx.select().from(labAnalytes).where(eq(labAnalytes.id, prior.analyteId));
+  if (!analyte) throw new LabError("unknown_analyte", `no analyte ${prior.analyteId}`);
+
+  /**
+   * `resultContext` asserts the item is RESULTABLE and this one is not — it is `completed`, which
+   * is the only state an amendment happens in. The pieces it would have supplied are read directly,
+   * and the ENVELOPE is deliberately not touched: the department finished, and a correction does
+   * not un-finish it.
+   */
+  const [row] = await tx
+    .select({
+      orderId: orders.id, encounterNo: orders.encounterNo, patientId: orders.patientId,
+      serviceId: orderItems.serviceId, instanceId: labItems.instanceId,
+    })
+    .from(orderItems)
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .innerJoin(labItems, eq(labItems.orderItemId, orderItems.id))
+    .where(eq(orderItems.id, prior.orderItemId));
+  if (!row) throw new LabError("unknown_item", `no lab order item ${prior.orderItemId}`);
+
+  const canonical = (await resolvePatientId(tx, row.patientId)) ?? row.patientId;
+  const numeric = analyte.resultType === "numeric" ? parseNumeric(input.value, analyte.code) : null;
+  if (numeric !== null && outsideAbsurdEnvelope(numeric, analyte)) {
+    throw new LabError(
+      "absurd_value",
+      `${analyte.code} ${input.value} is outside the plausible envelope — an amendment is not an ` +
+        "override, and a corrected value is still a value",
+    );
+  }
+
+  const resultId = newId();
+  await tx.insert(labResults).values({
+    id: resultId,
+    orderItemId: prior.orderItemId,
+    analyteId: prior.analyteId,
+    specimenId: prior.specimenId,
+    valueNumeric: numeric === null ? null : input.value.trim(),
+    valueText: numeric === null && analyte.resultType !== "coded" ? input.value : null,
+    valueCoded: numeric === null && analyte.resultType === "coded" ? input.value : null,
+    unit: input.unit ?? prior.unit,
+    /** The RANGE IS THE ONE IT WAS SIGNED AGAINST — the correction is to the value, not to the book. */
+    flag: numeric === null ? prior.flag : flagFor(numeric, {
+      refRangeId: prior.refRangeId, low: prior.refLow, high: prior.refHigh, text: prior.refText,
+      criticalLow: analyte.criticalLow, criticalHigh: analyte.criticalHigh, note: prior.refNote,
+    }),
+    refLow: prior.refLow,
+    refHigh: prior.refHigh,
+    refText: prior.refText,
+    refRangeId: prior.refRangeId,
+    refNote: prior.refNote,
+    deltaFlag: false,
+    absurdOverriddenBy: null,
+    enteredByType: actor.type,
+    enteredById: actor.id,
+    enteredAt: now,
+    entryMode: prior.entryMode,
+    /** ENTERED AND SIGNED IN ONE ACT — see the header. The SoD refusal would block the one person
+     *  who is answerable for the earlier signature. */
+    verificationStatus: "verified",
+    verifiedBy: actor.id,
+    verifiedAt: now,
+    pathologistReviewPending: false,
+    supersedesResultId: prior.id,
+    remarks: input.remarks ?? null,
+  });
+
+  await appendEvent(tx, labResultEntered.make({
+    actor,
+    patientId: canonical,
+    encounterId: row.encounterNo,
+    correlationId: row.orderId,
+    payload: {
+      resultId, orderItemId: prior.orderItemId, analyteId: prior.analyteId, enteredBy: actor.id,
+      flag: null, entryMode: prior.entryMode, absurdOverridden: false,
+    },
+  }));
+
+  return { resultId, analyteId: prior.analyteId, flag: null, deltaFlagged: false, criticalCallId: null };
+}

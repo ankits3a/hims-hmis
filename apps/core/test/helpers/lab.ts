@@ -8,7 +8,9 @@ import { collectOrderKinds } from "../../src/kernel/orders/kinds";
 import { ordersManifest } from "../../src/kernel/orders/manifest";
 import { ORDERS_PLACE } from "../../src/kernel/orders/place";
 import { registerEncounterResolver } from "../../src/kernel/episodes/encounter-resolvers";
-import { opdDepartments, opdDoctors, patients, registrationConfig } from "../../src/kernel/db/schema";
+import {
+  labReferenceRanges, opdDepartments, opdDoctors, patients, registrationConfig,
+} from "../../src/kernel/db/schema";
 import { labManifest } from "../../src/modules/lab/manifest";
 import { activateLabDefinitions } from "../../src/modules/lab/definitions";
 import { billingManifest } from "../../src/modules/billing/manifest";
@@ -19,7 +21,10 @@ import { upsertGstCategory } from "../../src/modules/tariff/gst-config";
 import { activateVersion, createDraftVersion, setTariffItem, submitVersion } from "../../src/modules/tariff";
 import { approveRequest } from "../../src/kernel/approvals/decisions";
 import { seedLabCatalogue, serviceIdForLabCode } from "../../scripts/seed-lab-catalogue";
-import { collect, deskOrder, printLabels } from "../../src/modules/lab";
+import {
+  analytesFor, collect, deskOrder, duplicateWarnings, enterResult, printLabels, receive, verifyResult,
+} from "../../src/modules/lab";
+import { allocateReceipt, recordReceipt } from "../../src/modules/billing";
 import { seedBillingBase } from "./billing";
 import { activateOpdVisitDefinition, ensureRole, mkUser, seedOpdBase } from "./opd";
 import type { Actor } from "@hmis/contracts";
@@ -315,4 +320,133 @@ export async function grantLabResultPermissions(db: Db, fx: LabDeskFixture): Pro
   for (const p of ["lab.reports.print", "lab.results.read", "lab.worklist.read"]) {
     await grantPermissionToRole(db, fx.registry, "lab_reception", p);
   }
+}
+
+/**
+ * PLAN 17b T7 — **ORDER → TUBE → NUMBERS → SIGNATURES**, through 17a's and T6's real writers.
+ *
+ * Three suites (`money`, `interlock`, `reports`) each need an order that has actually reached
+ * `completed`, and none of them is testing how it got there. Same disclosure as
+ * `grantLabResultPermissions` above: T7's Files list names no helper, and one fixture is better
+ * than three that drift (§2.54 / 17a F9).
+ *
+ * **The values are computed from the CATALOGUE, not typed in.** A hard-coded "1" is outside the
+ * absurd envelope of some analytes and inside the critical band of others, so a fixture that used
+ * one would refuse on some orderables and open call ladders on others — noise that looks like the
+ * system misbehaving. The midpoint of the analyte's widest reference band is inside every envelope
+ * this catalogue declares and flags `N`.
+ */
+export type LabRun = {
+  orderId: string;
+  orderNo: string;
+  orderGroupId: string;
+  itemIds: string[];
+  specimenNos: string[];
+  invoiceId: string;
+  netPayablePaise: number;
+  /** Every result row written, in the order it was keyed. */
+  resultIds: string[];
+};
+
+/** A value inside this analyte's reference band, or inside its absurd envelope when it has none. */
+function safeValueFor(
+  analyte: { resultType: string; absurdLow: string | null; absurdHigh: string | null },
+  ranges: { low: string | null; high: string | null }[],
+): string {
+  if (analyte.resultType !== "numeric") return "Normal";
+  const band = ranges.find((r) => r.low !== null && r.high !== null);
+  if (band) return String((Number(band.low) + Number(band.high)) / 2);
+  const lo = analyte.absurdLow === null ? 0 : Number(analyte.absurdLow);
+  const hi = analyte.absurdHigh === null ? 100 : Number(analyte.absurdHigh);
+  return String((lo + hi) / 2);
+}
+
+export async function runLabOrder(
+  db: Db,
+  fx: LabDeskFixture,
+  codes: readonly string[],
+  opts: {
+    at?: Date;
+    reflexConsent?: boolean;
+    /** Stop after entry — the unsigned state a worklist shows. */
+    verify?: boolean;
+    /** Override one analyte's value by CODE, for a critical or an abnormal fixture. */
+    values?: Readonly<Record<string, string>>;
+    enterActor?: Actor;
+    verifyActor?: Actor;
+  } = {},
+): Promise<LabRun> {
+  const now = opts.at ?? new Date();
+  const serviceIds = codes.map((c) => serviceIdForLabCode(c));
+  const warnings = await withTx(db, (tx) =>
+    duplicateWarnings(tx, fx.desk.actor, fx.patientId, serviceIds, now));
+  const placed = await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
+    patientId: fx.patientId, encounterNo: fx.encounterNo, serviceDate: fx.serviceDate,
+    orderingClinicianId: fx.pathologist.id,
+    items: serviceIds.map((serviceId) => ({ serviceId })),
+    credit: { reason: "counter order" },
+    reflexConsent: opts.reflexConsent,
+    acknowledgedDuplicates: warnings.map((w) => w.duplicateOfItemId),
+    placedAt: now,
+  }, now));
+
+  const patient = (await db.select().from(patients).where(eq(patients.id, fx.patientId)))[0]!;
+  const { specimens } = await printLabels(db, fx.bench.actor, {
+    orderGroupId: placed.orderGroupId, scannedUhid: patient.uhid,
+  }, now);
+  for (const s of specimens) {
+    await withTx(db, (tx) => collect(tx, fx.bench.actor, {
+      specimenId: s.specimenId, wristbandScanned: true,
+    }, now));
+    await withTx(db, (tx) => receive(tx, fx.bench.actor, fx.decls, { specimenNo: s.specimenNo }, now));
+  }
+
+  const enterActor = opts.enterActor ?? fx.bench.actor;
+  const verifyActor = opts.verifyActor ?? fx.pathologist.actor;
+  const resultIds: string[] = [];
+  for (const [index, itemId] of placed.itemIds.entries()) {
+    const analytes = await analytesFor(db, serviceIds[index]!);
+    for (const analyte of analytes) {
+      /** A calculated analyte is written BY `enterResult` when its inputs land — never keyed. */
+      if (analyte.resultType === "formula") continue;
+      const ranges = await db.select({ low: labReferenceRanges.low, high: labReferenceRanges.high })
+        .from(labReferenceRanges).where(eq(labReferenceRanges.analyteId, analyte.id));
+      const out = await withTx(db, (tx) => enterResult(tx, enterActor, {
+        orderItemId: itemId, analyteId: analyte.id,
+        value: opts.values?.[analyte.code] ?? safeValueFor(analyte, ranges),
+        entryMode: "manual",
+      }, now));
+      resultIds.push(out.resultId, ...out.computed.map((c) => c.resultId));
+    }
+  }
+  if (opts.verify !== false) {
+    for (const resultId of resultIds) {
+      await verifyResult(db, verifyActor, fx.decls, { resultId }, now);
+    }
+  }
+
+  return {
+    orderId: placed.orderId, orderNo: placed.orderNo, orderGroupId: placed.orderGroupId,
+    itemIds: placed.itemIds, specimenNos: specimens.map((s) => s.specimenNo),
+    invoiceId: placed.invoice.invoiceId, netPayablePaise: placed.invoice.netPayablePaise,
+    resultIds,
+  };
+}
+
+/** Settle an invoice in full through the REAL receipt path — a cashier, a drawer, an allocation. */
+export async function settleInvoice(
+  db: Db,
+  cashier: { id: string; actor: Actor },
+  patientId: string,
+  invoiceId: string,
+  amountPaise: number,
+  now: Date = new Date(),
+): Promise<{ receiptId: string }> {
+  const receipt = await recordReceipt(db, cashier.actor, {
+    patientId, tenders: [{ mode: "cash", amountPaise }],
+  }, now);
+  await allocateReceipt(db, cashier.actor, {
+    receiptId: receipt.receiptId, invoiceId, amountPaise,
+  }, now);
+  return { receiptId: receipt.receiptId };
 }
