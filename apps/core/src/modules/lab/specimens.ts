@@ -4,6 +4,7 @@ import {
   labItems, labOrderables, labSpecimenItems, labSpecimens, orderItems, orders, patients,
 } from "../../kernel/db/schema";
 import { nextEpisodeNo } from "../../kernel/episodes/series";
+import { LIVE_ITEM_STATUSES } from "../../kernel/orders/transitions";
 import { appendEvent } from "../../kernel/events/append";
 import { transition } from "../../kernel/workflow/instances";
 import { LabError } from "./errors";
@@ -86,7 +87,10 @@ async function drawableItems(tx: Tx, orderGroupId: string): Promise<DrawableItem
     .from(orderItems)
     .innerJoin(orders, eq(orders.id, orderItems.orderId))
     .innerJoin(labItems, eq(labItems.orderItemId, orderItems.id))
-    .where(and(eq(orders.orderGroupId, orderGroupId), eq(orderItems.status, "placed")));
+    .where(and(
+      eq(orders.orderGroupId, orderGroupId),
+      inArray(orderItems.status, [...LIVE_ITEM_STATUSES]),
+    ));
   if (rows.length === 0) return [];
 
   /**
@@ -131,7 +135,26 @@ async function printLabelsInTx(
     );
   }
 
-  const patientId = items[0]!.patientId;
+  /**
+   * ═══ CLOSE REVIEW PASS 1, MAJOR 5 — ONE GROUP MUST NAME ONE PATIENT ═══
+   *
+   * `drawableItems` reads across `orders.order_group_id` and returns a `patient_id` PER ROW, and the
+   * right-patient scan below validates ONE of them. `deskOrder` takes `orderGroupId` as free caller
+   * input, so a clerk's screen still holding the previous group — a reused draft, a copy-paste, a
+   * back-button — puts a second patient's tests into it. The scan then matched row zero, passed, and
+   * minted a single tube carrying BOTH patients' items under the first one's `patient_id`: the tube
+   * is labelled for Ram Kumar and 17b would result Ram Kumar Yadav's test against it. DD10 exists
+   * for exactly this (E1, two Ram Kumars) and a guard that checks one row of N is not that guard.
+   */
+  const patientIds = [...new Set(items.map((i) => i.patientId))];
+  if (patientIds.length > 1) {
+    throw new LabError(
+      "tube_mismatch",
+      `order group ${input.orderGroupId} names ${patientIds.length} different patients — one tube ` +
+        "cannot carry two people's tests, and no label was printed",
+    );
+  }
+  const patientId = patientIds[0]!;
   const patient = (await tx.select().from(patients).where(eq(patients.id, patientId)))[0];
   if (!patient) throw new LabError("unknown_item", `order group ${input.orderGroupId} names no patient`);
 

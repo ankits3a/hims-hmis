@@ -3,6 +3,8 @@ import {
   LAB_SPECIMEN_DEFINITION_JSON, LAB_SPECIMEN_DEF_KEY, LAB_SPECIMEN_STATES,
   labItemDefinition, labSpecimenDefinition,
 } from "./workflow-def";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { defineWorkflow, WorkflowValidationError } from "../../kernel/workflow/definition";
 
 /**
@@ -16,6 +18,30 @@ describe("the two lab workflow definitions (17a T4 A8)", () => {
   it("both validate under defineWorkflow", () => {
     expect(labItemDefinition().key).toBe(LAB_ITEM_DEF_KEY);
     expect(labSpecimenDefinition().key).toBe(LAB_SPECIMEN_DEF_KEY);
+  });
+
+  /**
+   * ═══ A DERIVED CENSUS, BECAUSE THE ONE F15 PROMISED WAS NOT ONE (pass 1, MAJOR 8) ═══
+   *
+   * `lab_specimens` carries no `instance_id`, so the tube's machine IS `lab_specimens.status` and
+   * the definition is documentation of it. F15 said this test pinned the two together; it pinned the
+   * definition against a constant in its own file, which is a claim a file makes about itself. This
+   * reads the CHECK constraint out of the schema SOURCE — the `ist-clock-parity.test.ts` technique,
+   * which is the only kind of census that has caught anything in this phase.
+   */
+  it("MAJOR 8: the specimen states ARE the lab_specimens_status_ck vocabulary, read from the schema", () => {
+    const schema = readFileSync(
+      resolve(__dirname, "..", "..", "kernel", "db", "schema", "lab.ts"), "utf8",
+    );
+    const check = /lab_specimens_status_ck[\s\S]*?in \(([^)]*)\)/.exec(schema);
+    expect(check).not.toBeNull();
+    const fromSchema = [...check![1]!.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]!);
+    expect(fromSchema.length).toBeGreaterThan(0);
+    expect([...LAB_SPECIMEN_STATES].sort()).toEqual(fromSchema.sort());
+  });
+
+  it("MAJOR 8: the specimen definition's initial state is the status printLabels actually writes", () => {
+    expect(labSpecimenDefinition().initialState).toBe("labelled");
   });
 
   it("the declared state lists and the definitions agree, in both directions", () => {

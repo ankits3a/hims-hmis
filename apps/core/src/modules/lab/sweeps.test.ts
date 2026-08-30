@@ -1,11 +1,16 @@
 import { eq, sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { deskAndLabel, seedLabDeskBase } from "../../../test/helpers/lab";
+import { deskAndLabel, seedLabDeskBase, serviceIdForLabCode, uhidOf } from "../../../test/helpers/lab";
+import { mkUser } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
 import {
-  creditNotes, events, labItems, labSlaBreaches, labSpecimenItems, orderItems, workflowInstances,
+  creditNotes, events, labItems, labSlaBreaches, labSpecimenItems, orderItems, orders,
+  workflowInstances,
 } from "../../kernel/db/schema";
 import { advanceOrderItem } from "../../kernel/orders/advance";
+import { deskOrder } from "./desk";
+import { printLabels } from "./specimens";
+import { LabError } from "./errors";
 import { receive, reject } from "./accession";
 import { collectionQueue } from "./collection";
 import { NON_RETURN_DAYS, sweepLabNonReturn, sweepLabSla } from "./sweeps";
@@ -86,7 +91,7 @@ describe("the lab worker sweeps (17a T5)", () => {
       specimenNo: placed.specimens[0]!.specimenNo, reason: "leaked", attributableTo: "transport",
     }));
     const report = await sweepLabNonReturn(db, new Date(), fx.decls);
-    expect(report).toEqual({ cancelled: [], creditNotes: [] });
+    expect(report).toEqual({ cancelled: [], creditNotes: [], failed: [] });
     expect(await db.select().from(creditNotes)).toHaveLength(0);
   });
 
@@ -166,6 +171,37 @@ describe("the lab worker sweeps (17a T5)", () => {
     expect(queue.map((q) => q.priority)).toEqual(["stat", "urgent", "routine"]);
     expect(queue.every((q) => /^S\d{10}$/.test(q.specimenNo))).toBe(true);
     expect(queue.every((q) => q.encounterNo === fx.encounterNo)).toBe(true);
+  }, 120_000);
+
+  /* ───── CLOSE REVIEW PASS 1, MAJOR 3 — THE WORKLIST IS A BULK PHI READ ───── */
+
+  it("MAJOR 3: the collection queue requires lab.worklist.read and refuses a non-user actor", async () => {
+    await deskAndLabel(db, fx, ["CBC"], { draw: false });
+    /** A system actor has no business rendering a worklist of named patients and their UHIDs. */
+    await expect(collectionQueue(db, { type: "system", id: "some-job" }, { serviceDate: fx.serviceDate }))
+      .rejects.toThrow(LabError);
+    /** A real user holding nothing is refused by permission, not served. */
+    const nobody = await mkUser(db, "holds.nothing", []);
+    await expect(collectionQueue(db, nobody.actor, { serviceDate: fx.serviceDate }))
+      .rejects.toThrow(LabError);
+  }, 120_000);
+
+  it("MAJOR 3: a restricted test's CODE is omitted from the worklist, and the tube still appears", async () => {
+    await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
+      patientId: fx.patientId, encounterNo: fx.encounterNo, serviceDate: fx.serviceDate,
+      orderingClinicianId: fx.pathologist.id, credit: { reason: "counter" },
+      items: [{ serviceId: serviceIdForLabCode("HIV"), consent: { recordedBy: fx.desk.id } }],
+    }));
+    const uhid = await uhidOf(db, fx.patientId);
+    const groups = await db.select().from(orders);
+    await printLabels(db, fx.bench.actor, { orderGroupId: groups[0]!.orderGroupId, scannedUhid: uhid });
+
+    const queue = await collectionQueue(db, fx.bench.actor, { serviceDate: fx.serviceDate });
+    /** THE TUBE IS STILL THERE — a phlebotomist must draw it; dropping the row breaks the clinic. */
+    expect(queue).toHaveLength(1);
+    expect(queue[0]!.specimenNo).toMatch(/^S\d{10}$/);
+    /** AND THE TEST NAME IS NOT: the existence of the HIV test is the sensitive fact (DD11). */
+    expect(queue[0]!.orderableCodes).toEqual([]);
   }, 120_000);
 
   it("a drawn tube leaves the collection queue", async () => {

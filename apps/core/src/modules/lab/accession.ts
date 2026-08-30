@@ -6,6 +6,7 @@ import {
 import { nextEpisodeNo } from "../../kernel/episodes/series";
 import { appendEvent } from "../../kernel/events/append";
 import { advanceOrderItem } from "../../kernel/orders/advance";
+import { LIVE_ITEM_STATUSES } from "../../kernel/orders/transitions";
 import { transition } from "../../kernel/workflow/instances";
 import { LabError } from "./errors";
 import { labRecollectionRequested, labSpecimenReceived, labSpecimenRejected } from "./events";
@@ -120,10 +121,18 @@ export async function receive(
    * throws `illegal_transition` from `cancelled`, and the bench sees a raw CAS error about a state
    * machine instead of "nobody is waiting for this any more". 24a is written against this refusal.
    */
+  /**
+   * `LIVE_ITEM_STATUSES` — the KERNEL's own set (`placed` + `in_progress`), not `placed` alone.
+   *
+   * **Close review pass 1, CRITICAL 1.** A tube rejected after accession and redrawn leaves its
+   * items at `in_progress` on the envelope, which is correct — `transitions.ts`'s header rules that
+   * every lab stage lives INSIDE `in_progress` — so a redrawn tube's items are live work that
+   * `status = 'placed'` alone could not see.
+   */
   const live = linkedIds.length === 0 ? [] : await tx
-    .select({ id: orderItems.id })
+    .select({ id: orderItems.id, status: orderItems.status })
     .from(orderItems)
-    .where(and(inArray(orderItems.id, linkedIds), eq(orderItems.status, "placed")));
+    .where(and(inArray(orderItems.id, linkedIds), inArray(orderItems.status, [...LIVE_ITEM_STATUSES])));
   if (live.length === 0) {
     throw new LabError(
       "no_active_order",
@@ -132,6 +141,8 @@ export async function receive(
     );
   }
   const liveIds = live.map((l) => l.id);
+  /** Only an item that has NOT started projects onto the envelope; `in_progress → in_progress` is illegal. */
+  const notYetStarted = new Set(live.filter((l) => l.status === "placed").map((l) => l.id));
 
   /**
    * ═══ THE CAS (T5 A1) ═══
@@ -164,7 +175,14 @@ export async function receive(
   for (const row of instances) {
     /** The lab's own machine first, then the envelope's — DD4's projection, in that order. */
     await transition(tx, row.instanceId, "accessioned", actor);
-    await advanceOrderItem(tx, actor, decls, row.orderItemId, "in_progress", { at: now });
+    /**
+     * THE PROJECTION FIRES ONCE PER ITEM, not once per tube. A redrawn item is already
+     * `in_progress`; projecting again would throw `illegal_transition` and take the whole accession
+     * with it. DD4's point is that the ward sees "the department has started", and it already has.
+     */
+    if (notYetStarted.has(row.orderItemId)) {
+      await advanceOrderItem(tx, actor, decls, row.orderItemId, "in_progress", { at: now });
+    }
     await tx.update(labItems)
       .set({ tatStartedAt: now, identityRecheckBy: input.identityRecheckBy ?? null })
       .where(eq(labItems.orderItemId, row.orderItemId));
@@ -253,10 +271,22 @@ export async function reject(
    * is a disposal record, not a redraw, and minting an `S` number for a tube nobody will draw makes
    * the daily counter lie about how much blood the hospital took.
    */
+  /**
+   * ═══ CLOSE REVIEW PASS 1, CRITICAL 1 — THIS SET WAS `placed` ALONE, AND HAEMOLYSIS IS FOUND AT
+   * THE CENTRIFUGE ═══
+   *
+   * A tube is rejected AFTER it is received far more often than before: the bench sees the
+   * haemolysis when it spins the sample. `receive` has by then set `in_progress`, so a live-set of
+   * `placed` alone was empty on the ordinary path and this guard — written for "every test on this
+   * tube was cancelled" — fired instead. The result was no replacement tube, no recollection, the
+   * links left ACTIVE on a rejected specimen so nothing could ever be relabelled, and the item
+   * stranded where no sweep or worklist could see it, with the patient's money kept. Proved by
+   * execution before the repair: `Expected ["01M19…"], Received []`.
+   */
   const live = linkedIds.length === 0 ? [] : await tx
     .select({ id: orderItems.id })
     .from(orderItems)
-    .where(and(inArray(orderItems.id, linkedIds), eq(orderItems.status, "placed")));
+    .where(and(inArray(orderItems.id, linkedIds), inArray(orderItems.status, [...LIVE_ITEM_STATUSES])));
   if (live.length === 0) {
     return {
       rejectedSpecimenId: specimen.id, specimenId: specimen.id,

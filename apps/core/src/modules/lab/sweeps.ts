@@ -7,6 +7,7 @@ import {
 import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
 import { advanceOrderItem } from "../../kernel/orders/advance";
+import { LIVE_ITEM_STATUSES } from "../../kernel/orders/transitions";
 import { getActiveDefinition } from "../../kernel/workflow/definitions";
 import { transition } from "../../kernel/workflow/instances";
 import { issueCreditNote } from "../billing";
@@ -51,6 +52,8 @@ export const NON_RETURN_DAYS = 7;
 export type NonReturnSweepReport = {
   cancelled: { orderItemId: string; specimenNo: string }[];
   creditNotes: { orderItemId: string; creditNoteId: string }[];
+  /** Items whose cancellation ROLLED BACK. They stay `recollection_pending` for the next run. */
+  failed: { orderItemId: string; reason: string }[];
 };
 
 /**
@@ -72,7 +75,7 @@ export async function sweepLabNonReturn(
   actor: Actor = LAB_NON_RETURN_ACTOR,
 ): Promise<NonReturnSweepReport> {
   const cutoff = new Date(now.getTime() - NON_RETURN_DAYS * DAY_MS);
-  const report: NonReturnSweepReport = { cancelled: [], creditNotes: [] };
+  const report: NonReturnSweepReport = { cancelled: [], creditNotes: [], failed: [] };
 
   /**
    * `lt`, not `lte`: an item that entered the state EXACTLY seven days ago has not yet been waiting
@@ -94,7 +97,8 @@ export async function sweepLabNonReturn(
       eq(workflowInstances.defKey, LAB_ITEM_DEF_KEY),
       eq(workflowInstances.currentState, "recollection_pending"),
       lt(workflowInstances.stateEnteredAt, cutoff),
-      eq(orderItems.status, "placed"),
+      /** LIVE work — a recollection opened after accession is `in_progress` (pass 1 CRITICAL 1). */
+      inArray(orderItems.status, [...LIVE_ITEM_STATUSES]),
     ));
   if (due.length === 0) return report;
 
@@ -111,12 +115,33 @@ export async function sweepLabNonReturn(
 
   for (const item of due) {
     /**
-     * ONE TRANSACTION PER ITEM, not one for the batch. A credit note that fails on item nine must
-     * not undo the eight cancellations before it — the sweep runs again tomorrow and a partially
-     * applied batch is the correct intermediate state, whereas an all-or-nothing batch that always
-     * fails on the same row never cancels anything at all.
+     * ═══ ONE TRANSACTION PER ITEM, AND THE CREDIT NOTE IS **INSIDE** IT ═══
+     *
+     * **Close review pass 1, CRITICAL 2.** This loop used to commit the cancellation and then issue
+     * the credit note on a SEPARATE transaction, defending the split with "a consequence that fails
+     * is a worklist item, not a reason to un-cancel". **There is no worklist.** `report` is an
+     * in-memory value the scheduler discards, and the sweep's own re-drive query cannot recover the
+     * item: `due` requires `recollection_pending` AND a live item, and the committed cancellation
+     * has just set both to `cancelled`. So any throw between the two — a dropped connection, a
+     * SIGTERM mid-deploy, a missing credit-note series for the financial year, a deadlock, a
+     * counter's `correction` note already over that line — left the item **cancelled, unrefunded,
+     * and invisible to every subsequent run**. The credit-note-series case is deterministic: it
+     * would have stranded one patient's money per day, for ever, with a throwing job as the only
+     * symptom.
+     *
+     * Atomic is the honest shape here precisely BECAUSE there is nowhere to write an obligation:
+     * a billing refusal now rolls the cancellation back, the item stays `recollection_pending`, and
+     * tomorrow's run retries it. A permanently-failing note means the item is never cancelled —
+     * loudly, and still visible — which is the failure a hospital can act on.
+     *
+     * `issueCreditNote` is `Db`-first and opens its own `withTx`, so it nests as a SAVEPOINT on this
+     * transaction exactly as `issueInvoice` does at the desk (F7, probed against Postgres).
+     *
+     * The per-item try/catch is the other half: one item's billing refusal must not abort the batch
+     * behind it, which was the second way this loop lost work.
      */
-    await withTx(db, async (tx: Tx) => {
+    try {
+      await withTx(db, async (tx: Tx) => {
       await transition(tx, item.instanceId, "cancelled", actor);
       await advanceOrderItem(tx, actor, decls, item.orderItemId, "cancelled", {
         at: now,
@@ -139,28 +164,36 @@ export async function sweepLabNonReturn(
             eq(labSpecimenItems.orderItemId, item.orderItemId),
           ));
       }
-    });
-    report.cancelled.push({
-      orderItemId: item.orderItemId,
-      specimenNo: specimenNoByItem.get(item.orderItemId) ?? "",
-    });
 
-    /**
-     * DD7 — THE MONEY GOES BACK, and it is a SEPARATE transaction on purpose. `issueCreditNote` is
-     * `Db`-first and opens its own; nesting it in the cancellation would make a billing refusal
-     * (an entered-in-error invoice, a note already issued) roll back a cancellation that is
-     * clinically correct and independently true. The cancellation is the fact; the credit note is
-     * the consequence, and a consequence that fails is a worklist item, not a reason to un-cancel.
-     */
-    if (item.invoiceId && item.invoiceLineId) {
-      const note = await issueCreditNote(db, actor, {
-        kind: "refund",
-        invoiceId: item.invoiceId,
-        reason: `lab test cancelled: no recollection within ${NON_RETURN_DAYS} days`,
-        lines: [{ invoiceLineId: item.invoiceLineId, qty: 1 }],
+      /**
+       * DD7 — THE MONEY GOES BACK, in the SAME atom as the cancellation. The hospital charged for
+       * this test at the desk (DD6) and has just decided it will never do it.
+       */
+      if (item.invoiceId && item.invoiceLineId) {
+        const note = await issueCreditNote(tx as unknown as Db, actor, {
+          kind: "refund",
+          invoiceId: item.invoiceId,
+          reason: `lab test cancelled: no recollection within ${NON_RETURN_DAYS} days`,
+          lines: [{ invoiceLineId: item.invoiceLineId, qty: 1 }],
+        });
+        report.creditNotes.push({ orderItemId: item.orderItemId, creditNoteId: note.creditNoteId });
+      }
       });
-      report.creditNotes.push({ orderItemId: item.orderItemId, creditNoteId: note.creditNoteId });
+      report.cancelled.push({
+        orderItemId: item.orderItemId,
+        specimenNo: specimenNoByItem.get(item.orderItemId) ?? "",
+      });
+    } catch (e) {
+      /**
+       * ONE ITEM'S REFUSAL IS NOT THE BATCH'S. Recorded and carried, so the remaining items are
+       * still swept and tomorrow's run retries this one from a state it can still see.
+       */
+      report.failed.push({
+        orderItemId: item.orderItemId,
+        reason: e instanceof Error ? e.message : String(e),
+      });
     }
+
   }
 
   return report;
@@ -222,7 +255,7 @@ export async function sweepLabSla(
     .innerJoin(labOrderables, eq(labOrderables.serviceId, labItems.serviceId))
     .where(and(
       eq(workflowInstances.defKey, LAB_ITEM_DEF_KEY),
-      inArray(orderItems.status, ["placed", "in_progress"]),
+      inArray(orderItems.status, [...LIVE_ITEM_STATUSES]),
       isNotNull(workflowInstances.stateEnteredAt),
     ));
 

@@ -45,8 +45,19 @@ export const LAB_ITEM_STATES = [
 ] as const;
 export type LabItemState = (typeof LAB_ITEM_STATES)[number];
 
+/**
+ * **THESE ARE THE `lab_specimens_status_ck` WORDS, AND `specimens.test.ts` PROVES IT BY READING THE
+ * SCHEMA** — close review pass 1, MAJOR 8.
+ *
+ * F15 claimed the definition was pinned against the table's vocabulary "so the two cannot drift".
+ * It was not: the test compared the definition against this constant, twelve lines above it in the
+ * same file, and never read the CHECK. The two had already drifted — this list said
+ * `awaiting_collection` where the CHECK says `labelled`, and `printLabels` writes `labelled`. So a
+ * tube's real first state was absent from its own state machine and the machine's initial state was
+ * a value the database would have refused.
+ */
 export const LAB_SPECIMEN_STATES = [
-  "awaiting_collection", "collected", "in_transit", "received", "stored", "rejected", "disposed",
+  "labelled", "collected", "in_transit", "received", "stored", "rejected", "disposed",
 ] as const;
 export type LabSpecimenState = (typeof LAB_SPECIMEN_STATES)[number];
 
@@ -129,9 +140,9 @@ export const LAB_SPECIMEN_DEFINITION_JSON = {
   key: LAB_SPECIMEN_DEF_KEY,
   title: "Lab specimen",
   changeClass: "C",
-  initialState: "awaiting_collection",
+  initialState: "labelled",
   states: [
-    { name: "awaiting_collection", sla: { minutes: 120, alerting: "active", escalation: [{ afterMinutes: 120, toRole: "lab_technician" }] } },
+    { name: "labelled", sla: { minutes: 120, alerting: "active", escalation: [{ afterMinutes: 120, toRole: "lab_technician" }] } },
     { name: "collected", sla: { minutes: 60, alerting: "active", escalation: [{ afterMinutes: 60, toRole: "lab_technician" }] } },
     { name: "in_transit", sla: { minutes: 120, alerting: "active", escalation: [{ afterMinutes: 120, toRole: "lab_technician" }] } },
     { name: "received", sla: { minutes: 30, alerting: "record_only" } },
@@ -141,12 +152,12 @@ export const LAB_SPECIMEN_DEFINITION_JSON = {
     { name: "disposed", terminal: true },
   ],
   transitions: [
-    { from: "awaiting_collection", to: "collected", roles: ["phlebotomist", "lab_technician", "nurse"] },
+    { from: "labelled", to: "collected", roles: ["phlebotomist", "lab_technician", "nurse"] },
     { from: "collected", to: "in_transit", roles: ["phlebotomist", "lab_technician", "nurse"] },
     { from: "collected", to: "received", roles: ["lab_technician"] },
     { from: "in_transit", to: "received", roles: ["lab_technician"] },
     { from: "received", to: "stored", roles: ["lab_technician"] },
-    { from: "awaiting_collection", to: "rejected", roles: ["lab_technician", "pathologist"] },
+    { from: "labelled", to: "rejected", roles: ["lab_technician", "pathologist"] },
     { from: "collected", to: "rejected", roles: ["lab_technician", "pathologist"] },
     { from: "in_transit", to: "rejected", roles: ["lab_technician", "pathologist"] },
     { from: "received", to: "rejected", roles: ["lab_technician", "pathologist"] },

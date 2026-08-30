@@ -296,7 +296,7 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
     // actually lives — the eleventh job's own note, and it applies unchanged.
     jest.spyOn(labSweepsMod, "sweepLabNonReturn").mockImplementation(async () => {
       invoked.push("sweepLabNonReturn");
-      return { cancelled: [], creditNotes: [] };
+      return { cancelled: [], creditNotes: [], failed: [] };
     }),
     jest.spyOn(labSweepsMod, "sweepLabSla").mockImplementation(async () => {
       invoked.push("sweepLabSla");

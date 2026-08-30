@@ -9,7 +9,7 @@ import { advanceOrderItem } from "../../kernel/orders/advance";
 import { deskOrder } from "./desk";
 import { receive, reject } from "./accession";
 import { printLabels } from "./specimens";
-import { collect } from "./collection";
+import { collect, collectionQueue } from "./collection";
 import { LabError } from "./errors";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
@@ -155,6 +155,92 @@ describe("lab accession (17a T5)", () => {
     expect(active.filter((a) => a.active)[0]!.specimenId).toBe(redrawn.specimenId);
     expect(await eventsNamed("lab.recollection_requested")).toHaveLength(1);
     expect(await eventsNamed("lab.specimen_rejected")).toHaveLength(1);
+  });
+
+  /* ───── CLOSE REVIEW PASS 1, CRITICAL 1 — REJECTING AN **ACCESSIONED** TUBE ───── */
+
+  /**
+   * ═══ THE CASE THE PHASE GOT WRONG, AND IT IS THE ORDINARY ONE ═══
+   *
+   * Haemolysis is found at the CENTRIFUGE — after the tube has been received. `reject`'s live-item
+   * query filtered `order_items.status = 'placed'`, and `receive` had already set `in_progress`, so
+   * the guard written for "every test on this tube was cancelled" fired on the normal clinical path:
+   * no replacement tube, no recollection, the links left ACTIVE on a rejected tube, and the item
+   * stranded where no sweep, screen or worklist could ever see it — with the patient's money kept.
+   */
+  it("CRITICAL 1: a tube rejected AFTER accession still mints a replacement and opens a recollection", async () => {
+    const placed = await deskAndLabel(db, fx, ["CBC"]);
+    await withTx(db, (tx) => receive(tx, fx.bench.actor, fx.decls, {
+      specimenNo: placed.specimens[0]!.specimenNo,
+    }));
+    const [afterReceive] = await db.select().from(orderItems).where(eq(orderItems.id, placed.itemIds[0]!));
+    expect(afterReceive!.status).toBe("in_progress");
+
+    const redrawn = await withTx(db, (tx) => reject(tx, fx.bench.actor, {
+      specimenNo: placed.specimens[0]!.specimenNo,
+      reason: "haemolysed",
+      attributableTo: "collection",
+    }));
+
+    /** A NEW tube for the SAME items — the whole of DD5, and it did not happen. */
+    expect(redrawn.itemIds).toEqual([placed.itemIds[0]]);
+    expect(redrawn.specimenNo).not.toBe(placed.specimens[0]!.specimenNo);
+    expect(redrawn.specimenNo).toMatch(/^S\d{10}$/);
+
+    /** Exactly one ACTIVE link, and it is the replacement — not the rejected tube. */
+    const links = await db.select().from(labSpecimenItems)
+      .where(eq(labSpecimenItems.orderItemId, placed.itemIds[0]!));
+    expect(links.filter((l) => l.active)).toHaveLength(1);
+    expect(links.filter((l) => l.active)[0]!.specimenId).toBe(redrawn.specimenId);
+
+    expect(await eventsNamed("lab.recollection_requested")).toHaveLength(1);
+  });
+
+  it("CRITICAL 1: the redrawn tube can be collected and received again, and the item is not stranded", async () => {
+    const placed = await deskAndLabel(db, fx, ["CBC"]);
+    await withTx(db, (tx) => receive(tx, fx.bench.actor, fx.decls, {
+      specimenNo: placed.specimens[0]!.specimenNo,
+    }));
+    const redrawn = await withTx(db, (tx) => reject(tx, fx.bench.actor, {
+      specimenNo: placed.specimens[0]!.specimenNo, reason: "clotted", attributableTo: "collection",
+    }));
+
+    /** The phlebotomy list must show it — an item nobody can see is an item nobody redraws. */
+    const queue = await collectionQueue(db, fx.bench.actor, { serviceDate: fx.serviceDate });
+    expect(queue.map((q) => q.specimenNo)).toContain(redrawn.specimenNo);
+
+    await withTx(db, (tx) => collect(tx, fx.bench.actor, {
+      specimenId: redrawn.specimenId, wristbandScanned: true,
+    }));
+    const received = await withTx(db, (tx) => receive(tx, fx.bench.actor, fx.decls, {
+      specimenNo: redrawn.specimenNo,
+    }));
+    expect(received.itemIds).toEqual([placed.itemIds[0]]);
+
+    /** Still exactly one charge — the lab dropped the tube twice and the patient paid once. */
+    const [item] = await db.select().from(labItems).where(eq(labItems.orderItemId, placed.itemIds[0]!));
+    const lines = await db.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, item!.invoiceId!));
+    expect(lines).toHaveLength(1);
+  });
+
+  /* ───── CLOSE REVIEW PASS 1, MAJOR 5 — ONE GROUP, TWO PATIENTS ───── */
+
+  it("MAJOR 5: an order group naming two patients is refused rather than labelled for the first", async () => {
+    const first = await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
+      patientId: fx.patientId, encounterNo: fx.encounterNo, serviceDate: fx.serviceDate,
+      orderingClinicianId: fx.pathologist.id, credit: { reason: "counter" },
+      items: [{ serviceId: serviceIdForLabCode("CBC") }],
+    }));
+    /**
+     * The clerk's screen still holds the group id and the next patient is placed into it — a reused
+     * draft, a copy-paste, a back-button. `deskOrder` takes `orderGroupId` as free input.
+     */
+    await expect(withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
+      patientId: fx.otherPatientId, encounterNo: fx.otherEncounterNo, serviceDate: fx.serviceDate,
+      orderingClinicianId: fx.pathologist.id, credit: { reason: "counter" },
+      orderGroupId: first.orderGroupId,
+      items: [{ serviceId: serviceIdForLabCode("LFT") }],
+    }))).rejects.toThrow(LabError);
   });
 
   /* ───────────── A9 — A TUBE WHOSE EVERY ITEM IS CANCELLED ───────────── */

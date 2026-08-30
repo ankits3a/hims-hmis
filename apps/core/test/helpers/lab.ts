@@ -66,6 +66,9 @@ export type LabDeskFixture = {
   patientId: string;
   /** A second registration of the same person, MERGED into `patientId` (T3 A6's shape). */
   mergedLoserId: string;
+  /** A DIFFERENT person entirely, with their own visit — close review MAJOR 5's discriminator. */
+  otherPatientId: string;
+  otherEncounterNo: string;
   encounterNo: string;
   serviceDate: string;
   unregister: () => void;
@@ -164,16 +167,23 @@ export async function seedLabDeskBase(db: Db, encounterNo = "V2608290001"): Prom
 
   const patientId = newId();
   const mergedLoserId = newId();
+  const otherPatientId = newId();
+  const otherEncounterNo = "V2608290002";
   await db.insert(patients).values([
     { id: patientId, uhid: "HMS-00000101-7", name: "Ram Kumar", sex: "male",
       administrativeGender: "male", createdBy: "t", updatedBy: "t" },
     { id: mergedLoserId, uhid: "HMS-00000102-5", name: "Ram Kumar", sex: "male",
       administrativeGender: "male", status: "merged", mergedIntoPatientId: patientId,
       createdBy: "t", updatedBy: "t" },
+    /** A DIFFERENT person with a confusable name — E1's own case, and MAJOR 5's discriminator. */
+    { id: otherPatientId, uhid: "HMS-00000103-3", name: "Ram Kumar Yadav", sex: "male",
+      administrativeGender: "male", createdBy: "t", updatedBy: "t" },
   ]);
 
   const unregister = registerEncounterResolver("V", async (_d, no) =>
-    no === encounterNo ? { patientId, intendedPayer: "self" } : null);
+    no === encounterNo ? { patientId, intendedPayer: "self" }
+      : no === otherEncounterNo ? { patientId: otherPatientId, intendedPayer: "self" }
+        : null);
 
   await seedLabCatalogue(db, pathologistUser.actor);
 
@@ -216,6 +226,8 @@ export async function seedLabDeskBase(db: Db, encounterNo = "V2608290001"): Prom
     labDepartmentId,
     patientId,
     mergedLoserId,
+    otherPatientId,
+    otherEncounterNo,
     encounterNo,
     serviceDate,
     unregister,

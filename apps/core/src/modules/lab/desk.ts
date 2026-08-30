@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, ne } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
@@ -240,6 +240,29 @@ export async function deskOrder(
   const inactive = [...byService.values()].filter((o) => !o.active).map((o) => o.code);
   if (inactive.length > 0) {
     throw new LabError("unknown_service", `orderable(s) withdrawn from the catalogue: ${inactive.join(", ")}`);
+  }
+
+  /**
+   * (1b) A GROUP BELONGS TO ONE PATIENT — close review pass 1, MAJOR 5, closed at BOTH ends.
+   *
+   * `orderGroupId` is free caller input and `placeOrder` writes it verbatim, so nothing but this
+   * stops a second patient's tests joining an existing clinical act. `printLabels` refuses such a
+   * group too, but refusing it HERE is what keeps the bad row out of the database rather than
+   * merely un-labellable.
+   */
+  if (input.orderGroupId !== undefined) {
+    const foreign = await tx
+      .select({ patientId: orders.patientId })
+      .from(orders)
+      .where(and(eq(orders.orderGroupId, input.orderGroupId), ne(orders.patientId, input.patientId)))
+      .limit(1);
+    if (foreign.length > 0) {
+      throw new LabError(
+        "unknown_service",
+        `order group ${input.orderGroupId} already belongs to a different patient — a clinical act ` +
+          "is one person's, and joining another's would put two people's tests on one tube",
+      );
+    }
   }
 
   /**

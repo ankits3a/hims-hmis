@@ -4,7 +4,9 @@ import {
   labItems, labOrderables, labSpecimenItems, labSpecimens, orderItems, orders, patients,
   workflowInstances,
 } from "../../kernel/db/schema";
+import { hasPermission } from "../../kernel/auth/permissions";
 import { appendEvent } from "../../kernel/events/append";
+import { LIVE_ITEM_STATUSES } from "../../kernel/orders/transitions";
 import { transition } from "../../kernel/workflow/instances";
 import { displayNameFor } from "../patients";
 import { LabError } from "./errors";
@@ -90,16 +92,49 @@ export type CollectionQueueRow = {
 
 const PRIORITY_RANK: Record<string, number> = { stat: 0, urgent: 1, routine: 2 };
 
+/** The permission a worklist reader holds. Declared by the manifest and granted to all four roles. */
+export const LAB_WORKLIST_READ = "lab.worklist.read";
+/** The kernel's own clearance for a restricted item — `orders/read.ts:141`, and nobody else. */
+const ORDERS_READ_RESTRICTED = "orders.read.restricted";
+
 /**
  * WHAT IS WAITING TO BE DRAWN, at one site, on one IST service date.
  *
  * `Db`-first and read-only: a worklist is a screen, not a transaction.
+ *
+ * ═══ CLOSE REVIEW PASS 1, MAJOR 3 — THIS WAS AN UNGATED BULK PHI READ ═══
+ *
+ * As first shipped this function took an `Actor` and asked it for nothing: no permission, no actor
+ * type, no `restricted` filter. `collectionQueue(db, anyActor, {serviceDate})` returned, for every
+ * patient labelled that day, their display name, their **UHID**, their `V` number and their
+ * orderable codes — `["HIV"]`, `["HBSAG"]`, `["VDRL"]`, `["UPT"]`. `deskOrder` sets
+ * `order_items.restricted` precisely so the kernel's reader omits those, and this re-implemented a
+ * reader over the same rows one level down from where that rule is enforced. It is 22c-A's shape
+ * exactly: a filter applied at one level of a nested structure is not a filter.
+ *
+ * **THE TUBE STAYS ON THE LIST AND THE TEST NAME LEAVES IT**, which is the trade this surface
+ * needs. A phlebotomist must still draw the EDTA tube — dropping the row would make a
+ * confidentiality rule into a clinical failure — but nothing about the worklist requires them to
+ * learn that it is an HIV test. A reader holding `orders.read.restricted` sees the codes; nobody
+ * else does, and the same `restricted` boolean decides it.
  */
 export async function collectionQueue(
   db: Db,
   actor: Actor,
   filter: { site?: LabCollectionSite; serviceDate: string },
 ): Promise<CollectionQueueRow[]> {
+  /**
+   * A `user` ACTOR ONLY, by TYPE before permission — `kernel/orders/read.ts:121` refuses `patient`
+   * and `agent` outright for the same reason, and `hasPermission` handed a non-user id returns
+   * false, which would report "this user lacks the permission" about something that is not a user.
+   */
+  if (actor.type !== "user") {
+    throw new LabError("no_active_order", `a ${actor.type} actor may not read the collection worklist`);
+  }
+  if (!(await hasPermission(db, actor.id, LAB_WORKLIST_READ, "hospital"))) {
+    throw new LabError("no_active_order", `reading the collection worklist requires ${LAB_WORKLIST_READ}`);
+  }
+  const canSeeRestricted = await hasPermission(db, actor.id, ORDERS_READ_RESTRICTED, "hospital");
   const specimens = await db
     .select()
     .from(labSpecimens)
@@ -121,6 +156,7 @@ export async function collectionQueue(
     .select({
       itemId: orderItems.id,
       status: orderItems.status,
+      restricted: orderItems.restricted,
       priority: labItems.priority,
       collectionSite: labItems.collectionSite,
       encounterNo: orders.encounterNo,
@@ -143,7 +179,9 @@ export async function collectionQueue(
   const rows: CollectionQueueRow[] = [];
   for (const specimen of specimens) {
     const mine = links.filter((l) => l.specimenId === specimen.id).map((l) => byItem.get(l.orderItemId))
-      .filter((r): r is NonNullable<typeof r> => r !== undefined && r.status === "placed");
+      /** LIVE work, not `placed` alone — a redrawn item is `in_progress` (pass 1 CRITICAL 1). */
+      .filter((r): r is NonNullable<typeof r> => r !== undefined
+        && (LIVE_ITEM_STATUSES as readonly string[]).includes(r.status));
     if (mine.length === 0) continue;
 
     const site = (mine[0]!.collectionSite ?? "opd") as LabCollectionSite;
@@ -170,7 +208,8 @@ export async function collectionQueue(
       priority,
       /** One fasting test on the tube makes the whole draw a fasting draw. */
       requiresFasting: mine.some((m) => m.requiresFasting),
-      orderableCodes: mine.map((m) => m.code),
+      /** DD11 — omitted, not flagged: the EXISTENCE of the test is the sensitive fact. */
+      orderableCodes: mine.filter((m) => canSeeRestricted || !m.restricted).map((m) => m.code),
       itemIds: mine.map((m) => m.itemId),
     });
   }
