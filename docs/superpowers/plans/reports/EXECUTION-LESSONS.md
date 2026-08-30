@@ -1115,6 +1115,52 @@ ceiling.**
 
 ---
 
+**2.143 — THE STOP-LOSS WAS RIGHT IN TOTAL AND WRONG IN EVERY TERM, AND THE TERM IT MISSES IS THE ONE THAT FIXES WHAT THE REVIEWER FOUND.** *(Plan 17a LIMS order→accession, closed 2026-08-30 — the sequel to §2.141, and the other half of the same error)*
+
+§2.141 found the formula budgeting a REVIEWER's rate for a LIGHT phase's CODING. Plan 17a set its
+stop-loss from that correction, and the correction was itself incomplete. Measured at close:
+
+| term | budgeted | actual | |
+|---|---|---|---|
+| main-session (`90,000 + 3 × 330,000`) | 1,090,000 | **~794,000** | **27% UNDER** |
+| task subagents (`1.5 × 20,178 × 3`) | 90,801 | **0** | no task subagent was ever spawned |
+| review (two fresh passes) | 260,000 | **447,402** | **72% OVER** |
+| **total** | **1,350,000** | **~1,241,000** | **92% — right to 8%** |
+
+**A total that lands at 92% of a ceiling built from three terms that are 27% under, 100% under and
+72% over is not a validated formula. It is three errors cancelling.** The phase reported "51% of
+stop-loss" at its T5 boundary and that number was true and useless: it was measured before the close
+review and before the remediation, which together are a third of the phase.
+
+**THE TERM THAT DOES NOT EXIST, AND IT IS THE EXPENSIVE ONE.** The formula budgets the reviewers. It
+does not budget **fixing what they find**. Pass 1 returned 2 CRITICAL + 7 MAJOR and pass 2 returned
+five more; remediating twelve findings — reproducing each as a red test, repairing, re-running — was
+main-session work no term names. §2.141's lesson was *the formula budgets the reviewer and not the
+coder*; this phase's is **the formula budgets the reviewer and not the REPAIR**, and the repair scales
+with what the review finds, which is exactly the quantity nobody can predict.
+
+**MECHANICAL FORM — a fourth term, and it is a MULTIPLIER on the review term rather than a constant:**
+
+```
+stop-loss = main-session term
+          + 1.5 × (per-task subagent rate × task count)     ← drop to 0 for a LIGHT lane
+          + review term × (1 + remediation factor)
+```
+
+`remediation factor ≈ 1.0` on this phase's measurement (447,402 of review produced roughly its own
+weight again in repair). **Set it from the last comparable phase's ratio, and if the lane is LIGHT,
+delete the task-subagent term rather than carrying it at its old value** — 17a carried 90,801 for
+agents it never spawned, which is the same shape of error §2.141 named, surviving its own correction.
+
+**AND THE HONESTY RULE THIS BUYS.** A phase that reports a percentage of stop-loss BEFORE its close
+review has reported a number that cannot be compared to any other phase's. **Report the fraction only
+at CLOSE, or report it with the review and remediation explicitly named as unspent.** Plan 17a did
+the latter in its §9.7 and then said "roughly three times what the phase needs" in prose one
+paragraph later — the caveat did not survive the summary, which is how a wrong number reaches the
+next lane ruling.
+
+---
+
 **2.142 — TWO LANES SHARING A CHECKOUT IS A KNOWN HAZARD; TWO LANES SHARING A *FILE* NEEDS A DIFFERENT TOOL, AND `git add <path>` IS NOT IT.** *(Plan 17 LIMS core T1/T2, 2026-08-29)*
 
 The parallel-session protocol §3 rule 1 says *"stage explicitly, by path. Never `git add -A`."* That

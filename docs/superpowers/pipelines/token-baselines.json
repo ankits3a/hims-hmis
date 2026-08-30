@@ -148,6 +148,14 @@
       "subagentTokens": 0,
       "mainSessionTokens": 132000,
       "note": "PARTIAL ROW, recorded at a TASK BOUNDARY rather than at a close, and it is here for ONE reason: 2.141 amended the stop-loss formula with a main-session term derived from a single data point, and said every executing session must record its own balance per task so the term stops being an extrapolation. This is the first such measurement. **NO ACTUALS ROW AND NO LEDGER ENTRY ARE DUE YET** \u2014 method 9.4 forbids both before the close reviewer has run, and none has; the phase is one task of three. MEASURED: kickoff (pre-flight + 13-row re-measure + spike S10/S11 + the F7 probe) and T3 complete = ~132,000, of which T3's own marginal cost was ~126,000 against a term that budgeted ~330,000 for a CRITICAL task. **The re-cut is the reason**: 17a inherited Plan 17's answered spike and its shared-file staging technique instead of paying for them again, which is the per-phase fixed cost the amended formula prices at 90,000 landing nearer 6,000. If T4 and T5 hold near this rate the 1,350,000 stop-loss is roughly 3x what the phase needs, and the CLOSE should say so plainly rather than bank the headroom \u2014 a ceiling wrong in this direction still misprices the NEXT lane ruling. WHAT T3 BOUGHT: nine mutants, nine dead, and the one that matters did not fail an assertion \u2014 the `new Function` implementation of the formula evaluator EXECUTED the catalogue string and killed the runner with `process.exit called with \"1\"`. Also F7 PROVED by probe (an inner `withTx(tx as Db)` savepoint rolls back with its parent), which was the single open question that could have made T4 a design change; and four real reds of which TWO were the tests, one was the code (a window map keyed by analyte code where the lookup reads the orderable's) and one was an assertion's premise. Database `hmis_17a_scratch`, not yet dropped \u2014 T4/T5 still need it."
+    },
+    {
+      "phase": "17a",
+      "lane": "LIGHT",
+      "tasks": 3,
+      "agents": 2,
+      "subagentTokens": 447402,
+      "note": "THE FIRST LIGHT PHASE WITH A MEASURED MAIN SESSION: ~794,000 main-session (summed across four compaction segments, so a LOWER BOUND) + 447,402 for two fresh close reviewers = ~1,241,000 against a 1,350,000 stop-loss (92%). Right in total, wrong in every term: main-session 27% under, task-subagent term 100% under (zero spawned), review 72% over. THE ROI LINE: the two reviewers found 2 CRITICAL + 12 MAJOR that 32 dead mutants, green narrow suites and green CI all missed - and pass 2 found that THREE of pass 1's five fixes were themselves defective (2.140's second specimen). The review term is the best value in the phase and the formula still has no term for REPAIRING what it finds (2.143)"
     }
   ]
 }

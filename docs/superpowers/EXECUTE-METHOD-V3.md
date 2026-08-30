@@ -142,6 +142,49 @@ Instead:
   > on an idle host, red on a busy runner, i.e. §2.99 about to repeat. **A stop-loss that halts the
   > second pass is a stop-loss that ships the defect the first pass created.**
 
+  > **AMENDED 2026-08-30 (ledger §2.143, Plan 17a CLOSED) — THE THREE-TERM FORMULA WAS RIGHT IN
+  > TOTAL AND WRONG IN EVERY TERM, AND IT STILL HAS NO TERM FOR REPAIRING WHAT THE REVIEW FINDS.**
+  >
+  > 17a is the first LIGHT phase that measured its own main session, so it is the first test of
+  > §2.141's correction. Against a 1,350,000 stop-loss it closed at **~1,241,000 — 92%.** Read the
+  > terms rather than the total:
+  >
+  > | term | budgeted | actual | |
+  > |---|---|---|---|
+  > | main-session (`90,000 + 3 × 330,000`) | 1,090,000 | ~794,000 | **27% under** |
+  > | task subagents (`1.5 × 20,178 × 3`) | 90,801 | **0** | none was ever spawned |
+  > | review (two fresh passes) | 260,000 | 447,402 | **72% over** |
+  >
+  > **Three errors cancelling is not a validated formula.** Two changes follow, and both are
+  > mechanical:
+  >
+  > **(a) IN A LIGHT LANE, DELETE THE TASK-SUBAGENT TERM. Do not carry it at its old value.** 17a
+  > carried 90,801 for agents its own §0 forbade it to spawn — §2.141's exact error surviving inside
+  > §2.141's own correction, because a term nobody re-derives is a term nobody notices is zero.
+  >
+  > **(b) THE REVIEW TERM IS A MULTIPLIER, NOT A CONSTANT, BECAUSE THE REPAIR IS NOT BUDGETED
+  > ANYWHERE.** The formula pays for reviewers reading. It pays nothing for reproducing each finding
+  > as a red test, fixing it, and re-running — which on 17a was twelve findings across two passes and
+  > roughly the weight of the review again:
+  >
+  > ```
+  > stop-loss = main-session term
+  >           + 1.5 × (per-task subagent rate × task count)     ← 0 for a LIGHT lane
+  >           + review term × (1 + remediation factor)          ← ≈ 1.0 measured on 17a
+  > ```
+  >
+  > **And the reporting rule, because a caveat did not survive its own summary.** 17a reported "51%
+  > of stop-loss" at its T5 boundary with the review term correctly named as unspent — and then said
+  > "roughly three times what the phase needs" in prose one paragraph later. The first number was
+  > true and incomparable; the second was wrong and quotable. **Report a fraction of stop-loss only
+  > at CLOSE. Before that, report the absolute and name what is unspent.**
+  >
+  > **What the review term bought, so the multiplier is not read as waste:** 447,402 tokens found
+  > **2 CRITICAL and 12 MAJOR** in code that had 32 dead mutants, green narrow suites and green CI
+  > behind it — including money that silently vanished on the ordinary clinical path — and pass 2
+  > found that **three of pass 1's five fixes were themselves defective**. It is the best value per
+  > token in the phase, and §2.140's "send the reviewer back" is now proved twice.
+
   > **AMENDED 2026-08-29 (ledger §2.141, Plan 17 LIMS core) — THE FORMULA HAS A THIRD TERM, AND IT IS
   > THE LARGEST. THE TWO IT ALREADY HAD BOTH MEASURE THE REVIEWER.**
   >

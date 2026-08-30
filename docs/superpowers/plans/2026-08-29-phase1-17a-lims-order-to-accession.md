@@ -505,6 +505,12 @@ files. Nothing this phase needs a migration for — row 1's trap does not fire.
 | **T5 code-complete, full verify launched** | 14,499,000 | **226,000** |
 | **T5 committed (`b54acfd`)** | 14,477,000 | **248,000** |
 
+> **THE 51% BELOW WAS MEASURED BEFORE THE CLOSE REVIEW AND IS SUPERSEDED. THE PHASE CLOSED AT 92%.**
+> It is left standing rather than edited because the error it demonstrates — reporting a fraction of
+> stop-loss before the review and remediation that are a third of the phase — is the one §2.143 and
+> v3 §6's 2026-08-30 amendment exist to stop. **The prose that followed it ("roughly three times what
+> the phase needs") was wrong, and it was the quotable half.** See §9.7A.
+
 **THE PHASE, THROUGH THREE COMMITTED TASKS: ~655,000 against a 1,350,000 stop-loss — 51%.**
 `132,000` (T3, in the session that authored the plan) `+ 523,000` (this session: 92,000 of seed,
 183,000 for T4, 248,000 for T5). **The CLOSE says the direction plainly rather than banking the
@@ -1116,6 +1122,56 @@ earns: **a remediation is not a smaller diff than the work, it is the same kind 
 carries the same defect rate.** Two of pass 1's five fixes introduced a new defect; one of pass 1's
 four deferrals was wrong. A single-pass close would have shipped all three.
 ### 9.7 Actuals — **the token balance at every task boundary** (v3 §6 as amended; recorded only after §9.6 exists)
+### 9.7A ACTUALS AT CLOSE — the audit, and it inverts the T5-boundary reading
+
+**~1,241,000 against a 1,350,000 stop-loss — 92%.** Main-session ~794,000 (summed across four
+compaction segments, so a **lower bound**: the counter resets on compaction and compaction itself is
+billed to nobody) plus **447,402** for the two fresh close reviewers.
+
+| term | budgeted (§6) | actual | |
+|---|---|---|---|
+| main-session `90,000 + 3 × 330,000` | 1,090,000 | ~794,000 | 27% under |
+| task subagents `1.5 × 20,178 × 3` | 90,801 | **0** | §0 forbade them; the term was carried anyway |
+| review, two fresh passes | 260,000 | **447,402** | 72% over |
+| **total** | **1,350,000** | **~1,241,000** | **92%** |
+
+**A total landing at 92% of a ceiling whose three terms are 27% under, 100% under and 72% over is
+three errors cancelling, not a validated formula** — ledger §2.143, and v3 §6 is amended twice for
+it: delete the task-subagent term in a LIGHT lane, and make the review term a MULTIPLIER because
+**nothing in the formula pays for repairing what the review finds.** Twelve findings across two
+passes, each reproduced as a red test before it was fixed, cost roughly the weight of the review
+again.
+
+**WHAT THE MONEY BOUGHT, named per instrument:**
+
+- **The spike: inherited and decisive.** F7 was answered before T4 wrote a line, converting the
+  one-transaction design from an open question into an implementation task. It cost this phase
+  almost nothing because the re-cut let 17a inherit Plan 17's answered spike — the re-cut paying for
+  itself before task one, exactly as §6 predicted.
+- **32 mutants built, 32 dead — and the four most valuable were the ones that SURVIVED first.**
+  T5's A1 chain survived removing three independent CAS layers and forced the discovery (F21) that
+  `receive` is defended four deep by a state-machine legality table nobody had counted. A row
+  declared green on its first kill would have recorded none of that. §2.93's warning about all-died
+  books is answered here in the other direction: the survivors were the finding.
+- **The two close reviewers: the best value per token in the phase, and it is not close.**
+  447,402 tokens against **2 CRITICAL and 12 MAJOR** in code carrying 32 dead mutants, green narrow
+  suites and green CI — including a tube rejected after accession that stranded the item and kept
+  the patient's money on the ORDINARY clinical path, and an ungated bulk PHI read serving UHIDs and
+  `["HIV"]` to any caller. **And pass 2 found that three of pass 1's five fixes were themselves
+  defective** — §2.140's second specimen, and the reason a one-pass close would have shipped a
+  confidentiality oracle it had just created.
+- **The coders: this session, in-line.** No task subagent was spawned at any point, which is what
+  LIGHT means and why the 90,801 term was zero.
+
+**WHERE IT COULD HAVE BEEN SAVED, in numbers.** The fresh-session seed measured **92,000** against a
+budgeted 90,000 — accurate, and not the lever. The lever is that **three derived censuses caught
+defects the phase's own narrow suites structurally could not see** (F10's red `main`, F22's
+misplaced scan, F19's nine-file job registration), each found by running something the Files list did
+not name. A phase that ran `pnpm verify` once per task instead of once per block would have caught
+F10 forty minutes earlier at the cost of ~20 minutes of wall clock and no tokens at all — but v3
+§9.9 rule 4 forbids that, and it is right to, so **the cheaper instrument is reading CI by full SHA
+at every task boundary**, which costs one API call and is what actually found it.
+
 ### 9.8 The question this phase existed to answer
 
 **"Can a lab be configured, ordered at, and accessioned — with the money right and the patient
