@@ -1115,6 +1115,48 @@ ceiling.**
 
 ---
 
+**2.144 — TWO LANES SPENT SIX FULL VERIFIES CALLING THE INSTRUMENT BROKEN. IT WAS ONE TEST AT 72% OF ITS DEFAULT BUDGET ON AN IDLE BOX, AND A CASCADE HID IT.** *(Plan 17a close-out, 2026-08-30 — §2.99's third specimen, and the first one nobody could see)*
+
+`pnpm verify` on the build host failed six consecutive times across two lanes, with **11, then 15,
+then 1 failing suites** as the box quietened and almost no overlap between the sets. Both lanes
+independently concluded "the local verify is broken as an instrument" and fell back to CI. Both were
+right about the symptom and neither had the cause.
+
+**THE CAUSE, MEASURED IN ONE COMMAND.** `advance.test.ts`'s C1 — the only suite in all three sets —
+**takes 10,847 ms on a completely idle host against jest's 15,000 ms default.** It is EIGHT rounds of
+`truncateAll` + full re-seed + a real two-transaction race (§2.3: a race measured once is a race not
+measured), so ~1.35 s per round is arithmetic, not waste. At 72% of budget with nothing else running,
+any load at all tips it — which is exactly §2.99 and Plan 09a's nine-seconds-in-fifteen, one notch
+tighter.
+
+**AND THE CASCADE IS WHY IT LOOKED LIKE NOISE RATHER THAN A TEST.** C1's timeout killed it
+mid-`seedFixture`, leaving a `patients` row behind; the NEXT test's seed then died on
+`patients_pkey`. So one real fault was reported as two, the second naming a constraint unrelated to
+anything, and the *set* of failures moved run to run with scheduling. **A suite that turns one fault
+into N derived faults does not look like a failing test. It looks like a broken machine.**
+
+**MECHANICAL FORM — two commands, and the first is the whole diagnosis:**
+
+```
+# 1. time the suspect ALONE on an idle box and compare to the default
+pnpm --filter @hmis/core exec jest <path> -t "<the test>" --verbose   # read the (N ms)
+#    > 50% of 15,000 on an IDLE host  ⇒  it will fail under any parallel load
+
+# 2. find every fixture that can cascade: a fixed-id insert with no conflict clause
+grep -n 'insert(.*).values({$' -A 3 <the suite> | grep -v onConflict
+```
+
+The repair is an explicit timeout on the ONE expensive test (120,000 ms here, ~11x measured idle —
+a TIMEOUT, not a retry; assertions untouched) plus `onConflictDoNothing` on the fixture so a fault
+reports once. **After it: `pnpm verify` exit 0, 305/305 suites, 2977/2977 tests, zero timeouts — the
+first fully green local full verify either lane had had.**
+
+**THE RULE:** before declaring a shared instrument broken, **time its slowest failing test alone on
+an idle host.** A verify that fails differently every run is reporting scheduling, and scheduling
+noise almost always has a single test sitting just inside its budget underneath it.
+
+---
+
 **2.143 — THE STOP-LOSS WAS RIGHT IN TOTAL AND WRONG IN EVERY TERM, AND THE TERM IT MISSES IS THE ONE THAT FIXES WHAT THE REVIEWER FOUND.** *(Plan 17a LIMS order→accession, closed 2026-08-30 — the sequel to §2.141, and the other half of the same error)*
 
 §2.141 found the formula budgeting a REVIEWER's rate for a LIGHT phase's CODING. Plan 17a set its

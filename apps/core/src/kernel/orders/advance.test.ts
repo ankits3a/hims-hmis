@@ -52,10 +52,19 @@ describe("advanceOrderItem (Plan 17 phase 0 T4)", () => {
    */
   async function seedFixture(): Promise<void> {
     await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "t" }).onConflictDoNothing();
+    /**
+     * `onConflictDoNothing` — and it is DIAGNOSTIC, not a weakened assertion. `truncateAll` runs
+     * first in every round, so this insert always meets an empty table on a healthy run and the row
+     * is identical either way. What it removes is the CASCADE: when C1 above was killed mid-round by
+     * the timeout it left this row behind, and the NEXT test's seed then died on `patients_pkey` —
+     * so one real failure was reported as two, and the second one named a constraint that had
+     * nothing to do with anything. A suite that turns one fault into N derived faults hides the
+     * fault (17a F14 recorded the same shape in its own fixtures).
+     */
     await db.insert(patients).values({
       id: PATIENT, uhid: "HMS-00000001-5", name: "Asha Devi", sex: "female",
       administrativeGender: "female", createdBy: "t", updatedBy: "t",
-    });
+    }).onConflictDoNothing();
     await db.insert(services).values([
       { id: S1, code: "CBC", name: "Complete blood count", category: "investigation", createdBy: "t", updatedBy: "t" },
       { id: S2, code: "LFT", name: "Liver function", category: "investigation", createdBy: "t", updatedBy: "t" },
@@ -319,6 +328,30 @@ describe("advanceOrderItem (Plan 17 phase 0 T4)", () => {
    * The fix is a `FOR UPDATE` on the header before the sibling count. This is the test that was
    * missing; it fails against the unlocked version.
    */
+  /**
+   * ═══ AN EXPLICIT TIMEOUT, MEASURED — §2.99 AND `jobs.test.ts`'s FINDING T4-b, A SECOND TIME ═══
+   *
+   * **Measured 2026-08-30 on a fully idle build host: this test takes 10,847 ms against jest's
+   * 15,000 ms default** — it sits inside 72% of its budget with nothing else on the box. That is
+   * tighter than the nine-seconds-in-fifteen specimen Plan 09a recorded and `jobs.test.ts:365`
+   * quotes, and it behaves exactly as that finding predicts: green run alone, red inside a full
+   * parallel `pnpm verify`, green again on GitHub's runner.
+   *
+   * The cost is structural rather than incidental — the loop below is EIGHT rounds of `truncateAll`
+   * plus a full re-seed plus a real two-transaction race, and §2.3 is why it is eight (a race
+   * measured once is a race not measured). At ~1.35 s per round the arithmetic is the runtime, so
+   * the test cannot be made cheap without making it weaker.
+   *
+   * 120,000 ms is ~11x the measured idle cost. The work is bounded by real database round-trips, so
+   * a generous ceiling changes nothing about what this proves and removes a failure mode that is
+   * about the HOST rather than the code. **It is a TIMEOUT, not a retry — every assertion below is
+   * untouched.**
+   *
+   * Both lanes escalated this independently (17a §9.5, 18a F8) after it failed in three consecutive
+   * full verifies and passed 26/26 isolated in all three. The rule those two lanes agreed on is
+   * worth keeping here: **a red on the build host and a red in CI are two different claims, and
+   * neither implies the other.**
+   */
   it("C1 — two items of ONE order completing concurrently still close the header", async () => {
     for (let round = 0; round < 8; round++) {
       await truncateAll(db);
@@ -339,7 +372,7 @@ describe("advanceOrderItem (Plan 17 phase 0 T4)", () => {
       const closed = (await db.select().from(events)).filter((e) => e.name === "order.closed");
       expect(closed).toHaveLength(1);
     }
-  });
+  }, 120_000);
 
   it("C1b — a concurrent cancel and complete on two items still closes the header once", async () => {
     const { orderId, itemIds } = await order([S1, S2]);
