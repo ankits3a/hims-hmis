@@ -694,8 +694,49 @@ exit 0, on `hmis_17b_lane`. **The load was this session's own doing** — a clos
 reading the checkout while the verify ran — which is AGENT-RULES rule 20 pointed at myself: my own
 concurrent work made my own timing evidence unreliable.
 
-**The final full verify is run after the close review's remediation and its exit value is recorded
-in §9.6.**
+**THE FINAL FULL VERIFY, AFTER BOTH CLOSE-REVIEW REMEDIATIONS — GREEN, IN ONE RUN.** Launched
+detached at ~18:31 UTC on 2026-08-30 over `3275b11`'s tree, finished 18:48 UTC. **`cat
+/opt/hmis/.verify.exit` → `0`**, read as a VALUE from a file and never as a pipeline's status
+(rules 16–18):
+
+| stage | result |
+|---|---|
+| `pnpm typecheck` (`pnpm -r exec tsc --noEmit`) | **exit 0** — proved by the `&&` chain reaching lint at all |
+| `pnpm lint` (`eslint .`) | **0 errors, 2 warnings** — `advance.test.ts:256` and `scheduler.test.ts:656`, both pre-existing and neither this phase's |
+| `apps/web` (vitest) | **Test Files 61 passed (61) · Tests 374 passed (374)**, 39.45 s |
+| `apps/core` (jest) | **Test Suites: 313 passed, 313 total · Tests: 3052 passed, 3052 total**, 1 021.31 s against its own 1 140 s estimate |
+| the whole log | **`grep -cE "FAIL" .verify.log` → 0.** Not one failing line anywhere |
+
+**The database is named, because §2.137 is the reason this section exists.** The run used the same
+lane-private `postgres://hmis:hmis@localhost:5433/hmis_17b_lane` as every other run in this phase,
+across **seven** worker databases `hmis_17b_lane_1..7` (`nproc` is 8; jest's default is *ncpu − 1*,
+and no `-w` was passed — `pnpm verify -- -w 4` lands the flag on **pnpm**, where `-w` is
+`--workspace-root`, not on jest). The launcher's environment was gone by the time this was written,
+so the database was **proved after the fact rather than remembered**: `hmis_17b_lane_7` carries
+`max(event_idempotency.recorded_at) = 2026-08-30T18:48:30.129Z`, the minute `.verify.exit` was
+written, while `hmis_test_1` and `hmis_test_7` were last touched at 07:48 and 00:51 the same day.
+
+**What separates this run from run 2 is the ABSENCE OF EVERY CONTENTION SIGNATURE — not the suite
+times.** The census that convicted run 2 is empty here: `Exceeded timeout` **0**, `deadlock` **0**,
+`SIGKILL` **0**, `duplicate key` **0**, across the whole 70 KB log.
+
+**The per-suite times do NOT make that argument, and are not offered as making it.** This run's
+slowest suite is `src/kernel/ops/mode.test.ts` at **219.2 s**, with six suites over 100 s — a band
+that OVERLAPS run 2's 180–287 s, because per-suite wall time under seven parallel workers is not
+comparable across runs. The usable timing fact is the aggregate: core finished in **1 021.31 s
+against jest's own estimate of 1 140 s**, an estimate built from this repository's prior cached
+timings, so finishing under it is evidence the box was not degraded.
+
+**The load average DURING the run was not measured and cannot now be recovered.** `uptime` read
+**0.65 / 0.43 / 1.97** at 19:22 — thirty-four minutes AFTER the run ended at 18:48 — and describes
+the host then, not during. Rule 20 cuts both ways: it forbids trusting the timing of a contended
+run, and it equally forbids certifying a quiet one after the fact. (Eighteen `claude` processes are
+alive on this host at the time of writing; a low load average means they are idle, not absent.)
+
+**What this run does NOT retire.** The two red runs were red, and are recorded above as red. This
+is the first and only execution in which the whole workspace passed **in a single run** — the
+composite of a green module suite, a green web suite and a green isolated re-run of 18 files was
+never the same claim, and was never reported as one.
 
 **Mutants (rule 21 / §3 CRITICAL) — twenty-three built, twenty-three DIED**, each run isolated with
 the isolation line read from the OUTPUT (`9 skipped, 1 passed, 10 total` / `1 failed, 13 skipped,

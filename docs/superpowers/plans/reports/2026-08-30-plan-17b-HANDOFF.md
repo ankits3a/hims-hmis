@@ -9,7 +9,16 @@ is filled in). You do NOT need to re-read §0–§8: the work is done.**
 
 ---
 
-## 1. THE ONE THING THAT IS NOT FINISHED
+## 1. THE ONE THING THAT IS NOT FINISHED — ✅ **DISCHARGED 2026-08-30**
+
+> **RESOLVED by the session that received this handoff.** The third full verify, launched detached
+> at ~18:31 UTC, finished at 18:48 with **`.verify.exit` = `0`**: typecheck 0, lint 0 errors,
+> **`apps/web` 61 files / 374 tests**, **`apps/core` 313 suites / 3 052 tests**, zero `FAIL` lines,
+> on `hmis_17b_lane` across seven workers. Recorded in the phase document's **§9.5** and the gate
+> report's **§2**; the scratch files were deleted. **Section 1 below is kept as written** — it is the
+> record of what was and was not known at handoff time, and the procedure in it is what closed it.
+> **The phase's only remaining item is §3: the owner's ruling on F45.**
+
 
 **A full `pnpm verify` has never been observed green since this phase's code landed.** That is the
 only open mechanical obligation. Everything else is shipped, pushed and documented.

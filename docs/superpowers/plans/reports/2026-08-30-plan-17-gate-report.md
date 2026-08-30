@@ -55,9 +55,12 @@ runner's own summary line.
 - **DD7's three legs** — `placed` ⇒ credit note; `in_progress` WITH a result ⇒ **no** credit note;
   `in_progress` without one ⇒ credit note. The mutant that ignores `cancelled_from` refunds all
   three and was killed.
-- **The delivery interlock is invoice-grained** (DD23): an order billed across two invoices is held
-  while either is unsettled; a partially-paid mixed invoice blocks and the verdict names the
-  INVOICE; `tpa`/`pmjay`/`corporate` and every `D` encounter deliver with zero receipts.
+- **The delivery interlock is ORDER-GROUP-grained, and invoice-grained within it** (DD23 as
+  amended by F45 — §5): a paid desk order is held while the reflex it caused is unpaid, because the
+  grain is the clinical ACT; an order billed across two invoices is held while either is unsettled;
+  a partially-paid mixed invoice blocks and the verdict names the INVOICE; `tpa`/`pmjay`/`corporate`
+  and every `D` encounter deliver with zero receipts. **The group rule is the owner's to confirm or
+  reverse** — `interlock.test.ts`'s two `A1` rows assert both grains in as many words.
 - **The release moves no money.** `patientOutstandingPaise` identical before and after; the mutant
   that writes a credit note took ₹300 to zero and was killed.
 - **The doctor's read is never held for money** (02 O-1). A mutant that applied the interlock at
@@ -84,6 +87,35 @@ runner's own summary line.
   and every read writes one `phi_access_log` row.**
 - **Twenty-three mutants built and killed** — ten in T6, thirteen in T7 — each run isolated with the
   isolation line read from the output.
+
+**THE FULL WORKSPACE VERIFY IS GREEN IN ONE RUN — the phase's last open obligation, now closed.**
+Launched detached over `3275b11`'s tree at ~18:31 UTC on 2026-08-30, finished 18:48, **exit value
+`0` read from `/opt/hmis/.verify.exit`** (rules 16–18, never a pipeline's status):
+
+| stage | result |
+|---|---|
+| `pnpm typecheck` | **exit 0** |
+| `pnpm lint` | **0 errors**, 2 pre-existing warnings not this phase's |
+| `apps/web` | **61 files / 374 tests passed**, 39.45 s |
+| `apps/core` | **313 suites / 3 052 tests passed**, 1 021.31 s |
+| the log | **zero `FAIL` lines** |
+
+On `postgres://hmis:hmis@localhost:5433/hmis_17b_lane` across seven worker databases — the same
+lane-private database as every other run in this phase, **proved after the fact** by
+`hmis_17b_lane_7`'s latest row at `18:48:30.129Z` rather than remembered from a launcher whose
+environment was gone.
+
+**The contention census that convicted the earlier red run is EMPTY here** — `Exceeded timeout` 0,
+`deadlock` 0, `SIGKILL` 0, `duplicate key` 0 — and core finished in 1 021 s against jest's own
+1 140 s estimate. The **per-suite** times prove nothing either way (the slowest is 219 s, inside run
+2's band, because seven workers share the box), and **the load average during the run was never
+measured**: the 0.65 / 0.43 / 1.97 reading is from 19:22, half an hour after the run ended.
+
+**Two earlier full runs were red and both stay recorded as red** (phase §9.5): one real defect of
+this phase (F42, the twelfth IST clock, fixed in `d2d2274`) and, otherwise, host contention — run 2
+was 18 suites at **load average 86** with two other `claude` sessions on the box, all 18 green when
+re-run isolated. **This is the first execution in which the whole workspace passed in a single run**,
+and until it happened the honest sentence was that it never had.
 
 ---
 
