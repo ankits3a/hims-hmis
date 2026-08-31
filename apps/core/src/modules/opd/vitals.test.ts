@@ -194,7 +194,20 @@ describe("opd vitals (recording, danger flags, the registered→waiting move)", 
     expect(r.flags.map((f) => f.vital).sort()).toEqual(["dbp", "sbp"]);
   });
 
+  /**
+   * ═══ THIS TEST GAINED A FIRST VISIT WHEN T2's CARRIED LOCK LANDED, AND THE REASON IS THE POINT ═══
+   *
+   * As first written it carried a height forward for a patient with NO previous reading, and T2
+   * refused it — correctly. `carriedForward: ["heightCm"]` is a PROVENANCE CLAIM that a doctor is
+   * shown: it says "this number was measured at an earlier visit, not today". A claim of that
+   * shape against an empty history is either a mistake or a fiction, and the lock is what makes it
+   * one that cannot be recorded. So the fixture gained the visit it was always implying (method
+   * §9.8 rule 3: ask which invariant carries the property, do not reach for a test-only seam).
+   */
   it("a carried-forward key is not missing — provenance is stored, not inferred", async () => {
+    const first = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    await recordVitals(db, vd.actor, first.encounter.id, { ...adultOk, heightCm: 151 }, MON); // 151 on record
+
     const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
     const noHeight = { ...adultOk, heightCm: undefined };
     await expect(recordVitals(db, vd.actor, opened.encounter.id, noHeight, MON))
@@ -204,6 +217,13 @@ describe("opd vitals (recording, danger flags, the registered→waiting move)", 
     });
     expect(r.vitals.carriedForward).toEqual(["heightCm"]);
     expect(r.vitals.heightCm).toBe(151);
+
+    // And the claim cannot be made where there is nothing to carry FROM — a different patient,
+    // first visit, same body. This is the leg the original fixture was accidentally exercising.
+    const stranger = await mkPatient(db, clerk.actor, { ageYears: undefined, dob: DOB_ADULT });
+    const strangerVisit = await openVisit(db, clerk.actor, { patientId: stranger.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    await expect(recordVitals(db, vd.actor, strangerVisit.encounter.id, { ...noHeight, heightCm: 151 }, MON, { carriedForward: ["heightCm"] }))
+      .rejects.toMatchObject({ code: "carried_value_locked", detail: { locked: [{ key: "heightCm", carried: null, supplied: 151 }] } });
   });
 
   it("gates: invalid ranges, role_denied writes nothing, and a non-recordable state", async () => {

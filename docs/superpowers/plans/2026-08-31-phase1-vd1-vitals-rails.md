@@ -102,7 +102,8 @@ Per D9. Four gates: **slipped digit** (an adult weight under the config floor, w
 **Commit:** `feat(core): the four sanity gates the bay needs — 4.8 kg and 45 % SpO2 stop being chart facts (VD-1 T2)`
 
 ### T3 — CRITICAL · the escalation state machine and the compensating cancel
-**Files:** `apps/core/src/modules/opd/escalation.ts` (new), `apps/core/src/modules/opd/vitals.ts`, `apps/core/src/modules/opd/events.ts`, `apps/core/src/modules/opd/escalation.test.ts` (new), `apps/core/src/modules/opd/escalation.concurrency.test.ts` (new). **Contested files — confirm RC-1 T3 has committed before starting.**
+**Files:** `apps/core/src/modules/opd/escalation.ts` (new), `apps/core/src/modules/opd/vitals.ts`, `apps/core/src/modules/opd/events.ts`, **`apps/core/src/modules/opd/realtime.ts`**, `apps/core/src/modules/opd/escalation.test.ts` (new), `apps/core/src/modules/opd/escalation.concurrency.test.ts` (new).
+> **PLAN DEFECT, FOUND AND FIXED AT T2's CLOSE RATHER THAN SILENTLY WORKED AROUND (AGENT-RULES §3).** `realtime.ts` was listed under T5 and belongs here. The doctor-board FLASH is the substance of this task — *"the doctor must see the flash immediately"* is the handoff's own words and the reason D4 chose apply-then-revert — and an event that is not in `OPD_REALTIME_NAMES` reaches no board. Splitting the write from its publication across two tasks would have left T3 provably incomplete while looking done. §3.1's rule, in the direction it is usually read backwards: a task's Files list must name every file its acceptance criteria touch.
 
 Per D4/D8/D10. `demandRecheck` / `escalate` / `cancelEscalation`, each appending its event. `escalate` sets `danger = true` and stamps `escalated_from_class`; `cancelEscalation` restores it, inside the window only.
 
@@ -136,3 +137,158 @@ The routes: `GET /opd/bench`, `POST /opd/visits/:id/bench-state`, `GET /opd/visi
 ## 5. CLOSE
 
 *(appended as the phase runs)*
+
+### T1 — DONE, `962f3be`
+
+Migration **`0049_vitals_bay`** taken; journal head measured `0048_counter_flow` immediately
+before generating and `0049_vitals_bay` immediately after (S5 answered), and the generated SQL
+contained only this task's fourteen ALTERs with nothing of either parallel lane swept in.
+**`0050` is free** and the RC lane has been told so.
+
+**Mutants (rule 21) — three built, three DIED**, each quoted expected vs received:
+
+| | mutation | discriminating input | received vs expected |
+|---|---|---|---|
+| A | `readingsToInput` averages the takes | takes `[172,104]` then `[146,88]` | sbp 159 / dbp 96 / pulse 83 **vs** 146 / 88 / 80 |
+| B | `evaluateVitals` ignores `notRoutine` | a 4-year-old at 131/86 | 2 flags **vs** 0 |
+| C | MUAC required in every band | a 40-year-old with no MUAC | `"muacCm"` present in the missing list |
+
+**One existing test changed, and its COUNT is the evidence (§9.8 rule 1):** exactly one — the
+paediatric leg — because MUAC became required under six. The fixture gained a green-zone `13.4`
+rather than the assertion being relaxed, so the pulse assertion beside it still asserts pulse.
+A count of one, in the one band the rule moved, is what a correctly-scoped change looks like.
+
+**One census finding, from the §2.138 LIST grep** (`grep -rn "VITAL_KEYS" apps --include=*.ts
+--include=*.tsx`): `apps/web/src/lib/opd-api.ts`'s `WireDangerFlag` was a closed union without
+`muacCm`, so the server could emit a flag the wire type forbade. Widened in the same task that
+made the server able to send it. The SIBLING grep (`tempC`) additionally surfaced
+`rx-print.test.tsx`'s vitals fixture, which the `WireVitals` widening broke and which is fixed in
+the same commit — **neither would have been found by reading this task's Files list**, which is
+§9.9 rule 6's point arriving one task earlier than expected.
+
+### T2 — DONE (pending the full verify below)
+
+The four gates, server-enforced, with the order that makes them work: **hold → lock → gate →
+completeness.** The hold runs first because a held SpO₂ must be able to turn a complete submission
+into an incomplete one — which is precisely the owner's ruling (*"lives in the log, not the
+chart"*), and is impossible if completeness runs first.
+
+**Mutants — three built, three DIED:**
+
+| | mutation | discriminating input | received vs expected |
+|---|---|---|---|
+| A | the slipped-digit gate is absent | 4.8 kg at age 72 | `[]` **vs** one `slipped_digit` gate suggesting 48 |
+| B | the probe gate FLAGS instead of HOLDING | takes `[45, 94]` | `takes [45, 94]` **vs** `[94]` |
+| C | the carried lock inverted (`carriedForward.length > 0` skips) | carried 151, supplied 147 | `[]` **vs** one locked key |
+
+**Mutant A had to be rewritten once, and the reason is rule 21's own caveat.** The first version
+disabled the gate's condition with `false &&`, which destroyed TypeScript's narrowing of `wt` and
+died at `TS18049` — *a mutant that dies at typecheck proves nothing*. The honest mutation removes
+the gate's BLOCK, leaving the surrounding code compiling, and that one died on the assertion.
+
+**Deliberately NOT built: an RR gate.** The owner's DECIDED line is that a suspiciously instant RR
+gets a nudge and never a block; the honest instrument is the 15-second counter, and the server
+cannot see a keystroke clock in any case. Recorded in `vitals-rules.ts` beside the gates so a
+later reader finds a decision rather than a gap.
+
+### F1 — A BILL-FIRST WALK-IN 500s THE VITALS DESK. Reported by the RC-1 lane's close reviewer; fixed here because the file is this lane's.
+
+Not this phase's defect, squarely this phase's file, and verified on three legs before a line was
+written rather than taken on the reporter's word:
+
+1. `encounters.ts`'s `join === "defer"` branch opens the visit and stops — `{ queueEntry: null,
+   tokenNo: null, sessionId: null }`. A `registered` encounter with **zero** queue entries became
+   reachable over HTTP the moment RC-1 T3 landed.
+2. `listVisits` selects `from(opdEncounters)` with **no queue join at all**, so that visit appears
+   on the vitals worklist exactly like every other registered patient.
+3. `vitals.ts`'s `latestEntryWhere` asserted `entries[0]!` and immediately read `entry.sessionId`.
+
+**The mutant is the shipped code of `962f3be` itself** — `git show` into a scratch module, one
+symbol renamed — and it died with the defect quoted verbatim:
+
+```
+Expected: { "code": "unknown_queue_entry" }
+Received: [TypeError: Cannot read properties of undefined (reading 'sessionId')]
+```
+
+That single run is both rule 21's kill and §2.4's fail-first, and it is the cheapest honest red
+available: the wrong implementation needed no invention, because it was in `git`.
+
+**Two guards, not one.** The pre-flight refuses before the transaction opens (the behaviour a
+person at the bay sees); `latestEntryWhere` throws the same refusal where the invariant is
+actually relied on, so a future caller arriving by another route gets a domain answer rather than
+a TypeError. A non-null assertion justified by a guard forty lines away is a comment, not a check.
+
+**Refusing is the answer; recording-and-catching-up is not.** `recordVitals`'s contract IS the
+`waiting_vitals → waiting` flip, which is the gate deciding who the doctor may call. A bill-first
+patient with no token would end up with vitals on the chart and still not callable — the gate
+silently un-applied to exactly the patients whose flow is unusual.
+
+> **LEDGER CANDIDATE, and it is a cross-lane instrument gap.** §2.138's two greps find a census by
+> NAME or by LIST. **Neither can find a NON-NULL ASSERTION that a cardinality change has just
+> falsified.** `entries[0]!` contains no identifier belonging to the thing that changed; no grep
+> for `join`, `defer`, `walkIn` or `openVisit` reaches it. The instrument that WOULD is a grep for
+> the affected TABLE's accessor beside an index-and-assert — `grep -rn "opdQueueEntries" apps/core
+> --include=*.ts | grep -E "\[0\]!|\[0\]\."` — and the obligation belongs to the lane that
+> RELAXES the cardinality (always-one → zero-or-one), because it is the only lane that knows the
+> invariant moved. It was found here by a human-shaped close review, which is the expensive way.
+
+### F2 — a filter whose stated purpose was already impossible (self-caught, this lane's own)
+
+`lastActiveVitals` shipped its first version with `lt(recordedAt, now)`, added to exclude "the row
+being written". **That row does not exist yet** — the read happens before the insert — so the
+clause excluded nothing it was meant to, while excluding every reading recorded at the same
+instant: under a pinned test clock that is the entire history, and in production it is a genuine
+same-minute re-measure. Caught by T1's own carry-forward test going red against T2's lock. The
+`status = 'active'` filter was always the one doing the work.
+
+**And the fixture lesson beside it (§9.8 rule 3):** T1's carry-forward test carried a height for a
+patient with NO previous reading, and T2's lock refused it — correctly. `carriedForward` is a
+PROVENANCE CLAIM shown to a doctor; against an empty history it is a fiction. The fixture gained
+the first visit it was always implying, plus a new leg asserting the refusal, rather than the
+invariant being relaxed to fit it.
+
+### The T1+T2 full verify — RED, DIAGNOSED, NOT RE-RUN (§9.9 rule 7)
+
+`pnpm verify` on `hmis_vd_scratch`, launched detached with the exit value read from a file:
+**exit 1**, six failures — and none of them is in this phase's diff or in any file it touches.
+
+| | failure | mechanism |
+|---|---|---|
+| `lab/results.test.ts` | *"A jest worker process (pid=**3037126**) was terminated by another process: signal=SIGKILL"* | **OOM** |
+| `ot/gates.test.ts` | same, **pid=3037134** | **OOM** |
+| 4 web screens (`lab-bench`, `materials-vendors`, `ops-downtime-kit`, `staff-reports`) | *"Test timed out in 5000ms"* — inside FILES that took **92–94 seconds each** | starvation |
+
+**The kernel names the two workers, so this is measured rather than inferred:**
+
+```
+[Mon Aug 31 20:49:47 2026] Out of memory: Killed process 3037126 (node) anon-rss:930960kB
+[Mon Aug 31 20:52:27 2026] Out of memory: Killed process 3037134 (node) anon-rss:1159728kB
+```
+
+Both inside the run's window (launched 20:47). A test that is SIGKILLed by the operating system
+has not failed an assertion — it has not finished one. And a 5-second timeout inside a 94-second
+file, with `collect 755.88s` and `environment 457.90s` in the same summary, is the same fact from
+the other side: `pnpm verify` runs core's jest and web's vitest CONCURRENTLY on a box with 15 GB
+of RAM, ~8 GB already resident, and ten Claude sessions on it. The kernel log also shows three
+earlier OOM kills at 19:49–19:55, before this lane's run existed.
+
+**So the failing set is re-run ISOLATED at `-w 2`, queued behind `loadavg < 5`, and core and web
+are run SEQUENTIALLY rather than concurrently** — re-running the whole verify under the
+contention that caused the failure would only measure the contention again, which is rule 20
+pointed at your own instrument.
+
+**RESULT: `CORE EXIT: 0`, `WEB EXIT: 0` — all six green, at `loadavg 4.74` on entry.**
+`ot/gates.test.ts` 71 s and `lab/results.test.ts` 79 s, both passing; and the four web files that
+"timed out in 5000 ms" inside 92–94-second files came back in **643–948 milliseconds**. A
+hundredfold. The tree that went red was byte-identical to the tree that went green; only the box
+changed — §9.9 rule 7's own specimen, reproduced.
+
+**Parallel-lane disclosure (rule 20):** the RC-1 lane was running its own jest on
+`hmis_rc_scratch` during T1's targeted batch. A different database, so the FK/truncate contention
+mode does not apply, and no interference was observed. RC-1 T3–T5 landed at `61e6c96` before T2
+began, and the two lanes exchanged three coordination messages — including a zod-4 trap this lane
+introduced and fixed (`.default({})` vs `.prefault({})` on an object whose fields carry their own
+defaults) which blocked BOTH lanes' jest for about six minutes. **That is this phase's first
+ledger candidate**: the cheap prefix (§2.132) was run AFTER the first jest launch rather than
+before it, and running it before would have cost sixty seconds and cost the other lane nothing.

@@ -11,6 +11,13 @@ export type OpdErrorCode =
   | "unknown_encounter" | "encounter_state_conflict" | "consult_gate_refused" | "unknown_session" | "session_closed" | "doctor_out"
   | "call_conflict" | "unknown_queue_entry" | "queue_entry_state_conflict" | "invalid_transfer"
   | "invalid_vitals" | "vitals_incomplete"
+  // VD-1 T2 — the sanity gates. `vitals_gate` carries `detail.gates[]` (key, kind, value, and a
+  // suggestion where one exists) and is CLEARED BY A PER-KEY OVERRIDE, the grammar 16a T5's
+  // hard warnings established: a refusal a named human can pass through, never a lockout.
+  // `carried_value_locked` is its sibling for D7's carried values, which unlock with a REASON
+  // from a preset list rather than a bare override — the difference is that a gate asks "is this
+  // number real" and a lock asks "why is it changing".
+  | "vitals_gate" | "carried_value_locked"
   | "invalid_follow_up_days" | "extension_cap_reached" | "reason_required"
   | "allergy_conflict" | "override_reason_required" | "empty_prescription" | "unknown_prescription"
   // PLAN 16a T5 — the hard-warning grammar EXTENDS rather than forks (DD3): these two carry their

@@ -12,10 +12,14 @@ import { visibleEncounterFor } from "./read-gate";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { vitalsDangerFlagged, vitalsRecorded } from "./events";
 import { ageYearsAt } from "./time";
-import { bandFor, evaluateVitals, inputToReadings, missingRequired, readingsToInput, validateVitalsRanges } from "./vitals-rules";
+import {
+  bandFor, checkCarriedLock, evaluateVitals, holdProbeErrors, inputToReadings, missingRequired,
+  readingsToInput, sanityGates, UNLOCK_REASONS, validateVitalsRanges,
+} from "./vitals-rules";
 import type { DangerFlag } from "./events";
 import type { EncounterRow, QueueEntryRow } from "./encounters";
-import type { ContextChip, Readings, VitalsInput } from "./vitals-rules";
+import { SCALAR_READING_KEYS } from "./vitals-rules";
+import type { ContextChip, GateOverrides, Readings, UnlockReasons, VitalsInput } from "./vitals-rules";
 import type { VitalKey } from "./config";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -35,7 +39,78 @@ export type VitalsDetail = {
   carriedForward?: VitalKey[];
   /** D11 — declared, never inferred. Trims the required set to BP + pulse + SpO₂. */
   emergency?: boolean;
+  /**
+   * T2 / D9 — the per-key answer to a sanity gate. A gate is a refusal a named human can pass
+   * through: the value is then recorded WITH the disagreement, flagged hard rather than accepted
+   * quietly. The string is the reason and it is stored on the reading.
+   */
+  overrides?: GateOverrides;
+  /** T2 / D7 — why a carried value is being re-measured. One of `UNLOCK_REASONS`, never free text. */
+  unlockReasons?: UnlockReasons;
 };
+
+/**
+ * ═══ VD-1 T2 — THE DISAGREEMENT IS STORED BESIDE THE NUMBER, NOT INSTEAD OF IT ═══
+ *
+ * An override and an unlock are both a person saying *"I know what this looks like, and I am
+ * recording it anyway."* Both belong on the reading itself, where the doctor reading the chart
+ * sees them, rather than only in an event nobody opens: an unlocked height keeps the OLD value in
+ * its note, and an overridden weight keeps the reason. A record that shows a number without
+ * showing that somebody argued with it is a record that has lost the argument.
+ */
+function annotate(
+  readings: Readings, overrides: GateOverrides, unlockReasons: UnlockReasons, last: VitalsRow | null,
+): Readings {
+  const out: Readings = { ...readings };
+  for (const key of SCALAR_READING_KEYS) {
+    const r = out[key];
+    if (r === undefined) continue;
+    const parts: string[] = [];
+    const reason = overrides[key];
+    if (reason !== undefined) parts.push(`override: ${reason}`);
+    const unlock = unlockReasons[key];
+    if (unlock !== undefined) {
+      const old = last?.[key] ?? null;
+      parts.push(old === null ? `unlocked: ${unlock}` : `unlocked: ${unlock} (was ${old})`);
+    }
+    if (r.note !== undefined) parts.push(r.note);
+    if (parts.length > 0) out[key] = { ...r, note: parts.join(" · ") };
+  }
+  const bpReason = overrides.sbp ?? overrides.dbp;
+  if (out.bp !== undefined && bpReason !== undefined) {
+    out.bp = { ...out.bp, note: [`override: ${bpReason}`, out.bp.note].filter((x) => x !== undefined).join(" · ") };
+  }
+  return out;
+}
+
+/**
+ * ═══ VD-1 T2 — THE LAST READING, WHICH THE GATES CANNOT WORK WITHOUT ═══
+ *
+ * Two of the four gates compare against history: the shrinking adult needs the last height, and
+ * the carried-value lock needs the number it claims to be carrying. This is that read, and it is
+ * deliberately NOT the patient-scoped history reader — no merge chain, no PHI audit row, no
+ * `opd.consult`. It answers one internal question inside a write the actor is already performing
+ * on this patient, and a disclosure log entry for a comparison nobody is shown would make the PHI
+ * log answer *"what did they actually see"* wrong, which is the only question it exists for.
+ *
+ * `status = 'active'` is the ONLY filter, and it is doing all the work: a value corrected by an
+ * amendment is not the value this reading is carried from (D2), and the amend flow supersedes the
+ * old row before writing the new one, so the row being replaced is already excluded.
+ *
+ * **THERE IS DELIBERATELY NO `recordedAt < now` CLAUSE, AND THE FIRST VERSION HAD ONE.** It was
+ * put there to exclude "the row being written" — which does not exist yet, because this read
+ * happens before the insert, so the clause excluded nothing it was meant to. What it DID exclude
+ * was any reading recorded at the same instant, which under a pinned test clock is the entire
+ * history and in production is a genuine same-minute re-measure. A filter whose stated purpose is
+ * already impossible is a filter that can only do harm.
+ */
+export async function lastActiveVitals(db: Db | Tx, patientId: string): Promise<VitalsRow | null> {
+  const rows = await db
+    .select().from(opdVitals)
+    .where(and(eq(opdVitals.patientId, patientId), eq(opdVitals.status, "active")))
+    .orderBy(desc(opdVitals.recordedAt)).limit(1);
+  return rows[0] ?? null;
+}
 
 export type VitalsRow = typeof opdVitals.$inferSelect;
 
@@ -44,12 +119,45 @@ const RECORDABLE: readonly string[] = ["registered", "waiting"];
 /** Queue-entry statuses a danger flag is stamped onto — the encounter's live-at-vitals-time set. */
 const DANGER_ENTRY_STATUSES = ["waiting_vitals", "waiting", "called"] as const;
 
-/** The encounter's latest queue entry (seq, never id) and its session's room — the doctor-day event fields. */
-async function latestEntryWhere(tx: Tx, encounterId: string): Promise<{ entry: QueueEntryRow; roomId: string | null }> {
-  const entries = await tx
+/**
+ * ═══ THE VISIT THAT HAS NOT JOINED A QUEUE — FOUND BY THE RC-1 LANE'S CLOSE REVIEWER ═══
+ *
+ * This function asserted `entries[0]!` from the day it was written, and the assertion was TRUE
+ * until 2026-08-31: `openVisit` always created a queue entry, so every encounter had one.
+ *
+ * **RC-1 T3 made an encounter with ZERO entries reachable over HTTP.** `POST /opd/walk-in
+ * {join: "defer"}` — the bill-first counter flow — opens the visit and stops: no session, no
+ * token, no queue entry (`encounters.ts`, the `join === "defer"` branch), and the entry arrives
+ * later from `POST /opd/visits/:id/join-queue` once billing releases the token. Meanwhile
+ * `listVisits` selects from `opd_encounters` with **no queue join at all**, so that visit appears
+ * on the vitals worklist like any other, and submitting vitals for it dereferenced `undefined`.
+ *
+ * Two guards rather than one, because they answer different questions:
+ *   · the PRE-FLIGHT below refuses before any work is attempted — that is the behaviour a person
+ *     at the bay sees, and it says WHY in the counter's own terms;
+ *   · this one enforces the invariant where it is actually relied upon, so a future caller that
+ *     reaches here by another route gets a domain refusal rather than a TypeError. A non-null
+ *     assertion justified by a guard forty lines away is a comment, not a check.
+ *
+ * REFUSING IS THE ANSWER, AND RECORDING-AND-CATCHING-UP IS NOT. This function's contract IS the
+ * `waiting_vitals → waiting` flip, which is the gate that decides who the doctor may call. A
+ * bill-first patient with no token would end up with vitals on the chart and still not callable —
+ * the gate silently un-applied to exactly the patients whose flow is unusual. Under `bill_first`
+ * the sequence is bill → join-queue → vitals, and the refusal states that precondition out loud.
+ */
+const NOT_QUEUED = "this visit has not joined a queue yet — a bill-first walk-in takes vitals after billing releases its token";
+
+async function latestEntry(db: Db | Tx, encounterId: string): Promise<QueueEntryRow | null> {
+  const entries = await db
     .select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId))
     .orderBy(desc(opdQueueEntries.seq)).limit(1);
-  const entry = entries[0]!;
+  return entries[0] ?? null;
+}
+
+/** The encounter's latest queue entry (seq, never id) and its session's room — the doctor-day event fields. */
+async function latestEntryWhere(tx: Tx, encounterId: string): Promise<{ entry: QueueEntryRow; roomId: string | null }> {
+  const entry = await latestEntry(tx, encounterId);
+  if (entry === null) throw new OpdError("unknown_queue_entry", NOT_QUEUED, { encounterId });
   const sessions = await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, entry.sessionId));
   return { entry, roomId: sessions[0]!.roomId };
 }
@@ -72,15 +180,46 @@ export async function recordVitals(
   const enc = await getEncounter(db, encounterId);
   if (!enc) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
   if (!RECORDABLE.includes(enc.status)) throw new OpdError("encounter_state_conflict", `vitals need registered or waiting, not ${enc.status}`);
+  // The pre-flight half of the deferred-visit guard (see `latestEntryWhere`): refuse before the
+  // transaction opens, so nothing is attempted and rolled back.
+  if ((await latestEntry(db, encounterId)) === null) throw new OpdError("unknown_queue_entry", NOT_QUEUED, { encounterId });
   const cfg = await loadOpdConfig(db);
   const [summary] = await getPatientSummaries(db, actor, [enc.patientId]);
   const ageYears = summary?.dob ? ageYearsAt(summary.dob, now) : null;
   const band = bandFor(ageYears, cfg.dangerRanges);
   const carriedForward = detail.carriedForward ?? [];
   const emergency = detail.emergency === true;
-  const missing = missingRequired(values, ageYears, cfg.dangerRanges, { emergency, carriedForward });
+  const overrides = detail.overrides ?? {};
+
+  /**
+   * ═══ T2 — THE GATES RUN BEFORE COMPLETENESS, AND THE ORDER IS THE DESIGN ═══
+   *
+   * A held SpO₂ can turn a complete submission into an incomplete one — that is exactly the
+   * outcome the owner ruled for (*"lives in the log, not the chart"*), and it can only happen if
+   * the hold runs FIRST. Running completeness first would accept the save and then quietly chart
+   * a probe error, which is the defect this task exists to close.
+   */
+  const last = await lastActiveVitals(db, enc.patientId);
+  const heldReadings = holdProbeErrors(readings, cfg.dangerRanges, overrides);
+  const held = readingsToInput(heldReadings);
+  const charted: VitalsInput = { ...values };
+  if (heldReadings.spo2 === undefined) charted.spo2 = undefined;
+  else charted.spo2 = held.spo2;
+
+  const locked = checkCarriedLock(charted, carriedForward, last, detail.unlockReasons ?? {});
+  if (locked.length > 0) {
+    throw new OpdError(
+      "carried_value_locked",
+      `carried values changed without a reason: ${locked.map((l) => l.key).join(", ")}`,
+      { locked, reasons: UNLOCK_REASONS },
+    );
+  }
+  const gates = sanityGates(charted, ageYears, cfg.dangerRanges, last, overrides);
+  if (gates.length > 0) throw new OpdError("vitals_gate", gates.map((g) => g.message).join("; "), { gates });
+
+  const missing = missingRequired(charted, ageYears, cfg.dangerRanges, { emergency, carriedForward });
   if (missing.length > 0) throw new OpdError("vitals_incomplete", `missing: ${missing.join(", ")}`, { missing });
-  const flags = evaluateVitals(values, band, cfg.dangerRanges);
+  const flags = evaluateVitals(charted, band, cfg.dangerRanges);
 
   return withTx(db, async (tx) => {
     let encounter: EncounterRow = enc;
@@ -93,10 +232,11 @@ export async function recordVitals(
 
     const [vitals] = await tx.insert(opdVitals).values({
       id: newId(), encounterId, patientId: encounter.patientId,
-      heightCm: values.heightCm ?? null, weightKg: values.weightKg ?? null, sbp: values.sbp ?? null, dbp: values.dbp ?? null,
-      pulse: values.pulse ?? null, rr: values.rr ?? null, spo2: values.spo2 ?? null, tempC: values.tempC ?? null,
-      muacCm: values.muacCm ?? null, notes: values.notes ?? null,
-      readings, contextChips: detail.contextChips ?? [], carriedForward, emergency,
+      heightCm: charted.heightCm ?? null, weightKg: charted.weightKg ?? null, sbp: charted.sbp ?? null, dbp: charted.dbp ?? null,
+      pulse: charted.pulse ?? null, rr: charted.rr ?? null, spo2: charted.spo2 ?? null, tempC: charted.tempC ?? null,
+      muacCm: charted.muacCm ?? null, notes: charted.notes ?? null,
+      readings: annotate(heldReadings, overrides, detail.unlockReasons ?? {}, last),
+      contextChips: detail.contextChips ?? [], carriedForward, emergency,
       ageYearsAtRecord: ageYears, band: band.key, dangerFlags: flags, recordedBy: actor.id, recordedAt: now,
     }).returning();
 

@@ -203,6 +203,146 @@ export function muacZone(muacCm: number, cfg: DangerRangesConfig): "sam" | "mam"
   return "green";
 }
 
+/**
+ * ═══════════════ VD-1 T2 — THE FOUR SANITY GATES ═══════════════
+ *
+ * `validateVitalsRanges` below is the "is this a number at all" envelope, and it is very wide on
+ * purpose — it admits a weight of 0.3 kg and an SpO₂ of 0, because a newborn and a dying person
+ * are both real. What it cannot do is notice that **4.8 kg on a seventy-two-year-old is a slipped
+ * digit** and that **45 % on a talking patient is a probe that slid off a cold finger.** Both of
+ * those became chart facts, silently, on the ordinary path, until this section existed.
+ *
+ * ═══ A GATE IS A REFUSAL A NAMED HUMAN CAN PASS THROUGH ═══
+ *
+ * Never a lockout. Each gate names the key it fired on, what it thinks happened, and — where
+ * arithmetic can offer one — the number it believes was meant. A caller who disagrees sends
+ * `overrides[key]` and the value is recorded WITH the disagreement, flagged hard to the doctor.
+ * The grammar is 16a T5's, inherited rather than re-derived: a hard warning cleared by an override
+ * with a reason, so the record says a person decided rather than that a rule was absent.
+ *
+ * ═══ AND THE RR NUDGE IS DELIBERATELY NOT HERE ═══
+ *
+ * The owner's DECIDED line: *"a suspiciously instant RR gets a nudge and a 15-second counter,
+ * never a block."* A respiratory rate typed two seconds after the field was focused is probably
+ * guessed — but the honest instrument is the counter, not a refusal, and the server cannot see a
+ * keystroke clock anyway. It is a screen behaviour with no server counterpart, and that absence is
+ * written down here so a later reader finds a decision instead of a gap.
+ */
+export type GateKind = "slipped_digit" | "shrinking_adult" | "probe_error";
+export type VitalsGate = {
+  key: VitalKey;
+  kind: GateKind;
+  value: number;
+  /** The number the gate believes was meant, when arithmetic can name one. */
+  suggestion?: number;
+  message: string;
+};
+
+/** The four reasons a carried value may be re-measured. A free-text box here would collect "changed". */
+export const UNLOCK_REASONS = [
+  "yearly_remeasure_due", "patient_disputes_old_value", "posture_or_device_changed", "surgical_or_limb_change",
+] as const;
+export type UnlockReason = (typeof UNLOCK_REASONS)[number];
+
+export type GateOverrides = Partial<Record<VitalKey, string>>;
+export type UnlockReasons = Partial<Record<VitalKey, UnlockReason>>;
+
+/**
+ * The gates that judge a VALUE, evaluated against the band and the last recorded reading. Pure, so
+ * the screen runs exactly this to give immediate feedback and the server runs exactly this to
+ * decide — one rule, one place (D9). A key carrying an override is skipped: it has been answered.
+ */
+export function sanityGates(
+  v: VitalsInput,
+  ageYears: number | null,
+  cfg: DangerRangesConfig,
+  last: { heightCm?: number | null } | null,
+  overrides: GateOverrides = {},
+): VitalsGate[] {
+  const gates: VitalsGate[] = [];
+  const g = cfg.gates;
+  const isChild = ageYears !== null && ageYears < 13;
+
+  // ── 1 · the slipped digit. 4.8 typed for 48. Only above the paediatric bands, where a small
+  //      weight is simply a small person and the gate would fire on every infant in the hospital.
+  const wt = v.weightKg;
+  if (overrides.weightKg === undefined && wt !== undefined && wt !== null && !isChild && wt < g.adultWeightFloorKg) {
+    const shifted = Math.round(wt * 100) / 10;
+    gates.push({
+      key: "weightKg", kind: "slipped_digit", value: wt,
+      ...(shifted >= 30 && shifted <= 150 ? { suggestion: shifted } : {}),
+      message: `${wt} kg on ${ageYears === null ? "an adult" : `a ${ageYears}-year-old`} — a slipped digit becomes a chart fact in one keystroke`,
+    });
+  }
+
+  // ── 2 · the shrinking adult. A spine does bend at 72, which is why this is a gate and not a
+  //      refusal: re-measure once, and if it stands, the doctor sees BOTH numbers.
+  const ht = v.heightCm;
+  const lastHt = last?.heightCm ?? null;
+  if (overrides.heightCm === undefined && ht !== undefined && ht !== null && lastHt !== null && Math.abs(ht - lastHt) >= g.heightDeltaCm) {
+    gates.push({
+      key: "heightCm", kind: "shrinking_adult", value: ht, suggestion: lastHt,
+      message: `height ${ht} against ${lastHt} — ${Math.round(Math.abs(ht - lastHt) * 10) / 10} cm apart; re-measure once before it becomes true`,
+    });
+  }
+  return gates;
+}
+
+/**
+ * ═══ THE PROBE GATE IS NOT A REFUSAL, AND THAT IS WHY IT IS ITS OWN FUNCTION ═══
+ *
+ * The owner's DECIDED line: *"a sub-75 SpO₂ lives in the log, not the chart, until it survives a
+ * re-clip."* So this gate does not stop a save — it MOVES the number. Every take below the floor
+ * leaves `takes` and lands in `held`, where it is preserved, auditable, and not a clinical fact.
+ * A re-clip that reads 94 charts 94 with the 45 beside it in the log, which is exactly what
+ * happened at the bay.
+ *
+ * If EVERY take was below the floor there is no SpO₂ to chart, and the ordinary completeness rule
+ * then says so — `vitals_incomplete: spo2` — which is the honest outcome: you cannot chart a probe
+ * error, and you cannot save a required vital you have not got. A caller who is certain the number
+ * is real sends `overrides.spo2` and nothing is held.
+ */
+export function holdProbeErrors(readings: Readings, cfg: DangerRangesConfig, overrides: GateOverrides = {}): Readings {
+  const r = readings.spo2;
+  if (r === undefined || overrides.spo2 !== undefined) return readings;
+  const floor = cfg.gates.spo2ProbeFloorPct;
+  const keep = r.takes.filter((t) => t >= floor);
+  const held = r.takes.filter((t) => t < floor);
+  if (held.length === 0) return readings;
+  const next: Reading = { ...r, takes: keep, held: [...(r.held ?? []), ...held] };
+  const out: Readings = { ...readings, spo2: next };
+  if (keep.length === 0) delete out.spo2; // nothing chartable — completeness will say so
+  return out;
+}
+
+/**
+ * ═══ D7 — THE LOCK ON A CARRIED VALUE, AND WHY IT LIVES ON THE SERVER ═══
+ *
+ * A height carried from March is greyed on the screen. A lock that lives only there is a lock a
+ * `curl` walks through, and the value it protects is one a doctor doses paediatric drugs from.
+ *
+ * The rule: a key the caller declares CARRIED must arrive with the carried NUMBER. A different
+ * number means it was re-measured, which is fine and is exactly what the four preset reasons are
+ * for — but it is no longer a carry-forward, and saying so is the whole point. The old value is
+ * kept beside the new one rather than replaced.
+ */
+export function checkCarriedLock(
+  v: VitalsInput,
+  carriedForward: readonly VitalKey[],
+  last: Partial<Record<VitalKey, number | null>> | null,
+  unlockReasons: UnlockReasons = {},
+): { key: VitalKey; carried: number | null; supplied: number }[] {
+  const bad: { key: VitalKey; carried: number | null; supplied: number }[] = [];
+  for (const key of carriedForward) {
+    if (unlockReasons[key] !== undefined) continue;
+    const supplied = v[key];
+    if (supplied === undefined || supplied === null) continue;
+    const carried = last?.[key] ?? null;
+    if (carried === null || carried !== supplied) bad.push({ key, carried, supplied });
+  }
+  return bad;
+}
+
 export function validateVitalsRanges(v: VitalsInput): void {
   for (const k of Object.keys(PLAUSIBLE) as VitalKey[]) {
     const x = v[k];
