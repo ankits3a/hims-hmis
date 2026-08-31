@@ -1,0 +1,914 @@
+<title>Desk One</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans+Devanagari:wght@400;600&display=swap">
+<style>
+  :root{
+    --paper:#f4f7f4; --card:#ffffff; --ink:#132420; --line:#dfe7e1; --line2:#ecf1ed;
+    --dim:#5c6f66; --faint:#8ea69a; --wash:#eef3ef;
+    --green:#0e6b4e; --green-soft:rgba(14,107,78,.08); --green-line:rgba(14,107,78,.35);
+    --gold:#dd8f1c; --gold-soft:rgba(221,143,28,.10); --gold-line:rgba(221,143,28,.45);
+    --red:#b23a30;
+    --agent:#132420; --agent-fg:#d9efe4; --agent-dim:#7fa392; --mint:#35c48f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0;text-align:left}
+  input{font:inherit;color:inherit}
+  input:focus{outline:none}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+  .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+  .dev{font-family:"IBM Plex Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.6}
+  .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  .kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:20px;padding:0 5px;
+    border-radius:3px;border:1px solid var(--line);background:var(--card);font-family:"IBM Plex Mono",monospace;
+    font-size:9px;font-weight:600;color:var(--dim);flex-shrink:0}
+  .kb.dk{border-color:#2c443a;background:#1c332b;color:var(--agent-dim)}
+  .pri{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 18px;
+    border-radius:6px;background:var(--green);color:#f2faf6;font-size:13px;font-weight:600;border:1px solid var(--green)}
+  .pri:disabled{opacity:.35;cursor:not-allowed}
+  .sec{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 13px;
+    border-radius:6px;border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:500}
+  .sec:hover{border-color:var(--faint)}
+  .sec.grn{border-color:var(--green);color:var(--green);font-weight:600}
+  .box{background:var(--card);border:1px solid var(--line);border-radius:8px}
+  .in{height:40px;width:100%;border-radius:6px;border:1px solid var(--line);background:var(--card);padding:0 12px;font-size:14px}
+  .in:focus{border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+  .pill{display:inline-flex;align-items:center;gap:6px;height:23px;padding:0 9px;border-radius:4px;
+    font-size:10.5px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--dim);white-space:nowrap}
+  .pill.on{border-color:var(--green-line);background:var(--green-soft);color:var(--green)}
+  .pill.gd{border-color:var(--gold-line);background:var(--gold-soft);color:var(--gold)}
+  .stamp{display:inline-flex;padding:2px 10px;border-radius:4px;font-family:"IBM Plex Mono",monospace;
+    font-size:10.5px;font-weight:700;letter-spacing:.14em}
+  .stamp.un{border:2px solid var(--gold);color:var(--gold)}
+  .stamp.pd{border:2px solid var(--green);color:var(--green)}
+  .agchip{display:inline-flex;align-items:center;gap:8px;max-width:100%;padding:7px 11px;border-radius:6px;
+    background:var(--agent);color:var(--agent-fg);font-size:11.5px;line-height:16px}
+  .agchip b{color:#fff;font-weight:600}
+  .agdo{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:5px;flex-shrink:0;
+    background:var(--mint);color:#0b2018;font-size:11px;font-weight:700}
+  .agdo:hover{background:#4fd6a3}
+  .ovl{position:fixed;inset:0;background:rgba(19,36,32,.5);display:flex;align-items:flex-start;
+    justify-content:center;padding-top:8vh;z-index:60}
+  .pi{display:flex;align-items:center;gap:12px;padding:10px 13px;border-radius:6px;font-size:13px;cursor:pointer}
+  .pi.sel{background:var(--wash)}
+  .drow{display:flex;align-items:center;gap:11px;padding:9px 12px;border-top:1px solid var(--line2)}
+  .drow:hover{background:var(--wash)}
+  .lock{width:11px;height:11px;flex-shrink:0}
+  .sw{width:38px;height:38px;border-radius:6px;border:1px solid var(--line);flex-shrink:0}
+  @media (prefers-reduced-motion:no-preference){
+    .agchip{animation:up .16s ease-out}
+    @keyframes up{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+  }
+  #frame{min-width:1220px}
+  #wrap{overflow-x:auto}
+</style>
+
+<div id="wrap"><div id="frame" style="height:100vh;display:flex;flex-direction:column">
+
+  <!-- ── header ── -->
+  <div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 18px;background:var(--card);border-bottom:1px solid var(--line);flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:10px;height:10px;border-radius:2px;background:var(--green);transform:rotate(45deg)"></div>
+      <span class="mo" style="font-size:12.5px;font-weight:700;letter-spacing:.08em">DESK ONE</span>
+    </div>
+    <span style="color:var(--line)">/</span>
+    <span style="font-size:12.5px;color:var(--dim)">Registration · Counter 01 · <strong style="color:var(--ink);font-weight:600">Ramesh Chaudhary</strong></span>
+    <span class="pill on" style="height:22px"><span style="width:5px;height:5px;border-radius:99px;background:var(--green)"></span>cash session open · <span class="mo">₹3,720</span></span>
+    <button class="pill" style="height:22px" onclick="ov='flow';paint()" title="Counter flow — supervisor setting">
+      <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      <span id="flowLbl"></span>
+    </button>
+    <div style="flex-grow:1"></div>
+    <span class="mo" style="font-size:11.5px;color:var(--faint)">SUN 30 AUG · <span id="clk">09:40</span></span>
+    <button class="pill gd" style="height:24px" onclick="ov=ov==='queues'?null:'queues';paint()"><span class="mo" id="waitN">28</span> waiting <span class="kb">Q</span></button>
+    <button class="pill" style="height:24px" onclick="ov=ov==='schema'?null:'schema';paint()">design schema</button>
+    <button class="pill" style="height:24px;border-color:var(--ink)" onclick="openPal()"><strong>⌘</strong> command <span class="kb">Ctrl K</span></button>
+  </div>
+
+  <!-- ── body: dossier + stage ── -->
+  <div style="flex-grow:1;min-height:0;display:flex">
+    <aside id="dossier" style="width:296px;flex-shrink:0;border-right:1px solid var(--line);background:var(--card);overflow-y:auto"></aside>
+    <main id="stage" style="flex-grow:1;min-width:0;overflow-y:auto;padding:24px 30px 30px"></main>
+  </div>
+
+  <!-- ── agent dock ── -->
+  <div style="flex-shrink:0;background:var(--agent);color:var(--agent-fg)">
+    <div id="drawer" style="display:none;border-bottom:1px solid #24413631;max-height:250px"></div>
+    <div style="display:flex;align-items:center;gap:13px;height:54px;padding:0 18px">
+      <span style="position:relative;width:9px;height:9px;flex-shrink:0">
+        <span style="position:absolute;inset:0;border-radius:99px;background:var(--mint)"></span>
+        <span style="position:absolute;inset:-3px;border-radius:99px;border:1px solid var(--mint);opacity:.35"></span>
+      </span>
+      <span class="tag" style="color:var(--agent-dim);flex-shrink:0">desk agent</span>
+      <span id="ticker" class="mo" style="font-size:11.5px;color:var(--agent-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex-grow:1"></span>
+      <form onsubmit="ask(event)" style="flex-shrink:0;display:flex;align-items:center;gap:8px;width:360px;height:36px;border:1px solid #2c4438;border-radius:6px;padding:0 11px;background:#1c332b">
+        <input id="askIn" placeholder="ask — “kis line mein kam wait hai?”" style="border:none;background:transparent;color:var(--agent-fg);flex-grow:1;font-size:12px"/>
+        <span class="kb dk">F2</span>
+      </form>
+      <button onclick="drawer=!drawer;paint()" class="mo" style="flex-shrink:0;font-size:10.5px;color:var(--agent-dim);letter-spacing:.1em" id="drawBtn">▲ LOG</button>
+    </div>
+  </div>
+</div></div>
+
+<div id="ovls"></div>
+
+<script>
+/* ══════════ data — fresh set ══════════ */
+const DEPT = {
+  "General Medicine":{fee:400,avg:5,where:"Ground · G-wing",docs:[{n:"Dr. Nishant Rao",q:5,rm:"G-04"},{n:"Dr. T. Minz",q:3,rm:"G-05"}]},
+  "Cardiology":{fee:750,avg:7,where:"1st floor",docs:[{n:"Dr. Ila Chandra",q:6,rm:"F1-12"}]},
+  "Orthopaedics":{fee:650,avg:6,where:"2nd floor",docs:[{n:"Dr. P. Oraon",q:8,rm:"F2-03"}]},
+  "Paediatrics":{fee:450,avg:4,where:"Ground · G-wing",docs:[{n:"Dr. Sneha Toppo",q:2,rm:"G-08"}]},
+  "Obstetrics & Gynaecology":{fee:650,avg:8,where:"2nd floor",docs:[{n:"Dr. M. D'Souza",q:4,rm:"F2-11"}]},
+};
+const SYMP = [
+  {k:["chest","seena","heart","दिल"],d:["Cardiology","General Medicine"],t:"chest discomfort"},
+  {k:["fever","bukhar","बुखार"],d:["General Medicine","Paediatrics"],t:"fever"},
+  {k:["knee","back","joint","kamar"],d:["Orthopaedics"],t:"joint / back pain"},
+  {k:["cough","khansi","sans"],d:["General Medicine"],t:"cough / breathlessness"},
+  {k:["pregnan","garbh","period"],d:["Obstetrics & Gynaecology"],t:"antenatal / gynae"},
+  {k:["child","baccha","teeka","vaccin"],d:["Paediatrics"],t:"child illness / vaccination"},
+  {k:["sugar","bp","pressure","diabet"],d:["General Medicine","Cardiology"],t:"BP / sugar follow-up"},
+];
+const PPL = {
+  anjali:{id:"anjali",nm:"Anjali Verma",uh:"UH-24-05512",age:38,sex:"F",mob:"98012 33470",
+    mem:{plan:"ANNUAL+",no:"AP-0834",left:9,pct:20},last:"11-Jul-2026",addr:"Morabadi, Ranchi",abha:true},
+  farida:{id:"farida",nm:"Farida Khatoon",uh:"UH-23-01188",age:52,sex:"F",mob:"82102 55917",
+    rev:{doc:"Dr. Nishant Rao",dept:"General Medicine",till:"09-Sep",seen:"26-Aug"},last:"26-Aug-2026",addr:"Hindpiri, Ranchi",abha:true},
+  mohan:{id:"mohan",nm:"Mohan Prasad",uh:"UH-22-00761",age:47,sex:"M",mob:"94705 18226",
+    corp:"Coal India OPD panel",last:"19-Feb-2026",addr:"",abha:false},
+};
+const PARTNERS = ["Nav Jeevan Pharmacy","Dr. Sinha Polyclinic","Sewa Health Camp — Ratu Road"];
+const FLOW = {
+  F1:{s:"REG→APPT→BILL · token first",l:"Register → Appointment → Bill — token prints at queueing, stamped UNPAID; billing flips it"},
+  F2:{s:"REG→APPT→BILL · token on payment",l:"Register → Appointment → Bill — queued at once, token held until the bill settles"},
+  F3:{s:"REG→BILL→APPT",l:"Register → Bill → Appointment — money first; the token always leaves PAID"},
+};
+
+/* ══════════ state ══════════ */
+let S, ov=null, drawer=false, palQ="", palSel=0, agAns=null, tokSeq=117;
+let mins=9*60+40;
+const log=[];
+function reset(keepFlow){
+  S={flow:keepFlow||"F1",st:"find",p:null,neu:false,
+     d:{nm:"",mob:"",age:"",sex:"",abha:false},
+     ben:{mem:false,cpn:null,corp:null,ref:null,pkg:false},
+     appt:null,fut:null,paid:false,tender:null,tokOut:false,tokPaid:false,tok:null,
+     q:"",sq:"",tab:"now",open:{},t0:null};
+}
+reset();
+const T=m=>`${Math.floor(m/60)}:${String(m%60).padStart(2,"0")}`;
+const RS=n=>"₹"+n.toLocaleString("en-IN");
+const E=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function tk(n){mins+=n;document.getElementById("clk").textContent=T(mins);}
+function note(x,kind){log.unshift({at:T(mins),x,kind:kind||"did"});}
+[["cash session opened — float counted ₹3,720, variance nil","ok"],
+ ["overnight sweep: 11 files missing address → sent to patient-QR list","did"],
+ ["queue watch on: Dr. Oraon trending 9 min over his slot average","warn"]].forEach(([x,k],i)=>log.push({at:"09:3"+(8-i),x,kind:k}));
+
+const order=()=>S.flow==="F3"?["reg","bill","appt"]:["reg","appt","bill"];
+function advance(){
+  const o=order(); const cur=S.st==="find"||S.st==="reg"?"reg":S.st;
+  const i=o.indexOf(cur);
+  S.st = i>=o.length-1 ? "done" : o[i+1];
+  paint();
+}
+const waiting=()=>Object.values(DEPT).reduce((a,d)=>a+d.docs.reduce((x,y)=>x+y.q,0),0);
+
+/* ══════════ actions ══════════ */
+function grab(id){
+  const p=PPL[id]; S.p={...p}; S.neu=false; S.t0=mins;
+  if(p.corp) S.ben.corp=p.corp;
+  tk(1);
+  note(`file open — ${p.nm}, last seen ${p.last}, ${p.abha?"ABHA on record":"no ABHA yet"}`);
+  if(p.mem) note(`membership ${p.mem.no} verified live — ${p.mem.left} visits left`,"ok");
+  if(p.rev) note(`review window: ${p.rev.doc} on ${p.rev.seen}, free till ${p.rev.till} — bill will force ₹0`,"ok");
+  S.st = order()[1]==="bill" ? "bill" : "appt";
+  paint();
+}
+function fresh(fill){
+  S.p=null;S.neu=true;S.st="reg";S.t0=mins;
+  S.d=fill?{nm:"Deepak Munda",mob:"62519 04473",age:"26",sex:"M",abha:false}:{nm:"",mob:"",age:"",sex:"",abha:false};
+  paint();
+}
+function put(k,v){S.d[k]=v;}
+function sex(v){S.d.sex=v;paint();}
+function abha(){S.d.abha=true;tk(1);note("ABHA minted from Aadhaar ····7302 — one OTP while the form was typed","ok");paint();}
+function enrol(){
+  if(!(S.d.nm&&S.d.mob&&S.d.age&&S.d.sex))return;
+  S.p={id:"new",nm:S.d.nm,uh:"UH-26-08871",age:S.d.age,sex:S.d.sex,mob:S.d.mob,abha:S.d.abha,last:"first visit",addr:""};
+  tk(1);
+  note(`registered — UH-26-08871 · card printing · UHID SMS (Hindi) queued`,"ok");
+  advance();
+}
+function flip(k){S.open[k]=!S.open[k];paint();}
+function bMem(){S.ben.mem=true;S.open.mem=false;tk(1);note("ANNUAL+ AP-0834 applied — 20% off consult, 8 visits will remain","ok");paint();}
+function bCpn(){S.ben.cpn="FESTIVE100";S.open.cpn=false;tk(1);note("coupon FESTIVE100 checked — ₹100, unused, in date","ok");paint();}
+function bCorp(v){S.ben.corp=v;S.open.corp=false;tk(1);note(`corporate letter verified — ${v}; e-authorisation sent`,"ok");paint();}
+function bRef(v){S.ben.ref=v;S.open.ref=false;tk(1);note(`referral tied to ${v} — partner ledger entry drafted`,"ok");paint();}
+function bPkg(){S.ben.pkg=true;S.open.pkg=false;tk(1);note("Mother & Child package verified — consult covered, 4/16 used","ok");paint();}
+
+function symp(v){S.sq=v;paint();const el=document.getElementById("sy");if(el){el.focus();el.setSelectionRange(v.length,v.length);}}
+function tab(t){S.tab=t;paint();}
+function seat(dept,doc){
+  const D=DEPT[dept];
+  const row=doc?D.docs.find(x=>x.n===doc):D.docs.reduce((a,b)=>a.q<=b.q?a:b);
+  const ahead=row.q, wait=ahead*D.avg;
+  S.appt={dept,doc:doc||null,rm:row.rm,ahead,wait,eta:T(mins+wait)};
+  S.tok="T-"+(++tokSeq);
+  tk(1);
+  if(S.flow==="F1"){S.tokOut=true;S.tokPaid=false;note(`token ${S.tok} out, stamped UNPAID (lane: token-first) — position ${ahead+1} on the board`);}
+  else if(S.flow==="F2"){S.tokOut=false;note(`queued at position ${ahead+1}; token held for payment (supervisor lane)`);}
+  else{S.tokOut=true;S.tokPaid=true;note(`token ${S.tok} out PAID — bill-first flow`,"ok");}
+  note(doc?`${doc} pinged — ${S.p.nm} joins, ~${wait} min`:`${dept} pool — first free doctor takes them`);
+  paint();
+}
+function futBook(d,s){
+  S.fut={d,s,doc:"Dr. M. D'Souza"};
+  tk(1);note(`future slot held — ${d} ${s}, Dr. M. D'Souza; SMS + T-1 reminder queued`,"ok");
+  S.tab="now";paint();
+}
+function priceOf(){
+  const hasAppt=!!S.appt;
+  const fee=hasAppt?DEPT[S.appt.dept].fee:400;
+  const head=hasAppt?`${S.appt.dept} consult${S.appt.doc?" — "+S.appt.doc:" — pool"}`:"OPD consult — flat; adjusts on assignment";
+  const L=[[head,fee]];let t=fee;const p=S.p||{};
+  if(p.rev){L.push([`review visit — free till ${p.rev.till} (${p.rev.doc})`,-fee]);return{L,t:0,m:"rev"};}
+  if(S.ben.pkg){L.push(["Mother & Child package — consult covered",-fee]);return{L,t:0,m:"pkg"};}
+  if(S.ben.mem){const d=Math.round(fee*.2);L.push(["ANNUAL+ membership · 20%",-d]);t-=d;}
+  if(S.ben.ref){const d=Math.round(fee*.1);L.push([`referral courtesy · ${S.ben.ref} · 10%`,-d]);t-=d;}
+  if(S.ben.cpn){const d=Math.min(100,t);L.push(["coupon FESTIVE100",-d]);t-=d;}
+  if(S.ben.corp){L.push([`cashless — billed to ${S.ben.corp}`,-t]);return{L,t:0,m:"corp",amt:t};}
+  return{L,t,m:"pay"};
+}
+function pay(via){
+  const c=priceOf();
+  S.paid=true;S.tender=via;S.calc=c;
+  tk(1);
+  if(!S.tokOut&&S.appt){S.tokOut=true;S.tokPaid=true;note(`token ${S.tok} released PAID at payment (held lane)`,"ok");}
+  if(S.tokOut&&!S.tokPaid){S.tokPaid=true;note(`board flip: ${S.tok} UNPAID → PAID`,"ok");}
+  const how=c.m==="rev"?"₹0 review":c.m==="pkg"?"₹0 package":c.m==="corp"?`corporate credit ${RS(c.amt)}`:`${RS(c.t)} by ${via}`;
+  note(`receipt R-2381 — ${how}${via==="cash"&&c.t>0?"; drawer "+RS(3720+c.t):""}`,"ok");
+  advance();
+}
+function clearDesk(){
+  if(S.p||S.neu)note("desk cleared — nothing carries to the next person");
+  const f=S.flow;reset(f);paint();
+}
+function setFlow(f){S.flow=f;ov=null;note(`supervisor set flow: ${FLOW[f].l}`,"warn");paint();}
+function saveRec(){
+  const m=document.getElementById("emob").value,a=document.getElementById("eadr").value;
+  if(m)S.p.mob=m;if(a)S.p.addr=a;
+  ov=null;tk(1);note("record amended by Ramesh — audit-logged, prior values retained","ok");paint();
+}
+
+/* ══════════ agent ══════════ */
+function ask(e){
+  e.preventDefault();
+  const b=document.getElementById("askIn");const q=b.value.trim();if(!q)return;b.value="";
+  const lo=q.toLowerCase();let a;
+  if(lo.includes("wait")||lo.includes("line")||lo.includes("queue")){
+    const best=Object.entries(DEPT).map(([d,v])=>({d,w:Math.min(...v.docs.map(x=>x.q))*v.avg})).sort((x,y)=>x.w-y.w)[0];
+    a=`Shortest line: ${best.d}, ~${best.w} min. Dr. Minz is the quiet General Medicine room (~15 min).`;
+  } else if(lo.includes("free")||lo.includes("review")||lo.includes("zero")){
+    a=`A revisit inside the doctor's review window bills ₹0 on its own — Farida Khatoon is inside hers till 09-Sep. Token releases the instant the zero-bill settles.`;
+  } else if(lo.includes("abha")){
+    a=`One Aadhaar OTP mints an ABHA while you type the rest of the form. Mohan Prasad has none — I can queue it.`;
+  } else if(lo.includes("price")||lo.includes("discount")||lo.includes("member")){
+    a=`Price stacks membership 20% → referral 10% → coupon flat. Corporate and packages go cashless. This desk applies benefits; enrolment sits with the front-office manager.`;
+  } else {
+    a=`Live build answers from the queue board and billing rules. Try “shortest wait”, “why is Farida free”, “make ABHA”.`;
+  }
+  note(`you asked: ${q}`,"you");agAns=a;drawer=true;paint();
+}
+
+/* ══════════ paint ══════════ */
+const $=id=>document.getElementById(id);
+function paint(){
+  $("flowLbl").textContent=FLOW[S.flow].s;
+  $("waitN").textContent=waiting();
+  $("ticker").textContent=log[0]?`${log[0].at}  ${log[0].x}`:"";
+  $("drawBtn").textContent=drawer?"▼ HIDE":"▲ LOG";
+  paintDossier();paintStage();paintDrawer();paintOvl();
+  if(S.st==="find"&&!ov){const el=$("fx");if(el&&document.activeElement!==el)el.focus();}
+}
+
+/* ── dossier ── */
+function paintDossier(){
+  const d=$("dossier");
+  if(!S.p&&!S.neu){
+    d.innerHTML=`
+    <div style="padding:20px 18px">
+      <div class="tag">nobody in hand</div>
+      <div style="margin-top:8px;font-size:12.5px;color:var(--dim);line-height:18px">Search or register — the person you pick lives in this column until <span class="kb">Esc</span>.</div>
+      <div class="tag" style="margin-top:26px">your day</div>
+      ${[["registered","41"],["collected","₹16,910"],["avg at desk","2m 18s"],["waiting hall",String(waiting())]]
+        .map(([a,b])=>`<div style="display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line2)">
+          <span style="font-size:12px;color:var(--dim)">${a}</span><span class="mo" style="font-size:15px;font-weight:600">${b}</span></div>`).join("")}
+      <div class="tag" style="margin-top:26px">keys</div>
+      <div style="display:flex;flex-direction:column;gap:7px;margin-top:9px;font-size:11.5px;color:var(--dim)">
+        <span><span class="kb">Ctrl K</span> command</span><span><span class="kb">Ctrl N</span> new patient</span>
+        <span><span class="kb">Q</span> all queues</span><span><span class="kb">1 2 3</span> tender at billing</span>
+        <span><span class="kb">Esc</span> clear desk</span>
+      </div>
+    </div>`;
+    return;
+  }
+  const p=S.p, c=priceOf();
+  const o=order(), lbl={reg:"Register",appt:"Appointment",bill:"Bill"};
+  const cur=S.st==="find"||S.st==="reg"?"reg":S.st;
+  const ci=S.st==="done"?99:o.indexOf(cur);
+  d.innerHTML=`
+  <div style="padding:18px 18px 26px">
+    ${p?`
+    <div style="display:flex;gap:11px;align-items:center">
+      <div style="width:44px;height:44px;border-radius:6px;background:var(--wash);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-weight:600;color:var(--dim)">${E(p.nm.split(" ").map(w=>w[0]).join("").slice(0,2))}</div>
+      <div style="min-width:0">
+        <div style="font-size:15px;font-weight:600;line-height:19px">${E(p.nm)}</div>
+        <div class="mo" style="font-size:11px;color:var(--dim)">${p.age}${p.sex} · ${p.uh}</div>
+      </div>
+    </div>
+    <div class="mo" style="font-size:11px;color:var(--dim);margin-top:9px">${E(p.mob)} · ${p.abha?"ABHA ✓":"no ABHA"}${p.addr?"":' · <span style="color:var(--gold)">no address</span>'}</div>
+    <button class="pill" style="margin-top:9px" onclick="ov='edit';paint()">edit record — audited</button>
+    `:`
+    <div class="tag">registering…</div>
+    <div style="font-size:14px;font-weight:600;margin-top:6px">${E(S.d.nm||"New walk-in")}</div>`}
+
+    <div class="tag" style="margin-top:22px">flow · ${S.flow}</div>
+    <div style="display:flex;flex-direction:column;gap:0;margin-top:8px">
+      ${o.map((k,i)=>`
+        <div style="display:flex;align-items:center;gap:9px;padding:6px 0">
+          <span style="width:18px;height:18px;border-radius:99px;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;
+            ${i<ci?"background:var(--green);color:#fff":i===ci?"border:2px solid var(--ink);font-weight:700":"border:1px solid var(--line);color:var(--faint)"}">${i<ci?"✓":i+1}</span>
+          <span style="font-size:12.5px;${i===ci?"font-weight:700":i<ci?"color:var(--dim)":"color:var(--faint)"}">${lbl[k]}</span>
+          ${k==="appt"&&S.appt?`<span class="mo" style="font-size:10.5px;color:var(--dim);margin-left:auto">${S.appt.doc?E(S.appt.doc.replace("Dr. ","")):"pool"} · ${S.appt.rm}</span>`:""}
+          ${k==="bill"&&S.paid?`<span class="mo" style="font-size:10.5px;color:var(--green);margin-left:auto">settled</span>`:""}
+        </div>`).join("")}
+    </div>
+
+    <div class="tag" style="margin-top:20px">benefits & links</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+      ${p&&p.mem?`<span class="pill ${S.ben.mem?"on":""}">${S.ben.mem?"✓ ":""}ANNUAL+ · ${p.mem.left} left</span>`:""}
+      ${p&&p.rev?`<span class="pill on">✓ review till ${p.rev.till}</span>`:""}
+      ${S.ben.cpn?`<span class="pill on">✓ FESTIVE100</span>`:""}
+      ${S.ben.corp?`<span class="pill on">✓ ${E(S.ben.corp.split(" ")[0])} cashless</span>`:""}
+      ${S.ben.ref?`<span class="pill on">✓ ref: ${E(S.ben.ref.split("—")[0].trim())}</span>`:""}
+      ${S.ben.pkg?`<span class="pill on">✓ package</span>`:""}
+      ${S.fut?`<span class="pill on">✓ future ${S.fut.d.split(" ")[1]} ${S.fut.s}</span>`:""}
+      ${!(p&&(p.mem||p.rev))&&!S.ben.cpn&&!S.ben.corp&&!S.ben.ref&&!S.ben.pkg&&!S.fut?`<span style="font-size:11.5px;color:var(--faint)">none marked — attach at register or billing</span>`:""}
+    </div>
+
+    ${S.tokOut||S.appt?`
+    <div class="tag" style="margin-top:20px">token</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+      <span class="mo" style="font-size:22px;font-weight:700">${S.tokOut?S.tok:"held"}</span>
+      ${S.tokOut?`<span class="stamp ${S.tokPaid?"pd":"un"}">${S.tokPaid?"PAID":"UNPAID"}</span>`:`<span style="font-size:11px;color:var(--faint)">prints on payment</span>`}
+    </div>`:""}
+
+    <div class="tag" style="margin-top:20px">bill · live</div>
+    <div style="margin-top:8px;border-top:1px solid var(--line2)">
+      ${c.L.map(([l,v])=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line2);font-size:11.5px;line-height:15px">
+        <span style="color:${v<0?"var(--green)":"var(--ink)"}">${E(l)}</span>
+        <span class="mo" style="font-weight:600;flex-shrink:0;color:${v<0?"var(--green)":"var(--ink)"}">${v<0?"−":""}${RS(Math.abs(v))}</span></div>`).join("")}
+      <div style="display:flex;justify-content:space-between;padding:9px 0">
+        <span style="font-size:12.5px;font-weight:700">${S.paid?"collected":"to collect"}</span>
+        <span class="mo" style="font-size:17px;font-weight:700;${S.paid?"color:var(--green)":""}">${RS(c.t)}</span>
+      </div>
+      <div style="font-size:10.5px;color:var(--faint);line-height:14px">reprices itself as chips attach — the desk never does arithmetic</div>
+    </div>
+
+    <button class="sec" style="width:100%;margin-top:20px;justify-content:center" onclick="clearDesk()">clear desk <span class="kb">Esc</span></button>
+  </div>`;
+}
+
+/* ── stages ── */
+function stFind(){
+  const q=S.q.trim().toLowerCase();
+  const hits=Object.values(PPL).filter(p=>!q||p.nm.toLowerCase().includes(q)||p.mob.replace(/\s/g,"").includes(q.replace(/\s/g,""))||p.uh.toLowerCase().includes(q));
+  const why=p=>{
+    const w=[];
+    if(q&&p.mob.replace(/\s/g,"").includes(q.replace(/\s/g,"")))w.push("same mobile");
+    if(q&&p.nm.toLowerCase().includes(q))w.push("name match");
+    if(q&&p.uh.toLowerCase().includes(q))w.push("UHID");
+    return (w.length?w:["on file"]).map(x=>`<span class="pill ${q&&w.length?"on":""}" style="height:20px">${x}</span>`).join("");
+  };
+  const badge=p=>p.mem?`<span class="pill gd" style="height:19px">ANNUAL+</span>`:p.rev?`<span class="pill on" style="height:19px">review till ${p.rev.till}</span>`:p.corp?`<span class="pill" style="height:19px">corporate</span>`:"";
+  return `
+  <div style="max-width:820px">
+    <div style="font-size:19px;font-weight:700;letter-spacing:-.01em">Who is in front of you?</div>
+    <div style="font-size:12.5px;color:var(--dim);margin-top:4px">Search before you type a single form field — a duplicate stopped here costs nothing.</div>
+    <input id="fx" class="in" style="height:52px;margin-top:16px;font-size:16px" placeholder="mobile · name · UHID"
+      value="${E(S.q)}" oninput="S.q=this.value;paint();var el=document.getElementById('fx');el.focus();el.setSelectionRange(el.value.length,el.value.length)"/>
+    <div style="display:flex;gap:7px;margin-top:11px;align-items:center;flex-wrap:wrap">
+      <span class="tag">walk a story</span>
+      <button class="pill" onclick="S.q='98012';paint()">member · Anjali</button>
+      <button class="pill" onclick="S.q='farida';paint()">free review · Farida</button>
+      <button class="pill" onclick="S.q='mohan';paint()">corporate · Mohan</button>
+      <button class="pill" style="border-color:var(--green);color:var(--green);font-weight:700" onclick="fresh(true)">new walk-in <span class="kb">Ctrl N</span></button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:18px">
+      ${hits.map((p,i)=>`
+      <div class="box" style="display:flex;align-items:center;gap:13px;padding:12px 15px;${i===0&&q?"border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)":""}">
+        <div style="width:38px;height:38px;border-radius:6px;background:var(--wash);display:flex;align-items:center;justify-content:center;font-weight:600;color:var(--dim);flex-shrink:0">${p.nm.split(" ").map(w=>w[0]).join("").slice(0,2)}</div>
+        <div style="width:185px">
+          <div style="font-size:14px;font-weight:600">${p.nm} ${badge(p)}</div>
+          <div class="mo" style="font-size:11px;color:var(--dim)">${p.age}${p.sex} · ${p.mob}</div>
+        </div>
+        <span class="mo" style="font-size:12px;font-weight:600;width:108px">${p.uh}</span>
+        <div style="display:flex;gap:5px;flex-grow:1">${why(p)}</div>
+        <span class="mo" style="font-size:10.5px;color:var(--faint)">last ${p.last}</span>
+        <button class="sec ${i===0&&q?"grn":""}" onclick="grab('${p.id}')">this is them${i===0&&q?' <span class="kb">⏎</span>':""}</button>
+      </div>`).join("")}
+      ${!hits.length?`<div class="box" style="padding:22px;text-align:center;color:var(--dim);border-style:dashed">
+        No one matches “${E(S.q)}”. <button style="color:var(--green);font-weight:700;text-decoration:underline" onclick="fresh(true)">Register new</button> — the button only wakes after a real search.</div>`:""}
+    </div>
+    ${agLine(`Morning read: 28 in the hall, Paediatrics is quiet (~8 min), Ortho is the crunch. Pick a story chip and watch me work.`)}
+  </div>`;
+}
+function agLine(html,act,fn){
+  return `<div style="margin-top:18px;display:flex"><span class="agchip"><span style="width:6px;height:6px;border-radius:99px;background:var(--mint);flex-shrink:0"></span><span>${html}</span>${act?`<button class="agdo" onclick="${fn}">${act}</button>`:""}</span></div>`;
+}
+function stReg(){
+  const d=S.d,b=S.ben,op=S.open;
+  const row=(k,ttl,sub,done,body)=>`
+    <div class="box" style="overflow:hidden">
+      <button style="display:flex;width:100%;align-items:center;gap:10px;padding:11px 13px" onclick="flip('${k}')">
+        <span style="width:17px;height:17px;border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;
+          ${done?"background:var(--green);color:#fff":"border:1.5px solid var(--line);color:transparent"}">✓</span>
+        <span><span style="font-size:12.5px;font-weight:600;display:block">${ttl}</span>
+        <span style="font-size:10.5px;color:var(--dim)">${sub}</span></span>
+        <span style="margin-left:auto;font-size:10px;color:var(--faint)" class="mo">${op[k]?"−":"+"}</span>
+      </button>
+      ${op[k]?`<div style="padding:0 13px 12px 40px">${body}</div>`:""}
+    </div>`;
+  return `
+  <div style="max-width:820px">
+    <div style="display:flex;align-items:baseline;gap:11px">
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.01em">Four fields, one UHID</span>
+      <span style="font-size:12px;color:var(--dim)">the rest waits, or rides a chip below — watch the bill column price itself</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1.6fr 1.1fr .7fr 1fr;gap:11px;margin-top:15px">
+      <div><div class="tag" style="margin-bottom:5px">full name</div><input class="in" value="${E(d.nm)}" oninput="put('nm',this.value)"/></div>
+      <div><div class="tag" style="margin-bottom:5px">mobile</div><input class="in mo" value="${E(d.mob)}" oninput="put('mob',this.value)"/></div>
+      <div><div class="tag" style="margin-bottom:5px">age / dob</div><input class="in mo" value="${E(d.age)}" oninput="put('age',this.value)"/></div>
+      <div><div class="tag" style="margin-bottom:5px">sex</div>
+        <div style="display:flex;gap:5px;height:40px">${["M","F","O"].map(x=>`
+          <button onclick="sex('${x}')" style="flex-grow:1;border-radius:6px;border:1px solid ${d.sex===x?"var(--green)":"var(--line)"};
+            background:${d.sex===x?"var(--green)":"var(--card)"};color:${d.sex===x?"#fff":"var(--dim)"};text-align:center;font-weight:${d.sex===x?"700":"400"}">${x}</button>`).join("")}</div>
+      </div>
+    </div>
+    <div class="box" style="display:flex;align-items:center;gap:12px;margin-top:12px;padding:10px 13px;background:var(--wash)">
+      <span style="font-size:11.5px;color:var(--dim)">ABHA — one Aadhaar OTP or a QR scan; nobody dictates 14 digits across a counter.</span>
+      <div style="flex-grow:1"></div>
+      ${d.abha?`<span class="pill on">✓ ABHA 91-2216-…-4408 linked</span>`:
+        `<button class="sec" style="height:30px" onclick="abha()">mint ABHA · OTP</button><button class="sec" style="height:30px">scan QR</button>`}
+    </div>
+    <div style="display:flex;align-items:baseline;gap:10px;margin-top:22px">
+      <span style="font-size:14px;font-weight:700">Benefits & links</span>
+      <span style="font-size:11.5px;color:var(--faint)">mark now or at billing — either way the bill reprices alone</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+      ${row("mem","Membership","apply benefits only — this desk cannot enrol",b.mem,`
+        <div style="display:flex;gap:7px"><input class="in mo" style="height:34px;width:150px" placeholder="AP-0834"/>
+        <button class="sec grn" style="height:34px" onclick="bMem()">verify & apply</button></div>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:8px;font-size:10.5px;color:var(--dim)">
+          <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          <span><s>enrol new member</s> — front-office manager only; not in Ramesh's grants</span></div>`)}
+      ${row("cpn","Coupon / voucher","single-use campaign codes",!!b.cpn,`
+        <div style="display:flex;gap:7px"><input class="in mo" style="height:34px;width:150px" value="FESTIVE100"/>
+        <button class="sec grn" style="height:34px" onclick="bCpn()">validate</button></div>`)}
+      ${row("corp","Corporate / cashless","panel letters verified at this desk",!!b.corp,`
+        <div style="display:flex;flex-direction:column;gap:5px">${["Coal India OPD panel","Tata Motors staff panel","SAIL retirees scheme"].map(v=>`
+          <button class="sec" style="height:31px;justify-content:flex-start" onclick="bCorp('${v}')">${v}</button>`).join("")}</div>`)}
+      ${row("ref","Channel partner","ties this visit to the referrer's ledger",!!b.ref,`
+        <div style="display:flex;flex-direction:column;gap:5px">${PARTNERS.map(v=>`
+          <button class="sec" style="height:31px;justify-content:flex-start" onclick="bRef('${E(v)}')">${E(v)}</button>`).join("")}</div>`)}
+      ${row("pkg","Care package","annual packages that cover consults",b.pkg,`
+        <button class="sec grn" style="height:32px" onclick="bPkg()">Mother & Child annual — verify & apply</button>`)}
+    </div>
+    ${!d.abha?agLine(`I can mint the ABHA while you finish the form — one OTP to ${E(d.mob||"their mobile")}.`,"do it","abha()"):""}
+    <div style="display:flex;align-items:center;gap:13px;margin-top:22px;padding-top:14px;border-top:1px solid var(--line)">
+      <button class="pri" onclick="enrol()" ${d.nm&&d.mob&&d.age&&d.sex?"":"disabled"}>register → ${order()[1]==="bill"?"bill":"appointment"} <span class="kb dk">Ctrl ⏎</span></button>
+      <span style="font-size:11px;color:var(--dim);max-width:400px;line-height:15px">Card prints, Hindi SMS goes, and the person stays in the left column — the session never drops between pages.</span>
+    </div>
+  </div>`;
+}
+function stAppt(){
+  const p=S.p;
+  if(S.appt){
+    const a=S.appt,D=DEPT[a.dept];
+    return `
+    <div style="max-width:820px">
+      <div style="font-size:19px;font-weight:700;letter-spacing:-.01em">${a.doc||a.dept+" — pool"} · ${a.rm}</div>
+      <div class="mo" style="font-size:12px;color:var(--dim);margin-top:3px">${a.ahead} ahead · ~${a.wait} min · called around ${a.eta} · ${D.where}</div>
+      <div style="display:flex;gap:18px;margin-top:18px;align-items:flex-start">
+        <div style="width:270px;flex-shrink:0;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:14px 15px;font-family:'IBM Plex Mono',monospace">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:9px;letter-spacing:.12em;color:var(--dim)">OPD TOKEN · 30 AUG</span>
+            ${S.tokOut?`<span class="stamp ${S.tokPaid?"pd":"un"}" style="font-size:9px">${S.tokPaid?"PAID":"UNPAID"}</span>`:`<span style="font-size:9px;color:var(--faint)">held for payment</span>`}
+          </div>
+          <div style="font-size:38px;font-weight:700;margin-top:4px">${S.tokOut?S.tok:"· · ·"}</div>
+          <div style="font-size:10.5px;line-height:15px;margin-top:2px">${E(p.nm)} · ${p.age}${p.sex}<br>${p.uh}</div>
+          <div style="border-top:1px dashed var(--line);margin-top:8px;padding-top:7px;font-size:10px;line-height:15px">${a.dept}<br>${a.rm} · ${D.where}<br>~${a.wait} min · ${a.eta}</div>
+          <div class="dev" style="font-size:11px;margin-top:6px">पर्ची सँभालिए · कक्ष ${a.rm}</div>
+        </div>
+        <div style="flex-grow:1;display:flex;flex-direction:column;gap:9px">
+          ${S.flow==="F1"&&!S.tokPaid?`<div class="box" style="padding:11px 13px;font-size:12px;line-height:17px;border-color:var(--gold-line);background:var(--gold-soft)"><b>Token-first lane:</b> the slip is out with an outlined UNPAID stamp — billing flips it to PAID on the hall board.</div>`:""}
+          ${S.flow==="F2"&&!S.tokOut?`<div class="box" style="padding:11px 13px;font-size:12px;line-height:17px"><b>Held lane:</b> queued now, but the physical token releases only when the bill settles. The supervisor owns that switch — the lock pill up top.</div>`:""}
+          ${S.flow==="F3"?`<div class="box" style="padding:11px 13px;font-size:12px;line-height:17px"><b>Bill-first flow:</b> already settled, so the token left the printer PAID.</div>`:""}
+          <div class="box" style="padding:11px 13px;font-size:11.5px;color:var(--dim)">Hall board updated — ${a.doc||a.dept} now lists ${E(p.nm.split(" ")[0])} at position ${a.ahead+1}.</div>
+          <div style="display:flex;gap:9px;margin-top:3px">
+            ${S.flow!=="F3"?`<button class="pri" onclick="S.st='bill';paint()">to billing <span class="kb dk">Ctrl ⏎</span></button>`:
+              `<button class="pri" onclick="S.st='done';paint()">finish <span class="kb dk">Ctrl ⏎</span></button>`}
+            <button class="sec" onclick="S.appt=null;S.tokOut=false;S.tokPaid=false;paint()">re-assign</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+  const q=S.sq.trim().toLowerCase();
+  const m=q?SYMP.filter(s=>s.k.some(k=>q.includes(k))):[];
+  const ranked=m.length?[...new Set(m.flatMap(x=>x.d))]:Object.keys(DEPT);
+  const hit=m[0];
+  const agentBit=(()=> {
+    if(p&&p.rev)return agLine(`<b>Free review window.</b> ${p.rev.doc} saw her on ${p.rev.seen}; free till ${p.rev.till}. Queue her back to him and I zero the bill myself.`,"queue to Dr. Rao",`seat('General Medicine','Dr. Nishant Rao')`);
+    if(hit){const d1=hit.d[0],D1=DEPT[d1];const best=D1.docs.reduce((a,b)=>a.q<=b.q?a:b);
+      return agLine(`<b>${E(hit.t)}${p?" · age "+p.age:""}</b> → ${d1}. ${best.n} is the shorter line, ~${best.q*D1.avg} min.${hit.d[1]?" "+hit.d[1]+" also fits if they want sooner.":""}`,"assign",`seat('${d1}','${best.n}')`);}
+    return agLine(`Type the complaint in the patient's own words — Hindi works. I rank departments by fit, then doctors by the live board.`);
+  })();
+  return `
+  <div style="max-width:880px">
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="pill ${S.tab==="now"?"on":""}" style="height:27px" onclick="tab('now')">walk-in now</button>
+      <button class="pill ${S.tab==="fut"?"on":""}" style="height:27px" onclick="tab('fut')">future appointment</button>
+      <span style="font-size:11px;color:var(--faint)">a future booking never drops today's session</span>
+    </div>
+    ${S.tab==="fut"?stFut():`
+    <div style="margin-top:16px">
+      <div style="font-size:16px;font-weight:700">What brings ${p?E(p.nm.split(" ")[0]):"them"} in?</div>
+      <input id="sy" class="in" style="height:46px;margin-top:10px;font-size:15px" placeholder="seene mein dard · fever · knee · sugar-BP…"
+        value="${E(S.sq)}" oninput="symp(this.value)"/>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        ${["chest","fever","knee","sugar BP","pregnancy"].map(x=>`<button class="pill" onclick="symp('${x}')">${x}</button>`).join("")}
+      </div>
+      ${agentBit}
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+        ${ranked.map((dn,ri)=>{
+          const D=DEPT[dn];const pool=Math.min(...D.docs.map(x=>x.q))*D.avg;
+          return `
+          <div class="box" style="${ri===0&&m.length?"border-color:var(--green)":""}">
+            <div style="display:flex;align-items:center;gap:10px;padding:11px 13px">
+              <span style="font-size:13.5px;font-weight:700">${dn}</span>
+              ${ri===0&&m.length?`<span class="pill on" style="height:19px">agent's pick</span>`:ri===1&&m.length?`<span class="pill" style="height:19px">also fits</span>`:""}
+              <span class="mo" style="font-size:10.5px;color:var(--faint)">${D.where} · ${RS(D.fee)}</span>
+              <div style="flex-grow:1"></div>
+              <span class="mo" style="font-size:10.5px;color:var(--dim)">pool ~${pool} min</span>
+              <button class="sec" style="height:29px" onclick="seat('${dn}')">join dept queue</button>
+            </div>
+            ${D.docs.map(doc=>{const w=doc.q*D.avg;return `
+              <div class="drow">
+                <span style="font-size:12.5px;font-weight:500;width:150px">${doc.n}</span>
+                <span class="mo" style="font-size:10.5px;color:var(--faint);width:52px">${doc.rm}</span>
+                <div style="display:flex;align-items:center;gap:4px;width:150px">
+                  <div style="height:8px;border-radius:2px;flex-grow:1;background:var(--wash);overflow:hidden">
+                    <div style="height:100%;width:${Math.min(100,doc.q*11)}%;background:${doc.q>6?"var(--gold)":"var(--green)"};opacity:.75"></div>
+                  </div>
+                  <span class="mo" style="font-size:10.5px;color:var(--dim)">${doc.q}</span>
+                </div>
+                <span class="mo" style="font-size:11.5px;font-weight:600;width:128px">~${w} min · ${T(mins+w)}</span>
+                <div style="flex-grow:1"></div>
+                <button class="sec grn" style="height:29px" onclick="seat('${dn}','${doc.n}')">assign</button>
+              </div>`;}).join("")}
+          </div>`;}).join("")}
+      </div>
+    </div>`}
+  </div>`;
+}
+function stFut(){
+  const days=["Mon 31 Aug","Tue 01 Sep","Wed 02 Sep"];
+  const slots=["09:20","09:40","11:00","11:20","16:40","17:00"];
+  return `
+  <div style="margin-top:16px">
+    <div style="font-size:15px;font-weight:700">Future slot — Dr. M. D'Souza · Obstetrics & Gynaecology</div>
+    <div style="font-size:11.5px;color:var(--dim);margin-top:3px">asked mid-walk-in — hold the slot, then fall straight back to today</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px;max-width:680px">
+      ${days.map(d=>`<div class="box" style="padding:11px 12px">
+        <div class="tag" style="margin-bottom:8px">${d}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px">${slots.map(s=>`
+          <button class="sec mo" style="height:27px;font-size:11px;padding:0 9px" onclick="futBook('${d}','${s}')">${s}</button>`).join("")}</div>
+      </div>`).join("")}
+    </div>
+  </div>`;
+}
+function stBill(){
+  const c=priceOf(),p=S.p,zero=c.t===0;
+  return `
+  <div style="max-width:700px">
+    <div style="display:flex;align-items:baseline;gap:11px">
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.01em">Nothing to compute — it's computed</span>
+      <span style="font-size:12px;color:var(--dim)">the left column has been pricing this since the first chip</span>
+    </div>
+    ${p&&p.rev?`<div class="box" style="margin-top:14px;padding:12px 14px;border-color:var(--green-line);background:var(--green-soft);display:flex;gap:11px;align-items:center">
+      <span class="stamp pd">₹0</span>
+      <span style="font-size:12px;line-height:17px"><b>Review visit.</b> ${p.rev.doc}, seen ${p.rev.seen}; window runs to ${p.rev.till}. Nothing to collect — the token goes the moment you confirm.</span></div>`:""}
+    <div class="box" style="margin-top:14px;overflow:hidden">
+      ${c.L.map(([l,v],i)=>`<div style="display:flex;justify-content:space-between;padding:11px 16px;${i?"border-top:1px solid var(--line2)":""};font-size:12.5px">
+        <span style="color:${v<0?"var(--green)":"var(--ink)"}">${E(l)}</span>
+        <span class="mo" style="font-weight:600;color:${v<0?"var(--green)":"var(--ink)"}">${v<0?"−":""}${RS(Math.abs(v))}</span></div>`).join("")}
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:13px 16px;border-top:2px solid var(--ink);background:var(--wash)">
+        <span style="font-size:13.5px;font-weight:700">to collect</span>
+        <span class="mo" style="font-size:21px;font-weight:700">${RS(c.t)}</span>
+      </div>
+    </div>
+    ${zero?`
+      <button class="pri" style="margin-top:14px;height:48px;font-size:14px" onclick="pay('${c.m}')">
+        ${c.m==="corp"?"bill to corporate · release token":"confirm ₹0 · release token"} <span class="kb dk">Ctrl ⏎</span></button>`:`
+      <div style="display:flex;gap:8px;margin-top:14px">
+        ${[["cash","CASH","1"],["upi","UPI","2"],["card","CARD","3"]].map(([id,l,k])=>`
+          <button class="sec" style="flex-grow:1;height:50px;justify-content:center;font-size:13.5px;font-weight:700;letter-spacing:.04em" onclick="pay('${id}')">${l} <span class="kb">${k}</span></button>`).join("")}
+      </div>
+      <div style="font-size:11px;color:var(--faint);margin-top:7px">one key settles — no open cash session, no billing (the strip up top is a live precondition)</div>`}
+    <div style="margin-top:22px;padding-top:13px;border-top:1px solid var(--line)">
+      <span style="font-size:12.5px;font-weight:700">Missed at register?</span>
+      <span style="font-size:11px;color:var(--faint);margin-left:8px">attach late — the bill reprices in place</span>
+      <div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap">
+        ${!S.ben.mem&&p&&p.mem?`<button class="sec" style="height:30px" onclick="bMem()">apply ANNUAL+</button>`:""}
+        ${!S.ben.cpn?`<button class="sec" style="height:30px" onclick="bCpn()">coupon FESTIVE100</button>`:""}
+        ${!S.ben.ref?`<button class="sec" style="height:30px" onclick="bRef('Nav Jeevan Pharmacy')">link channel partner</button>`:""}
+        ${!S.ben.corp?`<button class="sec" style="height:30px" onclick="bCorp('Coal India OPD panel')">corporate cashless</button>`:""}
+        ${p&&!p.abha?`<button class="sec" style="height:30px" onclick="S.p.abha=true;note('ABHA queued for '+S.p.nm+' — OTP on their phone');paint()">mint ABHA now</button>`:""}
+      </div>
+    </div>
+    ${!zero&&p&&p.id==="anjali"?agLine(`${RS(c.t)} ready. She has paid by UPI on her last four visits — key <b>2</b>.`):""}
+  </div>`;
+}
+function stDone(){
+  const p=S.p,a=S.appt,c=S.calc||priceOf();
+  const dur=Math.max(1,mins-(S.t0||mins));
+  return `
+  <div style="max-width:760px">
+    <div style="display:flex;align-items:center;gap:13px">
+      <span style="width:34px;height:34px;border-radius:99px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px">✓</span>
+      <div>
+        <div style="font-size:18px;font-weight:700">${E(p.nm)} is done at this desk</div>
+        <div class="mo" style="font-size:11.5px;color:var(--dim)">${dur} min · ${c.t===0?"nothing collected":"took "+RS(c.t)+" by "+S.tender} · token ${S.tok||"—"}${S.tokPaid?" PAID":""}</div>
+      </div>
+    </div>
+    ${a?`
+    <div class="dev" style="font-size:19px;margin-top:18px;padding:15px 18px;border:2px solid var(--ink);border-radius:8px;background:var(--card)">
+      आपका टोकन <b class="mo">${S.tok}</b> है। ${DEPT[a.dept].where.includes("Ground")?"इसी मंज़िल पर":"ऊपर जाइए —"} कक्ष <b class="mo">${a.rm}</b>, लगभग <b class="mo">${a.wait}</b> मिनट में नंबर आएगा।
+    </div>
+    <div style="font-size:11.5px;color:var(--dim);margin-top:7px">“Your token is ${S.tok}. Room ${a.rm} — your turn in about ${a.wait} minutes.” Say it, then hand the slip.</div>`:""}
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px">
+      <div class="box" style="padding:12px 13px"><div class="tag" style="margin-bottom:5px">phone</div>
+        <div style="font-size:12.5px;font-weight:600">token + directions by SMS, हिंदी में</div>
+        <div style="font-size:10.5px;color:var(--faint);margin-top:2px">the copy that survives a lost slip</div></div>
+      <div class="box" style="padding:12px 13px"><div class="tag" style="margin-bottom:5px">hall board</div>
+        <div style="font-size:12.5px;font-weight:600">${a?`${a.doc||a.dept} · #${a.ahead+1}`:"—"}</div>
+        <div class="mo" style="font-size:10.5px;color:var(--faint);margin-top:2px">${a?"call ≈ "+a.eta:""}</div></div>
+      ${S.fut?`<div class="box" style="padding:12px 13px;border-color:var(--green-line)"><div class="tag" style="margin-bottom:5px;color:var(--green)">also held</div>
+        <div style="font-size:12.5px;font-weight:600">${S.fut.d} · ${S.fut.s}</div>
+        <div style="font-size:10.5px;color:var(--faint);margin-top:2px">${S.fut.doc} · reminder T-1</div></div>`
+      :`<div class="box" style="padding:12px 13px;${p.addr?"":"border-color:var(--gold-line);background:var(--gold-soft)"}">
+        <div class="tag" style="margin-bottom:5px;${p.addr?"":"color:var(--gold)"}">${p.addr?"on file":"still missing"}</div>
+        <div style="font-size:12.5px;font-weight:600">${p.addr?E(p.addr):"address"}</div>
+        <div style="font-size:10.5px;color:var(--faint);margin-top:2px">${p.addr?"confirmed this visit":"queued to their QR page + your follow-up list"}</div></div>`}
+    </div>
+    ${agLine(`While you finish: SMS gone, board updated${S.fut?", future slot held":""}. Next in line looks like a report query — that's the enquiry desk, I'll redirect them.`)}
+    <div style="display:flex;gap:10px;margin-top:20px;padding-top:13px;border-top:1px solid var(--line)">
+      <button class="pri" onclick="clearDesk()">next patient <span class="kb dk">Esc</span></button>
+      <button class="sec">reprint slip</button>
+      <span style="margin-left:auto;font-size:10.5px;color:var(--faint);align-self:center">Esc scrubs the desk — nothing bleeds into the next person</span>
+    </div>
+  </div>`;
+}
+function paintStage(){
+  $("stage").innerHTML = S.st==="find"?stFind():S.st==="reg"?stReg():S.st==="appt"?stAppt():S.st==="bill"?stBill():stDone();
+}
+
+/* ── drawer ── */
+function paintDrawer(){
+  const dr=$("drawer");
+  dr.style.display=drawer?"block":"none";
+  if(!drawer)return;
+  dr.innerHTML=`
+  <div style="display:flex;gap:26px;padding:16px 18px;max-height:250px">
+    <div style="width:44%;min-width:0">
+      <div class="tag" style="color:var(--agent-dim)">agent · answer</div>
+      <div style="margin-top:8px;font-size:12.5px;line-height:18px;color:${agAns?"var(--agent-fg)":"var(--agent-dim)"}">
+        ${agAns?E(agAns):"Ask below — queues, prices, why a bill is zero, ABHA."}</div>
+    </div>
+    <div style="flex-grow:1;min-width:0;overflow-y:auto;max-height:216px">
+      <div class="tag" style="color:var(--agent-dim)">worked in the background</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+        ${log.slice(0,26).map(l=>`<div style="display:flex;gap:9px;font-size:11px;line-height:15px">
+          <span class="mo" style="color:var(--agent-dim);flex-shrink:0">${l.at}</span>
+          <span style="width:5px;height:5px;border-radius:99px;margin-top:5px;flex-shrink:0;background:${l.kind==="ok"?"var(--mint)":l.kind==="warn"?"var(--gold)":l.kind==="you"?"#fff":"var(--agent-dim)"}"></span>
+          <span style="color:var(--agent-fg)">${E(l.x)}</span></div>`).join("")}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ── overlays ── */
+function palList(){
+  const A=[
+    {t:"search a patient",k:"/",f(){ov=null;const fl=S.flow;reset(fl);paint();}},
+    {t:"register a new patient",k:"Ctrl N",f(){ov=null;fresh(true);}},
+  ];
+  if(S.p){
+    A.push({t:"go to appointment",f(){ov=null;S.st="appt";paint();}});
+    A.push({t:"go to billing",f(){ov=null;S.st="bill";paint();}});
+    A.push({t:"book a future appointment",f(){ov=null;S.st="appt";S.tab="fut";paint();}});
+    A.push({t:"apply coupon FESTIVE100",f(){ov=null;bCpn();}});
+    A.push({t:"update this record (audited)",f(){ov="edit";paint();}});
+  }
+  A.push({t:"all queues & wait times",k:"Q",f(){ov="queues";paint();}});
+  A.push({t:"counter flow — supervisor",f(){ov="flow";paint();}});
+  A.push({t:"clear desk / next patient",k:"Esc",f(){ov=null;clearDesk();}});
+  A.push({t:"design schema & elements",f(){ov="schema";paint();}});
+  return A;
+}
+let palActs=[];
+function openPal(){ov="pal";palQ="";palSel=0;paint();}
+function runPal(i){const a=palActs[i];palQ="";if(a)a.f();}
+function paintOvl(){
+  const O=$("ovls");
+  if(!ov){O.innerHTML="";return;}
+  if(ov==="pal"){
+    palActs=palList().filter(a=>!palQ||a.t.includes(palQ.toLowerCase()));
+    O.innerHTML=`<div class="ovl" onclick="if(event.target===this){ov=null;paint()}">
+      <div class="box" style="width:540px;overflow:hidden;box-shadow:0 24px 70px rgba(19,36,32,.35)" onclick="event.stopPropagation()">
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line)">
+          <span class="mo" style="color:var(--faint)">›</span>
+          <input id="palx" placeholder="type a command…" style="border:none;flex-grow:1;font-size:14px" value="${E(palQ)}"
+            oninput="palQ=this.value;palSel=0;paint();var el=document.getElementById('palx');el.focus();el.setSelectionRange(el.value.length,el.value.length)"/>
+          <span class="kb">esc</span>
+        </div>
+        <div style="padding:6px;max-height:360px;overflow-y:auto">
+          ${palActs.map((a,i)=>`<div class="pi ${i===palSel?"sel":""}" onclick="runPal(${i})">
+            <span>${a.t}</span><span style="flex-grow:1"></span>${a.k?`<span class="kb">${a.k}</span>`:""}</div>`).join("")}
+          ${!palActs.length?`<div style="padding:13px;color:var(--faint)">nothing matches</div>`:""}
+        </div>
+        <div style="display:flex;gap:12px;padding:8px 15px;border-top:1px solid var(--line);font-size:10px;color:var(--faint)">
+          <span><span class="kb">↑↓</span> move</span><span><span class="kb">⏎</span> run</span>
+          <span style="margin-left:auto">billing tenders: <span class="kb">1</span><span class="kb">2</span><span class="kb">3</span></span>
+        </div>
+      </div></div>`;
+    const i=$("palx");if(i)i.focus();
+    return;
+  }
+  if(ov==="flow"){
+    O.innerHTML=`<div class="ovl" onclick="if(event.target===this){ov=null;paint()}">
+      <div class="box" style="width:560px;padding:20px 22px" onclick="event.stopPropagation()">
+        <div style="display:flex;align-items:center;gap:8px">
+          <svg class="lock" style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          <span style="font-size:15px;font-weight:700">Counter flow — the supervisor's switch</span>
+        </div>
+        <div style="font-size:11.5px;color:var(--dim);margin-top:4px;line-height:16px">A token never precedes billing unless the supervisor chose the token-first lane. Locked to the supervisor role in production; open here so you can preview all three.</div>
+        <div style="display:flex;flex-direction:column;gap:7px;margin-top:14px">
+          ${Object.entries(FLOW).map(([k,f])=>`
+          <button onclick="setFlow('${k}')" style="display:flex;gap:11px;align-items:flex-start;padding:12px 13px;border-radius:7px;
+            border:1px solid ${S.flow===k?"var(--green)":"var(--line)"};background:${S.flow===k?"var(--green-soft)":"var(--card)"}">
+            <span style="width:15px;height:15px;border-radius:99px;margin-top:1px;flex-shrink:0;border:${S.flow===k?"5px solid var(--green)":"1.5px solid var(--line)"}"></span>
+            <span><span class="mo" style="font-size:11px;font-weight:700;display:block;letter-spacing:.06em">${k} · ${f.s}</span>
+            <span style="font-size:11.5px;color:var(--dim);line-height:15px">${f.l}</span></span>
+          </button>`).join("")}
+        </div>
+      </div></div>`;
+    return;
+  }
+  if(ov==="queues"){
+    O.innerHTML=`<div class="ovl" onclick="if(event.target===this){ov=null;paint()}">
+      <div class="box" style="width:640px;padding:20px 22px;max-height:76vh;overflow-y:auto" onclick="event.stopPropagation()">
+        <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:15px;font-weight:700">Every line in the building</span>
+          <span class="mo" style="font-size:11px;color:var(--dim)">${waiting()} waiting · ${T(mins)}</span>
+          <span style="margin-left:auto" class="kb">Q</span></div>
+        ${Object.entries(DEPT).map(([d,D])=>`
+          <div style="margin-top:15px">
+            <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:12.5px;font-weight:700">${d}</span>
+              <span class="mo" style="font-size:10px;color:var(--faint)">${D.docs.reduce((a,b)=>a+b.q,0)} waiting · ${D.avg} min/patient · ${D.where}</span></div>
+            ${D.docs.map(x=>`<div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+              <span style="font-size:11.5px;width:135px">${x.n}</span>
+              <div style="flex-grow:1;height:13px;border-radius:3px;background:var(--wash);overflow:hidden">
+                <div style="height:100%;width:${Math.min(100,x.q*10)}%;background:${x.q>6?"var(--gold)":"var(--green)"};opacity:.8"></div></div>
+              <span class="mo" style="font-size:11px;width:104px;text-align:right">${x.q} · ~${x.q*D.avg} min</span>
+            </div>`).join("")}
+          </div>`).join("")}
+      </div></div>`;
+    return;
+  }
+  if(ov==="edit"){
+    const p=S.p;
+    O.innerHTML=`<div class="ovl" onclick="if(event.target===this){ov=null;paint()}">
+      <div class="box" style="width:440px;padding:20px 22px" onclick="event.stopPropagation()">
+        <div style="font-size:15px;font-weight:700">Amend ${E(p.nm)}'s record</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:3px;line-height:15px">Ramesh holds update rights on demographics. Every change is audit-logged; the old value is kept beside the new.</div>
+        <div class="tag" style="margin-top:14px;margin-bottom:5px">mobile</div><input id="emob" class="in mo" value="${E(p.mob)}"/>
+        <div class="tag" style="margin-top:11px;margin-bottom:5px">address</div><input id="eadr" class="in" value="${E(p.addr||"")}" placeholder="street, area, district"/>
+        <div style="display:flex;gap:8px;margin-top:15px">
+          <button class="pri" style="height:36px" onclick="saveRec()">save — audited</button>
+          <button class="sec" style="height:36px" onclick="ov=null;paint()">cancel</button>
+        </div>
+      </div></div>`;
+    return;
+  }
+  if(ov==="schema"){O.innerHTML=schema();}
+}
+function schema(){
+  const sw=(c,n,d)=>`<div style="display:flex;gap:10px;align-items:center"><span class="sw" style="background:${c}"></span>
+    <div><div class="mo" style="font-size:11px;font-weight:700">${c} · ${n}</div><div style="font-size:10.5px;color:var(--dim)">${d}</div></div></div>`;
+  return `<div class="ovl" style="align-items:stretch;padding:4vh 0" onclick="if(event.target===this){ov=null;paint()}">
+  <div class="box" style="width:840px;margin:0 auto;padding:26px 30px;overflow-y:auto" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:baseline;gap:12px">
+      <span style="font-size:18px;font-weight:700">Design schema & elements — Desk One</span>
+      <span style="font-size:11.5px;color:var(--dim)">original identity, drawn for this prototype</span>
+      <button class="sec" style="margin-left:auto;height:30px" onclick="ov=null;paint()">close · esc</button>
+    </div>
+
+    <div class="tag" style="margin-top:22px">1 · color — paper &amp; pine, marigold for attention, mint is the machine's voice</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:10px">
+      ${sw("#f4f7f4","paper","green-biased ground — calmer than white under lobby light")}
+      ${sw("#132420","pine ink","text · and the ONLY ground the agent ever speaks on")}
+      ${sw("#0e6b4e","hospital green","primary actions, applied benefits, settled money")}
+      ${sw("#dd8f1c","marigold","UNPAID stamps, heavy queues, missing data — visible from a metre")}
+      ${sw("#35c48f","mint","agent voice + actions, always on pine — machine work is never white-on-paper")}
+      ${sw("#b23a30","brick red","reserved: emergencies and blocked actions only")}
+    </div>
+
+    <div class="tag" style="margin-top:22px">2 · type — one family, three voices</div>
+    <div style="font-size:12px;line-height:18px;margin-top:8px;color:var(--dim)">
+      <b style="color:var(--ink)">IBM Plex Sans</b> for everything human ·
+      <span class="mo" style="color:var(--ink)">IBM Plex Mono</span> for what a clerk compares digit-by-digit — UHID, money, tokens, times, and every section label ·
+      <span class="dev" style="color:var(--ink);font-weight:600">IBM Plex Sans Devanagari</span> for the sentence Ramesh actually says, always with its English gloss under it.
+    </div>
+
+    <div class="tag" style="margin-top:22px">3 · elements</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px 20px;margin-top:10px;font-size:11.5px;line-height:16px;color:var(--dim)">
+      <div><b style="color:var(--ink)">The dossier</b> — the left column IS the patient session. Identity, flow steps, benefit chips, token, and a live bill that reprices from the first second. It empties only on Esc; that is why nothing is ever lost between pages.</div>
+      <div><b style="color:var(--ink)">The dock</b> — the agent lives along the bottom: a ticker of what it just did, an ask-box (F2), and a pull-up log. Suggestions also step into the page as pine chips exactly where the decision is being made.</div>
+      <div><b style="color:var(--ink)">Live bill</b> — pricing is not a stage, it is a column. Billing the stage only chooses the tender; the arithmetic happened as chips attached.</div>
+      <div><b style="color:var(--ink)">Speaks-on-dark rule</b> — anything the AI says or does sits on pine ink. No legend needed to know what the machine touched.</div>
+      <div><b style="color:var(--ink)">Stamps</b> — <span class="stamp un" style="font-size:8.5px">UNPAID</span> <span class="stamp pd" style="font-size:8.5px">PAID</span> outlined, never filled: thermal heads wear, paper curls, and a hollow stamp survives both.</div>
+      <div><b style="color:var(--ink)">Queue bars</b> — one bar per doctor, marigold past six waiting; wait shown as minutes <i>and</i> a clock time, because patients ask “kitne baje?”.</div>
+      <div><b style="color:var(--ink)">Match reasons</b> — search results say what matched (same mobile), never a confidence percentage; a clerk can act on a reason, not on 87%.</div>
+      <div><b style="color:var(--ink)">The lock pill</b> — the supervisor's flow choice worn openly in the header, so the clerk always knows which lane a token takes today.</div>
+    </div>
+
+    <div class="tag" style="margin-top:22px">4 · the flow machine</div>
+    <div class="box" style="margin-top:9px;padding:13px 15px;background:var(--wash);overflow-x:auto">
+      <pre class="mo" style="margin:0;font-size:11px;line-height:19px">F1  Register → Appointment → Bill    token out at queueing, UNPAID → billing flips it
+F2  Register → Appointment → Bill    queued at once; token held until payment
+F3  Register → Bill → Appointment    flat fee first; token always leaves PAID
+overrides: review-window → bill forced ₹0, auto-settles, token releases
+           corporate / package → cashless; token releases on settle</pre>
+    </div>
+
+    <div class="tag" style="margin-top:22px">5 · voice</div>
+    <div style="font-size:11.5px;line-height:17px;color:var(--dim);margin-top:8px;max-width:620px">
+      Buttons say what happens (“register → appointment”). The screen hands Ramesh the Hindi sentence to say out loud, then its meaning.
+      The agent argues in consequences (“she paid UPI four visits running — key 2”), never in model-speak, and everything it does lands in the log with a timestamp.
+    </div>
+  </div></div>`;
+}
+
+/* ══════════ keys ══════════ */
+document.addEventListener("keydown",e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();ov==="pal"?(ov=null,paint()):openPal();return;}
+  if(ov==="pal"){
+    if(e.key==="ArrowDown"){e.preventDefault();palSel=Math.min(palActs.length-1,palSel+1);paint();return;}
+    if(e.key==="ArrowUp"){e.preventDefault();palSel=Math.max(0,palSel-1);paint();return;}
+    if(e.key==="Enter"){e.preventDefault();runPal(palSel);return;}
+    if(e.key==="Escape"){palQ="";ov=null;paint();return;}
+    return;
+  }
+  if(e.key==="Escape"){if(ov){ov=null;paint();}else clearDesk();return;}
+  if(e.key==="F2"){e.preventDefault();$("askIn").focus();return;}
+  const typing=/INPUT|TEXTAREA/.test((document.activeElement||{}).tagName||"");
+  if(typing){
+    if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){e.preventDefault();hotEnter();}
+    else if(e.key==="Enter"&&S.st==="find"&&S.q.trim()){
+      const q=S.q.trim().toLowerCase();
+      const hit=Object.values(PPL).find(p=>p.nm.toLowerCase().includes(q)||p.mob.replace(/\s/g,"").includes(q.replace(/\s/g,""))||p.uh.toLowerCase().includes(q));
+      if(hit){e.preventDefault();grab(hit.id);}
+    }
+    return;
+  }
+  if(e.key.toLowerCase()==="q"){e.preventDefault();ov=ov==="queues"?null:"queues";paint();return;}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="n"){e.preventDefault();fresh(true);return;}
+  if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){e.preventDefault();hotEnter();return;}
+  if(S.st==="bill"&&!S.paid){
+    const c=priceOf();
+    if(c.t>0){if(e.key==="1")pay("cash");if(e.key==="2")pay("upi");if(e.key==="3")pay("card");}
+    else if(e.key==="Enter"){pay(c.m);}
+  }
+});
+function hotEnter(){
+  if(S.st==="reg")enrol();
+  else if(S.st==="appt"&&S.appt){S.flow!=="F3"?(S.st="bill",paint()):(S.st="done",paint());}
+  else if(S.st==="bill"&&!S.paid){const c=priceOf();if(c.t===0)pay(c.m);}
+}
+
+paint();
+</script>

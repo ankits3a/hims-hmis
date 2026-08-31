@@ -1,0 +1,1040 @@
+<title>Ramesh's Counter</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --ground:#ffffff; --ink:#0a0a0a; --primary:#171717; --primary-fg:#fafafa;
+    --border:#e5e5e5; --hairline:#f0f0f0; --wash:#fafafa; --panel:#f5f5f5;
+    --muted:#737373; --faint:#a1a1a1; --dim:#525252;
+    --ok:#318f5a; --wait:#cb882e; --bad:#b3382c;
+    --ai:#5b5bd6; --ai-wash:#f4f4fc; --ai-line:#d9d9f2;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);
+    font:14px/20px ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0}
+  input{font:inherit;color:inherit}
+  input:focus{outline:none}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .num{font-variant-numeric:tabular-nums}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .hi{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.55}
+  .lbl{font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+  .k{display:inline-flex;align-items:center;justify-content:center;height:17px;min-width:22px;padding:0 5px;
+     border-radius:4px;background:var(--panel);border:1px solid var(--border);font-size:9.5px;font-weight:700;
+     color:var(--muted);font-variant-numeric:tabular-nums;flex-shrink:0}
+  .k.onDark{background:#404040;border-color:#525252;color:#d4d4d4}
+  .chip{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:8px;
+    border:1px solid var(--border);background:var(--ground);font-size:12px;flex-shrink:0;white-space:nowrap}
+  .why{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:5px;font-size:10px;
+    font-weight:600;letter-spacing:.02em;white-space:nowrap}
+  .btnP{display:inline-flex;align-items:center;gap:9px;height:42px;padding:0 18px;border-radius:9px;
+    border:1px solid var(--primary);background:var(--primary);color:var(--primary-fg);font-size:13.5px;font-weight:600}
+  .btnP:disabled{opacity:.35;cursor:not-allowed}
+  .btnG{display:inline-flex;align-items:center;gap:8px;height:42px;padding:0 16px;border-radius:9px;
+    border:1px solid var(--border);background:var(--ground);font-size:13px;font-weight:500}
+  .btnS{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:8px;
+    border:1px solid var(--border);background:var(--ground);font-size:12.5px;font-weight:500}
+  .btnS.dark{border-color:var(--primary);background:var(--primary);color:var(--primary-fg);font-weight:600}
+  .card{border:1px solid var(--border);border-radius:11px;background:var(--ground)}
+  .fld{display:flex;flex-direction:column;gap:5px;min-width:0}
+  .inp{height:42px;border-radius:9px;border:1px solid var(--border);background:var(--ground);
+    padding:0 13px;font-size:14.5px;width:100%}
+  .inp:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(161,161,161,.3)}
+  .aiCard{border-left:2px solid var(--ai);background:var(--ai-wash);border-radius:0 9px 9px 0;padding:10px 12px}
+  .aiAct{display:inline-flex;align-items:center;gap:6px;height:27px;padding:0 11px;border-radius:7px;
+    border:1px solid var(--ai);color:var(--ai);background:var(--ground);font-size:11.5px;font-weight:600}
+  .aiAct:hover{background:var(--ai);color:#fff}
+  .stamp{display:inline-flex;align-items:center;justify-content:center;padding:3px 12px;border-radius:6px;
+    font-size:12px;font-weight:800;letter-spacing:.12em}
+  .stamp.unpaid{border:2px solid var(--wait);color:var(--wait)}
+  .stamp.paid{border:2px solid var(--ok);color:var(--ok)}
+  .stamp.zero{border:2px solid var(--ok);color:var(--ok)}
+  .ovl{position:fixed;inset:0;background:rgba(10,10,10,.45);display:flex;align-items:flex-start;
+    justify-content:center;padding-top:9vh;z-index:50}
+  .step{display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 11px;border-radius:9999px;
+    font-size:11.5px;font-weight:600;border:1px solid var(--border);color:var(--dim);background:var(--ground)}
+  .step.on{border-color:var(--primary);background:var(--primary);color:var(--primary-fg)}
+  .step.done{border-color:rgba(49,143,90,.45);color:var(--ok);background:rgba(49,143,90,.07)}
+  .qrow{display:flex;align-items:center;gap:12px;padding:10px 13px;border:1px solid var(--border);border-radius:10px}
+  .qrow:hover{background:var(--wash)}
+  .palItem{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:9px;font-size:13.5px;cursor:pointer}
+  .palItem.sel{background:var(--panel)}
+  .bChip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:9999px;
+    font-size:11px;font-weight:600;border:1px solid var(--border);color:var(--dim);background:var(--ground)}
+  .bChip.ok{border-color:rgba(49,143,90,.45);color:var(--ok);background:rgba(49,143,90,.06)}
+  .feedRow{display:flex;gap:9px;font-size:11.5px;line-height:16px;color:var(--dim)}
+  .tok{width:272px;border:1px solid var(--border);border-radius:6px;padding:14px 16px;background:var(--ground);
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;box-shadow:0 1px 8px rgba(0,0,0,.06)}
+  .swatch{width:40px;height:40px;border-radius:8px;border:1px solid var(--hairline);flex-shrink:0}
+  @media (prefers-reduced-motion:no-preference){
+    .aiCard{animation:slidein .18s ease-out}
+    @keyframes slidein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  }
+  #shell{min-width:1180px}
+  #hscroll{overflow-x:auto}
+</style>
+
+<div id="hscroll"><div id="shell" style="height:100vh;display:flex;flex-direction:column;background:var(--ground)">
+
+  <!-- ══ CHROME ══ -->
+  <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 20px;border-bottom:1px solid var(--hairline);flex-shrink:0">
+    <div style="width:22px;height:22px;border-radius:6px;background:var(--primary);color:var(--primary-fg);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">CRK</div>
+    <span style="font-size:13.5px;font-weight:600">Registration Counter</span>
+    <span style="color:var(--border)">|</span>
+    <span style="font-size:12.5px;color:var(--dim)">Counter <span class="num">1</span> · Ramesh Chaudhary</span>
+    <span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:9999px;border:1px solid var(--border);font-size:11.5px;color:#404040">
+      <span style="width:6px;height:6px;border-radius:9999px;background:var(--ok)"></span>Drawer open · <span class="num">₹4,150</span>
+    </span>
+    <button class="chip" style="height:26px" onclick="openFlowCfg()" title="Counter flow — supervisor setting">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2.4" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      <span id="flowPill" style="font-size:11px;font-weight:600"></span>
+    </button>
+    <div style="flex-grow:1"></div>
+    <span class="num" style="font-size:12px;color:var(--faint)">Sun 30-Aug · <span id="clock">11:06</span></span>
+    <button class="chip" style="height:26px;border-color:rgba(203,136,46,.4);background:rgba(203,136,46,.07)" onclick="toggleQueues()">
+      <span class="num" style="font-weight:600" id="qTotal">36</span><span style="color:var(--dim)">waiting</span><span class="k">Q</span>
+    </button>
+    <button class="chip" style="height:26px" onclick="toggleSchema()">Design schema</button>
+    <button class="chip" style="height:26px;border-color:var(--primary)" onclick="openPalette()">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#171717" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <span style="font-weight:600">Command</span><span class="k">Ctrl K</span>
+    </button>
+  </div>
+
+  <!-- ══ PATIENT SESSION RIBBON ══ -->
+  <div id="ribbon" style="flex-shrink:0"></div>
+
+  <!-- ══ BODY: workspace + copilot ══ -->
+  <div style="flex-grow:1;min-height:0;display:flex">
+    <div id="main" style="flex-grow:1;min-width:0;overflow-y:auto;padding:22px 26px 30px"></div>
+
+    <!-- copilot rail -->
+    <div style="width:322px;flex-shrink:0;border-left:1px solid var(--hairline);display:flex;flex-direction:column;background:var(--ground)">
+      <div style="display:flex;align-items:center;gap:8px;padding:13px 16px 11px;border-bottom:1px solid var(--hairline)">
+        <span style="width:8px;height:8px;border-radius:9999px;background:var(--ai);box-shadow:0 0 0 3px var(--ai-wash)"></span>
+        <span style="font-size:12.5px;font-weight:700;letter-spacing:.01em">Desk Agent</span>
+        <span style="font-size:10.5px;color:var(--faint)">sees what you see</span>
+      </div>
+      <div id="aiCards" style="padding:12px 14px;display:flex;flex-direction:column;gap:9px;overflow-y:auto;flex-shrink:0;max-height:46%"></div>
+      <div style="padding:10px 16px 7px;border-top:1px solid var(--hairline)">
+        <span class="lbl" style="color:var(--ai)">Working in the background</span>
+      </div>
+      <div id="aiFeed" style="flex-grow:1;min-height:0;overflow-y:auto;padding:4px 16px 10px;display:flex;flex-direction:column;gap:8px"></div>
+      <form onsubmit="askAgent(event)" style="padding:12px 14px;border-top:1px solid var(--hairline)">
+        <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--ai-line);border-radius:9px;padding:0 11px;height:40px;background:var(--ai-wash)">
+          <input id="askBox" placeholder="Ask — “wait time for cardio?”" style="border:none;background:transparent;flex-grow:1;font-size:12.5px"/>
+          <span class="k">F2</span>
+        </div>
+      </form>
+    </div>
+  </div>
+</div></div>
+
+<div id="overlays"></div>
+
+<script>
+/* ─────────────────────────── data ─────────────────────────── */
+const DEPTS = {
+  "Cardiology":       {fee:700, avg:6, floor:"1st floor", docs:[{n:"Dr. Anila Mehta",q:7,room:"104"},{n:"Dr. K. Bose",q:4,room:"105"}]},
+  "General Medicine": {fee:500, avg:5, floor:"Ground",    docs:[{n:"Dr. R. Iyer",q:4,room:"102"},{n:"Dr. S. Paul",q:5,room:"103"}]},
+  "Orthopaedics":     {fee:600, avg:7, floor:"2nd floor", docs:[{n:"Dr. S. Kulkarni",q:9,room:"201"}]},
+  "Paediatrics":      {fee:400, avg:5, floor:"Ground",    docs:[{n:"Dr. Farhan Ali",q:2,room:"106"}]},
+  "Gynaecology":      {fee:600, avg:8, floor:"2nd floor", docs:[{n:"Dr. Priya Nair",q:5,room:"204"}]},
+};
+const SYMPTOMS = [
+  {k:["chest","seene","दिल"],       d:["Cardiology","General Medicine"], t:"chest pain"},
+  {k:["fever","bukhar","बुखार"],    d:["General Medicine","Paediatrics"], t:"fever"},
+  {k:["knee","joint","ghutna"],     d:["Orthopaedics"], t:"knee / joint pain"},
+  {k:["cough","khansi"],            d:["General Medicine"], t:"cough"},
+  {k:["pregnan","period","garbh"],  d:["Gynaecology"], t:"pregnancy / gynae"},
+  {k:["child","baccha","vaccin"],   d:["Paediatrics"], t:"child illness / vaccination"},
+  {k:["bp","sugar","diabet","pressure"], d:["General Medicine","Cardiology"], t:"BP / sugar follow-up"},
+];
+const PATIENTS = {
+  sunita:{id:"sunita",name:"Sunita Devi",uhid:"CRK00018427",age:42,sex:"F",mobile:"98350 41772",
+    member:{plan:"GOLD",no:"M-2211",left:12,pct:20},last:"14-Jun-2026",addr:"Kadru, Ranchi",abha:true},
+  meena:{id:"meena",name:"Meena Sharma",uhid:"CRK00016210",age:29,sex:"F",mobile:"70043 88120",
+    review:{doc:"Dr. R. Iyer",dept:"General Medicine",till:"07-Sep",seen:"24-Aug"},last:"24-Aug-2026",addr:"Lalpur, Ranchi",abha:true},
+  rakesh:{id:"rakesh",name:"Rakesh Gupta",uhid:"CRK00011845",age:51,sex:"M",mobile:"94311 07265",
+    corp:"Tata Steel OPD scheme",last:"02-Mar-2026",addr:"Doranda, Ranchi",abha:false},
+};
+const PARTNERS = ["Sahu Medical Store","Dr. Verma Clinic, Bariatu","Jeevan Diagnostics","ASHA worker — Ward 21"];
+const FLOWS = {
+  A1:{label:"Register → Appt → Bill · token first (UNPAID)", short:"Reg→Appt→Bill · Lane 1"},
+  A2:{label:"Register → Appt → Bill · token after billing",  short:"Reg→Appt→Bill · Lane 2"},
+  B: {label:"Register → Bill → Appt · pre-paid",             short:"Reg→Bill→Appt"},
+};
+
+/* ─────────────────────────── state ─────────────────────────── */
+let S;
+function freshS(keepFlow){
+  return {
+    flow: keepFlow || "A1",
+    stage: "find",              // find | register | appointment | billing | done
+    patient: null, isNew:false,
+    benefits: {member:false, coupon:null, corporate:null, partner:null, pkg:false},
+    draft: {name:"",mobile:"",age:"",sex:"",abha:false},
+    appt: null, future: null,
+    bill: {settled:false, tender:null, calc:null},
+    tokenIssued:false, tokenPaid:false, tokenNo:null,
+    search:"", symptomQ:"", apptTab:"walkin",
+    panels:{member:false,coupon:false,corp:false,partner:false,pkg:false},
+    startedAt:null,
+  };
+}
+S = freshS();
+let clockMin = 11*60+6;
+let feed = [];
+const fmt=m=>{const h=Math.floor(m/60),mm=m%60;return `${h}:${String(mm).padStart(2,"0")}`;};
+const rup=n=>"₹"+n.toLocaleString("en-IN");
+function tick(n){clockMin+=n;document.getElementById("clock").textContent=fmt(clockMin);}
+function pushFeed(txt,kind){feed.unshift({t:fmt(clockMin),txt,kind:kind||"do"});renderFeed();}
+
+/* seed background feed — the agent was already working before you looked */
+[["Shift opened — drawer counted at ₹4,150, 0 variance","ok"],
+ ["Overnight: 14 records missing address queued to patient-QR follow-up","do"],
+ ["Watching queues — Dr. Kulkarni is running 12 min over slot average","warn"],
+].reverse().forEach(([t,k])=>feed.unshift({t:"11:0"+(feed.length+2),txt:t,kind:k}));
+
+/* ─────────────────── flow helpers ─────────────────── */
+function stepOrder(){ return S.flow==="B" ? ["patient","billing","appointment"] : ["patient","appointment","billing"]; }
+function nextStage(){
+  const ord = stepOrder();
+  const cur = S.stage==="register"||S.stage==="find" ? "patient" : S.stage;
+  const i = ord.indexOf(cur);
+  if(i===ord.length-1){ S.stage="done"; }
+  else S.stage = ord[i+1]==="patient" ? "register" : ord[i+1];
+  render();
+}
+function totalQueue(){let t=0;Object.values(DEPTS).forEach(d=>d.docs.forEach(x=>t+=x.q));return t;}
+
+/* ─────────────────── actions ─────────────────── */
+function pick(id){
+  const p=PATIENTS[id];
+  S.patient={...p}; S.isNew=false; S.startedAt=clockMin;
+  if(p.corp) S.benefits.corporate=p.corp;
+  tick(1);
+  pushFeed(`Pulled ${p.name}'s file — last visit ${p.last}, ${p.abha?"ABHA linked":"no ABHA yet"}`,"do");
+  if(p.member) pushFeed(`Verified ${p.member.plan} membership ${p.member.no} — ${p.member.left} visits left this year`,"ok");
+  if(p.review) pushFeed(`Review window found: seen by ${p.review.doc} on ${p.review.seen}; free until ${p.review.till}`,"ok");
+  S.stage = stepOrder()[1]==="billing" ? "billing" : "appointment";
+  render();
+}
+function startNew(prefill){
+  S.patient=null; S.isNew=true; S.stage="register"; S.startedAt=clockMin;
+  S.draft={name:prefill?"Kavita Yadav":"",mobile:prefill?"62030 77415":"",age:prefill?"34":"",sex:prefill?"F":"",abha:false};
+  render();
+}
+function bindDraft(k,v){ S.draft[k]=v; }
+function setSex(x){ S.draft.sex=x; render(); }
+function makeAbha(){
+  S.draft.abha=true; tick(1);
+  pushFeed("ABHA created from Aadhaar ····4411 — one OTP, number linked to the new UHID","ok");
+  render();
+}
+function doRegister(){
+  if(!(S.draft.name&&S.draft.mobile&&S.draft.age&&S.draft.sex)) return;
+  S.patient={id:"new",name:S.draft.name,uhid:"CRK00018434",age:S.draft.age,sex:S.draft.sex,
+    mobile:S.draft.mobile,abha:S.draft.abha,last:"first visit",addr:""};
+  tick(1);
+  pushFeed(`Registered ${S.patient.name} — UHID CRK00018434, card sent to printer, Hindi SMS drafted`,"ok");
+  nextStage();
+}
+function togglePanel(p){ S.panels[p]=!S.panels[p]; render(); }
+function applyMember(){ S.benefits.member=true; S.panels.member=false; tick(1);
+  pushFeed("GOLD M-2211 applied — 20% off consult; 11 visits will remain","ok"); render(); }
+function applyCoupon(){ S.benefits.coupon="MONSOON50"; S.panels.coupon=false; tick(1);
+  pushFeed("Coupon MONSOON50 validated — ₹50, single-use, not expired","ok"); render(); }
+function applyCorp(v){ S.benefits.corporate=v; S.panels.corp=false; tick(1);
+  pushFeed(`Corporate letter checked — ${v}, cashless OPD, e-authorisation sent`,"ok"); render(); }
+function applyPartner(v){ S.benefits.partner=v; S.panels.partner=false; tick(1);
+  pushFeed(`Referral linked to ${v} — commission ledger entry drafted for month-end`,"ok"); render(); }
+function applyPkg(){ S.benefits.pkg=true; S.panels.pkg=false; tick(1);
+  pushFeed("Diabetes Care Annual verified — consult covered, 3 of 12 used","ok"); render(); }
+
+function setSymptom(q){ S.symptomQ=q; render(); const el=document.getElementById("sympIn"); if(el){el.focus();el.setSelectionRange(q.length,q.length);} }
+function setApptTab(t){ S.apptTab=t; render(); }
+function assign(dept,doc){
+  const D=DEPTS[dept];
+  const row = doc? D.docs.find(x=>x.n===doc) : null;
+  const ahead = row? row.q : Math.min(...D.docs.map(x=>x.q));
+  const wait = ahead*D.avg;
+  S.appt={dept,doctor:doc||null,room:row?row.room:D.docs[0].room,ahead,wait,eta:fmt(clockMin+wait)};
+  S.tokenNo = dept.slice(0,3).toUpperCase()+"-"+(ahead+18);
+  tick(1);
+  if(S.flow==="A1"){ S.tokenIssued=true; S.tokenPaid=false;
+    pushFeed(`Token ${S.tokenNo} printed UNPAID (lane 1) — queue position ${ahead+1}, board updated`,"do"); }
+  else if(S.flow==="A2"){ S.tokenIssued=false;
+    pushFeed(`Queued position ${ahead+1} — token held for billing (lane 2, supervisor flow)`,"do"); }
+  else { S.tokenIssued=true; S.tokenPaid=true;
+    pushFeed(`Token ${S.tokenNo} printed PAID — billed before assignment (bill-first flow)`,"ok"); }
+  pushFeed(doc? `${doc} notified — ${S.patient.name} added, ~${wait} min` : `${dept} pool queue — next free doctor takes her`,"do");
+  render();
+}
+function bookFuture(day,slot){
+  S.future={day,slot,dept:"Gynaecology",doc:"Dr. Priya Nair"};
+  tick(1);
+  pushFeed(`Future appointment held — ${day} ${slot}, Dr. Priya Nair; SMS + reminder T-1 day queued`,"ok");
+  S.apptTab="walkin"; render();
+}
+function calcBill(){
+  const inAppt = !!S.appt;
+  const fee = inAppt ? DEPTS[S.appt.dept].fee : 500;
+  const label = inAppt ? `${S.appt.dept} consult${S.appt.doctor?" · "+S.appt.doctor:" · pool"}`
+                       : "OPD consult — flat, dept adjusts after assignment";
+  const L=[[label,fee]]; let t=fee;
+  const p=S.patient||{};
+  if(p.review){ L.push([`Review visit — free until ${p.review.till} (${p.review.doc})`,-fee]); return {L,total:0,mode:"review"}; }
+  if(S.benefits.pkg){ L.push(["Diabetes Care Annual — consult covered",-fee]); return {L,total:0,mode:"pkg"}; }
+  if(S.benefits.member){const d=Math.round(fee*.2); L.push(["GOLD membership · 20%",-d]); t-=d;}
+  if(S.benefits.partner){const d=Math.round(fee*.1); L.push([`Referral courtesy · ${S.benefits.partner} · 10%`,-d]); t-=d;}
+  if(S.benefits.coupon){const d=Math.min(50,t); L.push(["Coupon MONSOON50",-d]); t-=d;}
+  if(S.benefits.corporate){ L.push([`Cashless — billed to ${S.benefits.corporate}`,-t]); return {L,total:0,mode:"corp",corpAmt:t}; }
+  return {L,total:t,mode:"cash"};
+}
+function settle(tender){
+  const c=calcBill();
+  S.bill={settled:true,tender,calc:c};
+  tick(1);
+  if(!S.tokenIssued && S.flow!=="B"){ /* lane 2 or zero-bill path: token now */
+    if(!S.appt && S.flow!=="B"){} else {
+      S.tokenIssued=true; S.tokenPaid=true;
+      pushFeed(`Token ${S.tokenNo||"—"} printed PAID at billing (lane 2)`,"ok");
+    }
+  }
+  if(S.tokenIssued && !S.tokenPaid){ S.tokenPaid=true; pushFeed(`Token ${S.tokenNo} flipped UNPAID → PAID on the board`,"ok"); }
+  const how = c.mode==="review"?"₹0 — review visit":c.mode==="corp"?`corporate credit (${rup(c.corpAmt)})`
+            : c.mode==="pkg"?"₹0 — package": `${rup(c.total)} by ${tender}`;
+  pushFeed(`Receipt ${c.total===0?"INV-0-2214":"INV-2214"} issued — ${how}; drawer ${tender==="cash"?"now ₹"+(4150+c.total).toLocaleString("en-IN"):"unchanged"}`,"ok");
+  nextStage();
+}
+function releasePatient(){
+  if(S.patient||S.isNew){ pushFeed(`Counter cleared — nothing carries to the next person`,"do"); }
+  S=freshS(S.flow); render();
+}
+function setFlow(f){ S.flow=f; closeOvl(); pushFeed(`Supervisor flow set: ${FLOWS[f].label}`,"warn"); render(); }
+function saveEdit(){
+  const m=document.getElementById("edMobile").value, a=document.getElementById("edAddr").value;
+  if(m) S.patient.mobile=m; if(a) S.patient.addr=a;
+  closeOvl(); tick(1);
+  pushFeed(`Record updated by Ramesh — audit-logged (PHI log 0038), old values retained`,"ok"); render();
+}
+
+/* ─────────────────── overlays ─────────────────── */
+let ovl=null, palSel=0;
+function closeOvl(){ ovl=null; renderOverlays(); }
+function openFlowCfg(){ ovl="flow"; renderOverlays(); }
+function toggleQueues(){ ovl=ovl==="queues"?null:"queues"; renderOverlays(); }
+function toggleSchema(){ ovl=ovl==="schema"?null:"schema"; renderOverlays(); }
+function openPalette(){ ovl="palette"; palSel=0; renderOverlays();
+  const i=document.getElementById("palIn"); if(i) i.focus(); }
+function openEdit(){ ovl="edit"; renderOverlays(); }
+
+function palActions(){
+  const A=[];
+  A.push({t:"Search a patient",k:"/",f:()=>{closeOvl();S=freshS(S.flow);render();}});
+  A.push({t:"Register new patient",k:"Ctrl N",f:()=>{closeOvl();startNew(true);}});
+  if(S.patient){
+    A.push({t:"Go to appointment",k:"",f:()=>{closeOvl();S.stage="appointment";render();}});
+    A.push({t:"Go to billing",k:"",f:()=>{closeOvl();S.stage="billing";render();}});
+    A.push({t:"Book a future appointment",k:"",f:()=>{closeOvl();S.stage="appointment";S.apptTab="future";render();}});
+    A.push({t:"Apply coupon MONSOON50",k:"",f:()=>{closeOvl();applyCoupon();}});
+    A.push({t:"Update patient record (audited)",k:"",f:()=>{ovl=null;openEdit();}});
+  }
+  A.push({t:"Show all queues & wait times",k:"Q",f:()=>{ovl="queues";renderOverlays();}});
+  A.push({t:"Change counter flow (supervisor)",k:"",f:()=>{ovl="flow";renderOverlays();}});
+  A.push({t:"Next patient — clear the counter",k:"Esc",f:()=>{closeOvl();releasePatient();}});
+  A.push({t:"Design schema & elements",k:"",f:()=>{ovl="schema";renderOverlays();}});
+  return A;
+}
+
+/* ─────────────────── agent ─────────────────── */
+function askAgent(e){
+  e.preventDefault();
+  const box=document.getElementById("askBox"); const q=box.value.trim().toLowerCase(); if(!q) return;
+  box.value="";
+  let a;
+  if(q.includes("wait")||q.includes("queue")){
+    const best=Object.entries(DEPTS).map(([d,v])=>({d,w:Math.min(...v.docs.map(x=>x.q))*v.avg})).sort((x,y)=>x.w-y.w);
+    a=`Shortest right now: ${best[0].d} ~${best[0].w} min. Cardiology is ~${Math.min(...DEPTS["Cardiology"].docs.map(x=>x.q))*6} min (Dr. Bose is the faster line).`;
+  } else if(q.includes("free")||q.includes("review")||q.includes("zero")){
+    a="A revisit inside the doctor's review window bills ₹0 automatically — Meena Sharma is inside hers until 07-Sep. The token prints the moment the zero-bill settles.";
+  } else if(q.includes("abha")){
+    a="I can create an ABHA from Aadhaar with one OTP at register, or later from billing. Rakesh Gupta has no ABHA yet — want me to queue it?";
+  } else if(q.includes("discount")||q.includes("price")||q.includes("member")){
+    a="Auto-price stacks: membership % → referral 10% → coupon flat. Corporate and packages make it cashless/zero. Enrolment isn't on this counter — apply-only.";
+  } else {
+    a="In the live build I answer from the queue board, billing rules and policy. Try: “wait time for cardio”, “why is Meena free”, “create ABHA”.";
+  }
+  pushFeed("You asked: "+q,"you");
+  aiAnswer=a; renderCopilot();
+}
+let aiAnswer=null;
+
+/* ─────────────────── renderers ─────────────────── */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function render(){
+  $("flowPill").textContent=FLOWS[S.flow].short;
+  $("qTotal").textContent=totalQueue();
+  renderRibbon(); renderMain(); renderCopilot(); renderOverlays();
+}
+function renderFeed(){
+  $("aiFeed").innerHTML = feed.slice(0,30).map(f=>`
+    <div class="feedRow">
+      <span class="num mono" style="color:var(--faint);flex-shrink:0">${f.t}</span>
+      <span style="width:6px;height:6px;border-radius:9999px;margin-top:5px;flex-shrink:0;
+        background:${f.kind==="ok"?"var(--ok)":f.kind==="warn"?"var(--wait)":f.kind==="you"?"var(--ink)":"var(--ai)"}"></span>
+      <span>${esc(f.txt)}</span>
+    </div>`).join("");
+}
+
+function renderRibbon(){
+  const r=$("ribbon");
+  if(!S.patient && !S.isNew){ r.innerHTML=""; return; }
+  const p=S.patient;
+  const ord=stepOrder();
+  const names={patient:S.isNew&&!p?"Register":"Patient",appointment:"Appointment",billing:"Billing"};
+  const curKey = (S.stage==="register"||S.stage==="find")?"patient":S.stage==="done"?"__done":S.stage;
+  const doneIdx = curKey==="__done"?99:ord.indexOf(curKey);
+  const steps=ord.map((k,i)=>{
+    const cls=i<doneIdx?"done":(i===doneIdx?"on":"");
+    return `<span class="step ${cls}">${i<doneIdx?"✓ ":""}${names[k]}</span>`;
+  }).join(`<span style="color:var(--border);font-size:11px">→</span>`);
+  const chips=[];
+  if(p&&p.member)  chips.push(`<span class="bChip ${S.benefits.member?'ok':''}">${S.benefits.member?"✓ ":""}GOLD · ${p.member.left} left</span>`);
+  if(S.benefits.coupon) chips.push(`<span class="bChip ok">✓ MONSOON50</span>`);
+  if(S.benefits.corporate) chips.push(`<span class="bChip ok">✓ ${esc(S.benefits.corporate.split(" ")[0])} cashless</span>`);
+  if(S.benefits.partner) chips.push(`<span class="bChip ok">✓ ref · ${esc(S.benefits.partner.split(",")[0])}</span>`);
+  if(S.benefits.pkg) chips.push(`<span class="bChip ok">✓ package</span>`);
+  if(p&&p.review) chips.push(`<span class="bChip ok">✓ review window till ${p.review.till}</span>`);
+  if(S.future) chips.push(`<span class="bChip ok">✓ future: ${S.future.day} ${S.future.slot}</span>`);
+  if(S.tokenIssued) chips.push(`<span class="bChip" style="border-color:${S.tokenPaid?'rgba(49,143,90,.45)':'rgba(203,136,46,.5)'};color:${S.tokenPaid?'var(--ok)':'var(--wait)'}">token ${S.tokenNo} · ${S.tokenPaid?"PAID":"UNPAID"}</span>`);
+  r.innerHTML=`
+  <div style="display:flex;align-items:center;gap:14px;padding:10px 26px;border-bottom:1px solid var(--hairline);background:var(--wash)">
+    ${p?`
+    <div style="width:34px;height:34px;border-radius:9999px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#404040;flex-shrink:0">${esc(p.name.split(" ").map(x=>x[0]).join("").slice(0,2))}</div>
+    <div style="display:flex;flex-direction:column">
+      <span style="font-size:14px;font-weight:600;line-height:17px">${esc(p.name)}</span>
+      <span class="num" style="font-size:11.5px;color:var(--muted)">${p.age} y · ${p.sex} · <span class="mono">${p.uhid}</span> · ${esc(p.mobile)}</span>
+    </div>
+    <button class="btnS" style="height:26px;font-size:11px" onclick="openEdit()" title="Ramesh has update permission — edits are audit-logged">Edit record</button>
+    `:`
+    <div style="width:34px;height:34px;border-radius:9999px;border:1.5px dashed var(--faint);display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--faint);flex-shrink:0">+</div>
+    <span style="font-size:13.5px;font-weight:600;color:var(--dim)">New walk-in — registering…</span>`}
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${chips.join("")}</div>
+    <div style="flex-grow:1"></div>
+    ${steps}
+    <button class="btnS" style="height:26px;font-size:11px" onclick="releasePatient()">Clear <span class="k">Esc</span></button>
+  </div>`;
+}
+
+/* ── stage: FIND ── */
+function vFind(){
+  const q=S.search.trim().toLowerCase();
+  const hits=Object.values(PATIENTS).filter(p=>!q||p.name.toLowerCase().includes(q)||p.mobile.replace(/\s/g,"").includes(q.replace(/\s/g,""))||p.uhid.toLowerCase().includes(q));
+  const why=p=>{
+    const w=[];
+    if(q&&p.mobile.replace(/\s/g,"").includes(q.replace(/\s/g,""))) w.push(["SAME MOBILE","ok"]);
+    if(q&&p.name.toLowerCase().includes(q)) w.push(["NAME MATCHES","ok"]);
+    if(q&&p.uhid.toLowerCase().includes(q)) w.push(["UHID","ok"]);
+    if(!w.length) w.push(["ON FILE","dim"]);
+    return w.map(([t,k])=>`<span class="why" style="${k==="ok"?"background:rgba(49,143,90,.12);color:var(--ok)":"background:var(--panel);color:var(--muted)"}">${t}</span>`).join("");
+  };
+  const tag=p=>p.member?`<span class="bChip ok" style="height:20px;font-size:10px">GOLD</span>`
+    :p.review?`<span class="bChip ok" style="height:20px;font-size:10px">review till ${p.review.till}</span>`
+    :p.corp?`<span class="bChip" style="height:20px;font-size:10px">corporate</span>`:"";
+  return `
+  <div style="max-width:880px;margin:0 auto">
+    <div style="font-size:17px;font-weight:600;letter-spacing:-.01em">Have they been here before?</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-top:3px">Search first, always — the register form is what you get when the search finds nobody.</div>
+
+    <div style="position:relative;display:flex;align-items:center;margin-top:16px">
+      <svg style="position:absolute;left:17px" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="findIn" class="inp" style="height:54px;padding-left:46px;font-size:16px;border-radius:11px" placeholder="mobile, name, or an old UHID"
+        value="${esc(S.search)}" oninput="S.search=this.value;render();document.getElementById('findIn').focus();var v=this.value;var el=document.getElementById('findIn');el.setSelectionRange(v.length,v.length)"/>
+      <span class="k" style="position:absolute;right:15px">/</span>
+    </div>
+
+    <div style="display:flex;gap:7px;margin-top:12px;align-items:center">
+      <span class="lbl" style="margin-right:2px">try a story</span>
+      <button class="chip" style="height:26px;font-size:11.5px" onclick="S.search='98350';render()">returning GOLD member</button>
+      <button class="chip" style="height:26px;font-size:11.5px" onclick="S.search='meena';render()">free review revisit</button>
+      <button class="chip" style="height:26px;font-size:11.5px" onclick="S.search='rakesh';render()">corporate cashless</button>
+      <button class="chip" style="height:26px;font-size:11.5px;border-color:var(--primary);font-weight:600" onclick="startNew(true)">new walk-in <span class="k">Ctrl N</span></button>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:18px">
+      ${hits.map((p,i)=>`
+      <div style="display:flex;align-items:center;gap:14px;padding:12px 15px;border-radius:11px;border:1px solid ${i===0&&q?"var(--primary)":"var(--border)"};background:${i===0&&q?"var(--wash)":"var(--ground)"}">
+        <div style="width:36px;height:36px;border-radius:9999px;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--muted);flex-shrink:0">${p.name.split(" ").map(x=>x[0]).join("").slice(0,2)}</div>
+        <div style="display:flex;flex-direction:column;width:170px">
+          <span style="font-size:14px;font-weight:600">${p.name} ${tag(p)}</span>
+          <span class="num" style="font-size:11.5px;color:var(--muted)">${p.age} y · ${p.sex} · ${p.mobile}</span>
+        </div>
+        <span class="mono num" style="font-size:13px;font-weight:600;width:118px">${p.uhid}</span>
+        <div style="display:flex;gap:6px;flex-grow:1">${why(p)}</div>
+        <span class="num" style="font-size:11.5px;color:var(--muted)">last ${p.last}</span>
+        <button class="btnS ${i===0&&q?"dark":""}" onclick="pick('${p.id}')">This is them ${i===0&&q?'<span class="k onDark">Enter</span>':""}</button>
+      </div>`).join("")}
+      ${hits.length===0?`<div style="padding:26px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:11px">
+        Nobody matches “${esc(S.search)}”. <button style="color:var(--ink);font-weight:600;text-decoration:underline" onclick="startNew(true)">Register new (Ctrl N)</button> — enabled because a search has actually run.</div>`:""}
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:26px">
+      ${[["Registered today","34"],["Collected","₹18,450"],["Avg time at counter","2 m 41 s"],["Waiting hall now",String(totalQueue())]]
+        .map(([l,v])=>`<div class="card" style="padding:11px 14px"><div class="lbl">${l}</div><div class="num" style="font-size:19px;font-weight:600;margin-top:4px">${v}</div></div>`).join("")}
+    </div>
+  </div>`;
+}
+
+/* ── stage: REGISTER ── */
+function vRegister(){
+  const d=S.draft;
+  const b=S.benefits, pn=S.panels;
+  const benefitRow=(key,title,sub,applied,body)=>`
+    <div class="card" style="overflow:hidden">
+      <button style="display:flex;align-items:center;gap:10px;width:100%;padding:11px 14px;text-align:left" onclick="togglePanel('${key}')">
+        <span style="width:18px;height:18px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+          ${applied?"background:rgba(49,143,90,.12);color:var(--ok)":"border:1.5px solid var(--border);color:transparent"}">✓</span>
+        <span style="display:flex;flex-direction:column">
+          <span style="font-size:13px;font-weight:600">${title}</span>
+          <span style="font-size:11px;color:var(--muted)">${sub}</span>
+        </span>
+        <span style="flex-grow:1"></span>
+        <span style="font-size:11px;color:var(--faint)">${pn[key]?"close":"open"}</span>
+      </button>
+      ${pn[key]?`<div style="padding:0 14px 13px 42px">${body}</div>`:""}
+    </div>`;
+  return `
+  <div style="max-width:880px;margin:0 auto">
+    <div style="display:flex;align-items:baseline;gap:12px">
+      <span style="font-size:17px;font-weight:600;letter-spacing:-.01em">Four fields make a UHID</span>
+      <span style="font-size:12.5px;color:var(--muted)">everything else can wait, or ride on a benefit chip below</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.7fr 1.2fr .8fr 1fr;gap:12px;margin-top:15px">
+      <div class="fld"><span class="lbl">Full name</span><input class="inp" value="${esc(d.name)}" oninput="bindDraft('name',this.value)"/></div>
+      <div class="fld"><span class="lbl">Mobile</span><input class="inp num" value="${esc(d.mobile)}" oninput="bindDraft('mobile',this.value)"/></div>
+      <div class="fld"><span class="lbl">Age or DOB</span><input class="inp num" value="${esc(d.age)}" oninput="bindDraft('age',this.value)"/></div>
+      <div class="fld"><span class="lbl">Sex</span>
+        <div style="display:flex;gap:5px;height:42px">
+          ${["F","M","Other"].map(x=>`<button onclick="setSex('${x}')" style="flex-grow:1;border-radius:9px;border:1px solid ${d.sex===x?"var(--primary)":"var(--border)"};background:${d.sex===x?"var(--primary)":"var(--ground)"};color:${d.sex===x?"var(--primary-fg)":"var(--dim)"};font-size:13px;font-weight:${d.sex===x?"600":"400"}">${x}</button>`).join("")}
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:12px;margin-top:13px;padding:10px 14px;border-radius:10px;background:var(--panel);border:1px solid var(--border)">
+      <span style="font-size:12px;color:#404040">ABHA — a scan or one Aadhaar OTP, never dictation across a counter.</span>
+      <div style="flex-grow:1"></div>
+      ${d.abha?`<span class="bChip ok">✓ ABHA 91-1042-…-8817 linked</span>`
+        :`<button class="btnS" onclick="makeAbha()">Create ABHA · Aadhaar OTP</button>
+          <button class="btnS">Scan ABHA QR</button>`}
+    </div>
+
+    <div style="display:flex;align-items:baseline;gap:11px;margin-top:22px">
+      <span style="font-size:14px;font-weight:600">Benefits & links — mark now, or at billing</span>
+      <span style="font-size:12px;color:var(--faint)">whatever is marked here prices the bill automatically later</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px">
+      ${benefitRow("member","Membership","apply benefits only — enrolment is not on this counter",b.member,`
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="inp" style="height:36px;width:170px" placeholder="member no · M-2211"/>
+          <button class="btnS dark" onclick="applyMember()">Verify & apply</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;margin-top:9px;font-size:11px;color:var(--muted)">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2.4" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          <span style="text-decoration:line-through">Enrol new membership</span> — not in Ramesh's permissions; front-office manager enrols.
+        </div>`)}
+      ${benefitRow("coupon","Coupon / voucher","single-use codes, campaign vouchers",!!b.coupon,`
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="inp mono" style="height:36px;width:170px" value="MONSOON50"/>
+          <button class="btnS dark" onclick="applyCoupon()">Validate</button>
+        </div>`)}
+      ${benefitRow("corp","Corporate / cashless","employer OPD schemes, letters checked here",!!b.corporate,`
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${["Tata Steel OPD scheme","CCL staff scheme","Usha Martin OPD"].map(v=>`<button class="btnS" style="justify-content:flex-start" onclick="applyCorp('${v}')">${v}</button>`).join("")}
+        </div>`)}
+      ${benefitRow("partner","Channel partner referral","links the patient to the referrer's ledger",!!b.partner,`
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${PARTNERS.map(v=>`<button class="btnS" style="justify-content:flex-start" onclick="applyPartner('${esc(v)}')">${esc(v)}</button>`).join("")}
+        </div>`)}
+      ${benefitRow("pkg","Care package","annual packages that cover consults",b.pkg,`
+        <button class="btnS dark" onclick="applyPkg()">Diabetes Care Annual — verify & apply</button>`)}
+    </div>
+
+    <div style="display:flex;align-items:center;gap:14px;margin-top:24px;padding-top:14px;border-top:1px solid var(--hairline)">
+      <button class="btnP" onclick="doRegister()" ${d.name&&d.mobile&&d.age&&d.sex?"":"disabled"}>
+        Register & continue → ${stepOrder()[1]==="billing"?"Billing":"Appointment"} <span class="k onDark">Ctrl ⏎</span>
+      </button>
+      <span style="font-size:11.5px;color:var(--muted);max-width:420px;line-height:16px">
+        Prints the card, sends the UHID by Hindi SMS, and carries this person straight into the next step — the session never drops.
+      </span>
+    </div>
+  </div>`;
+}
+
+/* ── stage: APPOINTMENT ── */
+function vAppt(){
+  const q=S.symptomQ.trim().toLowerCase();
+  const match = q? SYMPTOMS.filter(s=>s.k.some(k=>q.includes(k))) : [];
+  const ranked = match.length? [...new Set(match.flatMap(m=>m.d))] : Object.keys(DEPTS);
+  const p=S.patient;
+  if(S.appt){ /* assigned — confirmation */
+    const a=S.appt, D=DEPTS[a.dept];
+    return `
+    <div style="max-width:880px;margin:0 auto">
+      <div style="display:flex;align-items:center;gap:12px">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#318f5a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>
+        <div>
+          <div style="font-size:16px;font-weight:600">${a.doctor?a.doctor:a.dept+" — pool queue"} · Room ${a.room}, ${D.floor}</div>
+          <div class="num" style="font-size:12.5px;color:var(--muted)">${a.ahead} ahead · ~${a.wait} min · around ${a.eta}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;margin-top:18px;align-items:flex-start">
+        <div class="tok">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:10px;color:var(--muted)">CRK MULTISPECIALITY</span>
+            ${S.tokenIssued?`<span class="stamp ${S.tokenPaid?"paid":"unpaid"}" style="font-size:10px;padding:2px 8px">${S.tokenPaid?"PAID":"UNPAID"}</span>`
+              :`<span style="font-size:10px;color:var(--faint)">token at billing</span>`}
+          </div>
+          <div class="num" style="font-size:34px;font-weight:800;letter-spacing:.02em;margin-top:6px">${S.tokenIssued?S.tokenNo:"— — —"}</div>
+          <div style="font-size:11px;margin-top:4px">${esc(p.name)} · ${p.age}/${p.sex}<br>${p.uhid} · 30-Aug</div>
+          <div style="border-top:1px dashed var(--border);margin-top:8px;padding-top:7px;font-size:10.5px;line-height:15px">
+            ${a.dept} · Room ${a.room} · ${D.floor}<br>~${a.wait} min · approx ${a.eta}
+          </div>
+          <div class="hi" style="font-size:11px;margin-top:6px;color:#404040">पर्ची सँभाल कर रखिए · कक्ष ${a.room}</div>
+        </div>
+        <div style="flex-grow:1;display:flex;flex-direction:column;gap:9px">
+          ${S.flow==="A2"&&!S.tokenIssued?`<div class="card" style="padding:11px 14px;border-color:rgba(203,136,46,.4);background:rgba(203,136,46,.05);font-size:12px;line-height:17px">
+            <strong>Lane 2 is on:</strong> she is in the queue but the physical token prints only when the bill settles. The supervisor flips lanes from the flow pill above.</div>`:""}
+          ${S.flow==="A1"&&S.tokenIssued&&!S.tokenPaid?`<div class="card" style="padding:11px 14px;font-size:12px;line-height:17px">
+            <strong>Lane 1:</strong> token is out with an <span class="stamp unpaid" style="font-size:9px;padding:1px 6px">UNPAID</span> outline — never a filled black block (thermal heads curl and wear). Billing flips it to PAID on the board.</div>`:""}
+          ${S.flow==="B"?`<div class="card" style="padding:11px 14px;font-size:12px;line-height:17px">
+            <strong>Bill-first flow:</strong> already paid, so the token leaves the printer PAID and she walks straight up.</div>`:""}
+          <div class="card" style="padding:11px 14px;font-size:12px;color:var(--dim)">Board updated · ${a.doctor||a.dept} queue now shows ${esc(p.name.split(" ")[0])} at position ${a.ahead+1}.</div>
+          <div style="display:flex;gap:10px;margin-top:2px">
+            ${S.flow!=="B"?`<button class="btnP" onclick="S.stage='billing';render()">Continue → Billing <span class="k onDark">Ctrl ⏎</span></button>`
+              :`<button class="btnP" onclick="S.stage='done';render()">Finish <span class="k onDark">Ctrl ⏎</span></button>`}
+            <button class="btnG" onclick="S.appt=null;S.tokenIssued=false;S.tokenPaid=false;render()">Re-assign</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+  const rows = ranked.map((dname,ri)=>{
+    const D=DEPTS[dname];
+    const wait=Math.min(...D.docs.map(x=>x.q))*D.avg;
+    return `
+    <div class="card" style="padding:13px 15px;${ri===0&&match.length?"border-color:var(--primary)":""}">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:14px;font-weight:600">${dname}</span>
+        ${ri===0&&match.length?`<span class="why" style="background:var(--ai-wash);color:var(--ai)">AGENT'S FIRST PICK</span>`:""}
+        ${ri===1&&match.length?`<span class="why" style="background:var(--panel);color:var(--muted)">ALSO FITS</span>`:""}
+        <span class="num" style="font-size:11.5px;color:var(--muted)">${D.floor} · consult ${rup(D.fee)}</span>
+        <div style="flex-grow:1"></div>
+        <span class="num" style="font-size:11.5px;color:var(--muted)">pool wait ~${wait} min</span>
+        <button class="btnS" onclick="assign('${dname}')">Join department queue</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
+        ${D.docs.map(doc=>{
+          const w=doc.q*D.avg;
+          return `<div class="qrow">
+            <span style="font-size:13px;font-weight:500;width:150px">${doc.n}</span>
+            <span class="num" style="font-size:11.5px;color:var(--muted);width:70px">Room ${doc.room}</span>
+            <div style="display:flex;align-items:center;gap:5px;width:130px">
+              ${Array.from({length:Math.min(doc.q,10)},()=>`<span style="width:5px;height:14px;border-radius:2px;background:${doc.q>7?"var(--wait)":"var(--border)"}"></span>`).join("")}
+              <span class="num" style="font-size:11px;color:var(--muted);margin-left:3px">${doc.q} in queue</span>
+            </div>
+            <span class="num" style="font-size:12px;font-weight:600;width:130px">~${w} min · ${fmt(clockMin+w)}</span>
+            <div style="flex-grow:1"></div>
+            <button class="btnS dark" onclick="assign('${dname}','${doc.n}')">Assign</button>
+          </div>`;}).join("")}
+      </div>
+    </div>`;}).join("");
+  return `
+  <div style="max-width:920px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="step ${S.apptTab==="walkin"?"on":""}" onclick="setApptTab('walkin')">Walk-in now</button>
+      <button class="step ${S.apptTab==="future"?"on":""}" onclick="setApptTab('future')">Future appointment</button>
+      <span style="font-size:11.5px;color:var(--faint)">booking a future slot never drops today's walk-in session</span>
+    </div>
+    ${S.apptTab==="future"? vFuture() : `
+    <div style="margin-top:16px">
+      <div style="display:flex;align-items:baseline;gap:11px">
+        <span style="font-size:16px;font-weight:600;letter-spacing:-.01em">What brings ${p?esc(p.name.split(" ")[0]):"them"} in?</span>
+        <span style="font-size:12px;color:var(--muted)">type the symptom in their words — the agent maps it to a department</span>
+      </div>
+      <input id="sympIn" class="inp" style="height:48px;margin-top:11px;font-size:15px" placeholder="chest pain · bukhar · knee · BP-sugar…"
+        value="${esc(S.symptomQ)}" oninput="setSymptom(this.value)"/>
+      <div style="display:flex;gap:7px;margin-top:9px">
+        ${["chest pain","fever","knee pain","BP sugar","pregnancy"].map(x=>`<button class="chip" style="height:25px;font-size:11px" onclick="setSymptom('${x}')">${x}</button>`).join("")}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:15px">${rows}</div>
+    </div>`}
+  </div>`;
+}
+function vFuture(){
+  const days=["Mon 31-Aug","Tue 01-Sep","Wed 02-Sep"];
+  const slots=["09:20","09:40","11:00","11:20","16:40","17:00"];
+  return `
+  <div style="margin-top:16px">
+    <div style="font-size:15px;font-weight:600">Future slot — Dr. Priya Nair · Gynaecology</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:2px">asked for mid-walk-in — book it and fall straight back to today's flow</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:13px;max-width:700px">
+      ${days.map(d=>`<div class="card" style="padding:11px 13px">
+        <div class="lbl" style="margin-bottom:8px">${d}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${slots.map(s=>`<button class="btnS" style="height:28px;font-size:11.5px" onclick="bookFuture('${d}','${s}')">${s}</button>`).join("")}
+        </div>
+      </div>`).join("")}
+    </div>
+  </div>`;
+}
+
+/* ── stage: BILLING ── */
+function vBill(){
+  const c=calcBill(); const p=S.patient;
+  const zero=c.total===0;
+  return `
+  <div style="max-width:760px;margin:0 auto">
+    <div style="display:flex;align-items:baseline;gap:12px">
+      <span style="font-size:17px;font-weight:600;letter-spacing:-.01em">The price is already worked out</span>
+      <span style="font-size:12.5px;color:var(--muted)">from what was marked at register — or add it right here, late is fine</span>
+    </div>
+
+    ${p&&p.review?`<div class="card" style="margin-top:14px;padding:12px 15px;border-color:rgba(49,143,90,.45);background:rgba(49,143,90,.05);display:flex;align-items:center;gap:11px">
+      <span class="stamp zero" style="font-size:11px">₹0</span>
+      <span style="font-size:12.5px;line-height:17px"><strong>Review visit.</strong> Seen by ${p.review.doc} on ${p.review.seen}; the free window runs to ${p.review.till}. Nothing to collect — the token goes straight out.</span>
+    </div>`:""}
+
+    <div class="card" style="margin-top:14px;overflow:hidden">
+      ${c.L.map(([l,v],i)=>`
+        <div style="display:flex;justify-content:space-between;padding:11px 17px;${i>0?"border-top:1px solid var(--hairline)":""};font-size:13px">
+          <span style="color:${v<0?"var(--ok)":"var(--ink)"}">${esc(l)}</span>
+          <span class="num mono" style="font-weight:600;color:${v<0?"var(--ok)":"var(--ink)"}">${v<0?"−":""}${rup(Math.abs(v))}</span>
+        </div>`).join("")}
+      <div style="display:flex;justify-content:space-between;padding:13px 17px;border-top:1px solid var(--ink);background:var(--wash)">
+        <span style="font-size:14px;font-weight:700">To collect</span>
+        <span class="num mono" style="font-size:19px;font-weight:700">${rup(c.total)}</span>
+      </div>
+    </div>
+
+    ${!zero?`
+    <div style="display:flex;gap:9px;margin-top:15px">
+      ${[["cash","Cash","1"],["upi","UPI","2"],["card","Card","3"]].map(([id,l,k])=>`
+        <button class="btnG" style="flex-grow:1;height:52px;justify-content:center;font-size:14px;font-weight:600" onclick="settle('${id}')">${l} <span class="k">${k}</span></button>`).join("")}
+    </div>
+    <div style="font-size:11.5px;color:var(--faint);margin-top:8px">One key settles it — the drawer strip up top is a live precondition; no open cashier session, no billing.</div>
+    `:`
+    <button class="btnP" style="margin-top:15px;height:50px;font-size:14.5px" onclick="settle('${c.mode}')">
+      ${c.mode==="corp"?"Bill to corporate & print token":"Generate token · ₹0"} <span class="k onDark">Ctrl ⏎</span>
+    </button>`}
+
+    <div style="margin-top:22px;padding-top:13px;border-top:1px solid var(--hairline)">
+      <div style="display:flex;align-items:baseline;gap:10px">
+        <span style="font-size:13px;font-weight:600">Missed at register?</span>
+        <span style="font-size:11.5px;color:var(--faint)">benefits attach here too — the bill reprices instantly</span>
+      </div>
+      <div style="display:flex;gap:7px;margin-top:9px;flex-wrap:wrap">
+        ${!S.benefits.member&&p&&p.member?`<button class="btnS" onclick="applyMember()">Apply GOLD membership</button>`:""}
+        ${!S.benefits.coupon?`<button class="btnS" onclick="applyCoupon()">Coupon MONSOON50</button>`:""}
+        ${!S.benefits.partner?`<button class="btnS" onclick="applyPartner('Sahu Medical Store')">Link channel partner</button>`:""}
+        ${!S.benefits.corporate?`<button class="btnS" onclick="applyCorp('Tata Steel OPD scheme')">Corporate cashless</button>`:""}
+        ${p&&!p.abha?`<button class="btnS" onclick="S.patient.abha=true;pushFeed('ABHA queued for '+S.patient.name+' — OTP on their mobile','do');render()">Create ABHA now</button>`:""}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ── stage: DONE ── */
+function vDone(){
+  const p=S.patient, a=S.appt, c=S.bill.calc||calcBill();
+  const mins=Math.max(1,clockMin-(S.startedAt||clockMin));
+  return `
+  <div style="max-width:820px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:14px">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#318f5a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>
+      <div>
+        <div style="font-size:17px;font-weight:600">${esc(p.name)} is done at the counter</div>
+        <div class="num" style="font-size:12.5px;color:var(--muted)">${mins} min here · ${c.total===0?"nothing collected":"collected "+rup(c.total)+" by "+S.bill.tender} · token ${S.tokenNo||"—"} ${S.tokenPaid?"PAID":""}</div>
+      </div>
+      <div style="flex-grow:1"></div>
+      <div style="text-align:right">
+        <div class="lbl">UHID</div>
+        <div class="mono num" style="font-size:23px;font-weight:700">${p.uhid}</div>
+      </div>
+    </div>
+
+    ${a?`<div class="hi" style="font-size:20px;font-weight:500;margin-top:20px;padding:15px 19px;border-radius:12px;border:2px solid var(--primary)">
+      आपका टोकन <span class="mono num" style="font-weight:700">${S.tokenNo}</span> है। ${DEPTS[a.dept].floor==="Ground"?"इसी मंज़िल पर":"सीढ़ियों से "+DEPTS[a.dept].floor} कक्ष <span class="num">${a.room}</span> — लगभग <span class="num">${a.wait}</span> मिनट।
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:8px">“Your token is ${S.tokenNo}. Room ${a.room}, ${DEPTS[a.dept].floor} — about ${a.wait} minutes.” — say it, then hand the slip.</div>`:""}
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-top:20px">
+      <div class="card" style="padding:12px 14px">
+        <div class="lbl" style="margin-bottom:6px">Sent to their phone</div>
+        <div style="font-size:13px;font-weight:600">Token + directions, in Hindi</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">The copy that survives a lost slip.</div>
+      </div>
+      <div class="card" style="padding:12px 14px">
+        <div class="lbl" style="margin-bottom:6px">Board</div>
+        <div style="font-size:13px;font-weight:600">${a?`${a.doctor||a.dept} · position ${a.ahead+1}`:"—"}</div>
+        <div class="num" style="font-size:11px;color:var(--muted);margin-top:3px">${a?`called around ${a.eta}`:""}</div>
+      </div>
+      ${S.future?`<div class="card" style="padding:12px 14px;border-color:rgba(49,143,90,.4)">
+        <div class="lbl" style="margin-bottom:6px;color:var(--ok)">Also booked</div>
+        <div style="font-size:13px;font-weight:600">${S.future.day} · ${S.future.slot}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">${S.future.doc} · reminder T-1 day</div>
+      </div>`:`<div class="card" style="padding:12px 14px;${p.addr?"":"border-color:rgba(203,136,46,.4);background:rgba(203,136,46,.05)"}">
+        <div class="lbl" style="margin-bottom:6px;${p.addr?"":"color:var(--wait)"}">${p.addr?"On file":"One thing missing"}</div>
+        <div style="font-size:13px;font-weight:600">${p.addr?esc(p.addr):"No address yet"}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">${p.addr?"Address confirmed this visit.":"Fine today — it is on their QR page and your follow-up list."}</div>
+      </div>`}
+    </div>
+
+    <div style="display:flex;align-items:center;gap:11px;margin-top:24px;padding-top:14px;border-top:1px solid var(--hairline)">
+      <button class="btnP" onclick="releasePatient()">Next patient <span class="k onDark">Esc</span></button>
+      <button class="btnG" style="height:38px">Reprint slip</button>
+      <div style="flex-grow:1"></div>
+      <span style="font-size:11.5px;color:var(--faint)">Esc clears everything — nothing carries to the next person.</span>
+    </div>
+  </div>`;
+}
+
+function renderMain(){
+  const v = S.stage==="find"?vFind():S.stage==="register"?vRegister():S.stage==="appointment"?vAppt():S.stage==="billing"?vBill():vDone();
+  $("main").innerHTML=v;
+  if(S.stage==="find"){const el=$("findIn"); if(el&&document.activeElement!==el&&!ovl) el.focus();}
+}
+
+/* ── copilot cards ── */
+function renderCopilot(){
+  const p=S.patient; const cards=[];
+  if(aiAnswer) cards.push(`<div class="aiCard"><div style="font-size:12px;line-height:17px">${esc(aiAnswer)}</div></div>`);
+  if(S.stage==="find"){
+    cards.push(`<div class="aiCard"><div style="font-size:12px;line-height:17px"><strong>Morning read:</strong> 36 waiting, Paediatrics is quiet (~10 min), Ortho is heavy. Sunday surge expected 11:30–13:00.</div></div>`);
+    cards.push(`<div class="aiCard"><div style="font-size:12px;line-height:17px">I pre-pull a file the moment a mobile number matches — pick a story chip to watch it.</div></div>`);
+  }
+  if(S.stage==="register"){
+    cards.push(`<div class="aiCard"><div style="font-size:12px;line-height:17px"><strong>Duplicate watch:</strong> ${esc(S.draft.mobile||"this mobile")} matches no existing UHID — clean to register. If it did, I'd stop you before the duplicate exists, not after.</div></div>`);
+    if(!S.draft.abha) cards.push(`<div class="aiCard"><div style="font-size:12px;line-height:17px">ABHA in one OTP while you type the rest?</div><div style="margin-top:7px"><button class="aiAct" onclick="makeAbha()">Create ABHA</button></div></div>`);
+  }
+  if(p&&p.member&&!S.benefits.member) cards.push(`<div class="aiCard"><div style="font-size:12px;line-height:17px"><strong>${esc(p.name.split(" ")[0])} is a GOLD member</strong> — ${p.member.left} visits left, 20% off consults. Apply it?</div><div style="margin-top:7px"><button class="aiAct" onclick="applyMember()">Apply membership</button></div></div>`);
+  if(p&&p.review&&S.stage!=="done") cards.push(`<div class="aiCard"><div style="font-size:12px;line-height:17px"><strong>Free review window.</strong> Seen by ${p.review.doc} on ${p.review.seen} — free until ${p.review.till}. I'll zero the bill and the token prints itself.</div>${S.stage==="appointment"&&!S.appt?`<div style="margin-top:7px"><button class="aiAct" onclick="assign('General Medicine','Dr. R. Iyer')">Queue to Dr. Iyer again</button></div>`:""}</div>`);
+  if(S.stage==="appointment"&&!S.appt){
+    const q=S.symptomQ.trim().toLowerCase();
+    const m=q?SYMPTOMS.find(s=>s.k.some(k=>q.includes(k))):null;
+    if(m){
+      const d1=m.d[0],D1=DEPTS[d1];const alt=m.d[1];
+      const best=D1.docs.reduce((a,b)=>a.q<=b.q?a:b);
+      cards.push(`<div class="aiCard"><div style="font-size:12px;line-height:17px"><strong>${esc(m.t)}${p?" + age "+p.age:""}</strong> → ${d1} first. ${best.n} is the shorter line (~${best.q*D1.avg} min).${alt?` If they want sooner, ${alt} also fits.`:""}</div><div style="margin-top:7px"><button class="aiAct" onclick="assign('${d1}','${best.n}')">Assign ${best.n.split(" ").slice(-1)[0]}</button></div></div>`);
+    } else if(!p||!p.review){
+      cards.push(`<div class="aiCard"><div style="font-size:12px;line-height:17px">Type the complaint in the patient's own words — Hindi works. I rank departments by fit, then doctors by live queue.</div></div>`);
+    }
+  }
+  if(S.stage==="billing"&&!S.bill.settled){
+    const c=calcBill();
+    if(c.total>0) cards.push(`<div class="aiCard"><div style="font-size:12px;line-height:17px"><strong>${rup(c.total)} ready.</strong> ${p&&p.member?"Membership applied. ":""}${p&&p.id==="sunita"?"She paid UPI the last 4 visits — key 2.":"Press 1 / 2 / 3 for cash / UPI / card."}</div></div>`);
+  }
+  if(S.stage==="done") cards.push(`<div class="aiCard"><div style="font-size:12px;line-height:17px"><strong>While you finish:</strong> SMS sent, board updated${S.future?", future slot held":""}${p&&!p.addr?", missing address queued to their QR page":""}. Next in your line: a lab-report query — likely the enquiry desk, I'll redirect if so.</div></div>`);
+  $("aiCards").innerHTML=cards.join("");
+  renderFeed();
+}
+
+/* ── overlays ── */
+function renderOverlays(){
+  const O=$("overlays");
+  if(!ovl){O.innerHTML="";renderMainFocus();return;}
+  if(ovl==="palette"){
+    const q=(window._palQ||"").toLowerCase();
+    const acts=palActions().filter(a=>!q||a.t.toLowerCase().includes(q));
+    O.innerHTML=`<div class="ovl" onclick="if(event.target===this){window._palQ='';closeOvl()}">
+      <div class="card" style="width:560px;overflow:hidden;box-shadow:0 18px 60px rgba(0,0,0,.25)" onclick="event.stopPropagation()">
+        <div style="display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--hairline)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input id="palIn" placeholder="Type a command…" style="border:none;flex-grow:1;font-size:14.5px" value="${esc(window._palQ||"")}"
+            oninput="window._palQ=this.value;palSel=0;renderOverlays();var el=document.getElementById('palIn');el.focus();el.setSelectionRange(el.value.length,el.value.length)"/>
+          <span class="k">esc</span>
+        </div>
+        <div style="padding:7px;max-height:380px;overflow-y:auto">
+          ${acts.map((a,i)=>`<div class="palItem ${i===palSel?"sel":""}" onclick="palRun(${i})">
+            <span>${a.t}</span><span style="flex-grow:1"></span>${a.k?`<span class="k">${a.k}</span>`:""}</div>`).join("")}
+          ${acts.length===0?`<div style="padding:14px;color:var(--faint);font-size:13px">Nothing matches.</div>`:""}
+        </div>
+        <div style="display:flex;gap:14px;padding:9px 16px;border-top:1px solid var(--hairline);font-size:10.5px;color:var(--faint)">
+          <span><span class="k">↑↓</span> move</span><span><span class="k">⏎</span> run</span>
+          <span style="flex-grow:1"></span><span>global: <span class="k">Ctrl K</span> <span class="k">Q</span> <span class="k">Esc</span> <span class="k">F2</span> · billing <span class="k">1</span><span class="k">2</span><span class="k">3</span></span>
+        </div>
+      </div></div>`;
+    const i=$("palIn"); if(i){i.focus();}
+    window._palActs=acts;
+    return;
+  }
+  if(ovl==="flow"){
+    O.innerHTML=`<div class="ovl" onclick="if(event.target===this)closeOvl()">
+      <div class="card" style="width:540px;padding:20px 22px" onclick="event.stopPropagation()">
+        <div style="display:flex;align-items:center;gap:9px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#171717" stroke-width="2.2" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          <span style="font-size:15px;font-weight:600">Counter flow — a supervisor setting</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:17px">Locked to <span class="mono" style="font-size:11px">counter_supervisor</span> in production; unlocked here so you can preview all three. Tokens never print before billing unless the supervisor chose lane 1.</div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:15px">
+          ${Object.entries(FLOWS).map(([k,f])=>`
+            <button onclick="setFlow('${k}')" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;text-align:left;
+              border:1px solid ${S.flow===k?"var(--primary)":"var(--border)"};background:${S.flow===k?"var(--wash)":"var(--ground)"}">
+              <span style="width:16px;height:16px;border-radius:9999px;border:5px solid ${S.flow===k?"var(--primary)":"var(--border)"};flex-shrink:0"></span>
+              <span style="display:flex;flex-direction:column">
+                <span style="font-size:13px;font-weight:600">${f.label}</span>
+                <span style="font-size:11px;color:var(--muted)">${k==="A1"?"Token leaves at queueing with an UNPAID outline; billing flips it.":k==="A2"?"Queued immediately, physical token held until the bill settles.":"Money first — the token always leaves the printer PAID."}</span>
+              </span>
+            </button>`).join("")}
+        </div>
+      </div></div>`;
+    return;
+  }
+  if(ovl==="queues"){
+    O.innerHTML=`<div class="ovl" onclick="if(event.target===this)closeOvl()">
+      <div class="card" style="width:680px;padding:20px 22px;max-height:78vh;overflow-y:auto" onclick="event.stopPropagation()">
+        <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:15px;font-weight:600">Every queue, right now</span>
+        <span class="num" style="font-size:12px;color:var(--muted)">${totalQueue()} waiting · ${fmt(clockMin)}</span>
+        <span style="flex-grow:1"></span><span class="k">Q</span></div>
+        <div style="display:flex;flex-direction:column;gap:13px;margin-top:14px">
+        ${Object.entries(DEPTS).map(([d,D])=>`
+          <div>
+            <div style="display:flex;align-items:baseline;gap:9px"><span style="font-size:13px;font-weight:600">${d}</span>
+            <span class="num" style="font-size:11px;color:var(--muted)">${D.docs.reduce((a,b)=>a+b.q,0)} waiting · avg ${D.avg} min/patient · ${D.floor}</span></div>
+            ${D.docs.map(doc=>`<div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+              <span style="font-size:12px;width:140px">${doc.n}</span>
+              <div style="flex-grow:1;height:16px;border-radius:4px;background:var(--panel);overflow:hidden;display:flex">
+                <div style="width:${Math.min(100,doc.q*9)}%;background:${doc.q>7?"var(--wait)":doc.q>4?"#d4d4d4":"rgba(49,143,90,.35)"}"></div>
+              </div>
+              <span class="num" style="font-size:11.5px;width:110px;text-align:right">${doc.q} · ~${doc.q*D.avg} min</span>
+            </div>`).join("")}
+          </div>`).join("")}
+        </div>
+      </div></div>`;
+    return;
+  }
+  if(ovl==="edit"){
+    const p=S.patient;
+    O.innerHTML=`<div class="ovl" onclick="if(event.target===this)closeOvl()">
+      <div class="card" style="width:460px;padding:20px 22px" onclick="event.stopPropagation()">
+        <div style="font-size:15px;font-weight:600">Update ${esc(p.name)}'s record</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:3px;line-height:16px">Ramesh has update permission on demographics. Every edit is audit-logged (PHI log <span class="mono" style="font-size:10.5px">0038</span>) with the old value kept.</div>
+        <div class="fld" style="margin-top:14px"><span class="lbl">Mobile</span><input id="edMobile" class="inp num" value="${esc(p.mobile)}"/></div>
+        <div class="fld" style="margin-top:10px"><span class="lbl">Address</span><input id="edAddr" class="inp" value="${esc(p.addr||"")}" placeholder="street, area, district"/></div>
+        <div style="display:flex;gap:9px;margin-top:16px">
+          <button class="btnP" style="height:38px" onclick="saveEdit()">Save — audited</button>
+          <button class="btnG" style="height:38px" onclick="closeOvl()">Cancel</button>
+        </div>
+      </div></div>`;
+    return;
+  }
+  if(ovl==="schema"){ O.innerHTML=vSchema(); return; }
+}
+function palRun(i){ const a=(window._palActs||[])[i]; window._palQ=""; if(a)a.f(); }
+function renderMainFocus(){ if(S.stage==="find"){const el=$("findIn"); if(el) el.focus();} }
+
+/* ── design schema overlay ── */
+function vSchema(){
+  const sw=(c,n,d)=>`<div style="display:flex;gap:10px;align-items:center"><span class="swatch" style="background:${c}"></span>
+    <div><div class="mono" style="font-size:11.5px;font-weight:600">${c} · ${n}</div><div style="font-size:11px;color:var(--muted)">${d}</div></div></div>`;
+  return `<div class="ovl" onclick="if(event.target===this)closeOvl()" style="align-items:stretch;padding:4vh 0">
+  <div class="card" style="width:860px;margin:0 auto;padding:26px 30px;overflow-y:auto" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:baseline;gap:12px">
+      <span style="font-size:18px;font-weight:700;letter-spacing:-.01em">Design schema & elements</span>
+      <span style="font-size:12px;color:var(--muted)">the system this prototype is drawn in — same tokens as the shipped app</span>
+      <span style="flex-grow:1"></span><button class="btnS" onclick="closeOvl()">Close · Esc</button>
+    </div>
+
+    <div class="lbl" style="margin-top:22px">1 · Color — greyscale by design; a hue is a state, never decoration</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:10px">
+      ${sw("#0a0a0a","ink / primary","text, primary actions, focus")}
+      ${sw("#737373","muted ladder","secondary text · #a1a1a1 hints · #e5e5e5 borders")}
+      ${sw("#318f5a","state · settled","paid, verified, applied, done")}
+      ${sw("#cb882e","state · waiting","unpaid token, heavy queue, missing data")}
+      ${sw("#b3382c","state · danger","reserved — emergencies, blocked actions")}
+      ${sw("#5b5bd6","copilot violet","ONLY what the AI says or does — so machine work is visible at a glance")}
+    </div>
+
+    <div class="lbl" style="margin-top:22px">2 · Type</div>
+    <div style="font-size:12.5px;line-height:19px;margin-top:8px;color:#404040">
+      System UI sans for the interface (matches the shipped app) · <span class="mono">ui-monospace + tabular-nums</span> for UHID, money, tokens, times — anything a clerk compares digit-by-digit ·
+      <span class="hi" style="font-weight:600">Noto Sans Devanagari</span> for every say-this-to-the-patient line, always paired with its English gloss.
+    </div>
+
+    <div class="lbl" style="margin-top:22px">3 · Elements</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px 20px;margin-top:10px;font-size:12px;line-height:17px;color:#404040">
+      <div><strong>Session ribbon</strong> — the patient-in-hand. Lives under the chrome from pick/register to Esc; benefit chips and the flow stepper ride on it. This is why the session is never lost between pages.</div>
+      <div><strong>Copilot rail</strong> — top: suggestion cards with one-click actions (violet border). Bottom: the background agent's feed — what it did without being asked. Ask-box at the foot (F2).</div>
+      <div><strong>Key caps</strong> <span class="k">Ctrl K</span> — every mouse path has a key twin, printed where the click happens, not hidden in a help page.</div>
+      <div><strong>Why-chips</strong> — search results say <em>what matched</em> (SAME MOBILE), never a percentage, because nobody can act on 87%.</div>
+      <div><strong>Stamps</strong> — <span class="stamp unpaid" style="font-size:9px;padding:1px 7px">UNPAID</span> <span class="stamp paid" style="font-size:9px;padding:1px 7px">PAID</span> always outlined, never filled black: thermal heads wear and paper curls.</div>
+      <div><strong>Queue ticks</strong> — one tick per waiting patient, amber past 7; wait shown as minutes <em>and</em> a clock time, because patients ask “kitne baje?”, not “how many minutes?”.</div>
+      <div><strong>Benefit chips</strong> — membership / coupon / corporate / partner / package marked at register OR billing; the bill reprices from chips, the clerk never does arithmetic.</div>
+      <div><strong>Flow pill (locked)</strong> — the supervisor's counter_sequence setting worn openly in the chrome, so a clerk always knows which lane the token takes.</div>
+    </div>
+
+    <div class="lbl" style="margin-top:22px">4 · The flow machine</div>
+    <div style="margin-top:10px;padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--wash);overflow-x:auto">
+      <div class="mono" style="font-size:11.5px;line-height:20px;white-space:pre">Flow A  Register → Appointment → Billing
+  lane 1   token prints at queueing, outlined UNPAID  → billing flips it PAID
+  lane 2   queued silently, token prints only when the bill settles
+Flow B  Register → Billing → Appointment
+           flat consult fee first · token always leaves PAID
+overrides  review-window revisit → bill forced ₹0, auto-settles, token prints
+           corporate / package  → cashless, token prints on settle</div>
+    </div>
+
+    <div class="lbl" style="margin-top:22px">5 · Voice</div>
+    <div style="font-size:12px;line-height:18px;color:#404040;margin-top:8px;max-width:640px">
+      Buttons say exactly what happens (“Register & continue → Appointment”). The screen tells Ramesh the sentence to <em>say</em> in Hindi, then what it means. The agent explains itself in consequences (“she paid UPI the last 4 visits — key 2”), never in model-speak.
+    </div>
+  </div></div>`;
+}
+
+/* ─────────────────── keyboard ─────────────────── */
+document.addEventListener("keydown",e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();ovl==="palette"?closeOvl():openPalette();return;}
+  if(ovl==="palette"){
+    const acts=window._palActs||[];
+    if(e.key==="ArrowDown"){e.preventDefault();palSel=Math.min(acts.length-1,palSel+1);renderOverlays();return;}
+    if(e.key==="ArrowUp"){e.preventDefault();palSel=Math.max(0,palSel-1);renderOverlays();return;}
+    if(e.key==="Enter"){e.preventDefault();palRun(palSel);return;}
+    if(e.key==="Escape"){window._palQ="";closeOvl();return;}
+    return;
+  }
+  if(e.key==="Escape"){ if(ovl){closeOvl();} else releasePatient(); return;}
+  const typing=/INPUT|TEXTAREA/.test(document.activeElement&&document.activeElement.tagName);
+  if(e.key==="F2"){e.preventDefault();$("askBox").focus();return;}
+  if(typing){
+    if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){e.preventDefault();ctrlEnter();}
+    if(e.key==="Enter"&&S.stage==="find"&&S.search.trim()){ /* pick top hit */
+      const q=S.search.trim().toLowerCase();
+      const hit=Object.values(PATIENTS).find(p=>p.name.toLowerCase().includes(q)||p.mobile.replace(/\s/g,"").includes(q.replace(/\s/g,""))||p.uhid.toLowerCase().includes(q));
+      if(hit){e.preventDefault();pick(hit.id);}
+    }
+    return;
+  }
+  if(e.key.toLowerCase()==="q"){e.preventDefault();toggleQueues();return;}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="n"){e.preventDefault();startNew(true);return;}
+  if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){e.preventDefault();ctrlEnter();return;}
+  if(S.stage==="billing"&&!S.bill.settled){
+    const c=calcBill();
+    if(c.total>0){ if(e.key==="1")settle("cash"); if(e.key==="2")settle("upi"); if(e.key==="3")settle("card"); }
+    else if(e.key==="Enter"){ settle(c.mode); }
+  }
+});
+function ctrlEnter(){
+  if(S.stage==="register") doRegister();
+  else if(S.stage==="appointment"&&S.appt){ S.flow!=="B"?(S.stage="billing",render()):(S.stage="done",render()); }
+  else if(S.stage==="billing"){ const c=calcBill(); if(c.total===0)settle(c.mode); }
+}
+
+/* boot */
+render();
+</script>

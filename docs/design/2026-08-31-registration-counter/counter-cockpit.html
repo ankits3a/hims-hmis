@@ -1,0 +1,728 @@
+<title>Counter Cockpit</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;700;900&family=Spline+Sans+Mono:wght@400;500;700&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap">
+<style>
+  :root{
+    --bg:#111823; --panel:#18212e; --panel2:#1d2836; --line:#2b394c; --line2:#223045;
+    --ink:#e9eff7; --dim:#9aa9bd; --faint:#647589;
+    --mach:#62d6e8; --mach-soft:rgba(98,214,232,.10); --mach-line:rgba(98,214,232,.35);
+    --amber:#ffb454; --amber-soft:rgba(255,180,84,.10); --amber-line:rgba(255,180,84,.4);
+    --ok:#4ade9b; --ok-soft:rgba(74,222,155,.10); --ok-line:rgba(74,222,155,.4);
+    --bad:#ff6b5e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:13.5px/19px "Chivo",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0;text-align:left}
+  input{font:inherit;color:inherit}
+  input:focus{outline:none}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--mach);outline-offset:2px}
+  .mo{font-family:"Spline Sans Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+  .dev{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.6}
+  .tag{font-family:"Spline Sans Mono",monospace;font-size:9px;font-weight:700;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--faint)}
+  .kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:20px;padding:0 5px;
+    border-radius:3px;border:1px solid var(--line);background:var(--panel2);font-family:"Spline Sans Mono",monospace;
+    font-size:8.5px;font-weight:700;color:var(--dim);flex-shrink:0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+  .conf{display:inline-flex;align-items:center;gap:9px;height:40px;padding:0 18px;border-radius:8px;
+    background:var(--ink);color:#101722;font-size:13px;font-weight:700}
+  .conf:disabled{opacity:.3;cursor:not-allowed}
+  .gh{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:7px;
+    border:1px solid var(--line);background:transparent;font-size:12px;font-weight:500;color:var(--dim)}
+  .gh:hover{border-color:var(--faint);color:var(--ink)}
+  .gh.cy{border-color:var(--mach-line);color:var(--mach)}
+  .in{height:38px;width:100%;border-radius:7px;border:1px solid var(--line);background:var(--panel2);padding:0 11px;font-size:13.5px;color:var(--ink)}
+  .in:focus{border-color:var(--mach)}
+  .pl{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:4px;
+    font-size:10px;font-weight:700;border:1px solid var(--line);color:var(--dim);white-space:nowrap;background:var(--panel2)}
+  .pl.cy{border-color:var(--mach-line);background:var(--mach-soft);color:var(--mach)}
+  .pl.am{border-color:var(--amber-line);background:var(--amber-soft);color:var(--amber)}
+  .pl.gr{border-color:var(--ok-line);background:var(--ok-soft);color:var(--ok)}
+  .stamp{display:inline-flex;padding:2px 10px;border-radius:4px;font-family:"Spline Sans Mono",monospace;
+    font-size:10px;font-weight:700;letter-spacing:.14em}
+  .stamp.un{border:2px solid var(--amber);color:var(--amber)}
+  .stamp.pd{border:2px solid var(--ok);color:var(--ok)}
+  .dot{width:7px;height:7px;border-radius:99px;flex-shrink:0}
+  .ovl{position:fixed;inset:0;background:rgba(6,10,16,.7);display:flex;align-items:flex-start;
+    justify-content:center;padding-top:8vh;z-index:60}
+  .pi{display:flex;align-items:center;gap:12px;padding:10px 13px;border-radius:7px;font-size:13px;cursor:pointer}
+  .pi.sel{background:var(--panel2)}
+  .undo{font-size:9px;color:var(--faint);text-decoration:underline;cursor:pointer;flex-shrink:0}
+  .undo:hover{color:var(--amber)}
+  .block{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden}
+  .block.live{border-color:var(--mach-line);box-shadow:0 0 0 3px var(--mach-soft)}
+  .block.done{opacity:.62}
+  .bh{display:flex;align-items:center;gap:10px;padding:10px 15px;border-bottom:1px solid var(--line2)}
+  .sw{width:36px;height:36px;border-radius:6px;border:1px solid var(--line);flex-shrink:0}
+  .mic{position:relative}
+  .mic.on::after{content:"";position:absolute;inset:-4px;border-radius:99px;border:1.5px solid var(--bad);
+    animation:pulse 1.4s ease-out infinite}
+  @keyframes pulse{from{opacity:.9;transform:scale(.85)}to{opacity:0;transform:scale(1.35)}}
+  @media (prefers-reduced-motion:reduce){.mic.on::after{animation:none;opacity:.7}}
+  #frame{min-width:1280px}
+  #wrap{overflow-x:auto}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+</style>
+
+<div id="wrap"><div id="frame" style="height:100vh;display:flex;flex-direction:column">
+
+  <!-- ═ top bar ═ -->
+  <div style="display:flex;align-items:center;gap:13px;height:46px;padding:0 18px;background:var(--panel);border-bottom:1px solid var(--line);flex-shrink:0">
+    <span class="mo" style="font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--mach)">◈ COUNTER COCKPIT</span>
+    <span style="color:var(--line)">/</span>
+    <span style="font-size:12px;color:var(--dim)">Counter 01 · <b style="color:var(--ink)">Ramesh Chaudhary</b></span>
+    <button class="pl" onclick="ov='flow';paint()" title="supervisor flow setting">🔒 <span id="flowLbl"></span></button>
+    <div style="flex-grow:1"></div>
+    <span class="mo" style="font-size:11px;color:var(--faint)">SUN 30 AUG · <span id="clk">10:12</span></span>
+    <span class="pl am"><span class="mo" id="hallN">31</span> in hall</span>
+    <button class="pl" onclick="ov='schema';paint()">design schema</button>
+    <button class="pl cy" onclick="openPal()">⌘ command <span class="kb">Ctrl K</span></button>
+  </div>
+
+  <!-- ═ body ═ -->
+  <div style="flex-grow:1;min-height:0;display:flex">
+    <!-- the line -->
+    <aside style="width:252px;flex-shrink:0;border-right:1px solid var(--line);display:flex;flex-direction:column;background:var(--panel)">
+      <div style="padding:13px 15px 9px;border-bottom:1px solid var(--line2);display:flex;align-items:baseline;gap:8px">
+        <span class="tag" style="color:var(--mach)">the line</span>
+        <span style="font-size:10px;color:var(--faint)">pre-worked by the agent</span>
+      </div>
+      <div id="lineRail" style="flex-grow:1;overflow-y:auto;padding:11px 12px;display:flex;flex-direction:column;gap:9px"></div>
+    </aside>
+
+    <!-- confirm stream -->
+    <main id="center" style="flex-grow:1;min-width:0;overflow-y:auto;padding:20px 26px 30px"></main>
+
+    <!-- agent ledger -->
+    <aside style="width:312px;flex-shrink:0;border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--panel)">
+      <div id="ledger" style="flex-grow:1;min-height:0;overflow-y:auto;padding:13px 15px"></div>
+      <form onsubmit="ask(event)" style="padding:11px 13px;border-top:1px solid var(--line2)">
+        <div style="display:flex;align-items:center;gap:8px;height:38px;border:1px solid var(--mach-line);border-radius:8px;padding:0 11px;background:var(--mach-soft)">
+          <input id="askIn" placeholder="ask the agent…" style="border:none;background:transparent;color:var(--ink);flex-grow:1;font-size:12px"/>
+          <span class="kb">F2</span>
+        </div>
+      </form>
+    </aside>
+  </div>
+
+  <!-- ═ status strip ═ -->
+  <div style="flex-shrink:0;display:flex;align-items:center;gap:18px;height:34px;padding:0 18px;background:var(--panel);border-top:1px solid var(--line);font-size:10.5px;color:var(--dim)">
+    <span style="display:flex;align-items:center;gap:6px"><span class="dot" style="background:var(--ok)"></span>link</span>
+    <button style="display:flex;align-items:center;gap:6px;color:var(--dim)" onclick="jam()" title="click to simulate a jam">
+      <span class="dot" id="prDot" style="background:var(--ok)"></span><span id="prLbl">printer</span></button>
+    <span class="mo" style="color:var(--faint)">|</span>
+    <span class="tag">drawer</span>
+    <span class="mo" id="drawerLbl"></span>
+    <span class="mo" style="color:var(--faint)">|</span>
+    <span id="surgeLbl"><span class="tag">forecast</span> steady till ~11:15</span>
+    <div style="flex-grow:1"></div>
+    <span class="mo" id="shiftLbl"></span>
+  </div>
+</div></div>
+
+<div id="ovls"></div>
+
+<script>
+/* ════════ world ════════ */
+const DEPT={
+  "General Medicine":{fee:400,where:"Ground · G-wing"},
+  "Cardiology":{fee:750,where:"1st floor"},
+  "Orthopaedics":{fee:650,where:"2nd floor"},
+};
+const DOCS={
+  minz:{n:"Dr. T. Minz",dept:"General Medicine",rm:"G-05",q:3,pace:"on pace today",wait:12},
+  rao:{n:"Dr. Nishant Rao",dept:"General Medicine",rm:"G-04",q:6,pace:"running 4 min over",wait:27,note:"steps out 13:00–13:30 for ward rounds"},
+  oraon:{n:"Dr. P. Oraon",dept:"Orthopaedics",rm:"F2-03",q:8,pace:"steady",wait:48},
+};
+const FLOW={
+  F1:{s:"REG→VISIT→PAY · token first",l:"token prints at queueing, stamped UNPAID; payment flips it"},
+  F2:{s:"REG→VISIT→PAY · token on payment",l:"queued at once; token held until the bill settles"},
+  F3:{s:"REG→PAY→VISIT",l:"money first; the token always leaves PAID"},
+};
+let W={
+  flow:"F1", mins:10*60+12, served:41, ksSaved:96,
+  drawer:{500:3,200:6,100:9,50:4,20:7,10:0},
+  printer:"ok",
+  did:[],sug:[],asks:[],
+  line:["ramila","suraj","walkup"],
+  varianceDone:false, surgeFired:false, chandraFired:false,
+};
+let C=null;                       // person in hand
+let ov=null,palQ="",palSel=0,palActs=[],agAns=null,voiceTimer=null;
+
+const T=m=>`${Math.floor(m/60)}:${String(m%60).padStart(2,"0")}`;
+const RS=n=>"₹"+n.toLocaleString("en-IN");
+const E=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const $=id=>document.getElementById(id);
+function tick(n){W.mins+=n;}
+let seq=0;
+function did(txt,undoable){W.did.unshift({id:++seq,at:T(W.mins),txt,undoable:!!undoable});}
+function sug(txt,act,fn){W.sug.unshift({id:++seq,txt,act,fn});}
+function askCard(txt,opts){W.asks.unshift({id:++seq,txt,opts});}
+function drop(list,id){const i=list.findIndex(x=>x.id===id);if(i>=0)list.splice(i,1);}
+
+/* seed */
+did("shift picked up — drawer ₹3,840 counted, variance nil",false);
+did("lobby QR live — 2 people in your line are pre-registering themselves right now",false);
+sug("Yesterday's cash variance (₹0) needs your sign-off — one tap.","sign off",()=>{W.varianceDone=true;did("cash variance ₹0 signed off",true);});
+
+/* ════════ the three people ════════ */
+const PPL={
+  ramila:{nm:"Ramila Devi",age:31,sex:"F",mob:"70044 91232",uh:"UH-24-03318",vil:"Kanke Road",
+    lens:["QR pre-reg ✓ · did her own OTP","intent: “bukhar, 2 din”","file matched by phone","ready: 3 confirms, 0 typing"],
+    lensTone:"cy"},
+  suraj:{nm:"Suraj Ekka",age:67,sex:"M",mob:"89693 20417",uh:"UH-21-00294",vil:"Ratu Road",
+    lens:["revisit · review window till 06-Sep","lipid report READY · shelf B-2","fasting draw still owed","comes alone · hard of hearing"],
+    lensTone:"gr"},
+  walkup:{nm:"",age:"",sex:"",mob:"",uh:"UH-26-09102",vil:"",
+    lens:["no phone match · nothing on file","guard's note: knee pain, limping","from a village bus (bag & ticket)","suggest: speak-to-fill"],
+    lensTone:"am"},
+};
+
+/* per-person session */
+function callNext(){
+  if(!W.line.length||C)return;
+  const pid=W.line.shift();
+  const p=PPL[pid];
+  C={pid,p:{...p},step:0,ks:0,t0:W.mins,
+     f:{nm:p.nm,age:p.age,sex:p.sex,mob:p.mob,vil:p.vil},
+     voice:"idle",heard:"",dupResolved:pid!=="walkup",
+     doc:null,tokOut:false,tokPaid:false,tok:null,
+     paid:false,tender:null,upi:"idle",
+     handed:false,orch:false,escort:false,famLinked:false};
+  tick(1);
+  if(pid==="ramila")did("pulled Ramila's pre-registration — she filled it in your line, verified her own number",false);
+  if(pid==="suraj"){did("opened Suraj Ekka's story — 4th visit this year, contact = daughter's number",false);
+    sug("He walks slow and came alone — call the escort to walk him up?","call escort",()=>{C.escort=true;did("escort called to counter 01 for Suraj Ekka",true);});}
+  if(pid==="walkup")did("no file, no phone signal — armed speak-to-fill; counter mic light is OFF until you switch it",false);
+  paint();
+}
+function blocks(){
+  const pid=C.pid;
+  if(pid==="ramila")return W.flow==="F3"?["id","money","visit","token"]:["id","visit","money","token"];
+  if(pid==="suraj") return W.flow==="F3"?["id","pickup","money","seqv","token"]:["id","pickup","seqv","money","token"];
+  return W.flow==="F3"?["id","money","visit","token"]:["id","visit","money","token"];
+}
+function curKey(){return blocks()[C.step];}
+function confirmCur(){
+  const k=curKey(),pid=C.pid;
+  if(k==="id"){
+    if(pid==="walkup"&&!C.dupResolved)return;
+    if(pid==="walkup"&&!C.f.nm)return;
+    tick(1);
+    if(pid==="walkup"){did(`registered ${C.f.nm} — ${C.p.uh} · card printing · Hindi SMS queued`,false);}
+    else did(`identity confirmed — ${C.f.nm}, ${C.p.uh}`,false);
+  }
+  if(k==="visit"||k==="seqv"){
+    if(k==="visit"&&!C.doc)return;
+    tick(1);
+    const d=k==="seqv"?DOCS.rao:C.doc;
+    C.tok="T-"+(140+ ++seq%40);
+    if(W.flow==="F1"){C.tokOut=true;C.tokPaid=C.paid;did(`token ${C.tok} out ${C.paid?"PAID":"UNPAID"} — position ${d.q+1} with ${d.n}; board updated`,false);}
+    else if(W.flow==="F2"){C.tokOut=C.paid;C.tokPaid=C.paid;did(C.paid?`token ${C.tok} out PAID`:`queued with ${d.n}; token held for payment`,false);}
+    else {C.tokOut=true;C.tokPaid=true;did(`token ${C.tok} out PAID — bill-first flow`,false);}
+    if(k==="seqv"&&C.orch){did(`lab slip printed · position #7 with Dr. Rao HELD while he's at the draw — I'll re-slot him on return`,true);}
+  }
+  if(k==="pickup"){tick(1);}
+  if(k==="money"){
+    if(price().t>0&&!C.paid)return;
+    tick(1);
+  }
+  if(k==="token"){finish();return;}
+  C.step++;paint();
+}
+function price(){
+  const pid=C.pid;
+  if(pid==="suraj")return{L:[["General Medicine consult — Dr. Nishant Rao",400],["review visit — free till 06-Sep",-400]],t:0,rev:true};
+  if(pid==="walkup")return{L:[["Orthopaedics consult — Dr. P. Oraon",650]],t:650};
+  return{L:[["General Medicine consult — "+(C.doc?C.doc.n:"—"),400]],t:400};
+}
+function payCash(){
+  const t=price().t;C.paid=true;C.tender="cash";tick(1);
+  if(C.tokOut&&!C.tokPaid){C.tokPaid=true;did(`board flip: ${C.tok} UNPAID → PAID`,false);}
+  if(C.pid==="walkup"){W.drawer[200]-=1;W.drawer[100]-=1;W.drawer[50]-=1;
+    did(`took ₹1,000, returned ₹350 (200+100+50) — you're down to ${W.drawer[200]}×₹200; change runner pinged`,true);}
+  else did(`took ${RS(t)} cash — receipt printed`,false);
+  confirmCur();
+}
+function payUpi(){
+  C.upi="show";paint();
+  setTimeout(()=>{if(!C||C.upi!=="show")return;
+    C.upi="paid";C.paid=true;C.tender="upi";tick(1);
+    if(C.tokOut&&!C.tokPaid){C.tokPaid=true;did(`board flip: ${C.tok} UNPAID → PAID`,false);}
+    did(`UPI landed — ${RS(price().t)}, ref ···8841 · receipt on her phone`,false);
+    confirmCur();},1900);
+}
+function payZero(){
+  C.paid=true;C.tender="review";tick(1);
+  if(C.tokOut&&!C.tokPaid){C.tokPaid=true;did(`₹0 review settled — ${C.tok} flipped PAID`,false);}
+  else if(!C.tokOut){C.tokOut=true;C.tokPaid=true;did(`₹0 review settled — token ${C.tok||"T-162"} released PAID`,false);}
+  confirmCur();
+}
+function finish(){
+  W.served++;tick(1);
+  const dur=W.mins-C.t0;
+  did(`${C.f.nm} done — ${dur} min, ${C.ks} keystrokes${C.ks===0?" (zero-typing visit)":""}`,false);
+  if(C.pid==="suraj")did("SMSed his daughter: two more reports due Tuesday — no extra trip, I'll ping her when both are in",true);
+  if(C.pid==="walkup")did("watching her token vs the 13:40 Bero bus — I'll bump her if the queue slips",true);
+  C=null;paint();
+}
+/* voice */
+function voice(){
+  if(C.voice==="on")return;
+  C.voice="on";C.heard="";
+  const SAY="मेरा नाम सुनीता कच्छप है… उम्र पैंतीस… बेड़ो से आई हूँ… घुटने में दर्द है… फ़ोन 79034 11208";
+  const F={nm:"Sunita Kachhap",age:"35",sex:"F",mob:"79034 11208",vil:"Bero — 40 min by bus"};
+  let i=0;
+  did("mic ON — counter light glowing red; she was told and nodded (consent logged)",false);
+  voiceTimer=setInterval(()=>{
+    if(!C){clearInterval(voiceTimer);return;}
+    i++;
+    C.heard=SAY.slice(0,Math.round(i*SAY.length/26));
+    const k=Math.min(1,i/26);
+    C.f.nm=F.nm.slice(0,Math.round(F.nm.length*Math.min(1,k*2)));
+    if(k>.3)C.f.age=F.age; if(k>.35)C.f.sex="F";
+    C.f.vil=k>.5?F.vil.slice(0,Math.round(F.vil.length*Math.min(1,(k-.5)*3))):"";
+    C.f.mob=k>.75?F.mob.slice(0,Math.round(F.mob.length*Math.min(1,(k-.75)*5))):"";
+    if(i>=26){
+      clearInterval(voiceTimer);C.voice="done";tick(1);
+      did("mic OFF — audio processed on-prem and discarded; only the fields remain",false);
+      askCard("79034 11208 already belongs to <b>Sanjay Kachhap · UH-22-04416</b> — same house? One shared phone is normal in Bero.",[
+        {l:"link as family (own UHID)",f(){C.famLinked=true;C.dupResolved=true;did("family group created — Sunita ↔ Sanjay, one contact number, two files",true);}},
+        {l:"it's actually his file",f(){C.dupResolved=true;did("routed to Sanjay's existing file instead — duplicate stopped before it existed",false);}},
+      ]);
+    }
+    paint();
+  },260);
+}
+function orch(){C.orch=true;did("plan set: lab draw first (chair empty now), consult after — his queue position is pinned",false);paint();}
+function jam(){
+  if(W.printer!=="ok")return;
+  W.printer="jam";tick(1);
+  did("printer jam — rerouted: tokens go by SMS + hall board till fixed; maintenance ticket raised",false);
+  sug("Printer back? Test-print one line to restore paper tokens.","fixed",()=>{W.printer="ok";did("printer restored — paper tokens resume",false);});
+  paint();
+}
+function ask(e){
+  e.preventDefault();const b=$("askIn"),q=b.value.trim();if(!q)return;b.value="";
+  const lo=q.toLowerCase();
+  if(lo.includes("wait")||lo.includes("line"))agAns="Dr. Minz ~12 min (on pace). Dr. Rao ~27 and he leaves for rounds at 13:00 — don't queue anyone after 12:30. Ortho is the crunch at ~48.";
+  else if(lo.includes("bus"))agAns="Last easy return bus to Bero is 13:40 from Sujata Chowk. Her token should board by 13:00 — I'm watching it.";
+  else if(lo.includes("change")||lo.includes("drawer"))agAns="Drawer can make ₹350 twice more, then you're out of ₹200s. Runner already pinged; ₹10 coins are at zero since open.";
+  else agAns="I answer from the live boards: try “wait times”, “bus timing”, “change in drawer”.";
+  did(`you asked: ${q}`,false);paint();
+}
+
+/* timed world events */
+setTimeout(()=>{if(W.surgeFired)return;W.surgeFired=true;
+  askCard("Footfall is building — Tuesday-pattern + camp referrals. Hall wait crosses 20 min by ~11:40. I drafted the request to open Counter 2.",[
+    {l:"send to supervisor",f(){did("counter-2 request sent to supervisor with the forecast chart attached",true);
+      $("surgeLbl").innerHTML='<span class="tag">forecast</span> <span style="color:var(--amber)">surge ~11:40 · counter-2 requested</span>';}},
+    {l:"not yet",f(){did("surge draft held — I'll re-raise at 11:15 if the curve holds",false);}},
+  ]);paint();},18000);
+setTimeout(()=>{if(W.chandraFired)return;W.chandraFired=true;
+  did("Dr. Chandra started 10 min late — I re-quoted 6 waiting patients by SMS; two moved to Dr. Minz",true);paint();},34000);
+
+/* ════════ paint ════════ */
+function paint(){
+  $("clk").textContent=T(W.mins);
+  $("flowLbl").textContent=FLOW[W.flow].s;
+  $("hallN").textContent=31+ (W.served-41);
+  $("drawerLbl").textContent=`500×${W.drawer[500]} 200×${W.drawer[200]} 100×${W.drawer[100]} 50×${W.drawer[50]} 20×${W.drawer[20]} · `;
+  $("drawerLbl").innerHTML+= W.drawer[10]===0?`<span style="color:var(--amber)">₹10 out — runner pinged</span>`:`10×${W.drawer[10]}`;
+  $("prDot").style.background=W.printer==="ok"?"var(--ok)":"var(--bad)";
+  $("prLbl").textContent=W.printer==="ok"?"printer":"printer JAM — SMS fallback live";
+  $("shiftLbl").textContent=`today ${W.served} served · ${W.ksSaved}% zero-typing · avg 74 s`;
+  paintLine();paintCenter();paintLedger();paintOvl();
+}
+function paintLine(){
+  const r=$("lineRail");
+  const cards=W.line.map((id,i)=>{
+    const p=PPL[id];
+    return `<div class="card" style="padding:11px 12px;${i===0&&!C?"border-color:var(--mach-line)":""}">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12.5px;font-weight:700">${p.nm||"Unknown walk-up"}</span>
+        ${p.nm?`<span class="mo" style="font-size:10px;color:var(--faint)">${p.age}${p.sex}</span>`:""}
+        <span class="pl ${p.lensTone}" style="margin-left:auto;height:18px;font-size:8.5px">${i===0?"NEXT":"#"+(i+1)}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:3px;margin-top:7px">
+        ${p.lens.map(x=>`<div style="display:flex;gap:6px;font-size:10.5px;line-height:14px;color:var(--dim)">
+          <span style="color:var(--mach);flex-shrink:0">·</span><span>${x}</span></div>`).join("")}
+      </div>
+      ${i===0&&!C?`<button class="conf" style="width:100%;justify-content:center;height:34px;margin-top:10px;font-size:12px" onclick="callNext()">call ⏎</button>`:""}
+    </div>`;}).join("");
+  r.innerHTML=cards+(W.line.length===0?`
+    <div class="card" style="padding:12px;border-style:dashed;border-color:var(--mach-line)">
+      <div class="tag" style="color:var(--mach)">incoming</div>
+      <div style="font-size:11px;color:var(--dim);line-height:16px;margin-top:6px">Camp bus at the gate — 6 people pre-registering on the lobby QR. I'm doing their OTPs; they'll land here worked-up.</div>
+    </div>`:"");
+}
+/* ── centre blocks ── */
+function head(i,ttl,st,extra){
+  return `<div class="bh">
+    <span class="mo" style="width:20px;height:20px;border-radius:99px;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;
+      ${st==="done"?"background:var(--ok);color:#08281a":st==="live"?"border:2px solid var(--mach);color:var(--mach);font-weight:700":"border:1px solid var(--line);color:var(--faint)"}">${st==="done"?"✓":i}</span>
+    <span style="font-size:12.5px;font-weight:700;${st==="pending"?"color:var(--faint)":""}">${ttl}</span>${extra||""}
+  </div>`;
+}
+function paintCenter(){
+  const c=$("center");
+  if(!C){
+    c.innerHTML=`
+    <div style="max-width:660px;margin:40px auto 0;text-align:left">
+      <div style="font-size:21px;font-weight:900;letter-spacing:-.01em">The desk is clear.</div>
+      <div style="font-size:12.5px;color:var(--dim);margin-top:5px">Press <span class="kb">⏎</span> or hit <b>call</b> on the line — the agent has already worked whoever is next.</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:22px">
+        ${[["served today",String(W.served)],["zero-typing visits","96%"],["avg at desk","74 s"]].map(([a,b])=>`
+        <div class="card" style="padding:12px 14px"><div class="tag">${a}</div><div class="mo" style="font-size:20px;font-weight:700;margin-top:5px">${b}</div></div>`).join("")}
+      </div>
+      ${!W.varianceDone?`<div class="card" style="margin-top:14px;padding:12px 14px;display:flex;align-items:center;gap:11px">
+        <span style="font-size:12px;color:var(--dim)">10-second job between patients: yesterday's cash variance is ₹0 — sign it off.</span>
+        <button class="gh cy" style="margin-left:auto" onclick="W.varianceDone=true;did('cash variance ₹0 signed off',true);W.sug=W.sug.filter(s=>!s.txt.includes('variance'));paint()">sign ✓</button></div>`:""}
+      <div style="margin-top:26px;font-size:11px;color:var(--faint);line-height:16px;max-width:520px">
+        This screen has no stages and no forms-first thinking. Each visit arrives as agent-prepared blocks;
+        your job is to look the patient in the eye and press <span class="kb">⏎</span> when the block is true.
+      </div>
+    </div>`;
+    return;
+  }
+  const B=blocks();const rows=B.map((k,i)=>{
+    const st=i<C.step?"done":i===C.step?"live":"pending";
+    return blockView(k,i+1,st);
+  }).join('<div style="width:2px;height:14px;background:var(--line);margin-left:25px"></div>');
+  c.innerHTML=`
+  <div style="max-width:760px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <div style="font-size:18px;font-weight:900">${E(C.f.nm||"New arrival")}</div>
+      ${C.p.uh?`<span class="mo" style="font-size:11px;color:var(--dim)">${C.p.uh}</span>`:""}
+      ${C.escort?`<span class="pl gr">escort coming</span>`:""}
+      ${C.famLinked?`<span class="pl cy">family-linked</span>`:""}
+      <span style="margin-left:auto" class="mo" ><span style="font-size:10px;color:var(--faint)">keystrokes </span><span style="font-size:14px;font-weight:700;color:${C.ks===0?"var(--ok)":"var(--ink)"}">${C.ks}</span></span>
+      <button class="gh" style="height:26px;font-size:10.5px" onclick="C=null;paint()">park <span class="kb">Esc</span></button>
+    </div>
+    <div style="display:flex;flex-direction:column">${rows}</div>
+  </div>`;
+}
+function blockView(k,i,st){
+  const live=st==="live",pid=C.pid,p=C.p;
+  const wrap=(ttl,inner,extra)=>`<div class="block ${st}">${head(i,ttl,st,extra)}${st!=="pending"?`<div style="padding:13px 15px">${inner}</div>`:""}</div>`;
+  const confBtn=(label,en,fn)=>live?`<div style="display:flex;align-items:center;gap:11px;margin-top:13px">
+      <button class="conf" ${en?"":"disabled"} onclick="${fn||"confirmCur()"}">${label} <span class="kb" style="background:#2a3547;border-color:#3a4a60;color:#9aa9bd">⏎</span></button></div>`:"";
+
+  if(k==="id"){
+    if(pid==="walkup"){
+      const f=C.f;
+      return wrap("Who is this? — speak, don't type",`
+        <div style="display:flex;gap:9px;align-items:center;margin-bottom:12px">
+          <button class="gh cy mic ${C.voice==="on"?"on":""}" onclick="voice()" ${C.voice!=="idle"?"disabled":""}>
+            🎙 ${C.voice==="idle"?"listen — mic light will glow":C.voice==="on"?"listening…":"heard & filled"}</button>
+          <span style="font-size:10px;color:var(--faint);line-height:13px">audio processed on-prem, discarded after fields;<br>the red counter light is her consent signal</span>
+        </div>
+        ${C.heard?`<div class="dev" style="font-size:12.5px;color:var(--mach);background:var(--mach-soft);border-radius:7px;padding:8px 11px;margin-bottom:11px">“${C.heard}${C.voice==="on"?"▌":"”"}</div>`:""}
+        <div style="display:grid;grid-template-columns:1.4fr .5fr .5fr 1fr 1.2fr;gap:8px">
+          ${[["name","nm"],["age","age"],["sex","sex"],["mobile","mob"],["village / area","vil"]].map(([l,key])=>`
+            <div><div class="tag" style="margin-bottom:4px">${l}</div>
+            <input class="in" value="${E(C.f[key])}" oninput="C.f['${key}']=this.value" ${C.voice==="on"?"disabled":""}/></div>`).join("")}
+        </div>
+        ${C.voice==="done"&&!C.dupResolved?`<div style="margin-top:11px;font-size:11px;color:var(--amber)">▲ waiting on you — the phone number question is in the agent column</div>`:""}
+        ${C.voice==="done"&&C.dupResolved?`<div style="margin-top:11px;font-size:11px;color:var(--ok)">phone question settled — name spelt back to her: “Sunita Kachhap / सुनीता कच्छप” — she nodded</div>`:""}
+        ${confBtn("register — card + Hindi SMS",C.dupResolved&&C.f.nm)}`);
+    }
+    const story = pid==="suraj"?`
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+        <span class="pl">4th visit this year</span><span class="pl">last: 26-Aug, Dr. Rao</span>
+        <span class="pl am">hard of hearing — face him, speak up</span><span class="pl">contact = daughter (Sushma)</span>
+        <span class="pl gr">review window till 06-Sep</span><span class="pl">owes ₹0</span>
+      </div>`:`
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+        <span class="pl cy">she pre-registered in your line — lobby QR, own OTP</span>
+        <span class="pl">intent: “बुखार, 2 दिन”</span><span class="pl">2nd visit · daughter Pinki also on file</span>
+      </div>`;
+    return wrap(pid==="suraj"?"His story — before he says a word":"Already done — she did it herself in the line",`
+      <div style="display:flex;gap:14px;align-items:center">
+        <div><div style="font-size:15px;font-weight:700">${E(p.nm)} · ${p.age}${p.sex}</div>
+        <div class="mo" style="font-size:11px;color:var(--dim)">${p.uh} · ${E(p.mob)} · ${E(p.vil)}</div></div>
+        <span style="margin-left:auto" class="pl gr">verified</span>
+      </div>${story}
+      ${confBtn(pid==="suraj"?"it's him — continue":"she confirms — continue",true)}`);
+  }
+  if(k==="pickup"){
+    return wrap("Hand over first — he came for this",`
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font-size:22px">📄</span>
+        <div><div style="font-size:13px;font-weight:700">Lipid profile — READY · shelf B-2, third slot</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:2px">two more reports due Tuesday — I'll SMS his daughter when both land, so he doesn't make an empty trip</div></div>
+        ${C.handed?`<span class="pl gr" style="margin-left:auto">handed ✓</span>`:`<button class="gh cy" style="margin-left:auto" onclick="C.handed=true;did('lipid report handed over — pickup logged against the file',false);paint()">handed it</button>`}
+      </div>
+      ${confBtn("continue",C.handed)}`);
+  }
+  if(k==="seqv"){
+    return wrap("The smart order — lab first, doctor after",`
+      <div style="font-size:12px;line-height:18px;color:var(--dim)">
+        His review with <b style="color:var(--ink)">Dr. Rao is free</b>, but a <b style="color:var(--ink)">fasting draw is still owed</b> —
+        and he's fasting <i>now</i>. Lab chair: <b style="color:var(--ok)">empty</b>. Dr. Rao's line: <b style="color:var(--amber)">~27 min</b>.
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:11px;padding:10px 12px;border:1px solid var(--mach-line);border-radius:8px;background:var(--mach-soft)">
+        <span class="mo" style="font-size:11px;color:var(--mach);font-weight:700">PLAN</span>
+        <span style="font-size:12px">draw first (5 min) → consult after, <b>position pinned</b> — he never queues twice</span>
+        ${C.orch?`<span class="pl gr" style="margin-left:auto">set ✓</span>`:`<button class="gh cy" style="margin-left:auto" onclick="orch()">set the plan</button>`}
+      </div>
+      ${confBtn("queue him — Dr. Rao, position pinned",C.orch)}`);
+  }
+  if(k==="visit"){
+    const opts=pid==="walkup"?[DOCS.oraon]:[DOCS.minz,DOCS.rao];
+    const rec=opts[0];
+    return wrap("Where to — with the honest wait",`
+      ${pid==="walkup"?`<div style="font-size:12px;color:var(--dim);margin-bottom:10px">Knee, limping, age 35 → Orthopaedics. One catch I'm tracking: she's from <b style="color:var(--ink)">Bero</b> — last easy return bus <b style="color:var(--ink)">13:40</b>. At ~48 min wait she still makes it; I'll bump her token if that slips.</div>`
+      :`<div style="font-size:12px;color:var(--dim);margin-bottom:10px">“Bukhar, 2 din” → General Medicine. Two lines, one honest difference:</div>`}
+      <div style="display:flex;flex-direction:column;gap:7px">
+        ${opts.map(d=>`
+        <button onclick="C.doc=DOCS['${Object.keys(DOCS).find(x=>DOCS[x]===d)}'];paint()"
+          style="display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:8px;width:100%;
+          border:1px solid ${C.doc===d?"var(--mach)":"var(--line)"};background:${C.doc===d?"var(--mach-soft)":"var(--panel2)"}">
+          <span style="width:14px;height:14px;border-radius:99px;flex-shrink:0;border:${C.doc===d?"4px solid var(--mach)":"1.5px solid var(--line)"}"></span>
+          <span style="width:150px;font-weight:700;font-size:12.5px">${d.n}</span>
+          <span class="mo" style="font-size:10px;color:var(--faint);width:46px">${d.rm}</span>
+          <span class="mo" style="font-size:11px;width:120px;color:${d.wait>30?"var(--amber)":"var(--ok)"}">~${d.wait} min · ${T(W.mins+d.wait)}</span>
+          <span style="font-size:10.5px;color:var(--dim)">${d.pace}${d.note?` · <span style="color:var(--amber)">${d.note}</span>`:""}</span>
+        </button>`).join("")}
+      </div>
+      ${confBtn("queue — token per today's lane",!!C.doc)}`);
+  }
+  if(k==="money"){
+    const c=price();
+    return wrap(c.t===0?"Money — there isn't any to take":"Money — already computed",`
+      ${c.L.map(([l,v])=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid var(--line2)">
+        <span style="color:${v<0?"var(--ok)":"var(--ink)"}">${E(l)}</span><span class="mo" style="color:${v<0?"var(--ok)":"var(--ink)"};font-weight:700">${v<0?"−":""}${RS(Math.abs(v))}</span></div>`).join("")}
+      <div style="display:flex;justify-content:space-between;padding:8px 0 2px"><b>to collect</b><span class="mo" style="font-size:17px;font-weight:700">${RS(c.t)}</span></div>
+      ${c.t===0?`
+        <div style="font-size:11.5px;color:var(--ok);margin-top:6px">review window till 06-Sep — the OS zeroes this itself; nobody decides it at the counter</div>
+        ${confBtn("confirm ₹0 — release token",true,"payZero()")}`
+      :C.upi==="show"?`
+        <div style="display:flex;gap:13px;align-items:center;margin-top:11px;padding:12px;border:1px solid var(--mach-line);border-radius:8px;background:var(--mach-soft)">
+          <div style="width:64px;height:64px;border-radius:6px;background:repeating-conic-gradient(#e9eff7 0 25%,#101722 0 50%) 0 0/14px 14px;flex-shrink:0"></div>
+          <div style="font-size:12px;line-height:17px">QR is up on the <b>patient-facing screen</b>, amount pre-filled ${RS(c.t)}.<br><span style="color:var(--mach)">listening for the bank ping…</span></div>
+        </div>`
+      :`
+        ${pid==="walkup"?`<div style="font-size:11.5px;color:var(--dim);margin-top:8px">She's holding a ₹1,000 note → change <b style="color:var(--ink)">₹350</b>. Drawer can make it: 200+100+50 <span style="color:var(--ok)">✓</span> — after this you're low on ₹200s (runner already pinged).</div>`:""}
+        ${live?`<div style="display:flex;gap:8px;margin-top:12px">
+          <button class="gh" style="height:42px;flex-grow:1;justify-content:center;font-weight:700" onclick="payCash()">CASH <span class="kb">1</span></button>
+          <button class="gh" style="height:42px;flex-grow:1;justify-content:center;font-weight:700" onclick="payUpi()">UPI QR <span class="kb">2</span></button>
+          <button class="gh" style="height:42px;flex-grow:1;justify-content:center;font-weight:700" onclick="payCash()">CARD <span class="kb">3</span></button>
+        </div>${pid==="ramila"?`<div style="font-size:10.5px;color:var(--faint);margin-top:6px">she has paid UPI on both prior visits — key 2</div>`:""}`:""}`}`);
+  }
+  /* token */
+  const d=C.doc||(pid==="suraj"?DOCS.rao:DOCS.oraon);
+  return wrap("Send them up — with the right words",`
+    <div style="display:flex;gap:16px;align-items:flex-start">
+      <div style="width:250px;flex-shrink:0;border:1px solid var(--line);border-radius:4px;padding:13px 14px;background:var(--panel2)" class="mo">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:8.5px;letter-spacing:.14em;color:var(--faint)">OPD TOKEN · 30 AUG</span>
+          ${C.tokOut?`<span class="stamp ${C.tokPaid?"pd":"un"}" style="font-size:8.5px">${C.tokPaid?"PAID":"UNPAID"}</span>`:`<span style="font-size:9px;color:var(--faint)">held</span>`}
+        </div>
+        <div style="font-size:${pid==="suraj"?"46":"36"}px;font-weight:700;margin-top:3px">${C.tok||"· · ·"}</div>
+        <div style="font-size:10px;line-height:15px">${E(C.f.nm)} · ${C.f.age}${C.f.sex}<br>${C.p.uh}</div>
+        <div style="border-top:1px dashed var(--line);margin-top:7px;padding-top:6px;font-size:9.5px;line-height:14px">${d.n} · ${d.rm}<br>~${d.wait} min · ≈ ${T(W.mins+d.wait)}</div>
+        ${pid==="suraj"?`<div style="font-size:9px;color:var(--mach);margin-top:5px">LARGE PRINT — he lost his specs last visit</div>`:""}
+        ${W.printer!=="ok"?`<div style="font-size:9px;color:var(--amber);margin-top:5px">printer down — this went by SMS + board</div>`:""}
+      </div>
+      <div style="flex-grow:1">
+        <div class="dev" style="font-size:16px;padding:12px 15px;border:1.5px solid var(--line);border-radius:8px;background:var(--panel2)">
+          ${pid==="suraj"?`<b>ज़ोर से, सामने से:</b> “बाबा, पहले खून जाँच — बाएँ हाथ पर लैब। फिर कक्ष G-04, नंबर <b class="mo">${C.tok||""}</b>। पर्ची बड़े अक्षरों में है।”`
+          :pid==="walkup"?`“सुनीता जी, ऊपर कक्ष F2-03। नंबर <b class="mo">${C.tok||""}</b> — करीब पौन घंटा। 13:40 वाली बेड़ो बस आराम से मिल जाएगी।”`
+          :`“रमिला जी, कक्ष G-05 — नंबर <b class="mo">${C.tok||""}</b>, करीब बारह मिनट। टोकन फ़ोन पर भी भेज दिया है।”`}
+        </div>
+        <div style="font-size:10.5px;color:var(--faint);margin-top:7px;line-height:15px">the OS hands you the sentence — direction, number, wait, and the one personal detail — so every clerk sounds like the best clerk</div>
+      </div>
+    </div>
+    ${confBtn("done — next in line",true)}`);
+}
+/* ── ledger ── */
+function paintLedger(){
+  const L=$("ledger");
+  const sect=(t,color,items,empty)=>`
+    <div class="tag" style="color:${color};margin-top:14px">${t}</div>
+    <div style="display:flex;flex-direction:column;gap:7px;margin-top:7px">
+      ${items.length?items:`<div style="font-size:10.5px;color:var(--faint)">${empty}</div>`}
+    </div>`;
+  const asks=W.asks.map(a=>`
+    <div class="card" style="padding:10px 11px;border-color:var(--amber-line)">
+      <div style="font-size:11.5px;line-height:16px">${a.txt}</div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        ${a.opts.map((o,j)=>`<button class="gh" style="height:26px;font-size:10.5px;${j===0?"border-color:var(--amber-line);color:var(--amber)":""}"
+          onclick='(W.asks.find(x=>x.id===${a.id}).opts[${j}].f)();drop(W.asks,${a.id});paint()'>${o.l}</button>`).join("")}
+      </div>
+    </div>`);
+  const sugs=W.sug.map(s=>`
+    <div class="card" style="padding:9px 11px;border-color:var(--mach-line)">
+      <div style="display:flex;gap:9px;align-items:center">
+        <span style="font-size:11px;line-height:15px;color:var(--dim)">${s.txt}</span>
+        <button class="gh cy" style="height:25px;font-size:10px;margin-left:auto;flex-shrink:0"
+          onclick='(W.sug.find(x=>x.id===${s.id}).fn)();drop(W.sug,${s.id});paint()'>${s.act}</button>
+      </div>
+    </div>`);
+  const dids=W.did.slice(0,22).map(d=>`
+    <div style="display:flex;gap:8px;font-size:10.5px;line-height:15px">
+      <span class="mo" style="color:var(--faint);flex-shrink:0">${d.at}</span>
+      <span style="color:var(--dim)">${d.txt}</span>
+      ${d.undoable?`<span class="undo" onclick='drop(W.did,${d.id});did("reverted the previous action — original state restored",false);paint()'>undo</span>`:""}
+    </div>`);
+  L.innerHTML=`
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="dot" style="background:var(--mach);box-shadow:0 0 8px var(--mach)"></span>
+      <span style="font-size:12px;font-weight:700">Agent</span>
+      <span style="font-size:9.5px;color:var(--faint)">every action logged · autonomous ones undoable</span>
+    </div>
+    ${agAns?`<div class="card" style="margin-top:10px;padding:10px 11px;border-color:var(--mach-line);background:var(--mach-soft)"><div style="font-size:11.5px;line-height:16px">${E(agAns)}</div></div>`:""}
+    ${sect("asks you — blocked on a human","var(--amber)",asks,"nothing needs your judgement right now")}
+    ${sect("suggests — one keypress","var(--mach)",sugs,"no suggestions pending")}
+    ${sect("did — on its own","var(--ok)",dids,"")}
+  `;
+}
+/* ── overlays ── */
+function openPal(){ov="pal";palQ="";palSel=0;paint();}
+function palList(){
+  const A=[];
+  if(!C&&W.line.length)A.push({t:"call the next patient",k:"⏎",f(){ov=null;callNext();}});
+  if(C)A.push({t:"confirm the current block",k:"⏎",f(){ov=null;confirmCur();}});
+  A.push({t:"counter flow — supervisor",f(){ov="flow";paint();}});
+  A.push({t:"simulate: printer jam",f(){ov=null;jam();}});
+  A.push({t:"design schema & what the backend needs",f(){ov="schema";paint();}});
+  A.push({t:"park this patient",k:"Esc",f(){ov=null;C=null;paint();}});
+  return A;
+}
+function runPal(i){const a=palActs[i];palQ="";if(a)a.f();}
+function paintOvl(){
+  const O=$("ovls");
+  if(!ov){O.innerHTML="";return;}
+  if(ov==="pal"){
+    palActs=palList().filter(a=>!palQ||a.t.includes(palQ.toLowerCase()));
+    O.innerHTML=`<div class="ovl" onclick="if(event.target===this){ov=null;paint()}">
+      <div class="card" style="width:520px;overflow:hidden" onclick="event.stopPropagation()">
+        <div style="display:flex;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line)">
+          <span class="mo" style="color:var(--mach)">›</span>
+          <input id="palx" placeholder="command…" style="border:none;background:none;color:var(--ink);flex-grow:1;font-size:14px" value="${E(palQ)}"
+            oninput="palQ=this.value;palSel=0;paint();var el=$('palx');el.focus();el.setSelectionRange(el.value.length,el.value.length)"/>
+          <span class="kb">esc</span>
+        </div>
+        <div style="padding:6px;max-height:340px;overflow-y:auto">
+          ${palActs.map((a,i)=>`<div class="pi ${i===palSel?"sel":""}" onclick="runPal(${i})"><span>${a.t}</span><span style="flex-grow:1"></span>${a.k?`<span class="kb">${a.k}</span>`:""}</div>`).join("")}
+        </div>
+      </div></div>`;
+    const i=$("palx");if(i)i.focus();return;
+  }
+  if(ov==="flow"){
+    O.innerHTML=`<div class="ovl" onclick="if(event.target===this){ov=null;paint()}">
+      <div class="card" style="width:560px;padding:20px 22px" onclick="event.stopPropagation()">
+        <div style="font-size:15px;font-weight:700">🔒 Counter flow — the supervisor's switch</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:4px">The stream reorders itself; a token never precedes payment unless the supervisor chose the token-first lane. Unlocked here to preview.</div>
+        <div style="display:flex;flex-direction:column;gap:7px;margin-top:13px">
+          ${Object.entries(FLOW).map(([k,f])=>`
+          <button onclick="W.flow='${k}';ov=null;did('supervisor set flow: ${k}',false);paint()"
+            style="display:flex;gap:11px;padding:12px 13px;border-radius:8px;border:1px solid ${W.flow===k?"var(--mach)":"var(--line)"};background:${W.flow===k?"var(--mach-soft)":"var(--panel2)"}">
+            <span style="width:14px;height:14px;border-radius:99px;flex-shrink:0;margin-top:2px;border:${W.flow===k?"4px solid var(--mach)":"1.5px solid var(--line)"}"></span>
+            <span><span class="mo" style="font-size:11px;font-weight:700;display:block">${k} · ${f.s}</span>
+            <span style="font-size:11px;color:var(--dim)">${f.l}</span></span>
+          </button>`).join("")}
+        </div>
+      </div></div>`;
+    return;
+  }
+  if(ov==="schema"){O.innerHTML=schema();}
+}
+function schema(){
+  const sw=(c,n,d)=>`<div style="display:flex;gap:10px;align-items:center"><span class="sw" style="background:${c}"></span>
+    <div><div class="mo" style="font-size:10.5px;font-weight:700">${c} · ${n}</div><div style="font-size:10px;color:var(--dim)">${d}</div></div></div>`;
+  return `<div class="ovl" style="align-items:stretch;padding:4vh 0" onclick="if(event.target===this){ov=null;paint()}">
+  <div class="card" style="width:860px;margin:0 auto;padding:26px 30px;overflow-y:auto" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:baseline;gap:12px">
+      <span style="font-size:18px;font-weight:900">Design schema — Counter Cockpit</span>
+      <span style="font-size:11px;color:var(--dim)">thesis: Ramesh confirms, the agent types</span>
+      <button class="gh" style="margin-left:auto;height:28px" onclick="ov=null;paint()">close · esc</button>
+    </div>
+
+    <div class="tag" style="margin-top:22px;color:var(--mach)">1 · the three-lane cockpit</div>
+    <div style="font-size:12px;line-height:18px;color:var(--dim);margin-top:8px">
+      <b style="color:var(--ink)">Left — the line:</b> the agent works people while they are still queueing (lobby-QR self-registration with their own OTP, the guard's note, phone matching), so each arrival is a prepared file.
+      <b style="color:var(--ink)">Centre — the confirm-stream:</b> no stages, no forms-first; the visit is a column of prepared blocks and Enter means "this is true".
+      <b style="color:var(--ink)">Right — the autonomy ladder:</b> ASKS (blocked on a human) / SUGGESTS (one keypress) / DID (autonomous, timestamped, undoable). Governance is the feature: you can always answer "what did the AI do and can I take it back?"
+    </div>
+
+    <div class="tag" style="margin-top:20px;color:var(--mach)">2 · color — night-ops palette (a daylight twin ships with it)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+      ${sw("#111823","slate ground","calm, glare-free; chosen for the pitch — same tokens invert to a daylight theme")}
+      ${sw("#62d6e8","machine cyan","ONLY the agent: its labels, chips, borders, suggestions")}
+      ${sw("#ffb454","amber","needs a human: ASKS cards, UNPAID stamps, drawer gaps, surge")}
+      ${sw("#4ade9b","green","settled: money in, verified, done, escort coming")}
+      ${sw("#ff6b5e","signal red","the mic consent light and true faults (printer) — nothing else")}
+      ${sw("#e9eff7","paper ink","text, and the one solid button per block: Confirm")}
+    </div>
+
+    <div class="tag" style="margin-top:20px;color:var(--mach)">3 · minute details that carry the intuition</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;margin-top:9px;font-size:11px;line-height:16px;color:var(--dim)">
+      <div><b style="color:var(--ink)">Keystroke counter</b> — the magic, measured. A zero-typing visit is the OS working; the shift strip shows 96% of visits hit it.</div>
+      <div><b style="color:var(--ink)">The say-this box</b> — direction + token + honest wait + one personal detail (speak up for Suraj, the 13:40 bus for Sunita), in Hindi, so every clerk sounds like the best clerk.</div>
+      <div><b style="color:var(--ink)">Honest waits</b> — quotes use the doctor's pace <i>today</i> and his 13:00 rounds break, not queue × average.</div>
+      <div><b style="color:var(--ink)">Change intelligence</b> — ₹350 from a ₹1,000 note is checked against real denominations; the runner is pinged before the drawer runs dry.</div>
+      <div><b style="color:var(--ink)">Sequencing</b> — fasting draw before the free review consult, with the queue position pinned: the patient never queues twice.</div>
+      <div><b style="color:var(--ink)">Family phone linking</b> — one shared phone per household is normal; the OS models it instead of fighting it with duplicates.</div>
+      <div><b style="color:var(--ink)">Consent made physical</b> — speak-to-fill only runs while a red light glows on the counter; audio is processed on-prem and discarded.</div>
+      <div><b style="color:var(--ink)">Graceful failure</b> — printer jam reroutes tokens to SMS + hall board by itself and says so on the slip.</div>
+      <div><b style="color:var(--ink)">Between-patients micro-job</b> — the 10-second task (variance sign-off) offered only when the desk is clear.</div>
+      <div><b style="color:var(--ink)">Large-print token</b> — remembered from "lost his specs last visit"; dignity is a feature.</div>
+    </div>
+
+    <div class="tag" style="margin-top:20px;color:var(--amber)">4 · what this asks of the backend — the build list</div>
+    <div class="card" style="margin-top:9px;padding:13px 15px;background:var(--panel2);overflow-x:auto">
+      <pre class="mo" style="margin:0;font-size:10.5px;line-height:18px">pre_registrations   lobby-QR intents: self-filled fields + self-OTP + presenting complaint
+line_lens           counter-queue objects w/ agent prep state (matched file, readiness)
+household_links     shared-phone family groups (one contact, many UHIDs)
+voice_capture       on-prem STT session w/ consent record; emits fields only, audio discarded
+wait_model          per-doctor live pace + calendar breaks → honest quote + re-quote via SMS
+visit_plans         cross-dept sequencing (lab-first) w/ pinned queue positions
+drawer_ledger       denomination-level cash state; change feasibility; runner requests
+agent_ledger        DID/SUGGESTS/ASKS event log; every DID reversible w/ compensating action
+surge_forecast      footfall curve + counter-open drafts routed to supervisor
+device_watch        printer/link heartbeats; automatic SMS+board token fallback
+patient_flags       counter-relevant memory: hearing, large-print, escort, bus timings
+report_shelf        physical shelf slots tied to results; pickup logged on handover</pre>
+    </div>
+
+    <div class="tag" style="margin-top:20px;color:var(--mach)">5 · type</div>
+    <div style="font-size:11.5px;line-height:17px;color:var(--dim);margin-top:8px">
+      <b style="color:var(--ink)">Chivo</b> for the human interface · <span class="mo" style="color:var(--ink)">Spline Sans Mono</span> for everything compared digit-by-digit and every agent timestamp ·
+      <span class="dev" style="color:var(--ink)">Noto Sans Devanagari</span> for the sentences said out loud. The one solid button on screen is always Confirm — everything else is quiet.
+    </div>
+  </div></div>`;
+}
+
+/* ════════ keys ════════ */
+document.addEventListener("keydown",e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();ov==="pal"?(ov=null,paint()):openPal();return;}
+  if(ov==="pal"){
+    if(e.key==="ArrowDown"){e.preventDefault();palSel=Math.min(palActs.length-1,palSel+1);paint();return;}
+    if(e.key==="ArrowUp"){e.preventDefault();palSel=Math.max(0,palSel-1);paint();return;}
+    if(e.key==="Enter"){e.preventDefault();runPal(palSel);return;}
+    if(e.key==="Escape"){palQ="";ov=null;paint();return;}
+    return;
+  }
+  if(e.key==="Escape"){if(ov){ov=null;paint();}else if(C){C=null;paint();}return;}
+  if(e.key==="F2"){e.preventDefault();$("askIn").focus();return;}
+  const el=document.activeElement,typing=el&&/INPUT|TEXTAREA/.test(el.tagName);
+  if(typing){
+    if(C&&el.closest("#center"))C.ks++,paintKs();
+    if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){e.preventDefault();C?confirmCur():callNext();}
+    return;
+  }
+  if(e.key==="Enter"){e.preventDefault();C?confirmCur():callNext();return;}
+  if(C&&curKey()==="money"&&!C.paid&&price().t>0){
+    if(e.key==="1")payCash();if(e.key==="2")payUpi();if(e.key==="3")payCash();
+  }
+});
+function paintKs(){/* light update without full repaint while typing */
+  const n=document.querySelector("#center .mo span[style*='font-size:14px']");
+  if(n)n.textContent=C.ks,n.style.color=C.ks===0?"var(--ok)":"var(--ink)";
+}
+paint();
+</script>
