@@ -747,17 +747,28 @@ export async function issueInvoice(
    */
   const changeGivenPaise = input.receipt?.changeGivenPaise ?? 0;
   if (changeGivenPaise > 0) {
-    if (changeGivenPaise > unallocatedPaise) {
-      throw new BillingError(
-        "change_exceeds_surplus",
-        `change of ${String(changeGivenPaise)} exceeds the ${String(unallocatedPaise)} surplus on this receipt`,
-        { changeGivenPaise, unallocatedPaise },
-      );
-    }
-    if (!(input.receipt?.tenders ?? []).some((t) => t.mode === "cash")) {
+    /**
+     * RC-1 CLOSE M4 — the ceiling is the SMALLER of the receipt's surplus and the CASH actually
+     * tendered. The original pair of guards compared against the whole-receipt surplus and only
+     * checked that a cash tender EXISTS, so ₹1 of cash beside a card overpayment authorised
+     * handing back the card's surplus as cash — a refund with an approval ladder, walking out as
+     * change. (The guard was unreachable while the controller stripped the field; T1 made it
+     * live, and this is its first re-read since 07b wrote it.)
+     */
+    let cashTenderedPaise = 0;
+    for (const t of input.receipt?.tenders ?? []) if (t.mode === "cash") cashTenderedPaise += t.amountPaise;
+    if (cashTenderedPaise === 0) {
       throw new BillingError(
         "change_without_cash",
         "change can only be handed back against a cash tender — returning money on a card payment is a refund",
+      );
+    }
+    const changeCeilingPaise = Math.min(unallocatedPaise, cashTenderedPaise);
+    if (changeGivenPaise > changeCeilingPaise) {
+      throw new BillingError(
+        "change_exceeds_surplus",
+        `change of ${String(changeGivenPaise)} exceeds the ${String(changeCeilingPaise)} handable surplus on this receipt (surplus ${String(unallocatedPaise)}, cash tendered ${String(cashTenderedPaise)})`,
+        { changeGivenPaise, unallocatedPaise, cashTenderedPaise },
       );
     }
   }

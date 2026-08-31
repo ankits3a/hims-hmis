@@ -431,12 +431,20 @@ export async function getEncounter(db: Db | Tx, id: string): Promise<EncounterRo
   return rows[0] ?? null;
 }
 
-/** The encounter's newest queue entry (seq, never id — ledger §3.26) plus its session, for the doctor-day event fields. */
-async function newestEntryWhere(tx: Tx, encounterId: string): Promise<{ entry: QueueEntryRow; sessionRoomId: string | null }> {
+/**
+ * The encounter's newest queue entry (seq, never id — ledger §3.26) plus its session, for the
+ * doctor-day event fields. RC-1 CLOSE C1: `null` when the encounter has NO entry at all — a
+ * deferred (bill-first) visit that never joined. The old non-null assertion made abandoning a
+ * walked-away deferred patient a 500, which made the visit unclosable.
+ */
+async function newestEntryWhere(
+  tx: Tx, encounterId: string,
+): Promise<{ entry: QueueEntryRow; sessionRoomId: string | null } | null> {
   const entries = await tx
     .select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId))
     .orderBy(desc(opdQueueEntries.seq)).limit(1);
-  const entry = entries[0]!;
+  const entry = entries[0];
+  if (!entry) return null;
   const sessions = await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, entry.sessionId));
   return { entry, sessionRoomId: sessions[0]!.roomId };
 }
@@ -454,12 +462,15 @@ export async function abandonVisit(db: Db, actor: Actor, encounterId: string, re
       .set({ status: "cancelled" })
       .where(and(eq(opdQueueEntries.encounterId, encounterId), inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES])))
       .returning({ id: opdQueueEntries.id });
-    const { entry, sessionRoomId } = await newestEntryWhere(tx, encounterId);
+    // C1: a deferred visit has no entry — the abandon still happens; the event carries nulls,
+    // exactly as visit.opened does for the same state.
+    const located = await newestEntryWhere(tx, encounterId);
     await appendEvent(tx, visitAbandoned.make({
       actor, patientId: encounter.patientId, encounterId, correlationId: encounter.workflowInstanceId,
       payload: {
         encounterId, patientId: encounter.patientId, doctorId: encounter.doctorId, serviceDate: encounter.serviceDate,
-        sessionId: entry.sessionId, roomId: sessionRoomId, tokenNo: entry.tokenNo,
+        sessionId: located?.entry.sessionId ?? null, roomId: located?.sessionRoomId ?? null,
+        tokenNo: located?.entry.tokenNo ?? null,
         fromState: current.status, reason,
       },
     }));

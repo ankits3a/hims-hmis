@@ -44,10 +44,23 @@ export async function encounterFeeStatuses(
 
   const feeById = new Map<string, string | null>();
   for (const enc of encounters) {
-    feeById.set(enc.id, feeServiceFor(enc as EncounterRow, rules)); // reads visitType only
-    if (feeById.get(enc.id) === null) out.set(enc.id, "free");
+    let fee: string | null;
+    try {
+      fee = feeServiceFor(enc as EncounterRow, rules); // reads visitType only
+    } catch (e) {
+      // CLOSE MINOR-2: a visit type outside the OPD three (a hand-edited or imported row) is
+      // UNKNOWN here, never a thrown 500 for the whole queue — and never an aborted settle when
+      // this runs inside the flip hook. The gate makes the same conversion (gate.ts).
+      if (e instanceof BillingError) continue;
+      throw e;
+    }
+    feeById.set(enc.id, fee);
+    if (fee === null) out.set(enc.id, "free");
   }
-  const unresolved = encounters.filter((e) => feeById.get(e.id) !== null);
+  const unresolved = encounters.filter((e) => {
+    const fee = feeById.get(e.id);
+    return fee !== null && fee !== undefined;
+  });
   if (unresolved.length === 0) return out;
   const feeServiceIds = [...new Set([...feeById.values()].filter((v): v is string => v !== null))];
 
@@ -55,6 +68,7 @@ export async function encounterFeeStatuses(
     .select({
       id: invoices.id, encounterId: invoices.encounterId,
       creditExtended: invoices.creditExtended, netPayablePaise: invoices.netPayablePaise,
+      serviceId: invoiceLines.serviceId,
     })
     .from(invoices)
     .innerJoin(invoiceLines, eq(invoiceLines.invoiceId, invoices.id))
@@ -62,17 +76,30 @@ export async function encounterFeeStatuses(
       inArray(invoices.encounterId, unresolved.map((e) => e.id)),
       inArray(invoiceLines.serviceId, feeServiceIds),
     ));
-  // The join repeats an invoice once per matching line; everything below cares about documents.
-  const byInvoice = new Map(rows.map((r) => [r.id, r] as const));
+  /**
+   * CLOSE M1 — WHICH fee service an invoice carries is tracked PER INVOICE, and the loop below
+   * compares it against THIS encounter's own fee service. The first cut filtered the join on the
+   * batch-wide UNION and never re-checked, so an encounter whose bill was written against the
+   * OTHER visit type's consult line read `settled` here while `feeGate` (the authority) refused —
+   * and the stamp changed with the queue's composition. The gate and the stamp now select
+   * identically; only the batching differs.
+   */
+  const byInvoice = new Map<string, { encounterId: string | null; creditExtended: boolean; netPayablePaise: number; feeServices: Set<string> }>();
+  for (const r of rows) {
+    const inv = byInvoice.get(r.id);
+    if (inv) inv.feeServices.add(r.serviceId);
+    else byInvoice.set(r.id, { encounterId: r.encounterId, creditExtended: r.creditExtended, netPayablePaise: r.netPayablePaise, feeServices: new Set([r.serviceId]) });
+  }
   const invoiceIds = [...byInvoice.keys()];
   const dead = await enteredInErrorDocIds(exec, "invoice", invoiceIds);
   const credited = await creditedByInvoice(exec, invoiceIds);
   const allocated = await allocatedByInvoice(exec, invoiceIds);
 
   for (const enc of unresolved) {
+    const ownFee = feeById.get(enc.id)!;
     let status: EncounterFeeStatus = "unsettled";
     for (const [invoiceId, inv] of byInvoice) {
-      if (inv.encounterId !== enc.id || dead.has(invoiceId)) continue;
+      if (inv.encounterId !== enc.id || dead.has(invoiceId) || !inv.feeServices.has(ownFee)) continue;
       if (inv.creditExtended) {
         if (status === "unsettled") status = "credit";
         continue;

@@ -234,7 +234,7 @@ export async function searchPatients(
   // RC-1 T4 / D6 — the lanes, once: their OR is the WHERE, and each fragment is ALSO selected as
   // a boolean column, so "why did this row match" is answered by the very SQL that matched it.
   const lanes = patientMatchLanes(query);
-  conditions.push(lanes.length === 1 ? lanes[0]!.condition : or(...lanes.map((l) => l.condition))!);
+  conditions.push(patientMatchCondition(query)); // the SAME fold the palette uses — one copy (CLOSE MINOR)
   const laneFor = (lane: MatchLane): SQL<boolean> => {
     const found = lanes.find((l) => l.lane === lane);
     return found === undefined ? sql<boolean>`false` : sql<boolean>`(${found.condition})`;

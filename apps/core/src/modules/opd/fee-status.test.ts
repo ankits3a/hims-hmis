@@ -89,6 +89,33 @@ describe("RC-1 T3 — fee status projection and the board flip", () => {
     expect(await flips()).toHaveLength(0);
   });
 
+  /*
+   * RC-1 CLOSE M1 — the stamp must select on THIS encounter's own fee service, exactly as the
+   * consult gate does, and must not change with the batch's composition. A settled invoice
+   * carrying the OTHER visit type's consult line (the wrong pick at the counter) reads unsettled
+   * here because the gate would refuse it — the gate is the authority, and before this fix the
+   * union-filtered join let a "renewal" encounter elsewhere in the batch flip this stamp.
+   */
+  it("M1: a settled bill against the WRONG consult service stays unsettled, whoever else is in the batch", async () => {
+    const v = await newVisit("9899100007"); // visitType "new" → OPD-CONSULT-NEW is its fee
+    await issueInvoice(db, clerk, {
+      draftId: "fs-m1", patientId: v.patientId, encounterId: v.encounter.id,
+      lines: [{ lineId: "l1", serviceId: base.consultRenewalServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] },
+    });
+    // Batched WITH a renewal-typed encounter, so the renewal consult service is in the union.
+    const statuses = await encounterFeeStatuses(db, [
+      v.encounter,
+      { id: "renewal-synthetic", visitType: "renewal" },
+    ]);
+    expect(statuses.get(v.encounter.id)).toBe("unsettled"); // the gate would refuse; so must the stamp
+    // Alone in the batch, the answer is the SAME — the stamp is not a function of the queue.
+    expect((await encounterFeeStatuses(db, [v.encounter])).get(v.encounter.id)).toBe("unsettled");
+    // MINOR-2: a visit type outside the OPD three is UNKNOWN, never a thrown 500.
+    const weird = await encounterFeeStatuses(db, [{ id: "dc-1", visitType: "day_care" }]);
+    expect(weird.has("dc-1")).toBe(false);
+  });
+
   it("credit extension reads as credit, and flips the board the moment it is extended", async () => {
     await grantCreditExtend(db, "cashier");
     const v = await newVisit("9899100003");

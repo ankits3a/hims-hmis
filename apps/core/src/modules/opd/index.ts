@@ -25,4 +25,4 @@ export { orderQueue, nextInQueue, classOf } from "./queue-engine";
 export type { QueueEntryState, QueuePolicy, QueueClass } from "./queue-engine";
 export * from "./events";
 export { walkIn } from "./walk-in";
-export type { WalkInInput, WalkInResult, DuplicateCandidate } from "./walk-in";
+export type { WalkInInput, WalkInResult, WalkInDeferredResult, DuplicateCandidate } from "./walk-in";

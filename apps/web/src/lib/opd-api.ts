@@ -314,6 +314,14 @@ export type WireWalkInBody = {
 };
 
 export type WireWalkInResult = WireOpenVisitResult & { patientId: string; registered: boolean };
+/**
+ * RC-1 CLOSE M2 — what `join: "defer"` (bill-first, RC-3's flow) returns: NULL token/session/
+ * entry until POST /opd/visits/:id/join-queue fills them. The shipped counter never sends `join`,
+ * so WireWalkInResult stays true for it; a caller that defers MUST read this shape instead.
+ */
+export type WireWalkInDeferredResult = Omit<WireOpenVisitResult, "queueEntry" | "tokenNo" | "sessionId"> & {
+  queueEntry: null; tokenNo: null; sessionId: null; patientId: string; registered: boolean;
+};
 
 /** The near-matches a refused registration comes back with (`duplicate_suspected`). */
 export type WireDuplicateCandidate = { id: string; uhid: string; name: string | null };

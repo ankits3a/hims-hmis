@@ -96,6 +96,9 @@ export const visitTransferred = defineEvent("visit.transferred", MODULE, z.objec
 
 export const visitAbandoned = defineEvent("visit.abandoned", MODULE, z.object({
   encounterId: id, patientId: id, ...where,
+  // RC-1 CLOSE C1 — a DEFERRED visit abandons with no session and no token, like visit.opened.
+  sessionId: z.string().min(1).nullable(),
+  tokenNo: z.number().int().positive().nullable(),
   fromState: z.enum(["registered", "waiting", "awaiting_results"]), reason: z.string().min(1),
 }));
 

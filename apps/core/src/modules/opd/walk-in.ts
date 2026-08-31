@@ -4,7 +4,7 @@ import { withTx } from "../../kernel/db/client";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { openVisitInTx } from "./encounters";
 import { OpdError } from "./errors";
-import type { OpenVisitInput, OpenVisitResult } from "./encounters";
+import type { OpenVisitDeferredResult, OpenVisitInput, OpenVisitResult } from "./encounters";
 import type { RegisterPatientInput } from "../patients";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -59,6 +59,15 @@ export type WalkInResult = OpenVisitResult & {
 };
 
 /**
+ * RC-1 CLOSE M2 — what `join: "defer"` actually returns: the visit with NULL token/session/entry
+ * (`joinQueue` fills them after billing). Spike S2 named this trap in as many words and T3 shipped
+ * without it: the overloads below existed on `openVisitInTx` while this file still promised the
+ * non-null shape for every call, so a deferred caller's `result.tokenNo` type-checked as `number`
+ * and arrived `null`.
+ */
+export type WalkInDeferredResult = OpenVisitDeferredResult & { patientId: string; registered: boolean };
+
+/**
  * The near-match probe. It reuses `searchPatients` rather than inventing a matcher: that function
  * already carries the phone/UHID/name lanes and the trigram fallback the desk searches with, so the
  * candidates a clerk is warned about are exactly the ones they would have found by searching — which
@@ -78,12 +87,21 @@ async function nearMatches(db: Db, actor: Actor, input: RegisterPatientInput): P
 }
 
 export async function walkIn(
+  db: Db, actor: Actor, input: WalkInInput & { join: "defer" }, idempotencyKey: string | undefined, now?: Date,
+): Promise<WalkInDeferredResult>;
+export async function walkIn(
+  db: Db, actor: Actor, input: Omit<WalkInInput, "join">, idempotencyKey: string | undefined, now?: Date,
+): Promise<WalkInResult>;
+export async function walkIn(
+  db: Db, actor: Actor, input: WalkInInput, idempotencyKey: string | undefined, now?: Date,
+): Promise<WalkInResult | WalkInDeferredResult>;
+export async function walkIn(
   db: Db,
   actor: Actor,
   input: WalkInInput,
   idempotencyKey: string | undefined,
   now: Date = new Date(),
-): Promise<WalkInResult> {
+): Promise<WalkInResult | WalkInDeferredResult> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
 
   return withIdempotency(

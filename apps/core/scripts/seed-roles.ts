@@ -933,7 +933,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * whose only holders are these roles, and the window stays empty until somebody is assigned.
    *
    * **The three separations are the point, and a permission census cannot see any of them** — it
-   * counts to 146 whether or not `radiographer` can sign. T2 A3 pins all three BY NAME in
+   * counts to 147 whether or not `radiographer` can sign. T2 A3 pins all three BY NAME in
    * `test/seed-roles.test.ts`, and the gate separation is additionally pinned in
    * `modules/radiology/workflow-def.test.ts` because the workflow engine gates on ROLE KEYS and
    * never consults a permission (finding F9 — the two planes must both say no).
@@ -984,7 +984,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       /**
        * The technologist: checks the patient in, satisfies the safety gates with evidence,
        * acquires. **NOT `radiology.reports.sign`** — the separation the whole department exists
-       * around, and T2 A3's mutant is precisely a grant of it here: the census still counts to 146
+       * around, and T2 A3's mutant is precisely a grant of it here: the census still counts to 147
        * and the separation is gone.
        *
        * `pcpndt.form_f.read` and not `.write`: the radiographer must be able to see that a Form F

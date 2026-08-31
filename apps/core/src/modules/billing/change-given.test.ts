@@ -67,6 +67,38 @@ describe("change handed back (07b T5)", () => {
       })).rejects.toMatchObject({ code: "change_exceeds_surplus" });
     });
 
+    /*
+     * RC-1 CLOSE M4 — the ceiling is min(surplus, CASH tendered). Before this fix the guard only
+     * checked that a cash tender EXISTS: ₹1 of cash beside a card overpayment authorised handing
+     * the CARD's surplus back as cash — a refund with an approval ladder, walking out as change.
+     * (Unreachable while the controller stripped the field; T1 made the guard live.)
+     */
+    it("M4: refuses change exceeding the CASH tendered, even when the whole-receipt surplus covers it", async () => {
+      const cashier = await mkUser(db, "cash4", ["cashier"]);
+      await openSession(db, cashier.actor, 200_00);
+      const patient = await mkPatient(db, cashier.actor, { phone: "9876500005" });
+      await expect(issueInvoice(db, cashier.actor, {
+        draftId: "d-m4", patientId: patient.id,
+        lines: [{ lineId: "l1", serviceId: svc, qty: 1 }], // 500_00 net
+        receipt: {
+          tenders: [{ mode: "cash", amountPaise: 1_00 }, { mode: "card", amountPaise: 520_00, refText: "AUTH-2" }],
+          changeGivenPaise: 20_00, // surplus is 21_00 but only 1_00 of it is cash
+        },
+      })).rejects.toMatchObject({ code: "change_exceeds_surplus", detail: { cashTenderedPaise: 1_00 } });
+
+      // …and change up to the cash actually tendered still passes.
+      const ok = await issueInvoice(db, cashier.actor, {
+        draftId: "d-m4b", patientId: patient.id,
+        lines: [{ lineId: "l1", serviceId: svc, qty: 1 }],
+        receipt: {
+          tenders: [{ mode: "cash", amountPaise: 30_00 }, { mode: "card", amountPaise: 490_00, refText: "AUTH-3" }],
+          changeGivenPaise: 20_00, // surplus 20_00, cash 30_00 → ceiling 20_00
+        },
+      });
+      const [row] = await db.select().from(receipts).where(eq(receipts.id, ok.receiptId!));
+      expect(row!.changeGivenPaise).toBe(20_00);
+    });
+
     it("refuses change against a card-only payment — that is a refund, and refunds have a ladder", async () => {
       const cashier = await mkUser(db, "cash2", ["cashier"]);
       await openSession(db, cashier.actor, 200_00);

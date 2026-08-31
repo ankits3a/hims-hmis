@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { events, opdQueueEntries } from "../../kernel/db/schema";
-import { joinQueue, openVisit } from "./encounters";
+import { abandonVisit, joinQueue, openVisit } from "./encounters";
 import { recordVitals } from "./vitals";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -108,6 +108,26 @@ describe("RC-1 T3 — the deferred queue join", () => {
     // And the immediate (queue-first) open is byte-for-byte the shipped behaviour: entry + token.
     expect(opened.tokenNo).toBe(1);
     expect(opened.queueEntry.status).toBe("waiting_vitals");
+  });
+
+  /*
+   * RC-1 CLOSE C1 — the walked-away bill-first patient. The reviewer found abandonVisit 500ing on
+   * a deferred visit (`entries[0]!` on zero rows), which made the visit UNCLOSABLE: the only exit
+   * was minting a token for someone who had left. The abandon must succeed, and its event carries
+   * null session/token exactly as visit.opened does for the same state.
+   */
+  it("C1: a deferred visit can be ABANDONED — no 500, encounter closed, event with null token", async () => {
+    const r = await openDeferred();
+    const { encounter } = await abandonVisit(db, clerk, r.encounter.id, "patient left before billing");
+    expect(encounter.status).toBe("abandoned");
+    const abandoned = await db.select().from(events).where(eq(events.name, "visit.abandoned"));
+    expect(abandoned).toHaveLength(1);
+    const p = abandoned[0]!.payload as { tokenNo: number | null; sessionId: string | null; fromState: string };
+    expect(p.tokenNo).toBeNull();
+    expect(p.sessionId).toBeNull();
+    expect(p.fromState).toBe("registered");
+    // And an abandoned visit cannot then join a queue.
+    await expect(joinQueue(db, clerk, r.encounter.id)).rejects.toMatchObject({ code: "encounter_state_conflict" });
   });
 
   it("a non-user actor is refused", async () => {

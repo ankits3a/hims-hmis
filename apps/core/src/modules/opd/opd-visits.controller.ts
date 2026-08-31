@@ -11,7 +11,7 @@ import { abandonVisit, getVisit, joinQueue, listVisits, openVisit, patientTimeli
 import { patientRxHistory, patientVitalsHistory } from "./history";
 import type { RxHistoryItem, VitalsHistoryItem } from "./history";
 import { walkIn } from "./walk-in";
-import type { WalkInInput, WalkInResult } from "./walk-in";
+import type { WalkInDeferredResult, WalkInInput, WalkInResult } from "./walk-in";
 import { OpdError } from "./errors";
 import { parsed, toHttp } from "./opd-masters.controller";
 import { availableSlots } from "./schedules";
@@ -199,7 +199,7 @@ export class OpdVisitsController {
   @Post("walk-in")
   async walkInRoute(
     @CurrentActor() actor: Actor, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string,
-  ): Promise<WalkInResult> {
+  ): Promise<WalkInResult | WalkInDeferredResult> {
     const b = parsed(walkInBody, body);
     try {
       return await walkIn(this.db, actor, b as unknown as WalkInInput, idemKey);
