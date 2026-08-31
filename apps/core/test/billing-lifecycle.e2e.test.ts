@@ -211,7 +211,9 @@ describe("billing lifecycle e2e", () => {
       .send({ testsOrderedReturnToday: false }).expect(201);
     expect(completed.body.encounter.status).toBe("completed");
 
-    expect(await eventsByCorrelation(invoiceId)).toEqual(["invoice.issued", "receipt.recorded", "payment.received"]);
+    // RC-1 T3 — settling a live token's consult fee also narrates the board flip, in the same
+    // transaction and under the invoice's correlation (the queue.fee_settled hook).
+    expect(await eventsByCorrelation(invoiceId)).toEqual(["invoice.issued", "receipt.recorded", "payment.received", "queue.fee_settled"]);
   });
 
   it("(2) the dues story: credit-extend -> dues list -> partial clear -> clearance discount under approval -> final clear -> settled", async () => {
