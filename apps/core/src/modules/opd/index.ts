@@ -14,8 +14,8 @@ export type { ConsultStartGuard } from "./consultation";
 export { getEncounter, getVisit, listVisits, patientTimeline } from "./encounters";
 export type { EncounterRow, QueueEntryRow, TimelineItem } from "./encounters";
 // ── PLAN 17a T4 / DD15 — the lab walk-in, opened by the module that owns visits (spec §4) ──
-export { LAB_DEPARTMENT_CODE, openLabWalkin, openLabWalkinInTx } from "./encounters";
-export type { OpenLabWalkinInput, OpenVisitResult } from "./encounters";
+export { LAB_DEPARTMENT_CODE, joinQueue, openLabWalkin, openLabWalkinInTx, reviewAnchorFor } from "./encounters";
+export type { JoinQueueResult, OpenLabWalkinInput, OpenVisitResult, ReviewAnchor } from "./encounters";
 export type { AdvisedTest } from "./consultation";
 export { classifyVisit } from "./visit-type";
 export type { VisitType } from "./visit-type";

@@ -7,7 +7,7 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
-import { abandonVisit, getVisit, listVisits, openVisit, patientTimeline, reEnterVisit } from "./encounters";
+import { abandonVisit, getVisit, joinQueue, listVisits, openVisit, patientTimeline, reEnterVisit } from "./encounters";
 import { patientRxHistory, patientVitalsHistory } from "./history";
 import type { RxHistoryItem, VitalsHistoryItem } from "./history";
 import { walkIn } from "./walk-in";
@@ -18,7 +18,7 @@ import { availableSlots } from "./schedules";
 import { istDate } from "./time";
 import { listVitals, recordVitals } from "./vitals";
 import type { AppointmentRow } from "./appointments";
-import type { EncounterRow, OpenVisitResult, QueueEntryRow, TimelineItem, VitalsRow } from "./encounters";
+import type { EncounterRow, JoinQueueResult, OpenVisitResult, QueueEntryRow, TimelineItem, VitalsRow } from "./encounters";
 import type { Slot } from "./slots";
 import type { PatientSummary } from "../patients";
 import type { Db } from "../../kernel/db/client";
@@ -65,6 +65,9 @@ const walkInBody = z.object({
   referralSource: z.enum(["self", "internal_doctor", "external_rmp", "camp", "other"]).optional(),
   referrerName: z.string().max(200).optional(),
   acknowledgedDuplicates: z.boolean().optional(),
+  // RC-1 T3 / D4 — bill-first defers the QUEUE JOIN, never the doctor: the visit opens with its
+  // assignment, the token arrives with POST /opd/visits/:id/join-queue after the money.
+  join: z.enum(["queue", "defer"]).optional(),
 });
 const visitsQuery = z.object({
   status: z.enum(["registered", "waiting", "in_consultation", "awaiting_results", "completed", "abandoned"]).optional(),
@@ -200,6 +203,20 @@ export class OpdVisitsController {
     const b = parsed(walkInBody, body);
     try {
       return await walkIn(this.db, actor, b as unknown as WalkInInput, idemKey);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * RC-1 T3 / D4 — the second half of a bill-first walk-in: the deferred visit joins its
+   * doctor's day. Idempotent — a replay answers the existing live entry, `alreadyJoined: true`.
+   */
+  @RequirePermission("opd.visits.open", "hospital")
+  @Post("visits/:id/join-queue")
+  async joinQueueRoute(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<JoinQueueResult> {
+    try {
+      return await joinQueue(this.db, actor, id);
     } catch (e) {
       toHttp(e);
     }

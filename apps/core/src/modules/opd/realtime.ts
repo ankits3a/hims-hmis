@@ -13,6 +13,8 @@ export const OPD_REALTIME_NAMES = [
   // topic as everything else in the hall, which is what makes the desk's hall card go live on the
   // one fact it most needs: a session that has not opened yet.
   "queue_session.opened", "queue_session.closed",
+  // RC-1 T3 — the board flip: UNPAID → PAID on the seat and the hall, without a poll.
+  "queue.fee_settled",
 ];
 type P = { doctorId?: string; fromDoctorId?: string; toDoctorId?: string; serviceDate?: string; roomId?: string | null; encounterId?: string };
 

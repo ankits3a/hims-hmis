@@ -37,14 +37,30 @@ export type OpenVisitInput = {
   referralSource?: "self" | "internal_doctor" | "external_rmp" | "camp" | "other";
   referrerName?: string;
   appointment?: { id: string; slotStart: Date }; // set only by appointments.checkIn (T4)
+  /**
+   * RC-1 T3 / D4 — `bill_first` is a DEFERRED QUEUE JOIN, not a reordered transaction. The visit
+   * opens with its doctor and department (both columns are NOT NULL, and the consult fee is flat
+   * by charge_rules, so nothing about the bill waits on assignment); the session, token and queue
+   * entry arrive with `joinQueue` after the money. Default "queue" is byte-for-byte the shipped
+   * behaviour, and the appointment check-in path never defers.
+   */
+  join?: "queue" | "defer";
 };
 export type OpenVisitResult = {
   encounter: EncounterRow; queueEntry: QueueEntryRow; tokenNo: number; sessionId: string; roomId: string | null;
   visitType: VisitType; doctorScheduledToday: boolean;
 };
+/** RC-1 T3 / D4 — what a DEFERRED open returns: the visit without its day. `joinQueue` fills the nulls. */
+export type OpenVisitDeferredResult = {
+  encounter: EncounterRow; queueEntry: null; tokenNo: null; sessionId: null; roomId: string | null;
+  visitType: VisitType; doctorScheduledToday: boolean;
+};
 
 /** Db-first: resolves the patient and its merge chain through the patients module, then runs openVisitInTx on its own transaction. */
-export async function openVisit(db: Db, actor: Actor, input: OpenVisitInput, now: Date = new Date()): Promise<OpenVisitResult> {
+export async function openVisit(db: Db, actor: Actor, input: OpenVisitInput & { join: "defer" }, now?: Date): Promise<OpenVisitDeferredResult>;
+export async function openVisit(db: Db, actor: Actor, input: Omit<OpenVisitInput, "join">, now?: Date): Promise<OpenVisitResult>;
+export async function openVisit(db: Db, actor: Actor, input: OpenVisitInput, now?: Date): Promise<OpenVisitResult | OpenVisitDeferredResult>;
+export async function openVisit(db: Db, actor: Actor, input: OpenVisitInput, now: Date = new Date()): Promise<OpenVisitResult | OpenVisitDeferredResult> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
   const canonical = await resolvePatientId(db, input.patientId);
   if (!canonical) throw new OpdError("patient_not_found", `unknown patient ${input.patientId}`);
@@ -52,8 +68,16 @@ export async function openVisit(db: Db, actor: Actor, input: OpenVisitInput, now
   return withTx(db, (tx) => openVisitInTx(tx, actor, { ...input, patientId: canonical, chainIds }, now));
 }
 
-/** Tx-first core (also called by appointments.checkIn inside ITS transaction). patientId MUST already be canonical. */
-export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput & { chainIds: string[] }, now: Date): Promise<OpenVisitResult> {
+/**
+ * Tx-first core (also called by appointments.checkIn inside ITS transaction). patientId MUST already be canonical.
+ *
+ * OVERLOADED on `join` so the DEFERRED branch cannot leak nulls into the shipped callers: the
+ * check-in and lab paths never pass `join` and keep the non-null `OpenVisitResult` they always had.
+ */
+export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput & { chainIds: string[]; join: "defer" }, now: Date): Promise<OpenVisitDeferredResult>;
+export async function openVisitInTx(tx: Tx, actor: Actor, input: Omit<OpenVisitInput, "join"> & { chainIds: string[] }, now: Date): Promise<OpenVisitResult>;
+export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput & { chainIds: string[] }, now: Date): Promise<OpenVisitResult | OpenVisitDeferredResult>;
+export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput & { chainIds: string[] }, now: Date): Promise<OpenVisitResult | OpenVisitDeferredResult> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
   await loadOpdConfig(tx); // opd_not_configured before any write
   const doctor = (await tx.select().from(opdDoctors).where(eq(opdDoctors.id, input.doctorId)))[0];
@@ -81,8 +105,6 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
   const visitNo = await nextEpisodeNo(tx, "visit", serviceDate);
   const { instanceId } = await startInstance(tx, OPD_VISIT_DEF_KEY, { type: "opd_encounter", id: encounterId, patientId: input.patientId, encounterId });
   const roomId = await roomForDoctorDay(tx, doctor.id, serviceDate);
-  const session = await getOrCreateSession(tx, doctor.id, serviceDate, roomId);
-  const tokenNo = await allocateToken(tx, session.id);
 
   const [encounter] = await tx.insert(opdEncounters).values({
     id: encounterId, visitNo, patientId: input.patientId, workflowInstanceId: instanceId, departmentId: dept.id, doctorId: doctor.id,
@@ -90,19 +112,130 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
     intendedPayer: input.intendedPayer ?? "self", referralSource: input.referralSource ?? null, referrerName: input.referrerName ?? null,
     openedBy: actor.id, openedAt: now, updatedBy: actor.id, updatedAt: now,
   }).returning();
-  const [queueEntry] = await tx.insert(opdQueueEntries).values({
-    id: newId(), sessionId: session.id, encounterId, tokenNo,
-    kind: input.appointment ? "appointment" : "walk_in", appointmentAt: input.appointment?.slotStart ?? null, status: "waiting_vitals",
-  }).returning();
 
-  const where = { doctorId: doctor.id, serviceDate, sessionId: session.id, roomId: session.roomId, tokenNo };
   const env = { actor, patientId: input.patientId, encounterId, correlationId: instanceId };
+  const openedPayload = {
+    encounterId, patientId: input.patientId, departmentId: dept.id, doctorId: doctor.id, serviceDate,
+    visitType, intendedPayer: input.intendedPayer ?? "self",
+    kind: input.appointment ? ("appointment" as const) : ("walk_in" as const), appointmentId: input.appointment?.id ?? null,
+  };
+
+  // D4 — the deferred branch opens the visit and stops: no session, no token, no queue entry.
+  if (input.join === "defer") {
+    await appendEvent(tx, visitOpened.make({ ...env, payload: { ...openedPayload, sessionId: null, roomId, tokenNo: null } }));
+    return { encounter: encounter!, queueEntry: null, tokenNo: null, sessionId: null, roomId, visitType, doctorScheduledToday: roomId !== null };
+  }
+
+  const joined = await joinSessionInTx(tx, { id: encounterId, doctorId: doctor.id, serviceDate }, input.appointment ?? null);
   await appendEvent(tx, visitOpened.make({ ...env, payload: {
-    encounterId, patientId: input.patientId, departmentId: dept.id, ...where, visitType, intendedPayer: input.intendedPayer ?? "self",
-    kind: input.appointment ? "appointment" : "walk_in", appointmentId: input.appointment?.id ?? null,
+    ...openedPayload, sessionId: joined.sessionId, roomId: joined.roomId, tokenNo: joined.tokenNo,
   } }));
-  await appendEvent(tx, patientCheckedIn.make({ ...env, payload: { encounterId, patientId: input.patientId, ...where, kind: "arrival" } }));
-  return { encounter: encounter!, queueEntry: queueEntry!, tokenNo, sessionId: session.id, roomId: session.roomId, visitType, doctorScheduledToday: roomId !== null };
+  await appendEvent(tx, patientCheckedIn.make({ ...env, payload: {
+    encounterId, patientId: input.patientId, doctorId: doctor.id, serviceDate,
+    sessionId: joined.sessionId, roomId: joined.roomId, tokenNo: joined.tokenNo, kind: "arrival",
+  } }));
+  return {
+    encounter: encounter!, queueEntry: joined.queueEntry, tokenNo: joined.tokenNo, sessionId: joined.sessionId,
+    roomId: joined.roomId, visitType, doctorScheduledToday: roomId !== null,
+  };
+}
+
+/** The ONE place a visit joins its doctor-day: session get-or-create, token allocation, queue-entry insert. Both callers — the immediate open above and `joinQueue` below — run it inside their own transaction. */
+async function joinSessionInTx(
+  tx: Tx,
+  encounter: { id: string; doctorId: string; serviceDate: string },
+  appointment: { id: string; slotStart: Date } | null,
+): Promise<{ queueEntry: QueueEntryRow; tokenNo: number; sessionId: string; roomId: string | null }> {
+  const roomId = await roomForDoctorDay(tx, encounter.doctorId, encounter.serviceDate);
+  const session = await getOrCreateSession(tx, encounter.doctorId, encounter.serviceDate, roomId);
+  const tokenNo = await allocateToken(tx, session.id);
+  const [queueEntry] = await tx.insert(opdQueueEntries).values({
+    id: newId(), sessionId: session.id, encounterId: encounter.id, tokenNo,
+    kind: appointment ? "appointment" : "walk_in", appointmentAt: appointment?.slotStart ?? null, status: "waiting_vitals",
+  }).returning();
+  return { queueEntry: queueEntry!, tokenNo, sessionId: session.id, roomId: session.roomId };
+}
+
+export type JoinQueueResult = {
+  encounter: EncounterRow; queueEntry: QueueEntryRow; tokenNo: number; sessionId: string; roomId: string | null;
+  /** True when a live entry already existed — the call is IDEMPOTENT and returns it unchanged. */
+  alreadyJoined: boolean;
+};
+
+/**
+ * RC-1 T3 / D4 — the second half of a bill-first walk-in: the deferred visit joins its doctor's
+ * day. Idempotent per encounter, and race-safe by a lock on the ENCOUNTER row (a row outside the
+ * entry's own write path, the `callNext` idiom): two concurrent joins serialize there, the loser
+ * re-reads and returns the winner's entry — ONE token, ONE row, whichever interleaving.
+ */
+export async function joinQueue(db: Db, actor: Actor, encounterId: string, now: Date = new Date()): Promise<JoinQueueResult> {
+  if (actor.type !== "user") throw new OpdError("user_actor_required");
+  return withTx(db, async (tx) => {
+    const rows = await tx.select().from(opdEncounters).where(eq(opdEncounters.id, encounterId)).for("update");
+    const encounter = rows[0];
+    if (!encounter) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
+    if (encounter.status !== "registered") {
+      throw new OpdError("encounter_state_conflict", `a queue join needs a registered visit, not ${encounter.status}`);
+    }
+    if (encounter.serviceDate !== istDate(now)) {
+      throw new OpdError("encounter_state_conflict", `visit ${encounterId} belongs to ${encounter.serviceDate} — a past day's visit cannot join today's queue`);
+    }
+    if (encounter.doctorId === null) {
+      throw new OpdError("unknown_doctor", `visit ${encounterId} has no responsible doctor to queue for`);
+    }
+
+    const existing = (await tx
+      .select().from(opdQueueEntries)
+      .where(and(eq(opdQueueEntries.encounterId, encounterId), inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES])))
+      .orderBy(desc(opdQueueEntries.seq)).limit(1))[0];
+    if (existing) {
+      const session = (await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, existing.sessionId)))[0]!;
+      return { encounter, queueEntry: existing, tokenNo: existing.tokenNo, sessionId: session.id, roomId: session.roomId, alreadyJoined: true };
+    }
+
+    const joined = await joinSessionInTx(tx, { id: encounter.id, doctorId: encounter.doctorId, serviceDate: encounter.serviceDate }, null);
+    await appendEvent(tx, patientCheckedIn.make({
+      actor, patientId: encounter.patientId, encounterId, correlationId: encounter.workflowInstanceId,
+      payload: {
+        encounterId, patientId: encounter.patientId, doctorId: encounter.doctorId, serviceDate: encounter.serviceDate,
+        sessionId: joined.sessionId, roomId: joined.roomId, tokenNo: joined.tokenNo, kind: "arrival",
+      },
+    }));
+    return { encounter, ...joined, alreadyJoined: false };
+  });
+}
+
+export type ReviewAnchor = { doctorName: string | null; seenOn: string; windowEndsOn: string };
+
+/**
+ * RC-1 T5 / D8 — the anchor that made this visit FREE, so the quote can NAME the rule instead of
+ * answering a bare `free: true`. Re-derived from the same query `openVisitInTx` classified with;
+ * naming only — the free BRANCH itself stays `classifyVisit`'s, and a null here never un-frees
+ * anything (an anchor can be absent on a hand-edited row; the quote then says free with no story).
+ */
+export async function reviewAnchorFor(
+  db: Db | Tx,
+  encounter: { patientId: string; departmentId: string | null; visitType: string },
+): Promise<ReviewAnchor | null> {
+  if (encounter.visitType !== "revisit" || encounter.departmentId === null) return null;
+  const chainIds = [encounter.patientId, ...(await listMergedLoserIds(db, encounter.patientId))];
+  const anchor = (await db
+    .select({ consultCompletedAt: opdEncounters.consultCompletedAt, followUpDays: opdEncounters.followUpDays, doctorId: opdEncounters.doctorId })
+    .from(opdEncounters)
+    .where(and(inArray(opdEncounters.patientId, chainIds), eq(opdEncounters.departmentId, encounter.departmentId), eq(opdEncounters.status, "completed")))
+    .orderBy(desc(opdEncounters.consultCompletedAt))
+    .limit(1))[0];
+  if (!anchor?.consultCompletedAt) return null;
+  const days = anchor.followUpDays ?? 7;
+  const windowEnd = new Date(anchor.consultCompletedAt.getTime() + days * 24 * 3600 * 1000);
+  const doctor = anchor.doctorId === null
+    ? undefined
+    : (await db.select({ displayName: opdDoctors.displayName }).from(opdDoctors).where(eq(opdDoctors.id, anchor.doctorId)))[0];
+  return {
+    doctorName: doctor?.displayName ?? null,
+    seenOn: istDate(anchor.consultCompletedAt),
+    windowEndsOn: istDate(windowEnd),
+  };
 }
 
 /**

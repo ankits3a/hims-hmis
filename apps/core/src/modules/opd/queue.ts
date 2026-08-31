@@ -6,10 +6,11 @@ import {
   opdDepartments, opdDoctorSchedules, opdDoctors, opdEncounters, opdQueueEntries, opdQueueSessions, resources,
 } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
+import { encounterFeeStatuses } from "../billing";
 import { loadOpdConfig } from "./config";
 import { getEncounter } from "./encounters";
 import { OpdError } from "./errors";
-import { queueCalled, queueSkipped } from "./events";
+import { queueCalled, queueFeeSettled, queueSkipped } from "./events";
 import { classOf, nextInQueue, orderQueue } from "./queue-engine";
 import { istWeekday } from "./time";
 import type { OpdConfig } from "./config";
@@ -46,6 +47,12 @@ export type QueueEntryView = QueueEntryRow & {
   position: number | null; queueClass: QueueClass | null;
   encounter: { id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string };
   patient: PatientSummary | null;
+  /**
+   * RC-1 T3 / D1 — the token's stamp, DERIVED from the invoice ledger by `encounterFeeStatuses`
+   * (never stored): free · settled · credit · unsettled. `null` when billing is unconfigured —
+   * unknown, rendered as nothing.
+   */
+  feeStatus: "free" | "settled" | "credit" | "unsettled" | null;
 };
 export type QueueView = {
   session: SessionRow; doctor: DoctorRow; ordered: QueueEntryView[]; current: QueueEntryView | null; inConsult: QueueEntryView[];
@@ -69,6 +76,8 @@ export async function listQueue(db: Db, actor: Actor, doctorId: string, serviceD
   // Demographics come from the patients module — the OPD module reads no patient table (spec §4).
   const summaries = await getPatientSummaries(db, actor, encounters.map((e) => e.patientId));
   const summaryByPatient = new Map(summaries.map((s) => [s.requestedId, s] as const));
+  // The stamp, batched: a fixed number of queries however long the queue (the CI perf budget).
+  const feeStatuses = await encounterFeeStatuses(db, encounters);
 
   const toView = (row: QueueEntryRow, position: number | null, queueClass: QueueClass | null): QueueEntryView => {
     const encounter = encounterById.get(row.encounterId)!;
@@ -79,6 +88,7 @@ export async function listQueue(db: Db, actor: Actor, doctorId: string, serviceD
         dangerFlagged: encounter.dangerFlagged, status: encounter.status,
       },
       patient: summaryByPatient.get(encounter.patientId) ?? null,
+      feeStatus: feeStatuses.get(encounter.id) ?? null,
     };
   };
 
@@ -233,6 +243,12 @@ export async function boardSnapshot(db: Db, serviceDate: string, roomIds?: strin
 export type DoctorSummary = {
   doctor: DoctorRow; sessionId: string | null; status: SessionStatus | "none"; waitingCount: number;
   waitingVitalsCount: number; nowServing: number | null; scheduledToday: boolean; roomCode: string | null;
+  /**
+   * RC-1 T5 / D7 — wait v0's pace term: the department's `avg_consult_minutes` (a masters column,
+   * default 6). The seat renders `waitingCount × this` as minutes AND a clock time; a future pace
+   * model replaces THIS COLUMN'S READ, never the wire shape.
+   */
+  avgConsultMinutes: number;
 };
 
 /** The front desk's overview of a department's doctors for one IST day (every active doctor, session or not). */
@@ -269,6 +285,13 @@ export async function summaryByDoctor(db: Db, departmentId: string | undefined, 
   const rooms = roomIds.length === 0 ? [] : await db.select({ id: resources.id, code: resources.code }).from(resources).where(inArray(resources.id, roomIds));
   const roomCode = new Map(rooms.map((r) => [r.id, r.code] as const));
 
+  // D7 — one batched read of the doctors' departments for the pace column.
+  const deptIds = [...new Set(doctors.map((d) => d.departmentId))];
+  const depts = deptIds.length === 0
+    ? []
+    : await db.select({ id: opdDepartments.id, avgConsultMinutes: opdDepartments.avgConsultMinutes }).from(opdDepartments).where(inArray(opdDepartments.id, deptIds));
+  const avgByDept = new Map(depts.map((d) => [d.id, d.avgConsultMinutes] as const));
+
   return doctors
     .map((doctor): DoctorSummary => {
       const session = sessionByDoctor.get(doctor.id);
@@ -279,9 +302,46 @@ export async function summaryByDoctor(db: Db, departmentId: string | undefined, 
         doctor, sessionId: session?.id ?? null, status: (session?.status as SessionStatus | undefined) ?? "none",
         waitingCount, waitingVitalsCount: entries.filter((r) => r.status === "waiting_vitals").length,
         nowServing, scheduledToday: scheduledRoom.has(doctor.id), roomCode: room === null ? null : roomCode.get(room) ?? null,
+        avgConsultMinutes: avgByDept.get(doctor.departmentId) ?? 6,
       };
     })
     .sort((a, b) => a.doctor.displayName.localeCompare(b.doctor.displayName));
+}
+
+/**
+ * RC-1 T3 / D2 — the hook billing calls inside its settling transaction (`registerFeeSettledHook`,
+ * wired by `opd.module.ts`). It appends `queue.fee_settled` — the board flip — ONLY when:
+ * the encounter exists, its consult fee is actually covered per `encounterFeeStatuses` (so a
+ * pharmacy-only invoice settling flips nothing), and a LIVE queue entry is on the board (a
+ * deferred bill-first visit has no token yet — its token is BORN paid at `joinQueue`, and a flip
+ * for a token that never showed UNPAID would just be noise).
+ */
+export async function queueFeeSettledHook(
+  tx: Tx,
+  actor: Actor,
+  info: { encounterId: string; invoiceId: string; via: "invoice" | "credit_extended" | "allocation" },
+  now: Date,
+): Promise<void> {
+  void now;
+  const encounter = (await tx.select().from(opdEncounters).where(eq(opdEncounters.id, info.encounterId)))[0];
+  if (!encounter) return;
+  const status = (await encounterFeeStatuses(tx, [encounter])).get(encounter.id);
+  if (status !== "settled" && status !== "credit" && status !== "free") return;
+  const entry = (await tx
+    .select().from(opdQueueEntries)
+    .where(and(eq(opdQueueEntries.encounterId, encounter.id), inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES])))
+    .orderBy(desc(opdQueueEntries.seq)).limit(1))[0];
+  if (!entry) return;
+  const session = (await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, entry.sessionId)))[0];
+  if (!session) return;
+  await appendEvent(tx, queueFeeSettled.make({
+    actor, patientId: encounter.patientId, encounterId: encounter.id, correlationId: info.invoiceId,
+    payload: {
+      encounterId: encounter.id, patientId: encounter.patientId, doctorId: session.doctorId,
+      serviceDate: session.serviceDate, sessionId: session.id, roomId: session.roomId, tokenNo: entry.tokenNo,
+      status, invoiceId: info.invoiceId, via: info.via,
+    },
+  }));
 }
 
 /** The live rows of many sessions in one query, grouped. */

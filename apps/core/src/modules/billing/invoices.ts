@@ -19,6 +19,7 @@ import {
 } from "../membership";
 import { assertPaise, loadPricingContext, percentAmount, priceInvoiceLines } from "../tariff";
 import { allocateOnTx } from "./receipts";
+import { emitFeeSettled } from "./settle-hooks";
 import { assertCashAccepted } from "./cash-law";
 import { loadBillingConfig } from "./config";
 import { BillingError } from "./errors";
@@ -1028,6 +1029,23 @@ export async function issueInvoice(
         }
       }
 
+      // The settlement state counts BOTH lanes: the tenders taken here and the deposit already
+      // held. An invoice cleared entirely from a booking deposit is SETTLED, not outstanding.
+      const settlement = settlementState(totals.netPayablePaise, 0, allocatedPaise + heldSettlementPaise);
+      /**
+       * RC-1 T3 / D2 — the token's board flip rides the SAME commit as the money. The hook
+       * receives "an invoice for this encounter is now settled / credit-extended"; whether that
+       * invoice actually covers the CONSULT FEE is the registered hook's question to answer (it
+       * re-derives through `encounterFeeStatuses`, the one projection), so a pharmacy-only
+       * invoice settling never flips a token by accident.
+       */
+      if (input.encounterId !== undefined && (creditBlock !== null || settlement.state === "settled")) {
+        await emitFeeSettled(tx, actor, {
+          encounterId: input.encounterId, invoiceId,
+          via: creditBlock !== null ? "credit_extended" : "invoice",
+        }, now);
+      }
+
       return {
         invoiceId,
         invoiceNo,
@@ -1038,9 +1056,7 @@ export async function issueInvoice(
         settledFromHeldPaise: heldSettlementPaise,
         unallocatedPaise,
         creditExtended: creditBlock !== null,
-        // The settlement state counts BOTH lanes: the tenders taken here and the deposit already
-        // held. An invoice cleared entirely from a booking deposit is SETTLED, not outstanding.
-        settlement: settlementState(totals.netPayablePaise, 0, allocatedPaise + heldSettlementPaise),
+        settlement,
         warnings,
       };
     });

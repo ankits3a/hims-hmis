@@ -1,6 +1,8 @@
 import { Injectable, Module, OnModuleInit } from "@nestjs/common";
 // PLAN 17 PHASE 0 T3 — the registry moved to the kernel; billing re-exports the same names.
 import { registerEncounterResolver } from "../../kernel/episodes/encounter-resolvers";
+import { registerFeeSettledHook } from "../billing";
+import { queueFeeSettledHook } from "./queue";
 import { registerCareContextProvider } from "../../kernel/phi/audit";
 import { careContextFor } from "./care-context";
 import { EPISODE_SERIES } from "../../kernel/episodes/series";
@@ -47,6 +49,10 @@ export class OpdModule implements OnModuleInit {
   onModuleInit(): void {
     registerOpdEncounterResolver();
     registerOpdCareContextProvider();
+    // RC-1 T3 / D2 — the board flip: billing settles, OPD narrates. The registry is keyed, so a
+    // second testing-module init replaces rather than double-registers (the guard's reasoning,
+    // pointed the other way).
+    registerFeeSettledHook("opd_queue_flip", queueFeeSettledHook);
   }
 }
 

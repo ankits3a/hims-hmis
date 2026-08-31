@@ -58,4 +58,15 @@ export type { DayBook, Gstr1Row, DailyCloseResult } from "./daily-close";
 export { registerBillingApprovalTypes, BILLING_APPROVAL_TYPES } from "./approval-types";
 export { loadBillingConfig } from "./config";
 export type { BillingConfig } from "./config";
+/**
+ * RC-1 T3 — the token's paid stamp, both halves. `encounterFeeStatuses` is the batched projection
+ * OPD's queue read renders (D1: derived from the ledger, never a column), and
+ * `registerFeeSettledHook` is the mirror of `registerConsultStartGuard`: OPD registers its
+ * `queue.fee_settled` board flip and billing calls it inside the very transaction that covered
+ * the fee (settle at issue, credit extension, or a later allocation).
+ */
+export { encounterFeeStatuses } from "./fee-status";
+export type { EncounterFeeStatus } from "./fee-status";
+export { registerFeeSettledHook } from "./settle-hooks";
+export type { FeeSettledHook, FeeSettledVia } from "./settle-hooks";
 export * from "./events";

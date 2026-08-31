@@ -115,6 +115,9 @@ describe("the OPD fee branch: feeServiceFor and the fee quote (D8)", () => {
     const revisit = await shapeEncounter("revisit");
     expect(await feeQuote(db, revisit, NOW)).toEqual({
       encounterId: revisit, visitType: "revisit", free: true, feeServiceId: null, draft: null,
+      // RC-1 T5 — a shaped row has no department and no anchor: free with NO story, never un-freed.
+      // The anchored freeReason is proved in opd/fee-status.test.ts, where real masters exist.
+      freeReason: null,
     });
 
     expect(await codeOf(feeQuote(db, "no-such-encounter", NOW)))

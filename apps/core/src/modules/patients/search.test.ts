@@ -46,6 +46,37 @@ describe("searchPatients", () => {
     expect(viaAlt.map((r) => r.name)).toEqual(["Ashok Kumar"]);
   });
 
+  /*
+   * RC-1 T4 / D6 — the row says WHY it matched, from the same SQL fragments that matched it.
+   * Reasons, never a percentage (design ruling): the seat renders these as "same mobile" /
+   * "name match" / "UHID" chips.
+   */
+  it("matchedOn names the lane that fired, per row — mobile, name, uhid, and the ambiguous digit run", async () => {
+    const { ashaUhid } = await seedThree();
+
+    const byPhone = await searchPatients(db, clerk, "98765");
+    for (const hit of byPhone) expect(hit.matchedOn).toEqual(["mobile"]);
+
+    const byName = await searchPatients(db, clerk, "asha");
+    expect(byName[0]!.matchedOn).toEqual(["name"]);
+
+    const byUhid = await searchPatients(db, clerk, ashaUhid);
+    expect(byUhid).toHaveLength(1);
+    expect(byUhid[0]!.matchedOn).toEqual(["uhid"]);
+
+    // The ambiguous digit run tries BOTH lanes; each row reports only the lane that actually
+    // fired for IT — Binod's phone starts 7012345, Asha's serial contains the same digits only
+    // if her UHID happens to; assert the phone hit reports mobile and nothing it did not match.
+    const ambiguous = await searchPatients(db, clerk, "7012345");
+    const binod = ambiguous.find((r) => r.name === "Binod Singh")!;
+    expect(binod.matchedOn).toContain("mobile");
+    // And a trailing-digits UHID read reports the uhid lane, not mobile.
+    const trailing = await searchPatients(db, clerk, ashaUhid.slice(3));
+    const asha = trailing.find((r) => r.uhid === ashaUhid)!;
+    expect(asha.matchedOn).toContain("uhid");
+    expect(asha.matchedOn).not.toContain("name");
+  });
+
   it("UHID-shaped queries match exactly, case-insensitively on the prefix", async () => {
     const { ashaUhid } = await seedThree();
     const hits = await searchPatients(db, clerk, ashaUhid.toLowerCase());

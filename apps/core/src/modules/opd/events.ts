@@ -54,10 +54,28 @@ export const doctorLeaveScheduled = defineEvent("doctor_leave.scheduled", MODULE
 
 export const visitOpened = defineEvent("visit.opened", MODULE, z.object({
   encounterId: id, patientId: id, departmentId: id, ...where,
+  // RC-1 T3 / D4 — a bill-first open has no queue join yet: null session/token means DEFERRED,
+  // and `patient.checked_in` carries the real token when the join happens. Every queue-first
+  // open still writes both, so nothing that reads the shipped shape loses a value it had.
+  sessionId: z.string().min(1).nullable(),
+  tokenNo: z.number().int().positive().nullable(),
   visitType: z.enum(["new", "revisit", "renewal"]),
   intendedPayer: z.enum(["self", "tpa", "pmjay", "corporate"]),
   kind: z.enum(["walk_in", "appointment"]),
   appointmentId: z.string().nullable(),
+}));
+
+/**
+ * RC-1 T3 / D2 — the board flip. Appended by the OPD hook billing calls inside the settling
+ * transaction (`registerFeeSettledHook`), only when the encounter's consult fee is actually
+ * covered per `encounterFeeStatuses` — the one projection, so the flip cannot disagree with the
+ * stamp a queue read would compute.
+ */
+export const queueFeeSettled = defineEvent("queue.fee_settled", MODULE, z.object({
+  encounterId: id, patientId: id, ...where,
+  status: z.enum(["settled", "credit", "free"]),
+  invoiceId: id,
+  via: z.enum(["invoice", "credit_extended", "allocation"]),
 }));
 
 export const patientCheckedIn = defineEvent("patient.checked_in", MODULE, z.object({

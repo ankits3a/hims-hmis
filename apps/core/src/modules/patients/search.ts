@@ -17,7 +17,15 @@ export type PatientSearchResult = {
   dob: Date | null;
   isConfidential: boolean;
   hasPhoto: boolean;
+  /**
+   * RC-1 T4 / D6 — WHY this row matched: the lanes that fired, per row, from the SAME SQL
+   * fragments the predicate is built of (never a JS re-derivation that could drift). The seat
+   * renders them as reason chips — "same mobile", never a confidence percentage (design ruling).
+   */
+  matchedOn: MatchLane[];
 };
+
+export type MatchLane = "uhid" | "mobile" | "name";
 
 const PHONE_RE = /^\d{3,14}$/;
 
@@ -70,6 +78,17 @@ function uhidContains(digits: string): SQL {
  * silently carried a confidentiality rule would be the worse kind of reuse.
  */
 export function patientMatchCondition(query: string): SQL {
+  const lanes = patientMatchLanes(query);
+  return lanes.length === 1 ? lanes[0]!.condition : or(...lanes.map((l) => l.condition))!;
+}
+
+/**
+ * RC-1 T4 / D6 — the SAME branches, decomposed per LANE so a caller can also ask which lane a
+ * ROW matched (each lane's fragment doubles as a boolean select column in `searchPatients`).
+ * `patientMatchCondition` above is their OR, so the desk, the palette and the reason chips can
+ * never disagree — one copy, three readers.
+ */
+export function patientMatchLanes(query: string): { lane: MatchLane; condition: SQL }[] {
   /**
    * Separators are punctuation ON AN ID, never data: a desk reading a card aloud types
    * "U 1234 5013" as readily as "U12345013", and the old hyphenated format trained everyone's
@@ -79,10 +98,10 @@ export function patientMatchCondition(query: string): SQL {
    */
   const compact = query.replace(/[\s-]/g, "");
 
-  if (UHID_FULL_RE.test(compact)) return eq(patients.uhid, compact.toUpperCase());
+  if (UHID_FULL_RE.test(compact)) return [{ lane: "uhid", condition: eq(patients.uhid, compact.toUpperCase()) }];
 
   const prefixed = UHID_PREFIXED_PARTIAL_RE.exec(compact);
-  if (prefixed) return uhidContains(prefixed[1]!);
+  if (prefixed) return [{ lane: "uhid", condition: uhidContains(prefixed[1]!) }];
 
   if (PHONE_RE.test(compact)) {
     const prefix = `${compact}%`;
@@ -98,9 +117,9 @@ export function patientMatchCondition(query: string): SQL {
      * UHID lane because no substring of an 8-digit body can be nine digits long.
      */
     if (compact.length >= UHID_PARTIAL_MIN && compact.length <= UHID_DIGITS) {
-      return or(phone, uhidContains(compact))!;
+      return [{ lane: "mobile", condition: phone }, { lane: "uhid", condition: uhidContains(compact) }];
     }
-    return phone;
+    return [{ lane: "mobile", condition: phone }];
   }
   /**
    * PLAN 11h T7, CORRECTED AT CLOSE (independent reviewer, MAJOR 4) — BOTH SPELLINGS ARE TRIED.
@@ -121,9 +140,9 @@ export function patientMatchCondition(query: string): SQL {
   const folded = normalizeForSearch(query);
   const rawLower = query.trim().toLowerCase();
   const foldedPrefix = `${escapeLike(folded)}%`;
-  if (folded === rawLower) return sql`lower(${patients.name}) like ${foldedPrefix}`;
+  if (folded === rawLower) return [{ lane: "name", condition: sql`lower(${patients.name}) like ${foldedPrefix}` }];
   const rawPrefix = `${escapeLike(rawLower)}%`;
-  return sql`(lower(${patients.name}) like ${foldedPrefix} or lower(${patients.name}) like ${rawPrefix})`;
+  return [{ lane: "name", condition: sql`(lower(${patients.name}) like ${foldedPrefix} or lower(${patients.name}) like ${rawPrefix})` }];
 }
 
 /**
@@ -212,7 +231,14 @@ export async function searchPatients(
   const conditions = [eq(patients.status, "active")];
   if (!canSeeConfidential) conditions.push(eq(patients.isConfidential, false));
 
-  conditions.push(patientMatchCondition(query));
+  // RC-1 T4 / D6 — the lanes, once: their OR is the WHERE, and each fragment is ALSO selected as
+  // a boolean column, so "why did this row match" is answered by the very SQL that matched it.
+  const lanes = patientMatchLanes(query);
+  conditions.push(lanes.length === 1 ? lanes[0]!.condition : or(...lanes.map((l) => l.condition))!);
+  const laneFor = (lane: MatchLane): SQL<boolean> => {
+    const found = lanes.find((l) => l.lane === lane);
+    return found === undefined ? sql<boolean>`false` : sql<boolean>`(${found.condition})`;
+  };
 
   const rows = await db
     .select({
@@ -224,6 +250,9 @@ export async function searchPatients(
       dob: patients.dob,
       isConfidential: patients.isConfidential,
       photoPatientId: patientPhotos.patientId, // ONLY the id column — bytes never load here
+      mUhid: laneFor("uhid"),
+      mMobile: laneFor("mobile"),
+      mName: laneFor("name"),
     })
     .from(patients)
     .leftJoin(patientPhotos, eq(patientPhotos.patientId, patients.id))
@@ -231,14 +260,21 @@ export async function searchPatients(
     .orderBy(asc(patients.name)) // D-37: ordering never touches the confidential flag
     .limit(cap);
 
-  return rows.map((r) => ({
-    id: r.id,
-    uhid: r.uhid,
-    name: r.name,
-    phone: r.phone,
-    administrativeGender: r.administrativeGender,
-    dob: r.dob,
-    isConfidential: r.isConfidential,
-    hasPhoto: r.photoPatientId !== null,
-  }));
+  return rows.map((r) => {
+    const matchedOn: MatchLane[] = [];
+    if (r.mUhid) matchedOn.push("uhid");
+    if (r.mMobile) matchedOn.push("mobile");
+    if (r.mName) matchedOn.push("name");
+    return {
+      id: r.id,
+      uhid: r.uhid,
+      name: r.name,
+      phone: r.phone,
+      administrativeGender: r.administrativeGender,
+      dob: r.dob,
+      isConfidential: r.isConfidential,
+      hasPhoto: r.photoPatientId !== null,
+      matchedOn,
+    };
+  });
 }

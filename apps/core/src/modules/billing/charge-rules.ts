@@ -1,4 +1,4 @@
-import { getEncounter } from "../opd";
+import { getEncounter, reviewAnchorFor } from "../opd";
 import { loadBillingConfig } from "./config";
 import { BillingError } from "./errors";
 import { previewInvoice } from "./invoices";
@@ -49,6 +49,11 @@ export type FeeQuote = {
   free: boolean; // the revisit branch — no fee service, no draft
   feeServiceId: string | null;
   draft: PricedDraft | null;
+  /**
+   * RC-1 T5 / D8 — WHY it is free, named (the receipt and the seat print the rule: "review visit —
+   * free till <date> (<doctor>)"). Naming only: null never un-frees anything.
+   */
+  freeReason: { kind: "review_window"; doctorName: string | null; seenOn: string; windowEndsOn: string } | null;
 };
 
 /**
@@ -62,12 +67,16 @@ export async function feeQuote(db: Db, encounterId: string, now: Date = new Date
   const cfg = await loadBillingConfig(db);
   const feeServiceId = feeServiceFor(encounter, cfg.chargeRules);
   if (feeServiceId === null) {
-    return { encounterId, visitType: encounter.visitType, free: true, feeServiceId: null, draft: null };
+    const anchor = await reviewAnchorFor(db, encounter);
+    return {
+      encounterId, visitType: encounter.visitType, free: true, feeServiceId: null, draft: null,
+      freeReason: anchor === null ? null : { kind: "review_window", ...anchor },
+    };
   }
   const draft = await previewInvoice(
     db,
     { encounterId, lines: [{ lineId: FEE_LINE_ID, serviceId: feeServiceId, qty: 1 }] },
     now,
   );
-  return { encounterId, visitType: encounter.visitType, free: false, feeServiceId, draft };
+  return { encounterId, visitType: encounter.visitType, free: false, feeServiceId, draft, freeReason: null };
 }

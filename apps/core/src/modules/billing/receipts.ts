@@ -14,6 +14,7 @@ import { loadBillingConfig } from "./config";
 import { BillingError } from "./errors";
 import { insertReceiptWithTenders, patientOutstandingPaise } from "./invoices";
 import { requireOpenSession } from "./sessions";
+import { emitFeeSettled } from "./settle-hooks";
 import { settlementState } from "./settlement";
 import {
   advanceReceived, allocationReversed, cashThresholdBlocked, cashThresholdWarned,
@@ -53,7 +54,8 @@ export type AllocationRow = typeof allocations.$inferSelect;
 // silently compare the wrong columns (the caveat T5 recorded on the same aggregates).
 // ---------------------------------------------------------------------------------------------
 
-async function enteredInErrorDocIds(exec: Db | Tx, docType: string, docIds: string[]): Promise<Set<string>> {
+// RC-1 T3 — exported WITHIN the module for fee-status.ts's batched reader; not on index.ts.
+export async function enteredInErrorDocIds(exec: Db | Tx, docType: string, docIds: string[]): Promise<Set<string>> {
   if (docIds.length === 0) return new Set();
   const rows = await exec
     .select({ docId: enteredInErrorMarks.docId })
@@ -63,7 +65,7 @@ async function enteredInErrorDocIds(exec: Db | Tx, docType: string, docIds: stri
 }
 
 /** Effective allocation per invoice: Sigma apply - Sigma reverse (D1). */
-async function allocatedByInvoice(exec: Db | Tx, invoiceIds: string[]): Promise<Map<string, number>> {
+export async function allocatedByInvoice(exec: Db | Tx, invoiceIds: string[]): Promise<Map<string, number>> {
   if (invoiceIds.length === 0) return new Map();
   const rows = await exec
     .select({
@@ -91,7 +93,7 @@ async function allocatedByReceipt(exec: Db | Tx, receiptIds: string[]): Promise<
 }
 
 /** Sigma non-EIE credit-note nets per invoice (D1). Nothing credits until T7 ships. */
-async function creditedByInvoice(exec: Db | Tx, invoiceIds: string[]): Promise<Map<string, number>> {
+export async function creditedByInvoice(exec: Db | Tx, invoiceIds: string[]): Promise<Map<string, number>> {
   if (invoiceIds.length === 0) return new Map();
   const rows = await exec
     .select({ id: creditNotes.id, invoiceId: creditNotes.invoiceId, netPaise: creditNotes.netPaise })
@@ -183,9 +185,9 @@ export async function advanceOf(exec: Db | Tx, patientId: string): Promise<numbe
 async function lockInvoice(
   tx: Tx,
   invoiceId: string,
-): Promise<{ id: string; patientId: string; netPayablePaise: number }> {
+): Promise<{ id: string; patientId: string; netPayablePaise: number; encounterId: string | null }> {
   const rows = await tx
-    .select({ id: invoices.id, patientId: invoices.patientId, netPayablePaise: invoices.netPayablePaise })
+    .select({ id: invoices.id, patientId: invoices.patientId, netPayablePaise: invoices.netPayablePaise, encounterId: invoices.encounterId })
     .from(invoices)
     .where(eq(invoices.id, invoiceId))
     .for("update");
@@ -509,10 +511,17 @@ export async function allocateOnTx(
     }),
   );
 
+  const after = settlementState(invoice.netPayablePaise, creditedPaise, allocatedPaise + input.amountPaise);
+  // RC-1 T3 / D2 — an allocation that CLOSES an encounter's invoice flips the token too (a due
+  // cleared at the counter later in the day). Same commit as the money; the hook decides whether
+  // the invoice covers the consult fee.
+  if (after.state === "settled" && invoice.encounterId !== null) {
+    await emitFeeSettled(tx, actor, { encounterId: invoice.encounterId, invoiceId: invoice.id, via: "allocation" }, now);
+  }
   return {
     allocationId,
     amountPaise: input.amountPaise,
-    settlement: settlementState(invoice.netPayablePaise, creditedPaise, allocatedPaise + input.amountPaise),
+    settlement: after,
   };
 }
 
