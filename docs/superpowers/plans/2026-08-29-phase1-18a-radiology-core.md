@@ -1386,6 +1386,60 @@ inside the database `describe` and paying a full fixture rebuild each — eleven
 seven string comparisons. They were moved to a pure top-level `describe` (and widened to ten cases)
 once `--verbose` showed what they cost. §2.144's shape in miniature.
 
+#### CI on `835ca2a` — RED, AND THE INSTRUMENT IS WHAT BROKE (ledger §2.151)
+
+**Run `33436302396`: `completed | failure`, 117 minutes against its parent's 57.** Typecheck and
+lint PASSED in CI. The test phase failed as follows, read rather than re-run (§9.9 rule 7):
+
+| measurement | value |
+|---|---|
+| FAIL suites | **126** — essentially the whole workspace |
+| `●` failure blocks | **1016** |
+| `Exceeded timeout of 15000 ms for a HOOK` | **846** |
+| `Exceeded timeout … for a test` | 2 |
+| blocks naming `setupTestDb()` in the frame | 358 |
+| **assertion diffs (an expectation disagreeing with the code)** | **ZERO** |
+
+The 166 non-timeout blocks are all CASCADES of the timeouts, and each names a table the test is not
+about: `teardown is not a function` (the `beforeAll` threw, so `teardown` was never assigned),
+`pg_type_typname_nsp_index` (two workers running `CREATE TYPE` against ONE database),
+`users_username_ux` and `opd_config_pkey` (abandoned async work from a timed-out hook racing the
+next suite's setup). **That is F17's cascade shape at workspace scale.**
+
+**THE ROOT CAUSE IS THE TEST HARNESS'S OWN CONFIGURATION, and it was diagnosed independently by the
+VD-1 and RC-1 lanes the same night** — ledger **§2.151** (`91a77f4`). Two mechanisms, both verified
+from this lane before being believed:
+
+1. **`apps/core/jest.config.cjs` sets NO `maxWorkers`.** Jest therefore defaults to cores−1 — seven
+   workers on the 8-core build host, each ~1.2 GB. `dmesg -T` carries node OOM kills at 23:01,
+   23:04 and 23:10 with `anon-rss` 1.1–1.4 GB apiece.
+2. **`pnpm test` is `pnpm -r test` with no `workspace-concurrency`,** so core's jest pool and web's
+   vitest pool run AT THE SAME TIME.
+
+**Both mechanisms exist in CI as well as on the build host**, which is the part §2.151 had not yet
+said: on a marginal runner the two pools starve each other instead of being OOM-killed, and a
+starved pool shows up as *every* `setupTestDb` exceeding a 15-second hook budget. **The signature is
+the same defect wearing a slowdown costume rather than a kill.**
+
+**What this does and does not license.** It does NOT license "the red is not mine": the parent was
+green at 57 minutes and this task added three suites and made the shared radiology fixture perform
+TWO Class-A governance sequences instead of one (F22), so T5 plausibly pushed a marginal
+configuration over a threshold. **T5 is a candidate proximate trigger; the unbounded worker
+configuration is the root cause.** What it does license is refusing to read 846 hook timeouts as
+846 defects: no assertion in this workspace disagreed with any code in this run.
+
+**Not fixed here, and deliberately.** `jest.config.cjs` is in no task's Files list, and §2.151's own
+amendment rules that **the worker cap is an OWNER RULING** rather than a thing one lane caps on the
+shared instrument. Routed, not taken.
+
+**The attributable local run is still OWED.** A `pnpm verify` on this box would take it down and
+hand back the same false red (measured: the box sat at load 34 with six ~1 GB workers and 0 GB
+available while this was written). The safe form §2.151 gives is sequential and capped —
+`pnpm --filter @hmis/core exec jest -w 2`, then `pnpm --filter @hmis/web exec vitest run` — and it
+needs a coordinated slot with the RC-1 and VD-1 lanes. **Every number in the table above this one
+was already taken in that safe form** (`npx jest <paths> -w 2`), which is why T5's own evidence
+stands while the workspace-wide claim does not.
+
 ### 9.6 The independent close review — FRESH
 
 **NOT RUN. The phase is paused at T1 of nine and there is nothing to close.** Both reviewer passes

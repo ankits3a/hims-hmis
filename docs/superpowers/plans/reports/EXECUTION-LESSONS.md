@@ -1397,12 +1397,21 @@ measured at 23:01: 13.9 GB used, 553 MB free, loadavg 80.84, a solo `tsc` killed
 lane alone, holding the slot, obeying this entry as first written, still dies without `-w 2`.**
 The durable fix is `maxWorkers: 2` in the shared jest config — an OWNER ruling (it slows CI and
 must not change under a running suite), surfaced, not applied unilaterally.
+**AMENDED AGAIN the same night (the 18a lane's specimen): THE SAME CLASS FIRES ON CI ITSELF, so
+"cite CI as the instrument" carries a caveat.** CI run 33436302396 (commit 835ca2a) went red in
+117 minutes against its parent's 57 with **846 of 1,016 failure blocks being 15-second hook
+timeouts inside `setupTestDb` and ZERO assertion diffs** — the starvation signature without the
+kill, because CI runs the same unbounded jest and the same concurrent `pnpm -r test` on a runner
+where the pools throttle instead of dying. A threshold effect, not a constant: the adjacent
+41a04b2 run was clean. **A red CI run whose failures are hook timeouts with no assertion diff is
+the RUNNER, and the cap ruling would fix CI too — likely making it FASTER, not slower.**
 **The mechanical form:** (a) before any broad run, `ps -eo pid,cmd | grep -E "jest|vitest"` and, if
 another lane owns the box, MESSAGE that session and take turns — the slot is negotiated, the OOM
 killer is not; (b) run the halves sequentially with the exit value read from each —
 `pnpm --filter @hmis/core exec jest -w 2 …` then `pnpm --filter @hmis/web exec vitest run` —
 **and the `-w 2` is load-bearing, not a preference, until the config carries the cap**; (c) cite
-CI-by-full-SHA as the full-suite instrument when the box never quiets.
+CI-by-full-SHA as the full-suite instrument when the box never quiets — **after reading the
+failure SHAPE: hook timeouts with zero assertion diffs are the runner, not the tree.**
 
 ## 3. Plan-authoring defects
 
