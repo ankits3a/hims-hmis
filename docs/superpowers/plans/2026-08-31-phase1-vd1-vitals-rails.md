@@ -292,3 +292,59 @@ introduced and fixed (`.default({})` vs `.prefault({})` on an object whose field
 defaults) which blocked BOTH lanes' jest for about six minutes. **That is this phase's first
 ledger candidate**: the cheap prefix (§2.132) was run AFTER the first jest launch rather than
 before it, and running it before would have cost sixty seconds and cost the other lane nothing.
+
+### T3 — WRITTEN AND **NOT RUN**. Read this before touching anything.
+
+**Method §9.6 in force, and it could not be obeyed.** That rule says a session handing off mid-work
+spends its remaining budget in the order *(1) typecheck, (2) the narrowest suite, (3) the handoff
+prose* — because a handoff saying *"green as of `<suite>`, exit value read from a file"* is worth
+several pages about intent. **None of (1) or (2) was possible: three attempts to typecheck T3 were
+OOM-killed** (the last at 23:01:18, `free` 553 MB, loadavg 80.84), because the 18a lane is running
+`pnpm verify` — core jest at the default 7 workers, concurrently with web vitest — on a 15.6 GB box.
+
+**So T3 is UNKNOWN CODE, however confident the description below reads, and §9.6's corollary
+applies to it in full: treat "what is written" as exactly that, and RUN IT FIRST.**
+
+Everything is queued and fires by itself: `.vdt3.log` / `.vdt3.exit` under `/opt/hmis`, gated on
+`loadavg < 5` AND zero jest workers, running typecheck → lint → five suites → the four mutants in
+one slot. If it has fired, read `=== ` lines for the exit values before believing anything here.
+
+**Written, all uncommitted:**
+
+| file | what |
+|---|---|
+| `escalation.ts` (new) | `none → recheck_demanded → escalated → cancelled`; `CANCEL_WINDOW_MS = 10_000` as a stored-instant comparison (D8); the encounter row locked `FOR UPDATE`, the `callNext`/`joinQueue` idiom, so escalate/cancel/join serialise on one lock with no ordering |
+| `events.ts` | `vitals.recheck_demanded`, `queue.escalated`, `queue.escalation_cancelled`, all carrying `where` so they route on `queue:<doctorId>:<date>` — that routing IS the doctor-board flash |
+| `realtime.ts` | the three names in `OPD_REALTIME_NAMES` |
+| `vitals.ts` | **one predicate — `ne(escalation, "cancelled")` on the danger UPDATE.** This is D4's entire mechanism |
+| `index.ts` | the module-boundary exports |
+| `escalation.test.ts`, `escalation.concurrency.test.ts` | 8 + 2 tests |
+| `escalation.mut-{a,b,c}.ts`, `vitals.mut-d.ts`, `escalation.mut.test.ts` | **SCRATCH — `rm -f` before any commit** (§5 step 0) |
+
+**Census greps already run for the three new events** (§2.138, both halves): SIBLING
+`grep -rn "queue.fee_settled\|queueFeeSettled" apps/core --include=*.ts` → 8 files, all accounted
+for; LIST `grep -rn "OPD_REALTIME_NAMES" apps --include=*.ts --include=*.tsx` → the definition and
+its one consumer, no count census anywhere. `vitals.test.ts:122`'s `toHaveLength(2)` event pin was
+checked and is safe: escalation events fire only on escalate/cancel, which that path never reaches.
+This is the class RC-1 went red on (`billing-lifecycle.e2e`'s per-invoice pin meeting
+`queue.fee_settled`), so it was checked BEFORE writing rather than discovered by a suite.
+
+**The property the whole task turns on, and the one to re-derive rather than trust:** cancel moves
+the BOARD and never the CHART. `opd_encounters.danger_flagged` and `vitals.danger_flagged` fire on
+every danger reading and nothing in `escalation.ts` can unset them. Mutant D is `41a04b2`'s
+`vitals.ts` verbatim — if it SURVIVES, cancel is theatre and the phase is not done.
+
+### The blocker, stated plainly for whoever reads this next
+
+`apps/core/jest.config.js` has **no `maxWorkers`**. `nproc` = 8 ⇒ jest defaults to 7 workers, each
+ts-jest worker reaching 1.0–1.5 GB on this codebase, on a 15.6 GB box carrying ~8 GB of baseline
+and three coding lanes. **One lane alone, running the full suite without `-w`, OOMs
+deterministically.** Every green run tonight was a human hand-supplying the cap. `maxWorkers: 2`
+is a one-line fix and is **an OWNER RULING, not taken here**: it is a shared config with another
+lane's suite in flight, and it slows CI, which is a trade somebody should choose rather than
+inherit. Surfaced to the owner; recorded in the ledger at §2.151 by the RC-1 lane with this lane's
+measurements.
+
+Until it is ruled: **every run passes `-w 2` explicitly, and nobody runs `pnpm verify`** — it is
+`pnpm -r test`, which starts core's jest pool and web's vitest pool at once. Two commands,
+sequentially, exit value read from each.
