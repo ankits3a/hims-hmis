@@ -1432,6 +1432,22 @@ configuration is the root cause.** What it does license is refusing to read 846 
 amendment rules that **the worker cap is an OWNER RULING** rather than a thing one lane caps on the
 shared instrument. Routed, not taken.
 
+#### THE WORKSPACE-WIDE EVIDENCE ARRIVED FROM ANOTHER LANE, AND IT IS SECOND-HAND ON PURPOSE
+
+**RC-1 ran the full core suite in the safe sequential capped form over a tree that CONTAINS this
+task's commit, and got 3 267 of 3 268.** Verified from this lane rather than taken on trust:
+`git merge-base --is-ancestor 835ca2a 5cb3593` → **true**, so T5's code was in the tree they
+measured. Their close records `3267/3268 + 61/61 + 21/21 in one sequential pass` (`5cb3593`), and
+**the single red is named and is theirs** — `9bcc05f`, *"the lifecycle event pin learns
+`queue.fee_settled` — the one red in a 3268-test full pass"*.
+
+**Cited as ANOTHER LANE'S MEASUREMENT, not as this task's.** Their `.rc1-final.log` has since been
+cleaned up, so what survives is a commit message and an ancestry check rather than a log this lane
+read line by line. That is weaker than a run of one's own and is recorded as such. What it is strong
+enough to settle: **the 126-suite CI red is not reproducible in the capped sequential form over the
+same code**, which is the discriminating comparison §2.151 predicts and the one this lane could not
+get on a saturated box.
+
 **The attributable local run is still OWED.** A `pnpm verify` on this box would take it down and
 hand back the same false red (measured: the box sat at load 34 with six ~1 GB workers and 0 GB
 available while this was written). The safe form §2.151 gives is sequential and capped —
