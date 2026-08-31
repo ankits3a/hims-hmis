@@ -65,4 +65,42 @@ Per D7/D8 (`avg_consult_minutes` column lands in T2; this task reads it).
 
 ## 5. CLOSE
 
-*(appended as the phase runs)*
+**Commits:** `7035915` (doc) · `1a3ae37` (T1) · `38e0772` (T2, migration 0048) · `61e6c96` (T3+T4+T5) · `75d16fc` (remediation C1/M1/M2/M4) · `f615a67` (pass-2 repairs). **CODE-COMPLETE, NOT DEPLOYED** — the series' standing rule.
+
+### Review lane (two fresh passes, §9.10 shape)
+
+**Pass 1 (207k): 1 CRITICAAL + 4 MAJOR + 8 MINOR** against a tree with 55 green tests, a died mutant, and clean typecheck/lint — §9.4 again, fourth phase running.
+- **C1** — a deferred (bill-first) visit crashed `recordVitals` AND `abandonVisit` (TypeError on `entries[0]!`), making the visit unclosable. Spike S2 answered the READS and never checked the two WRITES keying off `status=registered` — the lesson: *a spike that asks "does any reader break" must grep the writers of the same predicate.* Abandon half fixed (`75d16fc`, nullable event fields per the visit.opened treatment); **vitals half is a NAMED CARRY landing with the VD-1 lane's in-flight `vitals.ts` rewrite** (cross-session agreement, their guard sits pre-transaction with their own test + mutant).
+- **M1** — `encounterFeeStatuses` filtered on the batch-wide UNION of fee services: the stamp could read `settled` where `feeGate` refuses, and changed with the queue's composition. Fixed: per-invoice `feeServices` set, own-fee check in the loop; pass 2 confirms gate and stamp now select identically.
+- **M2** — the walk-in contract lied about deferred results (S2's own named trap). Fixed across three layers; pass 2 found the fix INCOMPLETE (overload #2's bare `Omit` captured variable-typed inputs, leaving #3 dead) — repaired in `f615a67` exactly as prescribed (`& { join?: "queue" }`).
+- **M3 — NAMED CARRY to RC-3**: nothing un-flips the board (`reverseAllocation`, `markEnteredInError`, `issueCreditNote` are invisible to the settle seam; no `unsettled` direction in the event). The derived read self-corrects on refetch and the push has NO consumer until RC-3 builds the seat; RC-3's board task must add the reverse direction (and should rename the event `queue.fee_status_changed` while it is still unconsumed).
+- **M4** — the change guard compared against the whole-receipt surplus with only a cash-EXISTS check; ₹1 of cash beside a card overpayment authorised handing the card's surplus out of the drawer. The guard was DEAD until T1 undid the zod strip — *a fix that arms a dormant guard owes that guard a re-read.* Fixed: ceiling = min(surplus, Σ cash tenders), both directions executed.
+- **Pass 2 (109k): 4 CORRECT, 1 INCOMPLETE (M2), and one NEW find** — `counter-desk.tsx` defaulted change to the whole surplus with no cash cap, which M4's (correct) ceiling would have hard-failed on every mixed tender. §2.145's arithmetic holds again: the remediation itself carried a defect and a regression-trigger only pass 2 caught.
+
+### Mechanical verification, stated honestly
+
+- Per-task narrow evidence, all on `hmis_rc_scratch` (§2.137): T1 red-first over real HTTP (expected 2000, received 0 — the shipped schema was the mutant, the red is the kill) then 3 suites/32 tests; T2 29/29 + the derived-census batch 8 suites/59 tests; T3–T5 7 suites/55; remediation 6/67; pass-2 repairs 27/27 core + 13/13 `counter-desk.test.tsx`. Typecheck+lint 0 at every commit. Rule-21 mutant for the join race: scratch `joinQueue` without the lock → **DIED** (expected 1 entry, received 2), scratch deleted. The T2 permission mutant is an inline mutant-shaped assertion (18a precedent, disclosed): the broad-vs-narrow inversion is pinned by execution in `opd.e2e.test.ts` both directions.
+- **The one-green-full-verify bar was NOT met locally and the reason is measured, not asserted:** three attempts. #1: 6 core suites at the 122s timeout wall + 2 web timeouts, first-run worker-DB creation race + concurrent web/core — every failure passed isolated (153+8). #2: SIGTERM'd at load 54 (ten sessions on the box). #3 (sequential, `-w 4`): jest workers OOM-killed — dmesg: `Out of memory: Killed process 3051327/3051328 (node)` at 21:12–21:15, on a 15GB box carrying three coding lanes. Per protocol §4.4 and the 2026-08-29 precedent, **CI per SHA is the full-suite instrument**; one local full verify remains queued for the box's quiet hour behind the VD-1 lane's slot (serialized by agreement). T2's boundary obligation (§9.9 rule 6) was discharged by the explicit derived-census batch + CI.
+- Working-tree hygiene: three lanes shared the checkout all phase. Everything staged BY PATH; `events.ts` staged BY HUNK twice while it carried the VD-1 lane's uncommitted `muacCm` beside my hunks. No scratch files remain (`.rc1-*` logs deleted at close; the mutant deleted before commit).
+
+### Owner rulings this phase names
+1. **Best single benefit** (2026-08-31, AskUserQuestion): Plan 09's contest semantics stand; no stacking. Binds RC-2.
+2. **Theming = alias layer** (same): Desk One's palette as a parallel token set; seats adopt gradually. Binds RC-3.
+3. DECIDED (mine, named): `single_window` dropped from the sequence enum; no `counter_supervisor` role minted; bill_first defers the QUEUE JOIN never the assignment (the design's "flat; adjusts on assignment" line does not survive the shipped flat charge_rules — and does not need to).
+
+### Carries
+- **C1 vitals half** → VD-1 lane's next commit (guard + test theirs; confirmed in-flight with a mutant).
+- **M3** → RC-3 (the un-flip direction + event rename, with the board consumer).
+- Pass-2 MINORs accepted as-is, named: `heldSettlementPaise` excluded from the change surplus (conservative, over-refuses); error-code precedence flip on card-only over-change (`change_without_cash` now first); `feeServiceIds` union still feeds the ledger batch reads (row volume only, query count unchanged); `visit.abandoned` widened at version 1 (the visit.opened precedent); events for RC-4's ledger projection arriving from VD-1 (`vitals.recheck_demanded`, `queue.escalated`, `queue.escalation_cancelled` — to be confirmed as shipped).
+
+### Actuals (recorded at close; the token audit's hook appends the baseline row)
+| | |
+|---|---|
+| session balance kickoff → close | ~14.81M → ~14.39M (≈ **420k main-session**, harness overhead included) |
+| subagents | recon 3 × ~133k avg = 400k · reviewer pass 1 207k · pass 2 109k ≈ **716k** |
+| total vs stop-loss | ≈ **1.14M of 1,700,000 (67%)** |
+| tasks | 5 coded + 2 remediation rounds; 6 commits; 0 deploys |
+| catches | reviewer lane: 1 CRITICAL + 4 MAJOR (+1 new in pass 2); instruments before review: 0 of those |
+| per-boundary deltas | doc+T1 ≈ 90k · T2 ≈ 75k · T3–T5 ≈ 210k · close lane (main) ≈ 45k |
+
+**Lessons bound for the ledger:** (1) S2's class — a spike about "who breaks on this state" greps WRITERS, not just readers, of the predicate; (2) a fix that arms a dormant guard (T1/M4) owes the guard a re-read in the same task; (3) on a multi-lane box the full verify is a SLOT to be scheduled between sessions, not a command each lane runs — serialize by message, or the OOM killer serializes it for you.
