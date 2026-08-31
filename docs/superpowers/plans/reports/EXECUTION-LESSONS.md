@@ -1115,6 +1115,80 @@ ceiling.**
 
 ---
 
+**2.148 — THE LEDGER HAS GROWN 30% SINCE THE RULE THAT BUDGETS IT WAS WRITTEN. "READ THE LEDGER" IS NOW A 106k INSTRUCTION.** *(Plan 18a T2/T3 audit, 2026-08-31 — §9.1 rule 1's own number, re-measured)*
+
+v3 §9.1 rule 1 says *"`§2.54` in a brief causes a targeted read; `EXECUTION-LESSONS.md` causes an
+**81k** one, on every turn."* **Measured today: `wc -c` is 423,035 bytes — 105,758 tokens.** The
+number in the rule is 30% stale, and it drifted in the direction that makes the rule MORE important,
+which is the direction nobody checks.
+
+**This phase read NONE of it and lost nothing**, and that is the specimen rather than an aside. T2
+and T3 cited `§2.137`, `§2.138`, `§2.140` and `§2.144` by number, every one of them reached through
+the phase document or the handoff, and the ledger file was never opened. The saving is not
+theoretical: a single brief saying "read the ledger" would have added ~106k to the context of every
+turn in a two-task, ~100-turn stretch.
+
+**The mechanical form — a check, not an intention:**
+
+```
+grep -nEi "read (the )?(ledger|EXECUTION-LESSONS)" <the brief>   # must return nothing
+wc -c docs/superpowers/plans/reports/EXECUTION-LESSONS.md         # re-measure at every audit
+```
+
+**And the standing obligation this creates**: the token audit re-measures the ledger and amends
+§9.1 rule 1's figure. A rule whose justification is a number that nobody re-reads decays into
+folklore — which is what §2.54 is about, applied to the method document itself.
+
+---
+
+**2.147 — A SOURCE-CENSUS GREP INSIDE A TEST MATCHED ITS OWN PROSE AND FAILED AGAINST A CORRECT CODEBASE.** *(Plan 18a T3 A5, 2026-08-31)*
+
+T3 A5's census asserts that no module inserts into `order_items` — the kernel's `placeOrder` is the
+only writer, and a module that inserted directly would be the write phase 0 §6A.5 warned about. The
+assertion ran `grep -rn 'insert(orderItems)' src/modules` and expected empty.
+
+**It failed. The two matches were `place.ts`'s own docstring — the paragraph EXPLAINING the rule —
+and the assertion's own source line.** The codebase was correct; the census was not. A census that
+cannot survive being documented is a census that will be deleted by the next person who reads it,
+along with the property it was protecting.
+
+**The mechanical form:**
+
+```
+grep -rn '<pattern>' src/modules --include=*.ts \
+  | grep -v '\.test\.ts:' \
+  | grep -vE ':[[:space:]]*(\*|//)'
+```
+
+Exclude test files and comment lines, always. The same shape applies to every source-reading census
+in this repository — `ist-clock-parity`, the manifest list-greps, and any future one.
+
+---
+
+**2.146 — A FIXTURE'S REQUIRED COLUMNS ARE ONE GREP. DISCOVERING THEM FROM INSERT ERRORS COST FOUR TURNS AT FULL CONTEXT.** *(Plan 18a T3, 2026-08-31)*
+
+Writing two test fixtures, this session discovered the NOT-NULL-without-default set of
+`opd_encounters` by insert failure **three times in a row** — first a missing `updatedBy`, then a
+drizzle overload error that hid the real cause, then `openedBy` where `createdBy` had been guessed —
+and `imaging_studies`' ABSENCE of audit columns a fourth time, in the other direction.
+
+**Each round trip is one billed turn at the full session context.** In a LIGHT phase that is the
+unit of cost §9.9 names, and four of them bought information that one command returns:
+
+```
+awk "NR>=<start> && NR<=<end>" <schema file> | grep -E "notNull\(\)" | grep -v "default"
+```
+
+Run it BEFORE writing any fixture insert, for every table the fixture touches. It returns the exact
+required set — and the second direction too, because a column the table does NOT have is exactly as
+expensive to guess wrong.
+
+**The generalisation worth keeping**: an error message is a slow, expensive oracle for a fact the
+source states directly. Where a schema, a union or a config file KNOWS the answer, read it once
+rather than probing for it.
+
+---
+
 **2.145 — THE SECOND REVIEW PASS CONDEMNS A THIRD OF THE FIRST PASS'S FIXES, TWO PHASES RUNNING. BUDGET REMEDIATION TWICE, NOT ONCE.** *(Plan 17b LIMS result→report, closed 2026-08-30 — §2.140's third specimen, and the first with a RATE)*
 
 §2.140 established that a critical fix can be incomplete in its own dimension and that the fix

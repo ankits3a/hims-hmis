@@ -330,7 +330,12 @@ agent needed perhaps 15k, re-billed on every call.
 ### 9.1 Three rules that bind every compiled brief
 
 1. **Cite ledger entries BY NUMBER. Never point a brief at the ledger file.** `§2.54` in a brief
-   causes a targeted read; `EXECUTION-LESSONS.md` causes an 81k one, on every turn.
+   causes a targeted read; `EXECUTION-LESSONS.md` causes a **105,758-token** one, on every turn.
+   **That figure read 81k when this rule was written and was re-measured at the 18a audit
+   (2026-08-31, ledger §2.148) — it has grown 30%, in the direction that makes the rule matter
+   more.** Every token audit re-measures it and amends this line; a rule justified by a number
+   nobody re-reads decays into folklore, which is §2.54 pointed at this document.
+   **The check:** `grep -nEi "read (the )?(ledger|EXECUTION-LESSONS)" <brief>` must return nothing.
 2. **Point at a task's OWN section, not the whole phase document.** §1's one-document rule governs
    where facts LIVE, not how much of the document a brief makes an agent carry.
 3. **Address relay entries to the task that needs them.** A relay is append-only and compounds; an
@@ -357,6 +362,23 @@ separates them in its message — is the shape to copy.
 5. **Once a verify is launched, the tree is frozen until it returns.** Not as discipline — as
    arithmetic. An edit mid-run silently invalidates the only evidence the commit is allowed to cite,
    and the sole honest recovery is to discard the result and pay for the run again.
+6. **A task that INSTALLS A MANIFEST, CLAIMS A KIND or ADDS A CONSUMER owes a FULL verify at its
+   boundary, not a targeted batch — added 2026-08-31 (Plan 18a T2/T3, findings F11 and F14).**
+   Such a task moves censuses that live nowhere near the code it wrote. 18a T2 and T3 moved **five**
+   between them, in no task's Files list, and §2.138's two greps — the rule that exists for exactly
+   this — found only three. `test/seed-staff.test.ts` derives its census from `ROLE_MODEL`, and
+   `worker-runtime.e2e.test.ts` and `seed-cursors.test.ts` derive theirs from `workerConsumers`;
+   none of the three names `ALL_MANIFESTS`, so no list-grep reaches them. **The full workspace verify
+   was the only instrument that found them.** §2.138's greps are necessary and are not sufficient,
+   and the targeted batch that "covers everything the task touched" cannot cover what the task
+   MOVED.
+7. **A red full verify is diagnosed, never re-run until it is green — added 2026-08-31.** Extract
+   the failing set, re-run it ISOLATED at `-w 2`, and queue that re-run behind
+   `until [ $(cut -d' ' -f1 /proc/loadavg | cut -d. -f1) -lt 5 ]; do sleep 20; done` — re-running
+   under the contention that caused the failure measures the contention again (rule 20 pointed at
+   your own instrument). 18a's three attempts: 26 failed, then 23, then green, with **every one of
+   the 49 passing isolated** and exactly one real defect among them. The tree that went green was
+   byte-identical to the tree that went red; only the box changed.
 
 **AMENDED 2026-08-29 after Plan 07c — THE RUN HAS A CHEAP PREFIX, AND PAYING IT FIRST IS RULE 6.**
 
