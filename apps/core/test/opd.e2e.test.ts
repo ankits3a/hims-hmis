@@ -54,6 +54,7 @@ describe("opd e2e", () => {
   let clerk: { id: string; token: string };
   let vitalsDesk: { id: string; token: string };
   let supervisor: { id: string; token: string };
+  let flowHolder: { id: string; token: string };
   let display: { id: string; token: string };
   let pharmacy: { id: string; token: string };
   let formularyAdmin: { id: string; token: string };
@@ -103,6 +104,8 @@ describe("opd e2e", () => {
       "opd.consult", "opd.queue.read", "opd.queue.operate", "opd.visits.read", "patients.read", "formulary.read",
     ]);
     await mkRole("sup", [...deskPermissions, "opd.queue.transfer", "opd.masters.read", "opd.masters.manage", "opd.config.manage"]);
+    // RC-1 T2 — a holder of ONLY the flow lock, to pin the narrowness in both directions.
+    await mkRole("flow", ["opd.counter.flow.manage"]);
     await mkRole("disp", ["opd.display.read"]);
     await mkRole("pharm", ["opd.prescriptions.verify"]);
     // PLAN 16a T5 — the formulary is curated at the pharmacy (DD10), and this e2e curates it over
@@ -112,6 +115,7 @@ describe("opd e2e", () => {
     clerk = await mkUser(db, "clerk", ["desk", "front_office"]);
     vitalsDesk = await mkUser(db, "vd", ["desk", "vitals_desk"]);
     supervisor = await mkUser(db, "sup", ["sup", "front_office_supervisor"]);
+    flowHolder = await mkUser(db, "flowsup", ["flow"]);
     display = await mkUser(db, "disp", ["disp"]);
     pharmacy = await mkUser(db, "pharm", ["pharm"]);
     formularyAdmin = await mkUser(db, "formadmin", ["formulary_admin"]);
@@ -403,6 +407,61 @@ describe("opd e2e", () => {
     expect(read.body.slotMinutes).toBe(15);
     await request(app.getHttpServer())
       .put("/opd/config").set(...auth(clerk.token)).send({ slotMinutes: 20 }).expect(403);
+  });
+
+  /*
+   * RC-1 T2 / D5 — the flow lock is NARROWER than `opd.config.manage`, pinned in BOTH directions
+   * by execution: the config admin is refused on the pill, the pill holder is refused on the
+   * config, and the pill's body cannot reach any other config key no matter what it carries.
+   * A guard decorated with the broad permission instead of the narrow one inverts the first leg
+   * (200 where 403 is asserted) — the mutant-shaped assertion, inline (18a precedent, disclosed).
+   */
+  it("RC-1 T2: the counter-flow lock — narrow permission, narrow body, defaults are today's behaviour", async () => {
+    const read = await request(app.getHttpServer())
+      .get("/opd/config").set(...auth(supervisor.token)).expect(200);
+    expect(read.body.counterSequence).toBe("queue_first"); // the migration default IS the shipped behaviour
+    expect(read.body.tokenLane).toBe("token_first");
+
+    // Direction 1: `opd.config.manage` alone does NOT reach the pill…
+    const refusedBroad = await request(app.getHttpServer())
+      .put("/opd/config/counter-flow").set(...auth(supervisor.token))
+      .send({ counterSequence: "bill_first" }).expect(403);
+    expect(refusedBroad.body.message).toContain("opd.counter.flow.manage");
+    // …and the desk clerk certainly does not.
+    await request(app.getHttpServer())
+      .put("/opd/config/counter-flow").set(...auth(clerk.token))
+      .send({ counterSequence: "bill_first" }).expect(403);
+
+    // The holder flips the pill; the body's stray keys are STRIPPED, not applied.
+    const flipped = await request(app.getHttpServer())
+      .put("/opd/config/counter-flow").set(...auth(flowHolder.token))
+      .send({ counterSequence: "bill_first", tokenLane: "token_on_payment", slotMinutes: 55 }).expect(200);
+    expect(flipped.body.counterSequence).toBe("bill_first");
+    expect(flipped.body.tokenLane).toBe("token_on_payment");
+    expect(flipped.body.slotMinutes).toBe(10); // untouched — the narrow body cannot carry it
+
+    // An unknown sequence is refused 400 (the OPD controllers' zod refusals ride Nest's default
+    // BadRequest shape, not a module code) and the stored row is unchanged.
+    await request(app.getHttpServer())
+      .put("/opd/config/counter-flow").set(...auth(flowHolder.token))
+      .send({ counterSequence: "single_window" }).expect(400);
+    const after = await request(app.getHttpServer())
+      .get("/opd/config").set(...auth(supervisor.token)).expect(200);
+    expect(after.body.counterSequence).toBe("bill_first");
+
+    // Direction 2: the pill holder is refused on the full config editor.
+    const refusedNarrow = await request(app.getHttpServer())
+      .put("/opd/config").set(...auth(flowHolder.token)).send({ slotMinutes: 20 }).expect(403);
+    expect(refusedNarrow.body.message).toContain("opd.config.manage");
+
+    // D7 — the wait-v0 pace knob: defaults to 6, edited where departments are, served on the list.
+    await request(app.getHttpServer())
+      .patch(`/opd/departments/${deptId}`).set(...auth(supervisor.token))
+      .send({ avgConsultMinutes: 9 }).expect(200);
+    const depts = await request(app.getHttpServer())
+      .get("/opd/departments").set(...auth(supervisor.token)).expect(200);
+    const dept = depts.body.items.find((d: { id: string }) => d.id === deptId);
+    expect(dept.avgConsultMinutes).toBe(9);
   });
 
   it("the public board carries tokens, rooms and doctors — and no patient identity", async () => {

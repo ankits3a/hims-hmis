@@ -108,6 +108,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     roleKey: "front_office_supervisor",
     permissions: [
       "opd.masters.read",
+      // RC-1 T2 / D5 — the counter-flow lock pill. DECIDED (2026-08-31): no `counter_supervisor`
+      // role is minted; this role already carries the desk's SLA escalation and queue-transfer
+      // authority, and the flow flip is the same altitude of act. `opd.config.manage` stays on
+      // `opd_admin` alone — the pill is not the config editor.
+      "opd.counter.flow.manage",
       "opd.appointments.read",
       "opd.appointments.manage",
       "opd.visits.read",
@@ -248,6 +253,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "opd.masters.read",
       "opd.masters.manage",
       "opd.config.manage",
+      "opd.counter.flow.manage", // RC-1 T2 — the admin who edits the whole config can also flip the flow
       "opd.appointments.read",
       // Owner ruling 2026-08-23: the OPD masters administrator DRAFTS workflow definitions.
       // Drafting only — the SoD pair `workflow_drafter_activator` forbids the same person

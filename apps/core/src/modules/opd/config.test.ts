@@ -30,6 +30,28 @@ describe("opd config", () => {
     expect(cfg.dangerRanges.weightRequiredUnderYears).toBe(18);
     expect(cfg.dangerRanges.bands[3]!.ranges.sbp).toEqual({ min: 90, max: 180 });
     expect(cfg.letterhead).toEqual({ name: "CRK MEDICAL COLLEGE & HOSPITAL", addressLines: ["CHAURASIA CHOWK, HAJIPUR, BIHAR 844101"] });
+    // RC-1 T2 / D3 — the migration defaults ARE today's shipped behaviour: nothing observable
+    // changes on deploy until a supervisor flips the pill.
+    expect(cfg.counterSequence).toBe("queue_first");
+    expect(cfg.tokenLane).toBe("token_first");
+  });
+
+  it("RC-1 T2: the flow enums patch and round-trip; an unknown sequence is refused and a hand-edited row hard-fails", async () => {
+    await db.insert(opdConfig).values({ id: "main", followUpExtensionDays: [15, 21, 30], dangerRanges: DEFAULT_DANGER_RANGES, letterhead: DEFAULT_LETTERHEAD, updatedBy: "t" });
+    const actor: Actor = { type: "user", id: "u-sup" };
+
+    const patched = await withTx(db, (tx) => updateOpdConfig(tx, actor, { counterSequence: "bill_first", tokenLane: "token_on_payment" }));
+    expect(patched.counterSequence).toBe("bill_first");
+    expect(patched.tokenLane).toBe("token_on_payment");
+
+    await expect(
+      withTx(db, (tx) => updateOpdConfig(tx, actor, { counterSequence: "single_window" as never })),
+    ).rejects.toMatchObject({ code: "invalid_config" }); // flow3's third value is DECIDED out (D3)
+
+    // No-fallbacks from the read side: a hand-edited row with an unknown lane hard-fails rather
+    // than the counter quietly running a flow nobody chose.
+    await db.update(opdConfig).set({ tokenLane: "hold_forever" });
+    await expect(loadOpdConfig(db)).rejects.toMatchObject({ code: "opd_config_invalid" });
   });
 
   it("an invalid danger_ranges JSON hard-fails with opd_config_invalid (a band without an adult tail)", async () => {

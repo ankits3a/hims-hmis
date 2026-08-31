@@ -273,7 +273,7 @@ side is realigned.
 anchor < 100 ms, `boardSnapshot` over 300 sessions < 500 ms, and `EXPLAIN (FORMAT JSON)` proves no
 `Seq Scan` on `opd_queue_entries` or `opd_encounters`.
 
-**Permissions (14) and the recommended grants.** Route access is permission-gated; the encounter's
+**Permissions (15) and the recommended grants.** Route access is permission-gated; the encounter's
 STATE MOVES are additionally gated by the workflow definition's role keys (`front_office`,
 `front_office_supervisor`, `vitals_desk`, `nurse`, `doctor`), so a desk user needs both the
 permission and the role.
@@ -283,6 +283,7 @@ permission and the role.
 | `opd.masters.read` | ✓ | ✓ | | ✓ | ✓ | | |
 | `opd.masters.manage` | | | | | ✓ | | |
 | `opd.config.manage` | | | | | ✓ | | |
+| `opd.counter.flow.manage` | | ✓ | | | ✓ | | |
 | `opd.appointments.read` | ✓ | ✓ | | ✓ | ✓ | | |
 | `opd.appointments.manage` | ✓ | ✓ | | | | | |
 | `opd.visits.read` | ✓ | ✓ | ✓ | ✓ | | | |

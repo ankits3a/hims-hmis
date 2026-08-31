@@ -106,7 +106,13 @@ export async function createDepartment(tx: Tx, actor: Actor, input: { code: stri
   return { departmentId: id };
 }
 
-export async function updateDepartment(tx: Tx, actor: Actor, id: string, patch: { name?: string; active?: boolean }): Promise<void> {
+export async function updateDepartment(
+  tx: Tx,
+  actor: Actor,
+  id: string,
+  // RC-1 T2 / D7 — `avgConsultMinutes` is the wait-v0 pace knob, edited where departments are.
+  patch: { name?: string; active?: boolean; avgConsultMinutes?: number },
+): Promise<void> {
   requireUserActor(actor);
   const existing = await tx.select().from(opdDepartments).where(eq(opdDepartments.id, id));
   if (!existing[0]) throw new OpdError("unknown_department", `department ${id} not found`);

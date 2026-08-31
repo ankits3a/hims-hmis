@@ -25,6 +25,9 @@ export const opdManifest: ModuleManifest = {
   desk: [opdDeskProvider],
   permissions: [
     "opd.masters.read", "opd.masters.manage", "opd.config.manage",
+    // RC-1 T2 / D5 — the counter-flow lock, deliberately narrower than `opd.config.manage`:
+    // the supervisor's pill, not the admin's editor.
+    "opd.counter.flow.manage",
     "opd.appointments.read", "opd.appointments.manage",
     "opd.visits.read", "opd.visits.open", "opd.vitals.record",
     "opd.queue.read", "opd.queue.operate", "opd.queue.transfer",

@@ -29,6 +29,18 @@ export type BandConfig = z.infer<typeof bandSchema>;
 export const letterheadSchema = z.object({ name: z.string().min(1), addressLines: z.array(z.string()) });
 export type Letterhead = z.infer<typeof letterheadSchema>;
 
+/**
+ * RC-1 T2 / D3 — the counter flow, two axes. The SEQUENCE decides whether the walk-in joins the
+ * queue at open (`queue_first`, the shipped behaviour) or after billing (`bill_first`, the
+ * deferred join). The TOKEN LANE decides only when the physical slip leaves the printer and which
+ * stamp it wears — allocation never moves with it, and it is meaningful only under `queue_first`.
+ * Design F1 = queue_first + token_first · F2 = queue_first + token_on_payment · F3 = bill_first.
+ */
+export const COUNTER_SEQUENCES = ["queue_first", "bill_first"] as const;
+export type CounterSequence = (typeof COUNTER_SEQUENCES)[number];
+export const TOKEN_LANES = ["token_first", "token_on_payment"] as const;
+export type TokenLane = (typeof TOKEN_LANES)[number];
+
 export type OpdConfig = {
   slotMinutes: number;
   followUpDefaultDays: number;
@@ -38,6 +50,8 @@ export type OpdConfig = {
   perkEveryNth: number | null;
   dangerRanges: DangerRangesConfig;
   letterhead: Letterhead;
+  counterSequence: CounterSequence;
+  tokenLane: TokenLane;
 };
 
 /** India-standard first values (owner decision 2026-08-15: clinical staff revise at UAT — data, not code). */
@@ -97,6 +111,12 @@ export async function loadOpdConfig(db: Db | Tx): Promise<OpdConfig> {
   if (!letterhead.success) throw new OpdError("opd_config_invalid", "letterhead invalid");
   const ext = extensionDaysSchema.safeParse(row.followUpExtensionDays);
   if (!ext.success) throw new OpdError("opd_config_invalid", "follow_up_extension_days invalid");
+  // No-fallbacks for the flow enums too: a hand-edited row with an unknown sequence hard-fails
+  // rather than the counter quietly running a flow nobody chose.
+  const seq = z.enum(COUNTER_SEQUENCES).safeParse(row.counterSequence);
+  if (!seq.success) throw new OpdError("opd_config_invalid", "counter_sequence invalid");
+  const lane = z.enum(TOKEN_LANES).safeParse(row.tokenLane);
+  if (!lane.success) throw new OpdError("opd_config_invalid", "token_lane invalid");
   return {
     slotMinutes: row.slotMinutes,
     followUpDefaultDays: row.followUpDefaultDays,
@@ -106,12 +126,22 @@ export async function loadOpdConfig(db: Db | Tx): Promise<OpdConfig> {
     perkEveryNth: row.perkEveryNth,
     dangerRanges: ranges.data,
     letterhead: letterhead.data,
+    counterSequence: seq.data,
+    tokenLane: lane.data,
   };
 }
 
 export type OpdConfigPatch = Partial<Pick<OpdConfig,
   "slotMinutes" | "followUpDefaultDays" | "followUpExtensionDays" | "extensionCapPerDoctorPerMonth"
-  | "maxSkipsBeforeLeft" | "perkEveryNth" | "dangerRanges" | "letterhead">>;
+  | "maxSkipsBeforeLeft" | "perkEveryNth" | "dangerRanges" | "letterhead"
+  | "counterSequence" | "tokenLane">>;
+
+/**
+ * RC-1 T2 / D5 — the two keys `PUT /opd/config/counter-flow` may move, and nothing else. The
+ * flow-lock permission (`opd.counter.flow.manage`) is NARROWER than `opd.config.manage`; a
+ * supervisor holding only the pill must not be able to reach danger ranges through the same body.
+ */
+export type CounterFlowPatch = Partial<Pick<OpdConfig, "counterSequence" | "tokenLane">>;
 
 /** Every patchable column, checked with the SAME schemas loadOpdConfig reads through — a bad shape never lands. */
 const configPatchSchema = z
@@ -124,6 +154,8 @@ const configPatchSchema = z
     perkEveryNth: z.number().int().positive().nullable(),
     dangerRanges: dangerRangesSchema,
     letterhead: letterheadSchema,
+    counterSequence: z.enum(COUNTER_SEQUENCES),
+    tokenLane: z.enum(TOKEN_LANES),
   })
   .partial();
 

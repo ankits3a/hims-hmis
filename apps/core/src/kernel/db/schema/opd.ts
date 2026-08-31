@@ -28,6 +28,13 @@ export const opdConfig = pgTable("opd_config", {
   perkEveryNth: integer("perk_every_nth"), // E-32 bounded interleave; null = off. Plan 09 sets it.
   dangerRanges: jsonb("danger_ranges").notNull(), // DangerRangesConfig (modules/opd/config.ts) — age-banded thresholds + required fields
   letterhead: jsonb("letterhead").notNull(), // { name: string; addressLines: string[] } — printed on the e-Rx
+  // RC-1 T2 / D3 — the counter flow the seat's lock pill wears. Two axes: SEQUENCE
+  // (`queue_first` — today's shipped behaviour — or `bill_first`, served by the deferred queue
+  // join) and TOKEN LANE (`token_first` or `token_on_payment` — printing and stamps only; token
+  // allocation never moves with it, and the lane is meaningful only under `queue_first`).
+  // Text + zod like every enum here: the same schemas guard read and write, no CHECK.
+  counterSequence: text("counter_sequence").notNull().default("queue_first"),
+  tokenLane: text("token_lane").notNull().default("token_first"),
   updatedBy: text("updated_by").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -38,6 +45,9 @@ export const opdDepartments = pgTable(
     id: text("id").primaryKey(),
     code: text("code").notNull(), // short stable code, e.g. 'MED', 'PED' — printed on token slips
     name: text("name").notNull(),
+    // RC-1 T2 / D7 — wait v0 is `waitingCount × avgConsultMinutes`, minutes AND a clock time on
+    // the seat. A future pace model replaces THIS COLUMN'S READ, not the wire shape.
+    avgConsultMinutes: integer("avg_consult_minutes").notNull().default(6),
     active: boolean("active").notNull().default(true),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

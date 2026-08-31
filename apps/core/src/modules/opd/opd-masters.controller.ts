@@ -10,7 +10,7 @@ import { WorkflowError } from "../../kernel/workflow/instances";
 import { withTx } from "../../kernel/db/client";
 import { PatientError } from "../patients";
 import { ResourceError, resourceHttpStatus } from "../../kernel/resources";
-import { loadOpdConfig, updateOpdConfig } from "./config";
+import { COUNTER_SEQUENCES, TOKEN_LANES, loadOpdConfig, updateOpdConfig } from "./config";
 import { OpdError } from "./errors";
 import { cancelDoctorLeave, listLeaves, scheduleDoctorLeave } from "./leaves";
 import {
@@ -99,7 +99,11 @@ const flagQuery = z.enum(["true", "false"]).optional();
 const activeQuery = z.object({ active: flagQuery });
 const doctorsQuery = z.object({ departmentId: z.string().min(1).optional(), active: flagQuery });
 const departmentCreateBody = z.object({ code: z.string().min(1).max(50), name: z.string().min(1).max(200) });
-const departmentPatchBody = z.object({ name: z.string().min(1).max(200).optional(), active: z.boolean().optional() });
+const departmentPatchBody = z.object({
+  name: z.string().min(1).max(200).optional(),
+  active: z.boolean().optional(),
+  avgConsultMinutes: z.number().int().positive().max(240).optional(), // RC-1 T2 / D7 — wait-v0 pace
+});
 const roomCreateBody = z.object({
   code: z.string().min(1).max(50), name: z.string().min(1).max(200), floor: z.string().max(50).optional(),
 });
@@ -153,6 +157,15 @@ const configPatchBody = z.object({
   perkEveryNth: z.number().int().nullable().optional(),
   dangerRanges: z.unknown().optional(),
   letterhead: z.unknown().optional(),
+  counterSequence: z.enum(COUNTER_SEQUENCES).optional(),
+  tokenLane: z.enum(TOKEN_LANES).optional(),
+});
+// RC-1 T2 / D5 — the flow pill's own body: EXACTLY the two flow keys. zod strips anything else,
+// so a holder of the narrow permission cannot reach danger ranges or the letterhead through this
+// route no matter what the request carries.
+const counterFlowBody = z.object({
+  counterSequence: z.enum(COUNTER_SEQUENCES).optional(),
+  tokenLane: z.enum(TOKEN_LANES).optional(),
 });
 
 function toConfigPatch(b: z.infer<typeof configPatchBody>): OpdConfigPatch {
@@ -165,6 +178,8 @@ function toConfigPatch(b: z.infer<typeof configPatchBody>): OpdConfigPatch {
   if (b.perkEveryNth !== undefined) patch.perkEveryNth = b.perkEveryNth;
   if (b.dangerRanges !== undefined) patch.dangerRanges = b.dangerRanges as DangerRangesConfig;
   if (b.letterhead !== undefined) patch.letterhead = b.letterhead as Letterhead;
+  if (b.counterSequence !== undefined) patch.counterSequence = b.counterSequence;
+  if (b.tokenLane !== undefined) patch.tokenLane = b.tokenLane;
   return patch;
 }
 
@@ -185,6 +200,23 @@ export class OpdMastersController {
   async getConfig(): Promise<OpdConfig> {
     try {
       return await loadOpdConfig(this.db);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * RC-1 T2 / D5 — the supervisor's lock pill. Narrower than `opd.config.manage` BY DESIGN: the
+   * front-office supervisor flips which lane a token takes today; only `opd_admin` reaches the
+   * clinical config above. The body accepts the two flow keys and nothing else (`counterFlowBody`
+   * strips), and the write path is the SAME `updateOpdConfig` — one validator, one audit column.
+   */
+  @RequirePermission("opd.counter.flow.manage", "hospital")
+  @Put("config/counter-flow")
+  async putCounterFlow(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<OpdConfig> {
+    const b = parsed(counterFlowBody, body);
+    try {
+      return await withTx(this.db, (tx) => updateOpdConfig(tx, actor, b));
     } catch (e) {
       toHttp(e);
     }
