@@ -728,6 +728,67 @@ left to point at. The test is REWRITTEN to assert the property it existed for (t
 manifests, never `RESOURCE_KIND_VALUES` — proved by removing a manifest and watching the set shrink
 while the CHECK does not move), rather than deleted or pinned to a falsehood.
 
+**F12 — SPIKE S2's ANSWER HAS FLIPPED AGAIN, AND T3's ONE AUTHORISED OPD EXPORT IS NOT NEEDED.**
+
+S2 concluded that the DD9 encounter-status guard *"needs a reader OPD does not export"*, and T3's
+Files list authorised exactly one: `encounterStatusByVisitNo` on `modules/opd/index.ts`.
+
+**Re-measured at T3: no export is required.** Lane A's F1 repair made `getEncounter(db, id)` accept
+a visit NUMBER as well as a row id (`encounters.ts:295` — `if (VISIT_NO_RE.test(id)) return await
+getEncounterByVisitNo(db, id)`), and `getEncounter` was ALREADY exported from `modules/opd/index.ts`.
+The row it returns carries `status` and `service_date`, which is the whole of what DD9 needs.
+
+**`modules/opd/*` is therefore untouched by this task**, which is the better outcome: 17a §8 freezes
+that tree, and the export S2 asked for would have been a permanent widening of another module's
+interface to serve one guard. A defect repair in one lane removed the need for an interface change
+in the other, and that is worth recording because it will not be obvious to anyone reading S2 later.
+
+**The day-care leg took a different route, and it is the weaker half.** OT exports no encounter
+status reader, and T3 is authorised to ask OPD for one export, not OT. So `assertEncounterOpen`
+reads `daycare_encounters.status` from the KERNEL SCHEMA directly — the table is
+`kernel/db/schema/ot.ts`, not a module internal, so no lint rule is bent — while the TERMINAL
+VOCABULARY comes from OT's own exported `daycareCaseDefinition`, so the list of states that end a
+case has one owner and cannot go stale here. **Measured**: no production module reads another's
+encounter table today (only tests do), so this is the first, and a later phase that adds
+`daycareStatusByEncounterNo` to `modules/ot/index.ts` should collapse it.
+
+**F13 — THE STUDY-TYPE READER LIVES IN `place.ts` UNTIL T4 OWNS IT.**
+
+Applicability is read from the ACTIVE `study_types` definition and never from the caller — an input
+carrying `pcpndtApplicable: false` would be a statutory bypass anybody with the route could type. But
+T4's `study-types.ts` is the file that will own the book, and T4 has not run, so `activeStudyTypes`
+and `studyTypeByService` are in `place.ts` for now. **T4 must make `study-types.ts` the single owner
+and have these delegate**, or the hospital will have two readers of one book. Recorded so the next
+task inherits the obligation rather than discovering the duplicate.
+
+Two consequences of reading the book that are correct and worth stating: a hospital with **no active
+study-type definition cannot place an imaging order at all** (`definition_not_active`), and a service
+**named by no study type is refused** (`unknown_study_type`) rather than defaulted to "not
+applicable" — a typo must not be able to produce an unregistered obstetric scan.
+
+**F14 — TWO MORE CONSUMER CENSUSES, IN NO TASK'S FILES LIST, AND THIS IS THE THIRD PHASE RUNNING.**
+
+`test/worker-runtime.e2e.test.ts` (the whole-equality bus census) and
+`src/kernel/worker/seed-cursors.test.ts` (the cursor census) both pin the consumer set that T3's
+`order.placed` subscription moves, and neither is in T3's Files list. Plan 14 recorded the identical
+omission as its F11, Plan 15 as its T2-f, and T2 of this phase found four more as F11 — **five
+census files in this task, and the standing observation now has enough specimens to stop being an
+observation.** The §2.138 list-grep does not find either of these: both derive from
+`workerConsumers`, not from `ALL_MANIFESTS`.
+
+`radiology.order_placed` is the SEVENTH wire and the first to subscribe to a KERNEL event. The six
+before it each subscribe to a module's own event; `order.placed` is raised for every claiming kind,
+so this handler sees the lab's orders and returns on `kind !== "imaging"` before touching a row —
+which is what lets a third ordering module be added later without the wire changing.
+
+**A DECISION THIS TASK MADE THAT DD14 DOES NOT COVER: an UNKNOWN date of birth is APPLICABLE.**
+DD14 says an ESTIMATED DOB counts and is silent on an ABSENT one. `patients.dob` is nullable. The
+rule treats a female patient of unknown age on a covered study type as applicable, because the Act's
+default is the form and the exemption is what must be established — and the two errors are not
+symmetrical: over-applying costs a Form F filled in for a woman who turns out to be 68, and
+under-applying is an unregistered obstetric scan. Argued in `applicability.ts`'s header and asserted
+in `applicability.test.ts`.
+
 **F7 — THE BUILD HOST HAS SIXTY UNAUTHENTICATED GITHUB API CALLS AN HOUR, AND BOTH LANES SPEND FROM
 THE SAME BUCKET.** *(self-inflicted, and recorded because the mechanism is not)*
 
@@ -825,6 +886,36 @@ signature and 17b's run-2 shape exactly.
 201 tests passed, exit 0`, at load average 2.47.** The re-run was queued behind an
 `until load < 6` guard rather than launched immediately, because re-running under the same
 contention would have measured the contention again (rule 20, pointed at my own instrument).
+
+**T3 — PLACEMENT, THE CONSUMER AND THE FIRST MOUNTED CONTROLLER. Same lane database.**
+
+**Fail-first is recorded rather than manufactured.** T3's assertions were written against code that
+did not exist, so every one of them failed by construction; what IS worth recording is the two
+places the first draft was wrong in a way the tests caught:
+
+- `place.test.ts` pointed all three A3 patients at one visit and `placeOrder` refused
+  `patient_encounter_mismatch` — the KERNEL doing exactly its job, and a fixture fault rather than
+  a code fault.
+- A5's census grep matched its OWN prose (`place.ts`'s docstring and the assertion's own line). A
+  census that cannot survive being written about is not a census; it is now word-bounded and
+  excludes test files and comments.
+
+| run | result |
+|---|---|
+| `applicability.test.ts` (A3, every boundary walked) | **11 tests, exit 0** |
+| `place.test.ts` (A1, A2, A3, A4, A5) | **16 tests, exit 0** |
+| `consumers.test.ts` (A7) | **6 tests, exit 0** |
+| the broad affected set — radiology, kernel modules/worker/orders/phi, worker-runtime, nav-parity, seed-roles, seed-staff | **23 suites / 240 tests, exit 0** |
+| `pnpm typecheck` | **exit 0** |
+| `pnpm lint` | **0 errors** (the 2 pre-existing warnings) |
+
+**A6 IS NOT RE-PROVED HERE, AND THAT IS THE CORRECT ANSWER.** A6 asserts that
+`listOrdersForPatient` writes one `phi_access_log` row with `surface='orders.patient'`. **Lane A
+already wrote that call and already asserts it** — `kernel/orders/read.test.ts` pins the surface, the
+sealed-patient leg and the encounter leg at lines 119, 130 and 142. §2 row 8 measured the call count
+at **5**, not 0, so T3's Files list condition *"only if row 8 is still 0"* is not met. This task
+appends the four `imaging.*`/`pcpndt.form_f` names to `PhiSurface` and writes **no second call** —
+which is spike S8's answer taken at face value instead of duplicating a kernel edit.
 
 **A SECOND FULL VERIFY, RUN AFTER THE `seed-staff` FIX ON A QUIETER BOX: `exit 1`, and it is ONE
 TEST.** `Test Suites: 1 failed, 315 passed, 316 total · Tests: 1 failed, 3085 passed, 3086 total`,

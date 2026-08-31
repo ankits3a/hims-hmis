@@ -9,6 +9,7 @@ import { NOTIFY_CONSUMER } from "../notify/consumer";
 import { PARTNERS_ACCRUAL_CONSUMER } from "../../modules/partners";
 import { MATERIALS_CONSUMPTION_CONSUMER } from "../../modules/materials";
 import { OT_IMPLANT_CONFIRMED_CONSUMER, OT_PATIENT_MERGED_CONSUMER } from "../../modules/ot";
+import { RADIOLOGY_ORDER_PLACED_CONSUMER } from "../../modules/radiology";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -63,7 +64,7 @@ describe("seedCursors", () => {
    * wired a phase early: without a seeded cursor the consumer's first cycle after Plan 15 ships
    * would start from zero and re-walk every event the hospital has ever emitted.
    */
-  it("enumerates workerConsumers(db)'s keys — the kernel two, partners.accrual, materials.consumption and the OT's two, and no others", async () => {
+  it("enumerates workerConsumers(db)'s keys — the kernel two, partners.accrual, materials.consumption, the OT's two and radiology's, and no others", async () => {
     const seeded = await seedCursors(db);
     // PLAN 15 T2 / A5 — the fifth. It joins for the reason D10 gives every entry here: a consumer
     // whose cursor is not seeded starts from zero and re-reads the WHOLE subscribed backlog on its
@@ -80,6 +81,17 @@ describe("seedCursors", () => {
         // PLAN 15 T5 / DD9 — the sixth. Same reason as the fifth: an unseeded cursor starts from
         // zero and re-reads every `material.consumed` since Plan 14's consumer first ran.
         OT_IMPLANT_CONFIRMED_CONSUMER,
+        // PLAN 18a T3 — the seventh, and the FIRST whose unseeded cursor would replay a KERNEL
+        // event. `order.placed` has been raised by every lab order since Plan 17, so a radiology
+        // consumer starting from zero would walk the entire lab backlog on its first cycle,
+        // returning immediately on each (`kind !== "imaging"`) — harmless by construction rather
+        // than by luck, which is a better reason than the fifth entry could give, and still not a
+        // property to rely on when seeding the cursor costs one line.
+        //
+        // **THIS FILE IS NOT IN 18a T3's FILES LIST** — the fifth census this task moves and the
+        // second consumer census, recorded as finding F14 rather than fixed silently, exactly as
+        // Plan 15 recorded T2-f.
+        RADIOLOGY_ORDER_PLACED_CONSUMER,
       ].sort());
   });
 

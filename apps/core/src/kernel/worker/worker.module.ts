@@ -26,7 +26,9 @@ import {
 } from "../../modules/ot";
 import { labManifest } from "../../modules/lab";
 import { pcpndtManifest } from "../../modules/pcpndt";
-import { radiologyManifest } from "../../modules/radiology";
+import {
+  RADIOLOGY_ORDER_PLACED_CONSUMER, orderPlacedConsumer, radiologyManifest,
+} from "../../modules/radiology";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";
@@ -253,6 +255,15 @@ export function workerConsumers(db: Db): Record<string, Handler> {
     // fails `worker-runtime.e2e.test.ts`'s whole-equality assertion instead of leaving a merged
     // patient's theatre list pointing at a patient id the registry says does not exist.
     [OT_PATIENT_MERGED_CONSUMER]: patientMergedConsumer(db),
+    // PLAN 18a T3 — the other half of T2's install, and the SAME ONE EDIT a sixth time.
+    // `radiologyManifest` declares `order.placed` -> `radiology.order_placed` in the commit that
+    // adds this line; `buildSubscriptionBus` turns a declaration with no matching handler into a
+    // BOOT ERROR, so shipping one without the other stops the worker at startup.
+    //
+    // The event is the KERNEL's and every claiming module raises it, so this handler sees the lab's
+    // orders too and returns on `kind !== "imaging"` before touching anything. That is why a second
+    // ordering module can be added without this line changing.
+    [RADIOLOGY_ORDER_PLACED_CONSUMER]: orderPlacedConsumer(db),
     // PLAN 15 T5 / DD9 — the scan's asynchronous half. `otManifest` declares
     // `material.consumed` -> `ot.implant_confirmed` in the commit that adds this line.
     [OT_IMPLANT_CONFIRMED_CONSUMER]: implantConfirmedConsumer(db),

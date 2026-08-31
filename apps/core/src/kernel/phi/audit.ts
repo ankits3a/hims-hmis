@@ -44,7 +44,28 @@ export type PhiSurface =
    *
    * **18a appends `radiology.*` and rebases if it lands second** (phase document §6.10).
    */
-  | "orders.patient" | "lab.results" | "lab.report";
+  | "orders.patient" | "lab.results" | "lab.report"
+  /**
+   * ═══ PLAN 18a T3 / DD11 — THE FOUR IMAGING SURFACES, AND THIS IS AN APPEND AND NOTHING ELSE ═══
+   *
+   * The line above predicted this edit in as many words: *"18a appends `radiology.*` and rebases if
+   * it lands second."* It landed second. `orders.patient` was already here, written by Lane A along
+   * with the `recordPhiAccess` calls inside `kernel/orders/read.ts` — so **this phase writes NO
+   * second call** (spike S8, re-answered at T2's kickoff: the count went 0 → 5 in `39beff0`).
+   * Appending only the names is the whole of DD11's kernel edit for this lane.
+   *
+   * They are FOUR names rather than one for the reason `opd.rx_history` is not `opd.prescriptions`:
+   *
+   *   · `imaging.worklist` — every patient with a pending scan, by name, on one screen. It is the
+   *     largest PHI surface this module has, and a technologist opening the day's list is a
+   *     materially different disclosure from a radiologist opening one study.
+   *   · `imaging.study` — one study, its indication and its gates.
+   *   · `imaging.report` — a signed finding, which is the disclosure a patient would most mind.
+   *   · `pcpndt.form_f` — the statutory register, and the ONE surface in this system that reads a
+   *     sealed patient's REAL name by design (DD14/J1). A read of it is a read of a pregnancy, and
+   *     a log that could not name it separately could not answer for it separately.
+   */
+  | "imaging.worklist" | "imaging.study" | "imaging.report" | "pcpndt.form_f";
 
 /** How the reader was connected to this patient's care AT THE MOMENT OF THE READ. */
 export type CareContext = "treating" | "serving" | "none";

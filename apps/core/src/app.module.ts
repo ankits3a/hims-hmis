@@ -26,6 +26,7 @@ import { ResourcesModule } from "./kernel/resources/resources.module";
 import { MaterialsModule } from "./modules/materials/materials.module";
 import { OtModule } from "./modules/ot/ot.module";
 import { LabModule } from "./modules/lab/lab.module";
+import { RadiologyModule } from "./modules/radiology/radiology.module";
 import { collectResourceKinds } from "./kernel/resources/kinds";
 import { collectOrderKinds } from "./kernel/orders/kinds";
 
@@ -36,7 +37,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
 
 @Global()
 @Module({
-  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule, OpdModule, BillingModule, AlertsModule, OpsModule, SearchModule, DeskModule, InferenceModule, MembershipModule, PartnersModule, FormularyModule, ResourcesModule, MaterialsModule, OtModule, LabModule], // ← LabModule (Plan 17b T8 — the five lab controllers; the module seam shipped inert at Plan 17 T2 and this is the commit that mounts them); ← OtModule (Plan 15 T2 — no controller yet: T8 mounts the four, the MaterialsModule precedent); ← MaterialsModule (Plan 14 T2 — no controller yet: T8 mounts it, the ResourcesModule/MembershipModule precedent); ← ResourcesModule (Plan 13 T2 — no controller yet: T5 mounts it, the MembershipModule/PartnersModule precedent); ← MembershipModule/PartnersModule (Plan 09 T1 — no controllers yet: T3/T5 and T7/T8 mount them); InferenceModule (Plan 11h T9, inert); SearchModule (Plan 11h T1); PatientsModule added; AlertsModule (Plan 08.5 D6); OpsModule (Plan 11c T2)
+  imports: [AuthModule, WorkflowModule, ApprovalsModule, PatientsModule, TariffModule, RealtimeModule, OpdModule, BillingModule, AlertsModule, OpsModule, SearchModule, DeskModule, InferenceModule, MembershipModule, PartnersModule, FormularyModule, ResourcesModule, MaterialsModule, OtModule, LabModule, RadiologyModule], // ← RadiologyModule (Plan 18a T3 — the placement route; the module seam shipped inert at T2 and this is the commit that mounts its first controller, the LabModule precedent); ← LabModule (Plan 17b T8 — the five lab controllers; the module seam shipped inert at Plan 17 T2 and this is the commit that mounts them); ← OtModule (Plan 15 T2 — no controller yet: T8 mounts the four, the MaterialsModule precedent); ← MaterialsModule (Plan 14 T2 — no controller yet: T8 mounts it, the ResourcesModule/MembershipModule precedent); ← ResourcesModule (Plan 13 T2 — no controller yet: T5 mounts it, the MembershipModule/PartnersModule precedent); ← MembershipModule/PartnersModule (Plan 09 T1 — no controllers yet: T3/T5 and T7/T8 mount them); InferenceModule (Plan 11h T9, inert); SearchModule (Plan 11h T1); PatientsModule added; AlertsModule (Plan 08.5 D6); OpsModule (Plan 11c T2)
   controllers: [HealthController],
   providers: [
     { provide: CONFIG, useFactory: (): AppConfig => loadConfig() },

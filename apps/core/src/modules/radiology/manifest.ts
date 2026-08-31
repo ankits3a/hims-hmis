@@ -1,4 +1,6 @@
 import { RADIOLOGY_RESOURCE_KINDS } from "./kinds";
+import { RADIOLOGY_ORDER_PLACED_CONSUMER } from "./consumers";
+import { orderPlaced } from "../../kernel/orders/events";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -46,13 +48,19 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * T2 A3's mutant is the reason those three are pinned BY NAME rather than trusted to the count: a
  * grant of `reports.sign` to `radiographer` leaves every census passing and the separation gone.
  *
- * ═══ NO SUBSCRIPTION IN THIS COMMIT — T3 ADDS IT WITH ITS HANDLER (the `partnersManifest` RULE) ═══
+ * ═══ THE SUBSCRIPTION, AND IT LANDED WITH ITS HANDLER — T3 (the `partnersManifest` RULE) ═══
  *
  * `buildSubscriptionBus` makes a declared subscription with no handler a BOOT ERROR by design
  * (§2.54's own specimen: `worker.ts` heartbeating for five minutes over an empty consumer list).
- * So `order.placed` → `radiology.order_placed` lands at T3 **with** the handler **and** the worker's
- * `workerConsumers` entry, in ONE commit. No commit ever exists in which this array names a
- * consumer nothing implements.
+ * T2 therefore shipped `subscriptions: []`, and `order.placed` → `radiology.order_placed` arrives
+ * HERE at T3 **with** `handleOrderPlaced`, **with** the worker's `workerConsumers` entry and
+ * **with** the consumer census, in ONE commit. **No commit has ever existed in which this array
+ * names a consumer nothing implements**, which is the property the rule is about rather than the
+ * ordering.
+ *
+ * The event is the KERNEL's, not this module's: every claiming module's orders raise `order.placed`,
+ * so the handler's first line is a `kind !== "imaging"` return. A lab order must reach this consumer
+ * and produce nothing at all.
  *
  * ═══ THE MENU POINTS AT ROUTES T9 MOUNTS ═══
  *
@@ -85,7 +93,7 @@ export const radiologyManifest: ModuleManifest = {
     "radiology.bill_decisions.manage",
     "radiology.criticals.ack",
   ],
-  subscriptions: [],
+  subscriptions: [{ event: orderPlaced.name, consumer: RADIOLOGY_ORDER_PLACED_CONSUMER }],
   resourceKinds: RADIOLOGY_RESOURCE_KINDS,
   orderKinds: [
     {

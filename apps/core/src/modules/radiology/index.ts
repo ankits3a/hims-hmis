@@ -24,4 +24,21 @@ export {
 export {
   IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE, RADIOLOGY_APPROVAL_TYPES, registerRadiologyApprovalTypes,
 } from "./approval-types";
+export {
+  RADIOLOGY_ORDER_PLACED_CONSUMER, handleOrderPlaced, orderPlacedConsumer,
+} from "./consumers";
+export type { CreatedStudy, OrderPlacedPayload } from "./consumers";
+export {
+  COMPLETED_VISIT_GRACE_DAYS, DUPLICATE_WINDOW_HOURS, activeStudyTypes,
+  addImagingViews, placeImagingOrder, studyTypeByService,
+} from "./place";
+export type {
+  PlaceImagingItemInput, PlaceImagingOrderInput, PlaceImagingOrderResult, StudyTypeFacts,
+} from "./place";
+export {
+  PCPNDT_AGE_MAX_YEARS, PCPNDT_AGE_MIN_YEARS, ageInYearsOn, pcpndtApplicability,
+} from "./applicability";
+export type {
+  PcpndtApplicability, PcpndtPatientFacts, PcpndtStudyTypeFacts,
+} from "./applicability";
 export * from "./events";

@@ -395,10 +395,27 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // discovered its commission history started at `now`. FOUR names, because §3 Q4 measured
         // that `reverseAllocation` and `markEnteredInError` both emit `allocation.reversed` and
         // neither emits a refund event, and that a credit note moves what is settleable.
+        // PLAN 18a T3 — **THE SEVENTH WIRE, and the first that subscribes to a KERNEL event.**
+        //
+        // The six above each subscribe to a MODULE's event. `order.placed` is raised by the order
+        // envelope itself, for every claiming kind, so this consumer sees the LAB's orders as well
+        // as radiology's and returns on `kind !== "imaging"` before touching a row. That is what
+        // lets a third ordering module be added later without this wire changing at all.
+        //
+        // It ships with `handleOrderPlaced` and `radiologyManifest`'s declaration in ONE commit —
+        // the `ot.patient_merged` shape rather than the `materials.consumption` one.
+        //
+        // **THIS FILE IS NOT IN 18a T3's FILES LIST EITHER** — the same census, moved by the same
+        // kind of task, for the third phase running. Recorded as finding F14; the standing
+        // observation that this file is missed by every task that moves it now has a fourth
+        // specimen, after Plan 14's F11 and Plan 15's T2-f.
+        //
+        // `radiology.order_placed` sorts after `partners.accrual`.
         [
           "partners.accrual",
           ["allocation.reversed", "credit_note.issued", "payment.received", "payment.refunded"],
         ],
+        ["radiology.order_placed", ["order.placed"]],
       ]);
 
       // AND HALF THE EDIT WOULD NOT BOOT — on THIS registry, not a synthetic one. Installing a
