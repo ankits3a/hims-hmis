@@ -1413,6 +1413,20 @@ killer is not; (b) run the halves sequentially with the exit value read from eac
 CI-by-full-SHA as the full-suite instrument when the box never quiets — **after reading the
 failure SHAPE: hook timeouts with zero assertion diffs are the runner, not the tree.**
 
+### 2.152 — `git commit` COMMITS THE INDEX, AND ON A SHARED CHECKOUT THE INDEX IS SHARED TOO
+
+RC-1's ledger commit `43986ed` staged ONE file by explicit path and committed — and carried **54
+lines of the 18a lane's phase doc** that the other session had staged seconds earlier. Protocol
+§3.1's "stage by path, never `-A`" was OBEYED and was not enough: staging by path adds to an index
+that another lane may also be writing, and a bare `git commit -m …` ships everything in it. The
+sweep was visible in the output — `2 files changed, 64 insertions` against a ~15-line edit — and
+went unread; the other lane found it when its own commit no-opped with "no changes added".
+**The mechanical form, either of:** (a) commit WITH a pathspec — `git commit -m "…" -- <your
+paths>` — which commits only those paths whatever else is staged; or (b) `git diff --cached --stat`
+read IMMEDIATELY before every commit, compared against your own Files list, on any checkout another
+session can reach. And in all cases: **read the commit's own stat line against the size of what you
+wrote** — a 4× insertion count is the tree telling you whose work you just took.
+
 ## 3. Plan-authoring defects
 
 Fix these when writing the next plan, not when executing it.
