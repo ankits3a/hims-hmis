@@ -22,7 +22,11 @@ const where = {
 };
 
 export const dangerFlagSchema = z.object({
-  vital: z.enum(["sbp", "dbp", "pulse", "rr", "spo2", "tempC"]),
+  // VD-1 T1 — `muacCm` APPENDED. A widened enum parses every flag already persisted, and MUAC's
+  // zones fit the shape exactly: `bound: "min"` with the limit of the zone actually breached
+  // (11.5 for SAM, 12.5 for MAM), so a consumer that knows nothing about malnutrition still
+  // renders "below 11.5" correctly.
+  vital: z.enum(["sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm"]),
   value: z.number(),
   bound: z.enum(["min", "max"]),
   limit: z.number(),

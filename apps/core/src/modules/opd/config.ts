@@ -5,7 +5,13 @@ import { OpdError } from "./errors";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
-export const VITAL_KEYS = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC"] as const;
+/**
+ * VD-1 T1 / D5 — `muacCm` JOINS THE KEYS, and it is appended rather than inserted. Several places
+ * render vitals in this order and one persists a band's `required` list as data; appending changes
+ * neither. MUAC is a first-class vital because it is banded (SAM / MAM / green) and flagged, and a
+ * number kept as a note cannot be either.
+ */
+export const VITAL_KEYS = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm"] as const;
 export type VitalKey = (typeof VITAL_KEYS)[number];
 export const BAND_KEYS = ["infant", "child_1_5", "child_6_12", "adult"] as const;
 export type BandKey = (typeof BAND_KEYS)[number];
@@ -15,10 +21,57 @@ const bandSchema = z.object({
   key: z.enum(BAND_KEYS),
   upToAgeYears: z.number().int().positive().nullable(), // EXCLUSIVE upper bound in whole years; null = the adult tail
   required: z.array(z.enum(VITAL_KEYS)),
+  /**
+   * ═══ VD-1 T1 / D5 — "NOT ROUTINE" IS A THIRD THING BESIDE REQUIRED AND OPTIONAL ═══
+   *
+   * The owner's DECIDED line is *"BP is not routine under 5"*. Today's `child_1_5` band already
+   * leaves sbp/dbp out of `required`, which makes them OPTIONAL — and an optional vital that is
+   * supplied is range-checked like any other, so a paediatric cuff reading taken BECAUSE THE
+   * DOCTOR ASKED comes back flagged against limits nobody chose it to be read under.
+   *
+   * A `notRoutine` vital is not required, is recorded when supplied, and is NOT range-flagged. The
+   * reason is not leniency: a flag the band cannot interpret is noise, and noise is how people are
+   * trained to stop reading flags — which is the only thing this whole mechanism has to sell.
+   *
+   * `.default([])` rather than required, so every `danger_ranges` row already in a database — dev,
+   * test, and the production row that has never left `commissioning` — parses unchanged.
+   */
+  notRoutine: z.array(z.enum(VITAL_KEYS)).default([]),
   ranges: z.object({ sbp: rangeSchema, dbp: rangeSchema, pulse: rangeSchema, rr: rangeSchema, spo2: rangeSchema, tempC: rangeSchema }).partial(),
 });
+/**
+ * ═══ VD-1 T1 / T2 — THE BAY'S THRESHOLDS ARE DATA, LIKE EVERY OTHER CLINICAL NUMBER HERE ═══
+ *
+ * The four sanity gates T2 enforces need numbers, and a number a clinician cannot change is a
+ * number a clinician will work around. These live beside the danger ranges for the reason the
+ * ranges themselves do (*"clinical staff revise at UAT — data, not code"*), and every field is
+ * `.default()`ed so the `danger_ranges` row in every existing database — including the production
+ * one that has never left `commissioning` — parses unchanged the moment this code ships.
+ */
+const gatesSchema = z.object({
+  /** A non-child weight below this is a slipped digit until somebody says otherwise (Savitri's 4.8). */
+  adultWeightFloorKg: z.number().positive().default(25),
+  /** A height this far from the carried value is re-measured once before it becomes true. */
+  heightDeltaCm: z.number().positive().default(3),
+  /** An SpO₂ below this is a probe problem, and is HELD OUT OF THE CHART until it survives a re-clip. */
+  spo2ProbeFloorPct: z.number().positive().default(75),
+  // `.prefault({})`, not `.default({})`: in zod 4 a `.default()` supplies the OUTPUT and would
+  // have to restate all three numbers here, where `.prefault()` supplies the INPUT and lets each
+  // field's own default do the filling. The numbers stay written exactly once.
+}).prefault({});
+/** MUAC's three zones (WHO): severe and moderate acute malnutrition, then green. */
+const muacBandsSchema = z.object({
+  samUnderCm: z.number().positive().default(11.5),
+  mamUnderCm: z.number().positive().default(12.5),
+}).prefault({});
+
 export const dangerRangesSchema = z
-  .object({ weightRequiredUnderYears: z.number().int().nonnegative(), bands: z.array(bandSchema).min(1) })
+  .object({
+    weightRequiredUnderYears: z.number().int().nonnegative(),
+    bands: z.array(bandSchema).min(1),
+    gates: gatesSchema,
+    muacBands: muacBandsSchema,
+  })
   .refine((v) => v.bands[v.bands.length - 1]!.upToAgeYears === null, { message: "the last band must be the adult tail (upToAgeYears: null)" })
   .refine((v) => v.bands.slice(0, -1).every((b, i, arr) => b.upToAgeYears !== null && (i === 0 || arr[i - 1]!.upToAgeYears! < b.upToAgeYears)), {
     message: "bands must be ascending by upToAgeYears with only the last one open",
@@ -57,16 +110,21 @@ export type OpdConfig = {
 /** India-standard first values (owner decision 2026-08-15: clinical staff revise at UAT — data, not code). */
 export const DEFAULT_DANGER_RANGES: DangerRangesConfig = {
   weightRequiredUnderYears: 18, // §11.8: pediatric dose ranges use the vitals-desk weight
+  // VD-1 T1 / D5 — MUAC joins the two under-six bands' REQUIRED lists (the owner's DECIDED line),
+  // and BP leaves them for `notRoutine`: not demanded, recorded when the doctor asks, never
+  // range-flagged. `child_6_12` and `adult` are unchanged in every field.
   bands: [
-    { key: "infant", upToAgeYears: 1, required: ["weightKg", "tempC", "spo2", "pulse"],
+    { key: "infant", upToAgeYears: 1, required: ["weightKg", "tempC", "spo2", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"],
       ranges: { sbp: { min: 65, max: 120 }, dbp: { min: 40, max: 80 }, pulse: { min: 90, max: 180 }, rr: { min: 25, max: 60 }, spo2: { min: 90 }, tempC: { min: 35.0, max: 38.5 } } },
-    { key: "child_1_5", upToAgeYears: 6, required: ["heightCm", "weightKg", "tempC", "spo2", "pulse"],
+    { key: "child_1_5", upToAgeYears: 6, required: ["heightCm", "weightKg", "tempC", "spo2", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"],
       ranges: { sbp: { min: 75, max: 130 }, dbp: { min: 45, max: 85 }, pulse: { min: 70, max: 150 }, rr: { min: 20, max: 40 }, spo2: { min: 90 }, tempC: { min: 35.0, max: 39.5 } } },
-    { key: "child_6_12", upToAgeYears: 13, required: ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"],
+    { key: "child_6_12", upToAgeYears: 13, required: ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"], notRoutine: [],
       ranges: { sbp: { min: 80, max: 140 }, dbp: { min: 50, max: 90 }, pulse: { min: 60, max: 130 }, rr: { min: 14, max: 30 }, spo2: { min: 90 }, tempC: { min: 35.0, max: 39.5 } } },
-    { key: "adult", upToAgeYears: null, required: ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"],
+    { key: "adult", upToAgeYears: null, required: ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"], notRoutine: [],
       ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35.0, max: 39.5 } } },
   ],
+  gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 },
+  muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 },
 };
 
 /** Owner's sample letterhead (dev placeholder — hospital identity is owner-gated at go-live). */

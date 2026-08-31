@@ -12,11 +12,30 @@ import { visibleEncounterFor } from "./read-gate";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { vitalsDangerFlagged, vitalsRecorded } from "./events";
 import { ageYearsAt } from "./time";
-import { bandFor, evaluateVitals, missingRequired, validateVitalsRanges } from "./vitals-rules";
+import { bandFor, evaluateVitals, inputToReadings, missingRequired, readingsToInput, validateVitalsRanges } from "./vitals-rules";
 import type { DangerFlag } from "./events";
 import type { EncounterRow, QueueEntryRow } from "./encounters";
-import type { VitalsInput } from "./vitals-rules";
+import type { ContextChip, Readings, VitalsInput } from "./vitals-rules";
+import type { VitalKey } from "./config";
 import type { Db, Tx } from "../../kernel/db/client";
+
+/**
+ * ═══ VD-1 T1 — WHAT THE BAY SENDS BESIDE THE NUMBERS ═══
+ *
+ * Everything the shipped desk could not say. `readings` is the authority when present: the scalar
+ * vitals are DERIVED from it (`readingsToInput`) rather than sent alongside it, so the blob and
+ * the columns can never disagree. A caller that sends only the flat body — the shipped screen,
+ * until VD-2 replaces it — gets a single typed take synthesised for it, and every row in the table
+ * therefore carries the same shape.
+ */
+export type VitalsDetail = {
+  readings?: Readings;
+  contextChips?: ContextChip[];
+  /** Keys not measured today, carried from the last reading. They are PRESENT for completeness (D7). */
+  carriedForward?: VitalKey[];
+  /** D11 — declared, never inferred. Trims the required set to BP + pulse + SpO₂. */
+  emergency?: boolean;
+};
 
 export type VitalsRow = typeof opdVitals.$inferSelect;
 
@@ -42,10 +61,14 @@ async function latestEntryWhere(tx: Tx, encounterId: string): Promise<{ entry: Q
  * the doctor sees the history.
  */
 export async function recordVitals(
-  db: Db, actor: Actor, encounterId: string, input: VitalsInput, now: Date = new Date(),
+  db: Db, actor: Actor, encounterId: string, input: VitalsInput, now: Date = new Date(), detail: VitalsDetail = {},
 ): Promise<{ vitals: VitalsRow; flags: DangerFlag[]; encounter: EncounterRow }> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
-  validateVitalsRanges(input);
+  // ONE input path (vitals-rules.ts's own header): readings win and the scalars are derived from
+  // them; a flat body gets one typed take per vital synthesised. Nothing downstream branches.
+  const readings = detail.readings ?? inputToReadings(input);
+  const values: VitalsInput = detail.readings === undefined ? input : { ...input, ...readingsToInput(detail.readings) };
+  validateVitalsRanges(values);
   const enc = await getEncounter(db, encounterId);
   if (!enc) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
   if (!RECORDABLE.includes(enc.status)) throw new OpdError("encounter_state_conflict", `vitals need registered or waiting, not ${enc.status}`);
@@ -53,9 +76,11 @@ export async function recordVitals(
   const [summary] = await getPatientSummaries(db, actor, [enc.patientId]);
   const ageYears = summary?.dob ? ageYearsAt(summary.dob, now) : null;
   const band = bandFor(ageYears, cfg.dangerRanges);
-  const missing = missingRequired(input, ageYears, cfg.dangerRanges);
+  const carriedForward = detail.carriedForward ?? [];
+  const emergency = detail.emergency === true;
+  const missing = missingRequired(values, ageYears, cfg.dangerRanges, { emergency, carriedForward });
   if (missing.length > 0) throw new OpdError("vitals_incomplete", `missing: ${missing.join(", ")}`, { missing });
-  const flags = evaluateVitals(input, band);
+  const flags = evaluateVitals(values, band, cfg.dangerRanges);
 
   return withTx(db, async (tx) => {
     let encounter: EncounterRow = enc;
@@ -68,8 +93,10 @@ export async function recordVitals(
 
     const [vitals] = await tx.insert(opdVitals).values({
       id: newId(), encounterId, patientId: encounter.patientId,
-      heightCm: input.heightCm ?? null, weightKg: input.weightKg ?? null, sbp: input.sbp ?? null, dbp: input.dbp ?? null,
-      pulse: input.pulse ?? null, rr: input.rr ?? null, spo2: input.spo2 ?? null, tempC: input.tempC ?? null, notes: input.notes ?? null,
+      heightCm: values.heightCm ?? null, weightKg: values.weightKg ?? null, sbp: values.sbp ?? null, dbp: values.dbp ?? null,
+      pulse: values.pulse ?? null, rr: values.rr ?? null, spo2: values.spo2 ?? null, tempC: values.tempC ?? null,
+      muacCm: values.muacCm ?? null, notes: values.notes ?? null,
+      readings, contextChips: detail.contextChips ?? [], carriedForward, emergency,
       ageYearsAtRecord: ageYears, band: band.key, dangerFlags: flags, recordedBy: actor.id, recordedAt: now,
     }).returning();
 

@@ -175,14 +175,28 @@ export type WireOpenVisitResult = {
   roomId: string | null; visitType: OpdVisitType; doctorScheduledToday: boolean;
 };
 
-export type WireDangerFlag = { vital: "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC"; value: number; bound: "min" | "max"; limit: number };
+// VD-1 T1 — `muacCm` appended, because the SERVER can now emit it: a supplied MUAC under six is
+// flagged at the zone it breached (11.5 SAM, 12.5 MAM). Widened here in the same task that made
+// the server able to send it — a wire union narrower than its producer is a type that lies, and it
+// lies silently until the first child is measured.
+export type WireDangerFlag = { vital: "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm"; value: number; bound: "min" | "max"; limit: number };
 
 export type WireVitals = {
   id: string; encounterId: string; patientId: string;
   heightCm: number | null; weightKg: number | null; sbp: number | null; dbp: number | null;
-  pulse: number | null; rr: number | null; spo2: number | null; tempC: number | null; notes: string | null;
+  pulse: number | null; rr: number | null; spo2: number | null; tempC: number | null;
+  muacCm: number | null; notes: string | null;
   ageYearsAtRecord: number | null; band: "infant" | "child_1_5" | "child_6_12" | "adult";
   dangerFlags: WireDangerFlag[]; recordedBy: string; recordedAt: string;
+  /**
+   * VD-1 T1 / D1 — the reading beside the scalars. The scalars above carry the OPERATIVE take and
+   * every shipped consumer keeps reading them; this is where the pair, the source and the values
+   * a sanity gate held out of the chart live. `unknown` until VD-2 renders it — a wire type that
+   * guesses at a shape nobody reads yet is a type that will be wrong by the time somebody does.
+   */
+  readings: unknown; contextChips: unknown; carriedForward: string[];
+  supersedesVitalsId: string | null; amendmentReason: string | null;
+  status: "active" | "superseded"; emergency: boolean;
 };
 
 export type WireRxLine = {

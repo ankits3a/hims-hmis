@@ -125,13 +125,85 @@ describe("opd vitals (recording, danger flags, the registered→waiting move)", 
 
   it("pediatric band + weight context", async () => {
     const opened = await openVisit(db, clerk.actor, { patientId: childPatient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
-    const r = await recordVitals(db, vd.actor, opened.encounter.id, { heightCm: 92, weightKg: 14, tempC: 37.2, spo2: 98, pulse: 155 }, MON);
+    // VD-1 T1 / D5 — `muacCm` joined this band's required list, so the fixture gained it. 13.4 is
+    // deliberately in the GREEN zone: the pulse flag below is then the only one, which is what
+    // makes the assertion about pulse still an assertion about pulse.
+    const kid = { heightCm: 92, weightKg: 14, tempC: 37.2, spo2: 98, muacCm: 13.4 };
+    const r = await recordVitals(db, vd.actor, opened.encounter.id, { ...kid, pulse: 155 }, MON);
     expect(r.vitals.band).toBe("child_1_5");
     expect(r.vitals.ageYearsAtRecord).toBe(3);
+    expect(r.vitals.muacCm).toBe(13.4);
     expect(r.flags).toEqual([{ vital: "pulse", value: 155, bound: "max", limit: 150 }]);
 
-    await expect(recordVitals(db, vd.actor, opened.encounter.id, { heightCm: 92, tempC: 37.2, spo2: 98, pulse: 100 }, MON))
+    await expect(recordVitals(db, vd.actor, opened.encounter.id, { heightCm: 92, tempC: 37.2, spo2: 98, pulse: 100, muacCm: 13.4 }, MON))
       .rejects.toMatchObject({ code: "vitals_incomplete", detail: { missing: ["weightKg"] } });
+    await expect(recordVitals(db, vd.actor, opened.encounter.id, { ...kid, pulse: 100, muacCm: undefined }, MON))
+      .rejects.toMatchObject({ code: "vitals_incomplete", detail: { missing: ["muacCm"] } });
+  });
+
+  /**
+   * ═══ VD-1 T1 — THE READING, THROUGH THE SERVICE AND INTO THE ROW ═══
+   *
+   * The pure rules are proved in `vitals-rules.test.ts`; what is proved here is that the storage
+   * carries them — that a pair reaches the table as a pair, that the scalar the four shipped
+   * readers select is the OPERATIVE take, and that a held value is nowhere near the chart column.
+   */
+  it("a rest-and-recheck pair is ONE row: both takes stored, the scalars carry the LAST", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const r = await recordVitals(db, vd.actor, opened.encounter.id, { heightCm: 164, tempC: 36.6 }, MON, {
+      readings: {
+        bp: { takes: [[172, 104], [146, 88]], source: "device" },
+        pulse: { takes: [86, 80], source: "device" },
+        spo2: { takes: [96], source: "device", held: [45] },
+        heightCm: { takes: [164], source: "typed" },
+        weightKg: { takes: [61], source: "typed" },
+        tempC: { takes: [36.6], source: "device" },
+      },
+      contextChips: [{ key: "bpmed", question: "BP dawa aaj li?", answer: "yes" }],
+    });
+    // The operative take — and 172/104 would have flagged, while 146/88 does not. The pair is on
+    // the chart and the DOCTOR sees both; the flag follows the number they should act on.
+    expect([r.vitals.sbp, r.vitals.dbp, r.vitals.pulse, r.vitals.spo2]).toEqual([146, 88, 80, 96]);
+    expect(r.flags).toEqual([]);
+    const stored = r.vitals.readings as { bp: { takes: number[][] }; spo2: { held: number[] } };
+    expect(stored.bp.takes).toEqual([[172, 104], [146, 88]]);
+    expect(stored.spo2.held).toEqual([45]); // seen, logged, and never a chart fact
+    expect(r.vitals.contextChips).toEqual([{ key: "bpmed", question: "BP dawa aaj li?", answer: "yes" }]);
+  });
+
+  it("a flat body still records, and gets one typed take per vital — no row has two shapes", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const r = await recordVitals(db, vd.actor, opened.encounter.id, adultOk, MON);
+    const stored = r.vitals.readings as Record<string, { takes: unknown; source: string }>;
+    expect(stored.bp).toEqual({ takes: [[adultOk.sbp, adultOk.dbp]], source: "typed" });
+    expect(stored.weightKg).toEqual({ takes: [adultOk.weightKg], source: "typed" });
+    expect(r.vitals.emergency).toBe(false);
+    expect(r.vitals.carriedForward).toEqual([]);
+    expect(r.vitals.status).toBe("active");
+    expect(r.vitals.supersedesVitalsId).toBeNull();
+  });
+
+  it("a declared emergency saves on BP + pulse + SpO2 alone; an undeclared one does not", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const crashing = { sbp: 208, dbp: 126, pulse: 104, spo2: 91 };
+    await expect(recordVitals(db, vd.actor, opened.encounter.id, crashing, MON))
+      .rejects.toMatchObject({ code: "vitals_incomplete" });
+    const r = await recordVitals(db, vd.actor, opened.encounter.id, crashing, MON, { emergency: true });
+    expect(r.vitals.emergency).toBe(true);
+    expect(r.vitals.heightCm).toBeNull();
+    expect(r.flags.map((f) => f.vital).sort()).toEqual(["dbp", "sbp"]);
+  });
+
+  it("a carried-forward key is not missing — provenance is stored, not inferred", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const noHeight = { ...adultOk, heightCm: undefined };
+    await expect(recordVitals(db, vd.actor, opened.encounter.id, noHeight, MON))
+      .rejects.toMatchObject({ code: "vitals_incomplete", detail: { missing: ["heightCm"] } });
+    const r = await recordVitals(db, vd.actor, opened.encounter.id, { ...noHeight, heightCm: 151 }, MON, {
+      carriedForward: ["heightCm"],
+    });
+    expect(r.vitals.carriedForward).toEqual(["heightCm"]);
+    expect(r.vitals.heightCm).toBe(151);
   });
 
   it("gates: invalid ranges, role_denied writes nothing, and a non-recordable state", async () => {

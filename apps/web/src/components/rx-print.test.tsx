@@ -23,6 +23,11 @@ const DATA: WireRxPrint = {
     heightCm: 162, weightKg: 60, sbp: 120, dbp: 80, pulse: 72, rr: null, spo2: 98, tempC: 37,
     notes: null, ageYearsAtRecord: 34, band: "adult", dangerFlags: [],
     recordedBy: "u-2", recordedAt: "2026-08-18T04:40:00.000Z",
+    // VD-1 T1 — the reading fields. An adult with no MUAC and one typed take per vital: the
+    // ordinary row, which is what a print fixture should be.
+    muacCm: null, readings: { bp: { takes: [[120, 80]], source: "typed" } }, contextChips: [],
+    carriedForward: [], supersedesVitalsId: null, amendmentReason: null,
+    status: "active" as const, emergency: false,
   },
   lines: [
     {

@@ -333,6 +333,55 @@ export const opdQueueEntries = pgTable(
     callCount: integer("call_count").notNull().default(0),
     skips: integer("skips").notNull().default(0),
     doneAt: timestamp("done_at", { withTimezone: true }),
+    /**
+     * ═══ VD-1 T1 / D3 — THE BENCH, AND WHY IT IS NOT A STATUS ═══
+     *
+     * `null` | `'resting'` | `'away'`. Where a patient physically is between arriving at the bay
+     * and having her vitals taken: on the rest chairs for a five-minute recheck, or stepped out
+     * with her turn held.
+     *
+     * **THESE ARE NOT `status` VALUES AND NOT WORKFLOW STATES, AND BOTH halves matter.** Not
+     * `status`, because the row must stay `waiting_vitals` — that is the value `listQueue`'s
+     * callable filter excludes, and a resting patient who became callable is exactly the accident
+     * this seat exists to prevent. Not a workflow state, because `opd_visit` is a **Class A**
+     * definition (`workflow-def.ts`): a new state costs owner + medical-superintendent two-key
+     * approval and a definition version, and the engine gates its transitions on ROLE KEYS rather
+     * than permissions, so the bay's sub-states would have to be re-granted as definition data to
+     * say something the queue already knows.
+     *
+     * The turn is held by the `seq` the row already has. Coming back from `away` is one column
+     * write and no re-queue, which is the whole point: *"her turn was held, not lost."*
+     */
+    benchState: text("bench_state"),
+    /** When a `resting` patient is due back. The recall lives on the bench in peripheral vision — a rest timer in a drawer is a forgotten patient. */
+    recallAt: timestamp("recall_at", { withTimezone: true }),
+    /**
+     * ═══ VD-1 T1 / D4 — THE ESCALATION, AND THE ONE THING CANCEL MOVES ═══
+     *
+     * `'none' | 'recheck_demanded' | 'escalated' | 'cancelled'`. The danger protocol the owner
+     * ruled on 31-Aug: ONE danger reading only demands the other arm now; a DOUBLE-CONFIRMED one
+     * lets the agent set queue class 0 by itself, with ten seconds to cancel at the desk.
+     *
+     * **THIS IS A QUEUE FACT AND `opd_encounters.danger_flagged` IS A CLINICAL FACT, AND THE
+     * SEPARATION IS THE WHOLE DESIGN.** Shipped behaviour flags danger on the first reading and
+     * bumps the class with it, in one boolean, forever — so a cancel that had to move that boolean
+     * would either be theatre (the next save re-raises it) or would delete a patient-safety flag.
+     * It does neither: `danger_flagged` and the `vitals.danger_flagged` event fire on every danger
+     * reading exactly as they do today, and what cancel reverts is `danger` on THIS row — whether
+     * the board reorders and the doctor is called now. The doctor still gets the flag and both
+     * takes. The signed-off autonomy ladder is the authority: *"ASKS (never alone): anything that
+     * downgrades urgency."* The agent bumps; only a person un-bumps, with their name on it.
+     *
+     * `escalated_at` is the window, and it is a STORED INSTANT rather than a server timer (D8): a
+     * `setTimeout` is lost on restart and unobservable in a test, while `escalated_at + 10s` is a
+     * comparison any reader can make and any clock can fake. The countdown is the screen's.
+     */
+    escalation: text("escalation").notNull().default("none"),
+    escalatedAt: timestamp("escalated_at", { withTimezone: true }),
+    /** The class the entry held before the bump, so cancel restores rather than guesses. */
+    escalatedFromClass: integer("escalated_from_class"),
+    /** Who cancelled. Plain text, no FK — this file's header rule. Null while the escalation stands. */
+    escalationBy: text("escalation_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -359,6 +408,79 @@ export const opdVitals = pgTable(
     ageYearsAtRecord: integer("age_years_at_record"), // null when DOB unknown (adult band applied)
     band: text("band").notNull(), // 'infant' | 'child_1_5' | 'child_6_12' | 'adult'
     dangerFlags: jsonb("danger_flags").notNull(), // DangerFlag[] — [] when normal
+    /**
+     * ═══ VD-1 T1 / D1 — THE READING, AND WHY THE SCALARS ABOVE DO NOT MOVE ═══
+     *
+     * The scalar columns above hold ONE number per vital, which is everything the shipped desk
+     * could say. The Bay One seat's atom is a **reading**: a value with a SOURCE (the nurse typed
+     * it, a serial device sent it, she counted it for fifteen seconds), sometimes a SECOND TAKE
+     * after five minutes on the rest chairs, and sometimes a value that was seen and deliberately
+     * NOT put on the chart.
+     *
+     * `readings` carries that, keyed by vital: `{ takes: [...], source, held?: [...], note? }`.
+     * `takes` holds every take in order; `held` holds values the sanity gates refused to chart
+     * (T2's 45 % SpO₂); `note` holds the old value beside an unlocked carry-forward.
+     *
+     * **THE SCALARS KEEP THE OPERATIVE TAKE — THE LAST ONE — AND THAT IS THE DECISION.** Four
+     * readers select these columns today (`vitals.ts`, `encounters.ts`, `history.ts`,
+     * `prescriptions.ts`), the e-Rx prints `vitals[vitals.length - 1]`, and `evaluateVitals`
+     * ranges over them. Storing the pair here instead of beside them would have required editing
+     * all four to stay correct; storing it beside them requires editing none, and a reader that
+     * has never heard of `readings` still prints the number the doctor should act on. After a
+     * rest-and-recheck that is the SECOND reading, which is the clinically operative one — and
+     * the first is not lost, it is in `takes`.
+     *
+     * **THE PAIR IS NEVER AVERAGED AND NEVER OVERWRITTEN.** That is the owner's DECIDED line, and
+     * here it is a property of storage rather than of anybody's discipline: an average has nowhere
+     * to be written, because `takes` is a list and the scalar is one of its members.
+     */
+    readings: jsonb("readings").notNull().default(sql`'{}'::jsonb`),
+    /**
+     * VD-1 T1 / D5 — MUAC (mid-upper-arm circumference), required under six and meaningless over
+     * it. It is a first-class vital rather than a note because it is the ₹160 tape that finds
+     * starvation: its SAM / MAM / green bands are `opd_config` data, and a number kept in prose
+     * cannot be banded, trended or flagged.
+     */
+    muacCm: doublePrecision("muac_cm"),
+    /**
+     * VD-1 T1 — the questions asked at the bench and their answers: BP medicine taken this
+     * morning, fasting, just climbed the stairs. `{ key, question, answer }[]`. They ride the
+     * encounter to the doctor because a systolic of 158 means one thing after four flights of
+     * stairs and another thing at rest, and the person who knows which is the one holding the cuff.
+     */
+    contextChips: jsonb("context_chips").notNull().default(sql`'[]'::jsonb`),
+    /**
+     * VD-1 T1 / D7 — the keys NOT measured today, carried forward from the last recorded reading.
+     * Stored rather than derived because it is a claim about PROVENANCE: "this height is from
+     * March" is a different fact from "this height is 151", and only the first one can be audited.
+     * T2's lock refuses a different number for a carried key without a preset unlock reason.
+     */
+    carriedForward: jsonb("carried_forward").notNull().default(sql`'[]'::jsonb`),
+    /**
+     * ═══ VD-1 T1 / D2 — AN AMENDMENT IS THE NEXT ROW, NEVER AN EDIT ═══
+     *
+     * The owner ruled that a saved chart is amendable at this desk. This is the LIMS pattern,
+     * inherited rather than re-derived — `lab_results.supersedes_result_id` and
+     * `lab_reports.prior_version_id`, whose own header says *"there is no edit endpoint and there
+     * must not be one"*.
+     *
+     * **AND IT IS WHAT SEPARATES AN AMENDMENT FROM A PAIR.** Both produce "two readings", and
+     * nothing could tell them apart if both were rows. A rest-and-recheck pair is ONE row with two
+     * takes; a correction is a NEW row naming its predecessor, whose `status` becomes
+     * `superseded`. The field-level trail the owner ruled — old value, actor, clock — is the DIFF
+     * between the two versions, computed at read time. There is no second audit table, because a
+     * trail that can disagree with the record is worse than no trail.
+     */
+    supersedesVitalsId: text("supersedes_vitals_id"),
+    amendmentReason: text("amendment_reason"),
+    status: text("status").notNull().default("active"), // 'active' | 'superseded'
+    /**
+     * VD-1 T1 / D11 — a declared emergency save: BP + pulse + SpO₂ only, the rest of the required
+     * set waived. DECLARED, never inferred from the numbers — a nurse decides a patient is
+     * crashing, and a system that guessed would sometimes guess in the direction of accepting a
+     * half-filled chart for somebody who was merely frightened.
+     */
+    emergency: boolean("emergency").notNull().default(false),
     recordedBy: text("recorded_by").notNull(),
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
   },
