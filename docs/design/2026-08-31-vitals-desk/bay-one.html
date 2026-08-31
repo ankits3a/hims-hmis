@@ -1,0 +1,1144 @@
+<title>Bay One</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans+Devanagari:wght@400;600&display=swap">
+<style>
+  :root{
+    --paper:#f4f7f4; --card:#ffffff; --ink:#132420; --line:#dfe7e1; --line2:#ecf1ed;
+    --dim:#5c6f66; --faint:#8ea69a; --wash:#eef3ef;
+    --green:#0e6b4e; --green-soft:rgba(14,107,78,.08); --green-line:rgba(14,107,78,.35);
+    --gold:#dd8f1c; --gold-soft:rgba(221,143,28,.10); --gold-line:rgba(221,143,28,.45);
+    --red:#b23a30; --red-soft:rgba(178,58,48,.07); --red-line:rgba(178,58,48,.45);
+    --agent:#132420; --agent-fg:#d9efe4; --agent-dim:#7fa392; --mint:#35c48f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0;text-align:left}
+  input{font:inherit;color:inherit}
+  input:focus{outline:none}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+  .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+  .dev{font-family:"IBM Plex Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.55}
+  .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  .kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:20px;padding:0 5px;
+    border-radius:3px;border:1px solid var(--line);background:var(--card);font-family:"IBM Plex Mono",monospace;
+    font-size:9px;font-weight:600;color:var(--dim);flex-shrink:0}
+  .kb.dk{border-color:#2c443a;background:#1c332b;color:var(--agent-dim)}
+  .pri{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 18px;
+    border-radius:6px;background:var(--green);color:#f2faf6;font-size:13px;font-weight:600;border:1px solid var(--green)}
+  .pri:disabled{opacity:.35;cursor:not-allowed}
+  .pri.rd{background:var(--red);border-color:var(--red)}
+  .sec{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 13px;
+    border-radius:6px;border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:500}
+  .sec:hover{border-color:var(--faint)}
+  .sec.grn{border-color:var(--green);color:var(--green);font-weight:600}
+  .box{background:var(--card);border:1px solid var(--line);border-radius:8px}
+  .in{height:40px;width:100%;border-radius:6px;border:1px solid var(--line);background:var(--card);padding:0 12px;font-size:14px}
+  .in:focus{border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+  .pill{display:inline-flex;align-items:center;gap:6px;height:23px;padding:0 9px;border-radius:4px;
+    font-size:10.5px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--dim);white-space:nowrap}
+  .pill.on{border-color:var(--green-line);background:var(--green-soft);color:var(--green)}
+  .pill.gd{border-color:var(--gold-line);background:var(--gold-soft);color:var(--gold)}
+  .pill.rd{border-color:var(--red-line);background:var(--red-soft);color:var(--red)}
+  .agchip{display:inline-flex;align-items:flex-start;gap:8px;max-width:100%;padding:8px 11px;border-radius:6px;
+    background:var(--agent);color:var(--agent-fg);font-size:11.5px;line-height:16px}
+  .agchip b{color:#fff;font-weight:600}
+  .agdo{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:5px;flex-shrink:0;
+    background:var(--mint);color:#0b2018;font-size:11px;font-weight:700}
+  .agdo:hover{background:#4fd6a3}
+  .agdo.gh{background:transparent;border:1px solid #2c4438;color:var(--agent-dim)}
+  .ovl{position:fixed;inset:0;background:rgba(19,36,32,.5);display:flex;align-items:flex-start;
+    justify-content:center;padding-top:7vh;z-index:60}
+  .tile{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:11px 13px;min-height:118px;
+    display:flex;flex-direction:column;gap:5px;position:relative}
+  .tile.wn{border:1.5px solid var(--gold-line);background:linear-gradient(0deg,var(--gold-soft),var(--card))}
+  .tile.dg{border:2px solid var(--red);background:linear-gradient(0deg,var(--red-soft),var(--card))}
+  .tile.ok .bigv{color:var(--ink)}
+  .bigv{font-family:"IBM Plex Mono",monospace;font-size:27px;font-weight:700;line-height:30px;letter-spacing:-.01em}
+  .bigv.gr{color:var(--faint)}
+  .srcp{display:inline-flex;align-items:center;gap:4px;height:17px;padding:0 6px;border-radius:3px;
+    font-family:"IBM Plex Mono",monospace;font-size:8.5px;font-weight:700;letter-spacing:.1em}
+  .srcp.au{background:var(--agent);color:var(--mint)}
+  .srcp.mn{border:1px solid var(--gold-line);color:var(--gold)}
+  .benchrow{display:flex;flex-direction:column;gap:3px;padding:10px 12px;border-bottom:1px solid var(--line2);
+    cursor:pointer;border-left:3px solid transparent}
+  .benchrow:hover{background:var(--wash)}
+  .benchrow.nx{border-left-color:var(--green);background:var(--green-soft)}
+  .benchrow.rs{border-left-color:var(--gold)}
+  .benchrow.dn{opacity:.45}
+  .gate{border-radius:8px;padding:12px 15px;display:flex;gap:12px;align-items:flex-start;margin-top:12px}
+  .gate.gd{border:1.5px solid var(--gold-line);background:var(--gold-soft)}
+  .gate.rd{border:2px solid var(--red);background:var(--red-soft)}
+  .say{background:var(--agent);border-radius:8px;padding:11px 13px;color:var(--agent-fg)}
+  .lock{width:11px;height:11px;flex-shrink:0}
+  @media (prefers-reduced-motion:no-preference){
+    .agchip{animation:up .16s ease-out}
+    @keyframes up{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+    .pulse{animation:pu 1.1s ease-in-out infinite}
+    @keyframes pu{0%,100%{opacity:1}50%{opacity:.35}}
+  }
+  #frame{min-width:1280px}
+  #wrap{overflow-x:auto}
+</style>
+
+<div id="wrap"><div id="frame" style="height:100vh;display:flex;flex-direction:column">
+
+  <!-- ── header ── -->
+  <div style="display:flex;align-items:center;gap:12px;height:46px;padding:0 18px;background:var(--card);border-bottom:1px solid var(--line);flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:10px;height:10px;border-radius:99px;border:3px solid var(--green)"></div>
+      <span class="mo" style="font-size:12.5px;font-weight:700;letter-spacing:.08em">BAY ONE</span>
+    </div>
+    <span style="color:var(--line)">/</span>
+    <span style="font-size:12.5px;color:var(--dim)">Vitals · Bay 01 · <strong style="color:var(--ink);font-weight:600">Sister Kavita Kisku</strong> · 08:00–14:00</span>
+    <span id="devstrip" style="display:flex;gap:5px"></span>
+    <div style="flex-grow:1"></div>
+    <span class="pill" id="keysPill" title="the zero-typing proof — manual keystrokes vs device readings"></span>
+    <span class="mo" style="font-size:11.5px;color:var(--faint)">MON 31 AUG · <span id="clk">09:52</span></span>
+    <span class="pill gd" id="valvePill" title="this bench is the doctors' wait time"></span>
+    <button class="pill" style="height:24px" onclick="ov=ov==='procure'?null:'procure';paint()">₹ devices</button>
+    <button class="pill" style="height:24px" onclick="ov=ov==='schema'?null:'schema';paint()">design schema</button>
+    <button class="pill" style="height:24px;border-color:var(--ink)" onclick="ov=ov==='pal'?null:'pal';paint()"><strong>⌘</strong> command <span class="kb">Ctrl K</span></button>
+  </div>
+
+  <!-- ── body: session + stage + bench ── -->
+  <div style="flex-grow:1;min-height:0;display:flex">
+    <aside id="session" style="width:294px;flex-shrink:0;border-right:1px solid var(--line);background:var(--card);overflow-y:auto"></aside>
+    <main id="stage" style="flex-grow:1;min-width:0;overflow-y:auto;padding:22px 28px 30px"></main>
+    <aside id="bench" style="width:238px;flex-shrink:0;border-left:1px solid var(--line);background:var(--card);overflow-y:auto"></aside>
+  </div>
+
+  <!-- ── agent dock ── -->
+  <div style="flex-shrink:0;background:var(--agent);color:var(--agent-fg)">
+    <div id="drawer" style="display:none;border-bottom:1px solid #24413631;max-height:250px"></div>
+    <div style="display:flex;align-items:center;gap:13px;height:54px;padding:0 18px">
+      <span style="position:relative;width:9px;height:9px;flex-shrink:0">
+        <span style="position:absolute;inset:0;border-radius:99px;background:var(--mint)"></span>
+        <span style="position:absolute;inset:-3px;border-radius:99px;border:1px solid var(--mint);opacity:.35"></span>
+      </span>
+      <span class="tag" style="color:var(--agent-dim);flex-shrink:0">bay agent</span>
+      <span id="ticker" class="mo" style="font-size:11.5px;color:var(--agent-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex-grow:1"></span>
+      <form onsubmit="ask(event)" style="flex-shrink:0;display:flex;align-items:center;gap:8px;width:360px;height:36px;border:1px solid #2c4438;border-radius:6px;padding:0 11px;background:#1c332b">
+        <input id="askIn" placeholder="ask — “bump kyon hua?” · “muac kya hai?”" style="border:none;background:transparent;color:var(--agent-fg);flex-grow:1;font-size:12px"/>
+        <span class="kb dk">F2</span>
+      </form>
+      <button onclick="drawer=!drawer;paint()" class="mo" style="flex-shrink:0;font-size:10.5px;color:var(--agent-dim);letter-spacing:.1em" id="drawBtn">▲ LOG</button>
+    </div>
+  </div>
+</div></div>
+
+<div id="ovls"></div>
+
+<script>
+/* ══════════ the bench — five stories, each answering a design question ══════════ */
+const PT=[
+ {id:"sunita",tok:"T-118",nm:"Sunita Devi",age:54,sex:"F",uh:"UH-23-04417",cls:2,st:"waiting",
+  why:"diabetes review · Dr. Nishant Rao",
+  last:{when:"11-Jun-2026",ht:152,wt:67.0,bp:"132/84",pulse:82,spo2:98,temp:36.6,rr:16},
+  dev:{bp:[[158,96,88],[142,88,84]],spo2:[97],temp:[36.8],wt:[68.4],rr:[16]},gh:{wt:"68.4",pulse:"88"},
+  chips:[["bpmed","BP dawa aaj subah li?"],["fast","khali pet? — sugar draw owed"],["stairs","abhi seedhi chadh kar aaye?"]],
+  lockHt:true,lead:"bp",
+  stagept:"sugar draw owed → the fasting chip matters. BP ran 132/84 in June — watch the delta.",
+  hint:"trend · rest-recheck · chips",
+  say:{rest:"सुनीता जी, पाँच मिनट बैठिए, चाय-पानी नहीं — फिर दोबारा लेंगे। अक्सर दूसरी बार ठीक आता है।",
+       settled:"अब ठीक है — दोनों रीडिंग डॉक्टर साहब देखेंगे।"}},
+ {id:"ganesh",tok:"T-121",nm:"Ganesh Oraon",age:61,sex:"M",uh:"UH-26-08912",cls:3,st:"waiting",
+  why:"walk-in · “sir bhaari, chakkar” · Gen Med pool",
+  last:null,
+  dev:{bp:[[208,126,104],[214,132,102]],spo2:[95],temp:[36.9],wt:[71.5],rr:[20]},
+  chips:[["bpmed","BP ki dawa kabhi chali?"],["stairs","dhoop se seedha aaye?"]],
+  lead:"bp",
+  stagept:"first visit, no file. Age 61, “heavy head” — the agent wants the cuff on FIRST.",
+  hint:"⚠ the escalation — design question №1",
+  say:{danger:"बाबा, बीपी ज़्यादा है — घबराइए नहीं। डॉक्टर आपको अभी देखेंगे, लाइन नहीं लगेगी। अकेले मत चलिए, हम साथ चलते हैं।"}},
+ {id:"aarav",tok:"T-119",nm:"Aarav Kumar",age:4,sex:"M",uh:"UH-26-08877",cls:2,st:"waiting",
+  why:"fever 2 days · with mother Meena · Dr. Sneha Toppo",
+  last:{when:"02-Feb-2026",wt:12.1},
+  dev:{spo2:[98],pr:[132],temp:[38.9],wt:[13.2],rr:[28]},gh:{muac:"13.4",ht:"102"},
+  chips:[["eat","kal se khana-peena kaisa?"],["fits","bukhar mein jhatke aaye?"]],
+  lead:"temp",
+  stagept:"band flips to CHILD 1–5: small cuff, MUAC due, different limits. Weight was 12.1 in Feb.",
+  hint:"paediatric — the screen changes, not just the limits",
+  say:{fever:"बुख़ार है — डॉक्टर साहिबा को बता दिया है, जल्दी बुलाएँगी। पानी पिलाती रहिए।"}},
+ {id:"savitri",tok:"T-120",nm:"Savitri Devi",age:72,sex:"F",uh:"UH-22-01034",cls:2,st:"waiting",
+  why:"giddiness · Dr. T. Minz",
+  last:{when:"14-Mar-2026",ht:151,wt:49.2,bp:"148/86",pulse:78,spo2:96,temp:36.5,rr:18},
+  dev:{bp:[[152,84,78]],spo2:[45,94],temp:[36.4],wt:[48.1],rr:[18]},gh:{ht:"147",wt:"4.8",pulse:"78"},
+  chips:[["fall","haal mein giri to nahin?"],["bpmed","BP dawa aaj li?"]],
+  lockHt:true,
+  stagept:"carried-forward height is LOCKED. Scale is dead — her weight gets typed. Watch the gates work.",
+  hint:"sanity gates · locked carry-forward · dignity",
+  say:{weight:"वज़न पर्ची पर लिख दिया है।  — the number is never said across the room."}},
+ {id:"ramdev",tok:"T-117",nm:"Ramdev Mahto",age:68,sex:"M",uh:"UH-21-00219",cls:2,st:"resting",restAt:9*60+57,
+  why:"BP follow-up · Dr. Nishant Rao",
+  last:{when:"20-Aug-2026",ht:164,wt:61.5,bp:"156/94",pulse:80,spo2:96,temp:36.6,rr:16},
+  dev:{bp:[[146,88,80]],spo2:[96],temp:[36.7],wt:[61.0],rr:[16]},
+  chips:[["bpmed","BP dawa aaj li?"]],
+  lead:"bp",
+  stagept:"on the rest chairs since 09:52 — first reading 172/104. The recall belongs to the bench, not to memory.",
+  hint:"rest-and-recheck · the timer lives in sight",
+  recheckCtx:"172/104 at 09:52",
+  say:{settled:"अब ठीक है बाबा — आराम से बैठिए, नंबर आने वाला है।"}},
+ {id:"salma",tok:"T-122",nm:"Salma Khatoon",age:34,sex:"F",uh:"UH-25-06651",cls:2,st:"away",
+  why:"weakness · Dr. T. Minz",
+  last:{when:"03-May-2026",ht:158,wt:52.0,bp:"110/70",pulse:76,spo2:98,temp:36.5,rr:14},
+  dev:{bp:[[112,72,74]],spo2:[98],temp:[36.4],wt:[51.6],rr:[14]},
+  chips:[["eat","aaj kuchh khaya?"]],
+  stagept:"stepped out — the agent holds her turn, nobody re-queues her by hand.",
+  hint:"the walked-off patient keeps her place",
+  say:{}},
+];
+/* pre-seed ramdev's held first reading */
+PT[4].pending={bp:{takes:[[172,104,86]],s:172,d:104,src:"auto"},pulse:{v:86,src:"rode the cuff"}};
+
+const DEVS={bp:{ok:true,nm:"BP+pulse"},spo2:{ok:true,nm:"SpO₂"},temp:{ok:true,nm:"IR temp"},scale:{ok:false,nm:"scale",since:"09:12"},scan:{ok:true,nm:"scanner"}};
+const PHASES={
+  bp:[["cuff wrapping — arm at heart height…",750],["inflating · 150 mmHg",700],["inflating · 185 mmHg",600],["deflating — hold still…",950]],
+  spo2:[["probe on · searching pulse…",800],["waveform steady…",700]],
+  temp:[["reading — forehead…",650]],
+  scale:[["stabilising…",750]],
+  rr:[["watch the chest — counting 15 s…",900],["…3 breaths",800],["…5 breaths · ×4",700]],
+};
+const UNLOCK_REASONS=["yearly re-measure due","patient disputes the old value","posture / device changed","surgical or limb change"];
+
+/* ══════════ state ══════════ */
+let P=null,V={},esc=0,sugg=null,gate=null,busy=null,manualK=null,sayThis=null,saveErr=null;
+let ov=null,drawer=false,keys=0,readings=0,doneN=40,mins=9*60+52,rrFocusT=0;
+let SERIAL=false,amendMode=false,bumpLeft=null,bumpTimer=null,bumpFinal=false,justSaved=null;
+const log=[];
+const T=m=>`${Math.floor(m/60)}:${String(m%60).padStart(2,"0")}`;
+const RS=n=>"₹"+n.toLocaleString("en-IN");
+const E=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function tk(n){mins+=n;document.getElementById("clk").textContent=T(mins);}
+function note(x,kind){log.unshift({at:T(mins),x,kind:kind||"did"});}
+[["bay open — TYPING LANE (owner ruling: serial devices arrive within days, toggle ships OFF till they land). ⏎ commits a field and jumps to the next; every key is counted","warn"],
+ ["pre-staged T-118 Sunita Devi — file, June vitals, sugar-draw flag ready before she stands up","did"],
+ ["valve watch: Dr. Rao's board is down to 1 callable patient — this bench is his wait time","warn"]].forEach(([x,k],i)=>log.push({at:"09:5"+i,x,kind:k}));
+
+/* ══════════ bands & ranges ══════════ */
+const isChild=()=>P&&P.age<6;
+function rng(){
+  if(isChild())return{sbp:[80,110,70,140],dbp:[50,75,40,90],pulse:[80,140,60,170],spo2:[94,100,90,101],temp:[36.1,37.5,35,39.5],rr:[20,30,12,45]};
+  return{sbp:[90,140,80,180],dbp:[60,90,40,120],pulse:[60,100,45,130],spo2:[94,100,90,101],temp:[36.1,37.3,35,39.5],rr:[12,20,8,30]};
+}
+function lvlOf(k,v){
+  const R=rng()[k];if(!R||v==null)return"ok";
+  if(v<=R[2]||v>=R[3])return"danger";
+  if(v<R[0]||v>R[1])return"warn";
+  return"ok";
+}
+function bpLvl(s,d){
+  const R=rng();
+  if(s>=R.sbp[3]||s<=R.sbp[2]||d>=R.dbp[3])return"danger";
+  if(s>R.sbp[1]||d>R.dbp[1]||s<R.sbp[0])return"warn";
+  return"ok";
+}
+function tileDefs(){
+  const ch=isChild();const t=[];
+  t.push({k:"ht",l:ch?"LENGTH":"HEIGHT",u:"cm",dev:null});
+  t.push({k:"wt",l:"WEIGHT",u:"kg",dev:"scale",quiet:true});
+  if(ch)t.push({k:"muac",l:"MUAC",u:"cm",dev:null});
+  t.push({k:"bp",l:"BLOOD PRESSURE",u:"mmHg",dev:"bp",nr:ch});
+  t.push({k:"pulse",l:"PULSE",u:"/min",dev:"bp",rides:true});
+  t.push({k:"spo2",l:"SpO₂",u:"%",dev:"spo2"});
+  t.push({k:"temp",l:"TEMP",u:"°C",dev:"temp"});
+  t.push({k:"rr",l:"RESP RATE",u:"/min",dev:null,count:true});
+  return t;
+}
+function reqList(){
+  if(esc>=2)return["bp","pulse","spo2"];
+  return isChild()?["wt","temp","pulse","spo2","muac"]:["wt","bp","pulse","spo2","temp"];
+}
+const have=k=>k==="bp"?!!(V.bp&&V.bp.s):!!(V[k]&&V[k].v!=null);
+
+/* ══════════ actions ══════════ */
+function grab(id,isRecall){
+  const p=PT.find(x=>x.id===id);
+  if(P&&P.id!==id){note("finish or park the patient in hand first — nothing bleeds between people","warn");paint();return;}
+  P=p;V=p.V=p.V||p.pending||{};if(p.pending)delete p.pending;
+  esc=0;sugg=null;gate=null;manualK=null;saveErr=null;sayThis=null;justSaved=null;
+  p.st="inhand";tk(1);
+  if(isRecall)note(`recalled from the rest chairs — first reading ${p.recheckCtx} is held on the chart, not overwritten`,"did");
+  else note(`slip scanned — ${p.tok} ${p.nm}. File, ${p.last?("last vitals "+p.last.when):"no history (first visit)"}, band and cuff size staged before she reached the stool`,"ok");
+  if(p.id==="ganesh")note("no file, age 61, “heavy head” — cuff first, form later","warn");
+  if(p.id==="aarav")note("age 4 → CHILD 1–5 band: small cuff on the tray, MUAC due, BP not routine","did");
+  paint();
+  if(!SERIAL){
+    const el=(p.lead&&$("min-"+p.lead))||document.querySelector('input[id^="min-"]');
+    if(el)el.focus();
+  }
+}
+function scanNext(){
+  const p=PT.find(x=>x.st==="waiting");
+  if(!p){note("bench clear — nobody waiting","did");paint();return;}
+  grab(p.id);
+}
+/* owner ruling: barcode, token number or UHID — three doors into the same lane */
+function findKey(e){
+  if(e.key==="Enter"){e.preventDefault();findStart(e.target.value);}
+}
+function findStart(raw){
+  const q=String(raw).trim().toLowerCase();
+  if(!q)return;
+  const tq=q.replace(/^t[-\s]?/,"");
+  const p=PT.find(x=>x.tok.slice(2).toLowerCase()===tq)
+        ||PT.find(x=>q.length>=4&&x.uh.toLowerCase().includes(q));
+  if(!p){note(`nothing on today's bench matches “${raw.trim()}” — check the slip, or send them to the front desk`,"warn");paint();return;}
+  note(`identified by ${p.tok.slice(2).toLowerCase()===tq?"token number":"UHID"} — same lane as the barcode, just slower keys`,"did");
+  benchTap(p.id);
+}
+function benchTap(id){
+  const p=PT.find(x=>x.id===id);
+  if(p.st==="waiting")grab(id);
+  else if(p.st==="resting")recall(id);
+  else if(p.st==="away"){p.st="waiting";note(`${p.nm.split(" ")[0]} is back — her turn was held, not lost`,"ok");paint();}
+  else if(p.st==="done")reopen(id);
+  else paint();
+}
+function reopen(id){
+  const p=PT.find(x=>x.id===id);
+  if(P){note("finish the patient in hand first","warn");paint();return;}
+  P=p;V=JSON.parse(JSON.stringify(p.V||{}));p.st="inhand";amendMode=true;
+  esc=0;sugg=null;gate=null;sayThis=null;saveErr=null;manualK=null;justSaved=null;resetBump();
+  note(`chart RE-OPENED to amend — ${p.tok} ${p.nm} (owner ruling: a wrong save is fixable at this desk). Old values keep living in the trail; the doctor's board refreshes on save`,"warn");
+  paint();
+}
+function recall(id){
+  const p=PT.find(x=>x.id===id);
+  if(P){note("finish the patient in hand first — the recall stays lit on the bench","warn");paint();return;}
+  if(mins<p.restAt)note(`${p.nm.split(" ")[0]} recalled ${p.restAt-mins} min early — logged`,"warn");
+  grab(id,true);
+}
+function clearDesk(){
+  if(P){const p=P;if(p.st==="inhand")p.st=amendMode?"done":"waiting";note(amendMode?"amendment abandoned — the saved chart stands untouched":"desk cleared — nothing carries to the next person");}
+  P=null;V={};esc=0;sugg=null;gate=null;manualK=null;sayThis=null;saveErr=null;busy=null;amendMode=false;resetBump();paint();
+}
+
+/* device capture */
+function capture(k){
+  if(!P||busy)return;
+  const t=tileDefs().find(x=>x.k===k);if(!t)return;
+  if(k==="bp"&&!P.dev.bp){note("DECIDED: BP is not routine under 5 — capture only when the doctor asks. Logged that you considered it.","did");paint();return;}
+  if(t.dev&&!DEVS[t.dev].ok){manual(k);return;}
+  const ph=PHASES[t.dev||k]||[["reading…",600]];
+  runPh(k,ph,0);
+}
+function runPh(k,ph,i){
+  if(i<ph.length){busy={k,txt:ph[i][0]};paint();setTimeout(()=>runPh(k,ph,i+1),ph[i][1]);}
+  else{busy=null;commitDev(k);}
+}
+function captureNext(){
+  if(!P||busy)return;
+  const t=tileDefs().find(x=>x.dev&&DEVS[x.dev].ok&&!have(x.k)&&!(x.k==="bp"&&!P.dev.bp)&&!x.rides);
+  if(t)capture(t.k);
+}
+function commitDev(k){
+  if(k==="bp"){
+    V.bp=V.bp||{takes:[]};
+    const t=P.dev.bp[Math.min(V.bp.takes.length,P.dev.bp.length-1)];
+    V.bp.takes.push(t);V.bp.s=t[0];V.bp.d=t[1];V.bp.src="auto";
+    V.pulse={v:t[2],src:"rode the cuff"};
+    readings+=2;tk(1);afterBp();
+  }else if(k==="spo2"){
+    V.spo2=V.spo2||{takes:[]};
+    const v=P.dev.spo2[Math.min(V.spo2.takes.length,P.dev.spo2.length-1)];
+    V.spo2.takes.push(v);
+    if(v<75){gate={k:"spo2",kind:"probe",v};note(`SpO₂ read ${v}% — held OUT of the chart. A talking patient at ${v}% is a probe problem until proven otherwise`,"warn");}
+    else{
+      V.spo2.v=v;V.spo2.src="auto";readings++;
+      if(!V.pulse&&P.dev.pr){V.pulse={v:P.dev.pr[0],src:"rode the probe"};readings++;}
+      if(V.spo2.takes.length>1){V.spo2.note=`${V.spo2.takes[0]} (probe) → ${v}`;note(`SpO₂ ${v}% after re-clip — the ${V.spo2.takes[0]} lives in the log, never on the chart`,"ok");}
+      else note(`SpO₂ ${v}%${V.pulse&&V.pulse.src==="rode the probe"?` · pulse ${V.pulse.v} rode the probe`:""} — in band`,"ok");
+    }
+    tk(1);
+  }else if(k==="temp"){
+    V.temp={v:P.dev.temp[0],src:"auto"};readings++;tk(1);
+    afterTemp(V.temp.v);
+  }else if(k==="wt"){
+    V.wt={v:P.dev.wt[0],src:"auto"};readings++;tk(1);
+    if(P.say&&P.say.weight)sayThis=P.say.weight;
+  }else if(k==="rr"){
+    V.rr={v:P.dev.rr?P.dev.rr[0]:18,src:"counted 15 s"};tk(1);
+    note(`RR ${V.rr.v} — counted, not guessed. The 15 seconds are the point`,"ok");
+  }
+  paint();
+}
+function afterBp(){
+  const n=V.bp.takes.length,t=V.bp.takes[n-1],s=t[0],d=t[1],lvl=bpLvl(s,d);
+  if(lvl==="danger"){
+    if(n===1){
+      esc=1;sugg={kind:"now"};sayThis=(P.say&&P.say.danger)||"घबराइए नहीं — अभी दोबारा देख लेते हैं।";
+      note(`BP ${s}/${d} — DANGER band. Recheck demanded NOW, other arm. Rest-and-recheck is not offered at this number`,"warn");
+    }else{
+      esc=2;sugg=null;sayThis=P.say&&P.say.danger||sayThis;
+      if(P.cls>0){P.prevCls=P.cls;P.cls=0;P.bumped=true;
+        note(`agent DID: queue class ${P.prevCls} → 0 on double-confirmed ${s}/${d} — CANCEL window open 10 s (owner ruling). Dr. Rao's screen flashed; ECG room told; wheelchair asked to Bay 01`,"warn");
+        startBumpWindow();}
+      else note(`double-confirmed ${s}/${d} — already class 0`,"warn");
+    }
+  }else if(lvl==="warn"){
+    if(n===1&&P.last&&!P.recheckCtx){
+      sugg={kind:"rest"};sayThis=P.say&&P.say.rest||sayThis;
+      note(`BP ${s}/${d} against ${P.last.bp} (${P.last.when}) — five-minute rest recheck suggested, chips first (stairs? chai?)`,"warn");
+    }else if(n>1||P.recheckCtx){
+      const first=P.recheckCtx||`${V.bp.takes[0][0]}/${V.bp.takes[0][1]}`;
+      note(`after rest: ${first} → ${s}/${d} — the PAIR rides to the doctor, never averaged`,"ok");
+      sayThis=P.say&&P.say.settled||sayThis;sugg=null;esc=0;
+    }else note(`BP ${s}/${d} — high-normal, logged`,"ok");
+  }else{
+    if(n>1||P.recheckCtx){
+      const first=P.recheckCtx||`${V.bp.takes[0][0]}/${V.bp.takes[0][1]}`;
+      note(`settled: ${first} → ${s}/${d} after rest — the PAIR goes on the chart`,"ok");
+      sayThis=P.say&&P.say.settled||sayThis;esc=0;sugg=null;
+    }else note(`BP ${s}/${d} — in band`,"ok");
+  }
+}
+function serialTog(){
+  SERIAL=!SERIAL;
+  note(SERIAL?"SERIAL LANE ON — devices capture, keys drop toward zero (preview of the week the hardware lands)":"serial lane OFF — typing lane: ⏎ commits and jumps, 1–8 address a field, every key counted","warn");
+  paint();
+}
+function recheckNow(){
+  sugg=null;
+  if(SERIAL){capture("bp");return;}
+  paint();const el=$("min-bp");if(el)el.focus();
+}
+function startRest(){
+  if(!P||!sugg||sugg.kind!=="rest")return;
+  const p=P;p.st="resting";p.restAt=mins+5;
+  p.recheckCtx=`${V.bp.s}/${V.bp.d} at ${T(mins)}`;p.V=V;
+  note(`${p.nm.split(" ")[0]} to the rest chairs — no chai, no phone-pacing. Recall at ${T(p.restAt)}; I hold the first reading and I will not let us forget her`,"did");
+  P=null;V={};sugg=null;sayThis=null;esc=0;paint();
+}
+function keepNote(){
+  sugg=null;note(`kept ${V.bp.s}/${V.bp.d} without recheck — your call, logged with your name on it`,"warn");paint();
+}
+function startBumpWindow(){
+  bumpLeft=10;bumpFinal=false;
+  if(bumpTimer)clearInterval(bumpTimer);
+  bumpTimer=setInterval(()=>{
+    bumpLeft--;
+    if(bumpLeft<=0){clearInterval(bumpTimer);bumpTimer=null;bumpLeft=null;bumpFinal=true;
+      note("cancel window closed — class 0 stands. Reversing now is a supervisor action, not a keystroke","warn");
+      paint();return;}
+    /* tick updates only the countdown text — a full repaint would wipe whatever is mid-typed */
+    const b1=$("bumpCancel");if(b1)b1.textContent=`CANCEL · ${bumpLeft}s`;
+    const b2=$("bumpPill");if(b2)b2.innerHTML=`was ${P&&P.prevCls!=null?P.prevCls:""} · agent · <b>CANCEL ${bumpLeft}s</b>`;
+  },1000);
+}
+function resetBump(){
+  if(bumpTimer){clearInterval(bumpTimer);bumpTimer=null;}
+  bumpLeft=null;bumpFinal=false;
+}
+function cancelBump(){
+  if(!P||!P.bumped)return;
+  resetBump();
+  P.cls=P.prevCls;P.bumped=false;
+  note(`CANCELLED inside the window — back to class ${P.cls}, the original queuing stands. Both readings still ride to the doctor; the agent will not re-fire on them`,"warn");
+  paint();
+}
+function manualBump(){
+  P.prevCls=P.cls;P.cls=0;P.bumped=true;
+  note(`class ${P.prevCls} → 0 by Sister Kavita — logged`,"warn");paint();
+}
+
+/* manual entry + gates */
+function manual(k){manualK=k;if(k==="rr")rrFocusT=Date.now();paint();
+  const el=document.getElementById("min-"+k);if(el)el.focus();}
+function mkey(e,k){
+  if(e.key==="Enter"){e.preventDefault();commitManual(k,e.target.value);}
+  if(e.key==="Escape"){manualK=null;e.target.blur();paint();}
+}
+function focusNext(k){
+  const ord=tileDefs().map(t=>t.k),i=ord.indexOf(k);
+  for(let j=1;j<=ord.length;j++){
+    const nk=ord[(i+j)%ord.length];
+    if(have(nk))continue;
+    const el=$("min-"+nk);
+    if(el){el.focus();return;}
+  }
+}
+function afterTemp(v){
+  if(P.age<13&&v>=38){note(`temp ${v} °C on a ${P.age}-yr-old — fever flagged to ${P.why.split("·").pop().trim()}'s screen ahead of the call`,"warn");sayThis=P.say&&P.say.fever||sayThis;}
+  else if(lvlOf("temp",v)!=="ok")note(`temp ${v} °C — outside band`,"warn");
+}
+function commitManual(k,raw){
+  raw=String(raw).trim();
+  if(raw===""){focusNext(k);return;}
+  if(k==="bp"){
+    const m=raw.match(/^(\d{2,3})\s*[\/\\.,\- ]\s*(\d{2,3})$/);
+    if(!m){note("BP needs both numbers — type it as 158/96","warn");paint();const el=$("min-bp");if(el)el.focus();return;}
+    V.bp=V.bp||{takes:[]};
+    V.bp.takes.push([+m[1],+m[2],null]);V.bp.s=+m[1];V.bp.d=+m[2];V.bp.src="manual";
+    manualK=null;tk(1);afterBp();paint();
+    if(!gate&&esc!==1&&!sugg)focusNext("bp");
+    return;
+  }
+  const v=parseFloat(raw);
+  if(isNaN(v)){manualK=null;paint();return;}
+  if(k==="spo2"){
+    V.spo2=V.spo2||{takes:[]};
+    V.spo2.takes.push(v);
+    if(v<75){
+      gate={k:"spo2",kind:"probe",v};
+      note(`SpO₂ typed ${v}% — held OUT of the chart. A talking patient at ${v}% is a probe (or a typo) until proven otherwise`,"warn");
+      manualK=null;paint();return;
+    }
+    V.spo2.v=v;V.spo2.src="manual";manualK=null;tk(1);
+    if(V.spo2.takes.length>1){V.spo2.note=`${V.spo2.takes[0]} (probe) → ${v}`;note(`SpO₂ ${v}% on the retake — the ${V.spo2.takes[0]} lives in the log, never on the chart`,"ok");}
+    paint();focusNext(k);return;
+  }
+  if(k==="wt"&&!isChild()&&v<25){
+    const fix=Math.round(v*10*10)/10;
+    gate={k:"wt",kind:"digit",v,fix:(fix>=30&&fix<=150)?fix:null};
+    note(`weight typed ${v} kg on a ${P.age}-yr-old — held at the gate. A slipped digit becomes a chart fact in one keystroke`,"warn");
+    manualK=null;paint();return;
+  }
+  if(k==="ht"&&P.last&&P.last.ht&&Math.abs(v-P.last.ht)>=3){
+    gate={k:"ht",kind:"shrink",v};
+    note(`height ${v} against ${P.last.ht} (${P.last.when}) — ${Math.abs(v-P.last.ht)} cm apart. Re-measure once before it becomes true`,"warn");
+    manualK=null;paint();return;
+  }
+  if(k==="rr"&&(Date.now()-rrFocusT)<2500){
+    note(`RR ${v} landed in under 2 s — was it counted? Guessed RRs are how charts lie. The 15-s counter is one tap`,"warn");
+  }
+  V[k]={v,src:"manual"};manualK=null;tk(1);
+  if(k==="temp")afterTemp(v);
+  if(k==="muac"){
+    const z=v<11.5?["SAM — severe. This is its own emergency lane","warn"]:v<12.5?["MAM band — nutrition counter flagged","warn"]:["in the green zone","ok"];
+    note(`MUAC ${v} cm — ${z[0]}`,z[1]);
+  }
+  if(k==="wt"&&P.say&&P.say.weight)sayThis=P.say.weight;
+  if(k==="ht"&&P.htUnlocked)note(`height re-taken ${v} cm — old ${P.last.ht} stays beside it, reason “${P.htUnlocked}”`,"ok");
+  paint();focusNext(k);
+}
+function gateAct(a){
+  if(!gate)return;
+  if(gate.kind==="probe"){
+    if(a==="retake"){
+      gate=null;
+      if(SERIAL){capture("spo2");return;}
+      paint();const el=$("min-spo2");if(el)el.focus();return;
+    }
+  }else if(gate.kind==="digit"){
+    if(a==="fix"&&gate.fix){V.wt={v:gate.fix,src:"manual"};note(`weight corrected to ${gate.fix} kg — the ${gate.v} never touched the chart`,"ok");}
+    if(a==="real"){V.wt={v:gate.v,src:"manual",note:"confirmed real"};note(`weight ${gate.v} kg CONFIRMED real — flagged hard to the doctor, this is its own emergency`,"warn");}
+  }else if(gate.kind==="shrink"){
+    if(a==="hold"){V.ht={v:gate.v,src:"manual",note:`was ${P.last.ht}`};note(`height ${gate.v} confirmed after re-measure — at ${P.age} a bending spine can do this; the doctor sees both numbers`,"ok");}
+    if(a==="back"){/* drop it */}
+  }
+  gate=null;tk(1);paint();
+}
+function openUnlock(){ov="unlock";paint();}
+function pickUnlock(r){
+  P.htUnlocked=r;ov=null;
+  note(`carried height UNLOCKED — reason “${r}”. Old value stays on screen beside the new one`,"warn");
+  manual("ht");
+}
+function chipSet(ck,val){
+  P.chipAns=P.chipAns||{};P.chipAns[ck]=val;tk(0);
+  const q=(P.chips.find(c=>c[0]===ck)||[])[1];
+  note(`chip: “${q}” → ${val} — rides the file to the doctor's screen`,"did");
+  if(ck==="stairs"&&val==="✓"&&sugg&&sugg.kind==="rest")note("stairs just climbed — the rest recheck matters even more","warn");
+  paint();
+}
+function addAllergy(){
+  note("allergy heard at the bench — “sulfa se daane” — drafted to the file for the doctor to CONFIRM, not as fact","warn");paint();
+}
+
+/* save */
+function save(){
+  if(!P)return;
+  const miss=reqList().filter(k=>!have(k));
+  if(miss.length){saveErr=miss;paint();return;}
+  const p=P;p.st="done";
+  const stat=`${readings} device reads · ${keys} keys`;
+  justSaved={tok:p.tok,nm:p.nm,doc:p.why.split("·").pop().trim(),amend:amendMode,esc:esc>=2,at:T(mins+1)};
+  if(amendMode){p.V=V;note(`chart AMENDED — ${p.tok} ${p.nm.split(" ")[0]}: every changed field keeps its old value in the trail, with your name and the clock; the doctor's board refreshed`,"warn");}
+  else{
+    doneN++;
+    if(esc>=2)note(`SAVED & SENT — ${p.tok} ${p.nm} goes NOW as class 0, with an escort, both readings on top of Dr. Rao's board. ${stat}`,"warn");
+    else note(`saved — ${p.tok} ${p.nm.split(" ")[0]} is now CALLABLE on ${p.why.split("·").pop().trim()}'s board. ${stat}`,"ok");
+  }
+  P=null;V={};esc=0;sugg=null;gate=null;sayThis=null;saveErr=null;manualK=null;amendMode=false;resetBump();
+  readings=0;keys=0;tk(1);paint();
+}
+
+/* devices toggle */
+function devTog(k){
+  DEVS[k].ok=!DEVS[k].ok;
+  note(DEVS[k].ok?`${DEVS[k].nm} back online — captures go automatic again`:`${DEVS[k].nm} OFFLINE — tiles flip to manual by themselves, biomedical pinged`,DEVS[k].ok?"ok":"warn");
+  paint();
+}
+
+/* agent ask */
+function ask(e){
+  e.preventDefault();
+  const b=document.getElementById("askIn"),q=b.value.trim();if(!q)return;b.value="";
+  const lo=q.toLowerCase();let a;
+  if(lo.includes("bump")||lo.includes("class")||lo.includes("emergency")||lo.includes("cancel")){
+    a="The ruled protocol: ONE danger reading only makes me demand a recheck. TWO confirmed danger readings and I act alone — class to 0, doctor flashed, escort asked — and you get a 10-second CANCEL that returns the original queuing. After the window closes, reversal is a supervisor action. I never downgrade anyone alone.";
+  }else if(lo.includes("muac")){
+    a="Mid-upper-arm circumference — the tape that finds starvation that weight hides. Under 11.5 cm is severe (its own emergency lane), 11.5–12.5 flags the nutrition counter, above 12.5 is green. Due on every under-5.";
+  }else if(lo.includes("valve")||lo.includes("wait")||lo.includes("queue")){
+    a="Six on the bench, one callable patient left on Dr. Rao's board. Every minute this bay holds a patient is a minute a doctor sits idle downstream — this seat IS the hospital's wait time.";
+  }else if(lo.includes("device")||lo.includes("scale")||lo.includes("serial")||lo.includes("toggle")){
+    a="Owner ruling: the serial lane ships OFF until the devices land within days — the header toggle flips it. Till then it's the typing lane: ⏎ commits and jumps, 1–8 address a field, and the keystroke counter keeps the honest score of what typing costs.";
+  }else if(lo.includes("cost")||lo.includes("price")||lo.includes("procure")||lo.includes("₹")){
+    ov="procure";a="Opening the device ledger — the serial lane is what makes “0 keys” true. The owner decides.";
+  }else if(lo.includes("rest")||lo.includes("recheck")){
+    a="Elevated-but-not-dangerous first reading + a reason to doubt it (stairs, chai, no morning dose) → five minutes on the rest chairs, then the recall lights up on the bench. Danger-band numbers never get rest — they get the other arm, now.";
+  }else{
+    a="Live build answers from the bench, the device rack and the band tables. Try “bump kyon hua”, “muac kya hai”, “scale ka kya hua”, “valve”.";
+  }
+  note(`you asked: ${q}`,"you");agAns=a;drawer=true;paint();
+}
+let agAns=null;
+
+/* ══════════ paint ══════════ */
+const $=id=>document.getElementById(id);
+function benchWaiting(){return PT.filter(p=>p.st==="waiting"||p.st==="resting"||p.st==="away").length;}
+function paint(){
+  $("ticker").textContent=log[0]?`${log[0].at}  ${log[0].x}`:"";
+  $("drawBtn").textContent=drawer?"▼ HIDE":"▲ LOG";
+  $("keysPill").innerHTML=`<span class="mo">${keys}</span> keys · <span class="mo">${readings}</span> device reads`;
+  $("valvePill").innerHTML=`bench <span class="mo">${benchWaiting()}</span> · Dr. Rao callable <span class="mo">1</span>`;
+  $("devstrip").innerHTML=
+    `<button class="pill ${SERIAL?"on":"gd"}" style="height:22px" onclick="serialTog()" title="owner toggle — serial devices arrive within days; OFF till they land">serial lane · ${SERIAL?"ON":"OFF — typing"}</button>`+
+    (SERIAL?Object.entries(DEVS).map(([k,d])=>
+    `<button class="pill ${d.ok?"on":"rd"}" style="height:22px" onclick="devTog('${k}')" title="click to simulate ${d.ok?"failure":"repair"}">${d.nm} ${d.ok?"✓":"✗"}</button>`).join(""):"");
+  paintSession();paintStage();paintBench();paintDrawer();paintOvl();
+}
+
+/* ── session column ── */
+function clsPill(c){
+  const nm=["0 · EMERGENCY","1 · urgent","2 · booked","3 · walk-in","4 · review"][c];
+  const cl=c===0?"rd":c===1?"gd":"";
+  return `<span class="pill ${cl}" style="height:21px">class ${nm}</span>`;
+}
+function paintSession(){
+  const d=$("session");
+  if(!P){
+    d.innerHTML=`
+    <div style="padding:20px 18px">
+      <div class="tag">nobody on the stool</div>
+      <div style="margin-top:8px;font-size:12.5px;color:var(--dim);line-height:18px">Scan a slip — the person lives in this column until <span class="kb">Esc</span>. Nothing bleeds to the next patient.</div>
+      <div class="tag" style="margin-top:26px">your shift</div>
+      ${[["through the bay",String(doneN)],["avg per patient","1m 41s"],["rechecks caught","3"],["typed keystrokes","112"]]
+        .map(([a,b])=>`<div style="display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line2)">
+          <span style="font-size:12px;color:var(--dim)">${a}</span><span class="mo" style="font-size:15px;font-weight:600">${b}</span></div>`).join("")}
+      <div class="tag" style="margin-top:26px">keys</div>
+      <div style="display:flex;flex-direction:column;gap:7px;margin-top:9px;font-size:11.5px;color:var(--dim)">
+        <span><span class="kb">S</span> scan next in line</span>
+        <span><span class="kb">⏎</span> commit field · jump to next</span>
+        <span><span class="kb">1–8</span> jump to a field</span>
+        <span><span class="kb">Space</span> ${"first empty field · device when serial"}</span>
+        <span><span class="kb">R</span> rest &amp; recheck</span>
+        <span><span class="kb">Ctrl ⏎</span> save → next</span>
+        <span><span class="kb">Ctrl K</span> command</span>
+        <span><span class="kb">Esc</span> clear desk</span>
+      </div>
+      <div style="margin-top:26px" class="tag">dignity, standing</div>
+      <div style="font-size:11.5px;color:var(--dim);line-height:16px;margin-top:7px">This screen faces you. The patient display shows a token and a direction — never a weight, never a number.</div>
+    </div>`;
+    return;
+  }
+  const p=P;
+  const snap=p.last?`
+    <div class="tag" style="margin-top:20px">last visit · ${p.last.when}</div>
+    <div style="margin-top:7px;font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:20px;color:var(--dim)">
+      ${p.last.bp?`BP ${p.last.bp} · pulse ${p.last.pulse}<br>`:""}
+      ${p.last.wt?`wt ${p.last.wt} kg${p.last.ht?` · ht ${p.last.ht} cm`:""}<br>`:""}
+      ${p.last.spo2?`SpO₂ ${p.last.spo2}% · ${p.last.temp} °C · RR ${p.last.rr}`:""}
+    </div>`:`
+    <div class="tag" style="margin-top:20px">history</div>
+    <div style="font-size:11.5px;color:var(--gold);margin-top:6px">first visit — no carry-forward, everything measured fresh</div>`;
+  const chips=(p.chips||[]).map(([ck,q])=>{
+    const ans=(p.chipAns||{})[ck];
+    return `<div style="display:flex;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid var(--line2)">
+      <span class="dev" style="font-size:11.5px;flex-grow:1;min-width:0">${q}</span>
+      ${["✓","✗","?"].map(o=>`<button class="pill ${ans===o?(o==="✓"?"on":o==="✗"?"gd":""):""}" style="height:21px;min-width:26px;justify-content:center" onclick="chipSet('${ck}','${o}')">${o}</button>`).join("")}
+    </div>`;}).join("");
+  d.innerHTML=`
+  <div style="padding:18px 18px 26px">
+    <div style="display:flex;gap:11px;align-items:center">
+      <div style="width:44px;height:44px;border-radius:6px;background:var(--wash);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-weight:600;color:var(--dim)">${E(p.nm.split(" ").map(w=>w[0]).join("").slice(0,2))}</div>
+      <div style="min-width:0">
+        <div style="font-size:15px;font-weight:600;line-height:19px">${E(p.nm)}</div>
+        <div class="mo" style="font-size:11px;color:var(--dim)">${p.age}${p.sex} · ${p.uh}</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:11px;flex-wrap:wrap">
+      <span class="mo" style="font-size:21px;font-weight:700">${p.tok}</span>
+      ${clsPill(p.cls)}
+      ${p.bumped?(bumpLeft!=null?`<button id="bumpPill" class="pill rd" style="height:21px" onclick="cancelBump()">was ${p.prevCls} · agent · <b>CANCEL ${bumpLeft}s</b></button>`:`<span class="pill" style="height:21px">was ${p.prevCls} · agent · committed</span>`):""}
+    </div>
+    <div style="font-size:11.5px;color:var(--dim);margin-top:6px">${E(p.why)}</div>
+    <div class="tag" style="margin-top:14px">band</div>
+    <div style="margin-top:5px"><span class="pill ${isChild()?"gd":""}" style="height:22px">${isChild()?"CHILD 1–5 · small cuff · MUAC due":p.age<13?"child 6–12":"adult"}</span></div>
+
+    <div class="tag" style="margin-top:20px">ask these — one tap</div>
+    <div style="margin-top:4px">${chips}</div>
+    <button class="pill" style="margin-top:10px" onclick="addAllergy()">+ allergy heard at the bench</button>
+    ${snap}
+    ${sayThis?`
+    <div class="tag" style="margin-top:20px">say this</div>
+    <div class="say" style="margin-top:7px">
+      <div class="dev" style="font-size:13px;color:#fff">${sayThis.split("  —")[0]}</div>
+      ${sayThis.includes("—")?`<div style="font-size:10px;color:var(--agent-dim);margin-top:5px">${E(sayThis.split("  —")[1]||"")}</div>`:""}
+    </div>`:""}
+    <div class="tag" style="margin-top:20px">this patient</div>
+    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line2)">
+      <span style="font-size:12px;color:var(--dim)">device reads</span><span class="mo" style="font-weight:600">${readings}</span></div>
+    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line2)">
+      <span style="font-size:12px;color:var(--dim)">typed keys</span><span class="mo" style="font-weight:600;${keys>0?"color:var(--gold)":"color:var(--green)"}">${keys}</span></div>
+    <button class="sec" style="width:100%;margin-top:18px;justify-content:center" onclick="clearDesk()">clear desk <span class="kb">Esc</span></button>
+  </div>`;
+}
+
+/* ── stage ── */
+function agLine(html,acts){
+  return `<div style="margin-top:14px;display:flex"><span class="agchip"><span class="pulse" style="width:6px;height:6px;border-radius:99px;background:var(--mint);flex-shrink:0;margin-top:5px"></span><span>${html}</span>${(acts||[]).map(([l,fn,gh])=>`<button class="agdo ${gh?"gh":""}" style="margin-top:0" onclick="${fn}">${l}</button>`).join("")}</span></div>`;
+}
+function paintStage(){
+  const m=$("stage");
+  if(!P){m.innerHTML=stScan();return;}
+  m.innerHTML=stCapture();
+  if(manualK){const el=$("min-"+manualK);if(el&&document.activeElement!==el){el.focus();}}
+}
+function stScan(){
+  const nxt=PT.find(p=>p.st==="waiting");
+  const rest=PT.filter(p=>p.st==="resting");
+  return `
+  <div style="max-width:760px">
+    ${justSaved?`
+    <div class="box" style="display:flex;align-items:center;gap:15px;padding:15px 18px;margin-bottom:18px;border-width:2px;border-color:var(--green);background:var(--green-soft)">
+      <span style="width:46px;height:46px;border-radius:99px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;flex-shrink:0;line-height:1">✓</span>
+      <span style="min-width:0">
+        <span style="font-size:14.5px;font-weight:700;display:block;color:var(--green)">${justSaved.tok} ${E(justSaved.nm)} — ${justSaved.amend?"AMENDED":"SAVED"} &amp; SENT to ${E(justSaved.doc)}</span>
+        <span style="font-size:11.5px;color:var(--dim)">${justSaved.esc?"went NOW as class 0, with an escort · ":""}on the doctor's board at ${justSaved.at} — the bench row wears the same tick</span>
+      </span>
+      <button class="pill" style="margin-left:auto;flex-shrink:0" onclick="justSaved=null;paint()">ok</button>
+    </div>`:""}
+    <div style="font-size:19px;font-weight:700;letter-spacing:-.01em">Who sits on the stool?</div>
+    <div style="font-size:12.5px;color:var(--dim);margin-top:4px">Three doors, one lane (owner ruling): the barcode is fastest — a typed token number or UHID starts exactly the same session.</div>
+    <button class="box" style="display:flex;align-items:center;gap:16px;width:100%;margin-top:16px;padding:20px 24px;border-style:dashed;border-width:2px;border-color:var(--green-line)" onclick="scanNext()">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="1.6"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M10 8v8M13 8v5M16 8v8" stroke-width="2"/></svg>
+      <span>
+        <span style="font-size:15px;font-weight:700;display:block">scan the token slip <span class="kb" style="margin-left:6px">S</span></span>
+        <span style="font-size:11.5px;color:var(--dim)">no typing, no asking a feverish person to spell their name</span>
+      </span>
+    </button>
+    <input id="findIn" class="in mo" style="height:46px;margin-top:10px;font-size:15px" placeholder="…or type token no. / UHID — 121 · UH-23-04417 · ⏎ starts the same lane" onkeydown="findKey(event)"/>
+    ${nxt?`
+    <div class="tag" style="margin-top:22px">pre-staged — before they reach the stool</div>
+    <div class="box" style="margin-top:8px;padding:13px 15px;display:flex;gap:13px;align-items:flex-start">
+      <span class="mo" style="font-size:18px;font-weight:700;flex-shrink:0">${nxt.tok}</span>
+      <span style="min-width:0">
+        <span style="font-size:13.5px;font-weight:600;display:block">${E(nxt.nm)} · ${nxt.age}${nxt.sex}</span>
+        <span style="font-size:11.5px;color:var(--dim);display:block;margin-top:2px">${E(nxt.stagept)}</span>
+      </span>
+    </div>`:""}
+    ${rest.map(p=>agLine(`<b>${E(p.nm.split(" ")[0])}</b> is on the rest chairs — first reading ${p.recheckCtx}. Recall at <b>${T(p.restAt)}</b>${mins>=p.restAt?" — <b>due now</b>":""}.`,[["recall",`recall('${p.id}')`]])).join("")}
+    <div style="display:flex;gap:7px;margin-top:22px;align-items:center;flex-wrap:wrap">
+      <span class="tag">walk a story</span>
+      ${PT.filter(p=>p.st!=="done").map(p=>`<button class="pill" onclick="benchTap('${p.id}')" title="${E(p.hint)}">${p.tok.slice(2)} · ${E(p.nm.split(" ")[0])}</button>`).join("")}
+    </div>
+    ${agLine(`Morning read: six on the bench, the serial devices land this week — till then every number is typed and <b>I count the keys</b>. Dr. Rao's board is one patient from empty: <b>this bay is his wait time</b>. Ganesh at T-121 worries me: 61, first visit, “heavy head”. Take him next?`,[["scan Ganesh","grab('ganesh')"]])}
+  </div>`;
+}
+function fmtDelta(k){
+  const p=P;if(!p.last)return"";
+  if(k==="bp"&&V.bp&&V.bp.s&&p.last.bp){
+    const[ls,ld]=p.last.bp.split("/").map(Number);
+    const ds=V.bp.s-ls,dd=V.bp.d-ld;
+    const col=Math.abs(ds)>15||Math.abs(dd)>10?"var(--gold)":"var(--dim)";
+    return`<span class="mo" style="font-size:10.5px;color:${col}">${p.last.when.slice(3,6)} ${p.last.bp} → ${ds>=0?"+":""}${ds}/${dd>=0?"+":""}${dd}</span>`;
+  }
+  const map={wt:"wt",ht:"ht",pulse:"pulse",spo2:"spo2",temp:"temp",rr:"rr"};
+  const lk=map[k];if(!lk||p.last[lk]==null||!V[k]||V[k].v==null)return"";
+  const dv=Math.round((V[k].v-p.last[lk])*10)/10;
+  return`<span class="mo" style="font-size:10.5px;color:var(--dim)">${p.last.when.slice(3,6)} ${p.last[lk]} → ${dv>=0?"+":""}${dv}</span>`;
+}
+function rangeLbl(k){
+  const R=rng();
+  if(k==="bp")return`${R.sbp[0]}–${R.sbp[1]} / ${R.dbp[0]}–${R.dbp[1]}`;
+  if(k==="muac")return"green ≥ 12.5";
+  const r=R[k];return r?`${r[0]}–${r[1]}`:"";
+}
+function ghost(k){
+  if(!P)return"";
+  if(P.gh&&P.gh[k]!=null)return String(P.gh[k]);
+  const d=P.dev||{};
+  if(k==="bp"&&d.bp){const i=Math.min(V.bp?V.bp.takes.length:0,d.bp.length-1);return d.bp[i][0]+"/"+d.bp[i][1];}
+  if(k==="pulse")return d.pr?String(d.pr[0]):(d.bp?String(d.bp[0][2]):"");
+  if(k==="spo2"&&d.spo2){const i=Math.min(V.spo2&&V.spo2.takes?V.spo2.takes.length:0,d.spo2.length-1);return String(d.spo2[i]);}
+  if(k==="temp"&&d.temp)return String(d.temp[0]);
+  if(k==="wt"&&d.wt)return String(d.wt[0]);
+  if(k==="rr"&&d.rr)return String(d.rr[0]);
+  if(k==="ht")return P.last&&P.last.ht?String(P.last.ht):"";
+  return"";
+}
+function canEdit(k){
+  if(busy)return false;
+  if(k==="bp")return!!(V.bp&&V.bp.s)&&esc===0;
+  return!!(V[k]&&V[k].v!=null);
+}
+function editVal(k){
+  if(!canEdit(k)&&!(amendMode&&k!=="bp"))return;
+  const old=k==="bp"?(V.bp?`${V.bp.s}/${V.bp.d}`:""):(V[k]?V[k].v:"");
+  if(k==="bp")V.bp=undefined;else V[k]=undefined;
+  note(`${k.toUpperCase()} re-entered — was ${old}. The old value stays in this log${amendMode?" and in the amendment trail":""} (owner ruling: a wrong entry is fixable at the desk)`,"warn");
+  if(SERIAL)manualK=k;
+  paint();
+  const el=$("min-"+k);if(el)el.focus();
+}
+function tileHtml(t){
+  const p=P,v=V[t.k];
+  let lvl="ok";
+  if(t.k==="bp"&&V.bp&&V.bp.s)lvl=bpLvl(V.bp.s,V.bp.d);
+  else if(t.k==="muac"&&v&&v.v!=null)lvl=v.v<11.5?"danger":v.v<12.5?"warn":"ok";
+  else if(v&&v.v!=null)lvl=lvlOf(t.k,v.v);
+  const cls=lvl==="danger"?"dg":lvl==="warn"?"wn":"ok";
+  const isBusy=busy&&busy.k===t.k;
+  const devOff=t.dev&&!DEVS[t.dev].ok;
+  const typing=!SERIAL||devOff||!t.dev;
+  const g=ghost(t.k);
+  const input=`<input id="min-${t.k}" class="in mo" style="height:38px;margin-top:4px" placeholder="${g?"try "+g:t.u}" onkeydown="mkey(event,'${t.k}')"${t.k==="rr"?' onfocus="rrFocusT=Date.now()"':""}/>`;
+  const edit=canEdit(t.k)?`<button class="pill" style="height:19px;padding:0 6px" title="re-enter — the old value stays in the log" onclick="editVal('${t.k}')">✎</button>`:"";
+  let bodyH="";
+  /* locked carried-forward height */
+  if(t.k==="ht"&&p.lockHt&&!p.htUnlocked&&!(v&&v.src==="manual")){
+    bodyH=`
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <span class="bigv gr">${p.last.ht}</span><span class="tag">cm · carried ${p.last.when}</span>
+      </div>
+      <button class="pill" style="margin-top:auto;align-self:flex-start" onclick="openUnlock()">
+        <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        locked — unlock needs a reason</button>`;
+  }
+  else if(isBusy){
+    bodyH=`<div class="mo pulse" style="font-size:13px;color:var(--green);font-weight:600;margin-top:6px">${busy.txt}</div>
+      <div style="height:5px;border-radius:3px;background:var(--wash);overflow:hidden;margin-top:auto"><div class="pulse" style="height:100%;width:62%;background:var(--mint)"></div></div>`;
+  }
+  else if(t.k==="bp"&&t.nr&&!P.dev.bp){
+    bodyH=`<div style="font-size:11.5px;color:var(--dim);line-height:15px;margin-top:2px">not routine under 5 — capture only when the doctor asks <span class="tag" style="display:inline">decided</span></div>
+      <button class="pill" style="margin-top:auto;align-self:flex-start" onclick="capture('bp')">capture anyway — logs why</button>`;
+  }
+  else if(t.k==="bp"&&V.bp&&V.bp.s){
+    const takes=V.bp.takes.map(x=>`${x[0]}/${x[1]}`).join(" → ");
+    const take2=typing&&((esc===1)||(P.recheckCtx&&V.bp.takes.length===1));
+    bodyH=`
+      <div style="display:flex;align-items:baseline;gap:7px;flex-wrap:wrap">
+        <span class="bigv" style="${lvl==="danger"?"color:var(--red)":lvl==="warn"?"color:var(--gold)":""}">${V.bp.s}/${V.bp.d}</span>
+        <span class="srcp ${V.bp.src==="manual"?"mn":"au"}">${V.bp.src==="manual"?"TYPED":"AUTO"}</span>${edit}
+      </div>
+      ${V.bp.takes.length>1?`<span class="mo" style="font-size:10.5px;color:var(--dim)">takes: ${takes} — both kept</span>`:fmtDelta("bp")}
+      ${take2?`<span class="tag" style="color:var(--red)">${esc===1?"take 2 — other arm, now":"take 2 — after rest"}</span>${input}`:""}`;
+  }
+  else if(v&&v.v!=null){
+    bodyH=`
+      <div style="display:flex;align-items:baseline;gap:7px;flex-wrap:wrap">
+        <span class="bigv" style="${lvl==="danger"?"color:var(--red)":lvl==="warn"?"color:var(--gold)":""}">${v.v}</span>
+        <span class="srcp ${v.src==="manual"?"mn":"au"}">${v.src==="manual"?"TYPED":E(v.src.toUpperCase())}</span>${edit}
+      </div>
+      ${v.note?`<span class="mo" style="font-size:10.5px;color:var(--gold)">${E(v.note)}</span>`:fmtDelta(t.k)}
+      ${t.k==="wt"&&t.quiet?`<span class="tag" style="margin-top:auto">🔇 never said aloud — it's on the slip</span>`:""}`;
+  }
+  else if(typing||manualK===t.k){
+    bodyH=`
+      ${devOff&&t.dev?`<div style="font-size:10.5px;color:var(--gold);line-height:14px">${DEVS[t.dev].nm} ${SERIAL?"offline — typed till fixed, and it says so":"waits for the serial lane"}</div>`:""}
+      ${input}
+      <div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap">
+        <span class="tag">⏎ commits · jumps to next</span>
+        ${t.count?`<button class="pill" onclick="capture('rr')">⏱ count 15 s</button>`:""}
+      </div>`;
+  }
+  else{
+    bodyH=`
+      <div style="display:flex;gap:6px;margin-top:auto;flex-wrap:wrap">
+        ${!t.rides?`<button class="sec grn" style="height:30px" onclick="capture('${t.k}')">⏵ capture</button>`:`<span style="font-size:11px;color:var(--faint)">rides the cuff — one capture, two vitals</span>`}
+        ${!t.rides?`<button class="sec" style="height:30px" onclick="manual('${t.k}')">type</button>`:""}
+        ${t.count?`<button class="sec grn" style="height:30px" onclick="capture('rr')">⏱ count 15 s</button>`:""}
+      </div>`;
+  }
+  return `
+  <div class="tile ${cls}">
+    <div style="display:flex;align-items:center;gap:7px">
+      <span class="tag" style="color:${lvl==="danger"?"var(--red)":lvl==="warn"?"var(--gold)":"var(--faint)"}">${t.l}</span>
+      <div style="flex-grow:1"></div>
+      <span class="mo" style="font-size:9.5px;color:var(--faint)">${rangeLbl(t.k)}</span>
+    </div>
+    ${bodyH}
+  </div>`;
+}
+function stCapture(){
+  const p=P;
+  const miss=reqList().filter(k=>!have(k));
+  const escStrip=esc>=2?`
+    <div class="gate rd" style="margin:0 0 16px;align-items:center">
+      <span class="mo" style="font-size:12px;font-weight:700;color:var(--red);letter-spacing:.1em;flex-shrink:0">EMERGENCY</span>
+      <span style="font-size:12.5px;line-height:17px;min-width:0">
+        <b>${V.bp.takes.map(x=>x[0]+"/"+x[1]).join(" → ")}, confirmed twice.</b>
+        ${p.bumped?`Class ${p.prevCls} → <b>0</b> — done by the agent. ${bumpFinal?"Cancel window closed — it stands.":""} Dr. Rao's screen flashed · ECG room told · wheelchair asked.`:
+        `Bump cancelled — original queuing stands. Your call now: <button style="text-decoration:underline;font-weight:700" onclick="manualBump()">make class 0</button>.`}
+        <span style="display:block;color:var(--dim);font-size:11px;margin-top:3px">Do not let him walk alone. Height and weight can wait — this man is not a form.</span>
+      </span>
+      ${p.bumped&&bumpLeft!=null?`<button id="bumpCancel" class="sec" style="flex-shrink:0;margin-left:auto;border-color:var(--red);color:var(--red);font-weight:700" onclick="cancelBump()">CANCEL · ${bumpLeft}s</button>`:""}
+      <button class="pri rd" style="flex-shrink:0;${p.bumped&&bumpLeft!=null?"":"margin-left:auto"}" onclick="save()">save &amp; send NOW <span class="kb dk">Ctrl ⏎</span></button>
+    </div>`:"";
+  const gateCard=gate?(
+    gate.kind==="probe"?`
+    <div class="gate rd">
+      <span class="mo" style="font-size:20px;font-weight:700;color:var(--red);flex-shrink:0">${gate.v}%</span>
+      <span style="font-size:12.5px;line-height:17px">
+        <b>A talking patient at ${gate.v}% is a probe problem until proven otherwise.</b>
+        Cold finger, nail polish, loose clip — warm the hand, re-clip, take it again. The ${gate.v} stays in the log, never on the chart, unless it repeats.
+        <span style="display:block;margin-top:8px"><button class="sec grn" onclick="gateAct('retake')">re-clip &amp; retake</button></span>
+      </span>
+    </div>`:
+    gate.kind==="digit"?`
+    <div class="gate gd">
+      <span class="mo" style="font-size:20px;font-weight:700;color:var(--gold);flex-shrink:0">${gate.v} kg</span>
+      <span style="font-size:12.5px;line-height:17px">
+        <b>${gate.v} kg on a ${p.age}-year-old — a slipped digit?</b> One keystroke away from a chart fact and a wrong drug dose downstream.
+        <span style="display:block;margin-top:8px;display:flex;gap:8px">
+          ${gate.fix?`<button class="sec grn" onclick="gateAct('fix')">it's ${gate.fix} kg</button>`:""}
+          <button class="sec" onclick="gateAct('real')">it's real — flag it hard</button>
+        </span>
+      </span>
+    </div>`:`
+    <div class="gate gd">
+      <span class="mo" style="font-size:20px;font-weight:700;color:var(--gold);flex-shrink:0">${gate.v} cm</span>
+      <span style="font-size:12.5px;line-height:17px">
+        <b>${p.last.ht} cm in ${p.last.when.slice(3)} → ${gate.v} now.</b> At ${p.age} a bending spine can lose real height — but a posture error loses it more often. Heels together, head level, re-measure once. If it holds, both numbers go to the doctor.
+        <span style="display:block;margin-top:8px;display:flex;gap:8px">
+          <button class="sec grn" onclick="gateAct('hold')">re-measured — it holds</button>
+          <button class="sec" onclick="gateAct('back')">go back</button>
+        </span>
+      </span>
+    </div>`):"";
+  const suggCard=sugg?(
+    sugg.kind==="now"?agLine(`<b>${V.bp.s}/${V.bp.d} is stroke territory — machine or man?</b> Recheck NOW on the other arm. This is not a rest-and-recheck number; rest is for maybes.`,[["recheck now — other arm","recheckNow()"]]):
+    agLine(`<b>${V.bp.s}/${V.bp.d} against ${p.last.bp} in ${p.last.when.slice(3,6)}.</b> Stairs, chai, a missed morning dose — half of these settle in five minutes. Ask the chips on the left, then rest her.`,
+      [["rest 5 min · recheck <span class='kb dk'>R</span>","startRest()"],["keep it — my call","keepNote()",1]])):"";
+  return `
+  <div style="max-width:960px">
+    ${escStrip}
+    ${amendMode?`<div class="gate gd" style="margin:0 0 14px;align-items:center">
+      <span style="font-size:12.5px;line-height:17px"><b>Amending a saved chart</b> — owner ruling: a wrong save is fixable at this desk. Press ✎ on any value; the old number stays in the trail with your name and the clock, and the doctor's board refreshes on save. Esc abandons it untouched.</span></div>`:""}
+    <div style="display:flex;align-items:baseline;gap:12px">
+      <span style="font-size:19px;font-weight:700;letter-spacing:-.01em">${SERIAL?"Measure — the screen types for you":"Type fast — ⏎ commits and jumps"}</span>
+      <span style="font-size:12px;color:var(--dim)">${SERIAL?`<span class="kb">Space</span> fires the next device · numbers land themselves`:`<span class="kb">1–8</span> jump to a field · the gates catch the slips, not you`}</span>
+      <div style="flex-grow:1"></div>
+      <button class="pri" onclick="save()" ${miss.length?'style="opacity:.55"':""}>${amendMode?"save amendment":"save → next"} <span class="kb dk">Ctrl ⏎</span></button>
+    </div>
+    ${saveErr?`<div class="gate gd" style="margin-top:12px;align-items:center">
+      <span style="font-size:12.5px"><b>The doctor can't be handed a half-chart.</b> Still owed: ${saveErr.map(k=>k.toUpperCase()).join(", ")} — the band decides what's required, not habit.</span>
+      <button class="pill" style="margin-left:auto" onclick="saveErr=null;paint()">ok</button></div>`:""}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-top:16px">
+      ${tileDefs().map(tileHtml).join("")}
+    </div>
+    ${gateCard}
+    ${suggCard}
+    ${!gate&&!sugg&&esc===0&&isChild()?agLine(`<b>Child of ${p.age} — the screen changed, not just the limits.</b> Small cuff is on the tray, MUAC tape is due (the tape finds starvation that weight hides), and BP sits out unless asked.`):""}
+    ${!gate&&!sugg&&esc===0&&p.id==="ramdev"&&V.bp&&V.bp.takes&&V.bp.takes.length>0&&bpLvl(V.bp.s,V.bp.d)!=="danger"?"":""}
+    <div style="display:flex;gap:14px;margin-top:18px;align-items:center">
+      <span class="tag">required by band</span>
+      ${reqList().map(k=>`<span class="pill ${have(k)?"on":""}" style="height:21px">${have(k)?"✓ ":""}${k.toUpperCase()}</span>`).join("")}
+      <span style="font-size:10.5px;color:var(--faint)">${esc>=2?"emergency trims the list — BP, pulse, SpO₂, GO":"everything else is welcome, nothing else blocks"}</span>
+    </div>
+  </div>`;
+}
+
+/* ── bench rail ── */
+function paintBench(){
+  const b=$("bench");
+  const rows=PT.map((p,i)=>{
+    const first=PT.findIndex(x=>x.st==="waiting")===i;
+    const st=p.st;
+    const stPill=st==="waiting"?(first?`<span class="pill on" style="height:19px">next</span>`:`<span class="pill" style="height:19px">waiting</span>`):
+      st==="resting"?`<span class="pill gd" style="height:19px">resting · recall ${T(p.restAt)}${mins>=p.restAt?" · DUE":""}</span>`:
+      st==="away"?`<span class="pill gd" style="height:19px">stepped out — turn held</span>`:
+      st==="inhand"?`<span class="pill on" style="height:19px">on the stool</span>`:
+      `<span class="pill on" style="height:19px;border-width:1.5px"><b style="font-size:13px;font-weight:900">✓</b>&nbsp;with doctor · tap to amend</span>`;
+    return `
+    <div class="benchrow ${first?"nx":st==="resting"?"rs":st==="done"?"dn":""}" onclick="benchTap('${p.id}')" title="${E(p.hint||"")}">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="mo" style="font-size:13px;font-weight:700">${p.tok}</span>
+        <span style="font-size:12px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${E(p.nm)}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span class="mo" style="font-size:10px;color:var(--faint)">${p.age}${p.sex} · cls ${p.cls}</span>${stPill}
+      </div>
+      ${first?`<div style="font-size:10.5px;color:var(--dim);line-height:14px;margin-top:2px">${E(p.stagept)}</div>`:""}
+    </div>`;}).join("");
+  b.innerHTML=`
+  <div style="padding:14px 12px 8px;display:flex;align-items:baseline;gap:8px">
+    <span class="tag">the bench</span>
+    <span style="font-size:10.5px;color:var(--faint)">always in sight — timers die in drawers</span>
+  </div>
+  ${rows}
+  <div style="padding:12px;font-size:10.5px;color:var(--dim);line-height:15px">
+    <b>The valve:</b> Dr. Rao has 1 callable patient left. Every minute here is a minute a doctor waits downstream.
+  </div>`;
+}
+
+/* ── drawer / log ── */
+function paintDrawer(){
+  const d=$("drawer");
+  d.style.display=drawer?"block":"none";
+  if(!drawer)return;
+  d.innerHTML=`
+  <div style="padding:12px 18px;max-height:250px;overflow-y:auto">
+    ${agAns?`<div style="display:flex;gap:9px;margin-bottom:11px;padding:10px 12px;border:1px solid #2c4438;border-radius:6px;background:#1c332b">
+      <span class="pulse" style="width:6px;height:6px;border-radius:99px;background:var(--mint);flex-shrink:0;margin-top:5px"></span>
+      <span style="font-size:12px;line-height:17px;color:#fff">${agAns}</span></div>`:""}
+    ${log.map(l=>`
+    <div style="display:flex;gap:10px;padding:4px 0;font-size:11.5px;line-height:16px">
+      <span class="mo" style="color:var(--agent-dim);flex-shrink:0">${l.at}</span>
+      <span style="width:7px;height:7px;border-radius:99px;flex-shrink:0;margin-top:4px;background:${l.kind==="ok"?"var(--mint)":l.kind==="warn"?"var(--gold)":l.kind==="you"?"#fff":"var(--agent-dim)"}"></span>
+      <span style="color:${l.kind==="you"?"#fff":"var(--agent-fg)"}">${E(l.x)}</span>
+    </div>`).join("")}
+    <div style="font-size:10px;color:var(--agent-dim);padding:8px 0 2px">every unlock, override and auto-bump lands here, timestamped — undo where reversible</div>
+  </div>`;
+}
+
+/* ── overlays ── */
+function paintOvl(){
+  const o=$("ovls");
+  if(!ov){o.innerHTML="";return;}
+  if(ov==="unlock"){
+    o.innerHTML=`<div class="ovl" onclick="if(event.target===this){ov=null;paint()}">
+      <div class="box" style="width:420px;padding:20px 22px">
+        <div class="tag">unlock carried height — ${P?E(P.nm):""}</div>
+        <div style="font-size:12.5px;color:var(--dim);margin-top:6px;line-height:17px">The old value stays on screen beside the new one. The reason rides the audit log.</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:14px">
+          ${UNLOCK_REASONS.map(r=>`<button class="sec" style="justify-content:flex-start" onclick="pickUnlock('${r}')">${r}</button>`).join("")}
+        </div>
+        <button class="pill" style="margin-top:14px" onclick="ov=null;paint()">cancel · Esc</button>
+      </div></div>`;
+    return;
+  }
+  if(ov==="pal"){
+    const cmds=[["scan next in line · S","ov=null;scanNext()"],["toggle serial lane (owner)","ov=null;serialTog()"],
+      ["amend a saved chart — tap its ✓ row on the bench","ov=null;note('pick the saved patient on the bench rail — ✓ rows re-open for audited amendment','did');paint()"],
+      ["device status","ov=null;drawer=true;note('devices: BP ✓ · SpO₂ ✓ · temp ✓ · SCALE ✗ (09:12) — all moot till the serial lane is ON','did');paint()"],
+      ["₹ device ledger","ov='procure';paint()"],["design schema","ov='schema';paint()"],["clear desk · Esc","ov=null;clearDesk()"]];
+    o.innerHTML=`<div class="ovl" onclick="if(event.target===this){ov=null;paint()}">
+      <div class="box" style="width:440px;padding:10px">
+        <div class="tag" style="padding:8px 10px">command · Ctrl K</div>
+        ${cmds.map(([l,fn])=>`<button style="display:block;width:100%;padding:10px 12px;border-radius:6px;font-size:13px" onmouseover="this.style.background='var(--wash)'" onmouseout="this.style.background=''" onclick="${fn}">${l}</button>`).join("")}
+      </div></div>`;
+    return;
+  }
+  if(ov==="procure"){
+    const rows=[
+      ["BP monitor + cuff set","aneroid + stethoscope · ₹2,400","serial hospital unit (A&D UM-211 class) · ₹28,500","the seat's centrepiece — BP is 2 of the 6 numbers"],
+      ["SpO₂","finger clip · ₹1,400","table-top with serial out · ₹16,000","serial also carries pulse — two vitals, zero keys"],
+      ["Weighing scale","digital, read &amp; type · ₹3,200","serial platform scale · ₹13,500","today's dead scale is this row arguing for itself"],
+      ["Thermometer","digital stick · ₹350","IR non-contact BLE · ₹4,200","IR wins on speed &amp; hygiene even without BLE"],
+      ["Stadiometer (height rod)","₹3,800","— always manual —","no serial option worth having"],
+      ["Paediatric cuff set (S/XS)","₹1,900","included above","without it, child BP is fiction"],
+      ["MUAC tapes (pack)","₹160","—","the ₹160 that finds starvation"],
+      ["2D barcode scanner","₹2,900","₹2,900","non-negotiable — it IS the identify-first opening"],
+    ];
+    o.innerHTML=`<div class="ovl" onclick="if(event.target===this){ov=null;paint()}">
+      <div class="box" style="width:780px;max-height:82vh;overflow-y:auto;padding:22px 24px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:16px;font-weight:700">One bay, two prices</span>
+          <span class="pill gd" style="height:21px">OWNER DECISION — money &amp; procurement</span>
+        </div>
+        <div style="font-size:12px;color:var(--dim);margin-top:5px;line-height:17px">The serial lane is what makes “<b>0 keys</b>” true. The manual lane types ~30 keys × 300 patients a day — and every one of those keys can slip a digit.
+        <b style="color:var(--green)">RULED 31-Aug: serial devices are being procured and land within days — the header toggle ships OFF until they do; the typing lane carries the bay till then.</b></div>
+        <div style="overflow-x:auto;margin-top:14px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <tr>${["device","manual-entry lane","serial / connected lane","note"].map(h=>`<th style="text-align:left;padding:8px 10px;border-bottom:2px solid var(--ink)" class="tag">${h}</th>`).join("")}</tr>
+          ${rows.map(r=>`<tr>${r.map((c,i)=>`<td style="padding:9px 10px;border-bottom:1px solid var(--line2);${i===0?"font-weight:600":""};${i===3?"color:var(--dim);font-size:11px":""}">${c}</td>`).join("")}</tr>`).join("")}
+          <tr>
+            <td style="padding:10px;font-weight:700">per bay</td>
+            <td class="mo" style="padding:10px;font-weight:700">≈ ₹16,110</td>
+            <td class="mo" style="padding:10px;font-weight:700">≈ ₹70,960</td>
+            <td style="padding:10px;color:var(--dim);font-size:11px">Δ ₹54,850 buys zero transcription at the hospital's narrowest valve</td>
+          </tr>
+        </table></div>
+        <button class="pill" style="margin-top:14px" onclick="ov=null;paint()">close · Esc</button>
+      </div></div>`;
+    return;
+  }
+  if(ov==="schema"){
+    o.innerHTML=`<div class="ovl" onclick="if(event.target===this){ov=null;paint()}">
+      <div class="box" style="width:760px;max-height:84vh;overflow-y:auto;padding:24px 26px">
+        <div style="font-size:16px;font-weight:700">Bay One — design schema</div>
+        <div style="font-size:12px;color:var(--dim);margin-top:4px">Desk One identity carried whole: palette, Plex trio, footer agent bar, in-sight agent cards, Ctrl+K, session column, Esc discipline.</div>
+
+        <div class="tag" style="margin-top:18px">divergences from desk one — each forced by this seat's physics</div>
+        <div style="font-size:12.5px;line-height:19px;margin-top:8px">
+          <b>1 · The bench rail is always on screen</b> (the counter hides queues behind Q). A rest-and-recheck timer that lives in a drawer is a forgotten patient — the recall must sit in peripheral vision.<br>
+          <b>2 · Tiles, not a form.</b> The counter's atom is a text field; this seat's atom is a <i>reading</i> — it has a source (device/typed), a band, a history, and sometimes a second take. A form can't say “both readings kept, never averaged”. The form survives only as the per-tile fallback.<br>
+          <b>3 · The agent acts alone exactly once.</b> The counter's agent only drafted and suggested. Here, on a <i>double-confirmed</i> danger reading, it bumps queue class itself — with a <b>10-second CANCEL window</b> at the desk (owner ruling, 31-Aug) — because at 210/130 the cost of a missed escalation is a stroke and the cost of a wrong one is one press of cancel.
+        </div>
+
+        <div class="tag" style="margin-top:18px">the autonomy ladder at this seat</div>
+        <div style="font-size:12.5px;line-height:19px;margin-top:8px">
+          <b style="color:var(--green)">DID (undo live):</b> pre-stage the file on scan · hold a rest-timer &amp; recall · ping biomedical on device death · class bump on double-confirmed danger · hold an away patient's turn.<br>
+          <b style="color:var(--gold)">SUGGESTS (one key):</b> 5-min rest recheck on elevated-vs-history · immediate other-arm recheck on one danger reading · MUAC on every under-5 · the say-this line.<br>
+          <b>ASKS (never alone):</b> unlocking a carried value · overriding a sanity gate · keeping an unrechecked high reading · anything that <i>downgrades</i> urgency.
+        </div>
+
+        <div class="tag" style="margin-top:18px">decided — one line each, relitigate only what's wrong</div>
+        <div style="font-size:12.5px;line-height:19px;margin-top:8px">
+          DECIDED: danger-band readings get the other arm <i>now</i>; rest-and-recheck is only for elevated maybes.<br>
+          DECIDED: two readings are always both kept — shown as a pair, never averaged, never overwritten.<br>
+          DECIDED: BP is not routine under 5; MUAC is required under 5.<br>
+          DECIDED: weight is never spoken across the room — it goes on the slip; the patient display never shows numbers.<br>
+          DECIDED: a suspicious instant RR gets a nudge, not a block — the honesty tool is the 15-s counter, not a lockout.<br>
+          DECIDED: an emergency save requires only BP + pulse + SpO₂ — a crashing patient is not a form.<br>
+          DECIDED: the 45% SpO₂ goes to the log, not the chart, unless it survives a re-clip.<br>
+          RULED (owner, 31-Aug): the auto-bump stands, with a 10-second cancel at the desk; after the window, reversal is supervisory.<br>
+          RULED (owner, 31-Aug): serial capture is a header TOGGLE, shipped OFF until the devices land — the typing lane is first-class: ⏎ commits and jumps, 1–8 address fields, all gates identical in both lanes.<br>
+          RULED (owner, 31-Aug): a saved chart is amendable at this desk — tap the ✓-with-doctor row to re-open; ✎ re-enters a value; every change is audited beside the old one; Esc abandons untouched.<br>
+          RULED (owner, 31-Aug): three doors into the session — scan the barcode, or type the token number, or type the UHID; all start the identical lane.<br>
+          RULED (owner, 31-Aug): a save is confirmed by a <b>bold ✓</b> — the banner on the identify screen names who went to which doctor, and the bench row wears the same tick.
+        </div>
+
+        <div class="tag" style="margin-top:18px">keyboard</div>
+        <div style="font-size:12px;color:var(--dim);margin-top:6px;line-height:19px">
+          S scan next · Space next device capture · R rest &amp; recheck · Ctrl ⏎ save → next · F2 ask the agent · Ctrl K command · Esc clear / close
+        </div>
+        <button class="pill" style="margin-top:16px" onclick="ov=null;paint()">close · Esc</button>
+      </div></div>`;
+    return;
+  }
+  o.innerHTML="";
+}
+
+/* ══════════ keyboard ══════════ */
+document.addEventListener("keydown",e=>{
+  const tag=e.target.tagName;
+  if(e.key==="F2"){e.preventDefault();document.getElementById("askIn").focus();return;}
+  if(e.ctrlKey&&e.key==="Enter"){e.preventDefault();save();return;}
+  if(e.ctrlKey&&(e.key==="k"||e.key==="K")){e.preventDefault();ov=ov==="pal"?null:"pal";paint();return;}
+  if(tag==="INPUT"){
+    if(e.key.length===1&&e.target.id&&e.target.id.startsWith("min-")){keys++;$("keysPill").innerHTML=`<span class="mo">${keys}</span> keys · <span class="mo">${readings}</span> device reads`;}
+    if(e.key==="Escape")e.target.blur();
+    return;
+  }
+  if(e.key==="Escape"){if(ov){ov=null;paint();}else clearDesk();return;}
+  if(!P&&(e.key==="s"||e.key==="S")){scanNext();return;}
+  if(P&&/^[1-9]$/.test(e.key)){
+    const els=document.querySelectorAll('input[id^="min-"]');
+    const el=els[+e.key-1];
+    if(el){e.preventDefault();el.focus();return;}
+  }
+  if(P&&e.key===" "){
+    e.preventDefault();
+    if(SERIAL)captureNext();
+    else{const el=document.querySelector('input[id^="min-"]');if(el)el.focus();}
+    return;
+  }
+  if(P&&(e.key==="r"||e.key==="R")&&sugg&&sugg.kind==="rest"){startRest();return;}
+});
+
+paint();
+</script>
