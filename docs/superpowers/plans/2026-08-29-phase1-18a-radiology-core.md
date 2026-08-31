@@ -728,6 +728,77 @@ left to point at. The test is REWRITTEN to assert the property it existed for (t
 manifests, never `RESOURCE_KIND_VALUES` — proved by removing a manifest and watching the set shrink
 while the CHECK does not move), rather than deleted or pinned to a falsehood.
 
+**F17 — THIS PHASE WROTE ITS OWN §2.144: A RACE TEST AT THE EDGE OF ITS BUDGET, AND THE CASCADE IT
+CAUSED LOOKED LIKE SOMETHING ELSE ENTIRELY.** *(T4, found by the full verify and by nothing else)*
+
+`schedule.concurrency.test.ts`'s A1 ran five rounds, and each round called `truncateAll` and rebuilt
+the WHOLE radiology fixture — patient, four services, the published book, the encounter, the
+permission registry, the Class-A governance sequence, five devices. **Isolated it passed. Under a
+full workspace verify it hit `Exceeded timeout of 15000 ms`** — and then its abandoned async work
+raced the NEXT test's `beforeEach`, which failed with `duplicate key value violates unique constraint
+"patients_pkey"`. Two failures, one cause, and the second one names a table the test is not about.
+
+**The fix is not a longer timeout.** The rounds never needed a fresh fixture: they contend for one
+slot, and a slot is a `(device, instant)` pair, so five rounds can share one fixture and take five
+different INSTANTS. Restructured, the test runs in **4 742 ms — 32% of the default budget** against a
+first version that exceeded it.
+
+Ledger §2.144 is this exact class, found in another lane: *"one test at 72% of its default budget on
+an idle box, and a cascade hid it."* This phase produced its own specimen three days later, which
+says the lesson had not yet become a habit. **The mechanical form worth carrying: a test that builds
+a fixture inside a loop is a test whose cost is multiplied by the loop, and the budget it must fit
+is 15 s on a CONTENDED box, not on an idle one.**
+
+It is also the strongest argument yet for §9.9 rule 6, which this phase's own audit had just added:
+the targeted batch ran this suite green four times, and only the full verify ever saw it fail.
+
+**F13 IS CLOSED — `study-types.ts` OWNS THE BOOK AND `place.ts` DELEGATES.** *(T4)*
+
+T3 recorded the debt in as many words. T4 discharges it: `activeStudyTypes` and `studyTypeByService`
+live in `study-types.ts`, `place.ts` re-exports them, and `consumers.ts` imports from the owner. One
+piece of code decides whether a scan falls under the PCPNDT Act, which is the whole point — a second
+reader of a statutory flag is the exact shape of defect the design is built to avoid.
+
+**F15 — T4's SCHEMA CAUGHT T3's TEST FIXTURES WRITING BODIES THAT COULD NEVER HAVE BEEN PUBLISHED.**
+*(T4, and it is §2.49's vacuous-fixture shape one layer down)*
+
+T3's suites inserted `study_types` bodies carrying four fields — `code`, `service_id`, `modality`,
+`pcpndt_applicable` — which was everything T3's reader needed. T4 gave the body a zod schema and
+those bodies stopped parsing: no `name`, no `body_part`, no `duration_min`, no `ionising`, no
+`contrast_option`, no `chaperone_required`, no `laterality_applicable`.
+
+**The fixtures were asserting against a state the system cannot reach.** A body of that shape is
+refused by `draftDefinition`, so it could never have been PUBLISHED — every T3 assertion about
+PCPNDT applicability was therefore true of a definition no hospital could ever have. The assertions
+themselves were right and still pass; what was wrong was the ground they stood on.
+
+The repair is `test/helpers/radiology.ts`'s `studyTypeRow()`, which builds a row that satisfies the
+published schema and lets each suite override only the flags its assertion is about. **The
+generalisable form: when a task adds a SCHEMA to data an earlier task wrote by hand, re-run the
+earlier task's suites before anything else — they are the ones most likely to have been writing
+shapes the schema now forbids.**
+
+**F16 — THE SEED LIST CAME TO TWENTY-ONE AGAINST DD13's STATED TWENTY, AND THE SEEDS WERE WRONG.**
+*(T4)*
+
+`definitions.test.ts` asserts `STUDY_TYPE_SEEDS` has twenty entries because DD13 says twenty. The
+first draft had twenty-one — a second lateralised X-ray that duplicated the branch `XR-KNEE` already
+exercises. **The seed list was corrected, not the assertion**, which is the direction that matters:
+the count is a plan commitment and the test is what holds this task to it.
+
+**A DECISION T4 MADE THAT THE PLAN LEAVES OPEN: `seed:radiology` DRAFTS AND DOES NOT PUBLISH.**
+
+The seed creates the twenty services, the five `device` resources and a `study_types` DRAFT with its
+publish approval already filed — and stops. Publishing needs a granted `imaging_definition_publish`
+approval from the medical superintendent, and **a seed script that granted its own approval would
+make the governed-definition design decorative**. So the runbook's last step is a human, and until
+they take it the department is inert: `activeDefinition` refuses, so no imaging order can be placed
+at all. That is the correct posture for a hospital that has not yet said what its imaging department
+may do, and it is the same shape as the go-live runbook 17b wrote for the lab.
+
+It also means **the seed cannot be verified end-to-end by a script** — the last step needs a second
+human, which is the same organisational blocker Plan 17b is held on.
+
 **F12 — SPIKE S2's ANSWER HAS FLIPPED AGAIN, AND T3's ONE AUTHORISED OPD EXPORT IS NOT NEEDED.**
 
 S2 concluded that the DD9 encounter-status guard *"needs a reader OPD does not export"*, and T3's
@@ -929,6 +1000,29 @@ A federated provider timed out under parallel load. Re-run ISOLATED at `-w 1`: *
 federated timings 38.0 / 39.0 / 33.8 / 29.8 / 30.4 ms against a 300 ms budget** — an order of
 magnitude inside it. It is unrelated to this task by construction: it fans out over patient search
 and touches no manifest, permission or role.
+
+**T4 — THE GOVERNED BOOK, THE TWENTY SEEDS, AND THE DIARY. Same lane database.**
+
+| run | result |
+|---|---|
+| `definitions.test.ts` (A5 + the body invariants + the seeds) | **16 tests, exit 0** |
+| `schedule.test.ts` (A2, A3, A4) | **14 tests, exit 0** |
+| `schedule.concurrency.test.ts` (A1, five rounds) | **4 tests, exit 0** |
+| radiology + kernel resources/orders/modules | **21 suites / 252 tests, exit 0** |
+| `pnpm typecheck` / `pnpm lint` | **exit 0 / 0 errors** |
+
+**FULL WORKSPACE VERIFY — GREEN IN ONE RUN, at 19:04 UTC over the T4 tree.** `.verify.exit` = `0`:
+typecheck 0, lint 0 errors, `apps/web` **61 files / 374 tests**, `apps/core` **322 suites / 3 153
+tests** in 1 056 s against a 1 272 s estimate, **zero `FAIL` lines**, and a contention census of
+**zero** across `Exceeded timeout`, `deadlock`, `SIGKILL` and duplicate key.
+
+**It took two attempts, and the first one earned its cost.** Attempt 1 came back exit 1 with 13
+failed of 322 — and **one of the thirteen was this task's own** (`schedule.concurrency.test.ts`,
+finding F17: a race test that rebuilt its whole fixture five times, blew the 15 s budget under load,
+and whose abandoned work then produced a `patients_pkey` collision in the NEXT test). The other
+twelve re-ran isolated green. That is §9.9 rule 6 — added by this phase's own token audit two commits
+earlier — paying for itself immediately: the targeted batch had run that suite green four times and
+only the full verify ever saw it fail.
 
 **THE GAP IS CLOSED — 2026-08-31, `74e3079`, ONE RUN, GREEN, COVERING T2 AND T3 TOGETHER.**
 

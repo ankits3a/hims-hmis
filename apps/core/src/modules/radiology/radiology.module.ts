@@ -1,5 +1,7 @@
 import { Module } from "@nestjs/common";
+import { RadiologyDefinitionsController } from "./radiology-definitions.controller";
 import { RadiologyOrdersController } from "./radiology-orders.controller";
+import { RadiologyScheduleController } from "./radiology-schedule.controller";
 
 /**
  * PLAN 18a T3 — the radiology module's Nest wiring.
@@ -20,11 +22,15 @@ import { RadiologyOrdersController } from "./radiology-orders.controller";
  *
  * ═══ WHAT IS NOT MOUNTED YET ═══
  *
- * T4's scheduling and definition controllers, T5's study console, T7's acquisition and T8's
- * reporting. This module is placement and nothing else at T3, and the controllers list is where a
- * reader can see that at a glance rather than inferring it from the routes that answer.
+ * T5's study console, T7's acquisition and T8's reporting. At T4 this module is placement, the
+ * governed book and the diary; the controllers list is where a reader sees that at a glance rather
+ * than inferring it from the routes that answer.
  */
 @Module({
-  controllers: [RadiologyOrdersController],
+  controllers: [
+    RadiologyOrdersController,
+    RadiologyDefinitionsController,
+    RadiologyScheduleController,
+  ],
 })
 export class RadiologyModule {}

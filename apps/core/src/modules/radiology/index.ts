@@ -29,12 +29,26 @@ export {
 } from "./consumers";
 export type { CreatedStudy, OrderPlacedPayload } from "./consumers";
 export {
-  COMPLETED_VISIT_GRACE_DAYS, DUPLICATE_WINDOW_HOURS, activeStudyTypes,
-  addImagingViews, placeImagingOrder, studyTypeByService,
+  COMPLETED_VISIT_GRACE_DAYS, DUPLICATE_WINDOW_HOURS, addImagingViews, placeImagingOrder,
 } from "./place";
 export type {
-  PlaceImagingItemInput, PlaceImagingOrderInput, PlaceImagingOrderResult, StudyTypeFacts,
+  PlaceImagingItemInput, PlaceImagingOrderInput, PlaceImagingOrderResult,
 } from "./place";
+export {
+  IMAGING_DEFINITION_KINDS, activeDefinition, activeDefinitionRow, draftDefinition,
+  parseDefinitionBody, publishDefinition, requestDefinitionPublish,
+} from "./definitions";
+export type {
+  CriticalCategoriesBody, ImagingDefinitionRow, PregnancyPolicyBody, StudyType, StudyTypesBody,
+} from "./definitions";
+export {
+  STUDY_TYPE_SEEDS, activeStudyTypes, requireStudyType, studyTypeByService, studyTypeFor,
+} from "./study-types";
+export type { StudyTypeSeed } from "./study-types";
+export {
+  autoSlotWalkIn, cancelStudy, deviceDiary, markNoShow, rescheduleStudy, scheduleStudy,
+} from "./schedule";
+export type { ScheduleInput, ScheduleResult } from "./schedule";
 export {
   PCPNDT_AGE_MAX_YEARS, PCPNDT_AGE_MIN_YEARS, ageInYearsOn, pcpndtApplicability,
 } from "./applicability";

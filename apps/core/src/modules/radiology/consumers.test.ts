@@ -11,6 +11,7 @@ import {
 } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { registerEncounterResolver } from "../../kernel/episodes/encounter-resolvers";
+import { seedActiveStudyTypes, studyTypeRow } from "../../../test/helpers/radiology";
 import { ORDERS_PLACE } from "../../kernel/orders/place";
 import { activateDefinition, approveDefinition, createDraft } from "../../kernel/workflow/definitions";
 import { handleOrderPlaced } from "./consumers";
@@ -66,16 +67,10 @@ describe("the radiology order.placed consumer (18a T3 A7)", () => {
       { id: SVC_XRAY, code: "XR-CHEST", name: "X-ray chest", category: "investigation", createdBy: "t", updatedBy: "t" },
       { id: SVC_USG, code: "USG-ABDO", name: "USG abdomen", category: "investigation", createdBy: "t", updatedBy: "t" },
     ]);
-    await db.insert(imagingDefinitions).values({
-      id: newId(), kind: "study_types", version: 1, status: "active",
-      draftedBy: "t", publishedBy: "t", publishedAt: NOW,
-      body: {
-        types: [
-          { code: "XR-CHEST", service_id: SVC_XRAY, modality: "xray", pcpndt_applicable: false },
-          { code: "USG-ABDO", service_id: SVC_USG, modality: "usg", pcpndt_applicable: false },
-        ],
-      },
-    });
+    await seedActiveStudyTypes(db, [
+      studyTypeRow({ code: "XR-CHEST", service_id: SVC_XRAY, modality: "xray", body_part: "chest", ionising: true }),
+      studyTypeRow({ code: "USG-ABDO", service_id: SVC_USG, modality: "usg", body_part: "abdomen" }),
+    ], NOW);
     await db.insert(opdEncounters).values({
       id: newId(), visitNo: VISIT, patientId: PATIENT, status: "registered",
       workflowInstanceId: newId(), serviceDate: DAY, visitType: "new",
@@ -225,8 +220,8 @@ describe("the radiology order.placed consumer (18a T3 A7)", () => {
     await db.update(imagingDefinitions).set({
       body: {
         types: [
-          { code: "USG-PELVIS", service_id: SVC_USG, modality: "usg", pcpndt_applicable: true },
-          { code: "XR-CHEST", service_id: SVC_XRAY, modality: "xray", pcpndt_applicable: false },
+          studyTypeRow({ code: "USG-PELVIS", service_id: SVC_USG, modality: "usg", body_part: "pelvis", pcpndt_applicable: true, chaperone_required: true }),
+          studyTypeRow({ code: "XR-CHEST", service_id: SVC_XRAY, modality: "xray", body_part: "chest", ionising: true }),
         ],
       },
     });

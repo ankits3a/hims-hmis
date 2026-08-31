@@ -25,6 +25,7 @@
     "seed:formulary": "tsx scripts/seed-formulary-interactions.ts",
     "seed:materials": "tsx scripts/seed-materials.ts",
     "seed:ot": "tsx scripts/seed-ot.ts",
+    "seed:radiology": "tsx scripts/seed-radiology.ts",
     "import:holder-book": "tsx scripts/import-holder-book.ts",
     "seed:ops": "tsx scripts/seed-ops.ts",
     "seed:roles": "tsx scripts/seed-roles.ts",

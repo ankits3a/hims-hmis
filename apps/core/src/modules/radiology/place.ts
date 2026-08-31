@@ -1,9 +1,8 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { withIdempotency } from "../billing";
 import { getEncounter } from "../opd";
 import { daycareCaseDefinition } from "../ot";
 import { daycareEncounters } from "../../kernel/db/schema/ot";
-import { imagingDefinitions } from "../../kernel/db/schema/radiology";
 import { orders } from "../../kernel/db/schema/orders";
 import { patients } from "../../kernel/db/schema/patients";
 import { placeOrder } from "../../kernel/orders/place";
@@ -12,6 +11,7 @@ import { withTx } from "../../kernel/db/client";
 import { EPISODE_SERIES } from "../../kernel/episodes/series";
 import { RadiologyError } from "./errors";
 import { pcpndtApplicability } from "./applicability";
+import { studyTypeByService as studyTypeByServiceOwned } from "./study-types";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
@@ -89,13 +89,6 @@ export type PlaceImagingOrderResult = {
   pcpndt: { serviceId: string; studyTypeCode: string; applicable: boolean; reason: string }[];
 };
 
-/** One row of the active `study_types` definition body, as far as THIS task needs to read it. */
-export type StudyTypeFacts = {
-  code: string;
-  serviceId: string;
-  pcpndtApplicable: boolean;
-};
-
 /** DD9's OPD statuses. `completed` is admitted separately, with an age test. */
 const OPD_OPEN_STATUSES = ["registered", "waiting", "in_consultation", "awaiting_results"];
 /** DD9 — the consultant who adds a scan after the patient has left the room. */
@@ -115,60 +108,19 @@ function terminalDaycareStatuses(): Set<string> {
 }
 
 /**
- * ═══ THE STUDY-TYPE READER — T3 OWNS IT ONLY UNTIL T4 DOES (finding F13) ═══
+ * ═══ FINDING F13 IS CLOSED: `study-types.ts` OWNS THE BOOK, AND THIS FILE DELEGATES ═══
  *
- * T4's `study-types.ts` is the file that will own the seeds and `studyTypeFor(code)`. This reader
- * exists here because T3 needs `pcpndt_applicable` at PLACEMENT and T4 has not run — it reads the
- * active definition and nothing more. **T4 must make `study-types.ts` the single owner and have
- * this delegate**, or the hospital will have two readers of one book.
+ * T3 shipped its own `activeStudyTypes` / `studyTypeByService` here because T4 had not run and
+ * placement needed `pcpndt_applicable`. F13 recorded the debt: *"T4 must make `study-types.ts` the
+ * single owner and have this delegate, or the hospital will have two readers of one book."*
+ *
+ * T4 did. The two functions are RE-EXPORTED from their owner rather than reimplemented, so there is
+ * exactly one piece of code that decides whether a scan falls under the PCPNDT Act. The re-export
+ * keeps T3's callers and tests working unchanged, which is what makes closing the finding cheap
+ * enough to actually do.
  */
-export async function activeStudyTypes(exec: Db | Tx): Promise<StudyTypeFacts[]> {
-  const rows = await (exec as Db)
-    .select({ body: imagingDefinitions.body })
-    .from(imagingDefinitions)
-    .where(and(eq(imagingDefinitions.kind, "study_types"), eq(imagingDefinitions.status, "active")));
-  const row = rows[0];
-  if (!row) {
-    throw new RadiologyError(
-      "definition_not_active",
-      "no active `study_types` definition — the study-type book is where the gate sets, the " +
-        "radiation flags and PCPNDT applicability live, and a scan ordered before it exists is a " +
-        "scan nothing can decide anything about",
-    );
-  }
-  const body = row.body as { types?: unknown };
-  const types = Array.isArray(body.types) ? body.types : [];
-  return types.map((t) => {
-    const type = t as Record<string, unknown>;
-    return {
-      code: String(type.code ?? ""),
-      serviceId: String(type.service_id ?? ""),
-      pcpndtApplicable: type.pcpndt_applicable === true,
-    };
-  });
-}
-
-/**
- * `serviceId` → the ONE study type that names it. Ambiguity is refused rather than resolved: two
- * study types on one service means "is this scan PCPNDT-applicable?" has two answers, and picking
- * the first would decide a statutory question by array order.
- */
-export async function studyTypeByService(exec: Db | Tx): Promise<Map<string, StudyTypeFacts>> {
-  const types = await activeStudyTypes(exec);
-  const byService = new Map<string, StudyTypeFacts>();
-  for (const type of types) {
-    if (byService.has(type.serviceId)) {
-      throw new RadiologyError(
-        "definition_invalid",
-        `two study types name service ${type.serviceId} (${byService.get(type.serviceId)!.code} ` +
-          `and ${type.code}) — PCPNDT applicability would depend on which one a reader found first`,
-        { serviceId: type.serviceId },
-      );
-    }
-    byService.set(type.serviceId, type);
-  }
-  return byService;
-}
+export { activeStudyTypes, studyTypeByService } from "./study-types";
+export type { StudyType } from "./definitions";
 
 /**
  * DD9's encounter-status guard. Reads the encounter through its OWNING module's export for `V`
@@ -265,7 +217,7 @@ export async function placeImagingOrder(
         await assertEncounterOpen(tx, input.encounterNo, now);
 
         /** (2) DD14 — applicability per item, from the PUBLISHED book and the patient's record. */
-        const byService = await studyTypeByService(tx);
+        const byService = await studyTypeByServiceOwned(tx);
         const patientRows = await (tx as unknown as Db)
           .select({
             sex: patients.sex, dob: patients.dob, dobEstimated: patients.dobEstimated,
@@ -293,7 +245,7 @@ export async function placeImagingOrder(
           }
           const verdict = pcpndtApplicability(
             { sex: patient.sex, dob: patient.dob, dobEstimated: patient.dobEstimated },
-            { pcpndtApplicable: studyType.pcpndtApplicable },
+            { pcpndtApplicable: studyType.pcpndt_applicable },
             /** The rule is evaluated on the day of the SCAN, which is this order's service date. */
             new Date(`${input.serviceDate}T00:00:00.000Z`),
           );

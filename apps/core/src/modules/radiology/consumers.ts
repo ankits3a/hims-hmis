@@ -8,7 +8,7 @@ import { startInstance } from "../../kernel/workflow/instances";
 import { orderPlaced } from "../../kernel/orders/events";
 import { RadiologyError } from "./errors";
 import { IMAGING_STUDY_DEF_KEY } from "./workflow-def";
-import { studyTypeByService } from "./place";
+import { studyTypeByService } from "./study-types";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { DispatchedEvent, Handler } from "../../kernel/events/subscriptions";
 

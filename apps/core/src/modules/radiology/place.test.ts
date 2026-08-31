@@ -9,6 +9,7 @@ import {
   registrationConfig, services,
 } from "../../kernel/db/schema";
 import { registerEncounterResolver } from "../../kernel/episodes/encounter-resolvers";
+import { seedActiveStudyTypes, studyTypeRow } from "../../../test/helpers/radiology";
 import { ORDERS_PLACE } from "../../kernel/orders/place";
 import { RadiologyError } from "./errors";
 import { addImagingViews, placeImagingOrder } from "./place";
@@ -92,16 +93,10 @@ describe("placeImagingOrder (18a T3)", () => {
      * input, which is what makes the statutory rule a property of the system rather than a
      * checkbox a caller can clear.
      */
-    await db.insert(imagingDefinitions).values({
-      id: newId(), kind: "study_types", version: 1, status: "active",
-      draftedBy: "t", publishedBy: "t", publishedAt: NOW,
-      body: {
-        types: [
-          { code: "USG-PELVIS", service_id: SVC_PELVIC_USG, modality: "usg", pcpndt_applicable: true },
-          { code: "XR-CHEST", service_id: SVC_CHEST_XRAY, modality: "xray", pcpndt_applicable: false },
-        ],
-      },
-    });
+    await seedActiveStudyTypes(db, [
+      studyTypeRow({ code: "USG-PELVIS", service_id: SVC_PELVIC_USG, modality: "usg", body_part: "pelvis", pcpndt_applicable: true, chaperone_required: true }),
+      studyTypeRow({ code: "XR-CHEST", service_id: SVC_CHEST_XRAY, modality: "xray", body_part: "chest", ionising: true }),
+    ], NOW);
 
     const visit = (visitNo: string, status: string, serviceDate: string, patientId = FEMALE_24) => ({
       id: newId(), visitNo, patientId, status, workflowInstanceId: newId(),
@@ -268,7 +263,12 @@ describe("placeImagingOrder (18a T3)", () => {
 
   it("with NO active study-type book, no imaging order can be placed at all", async () => {
     await db.delete(imagingDefinitions);
-    await expect(place()).rejects.toThrow(/no active `study_types` definition/);
+    /**
+     * The refusal now comes from `study-types.ts`, which owns the book since F13 was closed, and its
+     * message is generic across definition KINDS rather than hard-coded to this one. The assertion
+     * follows the owner rather than pinning a sentence T3 happened to write.
+     */
+    await expect(place()).rejects.toThrow(/no active study_types definition/);
   });
 
   /* ═══════════════════════════ A4 — THE DUPLICATE WINDOW ═══════════════════════════ */
