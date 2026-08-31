@@ -550,6 +550,8 @@ Four. Two carry code and both are additive and inert — **no manifest claims `i
 | 2 | `9b899ae` | F7, and the correction to this document's own CI claim |
 | 3 | **`d5abf6a`** | **T1 — eleven tables, `0047_radiology_core`, the `X` accession series, the two whole-row immutability triggers, `truncateAll` across three statements, both `EPISODE_SERIES` censuses. GREEN: exit 0, 4 suites, 61/61, on `hmis_lane_b_scratch_1`** |
 | 4 | **`997ab18`** | **T2 PARTIAL — the two module skeletons (manifests, kinds, events, workflow definitions, approval type, error unions). Typechecked and linted; NO tests of their own yet. Installed by nobody: neither manifest is in `ALL_MANIFESTS`** |
+| 5 | `e9c425c` `74e3079` `a407719` `620b7c1` | **T2, T3, T4 and the owner's seed ruling.** Per-commit breakdown in the T4/T5 handoff (`b1319f1`) |
+| 6 | *(this task)* | **T5 — check-in and the gate set DERIVED from the type's flags and the patient; the ten kinds' evidence rules; the waiver and override lanes with `form_f` and `identity_two_factor` refused BY KIND before any read; readiness; one mounted controller. GREEN on `hmis_lane_b_scratch`: 3 new suites / 76 tests, every radiology suite 12 / 176, the censuses 12 / 126. ALL SIX NAMED MUTANTS DIED. The full workspace verify is RED IN THE OTHER LANE'S FILES and unattributable — CI by SHA is the instrument (§9.5-T5)** |
 
 Also on `main` from this lane, addressed to Lane A rather than to this phase:
 `26d1a1b` (the coordination contract) and `57b93fa` (the reply — F26's attribution, the
@@ -903,6 +905,219 @@ alone is 180 calls an hour, three times the ceiling.
 and a rate-limit refusal are indistinguishable at the shape level, and only one of them means
 anything about the build.
 
+
+---
+
+## ═══ T5's FINDINGS (2026-08-31) ═══
+
+**F18 — `imaging_studies.ionising` IS NEVER WRITTEN, AND TWO COMMENTS DISAGREE ABOUT WHO SHOULD
+WRITE IT. IT MAKES M4's DOSE CHECK VACUOUS TODAY.** *(found by T5 while reading the study row;
+OWNED BY T7, not fixed here)*
+
+`radiology.ts`'s table header says the column is *"SNAPSHOTTED from the study type at creation,
+exactly as `ot_case_gates.waivable` snapshots from the criteria definition at booking"*.
+`definitions.ts`'s study-type comment, one file over, says *"`ionising` — snapshotted onto the study
+at acquisition for 18c's dose register"*. **`handleOrderPlaced` is the creator and does not set it**
+(`grep -n ionising consumers.ts` → 0 hits), so **every study in this database is `ionising = false`
+whatever its type says**.
+
+The consequence is not cosmetic. `imaging_studies_dose_ck` — M4, *"an ionising study that was
+acquired carries a dose number"* — reads THIS COLUMN, so today the CHECK can never fire and T7 A3's
+mutant (*"drop the CHECK → 18c's register has holes it cannot see"*) would be indistinguishable from
+the shipped code. **A CHECK on a column nothing writes is a control that reads as green.**
+
+**Reported rather than taken**, the way F11 and F14 were: `consumers.ts` is T3's file and
+`acquisition.ts` is T7's, and T5's Files list names neither. **T7 owns the fix and the CHECK's own
+timing decides where it goes** — the constraint fires on `acquired_at`, so writing `ionising` at
+acquisition satisfies both comments and needs no change to T3. T7 A3's fixture must then assert the
+column is TRUE for an ionising type rather than assuming it, or the assertion is vacuous in the
+other direction.
+
+**F19 — THE `open → satisfied` EDGE NAMES FOUR ROLES AND EXACTLY ONE OF THEM CAN REACH IT OVER HTTP.
+THIS IS F9's LESSON POINTING THE OTHER WAY.** *(measured at T5; the close review owns the ruling)*
+
+`imagingGateDefinition`'s `open → satisfied` allows `radiographer, radiologist, doctor, system`, and
+F9's own note explains why the last two stay: *"`doctor` and `radiologist` stay (T5 A5 needs the
+radiologist; the referring clinician takes contrast consent)."*
+
+**Measured at T5: they cannot.** `seed-roles.ts` grants `radiology.gates.satisfy` to `radiographer`
+ALONE — `radiologist` holds `radiology.gates.override` **and not** `.satisfy`, by an explicit and
+well-argued comment (*"DD7 makes the radiologist the second clinical opinion on a gate the
+technologist raised"*), and `doctor` holds neither. Every satisfy route carries
+`@RequirePermission("radiology.gates.satisfy")`, so a radiologist or a doctor calling it is refused
+**403 by the guard before the engine's role check ever runs**.
+
+**F9 was a role on the engine's plane that should not have been there. This is two roles on the
+engine's plane that the guard's plane never lets through** — the same defect class, and the second
+specimen in one phase, which is what makes it worth recording rather than fixing quietly. It fails
+SAFE (the narrower plane wins), so nothing is exposed; what it costs is that two of the four names
+on that edge are dead, and a reader of `workflow-def.ts` would conclude otherwise.
+
+**T5's design absorbs it instead of widening a file it may not touch.** A5's
+`prior_contrast_reaction` takes the radiologist's decision as EVIDENCE — `{radiologistId, reason}`,
+with `actorHoldsAnyRole(tx, radiologistId, ["radiologist"])` verifying the named person — so the
+radiographer at the console records a decision that is attributable to the radiologist who made it.
+That is a better record than "the radiologist logged in and clicked", and it works with the grants
+exactly as shipped.
+
+**The close review owns the ruling**: either `seed-roles.ts` grants `radiology.gates.satisfy` to
+`doctor` and `radiologist` as `workflow-def.ts` assumes, or the two names come off that edge. What
+must not stand is the two planes disagreeing while a comment in each says the other one is right.
+
+**F20 — THE PLAN'S EVIDENCE SKETCH CARRIED FOUR CHECKBOXES, AND T5 STRENGTHENED ALL FOUR.**
+*(disclosed deviations; every one is in the "computed rather than typed" direction `ot/gates.ts`
+argues for, and every one is asserted)*
+
+| kind | §5 T5's sketch | shipped | why |
+|---|---|---|---|
+| `identity_two_factor` | `{secondIdentifier: 'dob'\|'uhid'\|'wristband'}` | **`+ value`**, COMPARED against `patients.uhid` / `patients.dob` | the sketch records which question was asked and not what the answer was. A wristband has no registry to compare against in this slice, so it is recorded as stated — which is why the two comparable kinds are compared |
+| `pregnancy_screen` | `{declared, lmpDate?, hcgResultRef?}` | **`+ hcgResultAt?`** | `pregnancy_policy.hcg_validity_days` is a validity IN DAYS and the sketch carries no instant to measure it from. A pointer cannot be aged |
+| `renal_function` | `{creatinineUmolL, sampledAt, source}` "with validity days per context" | context **DERIVED** from the study's encounter-number prefix; only `ckdFlagged` is typed | A4's own mutant is *"compare days with the wrong context"*, and a context the recorder TYPES is that mutant with extra steps — the person in a hurry types the band with the longest window |
+| `mlc_check` | `{mlcNo?}` | `ot/gates.ts`'s **`{status: 'registered'\|'ruled_out', mlcNo?}`** | E5: "ruled out" is a DECISION and is recorded as one. A bare optional number cannot express it |
+
+`renal_function` also refuses to SATISFY above a named creatinine ceiling (2.0 mg/dL as µmol/L),
+which is not in the sketch either: a gate that records a creatinine of 900 without reading it is a
+checkbox with a number on it. The lane above the ceiling is the radiologist's override, which is
+what makes somebody write a reason down.
+
+**F21 — A7's FIRST DRAFT MEASURED THE NODE SCHEDULER AND NOT THE DATABASE, AND IT WAS GREEN-ADJACENT
+ENOUGH TO HAVE BEEN KEPT.** *(found by running the test; the generalisation is the point)*
+
+Two plain `withTx(satisfyGate)` calls raced through `Promise.allSettled` produced one winner and one
+loser — the right SHAPE — but the loser's code was **`gate_already_terminal`, not `stale_state`**.
+Under READ COMMITTED the two transactions had simply SERIALISED: the winner committed before the
+loser's pre-read ran, so the loser refused at the kindness check and **never reached the CAS at
+all.** A read-then-write implementation would have produced the identical result.
+
+The fix is to CONSTRUCT the overlap rather than hope for it: each transaction is held open for
+200 ms after its write, so **both callers read `open` before either commits**. The loser's
+conditional UPDATE then blocks on the winner's row lock, re-evaluates after the commit, matches
+nothing, and the engine raises `stale_transition` → `stale_state`.
+
+**The mechanical form worth carrying, and it is this phase's second concurrency lesson after F17:**
+*a concurrency assertion whose subject is a COMPARE-AND-SET is only measuring the CAS if the two
+callers' pre-reads are proved to overlap. `Promise.all` does not prove that; a held transaction
+does.* T4's slot race needed none of this because its contention is at an INDEX with no pre-read in
+front of it — which is exactly why the two tests look similar and are not.
+
+**F22 — THE SHARED FIXTURE ACTIVATED ONE WORKFLOW DEFINITION AND THE GATES NEED TWO.**
+
+`setupRadiologyFixture` performed the Class-A governance sequence for `imaging_study` only.
+`openStudyGate` starts an `imaging_gate` instance per opened gate and `startInstance` refuses
+`no_active_definition`, so every check-in failed for a reason that had nothing to do with what was
+being asserted. Fixed by looping `RADIOLOGY_WORKFLOW_DEFINITIONS`, which is the constant T2 shipped
+for exactly this — *"both definitions, for the seed and the runbook to install from one list"*.
+
+The cost is one extra governance dance per fixture build, paid by four suites this task does not
+own. Measured after the change, over the whole radiology tree: **14 suites / 217 tests / 158 s.**
+
+**F23 — THREE FILES T5 MUST TOUCH ARE IN NO TASK'S FILES LIST, AND ONE OF THEM IS A SHARED FIXTURE.**
+*(the §2.138 pattern, and this phase's fourth specimen after F11 and F14)*
+
+`index.ts`, `radiology.module.ts` and `test/helpers/radiology.ts`. The first two are authorised **by
+the files themselves rather than by the plan** — `index.ts`'s header says *"T3 adds the placement
+function…, **T5 the gates**"*, and `radiology.module.ts`'s says *"WHAT IS NOT MOUNTED YET: T5's
+study console…"* — which is a better place for that authorisation to live than a Files list, because
+it is in front of whoever opens the file.
+
+**The third is named nowhere, and it is the one a reviewer should look at**: a change to a shared
+fixture reaches four suites this task does not own, and F22 is that change. It is disclosed here
+rather than left for the reviewer to find in the diff.
+
+**F24 — NOTHING EVER WRITES `rescheduled`. THE STATE, BOTH ITS TRANSITIONS AND ITS LEG OF THE SLOT
+INDEX ARE ALL DEAD, AND THREE FILES STATE A DESIGN THE FOURTH DOES NOT IMPLEMENT.** *(found by T5
+while reading the study machine for check-in; OWNED BY T4's file, not fixed here)*
+
+Three places say what a reschedule is, in as many words:
+
+  · `radiology.ts` (T1): *"`rescheduled` is TERMINAL for the row it sits on: a reschedule writes a
+    NEW study row and closes this one, so the audit answer to 'when was this moved, and off what
+    slot' is two rows rather than one row with a rewritten `scheduled_at`."*
+  · `workflow-def.ts` (T2): *"A reschedule CLOSES this row and opens a new one (DD5): two rows
+    answer 'when was this moved, and off what slot', where one rewritten `scheduled_at` answers
+    neither."* Two transitions are declared for it.
+  · DD5 itself.
+
+**`rescheduleStudy` (T4) does the rewritten `scheduled_at`.** It UPDATEs `device_resource_id` and
+`scheduled_at` in place, transitions nothing, and its own header argues the opposite case — *"The
+study KEEPS its identity and its accession — a reschedule is the same scan on a different machine or
+at a different time, not a new one."*
+
+**Measured, not inferred:** `grep -rn '"rescheduled"' src/modules/radiology/*.ts` outside tests
+returns the enum member, the two transitions and nothing else. **No code path writes the status and
+no code path takes either transition.** So a terminal state, two declared transitions and one of the
+three names in `imaging_studies_slot_ux`'s predicate are all unreachable — and
+`schedule.concurrency.test.ts`'s A1 proves the index frees on `cancelled` and `no_show` by writing
+those statuses, which is why the dead third leg has never been visible.
+
+**What it costs is the audit answer DD5 asked for.** The old slot is silently overwritten, so
+*"this scan was booked for the 09:00 CT on Monday and moved"* is not answerable from the data — only
+the current booking survives. That is a real loss for a machine's diary and for a patient asking why
+their appointment changed, and it is the difference the T1 and T2 comments were both written to buy.
+
+**Reported rather than taken**: `schedule.ts` is T4's file and T5's Files list does not name it.
+**The close review owns the ruling** — either `rescheduleStudy` closes the row and opens a new one as
+three documents say, or `rescheduled` comes out of the state machine, out of the status list and out
+of the slot predicate, and both comments are corrected. What must not stand is a terminal state that
+the design depends on and nothing can reach.
+
+### DECISIONS T5 TOOK THAT THE PLAN LEAVES OPEN
+
+**1. `pregnancy_policy` HAS A CODE DEFAULT, AND IT IS THE STRICT END OF EVERY FIELD.**
+
+The kind has a published zod schema (T4) and **no seed** — `seed-radiology.ts` seeds `study_types`
+alone, and it is T4's file. A `checkIn` that threw `definition_not_active` until somebody published
+a policy would make the department un-check-in-able at go-live, and unlike the study-type book there
+is nothing for a runbook step to publish.
+
+So the policy is a governed **override of a default** rather than a precondition, and the default
+(`DEFAULT_PREGNANCY_POLICY`) is the strict end of every field it has: the widest age band (10–60),
+so no woman of childbearing age falls outside the screen, and
+`declaration_sufficient_for_ionising: false`, so a verbal "no" alone does not carry a CT. **A
+hospital that publishes nothing gets the safest behaviour and not the laxest** — the same asymmetry
+`applicability.ts` argues for a null date of birth. `checkIn`'s result carries
+`policySource: 'default' | 'published'` so a screen and an audit row can say which decided.
+
+**Owed to the runbook or to T9: a `pregnancy_policy` seed.** Until one is published every hospital
+runs the default, which is correct but is not a decision anybody has taken.
+
+**2. `contrast_option: 'optional'` OPENS NONE OF THE THREE CONTRAST GATES AT CHECK-IN.**
+
+Whether contrast is given is decided at the CONSOLE, and a consent gate opened at check-in for a
+scan that turns out to need no contrast is a gate the floor learns to click past — which is A1's own
+stated failure mode arriving by a different door. **`openStudyGate` is exported for T7** so the
+three can be opened at the moment the decision is actually taken, and **T7's `recordAcquired` is
+where `contrast_given: true` on a study with no terminal `contrast_consent` must be refused.**
+Recorded here because T7 inherits the obligation, the way F13 handed one to T4.
+
+**3. `waivable` IS A CODE CONSTANT, BECAUSE THE STUDY-TYPE BODY CARRIES NO WAIVABLE LIST.**
+
+`ot_case_gates.waivable` snapshots from the criteria definition's `waivableGates`. `studyTypeSchema`
+has no such field — measured, not assumed — so `gates.ts` owns `WAIVABLE_KINDS`. That is the better
+place for it anyway: a statutory kind whose waivability lived in a governed body would be one UPDATE
+from being false, which is the shape `radiology.ts`'s own table header rejects in as many words.
+
+**The refusal is therefore two layers.** `NEVER_WAIVABLE_KINDS` (`form_f`, `identity_two_factor`) is
+checked BY KIND before the row's own column is read, so a row hand-edited to `waivable = true`
+widens the clinical kinds and cannot touch the two statutory ones. `gates.test.ts` proves exactly
+that by flipping the column and watching the refusal stand.
+
+**4. `form_f` IS SATISFIED BY THE REGISTER AND TAKES NO EVIDENCE FROM THE CALLER AT ALL.**
+
+`pcpndt_form_f_study_ux` makes one form per study a database fact, so the gate asks whether one
+exists. There is nothing for a caller to type and therefore nothing to type wrongly. **This gate is
+not the statutory control** — that is T6's `assertFormFRecorded`, on T7's acquisition path, which
+demands a **recorded** form and not merely an open one. Two controls at two strengths: the gate
+keeps the study out of `ready` until the form is started; the register refuses the exposure without
+a completed one.
+
+**5. `identity_two_factor` IS OVERRIDABLE AND NOT WAIVABLE, AND THE TWO ARE DIFFERENT ACTS.**
+
+A6 says identity *"cannot be `waived`"* and is silent on the override. A waiver says *"this gate does
+not apply to this patient"*, which is never true of identity. An override says *"it applies, I am
+accepting the risk, and here is why"* — which is exactly the unconscious trauma patient with no
+papers, and it leaves a reason and an event where a waiver would leave a shrug.
+
 ### 9.4 The Assertion Book, corrected by execution
 
 **T1 is ROUTINE, so no mutants are owed** (AGENT-RULES §3) and none were built; the report says so
@@ -1113,6 +1328,63 @@ would have `exit 0` and nothing to inspect.
 | T1's four suites re-run against Lane A's tree at `57b93fa`, immediately before committing (rule 12) | **exit 0 — 61/61 on `hmis_lane_b_scratch_1`** |
 | `pnpm verify` (full workspace) | **NOT RUN, and deliberately.** Lane A held ~20 files dirty and a full verify of its own in flight for the whole of this session's window; a run over that tree is unattributable to either lane (§2.137, and the 2026-08-29 lane-collision note). CI by full SHA is the honest instrument and there is no SHA to watch, because nothing was committed. |
 | CI | **GREEN, by full SHA.** Run `33308463171` on `a57e7e4` — `completed | success`, the tree carrying T1, T2's surface and this document. The earlier `2466b46` verdict was never obtained (F7); this one was, with one watcher at a 70-second interval. **And it refutes F8 below.** |
+
+### 9.5-T5 — T5's mechanical verification (2026-08-31)
+
+**Every count below was taken with
+`TEST_DATABASE_URL="postgres://hmis:hmis@localhost:5433/hmis_lane_b_scratch"`** (§2.137;
+`setupTestDb` appends `_<JEST_WORKER_ID>`). The RC-1 lane was live in this checkout throughout and
+held `modules/opd/*` and `modules/billing/*` dirty — see the note on the instrument below.
+
+**Fail-first was NOT taken in the ordinary form, and this is the disclosure.** T5's tests were
+written after its code, not before, so there is no red-then-green pair for the suites themselves.
+**The discriminating evidence is the mutant table**, which is the stronger instrument and is the one
+AGENT-RULES §3 actually asks a CRITICAL task for. Recorded against this session's interest, the way
+T2–T4's missing mutant files were.
+
+#### The mutants — every one the Assertion Book names, and all six DIED
+
+Each is a byte-copy of the shipped module beside it with ONE defect, run against a self-contained
+scratch spec carrying the shipped test's own assertion. All scratch was deleted before the commit.
+
+| # | mutant | the defect | verdict | expected vs received |
+|---|---|---|---|---|
+| A1 | `mut-a1.ts` (`checkin.ts`) | the sex check is dropped from `deriveGateSet` | **DIED** | expected `["identity_two_factor"]`, received `["identity_two_factor", "pregnancy_screen"]` — every male gets a pregnancy declaration |
+| A2 | `mut-a2.ts` (`gates.ts`) | `waiveGate`/`overrideGate` consult the active definition BEFORE refusing `form_f` by kind | **DIED** (both legs) | expected `code: "gate_not_overridable"`, received `code: "definition_not_active"` — the refusal now depends on a table the assertion has emptied |
+| A3 | `mut-a3.ts` | the reason check is gone from `overrideGate` | **DIED** | expected a rejection with `code: "reason_required"`, received a RESOLVED `{kind: "identity_two_factor", state: "overridden"}` — P1's "benefit>risk" is a click |
+| A4 | `mut-a4.ts` | the OPD window is used whatever the context and whatever the CKD flag | **DIED** | expected `"evidence_stale"`, received `undefined` — the call SUCCEEDED, so a 20-day-old creatinine passes gadolinium on a CKD patient |
+| A5 | `mut-a5.ts` | `prior_contrast_reaction` reads a prescription-shaped source instead of the patient master | **DIED** | expected `"gate_open"`, received `undefined` — the gate satisfied, so a registration-recorded contrast allergy is invisible |
+| A6 | `mut-a6.ts` | `evaluateReadiness` counts `satisfied` only | **DIED** | expected `{state: "ready", open: []}`, received `{state: "checked_in", open: ["contrast_consent"]}` — an overridden gate holds the study for ever |
+
+**A7 has no mutant and the plan says so**: *"no mutant of ours — the assertion pins that the gate
+rides `transition`'s CAS rather than a read-then-write."* **F21 is what happened when that assertion
+was first written**, and it is the finding this row produced instead of a mutant: the first draft
+raced two plain transactions, got one winner and one loser, and the loser's code was
+`gate_already_terminal` — the two had serialised and the CAS was never reached. The test now HOLDS
+each transaction open past the other's pre-read, which is the only construction that measures what
+A7 is about.
+
+#### The suites
+
+| run | result |
+|---|---|
+| the three new T5 suites | **3 suites / 76 tests, exit 0** (checkin 39.3 s, gates 90.6 s, concurrency 13.2 s) |
+| every radiology suite, so the shared-fixture change (F22) is proved against the four suites it reaches | **12 suites / 176 tests, exit 0** |
+| the census and parity suites a new controller could move — manifests, nav-parity, seed-roles, seed-staff, roles-catalog, me, radiology + pcpndt schema, worker-runtime, seed-cursors, orders parity, resources kinds | **12 suites / 126 tests, exit 0. Nothing moved** — all three permissions this task guards on were declared at T2, so no census had a number to change |
+| `pnpm typecheck` (whole `apps/core`) | **exit 0**, taken at 20:22 UTC over the tree as it then stood |
+| `pnpm lint` over `modules/radiology` and the shared fixture | **exit 0, no errors** |
+| **the full workspace verify** | **RUN AND RED, AND THE RED IS NOT THIS LANE'S.** `pnpm verify` failed at `tsc --noEmit` with three errors, all in `src/modules/patients/search.ts` — a file the RC-1 lane was editing in this shared checkout at that minute, and one this task does not touch. **No count from it is attributable to either lane** (§2.137, and the 2026-08-29 lane-collision note). This is the same call T1 made for the same reason, and the honest instrument is CI BY FULL SHA — see below |
+
+**No single test in the three new suites exceeds 3.3 s** (`--verbose`, on a box at load ~5). F17's
+class is checked for rather than hoped about: the slowest is A7's five-round race at 3 247 ms, 22% of
+the 15 s default budget, and the next is 2 621 ms. The suites are slow in TOTAL (`gates.test.ts` is
+90 s over 45 database-backed cases) because each rebuilds the fixture in `beforeEach`, which is the
+cost F22 doubled; that is a suite-duration cost and not a per-test budget risk.
+
+**One consequence of measuring rather than assuming**: seven `isContrastAllergen` cases were sitting
+inside the database `describe` and paying a full fixture rebuild each — eleven seconds to assert
+seven string comparisons. They were moved to a pure top-level `describe` (and widened to ten cases)
+once `--verbose` showed what they cost. §2.144's shape in miniature.
 
 ### 9.6 The independent close review — FRESH
 

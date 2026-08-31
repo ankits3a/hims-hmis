@@ -11,7 +11,7 @@ import { ORDERS_PLACE } from "../../src/kernel/orders/place";
 import { activateDefinition, approveDefinition, createDraft } from "../../src/kernel/workflow/definitions";
 import { createResource } from "../../src/kernel/resources/registry";
 import {
-  RADIOLOGY_RESOURCE_KINDS, handleOrderPlaced, imagingStudyDefinition, placeImagingOrder,
+  RADIOLOGY_RESOURCE_KINDS, RADIOLOGY_WORKFLOW_DEFINITIONS, handleOrderPlaced, placeImagingOrder,
 } from "../../src/modules/radiology";
 import { ensureRole, mkUser } from "./opd";
 import type { Db } from "../../src/kernel/db/client";
@@ -90,6 +90,8 @@ export async function seedActiveStudyTypes(
 export type RadiologyFixture = {
   doctor: Actor;
   radiographer: Actor;
+  /** 18a T5 — the override lane's only holder, and `prior_contrast_reaction`'s named decider. */
+  radiologist: Actor;
   patientId: string;
   visitNo: string;
   serviceDate: string;
@@ -154,20 +156,33 @@ export async function setupRadiologyFixture(
   registry.install({ key: "orders", title: "Orders", menu: [], permissions: [ORDERS_PLACE], subscriptions: [] });
   registry.install({ key: "radiology", title: "Rad", menu: [], permissions: [RAD_IMAGING_PLACE], subscriptions: [] });
   await syncPermissions(db, registry);
-  for (const role of ["doctor", "radiographer", "owner", "medical_superintendent"]) await ensureRole(db, role);
+  for (const role of ["doctor", "radiographer", "radiologist", "owner", "medical_superintendent"]) {
+    await ensureRole(db, role);
+  }
   await grantPermissionToRole(db, registry, "doctor", ORDERS_PLACE);
   await grantPermissionToRole(db, registry, "doctor", RAD_IMAGING_PLACE);
   const { actor: doctor } = await mkUser(db, "dr.mehra", ["doctor"]);
   const { actor: radiographer } = await mkUser(db, "rt.singh", ["radiographer"]);
+  const { actor: radiologist } = await mkUser(db, "dr.rao", ["radiologist"]);
   const { actor: owner } = await mkUser(db, "owner.one", ["owner"]);
   const { actor: ms } = await mkUser(db, "ms.iyer", ["medical_superintendent"]);
   const { actor: drafter } = await mkUser(db, "rad.drafter", ["owner"]);
 
   await seedSodPairs(db);
-  const draft = await createDraft(db, drafter, imagingStudyDefinition);
-  await approveDefinition(db, owner, { definitionId: draft.definitionId, roleKey: "owner", note: "fixture" });
-  await approveDefinition(db, ms, { definitionId: draft.definitionId, roleKey: "medical_superintendent", note: "fixture" });
-  await activateDefinition(db, owner, draft.definitionId);
+  /**
+   * 18a T5 — BOTH definitions, not just the study's. `openStudyGate` starts an `imaging_gate`
+   * instance per opened gate, and `startInstance` refuses `no_active_definition` — so a fixture
+   * that activated only `imaging_study` made every check-in fail for a reason that had nothing to
+   * do with the assertion. The governance sequence is still performed in full for each, for the
+   * reason the header gives: a fixture that inserted an `active` row would prove nothing about
+   * whether the go-live runbook is performable.
+   */
+  for (const definition of RADIOLOGY_WORKFLOW_DEFINITIONS) {
+    const draft = await createDraft(db, drafter, definition);
+    await approveDefinition(db, owner, { definitionId: draft.definitionId, roleKey: "owner", note: "fixture" });
+    await approveDefinition(db, ms, { definitionId: draft.definitionId, roleKey: "medical_superintendent", note: "fixture" });
+    await activateDefinition(db, owner, draft.definitionId);
+  }
 
   /** One machine per modality, each `available`, each carrying its `modality` attribute. */
   const devices: Record<string, string> = {};
@@ -181,7 +196,7 @@ export async function setupRadiologyFixture(
   }
 
   return {
-    doctor, radiographer, patientId, visitNo: "V2608310001",
+    doctor, radiographer, radiologist, patientId, visitNo: "V2608310001",
     serviceDate: opts.serviceDate, services, devices, decls: [radiologyDecl], unregister,
   };
 }

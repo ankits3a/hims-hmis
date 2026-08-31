@@ -52,6 +52,17 @@ export type { ScheduleInput, ScheduleResult } from "./schedule";
 export {
   PCPNDT_AGE_MAX_YEARS, PCPNDT_AGE_MIN_YEARS, ageInYearsOn, pcpndtApplicability,
 } from "./applicability";
+export { checkIn, deriveGateSet } from "./checkin";
+export type { CheckInResult, DerivedGateSet } from "./checkin";
+export {
+  CONTRAST_ALLERGEN_TERMS, DEFAULT_PREGNANCY_POLICY, IMAGING_TERMINAL_GATE_STATES,
+  LMP_REASSURING_DAYS, NEVER_OVERRIDABLE_KINDS, NEVER_WAIVABLE_KINDS,
+  RENAL_CREATININE_CEILING_UMOL_L, RENAL_VALIDITY_DAYS_ADMITTED, RENAL_VALIDITY_DAYS_CKD,
+  RENAL_VALIDITY_DAYS_OPD, WAIVABLE_KINDS, evaluateReadiness, gateState, isContrastAllergen,
+  openStudyGate, overrideGate, pregnancyPolicy, readiness, requireStudyGate, satisfyGate,
+  studyGates, studyState, waiveGate,
+} from "./gates";
+export type { GateRow, StudyGate, StudyRow } from "./gates";
 export type {
   PcpndtApplicability, PcpndtPatientFacts, PcpndtStudyTypeFacts,
 } from "./applicability";
