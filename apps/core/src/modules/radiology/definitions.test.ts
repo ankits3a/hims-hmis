@@ -7,8 +7,8 @@ import { approveRequest } from "../../kernel/approvals/decisions";
 import { seedSodPairs } from "../../kernel/auth/sod";
 import { imagingDefinitions } from "../../kernel/db/schema";
 import {
-  activeDefinition, activeDefinitionRow, draftDefinition, parseDefinitionBody, publishDefinition,
-  requestDefinitionPublish, studyTypesBodySchema,
+  activateSeededDefinition, activeDefinition, activeDefinitionRow, draftDefinition,
+  parseDefinitionBody, publishDefinition, requestDefinitionPublish, studyTypesBodySchema,
 } from "./definitions";
 import { registerRadiologyApprovalTypes } from "./approval-types";
 import { RadiologyError } from "./errors";
@@ -149,6 +149,65 @@ describe("imaging definitions (18a T4 / DD13)", () => {
     const rows = await db.select().from(imagingDefinitions);
     expect(rows.filter((r) => r.status === "active")).toHaveLength(1);
     expect((await activeDefinition(db, "study_types")).types.map((t) => t.code)).toEqual(["CT-HEAD"]);
+  });
+
+  /* ═════════════ THE SEEDED ACTIVATION (owner ruling, 2026-08-31) ═════════════ */
+
+  /**
+   * ═══ A SEEDED ACTIVATION STAYS DISTINGUISHABLE FROM A GOVERNED ONE, FOR EVER ═══
+   *
+   * The owner ruled that `seed:radiology` may publish its own first book so the department can be
+   * stood up without a second human. **`approval_id` NULL is what keeps that honest**: an inspector
+   * asking "who approved the gate set in force on this date" gets a truthful answer either way, and
+   * a row activated by the seed can never be mistaken for one an MS granted.
+   *
+   * This is the assertion that would fail if somebody later "tidied" the seed by minting a second
+   * system actor to rubber-stamp its own request — which is the form that destroys the audit answer
+   * while looking more correct.
+   */
+  it("a SEEDED activation leaves approval_id NULL, and a GOVERNED one records the approval", async () => {
+    const seeded = await withTx(db, (tx) =>
+      draftDefinition(tx, drafter, { kind: "study_types", body: TWO_TYPES }));
+    await activateSeededDefinition(db, drafter, seeded.definitionId);
+
+    const seededRow = (await activeDefinitionRow(db, "study_types"))!;
+    expect([seededRow.version, seededRow.approvalId]).toEqual([1, null]);
+    expect(seededRow.publishedBy).toBe(drafter.id);
+
+    /** A later version through the GOVERNED path carries its approval id — the contrast is the test. */
+    const v2 = await draftAndRequest("study_types", bodyWith(
+      studyTypeRow({ code: "CT-HEAD", service_id: "01SERVICECCCCCCCCCCCCCCCCC", modality: "ct", body_part: "head", ionising: true }),
+    ));
+    await approveRequest(db, ms, { approvalId: v2.approvalId, note: "ok" });
+    await publishDefinition(db, ms, { definitionId: v2.definitionId, approvalId: v2.approvalId });
+
+    const governedRow = (await activeDefinitionRow(db, "study_types"))!;
+    expect([governedRow.version, governedRow.approvalId]).toEqual([2, v2.approvalId]);
+  });
+
+  it("the seeded path still REFUSES a body that does not satisfy the schema", async () => {
+    const definitionId = newId();
+    await db.insert(imagingDefinitions).values({
+      id: definitionId, kind: "study_types", version: 1, status: "draft", draftedBy: drafter.id,
+      body: { types: [{ code: "BROKEN", service_id: SVC_A }] },
+    });
+    await expect(activateSeededDefinition(db, drafter, definitionId))
+      .rejects.toThrow(/definition is invalid/);
+  });
+
+  it("the seeded path supersedes the previous active version, keeping ONE active", async () => {
+    const first = await withTx(db, (tx) =>
+      draftDefinition(tx, drafter, { kind: "study_types", body: TWO_TYPES }));
+    await activateSeededDefinition(db, drafter, first.definitionId);
+    const second = await withTx(db, (tx) => draftDefinition(tx, drafter, {
+      kind: "study_types",
+      body: bodyWith(studyTypeRow({ code: "CT-HEAD", service_id: "01SERVICECCCCCCCCCCCCCCCCC", modality: "ct", body_part: "head", ionising: true })),
+    }));
+    const result = await activateSeededDefinition(db, drafter, second.definitionId);
+
+    expect(result.supersededVersion).toBe(1);
+    const rows = await db.select().from(imagingDefinitions);
+    expect(rows.filter((r) => r.status === "active")).toHaveLength(1);
   });
 
   /* ═══════════════════════ THE BODY'S OWN INVARIANTS ═══════════════════════ */

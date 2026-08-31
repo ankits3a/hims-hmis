@@ -35,7 +35,7 @@ export type {
   PlaceImagingItemInput, PlaceImagingOrderInput, PlaceImagingOrderResult,
 } from "./place";
 export {
-  IMAGING_DEFINITION_KINDS, activeDefinition, activeDefinitionRow, draftDefinition,
+  IMAGING_DEFINITION_KINDS, activateSeededDefinition, activeDefinition, activeDefinitionRow, draftDefinition,
   parseDefinitionBody, publishDefinition, requestDefinitionPublish,
 } from "./definitions";
 export type {

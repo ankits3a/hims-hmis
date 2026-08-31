@@ -5,8 +5,8 @@ import { createResource } from "../src/kernel/resources/registry";
 import { createService } from "../src/modules/tariff";
 import { resources, services } from "../src/kernel/db/schema";
 import {
-  IMAGING_MODALITIES, RADIOLOGY_RESOURCE_KINDS, STUDY_TYPE_SEEDS, draftDefinition,
-  registerRadiologyApprovalTypes, requestDefinitionPublish,
+  IMAGING_MODALITIES, RADIOLOGY_RESOURCE_KINDS, STUDY_TYPE_SEEDS, activateSeededDefinition,
+  draftDefinition, registerRadiologyApprovalTypes,
 } from "../src/modules/radiology";
 import type { Actor } from "@hmis/contracts";
 import type { StudyType } from "../src/modules/radiology";
@@ -18,15 +18,24 @@ import type { StudyType } from "../src/modules/radiology";
  * ═══ WHAT IT DOES, AND THE ONE THING IT DELIBERATELY DOES NOT ═══
  *
  * It creates the tariff services the twenty study types bind to, the five `device` resources the
- * scheduler books onto, and it DRAFTS the `study_types` definition with its publish approval already
- * filed.
+ * scheduler books onto, and it drafts AND ACTIVATES the `study_types` definition.
  *
- * **It does not PUBLISH.** Publishing is a Class-A governance act needing a granted
- * `imaging_definition_publish` approval from the medical superintendent, and a seed script that
- * granted its own approval would make the whole governed-definition design decorative. The runbook's
- * last step is a human: the MS opens the approvals queue and grants it. Until they do, the
- * department is inert — no order can be placed, because `activeDefinition` refuses — which is the
- * correct state for a hospital that has not yet said what its imaging department may do.
+ * ═══ IT SELF-PUBLISHES — OWNER RULING, 2026-08-31 ═══
+ *
+ * T4 first shipped this drafting and stopping, on the argument that a seed granting its own approval
+ * makes the governed-definition design decorative. **The owner ruled otherwise for the pilot**: a
+ * department that cannot be stood up without a second human standing by is held on the same
+ * second-administrator shortfall as Plan 17b, and that is too high a price for a seed step.
+ *
+ * The activation is honest rather than a rubber stamp. `activateSeededDefinition` re-parses the body
+ * (a bad book is still refused), supersedes any previous active version in the same transaction, and
+ * **leaves `approval_id` NULL** — so a seeded activation stays distinguishable from a governed one
+ * for ever. It does NOT mint a second system actor to approve itself, which is the form that would
+ * have destroyed the audit answer.
+ *
+ * **The governed path is untouched.** `radiology-definitions.controller.ts`'s publish route still
+ * requires a granted MS approval, and it is still the only way a HUMAN changes the book. Every
+ * version after this first one goes through it.
  *
  * ═══ PRICES ARE NOT INVENTED ═══
  *
@@ -86,8 +95,8 @@ async function ensureDevice(
 export async function seedRadiology(db: Db): Promise<{
   services: number;
   devicesCreated: number;
-  definitionId: string | null;
-  approvalId: string | null;
+  definitionId: string;
+  version: number;
 }> {
   /** The approval TYPE must exist before a publish can be requested against it. */
   await registerRadiologyApprovalTypes(db, SEEDER);
@@ -113,21 +122,15 @@ export async function seedRadiology(db: Db): Promise<{
     service_id: serviceIdByCode.get(service_code)!,
   }));
 
-  /**
-   * DRAFTED, NOT PUBLISHED — see the header. If a `study_types` draft is already pending, this
-   * re-run leaves it alone rather than stacking a second version behind the same approval queue.
-   */
-  const drafted = await withTx(db, async (tx) => {
-    const d = await draftDefinition(tx, SEEDER, { kind: "study_types", body: { types } });
-    const { approvalId } = await requestDefinitionPublish(tx, SEEDER, d.definitionId);
-    return { definitionId: d.definitionId, approvalId, version: d.version };
-  });
+  const drafted = await withTx(db, (tx) =>
+    draftDefinition(tx, SEEDER, { kind: "study_types", body: { types } }));
+  await activateSeededDefinition(db, SEEDER, drafted.definitionId);
 
   return {
     services: serviceIdByCode.size,
     devicesCreated,
     definitionId: drafted.definitionId,
-    approvalId: drafted.approvalId,
+    version: drafted.version,
   };
 }
 
@@ -137,12 +140,13 @@ async function main(): Promise<void> {
   console.log(
     `seed:radiology — ${String(result.services)} services ensured, `
     + `${String(result.devicesCreated)} device(s) created, `
-    + `study_types drafted as ${String(result.definitionId)}.`,
+    + `study_types v${String(result.version)} ACTIVE as ${result.definitionId}.`,
   );
   console.log(
-    "NOT PUBLISHED. The medical superintendent must GRANT approval "
-    + `${String(result.approvalId)} before any imaging order can be placed. `
-    + "That is the runbook's last step and it is deliberately a human's.",
+    "Activated by the seed (owner ruling 2026-08-31), so `approval_id` is NULL on that row — "
+    + "which is how a seeded activation stays distinguishable from a governed one. Every LATER "
+    + "version goes through the medical superintendent's approval, and the publish route is "
+    + "unchanged. Prices are NOT set: the tariff is the owner's data.",
   );
 }
 

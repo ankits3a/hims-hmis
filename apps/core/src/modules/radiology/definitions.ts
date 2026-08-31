@@ -266,6 +266,65 @@ export async function publishDefinition(
   });
 }
 
+/**
+ * ═══ OWNER RULING 2026-08-31 — THE SEED SELF-PUBLISHES, AND THE ROW SAYS SO ═══
+ *
+ * T4 shipped `seed:radiology` drafting and stopping, on the argument that a seed granting its own
+ * approval makes the governed-definition design decorative. **The owner ruled otherwise for now**:
+ * the pilot needs a department that works without a second human standing by, and the same
+ * second-administrator shortfall that holds Plan 17b would have held this too.
+ *
+ * This is the honest form of that ruling. It does NOT fabricate an approval:
+ *
+ *   · the body is re-parsed, exactly as `publishDefinition` does — a seeded book is still refused if
+ *     it does not satisfy the schema;
+ *   · the previous active version is superseded in the same transaction, so the one-active-per-kind
+ *     invariant holds;
+ *   · **`approval_id` is left NULL**, which is what makes a seeded activation distinguishable from a
+ *     governed one FOR EVER. `imaging_definitions_published_ck` requires `published_by` and
+ *     `published_at` and says nothing about `approval_id`, so a NULL there is representable and is
+ *     the provenance record: any row a reader finds active with no approval id was seeded, not
+ *     approved.
+ *
+ * An inspector asking "who approved the gate set in force on this date" gets a truthful answer
+ * either way — which is the property that would have been lost by minting a second system actor to
+ * rubber-stamp it. **The governed path is untouched and is still the only way a HUMAN publishes.**
+ */
+export async function activateSeededDefinition(
+  db: Db,
+  actor: Actor,
+  definitionId: string,
+): Promise<{ kind: ImagingDefinitionKind; version: number; supersededVersion: number | null }> {
+  return await db.transaction(async (tx) => {
+    const rows = await tx.select().from(imagingDefinitions).where(eq(imagingDefinitions.id, definitionId));
+    const draft = rows[0];
+    if (!draft) throw new RadiologyError("definition_not_active", `unknown definition ${definitionId}`);
+    if (draft.status !== "draft") {
+      throw new RadiologyError(
+        "definition_not_active",
+        `definition ${definitionId} is ${draft.status}, not a draft`,
+      );
+    }
+    parseDefinitionBody(draft.kind as ImagingDefinitionKind, draft.body);
+
+    const superseded = await tx
+      .update(imagingDefinitions)
+      .set({ status: "superseded" })
+      .where(and(eq(imagingDefinitions.kind, draft.kind), eq(imagingDefinitions.status, "active")))
+      .returning({ version: imagingDefinitions.version });
+
+    await tx.update(imagingDefinitions)
+      .set({ status: "active", publishedBy: actor.id, publishedAt: new Date(), approvalId: null })
+      .where(eq(imagingDefinitions.id, definitionId));
+
+    return {
+      kind: draft.kind as ImagingDefinitionKind,
+      version: draft.version,
+      supersededVersion: superseded[0]?.version ?? null,
+    };
+  });
+}
+
 /** The active ROW of a kind — `status = 'active'`, never `max(version)` (A5). */
 export async function activeDefinitionRow(
   exec: Db | Tx,

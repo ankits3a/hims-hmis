@@ -786,6 +786,28 @@ first draft had twenty-one — a second lateralised X-ray that duplicated the br
 exercises. **The seed list was corrected, not the assertion**, which is the direction that matters:
 the count is a plan commitment and the test is what holds this task to it.
 
+**OWNER RULING 2026-08-31 — `seed:radiology` SELF-PUBLISHES. The recommendation below was put to the
+owner and REVERSED.**
+
+T4 shipped the seed drafting and stopping, on the reasoning in the paragraphs that follow. The owner
+ruled that the pilot needs a department that can be stood up without a second human standing by —
+the same second-administrator shortfall that holds Plan 17b would otherwise have held this too, and
+that is too high a price for a seed step.
+
+**The ruling is implemented in its honest form, not as a rubber stamp.** `activateSeededDefinition`
+re-parses the body (a bad book is still refused), supersedes any previous active version in one
+transaction, and **leaves `approval_id` NULL**. That NULL is the whole safeguard: a seeded activation
+stays distinguishable from a governed one for ever, so an inspector asking *"who approved the gate
+set in force on this date"* gets a truthful answer either way. It deliberately does NOT mint a second
+system actor to approve its own request — the form that looks more correct and destroys the audit
+answer. `definitions.test.ts` pins the contrast between a seeded row and a governed one, so a later
+"tidy-up" into a rubber stamp fails a test.
+
+**The governed path is untouched**: the publish route still requires a granted MS approval and is
+still the only way a HUMAN changes the book. Every version after the seed's first goes through it.
+
+**The original reasoning, kept because the trade is real and may be revisited:**
+
 **A DECISION T4 MADE THAT THE PLAN LEAVES OPEN: `seed:radiology` DRAFTS AND DOES NOT PUBLISH.**
 
 The seed creates the twenty services, the five `device` resources and a `study_types` DRAFT with its
