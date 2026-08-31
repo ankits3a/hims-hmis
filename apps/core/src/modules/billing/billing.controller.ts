@@ -182,6 +182,11 @@ const receiptBlockSchema = z.object({
   panNumber: z.string().min(1).optional(),
   form60: z.boolean().optional(),
   note: z.string().max(1000).optional(),
+  // RC-1 T1. The counter has sent this since 07b T5 and this schema never declared it, so zod
+  // STRIPPED it — change handed back recorded as 0, the drawer short by exactly the change at
+  // close: the defect 0039 exists to prevent, reopened one layer up. Bare `z.number()` like every
+  // money field here; `assertBoundaryPaise` is the integer belt.
+  changeGivenPaise: z.number().optional(),
 });
 const issueInvoiceBody = z.object({
   draftId: z.string().min(1),

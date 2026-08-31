@@ -882,4 +882,48 @@ describe("billing e2e", () => {
       .set(...auth(cashier.token)).send(body).expect(201);
     expect(keyless.body.receiptId).not.toBe(first.body.receiptId);
   });
+
+  /*
+   * PLAN RC-1 T1 — THE CHANGE LANE OVER REAL HTTP.
+   *
+   * `change-given.test.ts` proves `issueInvoice` end to end and the counter screen sends
+   * `receipt.changeGivenPaise` — but nothing ever drove the field through the CONTROLLER's zod,
+   * and zod objects STRIP undeclared keys. Written RED-FIRST against the shipped
+   * `receiptBlockSchema`: the row read 0 where 2_000 was declared, and the over-declaration leg
+   * answered 201 where the service, had the field reached it, refuses 409. Exactly the
+   * drawer-vs-ledger defect 07b T5 closed, reopened one layer up.
+   */
+  it("RC-1 T1: changeGivenPaise crosses the wire — stored on the receipt row, over-declaration refused 409", async () => {
+    const patientId = await registerPatient("Chandni Bai", "9876543220");
+    const encounterId = await openVisit(patientId);
+    await openSession(cashier.token);
+
+    // Overpaid by 2,000 paise; the cashier declares the whole surplus handed back as change.
+    const issued = await http().post("/billing/invoices").set(...auth(cashier.token)).send({
+      draftId: "draft-change-http-1", patientId, encounterId,
+      lines: [{ lineId: "fee", serviceId: base.consultNewServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 52_000 }], changeGivenPaise: 2_000 },
+    }).expect(201);
+    expect(issued.body.unallocatedPaise).toBe(2_000);
+    const [row] = await db.select().from(receipts).where(eq(receipts.id, issued.body.receiptId as string));
+    expect(row?.changeGivenPaise).toBe(2_000);
+
+    // The guard leg: more change than the surplus is a 409 the cashier can read, never a silent
+    // acceptance — a stripped field passes this exact body straight through as 201.
+    const refused = await http().post("/billing/invoices").set(...auth(cashier.token)).send({
+      draftId: "draft-change-http-2", patientId,
+      lines: [{ lineId: "l1", serviceId: base.consultNewServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }], changeGivenPaise: 500 },
+    }).expect(409);
+    expect(refused.body.code).toBe("change_exceeds_surplus");
+
+    // A fractional declaration is refused by the assertPaise belt at the service boundary — the
+    // wire schema deliberately does not `.int()` money (the T7/T8 convention at the wire).
+    const fractional = await http().post("/billing/invoices").set(...auth(cashier.token)).send({
+      draftId: "draft-change-http-3", patientId,
+      lines: [{ lineId: "l1", serviceId: base.consultNewServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 52_000 }], changeGivenPaise: 10.5 },
+    }).expect(400);
+    expect(fractional.body.code).toBe("invalid_paise");
+  });
 });

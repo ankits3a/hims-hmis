@@ -95,7 +95,10 @@ export type WireIssueInvoiceBody = {
   patientId: string;
   encounterId?: string;
   lines: WireInvoiceLineInput[];
-  receipt?: { tenders: WireTender[]; panNumber?: string; form60?: boolean };
+  // RC-1 T1: `changeGivenPaise` is DECLARED so the type reaches the server's schema honestly — the
+  // counter had been adding it via an object spread, which skips excess-property checking, while
+  // the controller's zod silently stripped it.
+  receipt?: { tenders: WireTender[]; panNumber?: string; form60?: boolean; note?: string; changeGivenPaise?: number };
   credit?: { reason: string; approvalId?: string };
   discountApprovals?: Record<string, string>;
 };

@@ -344,7 +344,9 @@ async function resolveEncounter(
  * fractional discount ask is refused as `invalid_paise` rather than pricing something first and
  * failing somewhere deeper.
  */
-function assertBoundaryPaise(draft: { lines: InvoiceLineInput[]; receipt?: { tenders: TenderInput[] } }): void {
+function assertBoundaryPaise(
+  draft: { lines: InvoiceLineInput[]; receipt?: { tenders: TenderInput[]; changeGivenPaise?: number } },
+): void {
   for (const line of draft.lines) {
     const manual = line.manualDiscount;
     if (manual !== undefined && manual !== null) {
@@ -353,6 +355,9 @@ function assertBoundaryPaise(draft: { lines: InvoiceLineInput[]; receipt?: { ten
   }
   for (const tender of draft.receipt?.tenders ?? []) {
     assertPaise(tender.amountPaise, `${tender.mode} tender amount`);
+  }
+  if (draft.receipt?.changeGivenPaise !== undefined) {
+    assertPaise(draft.receipt.changeGivenPaise, "change given");
   }
 }
 
