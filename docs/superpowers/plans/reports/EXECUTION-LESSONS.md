@@ -1389,11 +1389,20 @@ independent worker pools — and a second session's queued run waits on the same
 at the worst moment. Every red produced this way passed isolated on a byte-identical tree (the
 2026-08-26 protocol's §4, measured again); web files "timing out at 5000ms" inside 92-second runs
 came back at 643–948 ms isolated — a hundredfold, from contention alone.
+**AMENDED the same night (the VD-1 lane's measurement, and it is the ROOT CAUSE): the slot rule is
+necessary and NOT sufficient, because `apps/core/jest.config.js` sets no `maxWorkers`.** Jest
+defaults to `nproc − 1` = 7 workers on this box, each ts-jest worker reaches 1.0–1.5 GB RSS, and
+7 × ~1.2 GB on a 15.6 GB host with ~8 GB resident OOMs with the box otherwise QUIET of jest —
+measured at 23:01: 13.9 GB used, 553 MB free, loadavg 80.84, a solo `tsc` killed alongside. **One
+lane alone, holding the slot, obeying this entry as first written, still dies without `-w 2`.**
+The durable fix is `maxWorkers: 2` in the shared jest config — an OWNER ruling (it slows CI and
+must not change under a running suite), surfaced, not applied unilaterally.
 **The mechanical form:** (a) before any broad run, `ps -eo pid,cmd | grep -E "jest|vitest"` and, if
 another lane owns the box, MESSAGE that session and take turns — the slot is negotiated, the OOM
 killer is not; (b) run the halves sequentially with the exit value read from each —
-`pnpm --filter @hmis/core exec jest -w 2 …` then `pnpm --filter @hmis/web exec vitest run` — and
-cite CI-by-full-SHA as the full-suite instrument when the box never quiets.
+`pnpm --filter @hmis/core exec jest -w 2 …` then `pnpm --filter @hmis/web exec vitest run` —
+**and the `-w 2` is load-bearing, not a preference, until the config carries the cap**; (c) cite
+CI-by-full-SHA as the full-suite instrument when the box never quiets.
 
 ## 3. Plan-authoring defects
 
