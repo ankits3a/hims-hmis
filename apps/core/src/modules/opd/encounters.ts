@@ -58,7 +58,7 @@ export type OpenVisitDeferredResult = {
 
 /** Db-first: resolves the patient and its merge chain through the patients module, then runs openVisitInTx on its own transaction. */
 export async function openVisit(db: Db, actor: Actor, input: OpenVisitInput & { join: "defer" }, now?: Date): Promise<OpenVisitDeferredResult>;
-export async function openVisit(db: Db, actor: Actor, input: Omit<OpenVisitInput, "join">, now?: Date): Promise<OpenVisitResult>;
+export async function openVisit(db: Db, actor: Actor, input: Omit<OpenVisitInput, "join"> & { join?: "queue" }, now?: Date): Promise<OpenVisitResult>;
 export async function openVisit(db: Db, actor: Actor, input: OpenVisitInput, now?: Date): Promise<OpenVisitResult | OpenVisitDeferredResult>;
 export async function openVisit(db: Db, actor: Actor, input: OpenVisitInput, now: Date = new Date()): Promise<OpenVisitResult | OpenVisitDeferredResult> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
@@ -75,7 +75,7 @@ export async function openVisit(db: Db, actor: Actor, input: OpenVisitInput, now
  * check-in and lab paths never pass `join` and keep the non-null `OpenVisitResult` they always had.
  */
 export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput & { chainIds: string[]; join: "defer" }, now: Date): Promise<OpenVisitDeferredResult>;
-export async function openVisitInTx(tx: Tx, actor: Actor, input: Omit<OpenVisitInput, "join"> & { chainIds: string[] }, now: Date): Promise<OpenVisitResult>;
+export async function openVisitInTx(tx: Tx, actor: Actor, input: Omit<OpenVisitInput, "join"> & { chainIds: string[]; join?: "queue" }, now: Date): Promise<OpenVisitResult>;
 export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput & { chainIds: string[] }, now: Date): Promise<OpenVisitResult | OpenVisitDeferredResult>;
 export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput & { chainIds: string[] }, now: Date): Promise<OpenVisitResult | OpenVisitDeferredResult> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");

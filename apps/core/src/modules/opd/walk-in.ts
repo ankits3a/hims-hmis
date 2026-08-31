@@ -90,7 +90,7 @@ export async function walkIn(
   db: Db, actor: Actor, input: WalkInInput & { join: "defer" }, idempotencyKey: string | undefined, now?: Date,
 ): Promise<WalkInDeferredResult>;
 export async function walkIn(
-  db: Db, actor: Actor, input: Omit<WalkInInput, "join">, idempotencyKey: string | undefined, now?: Date,
+  db: Db, actor: Actor, input: Omit<WalkInInput, "join"> & { join?: "queue" }, idempotencyKey: string | undefined, now?: Date,
 ): Promise<WalkInResult>;
 export async function walkIn(
   db: Db, actor: Actor, input: WalkInInput, idempotencyKey: string | undefined, now?: Date,

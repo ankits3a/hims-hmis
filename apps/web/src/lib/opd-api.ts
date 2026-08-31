@@ -311,6 +311,8 @@ export type WireWalkInBody = {
   referralSource?: string;
   referrerName?: string;
   acknowledgedDuplicates?: boolean;
+  /** RC-1 CLOSE M2 — bill-first defers the queue join; a caller that sends "defer" reads WireWalkInDeferredResult. */
+  join?: "queue" | "defer";
 };
 
 export type WireWalkInResult = WireOpenVisitResult & { patientId: string; registered: boolean };

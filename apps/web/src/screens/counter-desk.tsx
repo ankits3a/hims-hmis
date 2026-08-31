@@ -166,7 +166,16 @@ export function CounterDesk(): React.ReactElement {
         patientId: opened.patientId,
         encounterId: opened.encounter.id,
         lines: quote.draft.lines.map((l) => ({ lineId: l.lineId, serviceId: l.serviceId, qty: l.qty })),
-        receipt: { tenders, ...(surplusPaise > 0 ? { changeGivenPaise: changeGivenPaise ?? surplusPaise } : {}) },
+        // RC-1 CLOSE (pass-2 finding 4): change is declared only when CASH was tendered, and the
+        // default is capped at the cash side — the server's M4 ceiling is min(surplus, cash
+        // tendered), and defaulting to the whole surplus hard-failed every mixed tender where
+        // cash < surplus. A card-side surplus stays a banked advance (the refund ladder's lane).
+        receipt: {
+          tenders,
+          ...(surplusPaise > 0 && cashTenderedPaise > 0
+            ? { changeGivenPaise: changeGivenPaise ?? Math.min(surplusPaise, cashTenderedPaise) }
+            : {}),
+        },
       }, idemKey));
       setPhase("done");
     } catch (e) {
@@ -178,6 +187,7 @@ export function CounterDesk(): React.ReactElement {
   const tenderedPaise = tenders.reduce((n, t) => n + t.amountPaise, 0);
   const surplusPaise = Math.max(0, tenderedPaise - payablePaise);
   const hasCash = tenders.some((t) => t.mode === "cash");
+  const cashTenderedPaise = tenders.reduce((n, t) => n + (t.mode === "cash" ? t.amountPaise : 0), 0);
 
   /** DD2's three exits, named. `null` until the visit is open. */
   const exit: "free" | "settled" | "credit" | null =
@@ -339,7 +349,7 @@ export function CounterDesk(): React.ReactElement {
                   <MoneyInput
                     id="change-given"
                     label={t("counter.changeGiven")}
-                    value={changeGivenPaise ?? surplusPaise}
+                    value={changeGivenPaise ?? Math.min(surplusPaise, cashTenderedPaise)}
                     onChange={setChangeGivenPaise}
                   />
                   <p className="mt-1 text-xs text-neutral-600">{t("counter.changeHint")}</p>
