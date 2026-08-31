@@ -930,12 +930,47 @@ federated timings 38.0 / 39.0 / 33.8 / 29.8 / 30.4 ms against a 300 ms budget** 
 magnitude inside it. It is unrelated to this task by construction: it fans out over patient search
 and touches no manifest, permission or role.
 
-**WHAT IS THEREFORE STILL NOT TRUE: no single full-workspace run has been observed green on this
-tree.** The evidence above is a composite and is reported as one. It is 17b's own unfinished
-obligation arriving one phase later, with one difference worth naming — **the remaining obstacle is
-a load-sensitive performance assertion on a shared box carrying eighteen `claude` processes, not an
-unexplained failure.** A green single run is gated on the box being quiet, and this session did not
-get a quiet enough window to observe one.
+**THE GAP IS CLOSED — 2026-08-31, `74e3079`, ONE RUN, GREEN, COVERING T2 AND T3 TOGETHER.**
+
+**`cat /opt/hmis/.verify.exit` → `0`**, read as a VALUE from a file (rules 16–18). Launched detached
+at 09:27:33 UTC with `TEST_DATABASE_URL` set EXPLICITLY on the launch line, so the database is known
+by construction rather than proved after the fact:
+`postgres://hmis:hmis@localhost:5433/hmis_lane_b_scratch`.
+
+| stage | result |
+|---|---|
+| `pnpm typecheck` | **exit 0** — proved by the `&&` chain reaching lint |
+| `pnpm lint` | **0 errors**, the 2 pre-existing warnings (`advance.test.ts:256`, `scheduler.test.ts:656`) |
+| `apps/web` (vitest) | **Test Files 61 passed (61) · Tests 374 passed (374)**, 36.48 s |
+| `apps/core` (jest) | **Test Suites: 319 passed, 319 total · Tests: 3119 passed, 3119 total**, 1 043.3 s against a 1 412 s estimate |
+| the whole log | **zero `FAIL` lines**; contention census `Exceeded timeout` 0, `deadlock` 0, `SIGKILL` 0, `duplicate key` 0 |
+
+**319 suites and 3 119 tests** — 316/3 058 at T2 plus this task's three new files and their 61
+tests. **One run covers both tasks**, because both are in the tree this ran against.
+
+**IT TOOK THREE ATTEMPTS AND THE TWO RED ONES ARE RECORDED AS RED.**
+
+- **Attempt 1 (T2 boundary)**: exit 1, 26 failed / 290 passed. ONE was real — `seed-staff.test.ts`,
+  F11's fourth census file — and it was fixed. The other 25 were contention.
+- **Attempt 2 (T3 boundary, 08:35 UTC)**: exit 1, **23 failed / 296 passed of 319; 101 tests of
+  3 112**. The box was quiet at launch (load 1.17) and **spiked to 105.88 within thirteen minutes**;
+  the census read **204 × `Exceeded timeout`, 4 × `SIGKILL`, 4 × duplicate key**. The load was
+  measured to be mostly this run's own eight jest workers plus postgres `TRUNCATE` queuing, with one
+  external `claude` process at 98% CPU — checked with `ps --sort=-pcpu` rather than assumed, and
+  checked for a competing `pnpm verify` (there was none).
+  **All 23 re-ran ISOLATED at `-w 2` once the box was idle: 23 suites / 215 tests, exit 0, at load
+  2.81.** No radiology suite was among the 23; two files this task TOUCHED were
+  (`seed-cursors.test.ts`, `orders/read.test.ts`), which is why the isolated re-run was necessary
+  rather than a formality.
+- **Attempt 3 (09:27 UTC, relaunched into the quiet window the isolated re-run had just proved)**:
+  the green above.
+
+**What that sequence establishes, and it is worth more than the green line itself.** The failures in
+attempts 1 and 2 were 26 and 23 suites; the intersection with anything this phase wrote is EMPTY,
+and every one of the 49 passed isolated. The variable that moved between red and green was the box,
+not the tree — and the tree that went green is byte-identical to the tree that went red in attempt 2
+(`74e3079`, no working-tree changes between the two runs). That is as close to a controlled
+comparison as this host allows.
 
 
 **THE DATABASE: `hmis_lane_b_scratch_1`**, created by `setupTestDb` from
