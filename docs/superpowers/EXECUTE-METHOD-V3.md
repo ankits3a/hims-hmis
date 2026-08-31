@@ -437,6 +437,16 @@ now rules because neither is a matter of care:
    the evidence could not cover the fixes, on observations that were all true. One clause prevents
    it. Without it, `exit 0` is a claim about a database nobody can look at.
 
+9. **THE FULL VERIFY IS A SLOT, NOT A COMMAND, WHENEVER ANOTHER LANE SHARES THE BOX — added
+   2026-08-31 (RC-1 close, ledger §2.151).** `pnpm verify` runs core jest and web vitest
+   CONCURRENTLY (`pnpm -r test`), two worker pools on one host; with a second lane's run queued
+   behind the same load gate, the OOM killer serialized what the sessions did not — five killed
+   workers across two lanes in one evening, every resulting red false. So: `ps` for other lanes'
+   jest/vitest FIRST; if a lane owns the box, MESSAGE that session and take turns; run core and
+   web SEQUENTIALLY with each exit value read from its own file; and when the box never quiets,
+   CI-by-full-SHA is the sanctioned full-suite instrument (protocol §4.4) with the scoped local
+   batches named in the commit.
+
 And one that binds the session's own turns: **arm exactly ONE blocking waiter on the exit file and
 then stop asking.** Every hand-poll of a long run costs a full context re-read to learn a single
 byte (§2.130). If there is nothing to do that cannot touch the frozen tree, that is rule 4 telling

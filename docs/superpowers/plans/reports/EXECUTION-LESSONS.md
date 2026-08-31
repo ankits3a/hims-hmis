@@ -1353,6 +1353,48 @@ time), and the committed tree then differs from the tested worktree, so **CI-by-
 load-bearing evidence for such a commit and the local run is corroboration.**
 
 
+### 2.149 — A SPIKE ASKING "WHO BREAKS ON THIS STATE" GREPS THE WRITERS, NOT JUST THE READERS
+
+RC-1's S2 asked whether an encounter with no queue entry breaks anything, answered it from the
+READ models (`listQueue`, boards, worklists — all tolerant), and declared the deferred visit safe.
+The two WRITES that key off the same `status=registered` predicate — `recordVitals` and
+`abandonVisit` — both deref'd `entries[0]!` and both 500'd, which made the new state UNCLOSABLE:
+the only exit was minting a token for a patient who had left. 55 green tests, a died mutant and a
+clean typecheck sat on top of it; pass 1 of the close review found it (C1) in its first section.
+**The mechanical form:** before declaring a new state reachable, enumerate EVERY consumer of the
+predicate that gates it — `grep -rn "entries\[0\]!\|status === \"registered\"" <module>` at
+directory scope — and sort the hits into readers and writers; the spike is not answered until the
+writers column is empty or each writer has a stated behaviour for the new state.
+
+### 2.150 — A FIX THAT ARMS A DORMANT GUARD OWES THAT GUARD A RE-READ, IN THE SAME TASK
+
+RC-1 T1 undid a zod strip: `receipt.changeGivenPaise` had been silently discarded at the controller
+since 07b, so the two guards behind it had NEVER RUN with a non-zero value. T1 declared the field
+and shipped; the close review then found (M4) that the guard it had just armed compared change
+against the WHOLE-receipt surplus with only a cash-EXISTS check — ₹1 of cash beside a card
+overpayment authorised handing the card's surplus out of the drawer as change. The guard was not
+wrong when written; it was wrong when ARMED, and the arming commit never re-read it. Pass 2 then
+found the twin one layer up: the shipped screen defaulted the field to the whole surplus, so the
+CORRECT server ceiling would have hard-failed every mixed tender from the screen's own default.
+**The mechanical form:** when a change makes a dead field live (un-stripping, un-flagging,
+declaring), `grep -rn "<field>" apps/` and re-read every consumer AS IF IT WERE NEW CODE in the
+same task — the guard, and whatever fills the field.
+
+### 2.151 — ON A MULTI-LANE BOX, THE FULL VERIFY IS A SLOT TO SCHEDULE, NOT A COMMAND TO RUN
+
+Five OOM kills in one evening, two lanes, one 15 GB box: dmesg names jest workers of BOTH lanes
+(20:49, 20:52, 21:12, 21:15, 21:16 — RSS 0.9–1.4 GB each). The mechanism is structural, not bad
+luck: `pnpm verify`'s `pnpm -r test` runs core's jest and web's vitest CONCURRENTLY — two
+independent worker pools — and a second session's queued run waits on the same load gate and joins
+at the worst moment. Every red produced this way passed isolated on a byte-identical tree (the
+2026-08-26 protocol's §4, measured again); web files "timing out at 5000ms" inside 92-second runs
+came back at 643–948 ms isolated — a hundredfold, from contention alone.
+**The mechanical form:** (a) before any broad run, `ps -eo pid,cmd | grep -E "jest|vitest"` and, if
+another lane owns the box, MESSAGE that session and take turns — the slot is negotiated, the OOM
+killer is not; (b) run the halves sequentially with the exit value read from each —
+`pnpm --filter @hmis/core exec jest -w 2 …` then `pnpm --filter @hmis/web exec vitest run` — and
+cite CI-by-full-SHA as the full-suite instrument when the box never quiets.
+
 ## 3. Plan-authoring defects
 
 Fix these when writing the next plan, not when executing it.
