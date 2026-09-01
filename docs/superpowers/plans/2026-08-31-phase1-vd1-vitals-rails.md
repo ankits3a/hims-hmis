@@ -469,9 +469,38 @@ STATUS rather than a service return value.**
 #### Evidence
 
 Typecheck and lint clean tree-wide. Every new suite run ALONE before joining anything:
-`prestage` 5/5, `bench` 6/6, `opd.e2e` 14/14 (six new legs), `escalation` 8/8. **A full core+web
-pass is OWED at T4's boundary (§9.9 rule 6 — a permission move) and is queued behind a quiet box;
-it is named here rather than claimed.**
+`prestage` 5/5, `bench` 6/6, `opd.e2e` 14/14 (six new legs), `escalation` 8/8.
+
+**The full core+web pass T4 owed (§9.9 rule 6 — a permission move) is DISCHARGED: core 330/335
+suites and 3 327 tests passed; web 61 files / 374 tests, exit 0; typecheck 0, lint 0.**
+
+The five red suites are all `src/modules/radiology/` and belong to the 18a lane — measured rather
+than asserted: `for c in <VD-1's five commits>; do git show --stat $c | grep -c radiology; done`
+returns **0 0 0 0 0**, and that module is fully committed. The error is `RadiologyError:
+duplicate_recent` against order sequence **0001** — the first order in that database, after a
+`truncateAll` — so it is neither leftover state nor cross-suite leakage. **Disclosed about this
+lane's own evidence:** the run's tree was `15194fe` plus the RC-2 lane's UNCOMMITTED T5. That lane
+then exonerated it — radiology's entire billing surface is `withIdempotency` and `BillingError`,
+with no `charge-rules`, no `previewInvoice`, no `feeQuote` — and reproduced the identical five on
+its own tree. Two lanes, two trees, the same five.
+
+#### The census that was ten and then twelve — this phase's most expensive lesson
+
+`10b37d0` declared one permission, moved two census pins, and **left `main` red.** This lane had
+said the full pass was owed and landed anyway, to unblock a peer holding the same four census
+files. The trade was real; the accounting was not. **Naming a debt in a commit message does not
+make the tree green** — the peer found six more stale pins by running the suite this lane had
+deferred, fixing those surfaced a seventh, and the RC-2 lane later found two more. **Twelve
+censuses for one permission**, seven of them in a file this lane had already edited twice. The
+property that predicts findability is not search scope but whether a census has a NAME: identifiers
+can be grepped, **bare integers cannot**. Ledgered at §2.155 with the full table.
+
+And a second failure on the same commit, worse for being self-inflicted against a rule this lane
+had written ninety minutes earlier: `a50e68a`'s pathspec commit **swept the RC-2 lane's uncommitted
+edits** to that file (`git show a50e68a:… | grep -c RC2_ENROL` → 4), and this lane then cleared it
+to the peer using the STAT — the exact check §2.152's amendment says cannot see it. **A rule you
+wrote is not a rule you follow; what was needed was the command in the sequence, not the reasoning
+in the ledger.**
 
 One contention artefact, diagnosed not re-run: `opd.e2e`'s pre-existing route-ordering test timed
 out at 15 000 ms with five foreign workers on the box, and passes **isolated in 2 023 ms** — 13% of

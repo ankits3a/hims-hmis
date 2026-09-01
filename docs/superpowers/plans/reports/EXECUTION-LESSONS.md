@@ -1450,6 +1450,30 @@ wrote** — a 4× insertion count is the tree telling you whose work you just to
 > same path, one of you LANDS FIRST and the other rebases** — that is cheaper than reasoning about
 > which half of a hunk belongs to whom, and it is the only form that is safe rather than careful.
 
+> **AND THE AMENDMENT CAME TRUE NINETY MINUTES AFTER IT WAS WRITTEN, IN THE COMMIT OF THE LANE THAT
+> WROTE IT.** `a50e68a` (VD-1) committed `test/seed-roles.test.ts` with a pathspec while the RC-2
+> lane held uncommitted edits in that same file. Measured after the fact:
+> `git show a50e68a:apps/core/test/seed-roles.test.ts | grep -c RC2_ENROL` → **4**. Five added lines
+> of the other lane's work — `RC2_ENROL_PAIRS`, its prose constant, and `membership: 8` — landed
+> inside a VD-1 commit.
+>
+> **The author of the amendment then cleared the commit using the exact check the amendment says
+> cannot see this.** The all-clear sent to the peer was *"nothing of yours is in `a50e68a`: two
+> files"* — a STAT reading, and the amendment above says in its own words that the stat cannot see
+> it, because it is one file and the line count is two lanes' work summed. The prescribed check —
+> `git status --porcelain <that path>` **immediately before** committing — had been run early in the
+> task and not again at commit time, while the peer was actively editing that file.
+>
+> **The consequence was worse than misattribution: main went red in a SPLIT state.** The swept
+> census expected `membership.instrument.enrol` while the manifest and grants declaring it were
+> still uncommitted on the other side, so anyone pulling between `a50e68a` and `15194fe` got a tree
+> that could not pass.
+>
+> **The general form, and it is the one worth carrying: a rule you wrote is not a rule you follow.**
+> Writing the amendment produced no habit at all ninety minutes later; what was needed was the
+> command in the sequence, not the reasoning in the ledger. §4 of the method — *checks are scripts,
+> or they are not method* — is the standing answer, and this is its specimen.
+
 ### 2.153 — A SUITE THAT FAILS TO *RUN* CONTRIBUTES NO TEST COUNTS, SO THE GREEN NUMBER STAYS GREEN
 
 VD-1 T3's evidence run returned:
@@ -1601,6 +1625,34 @@ same blind spot, one permission each.
 > And the test NAMES carry the numbers too (*"the reachability census closes: 147 declared = 132
 > held + 15"*, *"two hundred and seventy-four grants"*): move the pin and leave the name, and the
 > suite passes while describing something false.
+>
+> **AMENDED AGAIN, SAME DAY: TWELVE, AND THE LAST TWO CHANGE WHAT THE FAILURE MODE IS.** The RC-2
+> lane, landing the same kind of change an hour later, found two more that neither lane had counted:
+>
+> | | census | shape |
+> |---|---|---|
+> | 11 | `first.roles.map(r => r.granted.length)` | a bare-integer ARRAY |
+> | 12 | `second.roles.map(r => r.already.length)` (the idempotence leg) | the same array, again |
+>
+> Every permission moves BOTH, and nothing names either.
+>
+> **And the failure mode is not "you miss it" — it is "you fix the WRONG ONE and believe you are
+> done".** `membership_admin` is index 14 in that array, not 12; `staff_auditor` also holds two
+> grants, so the first `2` is not the one that moves. The lane changed the wrong entry, the suite
+> stayed red, and the diff read `+2 / -2` **with no indication which role it meant.**
+>
+> So the sharper statement of this entry's rule: a bare-integer census gives you **no token to grep
+> AND no name to check your edit against.** The corollary that costs an extra cycle every time it is
+> missed: **when a bare-integer census fails, DERIVE THE INDEX FROM THE MODEL — never pattern-match
+> the value**, because the value is shared with entries that did not move.
+>
+> **One more instance of "seven of ten live in a file you already edited", from the other side:**
+> two entries of these arrays, and `fromReadme`'s base 126 → 128, were the VD-1 lane's own
+> README-table deltas, which `a50e68a` moved at the `opdTable` pins and not in these DERIVED places.
+> The RC-2 lane corrected them and said so in its commit rather than absorbing them — a non-table
+> permission cannot move a README-table count, so there was no honest way to present them as its
+> own. **Attribution survives even when the fix is trivial; that is what keeps the record readable
+> a year later.**
 
 > **And the error message, recorded because it costs an hour cold:** that parser fails with *"could
 > not identify all four permission tables by their first role column … this parser is stale"*. That
