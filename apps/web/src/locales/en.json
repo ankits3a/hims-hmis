@@ -2007,6 +2007,16 @@
       "freeReviewWindow": "Review visit — free until {{until}} ({{doctor}})",
       "freeNoReason": "No charge for this visit",
       "theDoctor": "the doctor"
+    },
+    "dossier": {
+      "title": "Patient in hand",
+      "nobody": "Nobody at the counter yet"
+    },
+    "exit": {
+      "collect": "Collect ₹{{amount}}",
+      "free": "Free follow-up — nothing to collect",
+      "settled": "Paid in full",
+      "credit": "Credit extended — billed to account"
     }
   }
 }

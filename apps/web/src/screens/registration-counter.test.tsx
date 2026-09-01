@@ -1,7 +1,10 @@
 import { screen } from "@testing-library/react";
-import { QuotePanel } from "./registration-counter";
-import { renderWithProviders } from "../test-utils";
-import type { WireAdjustmentCandidate, WireFeeQuote } from "../lib/billing-api";
+import { Dossier, QuotePanel, counterExit } from "./registration-counter";
+import { renderWithProviders, stubFetch } from "../test-utils";
+import { setToken } from "../lib/api";
+import type {
+  WireAdjustmentCandidate, WireFeeQuote, WireIssueInvoiceResult,
+} from "../lib/billing-api";
 
 /**
  * RC-3 T1 — THE QUOTE PANEL: BENEFITS, THE CONTEST, THE PAYER, AND THE ₹0 REASON.
@@ -121,5 +124,90 @@ describe("RC-3 T1 — the quote panel renders the contest, not a total", () => {
   it("a self-pay bill shows no panel note", () => {
     renderWithProviders(<QuotePanel quote={quoteWith()} />);
     expect(screen.queryByTestId("payer-note")).toBeNull();
+  });
+});
+
+/**
+ * RC-3 T2 — THE DOSSIER AND DD2's THREE LAWFUL EXITS.
+ *
+ * The exits are lifted from `counter-desk.tsx` unchanged, so what needs proving is not the
+ * arithmetic but that the LIFT is faithful and that the free branch cannot fall through to
+ * collection — the mutant this task's assertion book names.
+ */
+/**
+ * The provider seeds itself from `sessionStorage["hmis.inHand"]` (`patient-in-hand.tsx:47`), so a
+ * test can put a patient in hand by writing the key the shipped code reads — no change to the
+ * shared `renderWithProviders`, and it exercises the real hydration path rather than a stub.
+ */
+function takeInHand(patientId: string, encounterId: string | null): void {
+  sessionStorage.setItem("hmis.inHand", JSON.stringify({ patientId, encounterId }));
+}
+
+describe("RC-3 T2 — the exits, and the guard that keeps tenders off a ₹0 bill", () => {
+  /**
+   * A SIGNED-IN ACTOR IS REQUIRED, and discovering that was worth the detour.
+   *
+   * `PatientInHandProvider` releases the patient on a RESOLVED sign-out — `ready && actor === null`
+   * — because "the next person to sign in on a shared counter machine inherits the last one's
+   * patient inside the same tab". With no token the provider resolves to no actor and wipes the
+   * seeded value, so the dossier correctly showed "nobody". That is the shipped shift-change guard
+   * working, not a test-harness quirk, and seeding through the real `sessionStorage` key is what
+   * exercised it rather than stubbing past it.
+   */
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+    stubFetch({
+      "GET /api/auth/me": {
+        actor: { type: "user", id: "u-rc3" },
+        permissions: { hospital: [], scoped: { department: {}, floor: {} } },
+      },
+    });
+  });
+  const issuedSettled = { creditExtended: false } as WireIssueInvoiceResult;
+  const issuedCredit = { creditExtended: true } as WireIssueInvoiceResult;
+
+  it("names all three exits exactly as the shipped screen derives them", () => {
+    expect(counterExit(quoteWith({ free: true, draft: null }), null, true)).toBe("free");
+    expect(counterExit(quoteWith(), issuedSettled, true)).toBe("settled");
+    expect(counterExit(quoteWith(), issuedCredit, true)).toBe("credit");
+  });
+
+  it("names NO exit before a visit is open, or before an invoice on a priced visit", () => {
+    expect(counterExit(quoteWith(), null, false)).toBeNull();   // no visit yet
+    expect(counterExit(quoteWith(), null, true)).toBeNull();    // priced, unpaid — not an exit
+    // …but a FREE visit is an exit the moment it is open: there is no invoice coming.
+    expect(counterExit(quoteWith({ free: true, draft: null }), null, true)).toBe("free");
+  });
+
+  /**
+   * THE MUTANT: a collection guard that checks only `issued === null`. A free revisit carries
+   * `draft: null`, so such a guard renders a tender panel over a null draft — tender buttons on a
+   * ₹0 bill, and a clerk asking a patient for money the system says is not owed.
+   */
+  it("MUTANT — a guard without the free/draft terms would render collection on a ₹0 bill", () => {
+    const free = quoteWith({ free: true, draft: null, feeServiceId: null });
+
+    // What the mutant's condition would evaluate to on this exact input:
+    expect(null === null).toBe(true);                    // `issued === null` alone: renders
+    expect(free.free === false && free.draft !== null).toBe(false); // the shipped guard: refuses
+
+      takeInHand("P1", "E1");
+    renderWithProviders(<Dossier quote={free} issued={null} />);
+    expect(screen.queryByTestId("collect")).toBeNull();   // THE KILL
+    expect(screen.getByTestId("exit-free")).toBeTruthy();
+  });
+
+  it("a priced, unpaid visit DOES render collection — a guard that refuses everything is not a guard", () => {
+    takeInHand("P1", "E1");
+    renderWithProviders(<Dossier quote={quoteWith()} issued={null} />);
+    expect(screen.getByTestId("collect").textContent).toContain("400");
+    expect(screen.queryByTestId("exit-free")).toBeNull();
+  });
+
+  it("with nobody in hand it says so, and renders no quote at all", () => {
+    renderWithProviders(<Dossier quote={quoteWith()} issued={null} />);
+    expect(screen.getByTestId("dossier-empty")).toBeTruthy();
+    expect(screen.queryByTestId("quote-panel")).toBeNull();
   });
 });

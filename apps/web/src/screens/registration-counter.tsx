@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fetchFeeQuote } from "../lib/billing-api";
-import type { WireAdjustmentCandidate, WireFeeQuote, WirePricedLine } from "../lib/billing-api";
+import type {
+  WireAdjustmentCandidate, WireFeeQuote, WireIssueInvoiceResult, WirePricedLine,
+} from "../lib/billing-api";
+import { usePatientInHand } from "../lib/patient-in-hand";
 
 /**
  * RC-3 — DESK ONE, THE REGISTRATION COUNTER SEAT.
@@ -122,4 +125,79 @@ export function useQuote(encounterId: string | null): {
   }
 
   return { quote, reprice, error };
+}
+
+/**
+ * RC-3 T2 / DD2 — THE THREE LAWFUL EXITS, LIFTED VERBATIM FROM `counter-desk.tsx`.
+ *
+ * The shipped screen's own header states the rule and this seat inherits it unchanged rather than
+ * paraphrasing it:
+ *
+ *   > "Owner ruling R-2 is that nobody passes the counter unbilled, and the system has exactly three
+ *   > ways to satisfy that: a settled invoice, a credit-extended invoice with a reason, or a FREE
+ *   > REVISIT with no invoice at all … All three are correct and they look nothing alike to the
+ *   > patient, so the screen says which one happened rather than leaving the clerk to infer it from
+ *   > an empty total."
+ *
+ * The derivation is copied rather than re-derived on purpose (D1): it is a proven money path, and
+ * the point of building the seat beside the old screen instead of on top of it is that a reviewer
+ * can see this half is unchanged.
+ */
+export function counterExit(
+  quote: WireFeeQuote | null,
+  issued: WireIssueInvoiceResult | null,
+  visitOpen: boolean,
+): "free" | "settled" | "credit" | null {
+  if (!visitOpen) return null;
+  if (quote?.free === true) return "free";
+  if (issued === null) return null;
+  return issued.creditExtended ? "credit" : "settled";
+}
+
+/**
+ * T2 — THE DOSSIER. A RENDERING of `usePatientInHand`, never a second store (D2).
+ *
+ * `patient-in-hand.tsx` already carries `{ patientId, encounterId }` across route changes and was
+ * built because "four screens each mounted their own PatientPicker with its own useState". The
+ * design's accreting left column is that value drawn, plus per-encounter server reads (the quote,
+ * the token) which stay server-owned because they are not session state.
+ */
+export function Dossier({
+  quote, issued,
+}: { quote: WireFeeQuote | null; issued: WireIssueInvoiceResult | null }): React.ReactElement {
+  const { t } = useTranslation();
+  const { inHand } = usePatientInHand();
+  const exit = counterExit(quote, issued, inHand?.encounterId != null);
+
+  return (
+    <aside aria-label={t("registrationCounter.dossier.title")} data-testid="dossier">
+      {inHand === null ? (
+        <p data-testid="dossier-empty">{t("registrationCounter.dossier.nobody")}</p>
+      ) : (
+        <>
+          <p data-testid="dossier-patient">{inHand.patientId}</p>
+          {inHand.encounterId !== null && <p data-testid="dossier-encounter">{inHand.encounterId}</p>}
+
+          {quote !== null && <QuotePanel quote={quote} />}
+
+          {/*
+            THE TENDER GUARD, and it is the one thing in this component that must not be simplified.
+            `counter-desk.tsx` gates collection on `quote.free === false && issued === null &&
+            quote.draft !== null`. A free revisit has `draft: null`, so a guard that checked only
+            `issued === null` would render a tender panel over a null draft — tender buttons on a ₹0
+            bill, which is the mutant this task's assertion book names.
+          */}
+          {quote?.free === false && issued === null && quote.draft !== null && (
+            <div data-testid="collect">
+              <p>{t("registrationCounter.exit.collect", { amount: quote.draft.totals.netPayablePaise / 100 })}</p>
+            </div>
+          )}
+
+          {exit !== null && (
+            <p data-testid={`exit-${exit}`}>{t(`registrationCounter.exit.${exit}`)}</p>
+          )}
+        </>
+      )}
+    </aside>
+  );
 }
