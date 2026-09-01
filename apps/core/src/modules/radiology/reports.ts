@@ -3,6 +3,7 @@ import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { enqueueNotification } from "../../kernel/notify/enqueue";
 import { advanceOrderItem } from "../../kernel/orders/advance";
+import { secondFactorFresh } from "../../kernel/auth/totp";
 import { transition } from "../../kernel/workflow/instances";
 import {
   imagingCriticalFindings, imagingReports, imagingStudies,
@@ -47,7 +48,21 @@ import type { OrderKindDecl } from "../../kernel/orders/kinds";
  *   · **the laterality** (A4) — against the ORDER ITEM's, on types where a side exists at all.
  */
 
-/** §11.19-D-27's window. A signature needs a second factor no older than this. */
+/**
+ * §11.19-D-27's window, as a FALLBACK only.
+ *
+ * ═══ THE COMPARISON IS THE KERNEL'S, AND §6.8 SAYS SO ═══
+ *
+ * The contract promises downstream plans that *"the second factor is the kernel's
+ * `secondFactorFresh`"*, and the first draft of this file re-implemented the arithmetic instead —
+ * two owners of one rule, with this module's constant free to drift from
+ * `cfg.secondFactorWindowMinutes`, which is what `AuthGuard` compares against on the very same
+ * request. A signature could then be refused by the route and accepted by the function, or the
+ * reverse. Caught by T9's §6 confirmation pass.
+ *
+ * The controller passes the CONFIG's window; this constant is what an internal caller with no
+ * config gets, and it matches the shipped default.
+ */
 export const SECOND_FACTOR_WINDOW_MINUTES = 15;
 
 export type ReportRow = typeof imagingReports.$inferSelect;
@@ -165,6 +180,8 @@ export async function signReport(
     /** The draft or prelim being signed. Its content is copied forward into the signed version. */
     reportId: string;
     secondFactorAt: Date | null;
+    /** `cfg.secondFactorWindowMinutes`, supplied by the controller. Falls back to the constant. */
+    windowMinutes?: number;
     criticalCategory?: ImagingCriticalCategory | null;
     now?: Date;
   },
@@ -173,13 +190,15 @@ export async function signReport(
   const study = await loadStudy(tx, input.studyId);
 
   /** A1 — §11.19-D-27. Checked FIRST: nothing about the content matters if the signer is not fresh. */
-  if (input.secondFactorAt === null
-    || now.getTime() - input.secondFactorAt.getTime() > SECOND_FACTOR_WINDOW_MINUTES * 60_000) {
+  const windowMinutes = input.windowMinutes ?? SECOND_FACTOR_WINDOW_MINUTES;
+  const factorAt = input.secondFactorAt;
+  /** The null check is separate so the type narrows; `secondFactorFresh` owns the ARITHMETIC. */
+  if (factorAt === null || !secondFactorFresh({ secondFactorAt: factorAt }, windowMinutes, now)) {
     throw new RadiologyError(
       "second_factor_required",
-      `signing a report needs a second factor no older than ${String(SECOND_FACTOR_WINDOW_MINUTES)} `
+      `signing a report needs a second factor no older than ${String(windowMinutes)} `
       + "minutes — a signature made on a session that authenticated this morning is a claim about the morning",
-      { studyId: input.studyId, windowMinutes: SECOND_FACTOR_WINDOW_MINUTES },
+      { studyId: input.studyId, windowMinutes },
     );
   }
 
@@ -204,7 +223,7 @@ export async function signReport(
         templateKey: source.templateKey, body: source.body as Record<string, unknown>,
         impression: source.impression, laterality: source.laterality,
       },
-      { actorId: actor.id, signedAt: now, secondFactorAt: input.secondFactorAt },
+      { actorId: actor.id, signedAt: now, secondFactorAt: factorAt },
       (input.criticalCategory ?? source.criticalCategory) as ImagingCriticalCategory | null,
     );
   } catch (e) {
@@ -288,7 +307,7 @@ export async function amendReport(
   tx: Tx,
   actor: Actor,
   input: {
-    studyId: string; secondFactorAt: Date | null; reason: string;
+    studyId: string; secondFactorAt: Date | null; reason: string; windowMinutes?: number;
     criticalCategory?: ImagingCriticalCategory | null; now?: Date;
   } & ReportContent,
 ): Promise<{ reportId: string; version: number; supersededId: string }> {
@@ -298,8 +317,10 @@ export async function amendReport(
   if (input.reason.trim() === "") {
     throw new RadiologyError("reason_required", "an amendment carries a reason — what changed and why");
   }
-  if (input.secondFactorAt === null
-    || now.getTime() - input.secondFactorAt.getTime() > SECOND_FACTOR_WINDOW_MINUTES * 60_000) {
+  const amendFactorAt = input.secondFactorAt;
+  if (amendFactorAt === null || !secondFactorFresh(
+    { secondFactorAt: amendFactorAt }, input.windowMinutes ?? SECOND_FACTOR_WINDOW_MINUTES, now,
+  )) {
     throw new RadiologyError(
       "second_factor_required",
       "amending a report needs a fresh second factor, exactly as signing one does",
@@ -326,7 +347,7 @@ export async function amendReport(
   const created = await insertVersion(
     tx, study, "signed", input,
     {
-      actorId: actor.id, signedAt: now, secondFactorAt: input.secondFactorAt,
+      actorId: actor.id, signedAt: now, secondFactorAt: amendFactorAt,
       amendmentReason: input.reason.trim(), supersedesId: previous.id,
     },
     input.criticalCategory ?? null,

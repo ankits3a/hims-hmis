@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Inject, Param, Post, Query, Req } from "@nestjs/common";
 import { z } from "zod";
-import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
+import { CONFIG, DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
@@ -11,6 +11,7 @@ import { reportView, studyView, worklist } from "./read";
 import { idSchema, parsed, toHttp } from "./radiology-http";
 import type { AuthedRequest } from "../../kernel/auth/decorators";
 import type { Actor } from "@hmis/contracts";
+import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
 
@@ -59,6 +60,12 @@ export class RadiologyReportsController {
   constructor(
     @Inject(DB) private readonly db: Db,
     @Inject(MODULE_REGISTRY) private readonly registry: ModuleRegistry,
+    /**
+     * §6.8 — the SAME window `AuthGuard` compared against on this very request. Passing it through
+     * is what keeps the route and the function from disagreeing about one signature (see
+     * `reports.ts`'s `SECOND_FACTOR_WINDOW_MINUTES`).
+     */
+    @Inject(CONFIG) private readonly cfg: AppConfig,
   ) {}
 
   private decls() { return collectOrderKinds(this.registry); }
@@ -137,6 +144,7 @@ export class RadiologyReportsController {
       return await withTx(this.db, (tx) => signReport(tx, actor, {
         studyId, reportId: input.reportId,
         secondFactorAt: req.hmisSession?.secondFactorAt ?? null,
+        windowMinutes: this.cfg.secondFactorWindowMinutes,
         criticalCategory: input.criticalCategory ?? null,
       }));
     } catch (e) { toHttp(e); }
@@ -157,6 +165,7 @@ export class RadiologyReportsController {
         impression: input.impression ?? null, laterality: input.laterality ?? null,
         criticalCategory: input.criticalCategory ?? null,
         secondFactorAt: req.hmisSession?.secondFactorAt ?? null,
+        windowMinutes: this.cfg.secondFactorWindowMinutes,
       }));
     } catch (e) { toHttp(e); }
   }

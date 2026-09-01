@@ -1448,6 +1448,60 @@ screen, an amend form, a critical-acknowledgement screen, and a report template 
 and the API functions exist for all of them; the screens do not. §1.3's line applies — a follow-on
 slice owns the console's depth, and 18a's claim is the department's rules rather than its polish.
 
+
+---
+
+## ═══ §6 CONFIRMED — AND THE CONFIRMATION FOUND TWO DEVIATIONS IN THIS PHASE'S OWN CODE ═══
+
+T9's Files list asks for *"§6 confirmed"*, and reading the CONTRACT line by line against what
+shipped is what that step is for. Seven of the nine clauses hold as written. **Two did not, and both
+were code defects rather than documentation drift — neither had a failing test, because every test
+that touched them asserted a state where the correct and incorrect behaviours agree.**
+
+**F39 — §6.2: THE ENVELOPE ITEM WAS COMPLETED AT ACQUISITION, NOT AT PUBLISH.** *(fixed)*
+
+The contract says *"the envelope item is `in_progress` from acquisition start and `completed` at
+publish"*, and `workflow-def.ts` says the same in DD4's own words: *"`published` is where
+`'completed'` does (a signed report is visible in the app)."* `recordAcquired` advanced the item to
+`completed`.
+
+**What that costs is visible from the ordering doctor's chair**: the order reads DONE the moment the
+images exist, while the study sits unread in the radiologist's queue. A ward asking *"has the CT come
+back"* gets yes.
+
+**No test caught it, and the reason is worth more than the fix.** T7's A7 asserted `completed` after
+`recordAcquired` — it had encoded the deviation as the expectation — and every other assertion
+checked the item AFTER a publish, where the correct and incorrect behaviours are indistinguishable.
+The assertion is corrected rather than the contract.
+
+**F40 — §6.8: THE SECOND-FACTOR COMPARISON WAS RE-IMPLEMENTED INSTEAD OF USING THE KERNEL'S.**
+*(fixed)*
+
+The contract promises downstream plans that *"the second factor is the kernel's
+`secondFactorFresh`"*. `reports.ts` did the arithmetic itself against a module-local
+`SECOND_FACTOR_WINDOW_MINUTES = 15`, while `AuthGuard` — on the SAME request — compared against
+`cfg.secondFactorWindowMinutes`.
+
+**Two owners of one rule, and they were free to disagree.** A deployment that set the config window
+to 5 would have a route that refuses a signature and a function that accepts it; set to 30, the
+reverse. Neither is visible in a test, because the test fixture and the shipped default both say 15.
+
+Fixed by calling the kernel's `secondFactorFresh` for the arithmetic and having the controller pass
+`cfg.secondFactorWindowMinutes`, so the route and the function compare the same number. The module
+constant survives as the fallback for an internal caller with no config, and its header now says so.
+
+**The seven that hold**, checked rather than assumed: §6.1 (the order kind, the `X` accession, the
+consumer, add-on views), §6.3 (`form_f` refused by kind in code, with no lane on any plane), §6.4
+(`device` declared once, statuses honoured and not written), §6.5 (`pcpndt` its own manifest,
+`study_id` text, serials gap-free per machine per year, the real name, the PHI surface), §6.6 (the
+five dose columns on the study, the device on the event, no register written here), §6.7 (the
+invoice link, `authorised_by`, the bill-decision queue, the three fields on the acquired event),
+§6.9 (nothing on the not-built list was built).
+
+**The lesson this step earned: a CONTRACT is only confirmed by reading it against the code, one
+clause at a time.** Both defects sat under a green suite of 343 tests and thirty dead mutants, and
+both were found by prose comparison in under ten minutes.
+
 ### 9.4 The Assertion Book, corrected by execution
 
 **T1 is ROUTINE, so no mutants are owed** (AGENT-RULES §3) and none were built; the report says so

@@ -339,7 +339,19 @@ export async function recordAcquired(
   }
 
   await transition(tx, study.workflowInstanceId, "acquired", actor);
-  await advanceOrderItem(tx, actor, decls, study.orderItemId, "completed", {});
+  /**
+   * ═══ THE ENVELOPE ITEM IS *NOT* COMPLETED HERE — §6.2 / DD4, AND THE FIRST DRAFT GOT IT WRONG ═══
+   *
+   * `workflow-def.ts` states the pairing: *"`in_acquisition` is where `advanceOrderItem(…
+   * 'in_progress')` fires (the patient is on the table), `published` is where `'completed'` does (a
+   * signed report is visible in the app)"*, and §6.2's CONTRACT repeats it for every downstream
+   * plan. This function completed the item at ACQUISITION, which closes the doctor's order the
+   * moment the images exist and before anybody has read them — an order that reads DONE while the
+   * study sits unreported in the radiologist's queue.
+   *
+   * Caught by T9's §6 confirmation pass rather than by any test, because every test that asserted
+   * `completed` did so AFTER a publish, where both behaviours agree. `publishReport` owns it.
+   */
 
   /** A7 — the machine goes back on the diary. Skipping this is the `0036`-class trap m4 exists for. */
   await releaseResource(tx, actor, RADIOLOGY_RESOURCE_KINDS, study.deviceResourceId!, { at: now });

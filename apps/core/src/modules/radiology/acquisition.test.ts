@@ -344,9 +344,17 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
 
     const [device] = await db.select().from(resources).where(eq(resources.id, fx.devices.usg!));
     expect([device!.status, device!.occupantRef]).toEqual(["available", null]);
-    /** …and the envelope item is completed, which is DD4's projection of a finished scan. */
+    /**
+     * ═══ AND THE ENVELOPE ITEM IS STILL `in_progress`, WHICH IS DD4 AND §6.2 ═══
+     *
+     * `workflow-def.ts`: *"`in_acquisition` is where `advanceOrderItem('in_progress')` fires…
+     * `published` is where `'completed'` does (a signed report is visible in the app)."* This
+     * assertion read `completed` in its first draft — encoding a deviation in which the doctor's
+     * order closed the moment the images existed and before anybody had read them. Caught by T9's
+     * §6 confirmation pass; the assertion is corrected rather than the contract.
+     */
     const [item] = await db.select().from(orderItems).where(eq(orderItems.id, study.itemId));
-    expect(item!.status).toBe("completed");
+    expect(item!.status).toBe("in_progress");
   });
 
   it("aborting an acquisition releases the machine and puts the study back on `ready`", async () => {
@@ -390,7 +398,7 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
     await acquired(study.studyId, { imageSource: "no_pacs_images" });
 
     const [item] = await db.select().from(orderItems).where(eq(orderItems.id, study.itemId));
-    expect(item!.status).toBe("completed");
+    expect(item!.status).toBe("in_progress"); // completed at PUBLISH, not here — DD4 / §6.2
     const [device] = await db.select().from(resources).where(eq(resources.id, fx.devices.usg!));
     expect(device!.status).toBe("available");
   });
