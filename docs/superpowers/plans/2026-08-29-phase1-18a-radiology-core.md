@@ -2071,10 +2071,16 @@ confidential, with the PHI row to match.
 
 ## ═══ §9.6 — THE INDEPENDENT CLOSE REVIEW, PASS 1 (2026-09-01, session hmis-d9) ═══
 
-**RUN. THE VERDICT IS THAT THIS PHASE IS NOT CLOSE-READY.** Pass 1 returned **thirteen CRITICAL and
-twenty MAJOR findings over a tree whose suite is green.** They are recorded below as F45–F89 with
-their owners. **§9.6.2 (the second pass, over the remediation diff) cannot run until a remediation
-exists**, and §9.7's actuals wait on both.
+**RUN. THE VERDICT WAS THAT THIS PHASE WAS NOT CLOSE-READY.** Pass 1 returned **thirteen CRITICAL
+and twenty MAJOR findings over a tree whose suite was green.** They are recorded below as F45–F89
+with their owners.
+
+> **STATUS AFTER REMEDIATION (2026-09-01): every CRITICAL and every MAJOR is taken.** `4ffe5b9`
+> closed pass 1's set; **§9.6.2 then found fifteen of those sixteen fixes INCOMPLETE**, and
+> `3c46420` closed that set too. **F50 alone is reported and NOT taken** — its fix reaches into
+> `modules/ot/bill.ts`, outside this phase's files, so it is a plan defect for the OT lane with
+> evidence rather than a change taken quietly. Two go-live items also stand, and both need a human
+> rather than a commit: the `pregnancy_policy` seed and the real §19 PCPNDT registration.
 
 ### How the pass was run
 
@@ -2399,16 +2405,127 @@ different tree, only by re-running at a different clock.** Four axes were varied
 
 ### 9.6.2 The SECOND close review — over the remediation diff only, FRESH
 
-**NOT RUN, and now BLOCKED rather than merely owed.** Pass 1 ran on 2026-09-01 and returned
-thirteen CRITICAL and twenty MAJOR findings (§9.6, F45–F89); **no remediation has been written**, so
-there is no diff for this pass to review. Per v3 §9.10 it must be briefed at the FIXES — the one
-remediation commit, the findings list with what each fix CLAIMS to do, and a verdict per fix of
-CORRECT / INCOMPLETE / WRONG — never at the phase, which would re-derive pass 1 at pass 1's cost.
+**RUN, 2026-09-01, and it is the most useful thing this close produced.** Briefed at the FIXES per
+v3 §9.10 — one remediation commit (`4ffe5b9`), the findings list with what each fix CLAIMS to do,
+and a required verdict per fix of CORRECT / INCOMPLETE / WRONG. Read-only, no tests, because a full
+pass was in flight on the shared checkout.
+
+**The result: one CORRECT, fifteen INCOMPLETE, zero WRONG.**
+
+That distribution is the finding. **Not one fix failed to close the defect it named.** Every one of
+the fifteen closed its own defect and left the SAME DIMENSION open one path over — which is exactly
+what §9.10 predicts and what Plan 22c-A measured at 3-of-7. At 18a it was 15-of-16, and the reason
+is visible now that the two passes sit side by side: **pass 1 found defects, so pass 1's fixes were
+written against defects. A dimension is not a defect, and a fix aimed at an instance closes the
+instance.**
+
+| finding | verdict | what the fix closed, and what it left |
+|---|---|---|
+| **F69** | INCOMPLETE | `signReport` raised the critical; **`amendReport` did not** — and "missed on the first read" is what an amendment IS. The Critical Chaser had nothing to chase on the one path where a critical is actually discovered. *Pass 2 ranked this first and it was right to.* |
+| **F59** | INCOMPLETE | The gate RECORDS the side now — and was still **overridable**, and `overrideGate` never enters `computeSatisfaction`, so an override left `laterality = 'na'`, the screen sent `'na'`, and `assertSignable` accepted it. **A lateralised report signing with no side at all is worse than either earlier behaviour.** |
+| **F45** | INCOMPLETE | `reportView` is gated on `radiology.reports.read`, which DD16 grants to the seeded **`doctor`** role — so the fix's own comment (*"readable by the department that produced it"*) was wrong about its own reader, and the reader with no status filter was serving **unchecked drafts** to every doctor in the hospital. |
+| **F53** | INCOMPLETE | `abortAcquisition` wrote `acquisitionStartedAt: null` — the operand F53 had just adopted. **Abort then cancel**, the clinically natural route for F53's own contrast-reaction scenario, raised no bill decision. |
+| **F58** | INCOMPLETE | The resolver returned `null` for a study with no device, and `assertSubjectMatches` fails OPEN on `null`. An unscheduled study got **neither** the patient check **nor** the device check — F58's original harm, unchanged. |
+| **F52** | INCOMPLETE | The acquisition date was closed; `orders.serviceDate` still decided the Act's age band and was validated as a SHAPE only. Back-date it sixteen years and a 24-year-old is six, outside the band, exempt — **no register entry at all.** |
+| **F54** | INCOMPLETE | The uniqueness ran one way: nothing stopped **two studies** linking **one** line. |
+| **F55** | INCOMPLETE | The interval is right; `autoSlotWalkIn` now hard-failed instead of trying the next free machine — **a regression introduced by the fix** — and no test could distinguish the new SQL from the old index. |
+| **F63** | INCOMPLETE | `0051` added one more explicit refusal to a branch that still ends in a bare `RETURN NEW`, so `person_id` — Part H's performing doctor — stayed free during the completion. |
+| **F66** | INCOMPLETE | The tier is computed from **live, user-editable** `sex`/`dob`; clause 4 is defeated by a one-field edit. Plus `Date.now()` inside a function whose callers all carry `input.now` — **F28's own pattern, reintroduced by a fix**. |
+| **F70** | INCOMPLETE | The amendment publishes and **tells nobody**: `notifyIfDue` was skipped, so the patient told "your report is ready" for v1 never hears that it changed. |
+| **F76** | INCOMPLETE | `acknowledgedByClinicianId` was a free string — `"x"` closed the loop. **F64, in the same commit, added exactly that check for a chaperone**; the argument was not carried across. |
+| **F79** | INCOMPLETE | The fix's own comment named four fields and covered three: the **gate waiver and override reasons** were left. |
+| **F51** | **CORRECT** | All three `in_acquisition` exits release; `ready` never holds the device. Two fragilities named, neither a defect today. |
+| F60, F71, F72, F68, F49, F57, F73, F78 | closed | verified by pass 2 as stated, with F60 carrying F52's inherited hole. |
+
+### What pass 2 found that pass 1 had not, and could not
+
+**Three comments that had come to LIE**, each written by the fix beside it: `cancelStudy`'s docstring
+still naming `acquired_at`; `reportView`'s F45 note claiming a reader it does not have;
+`duration_min`'s "snapshotted at creation" when the only writers are the two scheduling functions.
+**One dead select** (`consumers.ts` still reading `orderItems.restricted` after F60 stopped using it)
+— in the same commit that deleted the analogous dead join from `read.ts`. **One test whose comment
+claimed coverage it did not provide**: an F76 comment sitting over an F69 assertion, so the
+self-acknowledgement refusal had no test at all while appearing to have one.
+
+**And three shipped controls with no test that could see them**: F55's interval overlap (fourteen
+scheduling tests, none booking two overlapping non-identical instants), F63's trigger refusal (a
+criminal-statute separation of duties shipping unproven), and F66's tier split (`lockout.test.ts`
+calls the pure function with the default tier, so every existing assertion is identical before and
+after). All three now have tests that fail against the pre-fix code.
+
+### The remediation of the remediation — `3c46420`
+
+All fifteen taken. The two worth reading:
+
+- **F52's second answer replaced its first.** Bounding `serviceDate` against the clock was the
+  obvious fix and it was wrong: it couples the day of the SCAN to the day of the ORDER, which a real
+  desk separates (a pre-booked slot, E13's downtime backfill), and it broke fixtures that space
+  placements in fictional time for reasons that have nothing to do with the Act. **The rule is now
+  evaluated on the day of the scan AND on today, and applies if either says so** — which removes the
+  INCENTIVE rather than policing the input, covers the forward-dating direction the bound had not
+  considered, and leaves an honest backfill untouched because an honest backfill agrees with itself.
+- **F63 shipped as `0052`, not as an edit to `0051`.** `0051` was committed an hour earlier and peer
+  lanes' test databases had applied it. A migration that has run does not run again, so amending the
+  file in place would have left every database that saw the first version silently diverged from
+  every database created after — the class AGENT-RULES §6 exists to prevent, invisible to `tsc` and
+  to every suite.
+
+### Two things this pass cost, both self-inflicted and both worth the record
+
+1. **A full workspace pass was invalidated by its own author.** The verify was launched and then
+   remediation continued in the same checkout, so later suites compiled files earlier suites had
+   not. The run is unattributable and was discarded. **The handoff names this gotcha and it happened
+   anyway** — because the edits felt small and the run felt like background. A verify is not
+   background; it is a measurement of a tree, and the tree has to hold still.
+2. **A `.replace()` matched the wrong occurrence** and moved an assertion out of the abort test into
+   an unrelated one, clobbering it. The suite caught it in one run. The general form: **a textual
+   edit keyed on a string that appears more than once is a coin toss with no error message**, and
+   the defence is to key on something unique or to count the matches first.
+
 
 ### 9.7 Actuals, recorded only after §9.6 exists (v3 §9.4)
 
-**STILL NOT RECORDED — and the reason has CHANGED. §9.6 now exists; §9.6.2 does not, and cannot
-until a remediation is written.** v3 §9.4's rule is that a LIGHT phase's saving is not a saving
+**BOTH PASSES HAVE RUN AND BOTH REMEDIATIONS HAVE LANDED.** §9.6 (`c795fe1`), the first remediation
+(`4ffe5b9`), §9.6.2, and the second remediation (`3c46420`).
+
+### What is still OPEN, named rather than implied
+
+1. **F50 — day-care and payer-branch imaging is billed by nobody and flagged by nobody.** REPORTED,
+   NOT TAKEN: `acquisition.ts` suppresses `acquired_unbilled` for those two authorisations on the
+   strength of a composer that does not exist — `grep` for `imagingStudies|orderItems` in
+   `modules/ot/bill.ts` returns nothing. **The fix belongs to the OT lane**, so this is a plan defect
+   with evidence rather than a change taken quietly across a boundary. §6.9's not-built list does not
+   name day-care imaging billing, which is what makes it a defect and not a scope decision.
+2. **F60's residue — on the KERNEL placement path the order item's `restricted` stays `false`.**
+   `form_f_required` is now computed there (so the statutory register is protected on every path),
+   but `order_items.restricted` is the KERNEL's column, written at placement, and a radiology
+   consumer writing it would be this module reaching into another's table. So DD11's ward hold-out
+   is absent exactly on the path Plan 26 will use. **Reported for the same reason as F50.**
+3. **The two go-live items, unchanged, and both need a human rather than a commit**: no
+   `pregnancy_policy` has been published (every hospital runs `DEFAULT_PREGNANCY_POLICY`, correct but
+   undecided), and no real §19 PCPNDT registration has been entered. The module refuses every
+   applicable scan until one exists, which is the correct posture and a SECOND-HUMAN blocker.
+4. **E3's other half — `order_items.laterality` does not exist.** F59 made the console record the
+   side the patient states, which catches "the report names a different side from the one confirmed
+   at the machine". It cannot catch "the left knee was ORDERED and the right was imaged", because
+   the order carries no side. That is a kernel column and this phase may not add one (§8's freeze).
+
+### The cost, and the honest shape of it
+
+**The stop-loss's review term was 463,509.** Pass 1 spent roughly 500k across three fresh reviewers
+plus the session that verified every finding before recording it; pass 2 spent ~200k. **The review
+term is overspent, and it bought thirteen CRITICALs and twenty MAJORs that 3,315 passing tests and
+thirty dead mutants had not.** v3 §9.8 prices the consequence in advance — *"a phase whose review
+returns a CRITICAL should expect its close to cost as much again as its tasks did"* — and this one
+returned thirteen, so the close cost more than the tasks did rather than as much.
+
+**The saving this LIGHT phase claimed is not a saving.** v3 §9.4's rule is that it does not become
+one until the reviewer has run; the reviewer ran, and the answer is that the phase was nine tasks of
+code and one task of close away from being wrong in production. That is not an argument against the
+LIGHT lane — it is an argument that the reviewer is the term that pays, which is what §9.10 already
+says and what this phase has now measured twice in one evening.
+
+**Superseded text below.** v3 §9.4's rule is that a LIGHT phase's saving is not a saving
 until its reviewer has run. Its reviewer has now run, and the answer it returned is that **this
 phase is not close-ready**: thirteen CRITICAL and twenty MAJOR findings over a tree measured at
 3 499/3 500 core, 432 web and 21 contracts, with a zero contention census.
