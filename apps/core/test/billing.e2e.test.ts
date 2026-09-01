@@ -200,6 +200,52 @@ describe("billing e2e", () => {
   const eventNames = async (): Promise<string[]> =>
     (await db.select({ name: events.name }).from(events)).map((r) => r.name);
 
+  /**
+   * ═══ RC-3 CLOSE REVIEW, F6/M3 — THE CAP ALIGNMENT HAD NO ASSERTION AT ANY LEVEL ═══
+   *
+   * The `DECIDED` clause in RC-3 §3 says the quote/invoice cap mismatch is "fixed in T1 because the
+   * seat is what makes it reachable", and T1 did change the parser from a silent
+   * `.slice(0,10)`/`filter(len<=64)` to a hard 400. **Nothing anywhere in the repository sent this
+   * route an eleventh coupon or an over-long code — neither the old behaviour nor the new one was
+   * pinned.** T3's evidence batch of "30 suites / 260 tests" passed identically with or without the
+   * edit. A future simplification back to `.slice(0, 10)` would silently reopen exactly the
+   * divergence RC-2's review NEW-4 raised, and no test would notice.
+   *
+   * The divergence matters because the two ends must AGREE: a quote that drops a code the invoice
+   * refuses tells the clerk a benefit applied that the bill will never carry, and a quote that
+   * refuses what the invoice accepts stalls the counter on a keystroke.
+   */
+  it("F6 — the quote refuses exactly what the invoice refuses: >64 chars and an 11th code, coupons AND referral", async () => {
+    const patientId = await registerPatient("Cap Alignment Patient", "9876500099");
+    const encounterId = await openVisit(patientId);
+    const url = `/billing/visits/${encounterId}/fee-quote`;
+    const tooLong = "C".repeat(65);
+
+    // ── the quote's side ──
+    await http().get(`${url}?coupon=${tooLong}`).set(...auth(cashier.token)).expect(400);
+    await http().get(`${url}?referral=${tooLong}`).set(...auth(cashier.token)).expect(400);
+    const eleven = Array.from({ length: 11 }, (_, i) => `coupon=CODE${i}`).join("&");
+    await http().get(`${url}?${eleven}`).set(...auth(cashier.token)).expect(400);
+
+    // ── and the invoice's side, so this is an AGREEMENT and not two independent facts ──
+    const body = {
+      draftId: "draft-cap-1", patientId, encounterId,
+      lines: [{ lineId: "fee", serviceId: base.consultNewServiceId, qty: 1 }],
+    };
+    await http().post("/billing/invoices").set(...auth(cashier.token))
+      .send({ ...body, couponCodes: [tooLong] }).expect(400);
+    await http().post("/billing/invoices").set(...auth(cashier.token))
+      .send({ ...body, attributionCode: tooLong }).expect(400);
+
+    // ── what must STILL pass, or the alignment is just a broken route ──
+    // Ten codes is the cap, not eleven; a 64-character code is legal; blanks are DROPPED rather
+    // than refused, which is the stall-prevention the parser was written for in the first place.
+    const ten = Array.from({ length: 10 }, (_, i) => `coupon=CODE${i}`).join("&");
+    await http().get(`${url}?${ten}`).set(...auth(cashier.token)).expect(200);
+    await http().get(`${url}?coupon=${"C".repeat(64)}`).set(...auth(cashier.token)).expect(200);
+    await http().get(`${url}?coupon=&referral=`).set(...auth(cashier.token)).expect(200);
+  });
+
   it("the counter flow: fee quote → invoice with receipt → settled, with the printed document", async () => {
     const patientId = await registerPatient("Asha Devi", "9876543210");
     const encounterId = await openVisit(patientId);

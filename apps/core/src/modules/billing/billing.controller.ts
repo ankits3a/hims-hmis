@@ -59,7 +59,23 @@ const feeQuoteReferralQuery = z
   .union([z.string(), z.array(z.string())])
   .optional()
   .transform((v) => (v === undefined ? [] : Array.isArray(v) ? v : [v]))
-  .transform((all) => all.map((c) => c.trim()).filter((c) => c.length > 0 && c.length <= 64))
+  .transform((all) => all.map((c) => c.trim()).filter((c) => c.length > 0))
+  /**
+   * RC-3 CLOSE REVIEW, F6/M3 — THE SAME DIVERGENCE T1 CAME HERE TO FIX, FIVE LINES BELOW THE FIX.
+   *
+   * T1 aligned the COUPON parser above with `issueInvoiceBody` and left this one doing exactly what
+   * that one used to do: `filter(c.length <= 64)`, a SILENT DROP, while
+   * `issueInvoiceBody.attributionCode` is `.max(64)` and returns a hard 400. So an over-long
+   * referral code gave the clerk a clean quote with no partner attribution and no error, and then
+   * "request body failed validation" at issue — the counter-stall T1's own commit message says it
+   * closed, still open for the other half of the pair. Partner attribution is money: it is what
+   * `receivable_expectations` are raised against.
+   *
+   * Blanks are still DROPPED and multiple values are still tolerated (first one wins, V6) — those
+   * are keystrokes and proxy duplication, and refusing them is the stall this parser exists to
+   * prevent. An over-length code is a typo, and the cheapest place to say so is the quote.
+   */
+  .pipe(z.array(z.string().max(64)))
   .transform((all) => all[0]);
 
 import { loadBillingConfig, updateBillingConfig } from "./config";
