@@ -55,7 +55,8 @@
     "labBench": "बेंच",
     "labVerify": "सत्यापन एवं रिपोर्ट",
     "radiologyReception": "इमेजिंग रिसेप्शन",
-    "radiologyWorklist": "इमेजिंग वर्कलिस्ट"
+    "radiologyWorklist": "इमेजिंग वर्कलिस्ट",
+    "counterSeat": "पंजीकरण काउंटर (नया)"
   },
   "palette": {
     "title": "खोज",
@@ -1997,6 +1998,7 @@
     "loading": "लोड हो रहा है…"
   },
   "registrationCounter": {
+    "title": "पंजीकरण काउंटर",
     "find": {
       "title": "आपके सामने कौन है?",
       "placeholder": "नाम, मोबाइल या UHID",
@@ -2028,6 +2030,11 @@
     "wait": {
       "ahead": "{{count}} आगे",
       "line": "~{{minutes}} मिनट · {{clock}}"
+    },
+    "queues": {
+      "title": "पूरे भवन की हर लाइन",
+      "total": "{{count}} प्रतीक्षा में",
+      "close": "बंद करें"
     },
     "exit": {
       "collect": "₹{{amount}} लेने हैं",

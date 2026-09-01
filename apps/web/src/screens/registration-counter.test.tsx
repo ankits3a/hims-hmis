@@ -1,6 +1,11 @@
-import { screen } from "@testing-library/react";
+import { readFileSync, readdirSync } from "node:fs";
+import { resolve } from "node:path";
+import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Dossier, FindPanel, QuotePanel, WaitLine, counterExit, waitEstimate } from "./registration-counter";
+import {
+  Dossier, FindPanel, QueuesOverlay, QuotePanel, RegistrationCounter, SEAT_TENDER_ORDER, WaitLine,
+  counterExit, seatKey, waitEstimate,
+} from "./registration-counter";
 import { renderWithProviders, stubFetch } from "../test-utils";
 import { setToken } from "../lib/api";
 import type {
@@ -418,5 +423,244 @@ describe("RC-3 T4 / D7 — the wait model", () => {
     const line = screen.getByTestId("wait-d-1").textContent ?? "";
     expect(line).toContain("10:48");
     expect(line).not.toContain("05:18"); // NOW + 48 min in UTC — the mutant that drops the offset
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   RC-3 T5 — THE ALIAS LAYER (D3), THE KEYBOARD MAP, AND THE QUEUES OVERLAY
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * ═══ WHY THE ALIAS LAYER IS ASSERTED AS TEXT ═══
+ *
+ * jsdom computes no cascade from a stylesheet this harness never loads, so "the seat is green and
+ * `/billing` is not" cannot be observed by rendering. The repository has a settled answer for
+ * invariants that live in a file rather than in a value: `nav-parity.test.ts` and
+ * `caddyfile-parity.test.ts` both parse `router.tsx` as text from a core test, and
+ * `membership/guardrails.test.ts` reads web screens the same way. This is that discipline applied
+ * to `styles.css`, and it is stronger than a rendered colour would be — a computed-colour test
+ * proves the seat is green, whereas this proves NOTHING ELSE IS.
+ *
+ * §2.49 is honoured: the parser THROWS on a census it cannot read, because a stale parser that
+ * returned `[]` would satisfy every "no Desk One hex outside the seat" assertion below for ever.
+ */
+const STYLES = readFileSync(resolve(__dirname, "..", "styles.css"), "utf8");
+
+/** The signed-off palette, measured from `desk-one.html` and restated here so drift has two places to fail. */
+const DESK_ONE_HEXES = ["#f4f7f4", "#ffffff", "#132420", "#dfe7e1", "#5c6f66", "#8ea69a", "#eef3ef", "#0e6b4e", "#dd8f1c", "#b23a30"];
+
+/**
+ * `selector { … }` blocks, flat — this file has no nesting inside the blocks that matter.
+ *
+ * COMMENTS ARE STRIPPED FIRST, and finding out why was the census guard earning its keep on its
+ * first run. Without the strip, the long `/* … *\/` header above `:root` is itself matched as a
+ * selector running all the way to the next `{`, so `:root` and the seat's own block were being
+ * swallowed into their docstrings: the parser reported 13 blocks and `:root` was not among them.
+ * Every assertion below would have been evaluated over a list that did not contain the block it was
+ * about — and the seat block still "matched" only because its docstring quotes its own selector.
+ * That is a test passing for a reason unrelated to the thing it tests, caught only because §2.49
+ * says to pin the census before comparing anything against it.
+ */
+function cssBlocks(source: string): { selector: string; body: string }[] {
+  const stripped = source.replace(/\/\*[\s\S]*?\*\//g, "");
+  const out: { selector: string; body: string }[] = [];
+  for (const m of stripped.matchAll(/(^|\n|\})\s*([^{}@\n][^{}]*?)\{([^{}]*)\}/g)) {
+    out.push({ selector: (m[2] ?? "").trim(), body: m[3] ?? "" });
+  }
+  if (out.length === 0) throw new Error("styles.css: parsed to zero blocks — this parser is stale");
+  return out;
+}
+
+describe("RC-3 T5 / D3 — the alias layer is scoped to the seat", () => {
+  const blocks = cssBlocks(STYLES);
+  const seat = blocks.filter((b) => b.selector.includes('[data-seat="registration-counter"]'));
+
+  it("reads a NON-VACUOUS census from the stylesheet, and finds the seat block in it", () => {
+    // Pinned before anything is compared. Without this, a parser that had gone stale would report
+    // "no Desk One colour is declared globally" over a list it had failed to read — which is the
+    // silent false green §2.49 exists to prevent.
+    expect(blocks.length).toBeGreaterThan(5);
+    expect(seat).toHaveLength(1);
+    expect((seat[0]!.body.match(/--[a-z-]+\s*:/g) ?? []).length).toBeGreaterThan(10);
+  });
+
+  it("declares every one of Desk One's ten measured tokens inside that block", () => {
+    const body = seat[0]!.body.toLowerCase();
+    expect(DESK_ONE_HEXES.filter((hex) => !body.includes(hex))).toEqual([]);
+  });
+
+  /**
+   * `--faint` is the one design token with no shadcn counterpart (the registry has ONE muted
+   * foreground; the design has two weights of it), so it is published seat-local — and a seat-local
+   * token that nothing reads is a rail with no consumer, which is the defect §1 of this phase is
+   * entirely about. This pins that it is both declared and read, in this one phase where both ends
+   * are small enough to name.
+   */
+  it("`--seat-faint` is declared in the block AND actually read by the seat", () => {
+    expect(seat[0]!.body).toContain("--seat-faint");
+    const src = readFileSync(resolve(__dirname, "registration-counter.tsx"), "utf8");
+    expect(src).toContain("var(--seat-faint)");
+  });
+
+  /**
+   * THE MUTANT THE ASSERTION BOOK NAMES, and the kill it names: the tokens declared globally, and a
+   * shadcn screen turning green.
+   *
+   * Twenty-odd screens ship against a deliberately greyscale base — `styles.css`'s own DD10 note
+   * explains that colour on this desk means STATE and nothing else, which is why `--chart-1..5` are
+   * five shades of grey. A pine-green `--primary` in `:root` repaints every primary button in the
+   * application to say nothing at all, and does it silently, because nothing else in the repository
+   * renders a computed colour.
+   */
+  it("MUTANT — no Desk One colour is declared in `:root` or `.dark`; only the seat carries them", () => {
+    const global = blocks.filter((b) => b.selector === ":root" || b.selector === ".dark");
+    expect(global.length).toBeGreaterThanOrEqual(2); // the census again: both blocks were found
+
+    const leaked = global.flatMap((b) =>
+      DESK_ONE_HEXES.filter((hex) => b.body.toLowerCase().includes(hex)).map((hex) => `${b.selector} ${hex}`),
+    );
+    expect({ leaked }).toEqual({ leaked: [] }); // THE KILL
+  });
+
+  /**
+   * The other way the same mutant arrives: the attribute hoisted onto `<body>` or the app shell,
+   * which scopes the block to everything. A census over the source tree is what catches that, since
+   * the CSS itself would look correct.
+   */
+  it("MUTANT — exactly ONE file carries `data-seat`, and it is the seat's own root element", () => {
+    const carriers = readdirSync(resolve(__dirname, ".."), { recursive: true, encoding: "utf8" })
+      .filter((f) => f.endsWith(".tsx") || f.endsWith(".ts"))
+      .filter((f) => !f.endsWith(".test.tsx") && !f.endsWith(".test.ts"))
+      .filter((f) => readFileSync(resolve(__dirname, "..", f), "utf8").includes("data-seat"));
+    expect(carriers).toEqual(["screens/registration-counter.tsx"]); // THE KILL
+
+    renderWithProviders(<RegistrationCounter />);
+    expect(screen.getByTestId("registration-counter").getAttribute("data-seat")).toBe("registration-counter");
+  });
+});
+
+describe("RC-3 T5 — the keyboard map", () => {
+  const typing = document.createElement("input");
+  const idle = document.createElement("div");
+  const key = (k: string, mod = false): Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey"> =>
+    ({ key: k, ctrlKey: mod, metaKey: false });
+
+  /**
+   * THE WHOLE MAP IN ONE `toEqual`, so a shortcut that quietly stops working fails here rather than
+   * in front of a clerk. An `it.each` of individual `toBe`s would pass over an action that had gone
+   * missing from the union.
+   */
+  it("is exactly the map the design specifies — Ctrl+K · Ctrl+N · Q · 1/2/3 · Ctrl+⏎ · Esc", () => {
+    expect({
+      ctrlK: seatKey(key("k", true), idle, false),
+      ctrlN: seatKey(key("n", true), idle, false),
+      q: seatKey(key("q"), idle, false),
+      one: seatKey(key("1"), idle, false),
+      two: seatKey(key("2"), idle, false),
+      three: seatKey(key("3"), idle, false),
+      ctrlEnter: seatKey(key("Enter", true), idle, false),
+      escClosed: seatKey(key("Escape"), idle, false),
+      escOverlayOpen: seatKey(key("Escape"), idle, true),
+      four: seatKey(key("4"), idle, false),
+      plainEnter: seatKey(key("Enter"), idle, false),
+    }).toEqual({
+      // Ctrl+K is NOT the seat's. `KeyboardProvider` already opens the palette application-wide,
+      // and a shortcut a clerk learns on one screen has to mean the same thing on the next.
+      ctrlK: null,
+      ctrlN: "new-walkin",
+      q: "toggle-queues",
+      one: "tender:cash", two: "tender:upi", three: "tender:card",
+      ctrlEnter: "confirm",
+      // Escape means "start again" with no overlay, and "close this" with one — the design's own
+      // precedence, and it is decided BEFORE the typing guard so the way out is never the mouse.
+      escClosed: "clear-desk",
+      escOverlayOpen: "close-overlay",
+      four: null, plainEnter: null,
+    });
+  });
+
+  /**
+   * THE GUARD THAT MATTERS, as an executed comparison. `Q` and `1/2/3` are bare characters: a clerk
+   * searching for "Qamar" or typing a mobile number that begins `1` would otherwise throw a queue
+   * overlay over the screen or tender a payment, mid-keystroke. Dropping the guard is the obvious
+   * simplification and it is silent — the keystroke vanishes from the field and the clerk retypes.
+   */
+  it("MUTANT — without the typing guard, searching for 'Q' would open the queues overlay", () => {
+    expect(seatKey(key("q"), idle, false)).toBe("toggle-queues");   // what the mutant does everywhere
+    expect(seatKey(key("q"), typing, false)).toBeNull();            // THE KILL
+    expect(seatKey(key("1"), typing, false)).toBeNull();
+    expect(seatKey(key("3"), typing, false)).toBeNull();
+    // …and the two that MUST survive it: a guard that refuses everything is not a guard.
+    expect(seatKey(key("Enter", true), typing, false)).toBe("confirm");
+    expect(seatKey(key("Escape"), typing, false)).toBe("clear-desk");
+  });
+
+  /**
+   * `1 · 2 · 3` AGAINST THE TENDER EDITOR'S OWN BUTTON ORDER, read as text because `MODES` is not
+   * exported. A clerk who presses `2` for the second button they can see and gets a CARD payment
+   * recorded against a UPI transfer has created a reconciliation the cashier session will not
+   * balance — and nothing in either file would have disagreed out loud.
+   */
+  it("MUTANT — the seat's 1/2/3 cannot drift from `tender-editor.tsx`'s MODES", () => {
+    const src = readFileSync(resolve(__dirname, "..", "components", "tender-editor.tsx"), "utf8");
+    const m = /const MODES: TenderMode\[\] = \[([^\]]+)\]/.exec(src);
+    if (m === null) throw new Error("tender-editor.tsx: no `MODES` array — this parser is stale");
+    const shipped = m[1]!.split(",").map((x) => x.trim().replace(/"/g, "")).filter(Boolean);
+
+    expect(shipped).toEqual(["cash", "upi", "card"]);              // the census, non-vacuous
+    expect([...SEAT_TENDER_ORDER]).toEqual(shipped);               // THE KILL
+  });
+});
+
+describe("RC-3 T5 — the queues overlay", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+      "GET /api/opd/queues/summary": { items: [summary(), summary({ doctor: { ...DOCTOR, id: "d-2", displayName: "Dr Rao" }, waitingCount: 2, avgConsultMinutes: 8, roomCode: "7" })] },
+      "GET /api/patients/search": { items: [] },
+    });
+  });
+
+  it("lists every line in the building, each on T4's wait model and not a second one", () => {
+    renderWithProviders(
+      <QueuesOverlay
+        items={[summary(), summary({ doctor: { ...DOCTOR, id: "d-2", displayName: "Dr Rao" }, waitingCount: 2, avgConsultMinutes: 8 })]}
+        onClose={() => undefined} now={NOW}
+      />,
+    );
+    expect(screen.getByTestId("queues-total").textContent).toContain("6");        // 4 + 2 waiting
+    expect(screen.getByTestId("wait-d-1").textContent).toContain("~48 min");      // 4 × 12
+    expect(screen.getByTestId("wait-d-2").textContent).toContain("~16 min");      // 2 × 8 — its OWN pace
+    expect(screen.getByTestId("wait-d-2").textContent).toContain("10:16");
+  });
+
+  it("Q opens it, Q closes it, Escape closes it — and the board comes off `queues/summary`", async () => {
+    renderWithProviders(<RegistrationCounter />);
+    expect(screen.queryByTestId("queues-overlay")).toBeNull();
+
+    fireEvent.keyDown(window, { key: "q" });
+    expect(await screen.findByTestId("queues-row-d-1")).toBeTruthy();
+    expect(screen.getByTestId("queues-row-d-2")).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: "q" });
+    expect(screen.queryByTestId("queues-overlay")).toBeNull();
+
+    fireEvent.keyDown(window, { key: "q" });
+    expect(await screen.findByTestId("queues-overlay")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("queues-overlay")).toBeNull();
+  });
+
+  it("1/2/3 choose the tender lane, and Ctrl+N opens the SAME new-patient door F2 already opens", () => {
+    const onRegisterNew = vi.fn();
+    renderWithProviders(<RegistrationCounter onRegisterNew={onRegisterNew} />);
+
+    fireEvent.keyDown(window, { key: "2" });
+    expect(screen.getByTestId("tender-chosen").textContent).toBe("upi");
+
+    fireEvent.keyDown(window, { key: "n", ctrlKey: true });
+    expect(onRegisterNew).toHaveBeenCalledTimes(1);
   });
 });

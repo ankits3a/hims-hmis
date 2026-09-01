@@ -19,6 +19,7 @@ import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
 import { StaffReports } from "./screens/staff-reports";
 import { CounterDesk } from "./screens/counter-desk";
+import { RegistrationCounter } from "./screens/registration-counter";
 import { RegistrationDesk } from "./screens/registration-desk";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
@@ -86,6 +87,18 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   // the screen a one-person desk lives on. Path and permission match `opdManifest.menu` exactly,
   // which `nav-parity.test.ts` enforces rather than trusts.
   { to: "/counter", label: "nav.counterDesk", permission: "opd.visits.open", group: "desk" },
+  // RC-3 T5 / D1 — DESK ONE, THE SEAT, BESIDE THE COUNTER AND NOT INSTEAD OF IT, FOR ONE PHASE.
+  //
+  // `opd.visits.open` is the SAME permission `/counter` carries, because it is the same work by the
+  // same person on a different surface; the two links are therefore visible to exactly the same
+  // people, which is what makes the comparison the owner is being asked to make a fair one.
+  //
+  // NO MANIFEST ENTRY, deliberately, and this is the one NAV row that has none on purpose. RC-4
+  // deletes one of these two routes and §6's second ruling is WHICH — declaring `/counter/seat` in
+  // `opdManifest.menu` now would put a permanent server-side declaration behind a screen that is
+  // scheduled for a decision. `nav-parity.test.ts` compares only paths present in BOTH lists and
+  // its docstring names this case as legitimate; the row that MUST agree, `/counter`, still does.
+  { to: "/counter/seat", label: "nav.counterSeat", permission: "opd.visits.open", group: "desk" },
   { to: "/registration", label: "nav.registration", permission: "patients.register", group: "patients" },
   { to: "/merge", label: "nav.merge", permission: "patients.merge", group: "patients" },
   { to: "/approvals", label: "nav.approvals", permission: "approvals.requests.read", group: "admin" },
@@ -372,6 +385,27 @@ const counterDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/counter",
   component: CounterDesk,
+});
+
+/**
+ * RC-3 T5 — the seat. `/counter/seat` rather than a replacement for `/counter`: D1 keeps both for
+ * one phase so a proven money path and an unproven layout are never the same diff.
+ *
+ * The route hands `onRegisterNew` down rather than letting the screen navigate itself. The screen
+ * is asserted without a router in its own suite (`renderWithProviders` mounts no `RouterProvider`),
+ * and a screen that reached for `useNavigate` would have to be tested through one — so routing
+ * stays at the routing layer. The destination is `?new=true`, the SAME rail F2 already uses
+ * (`keyboard.tsx`), so the seat's Ctrl+N and the global F2 open one door and not two.
+ */
+function RegistrationCounterRoute(): React.ReactElement {
+  const navigate = useNavigate();
+  return <RegistrationCounter onRegisterNew={() => void navigate({ to: "/registration", search: { new: true } })} />;
+}
+
+const registrationCounterRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/counter/seat",
+  component: RegistrationCounterRoute,
 });
 
 const registrationRoute = createRoute({
@@ -670,6 +704,11 @@ export const router = createRouter({
       opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
+      // RC-3 T5 — 44 -> 45 with `/counter/seat`, Desk One. ONE route and ONE nav link, and it is
+      // the only NAV row in this table with no manifest counterpart (see its own comment above).
+      // `caddyfile-parity.test.ts` pins the count and joins this task's Files list — the S11 rule
+      // this repository has now applied to itself eight times.
+      registrationCounterRoute,
       formularyAdminRoute,
       // PLAN 14 T9 — 25 -> 28. `caddyfile-parity.test.ts` pins the count and joins this task's
       // Files list, which is the S11 rule the repo has applied to itself four times.

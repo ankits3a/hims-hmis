@@ -55,7 +55,8 @@
     "labBench": "Bench",
     "labVerify": "Verify & report",
     "radiologyReception": "Imaging reception",
-    "radiologyWorklist": "Imaging worklist"
+    "radiologyWorklist": "Imaging worklist",
+    "counterSeat": "Registration counter (new)"
   },
   "palette": {
     "title": "Search",
@@ -1997,6 +1998,7 @@
     "loading": "Loading…"
   },
   "registrationCounter": {
+    "title": "Registration counter",
     "find": {
       "title": "Who is in front of you?",
       "placeholder": "name, mobile or UHID",
@@ -2028,6 +2030,11 @@
     "wait": {
       "ahead": "{{count}} ahead",
       "line": "~{{minutes}} min · {{clock}}"
+    },
+    "queues": {
+      "title": "Every line in the building",
+      "total": "{{count}} waiting",
+      "close": "Close"
     },
     "exit": {
       "collect": "Collect ₹{{amount}}",

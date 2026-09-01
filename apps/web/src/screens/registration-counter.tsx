@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
+import { api } from "../lib/api";
 import { fetchFeeQuote } from "../lib/billing-api";
 import type {
-  WireAdjustmentCandidate, WireFeeQuote, WireIssueInvoiceResult, WirePricedLine,
+  TenderMode, WireAdjustmentCandidate, WireFeeQuote, WireIssueInvoiceResult, WirePricedLine,
 } from "../lib/billing-api";
 import { fmtIst, useDebounced } from "../lib/format";
+import { todayIst } from "../lib/opd-api";
 import type { WireDoctorSummary } from "../lib/opd-api";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { matchReasonKeys, searchPatients } from "../lib/patients-api";
@@ -336,5 +338,196 @@ export function FindPanel({ onRegisterNew }: { onRegisterNew?: () => void } = {}
         ))}
       </ul>
     </section>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   RC-3 T5 — THE KEYBOARD MAP, THE QUEUES OVERLAY, AND THE SEAT ITSELF (D3)
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * `1 · 2 · 3` ARE THE TENDER EDITOR'S OWN LANES, IN ITS OWN ORDER.
+ *
+ * `tender-editor.tsx:23` declares `const MODES: TenderMode[] = ["cash", "upi", "card"]` and renders
+ * its buttons in that order; the design's keydown map assigns 1/2/3 to cash/upi/card. Those two
+ * facts have to agree or the seat is a money defect: a clerk who presses `2` for the second button
+ * they can see, and gets a card payment recorded against a UPI transfer, has created a
+ * reconciliation the cashier session will not balance.
+ *
+ * `MODES` is not exported, so this cannot import it. The alignment is therefore asserted against
+ * `tender-editor.tsx` READ AS TEXT — the same discipline `nav-parity.test.ts` uses on `router.tsx`
+ * and `membership/guardrails.test.ts` uses on web screens, and for the same reason: an invariant
+ * two files both state and neither checks is a claim, not a guarantee.
+ */
+export const SEAT_TENDER_ORDER: readonly TenderMode[] = ["cash", "upi", "card"];
+
+export type SeatAction =
+  | "clear-desk" | "close-overlay" | "confirm" | "toggle-queues" | "new-walkin"
+  | "tender:cash" | "tender:upi" | "tender:card";
+
+function isTypingTarget(el: EventTarget | null): boolean {
+  return el instanceof HTMLElement && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+}
+
+/**
+ * THE SEAT'S KEY DECISION, EXTRACTED SO IT CAN BE ASSERTED AND MUTATED ON ITS OWN.
+ *
+ * That is `keyboard.tsx`'s own pattern — `shouldOpenPalette` exists for exactly this reason — and
+ * the ORDER of the branches below is lifted from the design's `keydown` handler rather than
+ * re-derived, because the order IS the behaviour:
+ *
+ *   · `Ctrl+K` returns `null`. **The seat does not rebind it.** `KeyboardProvider` already opens the
+ *     command palette from anywhere in the application, and a seat that handled it too would either
+ *     open the palette twice or shadow the global one with a local imitation. A shortcut a clerk
+ *     learns on one screen has to mean the same thing on the next.
+ *   · `Escape` is decided BEFORE the typing guard: it closes the overlay if one is open, and clears
+ *     the desk otherwise. A clerk hitting Escape with the cursor in the search box means "start
+ *     again", and a guard that swallowed it would leave the only way out of a half-served patient
+ *     being the mouse.
+ *   · While typing, ONLY `Ctrl+Enter` survives. This is the guard that matters: `Q` and `1/2/3` are
+ *     bare characters, and a search for "Q Mohan" or a mobile number beginning `1` would otherwise
+ *     throw a queue overlay over the screen, or tender a payment, mid-keystroke.
+ */
+export function seatKey(
+  e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey">,
+  target: EventTarget | null,
+  overlayOpen: boolean,
+): SeatAction | null {
+  const mod = e.ctrlKey || e.metaKey;
+
+  // Ctrl+K belongs to the global palette. Claimed by nobody here, on purpose.
+  if (mod && (e.key === "k" || e.key === "K")) return null;
+
+  if (e.key === "Escape") return overlayOpen ? "close-overlay" : "clear-desk";
+  if (mod && e.key === "Enter") return "confirm";
+  if (isTypingTarget(target)) return null;
+
+  if (e.key === "q" || e.key === "Q") return "toggle-queues";
+  if (mod && (e.key === "n" || e.key === "N")) return "new-walkin";
+
+  if (!mod && /^[123]$/.test(e.key)) {
+    const lane = SEAT_TENDER_ORDER[Number(e.key) - 1];
+    if (lane !== undefined) return `tender:${lane}`;
+  }
+  return null;
+}
+
+/**
+ * The day's board for EVERY active doctor — `departmentId` is omitted, which
+ * `opd-queue.controller.ts:110` reads as "all of them". The overlay's whole claim is "every line in
+ * the building", so a departmental read would make it quietly answer a smaller question.
+ */
+export function useQueueSummary(serviceDate: string): WireDoctorSummary[] {
+  const q = useQuery({
+    queryKey: ["rc-queue-summary", serviceDate],
+    queryFn: () => api<{ items: WireDoctorSummary[] }>("GET", `/opd/queues/summary?serviceDate=${serviceDate}`),
+  });
+  return q.data?.items ?? [];
+}
+
+/**
+ * T5 — "EVERY LINE IN THE BUILDING", behind `Q`.
+ *
+ * The seat's clerk is asked "kis line mein kam wait hai?" several times an hour and the answer
+ * currently lives on a different screen. Each row is T4's `WaitLine`, so the overlay adds a
+ * surface and no second wait model.
+ */
+export function QueuesOverlay({
+  items, onClose, now = new Date(),
+}: { items: WireDoctorSummary[]; onClose: () => void; now?: Date }): React.ReactElement {
+  const { t } = useTranslation();
+  const waiting = items.reduce((n, s) => n + s.waitingCount, 0);
+  return (
+    <div role="dialog" aria-label={t("registrationCounter.queues.title")} data-testid="queues-overlay">
+      <header>
+        <h2>{t("registrationCounter.queues.title")}</h2>
+        <span data-testid="queues-total">{t("registrationCounter.queues.total", { count: waiting })}</span>
+        <button type="button" data-testid="queues-close" onClick={onClose}>{t("registrationCounter.queues.close")}</button>
+      </header>
+      <ul>
+        {items.map((s) => (
+          <li key={s.doctor.id} data-testid={`queues-row-${s.doctor.id}`}>
+            <span>{s.doctor.displayName}</span>
+            {/*
+              THE ONE CONSUMER OF `--seat-faint`, and it exists so the token is not itself a rail
+              with no consumer — the defect §1 of this phase doc is entirely about. The design uses
+              TWO weights of grey (`--dim` for what a clerk reads, `--faint` for what is merely
+              there); the shadcn registry has one muted foreground, so the second weight is a
+              seat-local token, and a seat-local token nothing reads would be a colour nobody could
+              tell had gone wrong. Resolves inside the seat's root and nowhere else — which is the
+              alias layer's scoping doing exactly what D3 asks of it.
+            */}
+            {s.roomCode !== null && <span style={{ color: "var(--seat-faint)" }}>{s.roomCode}</span>}
+            <WaitLine summary={s} now={now} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * ═══ DESK ONE. THE SEAT ITSELF. ═══
+ *
+ * `data-seat="registration-counter"` on the root is not decoration: it is the whole of D3's
+ * mechanism. `styles.css`'s alias block hangs off this attribute, so the seat's paper-and-pine
+ * palette reaches every shadcn component mounted inside it and reaches nothing outside it. Put
+ * this attribute on `<body>` or on the app shell and the mutant the assertion book names has
+ * happened — every screen in the application turns green.
+ *
+ * `counter-desk.tsx` is untouched and still serves `/counter` (D1). RC-4 deletes one of the two,
+ * and which one is an owner ruling this phase carries rather than defaults (§6).
+ */
+export function RegistrationCounter({
+  onRegisterNew,
+}: { onRegisterNew?: () => void } = {}): React.ReactElement {
+  const { t } = useTranslation();
+  const { inHand, release } = usePatientInHand();
+  const [overlay, setOverlay] = useState<"queues" | null>(null);
+  const [tender, setTender] = useState<TenderMode | null>(null);
+  const summaries = useQueueSummary(todayIst());
+
+  const clearDesk = useCallback((): void => {
+    setOverlay(null);
+    setTender(null);
+    release();
+  }, [release]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const action = seatKey(e, e.target, overlay !== null);
+      switch (action) {
+        case "toggle-queues": setOverlay((o) => (o === null ? "queues" : null)); break;
+        case "close-overlay": setOverlay(null); break;
+        case "clear-desk": clearDesk(); break;
+        case "new-walkin": onRegisterNew?.(); break;
+        case "tender:cash": case "tender:upi": case "tender:card":
+          setTender(action.slice("tender:".length) as TenderMode); break;
+        /*
+          `confirm` (Ctrl+Enter) IS IN THE MAP AND IS DELIBERATELY NOT CONSUMED HERE.
+          The design's `hotEnter` advances whatever stage the seat is on, and this phase's seat has
+          exactly one stage: find. The bill and the appointment cross over in RC-4, and *that* is
+          when there is something to confirm. Wiring it to a no-op now would put a shortcut in the
+          legend that does nothing — worse than an absent one, because a clerk who presses it and
+          sees nothing happen stops trusting the legend. It falls through WITHOUT `preventDefault`,
+          so Ctrl+Enter still reaches whatever field has focus.
+        */
+        case "confirm": return;
+        case null: return; // Ctrl+K and every unclaimed key belong to the global map
+      }
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [overlay, clearDesk, onRegisterNew]);
+
+  return (
+    <div data-seat="registration-counter" data-testid="registration-counter">
+      <h1>{t("registrationCounter.title")}</h1>
+      <Dossier quote={null} issued={null} />
+      {inHand === null && <FindPanel onRegisterNew={onRegisterNew} />}
+      {tender !== null && <p data-testid="tender-chosen">{tender}</p>}
+      {overlay === "queues" && <QueuesOverlay items={summaries} onClose={() => setOverlay(null)} />}
+    </div>
   );
 }

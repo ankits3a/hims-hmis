@@ -181,3 +181,74 @@
   .print-doc { position: fixed; left: 0; top: 0; width: 148mm; min-height: 100mm; padding: 8mm; border: none; background: white; }
   @page { size: A5 portrait; margin: 6mm; }
 }
+
+/*
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * RC-3 T5 / D3 — THE ALIAS LAYER FOR DESK ONE, AND IT IS SCOPED TO THE SEAT'S ROOT
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * The owner ruled ALIAS LAYER on 2026-08-31, and this block is that ruling made mechanical. Desk
+ * One's paper-and-pine palette is MAPPED ONTO the shipped shadcn variables rather than replacing
+ * them, so the seat needs no forked `components/ui/*` — a shadcn `Button`, `Dialog` or `Input`
+ * mounted inside the seat reads these values through the variables it already consumes, and the
+ * same component mounted anywhere else reads the greyscale registry values unchanged.
+ *
+ * ═══ WHY `[data-seat=…]` AND NOT `:root` ═══
+ *
+ * Declaring the tokens globally is the obvious shortcut and it is the mutant this task's assertion
+ * book names: the kill is a shadcn screen turning green. Twenty-odd screens ship against a
+ * deliberately greyscale base — `styles.css`'s own DD10 note explains that colour on this desk means
+ * STATE and nothing else, which is why `--chart-1..5` are five shades of grey. A global pine-green
+ * `--primary` would repaint every primary button in the application to say nothing at all, and it
+ * would do it silently, because no test in the repository renders a computed colour.
+ *
+ * Scoping also makes RC-4's adoption a one-attribute change per seat instead of a second theming
+ * project: another seat opts in by carrying `data-seat="registration-counter"`, and nothing opts in
+ * by default.
+ *
+ * ═══ THE TOKENS ═══
+ *
+ * Measured from `docs/design/2026-08-31-registration-counter/desk-one.html`, the signed-off design,
+ * and kept in the hex the design states rather than converted to oklch — a conversion is a place a
+ * colour can drift, and the design is the authority a reviewer compares against.
+ *
+ *   --paper #f4f7f4   --card #ffffff   --ink #132420   --line #dfe7e1   --dim #5c6f66
+ *   --faint #8ea69a   --wash #eef3ef   --green #0e6b4e --gold #dd8f1c   --red #b23a30
+ *
+ * `--faint` has no shadcn counterpart (the registry has one muted foreground, the design has two
+ * weights of it), so it is published as a seat-local token rather than forced into a variable that
+ * means something else.
+ *
+ * NO `.dark` PARTNER, deliberately. Desk One is a daylight counter design: paper, pine and a warm
+ * gold, specified on white. A dark inversion of it is a design decision nobody has made, and
+ * inventing one here would ship an unsigned-off palette under a signed-off name.
+ */
+[data-seat="registration-counter"] {
+  --background: #f4f7f4;          /* paper */
+  --card: #ffffff;
+  --popover: #ffffff;
+  --foreground: #132420;          /* ink */
+  --card-foreground: #132420;
+  --popover-foreground: #132420;
+  --border: #dfe7e1;              /* line */
+  --input: #dfe7e1;
+  --muted: #eef3ef;               /* wash */
+  --secondary: #eef3ef;
+  --accent: #eef3ef;
+  --muted-foreground: #5c6f66;    /* dim */
+  --secondary-foreground: #132420;
+  --accent-foreground: #132420;
+  --primary: #0e6b4e;             /* pine */
+  --primary-foreground: #f4f7f4;  /* paper on pine — the registry's near-white would glare */
+  --ring: #0e6b4e;
+  --destructive: #b23a30;         /* red */
+
+  /* The four state meanings (DD10) keep their meanings and take the design's hues. */
+  --state-waiting: #dd8f1c;       /* gold — six or more in a line */
+  --state-danger: #b23a30;
+  --state-settled: #0e6b4e;
+  --state-live: #0e6b4e;
+
+  /* Seat-local: the second, lighter weight of `--dim` that the registry has no slot for. */
+  --seat-faint: #8ea69a;
+}

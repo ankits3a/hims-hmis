@@ -333,7 +333,14 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // the friction working exactly as this file's docstring promises. Two of the five carry a NAV
     // entry; the other three are reached from a study, and `/pcpndt/form-f/$studyId` is unlisted on
     // purpose — a list of Form F rows is a list of pregnant women by name.
-    expect(routes).toHaveLength(44);
+    // RC-3 T5 / D1 — 45 with `/counter/seat`, Desk One: the registration seat, mounted BESIDE
+    // `/counter` rather than instead of it for exactly one phase, so that a proven money path and
+    // an unproven layout are never in the same diff and a reviewer can tell which half a defect
+    // came from. RC-4 deletes one of the two and the number comes back to 44. The pin was raised in
+    // the same edit as the route rather than after watching it fail — like 17b's and unlike 18a's —
+    // so the evidence is the passing run, stated as such rather than as a failure not observed.
+    expect(routes).toHaveLength(45);
+    expect(routes).toContain("/counter/seat");
     expect(routes).toContain("/radiology/reception");
     expect(routes).toContain("/radiology/worklist");
     // The three parameterised ones too: a parameterised path is still a SPA path, and if
