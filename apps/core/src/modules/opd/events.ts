@@ -94,10 +94,16 @@ export const visitOpened = defineEvent("visit.opened", MODULE, z.object({
  * stamp a queue read would compute.
  */
 /**
- * RC-3 T3 / D4 — M3 DISCHARGED. RENAMED FROM `queue.fee_status_changed`, AND THE RENAME HAD A DEADLINE.
+ * RC-3 T3 / D4 — M3 DISCHARGED. RENAMED FROM `queue.fee_settled`, AND THE RENAME HAD A DEADLINE.
  *
- * RC-1 shipped this as `queue.fee_status_changed` and its own CLOSE carried the defect as a named carry to
- * this phase: **nothing un-flips the board.** `emitFeeStatusChanged` had two call sites, both on the way
+ * (Corrected at RC-3's close review, F10: a blanket find-and-replace rewrote this paragraph's own
+ * HISTORY, so the docstring read "renamed from `queue.fee_status_changed`" — documenting the rename
+ * as a no-op and leaving no way to recover what the old name had been. In a repository whose
+ * censuses are text and whose docstrings ARE the contract, a global rename must stop at the prose
+ * that describes the thing being renamed.)
+ *
+ * RC-1 shipped this as `queue.fee_settled` and its own CLOSE carried the defect as a named carry to
+ * this phase: **nothing un-flips the board.** `emitFeeSettled` had two call sites, both on the way
  * IN — `invoices.ts` at issue and `receipts.ts` at allocation — while the three writers that move an
  * encounter OUT of settled (`reverseAllocation`, `markEnteredInError`, `issueCreditNote`) reached
  * neither. The derived read self-corrects on refetch, so the stamp was stale in the OPTIMISTIC

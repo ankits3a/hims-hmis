@@ -184,7 +184,7 @@ describe("RC-1 T3 — fee status projection and the board flip", () => {
 
   /**
    * RC-1 shipped the flip and carried the defect here by name: **nothing un-flipped the board.**
-   * `emitFeeStatusChanged` had two call sites, both on the way IN, while the three writers that move
+   * `emitFeeSettled` had two call sites, both on the way IN, while the three writers that move
    * an encounter OUT of settled reached neither. The derived read self-corrects on refetch, so the
    * stamp was stale in the OPTIMISTIC direction — PAID over money that had been reversed — which is
    * the direction that matters and the reason this is a CRITICAL rather than a tidy-up.
@@ -246,7 +246,31 @@ describe("RC-1 T3 — fee status projection and the board flip", () => {
     expect(last).toMatchObject({ status: "unsettled", via: "receipt_entered_in_error" });
   });
 
-  it("M3 — a full-value credit note un-flips it too, and names the credit note as the cause", async () => {
+  /**
+   * ═══ RC-3 CLOSE REVIEW, F/M2 — THIS TEST'S NAME WAS FALSE AND ITS ASSERTION HID IT ═══
+   *
+   * It was called "a full-value credit note un-flips it too" and asserted ONLY `last.via`. It never
+   * asserted `status` and never re-read `encounterFeeStatuses` — the two things every other case in
+   * this file does. So the one case whose name made the strongest claim was the one case that
+   * checked the least, and the claim is **not true**.
+   *
+   * `settlementState` (`billing/settlement.ts:12`) computes `covered = credited + allocated`. A
+   * credit note counts TOWARD coverage. On an invoice that is already settled (allocated ≥ net),
+   * adding any credit note — a full-value refund included — leaves `covered > net`, so the fee
+   * status stays `settled`. **A credit note can only ever move the status settled-WARD.** The
+   * direction D4 claimed for it does not exist, and the event this call site emits reports
+   * `status:"settled"` — an event announcing a change that did not happen.
+   *
+   * That is arguably the right domain answer (nothing is outstanding; the refund lives in the
+   * voucher lane), which is exactly why it needs saying out loud rather than being asserted away:
+   * whether a fully-refunded consult should put the token back to UNPAID on the board is a
+   * QUESTION FOR THE OWNER, and it is in the phase doc's §6 as one. What is not arguable is that a
+   * test may not carry a name its assertions do not support.
+   *
+   * The un-settle census is therefore: `reverseAllocation` YES, `markEnteredInError` YES,
+   * `issueCreditNote` NO — and this test now says so.
+   */
+  it("M3 — a credit note names itself as the cause, and CANNOT un-settle: it counts toward coverage", async () => {
     const v = await newVisit("9899100014");
     const issued = await payFee(v.patientId, v.encounter.id, "fs-m3d");
     const lines = await db.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, issued.invoiceId));
@@ -257,6 +281,11 @@ describe("RC-1 T3 — fee status projection and the board flip", () => {
     });
 
     const last = (await flips()).pop()!.payload as { status: string; via: string };
-    expect(last.via).toBe("credit_note");
+    // BOTH fields, like every other case here. The status is `settled` and NOT `unsettled`, which
+    // is the fact the old assertion's silence was concealing.
+    expect(last).toMatchObject({ status: "settled", via: "credit_note" });
+    // …and the projection the event is supposed to narrate agrees, which is what makes this a
+    // statement about the DOMAIN and not about one payload.
+    expect((await encounterFeeStatuses(db, [v.encounter])).get(v.encounter.id)).toBe("settled");
   });
 });
