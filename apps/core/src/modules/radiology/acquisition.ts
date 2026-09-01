@@ -4,12 +4,14 @@ import { orderItems } from "../../kernel/db/schema/orders";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { assignResource, releaseResource } from "../../kernel/resources/registry";
 import { transition } from "../../kernel/workflow/instances";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import { appendEvent } from "../../kernel/events/append";
 import { assertFormFRecorded, assertMachineRegistered, assertPersonRegistered } from "../pcpndt";
 import { RADIOLOGY_RESOURCE_KINDS } from "./kinds";
 import { RadiologyError } from "./errors";
 import { imagingStudyAcquired } from "./events";
-import { evaluateReadiness, studyGates, IMAGING_TERMINAL_GATE_STATES } from "./gates";
+import { evaluateReadiness, isContrastAllergen, studyGates, IMAGING_TERMINAL_GATE_STATES } from "./gates";
+import { listAllergies } from "../patients";
 import { authorisationOf, encounterPayer, hasBillDecision, raiseBillDecision } from "./money";
 import { requireStudyType } from "./study-types";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -67,14 +69,14 @@ async function loadStudy(exec: Db | Tx, studyId: string) {
 /**
  * A1/A4 — the patient goes on the machine.
  *
- * `onDate` is the IST calendar day of the scan, resolved by the caller (`place.ts`'s rule) and used
+ * The IST calendar day of the scan is derived from the SERVER clock (F52) and used
  * only by the PCPNDT registration window, which is a legal date rather than an instant.
  */
 export async function startAcquisition(
   tx: Tx,
   actor: Actor,
   decls: readonly OrderKindDecl[],
-  input: { studyId: string; onDate: string; now?: Date },
+  input: { studyId: string; now?: Date },
 ): Promise<StartAcquisitionResult> {
   const now = input.now ?? new Date();
   const study = await loadStudy(tx, input.studyId);
@@ -130,7 +132,28 @@ export async function startAcquisition(
    * check-in: a registration can lapse and a doctor can be struck off between the two.
    */
   if (study.formFRequired) {
-    const { registrationId } = await assertMachineRegistered(tx, study.deviceResourceId, input.onDate);
+    /**
+     * ═══ F52 (CLOSE REVIEW) — THE STATUTORY DATE IS THE SERVER'S, NEVER THE CALLER'S ═══
+     *
+     * `onDate` used to arrive in the request body, validated only as `^\d{4}-\d{2}-\d{2}$`, and
+     * went straight into the registration-window comparison. Nothing bounded it, compared it to the
+     * clock, or checked it against `scheduled_at`. **Two ways in, and only one needed bad intent:**
+     *
+     *   · a technologist refused `machine_not_registered` retries with `{"onDate":"2026-03-01"}`
+     *     and the scan proceeds on a lapsed registration — the offence the renewal deadline exists
+     *     to prevent, defeated by an unvalidated string;
+     *   · **and without any intent at all**, the shipped console sent
+     *     `new Date().toISOString().slice(0, 10)` — the browser's **UTC** day. IST is +05:30, so
+     *     between 00:00 and 05:30 IST that is YESTERDAY. A registration expiring 31 March passed at
+     *     02:00 IST on 1 April: the plan's own decisive E1 scenario — the 02:00 suspected ectopic —
+     *     hour for hour.
+     *
+     * It is now derived here, from the same clock every other guard in this function reads. The
+     * house rule already existed twice (the kernel's `istDayString`, which `ist-clock-parity.test.ts` exists to keep the only one);
+     * this file simply was not following it.
+     */
+    const onDate = istDayString(now);
+    const { registrationId } = await assertMachineRegistered(tx, study.deviceResourceId, onDate);
     await assertPersonRegistered(tx, actor.id, registrationId);
   }
 
@@ -174,7 +197,6 @@ export async function startAcquisition(
 
 export type RecordAcquiredInput = {
   studyId: string;
-  onDate: string;
   imageSource: ImageSource;
   /** M4 — an IONISING study carries at least one of these. `doseManual` is provenance, not an excuse. */
   doseCtdivol?: number | null;
@@ -273,6 +295,44 @@ export async function recordAcquired(
    */
   const contrastGiven = input.contrastGiven ?? false;
   if (contrastGiven) {
+    /**
+     * ═══ F67 (CLOSE REVIEW) — THE ALLERGY LIST IS RE-READ AT THE INJECTION ═══
+     *
+     * A gate's evidence was read ONCE, at the instant it was satisfied, and the terminal state is
+     * permanent: `satisfyGate` refuses any non-`open` gate and the definition has no edge back. So
+     * E9's *"the gate is re-evaluable"* ran only in the direction refused→retried, never
+     * satisfied→re-checked, and `recordAcquired` re-read exactly one gate's STATE and no gate's
+     * FACTS.
+     *
+     * The sequence that cost nothing to write and everything to miss: `prior_contrast_reaction` is
+     * satisfied at 09:05 against an empty allergy list; the ward nurse records *"Iohexol —
+     * anaphylaxis, 2019"* from the old file at 09:20; 100 ml of iohexol goes in at 09:40. Between
+     * 09:05 and the injection **nothing asked again**, and the gate that exists for P2/E38 held the
+     * right answer for fifteen minutes.
+     *
+     * This is not a re-run of the gate — the gate's terminal state is deliberately permanent, and
+     * re-opening it would let the floor satisfy the same gate twice and lose the audit of who
+     * cleared it. It is the LAST READ before the syringe: the fact is checked against the record as
+     * it stands NOW, and a contradiction is refused with the radiologist's override as the only way
+     * past, exactly as it would have been at 09:05.
+     */
+    const allergies = await listAllergies(tx as unknown as Db, study.patientId);
+    const contrastAllergy = allergies.find(
+      (a) => a.status === "active" && isContrastAllergen(a.substance),
+    );
+    if (contrastAllergy) {
+      const gate = (await studyGates(tx, study.id)).find((g) => g.kind === "prior_contrast_reaction");
+      if (gate?.state !== "overridden") {
+        throw new RadiologyError(
+          "contrast_mismatch",
+          `${contrastAllergy.substance} is on this patient's allergy list and contrast is being `
+          + "recorded — the list changed after the gate was cleared, and only the radiologist's "
+          + "override goes past a documented reaction (P2/E38, F67)",
+          { studyId: study.id, substance: contrastAllergy.substance },
+        );
+      }
+    }
+
     if (studyType.contrast_option === "none") {
       throw new RadiologyError(
         "contrast_mismatch",
@@ -291,9 +351,23 @@ export async function recordAcquired(
       );
     }
   }
+  /**
+   * F56 — the CHECK forbids the agent AND the volume; the guard tested only the agent, so
+   * `{contrastGiven:false, contrastVolumeMl:50}` passed zod, passed here, and violated
+   * `imaging_studies_contrast_ck` at the UPDATE. A PostgresError is not one of `toHttp`'s families,
+   * so the technologist got a bare **500** where `contrast_mismatch` (422) naming the field was
+   * available — the exact 500-escape `errors.ts` was written to prevent, and which this repository
+   * has now shipped four times. The two fields are symmetric in the constraint and were asymmetric
+   * in the code.
+   */
   if (!contrastGiven && (input.contrastAgent ?? null) !== null) {
     throw new RadiologyError(
       "contrast_mismatch", "a contrast agent was named on a study where contrast was not given",
+    );
+  }
+  if (!contrastGiven && (input.contrastVolumeMl ?? null) !== null) {
+    throw new RadiologyError(
+      "contrast_mismatch", "a contrast VOLUME was recorded on a study where contrast was not given",
     );
   }
 

@@ -27,6 +27,8 @@ export type WireWorklistRow = {
 };
 
 export type WireStudyView = WireWorklistRow & {
+  /** F59/F73 — the side the `laterality_confirm` gate recorded at check-in. */
+  laterality: string;
   ionising: boolean; contrastGiven: boolean; acquiredAt: string | null; authorisedBy: string | null;
   reports: { id: string; version: number; status: string; publishedAt: string | null }[];
 };
@@ -106,8 +108,13 @@ export const overrideGate = (studyId: string, kind: string, reason: string) =>
 export const waiveGate = (studyId: string, kind: string, reason: string) =>
   api("POST", `/radiology/studies/${studyId}/gates/${kind}/waive`, { reason });
 
-export const startAcquisition = (studyId: string, onDate: string) =>
-  api("POST", `/radiology/studies/${studyId}/acquisition/start`, { onDate });
+/**
+ * F52 — `onDate` is GONE from this call. The PCPNDT registration window is a legal date and the
+ * server now derives it from its own IST clock; this function used to pass the browser's UTC day,
+ * which is yesterday for five and a half hours every night.
+ */
+export const startAcquisition = (studyId: string) =>
+  api("POST", `/radiology/studies/${studyId}/acquisition/start`, {});
 
 export const recordAcquired = (studyId: string, body: Record<string, unknown>) =>
   api("POST", `/radiology/studies/${studyId}/acquisition/acquired`, body);
@@ -123,7 +130,25 @@ export const publishReport = (studyId: string) =>
     "POST", `/radiology/studies/${studyId}/reports/publish`, {},
   );
 
-export const openFormF = (body: Record<string, unknown>) =>
+/**
+ * ═══ F57 (CLOSE REVIEW) — THIS WAS `Record<string, unknown>`, AND THAT IS WHY THE SCREEN 400'd ═══
+ *
+ * The screen sent four fields where the controller requires seven, and nothing could see it: an
+ * untyped body makes the wire the one place in a TypeScript codebase where a mismatch is invisible
+ * at compile time and silent until a human clicks. The type below is the controller's `openBody`,
+ * transcribed — `onDate` deliberately absent, because the serial year is the server's (F52).
+ */
+export type OpenFormFBody = {
+  studyId: string;
+  patientId: string;
+  deviceResourceId: string;
+  /** Part H's registered person. Optional: the server defaults it to the authenticated actor. */
+  personUserId?: string;
+  indicationCode: string;
+  applicability: "pregnant" | "not_pregnant" | "indication_only";
+};
+
+export const openFormF = (body: OpenFormFBody) =>
   api<{ formFId: string; serialNo: number; serialYear: number }>("POST", "/pcpndt/form-f", body);
 
 export const recordFormF = (formFId: string, body: Record<string, unknown>) =>

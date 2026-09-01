@@ -1,12 +1,18 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { imagingBillDecisions, imagingStudies } from "../../kernel/db/schema/radiology";
 import { resources } from "../../kernel/db/schema/resources";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition } from "../../kernel/workflow/instances";
+import { recordPhiAccess } from "../../kernel/phi/audit";
 import { newId } from "@hmis/contracts";
 import { DEVICE_MODALITY_ATTRIBUTE, SCHEDULABLE_DEVICE_STATUSES } from "./kinds";
 import { RadiologyError } from "./errors";
+import { imagingStudyScheduled } from "./events";
+import { appendEvent } from "../../kernel/events/append";
 import { requireStudyType } from "./study-types";
+import { raiseBillDecision } from "./money";
+import { releaseResource } from "../../kernel/resources/registry";
+import { RADIOLOGY_RESOURCE_KINDS } from "./kinds";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
@@ -116,6 +122,75 @@ async function loadStudy(exec: Db | Tx, studyId: string) {
   return study;
 }
 
+
+/**
+ * ═══ F55 (CLOSE REVIEW) — THE SLOT WAS A POINT, AND EVERY STUDY TYPE DECLARES A LENGTH ═══
+ *
+ * `imaging_studies_slot_ux` collides only on an EXACT-equal `scheduled_at`, so booking an MRI-BRAIN
+ * (`duration_min: 45`) at 10:00 and another at 10:15 on the same magnet produced two rows, no
+ * unique violation and no `slot_taken`. Two patients told to arrive fifteen minutes apart for a
+ * forty-five-minute scan on one machine, discovered at 10:15 with both in the waiting room.
+ *
+ * `duration_min` was declared on every study type, validated by the body schema and seeded with
+ * real values — and **read by nothing in the entire tree.** The index was the right mechanism keyed
+ * on the wrong quantity.
+ *
+ * ═══ WHY A LOCK AND A QUERY RATHER THAN AN EXCLUSION CONSTRAINT ═══
+ *
+ * The natural answer is `EXCLUDE USING gist (device WITH =, tstzrange(...) WITH &&)`, and it is the
+ * better one — but it needs the `btree_gist` extension, which needs a privilege this deployment's
+ * database user does not have and which would make the migration fail on a box nobody could debug
+ * from the error. So: the DEVICE ROW is locked first, which serialises every booking for that
+ * machine, and the overlap is then a plain query that cannot race. The exact-instant unique index
+ * stays as the last line of defence and as the thing that would catch a future caller who skips
+ * this path. **Named rather than implied: an exclusion constraint is the right fix the day the
+ * extension is available.**
+ */
+async function assertSlotFree(
+  tx: Tx,
+  deviceResourceId: string,
+  scheduledAt: Date,
+  durationMin: number,
+  studyId: string,
+): Promise<void> {
+  /** The lock. Every booking for this machine queues behind it, so the read below is stable. */
+  await (tx as unknown as Db).select({ id: resources.id })
+    .from(resources).where(eq(resources.id, deviceResourceId)).for("update");
+
+  const start = scheduledAt;
+  const end = new Date(scheduledAt.getTime() + durationMin * 60_000);
+  const clash = await (tx as unknown as Db)
+    .select({
+      id: imagingStudies.id, accessionNo: imagingStudies.accessionNo,
+      scheduledAt: imagingStudies.scheduledAt, durationMin: imagingStudies.durationMin,
+    })
+    .from(imagingStudies)
+    .where(and(
+      eq(imagingStudies.deviceResourceId, deviceResourceId),
+      inArray(imagingStudies.status, [...LIVE_SLOT_STATUSES]),
+      ne(imagingStudies.id, studyId),
+      sql`${imagingStudies.scheduledAt} < ${end.toISOString()}`,
+      sql`${imagingStudies.scheduledAt} + make_interval(mins => ${imagingStudies.durationMin}) > ${start.toISOString()}`,
+    ))
+    .limit(1);
+
+  if (clash[0]) {
+    throw new RadiologyError(
+      "slot_taken",
+      `device ${deviceResourceId} is busy with ${clash[0].accessionNo} from `
+      + `${clash[0].scheduledAt?.toISOString() ?? "?"} for ${String(clash[0].durationMin)} minutes — `
+      + `this ${String(durationMin)}-minute study overlaps it`,
+      {
+        deviceResourceId, scheduledAt: start.toISOString(), durationMin,
+        clashesWith: clash[0].accessionNo,
+      },
+    );
+  }
+}
+
+/** The statuses that HOLD a slot — the same three the partial unique excludes, stated once. */
+const LIVE_SLOT_STATUSES = ["scheduled", "checked_in", "ready", "in_acquisition"] as const;
+
 /**
  * A1/A2/A3 — books a study onto a device at an instant.
  *
@@ -138,10 +213,16 @@ export async function scheduleStudy(
   }
   const studyType = await requireStudyType(tx, study.studyTypeCode);
   await assertDeviceBookable(tx, input.deviceResourceId, studyType.modality);
+  await assertSlotFree(tx, input.deviceResourceId, input.scheduledAt, studyType.duration_min, study.id);
 
   try {
     await tx.update(imagingStudies)
-      .set({ deviceResourceId: input.deviceResourceId, scheduledAt: input.scheduledAt })
+      .set({
+        deviceResourceId: input.deviceResourceId,
+        scheduledAt: input.scheduledAt,
+        /** F55 — the length is snapshotted, so a later book edit cannot move a booked slot. */
+        durationMin: studyType.duration_min,
+      })
       .where(eq(imagingStudies.id, input.studyId));
   } catch (e) {
     if (isSlotCollision(e)) {
@@ -153,6 +234,34 @@ export async function scheduleStudy(
     }
     throw e;
   }
+
+  /**
+   * ═══ F46 (CLOSE REVIEW) — THE EVENT THAT WAS DECLARED, FROZEN AND EMITTED BY NOBODY ═══
+   *
+   * `imaging.study_scheduled` was declared in `events.ts`, frozen into §6/§8 as a payload
+   * downstream plans may write against, and documented in its own header as the input to **18b's
+   * modality worklist file** and **22c-F's appointment card**, with §7 E26 routing 18a-iii's
+   * rebooking cascade over it. Nothing raised it. The only references in the tree were its own
+   * declaration and a schema test that parses a payload no code ever builds.
+   *
+   * **Emitting it on BOTH the book and the move is also DD5's audit answer** — *"when was this
+   * moved, off what slot"*. The payload carries the NEW slot and the keys §8.10 freezes; the OLD
+   * slot is the previous event for the same study, which is what an event log is for. That answers
+   * the question without widening a frozen payload, which a successor would have to live with.
+   */
+  await appendEvent(tx, imagingStudyScheduled.make({
+    actor,
+    patientId: study.patientId,
+    encounterId: study.encounterNo,
+    payload: {
+      studyId: study.id,
+      orderItemId: study.orderItemId,
+      patientId: study.patientId,
+      deviceResourceId: input.deviceResourceId,
+      scheduledAt: input.scheduledAt.toISOString(),
+      studyTypeCode: study.studyTypeCode,
+    },
+  }));
 
   return {
     studyId: study.id,
@@ -185,10 +294,15 @@ export async function rescheduleStudy(
   }
   const studyType = await requireStudyType(tx, study.studyTypeCode);
   await assertDeviceBookable(tx, input.deviceResourceId, studyType.modality);
+  await assertSlotFree(tx, input.deviceResourceId, input.scheduledAt, studyType.duration_min, study.id);
 
   try {
     await tx.update(imagingStudies)
-      .set({ deviceResourceId: input.deviceResourceId, scheduledAt: input.scheduledAt })
+      .set({
+        deviceResourceId: input.deviceResourceId,
+        scheduledAt: input.scheduledAt,
+        durationMin: studyType.duration_min,
+      })
       .where(eq(imagingStudies.id, input.studyId));
   } catch (e) {
     if (isSlotCollision(e)) {
@@ -200,6 +314,35 @@ export async function rescheduleStudy(
     }
     throw e;
   }
+
+  /**
+   * ═══ F46 (CLOSE REVIEW) — THE EVENT THAT WAS DECLARED, FROZEN AND EMITTED BY NOBODY ═══
+   *
+   * `imaging.study_scheduled` was declared in `events.ts`, frozen into §6/§8 as a payload
+   * downstream plans may write against, and documented in its own header as the input to **18b's
+   * modality worklist file** and **22c-F's appointment card**, with §7 E26 routing 18a-iii's
+   * rebooking cascade over it. Nothing raised it. The only references in the tree were its own
+   * declaration and a schema test that parses a payload no code ever builds.
+   *
+   * **Emitting it on BOTH the book and the move is also DD5's audit answer** — *"when was this
+   * moved, off what slot"*. The payload carries the NEW slot and the keys §8.10 freezes; the OLD
+   * slot is the previous event for the same study, which is what an event log is for. That answers
+   * the question without widening a frozen payload, which a successor would have to live with.
+   */
+  await appendEvent(tx, imagingStudyScheduled.make({
+    actor,
+    patientId: study.patientId,
+    encounterId: study.encounterNo,
+    payload: {
+      studyId: study.id,
+      orderItemId: study.orderItemId,
+      patientId: study.patientId,
+      deviceResourceId: input.deviceResourceId,
+      scheduledAt: input.scheduledAt.toISOString(),
+      studyTypeCode: study.studyTypeCode,
+    },
+  }));
+
   return {
     studyId: study.id,
     deviceResourceId: input.deviceResourceId,
@@ -287,24 +430,50 @@ export async function cancelStudy(
   await tx.update(imagingStudies).set({ status: "cancelled" }).where(eq(imagingStudies.id, input.studyId));
 
   /**
-   * B6 — the bill decision is raised on `acquired_at`, NOT on the status band. A study can be
-   * `in_acquisition` with the patient on the table and nothing exposed yet; that is a cancel with
-   * no money in it. The moment an acquisition instant exists, film and time were spent.
+   * ═══ F53 (CLOSE REVIEW) — THE OPERAND WAS `acquired_at`, AND NOTHING COULD EVER SATISFY IT ═══
+   *
+   * B6's rule was right and the column it read was wrong. The guard was
+   * `fromAcquisition && study.acquiredAt !== null` — but `acquired_at` has exactly ONE writer
+   * (`acquisition.ts`'s `recordAcquired`), and that UPDATE sets `status: 'acquired'` in the same
+   * `SET`. So `in_acquisition` AND `acquired_at IS NOT NULL` is a state the system cannot produce,
+   * and the fourth of DD12b's four money facts could never be raised by any input.
+   *
+   * Both doors were shut at once: a study that DID reach `acquired` is refused a cancel above, and
+   * pointed at a bill decision no code could create. Contrast injected, first series exposed,
+   * patient reacts, study abandoned — and nobody was ever asked whether the patient pays.
+   *
+   * **`acquisition_started_at` is the operand B6 was describing**: it is exactly "the patient went
+   * on the machine", it is always non-NULL for `in_acquisition`, and film and time are spent from
+   * that instant whether or not anybody reached the `acquired` button.
+   *
+   * It also goes through `raiseBillDecision` rather than a raw INSERT, so it emits
+   * `imaging.bill_decision_raised` like the other three. The direct insert meant 18a-iii's
+   * reconciliation would never have learned about it even once the guard was fixed.
    */
   let billDecisionId: string | null = null;
-  if (fromAcquisition && study.acquiredAt !== null) {
-    billDecisionId = newId();
-    await tx.insert(imagingBillDecisions).values({
-      id: billDecisionId,
+  if (fromAcquisition && study.acquisitionStartedAt !== null) {
+    ({ billDecisionId } = await raiseBillDecision(tx, actor, {
       studyId: study.id,
       kind: "performed_then_cancelled",
       detail: {
         reason: input.reason ?? null,
-        acquiredAt: study.acquiredAt.toISOString(),
+        acquisitionStartedAt: study.acquisitionStartedAt.toISOString(),
         /** Who cancelled — the table carries no `raised_by`, and the queue needs to know. */
         cancelledBy: actor.id,
       },
-    });
+    }));
+
+    /**
+     * F51 — AND THE MACHINE IS RELEASED. `startAcquisition` assigns the device (`in_use`, with the
+     * study as its occupant); `recordAcquired` and `abortAcquisition` both release it. This third
+     * and only other exit from `in_acquisition` released nothing, so a cancel on the table left the
+     * room `in_use` against a cancelled study — `assignResource` then refused every later scan
+     * while `SCHEDULABLE_DEVICE_STATUSES` kept the diary booking it. A CT room that accepts
+     * bookings and can perform none, with the error arriving once each patient is on the table.
+     */
+    if (study.deviceResourceId !== null) {
+      await releaseResource(tx, actor, RADIOLOGY_RESOURCE_KINDS, study.deviceResourceId, {});
+    }
   }
 
   return { studyId: input.studyId, billDecisionId };
@@ -356,15 +525,26 @@ export async function autoSlotWalkIn(
   });
 }
 
-/** The studies a device has live on its diary, for the console and for T5's readiness view. */
+/**
+ * The studies a device has live on its diary, for the console and for T5's readiness view.
+ *
+ * ═══ F48 (CLOSE REVIEW) — IT TAKES AN ACTOR, AND IT LOGS ONE ROW PER PATIENT ═══
+ *
+ * The first version took no actor and wrote no `phi_access_log` row. A machine's diary is a list of
+ * who is going through that room today — the same class of disclosure as the worklist, which logs —
+ * and F42 already established the shape: one row per DISTINCT patient, never one per read, because
+ * a partial access log is worse than none.
+ */
 export async function deviceDiary(
-  exec: Db | Tx,
+  exec: Db,
+  actor: Actor,
   deviceResourceId: string,
 ): Promise<{ studyId: string; accessionNo: string; scheduledAt: Date | null; status: string }[]> {
-  return await (exec as Db)
+  const rows = await exec
     .select({
       studyId: imagingStudies.id, accessionNo: imagingStudies.accessionNo,
       scheduledAt: imagingStudies.scheduledAt, status: imagingStudies.status,
+      patientId: imagingStudies.patientId,
     })
     .from(imagingStudies)
     .where(and(
@@ -372,4 +552,10 @@ export async function deviceDiary(
       inArray(imagingStudies.status, ["scheduled", "checked_in", "ready", "in_acquisition"]),
     ))
     .orderBy(imagingStudies.scheduledAt);
+
+  const reason = `device diary ${deviceResourceId}, ${String(rows.length)} studies`;
+  for (const patientId of new Set(rows.map((r) => r.patientId))) {
+    await recordPhiAccess(exec, { actor, patientId, surface: "imaging.worklist", reason });
+  }
+  return rows.map(({ patientId: _patientId, ...r }) => r);
 }

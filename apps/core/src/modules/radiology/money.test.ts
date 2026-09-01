@@ -153,7 +153,8 @@ describe("DD12b — the counter's queue (18a T7 A5)", () => {
     }));
     await withTx(db, (tx) => resolveBillDecision(tx, fx.doctor, { billDecisionId, resolution: "credit note CN-9" }));
     await expect(withTx(db, (tx) => resolveBillDecision(tx, fx.doctor, { billDecisionId, resolution: "again" })))
-      .rejects.toMatchObject({ code: "already_acquired" });
+      /** F41 — `already_acquired` was carrying this meaning as well as its own. */
+      .rejects.toMatchObject({ code: "already_resolved" });
   });
 
   it("refuses a resolver without `radiology.bill_decisions.manage` — the technologist decides no money", async () => {
@@ -163,7 +164,8 @@ describe("DD12b — the counter's queue (18a T7 A5)", () => {
     }));
     await expect(withTx(db, (tx) => resolveBillDecision(tx, fx.radiographer, {
       billDecisionId, resolution: "waived",
-    }))).rejects.toMatchObject({ code: "payment_required" });
+    /** F41 — a permission refusal was answering 402, showing the technologist the pay screen. */
+    }))).rejects.toMatchObject({ code: "forbidden" });
   });
 
   it("`hasBillDecision` is the redelivery guard — it sees a kind already raised for a study", async () => {

@@ -175,16 +175,47 @@ async function requireRegistration(exec: Db | Tx, registrationId: string): Promi
  * period, and an inspector asking *"who was registered on this machine in March"* must still get an
  * answer in June. `active = false` and `status` are what change; no row ever leaves this register.
  */
+/**
+ * ═══ F62 (CLOSE REVIEW) — A DEREGISTRATION THAT DEREGISTERS NOBODY IS NOT A SUCCESS ═══
+ *
+ * Both of these issued a bare `UPDATE … WHERE id = ?` with no existence check and no row-count
+ * check, and the controller answered `{active:false}` unconditionally — while `deactivateRegistration`
+ * eleven lines below DID call `requireRegistration`. The asymmetry inside one file is the tell.
+ *
+ * The harm is not hypothetical. `read.ts` returns `{ id, userId, qualification }` for a registered
+ * person, so the console shows two ids for one row. A PCPNDT in-charge deregistering a struck-off
+ * sonologist by the USER id instead of the REGISTRATION-ROW id got `200 {"active":false}`, recorded
+ * the deregistration as done — and the doctor stayed `active`, so `assertPersonRegistered` kept
+ * passing and he kept signing Form Fs. The `RETURNING` below makes the refusal the database's.
+ */
 export async function deactivateMachine(tx: Tx, actor: Actor, machineId: string): Promise<void> {
   await assertMayManage(tx, actor);
-  await tx.update(pcpndtRegisteredMachines).set({ active: false })
-    .where(eq(pcpndtRegisteredMachines.id, machineId));
+  const rows = await tx.update(pcpndtRegisteredMachines).set({ active: false })
+    .where(eq(pcpndtRegisteredMachines.id, machineId))
+    .returning({ id: pcpndtRegisteredMachines.id });
+  if (rows.length === 0) {
+    throw new PcpndtError(
+      "unknown_registration",
+      `no registered machine ${machineId} — nothing was deregistered, and a deregistration that `
+      + "deregisters nobody must not report success",
+      { machineId },
+    );
+  }
 }
 
 export async function deactivatePerson(tx: Tx, actor: Actor, personId: string): Promise<void> {
   await assertMayManage(tx, actor);
-  await tx.update(pcpndtRegisteredPersons).set({ active: false })
-    .where(eq(pcpndtRegisteredPersons.id, personId));
+  const rows = await tx.update(pcpndtRegisteredPersons).set({ active: false })
+    .where(eq(pcpndtRegisteredPersons.id, personId))
+    .returning({ id: pcpndtRegisteredPersons.id });
+  if (rows.length === 0) {
+    throw new PcpndtError(
+      "unknown_registration",
+      `no registered person ${personId} — nothing was deregistered. If you were given a USER id, `
+      + "the register's own row id is the one this route takes",
+      { personId },
+    );
+  }
 }
 
 /** `suspended` and `cancelled` are both non-`active`, so both stop every machine on the registration. */

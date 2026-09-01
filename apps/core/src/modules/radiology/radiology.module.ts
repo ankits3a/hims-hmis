@@ -1,4 +1,9 @@
 import { Module } from "@nestjs/common";
+import { eq } from "drizzle-orm";
+import { imagingStudies } from "../../kernel/db/schema/radiology";
+import { registerFormFSubjectResolver } from "../pcpndt";
+import type { OnModuleInit } from "@nestjs/common";
+import type { Db } from "../../kernel/db/client";
 import { RadiologyDefinitionsController } from "./radiology-definitions.controller";
 import { RadiologyOrdersController } from "./radiology-orders.controller";
 import { RadiologyScheduleController } from "./radiology-schedule.controller";
@@ -41,4 +46,38 @@ import { RadiologyReportsController } from "./radiology-reports.controller";
     RadiologyReportsController,
   ],
 })
-export class RadiologyModule {}
+export class RadiologyModule implements OnModuleInit {
+  onModuleInit(): void {
+    registerRadiologyFormFSubjectResolver();
+  }
+}
+
+/**
+ * ═══ F58 (CLOSE REVIEW) — RADIOLOGY ANSWERS FOR ITS OWN STUDIES WHEN A FORM F IS OPENED ═══
+ *
+ * `openFormF` writes the patient and the machine into the statutory register from caller-supplied
+ * fields and cross-checked neither against the scan. `pcpndt` cannot do the check itself — DD1
+ * makes it a manifest of its own so 15b and 62 can install the register without radiology, and
+ * `study_id` is `text` for that reason — so the module that OWNS the id space answers for it, the
+ * same shape as `opd.module.ts` registering the `V` resolver for the kernel's encounter lookup.
+ *
+ * Returning `null` for an unknown id is what keeps 15b and 62 working: a study this module does not
+ * own is not this module's to contradict.
+ *
+ * Exported so a SUITE can register it without booting Nest, for the reason `opd.module.ts` gives
+ * for its own: a unit suite that needs the cross-check should not have to stand up a module graph,
+ * and a private copy in a fixture would be a second answer to "who owns an `X` study".
+ */
+export function registerRadiologyFormFSubjectResolver(): () => void {
+  return registerFormFSubjectResolver("radiology.imaging_study", async (tx, studyId) => {
+    const rows = await (tx as unknown as Db)
+      .select({
+        patientId: imagingStudies.patientId, deviceResourceId: imagingStudies.deviceResourceId,
+      })
+      .from(imagingStudies)
+      .where(eq(imagingStudies.id, studyId));
+    const row = rows[0];
+    if (!row || row.deviceResourceId === null) return null;
+    return { patientId: row.patientId, deviceResourceId: row.deviceResourceId };
+  });
+}

@@ -143,10 +143,10 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
   };
 
   const start = (studyId: string, actor: Actor = fx.radiographer) =>
-    withTx(db, (tx) => startAcquisition(tx, actor, fx.decls, { studyId, onDate: DAY, now: NOW }));
+    withTx(db, (tx) => startAcquisition(tx, actor, fx.decls, { studyId, now: NOW }));
   const acquired = (studyId: string, over: Record<string, unknown> = {}, actor: Actor = fx.radiographer) =>
     withTx(db, (tx) => recordAcquired(tx, actor, fx.decls, {
-      studyId, onDate: DAY, imageSource: "pacs", now: NOW, ...over,
+      studyId, imageSource: "pacs", now: NOW, ...over,
     }));
 
   /* ═══════════════════════ A1 — THE ORDER OF OPERATIONS ═══════════════════════ */

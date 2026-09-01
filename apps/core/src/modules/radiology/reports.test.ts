@@ -368,16 +368,38 @@ describe("the report: versioned, signed, amended, published (18a T8)", () => {
     const red = await withTx(db, (tx) => flagCritical(tx, fx.radiologist, {
       reportId: signed.reportId, category: "red", communicatedTo: "dr.ward",
     }));
-    await expect(withTx(db, (tx) => acknowledgeCritical(tx, fx.radiologist, { criticalId: red.criticalId })))
-      .rejects.toMatchObject({ code: "reason_required" });
+    await expect(withTx(db, (tx) => acknowledgeCritical(tx, fx.radiologist, {
+      criticalId: red.criticalId, acknowledgedByClinicianId: fx.doctor.id,
+    }))).rejects.toMatchObject({ code: "reason_required" });
     await withTx(db, (tx) => acknowledgeCritical(tx, fx.radiologist, {
-      criticalId: red.criticalId, readBack: "large left extradural haematoma, taking to theatre", now: NOW,
+      criticalId: red.criticalId,
+      acknowledgedByClinicianId: fx.doctor.id,
+      readBack: "large left extradural haematoma, taking to theatre", now: NOW,
     }));
 
+    /**
+     * ═══ F76 — THIS ASSERTION USED TO PIN THE DEFECT ═══
+     *
+     * It read `[row.acknowledgedBy, row.readBackText]` and expected `fx.radiologist.id` — the
+     * person who TYPED the acknowledgement, who is also the person who signed the report. An
+     * implementation that refused a self-acknowledgement would have failed this test, which is why
+     * the defect survived: the suite was asserting that the loop may be closed at both ends by one
+     * person, and `imaging.critical_acknowledged` then told 18a-iii's chaser it had reached a human.
+     *
+     * Now the two are separate facts: `acknowledged_by` is the CLINICIAN who received the call and
+     * `recorded_by` is whoever was at the keyboard — at 02:10 that is the radiologist, which is
+     * exactly why they cannot be the same field.
+     */
     const [row] = await db.select().from(imagingCriticalFindings)
       .where(eq(imagingCriticalFindings.id, red.criticalId));
-    expect([row!.acknowledgedBy, row!.readBackText])
-      .toEqual([fx.radiologist.id, "large left extradural haematoma, taking to theatre"]);
+    expect([row!.acknowledgedBy, row!.recordedBy, row!.readBackText])
+      .toEqual([fx.doctor.id, fx.radiologist.id, "large left extradural haematoma, taking to theatre"]);
+
+    /** F76 — and the signer telephoning themselves is not a communication. */
+    const other = await withTx(db, (tx) => flagCritical(tx, fx.radiologist, {
+      reportId: signed.reportId, category: "orange",
+    }));
+    expect(other.criticalId).toBe(red.criticalId);
 
     const emitted = (await db.select().from(events)).map((e) => e.name);
     expect(emitted).toContain("imaging.critical_flagged");
@@ -389,9 +411,12 @@ describe("the report: versioned, signed, amended, published (18a T8)", () => {
     const { reportId } = await draft(study.studyId);
     const signed = await sign(study.studyId, reportId);
     const c = await withTx(db, (tx) => flagCritical(tx, fx.radiologist, { reportId: signed.reportId, category: "orange" }));
-    await withTx(db, (tx) => acknowledgeCritical(tx, fx.radiologist, { criticalId: c.criticalId, now: NOW }));
-    await expect(withTx(db, (tx) => acknowledgeCritical(tx, fx.radiologist, { criticalId: c.criticalId })))
-      .rejects.toMatchObject({ code: "already_signed" });
+    await withTx(db, (tx) => acknowledgeCritical(tx, fx.radiologist, {
+      criticalId: c.criticalId, acknowledgedByClinicianId: fx.doctor.id, now: NOW,
+    }));
+    await expect(withTx(db, (tx) => acknowledgeCritical(tx, fx.radiologist, {
+      criticalId: c.criticalId, acknowledgedByClinicianId: fx.doctor.id,
+    }))).rejects.toMatchObject({ code: "already_signed" });
   });
 
   /* ═══════════════════════ the shape of a report's life ═══════════════════════ */

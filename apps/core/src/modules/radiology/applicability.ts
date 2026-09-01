@@ -68,7 +68,9 @@ export type PcpndtApplicability = {
     | "sex_not_female"
     | "age_outside_band"
     | "within_band"
-    | "age_unknown";
+    | "age_unknown"
+    /** F65 — a date of birth after the day of the scan. Applicable, and a data-quality flag. */
+    | "dob_not_credible";
   /** The age used, in whole years, or `null` when the DOB is absent. */
   ageYears: number | null;
 };
@@ -119,6 +121,27 @@ export function pcpndtApplicability(
   }
 
   const ageYears = ageInYearsOn(patient.dob, asOf);
+
+  /**
+   * ═══ F65 (CLOSE REVIEW) — A NULL DOB IS FAIL-SAFE AND A NONSENSE ONE WAS FAIL-OPEN ═══
+   *
+   * `ageInYearsOn` returns a NEGATIVE number for a date of birth after the day of the scan, and the
+   * band test treated that as an ordinary out-of-band age: `applicable: false`, no `restricted`, no
+   * `form_f_required`, no `form_f` gate, and `assertFormFRecorded` short-circuits — **an obstetric
+   * scan performed with no entry in the statutory register at all.** A registration desk typing
+   * `2004` as `2024`, or an ABDM import landing a DOB in the future, is all it takes.
+   *
+   * The header already argues this case for a NULL: *"the Act's default is the form and the
+   * exemption is what must be established"*, and *"a null in a nullable column is not evidence of
+   * anything"*. **An arithmetically impossible date is less evidence than a null**, not more — it is
+   * a null wearing a number — so it lands on the same side. The reason is its own value so a screen
+   * can say "this record's date of birth cannot be right" rather than "this scan is covered", which
+   * is the sentence that gets the record fixed.
+   */
+  if (ageYears < 0) {
+    return { applicable: true, reason: "dob_not_credible", ageYears };
+  }
+
   const withinBand = ageYears >= PCPNDT_AGE_MIN_YEARS && ageYears <= PCPNDT_AGE_MAX_YEARS;
   return {
     applicable: withinBand,

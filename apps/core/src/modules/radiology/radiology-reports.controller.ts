@@ -40,6 +40,11 @@ const contentBody = z.object({
   body: z.record(z.string(), z.unknown()),
   impression: z.string().max(8000).nullish(),
   laterality: z.enum(["left", "right", "bilateral", "na"]).nullish(),
+  /** F66 — the medical superintendent who approved a demographic-tier lockout hit, and why. */
+  lockoutOverride: z.object({
+    approvedBy: z.string().min(1).max(64),
+    reason: z.string().min(1).max(400),
+  }).nullish(),
 });
 
 const signBody = z.object({
@@ -57,7 +62,15 @@ const criticalBody = z.object({
   communicatedTo: z.string().min(1).max(120).nullish(),
 });
 
-const ackBody = z.object({ readBack: z.string().min(1).max(2000).nullish() });
+/**
+ * F76 — the acknowledgement names the CLINICIAN who received the call. It used to name whoever
+ * typed it, and `radiology.criticals.ack` is granted to `radiologist` alone, so the loop was closed
+ * at both ends by one person while the event told the downstream chaser it had reached a human.
+ */
+const ackBody = z.object({
+  acknowledgedByClinicianId: z.string().min(1).max(64),
+  readBack: z.string().min(1).max(2000).nullish(),
+});
 
 @Controller("radiology")
 export class RadiologyReportsController {
@@ -205,7 +218,9 @@ export class RadiologyReportsController {
     const input = parsed(ackBody, body);
     try {
       return await withTx(this.db, (tx) => acknowledgeCritical(tx, actor, {
-        criticalId, readBack: input.readBack ?? null,
+        criticalId,
+        acknowledgedByClinicianId: input.acknowledgedByClinicianId,
+        readBack: input.readBack ?? null,
       }));
     } catch (e) { toHttp(e); }
   }

@@ -68,7 +68,7 @@ describe("two consoles, one machine and one study (18a T7 A1/A6)", () => {
   };
 
   const start = (studyId: string) =>
-    withTx(db, (tx) => startAcquisition(tx, fx.radiographer, fx.decls, { studyId, onDate: DAY, now: NOW }));
+    withTx(db, (tx) => startAcquisition(tx, fx.radiographer, fx.decls, { studyId, now: NOW }));
 
   /**
    * A1 — TWO STUDIES, ONE MACHINE. The winner occupies it; the loser is refused by the KERNEL's
@@ -110,7 +110,7 @@ describe("two consoles, one machine and one study (18a T7 A1/A6)", () => {
 
     const race = () => withTx(db, async (tx) => {
       const r = await recordAcquired(tx, fx.radiographer, fx.decls, {
-        studyId: study.studyId, onDate: DAY, imageSource: "no_pacs_images", now: NOW,
+        studyId: study.studyId, imageSource: "no_pacs_images", now: NOW,
       });
       await new Promise((resolve) => setTimeout(resolve, HOLD_MS));
       return r;
@@ -137,7 +137,7 @@ describe("two consoles, one machine and one study (18a T7 A1/A6)", () => {
     const study = await readyStat();
     await start(study.studyId);
     const once = () => withTx(db, (tx) => recordAcquired(tx, fx.radiographer, fx.decls, {
-      studyId: study.studyId, onDate: DAY, imageSource: "no_pacs_images", now: NOW,
+      studyId: study.studyId, imageSource: "no_pacs_images", now: NOW,
     }));
     await once();
     await expect(once()).rejects.toMatchObject({ code: "already_acquired" });

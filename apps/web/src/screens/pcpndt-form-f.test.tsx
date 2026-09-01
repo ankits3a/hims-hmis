@@ -70,6 +70,16 @@ it("a recorded form offers VERIFY and no longer offers an edit", async () => {
 it("a study with no form offers to OPEN one, which mints the serial", async () => {
   mockRoutes({
     "GET /api/pcpndt/studies/S1/form-f": { status: 200, body: { form: null } },
+    /**
+     * F57 — the screen now READS the study, because the Open body needs the patient and the device
+     * and the old version simply did not send them: every click was a 400 against a schema that
+     * requires seven fields where the screen sent four. A test that stubs only the form-f GET is
+     * testing a screen that cannot open a form.
+     */
+    "GET /api/radiology/studies/S1": {
+      status: 200,
+      body: { study: { studyId: "S1", patientId: "P1", deviceResourceId: "D1", reports: [] } },
+    },
     "POST /api/pcpndt/form-f": { status: 201, body: { formFId: "F1", serialNo: 1, serialYear: 2026 } },
   });
   renderWithProviders(<PcpndtFormF />);
@@ -83,6 +93,10 @@ it("a study with no form offers to OPEN one, which mints the serial", async () =
 it("shows an unregistered-machine refusal with the server's own words", async () => {
   mockRoutes({
     "GET /api/pcpndt/studies/S1/form-f": { status: 200, body: { form: null } },
+    "GET /api/radiology/studies/S1": {
+      status: 200,
+      body: { study: { studyId: "S1", patientId: "P1", deviceResourceId: "D1", reports: [] } },
+    },
     "POST /api/pcpndt/form-f": {
       status: 403,
       body: {

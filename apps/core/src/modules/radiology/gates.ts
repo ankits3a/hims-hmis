@@ -4,8 +4,10 @@ import { newId } from "@hmis/contracts";
 import { imagingSafetyScreenings, imagingStudies } from "../../kernel/db/schema/radiology";
 import { pcpndtFormF } from "../../kernel/db/schema/pcpndt";
 import { patients } from "../../kernel/db/schema/patients";
+import { users } from "../../kernel/db/schema/auth";
 import { appendEvent } from "../../kernel/events/append";
 import { startInstance, transition, WorkflowError } from "../../kernel/workflow/instances";
+import { recordPhiAccess } from "../../kernel/phi/audit";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { consentSchema, consentEvidence } from "../ot";
 import { guardiansWithAuthority, listAllergies } from "../patients";
@@ -447,11 +449,30 @@ async function computeSatisfaction(
         uhid: patients.uhid, dob: patients.dob,
       }).from(patients).where(eq(patients.id, study.patientId)))[0]!;
 
-      if (parsed.secondIdentifier === "uhid" && parsed.value !== patient.uhid) {
+      /**
+       * ═══ F64 (CLOSE REVIEW) — THE WRISTBAND LEG COMPARED NOTHING ═══
+       *
+       * `uhid` and `dob` were both computed against the patient master; `wristband` fell through
+       * both branches and returned satisfied for ANY string. So the one gate this file calls **never
+       * waivable** — the gate that exists for A6's "wrong Ram Kumar" — was cleared by typing four
+       * characters into a field nothing read. The `dob`/`uhid` legs proved their negatives in
+       * `gates.test.ts`; the wristband branch had no assertion beyond its acceptance, so a rule and
+       * no rule agreed on every state the suite inspected.
+       *
+       * **A wristband carries the UHID** — it is printed from it at registration — so it is the
+       * same datum read off a band instead of asked aloud, and it is compared the same way. The
+       * distinction the enum keeps is HOW the identity was confirmed, which is what an audit of a
+       * wrong-patient event wants to know; it was never meant to be a way of not confirming it.
+       */
+      if (
+        (parsed.secondIdentifier === "uhid" || parsed.secondIdentifier === "wristband")
+        && parsed.value.trim() !== patient.uhid
+      ) {
         throw new RadiologyError(
           "gate_open",
-          "the UHID the patient gave is not this record's — check who is in front of you before scanning",
-          { given: parsed.value },
+          `the ${parsed.secondIdentifier === "uhid" ? "UHID the patient gave" : "wristband"} is not `
+          + "this record's — check who is in front of you before scanning",
+          { given: parsed.value, secondIdentifier: parsed.secondIdentifier },
         );
       }
       if (parsed.secondIdentifier === "dob") {
@@ -745,6 +766,36 @@ async function computeSatisfaction(
       if (parsed.chaperoneUserId === study.patientId) {
         throw new RadiologyError("evidence_invalid", "a patient cannot chaperone herself");
       }
+      /**
+       * ═══ F64 (CLOSE REVIEW) — THE CHAPERONE HAS TO BE SOMEBODY ═══
+       *
+       * The only two comparisons were "not the actor" and "not the patient", so any string that was
+       * neither satisfied the gate — a chaperone gate cleared by typing `x`. E20's 16-year-old
+       * pelvic USG is what this gate is for, and a named person who does not exist is not a
+       * chaperone; it is a field that was filled in.
+       *
+       * The check is EXISTENCE and STAFF, not a role list: a chaperone may be a nurse, an
+       * attendant, a technologist or the receptionist, and enumerating which roles may stand in a
+       * room is the kind of list that goes stale and then gets worked around. What cannot be true is
+       * that nobody was there.
+       */
+      const chaperone = await (tx as unknown as Db).select({ id: users.id, active: users.active })
+        .from(users).where(eq(users.id, parsed.chaperoneUserId));
+      if (!chaperone[0]) {
+        throw new RadiologyError(
+          "evidence_invalid",
+          `${parsed.chaperoneUserId} is not a user of this hospital — a chaperone is a named person `
+          + "who was in the room, not a note",
+          { chaperoneUserId: parsed.chaperoneUserId },
+        );
+      }
+      if (chaperone[0].active === false) {
+        throw new RadiologyError(
+          "evidence_invalid",
+          `${parsed.chaperoneUserId} is not an active member of staff`,
+          { chaperoneUserId: parsed.chaperoneUserId },
+        );
+      }
       return { kind: "chaperone_present", ...parsed, recordedBy: actor.id };
     }
 
@@ -754,14 +805,42 @@ async function computeSatisfaction(
      */
     case "laterality_confirm": {
       const parsed = parseEvidence(lateralitySchema, raw, "laterality_confirm");
-      if (parsed.patientStated !== study.laterality) {
+      /**
+       * ═══ F59 (CLOSE REVIEW) — THIS GATE NOW RECORDS THE SIDE. IT USED TO COMPARE AGAINST `'na'` ═══
+       *
+       * `imaging_studies.laterality` had NO WRITER anywhere in the tree: there is no order field, no
+       * route parameter and no update, so every study sat at the column default `'na'` for ever.
+       * This gate compared the patient's statement against that default — so **the only evidence
+       * that could clear it was `patientStated: 'na'`**, i.e. the console had to record that a knee
+       * X-ray has no side. `assertSignable` then refused any report that named one, and two of the
+       * twenty seeded study types became permanently unreportable. E3's wrong-site control did not
+       * merely fail to fire: it forced the record to be wrong in exactly the way E3 exists to
+       * prevent.
+       *
+       * **What this fix is, and what it is honestly NOT.** The side is now taken from the patient
+       * at check-in, in front of the patient, and written to the study; sign compares the report
+       * against it, so *"the report names a different side from the one confirmed at the console"*
+       * is caught. What is still missing is the ORDER's own side — E3's *"left knee ordered, right
+       * imaged"* needs `order_items.laterality`, which is a KERNEL column this phase may not add
+       * (§8's freeze). **That is reported as a plan defect for the kernel, not taken here**, and
+       * until it exists a mis-ordered side is caught by the patient at the console rather than by
+       * the system at placement.
+       *
+       * A study whose side is already recorded may not be silently re-sided: a second statement
+       * that disagrees is a refusal, because that is a person changing their mind about which knee
+       * and it belongs to the referrer.
+       */
+      if (study.laterality !== "na" && parsed.patientStated !== study.laterality) {
         throw new RadiologyError(
           "gate_open",
-          `the patient says ${parsed.patientStated} and the order says ${study.laterality} — `
-          + "the referrer resolves this, not the console",
-          { patientStated: parsed.patientStated, ordered: study.laterality },
+          `the patient says ${parsed.patientStated} and this study is already recorded as `
+          + `${study.laterality} — the referrer resolves a change of side, not the console`,
+          { patientStated: parsed.patientStated, recorded: study.laterality },
         );
       }
+      await tx.update(imagingStudies)
+        .set({ laterality: parsed.patientStated })
+        .where(eq(imagingStudies.id, study.id));
       return { kind: "laterality_confirm", ...parsed };
     }
 
@@ -981,12 +1060,34 @@ export async function evaluateReadiness(
 /**
  * The console's read: every gate with its state, plus whether the study is ready and what is
  * holding it. A GET must not transition, so this NEVER calls `evaluateReadiness` — it reports.
+ *
+ * ═══ F48 (CLOSE REVIEW) — IT TAKES AN ACTOR, AND IT LOGS ═══
+ *
+ * The first version took no actor and wrote no `phi_access_log` row, while `read.ts`'s three reads
+ * logged every disclosure. **The gate list IS a disclosure**: `open: ["form_f", "pregnancy_screen"]`
+ * says this patient is female, of an age the Act covers, and having a scan it covers. DD11 declared
+ * the imaging surfaces PHI precisely so *"what did they actually see"* is answerable, and a read
+ * that answers for one named study and leaves no row is the hole in that answer.
+ *
+ * It is logged under `imaging.study` — the same surface `studyView` uses — because it is a read of
+ * one study, and inventing a fourth surface name for the same disclosure would make the log harder
+ * to query rather than more precise.
  */
 export async function readiness(
-  exec: Db | Tx, studyId: string,
+  exec: Db | Tx, actor: Actor, studyId: string,
 ): Promise<{ state: string; ready: boolean; gates: StudyGate[]; open: string[] }> {
   const state = await studyState(exec, studyId);
   const gates = await studyGates(exec, studyId);
+  const owner = (await (exec as Db).select({
+    patientId: imagingStudies.patientId, encounterNo: imagingStudies.encounterNo,
+    accessionNo: imagingStudies.accessionNo,
+  }).from(imagingStudies).where(eq(imagingStudies.id, studyId)))[0];
+  if (owner) {
+    await recordPhiAccess(exec as Db, {
+      actor, patientId: owner.patientId, surface: "imaging.study",
+      encounterId: owner.encounterNo, reason: `gate readiness for ${owner.accessionNo}`,
+    });
+  }
   const open = gates
     .filter((g) => !(IMAGING_TERMINAL_GATE_STATES as readonly string[]).includes(g.state))
     .map((g) => g.kind);

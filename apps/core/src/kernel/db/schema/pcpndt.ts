@@ -179,11 +179,38 @@ export const pcpndtRegisteredPersons = pgTable(
 export const pcpndtFormFSerials = pgTable(
   "pcpndt_form_f_serials",
   {
-    machineId: text("machine_id").notNull().references(() => pcpndtRegisteredMachines.id),
+    /**
+     * ═══ F61 (CLOSE REVIEW) — THE COUNTER IS PER PHYSICAL MACHINE, NOT PER REGISTRATION ROW ═══
+     *
+     * This was keyed on `pcpndt_registered_machines.id` — a row that belongs to ONE registration.
+     * There is no renew path in this module: `createRegistration` mints a new registration (and
+     * `registration_no` is UNIQUE, so a certificate cannot be re-filed), `addMachine` requires a
+     * registration id, and `pcpndt_registered_machines_device_active_ux` forces the old machine row
+     * to be deactivated first. **So the same physical ultrasound machine gets a NEW `machine_id` on
+     * renewal**, and the counter restarted at 1 in the middle of a calendar year.
+     *
+     * Registration MH/PNDT/2021/0042 runs to 30 June; forms 1..47 are minted in 2026. On 1 July the
+     * in-charge files the renewal, and the next scan mints serial **1/2026** again. That machine's
+     * 2026 register reads 1..47 then 1..38 — forty duplicate serials in the book an inspector
+     * counts — and the unique index, keyed on `machine_id`, could not see a single one of them.
+     *
+     * `device_resource_id` is the physical machine: it survives every renewal, it is what the
+     * hospital points at when it says "that scanner", and it is what "gap-free per machine per
+     * year" was always about.
+     */
+    deviceResourceId: text("device_resource_id").notNull().references(() => resources.id),
+    /**
+     * PROVENANCE, not the key: the registered-machine row under which this year's book was OPENED.
+     * It is deliberately kept and deliberately nullable — after a renewal the counter goes on
+     * counting for the same physical device while this column still names the registration that
+     * started the year, which is the honest record of what happened and is exactly the fact a
+     * renewal audit wants. Nothing reads it to decide a serial.
+     */
+    machineId: text("machine_id").references(() => pcpndtRegisteredMachines.id),
     year: integer("year").notNull(),
     nextNo: bigint("next_no", { mode: "number" }).notNull().default(1),
   },
-  (t) => [primaryKey({ columns: [t.machineId, t.year] })],
+  (t) => [primaryKey({ columns: [t.deviceResourceId, t.year] })],
 );
 
 /**
@@ -209,6 +236,15 @@ export const pcpndtFormF = pgTable(
     /** The calendar year the serial belongs to — carried so the register reads as a year's book. */
     serialYear: integer("serial_year").notNull(),
     machineId: text("machine_id").notNull().references(() => pcpndtRegisteredMachines.id),
+    /**
+     * F61 — the PHYSICAL machine behind `machine_id`, denormalised at insert and frozen by the
+     * trigger with the rest of the form's identity. The form NAMES the registered machine (Form B
+     * is registration-scoped, and that is the legally meaningful reference); the SERIAL is counted
+     * per physical device, because a renewal mints a new registered-machine row for the same
+     * scanner and the counter must not restart mid-year. The uniqueness an inspector checks has to
+     * be expressible on this row, so the device is on it.
+     */
+    deviceResourceId: text("device_resource_id").notNull().references(() => resources.id),
     personId: text("person_id").notNull().references(() => pcpndtRegisteredPersons.id),
     /**
      * TEXT, NOT AN FK — see the file header. 15b and 62 write their own study-shaped ids here and
@@ -235,8 +271,8 @@ export const pcpndtFormF = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    /** I6 — the inspector's own query: no gap, no duplicate, per machine per year. */
-    uniqueIndex("pcpndt_form_f_machine_serial_ux").on(t.machineId, t.serialYear, t.serialNo),
+    /** I6 / F61 — per PHYSICAL machine per year, so a renewal cannot restart the book. */
+    uniqueIndex("pcpndt_form_f_machine_serial_ux").on(t.deviceResourceId, t.serialYear, t.serialNo),
     /** N1 — one form per scan. */
     uniqueIndex("pcpndt_form_f_study_ux").on(t.studyId),
     index("pcpndt_form_f_patient_idx").on(t.patientId),

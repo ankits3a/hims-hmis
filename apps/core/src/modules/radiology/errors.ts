@@ -64,6 +64,34 @@ export const RADIOLOGY_ERROR_CODES = [
   "payment_required",
   "dose_required",
   "contrast_mismatch",
+  /**
+   * ═══ F41 (CLOSE REVIEW, RULED) — THE TWO CODES THE UNION WAS MISSING ═══
+   *
+   * This file's header says a task needing a code the union does not carry has found a PLAN DEFECT
+   * and reports it rather than borrowing a neighbour. T5–T8 reported it, in five places, and the
+   * close review is the decision the rule exists to force. **The ask is granted.**
+   *
+   *   · `forbidden` (403) — an authorisation refusal. The worst of the five borrowings was
+   *     `unknown_study` (**404**) for a PERMISSION failure in `read.ts`: an authorisation answer
+   *     dressed as a not-found, invisible only because the controller guard answers 403 first, so
+   *     an internal caller saw the wrong thing and a route added later would have shipped it.
+   *   · `unknown_invoice_line` (404) — `linkInvoiceLine` answered `unknown_study` ("no study") when
+   *     the INVOICE LINE was unknown, sending a counter to look for the wrong missing object.
+   *   · `already_resolved` (409) — a bill decision already worked. `already_acquired` was carrying
+   *     that meaning as well as its own.
+   *
+   * ═══ AND THE CONSTRAINT THE ASK DID NOT STATE ═══
+   *
+   * **The RESTRICTED hold-out must never become one of these.** A reader who may not see a row gets
+   * the same answer as a reader asking about a row that does not exist; turning that into a
+   * distinguishable 403 would rebuild the oracle the hold-out exists to remove (§9.8 rule 4 — a fix
+   * that removes a disclosure must not re-derive it through a neighbouring field). Only the
+   * PERMISSION checks change code. `worklist`'s *"you do not hold radiology.worklist.read"* is
+   * about the ACTOR and is a 403; `studyView` returning null is about the ROW and stays a null.
+   */
+  "forbidden",
+  "unknown_invoice_line",
+  "already_resolved",
   // ── reports (T8) ──
   "second_factor_required",
   "laterality_mismatch",
@@ -100,6 +128,10 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   bad_transition: 409,
   definition_not_active: 409,
   definition_invalid: 422,
+
+  forbidden: 403,
+  unknown_invoice_line: 404,
+  already_resolved: 409,
 
   gate_open: 422,
   gate_not_overridable: 422,

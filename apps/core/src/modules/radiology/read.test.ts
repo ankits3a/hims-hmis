@@ -10,6 +10,7 @@ import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permis
 import { withTx } from "../../kernel/db/client";
 import { draftReport, signReport } from "./reports";
 import { reportView, studyView, worklist } from "./read";
+import { listOrdersForPatient } from "../../kernel/orders/read";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
 import type { StudyType } from "./definitions";
 import type { Actor } from "@hmis/contracts";
@@ -84,10 +85,25 @@ describe("the radiology reads, and the two confidentiality rules (18a T8 A8)", (
   /* ═══════════════════════ A8 — THE TWO RULES ═══════════════════════ */
 
   /**
-   * A8's central row. The obstetric USG is `restricted` (the PCPNDT rule set it at placement), so it
-   * is HELD OUT of the technologist's list entirely — not shown under an alias.
+   * ═══ F45 (CLOSE REVIEW, OWNER RULING) — THIS TEST PROVED THE DESIGN WITH A ROLE THAT DOES NOT EXIST ═══
+   *
+   * It asserted that the obstetric USG is held out of the technologist's list and visible to
+   * `rad_reader` — a role this suite INVENTS and grants `orders.read.restricted`. **No seeded role
+   * holds that permission**: `seed-roles.ts` parks it in `NOT_YET_MODELLED` as a Class-A grant for
+   * the owner, and its reason names *"the PCPNDT-class USG"* in as many words. So in a real
+   * hospital there is no `rad_reader`, every one of the three seeded radiology roles is a
+   * `rad_tech`, and this assertion described a department that could not see — and therefore could
+   * not schedule, check in, gate, acquire or report — any of the three study types the Act covers.
+   * The reception screen renders `rows ?? []`, so the desk saw an empty list and no error.
+   *
+   * **The ruling: `radiology.worklist.read` IS the departmental clearance.** The department that
+   * performs the scan sees its own work. What still holds the row out is the KERNEL's
+   * `listOrdersForPatient` — a WARD's pending list, a different reader on a different route, which
+   * DD11's argument was actually about and which is untouched.
+   *
+   * `restricted` is still returned on every row, as a LABEL the screen badges.
    */
-  it("A8: a RESTRICTED study is omitted from the list of a reader without the clearance", async () => {
+  it("F45: the DEPARTMENT sees its own restricted study, and the row still says it is restricted", async () => {
     await rewriteBook([
       bookRow("USG-ABDO", { modality: "usg", pcpndt_applicable: true }),
       bookRow("XR-CHEST", { modality: "xray", ionising: true }),
@@ -100,20 +116,30 @@ describe("the radiology reads, and the two confidentiality rules (18a T8 A8)", (
     const [item] = await db.select().from(orderItems).where(eq(orderItems.id, obstetric.itemId));
     expect(item!.restricted).toBe(true);
 
+    /** The technologist holds NEITHER clearance, and is the department. She sees both. */
     const techList = await worklist(db, tech, { view: "all" });
-    expect(techList.map((r) => r.studyId)).toEqual([plain.studyId]);
+    expect(techList.map((r) => r.studyId).sort()).toEqual([obstetric.studyId, plain.studyId].sort());
+    expect(techList.find((r) => r.studyId === obstetric.studyId)?.restricted).toBe(true);
+    expect(techList.find((r) => r.studyId === plain.studyId)?.restricted).toBe(false);
 
-    /** …and the radiologist sees BOTH on the same list. */
+    /** And so does a reader who holds both clearances — the answer no longer depends on them. */
     const readerList = await worklist(db, reader, { view: "all" });
     expect(readerList.map((r) => r.studyId).sort()).toEqual([obstetric.studyId, plain.studyId].sort());
+
+    /** THE SURFACE THAT STILL HOLDS IT OUT: the kernel's own order reader, for a ward. */
+    const wardView = await listOrdersForPatient(db, tech, fx.patientId);
+    const wardItems = wardView.orders.flatMap((o) => o.items.map((i) => i.id));
+    expect(wardItems).toContain(plain.itemId);
+    expect(wardItems).not.toContain(obstetric.itemId);
   });
 
   /**
-   * The other half of the rule, and the one that keeps the hold-out from being a blanket ban: the
-   * ORDERING CLINICIAN sees their own restricted order even without the clearance. The kernel's
-   * `visibleItems` says so and this is the same rule projected onto a department's day.
+   * F45 — the ordering-clinician leg was the hold-out's escape hatch and it was UNREACHABLE: the
+   * seeded `doctor` role does not hold `radiology.worklist.read`, so the permission check threw
+   * before the exemption could apply. It is kept as a test because a clinician granted the worklist
+   * permission is a configuration a hospital may choose, and the answer must still be yes.
    */
-  it("A8: the ORDERING CLINICIAN sees their own restricted study without holding the clearance", async () => {
+  it("F45: the ordering clinician granted the worklist permission sees the study", async () => {
     await rewriteBook([
       bookRow("USG-ABDO", { modality: "usg", pcpndt_applicable: true }),
       bookRow("XR-CHEST", { modality: "xray", ionising: true }),
@@ -154,8 +180,12 @@ describe("the radiology reads, and the two confidentiality rules (18a T8 A8)", (
     expect(readerList.map((r) => r.patientName)).toEqual(["Asha Devi"]);
   });
 
-  /** The two rules compose: a restricted row is held out even from somebody who could see the name. */
-  it("A8: holding `patients.confidential.read` does NOT unlock a restricted row", async () => {
+  /**
+   * F45 — the two rules no longer COMPOSE on this surface, and that is the ruling rather than a
+   * regression: `restricted` is a label here and `confidential` is still a rename. What this now
+   * pins is that the confidentiality clearance changes the NAME and nothing else.
+   */
+  it("F45: `patients.confidential.read` changes the name and not the membership of the list", async () => {
     await rewriteBook([
       bookRow("USG-ABDO", { modality: "usg", pcpndt_applicable: true }),
       bookRow("XR-CHEST", { modality: "xray", ionising: true }),
@@ -170,7 +200,9 @@ describe("the radiology reads, and the two confidentiality rules (18a T8 A8)", (
     await grantPermissionToRole(db, registry, "rad_tech", "patients.confidential.read");
 
     const list = await worklist(db, tech, { view: "all" });
-    expect(list.map((r) => r.studyId)).not.toContain(obstetric.studyId);
+    expect(list.map((r) => r.studyId)).toContain(obstetric.studyId);
+    /** The clearance was granted above, so the real name shows; the row was never in question. */
+    expect(list.map((r) => r.patientName)).toEqual(["Asha Devi"]);
   });
 
   /* ═══════════════════════ the views, and the PHI log ═══════════════════════ */
@@ -192,7 +224,12 @@ describe("the radiology reads, and the two confidentiality rules (18a T8 A8)", (
     expect(surfaces).toEqual(["imaging.report", "imaging.study", "imaging.worklist"]);
   });
 
-  it("`studyView` and `reportView` HOLD OUT a restricted study entirely — the same answer as unknown", async () => {
+  /**
+   * F45 — `studyView` returning `null` for a restricted study is what printed "unknown study" on
+   * the console for every obstetric scan, while the readiness route underneath rendered the whole
+   * gate list with working buttons. Both readers now answer for the department.
+   */
+  it("F45: `studyView` opens a restricted study for the department", async () => {
     await rewriteBook([
       bookRow("USG-ABDO", { modality: "usg", pcpndt_applicable: true }),
       bookRow("XR-CHEST", { modality: "xray", ionising: true }),
@@ -200,8 +237,12 @@ describe("the radiology reads, and the two confidentiality rules (18a T8 A8)", (
       bookRow("MRI-BRAIN", { modality: "mri" }),
     ]);
     const obstetric = await place("USG-ABDO");
-    expect(await studyView(db, tech, obstetric.studyId)).toBeNull();
+    const asTech = await studyView(db, tech, obstetric.studyId);
+    expect(asTech).not.toBeNull();
+    expect([asTech?.restricted, asTech?.formFRequired]).toEqual([true, true]);
     expect(await studyView(db, reader, obstetric.studyId)).not.toBeNull();
+    /** An id that names nothing is still `null` — the hold-out is gone, the not-found is not. */
+    expect(await studyView(db, tech, "01NOSUCHSTUDY000000000001")).toBeNull();
   });
 
   it("the `unread` view is the radiologist's list and the `floor` view is the technologist's", async () => {
@@ -213,10 +254,19 @@ describe("the radiology reads, and the two confidentiality rules (18a T8 A8)", (
   });
 
   it("refuses a reader without `radiology.worklist.read`, and a non-user actor outright", async () => {
+    /**
+     * F41 — these were `unknown_study` (**404**): an authorisation refusal answering not-found. It
+     * escaped notice only because the controller guard returns 403 first, so an internal caller saw
+     * the wrong answer and any route added later would have shipped it. `forbidden` is 403.
+     *
+     * The RESTRICTED hold-out deliberately did NOT move with them: a row a reader may not see still
+     * answers exactly as a row that does not exist, because a distinguishable refusal there would
+     * rebuild the oracle the hold-out removes.
+     */
     const { actor: nobody } = await mkUser(db, "nobody.one", []);
-    await expect(worklist(db, nobody, {})).rejects.toMatchObject({ code: "unknown_study" });
+    await expect(worklist(db, nobody, {})).rejects.toMatchObject({ code: "forbidden" });
     await expect(worklist(db, { type: "system", id: "worker" }, {}))
-      .rejects.toMatchObject({ code: "unknown_study" });
+      .rejects.toMatchObject({ code: "forbidden" });
   });
 
   it("`reportView` needs `radiology.reports.read`, which the treating doctor holds and the worklist is separate from", async () => {

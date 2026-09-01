@@ -38,14 +38,32 @@ export function RadiologyReport(): React.ReactElement {
   const study = useQuery({ queryKey: ["radiology", "study", studyId], queryFn: () => fetchStudy(studyId) });
   const refresh = () => qc.invalidateQueries({ queryKey: ["radiology", "study", studyId] });
 
+  /**
+   * ═══ F73 (CLOSE REVIEW) — THE SCREEN NEVER SENT A SIDE, SO NO LATERALISED STUDY COULD BE SIGNED ═══
+   *
+   * `assertSignable` refuses a report on a `laterality_applicable` type that names no side, and
+   * this screen had no laterality control and never sent the field — so `XR-KNEE` and
+   * `USG-DOPPLER-LL`, two of the twenty seeded types, were permanently unreportable through the
+   * only reporting screen in the product. Both layers were right about their own half: the service
+   * test called the function with an explicit side, and the screen test mocked a NON-lateralised
+   * study. Nothing joined them.
+   *
+   * The side is not typed here either, and deliberately: F59 made the `laterality_confirm` gate
+   * RECORD what the patient stated at the console, in front of the patient, so the study already
+   * carries it. Asking the radiologist to retype it would create a second answer to "which knee" —
+   * which is the whole defect E3 is about. The report carries the study's side, and `assertSignable`
+   * still refuses a disagreement.
+   */
   const save = useMutation({
-    mutationFn: () => draftReport(studyId, { body: { findings }, impression }),
+    mutationFn: () => draftReport(studyId, {
+      body: { findings }, impression, laterality: study.data?.study?.laterality ?? null,
+    }),
     onSuccess: (r) => { setError(null); setDraftId(r.reportId); setNote(t("radiology.report.saved")); void refresh(); },
     onError: (e) => { setError(radiologyErrorText(e)); },
   });
   const sign = useMutation({
     mutationFn: () => signReport(studyId, {
-      reportId: draftId ?? "", criticalCategory: critical === "" ? null : critical,
+      reportId: signableId ?? "", criticalCategory: critical === "" ? null : critical,
     }),
     onSuccess: () => { setError(null); setNote(t("radiology.report.signed")); void refresh(); },
     onError: (e) => { setError(radiologyErrorText(e)); },
@@ -62,6 +80,10 @@ export function RadiologyReport(): React.ReactElement {
   });
 
   const s = study.data?.study ?? null;
+  /** F81 — the newest unsigned version, from the server, with the in-session draft as a fast path. */
+  const signableId = draftId
+    ?? s?.reports.find((v) => v.status === "draft" || v.status === "prelim")?.id
+    ?? null;
 
   return (
     <div className="p-4 space-y-4">
@@ -95,7 +117,13 @@ export function RadiologyReport(): React.ReactElement {
 
       <div className="flex gap-2">
         <Button onClick={() => { save.mutate(); }}>{t("radiology.report.save")}</Button>
-        <Button disabled={draftId === null} onClick={() => { sign.mutate(); }}>
+        {/**
+          * F81 — `draftId` lived only in `useState`, so a radiologist who saved a draft, was
+          * interrupted and reloaded the tab found Sign dead and the only way forward was to retype
+          * the findings and append ANOTHER immutable version to a chain a courtroom reads. The
+          * signable version is derived from the study, which this screen already has.
+          */}
+        <Button disabled={signableId === null} onClick={() => { sign.mutate(); }}>
           {t("radiology.report.sign")}
         </Button>
         <Button variant="outline" onClick={() => { publish.mutate(); }}>

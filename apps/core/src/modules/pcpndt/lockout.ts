@@ -46,12 +46,39 @@
  * Grouped by why each entry is here, because a reviewer's first question about a word list is
  * always "who decided this".
  */
-export const LOCKOUT_LEXICON: readonly string[] = [
-  // ── the sex itself, plainly ──
+/**
+ * ═══ TWO TIERS, AND FINDING F66 (CLOSE REVIEW, OWNER RULING 2026-09-01) IS WHY ═══
+ *
+ * The first version was ONE list applied to EVERY report in the department, and the list contains
+ * `male`, `female` and `beta`. **`"45-year-old male, chest PA view. No focal consolidation."` could
+ * not be signed.** Neither could `"correlate with serum beta hCG"`. There was no waiver, no
+ * override and no medical-superintendent lane — while the refusal text told the radiologist to go
+ * and see the medical superintendent, who had no route that could let anything through.
+ *
+ * This file's own header names the harm that produces: *"a lockout that is switched off protects
+ * nobody"*, and a control that refuses the demographic line of an ordinary chest X-ray is a control
+ * a department disables in its first week. The tripwire was catching the whole building instead of
+ * the leak.
+ *
+ * **DEMOGRAPHIC** — the plain words for a sex. They are what a §5(2) disclosure says, and they are
+ * ALSO what every radiology report says in its first line about a living patient. Applied only in an
+ * obstetric context (see `reports.ts`'s `lockoutTierFor`).
+ *
+ * **CODED** — the euphemisms and the karyotype. `mithai`, `laddu`, `Jai Mata Di`, blue and pink
+ * rooms, `XX`/`XY`, and the naming of the act itself. **None of these has an innocent use in a
+ * radiology report**, which is exactly why they are the entries the Act's prosecutions turn on.
+ * Applied to EVERY report, always, with no exception lane — the strengthening the first version was
+ * reaching for, kept where it costs nothing.
+ */
+export const LOCKOUT_LEXICON_DEMOGRAPHIC: readonly string[] = [
+  // ── the sex itself, plainly. These have ordinary uses in an ordinary report. ──
   "boy", "girl", "male", "female", "son", "daughter",
   "लड़का", "लड़की", "बेटा", "बेटी", "पुत्र", "पुत्री",
   "ladka", "ladki", "beta", "beti", "putra", "putri",
   "chhora", "chhori", "छोरा", "छोरी",
+];
+
+export const LOCKOUT_LEXICON_CODED: readonly string[] = [
   // ── the karyotype, which is the same statement in a lab coat ──
   "xx", "xy",
   /**
@@ -67,6 +94,15 @@ export const LOCKOUT_LEXICON: readonly string[] = [
   // ── the question, which is as forbidden to answer as it is to record ──
   "sex determination", "gender determination", "लिंग परीक्षण", "ling parikshan",
 ];
+
+/** Both tiers, for an obstetric-context report and for anything that wants the whole list. */
+export const LOCKOUT_LEXICON: readonly string[] = [
+  ...LOCKOUT_LEXICON_DEMOGRAPHIC,
+  ...LOCKOUT_LEXICON_CODED,
+];
+
+/** Which words a given report is checked against. `coded` is the floor and applies to everything. */
+export type LockoutTier = "coded" | "full";
 
 /** A hit: the lexicon term, and where in the text it was found, so a screen can point at it. */
 export type LockoutHit = { term: string; index: number; matched: string };
@@ -88,10 +124,15 @@ function escapeTerm(term: string): string {
  * WHICH term tripped — a report refused with "this text is not signable" and no word is a report
  * whose author has to guess, and guessing is how a control becomes something people route around.
  */
-const PATTERNS: readonly { term: string; re: RegExp }[] = LOCKOUT_LEXICON.map((term) => ({
-  term,
-  re: new RegExp(`(?<!${BOUND})${escapeTerm(term)}(?!${BOUND})`, "giu"),
-}));
+function compile(terms: readonly string[]): { term: string; re: RegExp }[] {
+  return terms.map((term) => ({
+    term,
+    re: new RegExp(`(?<!${BOUND})${escapeTerm(term)}(?!${BOUND})`, "giu"),
+  }));
+}
+
+const PATTERNS_CODED: readonly { term: string; re: RegExp }[] = compile(LOCKOUT_LEXICON_CODED);
+const PATTERNS_FULL: readonly { term: string; re: RegExp }[] = compile(LOCKOUT_LEXICON);
 
 /**
  * A5 — every lexicon term present in `text`, as whole words, case-insensitively, in both scripts.
@@ -101,9 +142,9 @@ const PATTERNS: readonly { term: string; re: RegExp }[] = LOCKOUT_LEXICON.map((t
  * boundary for the cost of a string, so that nobody is tempted to prove it with one e2e that
  * happens to use the word "boy".
  */
-export function findLockoutHits(text: string): LockoutHit[] {
+export function findLockoutHits(text: string, tier: LockoutTier = "full"): LockoutHit[] {
   const hits: LockoutHit[] = [];
-  for (const { term, re } of PATTERNS) {
+  for (const { term, re } of tier === "full" ? PATTERNS_FULL : PATTERNS_CODED) {
     re.lastIndex = 0;
     let m: RegExpExecArray | null = re.exec(text);
     while (m !== null) {
@@ -115,6 +156,6 @@ export function findLockoutHits(text: string): LockoutHit[] {
 }
 
 /** The one-line answer a signing path wants. */
-export function isLockedOut(text: string): boolean {
-  return findLockoutHits(text).length > 0;
+export function isLockedOut(text: string, tier: LockoutTier = "full"): boolean {
+  return findLockoutHits(text, tier).length > 0;
 }

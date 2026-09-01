@@ -64,9 +64,11 @@ export class RadiologyStudyController {
   /** Every gate with its state, and what is still holding the study. Reports; transitions nothing. */
   @Get(":studyId/readiness")
   @RequirePermission("radiology.worklist.read", "hospital")
-  async readGates(@Param("studyId") studyId: string): Promise<unknown> {
+  async readGates(
+    @CurrentActor() actor: Actor, @Param("studyId") studyId: string,
+  ): Promise<unknown> {
     try {
-      return await readiness(this.db, studyId);
+      return await readiness(this.db, actor, studyId);
     } catch (e) { toHttp(e); }
   }
 

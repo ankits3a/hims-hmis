@@ -45,10 +45,17 @@ describe("the Form F serial is gap-free because the DATABASE counts (18a T6 A1)"
     fx = await setupPcpndtFixture(db);
   });
 
-  const openFor = (studyId: string, onDate = DAY) =>
+  /**
+   * F52's sibling — `openFormF` now takes its clock from the caller and bounds `onDate` against it,
+   * because `onDate` decides the SERIAL YEAR and a caller that chose it could write into a year
+   * whose statutory return had already been filed. So this helper passes both, and a test that
+   * walks a year boundary says which day it is standing on rather than depending on the real one.
+   */
+  const openFor = (studyId: string, onDate = DAY, now = new Date(`${onDate}T06:00:00.000Z`)) =>
     withTx(db, (tx) => openFormF(tx, fx.sonologist, {
       studyId, patientId: fx.patientId, deviceResourceId: fx.deviceResourceId,
-      personUserId: fx.sonologist.id, indicationCode: "obstetric", applicability: "pregnant", onDate,
+      personUserId: fx.sonologist.id, indicationCode: "obstetric", applicability: "pregnant",
+      onDate, now,
     }));
 
   /**
@@ -95,7 +102,7 @@ describe("the Form F serial is gap-free because the DATABASE counts (18a T6 A1)"
 
     const dup = db.insert(pcpndtFormF).values({
       id: "01DUPLICATE00000000000001", serialNo: 1, serialYear: 2026,
-      machineId: fx.machineId, personId: fx.personId, studyId: "STUDY-U2",
+      machineId: fx.machineId, deviceResourceId: fx.deviceResourceId, personId: fx.personId, studyId: "STUDY-U2",
       patientId: fx.patientId, indicationCode: "i", sections: {}, declaration: {}, referral: {},
       applicability: "pregnant", status: "open",
     });
@@ -104,7 +111,7 @@ describe("the Form F serial is gap-free because the DATABASE counts (18a T6 A1)"
     /** A 14 is NOT refused — it is a gap, and a gap is what the inspector's count finds. */
     await db.insert(pcpndtFormF).values({
       id: "01GAP00000000000000000001", serialNo: 14, serialYear: 2026,
-      machineId: fx.machineId, personId: fx.personId, studyId: "STUDY-U3",
+      machineId: fx.machineId, deviceResourceId: fx.deviceResourceId, personId: fx.personId, studyId: "STUDY-U3",
       patientId: fx.patientId, indicationCode: "i", sections: {}, declaration: {}, referral: {},
       applicability: "pregnant", status: "open",
     });
@@ -120,8 +127,9 @@ describe("the Form F serial is gap-free because the DATABASE counts (18a T6 A1)"
     const next = await openFor("STUDY-Y3", "2027-01-01");
     expect([next.serialNo, next.serialYear]).toEqual([1, 2027]);
 
+    /** F61 — the counter is keyed on the PHYSICAL device now, so a renewal cannot restart the book. */
     const years = await db.select().from(pcpndtFormFSerials)
-      .where(eq(pcpndtFormFSerials.machineId, fx.machineId));
+      .where(eq(pcpndtFormFSerials.deviceResourceId, fx.deviceResourceId));
     expect(years.map((y) => [y.year, y.nextNo]).sort()).toEqual([[2026, 3], [2027, 2]]);
   });
 });

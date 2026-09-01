@@ -68,13 +68,23 @@ it("renders a WAIVE control only where the SERVER said the gate is waivable", as
   expect(formF.textContent).not.toContain("Waive");
 });
 
-it("shows the Form F flag on the header — the one a technologist must not miss", async () => {
+/**
+ * ═══ F49 (CLOSE REVIEW) — THE FLAG IS NOW A WAY IN, AND THAT IS THE ASSERTION ═══
+ *
+ * This used to assert a BADGE reading "Form F". The badge was accurate and useless: nothing in the
+ * application navigated to `/pcpndt/form-f/$studyId`, so the screen told the technologist a
+ * statutory form was required and offered no control that opened one, while `recordAcquired`
+ * refused the scan without it. A test for the badge could not tell a working path from a dead end,
+ * because the badge is identical either way — so the assertion is on the CONTROL now.
+ */
+it("F49: the Form F flag is a control that opens the form, not a badge that names a dead end", async () => {
   mockRoutes({
     "GET /api/radiology/studies/S1": { status: 200, body: { study: STUDY } },
     "GET /api/radiology/studies/S1/readiness": { status: 200, body: READINESS },
   });
   renderWithProviders(<RadiologyStudy />);
-  expect(await screen.findByText("Form F")).toBeInTheDocument();
+  const open = await screen.findByRole("button", { name: /form f/i });
+  expect(open).toBeInTheDocument();
 });
 
 /**

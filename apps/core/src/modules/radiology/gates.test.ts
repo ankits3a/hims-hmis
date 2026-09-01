@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { imagingStudies } from "../../kernel/db/schema/radiology";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import {
@@ -524,7 +525,7 @@ describe("the ten imaging safety gates (18a T5)", () => {
     /** The GET reports and never transitions — a screen polling it must not write history. */
     it("the readiness READ reports the same picture and moves nothing", async () => {
       const study = await arrive("USG-ABDO", "usg");
-      const view = await readiness(db, study.studyId);
+      const view = await readiness(db, fx.radiographer, study.studyId);
       expect([view.state, view.ready, view.open]).toEqual(["checked_in", false, ["identity_two_factor"]]);
       expect(await studyState(db, study.studyId)).toBe("checked_in");
     });
@@ -669,7 +670,22 @@ describe("the ten imaging safety gates (18a T5)", () => {
     expect((await satisfy(gateId, { chaperoneUserId: fx.radiologist.id })).state).toBe("satisfied");
   });
 
-  it("laterality: a disagreement between the patient and the order leaves the gate open", async () => {
+  /**
+   * ═══ F59 (CLOSE REVIEW) — THIS TEST USED TO ASSERT THE DEFECT AS THE DESIGN ═══
+   *
+   * It read: *"the order carries `na`; the patient says `left`. Nobody at the console resolves
+   * that"* — and asserted that `left` is refused and `na` is accepted. But `imaging_studies.
+   * laterality` had NO WRITER anywhere in the tree, so the order carried `na` for EVERY study, on
+   * every lateralised type, for ever. The only evidence that could ever clear this gate was
+   * `patientStated: 'na'` — the console recording that a knee X-ray has no side — and
+   * `assertSignable` then refused any report that named one. The wrong-site control forced the
+   * record to be wrong in exactly the way E3 exists to prevent, and this assertion described that
+   * as if it were the intent.
+   *
+   * The gate now RECORDS the side the patient states, and re-siding a study that already carries
+   * one is what stays refused, because that is a person changing their mind about which knee.
+   */
+  it("F59/laterality: the gate RECORDS the side, and refuses a later disagreement", async () => {
     await rewriteBook([
       bookRow("USG-ABDO", { modality: "usg", laterality_applicable: true }),
       bookRow("XR-CHEST", { modality: "xray", ionising: true }),
@@ -678,10 +694,19 @@ describe("the ten imaging safety gates (18a T5)", () => {
     ]);
     const study = await arrive("USG-ABDO", "usg");
     const gateId = await gateIdFor(study.studyId, "laterality_confirm");
-    /** The order carries `na`; the patient says `left`. Nobody at the console resolves that. */
-    await expect(satisfy(gateId, { patientStated: "left" }))
+
+    expect((await satisfy(gateId, { patientStated: "left" })).state).toBe("satisfied");
+    const [row] = await db.select().from(imagingStudies)
+      .where(eq(imagingStudies.id, study.studyId));
+    expect(row!.laterality).toBe("left");
+
+    /** A second study on the same type, re-sided after the fact, is the refusal that remains. */
+    const second = await arrive("USG-ABDO", "usg");
+    await db.update(imagingStudies).set({ laterality: "right" })
+      .where(eq(imagingStudies.id, second.studyId));
+    const g2 = await gateIdFor(second.studyId, "laterality_confirm");
+    await expect(satisfy(g2, { patientStated: "left" }))
       .rejects.toMatchObject({ code: "gate_open" });
-    expect((await satisfy(gateId, { patientStated: "na" })).state).toBe("satisfied");
   });
 
   /* ══════════════════════════ the shared refusals ══════════════════════════ */

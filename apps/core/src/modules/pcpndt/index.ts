@@ -17,11 +17,16 @@ export {
 export type { RegisteredMachineRow, RegisteredPersonRow, RegistrationRow } from "./registrations";
 export {
   assertFormFRecorded, assertMachineRegistered, assertPersonRegistered, openFormF, recordFormF,
-  verifyFormF,
+  registerFormFSubjectResolver, verifyFormF,
 } from "./form-f";
-export type { FormFRow, OpenFormFInput, RecordFormFInput } from "./form-f";
-export { LOCKOUT_LEXICON, findLockoutHits, isLockedOut } from "./lockout";
-export type { LockoutHit } from "./lockout";
+export type {
+  FormFRow, FormFSubject, FormFSubjectResolver, OpenFormFInput, RecordFormFInput,
+} from "./form-f";
+export {
+  LOCKOUT_LEXICON, LOCKOUT_LEXICON_CODED, LOCKOUT_LEXICON_DEMOGRAPHIC,
+  findLockoutHits, isLockedOut,
+} from "./lockout";
+export type { LockoutHit, LockoutTier } from "./lockout";
 export { formFForStudy, formFForStudyTx } from "./read";
 export type { FormFView } from "./read";
 export * from "./events";

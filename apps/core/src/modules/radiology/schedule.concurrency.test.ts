@@ -81,7 +81,14 @@ describe("the imaging slot is held by the database, not by a read (18a T4 A1)", 
       const rejected = settled.filter((r) => r.status === "rejected");
 
       expect([round, fulfilled.length, rejected.length]).toEqual([round, 1, 1]);
-      expect(String((rejected[0] as PromiseRejectedResult).reason)).toMatch(/already has a live booking/);
+      /**
+       * F55 — the assertion is on the CODE, not on the sentence. The slot is an INTERVAL now, so
+       * the loser is refused by the overlap check (which the device-row lock makes race-free)
+       * rather than by the exact-instant unique index, and the message names the study it clashes
+       * with. Both refusals are `slot_taken` and always were; matching the prose was pinning the
+       * mechanism when the property is what this test is about.
+       */
+      expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({ code: "slot_taken" });
 
       /** And the DATABASE agrees: exactly one study holds that slot. */
       const held = await db.select({ id: imagingStudies.id })
@@ -104,7 +111,7 @@ describe("the imaging slot is held by the database, not by a read (18a T4 A1)", 
     const loser = await newStudy();
 
     await book(winner.studyId);
-    await expect(book(loser.studyId)).rejects.toThrow(/already has a live booking/);
+    await expect(book(loser.studyId)).rejects.toMatchObject({ code: "slot_taken" });
 
     await withTx(db, (tx) => cancelStudy(tx, fx.doctor, fx.decls, { studyId: winner.studyId }));
 

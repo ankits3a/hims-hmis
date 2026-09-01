@@ -60,10 +60,18 @@ const openBody = z.object({
   studyId: z.string().min(1).max(64),
   patientId: z.string().min(1).max(64),
   deviceResourceId: z.string().min(1).max(64),
-  personUserId: z.string().min(1).max(64),
+  /** F57 — optional: the server defaults it to the actor rather than asking the client. */
+  personUserId: z.string().min(1).max(64).optional(),
   indicationCode: z.string().min(1).max(80),
   applicability: z.enum(["pregnant", "not_pregnant", "indication_only"]),
-  onDate: isoDate,
+  /**
+   * F52's sibling — OPTIONAL now, and bounded by the function against the server's own IST clock.
+   * `onDate` decides the SERIAL YEAR, and a client that chose it could mint into a year whose
+   * statutory return had already been filed; the shipped console was sending the browser's UTC
+   * day, which is the previous day for five and a half hours every night. It survives only as a
+   * BACKFILL for E13's downtime form, where a scan is written up after the fact.
+   */
+  onDate: isoDate.optional(),
 });
 
 const recordBody = z.object({

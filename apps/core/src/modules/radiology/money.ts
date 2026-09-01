@@ -4,7 +4,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { imagingBillDecisions, imagingStudies } from "../../kernel/db/schema/radiology";
 import { daycareEncounters } from "../../kernel/db/schema/ot";
-import { invoiceLines } from "../../kernel/db/schema/billing";
+import { invoiceLines, invoices } from "../../kernel/db/schema/billing";
 import { EPISODE_SERIES } from "../../kernel/episodes/series";
 import { getEncounter } from "../opd";
 import { RadiologyError } from "./errors";
@@ -101,14 +101,81 @@ export async function encounterPayer(exec: Db | Tx, encounterNo: string): Promis
  * `invoice` and so 18a-iii's reconciliation has a join. The line itself belongs to billing, and a
  * radiology module that could price a scan would be a second tariff.
  */
+/**
+ * ═══ F54 (CLOSE REVIEW) — THIS PROVED ONLY THAT A ROW EXISTED ═══
+ *
+ * The single validation was `SELECT id FROM invoice_lines WHERE id = ?`. It did not check that the
+ * line's invoice belongs to this study's PATIENT, that the line is for this study's SERVICE, or
+ * that the study is not already linked to a different line — and yet `authorisationOf` reads a
+ * non-NULL `invoice_line_id` as *"money was actually taken"* and `recordAcquired` reads it as proof
+ * the scan is billed.
+ *
+ * A receptionist with two bills open — Mr Rao's ₹250 consultation and Mrs Pillai's ₹9,000 CT with
+ * contrast — who pasted the wrong line id got: `authorisationOf` answering `invoice`, the CT
+ * proceeding, and `acquired_unbilled` SUPPRESSED because the column was not null. Nine thousand
+ * rupees never collected, no decision on the counter's queue, and 18a-iii's reconciliation joining
+ * to another patient's line. `money.test.ts` had no test of this function at all: its fourteen
+ * cases pass a literal `"il_1"` to the pure `authorisationOf`, which is true of a correct linker
+ * and a broken one alike.
+ *
+ * The three checks below are the three facts that make the link MEAN what its readers think it
+ * means. What is deliberately NOT checked here is whether the invoice is settled — `authorisationOf`
+ * treats an issued line as authorisation by DD12a's own design (the counter took the booking), and
+ * `reports.ts`'s `invoiceIsSettled` owns the settlement question for delivery.
+ */
 export async function linkInvoiceLine(
   tx: Tx, studyId: string, invoiceLineId: string,
 ): Promise<{ studyId: string; invoiceLineId: string }> {
-  const line = await (tx as unknown as Db).select({ id: invoiceLines.id })
-    .from(invoiceLines).where(eq(invoiceLines.id, invoiceLineId));
+  const studyRows = await (tx as unknown as Db)
+    .select({
+      patientId: imagingStudies.patientId, serviceId: imagingStudies.serviceId,
+      existing: imagingStudies.invoiceLineId,
+    })
+    .from(imagingStudies).where(eq(imagingStudies.id, studyId));
+  const study = studyRows[0];
+  if (!study) throw new RadiologyError("unknown_study", `no study ${studyId}`, { studyId });
+
+  const line = await (tx as unknown as Db)
+    .select({
+      id: invoiceLines.id, serviceId: invoiceLines.serviceId,
+      patientId: invoices.patientId,
+    })
+    .from(invoiceLines)
+    .innerJoin(invoices, eq(invoices.id, invoiceLines.invoiceId))
+    .where(eq(invoiceLines.id, invoiceLineId));
   if (!line[0]) {
-    throw new RadiologyError("unknown_study", `no invoice line ${invoiceLineId}`, { invoiceLineId });
+    throw new RadiologyError(
+      "unknown_invoice_line", `no invoice line ${invoiceLineId}`, { invoiceLineId },
+    );
   }
+  const found = line[0];
+
+  if (found.patientId !== study.patientId) {
+    throw new RadiologyError(
+      "evidence_invalid",
+      `invoice line ${invoiceLineId} is billed to patient ${found.patientId} and this study is `
+      + `${study.patientId} — linking another patient's line would authorise this scan and silence `
+      + "the unbilled queue at the same time",
+      { invoiceLineId, linePatientId: found.patientId, studyPatientId: study.patientId },
+    );
+  }
+  if (found.serviceId !== study.serviceId) {
+    throw new RadiologyError(
+      "evidence_invalid",
+      `invoice line ${invoiceLineId} is for service ${found.serviceId} and this study is `
+      + `${study.serviceId} — a scan is authorised by the line that charges for IT`,
+      { invoiceLineId, lineServiceId: found.serviceId, studyServiceId: study.serviceId },
+    );
+  }
+  if (study.existing !== null && study.existing !== invoiceLineId) {
+    throw new RadiologyError(
+      "already_acquired",
+      `study ${studyId} is already linked to invoice line ${study.existing} — re-linking would `
+      + "orphan the first link and leave two lines believing they paid for one scan",
+      { studyId, existing: study.existing, invoiceLineId },
+    );
+  }
+
   await tx.update(imagingStudies).set({ invoiceLineId }).where(eq(imagingStudies.id, studyId));
   return { studyId, invoiceLineId };
 }
@@ -151,8 +218,13 @@ export async function resolveBillDecision(
 ): Promise<{ billDecisionId: string; resolvedAt: Date }> {
   if (actor.type !== "user"
     || !(await hasPermission(tx as unknown as Db, actor.id, BILL_DECISIONS_MANAGE, "hospital"))) {
+    /**
+     * F41 — this was `payment_required` (402), so a radiographer who opened the counter's queue by
+     * mistake was shown the TAKE-PAYMENT screen. 402 exists in this union for the one refusal a
+     * receptionist resolves by taking money; an authorisation refusal is a 403 and now says so.
+     */
     throw new RadiologyError(
-      "payment_required",
+      "forbidden",
       `resolving a bill decision needs ${BILL_DECISIONS_MANAGE}`,
       { permission: BILL_DECISIONS_MANAGE },
     );
@@ -167,8 +239,9 @@ export async function resolveBillDecision(
     throw new RadiologyError("unknown_study", `no bill decision ${input.billDecisionId}`);
   }
   if (decision.resolvedAt !== null) {
+    /** F41 — `already_acquired` was carrying this meaning as well as its own. */
     throw new RadiologyError(
-      "already_acquired",
+      "already_resolved",
       `bill decision ${input.billDecisionId} was resolved on ${decision.resolvedAt.toISOString()}`,
     );
   }

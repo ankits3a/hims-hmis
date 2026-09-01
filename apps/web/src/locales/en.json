@@ -1947,7 +1947,8 @@
       "start": "Start acquisition",
       "acquired": "Record acquired",
       "ionising": "ionising",
-      "badEvidence": "The evidence must be valid JSON."
+      "badEvidence": "The evidence must be valid JSON.",
+      "openFormF": "Form F required — open it"
     },
     "report": {
       "title": "Report",
@@ -1991,7 +1992,8 @@
       "recorded": "Recorded. This declaration can no longer be edited.",
       "verify": "Verify (in-charge)",
       "verified": "Verified by the PCPNDT in-charge.",
-      "realNameNotice": "This patient is flagged confidential elsewhere in the hospital. The Form F shows the legal name deliberately: a statutory declaration bearing a pseudonym is a false declaration."
+      "realNameNotice": "This patient is flagged confidential elsewhere in the hospital. The Form F shows the legal name deliberately: a statutory declaration bearing a pseudonym is a false declaration.",
+      "notBookedYet": "This study has no machine yet — book it before opening Form F."
     }
   },
   "common": {

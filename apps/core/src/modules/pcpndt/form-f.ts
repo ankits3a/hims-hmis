@@ -11,6 +11,7 @@ import { activeRegistrationFor } from "./registrations";
 import type { FormFApplicability } from "../../kernel/db/schema/pcpndt";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
+import { istDayString } from "../../kernel/approvals/cumulative";
 
 /**
  * PLAN 18a T6 — **FORM F: the gap-free serial, the membership checks, and the one completion.**
@@ -110,17 +111,90 @@ export async function assertPersonRegistered(
   return { personId: person.id };
 }
 
-/** A1 — the gap-free counter, per machine per calendar year. `nextEpisodeNo`'s pattern exactly. */
-async function nextSerialNo(tx: Tx, machineId: string, year: number): Promise<number> {
-  await tx.insert(pcpndtFormFSerials).values({ machineId, year, nextNo: 1 }).onConflictDoNothing();
+/**
+ * A1 — the gap-free counter, per PHYSICAL machine per calendar year. `nextEpisodeNo`'s pattern.
+ *
+ * ═══ F61 (CLOSE REVIEW) — THE KEY IS THE DEVICE, NOT THE REGISTRATION ROW ═══
+ *
+ * It was keyed on `pcpndt_registered_machines.id`, which belongs to ONE registration. There is no
+ * renew path in this module, so the same physical scanner gets a NEW machine row on renewal and the
+ * counter restarted at 1 in the middle of a calendar year — 1..47 under the old certificate, then
+ * 1..38 under the new one, forty duplicate serials in the book an inspector counts. The unique
+ * index was keyed the same way and could not see one of them.
+ *
+ * The MECHANISM was never wrong and is unchanged: insert-if-absent, then one `UPDATE … RETURNING`
+ * post-increment on a single row, so concurrency serialises and a rollback rolls the number back
+ * with it. Only the key moved.
+ */
+async function nextSerialNo(
+  tx: Tx, deviceResourceId: string, machineId: string, year: number,
+): Promise<number> {
+  await tx.insert(pcpndtFormFSerials)
+    .values({ deviceResourceId, machineId, year, nextNo: 1 }).onConflictDoNothing();
   const rows = await tx
     .update(pcpndtFormFSerials)
     .set({ nextNo: sql`${pcpndtFormFSerials.nextNo} + 1` })
-    .where(and(eq(pcpndtFormFSerials.machineId, machineId), eq(pcpndtFormFSerials.year, year)))
+    .where(and(
+      eq(pcpndtFormFSerials.deviceResourceId, deviceResourceId),
+      eq(pcpndtFormFSerials.year, year),
+    ))
     .returning({ nextNo: pcpndtFormFSerials.nextNo });
   const row = rows[0];
-  if (!row) throw new PcpndtError("serial_conflict", `the serial counter for machine ${machineId} vanished`);
+  if (!row) throw new PcpndtError("serial_conflict", `the serial counter for device ${deviceResourceId} vanished`);
   return row.nextNo - 1;
+}
+
+/**
+ * ═══ F58 (CLOSE REVIEW) — THE SUBJECT RESOLVER, AND WHY IT IS A REGISTRY ═══
+ *
+ * `openFormF` writes the patient, the machine, the performing doctor and the serial YEAR into the
+ * statutory register from FOUR CALLER-SUPPLIED FIELDS, and cross-checked none of them against the
+ * scan named by `studyId`. Nothing on the radiology side checked either: the gate reads the form by
+ * `study_id` alone and `assertFormFRecorded` looks only at `status`. So a mis-clicked patient picker
+ * minted serial 48/2026 naming a woman who was never scanned — the gate satisfied, the scan was
+ * acquired and reported, and because `0050` freezes `patient_id` from INSERT and refuses DELETE in
+ * every state, **the entry can never be corrected.**
+ *
+ * DD1 is why this is a REGISTRY and not a join: `pcpndt` is its own manifest so 15b and 62 can
+ * install the register without installing radiology, and `study_id` is `text` for exactly that
+ * reason. So the owning module REGISTERS a resolver for its own id space — the same shape as the
+ * kernel's `registerEncounterResolver` — and this file asks whoever owns the study whether the
+ * caller's facts match. A study nobody claims is accepted as before, which keeps 15b and 62 working
+ * against their own study-shaped rows.
+ */
+export type FormFSubject = { patientId: string; deviceResourceId: string };
+export type FormFSubjectResolver = (tx: Tx, studyId: string) => Promise<FormFSubject | null>;
+
+const SUBJECT_RESOLVERS = new Map<string, FormFSubjectResolver>();
+
+/** Returns an unregister function, so a test can install one for its own lifetime. */
+export function registerFormFSubjectResolver(key: string, fn: FormFSubjectResolver): () => void {
+  SUBJECT_RESOLVERS.set(key, fn);
+  return () => { SUBJECT_RESOLVERS.delete(key); };
+}
+
+async function assertSubjectMatches(tx: Tx, input: OpenFormFInput): Promise<void> {
+  for (const resolve of SUBJECT_RESOLVERS.values()) {
+    const subject = await resolve(tx, input.studyId);
+    if (subject === null) continue;
+    if (subject.patientId !== input.patientId) {
+      throw new PcpndtError(
+        "unknown_form",
+        `this Form F names patient ${input.patientId} and study ${input.studyId} is ${subject.patientId} — `
+        + "a register entry against the wrong woman cannot be corrected once it is written",
+        { studyId: input.studyId, given: input.patientId, actual: subject.patientId },
+      );
+    }
+    if (subject.deviceResourceId !== input.deviceResourceId) {
+      throw new PcpndtError(
+        "unknown_form",
+        `this Form F names device ${input.deviceResourceId} and study ${input.studyId} is booked on `
+        + `${subject.deviceResourceId} — the register records the machine the scan happened on`,
+        { studyId: input.studyId, given: input.deviceResourceId, actual: subject.deviceResourceId },
+      );
+    }
+    return;
+  }
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -129,13 +203,39 @@ export type OpenFormFInput = {
   studyId: string;
   patientId: string;
   deviceResourceId: string;
-  /** The user who will PERFORM the scan. Checked for membership of the machine's registration. */
-  personUserId: string;
+  /**
+   * The user who will PERFORM the scan, checked for membership of the machine's registration.
+   *
+   * **OPTIONAL, and defaults to the ACTOR (F57/F58).** It was required, so the console had to send
+   * back the id of the person already authenticated on the request — a caller-supplied fact the
+   * server already knew, which is the same shape as the four facts F58 is about. The sonologist
+   * opening the form is normally the sonologist performing the scan; a different registered person
+   * is the exception and is the only case that needs to say so.
+   */
+  personUserId?: string;
   indicationCode: string;
   applicability: FormFApplicability;
-  /** The scan's IST calendar day — the caller resolves it (`place.ts`'s rule). Decides the year. */
-  onDate: string;
+  /**
+   * F52/F58 — the scan's IST calendar day is DERIVED FROM THE SERVER CLOCK, not accepted from the
+   * caller, because it decides the serial YEAR: a client posting `2025-12-30` on 2 January minted
+   * serial 1/**2025** into a year whose statutory return may already have been filed. Kept as an
+   * optional override for a BACKFILL, bounded against the clock when supplied.
+   */
+  onDate?: string;
+  /**
+   * The clock, passed by the caller. `applicability.ts` takes `asOf` for the same reason and F28 is
+   * the cost of not doing it: a rule that reads `new Date()` internally is a rule whose tests are
+   * about the day they run on.
+   */
+  now?: Date;
 };
+
+/**
+ * E13 — a downtime scan is written up after the fact, and 31 December belongs to that year's book
+ * however late it is completed (the serials table's own header). So a backfill may look BACK across
+ * a year boundary; what it may not do is pick a year.
+ */
+export const FORM_F_BACKFILL_DAYS = 7;
 
 /**
  * Opens the form and MINTS ITS SERIAL. One per study — `pcpndt_form_f_study_ux` refuses a second,
@@ -145,11 +245,45 @@ export async function openFormF(
   tx: Tx, actor: Actor, input: OpenFormFInput,
 ): Promise<{ formFId: string; serialNo: number; serialYear: number }> {
   await assertPermission(tx, actor, WRITE);
-  if (!DATE_RE.test(input.onDate)) {
-    throw new PcpndtError("unknown_form", `onDate must be an IST calendar date (YYYY-MM-DD), got "${input.onDate}"`);
+  const now = input.now ?? new Date();
+  const today = istDayString(now);
+  const onDate = input.onDate ?? today;
+  if (!DATE_RE.test(onDate)) {
+    throw new PcpndtError("unknown_form", `onDate must be an IST calendar date (YYYY-MM-DD), got "${onDate}"`);
   }
-  const { registrationId, machineId } = await assertMachineRegistered(tx, input.deviceResourceId, input.onDate);
-  const { personId } = await assertPersonRegistered(tx, input.personUserId, registrationId);
+  /**
+   * ═══ F52's SIBLING — THE SERIAL YEAR IS NOT THE CALLER'S TO CHOOSE ═══
+   *
+   * `onDate` decides `serial_year`, and it arrived from the request body validated only as a date
+   * shape. A client posting `2025-12-30` on 2 January minted serial 1/**2025** into a year whose
+   * statutory return may already have been filed — and the shipped console was sending the
+   * browser's UTC day, which is the PREVIOUS day for five and a half hours every night, so the
+   * 00:30 scan on 1 January landed in last year's book without anybody typing anything.
+   *
+   * A backfill may look BACK, bounded: E13's downtime form is written up after the fact and a
+   * 31 December scan belongs to 2026's book however late it is completed. Nothing may look FORWARD,
+   * and nothing may reach back far enough to choose a year at will.
+   */
+  if (onDate > today) {
+    throw new PcpndtError(
+      "unknown_form",
+      `onDate ${onDate} is in the future — a Form F is opened for a scan that is happening`,
+      { onDate, today },
+    );
+  }
+  const oldest = istDayString(new Date(now.getTime() - FORM_F_BACKFILL_DAYS * 86_400_000));
+  if (onDate < oldest) {
+    throw new PcpndtError(
+      "serial_conflict",
+      `onDate ${onDate} is more than ${String(FORM_F_BACKFILL_DAYS)} days before today (${today}) — `
+      + "a backfill writes up a scan that happened, and a serial year is not a caller's choice",
+      { onDate, today, oldest },
+    );
+  }
+  await assertSubjectMatches(tx, input);
+  const { registrationId, machineId } = await assertMachineRegistered(tx, input.deviceResourceId, onDate);
+  const performerId = input.personUserId ?? actor.id;
+  const { personId } = await assertPersonRegistered(tx, performerId, registrationId);
 
   const existing = await (tx as unknown as Db).select({ id: pcpndtFormF.id, serialNo: pcpndtFormF.serialNo, serialYear: pcpndtFormF.serialYear })
     .from(pcpndtFormF).where(eq(pcpndtFormF.studyId, input.studyId));
@@ -161,12 +295,13 @@ export async function openFormF(
     );
   }
 
-  const serialYear = Number(input.onDate.slice(0, 4));
-  const serialNo = await nextSerialNo(tx, machineId, serialYear);
+  const serialYear = Number(onDate.slice(0, 4));
+  const serialNo = await nextSerialNo(tx, input.deviceResourceId, machineId, serialYear);
   const formFId = newId();
   await tx.insert(pcpndtFormF).values({
     id: formFId,
     serialNo, serialYear, machineId, personId,
+    deviceResourceId: input.deviceResourceId,
     studyId: input.studyId,
     patientId: input.patientId,
     indicationCode: input.indicationCode,

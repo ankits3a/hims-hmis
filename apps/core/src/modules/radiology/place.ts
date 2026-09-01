@@ -359,6 +359,29 @@ export async function addImagingViews(
     throw new RadiologyError("unknown_study", `no order ${parentOrderId}`, { parentOrderId });
   }
 
+  /**
+   * ═══ F77 (CLOSE REVIEW) — THE PARENT'S PATIENT WAS SELECTED AND NEVER COMPARED ═══
+   *
+   * This function read `{ groupId, patientId }` off the parent order and used only the group. The
+   * unused `patientId` in that select IS the check that was intended and not written: a registrar
+   * with the wrong patient in one field placed a new order **for a different patient** carrying the
+   * parent's `order_group_id`. Phase 0 DD2 makes the group THE CLINICAL ACT, so everything
+   * downstream that reads a group — 26's packages, 22c-F's patient view — then saw one act spanning
+   * two people, and nothing refused it: `placeOrder` validates the patient/encounter pair, which is
+   * internally consistent for the wrong patient too.
+   *
+   * `place.test.ts:303` used the same patient for parent and add-on, so the correct and incorrect
+   * behaviours agreed on every field it asserted.
+   */
+  if (parent.patientId !== input.patientId) {
+    throw new RadiologyError(
+      "unknown_study",
+      `order ${parentOrderId} belongs to patient ${parent.patientId} and this add-on names `
+      + `${input.patientId} — an added view joins the clinical act it is added to`,
+      { parentOrderId, parentPatientId: parent.patientId, patientId: input.patientId },
+    );
+  }
+
   return await placeImagingOrder(
     db,
     actor,

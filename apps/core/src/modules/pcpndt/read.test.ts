@@ -43,7 +43,8 @@ describe("the Form F reader shows the REAL name, and logs that it did (18a T6 A6
     const { formFId } = await withTx(db, (tx) => openFormF(tx, fx.sonologist, {
       studyId, patientId: fx.patientId, deviceResourceId: fx.deviceResourceId,
       personUserId: fx.sonologist.id, indicationCode: "obstetric-anomaly",
-      applicability: "pregnant", onDate: DAY,
+      /** F52's sibling — the clock is the caller's, so a fictional `DAY` needs its matching instant. */
+      applicability: "pregnant", onDate: DAY, now: new Date(`${DAY}T06:00:00.000Z`),
     }));
     await withTx(db, (tx) => recordFormF(tx, fx.sonologist, {
       formFId,

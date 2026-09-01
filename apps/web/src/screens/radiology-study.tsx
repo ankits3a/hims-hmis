@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { useParams } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import {
   fetchReadiness, fetchStudy, overrideGate, radiologyErrorText, recordAcquired, satisfyGate,
   startAcquisition, waiveGate,
@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 export function RadiologyStudy(): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { studyId } = useParams({ from: "/authed/radiology/studies/$studyId" });
   const [error, setError] = useState<string | null>(null);
   const [evidence, setEvidence] = useState("{}");
@@ -58,14 +59,16 @@ export function RadiologyStudy(): React.ReactElement {
   const override = useMutation({
     mutationFn: (kind: string) => overrideGate(studyId, kind, reason), onSuccess, onError,
   });
-  const start = useMutation({
-    mutationFn: () => startAcquisition(studyId, new Date().toISOString().slice(0, 10)),
-    onSuccess, onError,
-  });
+  /**
+   * F52 — neither call sends a date any more. Both used to send
+   * `new Date().toISOString().slice(0, 10)` — the BROWSER's UTC day, which between 00:00 and 05:30
+   * IST is yesterday — and the start call's date decided whether the machine's PCPNDT registration
+   * was live. A registration expiring 31 March passed at 02:00 IST on 1 April: the plan's own
+   * decisive E1 scenario, hour for hour. The server derives its own IST day now.
+   */
+  const start = useMutation({ mutationFn: () => startAcquisition(studyId), onSuccess, onError });
   const acquire = useMutation({
-    mutationFn: () => recordAcquired(studyId, {
-      onDate: new Date().toISOString().slice(0, 10), imageSource: "no_pacs_images",
-    }),
+    mutationFn: () => recordAcquired(studyId, { imageSource: "no_pacs_images" }),
     onSuccess, onError,
   });
 
@@ -81,7 +84,30 @@ export function RadiologyStudy(): React.ReactElement {
         ? (
           <p className="text-sm">
             {s.studyTypeCode} · {s.status}
-            {s.formFRequired ? <span className="ml-2 rounded bg-amber-100 px-1">{t("radiology.worklist.formF")}</span> : null}
+            {s.formFRequired
+              ? (
+                /**
+                 * ═══ F49 (CLOSE REVIEW) — THIS BADGE USED TO BE THE END OF THE ROAD ═══
+                 *
+                 * `/pcpndt/form-f/$studyId` is routed and unlisted (pcpndtManifest declares no
+                 * menu), and NOTHING in the application navigated to it: a grep for the path
+                 * outside the router and the api client returned only the screen's own `useParams`.
+                 * So the statutory form could be opened only by hand-typing a URL containing a ULID
+                 * — while this badge told the technologist the form was required and
+                 * `recordAcquired` refused the scan without one. The UI dead-ended between a
+                 * requirement and its only remedy.
+                 */
+                <button
+                  type="button"
+                  className="ml-2 rounded bg-amber-100 px-1 underline"
+                  onClick={() => {
+                    void navigate({ to: "/pcpndt/form-f/$studyId", params: { studyId } });
+                  }}
+                >
+                  {t("radiology.study.openFormF")}
+                </button>
+              )
+              : null}
             {s.ionising ? <span className="ml-2 rounded bg-slate-200 px-1">{t("radiology.study.ionising")}</span> : null}
           </p>
         )

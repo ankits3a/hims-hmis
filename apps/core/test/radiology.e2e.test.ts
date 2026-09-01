@@ -274,11 +274,17 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
 
     /** ── ACQUISITION. `stat` so DD12a authorises without a cashier; the device goes `in_use`. ── */
     await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study!.id));
-    const started = await post(`/radiology/studies/${study!.id}/acquisition/start`, radiographer.token, { onDate: DAY });
+    /**
+     * F52 — the start route no longer takes `onDate`. It used to decide whether the machine's
+     * PCPNDT registration was live, from a string the CLIENT chose; the server derives its own IST
+     * day now, and `startBody` is `.strict()` so a client still sending one gets a 400 rather than
+     * being silently believed.
+     */
+    const started = await post(`/radiology/studies/${study!.id}/acquisition/start`, radiographer.token, {});
     expect([started.status, started.body.authorisedBy]).toEqual([201, "stat"]);
 
     const acquired = await post(`/radiology/studies/${study!.id}/acquisition/acquired`, radiographer.token, {
-      onDate: DAY, imageSource: "pacs", doseCtdivol: 6.4, doseDlp: 320.5,
+      imageSource: "pacs", doseCtdivol: 6.4, doseDlp: 320.5,
       contrastGiven: true, contrastAgent: "Iohexol", contrastVolumeMl: 80,
     });
     expect(acquired.status).toBe(201);
@@ -370,7 +376,12 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     const opened = await post("/pcpndt/form-f", radiographer.token, {
       studyId: study!.id, patientId: PATIENT, deviceResourceId: devices.usg,
       personUserId: radiographer.id, indicationCode: "anomaly-scan",
-      applicability: "pregnant", onDate: DAY,
+      /**
+       * F52's sibling — `onDate` decides the SERIAL YEAR and is now bounded against the server's
+       * own clock, so this e2e stops choosing one. The server uses today, which is what a scan
+       * happening now actually is.
+       */
+      applicability: "pregnant",
     });
     expect([opened.status, opened.body.serialNo]).toEqual([201, 1]);
 
@@ -384,7 +395,7 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     expect(last.body.study.state).toBe("ready");
 
     await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study!.id));
-    expect((await post(`/radiology/studies/${study!.id}/acquisition/start`, radiographer.token, { onDate: DAY })).status).toBe(201);
+    expect((await post(`/radiology/studies/${study!.id}/acquisition/start`, radiographer.token, {})).status).toBe(201);
 
     /**
      * ═══ THE ACT, END TO END: THE EXPOSURE IS REFUSED UNTIL THE DECLARATION IS SIGNED ═══
@@ -394,7 +405,7 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
      * written to match what was found.
      */
     const refused = await post(`/radiology/studies/${study!.id}/acquisition/acquired`, radiographer.token, {
-      onDate: DAY, imageSource: "no_pacs_images",
+      imageSource: "no_pacs_images",
     });
     expect([refused.status, refused.body.code]).toEqual([422, "form_f_missing"]);
 
@@ -407,14 +418,32 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     expect(recorded.status).toBe(201);
 
     const lands = await post(`/radiology/studies/${study!.id}/acquisition/acquired`, radiographer.token, {
-      onDate: DAY, imageSource: "no_pacs_images",
+      imageSource: "no_pacs_images",
     });
     expect(lands.status).toBe(201);
 
-    /** ── A8: the RESTRICTED study is held out of a worklist whose reader has no clearance ── */
+    /**
+     * ═══ F45 (CLOSE REVIEW, OWNER RULING) — A8's E2E ASSERTED THE DEFECT OVER HTTP ═══
+     *
+     * This asserted that a reader holding ONLY `radiology.worklist.read` cannot see the restricted
+     * obstetric study, and that the "cleared" radiographer can. **The seeded `radiographer` holds
+     * exactly `radiology.worklist.read` and nothing more** — this suite's own fixture grants it
+     * three extra permissions (`orders.read.restricted`, `pcpndt.form_f.write`,
+     * `pcpndt.registrations.manage`) that no seeded role has, so the end-to-end proof of the
+     * statutory flow was performed by a role that does not exist in the hospital. In a real
+     * deployment BOTH readers here are `noClearance`, and the obstetric study was invisible to the
+     * entire department.
+     *
+     * `radiology.worklist.read` IS the departmental clearance now. The row is visible and carries
+     * `restricted: true` as a label. What still holds it out is the KERNEL's own order reader, on
+     * the ward's route — a different reader that this suite does not exercise and `read.test.ts`
+     * now pins directly.
+     */
     const noClearance = await staff(["radiology.worklist.read"], "nc");
     const held = await get("/radiology/worklist?view=all", noClearance.token);
-    expect(held.body.rows.map((r: { studyId: string }) => r.studyId)).not.toContain(study!.id);
+    const heldRow = held.body.rows.find((r: { studyId: string }) => r.studyId === study!.id);
+    expect(heldRow).toBeDefined();
+    expect(heldRow.restricted).toBe(true);
     const cleared = await get("/radiology/worklist?view=all", radiographer.token);
     expect(cleared.body.rows.map((r: { studyId: string }) => r.studyId)).toContain(study!.id);
 

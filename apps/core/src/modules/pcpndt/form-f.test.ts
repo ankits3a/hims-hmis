@@ -36,7 +36,15 @@ describe("Form F: membership, the completion, the freeze and the gate (18a T6)",
     return withTx(db, (tx) => openFormF(tx, fx.sonologist, {
       studyId: `STUDY-${String(seq)}`, patientId: fx.patientId,
       deviceResourceId: fx.deviceResourceId, personUserId: fx.sonologist.id,
-      indicationCode: "obstetric-anomaly", applicability: "pregnant", onDate: DAY, ...over,
+      indicationCode: "obstetric-anomaly", applicability: "pregnant",
+      /**
+       * F52's sibling — `onDate` decides the SERIAL YEAR, so it is now bounded against a clock the
+       * CALLER passes rather than against `new Date()`. This fixture works in fictional time
+       * (`DAY`), so it passes the matching fictional instant: F28's whole lesson is that a fixture
+       * which spaces its facts in one clock and stamps them with another is not deterministic, it
+       * is merely not failing yet.
+       */
+      onDate: DAY, now: new Date(`${DAY}T06:00:00.000Z`), ...over,
     }));
   };
   const RECORD = {
@@ -184,7 +192,7 @@ describe("Form F: membership, the completion, the freeze and the gate (18a T6)",
     const { formFId } = await open();
     await expect(db.execute(
       sql`update pcpndt_form_f set status = 'recorded', serial_no = 42, signed_by = 'x', signed_at = now() where id = ${formFId}`,
-    )).rejects.toThrow(/the serial, machine, study and patient of a Form F are fixed/);
+    )).rejects.toThrow(/the serial, machine, device, study and patient of a Form F are fixed/);
   });
 
   /* ── A4's second half: the counter-signature ── */
@@ -256,7 +264,8 @@ describe("Form F: membership, the completion, the freeze and the gate (18a T6)",
   it("only a holder of pcpndt.form_f.write may open or record — the in-charge writes no forms (DD14)", async () => {
     await expect(withTx(db, (tx) => openFormF(tx, fx.incharge, {
       studyId: "STUDY-X", patientId: fx.patientId, deviceResourceId: fx.deviceResourceId,
-      personUserId: fx.sonologist.id, indicationCode: "i", applicability: "pregnant", onDate: DAY,
+      personUserId: fx.sonologist.id, indicationCode: "i", applicability: "pregnant",
+      onDate: DAY, now: new Date(`${DAY}T06:00:00.000Z`),
     }))).rejects.toMatchObject({ code: "person_not_registered" });
   });
 

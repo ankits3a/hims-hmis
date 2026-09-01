@@ -265,6 +265,44 @@ export async function placeAndCreateStudy(
  * subject is the REPORT, and a test that had to raise a bill first would be paying for a proof it is
  * not making. `money.test.ts` is where the authorisation matrix is asserted.
  */
+/**
+ * ═══ A STUDY ON THE MACHINE — `in_acquisition`, AND NOTHING FURTHER (18a CLOSE REVIEW, F53) ═══
+ *
+ * The step `acquireStudy` used to hide inside itself. It is extracted because F53 needed a test to
+ * reach `in_acquisition` HONESTLY: the old `schedule.test.ts` fixture hand-wrote
+ * `{status:'in_acquisition', acquiredAt: NOW}` — a pair the product cannot produce, which is
+ * precisely why the guard reading it was unreachable and nobody noticed for nine tasks. A shared
+ * helper that walks the real path is the cheapest defence against the next fixture doing it again.
+ */
+export async function startStudyOnMachine(
+  db: Db,
+  fx: RadiologyFixture,
+  opts: { serviceCode?: string; deviceKey?: string; idemKey: string; now: Date; slot: Date },
+): Promise<{ studyId: string; accessionNo: string; orderId: string; itemId: string }> {
+  const serviceCode = opts.serviceCode ?? "USG-ABDO";
+  const deviceKey = opts.deviceKey ?? "usg";
+  const study = await placeAndCreateStudy(db, fx, serviceCode, opts.idemKey, opts.now);
+  await withTx(db, (tx) => scheduleStudy(tx, fx.radiographer, {
+    studyId: study.studyId, deviceResourceId: fx.devices[deviceKey]!, scheduledAt: opts.slot,
+  }));
+  const checked = await withTx(db, (tx) => checkIn(tx, fx.radiographer, { studyId: study.studyId, now: opts.now }));
+  const evidence: Record<string, unknown> = {
+    identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5" },
+    pregnancy_screen: { declared: true, lmpDate: new Date(opts.now.getTime() - 10 * 86_400_000).toISOString() },
+    laterality_confirm: { patientStated: "na" },
+  };
+  for (const kind of checked.gates) {
+    const gate = await requireStudyGate(db, study.studyId, kind);
+    await withTx(db, (tx) => satisfyGate(tx, fx.radiographer, gate.id, evidence[kind] ?? {}, opts.now));
+  }
+  await withTx(db, (tx) => evaluateReadiness(tx, study.studyId));
+  await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+  await withTx(db, (tx) => startAcquisition(tx, fx.radiographer, fx.decls, {
+    studyId: study.studyId, now: opts.now,
+  }));
+  return study;
+}
+
 export async function acquireStudy(
   db: Db,
   fx: RadiologyFixture,
@@ -289,10 +327,10 @@ export async function acquireStudy(
   await withTx(db, (tx) => evaluateReadiness(tx, study.studyId));
   await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
   await withTx(db, (tx) => startAcquisition(tx, fx.radiographer, fx.decls, {
-    studyId: study.studyId, onDate: fx.serviceDate, now: opts.now,
+    studyId: study.studyId, now: opts.now,
   }));
   await withTx(db, (tx) => recordAcquired(tx, fx.radiographer, fx.decls, {
-    studyId: study.studyId, onDate: fx.serviceDate, imageSource: "no_pacs_images", now: opts.now,
+    studyId: study.studyId, imageSource: "no_pacs_images", now: opts.now,
     ...(opts.dose === true ? { doseDap: 1.2 } : {}),
   }));
   return study;

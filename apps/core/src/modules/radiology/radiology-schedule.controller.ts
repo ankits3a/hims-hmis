@@ -123,9 +123,11 @@ export class RadiologyScheduleController {
   /** The machine's live diary — what the console shows when a technologist opens a device. */
   @Get("device/:deviceResourceId/diary")
   @RequirePermission("radiology.worklist.read", "hospital")
-  async diary(@Param("deviceResourceId") deviceResourceId: string): Promise<unknown> {
+  async diary(
+    @CurrentActor() actor: Actor, @Param("deviceResourceId") deviceResourceId: string,
+  ): Promise<unknown> {
     try {
-      return { studies: await deviceDiary(this.db, deviceResourceId) };
+      return { studies: await deviceDiary(this.db, actor, deviceResourceId) };
     } catch (e) { toHttp(e); }
   }
 }

@@ -9,6 +9,8 @@ import { orderPlaced } from "../../kernel/orders/events";
 import { RadiologyError } from "./errors";
 import { IMAGING_STUDY_DEF_KEY } from "./workflow-def";
 import { studyTypeByService } from "./study-types";
+import { pcpndtApplicability } from "./applicability";
+import { patients } from "../../kernel/db/schema/patients";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { DispatchedEvent, Handler } from "../../kernel/events/subscriptions";
 
@@ -96,6 +98,15 @@ export async function handleOrderPlaced(
     throw new RadiologyError("unknown_study", `no order ${payload.orderId}`, { payload });
   }
 
+  /** F60 — the patient's own facts, read once for the whole order. */
+  const patientRows = await (tx as unknown as Db)
+    .select({ sex: patients.sex, dob: patients.dob, dobEstimated: patients.dobEstimated })
+    .from(patients).where(eq(patients.id, payload.patientId));
+  const patient = patientRows[0];
+  if (!patient) {
+    throw new RadiologyError("unknown_study", `no patient ${payload.patientId}`, { payload });
+  }
+
   const byService = await studyTypeByService(tx);
   const created: CreatedStudy[] = [];
 
@@ -113,6 +124,13 @@ export async function handleOrderPlaced(
         { serviceId: item.serviceId },
       );
     }
+
+    /** F60 — the Act's rule, on the day of the scan, for every path that reaches a study. */
+    const applicability = pcpndtApplicability(
+      { sex: patient.sex, dob: patient.dob, dobEstimated: patient.dobEstimated },
+      { pcpndtApplicable: studyType.pcpndt_applicable },
+      new Date(`${order.serviceDate}T00:00:00.000Z`),
+    );
 
     const accessionNo = await nextEpisodeNo(tx, "imaging_study", order.serviceDate);
     const studyId = newId();
@@ -142,12 +160,26 @@ export async function handleOrderPlaced(
       priority: order.priority,
       workflowInstanceId: instance.instanceId,
       /**
-       * DD14 — the item's `restricted` flag was set at PLACEMENT by the applicability rule, and the
-       * study inherits the consequence: a PCPNDT-applicable scan carries `form_f_required`, which
-       * is what opens the `form_f` gate at check-in and what `recordAcquired` refuses without.
-       * Read from the ITEM rather than recomputed, so there is one decision and not two.
+       * ═══ F60 (CLOSE REVIEW) — THE CONTRACT'S SECOND PLACEMENT PATH EVALUATED NOTHING ═══
+       *
+       * This was `formFRequired: item.restricted`, on the reasoning that the flag *"was set at
+       * PLACEMENT by the applicability rule, so there is one decision and not two"*. That is true
+       * of `POST /radiology/orders` and of NOTHING ELSE. §6.1 promises a second, equally blessed
+       * path — *"or by `placeOrder` from a module with `radiology.orders.place`"* — and names Plan
+       * 26 as a consumer that *"composes imaging orders and gets studies for free"*. On that path
+       * `restricted` defaults to `false`, so an antenatal package's obstetric ultrasound arrived
+       * here with `form_f_required: false`: no `form_f` gate at check-in, `assertFormFRecorded`
+       * short-circuiting, and the scan performed and reported **with no entry in the statutory
+       * register and no refusal anywhere on the path.**
+       *
+       * The rule is now evaluated HERE, where every path converges, from the study type's own flag
+       * and the patient's record — the same inputs `place.ts` uses and the same function. That is
+       * still one decision: `place.ts` sets `restricted` for the ORDER ENVELOPE's confidentiality
+       * (a ward's list omits the row), and this sets `form_f_required` for the REGISTER. They agree
+       * on the ordinary path because they read the same rule, and on the kernel path only this one
+       * runs — which is the correct direction for the half with the criminal statute behind it.
        */
-      formFRequired: item.restricted,
+      formFRequired: applicability.applicable,
     });
 
     created.push({ studyId, accessionNo, orderItemId: itemId });

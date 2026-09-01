@@ -158,6 +158,18 @@ export const imagingStudies = pgTable(
     accessionNo: text("accession_no").notNull().unique(),
     laterality: text("laterality").notNull().default("na"),
     /**
+     * F55 — the booked LENGTH of the examination, snapshotted from the study type at creation.
+     *
+     * `duration_min` was declared on every study type, validated by the body schema and seeded with
+     * real values (10–45 minutes), and READ BY NOTHING: the slot unique was on an exact
+     * `scheduled_at`, so the "slot" was a point rather than an interval and a 45-minute MRI took
+     * two bookings fifteen minutes apart with no refusal at all. It is snapshotted onto the STUDY
+     * rather than read through the book at query time because the exclusion constraint below has to
+     * be able to compute the interval in SQL, and because a study booked under one version of the
+     * book must keep the length it was booked for when a later version changes it.
+     */
+    durationMin: integer("duration_min").notNull().default(15),
+    /**
      * COPIED from the order at creation rather than joined, and the reason is the worklist index
      * below: "every unread stat study" must be one index scan, and a join to `orders` for the sort
      * key would make the radiologist's list a sort over the whole table.
@@ -379,6 +391,14 @@ export const imagingReports = pgTable(
     secondFactorAt: timestamp("second_factor_at", { withTimezone: true }),
     amendmentReason: text("amendment_reason"),
     supersedesId: text("supersedes_id"),
+    /**
+     * F66 — `{approvedBy, reason}`: the medical superintendent who approved a DEMOGRAPHIC-tier
+     * lockout hit on this version, and why. Null on every report that tripped nothing, which is
+     * almost all of them. A coded-tier hit can be approved by nobody, so this column can never
+     * explain one away — an inspector asking *"who let this phrase through"* gets a name or gets
+     * the answer that nobody could have.
+     */
+    lockoutOverride: jsonb("lockout_override"),
     /** O-3's outsourced night read, when it comes. Plain text: a `counterparties.id`. */
     externalReporterId: text("external_reporter_id"),
     /**
@@ -447,7 +467,14 @@ export const imagingCriticalFindings = pgTable(
     /** THE READ-BACK — what the receiver repeated. A critical nobody read back was not communicated. */
     readBackText: text("read_back_text"),
     communicatedAt: timestamp("communicated_at", { withTimezone: true }),
+    /**
+     * F76 — the CLINICIAN who received the call and read the finding back. It is the answer to
+     * *"did this reach a human"*, so it must not be the person who typed the row: `recorded_by`
+     * below is who was at the keyboard, and at 02:10 that is usually the radiologist.
+     */
     acknowledgedBy: text("acknowledged_by"),
+    /** F76 — who entered the acknowledgement. Separate from who gave it, deliberately. */
+    recordedBy: text("recorded_by"),
     acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

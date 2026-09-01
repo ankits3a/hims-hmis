@@ -31,13 +31,15 @@ import type { ModuleRegistry } from "../../kernel/modules/loader";
  * second mechanism guarding a property the database already holds — T4's argument for its own
  * routes, unchanged.
  */
-const startBody = z.object({
-  /** The scan's IST calendar day. The PCPNDT registration window is a legal DATE, not an instant. */
-  onDate: isoDateSchema,
-});
+/**
+ * F52 — DELIBERATELY EMPTY. The scan's IST calendar day used to arrive here and decide whether the
+ * machine's PCPNDT registration was live. It is the server's now. The schema stays so the route
+ * keeps refusing a body that is not an object, and so a client still sending `onDate` is not
+ * silently believed.
+ */
+const startBody = z.object({}).strict();
 
 const acquiredBody = z.object({
-  onDate: isoDateSchema,
   imageSource: z.enum(["pacs", "no_pacs_images", "outside"]),
   doseCtdivol: z.number().nonnegative().max(9_999_999).nullish(),
   doseDlp: z.number().nonnegative().max(9_999_999).nullish(),
@@ -72,11 +74,15 @@ export class RadiologyAcquisitionController {
     @Param("studyId") studyId: string,
     @Body() body: unknown,
   ): Promise<unknown> {
-    const input = parsed(startBody, body);
+    /**
+     * F52 — `startBody` no longer carries `onDate`. The PCPNDT registration window is a legal DATE
+     * and it is now the SERVER's IST day: a client that chose it could walk a scan onto a machine
+     * whose registration had lapsed, and the shipped console was sending the browser's UTC day,
+     * which is yesterday for five and a half hours every night.
+     */
+    parsed(startBody, body);
     try {
-      return await withTx(this.db, (tx) => startAcquisition(tx, actor, this.decls(), {
-        studyId, onDate: input.onDate,
-      }));
+      return await withTx(this.db, (tx) => startAcquisition(tx, actor, this.decls(), { studyId }));
     } catch (e) { toHttp(e); }
   }
 
@@ -91,7 +97,6 @@ export class RadiologyAcquisitionController {
     try {
       return await withTx(this.db, (tx) => recordAcquired(tx, actor, this.decls(), {
         studyId,
-        onDate: input.onDate,
         imageSource: input.imageSource,
         doseCtdivol: input.doseCtdivol ?? null,
         doseDlp: input.doseDlp ?? null,

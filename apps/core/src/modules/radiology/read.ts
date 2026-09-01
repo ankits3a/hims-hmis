@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { imagingReports, imagingStudies } from "../../kernel/db/schema/radiology";
-import { orderItems, orders } from "../../kernel/db/schema/orders";
+import { orderItems } from "../../kernel/db/schema/orders";
 import { patients } from "../../kernel/db/schema/patients";
 import { displayName } from "../patients";
 import { RadiologyError } from "./errors";
@@ -18,19 +18,43 @@ import type { Actor } from "@hmis/contracts";
  * rules apply to it and they are NOT the same rule:
  *
  *   · **RESTRICTED** (the item's flag, set at placement by the PCPNDT rule and by phase 0's own
- *     lanes) — a row somebody may not see AT ALL. Held out entirely.
+ *     lanes) — a row a reader OUTSIDE the performing department may not see at all.
  *   · **CONFIDENTIAL** (the patient's flag) — a row everybody may see, under a NAME most people may
  *     not. Rendered through `displayName`.
  *
  * **A8's mutant conflates them**: *"show restricted rows with the alias"*. That is the natural
- * shortcut — one filter, one rendering, done — and it is a disclosure: the row itself says a named
- * ward has an obstetric ultrasound booked at 14:30, and an alias on top of it hides nothing that
- * matters. Phase 0's T5 A1 makes the same distinction one door over.
+ * shortcut — one filter, one rendering, done — and it is a disclosure to a reader who should not
+ * have the row at all. Phase 0's T5 A1 makes the same distinction one door over.
  *
- * The restricted rule is the KERNEL's, transcribed rather than reinvented (`orders/read.ts`'s
- * `visibleItems`): `orders.read.restricted`, **or** being the ordering clinician on that order.
- * Two readers of one rule would be one reader too many, and this one is a projection of the same
- * facts onto a department's day.
+ * ═══ FINDING F45 (CLOSE REVIEW, OWNER RULING 2026-09-01) — THE HOLD-OUT IS NOT THE DEPARTMENT'S ═══
+ *
+ * The first version transcribed the KERNEL's restricted rule (`orders/read.ts`'s `visibleItems`):
+ * `orders.read.restricted`, or being the ordering clinician. **That was the wrong rule for this
+ * surface, and it made the module unable to do its own job.**
+ *
+ * `orders.read.restricted` is granted to NO role — `seed-roles.ts` parks it in `NOT_YET_MODELLED`
+ * as a Class-A grant for the owner, and its reason names *"the PCPNDT-class USG"* explicitly. The
+ * PCPNDT applicability rule sets `restricted` on every covered scan. The seeded book marks three
+ * study types covered. So **every obstetric ultrasound in the hospital was held out of the only
+ * list that yields a study id** — from the receptionist who must book it, the radiographer who must
+ * scan it and the radiologist who must report it alike. The ordering clinician's exemption could
+ * not save it either: `doctor` does not hold `radiology.worklist.read`, so the permission check
+ * above throws first. The reception screen renders an empty list and no error.
+ *
+ * **THE RULING: `radiology.worklist.read` IS the departmental clearance.** It is held by exactly
+ * three roles — radiographer, radiologist, radiology_receptionist — and holding it means you are
+ * the department that performs the scan. A hold-out against the people performing the examination
+ * protects nobody and stops the examination.
+ *
+ * **What still holds the row out, and it is the surface that was always meant to:** the KERNEL's
+ * `listOrdersForPatient` is unchanged, so a WARD's pending list still omits the PCPNDT-class USG
+ * for a reader without the clearance. DD11's actual concern was a ward clerk browsing a patient's
+ * investigations; that is a different reader on a different route, and it is still refused. This is
+ * the lab's precedent applied here — *"the lab's own worklists read the lab's own tables"*, and the
+ * bench never applied the kernel hold-out to itself.
+ *
+ * The `restricted` flag is still RETURNED on every row, so a screen can badge it and a reader can
+ * see that the row is one the Act covers. It is a label here, not a filter.
  *
  * ═══ EVERY READ WRITES A PHI ROW, AND THE THREE SURFACES ARE THREE NAMES ═══
  *
@@ -44,20 +68,21 @@ import type { Actor } from "@hmis/contracts";
 const WORKLIST_READ = "radiology.worklist.read";
 const REPORT_READ = "radiology.reports.read";
 
-type Clearance = { canSeeRestricted: boolean; canSeeConfidential: boolean; userId: string };
+type Clearance = { canSeeConfidential: boolean; userId: string };
 
 async function clearanceOf(db: Db, actor: Actor): Promise<Clearance> {
   if (actor.type !== "user") {
     throw new RadiologyError(
-      "unknown_study",
+      "forbidden",
       `a ${actor.type} actor may not read a radiology worklist — it is a departmental queue and it is confidentiality-bearing (DD11)`,
     );
   }
-  const [canSeeRestricted, canSeeConfidential] = await Promise.all([
-    hasPermission(db, actor.id, "orders.read.restricted", "hospital"),
-    hasPermission(db, actor.id, "patients.confidential.read", "hospital"),
-  ]);
-  return { canSeeRestricted, canSeeConfidential, userId: actor.id };
+  /**
+   * F45 — only the CONFIDENTIAL rule is a clearance on this surface now. The restricted rule is the
+   * kernel's, on the kernel's own reader, for readers outside this department (see the header).
+   */
+  const canSeeConfidential = await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
+  return { canSeeConfidential, userId: actor.id };
 }
 
 export type WorklistRow = {
@@ -93,7 +118,7 @@ export async function worklist(
   opts: { view?: WorklistView; deviceResourceId?: string; limit?: number } = {},
 ): Promise<WorklistRow[]> {
   if (!(await hasPermission(db, actor.id, WORKLIST_READ, "hospital"))) {
-    throw new RadiologyError("unknown_study", `${actor.id} does not hold ${WORKLIST_READ}`);
+    throw new RadiologyError("forbidden", `${actor.id} does not hold ${WORKLIST_READ}`);
   }
   const clearance = await clearanceOf(db, actor);
   const statuses = WORKLIST_VIEWS[opts.view ?? "floor"];
@@ -111,14 +136,12 @@ export async function worklist(
       patientId: imagingStudies.patientId,
       formFRequired: imagingStudies.formFRequired,
       restricted: orderItems.restricted,
-      orderingClinicianId: orders.orderingClinicianId,
       name: patients.name,
       alias: patients.alias,
       isConfidential: patients.isConfidential,
     })
     .from(imagingStudies)
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
-    .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
     .innerJoin(patients, eq(patients.id, imagingStudies.patientId))
     .where(and(
       inArray(imagingStudies.status, [...statuses]),
@@ -142,11 +165,15 @@ export async function worklist(
     .limit(opts.limit ?? 200);
 
   /**
-   * A8 — the two rules, applied separately and in this order. The FILTER first: a row held out is
-   * not rendered at all, and a row that is rendered has had its name decided independently.
+   * F45 — THERE IS NO FILTER HERE ANY MORE, and F75 dissolved with it.
+   *
+   * The close review found that the hold-out ran AFTER the SQL `LIMIT`, so a held-out row consumed
+   * a slot in a deterministically ordered window: the response length was a function of the hidden
+   * rows, and routine work was pushed out of a window F43 had already narrowed. Both problems are
+   * gone rather than fixed, because the department is not a reader this surface holds rows from.
+   * `restricted` is still selected and still returned — as a LABEL for the screen, not a filter.
    */
-  const visible = rows.filter((r) =>
-    !r.restricted || clearance.canSeeRestricted || r.orderingClinicianId === clearance.userId);
+  const visible = rows;
 
   /**
    * ═══ ONE ROW PER PATIENT DISCLOSED, NOT ONE ROW PER READ (F42) ═══
@@ -178,6 +205,12 @@ export async function worklist(
 }
 
 export type StudyView = WorklistRow & {
+  /**
+   * F59/F73 — the side, which the `laterality_confirm` gate records at check-in. The console needs
+   * it to render, and the report screen needs it because `assertSignable` refuses a report on a
+   * lateralised type that names no side and the radiologist must not be retyping which knee.
+   */
+  laterality: string;
   ionising: boolean;
   contrastGiven: boolean;
   acquiredAt: Date | null;
@@ -188,27 +221,26 @@ export type StudyView = WorklistRow & {
 /** One study, for the console. Same two rules; `imaging.study` is its own surface. */
 export async function studyView(db: Db, actor: Actor, studyId: string): Promise<StudyView | null> {
   if (!(await hasPermission(db, actor.id, WORKLIST_READ, "hospital"))) {
-    throw new RadiologyError("unknown_study", `${actor.id} does not hold ${WORKLIST_READ}`);
+    throw new RadiologyError("forbidden", `${actor.id} does not hold ${WORKLIST_READ}`);
   }
   const clearance = await clearanceOf(db, actor);
   const rows = await db
     .select({
       study: imagingStudies, restricted: orderItems.restricted,
-      orderingClinicianId: orders.orderingClinicianId,
       name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential,
     })
     .from(imagingStudies)
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
-    .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
     .innerJoin(patients, eq(patients.id, imagingStudies.patientId))
     .where(eq(imagingStudies.id, studyId));
   const row = rows[0];
   if (!row) return null;
 
-  if (row.restricted && !clearance.canSeeRestricted && row.orderingClinicianId !== clearance.userId) {
-    /** Held out ENTIRELY — the same answer an unknown study gets, which is the point of a hold-out. */
-    return null;
-  }
+  /**
+   * F45 — the hold-out is gone from this reader too. It answered `null` for exactly the studies the
+   * console has to open, so the study screen printed "unknown study" for every obstetric scan while
+   * the readiness route underneath it rendered the gate list in full.
+   */
 
   await recordPhiAccess(db, {
     actor, patientId: row.study.patientId, surface: "imaging.study",
@@ -233,6 +265,7 @@ export async function studyView(db: Db, actor: Actor, studyId: string): Promise<
       { name: row.name, alias: row.alias, isConfidential: row.isConfidential }, clearance.canSeeConfidential,
     ),
     formFRequired: row.study.formFRequired, restricted: row.restricted,
+    laterality: row.study.laterality,
     ionising: row.study.ionising, contrastGiven: row.study.contrastGiven,
     acquiredAt: row.study.acquiredAt, authorisedBy: row.study.authorisedBy,
     reports,
@@ -265,26 +298,22 @@ export type ReportView = {
  */
 export async function reportView(db: Db, actor: Actor, reportId: string): Promise<ReportView | null> {
   if (!(await hasPermission(db, actor.id, REPORT_READ, "hospital"))) {
-    throw new RadiologyError("unknown_study", `${actor.id} does not hold ${REPORT_READ}`);
+    throw new RadiologyError("forbidden", `${actor.id} does not hold ${REPORT_READ}`);
   }
   const clearance = await clearanceOf(db, actor);
   const rows = await db
     .select({
       report: imagingReports, study: imagingStudies, restricted: orderItems.restricted,
-      orderingClinicianId: orders.orderingClinicianId,
       name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential,
     })
     .from(imagingReports)
     .innerJoin(imagingStudies, eq(imagingStudies.id, imagingReports.studyId))
     .innerJoin(orderItems, eq(orderItems.id, imagingStudies.orderItemId))
-    .innerJoin(orders, eq(orders.id, imagingStudies.orderId))
     .innerJoin(patients, eq(patients.id, imagingStudies.patientId))
     .where(eq(imagingReports.id, reportId));
   const row = rows[0];
   if (!row) return null;
-  if (row.restricted && !clearance.canSeeRestricted && row.orderingClinicianId !== clearance.userId) {
-    return null;
-  }
+  /** F45 — same ruling: a signed report is readable by the department that produced it. */
 
   await recordPhiAccess(db, {
     actor, patientId: row.study.patientId, surface: "imaging.report",
