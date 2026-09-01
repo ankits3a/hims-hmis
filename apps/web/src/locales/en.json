@@ -1995,5 +1995,18 @@
   },
   "common": {
     "loading": "Loading…"
+  },
+  "registrationCounter": {
+    "quote": {
+      "title": "Bill",
+      "payable": "Payable ₹{{amount}}",
+      "billToPanel": "Bill to panel ({{payer}}) — nothing to collect from the patient",
+      "benefitApplied": "{{reason}} — ₹{{amount}} off",
+      "benefitLost": "{{reason}} — not applied ({{why}})",
+      "aBiggerBenefitWon": "a bigger benefit won",
+      "freeReviewWindow": "Review visit — free until {{until}} ({{doctor}})",
+      "freeNoReason": "No charge for this visit",
+      "theDoctor": "the doctor"
+    }
   }
 }

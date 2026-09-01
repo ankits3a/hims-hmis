@@ -1995,5 +1995,18 @@
   },
   "common": {
     "loading": "लोड हो रहा है…"
+  },
+  "registrationCounter": {
+    "quote": {
+      "title": "बिल",
+      "payable": "देय ₹{{amount}}",
+      "billToPanel": "पैनल को बिल ({{payer}}) — मरीज़ से कुछ नहीं लेना है",
+      "benefitApplied": "{{reason}} — ₹{{amount}} की छूट",
+      "benefitLost": "{{reason}} — लागू नहीं ({{why}})",
+      "aBiggerBenefitWon": "इससे बड़ी छूट लागू हुई",
+      "freeReviewWindow": "फ़ॉलो-अप विज़िट — {{until}} तक निःशुल्क ({{doctor}})",
+      "freeNoReason": "इस विज़िट का कोई शुल्क नहीं",
+      "theDoctor": "डॉक्टर"
+    }
   }
 }

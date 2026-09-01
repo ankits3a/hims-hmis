@@ -24,7 +24,25 @@ const feeQuoteCouponsQuery = z
   .union([z.string(), z.array(z.string())])
   .optional()
   .transform((v) => (v === undefined ? [] : Array.isArray(v) ? v : [v]))
-  .transform((codes) => codes.map((c) => c.trim()).filter((c) => c.length > 0 && c.length <= 64).slice(0, 10));
+  // Blanks are DROPPED, not refused — that is the stall-prevention this parser was written for: a
+  // caller who sends `?coupon=` with nothing after it means "no coupon" and must still get a quote.
+  .transform((codes) => codes.map((c) => c.trim()).filter((c) => c.length > 0))
+  /**
+   * RC-3 T1 — THE QUOTE NOW REFUSES WHAT THE INVOICE REFUSES (RC-2 review NEW-4).
+   *
+   * This parser used to `.slice(0, 10)` an eleventh code and silently drop a >64-character one,
+   * while `issueInvoiceBody`'s `.max(10)` / `.max(64)` returns a hard 400. That divergence had no
+   * reachable caller until the web wire could send the fields — **and RC-3 is the phase that makes
+   * it reachable**, so a clerk would have got a clean quote and then "request body failed
+   * validation" at issue, which is the counter-stall shape T1 exists to prevent, arriving one step
+   * later than necessary.
+   *
+   * Aligned by REFUSING rather than by making the invoice forgiving: an over-long or eleventh code
+   * is a typo, not a keystroke in progress, and the cheapest place to tell the clerk is the quote.
+   * A silently-dropped code would instead have the clerk believing a benefit applied that the
+   * invoice never charged — the disagreement class RC-1 T1 and RC-2 T1/T2 each cost a task to fix.
+   */
+  .pipe(z.array(z.string().max(64)).max(10));
 
 /**
  * RC-2 T2 / D3. ONE slip per visit: `attribution_ids` mints one id against one counterparty and
