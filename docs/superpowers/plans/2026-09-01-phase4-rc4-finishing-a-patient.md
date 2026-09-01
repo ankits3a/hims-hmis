@@ -255,6 +255,20 @@ exercised 404 and an assertion true regardless; a misleading comment).
 - Revert pairs **R46–R50**, all red then green; R48 and R50 could not fail on first run and got
   their tests (N5's exact road; N4's reload).
 
+### 5.5a The red the peer's full pass found AFTER the close — a race, not a shared-checkout artefact
+
+18a's clean closing pass (HEAD `2152f07` at start and finish, zero dirty under `apps/`) ran the
+web suite under a full core jest and found **one red: this phase's own F6(A) test**, Escape during
+an in-flight join. Three isolated runs and two concurrent full web suites could not reproduce it;
+the mechanism is a RACE the test could only lose under load. `clearDesk` closed over `busy`, and the
+`window` keydown listener is re-attached by a passive effect whenever `clearDesk` changes identity —
+so between the token's commit and that effect, the listener answering Escape was the stale one that
+still believed the join was in flight. Fixed by reading `busy` through a ref assigned during render
+(`busyRef`), so an event between a commit and its effects sees the committed state; R51 red without
+the check, restored 99/99, full web 68 / 501. **The last commit of a close is the one least likely
+to be fully verified** (the peer's words): this test was written after the verification plan was
+made, was green in this lane's own full run, and only a run under a different load found it.
+
 ### 5.6 Declined at pass 2, with reasons
 - **F5 midnight** — stands (a billing ruling). **N7** — comment corrected in the same edit.
 - **Contention, not deadlock** — the reviewer traced lock order (invoices → receipts → encounter

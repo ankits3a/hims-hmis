@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../lib/api";
@@ -819,8 +819,19 @@ export function RegistrationCounter(): React.ReactElement {
    * landing on a cleared desk (F1 road b) is money the seat would never have shown.
    */
   const busy = settling || hereVisit?.joining === true;
+  /**
+   * Read through a REF, not the closure. The keydown listener lives on `window` and is re-attached
+   * by an effect whenever `clearDesk` changes identity; a closure over `busy` meant the listener
+   * that answered an Escape was whichever one the LAST flushed effect installed. The peer lane's
+   * full pass caught the window (18a's closing run, 2026-09-01): the token had rendered, the
+   * passive effect had not yet run, and the stale listener still thought the join was in flight —
+   * Escape ignored, desk not cleared. The ref is assigned during render, so an event that lands
+   * between a commit and its effects sees the state that was just committed.
+   */
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
   const clearDesk = useCallback((): void => {
-    if (busy) return;
+    if (busyRef.current) return;
     setOverlay(null);
     setRegistering(false);
     setVisit(null);
@@ -828,7 +839,7 @@ export function RegistrationCounter(): React.ReactElement {
     setSettleError(null);
     setDeskGen((n) => n + 1);
     release();
-  }, [release, busy]);
+  }, [release]);
 
   /**
    * RC-4 T2 — SETTLE, lifted from `counter-desk.tsx:settle`. The draft id is the visit's, stable
