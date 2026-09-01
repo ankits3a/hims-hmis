@@ -1997,6 +1997,19 @@
     "loading": "लोड हो रहा है…"
   },
   "registrationCounter": {
+    "find": {
+      "title": "आपके सामने कौन है?",
+      "placeholder": "नाम, मोबाइल या UHID",
+      "hint": "फ़ॉर्म भरने से पहले खोजें — यहीं रुकी हुई डुप्लिकेट का कोई ख़र्च नहीं।",
+      "none": "इससे मिलता कोई रिकॉर्ड नहीं",
+      "registerNew": "नया रजिस्टर करें",
+      "reason": {
+        "uhid": "वही UHID",
+        "mobile": "वही मोबाइल",
+        "name": "वही नाम",
+        "onFile": "रिकॉर्ड में"
+      }
+    },
     "quote": {
       "title": "बिल",
       "payable": "देय ₹{{amount}}",
@@ -2011,6 +2024,10 @@
     "dossier": {
       "title": "काउंटर पर मरीज़",
       "nobody": "अभी काउंटर पर कोई नहीं"
+    },
+    "wait": {
+      "ahead": "{{count}} आगे",
+      "line": "~{{minutes}} मिनट · {{clock}}"
     },
     "exit": {
       "collect": "₹{{amount}} लेने हैं",

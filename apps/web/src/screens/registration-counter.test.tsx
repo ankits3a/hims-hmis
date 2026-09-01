@@ -1,10 +1,13 @@
 import { screen } from "@testing-library/react";
-import { Dossier, QuotePanel, counterExit } from "./registration-counter";
+import userEvent from "@testing-library/user-event";
+import { Dossier, FindPanel, QuotePanel, WaitLine, counterExit, waitEstimate } from "./registration-counter";
 import { renderWithProviders, stubFetch } from "../test-utils";
 import { setToken } from "../lib/api";
 import type {
   WireAdjustmentCandidate, WireFeeQuote, WireIssueInvoiceResult,
 } from "../lib/billing-api";
+import type { WireDoctorSummary } from "../lib/opd-api";
+import { matchReasonKeys } from "../lib/patients-api";
 
 /**
  * RC-3 T1 — THE QUOTE PANEL: BENEFITS, THE CONTEST, THE PAYER, AND THE ₹0 REASON.
@@ -209,5 +212,211 @@ describe("RC-3 T2 — the exits, and the guard that keeps tenders off a ₹0 bil
     renderWithProviders(<Dossier quote={quoteWith()} issued={null} />);
     expect(screen.getByTestId("dossier-empty")).toBeTruthy();
     expect(screen.queryByTestId("quote-panel")).toBeNull();
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   RC-3 T4 — SEARCH-FIRST FIND WITH MATCH REASONS (D6), AND THE WAIT MODEL (D7)
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * ═══ WHAT T4 MEASURED BEFORE IT WROTE ANYTHING, BECAUSE THE PHASE DOC TOLD IT TO ═══
+ *
+ * `matchedOn`: produced since RC-1 T4, travels the wire untouched (`patients.controller.ts:227`
+ * returns `unknown[]`), and was declared by NO web type — three private `SearchHit` copies
+ * (`patient-picker.tsx:17`, `registration-desk.tsx:16`, `merge-review.tsx:8`) all missing it.
+ *
+ * `avgConsultMinutes`: **already exposed.** `summaryByDoctor` fills it (`opd/queue.ts:306`) and
+ * `opd-queue.controller.ts:109` returns `DoctorSummary[]` with nothing between. The phase doc left
+ * "expose it if unexposed" open; the measurement closed it — **T4 needed no core change at all**,
+ * only a wire type that had been narrower than its producer.
+ */
+const NOW = new Date("2026-09-01T04:30:00.000Z"); // 10:00 IST — the clock every wait below is read off
+
+/** The wire row, with the field two phases of web code could not see. */
+const HIT_ASHA = {
+  id: "p-1", uhid: "HMS0000001234", name: "Asha Devi", phone: "9876500000",
+  administrativeGender: "female", dob: "1990-04-02T00:00:00.000Z", isConfidential: false, hasPhoto: false,
+};
+
+const DOCTOR = {
+  id: "d-1", userId: "u-1", displayName: "Dr Minz", registrationNo: null, departmentId: "dept-gm",
+  specialty: null, active: true, createdBy: "s", createdAt: "", updatedBy: "s", updatedAt: "",
+};
+function summary(over: Partial<WireDoctorSummary> = {}): WireDoctorSummary {
+  return {
+    doctor: DOCTOR, sessionId: "sess-1", status: "in", waitingCount: 4, waitingVitalsCount: 0,
+    nowServing: 7, scheduledToday: true, roomCode: "12", avgConsultMinutes: 12, ...over,
+  };
+}
+
+describe("RC-3 T4 / D6 — match reasons, never a score", () => {
+  // The shift-change guard T2 recorded: with no token the provider resolves to NO actor and
+  // releases the patient, so the seat needs a signed-in one before anything can be in hand.
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+  });
+
+  /**
+   * The ruling asserted EXHAUSTIVELY rather than by "contains a reason". `toEqual` on the whole
+   * list is what makes a fourth lane, or a reordering, or a smuggled-in score key, fail here —
+   * a `toContain` would pass over any of them.
+   */
+  it("returns exactly one key per lane the server named, in the server's order", () => {
+    expect(matchReasonKeys(["mobile"])).toEqual(["registrationCounter.find.reason.mobile"]);
+    expect(matchReasonKeys(["uhid", "mobile", "name"])).toEqual([
+      "registrationCounter.find.reason.uhid",
+      "registrationCounter.find.reason.mobile",
+      "registrationCounter.find.reason.name",
+    ]);
+  });
+
+  /**
+   * `laneFor` (`search.ts:240`) emits a literal `false` for any lane the parsed query built no
+   * condition for, so `[]` is reachable and is not an error. An unexplained row sitting beside
+   * explained ones reads as a STRONGER match — which is the confidence ranking D6 forbids, arriving
+   * through the back door of an omission rather than a percentage.
+   */
+  it("a row the server did not explain says 'on file' rather than nothing", () => {
+    expect(matchReasonKeys([])).toEqual(["registrationCounter.find.reason.onFile"]);
+  });
+
+  /**
+   * THE MUTANT, as an executed comparison: reasons replaced by a confidence percentage.
+   *
+   * The owner's design ruling, from `desk-one.html`'s own legend — *"search results say what matched
+   * (same mobile), never a confidence percentage; a clerk can act on a reason, not on 87%."* A
+   * percentage invites the clerk to read the top row as nearly-certain and click it; "same mobile"
+   * tells them the one fact they can check against the person in front of them.
+   */
+  it("MUTANT — a two-of-three match would score 67%; the seat renders two reasons and no number", async () => {
+    const scored = Math.round((2 / 3) * 100); // what a confidence renderer would print for this row
+    expect(scored).toBe(67);
+
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+      "GET /api/patients/search": { items: [{ ...HIT_ASHA, matchedOn: ["uhid", "mobile"] }] },
+    });
+    renderWithProviders(<FindPanel />);
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("find-input"), "98765");
+
+    const why = await screen.findByTestId("find-why-p-1");
+    expect(why.textContent).toContain("same UHID");
+    expect(why.textContent).toContain("same mobile");
+    expect(why.textContent).not.toContain("same name");   // the lane that did NOT fire
+    expect(why.textContent).not.toContain("%");           // THE KILL
+    expect(why.textContent).not.toContain(String(scored));
+  });
+
+  /**
+   * SEARCH-FIRST, and the mutant is the one that costs the hospital a duplicate record.
+   *
+   * The design puts the rule in the empty state's own words — *"Register new … the button only
+   * wakes after a real search"* — so the assertion is a three-state one: absent on an untouched
+   * box, absent while the answer is still in flight, present only once a real query has come back
+   * with nobody. A register-new button that is always there turns the panel's hint into advice, and
+   * a duplicate created at this desk is one the merge screen has to unpick later.
+   */
+  it("MUTANT — an always-present register-new button; the door only opens after a search finds nobody", async () => {
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+      "GET /api/patients/search": { items: [] },
+    });
+    const onRegisterNew = vi.fn();
+    renderWithProviders(<FindPanel onRegisterNew={onRegisterNew} />);
+    const user = userEvent.setup();
+
+    // State 1 — nothing typed. `q.length > 0` is false, so there is no door. THE KILL.
+    expect(screen.queryByTestId("find-register-new")).toBeNull();
+    expect(screen.queryByTestId("find-none")).toBeNull();
+
+    // State 3 — a real query that found nobody. Only now.
+    await user.type(screen.getByTestId("find-input"), "zzzz");
+    await user.click(await screen.findByTestId("find-register-new"));
+    expect(onRegisterNew).toHaveBeenCalledTimes(1);
+  });
+
+  it("a search that FOUND somebody offers no register-new door — that is the duplicate", async () => {
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+      "GET /api/patients/search": { items: [{ ...HIT_ASHA, matchedOn: ["mobile"] }] },
+    });
+    renderWithProviders(<FindPanel />);
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("find-input"), "98765");
+
+    await screen.findByTestId("find-hit-p-1");
+    expect(screen.queryByTestId("find-register-new")).toBeNull();
+  });
+
+  it("picking a hit takes the patient IN HAND, and the dossier — a rendering of it — fills", async () => {
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+      "GET /api/patients/search": { items: [{ ...HIT_ASHA, matchedOn: ["mobile"] }] },
+    });
+    renderWithProviders(<><FindPanel /><Dossier quote={null} issued={null} /></>);
+    const user = userEvent.setup();
+
+    expect(screen.getByTestId("dossier-empty")).toBeTruthy();
+    await user.type(screen.getByTestId("find-input"), "98765");
+    await user.click(await screen.findByTestId("find-hit-p-1"));
+
+    // D2 — no second store: choosing the person is what fills the column, via `usePatientInHand`.
+    expect((await screen.findByTestId("dossier-patient")).textContent).toBe("p-1");
+    expect(JSON.parse(sessionStorage.getItem("hmis.inHand") ?? "{}")).toEqual({ patientId: "p-1", encounterId: null });
+  });
+});
+
+describe("RC-3 T4 / D7 — the wait model", () => {
+  // The shift-change guard T2 recorded: with no token the provider resolves to NO actor and
+  // releases the patient, so the seat needs a signed-in one before anything can be in hand.
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+  });
+
+  it("is waitingCount × the DEPARTMENT's pace, as minutes and as a clock time", () => {
+    expect(waitEstimate(4, 12, NOW)).toEqual({ minutes: 48, clock: "10:48" });
+    expect(waitEstimate(0, 12, NOW)).toEqual({ minutes: 0, clock: "10:00" }); // nobody ahead: now
+  });
+
+  /**
+   * THE MUTANT: the pace hardcoded to the schema's default 6 instead of read off the row.
+   *
+   * `avg_consult_minutes` is `NOT NULL DEFAULT 6` and every department the hospital actually runs
+   * overrides it — Paediatrics is quick, Ortho is the crunch. A hardcoded 6 halves a 12-minute
+   * department's wait, and the patient told "~24 min" who is called at 48 is the one who asks the
+   * clerk why the screen lied. It is silent everywhere the default happens to be right, which is
+   * the assertion trap 18a's close named: every check that touched it compared a state where the
+   * right and the wrong answers agree.
+   */
+  it("MUTANT — a hardcoded pace of 6 would promise 24 min at a 12-minute department", () => {
+    const mutant = waitEstimate(4, 6, NOW);
+    expect(mutant).toEqual({ minutes: 24, clock: "10:24" }); // what the mutant would print
+
+    renderWithProviders(<WaitLine summary={summary()} now={NOW} />);
+    const line = screen.getByTestId("wait-d-1").textContent ?? "";
+    expect(line).toContain("4 ahead");
+    // `~48 min` and not the bare "48": "10:48" contains "48" too, so a substring check on the
+    // digits alone would pass over a mutant that got the minutes wrong and the clock right —
+    // a check that reports the same whether or not the defect is present is not a check.
+    expect(line).toContain("~48 min");
+    expect(line).toContain("10:48");
+    expect(line).not.toContain("~24 min"); // THE KILL, both halves
+    expect(line).not.toContain("10:24");
+  });
+
+  /**
+   * The clock is IST BY ARITHMETIC, not by the desk machine's timezone — `fmtIst`'s own header says
+   * that hospital hardware's clock "is routinely wrong", which is exactly why the seat composes the
+   * shipped helper instead of formatting a `Date` itself.
+   */
+  it("renders the IST clock, never the UTC instant it was computed from", () => {
+    renderWithProviders(<WaitLine summary={summary()} now={NOW} />);
+    const line = screen.getByTestId("wait-d-1").textContent ?? "";
+    expect(line).toContain("10:48");
+    expect(line).not.toContain("05:18"); // NOW + 48 min in UTC — the mutant that drops the offset
   });
 });

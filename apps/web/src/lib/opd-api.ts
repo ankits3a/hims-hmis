@@ -162,6 +162,23 @@ export type WireDoctorSummary = {
   doctor: WireDoctor; sessionId: string | null; status: OpdSessionStatus | "none";
   waitingCount: number; waitingVitalsCount: number; nowServing: number | null;
   scheduledToday: boolean; roomCode: string | null;
+  /**
+   * RC-3 T4 / D7 — the wait model's pace term, and it was ALREADY ON THE WIRE.
+   *
+   * MEASURED before writing anything, because the phase doc told this task to: RC-1 T5 put
+   * `avgConsultMinutes` on `DoctorSummary` (`opd/queue.ts:252`), `summaryByDoctor` batches the
+   * department read and fills it (`queue.ts:293-306`), and `opd-queue.controller.ts:109` returns
+   * `DoctorSummary[]` with no serializer between. So `GET /opd/queues/summary` has been sending
+   * this number since RC-1 and **the web type was the only thing that could not see it** — no
+   * core change was needed for the wait model, only a type that stopped being narrower than its
+   * producer. That is the eight-rails finding of §1 in its smallest possible form.
+   *
+   * REQUIRED, not optional: the column is `NOT NULL DEFAULT 6` (`0048_counter_flow.sql`) and the
+   * mapper falls back to 6 for a department it could not read, so every row the server emits
+   * carries a number. Declaring it optional would let a consumer write `?? 6` and quietly reinvent
+   * the fallback in a second place.
+   */
+  avgConsultMinutes: number;
 };
 
 /** The public board (§11.5): token, room and doctor ONLY — no patient identity ever reaches this shape. */

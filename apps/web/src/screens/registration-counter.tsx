@@ -1,10 +1,15 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 import { fetchFeeQuote } from "../lib/billing-api";
 import type {
   WireAdjustmentCandidate, WireFeeQuote, WireIssueInvoiceResult, WirePricedLine,
 } from "../lib/billing-api";
+import { fmtIst, useDebounced } from "../lib/format";
+import type { WireDoctorSummary } from "../lib/opd-api";
 import { usePatientInHand } from "../lib/patient-in-hand";
+import { matchReasonKeys, searchPatients } from "../lib/patients-api";
+import type { WirePatientHit } from "../lib/patients-api";
 
 /**
  * RC-3 — DESK ONE, THE REGISTRATION COUNTER SEAT.
@@ -199,5 +204,137 @@ export function Dossier({
         </>
       )}
     </aside>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   RC-3 T4 — SEARCH-FIRST FIND WITH MATCH REASONS, AND THE WAIT MODEL (D6 / D7)
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * D7 — WAIT v0, AND IT IS PURE WITH `now` AS A PARAMETER.
+ *
+ * `waitingCount × avgConsultMinutes`, rendered as minutes AND a clock time. The design's own legend
+ * says why both: *"wait shown as minutes and a clock time, because patients ask 'kitne baje?'"* — a
+ * relative number is what the clerk reasons with and an absolute one is what the patient goes and
+ * sits down on.
+ *
+ * ═══ THE ARITHMETIC IS CLIENT-SIDE ON PURPOSE, AND THE SEAM IS THE COLUMN ═══
+ *
+ * RC-1's D7 ruled it so: a future pace model (per-doctor observed service time, time-of-day decay,
+ * anything) replaces THIS COLUMN'S READ and never the wire shape. Putting the multiplication on the
+ * server would have made the wire carry a computed minute count, and then the model change is a
+ * wire change and every consumer moves with it.
+ *
+ * ═══ `now` IS A PARAMETER BECAUSE A DEFAULT `new Date()` IS A CALENDAR BOMB ═══
+ *
+ * The 18a lane spent a debugging session this week on exactly this shape (ledger §2.158): a fixture
+ * that mixed a fictional clock with the real one passed for as long as the real clock happened to
+ * agree with it. A function that reads the wall clock internally cannot be asserted at 10:00 — the
+ * caller supplies the instant, the test supplies a fixed one, and the component's default is the
+ * ONLY place `new Date()` appears.
+ */
+export function waitEstimate(
+  waitingCount: number, avgConsultMinutes: number, now: Date,
+): { minutes: number; clock: string } {
+  const minutes = waitingCount * avgConsultMinutes;
+  return { minutes, clock: fmtIst(new Date(now.getTime() + minutes * 60_000).toISOString()) };
+}
+
+/**
+ * T4 — the wait line for one doctor's queue: how many are ahead, how long, and by when.
+ *
+ * `avgConsultMinutes` is read off the summary row and never defaulted here. It reaches this
+ * component because T4 widened `WireDoctorSummary` to declare a field the server had been sending
+ * since RC-1 — the fallback for an unreadable department already lives once, server-side, in
+ * `summaryByDoctor`.
+ */
+export function WaitLine({
+  summary, now = new Date(),
+}: { summary: WireDoctorSummary; now?: Date }): React.ReactElement {
+  const { t } = useTranslation();
+  const { minutes, clock } = waitEstimate(summary.waitingCount, summary.avgConsultMinutes, now);
+  return (
+    <span data-testid={`wait-${summary.doctor.id}`}>
+      {t("registrationCounter.wait.ahead", { count: summary.waitingCount })}
+      {" · "}
+      {t("registrationCounter.wait.line", { minutes, clock })}
+    </span>
+  );
+}
+
+/**
+ * T4 — SEARCH FIRST. The owner's ruling for this seat and the first thing the design says on the
+ * screen: *"Search before you type a single form field — a duplicate stopped here costs nothing."*
+ *
+ * Picking a row takes the patient IN HAND (`takePatient`) rather than navigating. That is the whole
+ * difference between this seat and `counter-desk.tsx`'s linear flow: the dossier is a rendering of
+ * `usePatientInHand` (D2), so the act of choosing a person is the act that fills the left column,
+ * and it survives every route change afterwards.
+ */
+export function FindPanel({ onRegisterNew }: { onRegisterNew?: () => void } = {}): React.ReactElement {
+  const { t } = useTranslation();
+  const { takePatient } = usePatientInHand();
+  const [raw, setRaw] = useState("");
+  const q = useDebounced(raw.trim(), 200);
+
+  const hits = useQuery({
+    queryKey: ["rc-patient-search", q],
+    queryFn: () => searchPatients(q),
+    enabled: q.length > 0,
+  });
+  const items: WirePatientHit[] = hits.data ?? [];
+
+  return (
+    <section aria-label={t("registrationCounter.find.title")} data-testid="find-panel">
+      <label htmlFor="rc-find">{t("registrationCounter.find.title")}</label>
+      <input
+        id="rc-find" data-testid="find-input" value={raw} autoFocus
+        placeholder={t("registrationCounter.find.placeholder")}
+        onChange={(e) => setRaw(e.target.value)}
+      />
+      <p data-testid="find-hint">{t("registrationCounter.find.hint")}</p>
+
+      {/*
+        SEARCH-FIRST IS A GUARD, NOT A HEADING. The design states the mechanism in the empty state
+        itself — *"Register new … the button only wakes after a real search"* — and that is the
+        whole of the ruling: the door to a new record does not exist until a query has been typed
+        AND has come back empty. A register-new button on an empty search box is how the duplicate
+        this seat exists to prevent gets created, and the hint above it would be advice rather than
+        a rail. `!hits.isFetching` is part of the guard: offering the door while the answer is still
+        in flight offers it to a clerk whose patient is about to appear.
+      */}
+      {q.length > 0 && items.length === 0 && !hits.isFetching && (
+        <p data-testid="find-none">
+          {t("registrationCounter.find.none")}
+          <button type="button" data-testid="find-register-new" onClick={() => onRegisterNew?.()}>
+            {t("registrationCounter.find.registerNew")}
+          </button>
+        </p>
+      )}
+
+      <ul>
+        {items.map((hit) => (
+          <li key={hit.id}>
+            <button type="button" data-testid={`find-hit-${hit.id}`} onClick={() => takePatient(hit.id)}>
+              <span data-testid={`find-name-${hit.id}`}>{hit.name}</span>
+              <span data-testid={`find-uhid-${hit.id}`}>{hit.uhid}</span>
+              {hit.phone !== null && <span data-testid={`find-phone-${hit.id}`}>{hit.phone}</span>}
+              {/*
+                D6 — REASONS, NEVER A SCORE. `matchReasonKeys` is where the ruling is enforceable
+                and it is unit-asserted there; this renders exactly what it returns, in order, and
+                has no arithmetic of its own to get wrong. A row the server explained gets its
+                lanes; a row it did not gets "on file", so no row is ever the only unexplained one.
+              */}
+              <span data-testid={`find-why-${hit.id}`}>
+                {matchReasonKeys(hit.matchedOn).map((key) => (
+                  <span key={key} data-testid={`find-reason-${hit.id}`}>{t(key)}</span>
+                ))}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
