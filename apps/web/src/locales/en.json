@@ -2015,6 +2015,23 @@
       },
       "searchFailed": "Search is unavailable — do not register a new record until it works"
     },
+    "register": {
+      "title": "New patient",
+      "name": "Name",
+      "phone": "Mobile",
+      "ageYears": "Age (years)",
+      "sex": "Sex",
+      "sexUnknown": "Not stated",
+      "sexMale": "Male",
+      "sexFemale": "Female",
+      "sexOther": "Other",
+      "doctor": "Doctor",
+      "pickDoctor": "Pick a doctor",
+      "duplicateWarning": "Someone on file looks like this person — check before registering a second record",
+      "registerAnyway": "Different person — register anyway",
+      "submit": "Register and open visit",
+      "cancel": "Cancel"
+    },
     "quote": {
       "title": "Bill",
       "payable": "Payable ₹{{amount}}",

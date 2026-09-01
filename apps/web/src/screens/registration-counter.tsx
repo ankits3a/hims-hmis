@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import { fetchFeeQuote } from "../lib/billing-api";
 import type {
   TenderMode, WireAdjustmentCandidate, WireFeeQuote, WireIssueInvoiceResult, WirePricedLine,
 } from "../lib/billing-api";
 import { fmtIst, useDebounced } from "../lib/format";
-import { todayIst } from "../lib/opd-api";
-import type { WireDoctorSummary } from "../lib/opd-api";
+import { opdErrorMessage, todayIst, walkIn } from "../lib/opd-api";
+import type { WireDoctorSummary, WireDuplicateCandidate, WireWalkInBody } from "../lib/opd-api";
+import { SubmitButton } from "../components/submit-button";
 import { usePaletteOptional } from "../components/command-palette";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { matchReasonKeys, searchPatients } from "../lib/patients-api";
@@ -622,9 +623,7 @@ export function QueuesOverlay({
  * `counter-desk.tsx` is untouched and still serves `/counter` (D1). RC-4 deletes one of the two,
  * and which one is an owner ruling this phase carries rather than defaults (§6).
  */
-export function RegistrationCounter({
-  onRegisterNew,
-}: { onRegisterNew?: () => void } = {}): React.ReactElement {
+export function RegistrationCounter(): React.ReactElement {
   const { t } = useTranslation();
   const { inHand, release } = usePatientInHand();
   const palette = usePaletteOptional();
@@ -637,6 +636,12 @@ export function RegistrationCounter({
    * which is the one way to clear a child's state without lifting it up for the sake of a reset.
    */
   const [deskGen, setDeskGen] = useState(0);
+  /**
+   * RC-4 T1 / D1 — the register panel opens IN PLACE. `onRegisterNew` used to navigate to
+   * `/registration?new=true`, abandoning the dossier, the search and the patient session to open a
+   * form; leaving is the defect this seat exists to remove.
+   */
+  const [registering, setRegistering] = useState(false);
   const summaries = useQueueSummary(todayIst());
 
   /**
@@ -656,6 +661,7 @@ export function RegistrationCounter({
 
   const clearDesk = useCallback((): void => {
     setOverlay(null);
+    setRegistering(false);
     setDeskGen((n) => n + 1);
     release();
   }, [release]);
@@ -693,7 +699,7 @@ export function RegistrationCounter({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [overlay, clearDesk, onRegisterNew, palette?.isOpen]);
+  }, [overlay, clearDesk, palette?.isOpen]);
 
   /**
    * ═══ CLOSE REVIEW F8 (MAJOR) — THE ALIAS LAYER HAD NO CONSUMER ═══
@@ -735,10 +741,180 @@ export function RegistrationCounter({
           <Dossier quote={quote} issued={null} canCollect={false} onConfirm={clearDesk} />
         </div>
         <div className="min-w-0 flex-1 rounded-lg border border-border bg-card p-4">
-          {inHand === null && <FindPanel key={deskGen} onRegisterNew={onRegisterNew} />}
+          {inHand === null && (registering
+            ? <RegisterPanel doctors={summaries} onCancel={() => setRegistering(false)} />
+            : <FindPanel key={deskGen} onRegisterNew={() => setRegistering(true)} />)}
         </div>
       </div>
       {overlay === "queues" && <QueuesOverlay items={summaries} onClose={() => setOverlay(null)} />}
     </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   RC-4 T1 — THE SEAT OPENS A VISIT, AND REGISTERS IN FOUR FIELDS WITHOUT LEAVING (D1 / D2)
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/** The design's four: name · mobile · age · sex (`desk-one.html`'s `nm/mob/age/sex`). */
+export type SeatRegisterFields = { name: string; phone: string; ageYears: string; sex: string };
+
+export const EMPTY_REGISTER: SeatRegisterFields = { name: "", phone: "", ageYears: "", sex: "unknown" };
+
+/**
+ * THE WALK-IN BODY, AS A PURE FUNCTION — extracted for the reason `seatKey` and `counterExit` are.
+ *
+ * It is LIFTED from `counter-desk.tsx:135-150` rather than re-derived (D2), because that is a
+ * proven money path and the point of building this seat beside the old screen is that a reviewer
+ * can see this half is unchanged. What is added is the design's fourth field: `ageYears`, which
+ * `registerBody` accepts (`patients.controller.ts:89`, `int 0..130`) and the old screen never sent.
+ *
+ * ═══ THE THREE THINGS THAT ARE EASY TO GET WRONG HERE, AND ARE NOT ARBITRARY ═══
+ *
+ * 1. **`ageYears` is a NUMBER on the wire and a STRING in the field.** An empty box must send
+ *    NOTHING rather than `0` — a patient recorded as a newborn because the clerk left the age
+ *    blank is a worse error than an absent age, and `0` is a legal value the schema accepts.
+ * 2. **An empty phone is OMITTED, not sent as `""`.** The old screen does this and it matters: the
+ *    registration schema's phone is optional, and an empty string is a value rather than an absence.
+ * 3. **`sex` and NOT `administrativeGender`.** `registerBody` declares `sex`; zod strips unknown
+ *    keys, so the other spelling would vanish silently — the exact defect Plan 22c-A's close review
+ *    found as its C1, where a PATCH carrying `administrativeGender` returned HTTP 200 with nothing
+ *    written. The wrong field name here fails the same way: quietly, with a success code.
+ */
+export function walkInBodyFor(
+  patient: { existingId: string } | { fields: SeatRegisterFields },
+  doctor: WireDoctorSummary,
+  acknowledgeDuplicates: boolean,
+): WireWalkInBody {
+  const identity: WireWalkInBody["patient"] = "existingId" in patient
+    ? { existingId: patient.existingId }
+    : {
+        register: {
+          name: patient.fields.name.trim(),
+          sex: patient.fields.sex,
+          ...(patient.fields.phone.trim() === "" ? {} : { phone: patient.fields.phone.trim() }),
+          ...(patient.fields.ageYears.trim() === "" ? {} : { ageYears: Number(patient.fields.ageYears) }),
+        },
+      };
+  return {
+    patient: identity,
+    departmentId: doctor.doctor.departmentId,
+    doctorId: doctor.doctor.id,
+    ...(acknowledgeDuplicates ? { acknowledgedDuplicates: true } : {}),
+  };
+}
+
+/**
+ * T1 — REGISTER IN PLACE. THE SEAT NO LONGER NAVIGATES AWAY (D1).
+ *
+ * RC-3's `Register new` button called `onRegisterNew`, which left for `/registration?new=true` —
+ * and leaving is the defect this seat exists to remove. The clerk had a dossier, a search and a
+ * patient session in hand, and the only way to create a record abandoned all three. Four fields,
+ * inline, with `usePatientInHand` intact across the whole act.
+ *
+ * The duplicate path is lifted too, and it is the one branch that must not be simplified: the
+ * server refuses a suspicious registration with **409 + `detail.candidates`**, and the clerk's
+ * answer — "no, these are different people" — comes back as `acknowledgedDuplicates: true`. A panel
+ * that swallowed the 409 would leave the clerk at a dead end in front of a waiting patient, which
+ * is worse than the duplicate it was trying to prevent.
+ */
+export function RegisterPanel({
+  doctors, onCancel,
+}: { doctors: WireDoctorSummary[]; onCancel?: () => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const { takePatient, takeEncounter } = usePatientInHand();
+  const [fields, setFields] = useState<SeatRegisterFields>(EMPTY_REGISTER);
+  const [doctorId, setDoctorId] = useState("");
+  const [duplicates, setDuplicates] = useState<WireDuplicateCandidate[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const doctor = doctors.find((d) => d.doctor.id === doctorId) ?? null;
+  const ready = fields.name.trim() !== "" && doctor !== null;
+
+  const set = (k: keyof SeatRegisterFields) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>): void => {
+    setFields((f) => ({ ...f, [k]: e.target.value }));
+  };
+
+  async function open(acknowledgeDuplicates: boolean, idempotencyKey: string): Promise<void> {
+    if (doctor === null) return;
+    setError(null);
+    setDuplicates(null);
+    try {
+      const result = await walkIn(walkInBodyFor({ fields }, doctor, acknowledgeDuplicates), idempotencyKey);
+      takePatient(result.patientId);
+      takeEncounter(result.encounter.id);
+    } catch (e) {
+      // LIFTED VERBATIM: a 409 carrying candidates is a QUESTION, not a failure.
+      if (e instanceof ApiError && e.status === 409) {
+        const detail = (e.body as { detail?: { candidates?: WireDuplicateCandidate[] } } | undefined)?.detail;
+        if (detail?.candidates !== undefined) { setDuplicates(detail.candidates); return; }
+      }
+      setError(opdErrorMessage(e));
+    }
+  }
+
+  return (
+    <section aria-label={t("registrationCounter.register.title")} data-testid="register-panel" className="text-sm">
+      <h2 className="text-base font-semibold">{t("registrationCounter.register.title")}</h2>
+
+      <label htmlFor="rc-reg-name">{t("registrationCounter.register.name")}</label>
+      <input id="rc-reg-name" data-testid="reg-name" value={fields.name} onChange={set("name")}
+        className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3" />
+
+      <label htmlFor="rc-reg-phone">{t("registrationCounter.register.phone")}</label>
+      <input id="rc-reg-phone" data-testid="reg-phone" inputMode="numeric" value={fields.phone} onChange={set("phone")}
+        className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3" />
+
+      <label htmlFor="rc-reg-age">{t("registrationCounter.register.ageYears")}</label>
+      <input id="rc-reg-age" data-testid="reg-age" inputMode="numeric" value={fields.ageYears} onChange={set("ageYears")}
+        className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3" />
+
+      <label htmlFor="rc-reg-sex">{t("registrationCounter.register.sex")}</label>
+      <select id="rc-reg-sex" data-testid="reg-sex" value={fields.sex} onChange={set("sex")}
+        className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3">
+        <option value="unknown">{t("registrationCounter.register.sexUnknown")}</option>
+        <option value="male">{t("registrationCounter.register.sexMale")}</option>
+        <option value="female">{t("registrationCounter.register.sexFemale")}</option>
+        <option value="other">{t("registrationCounter.register.sexOther")}</option>
+      </select>
+
+      <label htmlFor="rc-reg-doctor">{t("registrationCounter.register.doctor")}</label>
+      <select id="rc-reg-doctor" data-testid="reg-doctor" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}
+        className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3">
+        <option value="">{t("registrationCounter.register.pickDoctor")}</option>
+        {doctors.map((d) => (
+          <option key={d.doctor.id} value={d.doctor.id}>
+            {d.doctor.displayName} · {d.waitingCount}
+          </option>
+        ))}
+      </select>
+
+      {duplicates !== null && (
+        <div data-testid="reg-duplicates" role="alert">
+          <p>{t("registrationCounter.register.duplicateWarning")}</p>
+          <ul>
+            {duplicates.map((c) => (
+              <li key={c.id} data-testid={`reg-dup-${c.id}`}>{c.name ?? "—"} · {c.uhid}</li>
+            ))}
+          </ul>
+          {/*
+            THE WAY THROUGH. Without it a near-match is a dead end at a counter with a queue behind
+            it — the clerk can neither proceed nor explain why. The acknowledgement is the clerk's
+            judgement, recorded, which is what `acknowledgedDuplicates` is for.
+          */}
+          <SubmitButton data-testid="reg-acknowledge" onClick={(k) => open(true, k)}>
+            {t("registrationCounter.register.registerAnyway")}
+          </SubmitButton>
+        </div>
+      )}
+
+      {error !== null && <p data-testid="reg-error" role="alert">{error}</p>}
+
+      <SubmitButton data-testid="reg-submit" disabled={!ready} onClick={(k) => open(false, k)}>
+        {t("registrationCounter.register.submit")}
+      </SubmitButton>
+      {onCancel !== undefined && (
+        <button type="button" data-testid="reg-cancel" onClick={onCancel}>{t("registrationCounter.register.cancel")}</button>
+      )}
+    </section>
   );
 }

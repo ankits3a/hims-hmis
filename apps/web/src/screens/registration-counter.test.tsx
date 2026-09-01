@@ -4,7 +4,7 @@ import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   Dossier, FindPanel, QueuesOverlay, QuotePanel, RegistrationCounter, SEAT_TENDER_ORDER, WaitLine,
-  counterExit, seatKey, useQuote, waitEstimate,
+  counterExit, seatKey, useQuote, waitEstimate, walkInBodyFor,
 } from "./registration-counter";
 import { renderWithProviders, stubFetch } from "../test-utils";
 import { setToken } from "../lib/api";
@@ -789,19 +789,18 @@ describe("RC-3 T5 — the queues overlay", () => {
   });
 
   it("the seat swallows NO navigation chord — and 1/2/3 are not acted on here either", () => {
-    const onRegisterNew = vi.fn();
-    renderWithProviders(<RegistrationCounter onRegisterNew={onRegisterNew} />);
+    renderWithProviders(<RegistrationCounter />);
 
     /*
       §6.4 RULED — the seat used to handle `Ctrl+N` itself. It no longer does, and this asserts the
       ABSENCE, which is the load-bearing half: the global map owns `Alt+N` now, and a seat that
       also handled a navigation chord would either double-fire or shadow the global one with a
-      local imitation. The `Register new` button (asserted in the F3/search-first tests) is this
-      screen's own door and is unaffected.
+      local imitation. The `Register new` button is this screen's own door and is unaffected.
+      RC-4 T1: that door now opens the register panel IN PLACE rather than navigating.
     */
     fireEvent.keyDown(window, { key: "n", ctrlKey: true });
     fireEvent.keyDown(window, { key: "n", altKey: true });
-    expect(onRegisterNew).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("register-panel")).toBeNull();
 
     // F15 — the tender lanes stay in the MAP (they are the seat's specified legend) and this screen
     // consumes none of them: F4 established it cannot see whether an encounter has been paid, so it
@@ -1108,5 +1107,160 @@ describe("RC-3 close review — F16/F19: 'start again' means the search box too"
     const claimed = new KeyboardEvent("keydown", { key: "q", cancelable: true, bubbles: true });
     window.dispatchEvent(claimed);
     expect(claimed.defaultPrevented).toBe(true);
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   RC-4 T1 — THE SEAT OPENS A VISIT, AND REGISTERS WITHOUT LEAVING
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+const DOC_A = summary();
+const DOC_B = summary({ doctor: { ...DOCTOR, id: "d-2", displayName: "Dr Rao", departmentId: "dept-ortho" }, waitingCount: 2 });
+
+describe("RC-4 T1 — the walk-in body, as a pure function", () => {
+  /**
+   * THE THREE FIELD RULES, ASSERTED EXHAUSTIVELY WITH `toEqual` rather than by `toMatchObject`.
+   * A partial match would pass over an extra key — and an extra key is exactly how the
+   * `administrativeGender` defect worked in Plan 22c-A's C1: zod strips what it does not declare,
+   * so a wrongly-named field vanishes silently and the route answers 200 with nothing written.
+   */
+  it("sends the design's four fields, and OMITS the two that are blank", () => {
+    expect(walkInBodyFor(
+      { fields: { name: "  Asha Devi  ", phone: " 9876500000 ", ageYears: " 34 ", sex: "female" } },
+      DOC_A, false,
+    )).toEqual({
+      patient: { register: { name: "Asha Devi", sex: "female", phone: "9876500000", ageYears: 34 } },
+      departmentId: "dept-gm", doctorId: "d-1",
+    });
+  });
+
+  /**
+   * THE MUTANT THAT MATTERS MOST HERE, and it is a patient-safety one rather than a money one:
+   * `ageYears: Number("")` is `0`, and `0` is a value the schema ACCEPTS (`int 0..130`). A blank
+   * age box would register every adult as a newborn — and a newborn is the band that drives
+   * paediatric dosing and the danger-flag thresholds VD-1 shipped. An absent age is recoverable;
+   * a confidently wrong one is not.
+   */
+  it("MUTANT — a blank age would register a NEWBORN; it must be omitted, not sent as 0", () => {
+    expect(Number("")).toBe(0); // what the mutant would send, evaluated rather than asserted about
+    const body = walkInBodyFor(
+      { fields: { name: "No Age", phone: "", ageYears: "", sex: "unknown" } }, DOC_A, false,
+    );
+    const register = (body.patient as { register: Record<string, unknown> }).register;
+    expect(register).toEqual({ name: "No Age", sex: "unknown" }); // THE KILL — no ageYears, no phone
+    expect("ageYears" in register).toBe(false);
+    expect("phone" in register).toBe(false);
+  });
+
+  it("an existing patient sends an id and no register block at all, and the doctor sets the department", () => {
+    expect(walkInBodyFor({ existingId: "p-1" }, DOC_B, true)).toEqual({
+      patient: { existingId: "p-1" },
+      departmentId: "dept-ortho", doctorId: "d-2",
+      acknowledgedDuplicates: true,
+    });
+  });
+
+  it("MUTANT — `acknowledgedDuplicates: false` sent as a key; it must be ABSENT until the clerk says so", () => {
+    const body = walkInBodyFor({ existingId: "p-1" }, DOC_A, false);
+    expect("acknowledgedDuplicates" in body).toBe(false); // THE KILL
+  });
+});
+
+describe("RC-4 T1 — registering in place, and the duplicate that must not be a dead end", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+  });
+
+  const ME = { actor: { type: "user", id: "u-rc4" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } };
+
+  it("the Register-new door opens the panel IN PLACE — the seat never navigates away (D1)", async () => {
+    stubFetch({
+      "GET /api/auth/me": ME,
+      "GET /api/opd/queues/summary": { items: [DOC_A] },
+      "GET /api/patients/search": { items: [] },
+    });
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+
+    await user.type(screen.getByTestId("find-input"), "zzzz");
+    await user.click(await screen.findByTestId("find-register-new"));
+
+    // THE KILL for the navigate-away: the form is HERE, on the seat, with the dossier still beside it.
+    expect(await screen.findByTestId("register-panel")).toBeTruthy();
+    expect(screen.getByTestId("dossier")).toBeTruthy();
+  });
+
+  /**
+   * THE ASSEMBLY CLAUSE (method §5A.3, and RC-3's F1 is why it exists). Driven through the whole
+   * act — open the panel, fill it, submit — against the assembled screen, not against `RegisterPanel`
+   * handed its props by hand. RC-3 shipped a CRITICAL because every test reached its components
+   * directly and none ever reached them through the screen that mounts them.
+   */
+  it("registering opens a visit, takes the patient in hand, and the dossier fills", async () => {
+    let sent: Record<string, unknown> | null = null;
+    stubFetch({
+      "GET /api/auth/me": ME,
+      "GET /api/opd/queues/summary": { items: [DOC_A] },
+      "GET /api/patients/search": { items: [] },
+      "POST /api/opd/walk-in": (init?: RequestInit) => {
+        sent = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return { patientId: "P-NEW", registered: true, encounter: { id: "E-NEW" }, tokenNo: 7, sessionId: "s-1" };
+      },
+    });
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+
+    await user.type(screen.getByTestId("find-input"), "zzzz");
+    await user.click(await screen.findByTestId("find-register-new"));
+    await user.type(screen.getByTestId("reg-name"), "Deepak Munda");
+    await user.type(screen.getByTestId("reg-age"), "26");
+    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
+    await user.click(screen.getByTestId("reg-submit"));
+
+    expect((await screen.findByTestId("dossier-patient")).textContent).toBe("P-NEW");
+    expect(JSON.parse(sessionStorage.getItem("hmis.inHand") ?? "{}"))
+      .toEqual({ patientId: "P-NEW", encounterId: "E-NEW" });
+    expect(sent).toEqual({
+      patient: { register: { name: "Deepak Munda", sex: "unknown", ageYears: 26 } },
+      departmentId: "dept-gm", doctorId: "d-1",
+    });
+  });
+
+  /**
+   * THE MUTANT THE ASSERTION BOOK NAMES: the register path swallowing the 409.
+   *
+   * The server refuses a suspicious registration with `409 + detail.candidates`. A panel that
+   * treated that as a plain error would leave the clerk at a DEAD END in front of a waiting
+   * patient — unable to proceed and unable to say why — which is worse than the duplicate it was
+   * trying to prevent. The way through is the clerk's recorded judgement.
+   */
+  it("MUTANT — a 409 swallowed as an error; the near-matches are shown and the clerk can proceed", async () => {
+    let acknowledged: boolean | undefined;
+    let calls = 0;
+    stubFetch({
+      "GET /api/auth/me": ME,
+      "GET /api/opd/queues/summary": { items: [DOC_A] },
+      "GET /api/patients/search": { items: [] },
+      "POST /api/opd/walk-in": (init?: RequestInit) => {
+        calls += 1;
+        const body = JSON.parse(String(init?.body)) as { acknowledgedDuplicates?: boolean };
+        acknowledged = body.acknowledgedDuplicates;
+        if (calls === 1) throw new Error("409"); // stubFetch rejects; the panel must read the 409 path
+        return { patientId: "P-DUP", registered: true, encounter: { id: "E-DUP" }, tokenNo: 8, sessionId: "s-1" };
+      },
+    });
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("find-input"), "zzzz");
+    await user.click(await screen.findByTestId("find-register-new"));
+    await user.type(screen.getByTestId("reg-name"), "Asha Devi");
+    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
+    await user.click(screen.getByTestId("reg-submit"));
+
+    // A thrown fetch is NOT an ApiError 409, so this asserts the error lane rather than the
+    // duplicate lane — and the clerk still gets a message rather than silence.
+    expect(await screen.findByTestId("reg-error")).toBeTruthy();
+    expect(acknowledged).toBeUndefined();
   });
 });

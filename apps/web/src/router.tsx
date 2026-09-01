@@ -391,21 +391,16 @@ const counterDeskRoute = createRoute({
  * RC-3 T5 — the seat. `/counter/seat` rather than a replacement for `/counter`: D1 keeps both for
  * one phase so a proven money path and an unproven layout are never the same diff.
  *
- * The route hands `onRegisterNew` down rather than letting the screen navigate itself. The screen
- * is asserted without a router in its own suite (`renderWithProviders` mounts no `RouterProvider`),
- * and a screen that reached for `useNavigate` would have to be tested through one — so routing
- * stays at the routing layer. The destination is `?new=true`, the SAME rail F2 already uses
- * (`keyboard.tsx`), so the seat's Ctrl+N and the global F2 open one door and not two.
+ * RC-4 T1 — THE ROUTE NO LONGER HANDS DOWN A NAVIGATION. It used to pass `onRegisterNew`, which
+ * left for `/registration?new=true` — and leaving is exactly the defect the seat exists to remove:
+ * the clerk had a dossier, a search and a patient session in hand, and creating a record abandoned
+ * all three. The seat registers in four fields IN PLACE now (D1), so the screen needs no navigation
+ * at all and mounts cleanly without a router, which is why its suite still needs none.
  */
-function RegistrationCounterRoute(): React.ReactElement {
-  const navigate = useNavigate();
-  return <RegistrationCounter onRegisterNew={() => void navigate({ to: "/registration", search: { new: true } })} />;
-}
-
 const registrationCounterRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/counter/seat",
-  component: RegistrationCounterRoute,
+  component: RegistrationCounter,
 });
 
 const registrationRoute = createRoute({
