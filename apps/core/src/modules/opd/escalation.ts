@@ -148,11 +148,24 @@ export async function demandRecheck(
   if (actor.type !== "user") throw new OpdError("user_actor_required");
   return withTx(db, async (tx) => {
     const live = await liveEntry(tx, encounterId);
+    /**
+     * ═══ STATE BEFORE READING, AND `escalate` BELOW DOES THE SAME ═══
+     *
+     * The first version judged the READING first, which made the same call return two different
+     * error classes depending on the data: a danger reading on an already-escalated entry answered
+     * 409, and a calm one answered 400. Found by the HTTP suite, and the inconsistency is the tell.
+     *
+     * On an entry that is already escalated the call cannot do anything WHATEVER the reading says,
+     * so the state is the answer. It is also the more useful one at the bay: a nurse who takes a
+     * calm reading on a bumped patient needs to know that it does not undo the bump — only a cancel
+     * inside the window does, or a supervisor after it — and "this reading is inside the band"
+     * invites exactly the opposite conclusion.
+     */
+    if (live.entry.escalation === "escalated") {
+      throw new OpdError("escalation_state_conflict", "already escalated — a later reading does not undo it", { escalation: live.entry.escalation });
+    }
     const flags = await dangerOf(tx, actor, live.patientId, reading, now);
     if (flags.length === 0) throw new OpdError("escalation_not_warranted", "this reading is inside the patient's band", { reading });
-    if (live.entry.escalation === "escalated") {
-      throw new OpdError("escalation_state_conflict", "already escalated", { escalation: live.entry.escalation });
-    }
     await tx.update(opdQueueEntries).set({ escalation: "recheck_demanded" }).where(eq(opdQueueEntries.id, live.entry.id));
     await appendEvent(tx, vitalsRecheckDemanded.make({
       actor, patientId: live.patientId, encounterId, correlationId: live.workflowInstanceId,
@@ -258,7 +271,7 @@ export async function cancelEscalation(
 }
 
 /** What the bay reads to paint the countdown, and what any other surface reads to know where it stands. */
-export async function escalationFor(db: Db, encounterId: string, now: Date = new Date()): Promise<EscalationView | null> {
+export async function escalationFor(db: Db | Tx, encounterId: string, now: Date = new Date()): Promise<EscalationView | null> {
   const entries = await db
     .select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId))
     .orderBy(desc(opdQueueEntries.seq)).limit(1);

@@ -20,6 +20,13 @@ export const OPD_REALTIME_NAMES = [
   // became class 0 in the same breath the bay learns it. The cancel rides it too, because a board
   // that flashed and then went quiet would leave the doctor expecting a patient nobody is sending.
   "vitals.recheck_demanded", "queue.escalated", "queue.escalation_cancelled",
+  // VD-1 T4 — the bench rail repaints on it: a rest started at one bay is a recall every screen
+  // watching that doctor-day should already know about.
+  "bench.state_set",
+  // VD-1 T5 — the doctor's board refreshes on an amended save (owner ruling 4). It routes on the
+  // same topic when the visit still has a doctor-day; an amendment after the token is done carries
+  // nulls and simply reaches no queue topic, which is correct rather than a gap.
+  "vitals.amended",
 ];
 type P = { doctorId?: string; fromDoctorId?: string; toDoctorId?: string; serviceDate?: string; roomId?: string | null; encounterId?: string };
 

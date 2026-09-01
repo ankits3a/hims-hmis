@@ -289,6 +289,7 @@ permission and the role.
 | `opd.visits.read` | ✓ | ✓ | ✓ | ✓ | | | |
 | `opd.visits.open` | ✓ | ✓ | | | | | |
 | `opd.vitals.record` | | | ✓ | ✓ | | | |
+| `opd.vitals.history.read` | | | ✓ | ✓ | | | |
 | `opd.queue.read` | ✓ | ✓ | ✓ | ✓ | | | |
 | `opd.queue.operate` | | | | ✓ | | | |
 | `opd.queue.transfer` | | ✓ | | | | | |

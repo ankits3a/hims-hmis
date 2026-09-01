@@ -1427,6 +1427,29 @@ read IMMEDIATELY before every commit, compared against your own Files list, on a
 session can reach. And in all cases: **read the commit's own stat line against the size of what you
 wrote** — a 4× insertion count is the tree telling you whose work you just took.
 
+> **AMENDED 2026-09-01 (found by the RC-2 lane, before it committed rather than after) — A PATHSPEC
+> PROTECTS AGAINST A DIRTY INDEX AND NOT AGAINST A PEER'S DIRTY WORKING TREE, AND THE TWO ARE
+> DIFFERENT HAZARDS.**
+>
+> `git commit -- <path>` commits the **working-tree** state of that path. So when two lanes edit the
+> SAME file, the pathspec form — this entry's own prescription — sweeps the other lane's uncommitted
+> edits into your commit, and `git diff --cached --stat` shows exactly the file you intended with
+> nothing wrong at all. The stat check cannot see it either: one file, and the line count is the sum
+> of two lanes' work in a file both were legitimately editing.
+>
+> Specimen: VD-1 T4 and RC-2 T4 both add one permission, so both touch `scripts/seed-roles.ts`,
+> `opd|membership manifest.ts`, `test/seed-roles.test.ts` and `README.md`. A pathspec commit from
+> either side would have carried the other's grants. **The RC-2 lane caught it by reading
+> `git status` before committing and seeing the four census files already dirty — and stopped.**
+>
+> This entry's original specimen was staged lines in OTHER files, which by-path staging DOES catch.
+> This is the case it does not, and the difference is whether the two lanes share a PATH.
+>
+> **The rule for a shared checkout: before committing a file a permission/census/manifest edit
+> touches, `git status --porcelain <that path>` and confirm the dirt is yours. If a peer holds the
+> same path, one of you LANDS FIRST and the other rebases** — that is cheaper than reasoning about
+> which half of a hunk belongs to whom, and it is the only form that is safe rather than careful.
+
 ### 2.153 — A SUITE THAT FAILS TO *RUN* CONTRIBUTES NO TEST COUNTS, SO THE GREEN NUMBER STAYS GREEN
 
 VD-1 T3's evidence run returned:
@@ -1501,6 +1524,47 @@ test whose mutant survives is certifying a lock it never touched.
 > next phase touching that path (RC-3) to warm the pool and re-run the mutant before trusting the
 > guard. Raised by the RC-2 lane against its own predecessor's work, which is the behaviour this
 > ledger exists to encourage.
+
+### 2.155 — A CENSUS CAN LIVE IN A MARKDOWN TABLE, AND ONLY THE SIBLING GREP FOLLOWED **TRANSITIVELY** REACHES IT
+
+§2.138 already says *grep the SIBLING for the places that NAME it, and grep the LIST for the places
+that COUNT it*. VD-1 T4 added one permission and found that both greps, run exactly as written, are
+still one hop short.
+
+**Three censuses moved for one string** (`opd.vitals.history.read`):
+
+1. `opdManifest.permissions` — the declaration. Found by writing it.
+2. `test/seed-roles.test.ts`'s per-module count map, `opd: 15 → 16`. Found by the LIST grep.
+3. **A permission table in `README.md`** — ticked per role, and **parsed by a hand-written parser
+   inside that same test**, which throws *"this parser is stale"* when it cannot identify a table
+   by its first role column. Found by NEITHER grep.
+
+The only path to (3) is the SIBLING grep **followed into what the test it lands on actually reads**:
+`grep -rn "opd.counter.flow.manage" apps/core --include=*.ts` returns `seed-roles.test.ts`; opening
+that file to see why shows it PARSING A MARKDOWN FILE. No grep over `--include=*.ts` can reach a
+census that lives in `README.md`, and no grep for the NEW string can reach anything at all —
+**the string does not exist yet, which is the whole point of adding it.**
+
+**The rule, and it is the correction to how §2.138's greps are usually run:** grep a sibling that
+ALREADY WORKS, never the string you are adding — the censuses you are about to break are the ones
+currently holding a value. Then **open what the sibling grep returns and read what those files
+consume**, because a census is not always code: it can be a table in prose, a fixture, or a
+generated file. The check that would have caught it mechanically is to widen the sibling grep past
+the code glob:
+
+```
+grep -rn "<an existing sibling string>" . --exclude-dir=node_modules --exclude-dir=dist
+```
+
+**Corroborated across two lanes on the same day:** the RC-2 lane, adding
+`membership.instrument.enrol`, had the manifest array and the count map from §2.138's greps and
+did NOT have the README table, and said it would not have found it. Two independent lanes, the
+same blind spot, one permission each.
+
+> **And the error message, recorded because it costs an hour cold:** that parser fails with *"could
+> not identify all four permission tables by their first role column … this parser is stale"*. That
+> is the parser saying it could not find a TABLE — not that your permission is wrong. A permission
+> whose holders span two tables needs its row in the one the parser identifies.
 
 ## 3. Plan-authoring defects
 

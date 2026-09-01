@@ -22,6 +22,13 @@ export type OpdErrorCode =
   // asks for a bump and the SERVER decides, by re-evaluating the reading against the band. A
   // route that bumped on the caller's say-so would let anybody move anybody to class 0.
   | "escalation_not_warranted" | "escalation_state_conflict" | "escalation_window_closed"
+  // VD-1 T4 — a rest with no recall time is a forgotten patient, so it is refused rather than
+  // defaulted. The bench's other refusals reuse `unknown_queue_entry`.
+  | "invalid_bench_state"
+  // VD-1 T5 / D2 — an amendment names the row it replaces. `unknown_vitals` doubles as the
+  // read-gate's refusal (an encounter id is not a capability), so a chart the actor may not see
+  // answers exactly as one that does not exist.
+  | "unknown_vitals" | "vitals_state_conflict"
   | "invalid_follow_up_days" | "extension_cap_reached" | "reason_required"
   | "allergy_conflict" | "override_reason_required" | "empty_prescription" | "unknown_prescription"
   // PLAN 16a T5 — the hard-warning grammar EXTENDS rather than forks (DD3): these two carry their

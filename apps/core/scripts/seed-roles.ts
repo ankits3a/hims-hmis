@@ -144,6 +144,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "opd.visits.read",
       "opd.vitals.record",
       "opd.queue.read",
+      /**
+       * VD-1 T4 — the pre-stage read, and it closes a gap the bay could not cross. Staging the
+       * file before the patient sits down, and carrying a height forward greyed and locked
+       * (flow3 T5's ruling), both need the LAST reading — and the only cross-visit reader was
+       * gated on `opd.consult`, which this role does not and should not hold. The narrow
+       * permission is the answer; the block below's own argument applies unchanged.
+       */
+      "opd.vitals.history.read",
       // Owner ruling 7, and the NARROWER half of it on purpose: vitals are recorded against a
       // patient who already exists, so `patients.register` stays with the two desk roles. A
       // narrow grant can be widened later without anybody being locked out in the meantime.
@@ -158,6 +166,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "opd.appointments.read",
       "opd.visits.read",
       "opd.vitals.record",
+      // VD-1 T4 — the doctor already reaches every reading through `opd.consult`
+      // (`patientVitalsHistory`); this grant is what lets the same screens use the CHEAP one-row
+      // pre-stage instead. Granted for symmetry rather than reach: a permission held by the bay
+      // and not by the clinician it hands to is a permission somebody will widen the wrong way.
+      "opd.vitals.history.read",
       "opd.queue.read",
       "opd.queue.operate",
       "opd.consult",

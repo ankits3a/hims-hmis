@@ -16,7 +16,15 @@ import { OpdError } from "./errors";
 import { parsed, toHttp } from "./opd-masters.controller";
 import { availableSlots } from "./schedules";
 import { istDate } from "./time";
-import { listVitals, recordVitals } from "./vitals";
+import { amendVitals, listVitals, recordVitals } from "./vitals";
+import { BENCH_STATES, listBench, setBenchState } from "./bench";
+import { cancelEscalation, demandRecheck, escalate, escalationFor } from "./escalation";
+import { preStage } from "./prestage";
+import { READING_SOURCES, UNLOCK_REASONS } from "./vitals-rules";
+import { VITAL_KEYS } from "./config";
+import type { BenchRow } from "./bench";
+import type { EscalationView } from "./escalation";
+import type { PreStage } from "./prestage";
 import type { AppointmentRow } from "./appointments";
 import type { EncounterRow, JoinQueueResult, OpenVisitResult, QueueEntryRow, TimelineItem, VitalsRow } from "./encounters";
 import type { Slot } from "./slots";
@@ -86,7 +94,72 @@ const vitalsBody = z.object({
   rr: z.number().nullable().optional(),
   spo2: z.number().nullable().optional(),
   tempC: z.number().nullable().optional(),
+  /** VD-1 T1 / D5 — required under six, and the reason the bay carries a ₹160 tape. */
+  muacCm: z.number().nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
+});
+
+/**
+ * ═══ VD-1 T5 — THE DETAIL BLOCK, AND ZOD IS THE POINT OF THIS TASK ═══
+ *
+ * **Every field the bay sends is declared here, because a field this schema does not name is a
+ * field zod SILENTLY STRIPS.** The whole of RC-1 T1 existed for one instance of that: the web sent
+ * `receipt.changeGivenPaise`, the billing controller's block did not declare it, and the drawer
+ * lane was statically dead over HTTP while every test below the controller passed. That defect is
+ * invisible to a service-level test by construction — it lives exactly at this boundary — so the
+ * suite for this task drives the CONTROLLER SCHEMA PATH rather than the service.
+ *
+ * `readings` is the authority when present and the scalars above are DERIVED from it, so the two
+ * shapes can never disagree (`vitals-rules.ts`'s own header). `overrides` clears a sanity gate with
+ * a named reason; `unlockReasons` unlocks a carried value from the preset list and never free text.
+ */
+const readingBlock = z.object({
+  takes: z.array(z.number()).min(1),
+  source: z.enum(READING_SOURCES),
+  held: z.array(z.number()).optional(),
+  note: z.string().max(300).optional(),
+});
+const vitalsDetailBody = z.object({
+  readings: z.object({
+    heightCm: readingBlock.optional(), weightKg: readingBlock.optional(), pulse: readingBlock.optional(),
+    rr: readingBlock.optional(), spo2: readingBlock.optional(), tempC: readingBlock.optional(),
+    muacCm: readingBlock.optional(),
+    bp: z.object({
+      takes: z.array(z.tuple([z.number(), z.number()])).min(1),
+      source: z.enum(READING_SOURCES),
+      held: z.array(z.number()).optional(),
+      note: z.string().max(300).optional(),
+    }).optional(),
+  }).optional(),
+  contextChips: z.array(z.object({
+    key: z.string().min(1).max(40), question: z.string().min(1).max(200), answer: z.string().min(1).max(200),
+  })).optional(),
+  carriedForward: z.array(z.enum(VITAL_KEYS)).optional(),
+  emergency: z.boolean().optional(),
+  overrides: z.partialRecord(z.enum(VITAL_KEYS), z.string().min(1).max(120)).optional(),
+  unlockReasons: z.partialRecord(z.enum(VITAL_KEYS), z.enum(UNLOCK_REASONS)).optional(),
+});
+const vitalsPostBody = vitalsBody.extend(vitalsDetailBody.shape);
+const vitalsAmendBody = vitalsBody.extend(vitalsDetailBody.shape).extend({
+  reason: z.string().min(1).max(500),
+});
+
+/** VD-1 T4 — `state: null` is "back at the bench", which is a real act and not an omission. */
+const benchStateBody = z.object({
+  state: z.enum(BENCH_STATES).nullable(),
+  restMinutes: z.number().int().positive().max(120).optional(),
+  note: z.string().max(500).optional(),
+});
+const benchQuery = z.object({
+  departmentId: z.string().min(1).optional(),
+  doctorId: z.string().min(1).optional(),
+  serviceDate: z.string().max(10).optional(),
+});
+/** T3 — the reading the bay is asking the SERVER to judge. It asks; the band decides. */
+const escalationBody = z.object({
+  sbp: z.number().optional(), dbp: z.number().optional(), pulse: z.number().optional(),
+  rr: z.number().optional(), spo2: z.number().optional(), tempC: z.number().optional(),
+  muacCm: z.number().optional(),
 });
 
 type AppointmentView = AppointmentRow & { patient: PatientSummary | null };
@@ -278,9 +351,111 @@ export class OpdVisitsController {
   @RequirePermission("opd.vitals.record", "hospital")
   @Post("visits/:id/vitals")
   async postVitals(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<unknown> {
-    const b = parsed(vitalsBody, body);
+    const { readings, contextChips, carriedForward, emergency, overrides, unlockReasons, ...scalars } =
+      parsed(vitalsPostBody, body);
     try {
-      return await recordVitals(this.db, actor, id, b);
+      return await recordVitals(this.db, actor, id, scalars, new Date(), {
+        readings, contextChips, carriedForward, emergency, overrides, unlockReasons,
+      });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * VD-1 T5 / D2 — amend a saved chart. `opd.vitals.record` rather than a new permission: the act
+   * is recording a vital, and the owner ruled it a staff RIGHT at this desk rather than a
+   * supervisory one. The audit is the superseding row and its event, not a narrower gate.
+   */
+  @RequirePermission("opd.vitals.record", "hospital")
+  @Post("vitals/:vitalsId/amend")
+  async postVitalsAmend(@CurrentActor() actor: Actor, @Param("vitalsId") vitalsId: string, @Body() body: unknown): Promise<unknown> {
+    const { reason, readings, contextChips, carriedForward, emergency, overrides, unlockReasons, ...scalars } =
+      parsed(vitalsAmendBody, body);
+    try {
+      return await amendVitals(this.db, actor, vitalsId, scalars, reason, new Date(), {
+        readings, contextChips, carriedForward, emergency, overrides, unlockReasons,
+      });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  // ——— VD-1 T4/T5 — the bench, the pre-stage, and the danger protocol ———
+
+  @RequirePermission("opd.queue.read", "hospital")
+  @Get("bench")
+  async getBench(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ items: BenchRow[] }> {
+    const q = parsed(benchQuery, query);
+    try {
+      return { items: await listBench(this.db, actor, { ...q, serviceDate: q.serviceDate ?? istDate(new Date()) }) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.vitals.record", "hospital")
+  @Post("visits/:id/bench-state")
+  async postBenchState(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<BenchRow> {
+    const b = parsed(benchStateBody, body);
+    try {
+      return await setBenchState(this.db, actor, id, b);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** The narrow permission R15 exists for — NOT `opd.consult`, and not the whole history. */
+  @RequirePermission("opd.vitals.history.read", "hospital")
+  @Get("visits/:id/prestage")
+  async getPreStage(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<PreStage> {
+    try {
+      return await preStage(this.db, actor, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.vitals.record", "hospital")
+  @Get("visits/:id/escalation")
+  async getEscalation(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ escalation: EscalationView | null }> {
+    void actor;
+    return { escalation: await escalationFor(this.db, id) };
+  }
+
+  @RequirePermission("opd.vitals.record", "hospital")
+  @Post("visits/:id/escalation/recheck")
+  async postRecheck(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<EscalationView> {
+    const b = parsed(escalationBody, body);
+    try {
+      return await demandRecheck(this.db, actor, id, b);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.vitals.record", "hospital")
+  @Post("visits/:id/escalation/escalate")
+  async postEscalate(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<EscalationView> {
+    const b = parsed(escalationBody, body);
+    try {
+      return await escalate(this.db, actor, id, b);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * The ten seconds. `opd.vitals.record` holds it: the owner ruled the cancel a DESK act — the
+   * person who saw the cuff go on is the person who may decline the reorder, inside the window.
+   * After it closes the server refuses and reversal becomes supervisory, which is where a wider
+   * permission would belong if one is ever minted.
+   */
+  @RequirePermission("opd.vitals.record", "hospital")
+  @Post("visits/:id/escalation/cancel")
+  async postCancelEscalation(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<EscalationView> {
+    try {
+      return await cancelEscalation(this.db, actor, id);
     } catch (e) {
       toHttp(e);
     }

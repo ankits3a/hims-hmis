@@ -677,7 +677,11 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       tariff: 5,
       // RC-1 T2 / D5 — 14 -> 15 with `opd.counter.flow.manage`: the supervisor's lock pill,
       // deliberately narrower than `opd.config.manage` (which stays opd_admin's alone).
-      opd: 15,
+      // VD-1 T4 — 15 -> 16 with `opd.vitals.history.read`: the vitals bay's one-row pre-stage
+      // read. Narrower than `opd.consult` (the whole consultation surface) and narrower than
+      // `patientVitalsHistory` (every reading across the merge chain) — the bay needs the LAST
+      // one, to stage the file and to carry a height forward greyed and locked.
+      opd: 16,
       billing: 14,
       alerts: 0,
       ops: 3,

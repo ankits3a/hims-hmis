@@ -106,6 +106,9 @@ describe("opd e2e", () => {
     await mkRole("sup", [...deskPermissions, "opd.queue.transfer", "opd.masters.read", "opd.masters.manage", "opd.config.manage"]);
     // RC-1 T2 — a holder of ONLY the flow lock, to pin the narrowness in both directions.
     await mkRole("flow", ["opd.counter.flow.manage"]);
+    // VD-1 T4 — the bay's pre-stage read. `desk` deliberately does NOT get it, so the 403 leg
+    // below pins the narrowness in both directions the way `flow` does for the counter lock.
+    await mkRole("bay", ["opd.vitals.history.read"]);
     await mkRole("disp", ["opd.display.read"]);
     await mkRole("pharm", ["opd.prescriptions.verify"]);
     // PLAN 16a T5 — the formulary is curated at the pharmacy (DD10), and this e2e curates it over
@@ -113,7 +116,7 @@ describe("opd e2e", () => {
     await mkRole("formulary_admin", ["formulary.read", "formulary.manage"]);
 
     clerk = await mkUser(db, "clerk", ["desk", "front_office"]);
-    vitalsDesk = await mkUser(db, "vd", ["desk", "vitals_desk"]);
+    vitalsDesk = await mkUser(db, "vd", ["desk", "bay", "vitals_desk"]);
     supervisor = await mkUser(db, "sup", ["sup", "front_office_supervisor"]);
     flowHolder = await mkUser(db, "flowsup", ["flow"]);
     display = await mkUser(db, "disp", ["disp"]);
@@ -520,5 +523,171 @@ describe("opd e2e", () => {
       .send({ patientId, doctorId: dra.doctorId, slotStart }).expect(201);
     expect(booked.body.appointment.serviceDate).toBe(tomorrow);
     expect(new Date(booked.body.appointment.slotStart).toISOString()).toBe(new Date(slotStart).toISOString());
+  });
+
+  /**
+   * ═══ VD-1 T5 — THE HTTP BOUNDARY, WHICH IS THE ONLY PLACE THIS CLASS OF DEFECT IS VISIBLE ═══
+   *
+   * RC-1 T1 existed for exactly one of these: the web sent `receipt.changeGivenPaise`, the
+   * controller's zod block did not declare it, zod STRIPPED it, and the drawer lane was statically
+   * dead over HTTP while every test below the controller passed. A service-level test cannot see
+   * that by construction. So each leg here sends a field over the wire and reads it back OUT of the
+   * persisted row — never out of the response the same request produced.
+   */
+  it("VD-1 — readings, chips, MUAC and the emergency flag survive the controller's schema", async () => {
+    const patientId = await registerPatientOverHttp("VD1 Patient 1", "9876543201");
+    const open = await request(app.getHttpServer())
+      .post("/opd/visits").set(...auth(clerk.token))
+      .send({ patientId, departmentId: deptId, doctorId: dra.doctorId }).expect(201);
+    const encounterId = open.body.encounter.id as string;
+
+    await request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/vitals`).set(...auth(vitalsDesk.token))
+      .send({
+        ...adultOk,
+        readings: {
+          bp: { takes: [[172, 104], [146, 88]], source: "device" },
+          spo2: { takes: [96], source: "device", held: [45] },
+        },
+        contextChips: [{ key: "bpmed", question: "BP dawa aaj li?", answer: "yes" }],
+      })
+      .expect(201);
+
+    // Read the ROW, not the response: a field zod stripped would still round-trip through a
+    // response built from the same parsed body.
+    const stored = await request(app.getHttpServer())
+      .get(`/opd/visits/${encounterId}/vitals`).set(...auth(vitalsDesk.token)).expect(200);
+    const row = stored.body.items[stored.body.items.length - 1];
+    expect(row.sbp).toBe(146); // the OPERATIVE take, derived server-side from the readings
+    expect(row.dbp).toBe(88);
+    expect(row.readings.bp.takes).toEqual([[172, 104], [146, 88]]);
+    expect(row.readings.spo2.held).toEqual([45]);
+    expect(row.contextChips).toEqual([{ key: "bpmed", question: "BP dawa aaj li?", answer: "yes" }]);
+  });
+
+  it("VD-1 — a sanity gate answers 409 with its card, not 400: the seat must render an override", async () => {
+    const patientId = await registerPatientOverHttp("VD1 Patient 2", "9876543202");
+    const open = await request(app.getHttpServer())
+      .post("/opd/visits").set(...auth(clerk.token))
+      .send({ patientId, departmentId: deptId, doctorId: dra.doctorId }).expect(201);
+    const encounterId = open.body.encounter.id as string;
+
+    const gated = await request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/vitals`).set(...auth(vitalsDesk.token))
+      .send({ ...adultOk, weightKg: 4.8 }).expect(409);
+    expect(gated.body.code).toBe("vitals_gate");
+    expect(gated.body.detail.gates[0]).toMatchObject({ key: "weightKg", kind: "slipped_digit", suggestion: 48 });
+
+    // The override travels, and the value lands with the disagreement recorded beside it.
+    await request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/vitals`).set(...auth(vitalsDesk.token))
+      .send({ ...adultOk, weightKg: 4.8, overrides: { weightKg: "confirmed_real" } }).expect(201);
+    const stored = await request(app.getHttpServer())
+      .get(`/opd/visits/${encounterId}/vitals`).set(...auth(vitalsDesk.token)).expect(200);
+    expect(stored.body.items[0].weightKg).toBe(4.8);
+    expect(stored.body.items[0].readings.weightKg.note).toContain("override: confirmed_real");
+  });
+
+  it("VD-1 — the pre-stage permission is narrow in BOTH directions", async () => {
+    const patientId = await registerPatientOverHttp("VD1 Patient 3", "9876543203");
+    const open = await request(app.getHttpServer())
+      .post("/opd/visits").set(...auth(clerk.token))
+      .send({ patientId, departmentId: deptId, doctorId: dra.doctorId }).expect(201);
+    const encounterId = open.body.encounter.id as string;
+
+    // The bay holds it…
+    const staged = await request(app.getHttpServer())
+      .get(`/opd/visits/${encounterId}/prestage`).set(...auth(vitalsDesk.token)).expect(200);
+    expect(staged.body.band).toBeDefined();
+    expect(staged.body.carryCandidates).toEqual([]);
+
+    // …and the registration clerk, who holds every other desk permission, does not.
+    const refused = await request(app.getHttpServer())
+      .get(`/opd/visits/${encounterId}/prestage`).set(...auth(clerk.token)).expect(403);
+    expect(refused.body.message).toContain("opd.vitals.history.read");
+  });
+
+  it("VD-1 — the danger protocol over HTTP: recheck, double-confirm, and the ten seconds", async () => {
+    const patientId = await registerPatientOverHttp("VD1 Patient 4", "9876543204");
+    const open = await request(app.getHttpServer())
+      .post("/opd/visits").set(...auth(clerk.token))
+      .send({ patientId, departmentId: deptId, doctorId: dra.doctorId }).expect(201);
+    const encounterId = open.body.encounter.id as string;
+    const danger = { sbp: 208, dbp: 126, pulse: 104, spo2: 95, tempC: 36.9 };
+
+    // Escalating without the first reading is refused — "double-confirmed" is mechanical.
+    await request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/escalation/escalate`).set(...auth(vitalsDesk.token))
+      .send(danger).expect(409);
+
+    const recheck = await request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/escalation/recheck`).set(...auth(vitalsDesk.token))
+      .send(danger).expect(201);
+    expect(recheck.body.state).toBe("recheck_demanded");
+
+    const esc = await request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/escalation/escalate`).set(...auth(vitalsDesk.token))
+      .send({ ...danger, sbp: 214, dbp: 132 }).expect(201);
+    expect(esc.body.state).toBe("escalated");
+    expect(esc.body.escalatedFromClass).toBe(3);
+
+    // A calm reading cannot buy an escalation — the SERVER judges the number, not the caller.
+    const calm = await request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/escalation/recheck`).set(...auth(vitalsDesk.token))
+      .send({ ...danger, sbp: 122, dbp: 78 }).expect(409);
+    expect(calm.body.code).toBe("escalation_state_conflict");
+
+    const cancelled = await request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/escalation/cancel`).set(...auth(vitalsDesk.token)).expect(201);
+    expect(cancelled.body.state).toBe("cancelled");
+  });
+
+  it("VD-1 — the bench: a rest needs a recall, and the row stays off the callable set", async () => {
+    const patientId = await registerPatientOverHttp("VD1 Patient 5", "9876543205");
+    const open = await request(app.getHttpServer())
+      .post("/opd/visits").set(...auth(clerk.token))
+      .send({ patientId, departmentId: deptId, doctorId: dra.doctorId }).expect(201);
+    const encounterId = open.body.encounter.id as string;
+
+    await request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/bench-state`).set(...auth(vitalsDesk.token))
+      .send({ state: "resting" }).expect(400); // no recall time — a forgotten patient, refused
+
+    const rested = await request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/bench-state`).set(...auth(vitalsDesk.token))
+      .send({ state: "resting", restMinutes: 5 }).expect(201);
+    expect(rested.body.benchState).toBe("resting");
+    expect(rested.body.recallAt).not.toBeNull();
+
+    const bench = await request(app.getHttpServer())
+      .get("/opd/bench").set(...auth(vitalsDesk.token)).expect(200);
+    expect(bench.body.items.find((r: { encounterId: string }) => r.encounterId === encounterId).benchState).toBe("resting");
+  });
+
+  it("VD-1 — an amendment supersedes and carries the field-level trail", async () => {
+    const patientId = await registerPatientOverHttp("VD1 Patient 6", "9876543206");
+    const open = await request(app.getHttpServer())
+      .post("/opd/visits").set(...auth(clerk.token))
+      .send({ patientId, departmentId: deptId, doctorId: dra.doctorId }).expect(201);
+    const encounterId = open.body.encounter.id as string;
+
+    const saved = await request(app.getHttpServer())
+      .post(`/opd/visits/${encounterId}/vitals`).set(...auth(vitalsDesk.token))
+      .send({ ...adultOk, pulse: 172 }).expect(201);
+    const vitalsId = saved.body.vitals.id as string;
+
+    const amended = await request(app.getHttpServer())
+      .post(`/opd/vitals/${vitalsId}/amend`).set(...auth(vitalsDesk.token))
+      .send({ ...adultOk, pulse: 72, reason: "transposed digits — 72 not 172" }).expect(201);
+    expect(amended.body.superseded).toBe(vitalsId);
+    expect(amended.body.vitals.pulse).toBe(72);
+
+    // Both rows are readable, and the old one says it was replaced — the trail is the record.
+    const rows = await request(app.getHttpServer())
+      .get(`/opd/visits/${encounterId}/vitals`).set(...auth(vitalsDesk.token)).expect(200);
+    expect(rows.body.items).toHaveLength(2);
+    expect(rows.body.items[0].status).toBe("superseded");
+    expect(rows.body.items[1].supersedesVitalsId).toBe(vitalsId);
+    expect(rows.body.items[1].amendmentReason).toContain("transposed");
   });
 });

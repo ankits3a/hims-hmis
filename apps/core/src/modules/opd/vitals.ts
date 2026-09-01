@@ -10,7 +10,7 @@ import { getEncounter, moveEncounter } from "./encounters";
 import { OpdError } from "./errors";
 import { visibleEncounterFor } from "./read-gate";
 import { recordPhiAccess } from "../../kernel/phi/audit";
-import { vitalsDangerFlagged, vitalsRecorded } from "./events";
+import { vitalsAmended, vitalsDangerFlagged, vitalsRecorded } from "./events";
 import { ageYearsAt } from "./time";
 import {
   bandFor, checkCarriedLock, evaluateVitals, holdProbeErrors, inputToReadings, missingRequired,
@@ -278,6 +278,130 @@ export async function recordVitals(
 
     return { vitals: vitals!, flags, encounter };
   });
+}
+
+/**
+ * ══════════════ VD-1 T5 / D2 — AMEND A SAVED CHART ══════════════
+ *
+ * The owner's ruling of 31-Aug: *"a saved chart is amendable at this desk — tap the ✓-with-doctor
+ * row to re-open; every change is audited beside the old one; Esc abandons untouched."* A wrong
+ * number typed at 09:52 and noticed at 09:54 is a thing a nurse must be able to fix without a
+ * supervisor, or she will not tell anyone at all.
+ *
+ * ═══ A NEW ROW THAT NAMES ITS PREDECESSOR — NEVER AN EDIT ═══
+ *
+ * This is the LIMS pattern, inherited rather than re-derived: `lab_results.supersedes_result_id`,
+ * `lab_reports.prior_version_id`, and that file's own sentence — *"there is no edit endpoint and
+ * there must not be one."* The old row's `status` becomes `superseded`; the new row carries
+ * `supersedes_vitals_id` and `amendment_reason`.
+ *
+ * **AND IT IS WHAT SEPARATES AN AMENDMENT FROM A REST-AND-RECHECK PAIR.** Both produce "two
+ * readings" and nothing could tell them apart if both were rows: a pair is ONE row with two takes
+ * (T1/D1), a correction is the NEXT row. The field-level trail the owner ruled — old value, actor,
+ * clock — is the DIFF between versions, computed at read time. There is no second audit table,
+ * because a trail that can disagree with the record is worse than no trail.
+ *
+ * ═══ WHAT AN AMENDMENT DOES NOT DO ═══
+ *
+ * It does not re-run the queue side. The encounter has already moved `registered → waiting`, the
+ * token is already callable, and `moveEncounter` is not called again — a correction to a number is
+ * not a second arrival. Danger flags ARE re-evaluated, because the corrected number is the one the
+ * doctor will act on, and `dangerFlagged` is raised if the amendment reveals a danger the original
+ * hid. It is never LOWERED: D4's rule that a danger flag never auto-clears is the same rule here,
+ * and an amendment that could clear one would be the downgrade path the autonomy ladder forbids.
+ */
+export async function amendVitals(
+  db: Db, actor: Actor, vitalsId: string, input: VitalsInput, reason: string,
+  now: Date = new Date(), detail: VitalsDetail = {},
+): Promise<{ vitals: VitalsRow; flags: DangerFlag[]; superseded: string }> {
+  if (actor.type !== "user") throw new OpdError("user_actor_required");
+  if (reason.trim() === "") throw new OpdError("reason_required", "an amendment needs a reason — it is the record");
+
+  const priorRows = await db.select().from(opdVitals).where(eq(opdVitals.id, vitalsId));
+  const prior = priorRows[0];
+  if (!prior) throw new OpdError("unknown_vitals", `unknown vitals ${vitalsId}`);
+  if (prior.status !== "active") {
+    throw new OpdError("vitals_state_conflict", "this reading has already been superseded — amend the current one", { vitalsId });
+  }
+  // The read gate, not re-implemented: an encounter id is not a capability (07a T1).
+  const seen = await visibleEncounterFor(db, actor, prior.encounterId);
+  if (!seen) throw new OpdError("unknown_vitals", `unknown vitals ${vitalsId}`);
+
+  const readings = detail.readings ?? inputToReadings(input);
+  const values: VitalsInput = detail.readings === undefined ? input : { ...input, ...readingsToInput(detail.readings) };
+  validateVitalsRanges(values);
+
+  const cfg = await loadOpdConfig(db);
+  const [summary] = await getPatientSummaries(db, actor, [prior.patientId]);
+  const ageYears = summary?.dob ? ageYearsAt(summary.dob, now) : null;
+  const band = bandFor(ageYears, cfg.dangerRanges);
+  const carriedForward = detail.carriedForward ?? (prior.carriedForward as VitalKey[]);
+  const overrides = detail.overrides ?? {};
+
+  // The gates apply to a correction exactly as they apply to a first save — a slipped digit is no
+  // more acceptable the second time — and they compare against the reading BEFORE this one, which
+  // is the prior row's own predecessor rather than the row being replaced.
+  const heldReadings = holdProbeErrors(readings, cfg.dangerRanges, overrides);
+  const held = readingsToInput(heldReadings);
+  const charted: VitalsInput = { ...values };
+  charted.spo2 = heldReadings.spo2 === undefined ? undefined : held.spo2;
+
+  const gates = sanityGates(charted, ageYears, cfg.dangerRanges, prior, overrides);
+  if (gates.length > 0) throw new OpdError("vitals_gate", gates.map((g) => g.message).join("; "), { gates });
+  const missing = missingRequired(charted, ageYears, cfg.dangerRanges, { emergency: prior.emergency, carriedForward });
+  if (missing.length > 0) throw new OpdError("vitals_incomplete", `missing: ${missing.join(", ")}`, { missing });
+  const flags = evaluateVitals(charted, band, cfg.dangerRanges);
+
+  return withTx(db, async (tx) => {
+    await tx.update(opdVitals).set({ status: "superseded" }).where(eq(opdVitals.id, prior.id));
+    const [vitals] = await tx.insert(opdVitals).values({
+      id: newId(), encounterId: prior.encounterId, patientId: prior.patientId,
+      heightCm: charted.heightCm ?? null, weightKg: charted.weightKg ?? null, sbp: charted.sbp ?? null, dbp: charted.dbp ?? null,
+      pulse: charted.pulse ?? null, rr: charted.rr ?? null, spo2: charted.spo2 ?? null, tempC: charted.tempC ?? null,
+      muacCm: charted.muacCm ?? null, notes: charted.notes ?? null,
+      readings: annotate(heldReadings, overrides, detail.unlockReasons ?? {}, prior),
+      contextChips: detail.contextChips ?? prior.contextChips, carriedForward, emergency: prior.emergency,
+      ageYearsAtRecord: ageYears, band: band.key, dangerFlags: flags,
+      supersedesVitalsId: prior.id, amendmentReason: reason,
+      recordedBy: actor.id, recordedAt: now,
+    }).returning();
+
+    const entryRow = await latestEntry(tx, prior.encounterId);
+    const session = entryRow === null ? null
+      : (await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, entryRow.sessionId)))[0] ?? null;
+    const env = { actor, patientId: prior.patientId, encounterId: prior.encounterId, correlationId: seen.encounter.workflowInstanceId };
+
+    // Never lowered: an amendment may REVEAL a danger, and can never clear one (D4).
+    if (flags.length > 0) {
+      await tx.update(opdEncounters).set({ dangerFlagged: true }).where(eq(opdEncounters.id, prior.encounterId));
+    }
+    await appendEvent(tx, vitalsAmended.make({
+      ...env,
+      payload: {
+        encounterId: prior.encounterId, patientId: prior.patientId, vitalsId: vitals!.id, supersededId: prior.id,
+        doctorId: session?.doctorId ?? null, serviceDate: seen.encounter.serviceDate,
+        sessionId: session?.id ?? null, roomId: session?.roomId ?? null, tokenNo: entryRow?.tokenNo ?? null,
+        reason, changed: changedFields(prior, vitals!), dangerCount: flags.length,
+      },
+    }));
+    return { vitals: vitals!, flags, superseded: prior.id };
+  });
+}
+
+/**
+ * The field-level trail, computed rather than stored: which scalar vitals differ between the
+ * superseded row and its replacement, with both values. This is the owner's *"old value beside the
+ * new"*, and it is derived so that it cannot drift from the rows it describes.
+ */
+export function changedFields(prior: VitalsRow, next: VitalsRow): { field: string; from: number | null; to: number | null }[] {
+  const keys = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm"] as const;
+  const out: { field: string; from: number | null; to: number | null }[] = [];
+  for (const k of keys) {
+    const from = prior[k] ?? null;
+    const to = next[k] ?? null;
+    if (from !== to) out.push({ field: k, from, to });
+  }
+  return out;
 }
 
 export async function listVitals(db: Db, actor: Actor, encounterId: string): Promise<VitalsRow[]> {

@@ -46,6 +46,15 @@ export type PhiSurface =
    */
   | "orders.patient" | "lab.results" | "lab.report"
   /**
+   * VD-1 T4 — the vitals bay's opening read: the LAST reading for one patient, the derived band,
+   * and what that reading would flag today. Its own name rather than a reuse of `opd.vitals` or
+   * `opd.vitals_history`, for the reason `opd.rx_history` is not `opd.prescriptions`: `opd.vitals`
+   * is encounter-scoped and `opd.vitals_history` is every reading this person has ever had, while
+   * this is one row read to stage a bench. A log that could not tell the three apart would answer
+   * "what did they actually see" wrong, which is the only question it exists for.
+   */
+  | "opd.vitals_prestage"
+  /**
    * ═══ PLAN 18a T3 / DD11 — THE FOUR IMAGING SURFACES, AND THIS IS AN APPEND AND NOTHING ELSE ═══
    *
    * The line above predicted this edit in as many words: *"18a appends `radiology.*` and rebases if

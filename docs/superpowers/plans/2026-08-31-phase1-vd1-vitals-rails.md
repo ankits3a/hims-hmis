@@ -374,6 +374,109 @@ audit trail has to actually race: the damage is entirely in the record.
 > it: remove the lock and confirm the test goes red. A green race test whose mutant survives is
 > certifying a lock it never touched.
 
+### T4 — the bench, the recall, and the pre-stage reader
+
+Closes recon §3's **R15**, which was the one finding in this phase that no screen could have fixed:
+`vitals_desk` holds `opd.visits.read`, `opd.vitals.record`, `opd.queue.read`, `patients.read` and
+`patients.update`, while the only cross-visit vitals reader is gated on **`opd.consult`** — so the
+seat's two headline behaviours, pre-staging from the last reading and carrying a height forward
+greyed and locked, were *unreachable by the role that works the bench*.
+
+**`opd.vitals.history.read`**, granted to `vitals_desk` and `doctor`. Narrower than both easier
+answers on purpose: not `opd.consult` (the whole consultation surface, including prescriptions,
+bought for one number), and not `patientVitalsHistory` re-gated (every reading across the merge
+chain, where the bay needs the last one). Its PHI surface is its own name, `opd.vitals_prestage`,
+for the reason `opd.rx_history` is not `opd.prescriptions`.
+
+**DECIDED — only height carries, and only for an adult.** Height is the one vital that genuinely
+does not change between visits for a grown adult, which is why flow3 T5 ruled it carried-and-locked.
+Everything else is measured every time: a carried weight defeats the point of the scale, and a
+child's height changing IS the clinical finding. Eighteen is the boundary rather than the band's,
+because `weightRequiredUnderYears` is already 18 and a second, different adulthood in one module is
+a thing to get wrong. **Unknown DOB carries nothing** — the adult band is a fallback for RANGES, and
+letting it license a carried number would have an unknown age silently inherit a stranger's height.
+
+**The bench is on the queue entry, and cannot reach the callable filter.** `bench_state` is
+`null | resting | away` with `recall_at`; the row stays `waiting_vitals` throughout, so `listQueue`
+never sees it and the turn is held by the `seq` it already has. Coming back is one column write and
+no re-queue. `recallDue` is DERIVED on every read from the stored instant, never fired once, so a
+bench repainted after a restart still knows a man is overdue on a plastic chair.
+
+**A rest with no recall time is REFUSED, not defaulted** (`invalid_bench_state`). A default would be
+a forgotten patient with a plausible-looking row.
+
+#### Three censuses moved for one permission, and one of them is a markdown table
+
+The manifest array; `seed-roles.test.ts`'s per-module count map (`opd: 15 → 16`); and **a permission
+table in `README.md`, parsed by a hand-written parser inside that same test.** Only the SIBLING grep
+followed *into what the test it returns actually reads* reaches the third — no `--include=*.ts` grep
+can see a census in prose, and no grep for the new string reaches anything, because the string does
+not exist yet. **Ledgered as §2.155**, corroborated the same day by the RC-2 lane, which had the
+first two and would not have found the third.
+
+#### A finding recorded rather than fixed: `nurse` holds no permissions anywhere
+
+There is no `nurse` block in `seed-roles.ts`. The key exists in `OPD_ROLE_KEYS` and in `opd_visit`'s
+`transitions[].roles: ["vitals_desk", "nurse", "doctor"]`, and holds no permission in the tree. So
+**a nurse can move a visit `registered → waiting` and cannot call a single route.**
+
+That is not an omission, it is the role-keys-versus-permissions split made concrete — the same
+mechanism as 18a's F9, and the same one that kept this phase's bench states off the Class-A
+definition (D3). It is left exactly as it is: granting permissions to tidy a census would mint
+authority nobody asked for, and the asymmetry is load-bearing rather than accidental. Recorded here
+so the next reader finds a decision instead of a gap.
+
+### T5 — the HTTP surface, and the two defects only the boundary could catch
+
+**The zod boundary is the point of this task, not an afterthought** — RC-1 T1 existed for one
+instance of a controller schema silently stripping a field, and that defect is invisible to any
+test below the controller by construction. So every e2e leg here reads its value back **out of the
+persisted row, never out of the response the same request produced**: a stripped field still
+round-trips through a response built from the same parsed body.
+
+Six routes, and `amendVitals` — the service D2 owed. An amendment is a NEW ROW naming its
+predecessor (`supersedes_vitals_id`, the LIMS pattern), never an edit. Two decisions inside it:
+
+- **It re-evaluates danger and can only ever RAISE it.** D4's rule that a flag never auto-clears
+  applies here too; an amendment that could clear one would be the downgrade path the autonomy
+  ladder forbids.
+- **It does not re-run the queue side.** The encounter already moved `registered → waiting`; a
+  correction to a number is not a second arrival.
+
+`vitals.amended` is the only event in this module with NULLABLE `where` fields, deliberately: an
+amendment can outlive its queue entry — the token is done, the patient has left, and the nurse
+notices the transposed digit afterwards. A required `tokenNo` would make the honest case
+unrecordable.
+
+#### D1 — the two defects the boundary caught, and neither was visible below it
+
+**(a) The gates were answering 400.** `opdStatus` maps unrecognised codes to 400, and
+`vitals_gate` / `carried_value_locked` fell through — so a nurse typing `4.8` would have been told
+"bad request" rather than shown an override dialog. The comment sitting beside that map, from Plan
+16a, predicts it exactly: *"a clinical refusal the client must render with an override dialog would
+arrive looking like a malformed request."* All three new refusals now answer **409**, and
+`escalation_window_closed` joins them because it is a conflict with the CLOCK rather than the body.
+
+**(b) `demandRecheck` judged the READING before the STATE.** The same call therefore returned two
+different error classes depending on the data: a danger reading on an already-escalated entry
+answered 409, a calm one answered 400 — and `escalate` right below it already checked state first.
+On an escalated entry the call can do nothing whatever the reading says, so the state is the
+answer, and it is the one that matters at the bay: a nurse taking a calm reading on a bumped patient
+needs to hear *"already escalated — a later reading does not undo it"*, where *"this reading is
+inside the band"* invites the opposite conclusion. **Both defects were found by asserting an HTTP
+STATUS rather than a service return value.**
+
+#### Evidence
+
+Typecheck and lint clean tree-wide. Every new suite run ALONE before joining anything:
+`prestage` 5/5, `bench` 6/6, `opd.e2e` 14/14 (six new legs), `escalation` 8/8. **A full core+web
+pass is OWED at T4's boundary (§9.9 rule 6 — a permission move) and is queued behind a quiet box;
+it is named here rather than claimed.**
+
+One contention artefact, diagnosed not re-run: `opd.e2e`'s pre-existing route-ordering test timed
+out at 15 000 ms with five foreign workers on the box, and passes **isolated in 2 023 ms** — 13% of
+its budget. Isolation proved from the runner's `○ skipped` lines, never the exit code (rule 19).
+
 ### T3 — the handoff written when it was unrun, kept as the record
 
 **Method §9.6 in force, and it could not be obeyed.** That rule says a session handing off mid-work

@@ -164,6 +164,38 @@ export const queueEscalationCancelled = defineEvent("queue.escalation_cancelled"
   withinMs: z.number().int().nonnegative(),
 }));
 
+/**
+ * VD-1 T4 — the bench. Where a patient physically is between arriving at the bay and having her
+ * vitals taken: on the rest chairs with a recall time, or stepped out with her turn held. `state`
+ * is nullable because coming BACK is the same act as going, and "she is at the bench again" is a
+ * fact worth a row rather than an absence of one.
+ */
+export const benchStateSet = defineEvent("bench.state_set", MODULE, z.object({
+  encounterId: id, patientId: id, ...where,
+  state: z.enum(["resting", "away"]).nullable(),
+  recallAt: iso.nullable(),
+  note: z.string().nullable(),
+}));
+
+/**
+ * VD-1 T5 / D2 — a chart corrected at the bay. The `where` fields are NULLABLE here and nowhere
+ * else in this file, and that is deliberate: an amendment can outlive its queue entry — the token
+ * is `done`, the patient has left the bench, and the nurse notices the transposed digit afterwards.
+ * A required `tokenNo` would make the honest case unrecordable.
+ *
+ * `changed` is the field-level trail the owner ruled — each corrected value with both numbers —
+ * carried on the event as well as derivable from the rows, because this is the payload a
+ * supervisor's screen reads without joining anything.
+ */
+export const vitalsAmended = defineEvent("vitals.amended", MODULE, z.object({
+  encounterId: id, patientId: id, vitalsId: id, supersededId: id,
+  doctorId: id.nullable(), serviceDate: isoDate, sessionId: id.nullable(),
+  roomId: z.string().nullable(), tokenNo: z.number().int().positive().nullable(),
+  reason: z.string().min(1),
+  changed: z.array(z.object({ field: z.string(), from: z.number().nullable(), to: z.number().nullable() })),
+  dangerCount: z.number().int().nonnegative(),
+}));
+
 export const queueSessionOpened = defineEvent("queue_session.opened", MODULE, z.object({
   sessionId: id, doctorId: id, serviceDate: isoDate, roomId: z.string().nullable(),
   openedAt: iso, scheduledStart: z.string().nullable(),

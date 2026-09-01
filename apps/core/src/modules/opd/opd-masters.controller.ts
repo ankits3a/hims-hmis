@@ -42,6 +42,20 @@ const OPD_CONFLICT_CODES = new Set<OpdErrorCode>([
   // default, and a clinical refusal the client must render with an override dialog would arrive
   // looking like a malformed request. Plan 09's counter-side 500 is the same lesson one step milder.
   "interaction_conflict", "duplicate_salt_conflict",
+  /**
+   * VD-1 T5 — THE VITALS BAY'S THREE, AND THE LINE ABOVE IS WHY THEY ARE HERE.
+   *
+   * `vitals_gate` and `carried_value_locked` are the same animal as `allergy_conflict`: a CLINICAL
+   * REFUSAL the seat must render as an override dialog — *"4.8 kg on a 72-year-old — is this real?"*
+   * — carrying `detail.gates[]` or `detail.locked[]` for the card to draw. Left to the 400 default
+   * they arrive looking like a malformed request, and a screen that renders a slipped-digit gate as
+   * "bad request" teaches the nurse the machine is broken rather than that the number is wrong.
+   *
+   * `escalation_window_closed` is a conflict with the CLOCK rather than with the body: the ten
+   * seconds elapsed, the request was well-formed, and the honest answer is "too late, this is a
+   * supervisor's call now" — which is 409's meaning exactly.
+   */
+  "vitals_gate", "carried_value_locked", "escalation_window_closed",
 ]);
 
 function opdStatus(code: OpdErrorCode): number {
