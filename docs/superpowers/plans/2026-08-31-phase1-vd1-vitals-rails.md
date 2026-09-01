@@ -293,7 +293,83 @@ defaults) which blocked BOTH lanes' jest for about six minutes. **That is this p
 ledger candidate**: the cheap prefix (§2.132) was run AFTER the first jest launch rather than
 before it, and running it before would have cost sixty seconds and cost the other lane nothing.
 
-### T3 — WRITTEN AND **NOT RUN**. Read this before touching anything.
+### T3 — DONE. (The handoff below was written when it was unrun; it is kept as the record.)
+
+**Evidence:** core `tsc --noEmit` clean; `eslint` clean on all eight files; the whole OPD module
+plus both e2e suites — **33 suites / 257 tests passed, 0 tests failed**. Two suites (`advised-tests`,
+`opd.e2e`) failed to RUN on a compile error in the RC-2 lane's in-flight
+`billing/billing.controller.ts:503` (`attributionCode` passed to a `feeQuote` whose options type
+has not grown it yet). Not this lane's diff and not this lane's file; core typecheck was clean at
+~07:05 and that edit landed after. Named here rather than explained away, and owed a re-run.
+
+> **A SIGNATURE WORTH RECOGNISING, because it reads exactly like a real red and is not one:**
+> `Test Suites: 2 failed, 33 passed` beside `Tests: 257 passed` and **zero tests failed**. A suite
+> that fails to RUN reports no test counts at all, so the test line stays perfectly green while the
+> suite line is red. Read the `● Test suite failed to run` blocks before believing anything about
+> your own diff — the cause is a compile error somewhere in the import graph, quite possibly in
+> another lane's uncommitted file.
+
+**The unrun-code defect the RC-2 lane found before I could compile it, and the rule it leaves.**
+`escalation.ts` passed `correlationId: null` at three call sites; `appendEvent` types it
+`string | undefined`, so twelve errors — one cause, tripled by the file and again by its three
+mutant copies. The suggested fix was to widen the event field to `.nullable()`. **That was the
+wrong fix here, and the distinction is the lesson:** RC-1 widened `visit.abandoned` to nullable
+because a deferred visit genuinely HAS no token — *the absence was the fact*. Here a real value was
+in scope and simply unreached: every other OPD event correlates on the visit's workflow instance,
+and an escalation belongs to the same visit as the reading that caused it. `liveEntry` already had
+the encounter row loaded. **Widen to nullable only when the absence is a fact; when a real value is
+in scope, the type error was pointing at the bug, and nullable buys a green compile at the price of
+a worse record.** (Agreed with the RC-2 lane as worth a ledger line.)
+
+### The mutants — four built, THREE DIED AND ONE SURVIVED, and the survivor is the finding
+
+| | mutation | received vs expected |
+|---|---|---|
+| A | `demandRecheck` escalates on the FIRST danger reading | `danger` true **vs** false — one reading must move nothing |
+| B | the cancel window compared `>` instead of `>=` | a cancel at exactly +10 000 ms succeeds **vs** `escalation_window_closed` |
+| C | `cancelEscalation` without the encounter `FOR UPDATE` | **SURVIVED — see below** |
+| D | `recordVitals` without `ne(escalation, "cancelled")` — **the mutant is `41a04b2`'s `vitals.ts` verbatim** | `danger` true **vs** false after a cancelled escalation: cancel undone by the next save |
+
+**MUTANT C SURVIVED, and disclosing it is AGENT-RULES §3 branch (b): the survival meant THE TEST
+could not discriminate, the test was this task's own file, so it was fixed in-task and is recorded
+here rather than quietly patched.**
+
+The concurrency suite's own docstring had claimed the property it did not have — *"Both promises are
+therefore started before either is awaited"* — which is true, necessary, and **not sufficient**. A
+probe against the unlocked mutant reported:
+
+```
+settled: ["ok", "escalation_state_conflict"], events: 1
+```
+
+The unlocked code behaving perfectly, because **nothing concurrent had happened.** `pg.Pool` opens
+connections lazily: caller #1 reuses the idle connection the fixture left, caller #2 must establish
+a NEW one, and that TCP-and-auth handshake is longer than the entire first transaction — so caller
+#2 began its SELECT after caller #1 had committed, read `cancelled`, and lost on the state check.
+The right answer, reached without the lock ever being exercised.
+
+Warming the pool first (four concurrent `select pg_sleep(0.05)`) removes the establishment cost from
+the measured window. Mutant C then died with exactly the damage the suite was written to prevent:
+
+```
+Expected length: 1 · Received length: 2
+  two queue.escalation_cancelled events, actorId 01M1DWF41B… and actorId 01M1DWF42959…
+  both restoredClass: 3, both withinMs: 3000
+```
+
+**One act, recorded twice, under two different names — and the restored class correct either way,
+so nothing user-visible would ever have shown it.** That is the whole reason a race test over an
+audit trail has to actually race: the damage is entirely in the record.
+
+> **LEDGER CANDIDATE, and it generalises past this phase.** Ledger §2.99's class is "a race test that
+> passes on an idle host"; this is its sibling and it is sharper — **a race test that cannot fail at
+> all**, because the concurrency it measures is the connection pool's rather than the code's. The
+> instrument is cheap and mechanical: *before asserting on a race, warm the pool with at least as
+> many concurrent round-trips as the race has participants.* And the check that proves you needed
+> it: remove the lock and confirm the test goes red. A green race test whose mutant survives is
+> certifying a lock it never touched.
+
+### T3 — the handoff written when it was unrun, kept as the record
 
 **Method §9.6 in force, and it could not be obeyed.** That rule says a session handing off mid-work
 spends its remaining budget in the order *(1) typecheck, (2) the narrowest suite, (3) the handoff

@@ -26,3 +26,7 @@ export type { QueueEntryState, QueuePolicy, QueueClass } from "./queue-engine";
 export * from "./events";
 export { walkIn } from "./walk-in";
 export type { WalkInInput, WalkInResult, WalkInDeferredResult, DuplicateCandidate } from "./walk-in";
+// VD-1 T3 — the danger protocol. Exported so the controllers (T5) and the bay's read surfaces
+// reach it through the module boundary rather than the file, like every other service here.
+export { CANCEL_WINDOW_MS, cancelEscalation, cancelMsRemaining, demandRecheck, escalate, escalationFor } from "./escalation";
+export type { EscalationState, EscalationView } from "./escalation";

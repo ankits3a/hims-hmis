@@ -15,6 +15,11 @@ export const OPD_REALTIME_NAMES = [
   "queue_session.opened", "queue_session.closed",
   // RC-1 T3 — the board flip: UNPAID → PAID on the seat and the hall, without a poll.
   "queue.fee_settled",
+  // VD-1 T3 — the danger protocol. `queue.escalated` IS the doctor-board flash: it rides the same
+  // `queue:<doctorId>:<date>` topic as the call, so the consulting room learns that somebody just
+  // became class 0 in the same breath the bay learns it. The cancel rides it too, because a board
+  // that flashed and then went quiet would leave the doctor expecting a patient nobody is sending.
+  "vitals.recheck_demanded", "queue.escalated", "queue.escalation_cancelled",
 ];
 type P = { doctorId?: string; fromDoctorId?: string; toDoctorId?: string; serviceDate?: string; roomId?: string | null; encounterId?: string };
 

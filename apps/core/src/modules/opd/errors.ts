@@ -18,6 +18,10 @@ export type OpdErrorCode =
   // from a preset list rather than a bare override — the difference is that a gate asks "is this
   // number real" and a lock asks "why is it changing".
   | "vitals_gate" | "carried_value_locked"
+  // VD-1 T3 — the danger protocol. `escalation_not_warranted` is the one that matters: the BAY
+  // asks for a bump and the SERVER decides, by re-evaluating the reading against the band. A
+  // route that bumped on the caller's say-so would let anybody move anybody to class 0.
+  | "escalation_not_warranted" | "escalation_state_conflict" | "escalation_window_closed"
   | "invalid_follow_up_days" | "extension_cap_reached" | "reason_required"
   | "allergy_conflict" | "override_reason_required" | "empty_prescription" | "unknown_prescription"
   // PLAN 16a T5 — the hard-warning grammar EXTENDS rather than forks (DD3): these two carry their

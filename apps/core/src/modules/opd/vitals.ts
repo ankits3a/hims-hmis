@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
@@ -247,9 +247,28 @@ export async function recordVitals(
     if (flags.length > 0) {
       // Not a status write — the mirror rule stands (only moveEncounter writes opd_encounters.status).
       await tx.update(opdEncounters).set({ dangerFlagged: true }).where(eq(opdEncounters.id, encounterId));
+      /**
+       * ═══ VD-1 T3 / D4 — THE ONE PREDICATE THAT MAKES CANCEL REAL ═══
+       *
+       * `ne(escalation, "cancelled")`. Without it a cancelled escalation is theatre: the nurse
+       * presses CANCEL, the board is restored, and then the ordinary save re-raises `danger` on
+       * the same readings a moment later and the patient jumps the queue anyway.
+       *
+       * **Nothing clinical is weakened by this, and that distinction is the whole design.** The
+       * line above still sets `opd_encounters.danger_flagged`, and `vitals.danger_flagged` is
+       * still appended, for EVERY danger reading including this one — the doctor receives the flag
+       * and both takes regardless. What this predicate declines to re-impose is the BOARD
+       * position, which a named human has just declined, inside ten seconds, with their id in
+       * `escalation_by` and the moment in the event. The autonomy ladder: the agent bumps, only a
+       * person un-bumps.
+       */
       await tx.update(opdQueueEntries)
         .set({ danger: true })
-        .where(and(eq(opdQueueEntries.encounterId, encounterId), inArray(opdQueueEntries.status, [...DANGER_ENTRY_STATUSES])));
+        .where(and(
+          eq(opdQueueEntries.encounterId, encounterId),
+          inArray(opdQueueEntries.status, [...DANGER_ENTRY_STATUSES]),
+          ne(opdQueueEntries.escalation, "cancelled"),
+        ));
       await appendEvent(tx, vitalsDangerFlagged.make({ ...env, payload: { encounterId, patientId: encounter.patientId, vitalsId: vitals!.id, ...where, flags } }));
       encounter = { ...encounter, dangerFlagged: true };
     }

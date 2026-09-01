@@ -127,6 +127,43 @@ export const vitalsDangerFlagged = defineEvent("vitals.danger_flagged", MODULE, 
  * template's own start time when the doctor-day has a schedule, so a consumer can compute lateness
  * without a second query; null when the doctor is unscheduled, where "late" has no meaning.
  */
+/**
+ * ═══ VD-1 T3 — THE DANGER PROTOCOL, AS THREE FACTS ═══
+ *
+ * They carry the full `where` block, so `opdTopicsFor` routes them to `queue:<doctorId>:<date>`
+ * like every other queue fact — which IS the doctor-board flash. An escalation the doctor's
+ * screen does not hear about is not an escalation.
+ *
+ * **These three are also the audit trail, and that is deliberate.** RC-4 owns the `agent_ledger`
+ * the footer bar reads, and it does not exist yet; every act the bay's agent takes is a domain
+ * fact and belongs on the append-only log this module already writes to. RC-4 projects them.
+ * Building a second store here would duplicate the one shared primitive the handoff forbids
+ * duplicating — and a trail that can disagree with the record is worse than no trail.
+ */
+export const vitalsRecheckDemanded = defineEvent("vitals.recheck_demanded", MODULE, z.object({
+  encounterId: id, patientId: id, ...where,
+  flags: z.array(dangerFlagSchema).min(1),
+  /** The arm/site the bay is being told to use. One danger reading demands the OTHER arm, now. */
+  demand: z.literal("other_arm_now"),
+}));
+
+export const queueEscalated = defineEvent("queue.escalated", MODULE, z.object({
+  encounterId: id, patientId: id, ...where,
+  entryId: id, fromClass: z.number().int().min(0).max(4), toClass: z.literal(0),
+  flags: z.array(dangerFlagSchema).min(1),
+  /** The instant the ten-second cancel window opened. A stored instant, never a server timer (D8). */
+  escalatedAt: iso,
+  /** The agent acted alone — the one case the ladder permits (design schema, divergence 3). */
+  by: z.literal("agent"),
+}));
+
+export const queueEscalationCancelled = defineEvent("queue.escalation_cancelled", MODULE, z.object({
+  encounterId: id, patientId: id, ...where,
+  entryId: id, restoredClass: z.number().int().min(0).max(4),
+  /** How far into the window the cancel landed — the honest measure of whether ten seconds is enough. */
+  withinMs: z.number().int().nonnegative(),
+}));
+
 export const queueSessionOpened = defineEvent("queue_session.opened", MODULE, z.object({
   sessionId: id, doctorId: id, serviceDate: isoDate, roomId: z.string().nullable(),
   openedAt: iso, scheduledStart: z.string().nullable(),
