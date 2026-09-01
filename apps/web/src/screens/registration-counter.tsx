@@ -48,9 +48,26 @@ export function QuotePanel({ quote }: { quote: WireFeeQuote }): React.ReactEleme
    * the house rule is one winner per line, and a panel that added two benefits would be showing a
    * number the server will not charge.
    */
+  /**
+   * ═══ CLOSE REVIEW F2 (MAJOR) — THE WINNER WAS BEING DRAWN AS A LOSER TOO, ON EVERY REAL QUOTE ═══
+   *
+   * This read `candidates.filter((c) => c !== winner)`. Server-side that works: `runContest`
+   * (`tariff/contest.ts:78`) returns `winner: valid[0]`, a REFERENCE INTO `candidates`. **JSON does
+   * not carry references.** `api()` parses the response, so the winner arrives as a structurally
+   * equal but referentially distinct object and `c !== winner` is true for every candidate —
+   * including the winner. The counter rendered "Member benefit — ₹100 off" and, immediately below
+   * it in grey, "Member benefit — not applied (a bigger benefit won)": a money panel contradicting
+   * itself about which benefit applied. The total was never wrong (the server's number is printed),
+   * which is exactly why it survived.
+   *
+   * Compared by `(sourceKey, ruleKey)` — the pair already used as the React key below, and the pair
+   * `contest.ts:70-76` itself sorts on, so it is the contest's own notion of which candidate this is.
+   */
   const line: WirePricedLine | null = quote.draft?.lines[0] ?? null;
   const winner = line?.winner ?? null;
-  const losers = (line?.candidates ?? []).filter((c) => c !== winner);
+  const sameCandidate = (a: WireAdjustmentCandidate, b: WireAdjustmentCandidate): boolean =>
+    a.sourceKey === b.sourceKey && a.ruleKey === b.ruleKey;
+  const losers = (line?.candidates ?? []).filter((c) => winner === null || !sameCandidate(c, winner));
 
   return (
     <section aria-label={t("registrationCounter.quote.title")} data-testid="quote-panel">
@@ -118,8 +135,25 @@ export function useQuote(encounterId: string | null): {
   reprice: (couponCodes: string[], attributionCode?: string) => Promise<void>;
   error: string | null;
 } {
-  const [quote, setQuote] = useState<WireFeeQuote | null>(null);
+  /**
+   * ═══ CLOSE REVIEW F1 (CRITICAL) — THE QUOTE IS STORED *WITH THE ENCOUNTER IT PRICED* ═══
+   *
+   * It used to be a bare `WireFeeQuote | null`, and that state outlived its patient. `reprice`
+   * returns early when there is no encounter and the `catch` only set `error`, so neither path
+   * cleared it — and `clearDesk` did not touch it either. One counter cycle: patient A is priced;
+   * the clerk clears the desk; the clerk picks patient B, whom `takePatient` puts in hand with
+   * `encounterId: null` (`patient-in-hand.tsx:75`) — and the dossier, now non-empty again, rendered
+   * **A's bill under B's name**: A's benefit chips, A's review-window reason (a doctor's name and
+   * dates, which is PHI), and "Collect ₹400" for a patient who owes nothing.
+   *
+   * The fix is not another `setQuote(null)` in a third place — it is making the bad state
+   * unrepresentable. The quote is stored WITH the `encounterId` it was fetched for, and the
+   * accessor hands it back only when the two still agree. A stale quote cannot be rendered because
+   * it cannot be returned, on every path, including the ones nobody has written yet.
+   */
+  const [priced, setPriced] = useState<{ encounterId: string; quote: WireFeeQuote } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const quote = priced !== null && priced.encounterId === encounterId ? priced.quote : null;
 
   /**
    * `useCallback` WAS ADDED BY THE FIRST CONSUMER, and that is §1 of this phase doc happening to
@@ -132,8 +166,11 @@ export function useQuote(encounterId: string | null): {
     if (encounterId === null) return;
     setError(null);
     try {
-      setQuote(await fetchFeeQuote(encounterId, couponCodes, attributionCode));
+      setPriced({ encounterId, quote: await fetchFeeQuote(encounterId, couponCodes, attributionCode) });
     } catch (e) {
+      // F13 — and the failed fetch drops the stale price too. A refused or errored quote that
+      // leaves the last one on screen is the same defect as F1 arriving by a different road.
+      setPriced(null);
       setError(e instanceof Error ? e.message : String(e));
     }
   }, [encounterId]);
@@ -177,10 +214,26 @@ export function counterExit(
  * the token) which stay server-owned because they are not session state.
  */
 export function Dossier({
-  quote, issued, onConfirm,
+  quote, issued, canCollect, onConfirm,
 }: {
   quote: WireFeeQuote | null;
   issued: WireIssueInvoiceResult | null;
+  /**
+   * ═══ CLOSE REVIEW F4 (CRITICAL) — REQUIRED, BECAUSE THE SEAT CANNOT ANSWER IT ═══
+   *
+   * The seat used to hard-code `issued={null}` into this component. `feeQuote`
+   * (`billing/charge-rules.ts`) is a PRICE quote: it reads nothing about issued invoices,
+   * allocations or settlement, and no other payment signal reaches this screen — `WireQueueEntryView`
+   * still carries no fee status and nothing on the web subscribes to `queue.fee_status_changed`.
+   * So the collect guard reduced to `free === false && draft !== null`, which is **true for every
+   * chargeable visit whether or not it has been paid**. A clerk who bills a patient at `/counter`,
+   * keeps them in hand and switches to the seat — which is precisely the side-by-side comparison
+   * D1 asks the owner to make — was shown "Collect ₹400" on a settled encounter. Charging twice.
+   *
+   * It is REQUIRED rather than defaulted so that every caller has to state which it is. A default
+   * of `true` would have preserved exactly the bug, silently, for the next screen to mount this.
+   */
+  canCollect: boolean;
   onConfirm?: () => void;
 }): React.ReactElement {
   const { t } = useTranslation();
@@ -206,9 +259,21 @@ export function Dossier({
             bill, which is the mutant this task's assertion book names.
           */}
           {quote?.free === false && issued === null && quote.draft !== null && (
-            <div data-testid="collect">
-              <p>{t("registrationCounter.exit.collect", { amount: quote.draft.totals.netPayablePaise / 100 })}</p>
-            </div>
+            canCollect ? (
+              <div data-testid="collect">
+                <p>{t("registrationCounter.exit.collect", { amount: quote.draft.totals.netPayablePaise / 100 })}</p>
+              </div>
+            ) : (
+              /*
+                F4 — the PRICE without the INSTRUCTION. A surface that cannot see whether the money
+                has already been taken may still say what the visit costs; it may not tell a clerk
+                to collect it. The note names where the money is actually taken, so the screen is a
+                dead end for the clerk rather than a trap.
+              */
+              <div data-testid="priced-elsewhere">
+                <p>{t("registrationCounter.exit.pricedElsewhere", { amount: quote.draft.totals.netPayablePaise / 100 })}</p>
+              </div>
+            )
           )}
 
           {exit !== null && (
@@ -330,7 +395,20 @@ export function FindPanel({ onRegisterNew }: { onRegisterNew?: () => void } = {}
         a rail. `!hits.isFetching` is part of the guard: offering the door while the answer is still
         in flight offers it to a clerk whose patient is about to appear.
       */}
-      {q.length > 0 && items.length === 0 && !hits.isFetching && (
+      {/*
+        CLOSE REVIEW F3 (MAJOR) — AN ERRORED SEARCH IS NOT AN EMPTY ONE, AND THIS IS WHERE THE
+        DISTINCTION IS WORTH THE MOST. `App.tsx:8` sets `retry: false`, so a 403 (the seat's route
+        needs `opd.visits.open`; the search route needs `patients.read`, and they are not the same
+        grant), a 500 or a dropped connection settles immediately with `data === undefined` — which
+        read as `items = []` and offered the REGISTER-NEW DOOR. The screen whose stated purpose is
+        "a duplicate stopped here costs nothing" invited the clerk to create one at exactly the
+        moment the system could not tell them whether the patient already existed.
+      */}
+      {q.length > 0 && hits.isError && (
+        <p data-testid="find-error">{t("registrationCounter.find.searchFailed")}</p>
+      )}
+
+      {q.length > 0 && items.length === 0 && !hits.isFetching && !hits.isError && (
         <p data-testid="find-none">
           {t("registrationCounter.find.none")}
           <button type="button" data-testid="find-register-new" onClick={() => onRegisterNew?.()}>
@@ -563,7 +641,15 @@ export function RegistrationCounter({
   return (
     <div data-seat="registration-counter" data-testid="registration-counter">
       <h1>{t("registrationCounter.title")}</h1>
-      <Dossier quote={quote} issued={null} onConfirm={clearDesk} />
+      {/*
+        `canCollect={false}` and `issued={null}` are the same admission stated twice, and both are
+        deliberate for RC-3: this seat issues no invoice, takes no payment and opens no visit, so it
+        has neither an `issued` result of its own nor any server signal for one. The `settled` and
+        `credit` exits are therefore unreachable HERE — not removed, but unreachable — and RC-4 is
+        the phase that brings the bill across and makes all three lawful exits real on this screen.
+        Stated here rather than left for a reader to infer from a literal `null`.
+      */}
+      <Dossier quote={quote} issued={null} canCollect={false} onConfirm={clearDesk} />
       {inHand === null && <FindPanel onRegisterNew={onRegisterNew} />}
       {tender !== null && <p data-testid="tender-chosen">{tender}</p>}
       {overlay === "queues" && <QueuesOverlay items={summaries} onClose={() => setOverlay(null)} />}

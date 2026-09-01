@@ -2010,7 +2010,8 @@
         "mobile": "same mobile",
         "name": "same name",
         "onFile": "on file"
-      }
+      },
+      "searchFailed": "Search is unavailable — do not register a new record until it works"
     },
     "quote": {
       "title": "Bill",
@@ -2041,7 +2042,8 @@
       "free": "Free follow-up — nothing to collect",
       "settled": "Paid in full",
       "credit": "Credit extended — billed to account",
-      "next": "Next patient"
+      "next": "Next patient",
+      "pricedElsewhere": "This visit costs ₹{{amount}} — take payment at the billing counter"
     }
   }
 }

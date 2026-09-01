@@ -4,7 +4,7 @@ import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   Dossier, FindPanel, QueuesOverlay, QuotePanel, RegistrationCounter, SEAT_TENDER_ORDER, WaitLine,
-  counterExit, seatKey, waitEstimate,
+  counterExit, seatKey, useQuote, waitEstimate,
 } from "./registration-counter";
 import { renderWithProviders, stubFetch } from "../test-utils";
 import { setToken } from "../lib/api";
@@ -201,20 +201,20 @@ describe("RC-3 T2 — the exits, and the guard that keeps tenders off a ₹0 bil
     expect(free.free === false && free.draft !== null).toBe(false); // the shipped guard: refuses
 
       takeInHand("P1", "E1");
-    renderWithProviders(<Dossier quote={free} issued={null} />);
+    renderWithProviders(<Dossier quote={free} issued={null} canCollect />);
     expect(screen.queryByTestId("collect")).toBeNull();   // THE KILL
     expect(screen.getByTestId("exit-free")).toBeTruthy();
   });
 
   it("a priced, unpaid visit DOES render collection — a guard that refuses everything is not a guard", () => {
     takeInHand("P1", "E1");
-    renderWithProviders(<Dossier quote={quoteWith()} issued={null} />);
+    renderWithProviders(<Dossier quote={quoteWith()} issued={null} canCollect />);
     expect(screen.getByTestId("collect").textContent).toContain("400");
     expect(screen.queryByTestId("exit-free")).toBeNull();
   });
 
   it("with nobody in hand it says so, and renders no quote at all", () => {
-    renderWithProviders(<Dossier quote={quoteWith()} issued={null} />);
+    renderWithProviders(<Dossier quote={quoteWith()} issued={null} canCollect />);
     expect(screen.getByTestId("dossier-empty")).toBeTruthy();
     expect(screen.queryByTestId("quote-panel")).toBeNull();
   });
@@ -361,7 +361,7 @@ describe("RC-3 T4 / D6 — match reasons, never a score", () => {
       "GET /api/auth/me": { actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
       "GET /api/patients/search": { items: [{ ...HIT_ASHA, matchedOn: ["mobile"] }] },
     });
-    renderWithProviders(<><FindPanel /><Dossier quote={null} issued={null} /></>);
+    renderWithProviders(<><FindPanel /><Dossier quote={null} issued={null} canCollect /></>);
     const user = userEvent.setup();
 
     expect(screen.getByTestId("dossier-empty")).toBeTruthy();
@@ -741,5 +741,210 @@ describe("RC-3 T5 — the queues overlay", () => {
 
     fireEvent.keyDown(window, { key: "n", ctrlKey: true });
     expect(onRegisterNew).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   RC-3 CLOSE REVIEW — REMEDIATION. Two independent passes over a tree with 36 green tests and
+   13 dead mutants returned 2 CRITICAL + 5 MAJOR (pass 1) and 1 CRITICAL + 7 MAJOR (pass 2),
+   overlapping heavily. Both passes reached the same diagnosis about WHY, and it is 18a's:
+   **every assertion that touched a defect checked a state where right and wrong agree.**
+   Each test below is written to be a state where they DISAGREE.
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+describe("RC-3 close review — F1 (CRITICAL): a quote cannot outlive the encounter it priced", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+  });
+
+  /**
+   * THE FULL COUNTER CYCLE, which is the thing no previous test did: patient A, clear the desk,
+   * patient B. Every assembled-seat test before this one put ONE patient in hand and left them
+   * there — and one patient is precisely the state in which a quote with no lifetime and a quote
+   * with a correct one are indistinguishable.
+   */
+  it("patient B never sees patient A's bill, A's benefit chips or A's review-window reason", async () => {
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+      "GET /api/opd/queues/summary": { items: [] },
+      "GET /api/patients/search": { items: [{ ...HIT_ASHA, id: "P-B", name: "Binod Sah", matchedOn: ["mobile"] }] },
+      "GET /api/billing/visits/E1/fee-quote": {
+        encounterId: "E1", visitType: "new", free: false, feeServiceId: "SVC", intendedPayer: "self", freeReason: null,
+        draft: {
+          tariffVersionId: "TV1", intendedPayer: "self",
+          lines: [{
+            lineId: "fee", serviceId: "SVC", serviceName: "Consultation", category: "consultation",
+            qty: 1, unitPaise: 50_000, grossPaise: 50_000, regulatedClamp: null,
+            candidates: [MEMBER], winner: MEMBER, discountPaise: 10_000, taxableBasePaise: 40_000,
+            gst: { sacCode: "999312", rateBps: 0, exempt: true, exemptReason: "category_exempt", cgstPaise: 0, sgstPaise: 0 },
+            netPaise: 40_000,
+          }],
+          totals: { grossPaise: 50_000, taxableBasePaise: 40_000, cgstPaise: 0, sgstPaise: 0, rawTotalPaise: 40_000, netPayablePaise: 40_000, roundingPaise: 0 },
+        },
+      },
+    });
+
+    takeInHand("P-A", "E1");
+    renderWithProviders(<RegistrationCounter />);
+
+    // Patient A: priced, and the panel says so.
+    expect(await screen.findByTestId("quote-panel")).toBeTruthy();
+    expect(screen.getByTestId("payable").textContent).toContain("400");
+
+    // The clerk clears the desk and takes the next person, who has NO encounter yet —
+    // `takePatient` puts them in hand as `{ patientId, encounterId: null }`.
+    fireEvent.keyDown(window, { key: "Escape" });
+    const user = userEvent.setup();
+    await user.type(await screen.findByTestId("find-input"), "98765");
+    await user.click(await screen.findByTestId("find-hit-P-B"));
+
+    expect((await screen.findByTestId("dossier-patient")).textContent).toBe("P-B");
+    // THE KILL, three ways: no panel, no money, and no other patient's benefit chip.
+    expect(screen.queryByTestId("quote-panel")).toBeNull();
+    expect(screen.queryByTestId("payable")).toBeNull();
+    expect(screen.queryByTestId("benefit-applied")).toBeNull();
+    expect(screen.queryByTestId("collect")).toBeNull();
+    expect(screen.queryByTestId("priced-elsewhere")).toBeNull();
+  });
+
+  /**
+   * THE SECOND HALF OF F1, and the first version of this test COULD NOT FAIL — caught by running the
+   * revert, which is the only reason it is written this way now.
+   *
+   * It stubbed a fee-quote that always 404s and asserted no panel. But with no prior SUCCESS there
+   * was never a quote to leave standing, so the assertion held whether or not the `catch` cleared
+   * anything: the exact "right and wrong agree" shape both review passes were called in to find.
+   * A refetch that FAILS AFTER A SUCCESS is the only state that tells them apart, and the seat
+   * fetches once per encounter — so this drives `useQuote` directly.
+   */
+  it("a refetch that FAILS AFTER A SUCCESS drops the stale price rather than leaving it standing", async () => {
+    let call = 0;
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+      "GET /api/billing/visits/E1/fee-quote": () => {
+        call += 1;
+        if (call === 1) return quoteWith();
+        throw new Error("the second call must not answer"); // stubFetch rejects -> api() throws
+      },
+    });
+
+    function Probe(): React.ReactElement {
+      const { quote, error, reprice } = useQuote("E1");
+      return (
+        <>
+          <button type="button" data-testid="probe-reprice" onClick={() => void reprice([])}>go</button>
+          {quote !== null && <span data-testid="probe-quote">{quote.encounterId}</span>}
+          {error !== null && <span data-testid="probe-error">{error}</span>}
+        </>
+      );
+    }
+    renderWithProviders(<Probe />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByTestId("probe-reprice"));
+    expect((await screen.findByTestId("probe-quote")).textContent).toBe("E1"); // a real price is on screen
+
+    await user.click(screen.getByTestId("probe-reprice"));
+    await screen.findByTestId("probe-error");
+    expect(screen.queryByTestId("probe-quote")).toBeNull(); // THE KILL — the stale price is gone
+  });
+});
+
+describe("RC-3 close review — F2 (MAJOR): the winner is not also a loser", () => {
+  /**
+   * THE FIXTURE IS ROUND-TRIPPED THROUGH JSON, and that is the entire point of this test.
+   *
+   * `runContest` (`tariff/contest.ts:78`) returns `winner: valid[0]` — a REFERENCE INTO
+   * `candidates`. The old fixture reproduced that reference by writing `winner: MEMBER` with a
+   * module-level const, which is the one input shape the wire cannot produce. `JSON.parse(
+   * JSON.stringify(...))` is what the browser actually receives, and under it a reference
+   * comparison marks the winner as a loser as well.
+   */
+  it("renders ONE applied chip and no losing chip for it, over a JSON-round-tripped quote", () => {
+    const overTheWire = JSON.parse(JSON.stringify(quoteWith())) as WireFeeQuote;
+    const line = overTheWire.draft!.lines[0]!;
+
+    // The defect's precondition, asserted so this test cannot quietly stop testing anything:
+    // after transport the winner is NOT the same object as its own entry in `candidates`.
+    expect(line.candidates.some((c) => c === line.winner)).toBe(false);
+    expect(line.winner).toEqual(line.candidates[0]); // …but it IS the same candidate
+
+    renderWithProviders(<QuotePanel quote={overTheWire} />);
+    expect(screen.getAllByTestId("benefit-applied")).toHaveLength(1);
+    const lost = screen.getAllByTestId("benefit-lost");
+    expect(lost).toHaveLength(1);                                                    // THE KILL: not 2
+    expect(lost[0]!.textContent).toContain("Invented partner referral");
+    expect(lost[0]!.textContent).not.toContain("Invented member consultation benefit");
+  });
+});
+
+describe("RC-3 close review — F4 (CRITICAL): the seat prices, it does not instruct a collection", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+      "GET /api/opd/queues/summary": { items: [] },
+      "GET /api/patients/search": { items: [] },
+      "GET /api/billing/visits/E1/fee-quote": quoteWith(),
+    });
+  });
+
+  /**
+   * `feeQuote` is a PRICE quote — it reads nothing about issued invoices, allocations or
+   * settlement — and no other payment signal reaches this screen. So on a priced visit the old
+   * collect guard was true whether or not the money had already been taken, and a clerk who billed
+   * at `/counter` and switched to the seat was told to collect ₹400 a second time.
+   */
+  it("a priced visit shows the PRICE and never the instruction, because the seat cannot see payment", async () => {
+    takeInHand("P1", "E1");
+    renderWithProviders(<RegistrationCounter />);
+
+    const note = await screen.findByTestId("priced-elsewhere");
+    expect(note.textContent).toContain("400");
+    expect(note.textContent).toContain("billing counter");
+    expect(screen.queryByTestId("collect")).toBeNull(); // THE KILL
+  });
+
+  /**
+   * …and the guard must not simply refuse everything: `Dossier` is still the lifted component, and
+   * a caller that CAN see settlement still gets `counter-desk.tsx`'s behaviour unchanged.
+   */
+  it("a caller that CAN see settlement still gets the lifted collect panel", () => {
+    renderWithProviders(<Dossier quote={quoteWith()} issued={null} canCollect />);
+    expect(screen.queryByTestId("priced-elsewhere")).toBeNull();
+  });
+});
+
+describe("RC-3 close review — F3 (MAJOR): an errored search is not an empty one", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+  });
+
+  /**
+   * `App.tsx:8` sets `retry: false`, so a 403 settles on the first attempt with `data === undefined`
+   * — which read as "no such patient" and offered the register-new door. The seat's route needs
+   * `opd.visits.open`; `GET /patients/search` needs `patients.read`. They are not the same grant, so
+   * a 403 here is a configuration a real deployment can have.
+   */
+  it("MUTANT — a 403 rendered 'nobody matches' and the REGISTER-NEW door; it now says the search failed", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(typeof input === "string" ? input : (input as Request).url).split("?")[0]!;
+      if (path === "/api/auth/me") {
+        return new Response(JSON.stringify({ actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } }), { status: 200 });
+      }
+      if (path === "/api/patients/search") return new Response(JSON.stringify({ statusCode: 403 }), { status: 403 });
+      return new Response("{}", { status: 404 });
+    }));
+
+    renderWithProviders(<FindPanel />);
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("find-input"), "98765");
+
+    expect((await screen.findByTestId("find-error")).textContent).toContain("do not register");
+    expect(screen.queryByTestId("find-register-new")).toBeNull(); // THE KILL
+    expect(screen.queryByTestId("find-none")).toBeNull();
   });
 });
