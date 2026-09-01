@@ -69,7 +69,9 @@ Peers (find current names via `ListAgents`; **message before colliding — both 
 
 Record the session token balance at kickoff and each task boundary (§2.141) → grep the WRITERS of any predicate a new state touches, not just readers (§2.149) → rule-21 mutants, inline and disclosed is fine → typecheck AND lint before every launch (**vitest strips types, so a green web suite can sit over code that does not compile — both gates, every time**) → **new i18n strings need BOTH `en.json` and `hi.json`; `i18n.test.ts:12` pins them key-for-key** → tree frozen during any launched run, and **never widen a batch into a directory another lane is working in** → TWO fresh review passes at close (**they found 2 CRITICAL + 6 MAJOR on RC-2 over a tree with 3337 green tests, three died mutants and clean typecheck/lint — and 3 of 7 fixes came back INCOMPLETE**) → CLOSE with actuals → token audit fires by hook → update auto-memory.
 
-**Stop-loss: 1,250,000** (phase doc header has the derivation). RC-3 has spent roughly 250k of main session through T3.
+**Stop-loss: 1,250,000** (phase doc header has the derivation). RC-3 has spent roughly **250k of main session through T3**, plus **0 subagent tokens** — recon ran inline, as RC-2's audit prescribed (§2.156). The 510,000 review term is UNSPENT and the two passes are NOT yet run; on RC-2 they found 2 CRITICAL + 6 MAJOR over an already-green tree, so **report RC-3's cost as `spent / (stop-loss − review term)` until they have run** (§2.157) rather than as a flattering fraction of the whole.
+
+> **NOTE ON THE TOKEN-AUDIT HOOK.** It fires on any pushed phase-doc-shaped file and it fired on THIS handoff. **No baselines row was appended, deliberately: RC-3 has not closed.** A row for an incomplete phase would make `token-baselines.json` — the file whose entire job is to make the next audit a comparison rather than an anecdote — carry a number that is not comparable to anything. Append RC-3's row at its real CLOSE, with the review lane's actual cost in it. The script itself was run (it is free) and reports what it should for a LIGHT phase: no transcripts, because the cost is main-session.
 
 ## First actions
 
