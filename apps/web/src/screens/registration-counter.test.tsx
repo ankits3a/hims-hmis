@@ -601,10 +601,11 @@ describe("RC-3 T5 — the keyboard map", () => {
    * in front of a clerk. An `it.each` of individual `toBe`s would pass over an action that had gone
    * missing from the union.
    */
-  it("is exactly the map the design specifies — Ctrl+K · Ctrl+N · Q · 1/2/3 · Ctrl+⏎ · Esc", () => {
+  it("is exactly the map the seat OWNS — Q · 1/2/3 · Ctrl+⏎ · Esc, and neither navigation chord", () => {
     expect({
       ctrlK: seatKey(key("k", true), idle, { overlayOpen: false, modalOpen: false }),
       ctrlN: seatKey(key("n", true), idle, { overlayOpen: false, modalOpen: false }),
+      altN: seatKey({ key: "n", ctrlKey: false, metaKey: false }, idle, { overlayOpen: false, modalOpen: false }),
       q: seatKey(key("q"), idle, { overlayOpen: false, modalOpen: false }),
       one: seatKey(key("1"), idle, { overlayOpen: false, modalOpen: false }),
       two: seatKey(key("2"), idle, { overlayOpen: false, modalOpen: false }),
@@ -615,10 +616,14 @@ describe("RC-3 T5 — the keyboard map", () => {
       four: seatKey(key("4"), idle, { overlayOpen: false, modalOpen: false }),
       plainEnter: seatKey(key("Enter"), idle, { overlayOpen: false, modalOpen: false }),
     }).toEqual({
-      // Ctrl+K is NOT the seat's. `KeyboardProvider` already opens the palette application-wide,
-      // and a shortcut a clerk learns on one screen has to mean the same thing on the next.
+      // NEITHER navigation chord is the seat's, and for one reason: a shortcut a clerk learns on
+      // one screen has to mean the same thing on the next, so both belong to `keyboard.tsx`.
+      // `Ctrl+K` opens the palette application-wide. `Alt+N` — §6.4, ruled at close after the
+      // review found `Ctrl+N` is Chrome-reserved and never reaches the page — opens the
+      // new-patient form application-wide, and is asserted in `lib/keyboard.test.tsx`.
       ctrlK: null,
-      ctrlN: "new-walkin",
+      ctrlN: null,
+      altN: null,
       q: "toggle-queues",
       one: "tender:cash", two: "tender:upi", three: "tender:card",
       ctrlEnter: "confirm",
@@ -783,12 +788,20 @@ describe("RC-3 T5 — the queues overlay", () => {
     expect(screen.queryByTestId("queues-overlay")).toBeNull();
   });
 
-  it("Ctrl+N opens the SAME new-patient door F2 already opens, and 1/2/3 are NOT acted on here", () => {
+  it("the seat swallows NO navigation chord — and 1/2/3 are not acted on here either", () => {
     const onRegisterNew = vi.fn();
     renderWithProviders(<RegistrationCounter onRegisterNew={onRegisterNew} />);
 
+    /*
+      §6.4 RULED — the seat used to handle `Ctrl+N` itself. It no longer does, and this asserts the
+      ABSENCE, which is the load-bearing half: the global map owns `Alt+N` now, and a seat that
+      also handled a navigation chord would either double-fire or shadow the global one with a
+      local imitation. The `Register new` button (asserted in the F3/search-first tests) is this
+      screen's own door and is unaffected.
+    */
     fireEvent.keyDown(window, { key: "n", ctrlKey: true });
-    expect(onRegisterNew).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(window, { key: "n", altKey: true });
+    expect(onRegisterNew).not.toHaveBeenCalled();
 
     // F15 — the tender lanes stay in the MAP (they are the seat's specified legend) and this screen
     // consumes none of them: F4 established it cannot see whether an encounter has been paid, so it
@@ -1038,11 +1051,22 @@ describe("RC-3 close review — F7 (MAJOR): a modal owns the keyboard while it i
    * moment a clerk reaches for the new-patient door is the moment focus is in an `INPUT`; below the
    * guard, the advertised shortcut did nothing exactly when it was wanted.
    */
-  it("Ctrl+N fires from inside the search box; the bare characters still do not", () => {
+  /**
+   * F5's root complaint was that `Ctrl+N` sat BELOW the typing guard while the find input carries
+   * `autoFocus`, so the shortcut was dead at the one moment a clerk wants it. §6.4 ruled the
+   * chord out of this file entirely — `Alt+N` is global now — and the property that had to survive
+   * is that the guard still stops only what it should: BARE CHARACTERS a person could be typing.
+   */
+  it("the typing guard stops bare characters and nothing else", () => {
     const shut = { overlayOpen: false, modalOpen: false };
-    expect(seatKey(k("n", true), typing, shut)).toBe("new-walkin"); // THE KILL
     expect(seatKey(k("q"), typing, shut)).toBeNull();
     expect(seatKey(k("1"), typing, shut)).toBeNull();
+    expect(seatKey(k("3"), typing, shut)).toBeNull();
+    // …and the two that MUST survive it, or the guard is refusing everything rather than guarding.
+    expect(seatKey(k("Enter", true), typing, shut)).toBe("confirm");
+    expect(seatKey(k("Escape"), typing, shut)).toBe("clear-desk");
+    // The bare characters are the seat's again the moment focus leaves a field.
+    expect(seatKey(k("q"), idle, shut)).toBe("toggle-queues");
   });
 });
 

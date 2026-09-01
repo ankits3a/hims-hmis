@@ -466,7 +466,7 @@ export function FindPanel({ onRegisterNew }: { onRegisterNew?: () => void } = {}
 export const SEAT_TENDER_ORDER: readonly TenderMode[] = ["cash", "upi", "card"];
 
 export type SeatAction =
-  | "clear-desk" | "close-overlay" | "confirm" | "toggle-queues" | "new-walkin"
+  | "clear-desk" | "close-overlay" | "confirm" | "toggle-queues"
   | "tender:cash" | "tender:upi" | "tender:card";
 
 function isTypingTarget(el: EventTarget | null): boolean {
@@ -526,23 +526,22 @@ export function seatKey(
   if (mod && e.key === "Enter") return "confirm";
 
   /**
-   * ═══ CLOSE REVIEW F5 (MAJOR) — `Ctrl+N` MOVED ABOVE THE TYPING GUARD ═══
+   * ═══ §6.4 RULED — THE SEAT CLAIMS NO NEW-PATIENT CHORD AT ALL, AND THAT IS THE FIX ═══
    *
-   * It was below it, and the find input carries `autoFocus`. So at the one moment a clerk reaches
-   * for the new-patient door — having searched, found nobody, and read the "Register new" line —
-   * focus is in an `INPUT` and the advertised shortcut did nothing. The guard exists for BARE
-   * CHARACTERS (`Q`, `1/2/3`) that a person could be typing; `Ctrl+N` is not one, any more than
-   * `Ctrl+Enter` is, and it sits with `Ctrl+Enter` now.
+   * The close review found two things wrong with `Ctrl+N` here. It sat BELOW the typing guard, and
+   * the find input carries `autoFocus` — so at the one moment a clerk reaches for the new-patient
+   * door, focus is in an `INPUT` and the shortcut did nothing. Moving it up fixed that. But the
+   * second finding could not be fixed in this file: **Chrome does not deliver `Ctrl+N` to the page**
+   * (non-overridable, new window), and Firefox opens a window regardless of `preventDefault`.
    *
-   * A LIMIT THAT CANNOT BE FIXED IN THIS FILE, recorded so RC-4 does not rediscover it: `Ctrl+N` is
-   * on Chrome's non-overridable list (new window) and is not delivered to the page at all. The
-   * handler is correct and the chord is unreliable in the browser the hospital runs. The two doors
-   * that DO work are the global `F2` (`keyboard.tsx`) and the `Register new` button, and both reach
-   * the same `?new=true` destination. Choosing a non-reserved chord is a design decision, not a
-   * remediation, so it is in §6 for the owner rather than invented here.
+   * Ruled rather than sent up, under the owner's standing rule that an industry-standard choice is
+   * decided and only money, procurement or law stops: **`Alt+N`, and it lives in `keyboard.tsx`
+   * with its seven siblings.** The seat therefore returns `null` here for exactly the reason it
+   * returns `null` for `Ctrl+K` — a shortcut a clerk learns on one screen has to mean the same
+   * thing on the next, and a navigation chord belongs to the global map, not to a seat.
+   *
+   * The `Register new` button remains the mouse path, and `F2` still reaches the same destination.
    */
-  if (mod && (e.key === "n" || e.key === "N")) return "new-walkin";
-
   if (isTypingTarget(target)) return null;
 
   if (e.key === "q" || e.key === "Q") return "toggle-queues";
@@ -668,7 +667,6 @@ export function RegistrationCounter({
         case "toggle-queues": setOverlay((o) => (o === null ? "queues" : null)); break;
         case "close-overlay": setOverlay(null); break;
         case "clear-desk": clearDesk(); break;
-        case "new-walkin": onRegisterNew?.(); break;
         /*
           F15 — THE TENDER LANES ARE IN THE MAP AND ARE NOT CONSUMED HERE, for the same reason
           `confirm` is not, and the reason got stronger at close: F4 established that this seat

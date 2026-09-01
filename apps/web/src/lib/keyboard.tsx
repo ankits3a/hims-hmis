@@ -85,6 +85,28 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }): R
       } else if (e.altKey && (e.key === "p" || e.key === "P")) {
         e.preventDefault();
         void navigate({ to: "/opd/appointments" });
+      } else if (e.altKey && (e.key === "n" || e.key === "N")) {
+        /**
+         * RC-3 §6.4, RULED — `Alt+N` IS THE NEW-PATIENT CHORD, AND IT IS GLOBAL LIKE ITS SEVEN
+         * SIBLINGS ABOVE.
+         *
+         * Desk One's design specifies `Ctrl+N` for "new walk-in" and **Chrome does not deliver it
+         * to the page** — it is on the non-overridable list (new window), and Firefox opens a
+         * window regardless of `preventDefault`. RC-3 shipped the handler and the close review
+         * found it unreachable in the browser this hospital runs.
+         *
+         * `Alt+N` was free, and it needed no invention: this map already binds `Alt+M`, `Alt+A`,
+         * `Alt+B`, `Alt+D`, `Alt+V`, `Alt+C` and `Alt+P`, so the convention chose the letter.
+         *
+         * It is GLOBAL rather than seat-local for the reason the seat gives for not rebinding
+         * `Ctrl+K`: **a shortcut a clerk learns on one screen has to mean the same thing on the
+         * next.** The registration seat therefore claims neither chord; both belong here. `F2`
+         * keeps working and reaches the same place — that is deliberate, not a duplicate: `F2` is
+         * on the legend the shipped counter already prints, and removing it would retrain a desk to
+         * fix a problem it does not have.
+         */
+        e.preventDefault();
+        void navigate({ to: "/registration", search: { new: true } });
       }
     };
     window.addEventListener("keydown", onKey);
