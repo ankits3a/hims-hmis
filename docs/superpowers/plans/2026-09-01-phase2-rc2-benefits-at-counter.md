@@ -102,7 +102,28 @@ Three of five tasks were **arm-and-gate, not build**, and the spike said so befo
 - Per-task: T1 3 suites/9 (fail-first red recorded: `Expected 45000, Received 50000`, winner null — the shipped code was the mutant); T2 21/21 incl. the enum mutant; T3 6/6 incl. the gate mutant; T4 29/29; T5 31/31. Money-path batches 73 suites/725 and 74/731. All on `hmis_rc2_scratch` (§2.137).
 - **Rule-21 mutants: three, all died** — the enum-keyed referral (₹50 damage on every lab walk-in), the removed payer gate (₹100 given twice on a corporate bill), and the removed entitlement narrowing (the fifth visit un-invoiceable). Two were inline and disclosed rather than scratch files, because what needed showing was the DAMAGE, not a second copy of the arithmetic.
 
-### THE OUTSTANDING DEBT — read this before calling RC-2 closed
+### THE REVIEW LANE — RUN, AND IT CHANGED THE PHASE'S CONCLUSIONS
+
+**Both passes ran on the owner's approval (2026-09-01, after the first CLOSE was written). The debt below is DISCHARGED; what follows replaces it.**
+
+**Pass 1 (203k): 2 CRITICAL + 6 MAJOR + 4 MINOR** over a tree with 3337 green tests, three died mutants and clean typecheck/lint. **Sixth phase running** that an independent reviewer has found a CRITICAL or MAJOR over an already-green tree — the base rate this document predicted, confirmed against itself.
+
+- **C1 — the counter could not bill.** `resolveAgreementAt` does not only return null: it throws `PartnersError` when an agreement's jsonb lacks the ACCRUAL keys. Nothing caught it and `toHttp` has no arm, so quote and invoice both 500'd. Not exotic — nothing writes `partner_agreements`, so the jsonb is hand-authored at commissioning, and RC-2 taught operators to write exactly the patient-discount keys.
+- **M3 — a stranger's membership on anyone's bill.** `loadInstances` matches `byPatient OR byCode` against `card_code`. Bearer semantics are correct AND TESTED for the actor-gated recognition surface; they were never safe on the composer, and until this phase they were unreachable there. **T1 opened `?coupon=` and T2 declared it on both invoice bodies.** `?coupon=<their card>` proposed their percentage and then burned THEIR counter against THIS invoice.
+- **M4** — T2's `patientId` on `previewInvoiceBody` made a route with no actor into an instrument oracle: `candidates` carries each instrument's reason and a coupon's literal code, for any patient, outside `visiblePatientIds`, and those codes are spendable. **M5** — the slip was never bound to its patient. **M7** — `enrolMember` recorded no actor anywhere, so D5's boundary had unrecorded crossings. **M8** — the web wire could not send what T2 declared, so RC-1 T1's class survived one layer further out.
+
+**Pass 2 (187k), briefed at the FIXES with a verdict each: 3 of 7 INCOMPLETE.**
+
+- **My C1 fix traded a loud defect for a silent one.** A bare `catch` swallowed infrastructure failures too, so a `statement_timeout` would have issued the bill at FULL PRICE with an empty audit record. Narrowed.
+- **My M5 fix ignored the merge tree** — raw string equality in a codebase whose sibling resolver exists to prevent that. A slip issued before a merge silently loses its attribution.
+- **One of my own assertions could not fail**: I asserted the counter untouched after `previewInvoice`, which persists nothing. The commit said "both halves asserted"; only one was.
+- Pass 2 also **endorsed a refusal I had not justified**: not adding a `PartnersError` arm to `toHttp` was right, because it would close a runtime require-cycle.
+
+**And two of my fixes were caught defective by the SUITE before pass 2 saw them** — adding `patientId` to `ScannedAttribution` violated DD15's identity-free contract, and defaulting the card behaviour off silently reversed a tested one. **Four defective fixes across two rounds.** §2.145's arithmetic is not a caution, it is the observed rate on this path.
+
+**Carried to the owner, not fixed in a closing phase:** the lab desk's preview is the same oracle M4 closed on billing's (pre-existing, but this phase's own §2.150 census named that route and the remediation closed one door while writing the door was closed); a plan-bundled coupon presented by a stranger permanently spends the member's single-use coupon and needs a ruling on whether bundled coupons are bearer instruments; the quote silently truncates codes the invoice hard-rejects.
+
+### THE ORIGINAL DEBT NOTE (superseded above, kept because the prediction was the point)
 
 **The two independent review passes §9.10 requires have NOT been run.** This session was constrained from spawning subagents. Every phase since 09a has had reviewers find a CRITICAL or MAJOR over a tree that was already green: RC-1's pass 1 found 1 CRITICAL + 4 MAJOR against 55 green tests, a died mutant and clean typecheck/lint, and its pass 2 found the M2 fix incomplete plus a new screen regression. **RC-2 touched three money paths** (the quote's coupon door, a new pricing source, the payer gate) and one permission boundary. On the base rate, this tree has findings in it. That is the single largest risk on this phase and it is the owner's call, not something to bury in a commit message.
 
