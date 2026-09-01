@@ -56,7 +56,7 @@ Per D3. `join: "defer"` → bill → `POST /opd/visits/:id/join-queue`.
 **Assertion book:** assertion — a bill-first walk-in has **null token, session and entry** until the money is taken, then joins with a token that is already PAID; mutant — the join fires before settlement; kill — an UNPAID token on the board in a lane whose entire purpose is that it never appears.
 **This is the phase's highest-risk task** (S2) and it gets fail-first treatment.
 
-### T3 — CRITICAL · the PAID stamp on the board — **RUNS BEFORE T2, and owes D7 first (§4A)**
+### T3 — CRITICAL · the PAID stamp on the board — **DONE, `bcb1397`. D7 RULED: the board.**
 **Files:** `apps/web/src/lib/opd-api.ts` (declare `feeStatus` — **MEASURE first**), the screen, `realtime.ts` if S5 says so, tests.
 Per D4.
 **Assertion book:** assertion — a settled encounter's token renders PAID and an unsettled one does not, from the server's `feeStatus` alone; mutant — the client re-deriving paid-ness from an invoice; kill — a board that disagrees with `encounterFeeStatuses` after a reversal, which is precisely what RC-3 T3 made the event able to report.
@@ -99,7 +99,13 @@ bill-first flow that waits for the money needs a surface that can see the money.
 
 **T3 THEREFORE RUNS BEFORE T2**, and it inherits a design decision this doc did not anticipate:
 
-> **D7 — WHICH SURFACE WEARS THE PAID STAMP?** Three candidates, and they are not equivalent.
+> **D7 — WHICH SURFACE WEARS THE PAID STAMP? — RULED (`bcb1397`): the BOARD, `opd-desk.tsx`.**
+> A UI surface choice is not money, procurement or law, so the standing rule makes it mine to
+> decide rather than escalate. It is literally what the demo calls "the board", it already reads
+> the route, and it needed **no core change** — `feeStatus` had been on the wire since RC-1 T3 with
+> no type declaring it, the third rail in three phases with that shape. The seat separately renders
+> the `tokenNo` it already holds from the walk-in result, closing D2's "token" noun for free. The
+> options as originally written: Three candidates, and they are not equivalent.
 > (a) **`opd-desk.tsx`**, which already reads `/opd/queues` and is what demo 1 most plausibly means
 > by "the board" — a one-field wire widening plus a render, no core change, but it edits a screen
 > outside this seat. (b) **The seat's own dossier**, which is where D2's unbuilt "token" noun
