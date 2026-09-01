@@ -2359,6 +2359,62 @@ that grants itself a permission no hospital grants (F45, F89), or writes a colum
 writes (F59), or builds a state the code cannot reach (F53). Each suite proved its own half
 correctly against a world the shipped system does not have.
 
+### ═══ THE CLOSING VERIFY — GREEN, AND BRACKETED AT BOTH ENDS ═══
+
+**`hmis_18a_v4`, its own database, 2026-09-01 22:22 → 23:06 UTC.** Five attempts were needed; four
+were discarded, and the fifth is the only one whose number can be attached to a tree.
+
+| half | result |
+|---|---|
+| `apps/core` | **3 516 passed / 3 516 · 347 suites passed / 347** · 2 644 s |
+| `@hmis/contracts` | 4 suites / 21 tests, exit 0 |
+| `apps/web` | 67 files / 68 — **the one failure is the RC-4 lane's own new test**, `registration-counter.test.tsx`, whose last two commits are theirs; all five radiology/pcpndt screens pass |
+| shape | compile-error suites **0** · assertion diffs **0** · `Exceeded timeout` **0** · `deadlock` **0** · `SIGKILL` **0** · `duplicate key` **0** |
+
+**THE CONDITIONS WERE RECORDED BEFORE THE RUN AND RE-CHECKED AFTER**, which is the practice the four
+discarded passes bought:
+
+```
+HEAD at start:  2669259      HEAD at finish: 2152f07
+dirty under apps/: 0 at start, 0 at finish
+git diff 2669259..2152f07 -- apps  =  0 lines   (HEAD moved by DOCS-ONLY commits)
+tsc --noEmit: exit 0, measured, before launching
+freeze: the RC-4 lane frozen on apps/core and apps/web by agreement
+```
+
+### Why five, and what the four cost — this is the phase's most expensive lesson
+
+**None of the four was a code problem. All four were the shared checkout.**
+
+1. **Invalidated by its own author** — the verify was launched and remediation continued in the same
+   tree, so later suites compiled files earlier suites had not.
+2. **A peer's two-file edit, seen half-done** — `queue.ts` had the import before `encounters.ts` had
+   the export. Three suites failed to RUN.
+3. **The same again, larger** — a controller in the app's entry graph, so **33 suites** never ran.
+   Zero assertion diffs in both cases, which is what made attribution instant.
+4. **Clean, but stale** — it predated the last two fixes.
+
+**The mechanism behind (2) and (3) is not the one either lane assumed, and it is the finding.** The
+peer wrote all four files in ONE call and `tsc` was green on the tree afterwards — *the tree was
+never in the state the run reported*. **Jest workers are long-lived and ts-jest caches per worker**,
+so a worker that had already loaded the old `encounters.ts` kept it and compiled the NEW controller
+against it. The files were consistent on disk and inconsistent inside a process.
+
+> **THE UNIT OF STALENESS IS THE WORKER PROCESS, NOT THE FILE.** An atomic write protects a reader of
+> the disk; it does not protect a reader that started before the write and is still running.
+>
+> **And a long-running verify cannot detect that its own inputs changed.** Jest reports a compile
+> error identically whether the file was always broken or broke underneath it, and a `tsc` run
+> afterwards says green either way — so the evidence that would distinguish them is gone by the time
+> anybody looks. **A freeze window is not politeness; it is the only thing that makes a full pass
+> falsifiable.** Ask who is EDITING, not only who is running — `ps` shows running and nothing shows
+> editing, so the only instrument is the other lane telling you.
+
+Recorded in the peer lane's ledger as §2.165 and in method §9.9 rule 5. **The three hours are a
+SHARED-CHECKOUT cost, not a review cost**: the reviews were cheap and found everything.
+
+---
+
 ### The full workspace pass this review ran — `hmis_18a_review`, its own database
 
 Started 17:22 UTC on 2026-09-01 from the tree at `03fd081` (this phase's tip `ec0aa8a` plus four
