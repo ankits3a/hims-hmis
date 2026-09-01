@@ -70,6 +70,15 @@ export {
   raiseBillDecision, resolveBillDecision,
 } from "./money";
 export type { AuthorisationEncounterFacts, AuthorisationStudyFacts } from "./money";
+export {
+  SECOND_FACTOR_WINDOW_MINUTES, acknowledgeCritical, amendReport, draftReport, flagCritical,
+  latestSigned, publishReport, savePrelim, signReport,
+} from "./reports";
+export type { ReportContent, ReportRow } from "./reports";
+export { REPORT_TEMPLATES, templateFor, templateKeyFor } from "./templates";
+export type { ReportTemplate } from "./templates";
+export { WORKLIST_VIEWS, reportView, studyView, worklist } from "./read";
+export type { ReportView, StudyView, WorklistRow, WorklistView } from "./read";
 export type {
   PcpndtApplicability, PcpndtPatientFacts, PcpndtStudyTypeFacts,
 } from "./applicability";

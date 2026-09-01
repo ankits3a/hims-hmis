@@ -5,6 +5,7 @@ import { RadiologyScheduleController } from "./radiology-schedule.controller";
 import { RadiologyStudyController } from "./radiology-study.controller";
 import { RadiologyAcquisitionController } from "./radiology-acquisition.controller";
 import { RadiologyBillDecisionsController } from "./radiology-bill-decisions.controller";
+import { RadiologyReportsController } from "./radiology-reports.controller";
 
 /**
  * PLAN 18a T3 — the radiology module's Nest wiring.
@@ -25,9 +26,9 @@ import { RadiologyBillDecisionsController } from "./radiology-bill-decisions.con
  *
  * ═══ WHAT IS NOT MOUNTED YET ═══
  *
- * T8's reporting. At T7 this module is placement, the governed book, the diary, the study console,
- * the acquisition path and the counter's bill-decision queue; the controllers list is where a reader
- * sees that at a glance rather than inferring it from the routes that answer.
+ * NOTHING, at T8 — placement, the governed book, the diary, the study console, acquisition, the
+ * counter's bill-decision queue and the whole reporting path are all mounted. T9 adds the screens
+ * that call them and the end-to-end proof through the REAL manifest.
  */
 @Module({
   controllers: [
@@ -37,6 +38,7 @@ import { RadiologyBillDecisionsController } from "./radiology-bill-decisions.con
     RadiologyStudyController,
     RadiologyAcquisitionController,
     RadiologyBillDecisionsController,
+    RadiologyReportsController,
   ],
 })
 export class RadiologyModule {}

@@ -14,6 +14,12 @@ import {
   RADIOLOGY_RESOURCE_KINDS, RADIOLOGY_WORKFLOW_DEFINITIONS, handleOrderPlaced, placeImagingOrder,
 } from "../../src/modules/radiology";
 import { ensureRole, mkUser } from "./opd";
+import { imagingStudies } from "../../src/kernel/db/schema";
+import { eq } from "drizzle-orm";
+import { checkIn } from "../../src/modules/radiology/checkin";
+import { evaluateReadiness, requireStudyGate, satisfyGate } from "../../src/modules/radiology/gates";
+import { scheduleStudy } from "../../src/modules/radiology/schedule";
+import { recordAcquired, startAcquisition } from "../../src/modules/radiology/acquisition";
 import type { Db } from "../../src/kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type { OrderKindDecl } from "../../src/kernel/orders/kinds";
@@ -245,4 +251,49 @@ export async function placeAndCreateStudy(
     studyId: created[0]!.studyId, accessionNo: created[0]!.accessionNo,
     orderId: placed.orderId, itemId: placed.itemIds[0]!,
   };
+}
+
+/**
+ * ═══ A STUDY ON `acquired`, WHICH IS WHERE A REPORT BECOMES POSSIBLE (18a T8) ═══
+ *
+ * Three T8 suites need the same seven-step precondition — placed, scheduled, checked in, every
+ * opened gate cleared, ready, started, acquired. Building it three times would be three chances to
+ * build it differently, and a reporting test that fails because its fixture drifted teaches nothing
+ * (the same argument `setupRadiologyFixture` makes for itself).
+ *
+ * `stat` priority is set before the start so DD12a authorises without an invoice line: this helper's
+ * subject is the REPORT, and a test that had to raise a bill first would be paying for a proof it is
+ * not making. `money.test.ts` is where the authorisation matrix is asserted.
+ */
+export async function acquireStudy(
+  db: Db,
+  fx: RadiologyFixture,
+  opts: { serviceCode?: string; deviceKey?: string; idemKey: string; now: Date; slot: Date; dose?: boolean },
+): Promise<{ studyId: string; accessionNo: string; orderId: string; itemId: string }> {
+  const serviceCode = opts.serviceCode ?? "USG-ABDO";
+  const deviceKey = opts.deviceKey ?? "usg";
+  const study = await placeAndCreateStudy(db, fx, serviceCode, opts.idemKey, opts.now);
+  await withTx(db, (tx) => scheduleStudy(tx, fx.radiographer, {
+    studyId: study.studyId, deviceResourceId: fx.devices[deviceKey]!, scheduledAt: opts.slot,
+  }));
+  const checked = await withTx(db, (tx) => checkIn(tx, fx.radiographer, { studyId: study.studyId, now: opts.now }));
+  const evidence: Record<string, unknown> = {
+    identity_two_factor: { secondIdentifier: "uhid", value: "HMS-00000001-5" },
+    pregnancy_screen: { declared: true, lmpDate: new Date(opts.now.getTime() - 10 * 86_400_000).toISOString() },
+    laterality_confirm: { patientStated: "na" },
+  };
+  for (const kind of checked.gates) {
+    const gate = await requireStudyGate(db, study.studyId, kind);
+    await withTx(db, (tx) => satisfyGate(tx, fx.radiographer, gate.id, evidence[kind] ?? {}, opts.now));
+  }
+  await withTx(db, (tx) => evaluateReadiness(tx, study.studyId));
+  await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+  await withTx(db, (tx) => startAcquisition(tx, fx.radiographer, fx.decls, {
+    studyId: study.studyId, onDate: fx.serviceDate, now: opts.now,
+  }));
+  await withTx(db, (tx) => recordAcquired(tx, fx.radiographer, fx.decls, {
+    studyId: study.studyId, onDate: fx.serviceDate, imageSource: "no_pacs_images", now: opts.now,
+    ...(opts.dose === true ? { doseDap: 1.2 } : {}),
+  }));
+  return study;
 }

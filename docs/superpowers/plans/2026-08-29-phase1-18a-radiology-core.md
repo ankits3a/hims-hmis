@@ -551,7 +551,8 @@ Four. Two carry code and both are additive and inert — **no manifest claims `i
 | 3 | **`d5abf6a`** | **T1 — eleven tables, `0047_radiology_core`, the `X` accession series, the two whole-row immutability triggers, `truncateAll` across three statements, both `EPISODE_SERIES` censuses. GREEN: exit 0, 4 suites, 61/61, on `hmis_lane_b_scratch_1`** |
 | 4 | **`997ab18`** | **T2 PARTIAL — the two module skeletons (manifests, kinds, events, workflow definitions, approval type, error unions). Typechecked and linted; NO tests of their own yet. Installed by nobody: neither manifest is in `ALL_MANIFESTS`** |
 | 5 | `e9c425c` `74e3079` `a407719` `620b7c1` | **T2, T3, T4 and the owner's seed ruling.** Per-commit breakdown in the T4/T5 handoff (`b1319f1`) |
-| 8 | *(this task)* | **T7 — acquisition: the start's order of operations, the four DD12a authorisations, M4's dose rule (F18 CLOSED — `ionising` is written at last), contrast against T5's gates, the once-only acquired event and the counter's bill-decision queue. GREEN: 3 suites / 43 tests; radiology + pcpndt 20 / 276. Five of seven mutants DIED as stated; A1 and A2 SURVIVED and their atomicity-breaking replacements DIED (F30)** |
+| 9 | *(this task)* | **T8 — the report: every save a version, the signature under a fresh second factor, the lockout on EVERY report, the side against the order, amend as v(n+1), publication that money never gates, the criticals with a read-back, and the three reads with their two confidentiality rules. GREEN: 3 suites / 35 tests; radiology + pcpndt 23 / 311. ALL EIGHT MUTANTS DIED** |
+| 8 | `6908d13` | **T7 — acquisition: the start's order of operations, the four DD12a authorisations, M4's dose rule (F18 CLOSED — `ionising` is written at last), contrast against T5's gates, the once-only acquired event and the counter's bill-decision queue. GREEN: 3 suites / 43 tests; radiology + pcpndt 20 / 276. Five of seven mutants DIED as stated; A1 and A2 SURVIVED and their atomicity-breaking replacements DIED (F30)** |
 | 7 | `f449f70` | **T6 — the `pcpndt` module: registrations with a hard validity block, Form B's machines and persons with MEMBERSHIP checks, the gap-free per-machine-per-year serial, the open/record/verify life, the lexical lockout and the one real-name reader. Includes migration `0050` (F25) — out of Files list, disclosed. GREEN: 5 suites / 57 tests first run; radiology 12 / 179 after F28's root fix. ALL SEVEN NAMED MUTANTS DIED** |
 | 6 | `835ca2a` | **T5 — check-in and the gate set DERIVED from the type's flags and the patient; the ten kinds' evidence rules; the waiver and override lanes with `form_f` and `identity_two_factor` refused BY KIND before any read; readiness; one mounted controller. GREEN on `hmis_lane_b_scratch`: 3 new suites / 76 tests, every radiology suite 12 / 176, the censuses 12 / 126. ALL SIX NAMED MUTANTS DIED. The full workspace verify is RED IN THE OTHER LANE'S FILES and unattributable — CI by SHA is the instrument (§9.5-T5)** |
 
@@ -1328,6 +1329,74 @@ whose consent gate is not terminal. `recordAcquired` does, with `contrast_mismat
 `openStudyGate` remains exported so a console can open the three at the moment an `optional` study's
 contrast decision is actually taken.
 
+
+---
+
+## ═══ T8's FINDINGS (2026-09-01) ═══
+
+**F33 — I WROTE F21 THIS MORNING AND THEN GOT IT WRONG AGAIN THIS AFTERNOON, IN THE SAME PHASE. THE
+RULE NEEDED SHARPENING, NOT REPEATING.** *(found by running `reports.concurrency.test.ts`)*
+
+T5's F21 says a compare-and-set race needs a HELD transaction and T4's slot race does not. I carried
+that forward as *"CAS needs a hold, an INDEX does not"* and wrote it into this file's header as the
+reason A2's amend race needed no construction: `imaging_reports_one_signed_ux` is an index, like
+T4's slot unique, so surely every caller must reach it.
+
+**Measured: three concurrent amends SERIALISED and all of them succeeded** — v1→v2→v3, each reading
+the previous winner as its own starting point. That is not a race; it is three legitimate sequential
+amendments, and it proves nothing about A2.
+
+**The distinction is not CAS-versus-index. It is whether a PRE-READ sits in front of the control.**
+
+| race | control | pre-read in front of it? | needs a hold |
+|---|---|---|---|
+| T4 A1, the slot | partial unique on `(device, instant)` | none — the UPDATE goes straight at the index | **no** |
+| T5 A7, the gate | `transition`'s conditional UPDATE | `gateState()` | **yes** |
+| T8 A2, the first signature | partial unique on `status='signed'` | none — both INSERT directly | **no** (verified: it passes unheld) |
+| T8 A2, the AMEND | the same partial unique | **`latestSigned()`** | **yes** |
+
+The amend and the first signature ride the SAME INDEX and only one of them needs the construction,
+which is what makes the sharpened rule worth having: **a pre-read decides, and the shape of the
+control does not.** Both T8 races are in the same file, unheld and held respectively, so the contrast
+is visible to the next reader rather than described to them.
+
+**F34 — A7's HAZARD IS NOT REACHABLE FROM ANY INPUT THIS FIXTURE CAN PRODUCE, SO THE SWALLOW IS
+DEFENSIVE RATHER THAN DEMONSTRATED.** *(disclosed; the mutant compensates)*
+
+A7 says an `enqueueNotification` failure must not fail `publishReport` (S7: a patient with no
+channel; C7: a report signed at 02:00 left unpublished because a phone number is missing).
+
+**Measured: nothing a test can pass in makes the real `enqueueNotification` throw here.** A
+duplicate `dedupeKey` inserts nothing by design (N6, "redelivery of the same event"), a missing
+phone is the PUMP's problem rather than the enqueue's, and the only documented throws are an
+unregistered template key and a `promotional` class — neither reachable from a caller. So the
+shipped test asserts that publication survives an enqueue that did not actually fail, which is a
+weaker claim than A7 makes.
+
+**The mutant is where the real evidence is**: it removes the `try/catch` AND points the enqueue at
+an unregistered key, which is the one condition that genuinely throws — and the assertion kills it.
+Recorded rather than left implicit, because a reader of the shipped test alone would over-rate it.
+
+**F35 — `imaging_reports.amended` IS A STATUS NOTHING WRITES.** *(measured, low severity, recorded
+so it is not mistaken for a code path)*
+
+`IMAGING_REPORT_STATUSES` carries five names and this phase writes four. A2 specifies the amendment
+as *"v2 `signed`, v1 `superseded`"*, which is what shipped and what the partial unique requires — a
+new version that is not `signed` would leave the study with no current report. `amended` is
+therefore unreachable, exactly as `rescheduled` was before F24.
+
+**Not fixed here** and it is a smaller thing than F24: the enum is T1's, no control depends on this
+member, and removing a status from a CHECK is a migration for a cosmetic gain. The close review owns
+whether it comes out or whether a later slice (18a-iii's addenda) gives it a meaning.
+
+**A DECISION T8 TOOK THAT THE PLAN LEAVES OPEN: EVERY SAVE IS A NEW VERSION.**
+
+`imaging_reports_immutable` permits `status` and `published_at` to change and nothing else, so there
+is no way to edit a draft in place. A draft saved twice is two rows, a signature is its own row, and
+an amendment is v(n+1). That follows from T1's trigger rather than from a choice made here, and it
+is stated because the alternative a reader might expect — a mutable draft that hardens at signature
+— **is not reachable** and would have needed a migration to become so.
+
 ### 9.4 The Assertion Book, corrected by execution
 
 **T1 is ROUTINE, so no mutants are owed** (AGENT-RULES §3) and none were built; the report says so
@@ -1731,6 +1800,33 @@ ruling on §2.151, `42e7efc`), so no hand-capping was needed.
 the workflow engine's own guard — but it refuses with `unknown_transition`, a 409 that tells a
 technologist nothing. **The CAS is not what makes the refusal happen; it is what makes the refusal
 ACTIONABLE**, and an assertion that only counted events would have missed that entirely.
+
+### 9.5-T8 — T8's mechanical verification (2026-09-01)
+
+| run | result |
+|---|---|
+| the three new T8 suites (`reports`, `reports.concurrency`, `read`) | **3 suites / 35 tests, exit 0** |
+| every radiology + pcpndt suite | **23 suites / 311 tests, exit 0** |
+| `pnpm typecheck` over `apps/core` | **exit 0 for every file this task touches** (the run also reports one error in `modules/billing/benefits-payer.test.ts`, which the RC-2 lane was editing two minutes earlier — not this lane's, §2.137) |
+| `pnpm lint` over `modules/radiology`, `modules/pcpndt` and the helpers | **exit 0, no errors** |
+
+#### The mutants — all eight the Assertion Book names, and all eight DIED
+
+| # | mutant | verdict | expected vs received |
+|---|---|---|---|
+| A1 | the second-factor freshness check removed | **DIED** | expected a rejection with `second_factor_required`, received a RESOLVED promise |
+| A2 | amend by UPDATE of v1 instead of insert-and-supersede | **DIED** | the trigger refused the UPDATE, so the amend threw where the assertion expected two intact versions |
+| A3 | the lockout applied only when `form_f_required` | **DIED** | expected `lexical_lockout` on a plain study, received a RESOLVED promise — N9's pregnant trauma CT |
+| A4 | the laterality compare dropped | **DIED** | expected `laterality_mismatch`, received a RESOLVED promise |
+| A5 | the TRIGGER named columns explicitly and omitted `body` (scratch DDL, shipped function restored) | **DIED** | expected the UPDATE to reject, received a RESOLVED promise — E11 |
+| A6 | publication itself gated on payment | **DIED** | expected the study `published` with `notified: false`, received `payment_required` — D5's exact inversion |
+| A7 | the enqueue swallow removed AND the template key made unregistered | **DIED** | the publish threw where the assertion required `published` — see F34 on why the key had to be changed too |
+| A8 | restricted rows shown under the alias instead of held out | **DIED** | expected one row, received two — the obstetric study visible to a technologist with no clearance |
+
+**A1's mutant died at TYPECHECK on its first build and that was thrown away.** Removing the
+freshness guard left `secondFactorAt: Date | null` flowing into a `Date`, so `tsc` refused it before
+any assertion ran — and rule 21 is explicit that a typecheck death proves nothing. The mutant was
+made to compile (`?? now`) and re-run, and only then did the assertion decide.
 
 ### 9.6 The independent close review — FRESH
 
