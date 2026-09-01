@@ -76,7 +76,7 @@ describe("VD-1 T4 — pre-stage", () => {
     expect(p.last!.serviceDate).toBe("2026-08-17");
     expect(p.carryCandidates).toEqual(["heightCm"]);
     // "This is what happened last time", judged by TODAY's band — the cuff goes on first.
-    expect(p.expectedFlags).toEqual([{ vital: "sbp", value: 190, bound: "max", limit: 180 }]);
+    expect(p.expectedFlags).toEqual([{ vital: "sbp", value: 190, bound: "max", limit: 180, severity: "danger" }]);
   });
 
   it("a child's height is NEVER carried — a changing height is the clinical finding", async () => {

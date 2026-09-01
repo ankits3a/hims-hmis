@@ -175,14 +175,30 @@ export function missingRequired(
 export function evaluateVitals(v: VitalsInput, band: BandConfig, cfg?: DangerRangesConfig): DangerFlag[] {
   const flags: DangerFlag[] = [];
   const notRoutine = new Set<VitalKey>(band.notRoutine);
+  const danger = new Set<VitalKey>();
   for (const k of RANGED) {
     if (notRoutine.has(k)) continue;
     const value = v[k];
     if (value === undefined || value === null) continue;
     const r = band.ranges[k];
     if (!r) continue;
-    if (r.min !== undefined && value < r.min) flags.push({ vital: k, value, bound: "min", limit: r.min });
-    if (r.max !== undefined && value > r.max) flags.push({ vital: k, value, bound: "max", limit: r.max });
+    if (r.min !== undefined && value < r.min) { flags.push({ vital: k, value, bound: "min", limit: r.min, severity: "danger" }); danger.add(k); }
+    if (r.max !== undefined && value > r.max) { flags.push({ vital: k, value, bound: "max", limit: r.max, severity: "danger" }); danger.add(k); }
+  }
+  /**
+   * ═══ VD-1 CLOSE / F1 — THE NOTICE PASS: SEEN BY THE DOCTOR, IGNORED BY THE QUEUE ═══
+   *
+   * A vital that already produced a DANGER flag is skipped: a 40.2 °C toddler is one fact, not two,
+   * and reporting it twice would double-count on every screen that renders `dangerFlags`.
+   */
+  for (const k of RANGED) {
+    if (notRoutine.has(k) || danger.has(k)) continue;
+    const value = v[k];
+    if (value === undefined || value === null) continue;
+    const n = band.noticeRanges[k];
+    if (!n) continue;
+    if (n.min !== undefined && value < n.min) flags.push({ vital: k, value, bound: "min", limit: n.min, severity: "notice" });
+    if (n.max !== undefined && value > n.max) flags.push({ vital: k, value, bound: "max", limit: n.max, severity: "notice" });
   }
   // MUAC is banded rather than ranged: two thresholds, and the flag names the one actually
   // breached so a reader who knows nothing about malnutrition still renders it correctly.
@@ -191,7 +207,7 @@ export function evaluateVitals(v: VitalsInput, band: BandConfig, cfg?: DangerRan
     const limit = muac < cfg.muacBands.samUnderCm ? cfg.muacBands.samUnderCm
       : muac < cfg.muacBands.mamUnderCm ? cfg.muacBands.mamUnderCm
         : null;
-    if (limit !== null) flags.push({ vital: "muacCm", value: muac, bound: "min", limit });
+    if (limit !== null) flags.push({ vital: "muacCm", value: muac, bound: "min", limit, severity: "danger" });
   }
   return flags;
 }

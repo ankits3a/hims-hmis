@@ -79,7 +79,7 @@ describe("opd vitals (recording, danger flags, the registered→waiting move)", 
   it("danger flags and never auto-clears", async () => {
     const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
     const r1 = await recordVitals(db, vd.actor, opened.encounter.id, { ...adultOk, sbp: 190 }, MON);
-    expect(r1.flags).toEqual([{ vital: "sbp", value: 190, bound: "max", limit: 180 }]);
+    expect(r1.flags).toEqual([{ vital: "sbp", value: 190, bound: "max", limit: 180, severity: "danger" }]);
     expect(r1.encounter.dangerFlagged).toBe(true);
 
     const entry1 = (await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, opened.encounter.id)))[0]!;
@@ -88,7 +88,7 @@ describe("opd vitals (recording, danger flags, the registered→waiting move)", 
     const flaggedEvents = await db.select().from(events).where(eq(events.name, "vitals.danger_flagged"));
     expect(flaggedEvents).toHaveLength(1);
     expect(flaggedEvents[0]!.payload).toMatchObject({
-      flags: [{ vital: "sbp", value: 190, bound: "max", limit: 180 }], tokenNo: 1,
+      flags: [{ vital: "sbp", value: 190, bound: "max", limit: 180, severity: "danger" }], tokenNo: 1,
     });
 
     const MON5 = new Date(MON.getTime() + 5 * 60_000);
@@ -133,7 +133,7 @@ describe("opd vitals (recording, danger flags, the registered→waiting move)", 
     expect(r.vitals.band).toBe("child_1_5");
     expect(r.vitals.ageYearsAtRecord).toBe(3);
     expect(r.vitals.muacCm).toBe(13.4);
-    expect(r.flags).toEqual([{ vital: "pulse", value: 155, bound: "max", limit: 150 }]);
+    expect(r.flags).toEqual([{ vital: "pulse", value: 155, bound: "max", limit: 150, severity: "danger" }]);
 
     await expect(recordVitals(db, vd.actor, opened.encounter.id, { heightCm: 92, tempC: 37.2, spo2: 98, pulse: 100, muacCm: 13.4 }, MON))
       .rejects.toMatchObject({ code: "vitals_incomplete", detail: { missing: ["weightKg"] } });
@@ -241,5 +241,46 @@ describe("opd vitals (recording, danger flags, the registered→waiting move)", 
     await abandonVisit(db, clerk.actor, opened.encounter.id, "left before vitals", MON);
     await expect(recordVitals(db, vd.actor, opened.encounter.id, adultOk, MON))
       .rejects.toMatchObject({ code: "encounter_state_conflict" });
+  });
+
+  /**
+   * ═══ VD-1 CLOSE / F1 — THE FEVER REACHES THE DOCTOR AND THE QUEUE DOES NOT MOVE ═══
+   *
+   * The pure rule is proved in `vitals-rules.test.ts`. What is proved HERE is the half that
+   * actually decides a child's afternoon: the notice is STORED where the doctor reads it, and
+   * `opd_queue_entries.danger` — queue class 0 — is untouched. Getting this wrong in the generous
+   * direction would seat a febrile toddler ahead of a stroke.
+   */
+  it("F1: a paediatric fever is flagged to the doctor and does NOT move the board", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId: childPatient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const r = await recordVitals(db, vd.actor, opened.encounter.id, {
+      heightCm: 92, weightKg: 14, tempC: 38.9, spo2: 98, pulse: 110, muacCm: 13.4,
+    }, MON);
+
+    // The doctor sees it — it is on the chart the consultation screen reads.
+    expect(r.flags).toEqual([{ vital: "tempC", value: 38.9, bound: "max", limit: 37.9, severity: "notice" }]);
+    expect(r.vitals.dangerFlags).toEqual([{ vital: "tempC", value: 38.9, bound: "max", limit: 37.9, severity: "notice" }]);
+
+    // …and the board does not move. Neither the clinical danger flag nor queue class 0.
+    expect(r.encounter.dangerFlagged).toBe(false);
+    const entry = (await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, opened.encounter.id)))[0]!;
+    expect(entry.danger).toBe(false);
+
+    // No `vitals.danger_flagged` — a notice is not a danger, and an event that said otherwise
+    // would reach every queue screen watching that doctor-day.
+    expect(await db.select().from(events).where(eq(events.name, "vitals.danger_flagged"))).toHaveLength(0);
+    const recorded = (await db.select().from(events).where(eq(events.name, "vitals.recorded")))[0]!;
+    expect(recorded.payload).toMatchObject({ dangerCount: 0, noticeCount: 1 });
+  });
+
+  it("F1: a genuine paediatric danger still moves the board — the notice did not soften anything", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId: childPatient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const r = await recordVitals(db, vd.actor, opened.encounter.id, {
+      heightCm: 92, weightKg: 14, tempC: 40.2, spo2: 98, pulse: 110, muacCm: 13.4,
+    }, MON);
+    expect(r.flags).toEqual([{ vital: "tempC", value: 40.2, bound: "max", limit: 39.5, severity: "danger" }]);
+    expect(r.encounter.dangerFlagged).toBe(true);
+    const entry = (await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, opened.encounter.id)))[0]!;
+    expect(entry.danger).toBe(true);
   });
 });

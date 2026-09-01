@@ -132,7 +132,20 @@ async function dangerOf(db: Db | Tx, actor: Actor, patientId: string, reading: V
   const cfg = await loadOpdConfig(db);
   const [summary] = await getPatientSummaries(db, actor, [patientId]);
   const ageYears = summary?.dob ? ageYearsAt(summary.dob, now) : null;
-  return evaluateVitals(reading, bandFor(ageYears, cfg.dangerRanges), cfg.dangerRanges);
+  /**
+   * ═══ VD-1 CLOSE / F1 — `notice` SEVERITY CANNOT BUY AN ESCALATION, AND THIS IS THE SHARP EDGE ═══
+   *
+   * Every entry point in this file asks `dangerOf` whether a bump is warranted. The paediatric
+   * fever notice added at CLOSE is a FLAG — it lands in `dangerFlags`, the doctor sees it, it rides
+   * the chart — and if this filter were missing, a 38.1 °C toddler would satisfy
+   * `flags.length > 0`, demand a recheck, and on a second reading let the AGENT SET QUEUE CLASS 0
+   * BY ITSELF. A febrile child seated ahead of a stroke, by a rule added to help them.
+   *
+   * The filter is here rather than at the call sites because there are three of them and a fourth
+   * will be added by whoever adds the next entry point.
+   */
+  const flags = evaluateVitals(reading, bandFor(ageYears, cfg.dangerRanges), cfg.dangerRanges);
+  return flags.filter((f) => f.severity !== "notice");
 }
 
 /**

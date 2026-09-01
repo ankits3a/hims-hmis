@@ -484,6 +484,62 @@ then exonerated it — radiology's entire billing surface is `withIdempotency` a
 with no `charge-rules`, no `previewInvoice`, no `feeQuote` — and reproduced the identical five on
 its own tree. Two lanes, two trees, the same five.
 
+### F1 — A PAEDIATRIC FEVER REACHED NOBODY, found by reading the contract against the code
+
+**The independent review this phase owes could not be run** (this session may not spawn agents
+unless the owner asks), so the cheapest available substitute was run instead: the signed-off demo
+contract, clause by clause, against the shipped code. The technique is the 18a lane's, which used
+it the same day to find two defects behind 343 green tests and thirty dead mutants. It took ten
+minutes and found one here.
+
+**Demo story 6: *"fever is flagged to the doctor ahead of the call."* It was not.** `child_1_5`'s
+danger band tops out at **39.5 °C**, so Aarav Kumar at **38.9** produced *nothing at all* — no flag,
+no event, nothing on any screen. The signed-off design carries a separate, tighter rule the phase
+document never captured: `if (P.age < 13 && v >= 38)`, a fever notice for anyone under thirteen.
+
+**Why no test caught it, and it is the same shape the 18a lane named:** every paediatric temperature
+in this phase's suites is `37.2` — in band under the right rule and the wrong one alike. **Every
+assertion that touched it checked a state where the two behaviours agree.** Fourteen dead mutants
+and 3 327 green tests all agreed with each other because not one of them put a temperature between
+38.0 and 39.5 on a child.
+
+#### The fix that mattered was the one refused
+
+Emitting it as a `danger` flag would have compiled, passed every existing test, and looked like
+closing the gap. **It would also have seated a febrile toddler at queue class 0, ahead of the stroke
+patient that lane exists for** — because `danger` sets `opd_queue_entries.danger`. The prototype says
+so in its own idiom: `note(…, "warn")`, never the brick.
+
+So `DangerFlag` gained **`severity: "danger" | "notice"`**, defaulted to `danger` so every flag
+already persisted parses unchanged. A notice is stored in `dangerFlags` where the doctor reads it
+and counted as `noticeCount` on `vitals.recorded`; only a `danger` flag sets `encounter.dangerFlagged`,
+sets `entry.danger`, or fires `vitals.danger_flagged`. The bounds are band DATA (`noticeRanges`), not
+constants — `37.9` rather than `38` because the comparison is `value > max` and the clinical rule is
+"≥ 38.0 is a fever".
+
+#### The sharp edge, which was nearly missed
+
+**`demandRecheck` asks "are there flags?"** — so without a filter a 38.1 °C toddler would satisfy it,
+demand a recheck, and on a second reading let the **agent set queue class 0 by itself**. A child
+jumping the queue by way of a rule added to protect them. `dangerOf` therefore filters to `danger`
+severity, at the one place all three entry points share.
+
+**MUTANT (rule 21) — built, DIED:** `dangerOf` without the filter. Discriminating input: a 4-year-old
+at 38.9 °C. Received **"promise resolved instead of rejected"** against an expected
+`escalation_not_warranted` — the mutant accepts the fever as grounds for escalation, exactly as
+predicted.
+
+**Four exhaustive `toEqual` assertions failed loudly** the moment `severity` was added — in
+`vitals-rules`, `vitals`, `vitals-gates`, `prestage` and `opd-lifecycle.e2e`. That is the precise
+opposite of this phase's bare-integer censuses, which failed silently, and it is the argument for
+writing the exhaustive form even when it is more annoying to maintain. `WireDangerFlag` was widened
+in the same change, for the reason `muacCm` was in T1: a wire union narrower than its producer is a
+type that lies until the first case arrives.
+
+**Evidence:** OPD module + both e2e suites + the census suite — **38 suites / 309 tests**, green
+after the four assertion updates; `vitals`, `vitals-rules`, `vitals-gates`, `escalation`, `prestage`
+45/45; typecheck and lint clean tree-wide.
+
 #### The census that was ten and then twelve — this phase's most expensive lesson
 
 `10b37d0` declared one permission, moved two census pins, and **left `main` red.** This lane had

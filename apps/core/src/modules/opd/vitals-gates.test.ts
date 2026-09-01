@@ -105,7 +105,7 @@ describe("VD-1 T2 — the sanity gates", () => {
 
     const r = await recordVitals(db, vd.actor, enc, { ...adultOk, spo2: 45 }, MON, { overrides: { spo2: "confirmed_real" } });
     expect(r.vitals.spo2).toBe(45);
-    expect(r.flags).toContainEqual({ vital: "spo2", value: 45, bound: "min", limit: 90 });
+    expect(r.flags).toContainEqual({ vital: "spo2", value: 45, bound: "min", limit: 90, severity: "danger" });
   });
 
   it("the shrinking adult: a height 4 cm from the last recorded one is held, then keeps BOTH numbers", async () => {

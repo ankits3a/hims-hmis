@@ -30,6 +30,24 @@ export const dangerFlagSchema = z.object({
   value: z.number(),
   bound: z.enum(["min", "max"]),
   limit: z.number(),
+  /**
+   * ═══ VD-1 CLOSE / F1 — A FLAG THE DOCTOR SEES IS NOT ALWAYS A FLAG THE QUEUE OBEYS ═══
+   *
+   * `danger` is the shipped meaning and stays the default, so every flag already persisted parses
+   * unchanged and every existing consumer reads what it always read.
+   *
+   * `notice` is new and exists for one clinical rule the signed-off design has and this phase had
+   * not built: **a paediatric fever is flagged to the doctor AHEAD OF THE CALL without moving the
+   * queue.** A 4-year-old at 38.9 °C sits inside the `child_1_5` danger band (max 39.5) and so
+   * produced NOTHING at all — no flag, no event, nothing on the doctor's screen — while demo story
+   * 6 requires exactly that it reach them early.
+   *
+   * The distinction is load-bearing rather than cosmetic. Emitting it as a `danger` flag would have
+   * been the easy fix and would be WRONG: `danger` sets `opd_queue_entries.danger`, which is queue
+   * class 0, and a febrile toddler would then be seated ahead of a stroke. The prototype's own
+   * treatment says the same thing in its own idiom — `note(…, "warn")`, never the brick.
+   */
+  severity: z.enum(["danger", "notice"]).default("danger"),
 });
 export type DangerFlag = z.infer<typeof dangerFlagSchema>;
 
@@ -106,6 +124,8 @@ export const vitalsRecorded = defineEvent("vitals.recorded", MODULE, z.object({
   encounterId: id, patientId: id, vitalsId: id, ...where,
   band: z.enum(["infant", "child_1_5", "child_6_12", "adult"]),
   dangerCount: z.number().int().nonnegative(),
+  /** F1 — flags the doctor should see that did NOT move the queue. Defaulted for rows written before. */
+  noticeCount: z.number().int().nonnegative().default(0),
 }));
 
 export const vitalsDangerFlagged = defineEvent("vitals.danger_flagged", MODULE, z.object({

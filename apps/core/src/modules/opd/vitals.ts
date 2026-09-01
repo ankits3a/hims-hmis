@@ -220,6 +220,11 @@ export async function recordVitals(
   const missing = missingRequired(charted, ageYears, cfg.dangerRanges, { emergency, carriedForward });
   if (missing.length > 0) throw new OpdError("vitals_incomplete", `missing: ${missing.join(", ")}`, { missing });
   const flags = evaluateVitals(charted, band, cfg.dangerRanges);
+  /**
+   * F1 — the split. Every flag is STORED and reaches the doctor; only a `danger` one moves the
+   * board. A paediatric fever notice must never seat a toddler ahead of a stroke.
+   */
+  const dangerFlags = flags.filter((f) => f.severity !== "notice");
 
   return withTx(db, async (tx) => {
     let encounter: EncounterRow = enc;
@@ -244,7 +249,7 @@ export async function recordVitals(
     const where = { doctorId: encounter.doctorId!, serviceDate: encounter.serviceDate, sessionId: entry.sessionId, roomId, tokenNo: entry.tokenNo };
     const env = { actor, patientId: encounter.patientId, encounterId, correlationId: encounter.workflowInstanceId };
 
-    if (flags.length > 0) {
+    if (dangerFlags.length > 0) {
       // Not a status write — the mirror rule stands (only moveEncounter writes opd_encounters.status).
       await tx.update(opdEncounters).set({ dangerFlagged: true }).where(eq(opdEncounters.id, encounterId));
       /**
@@ -269,11 +274,12 @@ export async function recordVitals(
           inArray(opdQueueEntries.status, [...DANGER_ENTRY_STATUSES]),
           ne(opdQueueEntries.escalation, "cancelled"),
         ));
-      await appendEvent(tx, vitalsDangerFlagged.make({ ...env, payload: { encounterId, patientId: encounter.patientId, vitalsId: vitals!.id, ...where, flags } }));
+      await appendEvent(tx, vitalsDangerFlagged.make({ ...env, payload: { encounterId, patientId: encounter.patientId, vitalsId: vitals!.id, ...where, flags: dangerFlags } }));
       encounter = { ...encounter, dangerFlagged: true };
     }
     await appendEvent(tx, vitalsRecorded.make({ ...env, payload: {
-      encounterId, patientId: encounter.patientId, vitalsId: vitals!.id, ...where, band: band.key, dangerCount: flags.length,
+      encounterId, patientId: encounter.patientId, vitalsId: vitals!.id, ...where, band: band.key,
+      dangerCount: dangerFlags.length, noticeCount: flags.length - dangerFlags.length,
     } }));
 
     return { vitals: vitals!, flags, encounter };

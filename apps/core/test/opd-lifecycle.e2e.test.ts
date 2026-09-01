@@ -359,7 +359,7 @@ describe("opd lifecycle e2e (HTTP + WebSocket)", () => {
 
     expect((await recordVitals(walkIn.encounter.id, adultOk)).flags).toEqual([]);
     const danger = await recordVitals(appointmentPatient.checkIn.encounter.id, adultDanger);
-    expect(danger.flags).toEqual([{ vital: "sbp", value: 190, bound: "max", limit: 180 }]);
+    expect(danger.flags).toEqual([{ vital: "sbp", value: 190, bound: "max", limit: 180, severity: "danger" }]);
 
     // Class 0 (danger) outranks the walk-in that arrived first AND the appointment's own future slot (class 4).
     const queue = await queueOf(dra.doctorId);

@@ -27,16 +27,16 @@ describe("vitals rules (pure)", () => {
   });
   it("evaluateVitals: inclusive bounds; each breach names vital, value, bound, limit", () => {
     const adult = bandFor(40, cfg);
-    expect(evaluateVitals({ ...adultOk, sbp: 190 }, adult)).toEqual([{ vital: "sbp", value: 190, bound: "max", limit: 180 }]);
+    expect(evaluateVitals({ ...adultOk, sbp: 190 }, adult)).toEqual([{ vital: "sbp", value: 190, bound: "max", limit: 180, severity: "danger" }]);
     expect(evaluateVitals({ ...adultOk, sbp: 180 }, adult)).toEqual([]);
-    expect(evaluateVitals({ ...adultOk, sbp: 89 }, adult)).toEqual([{ vital: "sbp", value: 89, bound: "min", limit: 90 }]);
-    expect(evaluateVitals({ ...adultOk, spo2: 89 }, adult)).toEqual([{ vital: "spo2", value: 89, bound: "min", limit: 90 }]);
+    expect(evaluateVitals({ ...adultOk, sbp: 89 }, adult)).toEqual([{ vital: "sbp", value: 89, bound: "min", limit: 90, severity: "danger" }]);
+    expect(evaluateVitals({ ...adultOk, spo2: 89 }, adult)).toEqual([{ vital: "spo2", value: 89, bound: "min", limit: 90, severity: "danger" }]);
     expect(evaluateVitals({ ...adultOk, tempC: 39.5 }, adult)).toEqual([]);
-    expect(evaluateVitals({ ...adultOk, tempC: 39.6 }, adult)).toEqual([{ vital: "tempC", value: 39.6, bound: "max", limit: 39.5 }]);
+    expect(evaluateVitals({ ...adultOk, tempC: 39.6 }, adult)).toEqual([{ vital: "tempC", value: 39.6, bound: "max", limit: 39.5, severity: "danger" }]);
     expect(evaluateVitals({ ...adultOk, sbp: 200, spo2: 85 }, adult)).toHaveLength(2);
-    expect(evaluateVitals({ pulse: 85 }, bandFor(0, cfg))).toEqual([{ vital: "pulse", value: 85, bound: "min", limit: 90 }]);
-    expect(evaluateVitals({ sbp: 141 }, bandFor(8, cfg))).toEqual([{ vital: "sbp", value: 141, bound: "max", limit: 140 }]);
-    expect(evaluateVitals({ rr: 31 }, adult)).toEqual([{ vital: "rr", value: 31, bound: "max", limit: 30 }]); // optional field, still evaluated when present
+    expect(evaluateVitals({ pulse: 85 }, bandFor(0, cfg))).toEqual([{ vital: "pulse", value: 85, bound: "min", limit: 90, severity: "danger" }]);
+    expect(evaluateVitals({ sbp: 141 }, bandFor(8, cfg))).toEqual([{ vital: "sbp", value: 141, bound: "max", limit: 140, severity: "danger" }]);
+    expect(evaluateVitals({ rr: 31 }, adult)).toEqual([{ vital: "rr", value: 31, bound: "max", limit: 30, severity: "danger" }]); // optional field, still evaluated when present
   });
   it("validateVitalsRanges refuses implausible readings", () => {
     expect(() => validateVitalsRanges({ ...adultOk, spo2: 101 })).toThrow(expect.objectContaining({ code: "invalid_vitals" }));
@@ -83,15 +83,15 @@ describe("VD-1 T1 — the reading model", () => {
     // 130/85 is inside the child band's own limits; 131/86 is outside them and still not flagged.
     expect(evaluateVitals({ sbp: 131, dbp: 86 }, child, cfg)).toEqual([]);
     expect(evaluateVitals({ sbp: 131, dbp: 86, spo2: 88 }, child, cfg))
-      .toEqual([{ vital: "spo2", value: 88, bound: "min", limit: 90 }]);
+      .toEqual([{ vital: "spo2", value: 88, bound: "min", limit: 90, severity: "danger" }]);
     // The same numbers on a six-year-old ARE flagged — the rule is the band's, not the value's.
     expect(evaluateVitals({ sbp: 141 }, bandFor(8, cfg), cfg)).toHaveLength(1);
   });
 
   it("MUAC: banded SAM / MAM / green, flagged at the zone actually breached", () => {
     const child = bandFor(4, cfg);
-    expect(evaluateVitals({ muacCm: 11.4 }, child, cfg)).toEqual([{ vital: "muacCm", value: 11.4, bound: "min", limit: 11.5 }]);
-    expect(evaluateVitals({ muacCm: 12.4 }, child, cfg)).toEqual([{ vital: "muacCm", value: 12.4, bound: "min", limit: 12.5 }]);
+    expect(evaluateVitals({ muacCm: 11.4 }, child, cfg)).toEqual([{ vital: "muacCm", value: 11.4, bound: "min", limit: 11.5, severity: "danger" }]);
+    expect(evaluateVitals({ muacCm: 12.4 }, child, cfg)).toEqual([{ vital: "muacCm", value: 12.4, bound: "min", limit: 12.5, severity: "danger" }]);
     expect(evaluateVitals({ muacCm: 12.5 }, child, cfg)).toEqual([]);
     expect([11.4, 12.4, 13.4].map((m) => muacZone(m, cfg))).toEqual(["sam", "mam", "green"]);
   });
@@ -112,5 +112,44 @@ describe("VD-1 T1 — the reading model", () => {
     expect(missingRequired({}, 4, cfg).every((k) => (VITAL_KEYS as readonly string[]).includes(k))).toBe(true);
     expect(() => validateVitalsRanges({ muacCm: 3 })).toThrow(expect.objectContaining({ code: "invalid_vitals" }));
     expect(() => validateVitalsRanges({ muacCm: 11.0 })).not.toThrow();
+  });
+
+  /**
+   * ═══ VD-1 CLOSE / F1 — THE PAEDIATRIC FEVER NOTICE ═══
+   *
+   * Aarav Kumar, 4, 38.9 °C. Demo story 6 requires that his fever reach the doctor AHEAD OF THE
+   * CALL. Before this, `child_1_5`'s danger band tops out at 39.5, so 38.9 produced **nothing** —
+   * no flag, no event, nothing on any screen. No test caught it because every paediatric
+   * temperature in this phase's suites was 37.2, which is in band under both the right rule and
+   * the wrong one: *every assertion that touched it checked a state where the two agree.*
+   *
+   * Found by reading the signed-off contract clause by clause against the shipped code, which is
+   * the technique the 18a lane used the same day to find two defects behind 343 green tests.
+   */
+  it("F1: a 4-year-old at 38.9 is FLAGGED to the doctor — and the flag does not move the queue", () => {
+    const child = bandFor(4, cfg);
+    const flags = evaluateVitals({ tempC: 38.9 }, child, cfg);
+    expect(flags).toEqual([{ vital: "tempC", value: 38.9, bound: "max", limit: 37.9, severity: "notice" }]);
+    // The whole point: nothing here is a danger, so nothing here reaches `opd_queue_entries.danger`.
+    expect(flags.filter((f) => f.severity !== "notice")).toEqual([]);
+  });
+
+  it("F1: the boundary is the clinical one — 38.0 is a fever, 37.9 is not", () => {
+    const child = bandFor(4, cfg);
+    expect(evaluateVitals({ tempC: 37.9 }, child, cfg)).toEqual([]);
+    expect(evaluateVitals({ tempC: 38.0 }, child, cfg)).toHaveLength(1);
+  });
+
+  it("F1: a real paediatric danger stays a danger, and is not ALSO reported as a notice", () => {
+    const child = bandFor(4, cfg);
+    const flags = evaluateVitals({ tempC: 40.2 }, child, cfg);
+    // One fact, not two: the notice pass skips a vital that already produced a danger flag.
+    expect(flags).toEqual([{ vital: "tempC", value: 40.2, bound: "max", limit: 39.5, severity: "danger" }]);
+  });
+
+  it("F1: the notice is PAEDIATRIC — an adult at 38.2 is an ordinary chart finding", () => {
+    expect(evaluateVitals({ tempC: 38.2 }, bandFor(40, cfg), cfg)).toEqual([]);
+    expect(evaluateVitals({ tempC: 38.2 }, bandFor(11, cfg), cfg))
+      .toEqual([{ vital: "tempC", value: 38.2, bound: "max", limit: 37.9, severity: "notice" }]);
   });
 });

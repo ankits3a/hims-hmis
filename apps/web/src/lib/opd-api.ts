@@ -179,7 +179,12 @@ export type WireOpenVisitResult = {
 // flagged at the zone it breached (11.5 SAM, 12.5 MAM). Widened here in the same task that made
 // the server able to send it — a wire union narrower than its producer is a type that lies, and it
 // lies silently until the first child is measured.
-export type WireDangerFlag = { vital: "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm"; value: number; bound: "min" | "max"; limit: number };
+// VD-1 CLOSE / F1 — `severity` appended for the same reason `muacCm` was in T1: the SERVER can now
+// emit it, and a wire union narrower than its producer is a type that lies until the first case
+// arrives. `danger` moves the queue; `notice` reaches the doctor and does not — a paediatric fever
+// is flagged ahead of the call without seating a toddler ahead of a stroke. Optional so every flag
+// already persisted reads back unchanged; absent means `danger`, which is the shipped meaning.
+export type WireDangerFlag = { vital: "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm"; value: number; bound: "min" | "max"; limit: number; severity?: "danger" | "notice" };
 
 export type WireVitals = {
   id: string; encounterId: string; patientId: string;

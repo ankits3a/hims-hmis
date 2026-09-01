@@ -38,6 +38,12 @@ const bandSchema = z.object({
    */
   notRoutine: z.array(z.enum(VITAL_KEYS)).default([]),
   ranges: z.object({ sbp: rangeSchema, dbp: rangeSchema, pulse: rangeSchema, rr: rangeSchema, spo2: rangeSchema, tempC: rangeSchema }).partial(),
+  /**
+   * VD-1 CLOSE / F1 — bounds that FLAG TO THE DOCTOR without moving the queue (severity `notice`).
+   * Same shape as `ranges` and the same comparison, so there is one rule to learn; `.default({})`
+   * so every `danger_ranges` row already in a database parses unchanged.
+   */
+  noticeRanges: z.object({ sbp: rangeSchema, dbp: rangeSchema, pulse: rangeSchema, rr: rangeSchema, spo2: rangeSchema, tempC: rangeSchema }).partial().default({}),
 });
 /**
  * ═══ VD-1 T1 / T2 — THE BAY'S THRESHOLDS ARE DATA, LIKE EVERY OTHER CLINICAL NUMBER HERE ═══
@@ -115,13 +121,22 @@ export const DEFAULT_DANGER_RANGES: DangerRangesConfig = {
   // range-flagged. `child_6_12` and `adult` are unchanged in every field.
   bands: [
     { key: "infant", upToAgeYears: 1, required: ["weightKg", "tempC", "spo2", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"],
-      ranges: { sbp: { min: 65, max: 120 }, dbp: { min: 40, max: 80 }, pulse: { min: 90, max: 180 }, rr: { min: 25, max: 60 }, spo2: { min: 90 }, tempC: { min: 35.0, max: 38.5 } } },
+      ranges: { sbp: { min: 65, max: 120 }, dbp: { min: 40, max: 80 }, pulse: { min: 90, max: 180 }, rr: { min: 25, max: 60 }, spo2: { min: 90 }, tempC: { min: 35.0, max: 38.5 } },
+      noticeRanges: { tempC: { max: 37.9 } } },
     { key: "child_1_5", upToAgeYears: 6, required: ["heightCm", "weightKg", "tempC", "spo2", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"],
-      ranges: { sbp: { min: 75, max: 130 }, dbp: { min: 45, max: 85 }, pulse: { min: 70, max: 150 }, rr: { min: 20, max: 40 }, spo2: { min: 90 }, tempC: { min: 35.0, max: 39.5 } } },
+      ranges: { sbp: { min: 75, max: 130 }, dbp: { min: 45, max: 85 }, pulse: { min: 70, max: 150 }, rr: { min: 20, max: 40 }, spo2: { min: 90 }, tempC: { min: 35.0, max: 39.5 } },
+      noticeRanges: { tempC: { max: 37.9 } } },
     { key: "child_6_12", upToAgeYears: 13, required: ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"], notRoutine: [],
-      ranges: { sbp: { min: 80, max: 140 }, dbp: { min: 50, max: 90 }, pulse: { min: 60, max: 130 }, rr: { min: 14, max: 30 }, spo2: { min: 90 }, tempC: { min: 35.0, max: 39.5 } } },
+      // F1 — the paediatric fever notice, under thirteen, from the signed-off design's own rule.
+      // `37.9` rather than `38` because the comparison is `value > max` and the clinical rule is
+      // "≥ 38.0 °C is a fever": a bound of 38 would let exactly 38.0 pass unflagged.
+      ranges: { sbp: { min: 80, max: 140 }, dbp: { min: 50, max: 90 }, pulse: { min: 60, max: 130 }, rr: { min: 14, max: 30 }, spo2: { min: 90 }, tempC: { min: 35.0, max: 39.5 } },
+      noticeRanges: { tempC: { max: 37.9 } } },
     { key: "adult", upToAgeYears: null, required: ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"], notRoutine: [],
-      ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35.0, max: 39.5 } } },
+      // No fever notice on the adult tail: the paediatric rule is paediatric, and a 38.2 °C adult
+      // is an ordinary finding the doctor reads on the chart rather than something to be told early.
+      ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35.0, max: 39.5 } },
+      noticeRanges: {} },
   ],
   gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 },
   muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 },
