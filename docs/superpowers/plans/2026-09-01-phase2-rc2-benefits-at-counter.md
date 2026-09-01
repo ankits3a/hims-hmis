@@ -71,4 +71,60 @@ Per D7 — and the census §2.150 demands: **every consumer of a priced draft re
 
 ## 5. CLOSE
 
-*(written at close — commits, review lane, mechanical verification, owner rulings named, carries, actuals)*
+**Commits:** `42e7efc` (the owner's `maxWorkers: 2` ruling, its own commit) · `c5b5eb7` (doc) · `d953223` (T1) · `ab01603` (T2) · `d922a1a` (T3) · `15194fe` (T4) · `e2a1589` (T5). **CODE-COMPLETE, NOT DEPLOYED** — the series' standing rule. **THE REVIEW LANE HAS NOT RUN; see the debt below before treating this as closed.**
+
+### What the phase turned out to be
+
+Three of five tasks were **arm-and-gate, not build**, and the spike said so before any code was written — which is the cheapest thing a spike can do:
+
+- **T1's premise was refuted in recon.** `feeQuote` → `previewInvoice` → `priceDraftWithBenefits`: the counter quote already ran the entire Plan 09 contest, and `PricedLine` already carried `candidates[]` **and** `winner`. The owner's BEST-SINGLE-BENEFIT ruling needed no new wire type and membership needed no wiring. What was actually missing was one door: `feeQuote` accepted no codes, so a coupon could reach the invoice and never the quote.
+- **T5's premise likewise.** `loadInstances` filters on patient and codes and **never on `kind`**, so `kind='package'` already resolved, contested and consumed counters exactly as a membership does. Package v0 is a proof; no table, no column, **no migration in the whole phase**.
+- **T3 was mostly refusal**, and **T4 was a boundary** rather than a feature.
+
+### The findings that were not in the plan
+
+1. **§2.149's writer-grep caught a live money trap before it shipped (T2).** `openLabWalkinInTx` (`encounters.ts:340`) writes `referralSource: input.referralSource ?? "external_rmp"`, so every direct lab walk-in that named no referrer carries the value that looks most like a referral. A discount keyed on that enum would have paid out on bills nobody referred, in the one payee class whose per-patient payment is unlawful (IMC 2002 cl. 6.4). The source is keyed on a resolved attribution instead; the rule-21 mutant priced the damage at ₹50 a visit and died.
+2. **`partners` already imports `billing`,** so the referral source is REGISTERED through a new inversion seam (`billing/benefit-sources.ts`, mirroring `registerFeeSettledHook`) rather than imported into a cycle.
+3. **T1 exposed a defect in the opposite direction and T2 closed it.** `IssueInvoiceInput.couponCodes` had carried a comment since Plan 09 saying no HTTP caller could set it. Once the quote could take a coupon, a quote that discounted and an invoice that could not would be RC-1 T1's defect reversed — promise ₹450, charge ₹500. Both invoice bodies now declare it.
+4. **§2.150's arming census outgrew the phase title, and this is the most consequential finding here.** Six consumers of a priced draft; two are not the counter — `lab/lab-desk.controller.ts:183` and `ot/bill.ts`, both passing `patientId`, both therefore resolving instruments. **Arming `MEMBER_BENEFITS_ENABLED` is a hospital-wide act, not a counter one.** Correct behaviour (scope is per-category) but not what "benefits at the counter" describes. RC-2 arms it in tests only; the `.env` flip stays the owner's commissioning act.
+
+### DECIDED, and one of them overrules this document
+
+- **The payer refusal is NOT recorded as a rejected candidate** — a correction to §3's own D6. `AdjustmentCandidate.rejected` means *contested and refused*, and a payer-ineligible instrument was never in the contest; emitting one would render a losing chip that never ran, and would have cost a widened `rejected` union in `tariff/types.ts` plus the web wire to say what `PricedDraft.intendedPayer` already says. Gated instead, payer lifted onto the quote (T5).
+- **RC-2's non-table permission pairs got their OWN constant and their OWN README sentence**, not an append to `PLAN_09_PAIRS` and not an edit of "Plan 09's four `membership.*` strings" to read five. Appending would have typechecked and passed while recording an RC-2 decision as Plan 09's DD18; that count is scoped to Plan 09 and is still true. **A census kept green by making the record false is worse than one that fails.**
+- **`membership.catalog.manage` stays parked**, re-measured at 0 occurrences outside the manifest. `membership.instrument.enrol` is granted because it guards a real route locked by a flag: *a permission guarding no route is a key to a door that does not exist; one guarding a door locked by a flag is a lock.*
+- **No accrual is written for a referral** (D4). `COMMISSION_ACCRUAL_ENABLED` stays off, O-8 unruled, Plan 21 owns the payout lane.
+
+### Mechanical verification, stated honestly
+
+- **Full core pass: 335 suites / 3349 tests — 330 suites and 3337 tests PASS.** Exit 1 came solely from five `src/modules/radiology/` suites belonging to the 18a lane. Not caused by RC-2: radiology's entire billing surface is `withIdempotency` + `BillingError`, it reaches no pricing code, and the reds reproduce **independently on the VD-1 lane's tree**, and **in isolation on a virgin database at BOTH `-w 2` and `-w 7`** (identical 5 suites / 12 tests). That last run **exonerates the owner's `maxWorkers` ruling** — it would have been red at the old default too. Diagnosis handed to 18a: `schedule.test.ts` truncates per test, so two orders collide *within* one test, and two cases with different `serviceId`s both collide with the same order `R2608310001`.
+- **Web: 61 files / 374 tests, exit 0.** typecheck 0 and lint 0 at every commit.
+- Per-task: T1 3 suites/9 (fail-first red recorded: `Expected 45000, Received 50000`, winner null — the shipped code was the mutant); T2 21/21 incl. the enum mutant; T3 6/6 incl. the gate mutant; T4 29/29; T5 31/31. Money-path batches 73 suites/725 and 74/731. All on `hmis_rc2_scratch` (§2.137).
+- **Rule-21 mutants: three, all died** — the enum-keyed referral (₹50 damage on every lab walk-in), the removed payer gate (₹100 given twice on a corporate bill), and the removed entitlement narrowing (the fifth visit un-invoiceable). Two were inline and disclosed rather than scratch files, because what needed showing was the DAMAGE, not a second copy of the arithmetic.
+
+### THE OUTSTANDING DEBT — read this before calling RC-2 closed
+
+**The two independent review passes §9.10 requires have NOT been run.** This session was constrained from spawning subagents. Every phase since 09a has had reviewers find a CRITICAL or MAJOR over a tree that was already green: RC-1's pass 1 found 1 CRITICAL + 4 MAJOR against 55 green tests, a died mutant and clean typecheck/lint, and its pass 2 found the M2 fix incomplete plus a new screen regression. **RC-2 touched three money paths** (the quote's coupon door, a new pricing source, the payer gate) and one permission boundary. On the base rate, this tree has findings in it. That is the single largest risk on this phase and it is the owner's call, not something to bury in a commit message.
+
+### Carries
+- **The five radiology suites → the 18a lane**, with the discriminating experiment already spent.
+- **M3 → RC-3** (unchanged from RC-1): no un-settle push; `reverseAllocation`, `markEnteredInError`, `issueCreditNote` reach no hook. Rename `queue.fee_settled` → `queue.fee_status_changed` while it is still unconsumed.
+- **§2.154's open question → RC-3**: RC-1 T3's join-queue race mutant died on an unwarmed connection pool, where a right kill and a lucky interleaving are indistinguishable. Warm and re-run before trusting that guard.
+- **O-15 (opening the sales lane) remains the owner's** — `membership.instrument.enrol` exists, is granted, and refuses.
+
+### Actuals
+
+| | |
+|---|---|
+| session balance | kickoff ~14.96M; **measurement is DISCONTINUOUS** — the context was refreshed mid-phase, so this is reconstructed: ~360k to the refresh + ~60k after ≈ **420k main-session** |
+| subagents | **0** — recon ran inline (~60k of greps) where RC-1 spent 400k on three recon agents; reviewers not run (see the debt) |
+| total vs stop-loss | ≈ **420k of 1,500,000 (28%)** — but the 720k review term is UNSPENT because UNRUN, not because it was efficient. The coding half came in at ~420k against RC-1's ~830k for the same class of work; **the inline-recon decision is what bought that** |
+| tasks | 5 coded, 7 commits, 0 migrations, 0 deploys |
+| catches before review | 1 live money trap (T2's enum), 1 reversed asymmetry (T1→T2's invoice bodies), 1 arming-scope finding (T5) — all by spike or census, none by a test that was already passing |
+
+### Lessons bound for the ledger
+1. **A pathspec protects against a dirty INDEX, not against a peer's dirty WORKING TREE** — §2.152's blind spot, identified in the morning and then suffered in the afternoon when a peer's pathspec commit captured this lane's uncommitted census edits, leaving `main` red in a split state. Neither a stat nor a `--cached --stat` can see it.
+2. **One permission moved TWELVE censuses here**, against §2.155's three and the peer's corrected ten. The two nobody had counted are a bare-integer array that appears **twice** (once for the idempotence leg), and an index that must be derived rather than pattern-matched: `membership_admin` is index 14, `staff_auditor` also holds two grants, and changing the first `2` you find leaves the suite red with a diff that names no role. **Grep tells you where to edit; only the run tells you what you broke.**
+3. **Verify with an instrument that can see what you are looking for.** Twice in one session a confident all-clear came from a pattern that could not match: `pkill -f "jest.js…"` and `ps | grep "jest.js"` are both blind to `processChild.js` workers, and `grep -E "^\+…"` is blind to a diff's `+` column. The first left orphaned workers truncating a database under a running batch and produced reds in an innocent module; the second produced a false all-clear on a sweep that had actually happened.
+4. **An exhaustive `toEqual` is worth its maintenance cost.** Adding `intendedPayer` to `FeeQuote` was caught instantly by a field-for-field assertion — the exact opposite failure mode to the bare-integer censuses, which fail silently when missed.
+5. **A shared-blame story that fits can still be wrong.** Two lanes converged quickly on "your unrun suite plus my over-wide batch", which was tidy, mutual, and false; the cause was orphaned workers. Both rules were worth keeping; neither explained the evidence.
