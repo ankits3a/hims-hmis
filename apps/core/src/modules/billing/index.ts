@@ -61,16 +61,16 @@ export type { BillingConfig } from "./config";
 /**
  * RC-1 T3 — the token's paid stamp, both halves. `encounterFeeStatuses` is the batched projection
  * OPD's queue read renders (D1: derived from the ledger, never a column), and
- * `registerFeeSettledHook` is the mirror of `registerConsultStartGuard`: OPD registers its
- * `queue.fee_settled` board flip and billing calls it inside the very transaction that covered
+ * `registerFeeStatusHook` is the mirror of `registerConsultStartGuard`: OPD registers its
+ * `queue.fee_status_changed` board flip and billing calls it inside the very transaction that covered
  * the fee (settle at issue, credit extension, or a later allocation).
  */
 export { encounterFeeStatuses } from "./fee-status";
 export type { EncounterFeeStatus } from "./fee-status";
-export { registerFeeSettledHook } from "./settle-hooks";
+export { registerFeeStatusHook } from "./settle-hooks";
 // RC-2 T2 / D3 — the pricing-side mirror of the settle hook. `partners` registers its referral
 // source here because `partners` already imports `billing`, so the reverse import would be a cycle.
 export { registerBenefitSourceProvider } from "./benefit-sources";
 export type { BenefitSourceArgs, BenefitSourceProvider } from "./benefit-sources";
-export type { FeeSettledHook, FeeSettledVia } from "./settle-hooks";
+export type { FeeStatusHook, FeeStatusVia } from "./settle-hooks";
 export * from "./events";

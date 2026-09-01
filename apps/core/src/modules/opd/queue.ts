@@ -7,10 +7,11 @@ import {
 } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { encounterFeeStatuses } from "../billing";
+import type { FeeStatusVia } from "../billing";
 import { loadOpdConfig } from "./config";
 import { getEncounter } from "./encounters";
 import { OpdError } from "./errors";
-import { queueCalled, queueFeeSettled, queueSkipped } from "./events";
+import { queueCalled, queueFeeStatusChanged, queueSkipped } from "./events";
 import { classOf, nextInQueue, orderQueue } from "./queue-engine";
 import { istWeekday } from "./time";
 import type { OpdConfig } from "./config";
@@ -309,24 +310,52 @@ export async function summaryByDoctor(db: Db, departmentId: string | undefined, 
 }
 
 /**
- * RC-1 T3 / D2 — the hook billing calls inside its settling transaction (`registerFeeSettledHook`,
- * wired by `opd.module.ts`). It appends `queue.fee_settled` — the board flip — ONLY when:
+ * RC-1 T3 / D2 — the hook billing calls inside its settling transaction (`registerFeeStatusHook`,
+ * wired by `opd.module.ts`). It appends `queue.fee_status_changed` — the board flip — ONLY when:
  * the encounter exists, its consult fee is actually covered per `encounterFeeStatuses` (so a
  * pharmacy-only invoice settling flips nothing), and a LIVE queue entry is on the board (a
  * deferred bill-first visit has no token yet — its token is BORN paid at `joinQueue`, and a flip
  * for a token that never showed UNPAID would just be noise).
  */
-export async function queueFeeSettledHook(
+export async function queueFeeStatusHook(
   tx: Tx,
   actor: Actor,
-  info: { encounterId: string; invoiceId: string; via: "invoice" | "credit_extended" | "allocation" },
+  info: { encounterId: string; invoiceId: string; via: FeeStatusVia },
   now: Date,
 ): Promise<void> {
   void now;
   const encounter = (await tx.select().from(opdEncounters).where(eq(opdEncounters.id, info.encounterId)))[0];
   if (!encounter) return;
+  /**
+   * RC-3 T3 — THE BAIL ON `unsettled` IS GONE, AND THAT IS THE WHOLE OF M3's FIX HERE.
+   *
+   * This hook has always RE-DERIVED the status rather than trusting its caller, so it already
+   * computed the truth after a reversal — and then threw it away, because the guard treated
+   * "unsettled" as "nothing to say". It is the opposite: a board showing PAID over money that has
+   * been reversed is the one state the hall must not be left in.
+   *
+   * `undefined` (no fee service on this encounter at all) still returns: there is no stamp to move.
+   */
   const status = (await encounterFeeStatuses(tx, [encounter])).get(encounter.id);
-  if (status !== "settled" && status !== "credit" && status !== "free") return;
+  if (status === undefined) return;
+
+  /**
+   * THE DIRECTION DECIDES WHETHER `unsettled` IS NEWS — and getting this wrong broke RC-1's M1
+   * discriminator, which is how it was found.
+   *
+   * On an ARRIVING via, `unsettled` means "money came in and it did not cover THIS encounter's fee"
+   * — a pharmacy-only invoice settling, exactly RC-1 M1's case. There is nothing to tell the hall:
+   * the token was UNPAID before and is UNPAID now, and an event saying so would be noise on every
+   * unrelated invoice in the hospital. RC-1's silence there was correct and is preserved.
+   *
+   * On a LEAVING via, `unsettled` is the entire point: money that WAS covering this fee has gone,
+   * and the board is still showing PAID. That is M3.
+   *
+   * So the guard is about the direction of the money, not the value of the status. Removing it
+   * altogether — the first thing I tried — turned M3's fix into a regression of M1's.
+   */
+  const ARRIVING: readonly FeeStatusVia[] = ["invoice", "credit_extended", "allocation"];
+  if (status === "unsettled" && ARRIVING.includes(info.via)) return;
   const entry = (await tx
     .select().from(opdQueueEntries)
     .where(and(eq(opdQueueEntries.encounterId, encounter.id), inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES])))
@@ -334,7 +363,7 @@ export async function queueFeeSettledHook(
   if (!entry) return;
   const session = (await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, entry.sessionId)))[0];
   if (!session) return;
-  await appendEvent(tx, queueFeeSettled.make({
+  await appendEvent(tx, queueFeeStatusChanged.make({
     actor, patientId: encounter.patientId, encounterId: encounter.id, correlationId: info.invoiceId,
     payload: {
       encounterId: encounter.id, patientId: encounter.patientId, doctorId: session.doctorId,

@@ -89,15 +89,38 @@ export const visitOpened = defineEvent("visit.opened", MODULE, z.object({
 
 /**
  * RC-1 T3 / D2 — the board flip. Appended by the OPD hook billing calls inside the settling
- * transaction (`registerFeeSettledHook`), only when the encounter's consult fee is actually
+ * transaction (`registerFeeStatusHook`), only when the encounter's consult fee is actually
  * covered per `encounterFeeStatuses` — the one projection, so the flip cannot disagree with the
  * stamp a queue read would compute.
  */
-export const queueFeeSettled = defineEvent("queue.fee_settled", MODULE, z.object({
+/**
+ * RC-3 T3 / D4 — M3 DISCHARGED. RENAMED FROM `queue.fee_status_changed`, AND THE RENAME HAD A DEADLINE.
+ *
+ * RC-1 shipped this as `queue.fee_status_changed` and its own CLOSE carried the defect as a named carry to
+ * this phase: **nothing un-flips the board.** `emitFeeStatusChanged` had two call sites, both on the way
+ * IN — `invoices.ts` at issue and `receipts.ts` at allocation — while the three writers that move an
+ * encounter OUT of settled (`reverseAllocation`, `markEnteredInError`, `issueCreditNote`) reached
+ * neither. The derived read self-corrects on refetch, so the stamp was stale in the OPTIMISTIC
+ * direction: **PAID still showing after the money had been reversed**, which is the direction that
+ * matters.
+ *
+ * The rename happens NOW because RC-3 is the phase that gives the event its first consumer. An event
+ * with no consumers is renamed by editing one file; an event with a board reading it is renamed by
+ * migrating a meaning. RC-1's CLOSE said to do it "while it is still unconsumed" and this is the last
+ * moment that is true.
+ *
+ * `status` gains `"unsettled"` and now spans the whole of `EncounterFeeStatus` — the truth function
+ * has always had four states while this enum carried three, which is precisely why the hook could
+ * not describe a reversal. `via` gains the three ways money leaves.
+ */
+export const queueFeeStatusChanged = defineEvent("queue.fee_status_changed", MODULE, z.object({
   encounterId: id, patientId: id, ...where,
-  status: z.enum(["settled", "credit", "free"]),
+  status: z.enum(["settled", "credit", "free", "unsettled"]),
   invoiceId: id,
-  via: z.enum(["invoice", "credit_extended", "allocation"]),
+  via: z.enum([
+    "invoice", "credit_extended", "allocation",
+    "allocation_reversed", "receipt_entered_in_error", "credit_note",
+  ]),
 }));
 
 export const patientCheckedIn = defineEvent("patient.checked_in", MODULE, z.object({

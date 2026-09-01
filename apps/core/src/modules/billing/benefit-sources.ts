@@ -4,7 +4,7 @@ import type { Db } from "../../kernel/db/client";
 /**
  * RC-2 T2 / D3 — HOW A SOURCE THAT LIVES IN ANOTHER MODULE REACHES THE CONTEST.
  *
- * The mirror of `registerFeeSettledHook`, pointed at pricing instead of at settlement, and it
+ * The mirror of `registerFeeStatusHook`, pointed at pricing instead of at settlement, and it
  * exists because of a MEASURED dependency direction rather than a preference:
  *
  *     partners/accrual.ts:13    import type { InvoiceAccrualView } from "../billing";

@@ -14,7 +14,7 @@ import { loadBillingConfig } from "./config";
 import { BillingError } from "./errors";
 import { insertReceiptWithTenders, patientOutstandingPaise } from "./invoices";
 import { requireOpenSession } from "./sessions";
-import { emitFeeSettled } from "./settle-hooks";
+import { emitFeeStatusChanged } from "./settle-hooks";
 import { settlementState } from "./settlement";
 import {
   advanceReceived, allocationReversed, cashThresholdBlocked, cashThresholdWarned,
@@ -516,7 +516,7 @@ export async function allocateOnTx(
   // cleared at the counter later in the day). Same commit as the money; the hook decides whether
   // the invoice covers the consult fee.
   if (after.state === "settled" && invoice.encounterId !== null) {
-    await emitFeeSettled(tx, actor, { encounterId: invoice.encounterId, invoiceId: invoice.id, via: "allocation" }, now);
+    await emitFeeStatusChanged(tx, actor, { encounterId: invoice.encounterId, invoiceId: invoice.id, via: "allocation" }, now);
   }
   return {
     allocationId,
@@ -583,6 +583,27 @@ export async function reverseAllocation(
     const reversalId = await appendReversal(tx, actor, original, invoice.patientId, input.reason ?? null, now);
     const allocatedPaise = (await allocatedByInvoice(tx, [invoice.id])).get(invoice.id) ?? 0;
     const creditedPaise = (await creditedByInvoice(tx, [invoice.id])).get(invoice.id) ?? 0;
+    /**
+     * RC-3 T3 / D4 — M3's FIRST MISSING CALL SITE. Reversing an allocation takes money back OFF an
+     * invoice, so an encounter that was `settled` may no longer be — and until now nothing told the
+     * board. The stamp stayed PAID over money that had been reversed.
+     *
+     * The hook re-derives the truth from `encounterFeeStatuses`; this only says WHAT HAPPENED. If
+     * the invoice is still covered by other allocations the hook simply re-emits `settled`, which is
+     * correct and cheap — a reversal is not the same fact as an unsettling.
+     */
+    if (original.invoiceId !== null) {
+      const inv = (await tx.select({ encounterId: invoices.encounterId })
+        .from(invoices).where(eq(invoices.id, original.invoiceId)))[0];
+      if (inv?.encounterId != null) {
+        await emitFeeStatusChanged(
+          tx, actor,
+          { encounterId: inv.encounterId, invoiceId: original.invoiceId, via: "allocation_reversed" },
+          now,
+        );
+      }
+    }
+
     return {
       reversalId,
       amountPaise: original.amountPaise,
@@ -776,6 +797,33 @@ export async function markEnteredInError(
         patientId: receipt.patientId,
       }),
     );
+
+    /**
+     * RC-3 T3 / D4 — M3's SECOND MISSING CALL SITE. Voiding a receipt drops every allocation it
+     * made, so every invoice it was paying may fall back out of `settled`. One emit per affected
+     * invoice; the hook re-derives each one's actual status, so an invoice still covered by another
+     * receipt correctly re-emits `settled` rather than a spurious reversal.
+     */
+    /**
+     * The invoices this void touched, read INSIDE the same transaction as the void itself — a board
+     * flip that rode a different commit could outlive a rollback and lie to the hall (the seam's own
+     * rule). Distinct invoice ids, because one receipt may have paid several.
+     */
+    // The function already tracks exactly this set as it reverses — reuse it rather than deriving a
+    // second, subtly different one from `applied` (which includes allocations `dead` skipped).
+    const affectedIds = [...touchedInvoiceIds];
+    const affectedInvoices = affectedIds.length === 0 ? [] : await tx
+      .select({ id: invoices.id, encounterId: invoices.encounterId })
+      .from(invoices).where(inArray(invoices.id, affectedIds));
+
+    for (const inv of affectedInvoices) {
+      if (inv.encounterId == null) continue;
+      await emitFeeStatusChanged(
+        tx, actor,
+        { encounterId: inv.encounterId, invoiceId: inv.id, via: "receipt_entered_in_error" },
+        now,
+      );
+    }
 
     return { markId, reversedAllocationIds };
   });

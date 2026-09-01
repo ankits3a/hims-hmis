@@ -19,7 +19,7 @@ import {
 } from "../membership";
 import { assertPaise, loadPricingContext, percentAmount, priceInvoiceLines } from "../tariff";
 import { allocateOnTx } from "./receipts";
-import { emitFeeSettled } from "./settle-hooks";
+import { emitFeeStatusChanged } from "./settle-hooks";
 import { resolveRegisteredSources } from "./benefit-sources";
 import { assertCashAccepted } from "./cash-law";
 import { loadBillingConfig } from "./config";
@@ -1119,7 +1119,7 @@ export async function issueInvoice(
        * invoice settling never flips a token by accident.
        */
       if (input.encounterId !== undefined && (creditBlock !== null || settlement.state === "settled")) {
-        await emitFeeSettled(tx, actor, {
+        await emitFeeStatusChanged(tx, actor, {
           encounterId: input.encounterId, invoiceId,
           via: creditBlock !== null ? "credit_extended" : "invoice",
         }, now);

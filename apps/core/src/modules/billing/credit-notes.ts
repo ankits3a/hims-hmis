@@ -13,6 +13,7 @@ import { assertPaise, DISCOUNT_CATEGORIES, loadRuleConfig, percentAmount, roundT
 import { loadBillingConfig } from "./config";
 import { creditShare } from "./credit-share";
 import { BillingError } from "./errors";
+import { emitFeeStatusChanged } from "./settle-hooks";
 import { creditNoteIssued } from "./events";
 import { invoiceSettlement } from "./invoices";
 import { nextDocNo } from "./series";
@@ -512,6 +513,24 @@ export async function issueCreditNote(
         at: now,
         reason: `credit note ${creditNoteNo}`,
       });
+    }
+
+    /**
+     * RC-3 T3 / D4 — M3's THIRD MISSING CALL SITE, and the one whose absence was most visible to a
+     * patient. A credit note reduces what an invoice is owed; a full-value one can take an encounter
+     * straight back out of `settled` while the board still shows PAID.
+     *
+     * Emitted for BOTH kinds. A `clearance_discount` writes the balance down and may leave the
+     * invoice covered — the hook re-derives and re-emits `settled`, which costs one event and keeps
+     * the caller from having to know which kinds change a status. `via` says a credit note happened;
+     * the STATUS is never asserted here, only measured there.
+     */
+    if (invoice.encounterId != null) {
+      await emitFeeStatusChanged(
+        tx, actor,
+        { encounterId: invoice.encounterId, invoiceId: invoice.id, via: "credit_note" },
+        now,
+      );
     }
 
     return {

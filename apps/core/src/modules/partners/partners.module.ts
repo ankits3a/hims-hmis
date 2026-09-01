@@ -26,7 +26,7 @@ export class PartnersModule {
   /**
    * RC-2 T2 / D3 — the referral source is REGISTERED, not imported, and the direction is measured:
    * `accrual.ts` and `consumer.ts` already import `../billing`, so `billing → partners` would be a
-   * cycle. This is `opd.module.ts`'s `registerFeeSettledHook("opd_queue_flip", …)` pointed at
+   * cycle. This is `opd.module.ts`'s `registerFeeStatusHook("opd_queue_flip", …)` pointed at
    * pricing, and it is a constructor act for the same reason: the seam must be armed before the
    * first invoice is priced, and Nest constructs modules before it serves anything.
    *
