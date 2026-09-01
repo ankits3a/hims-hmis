@@ -2509,6 +2509,18 @@ commit; a bisect that lands between them reproduces the failure. (4) When you ar
 peer is measuring, say so BEFORE the write, not after — and if the pass is already running, the
 write waits, because a freeze that one lane can break is not a freeze. Method §9.9 rule 5 amended.
 
+**THE INVERSE, found an hour later, and it keeps this entry from reading as "never overlap."** The
+freeze bought 18a its one clean pass — and that pass found RC-4's last defect: an Escape handler
+that closed over a `busy` flag and answered from a stale listener in the window between a commit
+and its passive effect. Green in RC-4's own full run; green 3/3 in isolation; red only under 18a's
+full core jest. **A green suite on an idle box is a claim about an idle box.** Races, timing windows
+and stale closures are invisible there by construction (§2.144 already prices tests against a
+CONTENDED box for the same reason). The shared checkout corrupts evidence while you measure and
+manufactures evidence nobody could get alone. So the rule is narrower than "never overlap": **freeze
+for the measurement, contend for the discovery** — two runs with two purposes, never one run asked
+for both. Of the day's five real defects across two lanes, four were found by the other lane's
+instrument and the fifth by the other lane's LOAD.
+
 ### 2.166 — A REVERT THAT STAYS GREEN MEANS THE ROAD IS UNBUILT, NOT THAT IT DOES NOT EXIST — BUILD IT BEFORE YOU DELETE THE GUARD
 
 **THE RULE. When a revert pair stays green, you have learned that no fixture reaches the guard. You
