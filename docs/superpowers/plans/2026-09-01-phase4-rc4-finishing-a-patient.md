@@ -44,19 +44,19 @@ RC-3's §1 measured **eight rails shipped with zero web consumers**. Its close r
 
 ## 4. Tasks
 
-### T1 — CRITICAL · the seat opens a visit, and registers in four fields without leaving
+### T1 — CRITICAL · the seat opens a visit, and registers in four fields without leaving — **DONE, `8c2a953`**
 **Files:** `apps/web/src/screens/registration-counter.tsx`, its test.
 Per D1/D2. Lift `walkIn` + the idempotency key + `acknowledgedDuplicates` from `counter-desk.tsx`; the register form replaces the navigate-away.
 **Assertion book:** assertion — registering a new patient from the seat opens a visit, puts them in hand, and the dossier fills **without a navigation**; mutant — the register path drops `acknowledgedDuplicates`, so a duplicate-suspected refusal becomes a dead end; kill — a clerk who cannot proceed past a near-match.
 **Assembly clause (§5A.3):** drive the screen through **two patients** and assert nothing of the first survives — this is the exact defect RC-3's F1 shipped.
 
-### T2 — CRITICAL · the deferred join, its first consumer since RC-1 wrote it
+### T2 — CRITICAL · the deferred join, its first consumer since RC-1 wrote it — **RUNS AFTER T3, see §4A**
 **Files:** the screen, `apps/web/src/lib/opd-api.ts`, tests.
 Per D3. `join: "defer"` → bill → `POST /opd/visits/:id/join-queue`.
 **Assertion book:** assertion — a bill-first walk-in has **null token, session and entry** until the money is taken, then joins with a token that is already PAID; mutant — the join fires before settlement; kill — an UNPAID token on the board in a lane whose entire purpose is that it never appears.
 **This is the phase's highest-risk task** (S2) and it gets fail-first treatment.
 
-### T3 — CRITICAL · the PAID stamp on the board
+### T3 — CRITICAL · the PAID stamp on the board — **RUNS BEFORE T2, and owes D7 first (§4A)**
 **Files:** `apps/web/src/lib/opd-api.ts` (declare `feeStatus` — **MEASURE first**), the screen, `realtime.ts` if S5 says so, tests.
 Per D4.
 **Assertion book:** assertion — a settled encounter's token renders PAID and an unsettled one does not, from the server's `feeStatus` alone; mutant — the client re-deriving paid-ness from an invoice; kill — a board that disagrees with `encounterFeeStatuses` after a reversal, which is precisely what RC-3 T3 made the event able to report.
@@ -72,6 +72,44 @@ Per D6. **Do not start this task before the ruling**, and do not start it before
 **Assertion book:** assertion — `caddyfile-parity` counts 44 and `nav-parity` still agrees on every surviving path; mutant — the route removed and its NAV row left behind; kill — a permission-gated link to a screen that no longer exists.
 
 **Verify economy:** T1–T4 are web (`vitest`, ~30s for all 68 files, no database, no box slot). T3 may touch core; if it does it owes a scoped core batch. `pnpm typecheck && eslint` before every launch — **vitest strips types, so a green web suite can sit over code that does not compile.** A full core+web pass at phase end. **Never a bare `pnpm verify`** (§2.151).
+
+## 4A. T1 IS DONE, AND WHAT MEASURING FOR T2 FOUND — the remaining tasks are RE-ORDERED
+
+**T1 shipped at `8c2a953`.** The seat registers in four fields in place, opens a visit, takes the
+patient in hand, and the route no longer hands down a navigation. Four mutants applied and killed;
+full web 68 files / 454 tests, exit 0. The design's fourth field (`ageYears`) turned out to be
+accepted by `registerBody` all along — the same shape as every other rail in this series.
+
+Then T2's own measurement, run before writing a line of it, moved two things:
+
+**FINDING 1 — `joinQueue` has NO settlement gate, and that is CORRECT rather than a hole.**
+`encounters.ts:joinQueue` checks actor, encounter existence, `status === "registered"`, service
+date, responsible doctor and no live entry. It does not consult the money at all. That looked like a
+gap in "the token leaves the printer already PAID" until the rest of the derivation is read: the
+stamp is **derived** from `encounterFeeStatuses`, never stored, so a token joined after payment
+reads PAID and one joined before reads UNPAID — *both correctly*. Nothing needs a gate. **T2's
+mutant is therefore not "an unpaid token is mis-stamped" but "the join fires before the money", and
+the kill is an UNPAID token appearing in the one lane whose entire purpose is that it never does.**
+
+**FINDING 2 — the seat cannot read its own patient's fee status, and this RE-ORDERS T2 AND T3.**
+`GET /opd/visits/:id` returns `queueEntries: QueueEntryRow[]` — **raw rows, no `feeStatus`**. The
+field lives on `QueueEntryView`, which only `GET /opd/queues?doctorId=…` returns. So the seat cannot
+know an encounter is settled from the route it would naturally read, and **T2 depends on T3**: a
+bill-first flow that waits for the money needs a surface that can see the money.
+
+**T3 THEREFORE RUNS BEFORE T2**, and it inherits a design decision this doc did not anticipate:
+
+> **D7 — WHICH SURFACE WEARS THE PAID STAMP?** Three candidates, and they are not equivalent.
+> (a) **`opd-desk.tsx`**, which already reads `/opd/queues` and is what demo 1 most plausibly means
+> by "the board" — a one-field wire widening plus a render, no core change, but it edits a screen
+> outside this seat. (b) **The seat's own dossier**, which is where D2's unbuilt "token" noun
+> belongs and where the clerk is actually looking — but it needs a `doctorId`-keyed queue read the
+> seat does not currently make. (c) **Both.** DECIDE THIS BEFORE T3, and prefer (a) if the demo's
+> "board" is taken literally, because it is the smaller change and the wire widening is shared.
+
+**Neither finding was reachable from the phase document.** Both came from reading the server before
+writing the client — which is the third time this series has been paid for doing that, after RC-3
+T4's `avgConsultMinutes` and this phase's own §2.
 
 ## 5. CLOSE
 
