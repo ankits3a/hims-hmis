@@ -63,6 +63,13 @@ export {
   studyGates, studyState, waiveGate,
 } from "./gates";
 export type { GateRow, StudyGate, StudyRow } from "./gates";
+export { LATE_ENTRY_MINUTES, abortAcquisition, recordAcquired, startAcquisition } from "./acquisition";
+export type { RecordAcquiredInput, StartAcquisitionResult } from "./acquisition";
+export {
+  authorisationOf, encounterPayer, hasBillDecision, linkInvoiceLine, openBillDecisions,
+  raiseBillDecision, resolveBillDecision,
+} from "./money";
+export type { AuthorisationEncounterFacts, AuthorisationStudyFacts } from "./money";
 export type {
   PcpndtApplicability, PcpndtPatientFacts, PcpndtStudyTypeFacts,
 } from "./applicability";

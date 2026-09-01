@@ -3,6 +3,8 @@ import { RadiologyDefinitionsController } from "./radiology-definitions.controll
 import { RadiologyOrdersController } from "./radiology-orders.controller";
 import { RadiologyScheduleController } from "./radiology-schedule.controller";
 import { RadiologyStudyController } from "./radiology-study.controller";
+import { RadiologyAcquisitionController } from "./radiology-acquisition.controller";
+import { RadiologyBillDecisionsController } from "./radiology-bill-decisions.controller";
 
 /**
  * PLAN 18a T3 — the radiology module's Nest wiring.
@@ -23,9 +25,9 @@ import { RadiologyStudyController } from "./radiology-study.controller";
  *
  * ═══ WHAT IS NOT MOUNTED YET ═══
  *
- * T7's acquisition and T8's reporting. At T5 this module is placement, the governed book, the diary
- * and the study console; the controllers list is where a reader sees that at a glance rather than
- * inferring it from the routes that answer.
+ * T8's reporting. At T7 this module is placement, the governed book, the diary, the study console,
+ * the acquisition path and the counter's bill-decision queue; the controllers list is where a reader
+ * sees that at a glance rather than inferring it from the routes that answer.
  */
 @Module({
   controllers: [
@@ -33,6 +35,8 @@ import { RadiologyStudyController } from "./radiology-study.controller";
     RadiologyDefinitionsController,
     RadiologyScheduleController,
     RadiologyStudyController,
+    RadiologyAcquisitionController,
+    RadiologyBillDecisionsController,
   ],
 })
 export class RadiologyModule {}

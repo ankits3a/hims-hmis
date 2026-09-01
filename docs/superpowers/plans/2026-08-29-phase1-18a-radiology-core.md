@@ -551,7 +551,8 @@ Four. Two carry code and both are additive and inert — **no manifest claims `i
 | 3 | **`d5abf6a`** | **T1 — eleven tables, `0047_radiology_core`, the `X` accession series, the two whole-row immutability triggers, `truncateAll` across three statements, both `EPISODE_SERIES` censuses. GREEN: exit 0, 4 suites, 61/61, on `hmis_lane_b_scratch_1`** |
 | 4 | **`997ab18`** | **T2 PARTIAL — the two module skeletons (manifests, kinds, events, workflow definitions, approval type, error unions). Typechecked and linted; NO tests of their own yet. Installed by nobody: neither manifest is in `ALL_MANIFESTS`** |
 | 5 | `e9c425c` `74e3079` `a407719` `620b7c1` | **T2, T3, T4 and the owner's seed ruling.** Per-commit breakdown in the T4/T5 handoff (`b1319f1`) |
-| 7 | *(this task)* | **T6 — the `pcpndt` module: registrations with a hard validity block, Form B's machines and persons with MEMBERSHIP checks, the gap-free per-machine-per-year serial, the open/record/verify life, the lexical lockout and the one real-name reader. Includes migration `0050` (F25) — out of Files list, disclosed. GREEN: 5 suites / 57 tests first run; radiology 12 / 179 after F28's root fix. ALL SEVEN NAMED MUTANTS DIED** |
+| 8 | *(this task)* | **T7 — acquisition: the start's order of operations, the four DD12a authorisations, M4's dose rule (F18 CLOSED — `ionising` is written at last), contrast against T5's gates, the once-only acquired event and the counter's bill-decision queue. GREEN: 3 suites / 43 tests; radiology + pcpndt 20 / 276. Five of seven mutants DIED as stated; A1 and A2 SURVIVED and their atomicity-breaking replacements DIED (F30)** |
+| 7 | `f449f70` | **T6 — the `pcpndt` module: registrations with a hard validity block, Form B's machines and persons with MEMBERSHIP checks, the gap-free per-machine-per-year serial, the open/record/verify life, the lexical lockout and the one real-name reader. Includes migration `0050` (F25) — out of Files list, disclosed. GREEN: 5 suites / 57 tests first run; radiology 12 / 179 after F28's root fix. ALL SEVEN NAMED MUTANTS DIED** |
 | 6 | `835ca2a` | **T5 — check-in and the gate set DERIVED from the type's flags and the patient; the ten kinds' evidence rules; the waiver and override lanes with `form_f` and `identity_two_factor` refused BY KIND before any read; readiness; one mounted controller. GREEN on `hmis_lane_b_scratch`: 3 new suites / 76 tests, every radiology suite 12 / 176, the censuses 12 / 126. ALL SIX NAMED MUTANTS DIED. The full workspace verify is RED IN THE OTHER LANE'S FILES and unattributable — CI by SHA is the instrument (§9.5-T5)** |
 
 Also on `main` from this lane, addressed to Lane A rather than to this phase:
@@ -1241,6 +1242,92 @@ resource-kind declaration carrying `device` is RADIOLOGY's — and importing it 
 statutory register's own tests depend on a department, which is precisely the coupling DD1 exists to
 prevent and the property 15b and 62 are promised.
 
+
+---
+
+## ═══ T7's FINDINGS (2026-09-01) ═══
+
+**F30 — TWO OF T7's SEVEN NAMED MUTANTS SURVIVE, AND THE REASON IS THE DESIGN RATHER THAN THE TEST.
+THE ASSERTIONS PIN ATOMICITY, NOT ORDERING.** *(AGENT-RULES §3's "never fix a surviving mutant
+silently" — branch (b), disclosed in full)*
+
+A1's mutant is *"advance the item BEFORE assigning"*; A2's is *"move the assert after the dose
+write"*. **Both were built and both SURVIVED.** The reason is the same for each and it is not a
+weakness in the assertion as written: `startAcquisition` and `recordAcquired` each run inside ONE
+transaction, so a refusal rolls back every write regardless of the order they were issued in. **The
+ordering of two writes that both roll back is unobservable by construction.**
+
+That is worth stating plainly because it changes what the assertion is FOR. A1 does not test *"is
+`assignResource` called before `advanceOrderItem`"* — nothing observable distinguishes those. It
+tests *"is a refused start ATOMIC"*, which is the property that actually prevents the harm A1's
+prose describes (an orphaned `in_progress` item whose cancel now demands a reason).
+
+**So the discriminating mutants are the ones that break the transaction, and they were built and
+DIED:**
+
+| mutant | what it does | verdict | expected vs received |
+|---|---|---|---|
+| A1 (as the plan states it) | `advanceOrderItem` before `assignResource`, same tx | **SURVIVED** | the rollback makes it indistinguishable |
+| **A1b** | the same advance, on its OWN transaction, so a refusal cannot undo it | **DIED** | expected item `"placed"`, received **`"in_progress"`** — A1's orphaned item, exactly |
+| A2 (as the plan states it) | `assertFormFRecorded` after the row write, same tx | **SURVIVED** | the rollback makes it indistinguishable |
+| **A2b** | the row write on its OWN transaction, before the register is consulted | **DIED** | expected `imageSource` `null`, received **`"no_pacs_images"`** — A2's partial row, exactly |
+
+**The generalisable form, and it is the half worth keeping:** *a mutant that reorders two writes
+inside one transaction tests nothing — the rollback is the control, not the order. To discriminate
+an ordering assertion you must make one write ESCAPE the transaction, because that is the only shape
+in which the stated harm can occur.* An Assertion Book that names ordering mutants for
+single-transaction code is describing a hazard the transaction boundary has already closed, and a
+reviewer reading "mutant: advance the item first" would reasonably believe the ordering is load
+bearing when what is load bearing is the `withTx`.
+
+**F18 IS CLOSED — `imaging_studies.ionising` IS NOW WRITTEN, AND M4's CHECK STOPS BEING VACUOUS.**
+
+T5 recorded that nothing ever wrote the column, so `imaging_studies_dose_ck` read a value that was
+always `false` and could never fire. `recordAcquired` now snapshots it from the ACTIVE study-type
+body at acquisition — the timing that satisfies both of the two comments that disagreed
+(`radiology.ts` said at creation, `definitions.ts` said at acquisition) and that needs no change to
+T3's consumer, because the CHECK is gated on `acquired_at`.
+
+**A3's assertion now leads with the column** (`expect(row.ionising).toBe(true)`) rather than
+assuming it: without that line the rest of A3 would pass against a build in which the CHECK is still
+dead, which is precisely the state T5 found.
+
+**F31 — THE ORDER-ITEM MACHINE HAS NO WAY BACK FROM `in_progress`, AND THE KERNEL REFUSING IS THE
+RIGHT ANSWER.** *(found by the kernel refusing a first draft)*
+
+`abortAcquisition`'s first draft rolled the envelope item back to `placed`, and
+`advanceOrderItem` refused: the legal edges are `placed → in_progress | cancelled` and
+`in_progress → completed | cancelled` (`advance.test.ts` pins exactly those four).
+
+The refusal is correct and the draft was wrong. **An abort is not the department giving the order
+back** — the patient is still on the list, the slot is still held, the accession is unchanged and the
+scan is about to be retried. *"The department is working on this order"* has been true throughout.
+Abandoning it for good is `cancelStudy` (T4), which is the transition that carries a reason to the
+envelope.
+
+Two consequences are now shipped and asserted: the item stays `in_progress` across an abort, and
+**`startAcquisition` advances it only when it is `placed`**, so a re-started study does not attempt
+`in_progress → in_progress` and get refused for restarting legitimately.
+
+**F32 — `startAcquisition`'s FIRST DRAFT GATED ON STATUS BEFORE EVALUATING READINESS, WHICH WOULD
+HAVE REFUSED A STUDY WHOSE GATES WERE ALL GREEN.** *(found by T7's own test)*
+
+`evaluateReadiness` is the ONLY thing that moves `checked_in → ready` — `workflow-def.ts` gives that
+edge to `system` alone. So a study whose last gate was cleared a millisecond ago is still
+`checked_in` until somebody evaluates it, and a status check in front of the evaluation refuses it
+`bad_transition`: **a console showing every gate green and a start button that says the study is in
+the wrong state.**
+
+§5 T7's own sequence puts `evaluateReadiness` first and the draft had inverted it. Fixed, and the
+ordering now also makes the refusal informative — `not_ready` naming the open gates is something a
+technologist can act on, where `bad_transition` naming a status is not.
+
+**T5's CONTRAST SEAM IS CLOSED.** T5 opens the three contrast gates only for
+`contrast_option: 'required'` and recorded the obligation that T7 must refuse contrast on a study
+whose consent gate is not terminal. `recordAcquired` does, with `contrast_mismatch`, and
+`openStudyGate` remains exported so a console can open the three at the moment an `optional` study's
+contrast decision is actually taken.
+
 ### 9.4 The Assertion Book, corrected by execution
 
 **T1 is ROUTINE, so no mutants are owed** (AGENT-RULES §3) and none were built; the report says so
@@ -1614,6 +1701,36 @@ green afterwards.
 red-then-green pair for the suites. The discriminating evidence is the table above. The ONE genuine
 fail-first of this task was not planned: **F25 was found by a database probe before `form-f.ts`
 existed**, which is why the migration precedes the module in the diff rather than following it.
+
+### 9.5-T7 — T7's mechanical verification (2026-09-01)
+
+Every count on `hmis_lane_b_scratch`, with `maxWorkers: 2` now in `jest.config.cjs` (the owner's
+ruling on §2.151, `42e7efc`), so no hand-capping was needed.
+
+| run | result |
+|---|---|
+| the three new T7 suites (`acquisition`, `acquisition.concurrency`, `money`) | **3 suites / 43 tests, exit 0** |
+| every radiology + pcpndt suite | **20 suites / 276 tests, exit 0** |
+| `pnpm typecheck` / `pnpm lint` | **exit 0 / no errors** |
+
+#### The mutants — five of seven DIED as stated; two survived and their replacements DIED
+
+| # | mutant | verdict | expected vs received |
+|---|---|---|---|
+| A1 | advance the item before assigning, SAME transaction | **SURVIVED — see F30** | the rollback makes the ordering unobservable |
+| **A1b** | the same advance on its OWN transaction | **DIED** | expected item `"placed"`, received `"in_progress"` |
+| A2 | `assertFormFRecorded` after the dose write, SAME transaction | **SURVIVED — see F30** | as above |
+| **A2b** | the row write on its OWN transaction, before the register | **DIED** | expected `imageSource` `null`, received `"no_pacs_images"` |
+| A3 | the dose guard dropped AND `imaging_studies_dose_ck` dropped | **DIED** | expected a rejection with `dose_required`, received a RESOLVED promise |
+| A4 | `authorisationOf` never returns null | **DIED** | expected `null`, received `"invoice"` — I1's study-done-never-billed |
+| A5 | a bill decision raised on EVERY acquisition | **DIED** | expected `["acquired_unbilled"]`, received `[…, "contrast_not_given"]` |
+| A6 | the status compare-and-set replaced by an unconditional UPDATE | **DIED** | expected the loser's code `"already_acquired"`, received **`"unknown_transition"`** |
+| A7 | `releaseResource` skipped | **DIED** | expected `["available", null]`, received `["in_use", "01M1EMTE…"]` |
+
+**A6's kill is worth reading twice.** Without the CAS something still refuses the second console —
+the workflow engine's own guard — but it refuses with `unknown_transition`, a 409 that tells a
+technologist nothing. **The CAS is not what makes the refusal happen; it is what makes the refusal
+ACTIONABLE**, and an assertion that only counted events would have missed that entirely.
 
 ### 9.6 The independent close review — FRESH
 
