@@ -2198,3 +2198,44 @@ evidence of reviewed; it is the state in which reviewers have historically found
 > failure as a census kept green by making the record false (§2.155-era).
 > RC-2's honest line: **~420k of the 780,000 coding term (54%), with the 720,000 review term unspent
 > and unrun.**
+
+### 2.158 — WHEN A SUITE IS RED TODAY AND WAS GREEN YESTERDAY WITH NO DIFF BETWEEN, MOVE THE CLOCK BEFORE ELIMINATING ANYTHING ELSE
+
+**Specimen, 2026-09-01.** Five `src/modules/radiology/` suites went red on `main` overnight with no
+commit touching that module. Two lanes spent about an hour on it. The RC-2 lane ran four
+eliminations and killed four hypotheses cleanly:
+
+| eliminated | how |
+|---|---|
+| the `maxWorkers: 2` ruling | isolated run red at `-w 7` too — identical 5 suites / 12 tests |
+| co-tenancy with other suites | red with only that directory running |
+| cross-suite DB leakage | red on a virgin database; the suite truncates per test |
+| either lane's uncommitted work | reproduced on two different trees |
+
+**All four were correct and none of them could have found it.** The cause was a CALENDAR BOMB:
+`placeOrder` stamps `placed_at = input.placedAt ?? new Date()` — the REAL wall clock — while the
+24-hour duplicate window is computed from the test's FICTIONAL `now`. Placements spaced 25 fictional
+hours apart agree with reality only while the wall clock sits behind `NOW + seq*25h − 24h`. The
+suites' `NOW` is `2026-08-31T06:00Z`; `NOW + 26h` is `2026-09-01T08:00Z`. Green all of 08-31, red
+all of 09-01, no diff between.
+
+**THE GAP IS IN THE ELIMINATION METHOD, NOT IN HOW CAREFULLY IT WAS APPLIED.** Every experiment
+above held the wall clock constant *by running now*. A calendar bomb reproduces perfectly,
+deterministically, in isolation, on a virgin database, at every worker count — it is
+indistinguishable from an order-dependence bug to any experiment conducted entirely today.
+**"Reproduces deterministically in isolation" feels like it rules out environmental causes and
+specifically does not rule out the date.**
+
+**MECHANICAL FORM — one run, and it goes straight there:**
+
+> A suite red today, green yesterday, with `git log -- <that path>` showing nothing in between: **the
+> first experiment is to move the clock, not to vary topology.** `faketime`, or re-run with the
+> suite's own `NOW` shifted forward a day, BEFORE isolating, before changing worker counts, before
+> suspecting a neighbour. If the red moves with the date, it is a clock defect and no amount of
+> isolation will show it.
+
+**And the defect class it points at, which is the owning lane's F28 and worth more than the
+diagnosis:** *a test that mixes a fictional clock for its assertions with the real clock for its rows
+is not deterministic — it is merely not failing yet, and it detonates on whoever runs it next rather
+than on whoever wrote it.* Grep for `?? new Date()` in any writer a fixture calls with a fictional
+instant; that is where the two clocks meet.
