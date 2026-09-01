@@ -201,24 +201,37 @@ purpose**: RC-4 deletes one of the two counters and §6's second ruling is WHICH
 server-side now would put a permanent declaration behind a screen scheduled for a decision.
 `nav-parity.test.ts`'s own docstring names this case as legitimate.
 
-### 5.9 The closing verify
+### 5.9 The closing verify — RE-RUN AFTER THE REMEDIATION, because the first one was stale
 
-Run at `52f34c6`, on the build host, after the 18a lane released the box — verified free with a
-check that matches `processChild` WORKERS and not only supervisors, which is the instrument lesson
-this box has now taught three lanes.
+**The first version of this section cited `52f34c6` — five remediation commits before this phase
+actually finished.** A close report whose headline evidence predates its own remediation is the
+"targeted greens prove fixes, not trees" problem wearing a table, and it was mine. The numbers below
+are over a **clean, fully committed tree** at `4ffe5b9`, after the parallel lane landed its own
+46-file remediation and stopped holding files dirty.
 
 | | |
 |---|---|
-| web `vitest run`, FULL | **67 files / 432 tests, exit 0** |
-| core `jest test/billing-lifecycle.e2e.test.ts` (`hmis_rc3_scratch`) | **1 suite / 9 tests, exit 0** |
+| web `vitest run`, **FULL** | **68 files / 447 tests, exit 0** |
+| `pnpm typecheck`, workspace-wide | **exit 0** |
+| core `jest test/billing.e2e.test.ts` (`hmis_rc3_scratch`) | **1 suite / 22 tests, exit 0** — F6's evidence |
+| core `jest test/billing-lifecycle.e2e.test.ts` | **1 suite / 9 tests, exit 0** |
+| core `jest src/modules/opd/fee-status.test.ts` | **1 suite / 11 tests, exit 0** |
 | core `jest test/caddyfile-parity.test.ts test/nav-parity.test.ts` | **2 suites / 9 tests, exit 0** |
-| `pnpm typecheck` (workspace) | **exit 0** |
 | `eslint` on every changed source file | **exit 0** |
 
-No full core batch was run by this lane and that is stated rather than glossed: T4 and T5 touched no
-core source at all (T4's measurement removed the only planned core change; T5's core edit is one
+**Why the intermediate runs could not settle it, stated plainly.** For most of this close the tree
+carried a peer lane's uncommitted work — at its peak 24 core files and both locale files — so every
+full pass in that window was over a tree that was not `main` and could not be attributed cleanly.
+The honest sequence was: targeted greens while the tree was shared, then one full pass the moment it
+was not. **The intermediate full pass was 447 tests with 3 failures, all in the peer's in-flight
+screens**, and attributing that took a key-path diff of `en.json` proving 19 keys added by this lane
+and **none dropped** — because one of the three failures was a missing string and this lane had
+rewritten both locale files six times.
+
+No full core batch was run by this lane, and that is stated rather than glossed: T4 and T5 touched
+no core source at all (T4's measurement removed the only planned core change; T5's core edit is one
 integer in a parity pin), and T3's core work was evidenced in its own session at 97 suites / 920
-tests. The one core file this close changed is a test, and it was run.
+tests. The core files this close changed are two tests and one zod parser, and all three were run.
 
 ### 5.10 THE TWO CLOSE REVIEWS — what they found over a green tree
 
