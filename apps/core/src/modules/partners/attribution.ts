@@ -8,6 +8,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { attributionIds, receivableExpectations } from "../../kernel/db/schema";
 import { percentAmount } from "../tariff";
 import { counterpartyFacts, requireAgreementAt } from "./agreements";
+import { listMergedLoserIds, resolvePatientId } from "../patients";
 import { PartnersError } from "./errors";
 import { attributionIssued, attributionVoided, expectationWrittenOff } from "./events";
 import type { ResolvedAgreement } from "./agreements";
@@ -334,7 +335,25 @@ export async function attributionBindsToPatient(
     .from(attributionIds)
     .where(eq(attributionIds.id, attributionId));
   const bound = rows[0]?.patientId ?? null;
-  return bound === null || bound === patientId;
+  if (bound === null) return true; // a leaflet names nobody and binds to everyone
+  if (patientId === null) return false;
+
+  /**
+   * PASS 2 — THE BINDING MUST SURVIVE A MERGE, and raw string equality does not.
+   *
+   * `merge never rewrites other modules' rows` (§6), and `attribution_ids` is another module's row,
+   * so a slip issued before a merge points at the LOSER's id for ever. `recognition.ts`'s
+   * `mergeTree` exists for exactly this and says so: the card "would go dark at the counter the day
+   * the hospital tidied its own duplicate records."
+   *
+   * Without this the failure is silent and against the partner: slip issued for record L, L merged
+   * into W, patient returns on an encounter opened against W, `bound = L !== W` — the discount
+   * vanishes and the referral loses its attribution, with nothing anywhere saying why.
+   */
+  const survivor = await resolvePatientId(exec, patientId);
+  if (survivor === null) return false;
+  if (bound === survivor) return true;
+  return (await listMergedLoserIds(exec, survivor)).includes(bound);
 }
 
 export type VoidAttributionResult = {

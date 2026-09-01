@@ -1,7 +1,7 @@
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { seedBillingBase } from "../../../test/helpers/billing";
+import { mkCashier, openSessionFor, seedBillingBase } from "../../../test/helpers/billing";
 import { withTx } from "../../kernel/db/client";
 import {
   attributionIds, counterparties, entitlementCounters, membershipInstances, membershipPlans,
@@ -11,7 +11,7 @@ import { registerPatient } from "../patients";
 // spec §4: a module reaches another module ONLY through its declared interface. `PartnersModule`
 // is exported from the index precisely so the seam can be armed from outside.
 import { PartnersModule } from "../partners";
-import { previewInvoice } from "./invoices";
+import { issueInvoice, previewInvoice } from "./invoices";
 import { entitlementMovementsOf } from "../membership";
 import type { Db } from "../../kernel/db/client";
 
@@ -56,6 +56,7 @@ describe("RC-2 T3 — member, coupon and referral benefits apply to the self-pay
   let db: Db;
   let teardown: () => Promise<void>;
   let consultServiceId = "";
+  let cashier: { id: string; token: string; actor: Actor };
 
   beforeAll(async () => {
     ({ db, teardown } = await setupTestDb());
@@ -68,6 +69,8 @@ describe("RC-2 T3 — member, coupon and referral benefits apply to the self-pay
     await truncateAll(db);
     await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "t" }).onConflictDoNothing();
     consultServiceId = (await seedBillingBase(db)).consultNewServiceId;
+    cashier = await mkCashier(db, "t3_payer_cashier");
+    await openSessionFor(db, cashier, 100_000);
   });
 
   /** One patient who holds a live 20% membership AND arrives on a live 10% partner slip. */
@@ -223,7 +226,8 @@ describe("RC-2 T3 — member, coupon and referral benefits apply to the self-pay
     });
 
     // An unrelated walk-in, holding nothing.
-    const { encounterId } = await subjectWithNoInstruments("self");
+    const walkIn = await subjectWithNoInstruments("self");
+    const encounterId = walkIn.encounterId;
 
     const draft = await previewInvoice(db, {
       encounterId, lines: [{ lineId: "fee", serviceId: consultServiceId, qty: 1 }],
@@ -233,7 +237,23 @@ describe("RC-2 T3 — member, coupon and referral benefits apply to the self-pay
     expect(draft.totals.netPayablePaise).toBe(50_000); // full price — the card is not theirs
     expect(draft.lines[0]!.winner).toBeNull();
     expect(draft.lines[0]!.candidates).toHaveLength(0);
-    // …and the member's four free consults are untouched.
+
+    /**
+     * PASS 2 / NEW-5 — THE COUNTER HALF IS PROVED THROUGH `issueInvoice`, NOT THE PREVIEW.
+     *
+     * The first version of this test asserted the movements were empty after `previewInvoice` and
+     * called it "both halves". `previewInvoice` PERSISTS NOTHING — every insert lives inside
+     * `issueInvoice`'s transaction — so that assertion was green with or without the bug: a
+     * discriminator that cannot fail. The burn only happens at issue, so the test has to issue.
+     */
+    const issued = await issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId: walkIn.patientId,
+      lines: [{ lineId: "fee", serviceId: consultServiceId, qty: 1 }],
+      couponCodes: [CARD.toLowerCase()],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] },
+    }, NOW);
+    expect(issued.totals.netPayablePaise).toBe(50_000);
+    // …and the member's four free consults are untouched. THIS one can fail.
     expect(await entitlementMovementsOf(db, counterId)).toEqual([]);
   });
 
@@ -269,7 +289,7 @@ describe("RC-2 T3 — member, coupon and referral benefits apply to the self-pay
   });
 
   /** A patient holding nothing, for the MAJOR 3 case above. */
-  async function subjectWithNoInstruments(intendedPayer: string): Promise<{ encounterId: string }> {
+  async function subjectWithNoInstruments(intendedPayer: string): Promise<{ encounterId: string; patientId: string }> {
     const { patient } = await withTx(db, (tx) =>
       registerPatient(tx, CLERK, { name: "Plain Walkin", sex: "other", ageYears: 28 }));
     const encounterId = newId();
@@ -278,6 +298,6 @@ describe("RC-2 T3 — member, coupon and referral benefits apply to the self-pay
       serviceDate: SERVICE_DAY, visitType: "new", status: "waiting", intendedPayer,
       openedBy: "shaped", updatedBy: "shaped", openedAt: NOW,
     });
-    return { encounterId };
+    return { encounterId, patientId: patient.id };
   }
 });

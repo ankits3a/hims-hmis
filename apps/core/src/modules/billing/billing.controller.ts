@@ -534,7 +534,9 @@ export class BillingController {
   async feeQuoteRoute(
     @Param("encounterId") encounterId: string,
     @Query("coupon") coupon?: string | string[],
-    @Query("referral") referral?: string,
+    // `string | string[]`, matching the schema: Nest hands back an array for a repeated parameter,
+    // and an annotation narrower than the parser invites someone to "simplify" the union back out.
+    @Query("referral") referral?: string | string[],
   ): Promise<FeeQuote> {
     const couponCodes = parsed(feeQuoteCouponsQuery, coupon);
     const attributionCode = parsed(feeQuoteReferralQuery, referral);

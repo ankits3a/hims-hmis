@@ -116,6 +116,10 @@ export async function enrolMember(
     // D5's whole boundary unauditable.
     await appendEvent(tx, instrumentEnrolled.make({
       actor,
+      // PASS 2 nit — the INJECTED clock, not the wall clock. `validFrom`/`validTo` are stamped from
+      // `now`; an event that fell back to `new Date()` would let the row and the spine disagree by
+      // however far a caller had moved time.
+      occurredAt: now,
       patientId: input.patientId,
       payload: {
         instanceId, planId: plan.id, cardCode: input.cardCode.trim(),

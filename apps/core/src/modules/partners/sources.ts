@@ -2,6 +2,7 @@ import { z } from "zod";
 import { assertPaise, percentAmount } from "../tariff";
 import { counterpartyFacts, resolveAgreementAt } from "./agreements";
 import { attributionBindsToPatient, findAttributionByCode } from "./attribution";
+import { PartnersError } from "./errors";
 import type { AdjustmentCandidate, AdjustmentSource, InvoiceLineInput, PricingContext } from "../tariff";
 import type { Db } from "../../kernel/db/client";
 
@@ -165,7 +166,18 @@ export async function resolveReferral(
   let agreement;
   try {
     agreement = await resolveAgreementAt(db, scanned.counterpartyId, args.at);
-  } catch {
+  } catch (e) {
+    /**
+     * PASS 2 — NARROW. The first repair caught EVERYTHING, which traded a loud defect for a silent
+     * one: `resolveAgreementAt` is a SELECT before it is a parse, so a pool exhaustion, a
+     * `statement_timeout` or a dropped connection would have returned `null` here and the invoice
+     * would have been ISSUED AT FULL PRICE with no chip, no warning, and an empty
+     * `invoice_lines.candidates` claiming the partner never referred anyone. A money defect that
+     * fails silently is worse than the 500 it replaced.
+     *
+     * Only an unreadable ARRANGEMENT proposes nothing. Infrastructure stays loud.
+     */
+    if (!(e instanceof PartnersError)) throw e;
     return null;
   }
   if (agreement === null) return null;

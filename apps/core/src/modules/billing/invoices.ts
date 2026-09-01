@@ -119,11 +119,16 @@ export type IssueInvoiceInput = {
    * PLAN 09 / DD2 — coupon codes physically handed across the counter (a card's own bundled
    * coupons need none: `resolveInstruments` finds those from the patient's instruments).
    *
-   * NO HTTP CALLER CAN SET THIS YET, and that is a gap this task reports rather than closes:
-   * `billing.controller.ts`'s `issueInvoiceBody` has no such field and that file is in NO task's
-   * Files list for this phase. Bundled coupons therefore reach the money path and presented ones
-   * do not, until a later phase widens the body. It is typed here because this is the seam the
-   * composer reads and because the coupon lane is otherwise untestable.
+   * **RC-2 T2 WIDENED THE BODY; THIS IS NOW SETTABLE OVER HTTP.** The paragraph that used to stand
+   * here said "NO HTTP CALLER CAN SET THIS YET … until a later phase widens the body", and it is
+   * struck rather than deleted because believing it is what let review MAJOR 3 through: a reader who
+   * trusts it concludes presented codes are unreachable and stops thinking about what they can name.
+   * `issueInvoiceBody` and `previewInvoiceBody` both declare it now.
+   *
+   * A presented code reaches COUPONS ONLY on this path — see `codesAreCouponsOnly` where
+   * `composeBenefits` calls `resolveInstruments`. It must never name a membership CARD here, because
+   * `loadInstances` matches card codes with `or(...)` and would apply a stranger's instrument to
+   * this bill and then burn their counter against it.
    */
   couponCodes?: string[];
   /**
