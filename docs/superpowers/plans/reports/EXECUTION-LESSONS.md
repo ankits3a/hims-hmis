@@ -2239,3 +2239,94 @@ diagnosis:** *a test that mixes a fictional clock for its assertions with the re
 is not deterministic — it is merely not failing yet, and it detonates on whoever runs it next rather
 than on whoever wrote it.* Grep for `?? new Date()` in any writer a fixture calls with a fictional
 instant; that is where the two clocks meet.
+
+### 2.159 — THE PHASE DOCUMENT BECAME THE EXPENSIVE THING TO READ, AND THE HANDOFF IS WHAT REPLACED IT
+
+**Measured at Plan 18a's close, on the tree as it then stood:**
+
+| a session is told to read | bytes | ~tokens |
+|---|---|---|
+| `EXECUTION-LESSONS.md` (this file) | 455,200 | **113k** |
+| the 18a phase document | 218,327 | **54k** |
+| `EXECUTE-METHOD-V3.md` | 49,632 | 12k |
+| `AGENT-RULES.md` | 26,563 | 6k |
+| **the T5 HANDOFF** | **12,277** | **3k** |
+| total if all are opened | 761,999 | **190k**, re-billed on every call |
+
+**§2.148's rule worked and the phase document quietly took its place.** This lane never opened the
+ledger — it cited §2.137/§2.138/§2.140/§2.144/§2.151/§2.152 by NUMBER through the phase document and
+the handoff, exactly as 9.1 rule 1 asks. But **the phase document is now 54k and growing by roughly
+a task per commit**: 18a's grew from ~120k bytes at T5 to 218k by the close, because every task
+appends its findings and its verification block to the one file every successor is pointed at.
+
+**THE SESSION THAT EXECUTED T5–T9 WAS SEEDED FROM A 3k HANDOFF AND NEVER READ §0–§4.** It cost 3k
+to start work instead of 54k, and nothing was verified less: the handoff named the seams, the traps,
+the rulings and the verify discipline, and pointed at §5's own task section and §9.2 for the rest.
+That is an **18× reduction in the cost of starting**, on the one read every successor pays.
+
+**MECHANICAL FORM — three parts, and the third is the one that decays:**
+
+1. **Every task boundary in a multi-task phase ends with a HANDOFF**, not with a pointer at the
+   phase document. 3–15KB: the state in one paragraph, the commits, the seams the next task builds
+   on, the traps, the rulings, the verify commands, the open findings with owners.
+2. **The successor's prompt names the handoff FIRST and says which sections of the phase document
+   are NOT needed** — 18a's said *"you do NOT need §0–§4"* and the session obeyed it.
+3. **Measure the phase document at every close** (`wc -c`) and record it. A phase document over
+   ~50k tokens has stopped being a plan a successor reads and become an archive a successor greps —
+   and the handoff is what a successor should read instead.
+
+### 2.160 — READING BEAT TESTING AT THE CLOSE, SIX TIMES, AND THE CONTRACT PASS IS THE CHEAPEST INSTRUMENT IN THE SET
+
+**Plan 18a's close found SIX defects after the suite was green — under 3,315 passing tests and
+THIRTY mutants of which twenty-eight died. Not one of the six had a failing test.**
+
+| found by | defects | cost |
+|---|---|---|
+| reading §6's CONTRACT clause by clause against the code | **F39, F40** | **~10 minutes** |
+| reading the diff | F42, F43, F41 | ~20 minutes |
+| the full workspace verify | F44 (1 of 3,315) | ~45 min of box time |
+
+**What the CONTRACT pass found is the argument.** F39: the envelope item was completed at
+ACQUISITION where the contract and DD4 both say PUBLISH — so a doctor's order read DONE while the
+study sat unread in the radiologist's queue. F40: the second-factor freshness was re-implemented
+alongside the kernel's `secondFactorFresh`, against a module-local 15 minutes, while `AuthGuard`
+compared `cfg.secondFactorWindowMinutes` on the same request — two owners of one rule, free to
+disagree about a single signature.
+
+**Neither was reachable by any test that existed or that a reasonable author would have written**,
+and the reason is the same for both: **every assertion that touched them checked a state where the
+correct and incorrect behaviours AGREE.** F39's tests all read the item after a publish; F40's
+fixture and the shipped default were both 15.
+
+**MECHANICAL FORM:** a phase whose plan carries a CONTRACT section (§6, "what downstream inherits")
+must, as a named close step, **read that section clause by clause against the shipped code and record
+the confirmation with any deviations**. It is prose against code, it needs no box time, no database
+and no agent, and at 18a it returned two real defects in ten minutes. **Put it BEFORE the close
+review, not after** — it is the cheapest instrument in the set and it hands the reviewer a shorter
+list.
+
+**The corollary, from F25:** T1's Form F trigger froze a row the design required to be completed
+once, making every PCPNDT scan permanently unacquirable — and T1's own suite stayed green through
+it **because it only ever tried the FORBIDDEN direction.** *A constraint test that does not also try
+the PERMITTED direction is half a test.*
+
+### 2.161 — THREE SELF-INFLICTED LOSSES ON A SHARED BOX, EACH WITH A ONE-LINE FIX
+
+Named because all three cost real clock at 18a and all three are mechanical.
+
+1. **A full verify was launched, then files were edited under it and targeted suites were run against
+   the SAME database.** Both results became worthless and ~45 minutes of box time was thrown away.
+   **Fix: a full verify takes its OWN database (`TEST_DATABASE_URL=..._<phase>_verify`) and the tree
+   is FROZEN until it lands — no edits, no other runs.**
+2. **`pkill -f <pattern>` killed the invoking shell**, because the shell's own command line contains
+   the pattern. AGENT-RULES 20 warns about this for `pgrep -af` and it bites identically for `pkill`
+   and for `pgrep -c -f` in an until-loop guard — a peer lane's job spun **seven and a half hours**
+   on `until [ $(pgrep -c -f jest-worker) -eq 0 ]`, a condition it made false by existing.
+   **Fix: never match a bare literal. `pgrep -c -f "[j]est-worker"`, or `ps -eo cmd | grep -c
+   '[j]est-worker'`, and kill by PID read from a listing you looked at.**
+3. **The Bash tool's working directory persists between calls**, so a `cd` inside one command silently
+   relocates the next. At 18a this produced `Can't find meta/_journal.json` (jest run from
+   `src/modules/radiology`) and several `FAIL ./mut-*.test.ts` runs whose output was an instrument
+   error rather than a verdict — six wasted turns across the session.
+   **Fix: every command that runs a tool with a relative-path dependency begins with an absolute
+   `cd`. Treat `cd X && <tool>` as the default shape, not a precaution.**

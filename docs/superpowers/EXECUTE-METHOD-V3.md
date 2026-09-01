@@ -105,6 +105,42 @@ ratchet started.
   place with one line saying why — the rule-6 pattern. The 2026-08-19 consolidation rule
   stands. An entry nobody can attach to a live mechanism is weight, not memory.
 
+## 5A. THE CLOSE'S TWO CHEAPEST STEPS, BOTH BEFORE THE REVIEWER
+
+**Added 2026-09-01 from Plan 18a's close (ledger §2.159, §2.160).** Both cost no box time, no
+database and no agent, and at 18a they returned six defects that 3,315 passing tests and thirty
+mutants did not.
+
+**5A.1 — THE CONTRACT PASS IS A NAMED CLOSE STEP, AND IT RUNS BEFORE THE CLOSE REVIEW.**
+
+A phase whose plan carries a CONTRACT section — *"what downstream plans inherit"* — must read that
+section **clause by clause against the shipped code** at close, and record the confirmation together
+with any deviation. It is prose against code.
+
+At 18a it found two real defects in ten minutes: an envelope item completed at acquisition where the
+contract said publish (so a doctor's order read DONE while the study sat unread), and a
+second-factor window re-implemented alongside the kernel's so the route and the function could
+disagree about one signature. **Neither was reachable by any test that existed**, because every
+assertion that touched them checked a state where the correct and incorrect behaviours agree.
+
+Run it BEFORE the reviewer: it is the cheapest instrument in the set and it hands the reviewer a
+shorter list. **And when a phase ships a CONSTRAINT, test the PERMITTED direction as well as the
+forbidden one** — 18a's Form F trigger made every statutory scan unacquirable and stayed green
+because its suite only ever tried what should be refused (F25).
+
+**5A.2 — EVERY TASK BOUNDARY ENDS WITH A HANDOFF, AND THE SUCCESSOR'S PROMPT NAMES IT FIRST.**
+
+A phase document grows by a task per commit and becomes the expensive thing to read: 18a's reached
+**218KB / ~54k tokens**, against a **12KB / ~3k** handoff that seeded the session which executed five
+tasks and the close. **An 18× reduction in the cost of starting, with nothing verified less.**
+
+The handoff carries the state in one paragraph, the commits, the seams the next task builds on, the
+traps, the rulings, the verify commands and the open findings with owners. The successor's prompt
+names it FIRST and says **which sections of the phase document are not needed**.
+
+**Measure the phase document at every close (`wc -c`) and record it.** Past ~50k tokens it has
+stopped being a plan a successor reads and become an archive a successor greps.
+
 ## 6. Actuals and a stop-loss, not predictive budgets
 
 No phase carries a predicted token budget, and no trim-lever negotiation happens against one.
