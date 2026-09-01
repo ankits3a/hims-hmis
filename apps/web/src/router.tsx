@@ -50,6 +50,11 @@ import { OtBook } from "./screens/ot-book";
 import { OtCockpit } from "./screens/ot-cockpit";
 import { OtRecovery } from "./screens/ot-recovery";
 import { LabDesk } from "./screens/lab-desk";
+import { RadiologyReception } from "./screens/radiology-reception";
+import { RadiologyWorklist } from "./screens/radiology-worklist";
+import { RadiologyStudy } from "./screens/radiology-study";
+import { RadiologyReport } from "./screens/radiology-report";
+import { PcpndtFormF } from "./screens/pcpndt-form-f";
 import { LabCollection } from "./screens/lab-collection";
 import { LabBench } from "./screens/lab-bench";
 import { LabVerify } from "./screens/lab-verify";
@@ -97,6 +102,10 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/ops/mode", label: "nav.opsMode", permission: "ops.mode.set", group: "admin" },
   { to: "/ops/downtime-kit", label: "nav.opsDowntimeKit", permission: "ops.downtime.generate", group: "admin" },
   { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage", group: "admin" },
+  // PLAN 18a T9 — the two entries `radiologyManifest.menu` declares, path and permission matching
+  // it exactly. `nav-parity.test.ts` compares the two lists rather than trusting this comment.
+  { to: "/radiology/reception", label: "nav.radiologyReception", permission: "radiology.schedule", group: "opd" },
+  { to: "/radiology/worklist", label: "nav.radiologyWorklist", permission: "radiology.worklist.read", group: "opd" },
   // PLAN 07c T9 — the supervisor's named-staff view. Path and permission match `deskManifest.menu`
   // exactly, which `nav-parity.test.ts` enforces rather than trusts. It sits in `admin` rather than
   // `desk`: reading a colleague's figures is supervision, not counter work, and putting it beside
@@ -463,6 +472,45 @@ const labCollectionRoute = createRoute({
   component: LabCollection,
 });
 
+/**
+ * PLAN 18a T9 — the imaging department's five routes. TWO carry a NAV entry, matching
+ * `radiologyManifest.menu` exactly (`nav-parity.test.ts` enforces that rather than trusting it);
+ * the other three are reached FROM a study and never browsed.
+ *
+ * **`/pcpndt/form-f/$studyId` is deliberately unlisted.** `pcpndtManifest` declares no menu at all,
+ * because a list of Form F rows is a list of pregnant women by name and the one thing the statutory
+ * register must not become is a searchable surface.
+ */
+const radiologyReceptionRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/radiology/reception",
+  component: RadiologyReception,
+});
+
+const radiologyWorklistRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/radiology/worklist",
+  component: RadiologyWorklist,
+});
+
+const radiologyStudyRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/radiology/studies/$studyId",
+  component: RadiologyStudy,
+});
+
+const radiologyReportRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/radiology/studies/$studyId/report",
+  component: RadiologyReport,
+});
+
+const pcpndtFormFRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pcpndt/form-f/$studyId",
+  component: PcpndtFormF,
+});
+
 const labBenchRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/bench",
@@ -634,6 +682,12 @@ export const router = createRouter({
       // `caddyfile-parity.test.ts` pins the count and joins this task's Files list, which is the
       // S11 rule this repository has now applied to itself six times.
       labDeskRoute, labCollectionRoute, labBenchRoute, labVerifyRoute,
+      // PLAN 18a T9 — 39 -> 44, imaging. FIVE routes and TWO nav links: the study console, the
+      // report and the Form F are all reached from a study rather than browsed, and the Form F is
+      // unlisted on purpose (see the route's own comment). `caddyfile-parity.test.ts` pins the
+      // count and joins this task's Files list, the S11 rule applied for the seventh time.
+      radiologyReceptionRoute, radiologyWorklistRoute, radiologyStudyRoute, radiologyReportRoute,
+      pcpndtFormFRoute,
     ]),
   ]),
 });

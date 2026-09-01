@@ -327,7 +327,20 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // five phases above, the pin was raised in the same edit as the routes rather than after
     // watching it fail — so the evidence here is the passing run, and it is stated as such rather
     // than as a failure this session did not observe.
-    expect(routes).toHaveLength(39);
+    // PLAN 18a T9 — 44 with imaging's five (reception, worklist, the study console, the report, and
+    // the Form F). The number moved BY EXECUTION and this one WAS watched failing, unlike 17b's:
+    // the run that added the routes reported `Received length: 44` against the pinned 39, which is
+    // the friction working exactly as this file's docstring promises. Two of the five carry a NAV
+    // entry; the other three are reached from a study, and `/pcpndt/form-f/$studyId` is unlisted on
+    // purpose — a list of Form F rows is a list of pregnant women by name.
+    expect(routes).toHaveLength(44);
+    expect(routes).toContain("/radiology/reception");
+    expect(routes).toContain("/radiology/worklist");
+    // The three parameterised ones too: a parameterised path is still a SPA path, and if
+    // `/radiology` ever became a proxied prefix these are the legs that would catch it.
+    expect(routes).toContain("/radiology/studies/$studyId");
+    expect(routes).toContain("/radiology/studies/$studyId/report");
+    expect(routes).toContain("/pcpndt/form-f/$studyId");
     expect(routes).toContain("/counter");
     expect(routes).toContain("/my-day");
     // `/staff`, not `/staff/$userId`: the subject is picked on the screen and never enters a URL,

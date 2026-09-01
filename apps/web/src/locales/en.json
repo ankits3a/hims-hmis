@@ -53,7 +53,9 @@
     "labDesk": "Lab desk",
     "labCollection": "Collection",
     "labBench": "Bench",
-    "labVerify": "Verify & report"
+    "labVerify": "Verify & report",
+    "radiologyReception": "Imaging reception",
+    "radiologyWorklist": "Imaging worklist"
   },
   "palette": {
     "title": "Search",
@@ -1900,5 +1902,98 @@
       "unavailable": "Laboratory results could not be loaded — this is NOT a statement that there are none. Retry, or check the laboratory system.",
       "loading": "Loading laboratory results…"
     }
+  },
+  "radiology": {
+    "worklist": {
+      "title": "Imaging worklist",
+      "viewLabel": "View",
+      "accession": "Accession",
+      "patient": "Patient",
+      "study": "Study",
+      "status": "Status",
+      "slot": "Slot",
+      "empty": "Nothing on this list.",
+      "unslotted": "not booked",
+      "stat": "STAT",
+      "formF": "Form F",
+      "restricted": "restricted",
+      "formFTitle": "This scan is covered by the PCPNDT Act and needs a Form F before acquisition.",
+      "view": {
+        "floor": "Floor",
+        "unread": "Unread",
+        "all": "All"
+      }
+    },
+    "reception": {
+      "title": "Imaging reception",
+      "device": "Machine",
+      "slot": "Slot",
+      "book": "Book",
+      "walkIn": "Walk in",
+      "checkIn": "Check in",
+      "checkedIn": "Checked in. These safety gates are now open and the console clears them:"
+    },
+    "study": {
+      "unknown": "No such study, or you may not see it.",
+      "gates": "Safety gates",
+      "ready": "Every gate is clear — this study is ready.",
+      "openGates": "{{count}} gate(s) still open.",
+      "evidence": "Evidence (JSON)",
+      "reason": "Reason",
+      "satisfy": "Satisfy",
+      "waive": "Waive",
+      "override": "Override",
+      "start": "Start acquisition",
+      "acquired": "Record acquired",
+      "ionising": "ionising",
+      "badEvidence": "The evidence must be valid JSON."
+    },
+    "report": {
+      "title": "Report",
+      "findings": "Findings",
+      "impression": "Impression",
+      "critical": "Criticality",
+      "criticalNone": "none",
+      "save": "Save draft",
+      "sign": "Sign",
+      "publish": "Publish",
+      "saved": "Draft saved.",
+      "signed": "Signed.",
+      "versions": "Versions",
+      "published": "published",
+      "publishedNotified": "Published, and the patient has been notified.",
+      "publishedNoMessage": "Published. No message was sent — the invoice is not settled."
+    },
+    "gate": {
+      "identity_two_factor": "Identity (two factor)",
+      "pregnancy_screen": "Pregnancy screen",
+      "contrast_consent": "Contrast consent",
+      "renal_function": "Renal function",
+      "prior_contrast_reaction": "Prior contrast reaction",
+      "mri_safety": "MRI safety",
+      "form_f": "Form F (PCPNDT)",
+      "chaperone_present": "Chaperone",
+      "laterality_confirm": "Side",
+      "mlc_check": "MLC"
+    }
+  },
+  "pcpndt": {
+    "formF": {
+      "title": "Form F — PCPNDT register",
+      "none": "No Form F has been opened for this study.",
+      "indication": "Indication",
+      "open": "Open Form F",
+      "serial": "Serial {{no}}/{{year}}",
+      "sectionF": "Part F — indication for the procedure",
+      "gestation": "Gestation (weeks)",
+      "record": "Record and sign",
+      "recorded": "Recorded. This declaration can no longer be edited.",
+      "verify": "Verify (in-charge)",
+      "verified": "Verified by the PCPNDT in-charge.",
+      "realNameNotice": "This patient is flagged confidential elsewhere in the hospital. The Form F shows the legal name deliberately: a statutory declaration bearing a pseudonym is a false declaration."
+    }
+  },
+  "common": {
+    "loading": "Loading…"
   }
 }

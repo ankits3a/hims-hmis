@@ -551,7 +551,8 @@ Four. Two carry code and both are additive and inert — **no manifest claims `i
 | 3 | **`d5abf6a`** | **T1 — eleven tables, `0047_radiology_core`, the `X` accession series, the two whole-row immutability triggers, `truncateAll` across three statements, both `EPISODE_SERIES` censuses. GREEN: exit 0, 4 suites, 61/61, on `hmis_lane_b_scratch_1`** |
 | 4 | **`997ab18`** | **T2 PARTIAL — the two module skeletons (manifests, kinds, events, workflow definitions, approval type, error unions). Typechecked and linted; NO tests of their own yet. Installed by nobody: neither manifest is in `ALL_MANIFESTS`** |
 | 5 | `e9c425c` `74e3079` `a407719` `620b7c1` | **T2, T3, T4 and the owner's seed ruling.** Per-commit breakdown in the T4/T5 handoff (`b1319f1`) |
-| 9 | *(this task)* | **T8 — the report: every save a version, the signature under a fresh second factor, the lockout on EVERY report, the side against the order, amend as v(n+1), publication that money never gates, the criticals with a read-back, and the three reads with their two confidentiality rules. GREEN: 3 suites / 35 tests; radiology + pcpndt 23 / 311. ALL EIGHT MUTANTS DIED** |
+| 10 | *(this task)* | **T9 — five screens, two nav entries, the route census 39 → 44, and the END-TO-END PROOF through the real manifest: two studies, both statutory paths, over HTTP. GREEN: e2e 4; web 66 files / 396; radiology + pcpndt + e2e + censuses 28 / 343. ROUTINE, so no mutants owed — three findings recorded instead** |
+| 9 | `52b4810` | **T8 — the report: every save a version, the signature under a fresh second factor, the lockout on EVERY report, the side against the order, amend as v(n+1), publication that money never gates, the criticals with a read-back, and the three reads with their two confidentiality rules. GREEN: 3 suites / 35 tests; radiology + pcpndt 23 / 311. ALL EIGHT MUTANTS DIED** |
 | 8 | `6908d13` | **T7 — acquisition: the start's order of operations, the four DD12a authorisations, M4's dose rule (F18 CLOSED — `ionising` is written at last), contrast against T5's gates, the once-only acquired event and the counter's bill-decision queue. GREEN: 3 suites / 43 tests; radiology + pcpndt 20 / 276. Five of seven mutants DIED as stated; A1 and A2 SURVIVED and their atomicity-breaking replacements DIED (F30)** |
 | 7 | `f449f70` | **T6 — the `pcpndt` module: registrations with a hard validity block, Form B's machines and persons with MEMBERSHIP checks, the gap-free per-machine-per-year serial, the open/record/verify life, the lexical lockout and the one real-name reader. Includes migration `0050` (F25) — out of Files list, disclosed. GREEN: 5 suites / 57 tests first run; radiology 12 / 179 after F28's root fix. ALL SEVEN NAMED MUTANTS DIED** |
 | 6 | `835ca2a` | **T5 — check-in and the gate set DERIVED from the type's flags and the patient; the ten kinds' evidence rules; the waiver and override lanes with `form_f` and `identity_two_factor` refused BY KIND before any read; readiness; one mounted controller. GREEN on `hmis_lane_b_scratch`: 3 new suites / 76 tests, every radiology suite 12 / 176, the censuses 12 / 126. ALL SIX NAMED MUTANTS DIED. The full workspace verify is RED IN THE OTHER LANE'S FILES and unattributable — CI by SHA is the instrument (§9.5-T5)** |
@@ -1397,6 +1398,56 @@ an amendment is v(n+1). That follows from T1's trigger rather than from a choice
 is stated because the alternative a reader might expect — a mutable draft that hardens at signature
 — **is not reachable** and would have needed a migration to become so.
 
+
+---
+
+## ═══ T9's FINDINGS (2026-09-01) ═══
+
+**F36 — THE END-TO-END PROOF NEEDED THE WORKER, AND AN API-ONLY e2e WOULD HAVE PROVED HALF A
+CHAIN.** *(found by running the e2e)*
+
+`order.placed` is APPENDED by the placement route and DISPATCHED by the worker process. An
+HTTP-only e2e therefore sees the ORDER and never the STUDY — the first run failed with
+`Cannot read properties of undefined (reading 'orderItemId')`, because nothing had created one.
+
+The fix is one `runDispatchCycle` per placement, and **it is driven through
+`buildSubscriptionBus(registry, workerConsumers(db))` rather than by calling `handleOrderPlaced`
+directly.** That distinction is the finding: a direct call proves the HANDLER and not the
+SUBSCRIPTION, and the subscription is the half that has been wrong before — §2.54's own specimen is
+`worker.ts` heartbeating for five minutes over an empty consumer list. The e2e now fails if the
+manifest's `subscriptions` entry, the `workerConsumers` registration or the handler is wrong,
+where a direct call would only have caught the third.
+
+**F37 — A SHARED `useMutation` FACTORY BROKE THE RULES OF HOOKS, AND LINT WAS THE ONLY THING THAT
+NOTICED.** *(found by `pnpm lint`)*
+
+`radiology-study.tsx` had `const run = (fn) => useMutation({...})` and called it five times. It
+WORKS — the calls are unconditional and in a fixed order — and it is exactly the shape that stops
+working the first time somebody wraps one in a branch, at which point React's hook ordering breaks
+in a way that presents as a different component's state appearing in this one.
+
+`react-hooks/rules-of-hooks` caught it; typecheck and the four passing component tests did not, and
+would not have. Recorded because the tempting fix when this fires is to disable the rule for the
+line.
+
+**F38 — THE ROUTE CENSUS MOVED 39 → 44 AND THE FAILURE WAS WATCHED, WHICH IS WORTH ONE SENTENCE.**
+
+`caddyfile-parity.test.ts` pins the SPA's route count, and this phase's five routes moved it. Every
+previous phase's note in that file records the number moving "by execution"; 17b's records that its
+pin was raised in the same edit as the routes, so no failure was observed. **This one was**: the run
+reported `Received length: 44` against the pinned 39 before the pin was touched. Recorded because
+the file's docstring asks for exactly that distinction, and because a census raised without ever
+seeing it fail is a census nobody has proved is wired.
+
+**A NOTE AGAINST THIS TASK'S OWN INTEREST — WHAT T9 DID NOT BUILD.**
+
+The screens are thin. They render what the server reports, send intents and show refusals verbatim,
+and that is deliberate (`radiology-api.ts`'s header gives the argument). But it means several things
+a real department wants are NOT here and are not hidden: a device diary view, a bill-decision queue
+screen, an amend form, a critical-acknowledgement screen, and a report template picker. The ROUTES
+and the API functions exist for all of them; the screens do not. §1.3's line applies — a follow-on
+slice owns the console's depth, and 18a's claim is the department's rules rather than its polish.
+
 ### 9.4 The Assertion Book, corrected by execution
 
 **T1 is ROUTINE, so no mutants are owed** (AGENT-RULES §3) and none were built; the report says so
@@ -1827,6 +1878,43 @@ ACTIONABLE**, and an assertion that only counted events would have missed that e
 freshness guard left `secondFactorAt: Date | null` flowing into a `Date`, so `tsc` refused it before
 any assertion ran — and rule 21 is explicit that a typecheck death proves nothing. The mutant was
 made to compile (`?? now`) and re-run, and only then did the assertion decide.
+
+### 9.5-T9 — T9's mechanical verification (2026-09-01)
+
+**T9 is ROUTINE**, so no mutants are owed and no fail-first is owed. Both are stated rather than
+quietly skipped, which is what the tier asks for. The one finding-instead-of-a-mutant the tier
+invites is recorded: F36, F37 and F38 above, plus T8's F34 (an assertion whose hazard the fixture
+cannot reach).
+
+| run | result |
+|---|---|
+| **`test/radiology.e2e.test.ts`** — the whole department over HTTP | **4 tests, exit 0** |
+| the five new web screens and their tests | **5 suites / 22 tests, exit 0** |
+| the whole `apps/web` suite | **66 files / 396 tests, exit 0** |
+| radiology + pcpndt + the e2e + the four censuses | **28 suites / 343 tests, exit 0** |
+| `pnpm typecheck`, both packages | **exit 0** |
+| `pnpm lint` | **exit 0** — after it caught F37, which nothing else would have |
+| `nav-parity.test.ts` | **PASS** — the two NAV entries match `radiologyManifest.menu` in path AND permission |
+| `caddyfile-parity.test.ts` | **PASS at 44**, raised from 39 after watching it fail (F38) |
+
+#### What the end-to-end actually walks
+
+**Study one, a contrast CT on a woman of 30**: placed through `POST /radiology/orders` → one
+dispatch cycle through the REAL subscription bus → a study with an `X…` accession matching
+`/^X\d{10}$/` → scheduled → checked in with **exactly five gates** (`contrast_consent`,
+`identity_two_factor`, `pregnancy_screen`, `prior_contrast_reaction`, `renal_function`) → each
+cleared through its own route → `ready` → started (`authorisedBy: "stat"`) → acquired with a dose
+and contrast → **`ionising` TRUE on the row** (F18's regression, at the far end of the chain) →
+drafted → signed after `recordSecondFactor` → published → the envelope item `completed` → the four
+events present and `study_acquired` before `report_published` → a `phi_access_log` row per reader.
+
+**Study two, an obstetric ultrasound on the same patient**: `restricted` and `form_f_required` at
+placement → the register created through `POST /pcpndt/registrations` and its machine and person →
+checked in with `form_f` among the gates → **the gate refused `form_f_missing` until a form was
+opened** → serial 1 minted → gate satisfied on the OPEN form → ready → started → **`recordAcquired`
+REFUSED `form_f_missing`** → `POST /pcpndt/form-f/:id/record` → the same call lands. Then A8's
+worklist hold-out over HTTP, and the Form F reader returning **the real name** for a patient flagged
+confidential, with the PHI row to match.
 
 ### 9.6 The independent close review — FRESH
 
