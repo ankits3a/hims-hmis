@@ -54,3 +54,46 @@ records T1–T5 as pushed with green suites, so whoever picks it up will reasona
 should know that `main` is not.
 
 **Nothing has been changed in `src/modules/radiology/` by either lane.**
+
+---
+
+## CORRECTION, appended 2026-09-01 after the 18a lane found the root cause
+
+**RESOLVED at `f449f70`. The cause was a CALENDAR BOMB, and this report's remaining hypothesis was wrong.**
+
+**Root cause (the 18a lane's, finding F28 in their phase doc):** `placeOrder` stamps
+`placed_at = input.placedAt ?? new Date()`, and the test helper `placeAndCreateStudy` never passed
+`placedAt`. So every order row carried the REAL wall clock while T3's duplicate window
+(`orders.placed_at >= now - 24h`) was computed from the FICTIONAL `now` the helper threads through.
+T4 and T5 space placements 25 fictional hours apart on the assumption that the two clocks agree —
+and they agree only while real time sits behind `NOW + seq*25h − 24h`. The suites' `NOW` is
+`2026-08-31T06:00Z`; `NOW + 26h` is `2026-09-01T08:00Z`. **Green all of 08-31, red all of 09-01,
+with no code change in between.** One-line fix: `placedAt: now` in the helper. 12 suites / 179 tests.
+
+**What this report got right, and it saved the owning lane four re-runs:** the four eliminations
+above all hold — not `maxWorkers` (red at `-w 7` too), not co-tenancy, not cross-suite leakage, not
+another lane's in-flight work.
+
+**What this report got WRONG, struck here rather than left standing.** It offered as a candidate
+that `findRecentItems` matched more broadly than its `(patientId, serviceId)` signature, on the
+evidence that "two failing cases name different `serviceId`s yet both collide with the same order
+`R2608310001`". **That is a misreading.** The two cases are separate `it()` blocks, each running
+after `truncateAll`, so **the order sequence restarts every test and each test's first order is
+`R2608310001`.** They are two different orders that share a number. `findRecentItems` filters
+exactly as its signature says. There is no second defect; do not go looking for one.
+
+**The methodological lesson, which is the durable half and is the owning lane's:**
+
+> **A test that mixes a fictional clock for its assertions with the real clock for its rows is not
+> deterministic — it is merely not failing yet, and it detonates on whoever runs it next rather than
+> on whoever wrote it.**
+
+And the corollary this report's own failure demonstrates: **every elimination here held the wall
+clock constant by running now, so none of them could have distinguished a calendar bomb.** A defect
+that reproduces perfectly today and would not have yesterday looks exactly like a deterministic
+defect to any experiment run entirely today. When isolation, worker count and a virgin database all
+fail to move a red, the next variable to vary is TIME, not topology.
+
+**Ownership:** these suites predate T6 by about fifteen hours, not by a release — introduced by the
+18a lane's own T5 helper usage on 08-31 and detonated on 09-01. The phrase "predates T6" earlier in
+this report should be read that way rather than as ambient breakage.
