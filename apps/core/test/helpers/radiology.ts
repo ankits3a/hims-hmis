@@ -215,6 +215,24 @@ export async function placeAndCreateStudy(
       patientId: fx.patientId, encounterNo: fx.visitNo, serviceDate: fx.serviceDate,
       orderingClinicianId: "dr-consultant", indication: "clinical suspicion",
       items: [{ serviceId: fx.services[serviceCode]! }],
+      /**
+       * ═══ FINDING F28 — WITHOUT THIS, EVERY SUITE USING THIS HELPER IS A TIME BOMB ═══
+       *
+       * T3's duplicate window is `orders.placed_at >= now - 24h`, and `placeOrder` stamps
+       * `placed_at = input.placedAt ?? new Date()`. This helper spaces its placements 25 fictional
+       * hours apart (T4's `newStudy`, T5's `arrive`) but did NOT pass `placedAt` — so every order
+       * was stamped with the REAL wall clock while the window was measured from the FICTIONAL one.
+       *
+       * The two agree only while real time sits behind `NOW + seq*25h - 24h`. **It passed all day
+       * on 2026-08-31 and began failing on 2026-09-01** — five radiology suites at once,
+       * `duplicate_recent` against `R2608310001`, with no code change between the green and the red.
+       * A test whose correctness depends on what day it is run is a test that will fail for
+       * somebody who did not write it, on a morning when nothing is wrong.
+       *
+       * Passing the fictional instant makes the stamp and the window read the same clock, which is
+       * what the 25-hour spacing always assumed.
+       */
+      placedAt: now,
     } as never,
     idemKey, now,
   );

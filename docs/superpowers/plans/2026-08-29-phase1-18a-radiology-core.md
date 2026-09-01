@@ -551,7 +551,8 @@ Four. Two carry code and both are additive and inert — **no manifest claims `i
 | 3 | **`d5abf6a`** | **T1 — eleven tables, `0047_radiology_core`, the `X` accession series, the two whole-row immutability triggers, `truncateAll` across three statements, both `EPISODE_SERIES` censuses. GREEN: exit 0, 4 suites, 61/61, on `hmis_lane_b_scratch_1`** |
 | 4 | **`997ab18`** | **T2 PARTIAL — the two module skeletons (manifests, kinds, events, workflow definitions, approval type, error unions). Typechecked and linted; NO tests of their own yet. Installed by nobody: neither manifest is in `ALL_MANIFESTS`** |
 | 5 | `e9c425c` `74e3079` `a407719` `620b7c1` | **T2, T3, T4 and the owner's seed ruling.** Per-commit breakdown in the T4/T5 handoff (`b1319f1`) |
-| 6 | *(this task)* | **T5 — check-in and the gate set DERIVED from the type's flags and the patient; the ten kinds' evidence rules; the waiver and override lanes with `form_f` and `identity_two_factor` refused BY KIND before any read; readiness; one mounted controller. GREEN on `hmis_lane_b_scratch`: 3 new suites / 76 tests, every radiology suite 12 / 176, the censuses 12 / 126. ALL SIX NAMED MUTANTS DIED. The full workspace verify is RED IN THE OTHER LANE'S FILES and unattributable — CI by SHA is the instrument (§9.5-T5)** |
+| 7 | *(this task)* | **T6 — the `pcpndt` module: registrations with a hard validity block, Form B's machines and persons with MEMBERSHIP checks, the gap-free per-machine-per-year serial, the open/record/verify life, the lexical lockout and the one real-name reader. Includes migration `0050` (F25) — out of Files list, disclosed. GREEN: 5 suites / 57 tests first run; radiology 12 / 179 after F28's root fix. ALL SEVEN NAMED MUTANTS DIED** |
+| 6 | `835ca2a` | **T5 — check-in and the gate set DERIVED from the type's flags and the patient; the ten kinds' evidence rules; the waiver and override lanes with `form_f` and `identity_two_factor` refused BY KIND before any read; readiness; one mounted controller. GREEN on `hmis_lane_b_scratch`: 3 new suites / 76 tests, every radiology suite 12 / 176, the censuses 12 / 126. ALL SIX NAMED MUTANTS DIED. The full workspace verify is RED IN THE OTHER LANE'S FILES and unattributable — CI by SHA is the instrument (§9.5-T5)** |
 
 Also on `main` from this lane, addressed to Lane A rather than to this phase:
 `26d1a1b` (the coordination contract) and `57b93fa` (the reply — F26's attribution, the
@@ -1118,6 +1119,128 @@ not apply to this patient"*, which is never true of identity. An override says *
 accepting the risk, and here is why"* — which is exactly the unconscious trauma patient with no
 papers, and it leaves a reason and an event where a waiver would leave a shrug.
 
+
+---
+
+## ═══ T6's FINDINGS (2026-09-01) ═══
+
+**F25 — A LIVE DEFECT IN T1's SHIPPED MIGRATION: THE FORM F TRIGGER FROZE A ROW THE DESIGN REQUIRES
+TO BE COMPLETED, AND IT MADE EVERY APPLICABLE SCAN PERMANENTLY UNACQUIRABLE.** *(found by T6, FIXED
+here in migration `0050` — an out-of-Files-list change, disclosed below)*
+
+`0047` shipped `pcpndt_form_f_forbid_mutation()` comparing WHOLE ROWS minus `verified_by` and
+`verified_at`, so **no column could change after INSERT**. Three shipped statements require
+otherwise:
+
+  · `schema/pcpndt.ts` — *"A form is OPENED when the sonologist starts it (which mints the serial,
+    irreversibly) and RECORDED when it is complete and signed."*
+  · `FORM_F_STATUSES = ['open','recorded']`, and `pcpndt_form_f_recorded_shape_ck` exists precisely
+    to permit a null signer while `status = 'open'` and to demand one otherwise. A CHECK written to
+    admit two states, on a table that could only ever hold the first.
+  · **§5 T6 A3** — *"`assertFormFRecorded` is refused for a study with an OPEN form and passes with a
+    RECORDED one"*, which requires ONE study to hold each state in turn. `pcpndt_form_f_study_ux`
+    permits exactly one row per study, so "later recorded" can only mean "this row, updated".
+
+**MEASURED AT THE DATABASE RATHER THAN REASONED ABOUT** (this phase's own F2 discipline, applied to
+its own migration): inserting an `open` form on `hmis_lane_b_scratch_1` and running
+`UPDATE … SET status='recorded', sections=…, signed_by=…, signed_at=…` raises
+`pcpndt_form_f_immutable: only verified_by and verified_at may change after insert`.
+
+**The consequence is not cosmetic and not confined to T6.** T7's `recordAcquired` calls
+`assertFormFRecorded` first, and no form could ever reach `recorded` — so **no PCPNDT-applicable
+scan in the hospital could ever be acquired.** The register was a write-only table with one
+reachable state.
+
+**Why this was FIXED rather than CHAIN-HALTED.** AGENT-RULES §3 branch (a) says a fix reaching
+outside the Files list is a halt. The halt was rejected because the defect makes T6 **through T9**
+unbuildable rather than merely wrong: there is no version of this module that functions against the
+shipped trigger, so halting would have delivered nothing and left the finding unproved. Migration
+`0050` permits **exactly one** transition and widens nothing else — proved column by column at the
+database:
+
+| probe against `0050` | result |
+|---|---|
+| `open → recorded` (the completion) | **ALLOWED** |
+| `verified_by` / `verified_at` on a recorded form | **ALLOWED** |
+| `sections` on a recorded form | REFUSED |
+| `serial_no` on a recorded form | REFUSED |
+| `patient_id` / any other column on a recorded form | REFUSED |
+| `recorded → open` (reopening a declaration) | REFUSED |
+| `serial_no` changed BY the completion itself | REFUSED |
+| DELETE, in either state | REFUSED |
+
+The first row is the fix; **every other row is A4, unchanged.** The identity of the declaration —
+serial, machine, study, patient — is frozen from INSERT and survives the completion, so a form
+cannot be completed onto a different machine or a different woman than the one whose scan minted it.
+
+**F26 — A5's THIRD NEGATIVE IS A TRIVIAL ONE, AND THE TWO THAT DO THE WORK FAIL FOR DIFFERENT
+REASONS.** *(the "an assertion that cannot discriminate is a finding" branch of AGENT-RULES §3)*
+
+A5 names `boycott`, `Mumbai` and `beta-blocker` as strings that must not trip.
+
+  · **`boycott` discriminates** — ordinary word-boundary work; the substring mutant trips on it.
+  · **`beta-blocker` discriminates, and it is the one that decides the design.** A hyphen is a
+    non-word character in every regex flavour, so a plain `\b` matcher sees `beta` as a whole word
+    here and trips on every cardiology report in the building. **Word boundaries alone are not
+    enough**; the shipped rule makes a hyphen bind.
+  · **`Mumbai` does not discriminate.** No term in the lexicon is a substring of it (`mum`, `umb`,
+    `mba`, `bai` are none of them sex-determination language), so it passes against the substring
+    mutant too. Asserted because the plan names it, and asserted alongside
+    `LOCKOUT_LEXICON.some(t => "mumbai".includes(t))` being false so a reader can see WHY it is free.
+
+**The disclosed cost of the hyphen rule**: `boy-child` does not trip either. A5's own mutant note
+ranks the trade — *"every beta-blocker report is unsignable, and the clinic disables the lockout"* —
+and a control the floor switches off protects nobody. Asserted in both directions so nobody "fixes"
+the hyphen rule without seeing what it buys.
+
+**F27 — A1 MERGES TWO PROPERTIES WITH TWO DIFFERENT OWNERS, AND THE INDEX DOES NOT HOLD THE ONE IT
+IS CREDITED WITH.** *(measured)*
+
+A1 reads *"twelve concurrent `openFormF` … mint 1..12 with no gap and no duplicate; the UNIQUE
+`(machine_id, serial_no)` refuses a hand-inserted 14."*
+
+**It does not, and it should not.** After 1..12 exist, a serial 14 collides with nothing —
+`pcpndt_form_f_machine_serial_ux` holds NO-DUPLICATE, and **GAP-FREENESS comes from the counter**,
+not from the index. Proved both ways: a hand-inserted duplicate of serial 1 is refused by the index;
+a hand-inserted 14 lands and leaves the register reading `[1, 14]`, which is exactly the gap an
+inspector's count finds and no DDL can prevent.
+
+The assertion is written to what each mechanism actually holds. **The distinction matters beyond
+wording**: somebody reading A1 as shipped would believe the index protects the serial run, and would
+not notice a counter regression that produced gaps.
+
+**F28 — A TIME BOMB IN THE SHARED RADIOLOGY FIXTURE: IT SPACED PLACEMENTS IN FICTIONAL TIME AND
+STAMPED THEM IN REAL TIME. IT PASSED ALL OF 2026-08-31 AND FAILED ON 2026-09-01.** *(found by T6's
+neighbour run; FIXED in `test/helpers/radiology.ts`)*
+
+T3's duplicate window is `orders.placed_at >= now - 24h`, and `placeOrder` stamps
+`placed_at = input.placedAt ?? new Date()`. `placeAndCreateStudy` passed `now` as the duplicate
+check's clock but **never as `placedAt`** — so every order was stamped with the REAL wall clock
+while the window was measured from the FICTIONAL one. T4's `newStudy` and T5's `arrive` both space
+placements 25 fictional hours apart on the assumption that the two clocks agree.
+
+They agree only while real time sits behind `NOW + seq*25h − 24h`. **Five radiology suites and
+twelve tests went red on 2026-09-01 with no code change between the green and the red** —
+`duplicate_recent` against `R2608310001`, in suites T6 does not touch.
+
+Fixed at the root by passing `placedAt: now`, so the stamp and the window read the same clock. All
+twelve radiology suites are green again (179 tests).
+
+**The generalisable form, and it is worth more than the fix: a test that mixes a FICTIONAL clock for
+its assertions with the REAL clock for its rows is not deterministic — it is merely not failing
+yet.** The failure arrives on a morning when nothing has changed, in suites the author of the change
+did not touch, and it will land on whoever runs the suite next rather than on whoever wrote it.
+`§2.144`'s cousin: that one is a test too close to its time budget, this one is a test too close to
+its calendar.
+
+**F29 — `test/helpers/pcpndt.ts` IS A SECOND UNLISTED SHARED FIXTURE** (F23's pattern, second
+instance). Four T6 suites need one registration, one machine, one registered person and the DD14
+permission split; building it four times would be four chances to build it differently. It
+deliberately INSERTS the device row rather than calling `createResource`, because the only
+resource-kind declaration carrying `device` is RADIOLOGY's — and importing it would make the
+statutory register's own tests depend on a department, which is precisely the coupling DD1 exists to
+prevent and the property 15b and 62 are promised.
+
 ### 9.4 The Assertion Book, corrected by execution
 
 **T1 is ROUTINE, so no mutants are owed** (AGENT-RULES §3) and none were built; the report says so
@@ -1455,6 +1578,42 @@ available while this was written). The safe form §2.151 gives is sequential and
 needs a coordinated slot with the RC-1 and VD-1 lanes. **Every number in the table above this one
 was already taken in that safe form** (`npx jest <paths> -w 2`), which is why T5's own evidence
 stands while the workspace-wide claim does not.
+
+### 9.5-T6 — T6's mechanical verification (2026-09-01)
+
+Every count on `TEST_DATABASE_URL="postgres://hmis:hmis@localhost:5433/hmis_lane_b_scratch"`, taken
+in §2.151's capped form (`npx jest <paths> -w 2`) with the box coordinated with the RC-1 and VD-1
+lanes.
+
+| run | result |
+|---|---|
+| the five new T6 suites (`registrations`, `form-f`, `form-f.concurrency`, `lockout`, `read`) | **5 suites / 57 tests, exit 0, FIRST RUN** |
+| every radiology suite, after F28's root fix | **12 suites / 179 tests, exit 0** |
+| the censuses (`manifests`, `nav-parity`, `seed-roles`, `pcpndt` schema) | **exit 0. Nothing moved** — all five permissions were declared at T2 |
+| `pnpm typecheck` (whole `apps/core`) | **exit 0** |
+| `pnpm lint` over `modules/pcpndt` and the new fixture | **exit 0, no errors** |
+
+#### The mutants — all seven the Assertion Book names, and all seven DIED
+
+| # | mutant | the defect | verdict | expected vs received |
+|---|---|---|---|---|
+| A1 | `mut-a1.ts` | the serial counter is READ-THEN-WRITE instead of `UPDATE … RETURNING` | **DIED** | twelve concurrent openings raised `duplicate key value violates unique constraint "pcpndt_form_f_machine_serial_ux"` — two women's forms reached for one serial, and the index caught what the counter should have |
+| A2 | `mut-a2.ts` | `assertPersonRegistered` asks EXISTENCE (drops the `registrationId` predicate) | **DIED** | expected a rejection with `person_not_registered`, received a RESOLVED promise — the satellite-clinic doctor scanned on the main site's machine |
+| A3 | `mut-a3.ts` | `assertFormFRecorded` passes on an `open` form | **DIED** | expected `"form_f_missing"`, received `undefined` — H8's form-filled-after-the-scan |
+| A4 | `mut-a4.test.ts` | the TRIGGER names columns explicitly and omits `sections` (scratch `CREATE OR REPLACE FUNCTION`, shipped function restored in `afterEach`) | **DIED** | expected the UPDATE to reject, received a RESOLVED promise — the Part F indication editable after the inspector left |
+| A5 | `mut-a5.ts` | `findLockoutHits` matches SUBSTRINGS | **DIED** | expected `[]` for `"…called for a boycott…"`, received `[{term:"boy", index:27, matched:"boy"}]` |
+| A6 | `mut-a6.ts` | `formFForStudy` renders the name through `displayName` | **DIED** | expected `"Asha Devi"`, received `"Priya M."` — a statutory declaration bearing a pseudonym |
+| A7 | `mut-a7.ts` | `activeRegistrationFor` drops the `valid_to` predicate | **DIED** | expected `null` for a registration that lapsed in 2021, received the live registration and machine — N7 |
+
+**A4's mutant is the only one that is not TypeScript**, and that is what the plan names: *"trigger
+omits `sections`"*. It is applied as scratch DDL to the test database and the shipped `0050` function
+is restored in `afterEach`, so no other suite inherits it — verified by re-running all five T6 suites
+green afterwards.
+
+**Fail-first, honestly:** T6's tests were written after its code, as T5's were, so there is no
+red-then-green pair for the suites. The discriminating evidence is the table above. The ONE genuine
+fail-first of this task was not planned: **F25 was found by a database probe before `form-f.ts`
+existed**, which is why the migration precedes the module in the diff rather than following it.
 
 ### 9.6 The independent close review — FRESH
 
