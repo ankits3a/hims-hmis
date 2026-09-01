@@ -218,6 +218,11 @@ at ~180k against a 697k coding term — the handoff's measured seams did that.**
 
 ### 5.5 Pass 2 — briefed at the fixes: ONE WRONG, TWO INCOMPLETE, eight CORRECT
 
+**Pass 2 exists to catch the fix, not the phase — and this one caught a fix that would have minted
+an unpaid token.** An INCOMPLETE means the fix works and the dimension is still open; a WRONG means
+the fix would have shipped a defect that was not there before. This series had never returned a
+WRONG until now, and it was on a money path, in the fix for the CRITICAL.
+
 A fresh reviewer, given `8614ef1` and the findings with what each fix claimed, verdict per fix
 (method §9.10). **F1's CORE half was WRONG.** The first remediation deleted the hook's status guard
 on the argument that `unsettled` could not reach the branch — and R37 had stayed green because no

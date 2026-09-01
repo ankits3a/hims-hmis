@@ -2478,10 +2478,36 @@ two lanes found on 2026-09-01, **four were found by the OTHER lane's instrument*
 pin by a full pass, a controller drift by a typecheck, a migration's statement order by an e2e, and
 this window by a full pass.
 
+**THE SECOND SPECIMEN, THE SAME EVENING — AND IT DEFEATS THE ATOMIC WRITE (the 18a lane's finding).**
+RC-4's second remediation wrote four core files in ONE python call; `tsc --noEmit` was exit 0 on
+the tree at every instant afterwards. 18a's relaunched full pass still died — **33 suites, one
+error**: `opd-visits.controller.ts` importing `counterState` from an `encounters.ts` "with no such
+export". The tree was never in that state. A long-lived jest worker had the OLD `encounters.ts` in
+its module registry and loaded the NEW controller against it. **The unit of staleness is the WORKER
+PROCESS, not the file.** An atomic write protects a reader of the disk; it does not protect a
+reader that started before the write and is still going — and a 45-minute pass is such a reader
+for 45 minutes. Announcing would not have helped either: the pass was twelve minutes in. **The only
+instrument that works is a FREEZE WINDOW — no `apps/*` edits from any lane until the pass reports.**
+And the half that makes it a rule rather than a courtesy: **a long-running verify has no way to
+detect that its own inputs changed.** Jest reports a compile error identically whether the file was
+always broken or broke underneath it, and `tsc` run afterwards says green either way — the evidence
+that would distinguish them is gone by the time anyone looks. **The freeze is what makes a full pass
+falsifiable.** Its mechanical form is the block the 18a lane now writes to disk BEFORE launching —
+`HEAD`, `dirty under apps/` (must be 0), `tsc` exit, start time, database, who is frozen — and
+re-checks when the run reports, so the number is bracketed to a tree at both ends. A number you
+cannot attach to a tree is not evidence; it is a rumour.
+Four of 18a's closing passes were burned this way (one to its own edits, two to RC-4's, one that
+predated its last fixes) — **roughly three hours of box time that bought nothing, and it is a
+SHARED-CHECKOUT cost, not a review cost: the reviews were cheap and found everything; the verifying
+is what the checkout made expensive.** The code was ready for hours and the instrument could not
+get a reading.
+
 **THE MECHANICAL FORM.** (1) The question before a full pass is *"is anyone about to edit `apps/core`
-or `apps/web`?"* — running is the lesser half of the hazard. (2) The two halves of a cross-file edit
-go in ONE commit; a bisect that lands between them reproduces the failure. (3) When you are the
-editor and a peer is measuring, say so BEFORE the write, not after.
+or `apps/web`?"* — running is the lesser half of the hazard. (2) The answer is a WINDOW, not a
+promise: "no `apps/*` edits for N minutes", held. (3) The two halves of a cross-file edit go in ONE
+commit; a bisect that lands between them reproduces the failure. (4) When you are the editor and a
+peer is measuring, say so BEFORE the write, not after — and if the pass is already running, the
+write waits, because a freeze that one lane can break is not a freeze. Method §9.9 rule 5 amended.
 
 ### 2.166 — A REVERT THAT STAYS GREEN MEANS THE ROAD IS UNBUILT, NOT THAT IT DOES NOT EXIST — BUILD IT BEFORE YOU DELETE THE GUARD
 

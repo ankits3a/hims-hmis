@@ -187,6 +187,23 @@ Record each pair in the commit message as `R<n> <what was restored> ... N failed
 is the counterpart to the mutants of §3: a mutant proves a test can catch a defect that was never
 there; a revert proves it catches the defect that WAS.
 
+**AMENDED 2026-09-01 (RC-4 close, ledger §2.166) — A REVERT THAT STAYS GREEN ON A GUARD IS NOT A
+LICENCE TO DELETE THE GUARD.** It means no fixture reaches it; it does not mean nothing can. RC-4
+deleted a settle-hook guard on a green revert plus one refused attempt to build its road, wrote
+"unreachable by construction" into the code, and pass 2 built the road from ANOTHER module in ten
+minutes — an UNPAID token in the bill-first lane, in the fix for the CRITICAL. Before deleting a
+guard whose revert stayed green, run the enumeration and put it in the commit:
+
+```
+# who calls the thing this guard sits in, from ANY module, and with which values?
+grep -rn "<hook or function name>" apps/core/src --include=*.ts | grep -v test
+# for a hook: every via/enum value the callers can send, and a fixture per value
+```
+
+Then either build the road as a test that is red without the guard, or keep the guard with the
+enumeration as its comment. §9.7's operand question — *"name one real transaction whose money that
+sum does not include"* — is asked of the CALLERS' sums, not the guard's own module.
+
 ## 6. Actuals and a stop-loss, not predictive budgets
 
 No phase carries a predicted token budget, and no trim-lever negotiation happens against one.
@@ -470,6 +487,19 @@ separates them in its message — is the shape to copy.
 5. **Once a verify is launched, the tree is frozen until it returns.** Not as discipline — as
    arithmetic. An edit mid-run silently invalidates the only evidence the commit is allowed to cite,
    and the sole honest recovery is to discard the result and pay for the run again.
+
+   **AMENDED 2026-09-01 (RC-4 close × 18a close, ledger §2.165) — IN A SHARED CHECKOUT THE FREEZE
+   BINDS EVERY LANE, AND THE UNIT OF STALENESS IS THE WORKER PROCESS, NOT THE FILE.** Two of 18a's
+   four closing passes were destroyed by RC-4's edits — one by a two-file extraction whose import
+   landed a tool call before its export, one by a four-file write that was atomic on disk and was
+   still compiled inconsistently, because a long-lived jest worker had the OLD `encounters.ts` in
+   its registry when it loaded the NEW controller. "I wrote it in one call" protects a reader of the
+   disk; it does not protect a reader that started before the write and is still going. So:
+   **(a) before a full pass, ask every lane whether it is about to EDIT `apps/*` — running is visible
+   in `ps`, editing is visible nowhere, and only the message exists as an instrument; (b) a lane
+   asked for a freeze answers with a WINDOW ("no `apps/*` edits for 45 minutes") and holds it, or
+   says it cannot; (c) the two halves of a cross-file edit go in ONE commit.** Docs and memory files
+   never reach ts-jest and stay free throughout.
 6. **A task that INSTALLS A MANIFEST, CLAIMS A KIND or ADDS A CONSUMER owes a FULL verify at its
    boundary, not a targeted batch — added 2026-08-31 (Plan 18a T2/T3, findings F11 and F14).**
    Such a task moves censuses that live nowhere near the code it wrote. 18a T2 and T3 moved **five**
