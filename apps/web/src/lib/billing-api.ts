@@ -81,6 +81,13 @@ export type WireFeeQuote = {
    * exactly as the server says — a null never un-frees anything.
    */
   freeReason: { kind: "review_window"; doctorName: string | null; seenOn: string; windowEndsOn: string } | null;
+  /**
+   * RC-2 T5 / D7 — corporate v0. `"self" | "tpa" | "pmjay" | "corporate"` as the server spells it.
+   * On a non-self payer the seat shows "bill to panel — nothing to collect" AND no benefit chips,
+   * because RC-2 T3 stops member, coupon and referral benefits at the self-pay share. This field is
+   * the reason the chips are absent; without it their absence is unexplained.
+   */
+  intendedPayer: string;
 };
 
 // ——— what the counter posts ——————————————————————————————————————————————————————————————————

@@ -12,7 +12,9 @@ import {
 } from "../../kernel/db/schema";
 import { registerPatient } from "../patients";
 import { issueCreditNote, issueInvoice, memberBenefitsEnabled, previewInvoice } from "../billing";
-import { entitlementCountersOf, entitlementMovementsOf, narrowToUsableEntitlements } from "./entitlements";
+import {
+  consumeEntitlements, entitlementCountersOf, entitlementMovementsOf, narrowToUsableEntitlements,
+} from "./entitlements";
 import type { EntitlementCounterState } from "./entitlements";
 import type { ResolvedInstruments } from "./instruments";
 import type { Db } from "../../kernel/db/client";
@@ -373,5 +375,148 @@ describe("entitlements: consume, restore, and the flag that arms them", () => {
       expect(() => memberBenefitsEnabled(withFlag(bad))).toThrow();
       expect(() => viaConfig(bad)).toThrow();
     }
+  });
+});
+
+
+/**
+ * RC-2 T5 / D7 — PACKAGE v0 RIDES THE SHIPPED COUNTERS. NOTHING NEW WAS BUILT.
+ *
+ * The design asks for a care package whose consult is "covered, usage counter". Recon found the
+ * whole mechanism already present and, crucially, NOT gated on plan kind: `loadInstances`
+ * inner-joins `membership_plans` and filters on the PATIENT and the CODES, never on `kind`. So a
+ * `kind = 'package'` row resolves through exactly the path a `'membership'` row does, its benefit
+ * term contests exactly the same way, and `entitlement_counters` / `entitlement_movements` already
+ * count the usages down. **Package v0 is therefore a PROOF, not a build** — no table, no column, no
+ * migration, and this file's Files-list entry is the whole of RC-2's change to the package lane.
+ *
+ * A package's consult benefit is modelled as 10 000 bps — the covered consult is a 100% benefit
+ * with a counter, not a special "free" flag. That keeps one contest and one audit record: the seat
+ * shows WHY the line is zero (the package won) rather than showing a zero with no story.
+ *
+ * ═══ THE EXHAUSTION EDGE IS THE ONE THAT MATTERS, AND IT IS A NARROWING NOT A REFUSAL ═══
+ *
+ * `composeBenefits`'s header states the rule this proves: an exhausted counter is DROPPED before
+ * pricing rather than refused at commit, "if the refusal lived only at the write, their FIFTH visit
+ * could not be invoiced at all". Both halves are executed below — the narrowed path bills in full
+ * and writes nothing, and `consumeEntitlements` is shown refusing the same counter directly, which
+ * is precisely the damage the narrowing prevents.
+ */
+const PKG_PLAN_ID = "01HT5PKG0000000000000001";
+const PKG_INSTANCE_ID = "01HT5PKGCARD00000000001";
+const PKG_COUNTER_ID = "01HT5PKGCTR000000000001";
+const PKG_BENEFIT_KEY = "package-consult";
+
+describe("RC-2 T5 — package v0 rides membership_plans.kind='package' and the shipped counters (D7)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let base: BillingBaseFixture;
+  let cashier: { id: string; token: string; actor: Actor };
+  let patientId: string;
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => { delete process.env[FLAG]; await teardown(); });
+
+  beforeEach(async () => {
+    process.env[FLAG] = "true"; // every case here is a benefits-on case
+    await truncateAll(db);
+    await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "test" }).onConflictDoNothing();
+    base = await seedBillingBase(db);
+    cashier = await mkCashier(db, "t5_package_cashier");
+    await openSessionFor(db, cashier, 100_000);
+    const { patient } = await withTx(db, (tx) =>
+      registerPatient(tx, clerk, { name: "Devika Menon", sex: "female", ageYears: 36 }));
+    patientId = patient.id;
+
+    await db.insert(membershipPlans).values({
+      id: PKG_PLAN_ID, code: "INV-PKG-T5", title: "Invented Health Check Package",
+      kind: "package", // ← THE WHOLE OF THE DIFFERENCE FROM A MEMBERSHIP ROW
+      benefits: [{
+        benefitKey: PKG_BENEFIT_KEY, title: "Package consultation (covered)", kind: "percent_bps",
+        value: 10_000, capPaise: null, scope: { serviceCategories: ["consultation"], serviceIds: null },
+      }],
+      entitlements: {}, validityDays: 365, createdBy: "test",
+    });
+    await db.insert(membershipInstances).values({
+      id: PKG_INSTANCE_ID, planId: PKG_PLAN_ID, cardCode: "T5-PKG-1", holderName: "Devika Menon",
+      patientId, validFrom: VALID_FROM, validTo: VALID_TO, status: "active", origin: "import",
+    });
+  });
+
+  async function grantPackageCounter(grantedQty: number): Promise<void> {
+    await db.insert(entitlementCounters).values({
+      id: PKG_COUNTER_ID, instanceId: PKG_INSTANCE_ID, benefitKey: PKG_BENEFIT_KEY,
+      grantedQty, validFrom: VALID_FROM, validTo: VALID_TO, state: "active",
+    });
+  }
+
+  async function issueOneConsult(): Promise<{ invoiceId: string; netPayablePaise: number }> {
+    const lines = [{ lineId: newId(), serviceId: base.consultNewServiceId, qty: 1 }];
+    const preview = await previewInvoice(db, { patientId, lines }, NOW);
+    const issued = await issueInvoice(db, cashier.actor, {
+      draftId: newId(), patientId, lines,
+      receipt: preview.totals.netPayablePaise === 0
+        ? undefined
+        : { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise }] },
+    }, NOW);
+    return { invoiceId: issued.invoiceId, netPayablePaise: issued.totals.netPayablePaise };
+  }
+
+  it("a covered consult zeroes the line, names the package as the winner, and counts ONE usage down", async () => {
+    await grantPackageCounter(2);
+    const { invoiceId, netPayablePaise } = await issueOneConsult();
+
+    expect(netPayablePaise).toBe(0); // covered — nothing to collect
+    const lines = await db.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, invoiceId));
+    expect(lines[0]!.winner).toMatchObject({ ruleKey: PKG_BENEFIT_KEY, amountPaise: 50_000 });
+    expect(lines[0]!.discountPaise).toBe(50_000);
+
+    const movements = await entitlementMovementsOf(db, PKG_COUNTER_ID);
+    expect(movements).toHaveLength(1);
+    expect(movements[0]).toMatchObject({ kind: "consume", delta: -1, invoiceId });
+  });
+
+  it("past the counter's limit the visit bills IN FULL and writes NO movement — narrowed, not refused", async () => {
+    await grantPackageCounter(1);
+
+    const first = await issueOneConsult();
+    expect(first.netPayablePaise).toBe(0);
+    expect(await entitlementMovementsOf(db, PKG_COUNTER_ID)).toHaveLength(1);
+
+    // The second visit: the counter is spent, so the term is dropped BEFORE pricing.
+    const second = await issueOneConsult();
+    expect(second.netPayablePaise).toBe(50_000);
+    const lines = await db.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, second.invoiceId));
+    expect(lines[0]!.winner).toBeNull();
+    expect(lines[0]!.candidates).toEqual([]); // not proposed-and-lost: not proposed at all
+    expect(await entitlementMovementsOf(db, PKG_COUNTER_ID)).toHaveLength(1); // still ONE, unchanged
+  });
+
+  /**
+   * THE MUTANT'S DAMAGE, shown without a scratch file. If the exhausted counter were NOT narrowed
+   * out before pricing, the term would win the contest and the WRITE would be reached — and this is
+   * what the write does. `composeBenefits`'s header predicts exactly this sentence: the fifth visit
+   * could not be invoiced at all.
+   */
+  it("MUTANT — without the narrowing the spent counter reaches the write, which REFUSES the whole bill", async () => {
+    await grantPackageCounter(1);
+    await issueOneConsult(); // spends it
+
+    await expect(
+      withTx(db, (tx) => consumeEntitlements(tx, cashier.actor, {
+        invoiceId: newId(), at: NOW,
+        consumes: [{ instanceId: PKG_INSTANCE_ID, benefitKey: PKG_BENEFIT_KEY, invoiceLineId: newId() }],
+      })),
+    ).rejects.toMatchObject({ code: "entitlement_exhausted", detail: { remainingQty: 0, askQty: 1 } });
+  });
+
+  it("the kind is the ONLY difference: a package resolves exactly as a membership does", async () => {
+    await grantPackageCounter(1);
+    const plans = await db.select().from(membershipPlans).where(eq(membershipPlans.id, PKG_PLAN_ID));
+    expect(plans[0]!.kind).toBe("package");
+    // …and it still priced. `loadInstances` filters on patient and codes, never on kind — asserted
+    // by the fact that a `package` row composed at all.
+    const { netPayablePaise } = await issueOneConsult();
+    expect(netPayablePaise).toBe(0);
   });
 });

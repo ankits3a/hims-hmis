@@ -119,6 +119,10 @@ describe("the OPD fee branch: feeServiceFor and the fee quote (D8)", () => {
       // RC-1 T5 — a shaped row has no department and no anchor: free with NO story, never un-freed.
       // The anchored freeReason is proved in opd/fee-status.test.ts, where real masters exist.
       freeReason: null,
+      // RC-2 T5 / D7 — the payer travels on the FREE branch too, which is the branch with no draft
+      // to read it from. This exhaustive `toEqual` is what caught the addition, which is the point
+      // of writing it exhaustively.
+      intendedPayer: "self",
     });
 
     expect(await codeOf(feeQuote(db, "no-such-encounter", NOW)))
@@ -240,4 +244,65 @@ describe("RC-2 T1 — a presented coupon reaches the quote, not just the invoice
     const quoted = await feeQuote(db, await shapeNewVisit(), NOW, { couponCodes: ["NOT-A-REAL-CODE"] });
     expect(quoted.draft!.totals.netPayablePaise).toBe(50_000);
   });
+});
+
+/**
+ * RC-2 T5 / D7 — THE QUOTE NAMES THE PAYER, ON BOTH BRANCHES.
+ *
+ * Corporate v0 is naming, not machinery: no rate list, no e-authorisation record, no claim file —
+ * Plan 21 owns those and a second home would be worse than none. What the seat needs today is the
+ * one fact that lets it say "bill to panel — nothing to collect", and the one fact that EXPLAINS
+ * something RC-2 T3 introduced: with a non-`self` payer, member, coupon and referral benefits do
+ * not compose at all, so the bill shows no chips. Without the payer on the quote that absence is
+ * unexplained; with it, the seat can say why.
+ *
+ * `PricedDraft.intendedPayer` was already there — but a review-window revisit has `draft: null`, so
+ * the free branch could not answer. Lifting it to the quote makes both branches answer identically.
+ */
+describe("RC-2 T5 — the quote names the payer on both branches (D7)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+
+  const NOW = new Date("2026-09-01T06:00:00Z");
+  const SERVICE_DAY = "2026-09-01";
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+  beforeEach(async () => {
+    await truncateAll(db);
+    await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "t" }).onConflictDoNothing();
+    await seedBillingBase(db);
+  });
+
+  async function shaped(visitType: string, intendedPayer: string): Promise<string> {
+    const id = newId();
+    const actor: Actor = { type: "user", id: "t5-clerk" };
+    const { patient } = await withTx(db, (tx) =>
+      registerPatient(tx, actor, { name: "Payer Subject", sex: "other", ageYears: 50 }));
+    await db.insert(opdEncounters).values({
+      id, visitNo: `VT5-${id}`, patientId: patient.id, workflowInstanceId: newId(), serviceDate: SERVICE_DAY,
+      visitType, status: "waiting", intendedPayer, openedBy: "shaped", updatedBy: "shaped", openedAt: NOW,
+    });
+    return id;
+  }
+
+  it.each(["self", "tpa", "pmjay", "corporate"])(
+    "a PRICED visit carries intendedPayer=%s, and it agrees with the draft's own copy",
+    async (payer) => {
+      const quote = await feeQuote(db, await shaped("new", payer), NOW);
+      expect(quote.free).toBe(false);
+      expect(quote.intendedPayer).toBe(payer);
+      expect(quote.draft!.intendedPayer).toBe(payer); // one fact, two places, never disagreeing
+    },
+  );
+
+  it.each(["self", "corporate"])(
+    "a FREE visit carries intendedPayer=%s too — the branch with no draft to read it from",
+    async (payer) => {
+      const quote = await feeQuote(db, await shaped("revisit", payer), NOW);
+      expect(quote.free).toBe(true);
+      expect(quote.draft).toBeNull(); // …which is exactly why the field cannot live only on the draft
+      expect(quote.intendedPayer).toBe(payer);
+    },
+  );
 });

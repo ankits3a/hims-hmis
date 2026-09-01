@@ -54,6 +54,23 @@ export type FeeQuote = {
    * free till <date> (<doctor>)"). Naming only: null never un-frees anything.
    */
   freeReason: { kind: "review_window"; doctorName: string | null; seenOn: string; windowEndsOn: string } | null;
+  /**
+   * RC-2 T5 / D7 — CORPORATE v0: the payer, named on the quote, on BOTH branches.
+   *
+   * `PricedDraft.intendedPayer` already carries it — but only when there IS a draft, and a
+   * review-window revisit has `draft: null`. The seat needs to say "bill to panel — nothing to
+   * collect" on a free visit exactly as much as on a priced one, so the fact is lifted to the quote
+   * itself rather than read out of a nullable child.
+   *
+   * It is also the ANSWER to a question T3 created: with a non-`self` payer the membership, coupon
+   * and referral sources do not compose at all, so the seat sees a bill with no benefit chips and
+   * no explanation. This is the explanation, and it is why T3 deliberately emits no rejected
+   * candidate — a chip that was never in the contest should not be rendered as one that lost.
+   *
+   * NOT panel machinery: no rate list, no e-authorisation record, no claim file. Plan 21 owns those
+   * and a second home for them would be worse than none.
+   */
+  intendedPayer: string;
 };
 
 /**
@@ -88,6 +105,7 @@ export async function feeQuote(
     return {
       encounterId, visitType: encounter.visitType, free: true, feeServiceId: null, draft: null,
       freeReason: anchor === null ? null : { kind: "review_window", ...anchor },
+      intendedPayer: encounter.intendedPayer,
     };
   }
   const draft = await previewInvoice(
@@ -106,5 +124,10 @@ export async function feeQuote(
     },
     now,
   );
-  return { encounterId, visitType: encounter.visitType, free: false, feeServiceId, draft, freeReason: null };
+  return {
+    encounterId, visitType: encounter.visitType, free: false, feeServiceId, draft, freeReason: null,
+    // Read from the ENCOUNTER, not from `draft.intendedPayer`, so both branches answer identically
+    // and the free branch is not a special case the seat has to remember.
+    intendedPayer: encounter.intendedPayer,
+  };
 }
