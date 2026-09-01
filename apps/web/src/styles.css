@@ -206,6 +206,15 @@
  * project: another seat opts in by carrying `data-seat="registration-counter"`, and nothing opts in
  * by default.
  *
+ * ═══ THE LIMIT, FOUND BY THE CLOSE REVIEW AND RECORDED SO RC-4 DOES NOT INHERIT AN OVERCLAIM ═══
+ *
+ * A scoped block reaches only what is INSIDE the scope, and Radix — which every shadcn `Dialog`,
+ * `Select`, `Popover` and `Tooltip` is built on — renders its content through a PORTAL attached to
+ * `document.body`, outside `[data-seat]`. Such a surface opened from the seat therefore reads the
+ * greyscale `:root` values, not paper-and-pine. That is not a bug in this block; it is what
+ * "scoped" means. RC-4 either passes the attribute onto the portal container or accepts that modal
+ * surfaces are neutral, and it should decide that on purpose rather than discover it.
+ *
  * ═══ THE TOKENS ═══
  *
  * Measured from `docs/design/2026-08-31-registration-counter/desk-one.html`, the signed-off design,

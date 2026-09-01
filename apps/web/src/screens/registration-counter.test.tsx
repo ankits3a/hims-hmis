@@ -512,14 +512,65 @@ describe("RC-3 T5 / D3 — the alias layer is scoped to the seat", () => {
    * application to say nothing at all, and does it silently, because nothing else in the repository
    * renders a computed colour.
    */
-  it("MUTANT — no Desk One colour is declared in `:root` or `.dark`; only the seat carries them", () => {
-    const global = blocks.filter((b) => b.selector === ":root" || b.selector === ".dark");
-    expect(global.length).toBeGreaterThanOrEqual(2); // the census again: both blocks were found
+  /**
+   * CLOSE REVIEW F17 — THIS ASSERTION USED TO BE NARROWER THAN ITS OWN DOCSTRING.
+   *
+   * It filtered `selector === ":root" || selector === ".dark"`, while the parser's docstring above
+   * claims it covers "every no-Desk-One-hex-outside-the-seat assertion". A mutant declaring the
+   * tokens on `body`, on `html`, on `*`, or inside `@layer base` would have walked straight past
+   * it — and `styles.css` HAS a `*` block and a `body` block, so those are not hypothetical
+   * selectors. It now takes EVERY block that is not the seat's, which is what the docstring says
+   * and what the assertion book asks for.
+   */
+  it("MUTANT — no Desk One colour is declared in ANY block but the seat's", () => {
+    const others = blocks.filter((b) => !b.selector.includes('[data-seat="registration-counter"]'));
+    // The census, pinned before anything is compared: `:root`, `.dark`, `*` and `body` are the
+    // four a global-token mutant would reach for, and all four must be in the list being checked.
+    expect(others.length).toBeGreaterThanOrEqual(10);
+    for (const sel of [":root", ".dark", "*", "body"]) {
+      expect(others.map((b) => b.selector)).toContain(sel);
+    }
 
-    const leaked = global.flatMap((b) =>
+    const leaked = others.flatMap((b) =>
       DESK_ONE_HEXES.filter((hex) => b.body.toLowerCase().includes(hex)).map((hex) => `${b.selector} ${hex}`),
     );
     expect({ leaked }).toEqual({ leaked: [] }); // THE KILL
+  });
+
+  /**
+   * CLOSE REVIEW F8 (MAJOR) — AND THE OTHER HALF OF D3, WHICH NOTHING ASSERTED.
+   *
+   * The old suite proved the block does not LEAK. It never proved anything CONSUMES it — and
+   * nothing did: the seat carried no `className` at all, so eighteen aliased shadcn variables were
+   * read by nobody and `/counter/seat` rendered as unstyled HTML. "Changes no colour on any other
+   * screen" was true because it changed no colour on any screen.
+   */
+  it("the seat READS the aliased variables — the block is not a mechanism with no consumer", () => {
+    /*
+      ASSERTED ON THE RENDERED ELEMENT, not by grepping the source — and the first version of this
+      test DID grep the source, which is why it survived the mutant that stripped the seat root's
+      classes: `bg-background` still appeared elsewhere in the file (on the search input), so a
+      file-wide `includes` reported the same answer with the defect present. Third time today that
+      a check could not tell the two states apart. `className` is a DOM attribute, so jsdom can see
+      it without loading any stylesheet — the cascade is what jsdom cannot do, not the attribute.
+    */
+    renderWithProviders(<RegistrationCounter />);
+    const root = screen.getByTestId("registration-counter");
+    expect(root.getAttribute("data-seat")).toBe("registration-counter");
+    const rootClasses = root.className.split(/\s+/);
+    expect(rootClasses).toContain("bg-background"); // THE KILL — the scope's own ground
+    expect(rootClasses).toContain("text-foreground");
+
+    // …and each utility resolves, through `@theme inline`, to a variable the block actually aliases.
+    const seatBody = seat[0]!.body;
+    for (const [utility, variable] of [
+      ["bg-background", "--background"], ["text-foreground", "--foreground"],
+      ["bg-card", "--card"], ["border-border", "--border"], ["text-muted-foreground", "--muted-foreground"],
+    ] as const) {
+      const src = readFileSync(resolve(__dirname, "registration-counter.tsx"), "utf8");
+      expect({ utility, inScreen: src.includes(utility), aliased: seatBody.includes(`${variable}:`) })
+        .toEqual({ utility, inScreen: true, aliased: true });
+    }
   });
 
   /**
@@ -552,17 +603,17 @@ describe("RC-3 T5 — the keyboard map", () => {
    */
   it("is exactly the map the design specifies — Ctrl+K · Ctrl+N · Q · 1/2/3 · Ctrl+⏎ · Esc", () => {
     expect({
-      ctrlK: seatKey(key("k", true), idle, false),
-      ctrlN: seatKey(key("n", true), idle, false),
-      q: seatKey(key("q"), idle, false),
-      one: seatKey(key("1"), idle, false),
-      two: seatKey(key("2"), idle, false),
-      three: seatKey(key("3"), idle, false),
-      ctrlEnter: seatKey(key("Enter", true), idle, false),
-      escClosed: seatKey(key("Escape"), idle, false),
-      escOverlayOpen: seatKey(key("Escape"), idle, true),
-      four: seatKey(key("4"), idle, false),
-      plainEnter: seatKey(key("Enter"), idle, false),
+      ctrlK: seatKey(key("k", true), idle, { overlayOpen: false, modalOpen: false }),
+      ctrlN: seatKey(key("n", true), idle, { overlayOpen: false, modalOpen: false }),
+      q: seatKey(key("q"), idle, { overlayOpen: false, modalOpen: false }),
+      one: seatKey(key("1"), idle, { overlayOpen: false, modalOpen: false }),
+      two: seatKey(key("2"), idle, { overlayOpen: false, modalOpen: false }),
+      three: seatKey(key("3"), idle, { overlayOpen: false, modalOpen: false }),
+      ctrlEnter: seatKey(key("Enter", true), idle, { overlayOpen: false, modalOpen: false }),
+      escClosed: seatKey(key("Escape"), idle, { overlayOpen: false, modalOpen: false }),
+      escOverlayOpen: seatKey(key("Escape"), idle, { overlayOpen: true, modalOpen: false }),
+      four: seatKey(key("4"), idle, { overlayOpen: false, modalOpen: false }),
+      plainEnter: seatKey(key("Enter"), idle, { overlayOpen: false, modalOpen: false }),
     }).toEqual({
       // Ctrl+K is NOT the seat's. `KeyboardProvider` already opens the palette application-wide,
       // and a shortcut a clerk learns on one screen has to mean the same thing on the next.
@@ -586,13 +637,13 @@ describe("RC-3 T5 — the keyboard map", () => {
    * simplification and it is silent — the keystroke vanishes from the field and the clerk retypes.
    */
   it("MUTANT — without the typing guard, searching for 'Q' would open the queues overlay", () => {
-    expect(seatKey(key("q"), idle, false)).toBe("toggle-queues");   // what the mutant does everywhere
-    expect(seatKey(key("q"), typing, false)).toBeNull();            // THE KILL
-    expect(seatKey(key("1"), typing, false)).toBeNull();
-    expect(seatKey(key("3"), typing, false)).toBeNull();
+    expect(seatKey(key("q"), idle, { overlayOpen: false, modalOpen: false })).toBe("toggle-queues");   // what the mutant does everywhere
+    expect(seatKey(key("q"), typing, { overlayOpen: false, modalOpen: false })).toBeNull();            // THE KILL
+    expect(seatKey(key("1"), typing, { overlayOpen: false, modalOpen: false })).toBeNull();
+    expect(seatKey(key("3"), typing, { overlayOpen: false, modalOpen: false })).toBeNull();
     // …and the two that MUST survive it: a guard that refuses everything is not a guard.
-    expect(seatKey(key("Enter", true), typing, false)).toBe("confirm");
-    expect(seatKey(key("Escape"), typing, false)).toBe("clear-desk");
+    expect(seatKey(key("Enter", true), typing, { overlayOpen: false, modalOpen: false })).toBe("confirm");
+    expect(seatKey(key("Escape"), typing, { overlayOpen: false, modalOpen: false })).toBe("clear-desk");
   });
 
   /**
@@ -732,15 +783,18 @@ describe("RC-3 T5 — the queues overlay", () => {
     expect(screen.queryByTestId("queues-overlay")).toBeNull();
   });
 
-  it("1/2/3 choose the tender lane, and Ctrl+N opens the SAME new-patient door F2 already opens", () => {
+  it("Ctrl+N opens the SAME new-patient door F2 already opens, and 1/2/3 are NOT acted on here", () => {
     const onRegisterNew = vi.fn();
     renderWithProviders(<RegistrationCounter onRegisterNew={onRegisterNew} />);
 
-    fireEvent.keyDown(window, { key: "2" });
-    expect(screen.getByTestId("tender-chosen").textContent).toBe("upi");
-
     fireEvent.keyDown(window, { key: "n", ctrlKey: true });
     expect(onRegisterNew).toHaveBeenCalledTimes(1);
+
+    // F15 — the tender lanes stay in the MAP (they are the seat's specified legend) and this screen
+    // consumes none of them: F4 established it cannot see whether an encounter has been paid, so it
+    // does not take money. What used to be here printed the literal string "upi" on the counter.
+    fireEvent.keyDown(window, { key: "2" });
+    expect(screen.queryByTestId("tender-chosen")).toBeNull();
   });
 });
 
@@ -946,5 +1000,89 @@ describe("RC-3 close review — F3 (MAJOR): an errored search is not an empty on
     expect((await screen.findByTestId("find-error")).textContent).toContain("do not register");
     expect(screen.queryByTestId("find-register-new")).toBeNull(); // THE KILL
     expect(screen.queryByTestId("find-none")).toBeNull();
+  });
+});
+
+describe("RC-3 close review — F7 (MAJOR): a modal owns the keyboard while it is open", () => {
+  const typing = document.createElement("input");
+  const idle = document.createElement("div");
+  const k = (key: string, mod = false): Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey"> =>
+    ({ key, ctrlKey: mod, metaKey: false });
+
+  /**
+   * The palette's Escape is a REACT `onKeyDown` that calls `preventDefault()` and NOT
+   * `stopPropagation()`, and React 18 dispatches from the root container — below `window`, where
+   * the seat listens. So Escape dismissing the palette reached the seat, `overlayOpen` tracked only
+   * the seat's OWN overlay, and the branch taken was `clear-desk`: **the patient in hand was
+   * silently dropped**, which is the defect `patient-in-hand.tsx` exists to end.
+   */
+  it("claims NO key at all while a modal is open — not just Escape", () => {
+    const open = { overlayOpen: false, modalOpen: true };
+    expect({
+      esc: seatKey(k("Escape"), idle, open),
+      q: seatKey(k("q"), idle, open),
+      ctrlN: seatKey(k("n", true), idle, open),
+      one: seatKey(k("1"), idle, open),
+      ctrlEnter: seatKey(k("Enter", true), idle, open),
+    }).toEqual({ esc: null, q: null, ctrlN: null, one: null, ctrlEnter: null }); // THE KILL
+
+    // …and with no modal open the same keys are the seat's again — a guard that refuses
+    // everything is not a guard.
+    const shut = { overlayOpen: false, modalOpen: false };
+    expect(seatKey(k("Escape"), idle, shut)).toBe("clear-desk");
+    expect(seatKey(k("q"), idle, shut)).toBe("toggle-queues");
+  });
+
+  /**
+   * F5 — `Ctrl+N` sits ABOVE the typing guard now. The find input carries `autoFocus`, so the one
+   * moment a clerk reaches for the new-patient door is the moment focus is in an `INPUT`; below the
+   * guard, the advertised shortcut did nothing exactly when it was wanted.
+   */
+  it("Ctrl+N fires from inside the search box; the bare characters still do not", () => {
+    const shut = { overlayOpen: false, modalOpen: false };
+    expect(seatKey(k("n", true), typing, shut)).toBe("new-walkin"); // THE KILL
+    expect(seatKey(k("q"), typing, shut)).toBeNull();
+    expect(seatKey(k("1"), typing, shut)).toBeNull();
+  });
+});
+
+describe("RC-3 close review — F16/F19: 'start again' means the search box too", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+      "GET /api/opd/queues/summary": { items: [] },
+      "GET /api/patients/search": { items: [] },
+    });
+  });
+
+  it("Escape clears the typed query, not only the patient", async () => {
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+    const box = screen.getByTestId("find-input");
+    await user.type(box, "98765");
+    expect((box as HTMLInputElement).value).toBe("98765");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    // THE KILL — the previous person's mobile number must not be sitting there for the next one.
+    expect((screen.getByTestId("find-input") as HTMLInputElement).value).toBe("");
+  });
+
+  /**
+   * F19 — the commit and the docstring make "Ctrl+Enter reaches the focused field" load-bearing,
+   * and nothing asserted it: moving `e.preventDefault()` above the switch would have broken the
+   * stated behaviour with no failing test. `defaultPrevented` is the observable.
+   */
+  it("Ctrl+Enter is NOT swallowed — it falls through to whatever has focus", () => {
+    renderWithProviders(<RegistrationCounter />);
+    const ev = new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, cancelable: true, bubbles: true });
+    window.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(false); // THE KILL
+
+    // …while a key the seat DOES claim is consumed, so this is not vacuous.
+    const claimed = new KeyboardEvent("keydown", { key: "q", cancelable: true, bubbles: true });
+    window.dispatchEvent(claimed);
+    expect(claimed.defaultPrevented).toBe(true);
   });
 });

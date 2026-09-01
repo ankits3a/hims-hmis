@@ -14,6 +14,15 @@ import type { SearchEntity, SearchHit } from "@hmis/contracts";
 type PaletteState = { isOpen: boolean; open: (seed?: string) => void; close: () => void };
 const PaletteContext = createContext<PaletteState | null>(null);
 
+/**
+ * RC-3 close review F7 — the same shape as `usePatientInHandOptional`, and added for the same
+ * reason: a screen that must know whether a MODAL owns the keyboard right now has to be able to ask
+ * without exploding in a harness that mounts no provider. Returns `null` outside one.
+ */
+export function usePaletteOptional(): PaletteState | null {
+  return useContext(PaletteContext);
+}
+
 export function usePalette(): PaletteState {
   const ctx = useContext(PaletteContext);
   if (ctx === null) throw new Error("usePalette outside PaletteProvider");

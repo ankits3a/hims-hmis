@@ -9,6 +9,7 @@ import type {
 import { fmtIst, useDebounced } from "../lib/format";
 import { todayIst } from "../lib/opd-api";
 import type { WireDoctorSummary } from "../lib/opd-api";
+import { usePaletteOptional } from "../components/command-palette";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { matchReasonKeys, searchPatients } from "../lib/patients-api";
 import type { WirePatientHit } from "../lib/patients-api";
@@ -241,9 +242,9 @@ export function Dossier({
   const exit = counterExit(quote, issued, inHand?.encounterId != null);
 
   return (
-    <aside aria-label={t("registrationCounter.dossier.title")} data-testid="dossier">
+    <aside aria-label={t("registrationCounter.dossier.title")} data-testid="dossier" className="text-sm">
       {inHand === null ? (
-        <p data-testid="dossier-empty">{t("registrationCounter.dossier.nobody")}</p>
+        <p data-testid="dossier-empty" className="text-muted-foreground">{t("registrationCounter.dossier.nobody")}</p>
       ) : (
         <>
           <p data-testid="dossier-patient">{inHand.patientId}</p>
@@ -378,13 +379,14 @@ export function FindPanel({ onRegisterNew }: { onRegisterNew?: () => void } = {}
 
   return (
     <section aria-label={t("registrationCounter.find.title")} data-testid="find-panel">
-      <label htmlFor="rc-find">{t("registrationCounter.find.title")}</label>
+      <label htmlFor="rc-find" className="text-base font-semibold">{t("registrationCounter.find.title")}</label>
       <input
         id="rc-find" data-testid="find-input" value={raw} autoFocus
+        className="mt-3 h-12 w-full rounded-md border border-input bg-background px-3 text-base outline-none focus:ring-2 focus:ring-ring"
         placeholder={t("registrationCounter.find.placeholder")}
         onChange={(e) => setRaw(e.target.value)}
       />
-      <p data-testid="find-hint">{t("registrationCounter.find.hint")}</p>
+      <p data-testid="find-hint" className="mt-1 text-xs text-muted-foreground">{t("registrationCounter.find.hint")}</p>
 
       {/*
         SEARCH-FIRST IS A GUARD, NOT A HEADING. The design states the mechanism in the empty state
@@ -493,19 +495,57 @@ function isTypingTarget(el: EventTarget | null): boolean {
 export function seatKey(
   e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey">,
   target: EventTarget | null,
-  overlayOpen: boolean,
+  state: { overlayOpen: boolean; modalOpen: boolean },
 ): SeatAction | null {
   const mod = e.ctrlKey || e.metaKey;
+
+  /**
+   * ═══ CLOSE REVIEW F7 (MAJOR) — A MODAL OWNS THE KEYBOARD WHILE IT IS OPEN ═══
+   *
+   * The seat listens on `window`. The command palette's Escape handler is a REACT `onKeyDown` on
+   * its dialog that calls `preventDefault()` and NOT `stopPropagation()` — and React 18 dispatches
+   * from the root container, which is below `window`. So the native event always reached this
+   * function, `overlayOpen` tracked only the seat's OWN queues overlay, and the branch taken was
+   * `clear-desk`.
+   *
+   * A clerk who pressed Ctrl+K, saw it was not what they wanted, and pressed Esc **lost the patient
+   * in hand**, with no message — the exact defect `patient-in-hand.tsx` was built to end ("the
+   * simplest walk-in therefore cost three searches for the same person"). Any Escape dismissing a
+   * browser autofill dropdown in the search box did it too.
+   *
+   * This is FIRST and it is total: while a modal is open the seat claims no key at all, not just
+   * Escape. Fixing it inside the palette (adding `stopPropagation`) would have fixed this one
+   * modal; the rule belongs to whoever is listening globally.
+   */
+  if (state.modalOpen) return null;
 
   // Ctrl+K belongs to the global palette. Claimed by nobody here, on purpose.
   if (mod && (e.key === "k" || e.key === "K")) return null;
 
-  if (e.key === "Escape") return overlayOpen ? "close-overlay" : "clear-desk";
+  if (e.key === "Escape") return state.overlayOpen ? "close-overlay" : "clear-desk";
   if (mod && e.key === "Enter") return "confirm";
+
+  /**
+   * ═══ CLOSE REVIEW F5 (MAJOR) — `Ctrl+N` MOVED ABOVE THE TYPING GUARD ═══
+   *
+   * It was below it, and the find input carries `autoFocus`. So at the one moment a clerk reaches
+   * for the new-patient door — having searched, found nobody, and read the "Register new" line —
+   * focus is in an `INPUT` and the advertised shortcut did nothing. The guard exists for BARE
+   * CHARACTERS (`Q`, `1/2/3`) that a person could be typing; `Ctrl+N` is not one, any more than
+   * `Ctrl+Enter` is, and it sits with `Ctrl+Enter` now.
+   *
+   * A LIMIT THAT CANNOT BE FIXED IN THIS FILE, recorded so RC-4 does not rediscover it: `Ctrl+N` is
+   * on Chrome's non-overridable list (new window) and is not delivered to the page at all. The
+   * handler is correct and the chord is unreliable in the browser the hospital runs. The two doors
+   * that DO work are the global `F2` (`keyboard.tsx`) and the `Register new` button, and both reach
+   * the same `?new=true` destination. Choosing a non-reserved chord is a design decision, not a
+   * remediation, so it is in §6 for the owner rather than invented here.
+   */
+  if (mod && (e.key === "n" || e.key === "N")) return "new-walkin";
+
   if (isTypingTarget(target)) return null;
 
   if (e.key === "q" || e.key === "Q") return "toggle-queues";
-  if (mod && (e.key === "n" || e.key === "N")) return "new-walkin";
 
   if (!mod && /^[123]$/.test(e.key)) {
     const lane = SEAT_TENDER_ORDER[Number(e.key) - 1];
@@ -540,7 +580,10 @@ export function QueuesOverlay({
   const { t } = useTranslation();
   const waiting = items.reduce((n, s) => n + s.waitingCount, 0);
   return (
-    <div role="dialog" aria-label={t("registrationCounter.queues.title")} data-testid="queues-overlay">
+    <div
+      role="dialog" aria-label={t("registrationCounter.queues.title")} data-testid="queues-overlay"
+      className="fixed inset-x-0 top-16 mx-auto max-h-[76vh] w-[640px] max-w-[92vw] overflow-y-auto rounded-lg border border-border bg-card p-5 shadow-lg"
+    >
       <header>
         <h2>{t("registrationCounter.queues.title")}</h2>
         <span data-testid="queues-total">{t("registrationCounter.queues.total", { count: waiting })}</span>
@@ -585,8 +628,16 @@ export function RegistrationCounter({
 }: { onRegisterNew?: () => void } = {}): React.ReactElement {
   const { t } = useTranslation();
   const { inHand, release } = usePatientInHand();
+  const palette = usePaletteOptional();
   const [overlay, setOverlay] = useState<"queues" | null>(null);
-  const [tender, setTender] = useState<TenderMode | null>(null);
+  /**
+   * F16 — "start again" has to mean the SEARCH BOX too. `clearDesk` reset the overlay and released
+   * the patient and left the typed query sitting there, so Escape on a finished patient left the
+   * previous person's mobile number in the box for the next one. `FindPanel` owns its own input
+   * state (correctly — it is a control, not session state), so the desk generation REMOUNTS it,
+   * which is the one way to clear a child's state without lifting it up for the sake of a reset.
+   */
+  const [deskGen, setDeskGen] = useState(0);
   const summaries = useQueueSummary(todayIst());
 
   /**
@@ -606,20 +657,28 @@ export function RegistrationCounter({
 
   const clearDesk = useCallback((): void => {
     setOverlay(null);
-    setTender(null);
+    setDeskGen((n) => n + 1);
     release();
   }, [release]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      const action = seatKey(e, e.target, overlay !== null);
+      const action = seatKey(e, e.target, { overlayOpen: overlay !== null, modalOpen: palette?.isOpen ?? false });
       switch (action) {
         case "toggle-queues": setOverlay((o) => (o === null ? "queues" : null)); break;
         case "close-overlay": setOverlay(null); break;
         case "clear-desk": clearDesk(); break;
         case "new-walkin": onRegisterNew?.(); break;
-        case "tender:cash": case "tender:upi": case "tender:card":
-          setTender(action.slice("tender:".length) as TenderMode); break;
+        /*
+          F15 — THE TENDER LANES ARE IN THE MAP AND ARE NOT CONSUMED HERE, for the same reason
+          `confirm` is not, and the reason got stronger at close: F4 established that this seat
+          cannot see whether an encounter has been paid, so it does not take money at all. What
+          stood here was `setTender(...)` feeding a paragraph that printed the literal string
+          "upi" on the counter screen — dev scaffolding with a test asserting it as behaviour.
+          Removed rather than dressed up. Falls through WITHOUT `preventDefault`, so the keystroke
+          still reaches the focused field.
+        */
+        case "tender:cash": case "tender:upi": case "tender:card": return;
         /*
           `confirm` (Ctrl+Enter) IS IN THE MAP AND IS DELIBERATELY NOT CONSUMED HERE.
           The design's `hotEnter` advances whatever stage the seat is on, and this phase's seat has
@@ -636,22 +695,51 @@ export function RegistrationCounter({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [overlay, clearDesk, onRegisterNew]);
+  }, [overlay, clearDesk, onRegisterNew, palette?.isOpen]);
 
+  /**
+   * ═══ CLOSE REVIEW F8 (MAJOR) — THE ALIAS LAYER HAD NO CONSUMER ═══
+   *
+   * T5 shipped eighteen aliased shadcn variables scoped to `[data-seat]` and this screen carried
+   * **not one `className` and not one `components/ui` import**. Every element was a bare `div`.
+   * So the assertion book's clause — "the alias block changes no computed colour on any OTHER
+   * screen" — was true because the block changed no computed colour on ANY screen, this one
+   * included, and `/counter/seat` rendered as unstyled HTML: no paper, no pine, no dossier beside a
+   * workspace. **§1's own defect — a rail with no consumer — reproduced by the task that ships the
+   * theming mechanism.** The reviewers were right to call it MAJOR: the signed-off design was not
+   * on screen.
+   *
+   * What follows is the MECHANISM's consumer, not Desk One's full build-out. `bg-background`,
+   * `bg-card`, `text-foreground`, `text-muted-foreground` and `border-border` compile (through
+   * `@theme inline`) to `var(--background)` and friends, so they resolve to paper-and-pine inside
+   * this root and to the greyscale registry values everywhere else — which is the whole claim D3
+   * makes, now actually exercised. The two-column dossier/workspace is the design's shape. The
+   * cards, the queue bars and the story chips are RC-4's, and calling this the finished seat would
+   * be the overstatement the reviewers just corrected.
+   */
   return (
-    <div data-seat="registration-counter" data-testid="registration-counter">
-      <h1>{t("registrationCounter.title")}</h1>
-      {/*
-        `canCollect={false}` and `issued={null}` are the same admission stated twice, and both are
-        deliberate for RC-3: this seat issues no invoice, takes no payment and opens no visit, so it
-        has neither an `issued` result of its own nor any server signal for one. The `settled` and
-        `credit` exits are therefore unreachable HERE — not removed, but unreachable — and RC-4 is
-        the phase that brings the bill across and makes all three lawful exits real on this screen.
-        Stated here rather than left for a reader to infer from a literal `null`.
-      */}
-      <Dossier quote={quote} issued={null} canCollect={false} onConfirm={clearDesk} />
-      {inHand === null && <FindPanel onRegisterNew={onRegisterNew} />}
-      {tender !== null && <p data-testid="tender-chosen">{tender}</p>}
+    <div
+      data-seat="registration-counter" data-testid="registration-counter"
+      className="min-h-screen bg-background text-foreground"
+    >
+      <h1 className="border-b border-border px-6 py-4 text-lg font-semibold tracking-tight">
+        {t("registrationCounter.title")}
+      </h1>
+      <div className="flex flex-col gap-6 p-6 lg:flex-row">
+        {/*
+          `canCollect={false}` and `issued={null}` are the same admission stated twice, and both are
+          deliberate for RC-3: this seat issues no invoice, takes no payment and opens no visit, so
+          it has neither an `issued` result of its own nor any server signal for one. The `settled`
+          and `credit` exits are therefore unreachable HERE — not removed, but unreachable — and
+          RC-4 is the phase that brings the bill across and makes all three lawful exits real.
+        */}
+        <div className="w-full shrink-0 rounded-lg border border-border bg-card p-4 lg:w-80">
+          <Dossier quote={quote} issued={null} canCollect={false} onConfirm={clearDesk} />
+        </div>
+        <div className="min-w-0 flex-1 rounded-lg border border-border bg-card p-4">
+          {inHand === null && <FindPanel key={deskGen} onRegisterNew={onRegisterNew} />}
+        </div>
+      </div>
       {overlay === "queues" && <QueuesOverlay items={summaries} onClose={() => setOverlay(null)} />}
     </div>
   );
