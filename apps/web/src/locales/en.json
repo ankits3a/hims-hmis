@@ -2086,6 +2086,19 @@
     "join": {
       "failed": "Could not join the queue: {{reason}}",
       "retry": "Join the queue"
+    },
+    "flow": {
+      "label": "Counter flow",
+      "sequence": "Sequence",
+      "lane": "Token",
+      "queue_first": "Register → Queue → Bill",
+      "bill_first": "Register → Bill → Queue",
+      "token_first": "Token at registration",
+      "token_on_payment": "Token on payment",
+      "locked": "Set by your supervisor",
+      "loading": "Reading…",
+      "unknown": "Could not read the counter flow",
+      "saveFailed": "Could not change the flow: {{reason}}"
     }
   }
 }

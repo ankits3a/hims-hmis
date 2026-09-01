@@ -4,7 +4,7 @@ import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   Dossier, FindPanel, QueuesOverlay, QuotePanel, RegistrationCounter, SEAT_TENDER_ORDER, WaitLine,
-  counterExit, seatKey, shouldJoinNow, tokenToShow, useQuote, waitEstimate, walkInBodyFor,
+  FLOW_POLL_MS, counterExit, seatKey, shouldJoinNow, tokenToShow, useQuote, waitEstimate, walkInBodyFor,
 } from "./registration-counter";
 import type { SeatVisit } from "./registration-counter";
 import { COUNTER_SEQUENCES, TOKEN_LANES } from "../lib/opd-api";
@@ -1691,5 +1691,133 @@ describe("RC-4 T2 — bill-first through the ASSEMBLED seat, two patients (metho
     await user.click(screen.getByTestId("join-retry"));
     expect((await screen.findByTestId("dossier-token")).textContent).toContain("42");
     expect(log.filter((w) => w.path.endsWith("/join-queue"))).toHaveLength(2);
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   RC-4 T4 — THE FLOW PILL, WORN OPENLY (D5, corrected: the setting is HOSPITAL-WIDE)
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+describe("RC-4 T4 — the flow pill shows the server's sequence, and only the permission changes it", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+  });
+
+  const me = (hospital: string[]): unknown =>
+    ({ actor: { type: "user", id: "u-rc4" }, permissions: { hospital, scoped: { department: {}, floor: {} } } });
+
+  /**
+   * A stub whose config can be CHANGED under a mounted seat — that is the two-counters scenario:
+   * the other counter's supervisor flips the flow, and this seat's pill must follow the server.
+   */
+  function pillStub(hospital: string[], first: unknown): { log: { method: string; path: string; body: unknown }[]; set: (c: unknown) => void; putAnswers: (c: unknown) => void } {
+    let config = first;
+    let putAnswer: unknown = null;
+    const log: { method: string; path: string; body: unknown }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(typeof input === "string" ? input : (input as Request).url);
+      const path = url.split("?")[0]!;
+      const method = init?.method ?? "GET";
+      const json = (body: unknown): Response =>
+        new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (method !== "GET") log.push({ method, path, body: init?.body === undefined ? undefined : JSON.parse(String(init.body)) });
+      if (path === "/api/auth/me") return json(me(hospital));
+      if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      if (path === "/api/billing/sessions/current") return json(DRAWER_OPEN);
+      if (path === "/api/patients/search") return json({ items: [] });
+      if (path === "/api/opd/config" && method === "GET") return json(config);
+      if (path === "/api/opd/config/counter-flow" && method === "PUT") {
+        // The server answers with the WHOLE config, as `putCounterFlow` does — and what it
+        // answers is the truth, whatever was asked.
+        config = putAnswer ?? { ...(config as object), ...(JSON.parse(String(init?.body)) as object) };
+        return json(config);
+      }
+      return new Response("{}", { status: 404 });
+    }));
+    return { log, set: (c) => { config = c; }, putAnswers: (c) => { putAnswer = c; } };
+  }
+
+  it("a clerk without `opd.counter.flow.manage` sees the sequence, the lane, and a lock — no control", async () => {
+    const { log } = pillStub([], QUEUE_FIRST);
+    renderWithProviders(<RegistrationCounter />);
+
+    const seq = await screen.findByTestId("flow-sequence");
+    expect(seq.tagName).toBe("SPAN");                                 // not a select
+    expect(seq.textContent).toContain("Register → Queue → Bill");
+    expect(screen.getByTestId("flow-lane").textContent).toContain("Token at registration");
+    expect(screen.getByTestId("flow-locked")).toBeTruthy();
+    expect(log).toHaveLength(0);
+  });
+
+  it("the supervisor's write sends EXACTLY one flow key, and the pill then shows what the SERVER returned", async () => {
+    const { log } = pillStub(["opd.counter.flow.manage"], QUEUE_FIRST);
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+
+    const seq = await screen.findByTestId("flow-sequence");
+    expect(seq.tagName).toBe("SELECT");
+    expect(screen.queryByTestId("flow-locked")).toBeNull();
+    await user.selectOptions(seq, "bill_first");
+
+    // `toEqual`: the body is the two-key shape and nothing else — the route's security property.
+    expect(log).toEqual([{ method: "PUT", path: "/api/opd/config/counter-flow", body: { counterSequence: "bill_first" } }]);
+    expect((await screen.findByDisplayValue("Register → Bill → Queue"))).toBeTruthy();
+    // The lane is meaningful only under queue_first (RC-1 D3): under bill_first it is not offered.
+    expect(screen.queryByTestId("flow-lane")).toBeNull();
+  });
+
+  /**
+   * THE MUTANT THE ASSERTION BOOK NAMES: a pill rendered from client state. Here the server
+   * answers the write with a DIFFERENT value than was asked (a concurrent flip, a refusal
+   * answered 200 with the standing config — any road). A pill that echoed the request would show
+   * `bill_first`; the pill shows the server's `queue_first`.
+   */
+  it("MUTANT — the pill echoing the request: the server answers with a different value and the pill shows THAT", async () => {
+    const { putAnswers } = pillStub(["opd.counter.flow.manage"], QUEUE_FIRST);
+    putAnswers({ counterSequence: "queue_first", tokenLane: "token_on_payment" });
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+
+    await user.selectOptions(await screen.findByTestId("flow-sequence"), "bill_first");
+
+    expect((await screen.findByDisplayValue("Token on payment"))).toBeTruthy(); // the server's lane arrived…
+    expect(screen.getByDisplayValue("Register → Queue → Bill")).toBeTruthy();   // …and the server's sequence, not the request's
+    expect(screen.queryByDisplayValue("Register → Bill → Queue")).toBeNull();   // THE KILL
+  });
+
+  /**
+   * TWO COUNTERS, ONE HOSPITAL. The other counter's supervisor flips the flow on the server; this
+   * seat, mounted and idle, must not go on showing the old sequence. The poll is the mechanism,
+   * and the walk-in's own open-time read (T2) is the guarantee that even a stale pill can never
+   * reach the wire. Fake timers drive the poll; `shouldAdvanceTime` keeps Testing Library's own
+   * polling alive under them.
+   */
+  it("another counter flips the flow; this pill follows the server within one poll", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { set } = pillStub([], QUEUE_FIRST);
+      renderWithProviders(<RegistrationCounter />);
+      expect((await screen.findByTestId("flow-sequence")).textContent).toContain("Register → Queue → Bill");
+
+      set(BILL_FIRST); // the server moved — nothing in this tab did anything
+      await vi.advanceTimersByTimeAsync(FLOW_POLL_MS + 50);
+
+      expect((await screen.findByTestId("flow-sequence")).textContent).toContain("Register → Bill → Queue");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("when the config cannot be read the pill says so rather than showing a default sequence", async () => {
+    stubFetch({
+      "GET /api/auth/me": me([]),
+      "GET /api/opd/queues/summary": { items: [DOC_A] },
+      "GET /api/patients/search": { items: [] },
+      // no /api/opd/config → 404 → the query errors
+    });
+    renderWithProviders(<RegistrationCounter />);
+    expect(await screen.findByTestId("flow-unknown")).toBeTruthy();
+    expect(screen.queryByTestId("flow-sequence")).toBeNull(); // no sequence claimed at all
   });
 });

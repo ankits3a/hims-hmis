@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../lib/api";
 import { billingErrorMessage, fetchFeeQuote, issueInvoice } from "../lib/billing-api";
 import type {
   TenderMode, WireAdjustmentCandidate, WireFeeQuote, WireIssueInvoiceResult, WirePricedLine, WireTender,
 } from "../lib/billing-api";
 import { fmtIst, useDebounced } from "../lib/format";
-import { getOpdConfig, joinQueue, opdErrorMessage, todayIst, walkIn } from "../lib/opd-api";
-import type { WireCounterFlow, WireDoctorSummary, WireDuplicateCandidate, WireWalkInBody } from "../lib/opd-api";
+import { COUNTER_SEQUENCES, TOKEN_LANES, getOpdConfig, joinQueue, opdErrorMessage, putCounterFlow, todayIst, walkIn } from "../lib/opd-api";
+import type {
+  CounterSequence, TokenLane, WireCounterFlow, WireDoctorSummary, WireDuplicateCandidate, WireOpdConfig, WireWalkInBody,
+} from "../lib/opd-api";
 import { SubmitButton } from "../components/submit-button";
 import { TenderEditor } from "../components/tender-editor";
 import { MoneyInput } from "../components/money-input";
 import { usePaletteOptional } from "../components/command-palette";
+import { useAuth } from "../lib/auth";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { matchReasonKeys, searchPatients } from "../lib/patients-api";
 import type { WirePatientHit } from "../lib/patients-api";
@@ -716,7 +719,10 @@ export function QueuesOverlay({
 export function RegistrationCounter(): React.ReactElement {
   const { t } = useTranslation();
   const { inHand, release } = usePatientInHand();
+  const { can } = useAuth();
   const palette = usePaletteOptional();
+  const queryClient = useQueryClient();
+  const { flow, failed: flowFailed } = useCounterFlow();
   const [overlay, setOverlay] = useState<"queues" | null>(null);
   /**
    * F16 — "start again" has to mean the SEARCH BOX too. `clearDesk` reset the overlay and released
@@ -888,9 +894,20 @@ export function RegistrationCounter(): React.ReactElement {
       data-seat="registration-counter" data-testid="registration-counter"
       className="min-h-screen bg-background text-foreground"
     >
-      <h1 className="border-b border-border px-6 py-4 text-lg font-semibold tracking-tight">
-        {t("registrationCounter.title")}
-      </h1>
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-6 py-4">
+        <h1 className="text-lg font-semibold tracking-tight">{t("registrationCounter.title")}</h1>
+        {/*
+          RC-4 T4 / D5 — the flow, worn openly. A clerk sees which sequence the counter is in and
+          a supervisor changes it here; the seat's own walk-in re-reads the server at open (T2), so
+          the pill is a display of the truth and never the truth itself. `onSaved` writes the
+          SERVER'S answer into the shared query — the same key `opd-vitals` and `opd-consult`
+          read — so every consumer in this tab moves with it and none is left on a stale value.
+        */}
+        <FlowPill
+          flow={flow} failed={flowFailed} canManage={can("opd.counter.flow.manage")}
+          onSaved={(config) => queryClient.setQueryData(["opd", "config"], config)}
+        />
+      </header>
       <div className="flex flex-col gap-6 p-6 lg:flex-row">
         {/*
           RC-4 T2 — `canCollect` and `issued` are now ANSWERED rather than admitted. Both are true
@@ -933,6 +950,116 @@ export function RegistrationCounter(): React.ReactElement {
         </div>
       </div>
       {overlay === "queues" && <QueuesOverlay items={summaries} onClose={() => setOverlay(null)} />}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   RC-4 T4 — THE FLOW PILL, WORN OPENLY (D5)
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/** The pill polls at the ops-mode cadence (`command-palette.tsx`): two counters converge within it. */
+export const FLOW_POLL_MS = 15_000;
+
+/**
+ * THE HOSPITAL'S CURRENT FLOW, READ FROM THE SERVER AND NOWHERE ELSE.
+ *
+ * D5 as originally written said the pill reads "the department the seat is working under". That
+ * was wrong, and measuring for this task corrected it: `counter_sequence` and `token_lane` are two
+ * columns on `opd_config` (`kernel/db/schema/opd.ts:36`), HOSPITAL-WIDE — one setting for every
+ * counter, not one per department. So the pill has exactly one source of truth, `GET /opd/config`,
+ * and two counters that showed different sequences would be showing a stale cache, which is the
+ * mutant the assertion book names. Hence: polled, never trusted past the poll, and the walk-in
+ * itself re-reads at the moment of opening (T2) so the poll's staleness can never reach the wire.
+ */
+export function useCounterFlow(): { flow: WireCounterFlow | null; failed: boolean } {
+  const q = useQuery({
+    queryKey: ["opd", "config"],
+    queryFn: getOpdConfig,
+    refetchInterval: FLOW_POLL_MS,
+    staleTime: 0,
+  });
+  const flow = q.data === undefined ? null : { counterSequence: q.data.counterSequence, tokenLane: q.data.tokenLane };
+  return { flow, failed: q.isError };
+}
+
+/**
+ * The pill. A clerk SEES which sequence the counter is in; only a holder of
+ * `opd.counter.flow.manage` (the front-office supervisor, by RC-1's ruling — narrower than
+ * `opd.config.manage` on purpose) gets the controls. The write is `PUT /opd/config/counter-flow`,
+ * whose body is EXACTLY the two flow keys: `putCounterFlow` sends one key at a time and the
+ * server's zod strips anything else, so this control cannot be widened into a config editor by
+ * accident. What the pill shows after a write is what the SERVER RETURNED, never what was asked.
+ */
+export function FlowPill({
+  flow, failed, canManage, onSaved,
+}: {
+  flow: WireCounterFlow | null;
+  failed: boolean;
+  canManage: boolean;
+  onSaved: (config: WireOpdConfig) => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function change(patch: Partial<WireCounterFlow>): Promise<void> {
+    setError(null);
+    setSaving(true);
+    try {
+      onSaved(await putCounterFlow(patch));
+    } catch (e) {
+      setError(opdErrorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div data-testid="flow-pill" className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="text-muted-foreground">{t("registrationCounter.flow.label")}</span>
+      {flow === null ? (
+        <span data-testid={failed ? "flow-unknown" : "flow-loading"} className="text-muted-foreground">
+          {t(failed ? "registrationCounter.flow.unknown" : "registrationCounter.flow.loading")}
+        </span>
+      ) : canManage ? (
+        <>
+          <select
+            data-testid="flow-sequence" aria-label={t("registrationCounter.flow.sequence")} value={flow.counterSequence}
+            disabled={saving} onChange={(e) => void change({ counterSequence: e.target.value as CounterSequence })}
+            className="h-8 rounded-md border border-input bg-background px-2"
+          >
+            {COUNTER_SEQUENCES.map((seq) => (
+              <option key={seq} value={seq}>{t(`registrationCounter.flow.${seq}`)}</option>
+            ))}
+          </select>
+          {/* The lane is meaningful only under queue_first (RC-1 D3); under bill_first it is not offered. */}
+          {flow.counterSequence === "queue_first" && (
+            <select
+              data-testid="flow-lane" aria-label={t("registrationCounter.flow.lane")} value={flow.tokenLane}
+              disabled={saving} onChange={(e) => void change({ tokenLane: e.target.value as TokenLane })}
+              className="h-8 rounded-md border border-input bg-background px-2"
+            >
+              {TOKEN_LANES.map((lane) => (
+                <option key={lane} value={lane}>{t(`registrationCounter.flow.${lane}`)}</option>
+              ))}
+            </select>
+          )}
+        </>
+      ) : (
+        <>
+          <span data-testid="flow-sequence" className="rounded-full border border-border px-2 py-0.5">
+            {t(`registrationCounter.flow.${flow.counterSequence}`)}
+          </span>
+          {flow.counterSequence === "queue_first" && (
+            <span data-testid="flow-lane" className="rounded-full border border-border px-2 py-0.5">
+              {t(`registrationCounter.flow.${flow.tokenLane}`)}
+            </span>
+          )}
+          <span data-testid="flow-locked" className="text-muted-foreground">{t("registrationCounter.flow.locked")}</span>
+        </>
+      )}
+      {error !== null && <span data-testid="flow-error" role="alert">{t("registrationCounter.flow.saveFailed", { reason: error })}</span>}
     </div>
   );
 }

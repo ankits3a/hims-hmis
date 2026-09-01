@@ -29,7 +29,7 @@ RC-3's §1 measured **eight rails shipped with zero web consumers**. Its close r
 
 - **S1 — can the seat open a visit at all?** Yes. `walkIn(body, idempotencyKey)` (`opd-api.ts:353`) posts `/opd/walk-in` and accepts either an existing patient (`{ existingId }`) or a four-field registration (`{ register: { name, sex, phone? } }`) — `counter-desk.tsx:135-150` is the working reference and its duplicate-acknowledgement path (`acknowledgedDuplicates`) is part of it. **DECIDED: lift it, do not re-derive it**, the way RC-3 T2 lifted DD2's three exits. It is a proven money path and a reviewer must be able to see that half is unchanged.
 - **S2 — what does bill-first actually need?** `join: "defer"` on the walk-in body returns `WireWalkInDeferredResult` with **null token, session and entry**, and `POST /opd/visits/:id/join-queue` fills them afterwards. Both exist; neither has ever been called. **This is the highest-risk task in the phase** precisely because RC-1's own CLOSE wrote the type and no caller has ever exercised it.
-- **S3 — the flow pill.** `counterSequence` and `tokenLane` are department-masters fields, patched through `opd-masters.controller.ts`. So the pill READS the department the seat is working under and the switch is a masters PATCH — which means it is **supervisor-permissioned by construction** (`opd.masters.manage`), not by a new gate.
+- **S3 — the flow pill.** ~~`counterSequence` and `tokenLane` are department-masters fields, patched through `opd-masters.controller.ts`. So the pill READS the department the seat is working under and the switch is a masters PATCH — which means it is **supervisor-permissioned by construction** (`opd.masters.manage`), not by a new gate.~~ **WRONG, corrected at T4 (see D5):** they are two columns on `opd_config`, hospital-wide, and the write is `PUT /opd/config/counter-flow` under `opd.counter.flow.manage`.
 - **S4 — the PAID stamp.** `feeStatus` is `"free" | "settled" | "credit" | "unsettled" | null` on core's `QueueEntryView` and is **absent from web's `WireQueueEntryView`**. Identical to RC-3 T4's `avgConsultMinutes`, which the phase doc told that task to *measure first* and which turned out to need **no core change at all**. **MEASURE before writing anything here too** — the answer is probably a one-field widening, and if it is, say so rather than inventing work.
 - **S5 — does the flip reach the browser live?** `queue.fee_status_changed` is emitted in the settling transaction (RC-3 T3) and `realtime.ts` is the existing push seam. **MEASURE whether the event already reaches the web push channel** before building a subscription.
 
@@ -39,7 +39,7 @@ RC-3's §1 measured **eight rails shipped with zero web consumers**. Its close r
 - **D2 — The walk-in call and its idempotency key are LIFTED from `counter-desk.tsx`, not re-derived.** Per S1 and RC-3's D1 precedent. The old screen's header is quoted rather than paraphrased.
 - **D3 — Bill-first is a DEFERRED JOIN, and the token is born PAID.** The flow pill's `Register → Bill → Appointment` sequence sends `join: "defer"`, takes the money, then calls `join-queue`. The alternative — issuing a token and flipping it — is what `token_lane` exists to avoid, and demo 3's wording is explicit: *"their token leaves the printer already PAID."*
 - **D4 — The PAID stamp is rendered from `feeStatus`, never re-derived on the client.** `encounterFeeStatuses` is the one projection; a screen that recomputed "is this paid" from an invoice would be a second truth function that can disagree with the board. RC-3's F4 is the same lesson from the other side: the seat could not see settlement and so must not claim it. **This task is what finally lets the seat claim it.**
-- **D5 — The flow pill wears the setting openly and switching it is a masters PATCH.** Per S3. A clerk sees which sequence the counter is in; only `opd.masters.manage` can change it.
+- **D5 — The flow pill wears the setting openly, and it is ONE setting for the hospital.** **As first written this said "the department the seat is working under" and a masters PATCH under `opd.masters.manage`; both halves were wrong**, measured while writing the T3 handoff and fixed at T4 rather than inherited. `counterSequence` and `tokenLane` are two columns on `opd_config` (`kernel/db/schema/opd.ts:36`, read by `modules/opd/config.ts:189-202`) — hospital-wide, one setting for every counter. The write is `PUT /opd/config/counter-flow` (`opd-masters.controller.ts:229`) under **`opd.counter.flow.manage`**, RC-1 T2's deliberately narrower permission, whose body is EXACTLY the two flow keys. A clerk sees which sequence the counter is in; the front-office supervisor changes it. The pill polls the server and the walk-in re-reads the server at the moment of opening, so a stale pill can never reach the wire.
 - **D6 — `/counter` is deleted LAST, in its own task, after the seat demonstrably finishes a patient.** Not first, and not as a side effect. The honest moment to delete a proven money path is when its replacement has been shown to do the same job — which is T1–T4's output. Gated on §6.1.
 
 ## 4. Tasks
@@ -50,7 +50,7 @@ Per D1/D2. Lift `walkIn` + the idempotency key + `acknowledgedDuplicates` from `
 **Assertion book:** assertion — registering a new patient from the seat opens a visit, puts them in hand, and the dossier fills **without a navigation**; mutant — the register path drops `acknowledgedDuplicates`, so a duplicate-suspected refusal becomes a dead end; kill — a clerk who cannot proceed past a near-match.
 **Assembly clause (§5A.3):** drive the screen through **two patients** and assert nothing of the first survives — this is the exact defect RC-3's F1 shipped.
 
-### T2 — CRITICAL · the deferred join, its first consumer since RC-1 wrote it — **RUNS AFTER T3, see §4A**
+### T2 — CRITICAL · the deferred join, its first consumer since RC-1 wrote it — **DONE, `891bc01`** (ran after T3, see §4A)
 **Files:** the screen, `apps/web/src/lib/opd-api.ts`, tests.
 Per D3. `join: "defer"` → bill → `POST /opd/visits/:id/join-queue`.
 **Assertion book:** assertion — a bill-first walk-in has **null token, session and entry** until the money is taken, then joins with a token that is already PAID; mutant — the join fires before settlement; kill — an UNPAID token on the board in a lane whose entire purpose is that it never appears.
@@ -61,10 +61,10 @@ Per D3. `join: "defer"` → bill → `POST /opd/visits/:id/join-queue`.
 Per D4.
 **Assertion book:** assertion — a settled encounter's token renders PAID and an unsettled one does not, from the server's `feeStatus` alone; mutant — the client re-deriving paid-ness from an invoice; kill — a board that disagrees with `encounterFeeStatuses` after a reversal, which is precisely what RC-3 T3 made the event able to report.
 
-### T4 — ROUTINE · the flow pill, worn openly
+### T4 — ROUTINE · the flow pill, worn openly — **DONE, see §4B**
 **Files:** the screen, `apps/web/src/lib/opd-api.ts`, tests.
-Per D5.
-**Assertion book:** assertion — the pill shows the department's current `counterSequence`, and a clerk without `opd.masters.manage` cannot change it; mutant — the pill rendered from client state rather than the department's own value; kill — two counters showing different sequences for one department.
+Per D5 (as corrected).
+**Assertion book:** assertion — the pill shows the hospital's current `counterSequence`, and a clerk without `opd.counter.flow.manage` cannot change it; mutant — the pill rendered from client state rather than the server's value; kill — two counters showing different sequences for one hospital.
 
 ### T5 — ROUTINE · `/counter` is deleted — **GATED on §6.1**
 **Files:** `apps/web/src/router.tsx`, `apps/core/test/caddyfile-parity.test.ts` (45 → 44), `counter-desk.tsx` (deleted), the NAV row, `nav.counterDesk`/`nav.counterSeat` locale keys.
@@ -116,6 +116,42 @@ bill-first flow that waits for the money needs a surface that can see the money.
 **Neither finding was reachable from the phase document.** Both came from reading the server before
 writing the client — which is the third time this series has been paid for doing that, after RC-3
 T4's `avgConsultMinutes` and this phase's own §2.
+
+## 4B. T2 AND T4 — DONE. What T2 turned out to contain, and what T4 corrected
+
+**T2 (`891bc01`)** was authored as "defer → bill → join" and the middle word was the whole task.
+The seat did not take money — RC-3's F4 established that it could not see settlement, so it
+priced and did not collect — and a bill-first flow with nobody to take the money between the
+register and the join is not a flow. What resolves it is not new sight but new AUTHORSHIP: for a
+visit the seat opened itself, moments ago, it knows there is no invoice yet as surely as
+`/counter` does, because that is `/counter`'s own model. So the tender block and `settle` were
+lifted from `counter-desk.tsx` and `canCollect` is true for exactly that case — the seat's own
+visit, in this session, with the drawer open. Every other patient in hand still gets F4's answer.
+
+Three more things fell out of measuring:
+1. **The existing patient's door was missing.** `takePatient` puts a search hit in hand with
+   `encounterId: null` and the workspace went blank there; `walkInBodyFor`'s `existingId` branch
+   was exported, unit-tested and consumed by nothing — §1's finding, inside T1's own output.
+2. **The drawer gate had to move before the walk-in.** Under bill-first a deferred visit with no
+   money is a patient nobody calls; `/counter` learned the same thing at the payment step (07b DD5).
+3. **`token_on_payment` has a dossier meaning.** RC-1 D3 says the lane is "printing and stamps
+   only"; the dossier's number is the slip, so it is held back until the money.
+
+**The join is a pure predicate (`shouldJoinNow`)** and the effect only carries its answer to the
+wire — so the mutant the assertion book names was applied to one function and killed at the unit
+and at the assembly (an order on the wire: the invoice, then the join). Eight revert pairs
+(R22–R29); **two could not fail on the first run** (R26/R27 — the encounter-keyed accessors),
+because the two-patient test went through `Escape` and `clearDesk` did the same work. The keying
+protects the road that does not pass `clearDesk` — another surface taking a patient in hand under
+a mounted seat — and a third test now drives that road through a sibling component. That is
+§5A.4 paying for itself a fourth time in this series.
+
+**T4** corrected D5 (above) and shipped `FlowPill` + `useCounterFlow`: polled at the ops-mode
+cadence, controls only under `opd.counter.flow.manage`, one flow key per write, and the pill shows
+what the server RETURNED — the mutant test has the server answer a different value than was asked.
+Five revert pairs (R30–R34), all red first time. **Evidence at T4:** full web `vitest run` 68 files
+/ 479 tests, exit 0 (T3 stood at 459); `pnpm typecheck` exit 0; eslint clean over `src`. **No core
+source touched in T1–T4; no test database used.**
 
 ## 5. CLOSE
 
