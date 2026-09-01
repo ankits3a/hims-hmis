@@ -1561,6 +1561,47 @@ grep -rn "<an existing sibling string>" . --exclude-dir=node_modules --exclude-d
 did NOT have the README table, and said it would not have found it. Two independent lanes, the
 same blind spot, one permission each.
 
+> **AMENDED THE SAME DAY, AND THE AMENDMENT IS LARGER THAN THE ENTRY. THREE WAS WRONG; TEN IS THE
+> MEASURED NUMBER, AND GREP FINDS NONE OF THE LAST SEVEN.**
+>
+> This entry shipped in `10b37d0` claiming three censuses. **That commit left `main` RED**: the
+> RC-2 lane ran the suite and found SIX more stale pins, and fixing those surfaced a seventh. The
+> full count for ONE permission is **ten**:
+>
+> | | census | how it was found |
+> |---|---|---|
+> | 1 | the manifest array | writing it |
+> | 2 | per-module count map (`opd: 15 → 16`) | LIST grep |
+> | 3 | `README.md` permission table row | SIBLING grep, followed into what the test PARSES |
+> | 4 | `installedRegistry().allPermissions()` total (147) | **the run** |
+> | 5 | the reachability census's declared total | **the run** |
+> | 6 | its held total (132 → 133) | **the run** |
+> | 7 | `opdTable.rowCount` / `cells.size` / `tablePairs` (15/15/31) | **the run** |
+> | 8 | `modelPairs()` grants total (274) | **the run** |
+> | 9 | `modelPermissions()` distinct total (126) | **the run** |
+> | 10 | the PER-ROLE grant map (`doctor: 19`, `vitals_desk: 5`) | **the run**, on the second pass |
+>
+> **Seven of the ten are in `test/seed-roles.test.ts` — a file this lane had ALREADY EDITED, twice,
+> to move census 2.** Editing a census file does not make its other censuses visible. Number 10 was
+> missed even on the pass that was explicitly hunting for stale pins, and was read past while
+> changing a number six lines away.
+>
+> **The distinction that actually predicts findability, and it is not scope:** a census with an
+> IDENTIFIER (`ALL_MANIFESTS`, `opd.counter.flow.manage`, a table keyed by a role column) can be
+> grepped. **A census that is a BARE INTEGER cannot be — there is no token to search for.** Numbers
+> 4–10 are all bare integers. Widening the grep past `--include=*.ts`, which this entry originally
+> prescribed, finds number 3 and none of the rest.
+>
+> **So the rule is not a better grep. It is: GREP TELLS YOU WHERE TO EDIT; ONLY THE RUN TELLS YOU
+> WHAT YOU BROKE.** A permission/manifest/role change owes the suite that asserts its censuses
+> BEFORE the commit, not after — which is §9.9 rule 6's full-verify-at-the-boundary obligation, and
+> this specimen exists because this lane deferred exactly that and landed on named-but-unpaid
+> evidence. **Naming a debt in a commit message does not make the tree green.**
+>
+> And the test NAMES carry the numbers too (*"the reachability census closes: 147 declared = 132
+> held + 15"*, *"two hundred and seventy-four grants"*): move the pin and leave the name, and the
+> suite passes while describing something false.
+
 > **And the error message, recorded because it costs an hour cold:** that parser fails with *"could
 > not identify all four permission tables by their first role column … this parser is stale"*. That
 > is the parser saying it could not find a TABLE — not that your permission is wrong. A permission

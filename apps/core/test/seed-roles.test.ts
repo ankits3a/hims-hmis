@@ -123,6 +123,34 @@ const PLAN_09_PAIRS: readonly string[] = [
   "front_office_supervisor/membership.instrument.recognise",
 ];
 
+/** The README prose line that authorises RC-2 T4's enrol/apply split. Quoted, not paraphrased. */
+const RC2_ENROL_README_PROSE =
+  "RC-2 adds a fifth `membership.*` string, `membership.instrument.enrol`, which appears in neither table";
+
+/**
+ * The two (role, permission) pairs RC-2 T4 added, which appear in NEITHER README table.
+ *
+ * THE FIFTH set of non-table rows, landed exactly as the four above were — a named constant here
+ * plus a README prose line this test quotes verbatim.
+ *
+ * ═══ WHY THIS IS NOT APPENDED TO `PLAN_09_PAIRS` ═══
+ *
+ * It would have typechecked, passed, and been shorter. It would also have recorded an RC-2 decision
+ * as Plan 09's DD18 — and that constant's own comment says "the SHAPE of the ruling is visible in
+ * the list". A census kept green by making the record false is worse than a census that fails: the
+ * failure is loud and the false record is permanent. Same reason RC-2 does not edit
+ * `PLAN_09_README_PROSE`'s "four `membership.*` strings" to read "five": that count is scoped to
+ * Plan 09, not to the module, so it is still true and changing it would break a verbatim-quoted
+ * constant in order to write down something untrue.
+ *
+ * THE SHAPE IS THE RULING: the seat that APPLIES a benefit cannot MINT one. `front_office` holds
+ * `membership.instrument.recognise` and is absent from this list on purpose.
+ */
+const RC2_ENROL_PAIRS: readonly string[] = [
+  "front_office_supervisor/membership.instrument.enrol",
+  "membership_admin/membership.instrument.enrol",
+];
+
 /** The README prose line that authorises the 2026-08-26 Group C grants. Quoted, not paraphrased. */
 const GROUP_C_README_PROSE =
   "Owner ruling of 2026-08-26 moves three `auth.*` strings off `admin`, which appear in no table";
@@ -476,12 +504,12 @@ const STAFF_REPORT_PAIRS: readonly string[] = [
   "medical_superintendent/staff.reports.read",
 ];
 
-/** All SIXTEEN non-table sets. A model row outside this union fails V3's last leg. */
+/** All SEVENTEEN non-table sets. A model row outside this union fails V3's last leg. */
 const NON_TABLE_PAIRS: readonly string[] = [
   ...RULING_7_PAIRS, ...WORKFLOW_RULING_PAIRS, ...PLAN_09_PAIRS, ...GROUP_C_PAIRS, ...GROUP_A_PAIRS,
   ...MERGE_LANE_PAIRS, ...GROUP_B_PAIRS, ...FORMULARY_PAIRS, ...RESOURCES_PAIRS, ...OT_PAIRS,
   ...STAFF_REPORT_PAIRS, ...DOCTOR_TARIFF_PAIRS, ...STAFF_AUDITOR_PAIRS, ...COUNTER_COVER_PAIRS,
-  ...PRIVACY_WRITE_PAIRS, ...LAB_PAIRS, ...RADIOLOGY_PAIRS,
+  ...PRIVACY_WRITE_PAIRS, ...LAB_PAIRS, ...RADIOLOGY_PAIRS, ...RC2_ENROL_PAIRS,
 ];
 
 type GrantTable = {
@@ -689,7 +717,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // that guard on them, because `seed-roles.ts` and this file are named in T1's Files list and
       // in no later task's (§6.0 S9): a permission declared by T5 would fail this build for a task
       // that is not allowed to fix it.
-      membership: 7,
+      membership: 8, // RC-2 T4 added `membership.instrument.enrol` (D5's enrol/apply split)
       partners: 7,
       // PLAN 16a T2 / DD10. Declared here ahead of the routes that guard on them, for exactly the
       // reason the paragraph above gives: `seed-roles.ts` and this file are named in T2's Files
@@ -750,10 +778,11 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       pcpndt: 5,
       radiology: 15,
     });
-    expect(installedRegistry().allPermissions()).toHaveLength(147); // RC-1 T2: 146 -> 147, the flow lock
+    // VD-1 T4 — +1 with `opd.vitals.history.read` (vitals_desk + doctor).
+    expect(installedRegistry().allPermissions()).toHaveLength(148); // RC-1 T2: 146 -> 147, the flow lock
   });
 
-  it("the role model is thirty-three roles, two hundred and seventy-four grants, one hundred and twenty-six distinct permissions", () => {
+  it("the role model is thirty-three roles, two hundred and seventy-six grants, one hundred and twenty-seven distinct permissions", () => {
     expect(ROLE_MODEL.map((r) => r.roleKey)).toEqual([
       "front_office",
       "front_office_supervisor",
@@ -822,7 +851,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // supervisor" in owner ruling O-2 actually means.
       // RC-1 T2 — 14 -> 15 with the counter-flow lock (D5): the pill, not the config editor.
       front_office_supervisor: 15,
-      vitals_desk: 5,
+      vitals_desk: 6, // VD-1 T4 — 5 -> 6 with `opd.vitals.history.read`, the bay's pre-stage read
       // Group B, 2026-08-26: +2, the patient record and the allergy register.
       // Plan 16a / DD10: +1, the formulary read the consult autocomplete needs.
       // PLAN 07d T5 / DD6 — 10 -> 11 with `tariff.read`, so the cockpit can price advised tests.
@@ -833,7 +862,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // PLAN 18a T2 — 17 -> 19: `radiology.orders.place` and `radiology.reports.read`. The
       // referring clinician orders the scan and reads the REPORT — not the worklist, which is a
       // departmental queue and, per DD11, a confidentiality-bearing one.
-      doctor: 19,
+      doctor: 20, // VD-1 T4 — 19 -> 20, the same string: the bay reads it and the clinician it hands to must too
       // Plan 13 / DD14: +1, the registry read — the same room book this role already administers,
       // now behind a kernel permission. No new authority (see RESOURCES_PAIRS).
       opd_admin: 8, // RC-1 T2 — 7 -> 8: the admin who edits the whole config can also flip the flow
@@ -927,7 +956,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // `billing_manager` the imaging bill-decision queue.
     // 272 -> 274 with RC-1 T2: `opd.counter.flow.manage` to `front_office_supervisor` and to
     // `opd_admin` — two grants, one string, no new role.
-    expect(modelPairs()).toHaveLength(274);
+    // VD-1 T4 — 274 -> 276: `opd.vitals.history.read` to `vitals_desk` and to `doctor`.
+    expect(modelPairs()).toHaveLength(276);
     // PLAN 07c T9 — 83 → 84 DISTINCT: one new string (`staff.reports.read`) across two roles.
     // 84 -> 85 DISTINCT: only `staff.reports.drill` is new to the MODEL. Every other string the
     // two rulings grant was already held by another role — the counter cover moves WHO may act,
@@ -942,7 +972,8 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // `billing.*` — was already in the model: the receptionist moves WHO may act at a counter, not
     // WHAT the system can do, exactly as `lab_reception` did.
     // 125 -> 126 DISTINCT: only the flow lock is new to the model.
-    expect(modelPermissions()).toHaveLength(126);
+    // VD-1 T4 — 126 -> 127 distinct model permissions.
+    expect(modelPermissions()).toHaveLength(127);
     // No role lists the same permission twice — a duplicate would inflate the counts above
     // without changing a single row of `role_permissions`.
     for (const role of ROLE_MODEL) {
@@ -950,8 +981,10 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     }
   });
 
-  it("the reachability census closes: 147 declared = 132 held + 15 not yet modelled", () => {
-    expect(installedRegistry().allPermissions()).toHaveLength(147);
+  it("the reachability census closes: 148 declared = 133 held + 15 not yet modelled", () => {
+    // VD-1 T4 — 147 -> 148 declared and 132 -> 133 held, NOT_YET_MODELLED UNCHANGED at fifteen:
+    // the permission is granted in the same commit that declares it, so it never passes through.
+    expect(installedRegistry().allPermissions()).toHaveLength(148);
     // 42 + 13 until the 2026-08-23 ruling moved the four `workflow.definitions.*` strings across;
     // 46 + 13 until Plan 09 declared fourteen and DD18 granted four of them.
     // 50 until `auth.elevation.review` was declared; it is held from the first deploy because
@@ -1011,7 +1044,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     // `orders.cancel` cross from one side of this sum to the other exactly as phase 0's entries
     // predicted they would. **`orders.read.restricted` stays**, deliberately — see the note in
     // `seed-roles.ts` where those three entries were removed.
-    expect(heldPermissions()).toHaveLength(132); // PLAN 18a T2: 111 -> 131, all twenty granted
+    expect(heldPermissions()).toHaveLength(133); // PLAN 18a T2: 111 -> 131, all twenty granted
     // RC-1 T2 — 146 -> 147 declared and 131 -> 132 held, NOT_YET_MODELLED UNCHANGED at fifteen:
     // the flow lock is granted in the same commit that declares it.
     expect(NOT_YET_MODELLED).toHaveLength(15);
@@ -1036,9 +1069,11 @@ describe("seed:roles — the census pins, stated before anything is compared (§
     ]);
     // RC-1 T2 — 14 -> 15 rows and 29 -> 31 ticks: the flow lock lands in the TABLE (its module
     // already has one), ticked for the supervisor and the admin.
-    expect(opdTable.rowCount).toBe(15);
-    expect(opdTable.cells.size).toBe(15);
-    expect(tablePairs(opdTable)).toHaveLength(31);
+    // VD-1 T4 — 15 -> 16 rows and 31 -> 33 ticks: `opd.vitals.history.read` lands in the TABLE
+    // (its module already has one), ticked for `vitals_desk` and `doctor`.
+    expect(opdTable.rowCount).toBe(16);
+    expect(opdTable.cells.size).toBe(16);
+    expect(tablePairs(opdTable)).toHaveLength(33);
 
     expect(billingTable.roles).toEqual(["cashier", "billing_manager"]);
     // FIFTEEN rows yielding SIXTEEN permissions is the proof that the `/ .decide` shorthand was
@@ -1403,6 +1438,9 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     // PLAN 09 / DD18, held to exactly the same standard as the two above: the grants are
     // authorised by a sentence in the shipped README, quoted here rather than paraphrased.
     expect(readme).toContain(PLAN_09_README_PROSE);
+    // RC-2 T4's enrol/apply split, its OWN sentence rather than an edit to Plan 09's — that one
+    // counts Plan 09's strings and is still true.
+    expect(readme).toContain(RC2_ENROL_README_PROSE);
     // `vitals_desk` deliberately does NOT get `patients.register`: registration is the desk's
     // work and vitals record against a patient who already exists.
     expect(nonTable).not.toContain("vitals_desk/patients.register");
@@ -1484,9 +1522,9 @@ describe("seed:roles — executed against a database (V5)", () => {
     // 84 -> 85: `staff.reports.drill` is the one string these rulings add to the MODEL.
     // 87 -> 105: the lab's fifteen plus the kernel's three `orders.*`, all granted in the commit
     // that declares them.
-    expect(first.held).toBe(126); // RC-1 T2 — 125 -> 126 with the flow lock
+    expect(first.held).toBe(127); // RC-1 T2 — 125 -> 126 with the flow lock; VD-1 T4 -> 127
     expect(first.held).toBe(modelPermissions().length);
-    expect(heldPermissions()).toHaveLength(132); // RC-1 T2, as above
+    expect(heldPermissions()).toHaveLength(133); // RC-1 T2, then VD-1 T4, as above
     // PLAN 17 PHASE 0 T5 — 16 -> 20. All four `orders.*` strings, unheld on purpose (§8.11).
     // PLAN 17 T2 — 18 -> 15: three of those four are granted here and `orders.read.restricted`
     // stays, which is the one that needed an owner rather than a plan.
