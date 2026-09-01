@@ -83,7 +83,12 @@ export async function handleOrderPlaced(
 
   const items = await (tx as unknown as Db)
     .select({
-      id: orderItems.id, serviceId: orderItems.serviceId, restricted: orderItems.restricted,
+      /**
+       * F60 — `restricted` is NOT selected any more. It was the old source of `form_f_required`,
+       * and after the applicability rule moved here nothing read it; leaving it would have been the
+       * same dead select this phase deleted from `read.ts` in the same commit.
+       */
+      id: orderItems.id, serviceId: orderItems.serviceId,
     })
     .from(orderItems)
     .where(inArray(orderItems.id, payload.itemIds));
@@ -125,12 +130,21 @@ export async function handleOrderPlaced(
       );
     }
 
-    /** F60 — the Act's rule, on the day of the scan, for every path that reaches a study. */
-    const applicability = pcpndtApplicability(
-      { sex: patient.sex, dob: patient.dob, dobEstimated: patient.dobEstimated },
-      { pcpndtApplicable: studyType.pcpndt_applicable },
-      new Date(`${order.serviceDate}T00:00:00.000Z`),
+    /**
+     * F60 — the Act's rule, for every path that reaches a study. **F52, second pass: on the day of
+     * the scan AND on today, applicable if either says so.** `serviceDate` is a client string and
+     * it is the `asOf` for the age band; back-dating it by sixteen years made a 24-year-old six and
+     * exempted her scan from the register. Evaluating both days removes the incentive rather than
+     * policing the input, and an honest backfill agrees with itself.
+     */
+    const facts = { sex: patient.sex, dob: patient.dob, dobEstimated: patient.dobEstimated };
+    const type = { pcpndtApplicable: studyType.pcpndt_applicable };
+    const onServiceDate = pcpndtApplicability(
+      facts, type, new Date(`${order.serviceDate}T00:00:00.000Z`),
     );
+    const applicability = onServiceDate.applicable
+      ? onServiceDate
+      : pcpndtApplicability(facts, type, new Date());
 
     const accessionNo = await nextEpisodeNo(tx, "imaging_study", order.serviceDate);
     const studyId = newId();

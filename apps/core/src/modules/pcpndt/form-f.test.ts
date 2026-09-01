@@ -195,6 +195,43 @@ describe("Form F: membership, the completion, the freeze and the gate (18a T6)",
     )).rejects.toThrow(/the serial, machine, device, study and patient of a Form F are fixed/);
   });
 
+  /**
+   * ═══ F63 (CLOSE REVIEW, SECOND PASS) — THE COMPLETION IS AN ALLOW-LIST, AND THIS PROVES IT ═══
+   *
+   * `0050` permitted exactly one transition and then returned NEW with no whole-row comparison, so
+   * every column outside the six-column identity list was free in that one statement. Two of them
+   * mattered: `verified_by`/`verified_at`, which let ONE statement write and self-counter-sign a
+   * statutory declaration; and `person_id`, the registered doctor Part H names as having conducted
+   * the procedure, which `openFormF` resolves and checks and the completion could silently replace.
+   *
+   * A criminal-statute separation of duties shipped in `0051` with no test at all. These are it.
+   */
+  it("F63: a completion cannot carry its own verification — the verifier is a second person", async () => {
+    const { formFId } = await open();
+    await expect(db.execute(
+      sql`update pcpndt_form_f set status = 'recorded', sections = '{"F":"x"}'::jsonb,
+          signed_by = 'dr.a', signed_at = now(), verified_by = 'dr.a', verified_at = now()
+          where id = ${formFId}`,
+    )).rejects.toThrow(/cannot be recorded and verified in one statement/);
+  });
+
+  it("F63: a completion cannot rewrite the person who conducted the procedure", async () => {
+    const { formFId } = await open();
+    await expect(db.execute(
+      sql`update pcpndt_form_f set status = 'recorded', sections = '{"F":"x"}'::jsonb,
+          signed_by = 'dr.a', signed_at = now(), person_id = 'SOMEONE-ELSE'
+          where id = ${formFId}`,
+    )).rejects.toThrow(/the completion may write only the form itself and its signature/);
+  });
+
+  /** And the completion the design DOES permit still lands. */
+  it("F63: the ordinary completion is unaffected", async () => {
+    const { formFId } = await open();
+    await record(formFId);
+    const [row] = await db.select().from(pcpndtFormF).where(eq(pcpndtFormF.id, formFId));
+    expect(row!.status).toBe("recorded");
+  });
+
   /* ── A4's second half: the counter-signature ── */
 
   it("A4: `verified_at` is set ONCE, by a holder of pcpndt.form_f.verify who is not the signer", async () => {

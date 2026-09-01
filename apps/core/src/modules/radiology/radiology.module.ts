@@ -77,7 +77,19 @@ export function registerRadiologyFormFSubjectResolver(): () => void {
       .from(imagingStudies)
       .where(eq(imagingStudies.id, studyId));
     const row = rows[0];
-    if (!row || row.deviceResourceId === null) return null;
+    /**
+     * ═══ F58, SECOND PASS — `null` MEANS "NOT MINE", NEVER "MINE BUT UNCHECKABLE" ═══
+     *
+     * The first version returned `null` when the study had no device yet, and
+     * `assertSubjectMatches` treats `null` as *"no module claims this id"* and passes. So a Form F
+     * opened for a study that had not been booked onto a machine got NEITHER the patient check nor
+     * the device check — F58's original harm, unchanged, on any unscheduled study. The web screen
+     * guards it; the server did not, and the server is where the register is written.
+     *
+     * A study this module owns is now always answered for. `deviceResourceId: null` says *"this
+     * study is mine and has no machine yet"*, and the caller refuses rather than guessing.
+     */
+    if (!row) return null;
     return { patientId: row.patientId, deviceResourceId: row.deviceResourceId };
   });
 }

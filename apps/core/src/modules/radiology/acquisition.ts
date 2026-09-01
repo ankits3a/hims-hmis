@@ -492,7 +492,20 @@ export async function abortAcquisition(
   }
   await transition(tx, study.workflowInstanceId, "ready", actor, { note: input.reason });
   await tx.update(imagingStudies)
-    .set({ status: "ready", acquisitionStartedAt: null })
+    /**
+     * ═══ F53, SECOND PASS — THE ABORT USED TO ERASE THE FACT THAT THE PATIENT WAS ON THE MACHINE ═══
+     *
+     * This wrote `acquisitionStartedAt: null`, and F53's fix had just made that column the operand
+     * for `performed_then_cancelled`. So the clinically natural route for F53's OWN scenario —
+     * contrast injected, patient reacts, radiographer clicks **Abort** and then **Cancel** — came
+     * out with `fromAcquisition === false` and raised nothing. The counter was never asked whether
+     * the patient pays, and the only trace was a workflow note.
+     *
+     * `acquisition_started_at` means *"this patient went on this machine"*, and an abort does not
+     * make that untrue. It is left standing, so a later cancel still knows. A re-start overwrites
+     * it with the newer instant, which is the right answer for a study that goes on twice.
+     */
+    .set({ status: "ready" })
     .where(eq(imagingStudies.id, study.id));
   /**
    * ═══ THE ENVELOPE STAYS `in_progress`, AND THAT IS NOT AN OMISSION ═══

@@ -313,7 +313,29 @@ export async function reportView(db: Db, actor: Actor, reportId: string): Promis
     .where(eq(imagingReports.id, reportId));
   const row = rows[0];
   if (!row) return null;
-  /** F45 — same ruling: a signed report is readable by the department that produced it. */
+  /**
+   * ═══ F45, SECOND PASS — THIS READER IS NOT THE DEPARTMENT, AND IT WAS SERVING DRAFTS ═══
+   *
+   * The first fix removed the hold-out here with the comment *"a signed report is readable by the
+   * department that produced it"*. **That comment was wrong about its own reader.** This route is
+   * gated on `radiology.reports.read`, which DD16 deliberately grants to the seeded `doctor` role
+   * as well — that is the whole point of splitting it from the worklist permission. So the readers
+   * who lost the hold-out are every doctor in the hospital, which is a defensible ruling for a
+   * SIGNED report (the treating clinician reads the report of the scan they ordered) and is not
+   * one at all for a DRAFT.
+   *
+   * And this reader applied no status filter: `draft`, `prelim`, `signed` and `superseded` alike.
+   * F68 excluded drafts from the lockout on the ground that *"nothing outside the department can
+   * read one"* — and this function disproved that in the same commit. A night registrar's unchecked
+   * scratch text was readable by any holder of `radiology.reports.read`.
+   *
+   * **A draft is not a document.** It is served only to a reader who also holds the worklist
+   * permission — the department — and everyone else gets the same `null` an unknown id gets.
+   */
+  if (["draft"].includes(row.report.status)
+    && !(await hasPermission(db, actor.id, WORKLIST_READ, "hospital"))) {
+    return null;
+  }
 
   await recordPhiAccess(db, {
     actor, patientId: row.study.patientId, surface: "imaging.report",

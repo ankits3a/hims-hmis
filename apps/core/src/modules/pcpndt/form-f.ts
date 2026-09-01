@@ -162,7 +162,11 @@ async function nextSerialNo(
  * caller's facts match. A study nobody claims is accepted as before, which keeps 15b and 62 working
  * against their own study-shaped rows.
  */
-export type FormFSubject = { patientId: string; deviceResourceId: string };
+export type FormFSubject = {
+  patientId: string;
+  /** `null` — the owning module claims this study and it has no machine yet (F58, second pass). */
+  deviceResourceId: string | null;
+};
 export type FormFSubjectResolver = (tx: Tx, studyId: string) => Promise<FormFSubject | null>;
 
 const SUBJECT_RESOLVERS = new Map<string, FormFSubjectResolver>();
@@ -183,6 +187,14 @@ async function assertSubjectMatches(tx: Tx, input: OpenFormFInput): Promise<void
         `this Form F names patient ${input.patientId} and study ${input.studyId} is ${subject.patientId} — `
         + "a register entry against the wrong woman cannot be corrected once it is written",
         { studyId: input.studyId, given: input.patientId, actual: subject.patientId },
+      );
+    }
+    if (subject.deviceResourceId === null) {
+      throw new PcpndtError(
+        "unknown_form",
+        `study ${input.studyId} is not booked onto a machine yet — a Form F records the machine the `
+        + "scan happened on, and there is nothing yet to check the caller's answer against",
+        { studyId: input.studyId, given: input.deviceResourceId },
       );
     }
     if (subject.deviceResourceId !== input.deviceResourceId) {

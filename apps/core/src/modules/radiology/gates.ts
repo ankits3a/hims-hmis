@@ -11,6 +11,7 @@ import { recordPhiAccess } from "../../kernel/phi/audit";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { consentSchema, consentEvidence } from "../ot";
 import { guardiansWithAuthority, listAllergies } from "../patients";
+import { findLockoutHits } from "../pcpndt";
 import { activeDefinitionRow, parseDefinitionBody } from "./definitions";
 import { RadiologyError } from "./errors";
 import { imagingGateEvaluated } from "./events";
@@ -79,7 +80,23 @@ export const IMAGING_TERMINAL_GATE_STATES = ["satisfied", "waived", "overridden"
  * Read the header for why these are constants in code rather than fields on a governed body.
  */
 export const NEVER_WAIVABLE_KINDS: readonly ImagingGateKind[] = ["form_f", "identity_two_factor"];
-export const NEVER_OVERRIDABLE_KINDS: readonly ImagingGateKind[] = ["form_f"];
+/**
+ * ═══ F59, SECOND PASS — `laterality_confirm` JOINS THE LIST, AND THE REASON IS E3 ITSELF ═══
+ *
+ * The first fix made this gate RECORD the side the patient states. It left the gate OVERRIDABLE,
+ * and `overrideGate` never enters `computeSatisfaction` — so an overridden `laterality_confirm`
+ * leaves `imaging_studies.laterality` at the column default `'na'`, the report screen then sends
+ * `'na'`, and `assertSignable` accepts it because the report and the study agree. **A lateralised
+ * examination signs a permanent, courtroom-readable report naming no side at all** — worse than the
+ * behaviour before either fix, which at least refused outright.
+ *
+ * There is no clinical override for *which side*. Every other overridable gate is a clinician
+ * accepting a RISK — an eGFR of 28, an unknown implant, a prior reaction — and the radiologist's
+ * reason is the record of that judgement. "Which knee" is not a risk to accept; it is a fact to
+ * establish, and this gate's own refusal has always said so: *"the referrer resolves this, not the
+ * console."* A gate that cannot be answered is a scan that should not proceed.
+ */
+export const NEVER_OVERRIDABLE_KINDS: readonly ImagingGateKind[] = ["form_f", "laterality_confirm"];
 
 /**
  * The kinds a WAIVER may reach — *"this gate does not apply to this patient"*.
@@ -898,11 +915,43 @@ export async function satisfyGate(
  * A2 demands the refusal happen with an empty definition table, and A6 demands that a waived
  * identity gate can never make a study ready.
  */
+
+/**
+ * F79, second pass — the lockout applied to a gate's waiver or override REASON.
+ *
+ * The tier is deliberately the CODED one and not the study's own: this text is written before any
+ * report exists, by a technologist rather than a radiologist, and refusing "45-year-old female" in
+ * an override reason would be the same over-refusal F66 narrowed the report lexicon to avoid. What
+ * has no innocent use in a gate reason — `mithai`, `Jai Mata Di`, a blue room, `XX` — is refused to
+ * everybody, which is the floor the coded tier exists to be.
+ */
+async function assertGateReasonClean(tx: Tx, studyId: string, reason: string): Promise<void> {
+  if (reason.trim() === "") return;
+  const hits = findLockoutHits(reason, "coded");
+  if (hits.length > 0) {
+    throw new RadiologyError(
+      "lexical_lockout",
+      `this reason cannot be recorded: it contains ${hits.map((h) => `"${h.term}"`).join(", ")} — `
+      + "§5(2) forbids communicating the sex of a foetus in any manner, including in a note about "
+      + "why a gate was cleared",
+      { studyId, terms: hits.map((h) => h.term) },
+    );
+  }
+}
+
 export async function waiveGate(
   tx: Tx, actor: Actor, gateId: string, reason: string,
 ): Promise<{ state: string; kind: string }> {
   const { gate, study } = await loadGate(tx, gateId);
 
+  /**
+   * F79, SECOND PASS — the reason is free text a technologist types at the moment a gate blocks
+   * them, it is stored on the screening row for ever, it rides the transition note into the
+   * workflow history, and it was the one field of the four the first fix named that it did not
+   * cover. §5(2) is about the COMMUNICATION, and "why I went round this gate" is where somebody
+   * explains themselves in plain words.
+   */
+  await assertGateReasonClean(tx, gate.studyId, reason);
   if (NEVER_WAIVABLE_KINDS.includes(gate.kind as ImagingGateKind)) {
     throw new RadiologyError(
       "gate_not_overridable",
@@ -957,6 +1006,8 @@ export async function overrideGate(
 ): Promise<{ state: string; kind: string }> {
   const { gate, study } = await loadGate(tx, gateId);
 
+  /** F79, second pass — as for a waiver: the override's reason is checked before it is stored. */
+  await assertGateReasonClean(tx, gate.studyId, reason);
   if (NEVER_OVERRIDABLE_KINDS.includes(gate.kind as ImagingGateKind)) {
     throw new RadiologyError(
       "gate_not_overridable",

@@ -93,6 +93,50 @@ describe("imaging scheduling (18a T4)", () => {
     }
   });
 
+  /**
+   * ═══ F55 — THE PROPERTY THE FIX ESTABLISHES, WHICH SHIPPED WITH NO TEST THAT COULD SEE IT ═══
+   *
+   * The second reviewer's sharpest structural point: fourteen scheduling tests and not one booked
+   * two OVERLAPPING non-identical instants, while the concurrency suite raced two bookings at the
+   * SAME instant — which the pre-existing exact-instant unique index already refused. So the
+   * interval SQL, the lock scope and the boundary semantics could all have been deleted and every
+   * test would still have passed. These three are the discriminating ones.
+   */
+  it("F55: a 45-minute study booked 15 minutes into another is REFUSED", async () => {
+    const first = await newStudy("MRI-BRAIN");
+    await schedule(first.studyId, "mri", new Date("2026-08-31T10:00:00.000Z"));
+    const second = await newStudy("MRI-BRAIN");
+    await expect(schedule(second.studyId, "mri", new Date("2026-08-31T10:15:00.000Z")))
+      .rejects.toMatchObject({ code: "slot_taken" });
+  });
+
+  /** The boundary is HALF-OPEN: a study starting exactly when another ends is not a clash. */
+  it("F55: a study starting exactly when the previous one ends is ACCEPTED", async () => {
+    const first = await newStudy("MRI-BRAIN");
+    await schedule(first.studyId, "mri", new Date("2026-08-31T10:00:00.000Z"));
+    const second = await newStudy("MRI-BRAIN");
+    const ok = await schedule(second.studyId, "mri", new Date("2026-08-31T10:45:00.000Z"));
+    expect(ok.scheduledAt.toISOString()).toBe("2026-08-31T10:45:00.000Z");
+  });
+
+  /**
+   * The window is the BOOK's `duration_min` and not a constant: this fixture's types are 20 minutes
+   * (`studyTypeRow`'s default), so 10:15 clashes and 10:25 does not. A guard hard-coded to any
+   * other number, or to none, fails one of these two.
+   */
+  it("F55: the refusal window is the study type's own length, not a constant", async () => {
+    const first = await newStudy("XR-CHEST");
+    await schedule(first.studyId, "xray", new Date("2026-08-31T10:00:00.000Z"));
+
+    const inside = await newStudy("XR-CHEST");
+    await expect(schedule(inside.studyId, "xray", new Date("2026-08-31T10:15:00.000Z")))
+      .rejects.toMatchObject({ code: "slot_taken" });
+
+    const clear = await newStudy("XR-CHEST");
+    const ok = await schedule(clear.studyId, "xray", new Date("2026-08-31T10:25:00.000Z"));
+    expect(ok.scheduledAt.toISOString()).toBe("2026-08-31T10:25:00.000Z");
+  });
+
   /* ═══════════════════════════ A3 — MODALITY ═══════════════════════════ */
 
   it("A3: a study may only be booked on a device of its own modality", async () => {

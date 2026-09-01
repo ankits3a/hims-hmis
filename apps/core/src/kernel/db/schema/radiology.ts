@@ -158,10 +158,12 @@ export const imagingStudies = pgTable(
     accessionNo: text("accession_no").notNull().unique(),
     laterality: text("laterality").notNull().default("na"),
     /**
-     * F55 — the booked LENGTH of the examination, snapshotted from the study type at creation.
+     * F55 — the booked LENGTH of the examination, snapshotted from the study type when the study is
+     * BOOKED.
      *
-     * `duration_min` was declared on every study type, validated by the body schema and seeded with
-     * real values (10–45 minutes), and READ BY NOTHING: the slot unique was on an exact
+     * Written at SCHEDULING, not at creation: an unbooked study carries the column default and has
+     * no slot to overlap with anyway. `duration_min` was declared on every study type, validated by
+     * the body schema and seeded with real values (10–45 minutes), and READ BY NOTHING: the slot unique was on an exact
      * `scheduled_at`, so the "slot" was a point rather than an interval and a 45-minute MRI took
      * two bookings fifteen minutes apart with no refusal at all. It is snapshotted onto the STUDY
      * rather than read through the book at query time because the exclusion constraint below has to

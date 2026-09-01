@@ -10,6 +10,7 @@ import {
 } from "../../kernel/db/schema/radiology";
 import { orderItems, orders } from "../../kernel/db/schema/orders";
 import { invoiceLines } from "../../kernel/db/schema/billing";
+import { users } from "../../kernel/db/schema/auth";
 import { invoiceSettlement } from "../billing";
 import { findLockoutHits } from "../pcpndt";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
@@ -203,7 +204,7 @@ export async function savePrelim(
    * radiologist's own scratch text, and refusing a draft would move the refusal to a place where
    * the author cannot yet see the whole report they are being refused.
    */
-  const tier = await lockoutTierFor(tx, study);
+  const tier = await lockoutTierFor(tx, study, new Date());
   const hits = findLockoutHits(
     `${JSON.stringify(input.body)} ${input.impression ?? ""}`, tier,
   );
@@ -281,7 +282,7 @@ export async function signReport(
   }
 
   const category = (input.criticalCategory ?? source.criticalCategory) as ImagingCriticalCategory | null;
-  await assertSignable(tx, study, source, category, input.lockoutOverride ?? null);
+  await assertSignable(tx, study, source, category, input.lockoutOverride ?? null, now);
 
   let created: { reportId: string; version: number };
   try {
@@ -368,12 +369,12 @@ function asAlreadySigned(e: unknown, studyId: string): unknown {
 const OBSTETRIC_CONTEXT_DAYS = 280;
 
 async function lockoutTierFor(
-  tx: Tx, study: typeof imagingStudies.$inferSelect,
+  tx: Tx, study: typeof imagingStudies.$inferSelect, now: Date,
 ): Promise<LockoutTier> {
   if (study.formFRequired) return "full";
   const type = await requireStudyType(tx, study.studyTypeCode);
   if (type.body_part.toLowerCase().includes("obstetric")) return "full";
-  const since = new Date(Date.now() - OBSTETRIC_CONTEXT_DAYS * 86_400_000);
+  const since = new Date(now.getTime() - OBSTETRIC_CONTEXT_DAYS * 86_400_000);
   const prior = await (tx as unknown as Db).select({ id: imagingStudies.id })
     .from(imagingStudies)
     .where(and(
@@ -392,7 +393,7 @@ async function lockoutTierFor(
   if (!patient || patient.sex !== "female") return "coded";
   /** A null DOB is `full`, for the same asymmetry `applicability.ts` argues at length. */
   if (patient.dob === null) return "full";
-  const age = ageInYearsOn(patient.dob, new Date());
+  const age = ageInYearsOn(patient.dob, now);
   return age >= PCPNDT_AGE_MIN_YEARS && age <= PCPNDT_AGE_MAX_YEARS ? "full" : "coded";
 }
 
@@ -405,10 +406,12 @@ async function lockoutTierFor(
  * There is no override lane here on purpose: these fields have no demographic line to protect, so
  * anything they trip is worth a rephrase.
  */
-async function assertFreeTextSignable(tx: Tx, studyId: string, text: string): Promise<void> {
+async function assertFreeTextSignable(
+  tx: Tx, studyId: string, text: string, now: Date = new Date(),
+): Promise<void> {
   if (text.trim() === "") return;
   const study = await loadStudy(tx, studyId);
-  const hits = findLockoutHits(text, await lockoutTierFor(tx, study));
+  const hits = findLockoutHits(text, await lockoutTierFor(tx, study, now));
   if (hits.length > 0) {
     throw new RadiologyError(
       "lexical_lockout",
@@ -429,7 +432,9 @@ async function assertSignable(
     reason?: string | null;
   },
   criticalCategory: string | null,
-  lockoutOverride?: { approvedBy: string; reason: string } | null,
+  lockoutOverride: { approvedBy: string; reason: string } | null,
+  /** F66, second pass — the CALLER's clock. `Date.now()` here was F28's own pattern, reintroduced. */
+  now: Date,
 ): Promise<void> {
   /**
    * ═══ A3 — THE LOCKOUT RUNS ON EVERY REPORT, NOT ONLY THE PCPNDT ONES ═══
@@ -449,7 +454,7 @@ async function assertSignable(
    * *"correcting — the foetus is male, family informed"* was accepted and served. The two callers
    * that own those fields now pass them here.
    */
-  const tier = await lockoutTierFor(tx, study);
+  const tier = await lockoutTierFor(tx, study, now);
   const text = [
     JSON.stringify(content.body),
     content.impression ?? "",
@@ -573,7 +578,7 @@ export async function amendReport(
    * critical report sent no message at all. Inheriting is the same rule the sign path already had.
    */
   const category = (input.criticalCategory ?? previous.criticalCategory) as ImagingCriticalCategory | null;
-  await assertSignable(tx, study, input, category, input.lockoutOverride ?? null);
+  await assertSignable(tx, study, input, category, input.lockoutOverride ?? null, now);
 
   /**
    * THE FLIP COMES FIRST, and it has to: `imaging_reports_one_signed_ux` is a partial unique on
@@ -616,9 +621,38 @@ export async function amendReport(
    * definition does not have, and inventing one to model "published, then corrected" would make
    * every downstream reader of that machine wrong about what terminal means.
    */
+  /**
+   * ═══ F69, SECOND PASS — A CRITICAL FOUND ON RE-READ RAISED NOTHING ═══
+   *
+   * The first fix made `signReport` raise the critical and left `amendReport` alone, which is the
+   * path where *"missed on the first read"* actually happens: v1 signed `green` and published, then
+   * amended to `red` for a large extradural haematoma. `critical_category` landed on v2's row and
+   * **no `imaging_critical_findings` row, no `imaging.critical_flagged`, nothing for 18a-iii's
+   * Critical Chaser** — the exact defect F69 was raised for, closed on one path and open on the
+   * other. `flagCritical` is idempotent per REPORT, and v2 is a new report, so the amendment's
+   * critical is its own row rather than a duplicate of v1's.
+   */
+  if (category !== null) {
+    await flagCritical(tx, actor, { reportId: created.reportId, category, communicatedTo: null });
+  }
+
   if (previous.publishedAt !== null) {
     await tx.update(imagingReports).set({ publishedAt: now })
       .where(eq(imagingReports.id, created.reportId));
+    /**
+     * ═══ F70, SECOND PASS — AND THE PATIENT IS TOLD ═══
+     *
+     * The first fix moved `published_at` and emitted the event and stopped there, so the patient
+     * who was told *"your report is ready"* for v1 was never told the report had CHANGED. The
+     * notification's dedupe key is per REPORT ID, so v2's message is a distinct one and is not
+     * suppressed by v1's. `notifyIfDue` owns the settlement gate exactly as it does on the ordinary
+     * publish path, so a correction does not become a way around the cashier either.
+     */
+    await notifyIfDue(
+      tx, study,
+      { id: created.reportId, criticalCategory: category } as ReportRow,
+      now,
+    );
     await appendEvent(tx, imagingReportPublished.make({
       actor,
       patientId: study.patientId,
@@ -867,6 +901,38 @@ export async function acknowledgeCritical(
     .select({ studyId: imagingReports.studyId, signerId: imagingReports.signerId })
     .from(imagingReports).where(eq(imagingReports.id, critical.reportId));
   const report = reportRows[0]!;
+
+  /**
+   * ═══ F76, SECOND PASS — A NAMED PERSON WHO DOES NOT EXIST IS NOT A CLINICIAN ═══
+   *
+   * The first fix separated WHO received the call from WHO typed it, and then validated the
+   * clinician against exactly one thing: that they are not the signer. `acknowledged_by` is plain
+   * `text` with no foreign key, so `{"acknowledgedByClinicianId": "x"}` wrote the row, emitted
+   * `imaging.critical_acknowledged` naming `"x"`, and stopped 18a-iii's chaser — *"did this reach a
+   * human"* answered by a string nobody typed a name into.
+   *
+   * The argument is F64's, one commit old and in this same phase: *"a named person who does not
+   * exist is not a chaperone; it is a field that was filled in."* It applies with more force to the
+   * person who received a red critical.
+   */
+  const clinician = await (tx as unknown as Db)
+    .select({ id: users.id, active: users.active })
+    .from(users).where(eq(users.id, input.acknowledgedByClinicianId));
+  if (!clinician[0]) {
+    throw new RadiologyError(
+      "evidence_invalid",
+      `${input.acknowledgedByClinicianId} is not a user of this hospital — a critical is read back `
+      + "by a person, and the record of who has to name one",
+      { acknowledgedByClinicianId: input.acknowledgedByClinicianId },
+    );
+  }
+  if (clinician[0].active === false) {
+    throw new RadiologyError(
+      "evidence_invalid",
+      `${input.acknowledgedByClinicianId} is not an active member of staff`,
+      { acknowledgedByClinicianId: input.acknowledgedByClinicianId },
+    );
+  }
 
   /** F76 — the signer telephoning themselves is not a read-back. */
   if (input.acknowledgedByClinicianId === report.signerId) {

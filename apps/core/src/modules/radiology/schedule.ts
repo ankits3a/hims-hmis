@@ -379,7 +379,7 @@ export async function markNoShow(
  *
  * · `scheduled | checked_in | ready` → cancel, no reason required. Nothing has been done to the
  *   patient and nothing has been spent.
- * · `in_acquisition` → cancel WITH a reason, and **if `acquired_at` is set, a
+ * · `in_acquisition` → cancel WITH a reason, and **if the patient was on the machine (`acquisition_started_at`), a
  *   `performed_then_cancelled` bill decision** (B6). Images exist; somebody must decide whether the
  *   patient pays, and that decision belongs to the counter rather than to whoever clicked cancel.
  * · `acquired | reported | published` → **refused `already_acquired`**. A4's mutant allows it, and
@@ -510,19 +510,59 @@ export async function autoSlotWalkIn(
     ))
     .orderBy(resources.code);
 
-  const device = candidates[0];
-  if (!device) {
-    throw new RadiologyError(
-      "device_unavailable",
-      `no available ${studyType.modality} machine to walk this patient onto`,
-      { modality: studyType.modality },
-    );
+  /**
+   * ═══ F55, SECOND PASS — THE WALK-IN WALKS DOWN THE LIST ═══
+   *
+   * This took `candidates[0]` and handed it to `scheduleStudy`. Under the old POINT slot that
+   * almost never collided; under F55's INTERVAL it collides whenever the first machine is
+   * mid-examination, and the counter got a hard `slot_taken` while two other free ultrasound
+   * machines stood idle — a regression introduced by the fix for the double-booking.
+   *
+   * `device_unavailable` is still the answer when the list is empty OR when every machine on it is
+   * busy, which is the truthful sentence for a counter: not "somebody took that slot", but "there
+   * is no room free right now".
+   */
+  /**
+   * ═══ F55, SECOND PASS — THE WALK-IN WALKS DOWN THE LIST, WITHOUT WRITING TO FIND OUT ═══
+   *
+   * This took `candidates[0]` and handed it to `scheduleStudy`. Under the old POINT slot that
+   * almost never collided; under F55's INTERVAL it collides whenever the first machine is
+   * mid-examination, and the counter got a hard `slot_taken` while two other free ultrasound
+   * machines stood idle — a regression introduced by the fix for the double-booking.
+   *
+   * **The loop asks, it does not try.** Wrapping `scheduleStudy` in a `try` and continuing on
+   * `slot_taken` would work only while the refusal comes from `assertSlotFree`'s read; the moment
+   * one came from the unique INDEX instead, the statement error would leave the transaction
+   * aborted and every later iteration would fail with "current transaction is aborted" — a caught
+   * exception that has already poisoned the work it was caught to protect. So the free machine is
+   * chosen with reads alone and scheduled exactly once.
+   *
+   * `device_unavailable` is still the answer when the list is empty OR when every machine on it is
+   * busy, which is the truthful sentence for a counter: not "somebody took that slot", but "there
+   * is no room free right now".
+   */
+  const busy: string[] = [];
+  for (const device of candidates) {
+    try {
+      await assertSlotFree(tx, device.id, now, studyType.duration_min, input.studyId);
+    } catch (e) {
+      if (e instanceof RadiologyError && e.code === "slot_taken") { busy.push(device.id); continue; }
+      throw e;
+    }
+    return await scheduleStudy(tx, actor, {
+      studyId: input.studyId,
+      deviceResourceId: device.id,
+      scheduledAt: now,
+    });
   }
-  return await scheduleStudy(tx, actor, {
-    studyId: input.studyId,
-    deviceResourceId: device.id,
-    scheduledAt: now,
-  });
+  throw new RadiologyError(
+    "device_unavailable",
+    candidates.length === 0
+      ? `no available ${studyType.modality} machine to walk this patient onto`
+      : `every available ${studyType.modality} machine is mid-examination right now `
+        + `(${String(candidates.length)} checked)`,
+    { modality: studyType.modality, checked: candidates.length, busy },
+  );
 }
 
 /**

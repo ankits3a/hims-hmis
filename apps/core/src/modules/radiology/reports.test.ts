@@ -3,10 +3,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import {
   acquireStudy, placeAndCreateStudy, setupRadiologyFixture, studyTypeRow,
 } from "../../../test/helpers/radiology";
-import {
-  events, imagingCriticalFindings, imagingDefinitions, imagingReports, imagingStudies,
-  notifications, orderItems,
-} from "../../kernel/db/schema";
+import { events, imagingCriticalFindings, imagingDefinitions, imagingReports, imagingStudies, notifications, orderItems, patients } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import {
   SECOND_FACTOR_WINDOW_MINUTES, acknowledgeCritical, amendReport, draftReport, flagCritical,
@@ -192,6 +189,36 @@ describe("the report: versioned, signed, amended, published (18a T8)", () => {
     const study = await acquired();
     const { reportId } = await draft(study.studyId, {
       body: { findings: "Free fluid in the pelvis." }, impression: "Also, it is a boy.",
+    });
+    await expect(sign(study.studyId, reportId)).rejects.toMatchObject({ code: "lexical_lockout" });
+  });
+
+  /**
+   * ═══ F66 (CLOSE REVIEW, OWNER RULING) — THE TIER SPLIT, WHICH SHIPPED WITH NO TEST ═══
+   *
+   * The lexicon runs in two tiers now: `coded` on every report always, `full` — which adds the
+   * plain demographic words — in an obstetric context. The whole point of the narrowing is that
+   * `"45-year-old male, chest PA view"` must sign, and the whole point of the FOURTH clause is that
+   * a woman of child-bearing age is in obstetric context whatever the examination. Neither was
+   * asserted anywhere: `lockout.test.ts` calls the pure function with the default tier, so every
+   * existing assertion is identical before and after the split.
+   */
+  it("F66: a demographic line on a MAN's chest film signs — the narrowing the ruling bought", async () => {
+    await db.update(patients).set({ sex: "male" }).where(eq(patients.id, fx.patientId));
+    const study = await acquired();
+    const { reportId } = await draft(study.studyId, {
+      body: { findings: "45-year-old male, chest PA view. No focal consolidation." },
+      impression: "Normal study.",
+    });
+    await expect(sign(study.studyId, reportId)).resolves.toBeDefined();
+  });
+
+  /** And the CODED tier has no exception lane, on any patient, in any context. */
+  it("F66: a coded euphemism is refused on that same man's chest film", async () => {
+    await db.update(patients).set({ sex: "male" }).where(eq(patients.id, fx.patientId));
+    const study = await acquired();
+    const { reportId } = await draft(study.studyId, {
+      body: { findings: "Normal study." }, impression: "Distribute mithai.",
     });
     await expect(sign(study.studyId, reportId)).rejects.toMatchObject({ code: "lexical_lockout" });
   });
@@ -395,7 +422,11 @@ describe("the report: versioned, signed, amended, published (18a T8)", () => {
     expect([row!.acknowledgedBy, row!.recordedBy, row!.readBackText])
       .toEqual([fx.doctor.id, fx.radiologist.id, "large left extradural haematoma, taking to theatre"]);
 
-    /** F76 — and the signer telephoning themselves is not a communication. */
+    /**
+     * F69 — `flagCritical` is idempotent per REPORT, so the sign path and this route cannot produce
+     * two rows for one finding. (This assertion used to carry an F76 comment, which claimed
+     * coverage it did not provide — the self-acknowledgement refusal had none at all.)
+     */
     const other = await withTx(db, (tx) => flagCritical(tx, fx.radiologist, {
       reportId: signed.reportId, category: "orange",
     }));
@@ -404,6 +435,26 @@ describe("the report: versioned, signed, amended, published (18a T8)", () => {
     const emitted = (await db.select().from(events)).map((e) => e.name);
     expect(emitted).toContain("imaging.critical_flagged");
     expect(emitted).toContain("imaging.critical_acknowledged");
+  });
+
+  /** F76 — the two refusals the acknowledgement now makes, each asserted on its own. */
+  it("F76: the signer cannot be the clinician, and the clinician must be a real person", async () => {
+    const study = await acquired();
+    const { reportId } = await draft(study.studyId);
+    const signed = await sign(study.studyId, reportId);
+    const c = await withTx(db, (tx) => flagCritical(tx, fx.radiologist, {
+      reportId: signed.reportId, category: "red",
+    }));
+
+    /** The radiologist signed it, so the radiologist cannot be the clinician who read it back. */
+    await expect(withTx(db, (tx) => acknowledgeCritical(tx, fx.radiologist, {
+      criticalId: c.criticalId, acknowledgedByClinicianId: fx.radiologist.id, readBack: "noted",
+    }))).rejects.toMatchObject({ code: "evidence_invalid" });
+
+    /** And a string nobody typed a name into is not a human the finding reached. */
+    await expect(withTx(db, (tx) => acknowledgeCritical(tx, fx.radiologist, {
+      criticalId: c.criticalId, acknowledgedByClinicianId: "x", readBack: "noted",
+    }))).rejects.toMatchObject({ code: "evidence_invalid" });
   });
 
   it("a critical is acknowledged ONCE", async () => {

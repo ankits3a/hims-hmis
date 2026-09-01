@@ -243,12 +243,39 @@ export async function placeImagingOrder(
               { serviceId: item.serviceId },
             );
           }
-          const verdict = pcpndtApplicability(
+          /**
+           * ═══ F52, SECOND PASS — A BACK-DATED `serviceDate` COULD EXEMPT A PATIENT ═══
+           *
+           * The first fix took the statutory date off the acquisition wire. It left the one the
+           * ORDER carries: `serviceDate` is validated as a date SHAPE only, and it is the `asOf`
+           * for the Act's age band on both placement paths. A 24-year-old woman, an obstetric USG,
+           * `serviceDate: "2008-06-01"` → age 6 → outside `[10,55]` → not applicable → no
+           * `form_f_required`, no gate, `assertFormFRecorded` short-circuiting, and the scan
+           * performed and reported with NO ENTRY IN THE STATUTORY REGISTER. F65's guard fires only
+           * on a negative age, so a plausibly back-dated day sails through it.
+           *
+           * **Bounding the date against the clock was the first answer and it was the wrong one**:
+           * it couples the day of the scan to the day of the order, which a real desk separates
+           * (E13's downtime backfill, a pre-booked slot) and which made fixtures that space
+           * placements in fictional time fail for a reason that has nothing to do with the Act.
+           *
+           * This removes the INCENTIVE instead of policing the input: the rule is evaluated on the
+           * day of the scan AND on today, and the scan is applicable if either says so. Moving the
+           * date can no longer exempt anybody — in either direction, since a forward-dated day can
+           * push a woman past 55 exactly as a back-dated one can push her under 10 — and an honest
+           * backfill is unaffected because an honest backfill agrees with itself.
+           */
+          const onServiceDate = pcpndtApplicability(
             { sex: patient.sex, dob: patient.dob, dobEstimated: patient.dobEstimated },
             { pcpndtApplicable: studyType.pcpndt_applicable },
-            /** The rule is evaluated on the day of the SCAN, which is this order's service date. */
             new Date(`${input.serviceDate}T00:00:00.000Z`),
           );
+          const onToday = pcpndtApplicability(
+            { sex: patient.sex, dob: patient.dob, dobEstimated: patient.dobEstimated },
+            { pcpndtApplicable: studyType.pcpndt_applicable },
+            now,
+          );
+          const verdict = onServiceDate.applicable ? onServiceDate : onToday;
           return { item, studyType, verdict };
         });
 

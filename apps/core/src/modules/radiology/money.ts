@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, ne } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { hasPermission } from "../../kernel/auth/permissions";
@@ -173,6 +173,29 @@ export async function linkInvoiceLine(
       `study ${studyId} is already linked to invoice line ${study.existing} — re-linking would `
       + "orphan the first link and leave two lines believing they paid for one scan",
       { studyId, existing: study.existing, invoiceLineId },
+    );
+  }
+
+  /**
+   * ═══ F54, SECOND PASS — THE UNIQUENESS RAN ONE WAY ONLY ═══
+   *
+   * The first fix asked whether THIS STUDY was already linked. Nothing asked whether THIS LINE was
+   * already linked to another study — and two studies for one patient and one service exist by
+   * design on the `duplicate_confirmed` path. Link both to one line and `authorisationOf` answers
+   * `invoice` for both while `acquired_unbilled` is suppressed for both: one charge paying for two
+   * scans, which is the same "money was actually taken" misreading F54 is about, pointed the other
+   * way. There is no unique index on `invoice_line_id` to catch it.
+   */
+  const alreadyPaidFor = await (tx as unknown as Db)
+    .select({ id: imagingStudies.id, accessionNo: imagingStudies.accessionNo })
+    .from(imagingStudies)
+    .where(and(eq(imagingStudies.invoiceLineId, invoiceLineId), ne(imagingStudies.id, studyId)));
+  if (alreadyPaidFor[0]) {
+    throw new RadiologyError(
+      "already_resolved",
+      `invoice line ${invoiceLineId} already pays for ${alreadyPaidFor[0].accessionNo} — one line `
+      + "cannot authorise two scans, and a repeat is its own charge or its own bill decision",
+      { invoiceLineId, studyId, alreadyPaidFor: alreadyPaidFor[0].accessionNo },
     );
   }
 

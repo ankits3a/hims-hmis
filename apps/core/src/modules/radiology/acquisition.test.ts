@@ -366,7 +366,19 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
     }));
 
     const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
-    expect([row!.status, row!.acquisitionStartedAt]).toEqual(["ready", null]);
+    /**
+     * ═══ F53, SECOND PASS — THE ABORT NO LONGER ERASES THE FACT THAT THE PATIENT WAS ON IT ═══
+     *
+     * This asserted `acquisitionStartedAt === null` after an abort. That was the shape that made
+     * F53's fix incomplete: `acquisition_started_at` had just become the operand for
+     * `performed_then_cancelled`, so the clinically natural route for F53's own scenario — contrast
+     * injected, patient reacts, **Abort** then **Cancel** — came out with `fromAcquisition` false
+     * and raised no bill decision at all. The column means *"this patient went on this machine"*,
+     * and an abort does not make that untrue; a re-start overwrites it with the newer instant.
+     */
+    expect(row!.status).toBe("ready");
+    expect(row!.acquisitionStartedAt).not.toBeNull();
+
     const [device] = await db.select().from(resources).where(eq(resources.id, fx.devices.usg!));
     expect(device!.status).toBe("available");
     /** It keeps its accession — a patient told a number on Monday still quotes it after an abort. */
