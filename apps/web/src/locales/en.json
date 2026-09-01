@@ -2040,7 +2040,8 @@
       "collect": "Collect ₹{{amount}}",
       "free": "Free follow-up — nothing to collect",
       "settled": "Paid in full",
-      "credit": "Credit extended — billed to account"
+      "credit": "Credit extended — billed to account",
+      "next": "Next patient"
     }
   }
 }

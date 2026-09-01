@@ -612,6 +612,85 @@ describe("RC-3 T5 — the keyboard map", () => {
   });
 });
 
+/**
+ * ═══ THE CONTRACT PASS AT CLOSE, AND WHAT IT FOUND OVER 33 GREEN TESTS ═══
+ *
+ * Reading the phase doc's clauses against the shipped code — the 18a lane's technique, adopted by
+ * this lane at T1 — turned up two clauses this phase had written and not done, neither of which any
+ * assertion touched:
+ *
+ *   D2 "the column accretes … the live bill". The assembled seat was handing `quote={null}` into
+ *   the panel T1 built, so `QuotePanel`, `useQuote`, `freeReason`, `intendedPayer` and the entire
+ *   benefits contest had NO CONSUMER — in the phase whose §1 finding is eight rails with no
+ *   consumer. Thirty-three tests missed it because every one handed `QuotePanel` a quote DIRECTLY.
+ *   That is 18a's diagnosis exactly: every assertion that touched this checked a state where the
+ *   right and the wrong behaviour agree.
+ *
+ *   T2's assertion book, second half: "…and confirming releases the token". There was no
+ *   confirmation on the seat at all.
+ *
+ * These two tests are the discharge, and they are the only two in this file that assert the seat as
+ * an ASSEMBLY rather than its parts.
+ */
+describe("RC-3 CLOSE — the contract pass's two findings", () => {
+  const QUOTE = {
+    encounterId: "E1", visitType: "new", free: true, feeServiceId: null, draft: null,
+    intendedPayer: "self",
+    freeReason: { kind: "review_window", doctorName: "Dr Anand Rao", seenOn: "2026-08-20", windowEndsOn: "2026-09-03" },
+  };
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+      "GET /api/opd/queues/summary": { items: [] },
+      "GET /api/billing/visits/E1/fee-quote": QUOTE,
+      "GET /api/patients/search": { items: [] },
+    });
+  });
+
+  it("D2 — the seat FETCHES the quote for the patient in hand and renders it; it does not pass null", async () => {
+    takeInHand("P1", "E1");
+    renderWithProviders(<RegistrationCounter />);
+
+    // The panel T1 built, reached through the assembled screen for the first time.
+    expect(await screen.findByTestId("quote-panel")).toBeTruthy();
+    expect(screen.getByTestId("free-reason").textContent).toContain("Dr Anand Rao");
+    expect(screen.queryByTestId("collect")).toBeNull(); // still ₹0: T2's guard survives the wiring
+  });
+
+  it("T2 — confirming a lawful exit RELEASES the patient, exactly as counter-desk's reset does", async () => {
+    takeInHand("P1", "E1");
+    renderWithProviders(<RegistrationCounter />);
+
+    await screen.findByTestId("exit-free");
+    fireEvent.click(screen.getByTestId("exit-confirm"));
+
+    // The desk is clear and the next patient inherits nobody — the shift-change property
+    // `patient-in-hand.tsx` exists to hold.
+    expect(await screen.findByTestId("dossier-empty")).toBeTruthy();
+    expect(sessionStorage.getItem("hmis.inHand")).toBeNull();
+  });
+
+  it("MUTANT — an unstable `reprice` identity would refetch for ever; the quote is fetched ONCE", async () => {
+    takeInHand("P1", "E1");
+    renderWithProviders(<RegistrationCounter />);
+    await screen.findByTestId("quote-panel");
+
+    /*
+      `useQuote`'s `reprice` sits in an effect's dependency list now, which is what its FIRST
+      consumer did to it — T1 shipped it as a plain function, correct for a click handler and an
+      infinite loop in an effect. Counting the calls is the only assertion that can tell a working
+      `useCallback` from a missing one: with an unstable identity the screen renders, fetches, sets
+      state, re-renders, and fetches again, and every OTHER assertion in this file still passes.
+    */
+    const quoteCalls = vi.mocked(fetch).mock.calls
+      .filter(([input]) => String(input).includes("/fee-quote"));
+    expect(quoteCalls).toHaveLength(1); // THE KILL
+  });
+});
+
 describe("RC-3 T5 — the queues overlay", () => {
   beforeEach(() => {
     sessionStorage.clear();

@@ -121,7 +121,14 @@ export function useQuote(encounterId: string | null): {
   const [quote, setQuote] = useState<WireFeeQuote | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function reprice(couponCodes: string[], attributionCode?: string): Promise<void> {
+  /**
+   * `useCallback` WAS ADDED BY THE FIRST CONSUMER, and that is §1 of this phase doc happening to
+   * this phase's own code. T1 shipped `reprice` as a plain function — correct for a caller that
+   * only ever invokes it from a click. T5's seat has to fetch the quote when a patient arrives,
+   * which puts `reprice` in an effect's dependency list, and an unstable identity there is an
+   * infinite refetch loop. Nothing was wrong with the rail until something used it.
+   */
+  const reprice = useCallback(async (couponCodes: string[], attributionCode?: string): Promise<void> => {
     if (encounterId === null) return;
     setError(null);
     try {
@@ -129,7 +136,7 @@ export function useQuote(encounterId: string | null): {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }
+  }, [encounterId]);
 
   return { quote, reprice, error };
 }
@@ -170,8 +177,12 @@ export function counterExit(
  * the token) which stay server-owned because they are not session state.
  */
 export function Dossier({
-  quote, issued,
-}: { quote: WireFeeQuote | null; issued: WireIssueInvoiceResult | null }): React.ReactElement {
+  quote, issued, onConfirm,
+}: {
+  quote: WireFeeQuote | null;
+  issued: WireIssueInvoiceResult | null;
+  onConfirm?: () => void;
+}): React.ReactElement {
   const { t } = useTranslation();
   const { inHand } = usePatientInHand();
   const exit = counterExit(quote, issued, inHand?.encounterId != null);
@@ -201,7 +212,20 @@ export function Dossier({
           )}
 
           {exit !== null && (
-            <p data-testid={`exit-${exit}`}>{t(`registrationCounter.exit.${exit}`)}</p>
+            <p data-testid={`exit-${exit}`}>
+              {t(`registrationCounter.exit.${exit}`)}
+              {/*
+                T2's assertion book asks for the exit AND its confirmation — "confirming releases
+                the token" — and the confirmation is lifted from `counter-desk.tsx` like the exits
+                themselves: its `reset()` ends with `release()`, so acknowledging that the patient
+                is served is the same act as clearing the desk for the next one. The seat binds the
+                same call to `Esc` (T5's map), because a busy counter reaches for the keyboard; the
+                button is what makes the same act discoverable to a clerk on their first day.
+              */}
+              <button type="button" data-testid="exit-confirm" onClick={() => onConfirm?.()}>
+                {t("registrationCounter.exit.next")}
+              </button>
+            </p>
           )}
         </>
       )}
@@ -487,6 +511,21 @@ export function RegistrationCounter({
   const [tender, setTender] = useState<TenderMode | null>(null);
   const summaries = useQueueSummary(todayIst());
 
+  /**
+   * D2's "live bill", and the CONTRACT PASS at close is what caught its absence: this screen was
+   * handing `quote={null}` into the panel T1 built, so `QuotePanel`, `useQuote`, `freeReason`,
+   * `intendedPayer` and the whole benefits contest had no consumer in the assembled seat — inside
+   * the phase whose §1 finding is that eight rails shipped with no consumer. Thirty-three green
+   * tests did not notice, because every one of them handed `QuotePanel` a quote directly.
+   *
+   * The seat RE-FETCHES and never computes: the quote already composes the benefits server-side
+   * (RC-2's finding), so the money on this screen is the money the invoice will charge.
+   */
+  const { quote, reprice } = useQuote(inHand?.encounterId ?? null);
+  useEffect(() => {
+    void reprice([]);
+  }, [reprice]);
+
   const clearDesk = useCallback((): void => {
     setOverlay(null);
     setTender(null);
@@ -524,7 +563,7 @@ export function RegistrationCounter({
   return (
     <div data-seat="registration-counter" data-testid="registration-counter">
       <h1>{t("registrationCounter.title")}</h1>
-      <Dossier quote={null} issued={null} />
+      <Dossier quote={quote} issued={null} onConfirm={clearDesk} />
       {inHand === null && <FindPanel onRegisterNew={onRegisterNew} />}
       {tender !== null && <p data-testid="tender-chosen">{tender}</p>}
       {overlay === "queues" && <QueuesOverlay items={summaries} onClose={() => setOverlay(null)} />}
