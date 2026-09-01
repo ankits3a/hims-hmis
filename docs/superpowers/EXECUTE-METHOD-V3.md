@@ -241,6 +241,32 @@ Instead:
   > CONTRACT already freezes, so the halves are independently reviewable** — Plan 17's own close
   > recommends T3–T5 (order to accession) and T6–T9 (result to report) on exactly that test.
 
+  > **AMENDED 2026-09-01 (ledger §2.156 / §2.157, RC-2 CLOSED) — TWO CHANGES, AND BOTH ARE ABOUT
+  > TERMS THE FORMULA LETS YOU LEAVE UNEXAMINED.**
+  >
+  > **(a) THE RECON TERM IS A LANE DECISION, AND IN LIGHT ITS DEFAULT IS ZERO.** RC-1 spent 400,000
+  > on three recon subagents; RC-2, adjacent phase, same lane, same task count, got the same class of
+  > answer — two refuted plan premises and a live money trap found by reading — for **~60,000 of
+  > inline greps, with 0 subagent tokens against RC-1's 716,000.** The test is not "how important is
+  > recon" but what shape the answer has:
+  >
+  > > **Spawn recon when you need a REPORT — a survey across many files whose conclusion is short.
+  > > Grep inline when you need a FACT.** A question answerable by `grep -rn <symbol>` plus one
+  > > function returns less than it costs to brief an agent to go and find it.
+  >
+  > Carry the recon term explicitly, at zero if inline, and say which. §2.143a's lesson generalises:
+  > **a term nobody re-derives is a term nobody notices is wrong** — it was task-subagents in 17a and
+  > it was recon here.
+  >
+  > **(b) REPORT COST AGAINST THE TERMS ACTUALLY SPENT.** A phase whose review lane did not run must
+  > report `spent / (stop-loss − review term)` and carry the unrun review as a NAMED OPEN ITEM in
+  > CLOSE, in the owner's hands. RC-2 closed at "28% of 1.5M" — true, and misleading, because 720,000
+  > of that ceiling was review and the reviewers never ran. Its honest line is **~420k of the 780,000
+  > coding term (54%), review unspent and unrun.** Every phase since 09a has had its reviewers find a
+  > CRITICAL or MAJOR over an ALREADY-GREEN tree, so a green tree is not evidence that the review
+  > term was unnecessary — it is the exact condition under which those findings have historically
+  > been made. **A percentage that flatters by omission is a false record.**
+
 ## 7. The pilot, and what refutes it
 
 **The first post-11d phase runs under v3.** Its lane is ruled by §2 honestly — if the

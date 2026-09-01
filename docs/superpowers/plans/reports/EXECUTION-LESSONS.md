@@ -2138,3 +2138,63 @@ the new topology and hit neither.
   in the checkout. Its second-order lesson — a whole-file diff defeats the per-commit
   `--stat`-against-the-Files-list check — is preserved by that check itself, which every close
   including this one runs.*
+
+### 2.156 — INLINE RECON IS THE CHEAPEST INSTRUMENT IN THE LIGHT LANE, AND RC-2 PRICED IT: ~60k FOR THE ANSWER RC-1 PAID 400k TO GET
+
+**Specimen, two adjacent phases in the same series, same lane, same task count.**
+
+| | RC-1 | RC-2 |
+|---|---|---|
+| recon | 3 Task-tool agents — web 184k, core 153k, design 63k = **400,000** | inline greps in the main session ≈ **60,000** |
+| what recon produced | refuted 2 plan premises, found a live money defect by reading | refuted 2 plan premises (T1, T5), found a live money trap by reading |
+| subagent tokens, total | 716,000 | **0** |
+| total vs stop-loss | 1.15M / 1.70M (67%) | ~420k / 1.50M (28%) |
+
+**The two recon outcomes are the same class and the price differs by 6.7×.** RC-2's inline recon refuted
+`feeQuote` → `previewInvoice` → `priceDraftWithBenefits` (the counter quote already ran the whole
+Plan 09 contest — T1 was a one-line door, not a feature) and `loadInstances` never filtering on
+`kind` (package v0 was a proof, not a build), and it found the `external_rmp` writer trap. RC-1's
+400k bought the equivalent.
+
+**Why the gap is structural rather than luck.** A recon subagent pays its whole context on every
+call and cannot share the main session's already-loaded context; it must be *told* what to read,
+which is Lever 1 re-billed per agent. Eight targeted greps in the main session cost eight tool
+results against a context that is already warm.
+
+**MECHANICAL FORM — the test for which lane recon belongs in:**
+
+> Recon goes to a subagent ONLY when its answer needs more context than it returns. A question
+> answerable by `grep -rn <symbol>` and reading one function returns less than it costs to brief an
+> agent to find it. **Spawn recon when you need a REPORT (a survey across many files whose
+> conclusion is short); grep inline when you need a FACT.** RC-1's three agents answered "what
+> exists in web / in core / in the design" — genuinely surveys. RC-2 needed nine facts and greps
+> returned all nine.
+
+**Honesty rule 5.2 applies and is stated rather than skirted:** LIGHT moves cost into the main
+session, which no session can measure from inside. RC-2's ~420k is *reconstructed* (and its own
+measurement is discontinuous — the context refreshed mid-phase). Until the owner runs `/cost`, the
+6.7× is suggestive of the mechanism, not a settled number. **What IS settled is the subagent column:
+716,000 versus 0, measured on both sides.**
+
+### 2.157 — A CHEAP PHASE WITH AN UNRUN REVIEW LANE IS NOT A CHEAP PHASE; IT IS AN UNPRICED ONE
+
+RC-2 closed at ~28% of stop-loss. **720,000 of the 1,500,000 was the review term, and it was not
+spent because the reviewers were never run** — this session was constrained from spawning agents.
+Reporting 28% without that sentence attached would be the "cheap phase that shipped a defect"
+failure (honesty rule 5.3) in advance of knowing whether it did.
+
+**The base rate is the argument.** Every phase since 09a has had its independent reviewers find a
+CRITICAL or MAJOR over a tree that was ALREADY green: 09a two passes, 474,771 tokens, the only
+reason the phase was correct; 17a 2 CRITICAL + 12 MAJOR with **3 of pass 1's 5 fixes themselves
+defective**; RC-1 pass 1 found 1 CRITICAL + 4 MAJOR against 55 green tests, a died mutant and clean
+typecheck/lint, and pass 2 found the M2 fix INCOMPLETE plus a new screen regression. **Green is not
+evidence of reviewed; it is the state in which reviewers have historically found the worst defects.**
+
+**MECHANICAL FORM:**
+
+> A phase whose review lane did not run reports its cost as `spent / (stop-loss − review term)`,
+> and its CLOSE carries the debt as a NAMED OPEN ITEM in the owner's hands — never as a footnote and
+> never silently. **A percentage that flatters by omission is a false record**, which is the same
+> failure as a census kept green by making the record false (§2.155-era).
+> RC-2's honest line: **~420k of the 780,000 coding term (54%), with the 720,000 review term unspent
+> and unrun.**
