@@ -1,5 +1,7 @@
 import { Module } from "@nestjs/common";
+import { registerBenefitSourceProvider } from "../billing";
 import { PartnersController } from "./partners.controller";
+import { referralSource, resolveReferral } from "./sources";
 
 /**
  * The partners module.
@@ -20,4 +22,23 @@ import { PartnersController } from "./partners.controller";
  * Nest container, so there is deliberately no provider to add here for it.
  */
 @Module({ controllers: [PartnersController] })
-export class PartnersModule {}
+export class PartnersModule {
+  /**
+   * RC-2 T2 / D3 — the referral source is REGISTERED, not imported, and the direction is measured:
+   * `accrual.ts` and `consumer.ts` already import `../billing`, so `billing → partners` would be a
+   * cycle. This is `opd.module.ts`'s `registerFeeSettledHook("opd_queue_flip", …)` pointed at
+   * pricing, and it is a constructor act for the same reason: the seam must be armed before the
+   * first invoice is priced, and Nest constructs modules before it serves anything.
+   *
+   * The resolver refuses in every direction that matters (no code, unknown code, expired or voided
+   * slip, suspended counterparty, no governing agreement, no patient-discount term, and — by its own
+   * named branch — an `external_rmp` payee class, whose per-patient payout is prohibited). A refusal
+   * returns null and contributes NO source, so a bill nobody referred carries no partner's name.
+   */
+  constructor() {
+    registerBenefitSourceProvider("partners_referral", async (db, args) => {
+      const resolved = await resolveReferral(db, { code: args.attributionCode, at: args.at });
+      return resolved === null ? null : referralSource(resolved);
+    });
+  }
+}

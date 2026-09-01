@@ -20,6 +20,7 @@ import {
 import { assertPaise, loadPricingContext, percentAmount, priceInvoiceLines } from "../tariff";
 import { allocateOnTx } from "./receipts";
 import { emitFeeSettled } from "./settle-hooks";
+import { resolveRegisteredSources } from "./benefit-sources";
 import { assertCashAccepted } from "./cash-law";
 import { loadBillingConfig } from "./config";
 import { BillingError } from "./errors";
@@ -125,6 +126,13 @@ export type IssueInvoiceInput = {
    * composer reads and because the coupon lane is otherwise untestable.
    */
   couponCodes?: string[];
+  /**
+   * RC-2 T2 / D3 — the code printed on a partner's referral slip, as the counter presented it.
+   * Resolved to a counterparty by the registered provider; NEVER inferred from
+   * `opd_encounters.referral_source`, which `openLabWalkinInTx` defaults to `external_rmp` on
+   * every direct lab walk-in that named no referrer (spike S3).
+   */
+  attributionCode?: string;
 };
 
 export type IssueInvoiceResult = {
@@ -155,6 +163,13 @@ export type PreviewInvoiceInput = {
    */
   patientId?: string;
   couponCodes?: string[];
+  /**
+   * RC-2 T2 / D3 — the code printed on a partner's referral slip, as the counter presented it.
+   * Resolved to a counterparty by the registered provider; NEVER inferred from
+   * `opd_encounters.referral_source`, which `openLabWalkinInTx` defaults to `external_rmp` on
+   * every direct lab walk-in that named no referrer (spike S3).
+   */
+  attributionCode?: string;
 };
 export type PricedDraft = {
   tariffVersionId: string;
@@ -439,17 +454,28 @@ type BenefitContext = {
  */
 async function composeBenefits(
   db: Db,
-  args: { patientId: string | null; couponCodes: string[] | undefined; at: Date; lines: InvoiceLineInput[] },
+  args: { patientId: string | null; couponCodes: string[] | undefined; attributionCode: string | undefined; at: Date; lines: InvoiceLineInput[] },
   ctx: Awaited<ReturnType<typeof loadPricingContext>>,
 ): Promise<{ ctx: typeof ctx; benefits: BenefitContext | null }> {
-  if (args.patientId === null && (args.couponCodes ?? []).length === 0) return { ctx, benefits: null };
+  // A presented attribution code is a third reason to compose: a walk-in with no member record and
+  // no coupon can still arrive on a partner's slip, and returning early would drop that referral
+  // silently — the failure mode this task exists to prevent, one branch earlier.
+  const registered = await resolveRegisteredSources(db, {
+    attributionCode: args.attributionCode, patientId: args.patientId, at: args.at,
+  });
+  const withRegistered = (c: typeof ctx): typeof ctx =>
+    registered.length === 0 ? c : { ...c, sources: [...c.sources, ...registered] };
+
+  if (args.patientId === null && (args.couponCodes ?? []).length === 0) {
+    return { ctx: withRegistered(ctx), benefits: null };
+  }
 
   const found = await resolveInstruments(db, {
     patientId: args.patientId,
     presentedCodes: args.couponCodes,
     at: args.at,
   });
-  if (found.memberships.length === 0 && found.coupons.length === 0) return { ctx, benefits: null };
+  if (found.memberships.length === 0 && found.coupons.length === 0) return { ctx: withRegistered(ctx), benefits: null };
 
   const counters = await entitlementCountersOf(db, found.memberships.map((m) => m.instanceId));
   const couponStates = await couponRedemptionStates(db, found.coupons.map((c) => c.couponId));
@@ -460,7 +486,9 @@ async function composeBenefits(
   const resolved: ResolvedInstruments = { ...usable, billGrossPaise: grossPaise };
 
   return {
-    ctx: { ...ctx, sources: [...ctx.sources, membershipSource(resolved), couponSource(resolved)] },
+    // Registered sources come LAST: `runContest` uses this array's index for exact ties only, and on
+    // a tie a benefit the patient bought beats one a channel partner brought (D3's tie-break ruling).
+    ctx: { ...ctx, sources: [...ctx.sources, membershipSource(resolved), couponSource(resolved), ...registered] },
     benefits: { resolved, counters },
   };
 }
@@ -469,7 +497,7 @@ async function priceDraftWithBenefits(
   db: Db,
   draft: {
     encounterId?: string; patientId?: string; lines: InvoiceLineInput[]; tags?: string[];
-    receipt?: { tenders: TenderInput[] }; couponCodes?: string[];
+    receipt?: { tenders: TenderInput[] }; couponCodes?: string[]; attributionCode?: string;
   },
   now: Date,
 ): Promise<{ priced: PricedDraft; benefits: BenefitContext | null }> {
@@ -486,6 +514,7 @@ async function priceDraftWithBenefits(
         {
           patientId: draft.patientId ?? encounter.patientId,
           couponCodes: draft.couponCodes,
+          attributionCode: draft.attributionCode,
           at: now,
           lines: draft.lines,
         },

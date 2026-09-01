@@ -68,5 +68,9 @@ export type { BillingConfig } from "./config";
 export { encounterFeeStatuses } from "./fee-status";
 export type { EncounterFeeStatus } from "./fee-status";
 export { registerFeeSettledHook } from "./settle-hooks";
+// RC-2 T2 / D3 — the pricing-side mirror of the settle hook. `partners` registers its referral
+// source here because `partners` already imports `billing`, so the reverse import would be a cycle.
+export { registerBenefitSourceProvider } from "./benefit-sources";
+export type { BenefitSourceArgs, BenefitSourceProvider } from "./benefit-sources";
 export type { FeeSettledHook, FeeSettledVia } from "./settle-hooks";
 export * from "./events";

@@ -77,7 +77,7 @@ export async function feeQuote(
   db: Db,
   encounterId: string,
   now: Date = new Date(),
-  opts: { couponCodes?: string[] } = {},
+  opts: { couponCodes?: string[]; attributionCode?: string } = {},
 ): Promise<FeeQuote> {
   const encounter = await getEncounter(db, encounterId);
   if (!encounter) throw new BillingError("unknown_encounter", `unknown encounter ${encounterId}`);
@@ -99,6 +99,10 @@ export async function feeQuote(
       // drops it and the quote simply carries no discount, so a mistyped code makes the clerk retype
       // rather than making the counter stall on a patient who is standing there.
       couponCodes: opts.couponCodes,
+      // RC-2 T2 / D3 — the partner slip travels with the question too, for T1's own reason: a
+      // referral that repriced the invoice but not the quote is the same disagreement, and the
+      // clerk attaches the slip during registration, long before billing is opened.
+      attributionCode: opts.attributionCode,
     },
     now,
   );

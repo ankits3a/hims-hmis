@@ -26,6 +26,18 @@ const feeQuoteCouponsQuery = z
   .transform((v) => (v === undefined ? [] : Array.isArray(v) ? v : [v]))
   .transform((codes) => codes.map((c) => c.trim()).filter((c) => c.length > 0 && c.length <= 64).slice(0, 10));
 
+/**
+ * RC-2 T2 / D3. ONE slip per visit: `attribution_ids` mints one id against one counterparty and
+ * V6 makes that the whole basis of a partner's claim ("the partner whose id is on the slip is the
+ * partner with the claim"), so accepting a list here would invent a conflict the partners module
+ * deliberately has no rule to resolve. Blank means no slip and must still quote.
+ */
+const feeQuoteReferralQuery = z
+  .string()
+  .optional()
+  .transform((v) => (v ?? "").trim())
+  .transform((v) => (v.length === 0 || v.length > 64 ? undefined : v));
+
 import { loadBillingConfig, updateBillingConfig } from "./config";
 import { dayBook, gstr1Summary } from "./daily-close";
 import { issueCreditNote, listCreditNotes } from "./credit-notes";
@@ -211,11 +223,31 @@ const issueInvoiceBody = z.object({
   receipt: receiptBlockSchema.optional(),
   credit: z.object({ reason: z.string().min(1), approvalId: z.string().min(1).optional() }).optional(),
   discountApprovals: z.record(z.string(), z.string()).optional(),
+  /**
+   * RC-2 T1/T2 — THE GAP T1 EXPOSED, CLOSED IN THE SAME PHASE.
+   *
+   * `IssueInvoiceInput.couponCodes` has existed since Plan 09 behind a comment that says in as many
+   * words: "NO HTTP CALLER CAN SET THIS YET, and that is a gap this task reports rather than closes
+   * … until a later phase widens the body." This is that phase, and it is no longer merely a gap:
+   * once the fee-quote route could take a coupon (T1), a quote that discounted and an invoice that
+   * could not would be the SAME disagreement T1 fixed, pointing the other way — the counter would
+   * promise ₹450 and charge ₹500. Declared on both bodies together for that reason; a preview the
+   * counter cannot ask the same question of is a preview it cannot trust either.
+   *
+   * Both handlers spread the parsed body straight into their function, so declaring the keys here
+   * is the whole change — and declaring them is exactly what RC-1 T1 proved cannot be skipped.
+   */
+  couponCodes: z.array(z.string().min(1).max(64)).max(10).optional(),
+  attributionCode: z.string().min(1).max(64).optional(),
 });
 const previewInvoiceBody = z.object({
   encounterId: z.string().min(1).optional(),
   lines: z.array(invoiceLineSchema).min(1),
   tags: z.array(z.string()).optional(),
+  patientId: z.string().min(1).optional(),
+  // See `issueInvoiceBody` above: the preview must be askable in the same terms as the invoice.
+  couponCodes: z.array(z.string().min(1).max(64)).max(10).optional(),
+  attributionCode: z.string().min(1).max(64).optional(),
 });
 const invoicesQuery = z.object({
   patientId: z.string().min(1).optional(),
@@ -483,10 +515,12 @@ export class BillingController {
   async feeQuoteRoute(
     @Param("encounterId") encounterId: string,
     @Query("coupon") coupon?: string | string[],
+    @Query("referral") referral?: string,
   ): Promise<FeeQuote> {
     const couponCodes = parsed(feeQuoteCouponsQuery, coupon);
+    const attributionCode = parsed(feeQuoteReferralQuery, referral);
     try {
-      return await feeQuote(this.db, encounterId, new Date(), { couponCodes });
+      return await feeQuote(this.db, encounterId, new Date(), { couponCodes, attributionCode });
     } catch (e) {
       toHttp(e);
     }

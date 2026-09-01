@@ -36,6 +36,11 @@ export {
   accrualTermsSchema, counterpartyFacts, rateSnapshotOf, requireAgreementAt, resolveAgreementAt,
 } from "./agreements";
 export type { AccrualTerms, CounterpartyFacts, ResolvedAgreement } from "./agreements";
+// RC-2 T2 / D3 — the referral AdjustmentSource. `billing` composes it beside membership's two;
+// `partners` owns the resolution because the counterparty, its payee class and its agreement all
+// live here, and `billing` must not learn to read them.
+export { REFERRAL_SOURCE_KEY, referralSource, resolveReferral } from "./sources";
+export type { ResolvedReferral } from "./sources";
 export {
   ACCRUAL_EVENT_NAMES, PARTNERS_ACCRUAL_CONSUMER, accrualConsumer, commissionAccrualEnabled,
   handleAccrualEvent,
