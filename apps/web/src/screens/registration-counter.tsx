@@ -2,14 +2,16 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, api } from "../lib/api";
-import { fetchFeeQuote } from "../lib/billing-api";
+import { billingErrorMessage, fetchFeeQuote, issueInvoice } from "../lib/billing-api";
 import type {
-  TenderMode, WireAdjustmentCandidate, WireFeeQuote, WireIssueInvoiceResult, WirePricedLine,
+  TenderMode, WireAdjustmentCandidate, WireFeeQuote, WireIssueInvoiceResult, WirePricedLine, WireTender,
 } from "../lib/billing-api";
 import { fmtIst, useDebounced } from "../lib/format";
-import { opdErrorMessage, todayIst, walkIn } from "../lib/opd-api";
-import type { WireDoctorSummary, WireDuplicateCandidate, WireWalkInBody } from "../lib/opd-api";
+import { getOpdConfig, joinQueue, opdErrorMessage, todayIst, walkIn } from "../lib/opd-api";
+import type { WireCounterFlow, WireDoctorSummary, WireDuplicateCandidate, WireWalkInBody } from "../lib/opd-api";
 import { SubmitButton } from "../components/submit-button";
+import { TenderEditor } from "../components/tender-editor";
+import { MoneyInput } from "../components/money-input";
 import { usePaletteOptional } from "../components/command-palette";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { matchReasonKeys, searchPatients } from "../lib/patients-api";
@@ -216,12 +218,25 @@ export function counterExit(
  * the token) which stay server-owned because they are not session state.
  */
 export function Dossier({
-  quote, issued, canCollect, token, onConfirm,
+  quote, issued, canCollect, token, tokenNote, onConfirm, onSettle, settleError,
 }: {
   quote: WireFeeQuote | null;
   issued: WireIssueInvoiceResult | null;
   /** RC-4 T3 — D2's "token" noun. `null` until a visit is opened from this seat. */
   token?: number | null;
+  /**
+   * RC-4 T2 — what stands where the token would be while it is OWED rather than absent: under
+   * `bill_first` the number does not exist until the money is taken, and under `token_on_payment`
+   * it exists but the slip has not left the printer. A blank line would read as "no visit".
+   */
+  tokenNote?: "afterPayment" | "joining" | null;
+  /**
+   * RC-4 T2 — THE SEAT TAKES MONEY, for the visits it opened itself. Present when the caller can
+   * settle; the panel is the lifted `counter-desk.tsx` tender block. Absent means F4's answer
+   * stands: price, do not instruct.
+   */
+  onSettle?: (tenders: WireTender[], changeGivenPaise: number | undefined, idempotencyKey: string) => Promise<void>;
+  settleError?: string | null;
   /**
    * ═══ CLOSE REVIEW F4 (CRITICAL) — REQUIRED, BECAUSE THE SEAT CANNOT ANSWER IT ═══
    *
@@ -257,6 +272,11 @@ export function Dossier({
               {t("registrationCounter.dossier.token", { token })}
             </p>
           )}
+          {token == null && tokenNote != null && (
+            <p data-testid={`dossier-token-${tokenNote}`} className="text-muted-foreground">
+              {t(`registrationCounter.dossier.token_${tokenNote}`)}
+            </p>
+          )}
 
           {quote !== null && <QuotePanel quote={quote} />}
 
@@ -271,6 +291,9 @@ export function Dossier({
             canCollect ? (
               <div data-testid="collect">
                 <p>{t("registrationCounter.exit.collect", { amount: quote.draft.totals.netPayablePaise / 100 })}</p>
+                {onSettle !== undefined && (
+                  <CollectPanel payablePaise={quote.draft.totals.netPayablePaise} onSettle={onSettle} error={settleError ?? null} />
+                )}
               </div>
             ) : (
               /*
@@ -296,7 +319,7 @@ export function Dossier({
                 same call to `Esc` (T5's map), because a busy counter reaches for the keyboard; the
                 button is what makes the same act discoverable to a clerk on their first day.
               */}
-              <button type="button" data-testid="exit-confirm" onClick={() => onConfirm?.()}>
+              <button type="button" data-testid="exit-confirm" disabled={onConfirm === undefined} onClick={() => onConfirm?.()}>
                 {t("registrationCounter.exit.next")}
               </button>
             </p>
@@ -304,6 +327,66 @@ export function Dossier({
         </>
       )}
     </aside>
+  );
+}
+
+/**
+ * RC-4 T2 — THE TENDER BLOCK, LIFTED FROM `counter-desk.tsx` (its `collect` div and `settle`).
+ *
+ * F15 removed a `1/2/3` scaffold from this seat because it could not see whether an encounter had
+ * been paid. What changed is not the seat's sight — it is that the seat now OPENS visits itself,
+ * and for a visit it opened moments ago it knows there is no invoice yet as surely as `/counter`
+ * does: that is `counter-desk.tsx`'s own model, and the same proven money path is reused for it.
+ *
+ * THE CHANGE LANE IS THE PART THAT MUST NOT BE SIMPLIFIED, and it is copied with its reason:
+ * change is declared only when CASH was tendered, and the default is capped at the cash side —
+ * the server's M4 ceiling is min(surplus, cash tendered), and a whole-surplus default hard-failed
+ * every mixed tender where cash < surplus. A card-side surplus stays a banked advance.
+ */
+export function CollectPanel({
+  payablePaise, onSettle, error,
+}: {
+  payablePaise: number;
+  onSettle: (tenders: WireTender[], changeGivenPaise: number | undefined, idempotencyKey: string) => Promise<void>;
+  error: string | null;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const [tenders, setTenders] = useState<WireTender[]>([]);
+  const [changeGivenPaise, setChangeGivenPaise] = useState<number | undefined>(undefined);
+
+  const tenderedPaise = tenders.reduce((n, x) => n + x.amountPaise, 0);
+  const surplusPaise = Math.max(0, tenderedPaise - payablePaise);
+  const hasCash = tenders.some((x) => x.mode === "cash");
+  const cashTenderedPaise = tenders.reduce((n, x) => n + (x.mode === "cash" ? x.amountPaise : 0), 0);
+
+  return (
+    <div data-testid="collect-panel" className="space-y-2">
+      <TenderEditor payablePaise={payablePaise} onChange={setTenders} />
+      {surplusPaise > 0 && hasCash && (
+        <div data-testid="change-lane">
+          <p>{t("registrationCounter.collect.surplus", { amount: surplusPaise / 100 })}</p>
+          <MoneyInput
+            id="rc-change-given" label={t("registrationCounter.collect.changeGiven")}
+            value={changeGivenPaise ?? Math.min(surplusPaise, cashTenderedPaise)} onChange={setChangeGivenPaise}
+          />
+          <p className="text-xs text-muted-foreground">{t("registrationCounter.collect.changeHint")}</p>
+        </div>
+      )}
+      {surplusPaise > 0 && !hasCash && (
+        <p data-testid="surplus-no-cash" className="text-muted-foreground">{t("registrationCounter.collect.surplusNoCash")}</p>
+      )}
+      {error !== null && <p data-testid="settle-error" role="alert">{error}</p>}
+      <SubmitButton
+        data-testid="settle" disabled={tenders.length === 0}
+        onClick={(k) => onSettle(
+          tenders,
+          surplusPaise > 0 && cashTenderedPaise > 0 ? changeGivenPaise ?? Math.min(surplusPaise, cashTenderedPaise) : undefined,
+          k,
+        )}
+      >
+        {t("registrationCounter.collect.settle")}
+      </SubmitButton>
+    </div>
   );
 }
 
@@ -649,8 +732,32 @@ export function RegistrationCounter(): React.ReactElement {
    * form; leaving is the defect this seat exists to remove.
    */
   const [registering, setRegistering] = useState(false);
-  const [token, setToken] = useState<number | null>(null);
+  /**
+   * RC-4 T2 — THE VISIT THIS SEAT OPENED, AND THE INVOICE IT ISSUED, each stored WITH ITS
+   * ENCOUNTER (F1's pattern: the bad state is unrepresentable, not cleared in three places). The
+   * accessors below hand either back only while the patient in hand still agrees.
+   */
+  const [visit, setVisit] = useState<SeatVisit | null>(null);
+  const [issuedFor, setIssuedFor] = useState<SeatIssued | null>(null);
+  const [settleError, setSettleError] = useState<string | null>(null);
   const summaries = useQueueSummary(todayIst());
+  const encounterId = inHand?.encounterId ?? null;
+  const hereVisit = visit !== null && visit.encounterId === encounterId ? visit : null;
+  const issued = issuedFor !== null && issuedFor.encounterId === encounterId ? issuedFor.result : null;
+
+  /**
+   * THE DRAWER IS THE COUNTER'S PRECONDITION, lifted from `counter-desk.tsx` with its reason: a
+   * clerk with a closed drawer cannot FINISH a walk-in, and discovering that at the payment step
+   * — after the visit is open — is a half-done walk-in caused purely by the order of the checks.
+   * Under `bill_first` it is worse than half-done: a deferred visit with no money and no token is
+   * a patient nobody will call. So the drawer is read on mount and the bill-first door is shut
+   * without it (`RegisterPanel`), while a queue-first visit that cannot be settled here says so.
+   */
+  const drawer = useQuery({
+    queryKey: ["billing", "sessions", "current"],
+    queryFn: () => api<{ session: { id: string; status: "open" | "closing" | "closed" } | null }>("GET", "/billing/sessions/current"),
+  });
+  const drawerOpen = drawer.data?.session?.status === "open";
 
   /**
    * D2's "live bill", and the CONTRACT PASS at close is what caught its absence: this screen was
@@ -662,7 +769,7 @@ export function RegistrationCounter(): React.ReactElement {
    * The seat RE-FETCHES and never computes: the quote already composes the benefits server-side
    * (RC-2's finding), so the money on this screen is the money the invoice will charge.
    */
-  const { quote, reprice } = useQuote(inHand?.encounterId ?? null);
+  const { quote, reprice } = useQuote(encounterId);
   useEffect(() => {
     void reprice([]);
   }, [reprice]);
@@ -670,10 +777,53 @@ export function RegistrationCounter(): React.ReactElement {
   const clearDesk = useCallback((): void => {
     setOverlay(null);
     setRegistering(false);
-    setToken(null);
+    setVisit(null);
+    setIssuedFor(null);
+    setSettleError(null);
     setDeskGen((n) => n + 1);
     release();
   }, [release]);
+
+  /**
+   * RC-4 T2 — SETTLE, lifted from `counter-desk.tsx:settle`. The draft id is the visit's, stable
+   * across attempts; the idempotency key is `SubmitButton`'s, one per attempt — the house
+   * convention, and why a corrected retry after a refusal is safe.
+   */
+  const settle = useCallback(async (tenders: WireTender[], changeGivenPaise: number | undefined, idemKey: string): Promise<void> => {
+    if (hereVisit === null || quote === null || quote.draft === null || quote.encounterId !== hereVisit.encounterId) return;
+    setSettleError(null);
+    try {
+      const result = await issueInvoice({
+        draftId: hereVisit.draftId,
+        patientId: hereVisit.patientId,
+        encounterId: hereVisit.encounterId,
+        lines: quote.draft.lines.map((l) => ({ lineId: l.lineId, serviceId: l.serviceId, qty: l.qty })),
+        receipt: { tenders, ...(changeGivenPaise === undefined ? {} : { changeGivenPaise }) },
+      }, idemKey);
+      setIssuedFor({ encounterId: hereVisit.encounterId, result });
+    } catch (e) {
+      setSettleError(billingErrorMessage(e));
+    }
+  }, [hereVisit, quote]);
+
+  /**
+   * ═══ RC-4 T2 / D3 — THE DEFERRED JOIN FIRES AFTER THE MONEY, AND ONLY THEN ═══
+   *
+   * This effect is the whole of "the token leaves the printer already PAID". `joinQueue` has no
+   * settlement gate server-side — the stamp is derived, so the server would stamp an early join
+   * UNPAID, truthfully — which means the discipline lives here and nowhere else. `shouldJoinNow`
+   * is pure so the mutant the assertion book names (the join firing before settlement) can be
+   * applied to it and killed on its own; the effect only carries its answer to the wire.
+   */
+  useEffect(() => {
+    if (!shouldJoinNow(hereVisit, quote, issued)) return;
+    const target = hereVisit!;
+    setVisit({ ...target, joining: true });
+    void joinQueue(target.encounterId).then(
+      (r) => setVisit((v) => (v?.encounterId === target.encounterId ? { ...v, joining: false, tokenNo: r.tokenNo } : v)),
+      (e: unknown) => setVisit((v) => (v?.encounterId === target.encounterId ? { ...v, joining: false, joinError: opdErrorMessage(e) } : v)),
+    );
+  }, [hereVisit, quote, issued]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -683,23 +833,20 @@ export function RegistrationCounter(): React.ReactElement {
         case "close-overlay": setOverlay(null); break;
         case "clear-desk": clearDesk(); break;
         /*
-          F15 — THE TENDER LANES ARE IN THE MAP AND ARE NOT CONSUMED HERE, for the same reason
-          `confirm` is not, and the reason got stronger at close: F4 established that this seat
-          cannot see whether an encounter has been paid, so it does not take money at all. What
-          stood here was `setTender(...)` feeding a paragraph that printed the literal string
-          "upi" on the counter screen — dev scaffolding with a test asserting it as behaviour.
-          Removed rather than dressed up. Falls through WITHOUT `preventDefault`, so the keystroke
-          still reaches the focused field.
+          F15 — THE TENDER LANES ARE IN THE MAP AND ARE NOT CONSUMED HERE. RC-4 T2 brought the
+          tender block across, but `TenderEditor` owns its own mode buttons and its rows, and a
+          bare `1` pressed outside a field has no row to land in; binding the lanes without that
+          row would print a mode nothing reads, which is the scaffold F15 removed. Falls through
+          WITHOUT `preventDefault`, so the keystroke still reaches the focused field.
         */
         case "tender:cash": case "tender:upi": case "tender:card": return;
         /*
           `confirm` (Ctrl+Enter) IS IN THE MAP AND IS DELIBERATELY NOT CONSUMED HERE.
-          The design's `hotEnter` advances whatever stage the seat is on, and this phase's seat has
-          exactly one stage: find. The bill and the appointment cross over in RC-4, and *that* is
-          when there is something to confirm. Wiring it to a no-op now would put a shortcut in the
-          legend that does nothing — worse than an absent one, because a clerk who presses it and
-          sees nothing happen stops trusting the legend. It falls through WITHOUT `preventDefault`,
-          so Ctrl+Enter still reaches whatever field has focus.
+          The design's `hotEnter` advances whatever stage the seat is on; the stages now cross
+          (register → bill → queue) but each has its own submit with its own idempotency key, and
+          a chord that "advanced" would have to pick one. Wiring it to a no-op would put a shortcut
+          in the legend that does nothing — worse than an absent one. It falls through WITHOUT
+          `preventDefault`, so Ctrl+Enter still reaches whatever field has focus.
         */
         case "confirm": return;
         case null: return; // Ctrl+K and every unclaimed key belong to the global map
@@ -709,6 +856,12 @@ export function RegistrationCounter(): React.ReactElement {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [overlay, clearDesk, palette?.isOpen]);
+
+  const canCollect = hereVisit !== null && issued === null && drawerOpen;
+  const tokenNote: "afterPayment" | "joining" | null =
+    hereVisit === null || tokenToShow(hereVisit, quote, issued) !== null ? null
+      : hereVisit.joining ? "joining"
+        : "afterPayment";
 
   /**
    * ═══ CLOSE REVIEW F8 (MAJOR) — THE ALIAS LAYER HAD NO CONSUMER ═══
@@ -740,25 +893,113 @@ export function RegistrationCounter(): React.ReactElement {
       </h1>
       <div className="flex flex-col gap-6 p-6 lg:flex-row">
         {/*
-          `canCollect={false}` and `issued={null}` are the same admission stated twice, and both are
-          deliberate for RC-3: this seat issues no invoice, takes no payment and opens no visit, so
-          it has neither an `issued` result of its own nor any server signal for one. The `settled`
-          and `credit` exits are therefore unreachable HERE — not removed, but unreachable — and
-          RC-4 is the phase that brings the bill across and makes all three lawful exits real.
+          RC-4 T2 — `canCollect` and `issued` are now ANSWERED rather than admitted. Both are true
+          only for the visit THIS seat opened, in this session, with the drawer open: the one case
+          in which the seat knows there is no invoice yet, which is exactly the knowledge `/counter`
+          has always run on. A patient taken in hand from anywhere else still gets F4's answer —
+          the price, and where to pay it.
         */}
         <div className="w-full shrink-0 rounded-lg border border-border bg-card p-4 lg:w-80">
-          <Dossier quote={quote} issued={null} canCollect={false} token={token} onConfirm={clearDesk} />
+          <Dossier
+            quote={quote} issued={issued} canCollect={canCollect}
+            token={tokenToShow(hereVisit, quote, issued)} tokenNote={tokenNote}
+            onConfirm={tokenNote === "joining" ? undefined : clearDesk} onSettle={settle} settleError={settleError}
+          />
+          {hereVisit?.joinError != null && (
+            <div data-testid="join-failed" role="alert">
+              <p>{t("registrationCounter.join.failed", { reason: hereVisit.joinError })}</p>
+              <button type="button" data-testid="join-retry" onClick={() => setVisit({ ...hereVisit, joinError: null })}>
+                {t("registrationCounter.join.retry")}
+              </button>
+            </div>
+          )}
         </div>
         <div className="min-w-0 flex-1 rounded-lg border border-border bg-card p-4">
           {inHand === null && (registering
-            ? <RegisterPanel doctors={summaries} onCancel={() => setRegistering(false)}
-                onOpened={(o) => { setToken(o.tokenNo); setRegistering(false); }} />
+            ? <RegisterPanel doctors={summaries} drawerOpen={drawerOpen} onCancel={() => setRegistering(false)}
+                onOpened={(o) => { setVisit(o); setRegistering(false); }} />
             : <FindPanel key={deskGen} onRegisterNew={() => setRegistering(true)} />)}
+          {/*
+            RC-4 T2 — THE EXISTING PATIENT'S DOOR. `takePatient` puts a found patient in hand with
+            `encounterId: null` (`patient-in-hand.tsx`), and until now the workspace went blank
+            there: the seat could FIND a returning patient and could not open their visit —
+            `walkInBodyFor`'s `existingId` branch was exported, unit-tested and consumed by nothing.
+            The same panel serves, with the four fields folded away.
+          */}
+          {inHand !== null && inHand.encounterId === null && (
+            <RegisterPanel doctors={summaries} drawerOpen={drawerOpen} existingId={inHand.patientId}
+              onOpened={(o) => setVisit(o)} />
+          )}
         </div>
       </div>
       {overlay === "queues" && <QueuesOverlay items={summaries} onClose={() => setOverlay(null)} />}
     </div>
   );
+}
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   RC-4 T2 — BILL-FIRST: THE DEFERRED JOIN, AND WHEN THE TOKEN MAY BE SHOWN (D3)
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The visit THIS seat opened. `tokenNo` is a number from the walk-in under `queue_first` and
+ * `null` under `bill_first` until `joinQueue` fills it — `WireWalkInDeferredResult`'s own shape.
+ * The flow is recorded AT OPEN, because the flow decides whether a join is still owed, and a
+ * supervisor flipping the pill mid-visit must not change what this visit already is.
+ */
+export type SeatVisit = {
+  encounterId: string;
+  patientId: string;
+  tokenNo: number | null;
+  flow: WireCounterFlow;
+  /** The invoice DRAFT id, stable for this visit — not an idempotency key (`counter-desk.tsx`). */
+  draftId: string;
+  joining: boolean;
+  joinError: string | null;
+};
+
+export type SeatIssued = { encounterId: string; result: WireIssueInvoiceResult };
+
+/** Lifted from `counter-desk.tsx:newIdemKey` — the draft id is minted once per visit, not per attempt. */
+export function newDraftId(): string {
+  return `seat-${String(Date.now())}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * "THE MONEY IS TAKEN" — the one predicate both the join and the token lane read. All three
+ * lawful exits count: settled, credit-extended, or a free revisit with no invoice at all. Every
+ * term is matched on the VISIT'S encounter, so a quote or an invoice for the last patient can
+ * never answer for this one (F1's class).
+ */
+export function moneyDone(visit: SeatVisit, quote: WireFeeQuote | null, issued: WireIssueInvoiceResult | null): boolean {
+  if (issued !== null) return true;
+  return quote !== null && quote.encounterId === visit.encounterId && quote.free === true;
+}
+
+/**
+ * THE JOIN FIRES AFTER THE MONEY, AND ONLY UNDER `bill_first`. The mutant the assertion book
+ * names is this function returning true on a priced, unissued visit — an UNPAID token on the
+ * board in the one lane whose entire purpose is that it never appears. A failed join stays
+ * failed until the clerk retries (`joinError` cleared), so a refusal does not loop.
+ */
+export function shouldJoinNow(visit: SeatVisit | null, quote: WireFeeQuote | null, issued: WireIssueInvoiceResult | null): boolean {
+  if (visit === null || visit.flow.counterSequence !== "bill_first") return false;
+  if (visit.tokenNo !== null || visit.joining || visit.joinError !== null) return false;
+  return moneyDone(visit, quote, issued);
+}
+
+/**
+ * WHICH NUMBER THE CLERK MAY READ OUT. `token_lane` is "printing and stamps only" (RC-1 D3): under
+ * `queue_first` + `token_on_payment` the number exists from the join but the slip does not leave
+ * the printer until the money — so the dossier holds it back the same way. Under `bill_first` the
+ * lane is meaningless and the number simply does not exist until the join.
+ */
+export function tokenToShow(visit: SeatVisit | null, quote: WireFeeQuote | null, issued: WireIssueInvoiceResult | null): number | null {
+  if (visit === null || visit.tokenNo === null) return null;
+  if (visit.flow.counterSequence === "queue_first" && visit.flow.tokenLane === "token_on_payment" && !moneyDone(visit, quote, issued)) {
+    return null;
+  }
+  return visit.tokenNo;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════════════════════
@@ -828,11 +1069,15 @@ export function walkInBodyFor(
  * is worse than the duplicate it was trying to prevent.
  */
 export function RegisterPanel({
-  doctors, onCancel, onOpened,
+  doctors, drawerOpen, existingId, onCancel, onOpened,
 }: {
   doctors: WireDoctorSummary[];
+  /** RC-4 T2 — the bill-first door is shut without a drawer: a deferred visit with no money is a patient nobody calls. */
+  drawerOpen: boolean;
+  /** RC-4 T2 — a patient already on file: the four fields fold away and only the doctor is asked. */
+  existingId?: string;
   onCancel?: () => void;
-  onOpened?: (opened: { tokenNo: number | null; encounterId: string }) => void;
+  onOpened?: (opened: SeatVisit) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const { takePatient, takeEncounter } = usePatientInHand();
@@ -842,7 +1087,7 @@ export function RegisterPanel({
   const [error, setError] = useState<string | null>(null);
 
   const doctor = doctors.find((d) => d.doctor.id === doctorId) ?? null;
-  const ready = fields.name.trim() !== "" && doctor !== null;
+  const ready = (existingId !== undefined || fields.name.trim() !== "") && doctor !== null;
 
   const set = (k: keyof SeatRegisterFields) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>): void => {
     setFields((f) => ({ ...f, [k]: e.target.value }));
@@ -853,17 +1098,35 @@ export function RegisterPanel({
     setError(null);
     setDuplicates(null);
     try {
-      const result = await walkIn(walkInBodyFor({ fields }, doctor, acknowledgeDuplicates), idempotencyKey);
+      /*
+        RC-4 T2 — THE FLOW IS READ AT THE MOMENT OF OPENING, not from a cache. `counter_sequence`
+        is hospital-wide and a supervisor can flip it from another counter; a seat that opened on
+        a cached value would send a queue-first walk-in under bill-first — a token before the
+        money, in the lane whose purpose is that there is none. One GET per registration is the
+        price, and it is the same route the pill reads.
+      */
+      const config = await getOpdConfig();
+      const flow: WireCounterFlow = { counterSequence: config.counterSequence, tokenLane: config.tokenLane };
+      if (flow.counterSequence === "bill_first" && !drawerOpen) {
+        setError(t("registrationCounter.register.drawerNeeded"));
+        return;
+      }
+      const body = walkInBodyFor(existingId === undefined ? { fields } : { existingId }, doctor, acknowledgeDuplicates);
+      const result = flow.counterSequence === "bill_first"
+        ? await walkIn({ ...body, join: "defer" }, idempotencyKey)
+        : await walkIn(body, idempotencyKey);
       takePatient(result.patientId);
       takeEncounter(result.encounter.id);
       /*
         RC-4 T3 / D2's "token" noun — and it costs NO extra fetch. `WireWalkInResult` extends
-        `WireOpenVisitResult`, which has carried `tokenNo` since 07b; the seat was throwing it away.
-        The PAID stamp itself lives on the BOARD (D7) because that is what the demo calls it and
-        because `feeStatus` only travels on the queue route; what the clerk needs in the dossier is
-        the number they are about to read out loud to the patient.
+        `WireOpenVisitResult`, which has carried `tokenNo` since 07b; the seat was throwing it
+        away. Under `bill_first` it is NULL here by the wire's own shape (`WireWalkInDeferredResult`)
+        and `joinQueue` fills it after the money. The PAID stamp itself lives on the BOARD (D7).
       */
-      onOpened?.({ tokenNo: result.tokenNo, encounterId: result.encounter.id });
+      onOpened?.({
+        encounterId: result.encounter.id, patientId: result.patientId, tokenNo: result.tokenNo,
+        flow, draftId: newDraftId(), joining: false, joinError: null,
+      });
     } catch (e) {
       // LIFTED VERBATIM: a 409 carrying candidates is a QUESTION, not a failure.
       if (e instanceof ApiError && e.status === 409) {
@@ -875,9 +1138,12 @@ export function RegisterPanel({
   }
 
   return (
-    <section aria-label={t("registrationCounter.register.title")} data-testid="register-panel" className="text-sm">
-      <h2 className="text-base font-semibold">{t("registrationCounter.register.title")}</h2>
+    <section aria-label={t(existingId === undefined ? "registrationCounter.register.title" : "registrationCounter.register.existingTitle")} data-testid="register-panel" className="text-sm">
+      <h2 className="text-base font-semibold">
+        {t(existingId === undefined ? "registrationCounter.register.title" : "registrationCounter.register.existingTitle")}
+      </h2>
 
+      {existingId === undefined && <>
       <label htmlFor="rc-reg-name">{t("registrationCounter.register.name")}</label>
       <input id="rc-reg-name" data-testid="reg-name" value={fields.name} onChange={set("name")}
         className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3" />
@@ -898,6 +1164,7 @@ export function RegisterPanel({
         <option value="female">{t("registrationCounter.register.sexFemale")}</option>
         <option value="other">{t("registrationCounter.register.sexOther")}</option>
       </select>
+      </>}
 
       <label htmlFor="rc-reg-doctor">{t("registrationCounter.register.doctor")}</label>
       <select id="rc-reg-doctor" data-testid="reg-doctor" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}
@@ -932,7 +1199,7 @@ export function RegisterPanel({
       {error !== null && <p data-testid="reg-error" role="alert">{error}</p>}
 
       <SubmitButton data-testid="reg-submit" disabled={!ready} onClick={(k) => open(false, k)}>
-        {t("registrationCounter.register.submit")}
+        {t(existingId === undefined ? "registrationCounter.register.submit" : "registrationCounter.register.openVisit")}
       </SubmitButton>
       {onCancel !== undefined && (
         <button type="button" data-testid="reg-cancel" onClick={onCancel}>{t("registrationCounter.register.cancel")}</button>

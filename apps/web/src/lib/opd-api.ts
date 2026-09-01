@@ -46,11 +46,42 @@ export type WireLeave = {
   cancelledBy: string | null; cancelledAt: string | null;
 };
 
-export type WireOpdConfig = {
+/**
+ * RC-4 T2/T4 — THE COUNTER FLOW, TWO AXES, MIRRORED FROM `modules/opd/config.ts:98-101`.
+ *
+ * The web cannot import core, so the enums are restated here and PINNED against the core file read
+ * as text by `registration-counter.test.tsx` — the same discipline `SEAT_TENDER_ORDER` uses on
+ * `tender-editor.tsx`. The SEQUENCE decides whether a walk-in joins the queue at open (`queue_first`,
+ * the shipped behaviour) or after billing (`bill_first`, the deferred join). The TOKEN LANE decides
+ * only when the slip leaves the printer and which stamp it wears — allocation never moves with it,
+ * and it is meaningful only under `queue_first`. Both are HOSPITAL-WIDE on `opd_config`: one setting
+ * for every counter, not one per department.
+ */
+export const COUNTER_SEQUENCES = ["queue_first", "bill_first"] as const;
+export type CounterSequence = (typeof COUNTER_SEQUENCES)[number];
+export const TOKEN_LANES = ["token_first", "token_on_payment"] as const;
+export type TokenLane = (typeof TOKEN_LANES)[number];
+export type WireCounterFlow = { counterSequence: CounterSequence; tokenLane: TokenLane };
+
+export type WireOpdConfig = WireCounterFlow & {
   slotMinutes: number; followUpDefaultDays: number; followUpExtensionDays: number[];
   extensionCapPerDoctorPerMonth: number; maxSkipsBeforeLeft: number; perkEveryNth: number | null;
   dangerRanges: unknown; letterhead: { name: string; addressLines: string[] };
 };
+
+export function getOpdConfig(): Promise<WireOpdConfig> {
+  return api("GET", "/opd/config");
+}
+
+/**
+ * RC-4 T4 — the flow pill's own write. `PUT /opd/config/counter-flow` takes EXACTLY these two keys
+ * (`counterFlowBody` strips everything else), under `opd.counter.flow.manage` — narrower than the
+ * config editor's permission on purpose, so the body here must never be widened toward
+ * `WireOpdConfig`: a supervisor holding only the pill must not reach danger ranges through it.
+ */
+export function putCounterFlow(body: Partial<WireCounterFlow>): Promise<WireOpdConfig> {
+  return api("PUT", "/opd/config/counter-flow", body);
+}
 
 // ——— patients, as the OPD module is allowed to see them (§14 / D-37) ———
 
@@ -369,8 +400,34 @@ export type WireWalkInDeferredResult = Omit<WireOpenVisitResult, "queueEntry" | 
 /** The near-matches a refused registration comes back with (`duplicate_suspected`). */
 export type WireDuplicateCandidate = { id: string; uhid: string; name: string | null };
 
-export function walkIn(body: WireWalkInBody, idempotencyKey: string): Promise<WireWalkInResult> {
+/**
+ * RC-4 T2 — the overloads say which shape comes back, so a bill-first caller cannot read `tokenNo`
+ * as a number: it is `null` until `joinQueue` fills it, and the type now says so at the call site.
+ */
+export function walkIn(body: WireWalkInBody & { join: "defer" }, idempotencyKey: string): Promise<WireWalkInDeferredResult>;
+export function walkIn(body: WireWalkInBody & { join?: "queue" }, idempotencyKey: string): Promise<WireWalkInResult>;
+export function walkIn(body: WireWalkInBody, idempotencyKey: string): Promise<WireWalkInResult | WireWalkInDeferredResult>;
+export function walkIn(body: WireWalkInBody, idempotencyKey: string): Promise<WireWalkInResult | WireWalkInDeferredResult> {
   return api("POST", "/opd/walk-in", body, idempotencyKey);
+}
+
+/**
+ * RC-4 T2 — THE SECOND HALF OF A BILL-FIRST WALK-IN, and the first consumer of a route RC-1 wrote.
+ *
+ * `POST /opd/visits/:id/join-queue` (`encounters.ts:joinQueue`) has NO settlement gate, and that is
+ * correct rather than a hole: the PAID stamp is DERIVED from `encounterFeeStatuses`, never stored,
+ * so a token joined after payment reads PAID and one joined before reads UNPAID — both truthfully.
+ * The discipline of "the token leaves the printer already PAID" therefore lives entirely in WHEN
+ * the client calls this, which is `shouldJoinNow` in the seat. Idempotent: a replay answers the
+ * existing live entry with `alreadyJoined: true`.
+ */
+export type WireJoinQueueResult = {
+  encounter: WireEncounter; queueEntry: WireQueueEntry; tokenNo: number; sessionId: string;
+  roomId: string | null; alreadyJoined: boolean;
+};
+
+export function joinQueue(encounterId: string): Promise<WireJoinQueueResult> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/join-queue`);
 }
 
 /**

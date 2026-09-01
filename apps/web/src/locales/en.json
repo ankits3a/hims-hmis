@@ -2036,7 +2036,10 @@
       "duplicateWarning": "Someone on file looks like this person — check before registering a second record",
       "registerAnyway": "Different person — register anyway",
       "submit": "Register and open visit",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "existingTitle": "Open a visit",
+      "openVisit": "Open visit",
+      "drawerNeeded": "Bill-first needs an open cash drawer — open your session before registering"
     },
     "quote": {
       "title": "Bill",
@@ -2052,7 +2055,9 @@
     "dossier": {
       "title": "Patient in hand",
       "nobody": "Nobody at the counter yet",
-      "token": "Token {{token}}"
+      "token": "Token {{token}}",
+      "token_afterPayment": "Token after payment",
+      "token_joining": "Joining the queue…"
     },
     "wait": {
       "ahead": "{{count}} ahead",
@@ -2070,6 +2075,17 @@
       "credit": "Credit extended — billed to account",
       "next": "Next patient",
       "pricedElsewhere": "This visit costs ₹{{amount}} — take payment at the billing counter"
+    },
+    "collect": {
+      "settle": "Take payment",
+      "surplus": "₹{{amount}} over the bill.",
+      "changeGiven": "Change handed back",
+      "changeHint": "Whatever is not handed back stays on the patient's account as an advance. Say which — the drawer is counted on it.",
+      "surplusNoCash": "More than the bill was taken, but not in cash — the extra stays on the patient's account. Returning money on a card payment is a refund."
+    },
+    "join": {
+      "failed": "Could not join the queue: {{reason}}",
+      "retry": "Join the queue"
     }
   }
 }

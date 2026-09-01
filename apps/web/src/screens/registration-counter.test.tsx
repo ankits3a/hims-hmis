@@ -4,8 +4,10 @@ import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   Dossier, FindPanel, QueuesOverlay, QuotePanel, RegistrationCounter, SEAT_TENDER_ORDER, WaitLine,
-  counterExit, seatKey, useQuote, waitEstimate, walkInBodyFor,
+  counterExit, seatKey, shouldJoinNow, tokenToShow, useQuote, waitEstimate, walkInBodyFor,
 } from "./registration-counter";
+import type { SeatVisit } from "./registration-counter";
+import { COUNTER_SEQUENCES, TOKEN_LANES } from "../lib/opd-api";
 import { renderWithProviders, stubFetch } from "../test-utils";
 import { setToken } from "../lib/api";
 import type {
@@ -13,6 +15,7 @@ import type {
 } from "../lib/billing-api";
 import type { WireDoctorSummary } from "../lib/opd-api";
 import { matchReasonKeys } from "../lib/patients-api";
+import { usePatientInHand } from "../lib/patient-in-hand";
 
 /**
  * RC-3 T1 — THE QUOTE PANEL: BENEFITS, THE CONTEST, THE PAYER, AND THE ₹0 REASON.
@@ -1117,6 +1120,11 @@ describe("RC-3 close review — F16/F19: 'start again' means the search box too"
 const DOC_A = summary();
 const DOC_B = summary({ doctor: { ...DOCTOR, id: "d-2", displayName: "Dr Rao", departmentId: "dept-ortho" }, waitingCount: 2 });
 
+/** RC-4 T2 — the flow, as `GET /opd/config` returns it. Only the two flow keys matter to the seat. */
+const QUEUE_FIRST = { counterSequence: "queue_first", tokenLane: "token_first" };
+const BILL_FIRST = { counterSequence: "bill_first", tokenLane: "token_first" };
+const DRAWER_OPEN = { session: { id: "cs-1", status: "open" } };
+
 describe("RC-4 T1 — the walk-in body, as a pure function", () => {
   /**
    * THE THREE FIELD RULES, ASSERTED EXHAUSTIVELY WITH `toEqual` rather than by `toMatchObject`.
@@ -1203,6 +1211,8 @@ describe("RC-4 T1 — registering in place, and the duplicate that must not be a
       "GET /api/auth/me": ME,
       "GET /api/opd/queues/summary": { items: [DOC_A] },
       "GET /api/patients/search": { items: [] },
+      // RC-4 T2 — the seat reads the flow AT OPEN; without this route it refuses to open at all.
+      "GET /api/opd/config": QUEUE_FIRST,
       "POST /api/opd/walk-in": (init?: RequestInit) => {
         sent = JSON.parse(String(init?.body)) as Record<string, unknown>;
         return { patientId: "P-NEW", registered: true, encounter: { id: "E-NEW" }, tokenNo: 7, sessionId: "s-1" };
@@ -1221,6 +1231,7 @@ describe("RC-4 T1 — registering in place, and the duplicate that must not be a
     expect((await screen.findByTestId("dossier-patient")).textContent).toBe("P-NEW");
     expect(JSON.parse(sessionStorage.getItem("hmis.inHand") ?? "{}"))
       .toEqual({ patientId: "P-NEW", encounterId: "E-NEW" });
+    // `toEqual`, so a `join` key can only be here if the flow put it here — under queue_first there is none.
     expect(sent).toEqual({
       patient: { register: { name: "Deepak Munda", sex: "unknown", ageYears: 26 } },
       departmentId: "dept-gm", doctorId: "d-1",
@@ -1242,6 +1253,7 @@ describe("RC-4 T1 — registering in place, and the duplicate that must not be a
       "GET /api/auth/me": ME,
       "GET /api/opd/queues/summary": { items: [DOC_A] },
       "GET /api/patients/search": { items: [] },
+      "GET /api/opd/config": QUEUE_FIRST,
       "POST /api/opd/walk-in": (init?: RequestInit) => {
         calls += 1;
         const body = JSON.parse(String(init?.body)) as { acknowledgedDuplicates?: boolean };
@@ -1296,6 +1308,7 @@ describe("RC-4 T3 — the token the clerk reads out loud", () => {
         new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path === "/api/auth/me") return json({ actor: { type: "user", id: "u-rc4" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
       if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      if (path === "/api/opd/config") return json(QUEUE_FIRST);
       if (path === "/api/patients/search") {
         return json({ items: url.includes("zzzz") ? [] : [{ ...HIT_ASHA, id: "P-B", name: "Binod Sah", matchedOn: ["mobile"] }] });
       }
@@ -1344,5 +1357,339 @@ describe("RC-4 T3 — the token the clerk reads out loud", () => {
     takeInHand("P1", "E1");
     renderWithProviders(<Dossier quote={null} issued={null} canCollect={false} />);
     expect(screen.queryByTestId("dossier-token")).toBeNull();
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   RC-4 T2 — BILL-FIRST: THE DEFERRED JOIN, ITS FIRST CONSUMER SINCE RC-1 WROTE IT (D3)
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+function visitWith(over: Partial<SeatVisit> = {}): SeatVisit {
+  return {
+    encounterId: "E-A", patientId: "P-A", tokenNo: null,
+    flow: { counterSequence: "bill_first", tokenLane: "token_first" },
+    draftId: "draft-1", joining: false, joinError: null, ...over,
+  };
+}
+
+const ISSUED: WireIssueInvoiceResult = {
+  invoiceId: "inv-1", invoiceNo: "INV/1", totals: quoteWith().draft!.totals,
+  receiptId: "rcpt-1", receiptNo: "RC/1", allocatedPaise: 40_000, unallocatedPaise: 0,
+  creditExtended: false, settlement: { state: "settled", outstandingPaise: 0 }, warnings: [],
+};
+
+describe("RC-4 T2 — the join fires after the money, as a pure decision", () => {
+  /**
+   * THE MUTANT THE ASSERTION BOOK NAMES, and the reason it is a pure function: `joinQueue` has NO
+   * settlement gate server-side (the stamp is derived, so the server would stamp an early join
+   * UNPAID — truthfully), which means the whole of "the token leaves the printer already PAID"
+   * is this one predicate. A version that ignored the money is the mutant; this row is its kill.
+   */
+  it("MUTANT — a priced, unissued bill-first visit must NOT join: that is the UNPAID token on the board", () => {
+    expect(shouldJoinNow(visitWith(), quoteWith({ encounterId: "E-A" }), null)).toBe(false);
+  });
+
+  it("joins once the invoice is issued — settled or credit-extended, both lawful exits", () => {
+    expect(shouldJoinNow(visitWith(), quoteWith({ encounterId: "E-A" }), ISSUED)).toBe(true);
+    expect(shouldJoinNow(visitWith(), quoteWith({ encounterId: "E-A" }), { ...ISSUED, creditExtended: true })).toBe(true);
+  });
+
+  it("joins a FREE revisit without any invoice — the third lawful exit has no money to wait for", () => {
+    expect(shouldJoinNow(visitWith(), quoteWith({ encounterId: "E-A", free: true, draft: null }), null)).toBe(true);
+  });
+
+  it("a free quote for ANOTHER encounter does not release this one (F1's class)", () => {
+    expect(shouldJoinNow(visitWith(), quoteWith({ encounterId: "E-OTHER", free: true, draft: null }), null)).toBe(false);
+  });
+
+  it("never joins under queue_first (the walk-in already did), nor twice, nor while in flight, nor after a refusal", () => {
+    const q = quoteWith({ encounterId: "E-A" });
+    expect(shouldJoinNow(visitWith({ flow: { counterSequence: "queue_first", tokenLane: "token_first" }, tokenNo: 3 }), q, ISSUED)).toBe(false);
+    expect(shouldJoinNow(visitWith({ tokenNo: 42 }), q, ISSUED)).toBe(false);
+    expect(shouldJoinNow(visitWith({ joining: true }), q, ISSUED)).toBe(false);
+    expect(shouldJoinNow(visitWith({ joinError: "encounter_state_conflict" }), q, ISSUED)).toBe(false);
+    expect(shouldJoinNow(null, q, ISSUED)).toBe(false);
+  });
+});
+
+describe("RC-4 T2 — which token the clerk may read out (token_lane is stamps and printing only)", () => {
+  const QF_ON_PAYMENT = { counterSequence: "queue_first", tokenLane: "token_on_payment" } as const;
+
+  it("queue_first + token_first: the number is read out at once", () => {
+    expect(tokenToShow(visitWith({ flow: QUEUE_FIRST as SeatVisit["flow"], tokenNo: 7 }), quoteWith({ encounterId: "E-A" }), null)).toBe(7);
+  });
+
+  it("queue_first + token_on_payment: the number exists and is HELD BACK until the money, then shown", () => {
+    const priced = quoteWith({ encounterId: "E-A" });
+    expect(tokenToShow(visitWith({ flow: QF_ON_PAYMENT, tokenNo: 7 }), priced, null)).toBeNull();
+    expect(tokenToShow(visitWith({ flow: QF_ON_PAYMENT, tokenNo: 7 }), priced, ISSUED)).toBe(7);
+    expect(tokenToShow(visitWith({ flow: QF_ON_PAYMENT, tokenNo: 7 }), quoteWith({ encounterId: "E-A", free: true, draft: null }), null)).toBe(7);
+  });
+
+  it("bill_first: there is no number to hold back until the join fills it", () => {
+    expect(tokenToShow(visitWith(), quoteWith({ encounterId: "E-A" }), ISSUED)).toBeNull();
+    expect(tokenToShow(visitWith({ tokenNo: 42 }), quoteWith({ encounterId: "E-A" }), ISSUED)).toBe(42);
+  });
+
+  /**
+   * THE ENUMS ARE MIRRORED, NOT IMPORTED — the web cannot reach core — so they are pinned against
+   * `modules/opd/config.ts` READ AS TEXT, the discipline `SEAT_TENDER_ORDER` already uses on
+   * `tender-editor.tsx`. A value added or renamed on one side without the other fails here, before
+   * a seat sends a sequence the server's zod refuses (or worse, the server adds a lane the pill
+   * cannot show).
+   */
+  it("the web's COUNTER_SEQUENCES / TOKEN_LANES are exactly core's", () => {
+    const core = readFileSync(resolve(__dirname, "../../../core/src/modules/opd/config.ts"), "utf8");
+    const seq = /export const COUNTER_SEQUENCES = \[([^\]]+)\] as const;/.exec(core)?.[1] ?? "";
+    const lanes = /export const TOKEN_LANES = \[([^\]]+)\] as const;/.exec(core)?.[1] ?? "";
+    const parse = (raw: string): string[] => raw.split(",").map((x) => x.trim().replace(/^"|"$/g, "")).filter((x) => x !== "");
+    expect(parse(seq)).toEqual([...COUNTER_SEQUENCES]);
+    expect(parse(lanes)).toEqual([...TOKEN_LANES]);
+    expect(COUNTER_SEQUENCES.length).toBeGreaterThan(1); // the regex matched something real
+  });
+});
+
+describe("RC-4 T2 — bill-first through the ASSEMBLED seat, two patients (method §5A.3)", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+  });
+
+  const ME = { actor: { type: "user", id: "u-rc4" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } };
+
+  /**
+   * The wire log: every write the seat makes, in order. The assertion book's kill is an ORDER —
+   * the join before the invoice — so the test records the order rather than counting calls.
+   */
+  type Log = { method: string; path: string; body: unknown }[];
+
+  function billFirstStub(over: { config?: unknown; drawer?: unknown; quoteFor?: (id: string) => unknown; join?: (log: Log) => unknown } = {}): Log {
+    const log: Log = [];
+    let opened = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(typeof input === "string" ? input : (input as Request).url);
+      const path = url.split("?")[0]!;
+      const method = init?.method ?? "GET";
+      const json = (body: unknown, status = 200): Response =>
+        new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+      if (method !== "GET") log.push({ method, path, body: init?.body === undefined ? undefined : JSON.parse(String(init.body)) });
+      if (path === "/api/auth/me") return json(ME);
+      if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      if (path === "/api/opd/config") return json(over.config ?? BILL_FIRST);
+      if (path === "/api/billing/sessions/current") return json(over.drawer ?? DRAWER_OPEN);
+      if (path === "/api/patients/search") {
+        return json({ items: url.includes("zzzz") ? [] : [{ ...HIT_ASHA, id: "P-B", name: "Binod Sah", matchedOn: ["mobile"] }] });
+      }
+      if (path === "/api/opd/walk-in" && method === "POST") {
+        opened += 1;
+        const body = JSON.parse(String(init?.body)) as { patient: { existingId?: string }; join?: string };
+        const id = opened === 1 ? "A" : "B";
+        // The DEFERRED shape, exactly as `walk-in.ts` returns it: null token, session and entry.
+        const deferred = body.join === "defer";
+        return json({
+          patientId: body.patient.existingId ?? `P-${id}`, registered: body.patient.existingId === undefined,
+          encounter: { id: `E-${id}` },
+          tokenNo: deferred ? null : 9, sessionId: deferred ? null : "s-1", queueEntry: deferred ? null : { id: "qe" },
+        });
+      }
+      const quoteMatch = /^\/api\/billing\/visits\/(E-[AB])\/fee-quote$/.exec(path);
+      if (quoteMatch) return json(over.quoteFor?.(quoteMatch[1]!) ?? quoteWith({ encounterId: quoteMatch[1] }));
+      if (path === "/api/billing/invoices" && method === "POST") return json(ISSUED);
+      const joinMatch = /^\/api\/opd\/visits\/(E-[AB])\/join-queue$/.exec(path);
+      if (joinMatch && method === "POST") {
+        const custom = over.join?.(log);
+        if (custom instanceof Response) return custom;
+        return json(custom ?? { encounter: { id: joinMatch[1] }, queueEntry: { id: "qe-1" }, tokenNo: 42, sessionId: "s-1", roomId: null, alreadyJoined: false });
+      }
+      return new Response("{}", { status: 404 });
+    }));
+    return log;
+  }
+
+  async function registerNew(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
+    await user.type(await screen.findByTestId("find-input"), "zzzz");
+    await user.click(await screen.findByTestId("find-register-new"));
+    await user.type(screen.getByTestId("reg-name"), name);
+    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
+    await user.click(screen.getByTestId("reg-submit"));
+  }
+
+  /**
+   * THE ASSERTION BOOK, DRIVEN END TO END: a bill-first walk-in has NULL token, session and entry
+   * until the money is taken, then joins — and the join is the LAST write on the wire, after the
+   * invoice. Two patients, because RC-3's F1 was invisible with one.
+   */
+  it("defers the join, takes the money HERE, joins AFTER the invoice, and the next patient inherits nothing", async () => {
+    const log = billFirstStub();
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+
+    await registerNew(user, "Amar Bill-First");
+    expect((await screen.findByTestId("dossier-patient")).textContent).toBe("P-A");
+
+    // 1. The walk-in went out with `join: "defer"` — the first time anything on the web has sent it.
+    expect(log[0]).toMatchObject({ method: "POST", path: "/api/opd/walk-in", body: { join: "defer" } });
+    // 2. No token yet, and the dossier says the number is OWED rather than showing a blank.
+    expect(screen.queryByTestId("dossier-token")).toBeNull();
+    expect(await screen.findByTestId("dossier-token-afterPayment")).toBeTruthy();
+    // 3. The seat can take the money for the visit it opened: the lifted tender block is mounted.
+    await screen.findByTestId("collect-panel");
+    expect(screen.queryByTestId("priced-elsewhere")).toBeNull();
+    // 4. THE KILL, before the money: nothing has touched join-queue.
+    expect(log.filter((w) => w.path.endsWith("/join-queue"))).toHaveLength(0);
+
+    await user.type(screen.getByLabelText("Amount"), "400");
+    await user.click(screen.getByTestId("settle"));
+
+    // 5. After the money: the invoice went out, THEN the join, and the token is on the dossier.
+    expect((await screen.findByTestId("dossier-token")).textContent).toContain("42");
+    const writes = log.map((w) => w.path);
+    expect(writes.indexOf("/api/billing/invoices")).toBeGreaterThan(-1);
+    expect(writes.indexOf("/api/opd/visits/E-A/join-queue")).toBeGreaterThan(writes.indexOf("/api/billing/invoices"));
+    expect(writes.filter((p) => p.endsWith("/join-queue"))).toHaveLength(1);
+    expect(screen.getByTestId("exit-settled")).toBeTruthy();
+    // The invoice was for THIS encounter and THIS patient, with the quote's own lines.
+    expect(log.find((w) => w.path === "/api/billing/invoices")?.body).toMatchObject({
+      patientId: "P-A", encounterId: "E-A", lines: [{ lineId: "fee", serviceId: "SVC-CONSULT", qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 40_000 }] },
+    });
+
+    // 6. SECOND PATIENT. Escape clears the desk; a found patient comes in hand with no encounter.
+    fireEvent.keyDown(window, { key: "Escape" });
+    await user.type(await screen.findByTestId("find-input"), "98765");
+    await user.click(await screen.findByTestId("find-hit-P-B"));
+    expect((await screen.findByTestId("dossier-patient")).textContent).toBe("P-B");
+    expect(screen.queryByTestId("dossier-token")).toBeNull();
+    expect(screen.queryByTestId("exit-settled")).toBeNull();
+    expect(screen.queryByTestId("collect")).toBeNull();
+
+    // 7. The EXISTING patient's door: the four fields fold away, the doctor is asked, the visit opens deferred.
+    expect(screen.queryByTestId("reg-name")).toBeNull();
+    await user.selectOptions(await screen.findByTestId("reg-doctor"), "d-1");
+    await user.click(screen.getByTestId("reg-submit"));
+    await screen.findByTestId("dossier-token-afterPayment");
+    expect(log.filter((w) => w.path === "/api/opd/walk-in")[1]).toMatchObject({ body: { patient: { existingId: "P-B" }, join: "defer" } });
+    // Nothing of A: no token 42, no settled exit, one join in the whole log so far — B's is still owed.
+    expect(screen.queryByTestId("dossier-token")).toBeNull();
+    expect(screen.queryByTestId("exit-settled")).toBeNull();
+    expect(log.filter((w) => w.path.endsWith("/join-queue"))).toHaveLength(1);
+    await screen.findByTestId("collect-panel"); // and B's own money can be taken
+  });
+
+  /**
+   * ═══ R26/R27 — TWO REVERTS THAT COULD NOT FAIL, AND WHAT THEY TAUGHT ═══
+   *
+   * The two-patient test above goes through `Escape`, and `clearDesk` resets the visit and the
+   * invoice — so dropping the encounter-keyed accessors (`hereVisit`, `issued`) left it green.
+   * The keying is for the road that does NOT pass through `clearDesk`: the command palette, or
+   * any other screen inside the same `PatientInHandProvider`, taking a different patient in hand
+   * while the seat is mounted. `Taker` is that other surface. With the keying gone, B is shown A's
+   * token, A's "Paid in full", and — the money defect — a collect panel whose `settle` would issue
+   * A's draft against A's encounter for B's cash.
+   */
+  it("a patient taken in hand by ANOTHER surface inherits neither A's token, A's exit, nor A's invoice draft", async () => {
+    const log = billFirstStub();
+    function Taker(): React.ReactElement {
+      const { takePatient, takeEncounter } = usePatientInHand();
+      return <>
+        <button type="button" data-testid="take-b" onClick={() => takePatient("P-B")}>b</button>
+        <button type="button" data-testid="take-b-visit" onClick={() => takeEncounter("E-B")}>b visit</button>
+      </>;
+    }
+    renderWithProviders(<><RegistrationCounter /><Taker /></>);
+    const user = userEvent.setup();
+
+    await registerNew(user, "Amar Bill-First");
+    await screen.findByTestId("collect-panel");
+    await user.type(screen.getByLabelText("Amount"), "400");
+    await user.click(screen.getByTestId("settle"));
+    expect((await screen.findByTestId("dossier-token")).textContent).toContain("42");
+    expect(screen.getByTestId("exit-settled")).toBeTruthy();
+
+    // The palette takes B — no Escape, no clearDesk — and then B's visit is opened elsewhere.
+    await user.click(screen.getByTestId("take-b"));
+    expect((await screen.findByTestId("dossier-patient")).textContent).toBe("P-B");
+    await user.click(screen.getByTestId("take-b-visit"));
+    expect((await screen.findByTestId("dossier-encounter")).textContent).toBe("E-B");
+    await screen.findByTestId("priced-elsewhere"); // B's own quote arrived, and the seat cannot see B's money
+    expect(screen.queryByTestId("dossier-token")).toBeNull();     // R26's kill
+    expect(screen.queryByTestId("exit-settled")).toBeNull();      // R27's kill
+    expect(screen.queryByTestId("collect-panel")).toBeNull();     // and no way to spend A's draft on B
+    expect(log.filter((w) => w.path === "/api/billing/invoices")).toHaveLength(1);
+  });
+
+  it("a FREE revisit under bill-first joins on the quote alone — no invoice, no tender, a token", async () => {
+    const log = billFirstStub({ quoteFor: (id) => quoteWith({ encounterId: id, free: true, draft: null, feeServiceId: null }) });
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+    await registerNew(user, "Free Revisit");
+
+    expect((await screen.findByTestId("dossier-token")).textContent).toContain("42");
+    expect(screen.getByTestId("exit-free")).toBeTruthy();
+    expect(screen.queryByTestId("collect-panel")).toBeNull();
+    expect(log.map((w) => w.path)).toEqual(["/api/opd/walk-in", "/api/opd/visits/E-A/join-queue"]);
+  });
+
+  /**
+   * THE DRAWER GATE. A deferred visit with no money is a patient nobody will call: no token, no
+   * queue entry, and a seat that cannot issue the invoice that would earn one. So the bill-first
+   * door is shut BEFORE the walk-in when the drawer is not open — lifted from `counter-desk.tsx`,
+   * where the same check exists because the old screen discovered it at the payment step.
+   */
+  it("bill-first with a closed drawer refuses BEFORE the walk-in — nothing is opened that cannot be finished", async () => {
+    const log = billFirstStub({ drawer: { session: null } });
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+    await registerNew(user, "No Drawer");
+
+    expect((await screen.findByTestId("reg-error")).textContent).toContain("drawer");
+    expect(log).toHaveLength(0); // THE KILL: no walk-in, no deferred visit stranded
+    expect(screen.getByTestId("dossier-empty")).toBeTruthy();
+  });
+
+  it("queue_first + token_on_payment: the number is held back until the money, then read out", async () => {
+    const log = billFirstStub({ config: { counterSequence: "queue_first", tokenLane: "token_on_payment" } });
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+    await registerNew(user, "Slip Later");
+
+    await screen.findByTestId("dossier-token-afterPayment");
+    expect(screen.queryByTestId("dossier-token")).toBeNull();
+    expect(log[0]!.body).not.toHaveProperty("join"); // queue_first: the walk-in joined already
+    await screen.findByTestId("collect-panel");
+    await user.type(screen.getByLabelText("Amount"), "400");
+    await user.click(screen.getByTestId("settle"));
+
+    expect((await screen.findByTestId("dossier-token")).textContent).toContain("9"); // the walk-in's own token
+    expect(log.filter((w) => w.path.endsWith("/join-queue"))).toHaveLength(0); // never a second join
+  });
+
+  it("a refused join is shown with a way through, and the retry joins once", async () => {
+    let attempts = 0;
+    const log = billFirstStub({
+      join: () => {
+        attempts += 1;
+        if (attempts === 1) {
+          return new Response(JSON.stringify({ statusCode: 409, message: "not today", code: "encounter_state_conflict" }), { status: 409, headers: { "Content-Type": "application/json" } });
+        }
+        return undefined;
+      },
+    });
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+    await registerNew(user, "Join Fails");
+    await screen.findByTestId("collect-panel");
+    await user.type(screen.getByLabelText("Amount"), "400");
+    await user.click(screen.getByTestId("settle"));
+
+    await screen.findByTestId("join-failed");
+    expect(screen.queryByTestId("dossier-token")).toBeNull();
+    // A refusal does NOT loop: exactly one attempt stands until the clerk asks for another.
+    expect(log.filter((w) => w.path.endsWith("/join-queue"))).toHaveLength(1);
+    // "Next patient" is not withheld by a failed join — the money is taken and the exit is real;
+    // the retry is the way to the token.
+    await user.click(screen.getByTestId("join-retry"));
+    expect((await screen.findByTestId("dossier-token")).textContent).toContain("42");
+    expect(log.filter((w) => w.path.endsWith("/join-queue"))).toHaveLength(2);
   });
 });
