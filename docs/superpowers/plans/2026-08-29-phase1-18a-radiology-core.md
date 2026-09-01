@@ -1502,6 +1502,94 @@ invoice link, `authorised_by`, the bill-decision queue, the three fields on the 
 clause at a time.** Both defects sat under a green suite of 343 tests and thirty dead mutants, and
 both were found by prose comparison in under ten minutes.
 
+
+---
+
+## ═══ THE CLOSING FULL VERIFY, AND THE FOUR FINDINGS THE SELF-REVIEW ADDED (2026-09-01) ═══
+
+### The full workspace pass — `hmis_18a_verify`, HEAD `ed754cc`, 16:05 → 16:49
+
+Its OWN database, so nothing this session ran alongside could contend, and §2.151's sequential
+capped form (`maxWorkers: 2`).
+
+| half | result |
+|---|---|
+| `apps/core` | **3 314 passed / 3 315 · 338 suites passed, 9 failed** |
+| `apps/web` | **67 files / 404 tests, exit 0** |
+| `@hmis/contracts` | **4 suites / 21 tests, exit 0** |
+| contention census | **`Exceeded timeout` 0 · `deadlock` 0 · `SIGKILL` 0 · `duplicate key` 0** |
+
+**Eight of the nine failing suites are ONE compile error in another lane's file** —
+`modules/opd/config.ts:135`, `Property 'noticeRanges' is missing`, the VD-1 vitals work mid-edit in
+the shared checkout. `src/modules/radiology/reports.test.ts` is among the eight and **failed to RUN
+rather than failing an assertion**; it passes in isolation. Not this lane's, and the zero contention
+census is what makes that claim checkable rather than convenient.
+
+**The ONE genuinely failing test was this lane's**, and it is F44.
+
+### F44 — A DOC COMMENT THAT QUOTES A DECORATOR *IS* A DECORATOR, TO A TEXT-PARSING CENSUS.
+
+`roles-catalog.e2e.test.ts` walks every `.ts` under `src` and matches
+`/@RequirePermission\(\s*([^)]*?)\s*\)/gs`, asserting each match carries a scope literal. It found
+one that did not: **a sentence in `radiology-reports.controller.ts`'s header explaining the
+`secondFactor` option, which quoted the decorator verbatim.**
+
+The census cannot tell prose from code — it reads source as TEXT, exactly as `nav-parity` and
+`caddyfile-parity` do, and for the same good reason. So the fix is the comment's: the option is now
+named without the `@` and the parentheses, with a note saying why. Making the census comment-aware
+would be a larger change to another task's file for a cosmetic gain.
+
+**The generalisable form: in a repository that polices itself with text censuses, a doc comment is
+executable.** Writing `@RequirePermission(…)` in prose is the same act as writing it in code, and the
+only reliable defence is to not spell the thing you are describing.
+
+### F41 — BOTH ERROR UNIONS LACK A "YOU LACK THIS PERMISSION" CODE, AND BOTH MODULES IMPROVISED ONE.
+*(reported, NOT fixed — `errors.ts` says to report)*
+
+`errors.ts`'s header is explicit: *"a later task that needs a code this union does not carry has
+found a PLAN DEFECT and reports it. It does not widen the union and it does not borrow a
+neighbouring code to mean something else."* T5–T8 borrowed in five places:
+
+| borrowed | for | status | verdict |
+|---|---|---|---|
+| `unknown_study` | an unknown GATE | 404 | **defensible** — `ot/gates.ts` uses `unknown_case` identically, and it is documented at the call site |
+| `unknown_study` | an unknown report, bill decision or invoice line | 404 | borrowed |
+| `unknown_study` | *a permission refusal* in `read.ts` | **404** | **the worst of the five** — an authorisation failure answering 404. It never surfaces over HTTP because the controller guard returns 403 first, so only an internal caller sees it |
+| `already_signed` | a report already PUBLISHED, and a critical already ACKNOWLEDGED | 409 | borrowed |
+| `already_acquired` | a bill decision already RESOLVED | 409 | borrowed |
+| `person_not_registered` | a permission refusal in `pcpndt` | 403 | borrowed, but the STATUS is right and the message names the permission |
+
+**Reported rather than taken**, because the alternative is to widen a union T2 closed deliberately —
+and the rule exists so that the widening is a decision somebody makes, not a side effect of needing
+a word. **The close review owns it.** The concrete ask is two codes per union: an
+`already_terminal`-shaped one and a `forbidden`-shaped one.
+
+### F42 — THE WORKLIST LOGGED ONE PHI ROW FOR AN N-PATIENT DISCLOSURE. *(fixed)*
+
+`recordPhiAccess` was called once per read with `visible[0].patientId`, so a technologist opening a
+twenty-row list left ONE audit row and *"who looked at patient P7's record"* returned nothing for
+nineteen of them. On an empty list it wrote the literal string `"worklist"` as a patient id, which
+the column accepts because `phi_access_log.patient_id` carries no foreign key.
+
+**A partial access log is worse than none, because it looks complete.** DD11 declared
+`imaging.worklist` a PHI surface precisely so this read is answerable, and the only shape that
+answers it is one row per distinct patient. Fixed.
+
+### F43 — THE WORKLIST'S 200-ROW CAP COULD DROP A `stat` STUDY. *(fixed)*
+
+The query ordered by `scheduled_at` and truncated at 200; the PRIORITY sort lived on the screen and
+was therefore applied only to the rows that survived the cap. In a busy department a stat scan
+slotted late in the day falls outside the window, and the client then sorts stat-first over a set
+that no longer contains it — **the one row that had to be seen is the one that was dropped.**
+
+Fixed by ordering `stat → urgent → routine` IN SQL, so truncation can only ever drop routine work.
+**Pagination is still owed and is named rather than implied**: a department with more than 200 live
+studies loses the tail, and the honest fix is a cursor, which is a screen this slice does not have.
+
+**All three of F42, F43 and F44 were found by a READING pass over this phase's own diff, under a
+suite of 3 315 tests and thirty dead mutants. None had a failing test; F44 had one only because a
+census in another task's file happened to parse prose.**
+
 ### 9.4 The Assertion Book, corrected by execution
 
 **T1 is ROUTINE, so no mutants are owed** (AGENT-RULES §3) and none were built; the report says so
@@ -1984,21 +2072,49 @@ entirely unspent.
 
 ### 9.7 Actuals, recorded only after §9.6 exists (v3 §9.4)
 
-**NOT RECORDED, and that is the rule rather than an omission** (v3 §9.4: a LIGHT phase's saving is
-not a saving until its reviewer has run). What can be said: the phase is paused at **T1 of nine**,
-no reviewer has run, and the review term — **463,509 of the 736,000 stop-loss** — is entirely
-unspent. A resumed session should price itself from a fresh baseline, not from this one, because
-**a paused lane's largest cost was not its code**: it was reading a shared tree that changed under it
-and re-measuring facts that had already moved.
+**STILL NOT RECORDED, and that is still the rule rather than an omission** (v3 §9.4: a LIGHT
+phase's saving is not a saving until its reviewer has run). **Updated 2026-09-01 — the text below
+described a phase paused at T1 and had been false for eight commits.**
+
+What can be said now: **all nine tasks are code-complete and pushed** (T1 `d5abf6a` → §6's
+confirmation), **no independent reviewer has run**, and the review term — **463,509 of the 736,000
+stop-loss** — is still entirely unspent. Actuals wait on §9.6.
+
+The one cost observation worth carrying forward, because it repeated all the way through: **this
+lane's largest recurring expense was not writing code — it was a shared checkout.** Two full
+verifies were abandoned as unattributable, one CI run came back red in another lane's files, one
+tree failed to typecheck three separate times mid-task, and a calendar bomb in a shared fixture cost
+two lanes an afternoon between them. None of that is in the code and all of it is in the clock.
 
 ### 9.8 The question this phase existed to answer
 
-**Still open.** The question was *what shape the first radiology slice takes on an envelope that
-already exists and a statutory table that does not.* T1 answers the second half in the only way that
-counts — **the statutory table now exists, with a gap-free serial series per machine per year, a
-whole-row immutability trigger, and a Form F that no role, flag or hour of the night can reach
-around** — and the first half is untouched: no manifest claims `imaging`, so the envelope still has
-zero consumers and `parity.test.ts` still reads `['lab']` rather than `['imaging','lab']`.
+**ANSWERED. Updated 2026-09-01; the text below it described the state at T1.**
+
+The question was *what shape the first radiology slice takes on an envelope that already exists and
+a statutory table that does not.*
+
+**On the envelope: the claim costs one field.** `radiologyManifest` gained `orderKinds` and nothing
+in the kernel changed — `collectOrderKinds` now reads `['imaging','lab']` off the registry, and T9's
+e2e proves it resolves off the manifest that is actually installed rather than off a fixture's decl.
+Phase 0's contract held exactly as written: *"to become an ordering department, a module adds ONE
+field to its manifest and declares `placePermission` in its own permissions. It edits no kernel
+file."* Four kernel edits were made in the end and all four were APPENDS to unions (`PhiSurface`
+×4), none a change to behaviour.
+
+**On the statutory table: it is a module, not a table.** The sharpest thing this phase learned is
+that `pcpndt` had to be its OWN manifest — 15b and 62 install the register without installing a
+department, `study_id` is text rather than an FK, and the serial series is per machine per year so
+that a Form F written from a mini-OT portable and one written in the radiology suite land in one
+inspector's book. A table inside `modules/radiology` would have made the mini-OT import a department
+in order to write a statutory row, and the first thing to break would have been the serial series —
+the property the whole Act turns on.
+
+**And the answer neither half predicted**: the statutory half was the one with a live defect in it.
+`0047`'s immutability trigger froze a Form F on INSERT, so `open → recorded` was impossible and **no
+PCPNDT-applicable scan could ever have been acquired** (F25). It was found by probing the database
+before the module existed, not by any test — and it had sat green through T1's own suite, which
+asserted the trigger refused what it should refuse and never that it permitted what it must permit.
+**A constraint test that only tries the forbidden direction is half a test.**
 
 ---
 

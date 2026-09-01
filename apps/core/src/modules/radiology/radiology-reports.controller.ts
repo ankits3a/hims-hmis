@@ -26,10 +26,14 @@ import type { ModuleRegistry } from "../../kernel/modules/loader";
  * the signature attest to its own freshness. So the controller reads it off `req.hmisSession` and
  * the service compares; the body cannot carry it and there is no parameter for it.
  *
- * `@RequirePermission(..., { secondFactor: true })` is the guard's own half of the same rule: it
- * refuses the request outright when the session's factor is stale. The service check is not
- * redundant with it — the guard protects the ROUTE and the service protects the FUNCTION, and T9's
- * end-to-end proof and any future internal caller reach only the second.
+ * The decorator's own `secondFactor: true` option is the guard's half of the same rule: it refuses
+ * the request outright when the session's factor is stale. The service check is not redundant with
+ * it — the guard protects the ROUTE and the service protects the FUNCTION, and T9's end-to-end
+ * proof and any future internal caller reach only the second.
+ *
+ * (That option is named here WITHOUT the decorator's `@` and parentheses on purpose — F44:
+ * `roles-catalog.e2e.test.ts` parses this whole tree as TEXT, so a comment quoting a decorator
+ * verbatim is indistinguishable from one, and this file's prose failed that census for real.)
  */
 const contentBody = z.object({
   templateKey: z.string().min(1).max(40).optional(),

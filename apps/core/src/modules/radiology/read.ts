@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { imagingReports, imagingStudies } from "../../kernel/db/schema/radiology";
@@ -125,7 +125,20 @@ export async function worklist(
       ...(opts.deviceResourceId === undefined
         ? [] : [eq(imagingStudies.deviceResourceId, opts.deviceResourceId)]),
     ))
-    .orderBy(asc(imagingStudies.scheduledAt))
+    /**
+     * ═══ `stat` FIRST IN SQL, BECAUSE THE CAP TRUNCATES BEFORE THE CLIENT SORTS (F43) ═══
+     *
+     * The first draft ordered by slot alone and left the priority sort to the screen. With a cap of
+     * 200 that is a clinical defect rather than a cosmetic one: in a busy department a STAT scan
+     * slotted late in the day falls outside the window, and the client then sorts stat-first over
+     * the rows that survived — so the one row that had to be seen is the one that was dropped.
+     *
+     * Ordering by priority HERE means truncation can only ever drop routine work.
+     * **Pagination is still owed** and is named rather than implied: a department with more than
+     * 200 live studies loses the tail of the list, and the honest fix is a cursor, which is a
+     * screen this slice does not have (§1.3).
+     */
+    .orderBy(sql`case when ${imagingStudies.priority} = 'stat' then 0 when ${imagingStudies.priority} = 'urgent' then 1 else 2 end`, asc(imagingStudies.scheduledAt))
     .limit(opts.limit ?? 200);
 
   /**
@@ -135,12 +148,23 @@ export async function worklist(
   const visible = rows.filter((r) =>
     !r.restricted || clearance.canSeeRestricted || r.orderingClinicianId === clearance.userId);
 
-  await recordPhiAccess(db, {
-    actor,
-    patientId: visible[0]?.patientId ?? "worklist",
-    surface: "imaging.worklist",
-    reason: `radiology worklist (${opts.view ?? "floor"}), ${String(visible.length)} rows`,
-  });
+  /**
+   * ═══ ONE ROW PER PATIENT DISCLOSED, NOT ONE ROW PER READ (F42) ═══
+   *
+   * The first draft logged a single row carrying `visible[0].patientId` — so a technologist opening
+   * a twenty-row list left ONE audit row, and *"who looked at patient P7's record"* returned nothing
+   * for nineteen of them. **A partial access log is worse than none, because it looks complete.**
+   * (It also wrote the literal string `"worklist"` when the list was empty, which the column accepts
+   * because `phi_access_log.patient_id` carries no foreign key.)
+   *
+   * DD11 declared `imaging.worklist` a PHI surface precisely so this read is answerable, and the
+   * only shape that answers it is one row per distinct patient. `recordPhiAccess` never throws (its
+   * own header) and the table is pruned at `PHI_ACCESS_RETAIN_DAYS`, so the volume is bounded.
+   */
+  const reason = `radiology worklist (${opts.view ?? "floor"}), ${String(visible.length)} rows`;
+  for (const patientId of new Set(visible.map((r) => r.patientId))) {
+    await recordPhiAccess(db, { actor, patientId, surface: "imaging.worklist", reason });
+  }
 
   return visible.map((r) => ({
     studyId: r.studyId, accessionNo: r.accessionNo, status: r.status, priority: r.priority,
