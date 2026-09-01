@@ -7,7 +7,7 @@ import {
   recordReceipt, registerFeeStatusHook, reverseAllocation,
 } from "../billing";
 import { allocations, events, invoiceLines, opdQueueEntries } from "../../kernel/db/schema";
-import { joinQueue, moveEncounter, openVisit } from "./encounters";
+import { counterState, joinQueue, moveEncounter, openVisit } from "./encounters";
 import { withTx } from "../../kernel/db/client";
 import { queueFeeStatusHook } from "./queue";
 import type { BillingBaseFixture } from "../../../test/helpers/billing";
@@ -222,6 +222,52 @@ describe("RC-1 T3 — fee status projection and the board flip", () => {
       receipt: { tenders: [{ mode: "cash", amountPaise: 59_000 }] },
     });
     expect(await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, opened.encounter.id))).toHaveLength(1);
+  });
+
+  /**
+   * ═══ PASS 2, N1 (MAJOR) — THE ROAD R37 COULD NOT FIND, BUILT ═══
+   * A LAB invoice against a deferred visit settles: arriving via, fee still `unsettled` → the hook
+   * returns before the join (the A-b guard). Its receipt is then VOIDED: a LEAVING via, fee still
+   * `unsettled`, and the direction check no longer stops it. Without `if (status === "unsettled")
+   * return;` the four remaining guards all pass and an UNPAID token is minted in the bill-first
+   * lane. The first remediation deleted that line on the argument that this road did not exist.
+   */
+  it("N1 — a LEAVING via on a non-fee invoice does NOT join an unpaid deferred visit", async () => {
+    const patient = await mkPatient(db, clerk, { phone: "9899100017" });
+    const opened = await openVisit(db, clerk, { patientId: patient.id, departmentId: deptId, doctorId, join: "defer" });
+    const lab = await issueInvoice(db, clerk, {
+      draftId: "fs-d17", patientId: patient.id, encounterId: opened.encounter.id,
+      lines: [{ lineId: "l1", serviceId: base.genericServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 59_000 }] },
+    });
+    expect((await encounterFeeStatuses(db, [opened.encounter])).get(opened.encounter.id)).toBe("unsettled");
+    expect(await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, opened.encounter.id))).toHaveLength(0);
+
+    const receiptId = (await db.select().from(allocations).where(eq(allocations.invoiceId, lab.invoiceId))).find((a) => a.kind === "apply")!.receiptId!;
+    await markEnteredInError(db, clerk, { receiptId, reason: "wrong patient" }); // LEAVING via, fee unsettled
+    expect(await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, opened.encounter.id))).toHaveLength(0); // THE KILL
+  });
+
+  /**
+   * PASS 2, N2+N3 — the counter's own read. The predicate is the projection, not "an invoice
+   * exists": an entered-in-error fee invoice leaves `unsettled` (the seat may collect again), a lab
+   * invoice leaves `unsettled` (no join door), and the token is reported whatever the entry's state.
+   */
+  it("counterState answers status, fee status, ever-joined and token — and follows the projection through a void", async () => {
+    const patient = await mkPatient(db, clerk, { phone: "9899100018" });
+    const opened = await openVisit(db, clerk, { patientId: patient.id, departmentId: deptId, doctorId, join: "defer" });
+    expect(await counterState(db, opened.encounter.id)).toEqual({
+      encounterId: opened.encounter.id, status: "registered", serviceDate: opened.encounter.serviceDate,
+      feeStatus: "unsettled", everJoined: false, tokenNo: null,
+    });
+    const issued = await payFee(patient.id, opened.encounter.id, "fs-d18");
+    expect(await counterState(db, opened.encounter.id)).toMatchObject({ feeStatus: "settled", everJoined: true, tokenNo: 1 });
+
+    const receiptId = (await db.select().from(allocations).where(eq(allocations.invoiceId, issued.invoiceId))).find((a) => a.kind === "apply")!.receiptId!;
+    await markEnteredInError(db, clerk, { receiptId, reason: "duplicate capture" });
+    // The money left; the token it earned stays on the board (UNPAID now — the stamp is derived). The seat may collect again.
+    expect(await counterState(db, opened.encounter.id)).toMatchObject({ feeStatus: "unsettled", everJoined: true, tokenNo: 1 });
+    expect(await counterState(db, "no-such-encounter")).toBeNull();
   });
 
   it("a DEFERRED visit whose fee is only PARTLY covered stays out of the queue — the money has not landed", async () => {

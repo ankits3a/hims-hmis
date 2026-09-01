@@ -7,7 +7,7 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
-import { abandonVisit, getVisit, joinQueue, listVisits, openVisit, patientTimeline, reEnterVisit } from "./encounters";
+import { abandonVisit, counterState, getVisit, joinQueue, listVisits, openVisit, patientTimeline, reEnterVisit } from "./encounters";
 import { patientRxHistory, patientVitalsHistory } from "./history";
 import type { RxHistoryItem, VitalsHistoryItem } from "./history";
 import { walkIn } from "./walk-in";
@@ -26,7 +26,7 @@ import type { BenchRow } from "./bench";
 import type { EscalationView } from "./escalation";
 import type { PreStage } from "./prestage";
 import type { AppointmentRow } from "./appointments";
-import type { EncounterRow, JoinQueueResult, OpenVisitResult, QueueEntryRow, TimelineItem, VitalsRow } from "./encounters";
+import type { CounterState, EncounterRow, JoinQueueResult, OpenVisitResult, QueueEntryRow, TimelineItem, VitalsRow } from "./encounters";
 import type { Slot } from "./slots";
 import type { PatientSummary } from "../patients";
 import type { Db } from "../../kernel/db/client";
@@ -323,6 +323,20 @@ export class OpdVisitsController {
     if (!found) toHttp(new OpdError("unknown_encounter", `unknown encounter ${id}`));
     const [summary] = await getPatientSummaries(this.db, actor, [found.encounter.patientId]);
     return { ...found, patient: summary ?? null };
+  }
+
+  /**
+   * RC-4 CLOSE / pass 2 N2+N3 — the counter's polled read: status, fee status, whether the visit
+   * has ever joined, and its token. No patient, no clinical payload, no PHI log — it carries none.
+   * Under the seat's own permission. A sealed patient's visit answers the same as any other: the
+   * seat holds the encounter id because it opened the visit, and a token number is not PHI.
+   */
+  @RequirePermission("opd.visits.open", "hospital")
+  @Get("visits/:id/counter-state")
+  async counterStateRoute(@Param("id") id: string): Promise<CounterState> {
+    const state = await counterState(this.db, id);
+    if (!state) toHttp(new OpdError("unknown_encounter", `unknown encounter ${id}`));
+    return state;
   }
 
   @RequirePermission("opd.visits.open", "hospital")

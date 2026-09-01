@@ -2038,7 +2038,9 @@
       "submit": "Register and open visit",
       "cancel": "Cancel",
       "existingTitle": "Open a visit",
-      "openVisit": "Open visit"
+      "openVisit": "Open visit",
+      "todaysVisit": "This patient already has a visit today.",
+      "resumeVisit": "Resume today's visit"
     },
     "quote": {
       "title": "Bill",
@@ -2076,7 +2078,7 @@
       "credit": "Credit extended — billed to account",
       "next": "Next patient",
       "pricedElsewhere": "This visit costs ₹{{amount}} — take payment at the billing counter",
-      "invoicedElsewhere": "An invoice already exists for this visit — nothing more to collect here."
+      "coveredElsewhere": "This visit's fee is already covered — nothing more to collect here."
     },
     "collect": {
       "settle": "Take payment",

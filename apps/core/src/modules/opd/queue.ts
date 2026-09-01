@@ -370,14 +370,22 @@ export async function queueFeeStatusHook(
      * doctor, and (the deferred proxy) NO queue entry at all — a queue-first visit whose entry has
      * `left` or `done` has rows and is not re-entered by a payment; that is `re-enter`'s act.
      * Money done means `settled`, `credit`, or `free` (a revisit inside its window, reached here
-     * by an invoice for something else on the visit) — the same three the seat counts. The one
-     * status that must not join, `unsettled`, cannot reach this branch: on an ARRIVING via it
-     * returned above, and a LEAVING via needs money that was covering the fee, which would have
-     * joined the visit in its own transaction — so the visit would have an entry and not be here.
-     * That is by construction, not by a guard, and the R37 revert proved a guard here could not
-     * fail. A refusal from the join is not a refusal of the money: the invoice stands, and the
-     * seat's own `joinQueue` call surfaces the reason.
+     * by an invoice for something else on the visit) — the same three the seat counts.
+     *
+     * ═══ CLOSE REVIEW PASS 2, N1 (MAJOR) — `unsettled` DOES REACH THIS BRANCH, ON A LEAVING VIA ═══
+     * The first remediation removed this guard on the argument that a leaving via "needs money that
+     * was covering the fee, which would have joined the visit" — and R37 stayed green because no
+     * fixture built the road. The road: a LAB invoice against a deferred visit settles (arriving,
+     * fee still `unsettled` → returned above), then its receipt is voided or its allocation
+     * reversed → a LEAVING via with the fee `unsettled` → without this line, four guards pass and
+     * an UNPAID token is minted in the bill-first lane. The pass-2 reviewer built the road; the
+     * test beside this (`fee-status.test.ts`, "N1") walks it and goes red without the guard.
+     *
+     * `joinQueueInTx` can only throw for a state this branch has already excluded (it re-reads the
+     * same row under `FOR UPDATE`); a throw here WOULD abort the settle (`settle-hooks.ts`), which
+     * is why every precondition is checked before the call rather than caught after it.
      */
+    if (status === "unsettled") return;
     if (actor.type !== "user" || encounter.status !== "registered" || encounter.doctorId === null) return;
     const anyEntry = (await tx.select({ id: opdQueueEntries.id }).from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounter.id)).limit(1))[0];
     if (anyEntry) return;

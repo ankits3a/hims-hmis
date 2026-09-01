@@ -9,6 +9,8 @@ import {
 } from "../../kernel/db/schema";
 import { startInstance, transition, WorkflowError } from "../../kernel/workflow/instances";
 import { getPatient, listMergedLoserIds, resolvePatientId } from "../patients";
+import { encounterFeeStatuses } from "../billing";
+import type { EncounterFeeStatus } from "../billing";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { loadOpdConfig } from "./config";
 import { OpdError } from "./errors";
@@ -615,6 +617,38 @@ export async function getVisit(
   const vitals = await db.select().from(opdVitals).where(eq(opdVitals.encounterId, encounterId)).orderBy(asc(opdVitals.recordedAt));
   const prescriptions = await db.select().from(opdPrescriptions).where(eq(opdPrescriptions.encounterId, encounterId)).orderBy(asc(opdPrescriptions.version));
   return { encounter, queueEntries, vitals, prescriptions };
+}
+
+/**
+ * RC-4 CLOSE / pass 2 N2+N3 — WHAT THE COUNTER NEEDS TO KNOW ABOUT A VISIT IN HAND, AND NOTHING
+ * THAT IS PHI. The seat polls this while a patient is in hand, so it must not be `getVisit`: that
+ * route ships vitals, prescriptions and the diagnosis and writes a `phi_access_log` row per call —
+ * four rows a minute per seat, for a screen that reads a token number. And it must not be "does an
+ * invoice exist" (`GET /billing/invoices`): an entered-in-error fee invoice or a lab invoice is an
+ * invoice and is not the fee covered. The predicate is `encounterFeeStatuses`, the ONE projection
+ * the board reads too (D4), so the seat and the board cannot disagree about the money.
+ */
+export type CounterState = {
+  encounterId: string;
+  status: string;
+  serviceDate: string;
+  feeStatus: EncounterFeeStatus | null;
+  /** Has the visit EVER had a queue entry? A deferred visit is `false` until the money joins it. */
+  everJoined: boolean;
+  /** The latest entry's token, whatever its state — the number the clerk reads out. */
+  tokenNo: number | null;
+};
+
+export async function counterState(db: Db, encounterId: string): Promise<CounterState | null> {
+  const encounter = await getEncounter(db, encounterId);
+  if (!encounter) return null;
+  const entries = await db.select({ tokenNo: opdQueueEntries.tokenNo, seq: opdQueueEntries.seq })
+    .from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId)).orderBy(desc(opdQueueEntries.seq)).limit(1);
+  const feeStatus = (await encounterFeeStatuses(db, [encounter])).get(encounter.id) ?? null;
+  return {
+    encounterId, status: encounter.status, serviceDate: encounter.serviceDate, feeStatus,
+    everJoined: entries.length > 0, tokenNo: entries[0]?.tokenNo ?? null,
+  };
 }
 
 export async function listVisits(

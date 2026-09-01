@@ -2447,3 +2447,69 @@ Then attribute by directory rather than assuming — `grep -E "^src/modules/(bil
 EMPTY is what makes "none of these are mine" a measurement instead of a hope. And state the
 consequence out loud: **while any module fails to compile, `test/*.e2e.test.ts` is not an available
 instrument for anybody**, which matters most to the lane whose findings need an e2e to prove.
+
+### 2.165 — A TWO-FILE EDIT HAS A WINDOW, AND A PEER'S FULL PASS CAN COMPILE ONE SIDE OF IT
+
+**THE RULE. A full workspace pass measures a TREE, and a shared checkout does not hold still. Before
+launching one, ask who is EDITING, not only who is running — and land any edit that spans files as
+one write where you can, in one commit always.**
+
+**THE SPECIMEN, 2026-09-01 (RC-4 close, 18a close).** The 18a lane asked the RC-4 lane whether it was
+*running* anything, was told no, and launched its closing full pass. Thirty seconds later RC-4's
+close-review remediation wrote `opd/queue.ts` (which imports `joinQueueInTx`) and then
+`opd/encounters.ts` (which exports it). The pass compiled the first file before the second existed:
+
+```
+FAIL src/modules/lab/interlock.test.ts · partners/sources.test.ts · radiology/acquisition.test.ts
+  src/modules/opd/queue.ts:12:24 - error TS2724: '"./encounters"' has no exported member named 'joinQueueInTx'
+```
+
+Three suites in unrelated modules were dead, for the reason §2.164 gives: a per-suite compile of an
+import graph that crosses the edit. **The window was one tool call wide and it was enough.** The
+18a lane's pass was unattributable and had to be relaunched over a still tree — 45 minutes.
+
+**Why the two questions feel like one, and are not (the 18a lane's half of this entry):** running is
+visible in `ps`; editing is visible nowhere. No command either lane could have run at 21:30 would
+have shown a half-finished two-file extraction — and the window is invisible to its AUTHOR too, who
+cannot see that a peer's run is mid-flight through three unrelated suites. The checkout has no way
+to express "I am halfway through a thought". **The only instrument for it is the message sent before
+the write.** And the day's tally makes the point from the other side: of the five real defects the
+two lanes found on 2026-09-01, **four were found by the OTHER lane's instrument** — a stale event
+pin by a full pass, a controller drift by a typecheck, a migration's statement order by an e2e, and
+this window by a full pass.
+
+**THE MECHANICAL FORM.** (1) The question before a full pass is *"is anyone about to edit `apps/core`
+or `apps/web`?"* — running is the lesser half of the hazard. (2) The two halves of a cross-file edit
+go in ONE commit; a bisect that lands between them reproduces the failure. (3) When you are the
+editor and a peer is measuring, say so BEFORE the write, not after.
+
+### 2.166 — A REVERT THAT STAYS GREEN MEANS THE ROAD IS UNBUILT, NOT THAT IT DOES NOT EXIST — BUILD IT BEFORE YOU DELETE THE GUARD
+
+**THE RULE. When a revert pair stays green, you have learned that no fixture reaches the guard. You
+have NOT learned that nothing can. "Unreachable by construction" is a claim about the whole system
+and a revert only measures the suite. Build the road — from OTHER modules' writers, not only your
+own — before deleting the guard, and if you cannot build it, keep the guard and say why.**
+
+**THE SPECIMEN, 2026-09-01 (RC-4 close, R37 → pass 2 N1).** The settle hook's new join carried
+`if (status !== "settled" && status !== "credit") return;`. Removing it changed nothing in 14
+tests. One attempt to construct the road (a part-paid deferred visit, then the allocation reversed)
+was refused by the money itself — an invoice cannot be issued part-paid without a credit block — and
+from that ONE refused road the close concluded *"a leaving via needs money that was covering the fee,
+which would already have joined the visit; unreachable by construction"*, deleted the guard, and
+wrote the sentence into the code. **The pass-2 reviewer built the road in ten minutes from a
+different module: a LAB invoice against the deferred visit** (arriving via, fee still `unsettled`,
+returned by the A-b guard), **then its receipt voided** (leaving via, fee still `unsettled`, the
+direction check no longer stops it) — four guards pass and an UNPAID token is minted in the one lane
+whose purpose is that none is. Test written, R46 red at exactly that line, guard restored.
+
+**What went wrong was not the revert; it was what the green revert was taken to mean.** The
+reasoning searched the hook's OWN module for writers and found none; the writer was in `billing`
+(`markEnteredInError`, `reverseAllocation`, credit notes), which fires the hook for ANY invoice on
+the encounter, fee or not. §9.7's operand question — *"name one real transaction whose money that
+sum does not include"* — was the instrument, and it was asked of the wrong sum.
+
+**Why it matters:** the RC series has now had six checks that could not fail (R21, R26, R27, R37,
+and RC-3's three), every one found by a revert, none by reasoning — and R37 is the first where the
+correct response to the green revert was NOT to delete the check. The revert is the instrument; the
+guard's *reason for existing* is what it measures; and when the reason is "nothing can arrive", the
+next question is *from which module*.

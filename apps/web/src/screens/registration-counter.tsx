@@ -221,7 +221,7 @@ export function counterExit(
  * the token) which stay server-owned because they are not session state.
  */
 export function Dossier({
-  quote, issued, canCollect, token, tokenNote, onConfirm, onSettle, settleError,
+  quote, issued, canCollect, token, tokenNote, onConfirm, onSettle, settleError, coveredElsewhere = false,
 }: {
   quote: WireFeeQuote | null;
   issued: WireIssueInvoiceResult | null;
@@ -240,6 +240,8 @@ export function Dossier({
    */
   onSettle?: (tenders: WireTender[], changeGivenPaise: number | undefined, idempotencyKey: string) => Promise<void>;
   settleError?: string | null;
+  /** Pass 2 N2 — the server's projection says the fee is covered (settled/credit) though this seat issued nothing: say so, not "take payment". */
+  coveredElsewhere?: boolean;
   /**
    * ═══ CLOSE REVIEW F4 (CRITICAL) — REQUIRED, BECAUSE THE SEAT CANNOT ANSWER IT ═══
    *
@@ -298,6 +300,8 @@ export function Dossier({
                   <CollectPanel payablePaise={quote.draft.totals.netPayablePaise} onSettle={onSettle} error={settleError ?? null} />
                 )}
               </div>
+            ) : coveredElsewhere ? (
+              <p data-testid="covered-elsewhere">{t("registrationCounter.exit.coveredElsewhere")}</p>
             ) : (
               /*
                 F4 — the PRICE without the INSTRUCTION. A surface that cannot see whether the money
@@ -378,7 +382,7 @@ export function CollectPanel({
       {surplusPaise > 0 && !hasCash && (
         <p data-testid="surplus-no-cash" className="text-muted-foreground">{t("registrationCounter.collect.surplusNoCash")}</p>
       )}
-      {error !== null && <p data-testid="settle-error" role="alert">{error}</p>}
+      {error !== null && <p data-testid="settle-error-inline" role="alert">{error}</p>}
       <SubmitButton
         data-testid="settle" disabled={tenders.length === 0}
         onClick={(k) => onSettle(
@@ -718,7 +722,7 @@ export function QueuesOverlay({
  */
 export function RegistrationCounter(): React.ReactElement {
   const { t } = useTranslation();
-  const { inHand, release } = usePatientInHand();
+  const { inHand, release, takeEncounter } = usePatientInHand();
   const { can } = useAuth();
   const palette = usePaletteOptional();
   const queryClient = useQueryClient();
@@ -889,10 +893,11 @@ export function RegistrationCounter(): React.ReactElement {
    * quote is free) — and the seat offers "Join the queue". It never offers it on an UNPAID
    * deferred visit: that would be the very token this lane exists to keep off the board.
    */
-  const moneyDoneOnServer = server.invoiced === true || issued !== null
-    || (quote !== null && quote.encounterId === encounterId && quote.free === true);
+  const moneyDoneOnServer = issued !== null
+    || server.feeStatus === "settled" || server.feeStatus === "credit" || server.feeStatus === "free";
   const joinOwed = encounterId !== null && hereVisit === null
     && server.status === "registered" && server.everJoined === false && moneyDoneOnServer;
+  // F1(a) at pass 2: a refused join is retried on the SAME road as the recovery door, so it is not lost to Escape.
   const [manualJoin, setManualJoin] = useState<{ encounterId: string; error: string | null; busy: boolean } | null>(null);
   const joinNow = useCallback(async (): Promise<void> => {
     if (encounterId === null) return;
@@ -945,9 +950,16 @@ export function RegistrationCounter(): React.ReactElement {
    * ₹400" on screen. `server.invoiced === false` is the read that succeeded and found none;
    * `null` is unknown and unknown does not collect.
    */
-  const canCollect = hereVisit !== null && issued === null && drawerOpen && server.invoiced === false;
-  /** The number to read out: the seat's own (with `token_on_payment`'s hold-back), else the server's. */
-  const token = hereVisit !== null ? tokenToShow(hereVisit, quote, issued) : server.tokenNo;
+  const canCollect = hereVisit !== null && issued === null && drawerOpen && server.feeStatus === "unsettled";
+  /**
+   * The number to read out: the seat's own (with `token_on_payment`'s hold-back), else the
+   * server's — and on the server road the hold-back is applied from the CURRENT flow (pass 2, N4):
+   * a reload does not turn a slip that has not left the printer into one that has.
+   */
+  const heldBack = hereVisit === null && flow !== null
+    && flow.counterSequence === "queue_first" && flow.tokenLane === "token_on_payment" && !moneyDoneOnServer;
+  const token = hereVisit !== null ? tokenToShow(hereVisit, quote, issued) : heldBack ? null : server.tokenNo;
+  const todays = useTodaysVisit(inHand !== null && inHand.encounterId === null ? inHand.patientId : null);
   const tokenNote: "afterPayment" | "joining" | null =
     token !== null ? null
       : hereVisit === null ? null
@@ -1008,16 +1020,23 @@ export function RegistrationCounter(): React.ReactElement {
             quote={quote} issued={issued} canCollect={canCollect}
             token={token} tokenNote={tokenNote}
             onConfirm={busy ? undefined : clearDesk} onSettle={settle} settleError={settleError}
+            coveredElsewhere={issued === null && (server.feeStatus === "settled" || server.feeStatus === "credit")}
           />
+          {/*
+            Pass 2 N5 — the settle's refusal is said HERE, outside the collect panel: when the
+            refusal's re-read comes back UNKNOWN the panel unmounts (unknown does not collect), and
+            a message that lived inside it vanished with it — the clerk saw the tender block
+            disappear and nothing else.
+          */}
+          {settleError !== null && inHand?.encounterId != null && (
+            <p data-testid="settle-error" role="alert">{settleError}</p>
+          )}
           {/* F3(A) — a quote that FAILED is said, with a way to ask again; silence left a deferred visit priceless. */}
           {inHand?.encounterId != null && quote === null && quoteError !== null && (
             <div data-testid="quote-error" role="alert">
               <p>{t("registrationCounter.quote.failed", { reason: quoteError })}</p>
               <button type="button" data-testid="quote-retry" onClick={() => void reprice([])}>{t("registrationCounter.quote.retry")}</button>
             </div>
-          )}
-          {hereVisit === null && issued === null && server.invoiced === true && (
-            <p data-testid="invoiced-elsewhere">{t("registrationCounter.exit.invoicedElsewhere")}</p>
           )}
           {joinOwed && (
             <div data-testid="join-owed">
@@ -1049,7 +1068,15 @@ export function RegistrationCounter(): React.ReactElement {
             `walkInBodyFor`'s `existingId` branch was exported, unit-tested and consumed by nothing.
             The same panel serves, with the four fields folded away.
           */}
-          {inHand !== null && inHand.encounterId === null && (
+          {inHand !== null && inHand.encounterId === null && todays != null && (
+            <div data-testid="todays-visit">
+              <p>{t("registrationCounter.register.todaysVisit")}</p>
+              <button type="button" data-testid="resume-visit" onClick={() => takeEncounter(todays.encounterId)}>
+                {t("registrationCounter.register.resumeVisit")}
+              </button>
+            </div>
+          )}
+          {inHand !== null && inHand.encounterId === null && todays === null && (
             <RegisterPanel doctors={summaries} existingId={inHand.patientId}
               onOpened={(o) => setVisit(o)} />
           )}
@@ -1208,47 +1235,72 @@ export function DrawerLine({ state }: { state: DrawerState }): React.ReactElemen
 }
 
 export type EncounterOnServer = {
-  /** `null` while unread or when there is no encounter in hand. */
+  /** `null` while unread, on a failed read, or when there is no encounter in hand. */
   status: string | null;
+  /**
+   * The ONE projection the board reads too (`encounterFeeStatuses`, D4). `null` is UNKNOWN — unread
+   * or a failed read — and unknown neither collects nor joins. Pass 2's N2: "an invoice exists" was
+   * the wrong predicate in both directions (an entered-in-error fee invoice, a lab invoice).
+   */
+  feeStatus: "free" | "settled" | "credit" | "unsettled" | null;
   /** Has this visit EVER had a queue entry? `null` unknown. A deferred visit is `false`. */
   everJoined: boolean | null;
   /** The latest entry's token, whatever its state — the number the clerk reads out. */
   tokenNo: number | null;
-  /** Does an invoice exist for this encounter? `null` when unknown (unread, or no `billing.invoice.read`). */
-  invoiced: boolean | null;
   refetch: () => Promise<unknown>;
 };
 
+export type WireCounterState = {
+  encounterId: string; status: string; serviceDate: string;
+  feeStatus: "free" | "settled" | "credit" | "unsettled" | null; everJoined: boolean; tokenNo: number | null;
+};
+
 /**
- * CLOSE REVIEW F1/F2/F4 — the server's account of the encounter in hand, polled while one is.
- * Both reads are cheap and both are the truth the seat's memory can only approximate.
+ * CLOSE REVIEW F1/F2/F4, re-cut at pass 2 (N2, N3) — the server's account of the encounter in
+ * hand, from ONE purpose-built read, polled while a patient is in hand. Not `GET /opd/visits/:id`:
+ * that route ships vitals, prescriptions and the diagnosis and writes a PHI-access row per call —
+ * four rows a minute per seat for a screen that reads a token number — and answers 404 for a
+ * sealed patient, which left the seat blind on exactly F1's dimension. `counter-state` carries
+ * status, fee status, ever-joined and the token, and nothing that is PHI. A failed read is UNKNOWN
+ * (`isError` is consulted — pass 2's N5: react-query keeps the last data on error, and a stale
+ * "unsettled" after a lost settle response is the second invoice F2 named).
  */
 export function useEncounterOnServer(encounterId: string | null): EncounterOnServer {
-  const visit = useQuery({
-    queryKey: ["rc-visit", encounterId],
-    queryFn: () => api<{ encounter: { status: string }; queueEntries: { tokenNo: number; status: string; seq: number }[] }>(
-      "GET", `/opd/visits/${encodeURIComponent(encounterId!)}`,
-    ),
+  const q = useQuery({
+    queryKey: ["rc-counter-state", encounterId],
+    queryFn: () => api<WireCounterState>("GET", `/opd/visits/${encodeURIComponent(encounterId!)}/counter-state`),
     enabled: encounterId !== null,
     refetchInterval: FLOW_POLL_MS,
     staleTime: 0,
   });
-  const invoices = useQuery({
-    queryKey: ["rc-invoices", encounterId],
-    queryFn: () => api<{ items: unknown[] }>("GET", `/billing/invoices?encounterId=${encodeURIComponent(encounterId!)}`),
-    enabled: encounterId !== null,
-    refetchInterval: FLOW_POLL_MS,
-    staleTime: 0,
-  });
-  const entries = visit.data?.queueEntries ?? [];
-  const latest = entries.length === 0 ? null : entries.reduce((a, b) => (b.seq > a.seq ? b : a));
+  const known = q.data !== undefined && !q.isError && q.data.encounterId === encounterId;
   return {
-    status: visit.data?.encounter.status ?? null,
-    everJoined: visit.data === undefined ? null : entries.length > 0,
-    tokenNo: latest?.tokenNo ?? null,
-    invoiced: invoices.data === undefined ? null : invoices.data.items.length > 0,
-    refetch: async () => { await Promise.all([visit.refetch(), invoices.refetch()]); },
+    status: known ? q.data.status : null,
+    feeStatus: known ? q.data.feeStatus : null,
+    everJoined: known ? q.data.everJoined : null,
+    tokenNo: known ? q.data.tokenNo : null,
+    refetch: async () => { await q.refetch(); },
   };
+}
+
+/**
+ * PASS 2, F1(a) + F7(A) — TODAY'S VISIT FOR A PATIENT IN HAND WITHOUT ONE. `takePatient` puts a
+ * found patient in hand with `encounterId: null`, and the only door was "Open visit" — a SECOND
+ * same-day encounter and a second fee for a patient registered an hour ago at another counter, and
+ * the only way back for a deferred visit released by Escape. `visitsQuery` carries no `patientId`,
+ * but the day's list carries one per row, so the seat reads today's list once per patient and
+ * filters. Read once, not polled: it carries names.
+ */
+const LIVE_VISIT_STATUSES: readonly string[] = ["registered", "waiting", "in_consultation", "awaiting_results"];
+export function useTodaysVisit(patientId: string | null): { encounterId: string; status: string } | null | undefined {
+  const q = useQuery({
+    queryKey: ["rc-todays-visit", patientId, todayIst()],
+    queryFn: () => api<{ items: { id: string; patientId: string; status: string }[] }>("GET", `/opd/visits?serviceDate=${todayIst()}`),
+    enabled: patientId !== null,
+  });
+  if (patientId === null || q.data === undefined) return q.isError ? null : undefined;
+  const mine = q.data.items.find((v) => v.patientId === patientId && LIVE_VISIT_STATUSES.includes(v.status));
+  return mine === undefined ? null : { encounterId: mine.id, status: mine.status };
 }
 
 /* ════════════════════════════════════════════════════════════════════════════════════════════
