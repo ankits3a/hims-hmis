@@ -571,6 +571,13 @@ parking spots by a wide margin.
 
 ### 9.2 Findings
 
+> **F45–F89 ARE IN §9.6, NOT HERE.** The independent close review ran on 2026-09-01 and returned
+> thirteen CRITICAL and twenty MAJOR findings; they are recorded together in §9.6 with the pass that
+> found them, because reading them apart from that pass's method — three FRESH reviewers over
+> disjoint areas, plus a CONTRACT pass — loses what makes them checkable. **F19 and F41 are RULED
+> there; F24 and F35 are upheld and widened into F46 and F70–F72.**
+
+
 **F1 — A LIVE DEFECT IN SHIPPED CODE: `registerOpdEncounterResolver` CANNOT RESOLVE ANY `V…` NUMBER.**
 *(found by spike S2, before T1; not fixed by this phase — it belongs to whoever mounts the first
 route that places an order on an OPD visit)*
@@ -2060,21 +2067,361 @@ confidential, with the PHI row to match.
 
 ### 9.6 The independent close review — FRESH
 
-**NOT RUN. The phase is paused at T1 of nine and there is nothing to close.** Both reviewer passes
-(§9.6 and §9.6.2) remain owed in full, and the stop-loss's review term — 463,509 of the 736,000 — is
-entirely unspent.
+---
+
+## ═══ §9.6 — THE INDEPENDENT CLOSE REVIEW, PASS 1 (2026-09-01, session hmis-d9) ═══
+
+**RUN. THE VERDICT IS THAT THIS PHASE IS NOT CLOSE-READY.** Pass 1 returned **thirteen CRITICAL and
+twenty MAJOR findings over a tree whose suite is green.** They are recorded below as F45–F89 with
+their owners. **§9.6.2 (the second pass, over the remediation diff) cannot run until a remediation
+exists**, and §9.7's actuals wait on both.
+
+### How the pass was run
+
+One CONTRACT pass by the reviewing session itself (§5A.1), then **three FRESH reviewers over
+disjoint areas**, all three read-only and forbidden to run any test (§9.10 amendment 2) because a
+full workspace verify was in flight on the shared checkout:
+
+| lane | area | returned |
+|---|---|---|
+| R1 | money, authorisation, acquisition, scheduling | 4 CRITICAL, 5 MAJOR, 3 MINOR |
+| R2 | the ten gates, the PCPNDT register, `0047`/`0050` | 4 CRITICAL, 8 MAJOR, 3 MINOR |
+| R3 | the report chain, the three reads, controllers, screens | 4 CRITICAL, 10 MAJOR, 3 MINOR |
+| the CONTRACT pass | §6 clause by clause, plus a permission sweep | 5 findings, 1 CRITICAL |
+
+**Every finding recorded below was re-verified by the reviewing session against the code before it
+was written down.** Where a claim was taken on the reviewer's reading without independent
+re-derivation, it says so.
+
+### The headline: the statutory path has FOUR independent, complete blockages
+
+The PCPNDT control is the thing this phase exists to build. **It cannot be walked end to end in the
+shipped product, and there is no single defect to fix — there are four, any one of which alone would
+stop it.**
+
+1. **F45** — the study is invisible on the only list that yields a study id.
+2. **F49** — nothing in the application links to the Form F screen.
+3. **F57** — the Form F screen's own Open button posts a body the server rejects with a 400.
+4. **F59** — the study's `laterality` is written by nothing, so a lateralised study cannot be
+   reported truthfully (adjacent, and the same shape: a column the product never fills).
+
+And when the register *is* reached by an API client, **F58** lets it be minted against the wrong
+patient, the wrong machine, the wrong doctor and the wrong year — and `0050` then freezes that row
+for ever.
+
+**This is F25's harm, one plane up.** `0047`'s trigger made every applicable scan unacquirable at
+the database and `0050` fixed it; the same scan is now unacquirable at the UI, for four new reasons,
+and the suite is green through all of them.
+
+### F45 — CRITICAL — every PCPNDT-applicable study is invisible to the entire department
+
+*(found by the CONTRACT pass; independently confirmed by R2 and R3 from their own areas)*
+
+Six links, each measured:
+
+1. `place.ts:283` sets the order item `restricted: verdict.applicable` — the PCPNDT rule.
+2. `study-types.ts:82-84` — the SHIPPED seed book marks `USG-PELVIS`, `USG-OBS-EARLY` and
+   `USG-OBS-ANOMALY` `pcpndt_applicable: true`.
+3. `read.ts:148` holds a restricted row out of the worklist unless the reader holds
+   `orders.read.restricted` or is the ordering clinician. `studyView:208` and `reportView:285` do
+   the same and return `null`.
+4. `seed-roles.ts:1193` — **`orders.read.restricted` is granted to NO role.** It sits in
+   `NOT_YET_MODELLED` as an owner Class-A grant, and its own reason names *"the PCPNDT-class USG"*.
+5. `doctor` — the ordering clinician, the one actor the hold-out exempts — **does not hold
+   `radiology.worklist.read`**, so the exemption is unreachable: the permission check throws first.
+6. `radiology-reception.tsx:31` and `radiology-worklist.tsx:27` — both screens' only data source is
+   `fetchWorklist`. `radiology-api.ts` has no accession search and no other enumerating read.
+
+**A hospital that runs `seed:roles` and `seed:radiology` cannot schedule, check in, gate, acquire,
+report or publish an obstetric ultrasound through any screen this phase shipped.** The three study
+types the Act governs are exactly the three the department cannot work. R3 adds the part that makes
+it dangerous rather than merely broken: **the reception screen renders `q.data?.rows ?? []`, so the
+desk sees an empty list and no error.** It looks like a desk with nothing booked.
+
+**WHY NO TEST CAUGHT IT.** `read.test.ts:57-62` invents two roles — `rad_tech` (no clearance) and
+`rad_reader` (granted `orders.read.restricted`). **No seeded role matches `rad_reader`.** The suite
+proves the design with a role that does not exist in the hospital, and asserts the hold-out as the
+expected behaviour. `radiology.e2e.test.ts:158-167` does the same thing more sharply: its
+"radiographer" fixture is granted `orders.read.restricted`, `pcpndt.form_f.write` **and**
+`pcpndt.registrations.manage` — three permissions the seeded `radiographer` does not hold, two of
+which belong to other roles. **The end-to-end proof of the statutory flow is performed by a role
+that does not exist.**
+
+**A SWEEP THAT BOUNDS IT.** Every permission `hasPermission`/`@RequirePermission` requires across
+`modules/radiology` and `modules/pcpndt`, cross-checked against `seed-roles.ts`: all are granted to
+exactly one seeded role except `orders.read.restricted` and `patients.confidential.read`, both
+parked as owner Class-A grants. The second one's absence is benign — the designed fallback is the
+alias. The first one's absence is this finding, and it is the only instance of its class.
+
+**OWNER: the close review, and it needs a RULING rather than a patch.** Three shapes, and they are
+not equivalent:
+(a) grant `orders.read.restricted` to the radiology roles — **wrong**: the permission is global, so
+it would hand a radiographer every restricted investigation in the building, including the lab's;
+(b) make the department's own worklist a departmental read — the lab's precedent, where *"the lab's
+own worklists read the lab's own tables"* and the kernel hold-out was never applied to the bench;
+(c) stop setting `restricted` from PCPNDT applicability and carry `form_f_required` alone.
+**(b) is the recommendation**: `radiology.worklist.read` is already held only by the three radiology
+roles, so it IS the departmental clearance, and DD11's actual concern — a ward clerk browsing — is
+answered by the kernel's own `listOrdersForPatient`, which is a different surface. **This changes a
+confidentiality posture and is therefore the owner's call, not the reviewer's.**
+
+### The other twelve CRITICALs
+
+**F50 — day-care and payer-branch scans are billed by nobody and flagged by nobody.** *(R1;
+verified)* `acquisition.ts:390` suppresses `acquired_unbilled` when `authorisedBy` is `daycare` or
+`payer_branch`, on the strength of a promise that a day-care discharge bill composes the scan.
+**`grep -n "imagingStudies|orderItems" apps/core/src/modules/ot/bill.ts` returns nothing** — that
+composer builds one package line per case plus implant lines and never reads imaging. So the
+exemption rests on a composer that does not exist, and §6.9's not-built list does not name day-care
+imaging billing. I1's leak arrives through the branch that was exempted from the control.
+
+**F51 — cancelling a study that is on the machine never releases the machine.** *(R1; verified)*
+`releaseResource` is called at `acquisition.ts:357` (record) and `:437` (abort) and nowhere else;
+`schedule.ts` does not import it. `cancelStudy` from `in_acquisition` leaves `resources` at
+`in_use` with `occupant_ref` pointing at a cancelled study. `assignResource` then refuses every
+later scan on that machine while `SCHEDULABLE_DEVICE_STATUSES` keeps the diary booking it. **A CT
+room that accepts bookings and can perform no scan, with the error arriving only once each patient
+is on the table.** Recovery needs a direct database edit.
+
+**F52 — the PCPNDT registration window is decided by a date the client sends, and the shipped
+console sends the wrong one for five and a half hours every night.** *(R1 and R2 independently;
+verified)* `acquisition.ts:133` passes `input.onDate` — validated only as `^\d{4}-\d{2}-\d{2}$` —
+straight into `assertMachineRegistered`. Nothing compares it to the server clock, to `now`, or to
+`scheduled_at`. And `radiology-study.tsx:62` sends `new Date().toISOString().slice(0, 10)`: **the
+browser's UTC day.** Between 00:00 and 05:30 IST that is yesterday. A registration whose `valid_to`
+is 31 March passes at 02:00 IST on 1 April — **the plan's own decisive E1 scenario, hour for hour.**
+The repo already ships the fix twice: `modules/opd/time.ts`'s `istDate` server-side and its browser
+mirror at `opd-api.ts:280`, whose header says it exists for exactly this. `pcpndt-form-f.tsx:42`
+uses the same UTC slice for `onDate`, which **decides the Form F's serial YEAR** (`form-f.ts:164`),
+so a scan at 00:30 IST on 1 January mints a serial into the previous year — a year whose statutory
+return may already have been filed.
+
+**F53 — `performed_then_cancelled` can never be raised.** *(R1; verified)* The guard at
+`schedule.ts:295` needs `in_acquisition` AND `acquired_at IS NOT NULL`; the only writer of
+`acquired_at` (`acquisition.ts:317-319`) sets `status: 'acquired'` in the same `SET`. The
+conjunction is unreachable, so the fourth of DD12b's four money facts is dead — while the *other*
+door is shut too: a study that did reach `acquired` is refused a cancel at `schedule.ts:254` and
+pointed at a bill decision no code can create. Contrast injected, first series exposed, patient
+reacts, study abandoned: nobody is asked whether the patient pays. It also INSERTs directly instead
+of calling `raiseBillDecision`, so it would emit no `imaging.bill_decision_raised` even once fixed.
+
+**F57 — the only Form F screen cannot open a Form F.** *(R2; verified)* `pcpndt-form-f.tsx:39-44`
+posts `{studyId, indicationCode, applicability, onDate}`. `pcpndt.controller.ts:59-67`'s `openBody`
+additionally requires `patientId`, `deviceResourceId` and `personUserId` as non-empty strings. Every
+click is a 400, and the screen collects none of the three and has no way to obtain them. **No other
+UI, no list screen, no other route.** The `form_f` gate can never leave `open`, so readiness never
+reaches `ready` and `startAcquisition` refuses `not_ready`. The two halves were each proved against
+a different body: `radiology.e2e.test.ts:371` posts the correct full body by hand, and the screen's
+own test stubs only the GET and never clicks Open. `openFormF(body: Record<string, unknown>)` erased
+the type that would have caught it at compile time.
+
+**F58 — `openFormF` takes the patient, the machine, the doctor and the year from the client and
+cross-checks none of them against the study; `0050` then freezes the result for ever.** *(R2;
+mechanism verified — the controller body and `form-f.ts:151,164` read as described)* Nothing on the
+radiology side compares them either: `gates.ts:786` selects the form by `study_id` alone, and
+`assertFormFRecorded` checks only `status`. A mis-clicked patient picker mints serial 48/2026
+naming a woman who was never scanned; the gate satisfies, the scan is acquired and reported, and
+because `0050` freezes `patient_id` from INSERT and refuses DELETE in every state, **the entry can
+never be corrected.** The same shape applies to `personUserId` (Part H's "person who conducted the
+procedure" is whoever the caller typed) and to `onDate` (the serial year).
+
+**F59 — `imaging_studies.laterality` is written by nothing, so the wrong-side control is not merely
+vacuous — it forces the record to be wrong.** *(R2; verified by grep — the only `laterality:` writes
+in the tree are on `imaging_reports` and in the OT module)* Every study sits at the column default
+`'na'` for ever: there is no order field, no route parameter, no update. `laterality_confirm` then
+compares the patient's statement against `'na'`, so **the only evidence that clears the gate is
+`patientStated: 'na'`** — the console must record that a knee X-ray has no side. `assertSignable`
+then refuses any report that names one. E3 exists to prevent a left knee being imaged as a right
+one, and the shipped code makes "no side" the only reportable answer on every lateralised study.
+`gates.test.ts:672-684` asserts exactly this behaviour as if it were the design.
+
+**F68 — `savePrelim` bypasses the PCPNDT lockout, and a prelim is a ward-readable document.**
+*(R3; verified)* `assertSignable` — the only caller of `findLockoutHits` — runs at `reports.ts:217`
+(sign) and `:336` (amend). `savePrelim:151` calls `assertReportable` and `insertVersion` and
+nothing else, while its own docstring says a prelim is *"a real, quotable document — the night
+registrar's opinion, available to the ward"*. `reportView` applies no status filter, so the row is
+served in full to any holder of `radiology.reports.read`. §5(2) is about the communication, and this
+path communicates without inspection — into an immutable row that cannot afterwards be removed.
+
+**F69 — signing a report `red` raises no critical finding; nothing pages anybody.** *(R3; verified)*
+`signReport` writes the `critical_category` COLUMN; only `flagCritical` writes the
+`imaging_critical_findings` ROW and emits `imaging.critical_flagged`. **`flagCritical` has exactly
+one caller in the tree — its own route — and `radiology-api.ts` ships no wire function for it**, so
+it is unreachable from the shipped UI. A head CT read at 02:10 and signed `red` produces one report
+row, zero critical rows, no event, and nothing for 18a-iii's Critical Chaser to chase. The only
+observable consequence of choosing "red" is that the *patient* gets an SMS sooner. The two halves
+are tested separately and never joined.
+
+**F48 — three departmental reads skip the hold-out that `read.ts` applies, and log no PHI.**
+*(the CONTRACT pass, R3 and R1 independently; verified)* `deviceDiary` (`schedule.ts:357`, route
+`GET /radiology/studies/device/:id/diary`), `readiness` (`gates.ts:985`, route
+`GET /radiology/studies/:studyId/readiness`) and `openBillDecisions` (`money.ts:183`) all take no
+actor, apply no restricted filter and write no `recordPhiAccess`, behind the same permissions the
+filtered reads use. **The chain is the finding**: the diary hands out the study ids of every live
+study on the USG machine without the hold-out, and readiness then answers
+`open: ["form_f", "pregnancy_screen", …]`, which names the study as one the Act covers. A holder of
+`radiology.worklist.read` reconstructs precisely the set `worklist()` holds out from them — and the
+shipped study screen renders both at once: `radiology-study.tsx` prints *"unknown study"* from the
+`null` `studyView` and then renders the full gate list underneath it with working buttons. This is
+§9.8 rule 4's shape: a filter applied on one read and not on its neighbours. **Entangled with F45:
+if F45's ruling makes the performing department able to see its own studies, F48 stops being a leak
+and becomes a PHI-logging and consistency question. Rule F45 first.**
+
+### The twenty MAJORs, in one table
+
+Each was read against the code by the reviewing session. Where a mechanism was taken on the
+reviewer's reading rather than re-derived, the row says **(reported)**.
+
+| # | finding | file |
+|---|---|---|
+| **F46** | **`imaging.study_scheduled` is declared, frozen into §6, documented as the input to 18b's MWL and 22c-F's appointment card, and emitted by NOBODY.** Every one of the other seven module events has an emitter; this one's only references are its own declaration and a schema test that parses a payload nothing builds. `scheduleStudy` and `rescheduleStudy` emit nothing and, because booking leaves the state at `scheduled`, call no `transition` either — so a reschedule writes no history and destroys the previous answer. *"Who moved this scan, when, off what slot"* has no answer. | `events.ts:35`, `schedule.ts:126-209` |
+| **F54** | `linkInvoiceLine` validates only that the invoice-line row EXISTS — no patient match, no service match, no invoice status, no overwrite guard — while `authorisationOf` reads a non-NULL value as *"money was actually taken"*. Paste another patient's line id and a ₹9,000 CT proceeds unbilled with the queue silenced. | `money.ts:104-114` |
+| **F55** | `duration_min` is declared on every study type, validated by the zod schema, seeded with real values (10–45 min) and **read by nothing.** The slot unique is on an exact `scheduled_at`, so a 45-minute MRI takes two bookings fifteen minutes apart with no refusal. | `0047:247`, `study-types.ts` |
+| **F56** | `{contrastGiven:false, contrastVolumeMl:50}` passes zod and the domain guard (which tests `contrastAgent` only), violates `imaging_studies_contrast_ck`, and returns **500** — a PostgresError is not one of `toHttp`'s families. The 500-escape `errors.ts` was written to prevent. | `acquisition.ts:294`, `0047:140` |
+| **F60** | The contract's SECOND placement path never evaluates the PCPNDT rule. `form_f_required` is inherited from the generic `restricted` flag, which only `POST /radiology/orders` sets from applicability. §6.1 promises *"or by `placeOrder` from a module with `radiology.orders.place`"* and names Plan 26 as a consumer that gets studies for free — that path produces `form_f_required: false` on an obstetric scan, and no refusal anywhere. **(reported; no current caller exists, so the exposure is what 26/62 will build against)** | `consumers.ts:150` |
+| **F61** | "Gap-free per registered machine per year" is per *registration surrogate*. A renewal mints a new `machine_id` for the same physical machine (the device-active unique forces the old row down first), so serials restart at 1 mid-year and the unique index — keyed on `machine_id` — cannot see the duplicate. An inspector counting 2026 for that Voluson finds 1..47 then 1..38. **(reported; the counter mechanism itself is correct — the defect is in the key)** | `form-f.ts:113-124`, `0047:173-178` |
+| **F62** | `deactivateMachine` and `deactivatePerson` issue a bare `UPDATE … WHERE id = ?` with no existence check and no row-count check, and the controller answers `{active:false}` unconditionally — while `deactivateRegistration`, eleven lines below, DOES call `requireRegistration`. A struck-off sonologist deregistered by the wrong id is reported deregistered and keeps signing Form Fs. | `registrations.ts:178-188` |
+| **F63** | `0050`'s completion window is an unconditional `RETURN NEW` on `open → recorded`, placed after the five-column identity check and BEFORE the whole-row comparison. So in that one statement every non-identity column is free — including **`verified_by`/`verified_at`**, which `pcpndt_form_f_verify_after_record_ck` then admits because `status` is already `recorded`. **One statement can write and self-counter-sign a statutory declaration.** No shipped path does it (`recordFormF` never sets them, `verifyFormF` refuses `same_actor`), but the separation rests on application code alone, and `0047`'s own argument for whole-row comparison was that an allow-list written as a deny-list is the failure `0045` existed to fix. | `0050:64-65` |
+| **F64** | Three of the ten gates are satisfied by typing, and two are the ones the file calls non-negotiable: `identity_two_factor` accepts `{secondIdentifier:'wristband', value:<any string>}` with no comparison (the `dob`/`uhid` legs DO compute); `pregnancy_screen` accepts an `hcgResultRef` pointer that nothing resolves; `chaperone_present` accepts any `chaperoneUserId` that is not the actor and not the patient — no `users` lookup, no role check, though `actorHoldsAnyRole` is imported and used ten lines away. **(reported; the other seven kinds do compute something real)** | `gates.ts:444-473, 511-528, 737-752` |
+| **F65** | A null DOB is fail-SAFE (applicable, by an argued decision); a *nonsense* DOB is fail-OPEN. `ageInYearsOn` returns a negative number for a DOB after the service date and both readers treat it as an ordinary out-of-band age, so a mistyped or imported future DOB produces `applicable: false` — an obstetric scan with no statutory entry — and drops the `pregnancy_screen` at check-in as well. Every boundary the header names (9/10/55/56, null, estimated, leap day, backfill) is correct; this one is not walked. | `applicability.ts:117-127`, `checkin.ts:88-96` |
+| **F66** | The lexical lockout runs on EVERY report in the department and its lexicon contains **`male`, `female`, `beta`, `xx`, `xy`** — with no waiver, no override and no medical-superintendent lane, while the error text tells the radiologist to talk to the MS. *"45-year-old male, chest PA view"* cannot be signed. *"Correlate with serum beta hCG"* cannot be signed. `lockout.ts`'s own header names the harm — *"a lockout that is switched off protects nobody"* — and this is the fastest route to it. **(mechanism verified; impact magnitude is a judgement)** | `lockout.ts:49-69`, `reports.ts:262` |
+| **F67** | No gate is ever re-evaluated once satisfied. E9's re-evaluability runs only refused→retried; `satisfyGate` refuses any non-`open` gate and the definition has no edge back. `recordAcquired` re-reads exactly one gate (`contrast_consent`, and only when contrast was given). An allergy recorded at 09:20 between a 09:05 gate and a 09:40 injection is never read again — the gate that exists for P2/E38 held the right answer and was not asked. `renal_function` has the same shape. | `gates.ts:651-700, 794-812` |
+| **F70** | An amendment leaves the corrected report unpublished, un-announced, and the superseded one still stamped `published`. `amendReport` carries no `published_at`, re-emits no `imaging.report_published`, and never touches the study. *"7 mm calculus, missed on the first read"* is signed and invisible to every publication-aware consumer; the only row with a publication timestamp is the withdrawn one. | `reports.ts:344-355` |
+| **F71** | A publish racing an amend stamps and announces the SUPERSEDED version. `publishReport` re-reads `latestSigned` then updates blindly `WHERE id = signed.id` under READ COMMITTED, so after a concurrent amend commits, the stamp lands on v1 and `imaging.report_published` carries v1. The concurrency suite races amend-vs-amend and sign-vs-sign and never races publish; its invariant (one `signed` row) holds in the failing interleaving too, because the defect is in a column that file never selects. **(reported; lock ordering inferred, not executed)** | `reports.ts:375-394` |
+| **F72** | An amendment silently downgrades a red critical. `signReport` inherits the source's category; `amendReport` defaults it to `null`. The flagged critical still hangs off the superseded version, `publishReport` then reads `null` and **gates the message on settlement**, so an unpaid patient's corrected critical report sends nothing at all. | `reports.ts:353` vs `:227` |
+| **F73** | No lateralised study can be signed from the report screen: the screen has no laterality control and never sends the field, and `assertSignable` refuses a report on a lateralised type that names no side. Two of the twenty seeded types are permanently unreportable through the only reporting screen. Compounds F59 from the other end. | `radiology-report.tsx:42` |
+| **F74** | The signed report is unreachable by the doctor it was written for. `reportView` is keyed on a `reportId`; the only routes that yield one are gated on `radiology.worklist.read`, which `doctor` deliberately does not hold — and no screen calls `fetchReport` at all. The study publishes, the order closes, the patient is SMSed *"your report is ready"*, and the department's output reaches nobody. | `read.ts:266`, `router.tsx:107-108` |
+| **F75** | The worklist's restricted filter runs AFTER the SQL `LIMIT`. A hold-out consumes a slot in a deterministically ordered window, so restricted rows silently shrink the list and push routine work out of a window F43 had already narrowed — and the response length becomes a function of the hidden rows. | `read.ts:142` then `:148` |
+| **F76** | The critical read-back is recorded against the person who raised it. `acknowledgeCritical` sets `acknowledgedBy: actor.id`, there is no field for the clinician who actually read back, no check that the actor is not the signer — and `radiology.criticals.ack` is granted to `radiologist` alone, so the loop is closed at both ends by one person. `reports.test.ts:363` **pins this as correct**: it flags and acknowledges as the same radiologist and asserts that identity. | `reports.ts:503-535` |
+| **F77** | `addImagingViews` selects the parent order's `patientId` and never compares it with the input's. A wrong patient in one field places a new order for a DIFFERENT patient carrying the parent's `order_group_id` — one clinical act spanning two patients, which nothing downstream refuses. The unused `patientId` in the select is the check that was intended and not written. | `place.ts:353-369` |
+| **F78** | Two concurrent draft saves escape as a 500. `nextVersion` is read-max-plus-one, the insert is unguarded, and `signReport`'s catch maps only the one-signed index — so a double-click on Save collides on `imaging_reports_study_version_ux` and Nest renders 500 with no code. | `reports.ts:77-85, 118-133` |
+| **F79** | The lockout inspects `body` and `impression` and nothing else, while four free-text fields ride the same chain into permanent, servable rows: **`amendmentReason`** (present on the very object `assertSignable` receives, and simply not read), `communicatedTo`, **`readBackText`** (*"the clinician repeats the finding in their own words"* — the likeliest place for a verbatim disclosure), and gate waiver/override reasons. An amendment reasoned *"correcting — the foetus is male, family informed"* is accepted and served by `reportView`. | `reports.ts:262` |
+
+### The MINORs, recorded and not itemised further
+
+**F47** the study row's `status` can never be `reported` (publish walks the instance
+`acquired→reported→published` and writes only `published`), so the radiologist's `unread` view
+cannot tell a study awaiting a read from one already signed. **F80** template `sections` are never
+enforced, so every obstetric report omits the `indication` section that keeps it consistent with
+Part F of the register. **F81** the Sign button depends on component state a reload empties.
+**F82** `RADIOLOGY_IDEMPOTENT_ROUTES` is dead and the add-on route shares the place route's
+idempotency namespace. **F83** `contrast_option: 'optional'` opens no gate and can then never be
+acquired with contrast. **F84** `recordAcquired`'s `onDate` is mandatory and unused, and the actor
+who RECORDS is never checked as a registered person though the actor who STARTS is. **F85** check-in
+ages the patient against a UTC instant, not the IST day. **F86** `payment_required` (402) is
+returned for a permission denial and `unknown_study` (404) for an unknown invoice line. **F87**
+`encounterPayer`'s day-care branch is dead code that returns Plan 15's vocabulary into a comparison
+against Plan 8's. **F88** the dose control accepts zero, and `acquired_at` is unbounded in the
+future. **F89** the e2e's "radiographer" fixture holds three permissions the seeded role does not.
+
+### The four findings that were already open — RULED
+
+- **F19 (the `open → satisfied` edge names four roles, one holds the permission).** **RULED: take
+  the two names off the edge.** The module's own satisfaction rules are written to have the
+  RADIOGRAPHER record a named clinician's decision — `gates.ts:205-208` says so in as many words
+  and `:673` verifies the named radiologist's role on the evidence. Names on an edge that no
+  permission backs are what produced the divergence. *Note, from R2: the claim that `form_f` cannot
+  be waived on any plane holds today only because `workflow.instances.transition` is granted to no
+  role. Whoever grants it next must re-check this.*
+- **F24 (nothing writes `rescheduled`) — UPHELD and WIDENED into F46.** The missing audit answer is
+  the smaller half; the larger half is that a reschedule emits nothing and writes no history.
+- **F35 (nothing writes `amended`) — UPHELD, and it is now the least of the amend findings.** See
+  F70, F71, F72.
+- **F41 (both error unions lack a "you lack this permission" code).** **RULED: grant the ask** — add
+  a `forbidden` (403) and an `already_resolved`-shaped (409) code to each union and re-point the
+  five improvised call sites. **With one constraint the ask does not state: the RESTRICTED hold-out
+  must keep answering as "not found", not as 403.** `studyView`/`reportView` returning `null` is a
+  hold-out and turning it into a distinguishable authorisation refusal would rebuild the oracle
+  §9.8 rule 4 warns about. Only the PERMISSION checks change code; the hold-out does not.
+
+### What is green, and what that is worth
+
+A full workspace pass was run by this session on its own database (`hmis_18a_review`), §2.151's
+sequential capped form, over a tree carrying this phase's tip plus four other lanes' later commits.
+**It found none of the above.** That is the finding worth carrying out of this close:
+
+> **Thirteen CRITICAL and twenty MAJOR defects sat under a green suite of ~3,300 tests and thirty
+> dead mutants, and every single one was found by READING.** Not one had a failing test. The phase's
+> own close had already learned this once — six defects found by reading after the suite was green —
+> and the number turned out to be six because that is how long the reading lasted, not because that
+> is how many there were.
+
+The mechanical form, and it is the amendment this phase owes the method: **where a test invents a
+role, a fixture or a state, ask what the SEEDED role holds and what the PRODUCT can actually
+produce.** Four of the thirteen CRITICALs are the same defect wearing different clothes — a test
+that grants itself a permission no hospital grants (F45, F89), or writes a column the product never
+writes (F59), or builds a state the code cannot reach (F53). Each suite proved its own half
+correctly against a world the shipped system does not have.
+
+### The full workspace pass this review ran — `hmis_18a_review`, its own database
+
+Started 17:22 UTC on 2026-09-01 from the tree at `03fd081` (this phase's tip `ec0aa8a` plus four
+other lanes' later commits), §2.151's sequential capped form:
+
+| half | result |
+|---|---|
+| `apps/core` | **3 499 passed / 3 500 · 346 suites passed, 1 failed** · 2 755 s |
+| `apps/web` | **67 files / 432 tests**, exit 0 |
+| `@hmis/contracts` | 4 suites / 21 tests, exit 0 |
+| contention census | **`Exceeded timeout` 0 · `deadlock` 0 · `SIGKILL` 0 · `duplicate key` 0** |
+| assertion diffs | **exactly one** (`grep -c Received` = 2 lines, one expected/received pair) |
+
+**The one red was NOT this lane's.** `test/billing-lifecycle.e2e.test.ts:216` expected
+`queue.fee_settled` and received `queue.fee_status_changed` — the RC-3 lane's T3 rename in
+`03fd081`. `grep -rn "queue.fee_settled" apps/core/src` returned nothing and the whole tree held
+exactly one stale reference, that pin. Reported to the RC-3 lane, **fixed and pushed by them as
+`52f34c6`** while this review was still running. The census being all zeros is what makes that
+attribution checkable rather than convenient.
+
+**All five suites the VD-1 lane reported red on `main` are GREEN here** — `checkin`, `gates`,
+`gates.concurrency`, `schedule`, `schedule.concurrency`. That report was written at 13:58 and
+F28's fix landed at 13:46 in `f449f70`, twelve minutes earlier. The general form, given back to
+that lane and worth keeping: **you cannot kill a time-dependent hypothesis by re-running on a
+different tree, only by re-running at a different clock.** Four axes were varied between two lanes
+— tree, worker count, database, neighbours — and the clock was not one of them.
+
+### What this review did NOT do, and what is owed next
+
+- **NOTHING WAS FIXED.** Not one of F45–F89 is remediated. Several cannot be taken by a reviewer at
+  all: **F45 needs an owner's ruling on a confidentiality posture**, **F66 needs a clinical ruling
+  on the lexicon's scope**, **F50's fix reaches into `modules/ot/bill.ts`** (outside this phase's
+  files, so it is reported rather than taken, per the standing rule), and **F61 and F63 are
+  migrations.**
+- **§9.6.2 has not run and cannot**, by its own definition: it reviews a remediation diff, and no
+  remediation exists.
+- **§9.7's actuals still wait**, now on the remediation and the second pass rather than on the
+  first.
+- **The two go-live items from the handoff stand unchanged**: no `pregnancy_policy` seed has been
+  published, and no human has entered the real §19 PCPNDT registration.
+
 
 ---
 
 ### 9.6.2 The SECOND close review — over the remediation diff only, FRESH
 
-**NOT RUN** — it reviews a remediation that does not exist yet.
+**NOT RUN, and now BLOCKED rather than merely owed.** Pass 1 ran on 2026-09-01 and returned
+thirteen CRITICAL and twenty MAJOR findings (§9.6, F45–F89); **no remediation has been written**, so
+there is no diff for this pass to review. Per v3 §9.10 it must be briefed at the FIXES — the one
+remediation commit, the findings list with what each fix CLAIMS to do, and a verdict per fix of
+CORRECT / INCOMPLETE / WRONG — never at the phase, which would re-derive pass 1 at pass 1's cost.
 
 ### 9.7 Actuals, recorded only after §9.6 exists (v3 §9.4)
 
-**STILL NOT RECORDED, and that is still the rule rather than an omission** (v3 §9.4: a LIGHT
-phase's saving is not a saving until its reviewer has run). **Updated 2026-09-01 — the text below
-described a phase paused at T1 and had been false for eight commits.**
+**STILL NOT RECORDED — and the reason has CHANGED. §9.6 now exists; §9.6.2 does not, and cannot
+until a remediation is written.** v3 §9.4's rule is that a LIGHT phase's saving is not a saving
+until its reviewer has run. Its reviewer has now run, and the answer it returned is that **this
+phase is not close-ready**: thirteen CRITICAL and twenty MAJOR findings over a tree measured at
+3 499/3 500 core, 432 web and 21 contracts, with a zero contention census.
+
+**So there is no saving to record yet, and recording one now would be the dishonest kind.** v3 §9.8
+prices what comes next in as many words: *"a phase whose review returns a CRITICAL should expect its
+close to cost as much again as its tasks did."* This one returned thirteen. The actuals wait on the
+remediation and on §9.6.2, and the review term of the stop-loss — 463,509 of 736,000 — has been
+opened but is nowhere near spent: pass 1 cost roughly 500k tokens across three reviewers and the
+session that verified them.
+
+**Updated 2026-09-01 — the text below described a phase paused at T1 and had been false for eight
+commits.**
 
 What can be said now: **all nine tasks are code-complete and pushed** (T1 `d5abf6a` → §6's
 confirmation), **no independent reviewer has run**, and the review term — **463,509 of the 736,000
