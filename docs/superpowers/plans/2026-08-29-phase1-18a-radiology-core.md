@@ -2481,6 +2481,27 @@ All fifteen taken. The two worth reading:
    an unrelated one, clobbering it. The suite caught it in one run. The general form: **a textual
    edit keyed on a string that appears more than once is a coin toss with no error message**, and
    the defence is to key on something unique or to count the matches first.
+3. **THIS PHASE'S OWN F2 RECURRED, ON THE SAME TABLE, EIGHT COMMITS LATER — AND THE CLOSING VERIFY
+   IS THE ONLY THING THAT SAW IT.**
+
+   F61 made `device_resource_id` NOT NULL on `pcpndt_form_f`. `kernel/db/schema/pcpndt.test.ts`
+   builds form rows by hand, so **nine assertions stopped testing their own CHECK and started
+   reporting a null violation**: the applicability vocabulary, the recorded shape, the
+   verify-after-record rule, the duplicate serial. All nine still failed, so nothing looked wrong —
+   they were simply failing for a reason that had nothing to do with what they assert.
+
+   **F2 is that finding, recorded at T1 of this same phase**: *"a bogus `status` tripped the WRONG
+   constraint … the row must otherwise be VALID for a vocabulary assertion to be about the
+   vocabulary."* It was read at the start of this close and reintroduced by the end of it, by adding
+   a column. **Reading a lesson is not holding it**; the mechanical form is what survives, and the
+   mechanical form here is: *when a migration adds a NOT NULL column, every hand-built fixture for
+   that table is now asserting the wrong thing — and it will still be red, so the failure will look
+   like your change working.*
+
+   It was found by the FULL PASS and by nothing else. That suite is in no task's Files list, neither
+   remediation touched it, and both targeted radiology/pcpndt batches were green through it because
+   they never load it. The same shape as the peer lane's stale event pin the same afternoon: **a
+   census file one hop outside the batch that changed under it.**
 
 
 ### 9.7 Actuals, recorded only after §9.6 exists (v3 §9.4)
