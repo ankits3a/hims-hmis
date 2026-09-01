@@ -78,7 +78,7 @@ describe("RC-2 T2 — a referral discount is keyed on a resolved counterparty, n
 
   async function partnerWithSlip(args: {
     payeeClass?: string; status?: string; state?: string; expiresAt?: Date | null;
-    terms?: Record<string, unknown> | null;
+    terms?: Record<string, unknown> | null; patientId?: string;
   } = {}): Promise<{ counterpartyId: string; code: string }> {
     const counterpartyId = newId();
     const code = `INV-SLIP-${counterpartyId.slice(-6)}`;
@@ -94,6 +94,7 @@ describe("RC-2 T2 — a referral discount is keyed on a resolved counterparty, n
     }
     await db.insert(attributionIds).values({
       id: newId(), code, counterpartyId, state: args.state ?? "issued",
+      patientId: args.patientId ?? null, // MAJOR 5 — null is a bearer leaflet, a value is a binding
       expiresAt: args.expiresAt ?? null, issuedBy: "test", issuedAt: AGREEMENT_FROM,
     });
     return { counterpartyId, code };
@@ -202,7 +203,7 @@ describe("RC-2 T2 — a referral discount is keyed on a resolved counterparty, n
 
   it("an external_rmp counterparty with a VALID slip and real terms still proposes nothing", async () => {
     const { code } = await partnerWithSlip({ payeeClass: "external_rmp" });
-    expect(await resolveReferral(db, { code, at: NOW })).toBeNull();
+    expect(await resolveReferral(db, { code, patientId: null, at: NOW })).toBeNull();
 
     const { encounterId } = await shapeVisit();
     const draft = await quoteFor(encounterId, { attributionCode: code });
@@ -280,7 +281,7 @@ describe("RC-2 T2 — a referral discount is keyed on a resolved counterparty, n
     })],
   ])("refuses %s — null, never a throw, so the patient can still be billed", async (_label, make) => {
     const { code } = await make();
-    expect(await resolveReferral(db, { code, at: NOW })).toBeNull();
+    expect(await resolveReferral(db, { code, patientId: null, at: NOW })).toBeNull();
 
     const { encounterId } = await shapeVisit();
     const draft = await quoteFor(encounterId, { attributionCode: code });
@@ -309,6 +310,60 @@ describe("RC-2 T2 — a referral discount is keyed on a resolved counterparty, n
     const candidate = draft.lines[0]!.candidates.find((c) => c.sourceKey === REFERRAL_SOURCE_KEY);
     expect(candidate).toMatchObject({ amountPaise: 5_000, rejected: { code: "over_cap" } });
     expect(draft.totals.netPayablePaise).toBe(50_000); // rejected candidates are excluded from the contest
+  });
+
+  // ── THE INDEPENDENT REVIEW'S FINDINGS, EACH WITH ITS OWN EXECUTED PROOF ────────────────────
+
+  /**
+   * REVIEW CRITICAL 1. `resolveAgreementAt` parses the agreement through `accrualTermsSchema`, whose
+   * `payableRateBps` and `eligibleCategories` are REQUIRED and undefaulted, and THROWS
+   * `PartnersError` when they are absent. Nothing caught it, and billing's `toHttp` has no
+   * `PartnersError` arm, so the quote and the invoice both 500 — the counter could not bill at all.
+   *
+   * The shape is not exotic: nothing in `apps/core/src` writes `partner_agreements`, so the jsonb is
+   * hand-authored at commissioning, and RC-2 taught the operator to write the PATIENT-DISCOUNT keys.
+   * This fixture is exactly what a commissioning engineer following RC-2's docs would produce.
+   */
+  it("CRITICAL 1 — an agreement carrying ONLY the patient-discount keys refuses, and the bill still prices", async () => {
+    const { code } = await partnerWithSlip({
+      terms: {
+        patientDiscountBps: 1_000, patientDiscountCategories: ["consultation"],
+        patientDiscountCapPaise: null,
+        // NO payableRateBps, NO eligibleCategories — the accrual lane's required keys are absent.
+      },
+    });
+    // Before the fix this REJECTED with PartnersError instead of resolving to null.
+    expect(await resolveReferral(db, { code, patientId: null, at: NOW })).toBeNull();
+
+    const { encounterId } = await shapeVisit();
+    const draft = await quoteFor(encounterId, { attributionCode: code });
+    expect(draft.totals.netPayablePaise).toBe(50_000); // priced, not thrown — the patient can pay
+    expect(draft.lines[0]!.candidates).toHaveLength(0);
+  });
+
+  /**
+   * REVIEW MAJOR 5. `attribution_ids.patient_id` was populated and never compared, so one slip
+   * discounted unlimited bills for unlimited patients — append `&referral=<code>` to every quote in
+   * the hospital and every consultation takes 10% off, attributed to a partner who referred one
+   * person, with the slip still `issued`.
+   */
+  it("MAJOR 5 — a slip issued FOR one patient does not discount another patient's bill", async () => {
+    const { encounterId: mine, patientId: mineId } = await shapeVisit();
+    const { encounterId: theirs } = await shapeVisit();
+    const { code } = await partnerWithSlip({ patientId: mineId });
+
+    const ownBill = await quoteFor(mine, { attributionCode: code });
+    expect(ownBill.totals.netPayablePaise).toBe(45_000); // the patient it was issued for: discounted
+
+    const strangersBill = await quoteFor(theirs, { attributionCode: code });
+    expect(strangersBill.totals.netPayablePaise).toBe(50_000); // anyone else: nothing
+    expect(strangersBill.lines[0]!.candidates).toHaveLength(0);
+  });
+
+  it("MAJOR 5 — a slip naming NO patient stays a bearer instrument, which is what a leaflet is", async () => {
+    const { code } = await partnerWithSlip(); // patientId null
+    const { encounterId } = await shapeVisit();
+    expect((await quoteFor(encounterId, { attributionCode: code })).totals.netPayablePaise).toBe(45_000);
   });
 
   // ── PURITY, ASSERTED RATHER THAN CLAIMED (the membership sources.test.ts precedent) ─────────

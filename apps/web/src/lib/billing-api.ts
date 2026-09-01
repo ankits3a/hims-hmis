@@ -105,6 +105,14 @@ export type WireInvoiceLineInput = {
 };
 
 export type WireIssueInvoiceBody = {
+  /**
+   * RC-2 review MAJOR 8 — `couponCodes` and `attributionCode` are declared BELOW, and they have to
+   * be here rather than only on the server. T2 widened `issueInvoiceBody` and `previewInvoiceBody`
+   * so a presented coupon could reach the invoice, and recorded the asymmetry as closed — but this
+   * type had no field to carry either, so a seat that quoted ₹450 through `fetchFeeQuote(id, codes)`
+   * would still have issued at ₹500. That is RC-1 T1's class exactly (a field the client cannot
+   * declare, so the money disagrees), one layer further out than T2 looked.
+   */
   draftId: string;
   patientId: string;
   encounterId?: string;
@@ -114,6 +122,10 @@ export type WireIssueInvoiceBody = {
   // the controller's zod silently stripped it.
   receipt?: { tenders: WireTender[]; panNumber?: string; form60?: boolean; note?: string; changeGivenPaise?: number };
   credit?: { reason: string; approvalId?: string };
+  /** The coupon codes the clerk presented. Must match what the quote was asked with, or the money disagrees. */
+  couponCodes?: string[];
+  /** The partner slip's code, if one was presented. One per visit (V6). */
+  attributionCode?: string;
   discountApprovals?: Record<string, string>;
 };
 
@@ -236,16 +248,25 @@ export function billingErrorDetail(e: unknown): unknown {
  * because the server declares it that way; an empty list sends no parameter at all, so the shipped
  * caller's URL is byte-identical and no existing screen changes behaviour.
  */
-export function fetchFeeQuote(encounterId: string, couponCodes: string[] = []): Promise<WireFeeQuote> {
-  const query = couponCodes
-    .map((code) => `coupon=${encodeURIComponent(code)}`)
-    .join("&");
+export function fetchFeeQuote(
+  encounterId: string,
+  couponCodes: string[] = [],
+  attributionCode?: string,
+): Promise<WireFeeQuote> {
+  // RC-2 review MAJOR 8 — the partner slip travels with the question too; there was no web plumbing
+  // for `?referral=` at all, so the referral discount was server-only and unreachable from the seat.
+  const query = [
+    ...couponCodes.map((code) => `coupon=${encodeURIComponent(code)}`),
+    ...(attributionCode === undefined || attributionCode === "" ? [] : [`referral=${encodeURIComponent(attributionCode)}`]),
+  ].join("&");
   const path = `/billing/visits/${encodeURIComponent(encounterId)}/fee-quote`;
   return api("GET", query === "" ? path : `${path}?${query}`);
 }
 
 export function previewInvoice(body: {
   encounterId?: string; lines: WireInvoiceLineInput[];
+  // Same terms the invoice is issued in, so a preview and the bill behind it cannot disagree.
+  couponCodes?: string[]; attributionCode?: string;
 }): Promise<WirePricedDraft> {
   return api("POST", "/billing/invoices/preview", body);
 }

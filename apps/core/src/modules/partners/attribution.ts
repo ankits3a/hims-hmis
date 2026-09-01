@@ -311,6 +311,32 @@ export async function findAttributionByCode(exec: Db | Tx, code: string): Promis
   };
 }
 
+/**
+ * RC-2 review MAJOR 5 — DOES THIS SLIP BIND TO THIS PATIENT? A BOOLEAN, AND DELIBERATELY NOT A FIELD.
+ *
+ * `attribution_ids.patient_id` is populated by `issueAttribution` and was compared to nothing, so
+ * one slip discounted unlimited bills for unlimited patients. The obvious repair — surfacing the
+ * column on `ScannedAttribution` — is WRONG and the suite says so: **DD15 keeps the scanned result
+ * identity-free**, and `attribution.test.ts`'s "carries no identity field" pins the exact key set.
+ * A referral discount needs to know whether a binding HOLDS, not who it names.
+ *
+ * So this answers the question and returns nothing else. A slip naming NO patient is a bearer
+ * leaflet and binds to everyone — that is what `issueAttribution` allowing a null means, not an
+ * oversight.
+ */
+export async function attributionBindsToPatient(
+  exec: Db | Tx,
+  attributionId: string,
+  patientId: string | null,
+): Promise<boolean> {
+  const rows = await exec
+    .select({ patientId: attributionIds.patientId })
+    .from(attributionIds)
+    .where(eq(attributionIds.id, attributionId));
+  const bound = rows[0]?.patientId ?? null;
+  return bound === null || bound === patientId;
+}
+
 export type VoidAttributionResult = {
   attributionId: string;
   expectationIds: string[];

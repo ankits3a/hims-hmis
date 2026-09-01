@@ -5,6 +5,8 @@ import type { Actor } from "@hmis/contracts";
 import { loadEnv } from "../../kernel/config";
 import { withTx } from "../../kernel/db/client";
 import { membershipInstances, membershipPlans } from "../../kernel/db/schema";
+import { appendEvent } from "../../kernel/events/append";
+import { instrumentEnrolled } from "./events";
 import { MembershipError } from "./errors";
 import type { Db } from "../../kernel/db/client";
 
@@ -109,6 +111,17 @@ export async function enrolMember(
       // C-17's rule, unchanged: an instance the holder book has not confirmed accrues nothing.
       verified: false,
     });
+    // REVIEW MAJOR 7 — the actor, on the spine, inside the same transaction as the row. Without it
+    // `membership_instances` records WHAT was minted and nothing records WHO minted it, which makes
+    // D5's whole boundary unauditable.
+    await appendEvent(tx, instrumentEnrolled.make({
+      actor,
+      patientId: input.patientId,
+      payload: {
+        instanceId, planId: plan.id, cardCode: input.cardCode.trim(),
+        patientId: input.patientId, holderName: input.holderName.trim(),
+      },
+    }));
   });
   return { instanceId, planId: plan.id, cardCode: input.cardCode.trim(), validTo };
 }

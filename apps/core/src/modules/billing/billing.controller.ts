@@ -33,10 +33,16 @@ const feeQuoteCouponsQuery = z
  * deliberately has no rule to resolve. Blank means no slip and must still quote.
  */
 const feeQuoteReferralQuery = z
-  .string()
+  // REVIEW MINOR 9 — accept the ARRAY too. Nest hands back `string[]` for a repeated parameter, and
+  // `z.string()` alone rejected it into a 400 — the exact stall the coupon parser above was written
+  // to avoid, five lines away. A double-clicked or proxy-duplicated `?referral=` must still quote.
+  // One slip per visit stands (V6: the partner whose id is on the slip is the partner with the
+  // claim), so the FIRST usable value wins rather than inventing a conflict partners cannot resolve.
+  .union([z.string(), z.array(z.string())])
   .optional()
-  .transform((v) => (v ?? "").trim())
-  .transform((v) => (v.length === 0 || v.length > 64 ? undefined : v));
+  .transform((v) => (v === undefined ? [] : Array.isArray(v) ? v : [v]))
+  .transform((all) => all.map((c) => c.trim()).filter((c) => c.length > 0 && c.length <= 64))
+  .transform((all) => all[0]);
 
 import { loadBillingConfig, updateBillingConfig } from "./config";
 import { dayBook, gstr1Summary } from "./daily-close";
@@ -244,8 +250,21 @@ const previewInvoiceBody = z.object({
   encounterId: z.string().min(1).optional(),
   lines: z.array(invoiceLineSchema).min(1),
   tags: z.array(z.string()).optional(),
-  patientId: z.string().min(1).optional(),
-  // See `issueInvoiceBody` above: the preview must be askable in the same terms as the invoice.
+  /**
+   * REVIEW MAJOR 4 — `patientId` IS DELIBERATELY NOT HERE, AND WAS REMOVED RATHER THAN GUARDED.
+   *
+   * T2 added it for symmetry with `issueInvoiceBody`. That turned this route into an instrument
+   * oracle: it takes NO `@CurrentActor()`, so a caller could name any patient, get benefits composed
+   * for them, and read `lines[].candidates` — which carries each proposing instrument's `reason`
+   * and, for a coupon, its literal CODE as `ruleKey`. That is membership status, plan tier and
+   * usable codes for a patient the caller may not be allowed to see, outside `visiblePatientIds`,
+   * and the codes are then spendable. `resolveInstruments`' own header states the invariant it
+   * broke: its subject is "an invoice's own patient — already resolved, already authorised".
+   *
+   * The preview keeps its subject implicit: `resolveEncounter` reads the patient off the named
+   * encounter. A preview with no encounter composes no benefits, which is the honest answer to a
+   * question that names no subject.
+   */
   couponCodes: z.array(z.string().min(1).max(64)).max(10).optional(),
   attributionCode: z.string().min(1).max(64).optional(),
 });

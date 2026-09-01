@@ -273,6 +273,17 @@ export type ResolveInstrumentsInput = {
   patientId?: string | null;
   /** Card and coupon codes physically presented. */
   presentedCodes?: string[];
+  /**
+   * RC-2 review MAJOR 3. When true, `presentedCodes` reach COUPONS ONLY and memberships come from
+   * the patient alone. The COMPOSER passes true; everything else keeps the shipped bearer semantics.
+   *
+   * The default is deliberately UNCHANGED (false = a presented code may name a card). Flipping it
+   * would have been the smaller diff and the wrong call: `recognition.test.ts`'s "a PRESENTED card
+   * code is recognised with no patient at all — the card is in the room" pins that behaviour as a
+   * design decision, and a fix that quietly reverses a tested contract to close a hole on ONE of its
+   * callers is a fix that breaks the other caller silently.
+   */
+  codesAreCouponsOnly?: boolean;
   /** WHICH INSTRUMENTS WERE LIVE AT THIS INSTANT. A query parameter, never a term of the arithmetic. */
   at: Date;
   /**
@@ -297,7 +308,28 @@ export type ResolveInstrumentsInput = {
 export async function resolveInstruments(db: Db, input: ResolveInstrumentsInput): Promise<ResolvedInstruments> {
   const codes = normaliseCodes(input.presentedCodes);
   const { patientId, ids } = await mergeTree(db, input.patientId ?? null);
-  const rows = await loadInstances(db, { patientIds: ids, codes });
+  /**
+   * RC-2 review MAJOR 3 — ON THE MONEY PATH A PRESENTED CODE IS A COUPON, NEVER A CARD.
+   *
+   * `loadInstances` matches `byPatient OR byCode`, and `byCode` is `membershipInstances.cardCode`.
+   * That bearer behaviour is DELIBERATE for the recognition surface — "a card handed across a
+   * counter is a physical object in the room" — and it is safe there because `recogniseForActor`
+   * gates on `visiblePatientIds` and shows a card to the person holding it.
+   *
+   * It is NOT safe on the composer. Until RC-2 no HTTP caller could set `couponCodes` at all (Plan
+   * 09 recorded that as a gap); T1 opened `?coupon=` on the quote and T2 declared it on both invoice
+   * bodies. With `or(...)` that made a STRANGER'S CARD CODE applicable to anyone's bill:
+   * `?coupon=<Q's card>` on P's visit proposed Q's 20%, and `consumeWinningInstruments` then burned
+   * Q's entitlement counter against P's invoice line. A member's free consults, spent by strangers.
+   *
+   * So the composer resolves MEMBERSHIPS FROM THE PATIENT ONLY and lets the codes reach coupons —
+   * which is what the counter actually presents. `resolveCoupons` still matches `byCode` on
+   * `coupon_definitions`, so a presented coupon works exactly as before; what it can no longer do is
+   * pull in an instrument the bill's own patient does not hold. The recognition surface is
+   * untouched and keeps its bearer semantics.
+   */
+  const instanceCodes = input.codesAreCouponsOnly === true ? [] : codes;
+  const rows = await loadInstances(db, { patientIds: ids, codes: instanceCodes });
   return {
     patientId,
     memberships: rows.map(toResolvedMembership),
@@ -409,6 +441,8 @@ export async function recogniseForActor(
   const gatedPatientId = visible[0] ?? null;
   const gatedIds = gatedPatientId === null ? [] : ids;
 
+  // The RECOGNITION surface keeps bearer semantics deliberately: it is actor-gated through
+  // `visiblePatientIds` above and shows a card to the person holding it (MAJOR 3's safe half).
   const rows = await loadInstances(db, { patientIds: gatedIds, codes });
   const coupons = await resolveCoupons(db, { codes, instances: rows });
   return {

@@ -474,6 +474,22 @@ async function composeBenefits(
     patientId: args.patientId,
     presentedCodes: args.couponCodes,
     at: args.at,
+    /**
+     * REVIEW MAJOR 3 — ON THE MONEY PATH A PRESENTED CODE IS A COUPON, NEVER A CARD.
+     *
+     * `loadInstances` matches `byPatient OR byCode` against `membership_instances.card_code`. That
+     * bearer behaviour is deliberate and tested for the RECOGNITION surface, which is actor-gated
+     * through `visiblePatientIds` and shows a card to whoever holds it. It was never safe HERE, and
+     * until RC-2 it was unreachable here: no HTTP caller could set `couponCodes` at all. T1 opened
+     * `?coupon=` on the quote and T2 declared it on both invoice bodies, and with the `or(...)` that
+     * made a STRANGER'S CARD applicable to anyone's bill — proposing their percentage and then
+     * burning THEIR entitlement counter against THIS invoice's line.
+     *
+     * The composer's subject is the invoice's own patient, which is what `resolveInstruments`'
+     * header has always said it is. Coupons still resolve by code, because a coupon is what the
+     * counter actually presents.
+     */
+    codesAreCouponsOnly: true,
   });
   if (found.memberships.length === 0 && found.coupons.length === 0) return { ctx: withRegistered(ctx), benefits: null };
 

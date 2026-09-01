@@ -4,14 +4,15 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { seedBillingBase } from "../../../test/helpers/billing";
 import { withTx } from "../../kernel/db/client";
 import {
-  attributionIds, counterparties, membershipInstances, membershipPlans, opdEncounters,
-  partnerAgreements, registrationConfig,
+  attributionIds, counterparties, entitlementCounters, membershipInstances, membershipPlans,
+  opdEncounters, partnerAgreements, registrationConfig,
 } from "../../kernel/db/schema";
 import { registerPatient } from "../patients";
 // spec §4: a module reaches another module ONLY through its declared interface. `PartnersModule`
 // is exported from the index precisely so the seam can be armed from outside.
 import { PartnersModule } from "../partners";
 import { previewInvoice } from "./invoices";
+import { entitlementMovementsOf } from "../membership";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -182,4 +183,101 @@ describe("RC-2 T3 — member, coupon and referral benefits apply to the self-pay
     expect(draft.totals.netPayablePaise).toBe(50_000);
     expect(draft.lines[0]!.candidates).toHaveLength(0);
   });
+
+  /**
+   * ═══ REVIEW MAJOR 3 — A PRESENTED CODE ON THE MONEY PATH IS A COUPON, NEVER A STRANGER'S CARD ═══
+   *
+   * `loadInstances` matches `byPatient OR byCode`, and `byCode` is `membership_instances.card_code`.
+   * That bearer behaviour is correct for the RECOGNITION surface, which is actor-gated through
+   * `visiblePatientIds` and shows a card to whoever is holding it. It was never safe on the
+   * composer — and until RC-2 it was unreachable there, because no HTTP caller could set
+   * `couponCodes` at all. T1 opened `?coupon=` on the quote and T2 declared it on both invoice
+   * bodies, which made a stranger's card applicable to anyone's bill AND burned that stranger's
+   * entitlement counter against this invoice's line.
+   *
+   * Both halves are asserted: the money and the counter.
+   */
+  it("MAJOR 3 — another member's CARD code presented as a coupon buys nothing, and burns none of their counter", async () => {
+    // The member, and their card. They are not the patient being billed.
+    const { patient: member } = await withTx(db, (tx) =>
+      registerPatient(tx, CLERK, { name: "Other Member", sex: "male", ageYears: 60 }));
+    const planId = newId();
+    const instanceId = newId();
+    const counterId = newId();
+    const CARD = "HMS-GOLD-7788";
+    await db.insert(membershipPlans).values({
+      id: planId, code: `INV-M3-${planId.slice(-6)}`, title: "Invented Gold Card", kind: "membership",
+      benefits: [{
+        benefitKey: "M3-CONSULT", title: "Invented member consultation benefit", kind: "percent_bps",
+        value: 2_000, capPaise: null, scope: { serviceCategories: ["consultation"], serviceIds: null },
+      }],
+      entitlements: {}, validityDays: 365, createdBy: "test",
+    });
+    await db.insert(membershipInstances).values({
+      id: instanceId, planId, cardCode: CARD, holderName: "Other Member",
+      patientId: member.id, validFrom: FROM, validTo: TO, status: "active", origin: "import",
+    });
+    await db.insert(entitlementCounters).values({
+      id: counterId, instanceId, benefitKey: "M3-CONSULT", grantedQty: 4,
+      validFrom: FROM, validTo: TO, state: "active",
+    });
+
+    // An unrelated walk-in, holding nothing.
+    const { encounterId } = await subjectWithNoInstruments("self");
+
+    const draft = await previewInvoice(db, {
+      encounterId, lines: [{ lineId: "fee", serviceId: consultServiceId, qty: 1 }],
+      couponCodes: [CARD.toLowerCase()], // typed off a card that is not this patient's
+    }, NOW);
+
+    expect(draft.totals.netPayablePaise).toBe(50_000); // full price — the card is not theirs
+    expect(draft.lines[0]!.winner).toBeNull();
+    expect(draft.lines[0]!.candidates).toHaveLength(0);
+    // …and the member's four free consults are untouched.
+    expect(await entitlementMovementsOf(db, counterId)).toEqual([]);
+  });
+
+  /** The member's OWN bill still works — a gate that refuses everyone is not a fix. */
+  it("MAJOR 3 — the member's own bill still composes their membership from the patient", async () => {
+    const { patient } = await withTx(db, (tx) =>
+      registerPatient(tx, CLERK, { name: "Own Member", sex: "female", ageYears: 45 }));
+    const planId = newId();
+    await db.insert(membershipPlans).values({
+      id: planId, code: `INV-M3B-${planId.slice(-6)}`, title: "Invented Gold Card", kind: "membership",
+      benefits: [{
+        benefitKey: "M3B-CONSULT", title: "Invented member consultation benefit", kind: "percent_bps",
+        value: 2_000, capPaise: null, scope: { serviceCategories: ["consultation"], serviceIds: null },
+      }],
+      entitlements: {}, validityDays: 365, createdBy: "test",
+    });
+    await db.insert(membershipInstances).values({
+      id: newId(), planId, cardCode: "HMS-GOLD-9911", holderName: "Own Member",
+      patientId: patient.id, validFrom: FROM, validTo: TO, status: "active", origin: "import",
+    });
+    const encounterId = newId();
+    await db.insert(opdEncounters).values({
+      id: encounterId, visitNo: `VM3B-${encounterId}`, patientId: patient.id, workflowInstanceId: newId(),
+      serviceDate: SERVICE_DAY, visitType: "new", status: "waiting", intendedPayer: "self",
+      openedBy: "shaped", updatedBy: "shaped", openedAt: NOW,
+    });
+
+    const draft = await previewInvoice(db, {
+      encounterId, lines: [{ lineId: "fee", serviceId: consultServiceId, qty: 1 }],
+    }, NOW);
+    expect(draft.totals.netPayablePaise).toBe(40_000);
+    expect(draft.lines[0]!.winner).toMatchObject({ ruleKey: "M3B-CONSULT" });
+  });
+
+  /** A patient holding nothing, for the MAJOR 3 case above. */
+  async function subjectWithNoInstruments(intendedPayer: string): Promise<{ encounterId: string }> {
+    const { patient } = await withTx(db, (tx) =>
+      registerPatient(tx, CLERK, { name: "Plain Walkin", sex: "other", ageYears: 28 }));
+    const encounterId = newId();
+    await db.insert(opdEncounters).values({
+      id: encounterId, visitNo: `VM3-${encounterId}`, patientId: patient.id, workflowInstanceId: newId(),
+      serviceDate: SERVICE_DAY, visitType: "new", status: "waiting", intendedPayer,
+      openedBy: "shaped", updatedBy: "shaped", openedAt: NOW,
+    });
+    return { encounterId };
+  }
 });

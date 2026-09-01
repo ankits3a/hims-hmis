@@ -98,10 +98,32 @@ export const instrumentHolderLinked = defineEvent(
 );
 
 /** The catalog `events.test.ts` pins. Later tasks in this phase APPEND to it. */
+/**
+ * RC-2 review MAJOR 7 — WHO ENROLLED WHOM.
+ *
+ * `enrolMember` was a copy of `graceHonor`'s insert MINUS its `appendEvent`, and
+ * `membership_instances` carries no actor column at all — no `created_by`, no `issued_by`. So the
+ * permission boundary D5 exists to draw ("the clerk who honours a card cannot mint one") had
+ * crossings that nothing recorded: ten instances would appear with `origin='counter'`, a timestamp,
+ * and no way for any report or audit to name who made them.
+ *
+ * The event carries the actor the way every other membership event does, which is also why this is
+ * an event rather than a column: no migration, and the spine is where "what did somebody do" lives.
+ */
+export const instrumentEnrolled = defineEvent(
+  "instrument.enrolled",
+  MODULE,
+  z.object({
+    instanceId: id, planId: id, cardCode: z.string().min(1), patientId: id,
+    holderName: z.string().min(1),
+  }),
+);
+
 export const MEMBERSHIP_EVENTS = [
   instrumentGraceHonored,
   couponRedemptionReleased,
   instrumentLookupRefused,
   holderBookImported,
   instrumentHolderLinked,
+  instrumentEnrolled,
 ] as const;

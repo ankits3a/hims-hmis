@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { assertPaise, percentAmount } from "../tariff";
 import { counterpartyFacts, resolveAgreementAt } from "./agreements";
-import { findAttributionByCode } from "./attribution";
+import { attributionBindsToPatient, findAttributionByCode } from "./attribution";
 import type { AdjustmentCandidate, AdjustmentSource, InvoiceLineInput, PricingContext } from "../tariff";
 import type { Db } from "../../kernel/db/client";
 
@@ -108,7 +108,7 @@ const PRESENTABLE_STATES = new Set(["issued", "claimed"]);
  */
 export async function resolveReferral(
   db: Db,
-  args: { code: string | undefined; at: Date },
+  args: { code: string | undefined; patientId: string | null; at: Date },
 ): Promise<ResolvedReferral | null> {
   const code = (args.code ?? "").trim();
   if (code === "") return null;
@@ -118,13 +118,56 @@ export async function resolveReferral(
   if (!PRESENTABLE_STATES.has(scanned.state)) return null;
   if (scanned.expiresAt !== null && scanned.expiresAt.getTime() <= args.at.getTime()) return null;
 
+  /**
+   * REVIEW MAJOR 5 — THE SLIP IS BOUND TO ITS PATIENT.
+   *
+   * `attribution_ids.patient_id` is populated by `issueAttribution` and was read into
+   * `ScannedAttribution` and then compared to nothing, so one code discounted unlimited bills for
+   * unlimited patients: append `&referral=<code>` to every quote in the hospital and every
+   * consultation takes 10% off, attributed to a partner, with the slip still `issued` and nothing
+   * recording that it was used twice.
+   *
+   * A slip naming a patient now proposes ONLY on that patient's bill. A slip naming none (the
+   * anonymous-leaflet case `issueAttribution` allows) still proposes for anyone, which is what a
+   * bearer instrument means — but it can no longer borrow a named slip's identity.
+   *
+   * The check is a BOOLEAN helper rather than a field on `ScannedAttribution`, because DD15 keeps
+   * the scanned result identity-free and `attribution.test.ts` pins that key set.
+   *
+   * This is NOT the single-use guard. A coupon has `single_use`, `coupon_redemptions`, a partial
+   * unique index and a `FOR UPDATE` lock; a referral has none of that machinery and building it is
+   * Plan 21's commission lane, not RC-2's. NAMED AS A CARRY in this phase's CLOSE rather than
+   * half-built here: within one patient, one slip still discounts repeatedly.
+   */
+  if (!(await attributionBindsToPatient(db, scanned.attributionId, args.patientId))) return null;
+
   const facts = await counterpartyFacts(db, scanned.counterpartyId);
   if (facts === null) return null;
   // THE LEGAL BRANCH — named, not incidental. See this file's header.
   if (facts.payeeClass === "external_rmp") return null;
   if (facts.status !== "active") return null;
 
-  const agreement = await resolveAgreementAt(db, scanned.counterpartyId, args.at);
+  /**
+   * REVIEW CRITICAL 1 — `resolveAgreementAt` does NOT only return null. It parses the agreement's
+   * jsonb through `accrualTermsSchema`, whose `payableRateBps` and `eligibleCategories` are REQUIRED
+   * and undefaulted, and THROWS `PartnersError("unknown_agreement")` when they are absent.
+   *
+   * That is a live shape, not an exotic one: nothing in `apps/core/src` writes `partner_agreements`,
+   * so the terms are hand-authored at commissioning — and RC-2 taught the operator to write the
+   * PATIENT-DISCOUNT keys, which is all this lane reads. An agreement carrying only those keys made
+   * `feeQuote` AND `issueInvoice` throw, and `billing.controller.ts`'s `toHttp` has no
+   * `PartnersError` arm, so it surfaced as a 500: **the bill could not be raised at all** — the exact
+   * outcome this function's header promises the design prevents.
+   *
+   * So the whole resolution is wrapped. A partner arrangement that cannot be read is a referral that
+   * proposes nothing, never a counter that cannot bill. The clerk sees no chip; the patient pays.
+   */
+  let agreement;
+  try {
+    agreement = await resolveAgreementAt(db, scanned.counterpartyId, args.at);
+  } catch {
+    return null;
+  }
   if (agreement === null) return null;
 
   const parsed = referralBenefitSchema.safeParse(agreement.rawTerms ?? {});

@@ -37,7 +37,7 @@ export class PartnersModule {
    */
   constructor() {
     registerBenefitSourceProvider("partners_referral", async (db, args) => {
-      const resolved = await resolveReferral(db, { code: args.attributionCode, at: args.at });
+      const resolved = await resolveReferral(db, { code: args.attributionCode, patientId: args.patientId, at: args.at });
       return resolved === null ? null : referralSource(resolved);
     });
   }
