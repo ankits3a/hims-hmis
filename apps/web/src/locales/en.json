@@ -272,6 +272,12 @@
       "transferred": "Transferred",
       "cancelled": "Cancelled"
     },
+    "feeStatus": {
+      "settled": "PAID",
+      "unsettled": "UNPAID",
+      "credit": "ON ACCOUNT",
+      "free": "NO CHARGE"
+    },
     "queueClass": {
       "0": "Danger",
       "1": "Returned with results",
@@ -2045,7 +2051,8 @@
     },
     "dossier": {
       "title": "Patient in hand",
-      "nobody": "Nobody at the counter yet"
+      "nobody": "Nobody at the counter yet",
+      "token": "Token {{token}}"
     },
     "wait": {
       "ahead": "{{count}} ahead",

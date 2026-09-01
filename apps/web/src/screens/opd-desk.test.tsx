@@ -522,3 +522,67 @@ describe("OpdDesk", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("queue transfer needs a front-office supervisor");
   });
 });
+
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   RC-4 T3 / D7 — THE PAID STAMP ON THE BOARD
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+describe("OpdDesk — the fee stamp (RC-4 T3)", () => {
+  /**
+   * `feeStatus` HAS BEEN ON THIS SCREEN'S WIRE SINCE RC-1 T3 AND WENT UNRENDERED FOR THREE PHASES.
+   * Core's `QueueEntryView` carries it (`opd/queue.ts:56`), `listQueue` fills it from
+   * `encounterFeeStatuses` (`:92`), and `opd-queue.controller.ts:148` returns the result with **no
+   * serializer between** — so this task needed no core change at all, only a web type that had
+   * stopped being narrower than its producer. Third time in this series, after `matchedOn` and
+   * `avgConsultMinutes`, which is why the phase document told the task to MEASURE FIRST.
+   *
+   * Driven through the real screen — department, then doctor, then the queue table — rather than by
+   * rendering the table in isolation, per method §5A.3.
+   */
+  async function boardWith(feeStatuses: (string | null)[]): Promise<void> {
+    setToken("tok-1");
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-1" } },
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/queues/summary": { items: SUMMARY },
+      "GET /api/opd/queues": {
+        ...QUEUE_VIEW,
+        ordered: feeStatuses.map((feeStatus, i) => entry({
+          id: `qe-fs-${i}`, seq: i + 1, tokenNo: 100 + i, position: i + 1, feeStatus,
+          encounterId: `enc-fs-${i}`,
+          encounter: { id: `enc-fs-${i}`, patientId: "p-1", visitType: "new", dangerFlagged: false, status: "waiting" },
+        })),
+      },
+    });
+    renderWithProviders(<OpdDesk />);
+    const user = userEvent.setup();
+    // The shared helper waits for the department OPTIONS to arrive before selecting — selecting a
+    // value that has not loaded yet is a silent no-op that reads as "the screen is broken".
+    await pickDepartment(user);
+    await user.click(await screen.findByTestId("board-pick-doc-1"));
+    await screen.findByTestId("queue-row-qe-fs-0");
+  }
+
+  it("stamps each of the four states with its own words, so a ₹0 visit is not read as a paid one", async () => {
+    await boardWith(["settled", "unsettled", "credit", "free"]);
+    expect(screen.getByTestId("fee-status-qe-fs-0").textContent).toBe("PAID");
+    expect(screen.getByTestId("fee-status-qe-fs-1").textContent).toBe("UNPAID");
+    expect(screen.getByTestId("fee-status-qe-fs-2").textContent).toBe("ON ACCOUNT");
+    // `free` is NOT folded into `settled`: a ₹0 review visit and a paid one look identical on a
+    // board that only knows paid/unpaid, and the point of the free branch is that it is defensible.
+    expect(screen.getByTestId("fee-status-qe-fs-3").textContent).toBe("NO CHARGE");
+  });
+
+  /**
+   * THE MUTANT: `null` treated as unpaid. `null` means the server declined to characterise this
+   * encounter's fee — it is NOT `"unsettled"`, and stamping UNPAID on it asserts something nobody
+   * said, in red, on a board a supervisor reads at a glance.
+   */
+  it("MUTANT — a null feeStatus stamped as UNPAID; it must render NOTHING", async () => {
+    await boardWith([null, "unsettled"]);
+    expect(screen.getByTestId("fee-status-qe-fs-1").textContent).toBe("UNPAID"); // the census
+    expect(screen.queryByTestId("fee-status-qe-fs-0")).toBeNull();               // THE KILL
+  });
+});

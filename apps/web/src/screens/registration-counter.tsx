@@ -216,10 +216,12 @@ export function counterExit(
  * the token) which stay server-owned because they are not session state.
  */
 export function Dossier({
-  quote, issued, canCollect, onConfirm,
+  quote, issued, canCollect, token, onConfirm,
 }: {
   quote: WireFeeQuote | null;
   issued: WireIssueInvoiceResult | null;
+  /** RC-4 T3 — D2's "token" noun. `null` until a visit is opened from this seat. */
+  token?: number | null;
   /**
    * ═══ CLOSE REVIEW F4 (CRITICAL) — REQUIRED, BECAUSE THE SEAT CANNOT ANSWER IT ═══
    *
@@ -250,6 +252,11 @@ export function Dossier({
         <>
           <p data-testid="dossier-patient">{inHand.patientId}</p>
           {inHand.encounterId !== null && <p data-testid="dossier-encounter">{inHand.encounterId}</p>}
+          {token != null && (
+            <p data-testid="dossier-token" className="text-2xl font-semibold tabular-nums">
+              {t("registrationCounter.dossier.token", { token })}
+            </p>
+          )}
 
           {quote !== null && <QuotePanel quote={quote} />}
 
@@ -642,6 +649,7 @@ export function RegistrationCounter(): React.ReactElement {
    * form; leaving is the defect this seat exists to remove.
    */
   const [registering, setRegistering] = useState(false);
+  const [token, setToken] = useState<number | null>(null);
   const summaries = useQueueSummary(todayIst());
 
   /**
@@ -662,6 +670,7 @@ export function RegistrationCounter(): React.ReactElement {
   const clearDesk = useCallback((): void => {
     setOverlay(null);
     setRegistering(false);
+    setToken(null);
     setDeskGen((n) => n + 1);
     release();
   }, [release]);
@@ -738,11 +747,12 @@ export function RegistrationCounter(): React.ReactElement {
           RC-4 is the phase that brings the bill across and makes all three lawful exits real.
         */}
         <div className="w-full shrink-0 rounded-lg border border-border bg-card p-4 lg:w-80">
-          <Dossier quote={quote} issued={null} canCollect={false} onConfirm={clearDesk} />
+          <Dossier quote={quote} issued={null} canCollect={false} token={token} onConfirm={clearDesk} />
         </div>
         <div className="min-w-0 flex-1 rounded-lg border border-border bg-card p-4">
           {inHand === null && (registering
-            ? <RegisterPanel doctors={summaries} onCancel={() => setRegistering(false)} />
+            ? <RegisterPanel doctors={summaries} onCancel={() => setRegistering(false)}
+                onOpened={(o) => { setToken(o.tokenNo); setRegistering(false); }} />
             : <FindPanel key={deskGen} onRegisterNew={() => setRegistering(true)} />)}
         </div>
       </div>
@@ -818,8 +828,12 @@ export function walkInBodyFor(
  * is worse than the duplicate it was trying to prevent.
  */
 export function RegisterPanel({
-  doctors, onCancel,
-}: { doctors: WireDoctorSummary[]; onCancel?: () => void }): React.ReactElement {
+  doctors, onCancel, onOpened,
+}: {
+  doctors: WireDoctorSummary[];
+  onCancel?: () => void;
+  onOpened?: (opened: { tokenNo: number | null; encounterId: string }) => void;
+}): React.ReactElement {
   const { t } = useTranslation();
   const { takePatient, takeEncounter } = usePatientInHand();
   const [fields, setFields] = useState<SeatRegisterFields>(EMPTY_REGISTER);
@@ -842,6 +856,14 @@ export function RegisterPanel({
       const result = await walkIn(walkInBodyFor({ fields }, doctor, acknowledgeDuplicates), idempotencyKey);
       takePatient(result.patientId);
       takeEncounter(result.encounter.id);
+      /*
+        RC-4 T3 / D2's "token" noun — and it costs NO extra fetch. `WireWalkInResult` extends
+        `WireOpenVisitResult`, which has carried `tokenNo` since 07b; the seat was throwing it away.
+        The PAID stamp itself lives on the BOARD (D7) because that is what the demo calls it and
+        because `feeStatus` only travels on the queue route; what the clerk needs in the dossier is
+        the number they are about to read out loud to the patient.
+      */
+      onOpened?.({ tokenNo: result.tokenNo, encounterId: result.encounter.id });
     } catch (e) {
       // LIFTED VERBATIM: a 409 carrying candidates is a QUESTION, not a failure.
       if (e instanceof ApiError && e.status === 409) {

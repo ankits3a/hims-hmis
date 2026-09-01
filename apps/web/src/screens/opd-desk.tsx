@@ -608,6 +608,27 @@ export function OpdDesk(): React.ReactElement {
                       {e.queueClass !== null && (
                         <Badge variant="secondary">{t(`opd.queueClass.${e.queueClass}`)}</Badge>
                       )}
+                      {/*
+                        RC-4 T3 / D7 — THE PAID STAMP. This is "the board" the acceptance demo means
+                        by *"watches the token flip UNPAID → PAID on the board"*, and this screen
+                        has been reading `feeStatus` off the wire since RC-1 T3 without a type that
+                        declared it.
+
+                        `null` IS RENDERED AS NOTHING, deliberately. It means the server declined to
+                        characterise this encounter's fee, which is NOT the same as "unpaid" —
+                        stamping UNPAID on it would assert something nobody said. `free` gets its
+                        own stamp rather than being folded into `settled`: a ₹0 review visit and a
+                        paid one look identical on a board that only knows paid/unpaid, and the
+                        whole point of the free branch is that the clerk can defend it.
+                      */}
+                      {e.feeStatus !== null && (
+                        <Badge
+                          data-testid={`fee-status-${e.id}`}
+                          variant={e.feeStatus === "unsettled" ? "destructive" : "default"}
+                        >
+                          {t(`opd.feeStatus.${e.feeStatus}`)}
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell>
                       <AbandonDialog entry={e} queryClient={queryClient} />

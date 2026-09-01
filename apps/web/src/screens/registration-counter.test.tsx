@@ -1264,3 +1264,85 @@ describe("RC-4 T1 — registering in place, and the duplicate that must not be a
     expect(acknowledged).toBeUndefined();
   });
 });
+
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   RC-4 T3 — THE PAID STAMP (D7: the BOARD), AND THE TOKEN IN THE DOSSIER
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+describe("RC-4 T3 — the token the clerk reads out loud", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+  });
+
+  /**
+   * D2's "token" noun, and it costs NO extra fetch: `WireWalkInResult` extends
+   * `WireOpenVisitResult`, which has carried `tokenNo` since 07b, and the seat was throwing it
+   * away. The PAID stamp itself lives on the board (D7) because `feeStatus` only travels on the
+   * queue route; what the clerk needs here is the number they are about to say to the patient.
+   */
+  it("registering surfaces the token in the dossier, and clearing the desk takes it away", async () => {
+    /*
+      A URL-AWARE STUB, because this test needs the SAME route to answer differently for two
+      different queries: "zzzz" must find nobody (so the register door opens) and "98765" must find
+      Binod (so a second patient can come in hand). `stubFetch` keys on METHOD+PATH with the query
+      stripped, which is right for almost every test here and cannot express that.
+    */
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(typeof input === "string" ? input : (input as Request).url);
+      const path = url.split("?")[0]!;
+      const json = (body: unknown): Response =>
+        new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path === "/api/auth/me") return json({ actor: { type: "user", id: "u-rc4" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
+      if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      if (path === "/api/patients/search") {
+        return json({ items: url.includes("zzzz") ? [] : [{ ...HIT_ASHA, id: "P-B", name: "Binod Sah", matchedOn: ["mobile"] }] });
+      }
+      if (path === "/api/opd/walk-in" && init?.method === "POST") {
+        return json({ patientId: "P-T", registered: true, encounter: { id: "E-T" }, tokenNo: 42, sessionId: "s-1" });
+      }
+      return new Response("{}", { status: 404 });
+    }));
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+
+    await user.type(screen.getByTestId("find-input"), "zzzz"); // finds nobody -> the door opens
+    await user.click(await screen.findByTestId("find-register-new"));
+    await user.type(screen.getByTestId("reg-name"), "Token Patient");
+    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
+    await user.click(screen.getByTestId("reg-submit"));
+
+    expect((await screen.findByTestId("dossier-token")).textContent).toContain("42");
+
+    /*
+      THE NEXT PATIENT MUST NOT INHERIT THE LAST ONE'S TOKEN — and the FIRST version of this
+      assertion could not fail, caught by running R21. It stopped at "press Escape, the token line
+      is gone", which is true whether or not the state was cleared: the line lives inside the
+      `inHand !== null` branch, so an empty dossier hides it either way. The state survived and
+      would have reappeared under the next patient — **F1's exact shape, on a second field, inside
+      the phase that fixed F1.** Only a SECOND PATIENT tells the two apart, which is what method
+      §5A.3 means by driving the assembly through a full cycle.
+    */
+    fireEvent.keyDown(window, { key: "Escape" });
+    await user.type(await screen.findByTestId("find-input"), "98765");
+    await user.click(await screen.findByTestId("find-hit-P-B"));
+
+    expect((await screen.findByTestId("dossier-patient")).textContent).toBe("P-B");
+    expect(screen.queryByTestId("dossier-token")).toBeNull(); // THE KILL
+  });
+
+  it("MUTANT — token 0 rendered as absent: `!= null` and not a truthiness check", () => {
+    takeInHand("P1", "E1");
+    renderWithProviders(<Dossier quote={null} issued={null} canCollect={false} token={0} />);
+    // A falsy-but-real token must still render. `token && …` would hide it, and token 0 is the one
+    // a board issues first thing in the morning.
+    expect(screen.getByTestId("dossier-token").textContent).toContain("0");
+  });
+
+  it("no token, no line — the dossier does not print an empty stamp", () => {
+    takeInHand("P1", "E1");
+    renderWithProviders(<Dossier quote={null} issued={null} canCollect={false} />);
+    expect(screen.queryByTestId("dossier-token")).toBeNull();
+  });
+});

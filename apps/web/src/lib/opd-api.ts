@@ -109,6 +109,25 @@ export type WireQueueEntryView = WireQueueEntry & {
   queueClass: OpdQueueClass | null;
   encounter: { id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string };
   patient: WirePatientSummary | null;
+  /**
+   * RC-4 T3 — THE PAID STAMP, AND IT WAS ALREADY ON THE WIRE. **Third time this series.**
+   *
+   * MEASURED before writing anything, because the phase doc told this task to: core's
+   * `QueueEntryView` has carried `feeStatus` since RC-1 T3 (`opd/queue.ts:56`), `listQueue` fills it
+   * from `encounterFeeStatuses` (`:92`), and `opd-queue.controller.ts:148` returns the result with
+   * **no serializer between**. Two web screens have read that route the whole time and neither type
+   * declared the field — so **no core change was needed here either**, exactly as with RC-3 T4's
+   * `avgConsultMinutes` and `matchedOn` before it.
+   *
+   * `null` is a real value and not an absence: it means the encounter has no fee status to report,
+   * which is different from `"unsettled"`. A consumer that treats `null` as unpaid would stamp
+   * UNPAID on a row the server declined to characterise.
+   *
+   * DERIVED, NEVER STORED — which is why RC-3 T3 could make the event flip BOTH ways and why a
+   * client must never recompute paid-ness from an invoice. `encounterFeeStatuses` is the one
+   * projection; a second truth function is a board that can disagree with the gate.
+   */
+  feeStatus: "free" | "settled" | "credit" | "unsettled" | null;
 };
 
 /**
