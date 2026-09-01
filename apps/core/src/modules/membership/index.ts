@@ -46,6 +46,9 @@ export type {
   GraceHonorInput, GraceHonorResult, RecognisedCoupon, RecognisedMembership, RecognitionResult,
   ResolveInstrumentsInput,
 } from "./recognition";
+// RC-2 T4 / D5 — enrol is not apply. The lane refuses while owner ruling O-15 is open.
+export { enrolMember, membershipSalesEnabled, requireSalesLane } from "./enrolment";
+export type { EnrolInput, EnrolResult } from "./enrolment";
 export { MEMBERSHIP_APPROVAL_TYPES, registerMembershipApprovalTypes } from "./approval-types";
 export { INSTRUMENT_SEARCH_PROVIDER_KEY, instrumentSearchProvider } from "./search-providers";
 

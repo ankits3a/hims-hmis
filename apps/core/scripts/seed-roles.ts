@@ -126,6 +126,19 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // desk does cannot cover it.
       "membership.instrument.read",
       "membership.instrument.recognise",
+      /**
+       * RC-2 T4 / D5 — ENROL IS NOT APPLY, and the supervisor is where the line falls.
+       *
+       * The Registration Counter handoff rules it: "this seat APPLIES membership benefits and
+       * cannot ENROL — enrolment is the front-office manager. Model it as two permissions from day
+       * one." `front_office` holds `recognise` and deliberately NOT this. The clerk who honours a
+       * card at the counter cannot mint one.
+       *
+       * It guards `POST /membership/instruments/enrol`, which refuses on MEMBERSHIP_SALES_ENABLED
+       * while owner ruling O-15 is open. A locked door, not an absent one — which is exactly the
+       * distinction `membership.catalog.manage` below is parked for failing.
+       */
+      "membership.instrument.enrol",
       "membership.grace_honor.request",
       /**
        * PLAN 07c T9 / DD14 — the supervisor's named-staff view, and this is the role the phrase
@@ -646,10 +659,20 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // work the queue that never auto-links (Plan 09 DD5). Both strings guard live routes.
       "membership.import.run",
       "membership.reconcile.operate",
+      // RC-2 T4 / D5 — the role that works the holder book is also the role that may put somebody
+      // INTO it from the counter. Guards a real route that refuses on MEMBERSHIP_SALES_ENABLED
+      // while O-15 is open; see the supervisor block above for the ruling.
+      "membership.instrument.enrol",
       // `membership.catalog.manage` is NOT here and that is measured, not squeamish: it guards NO
       // ROUTE ANYWHERE IN THE TREE. Its only occurrence is the manifest. Granting it would hand
       // somebody a key to a door that does not exist — the same mistake `auth.break_glass.use`
       // would have been. It stays in `NOT_YET_MODELLED` with that reason.
+      //
+      // RC-2 T4 RE-MEASURED IT AND THE ANSWER IS UNCHANGED: still 0 occurrences outside the
+      // manifest. `membership.instrument.enrol` was minted beside it in the same commit and DOES
+      // get granted, which is the distinction drawn sharply: enrol guards a door that exists and is
+      // locked by a flag; catalog.manage guards no door at all. RC-2 builds no catalog screen —
+      // that is Plan 22 T1 — so this waits, still, for the screen that would justify it.
     ],
   },
   {

@@ -43,6 +43,19 @@ export const membershipManifest: ModuleManifest = {
     // Granted by DD18 — the counter cannot function without these.
     "membership.instrument.read",
     "membership.instrument.recognise",
+    /**
+     * RC-2 T4 / D5 — THE OTHER HALF OF THE COUNTER'S AUTHORITY.
+     *
+     * `recognise` is APPLY and the clerk holds it. This is ENROL, and the clerk must not: the
+     * Registration Counter handoff rules that "this seat applies membership benefits and cannot
+     * enrol — enrolment is the front-office manager", and calls it a ruling rather than a UX
+     * nicety. Granted to `front_office_supervisor` and `membership_admin` ONLY.
+     *
+     * It guards a real route (`POST /membership/instruments/enrol`) which refuses on
+     * `MEMBERSHIP_SALES_ENABLED` while owner ruling O-15 is open — a locked door, which is a
+     * different thing from `membership.catalog.manage`'s no door at all.
+     */
+    "membership.instrument.enrol",
     "membership.grace_honor.request",
     "membership.grace_honor.approve",
     /**

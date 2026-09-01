@@ -627,7 +627,16 @@ patient and issue the invoice, because a member's benefit not applied at the mom
 cannot be applied afterwards without a credit note, an approval and a queue. APPROVING a
 grace-honor (`membership.grace_honor.approve`) sits with `billing_manager` alone, the role that
 already approves every other billing exception, so the desk that asks can never be the desk that
-grants. Everything else that phase declares — the membership catalog, the holder-book import, the
+grants.
+
+RC-2 adds a fifth `membership.*` string, `membership.instrument.enrol`, which appears in neither
+table above either. It is the other half of the counter's authority: `membership.instrument.recognise`
+is APPLY, which the clerk holds, and this is ENROL, which the clerk must not — the seat that honours
+a card cannot mint one. It goes to `front_office_supervisor` and `membership_admin` and deliberately
+NOT to `front_office`. It guards `POST /membership/instruments/enrol`, which refuses with
+`sales_disabled` while `MEMBERSHIP_SALES_ENABLED` is off and owner ruling O-15 on opening the sales
+lane is unanswered — a door that exists and is locked, which is the distinction
+`membership.catalog.manage` is still parked for failing. Everything else that phase declares — the membership catalog, the holder-book import, the
 reconcile queue, and all seven `partners.*` strings — is deliberately ungranted and recorded in
 `NOT_YET_MODELLED` with its reason: no role model for them is published anywhere, the catalogs are
 config rows loaded at commissioning rather than maintained by a human at a route, and every lane

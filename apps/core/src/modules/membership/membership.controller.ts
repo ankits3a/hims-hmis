@@ -12,6 +12,7 @@ import { checkSearchRate } from "../../kernel/search/rate-limit";
 import { PatientError } from "../patients";
 import { MembershipError, membershipHttpStatus } from "./errors";
 import { instrumentLookupRefused } from "./events";
+import { enrolMember } from "./enrolment";
 import { graceHonor, recogniseForActor } from "./recognition";
 import { importHolderBook } from "./import/importer";
 import { listQuarantine } from "./import/quarantine";
@@ -75,6 +76,14 @@ const lookupQuery = z.object({
  * `codes` is a comma-separated list, because a counter presents a card AND a coupon at once and a
  * repeated query parameter is the shape every proxy on the path treats differently.
  */
+/** RC-2 T4. Declared at the boundary, never inherited — RC-1 T1's lesson, one module over. */
+const enrolBody = z.object({
+  patientId: z.string().min(1),
+  planId: z.string().min(1),
+  cardCode: z.string().min(1).max(64),
+  holderName: z.string().min(1).max(160),
+});
+
 const recognitionQuery = z.object({
   patientId: z.string().min(1).optional(),
   codes: z.string().optional(),
@@ -220,6 +229,32 @@ export class MembershipController {
    * omission: no counter screen shows a sales figure, so the surface it renders from cannot carry
    * one either.
    */
+  /**
+   * RC-2 T4 / D5 — ENROL, WHICH IS NOT APPLY.
+   *
+   * Two gates, and both are proven by execution in `enrolment.test.ts` because either one alone
+   * would be a false comfort:
+   *
+   *   1. `membership.instrument.enrol` — `front_office` does NOT hold it and is refused 403 here.
+   *      The clerk who honours a card at the counter cannot mint one. That is the owner's ruling.
+   *   2. `MEMBERSHIP_SALES_ENABLED` — off, so even `front_office_supervisor` gets 409
+   *      `sales_disabled` while owner ruling O-15 is open. The authority exists; the lane does not.
+   *
+   * Deliberately minimal: no price, no card-sale line, no cooling-off, no disclosure script. Plan
+   * 22 T2 owns the sales lane and fills this in ONE place when O-15 is ruled.
+   */
+  @RequirePermission("membership.instrument.enrol", "hospital")
+  @Post("instruments/enrol")
+  async enrol(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ instanceId: string }> {
+    const b = parsed(enrolBody, body);
+    try {
+      const { instanceId } = await enrolMember(this.db, actor, b);
+      return { instanceId };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   @RequirePermission("membership.instrument.recognise", "hospital")
   @Get("recognition")
   async recognition(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<RecognitionResult> {
