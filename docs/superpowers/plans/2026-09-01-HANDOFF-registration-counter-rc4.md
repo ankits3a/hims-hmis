@@ -1,3 +1,13 @@
+# ⚠ SUPERSEDED — use `2026-09-01-HANDOFF-rc4-t2-t4.md` instead
+
+**This file is stale in two ways and is kept only so the correction is visible.** It was written
+before RC-4's T1 and T3 shipped, and its original text claimed RC-4 was the last phase and that its
+"entire content" was deleting one of the two counters — **both wrong** (see
+`2026-09-01-SCOPE-registration-counter-remainder.md`). The live handoff is
+**`2026-09-01-HANDOFF-rc4-t2-t4.md`**.
+
+---
+
 # HANDOFF — Registration Counter series: RC-1, RC-2, RC-3 all CLOSED. RC-4 is the last phase.
 
 Paste everything below the line into a fresh Claude Code session opened at `/opt/hmis` on the build host. Written 2026-09-01 at RC-3's close, per EXECUTE-METHOD-V3 §5A.2. **Every fact here is a POINTER — trust the pointed-at file over this summary if they ever disagree.**
