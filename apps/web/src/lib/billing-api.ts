@@ -74,6 +74,13 @@ export type WirePricedDraft = {
 export type WireFeeQuote = {
   encounterId: string; visitType: string; free: boolean;
   feeServiceId: string | null; draft: WirePricedDraft | null;
+  /**
+   * RC-1 T5 / D8 shipped this on the server's `FeeQuote` and it never reached this type, so the
+   * seat that is meant to print "review visit — free till <date> (<doctor>)" could not see the
+   * reason at all. Added here by RC-2 T1 because this is the type RC-3 renders from; naming only,
+   * exactly as the server says — a null never un-frees anything.
+   */
+  freeReason: { kind: "review_window"; doctorName: string | null; seenOn: string; windowEndsOn: string } | null;
 };
 
 // ——— what the counter posts ——————————————————————————————————————————————————————————————————
@@ -217,8 +224,17 @@ export function billingErrorDetail(e: unknown): unknown {
 
 // ——— fetchers ————————————————————————————————————————————————————————————————————————————————
 
-export function fetchFeeQuote(encounterId: string): Promise<WireFeeQuote> {
-  return api("GET", `/billing/visits/${encodeURIComponent(encounterId)}/fee-quote`);
+/**
+ * RC-2 T1 / D2 — the codes the clerk is holding travel WITH the question. Repeatable `?coupon=`,
+ * because the server declares it that way; an empty list sends no parameter at all, so the shipped
+ * caller's URL is byte-identical and no existing screen changes behaviour.
+ */
+export function fetchFeeQuote(encounterId: string, couponCodes: string[] = []): Promise<WireFeeQuote> {
+  const query = couponCodes
+    .map((code) => `coupon=${encodeURIComponent(code)}`)
+    .join("&");
+  const path = `/billing/visits/${encodeURIComponent(encounterId)}/fee-quote`;
+  return api("GET", query === "" ? path : `${path}?${query}`);
 }
 
 export function previewInvoice(body: {

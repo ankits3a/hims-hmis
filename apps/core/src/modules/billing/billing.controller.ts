@@ -14,6 +14,18 @@ import { getPatientSummaries, PatientError } from "../patients";
 import { loadOpdConfig, OpdError } from "../opd";
 import { DISCOUNT_CATEGORIES, TariffError, tariffHttpStatus } from "../tariff";
 import { feeQuote } from "./charge-rules";
+/**
+ * RC-2 T1 / D2. `.catch` on the outer union rather than `.optional()` alone: a caller who sends
+ * `?coupon=` with nothing after it, or repeats it into an array of empties, means "no coupon" and
+ * must get a quote, not a 400 — the counter cannot stall on a keystroke. The caps are the same
+ * refusal `resolveInstruments` would make later, made earlier and cheaply.
+ */
+const feeQuoteCouponsQuery = z
+  .union([z.string(), z.array(z.string())])
+  .optional()
+  .transform((v) => (v === undefined ? [] : Array.isArray(v) ? v : [v]))
+  .transform((codes) => codes.map((c) => c.trim()).filter((c) => c.length > 0 && c.length <= 64).slice(0, 10));
+
 import { loadBillingConfig, updateBillingConfig } from "./config";
 import { dayBook, gstr1Summary } from "./daily-close";
 import { issueCreditNote, listCreditNotes } from "./credit-notes";
@@ -456,11 +468,25 @@ export class BillingController {
     return { items: await listCreditNotes(this.db, { invoiceId: id }) };
   }
 
+  /**
+   * RC-2 T1 / D2 — the codes are DECLARED at this boundary, never inherited.
+   *
+   * RC-1 T1 exists because `receiptBlockSchema` did not declare `changeGivenPaise`, so zod stripped
+   * a field the web was already sending and the drawer-vs-ledger defect came back silently. A quote
+   * route that read `couponCodes` off an undeclared query object would be that same defect one
+   * screen over, so the parse is explicit and the shape is pinned: a repeatable `?coupon=` (Nest
+   * hands back a bare string for one occurrence and an array for several — both normalise here),
+   * each trimmed, capped in count and length, empties dropped.
+   */
   @RequirePermission("billing.invoice.read", "hospital")
   @Get("visits/:encounterId/fee-quote")
-  async feeQuoteRoute(@Param("encounterId") encounterId: string): Promise<FeeQuote> {
+  async feeQuoteRoute(
+    @Param("encounterId") encounterId: string,
+    @Query("coupon") coupon?: string | string[],
+  ): Promise<FeeQuote> {
+    const couponCodes = parsed(feeQuoteCouponsQuery, coupon);
     try {
-      return await feeQuote(this.db, encounterId);
+      return await feeQuote(this.db, encounterId, new Date(), { couponCodes });
     } catch (e) {
       toHttp(e);
     }

@@ -60,8 +60,25 @@ export type FeeQuote = {
  * The counter screen's one-keystroke flow (D8): the branch plus a fee line priced exactly as
  * `issueInvoice` would price it, and NOTHING persisted — `previewInvoice` is the shared core, so
  * a quote and the invoice that follows it can never disagree about the money.
+ *
+ * ═══ RC-2 T1 / D2 — THE CODES THE CLERK IS HOLDING ═══
+ *
+ * That last sentence was FALSE for a coupon, and had been since Plan 09 shipped. `previewInvoice`
+ * has declared `couponCodes` all along (with a comment saying exactly why: "a counter that quotes
+ * high and bills low teaches its clerks not to trust the quote"), and this function — the one the
+ * counter actually calls — accepted none and forwarded none. So a presented coupon could reach the
+ * INVOICE and never the QUOTE, and the two disagreed by the whole discount.
+ *
+ * The membership half needed no such repair and none is made: `priceDraftWithBenefits` resolves the
+ * encounter's own patient when the caller names none, so a member's percentage has always composed
+ * into this quote whenever `MEMBER_BENEFITS_ENABLED` is on. Only the codes had no door.
  */
-export async function feeQuote(db: Db, encounterId: string, now: Date = new Date()): Promise<FeeQuote> {
+export async function feeQuote(
+  db: Db,
+  encounterId: string,
+  now: Date = new Date(),
+  opts: { couponCodes?: string[] } = {},
+): Promise<FeeQuote> {
   const encounter = await getEncounter(db, encounterId);
   if (!encounter) throw new BillingError("unknown_encounter", `unknown encounter ${encounterId}`);
   const cfg = await loadBillingConfig(db);
@@ -75,7 +92,14 @@ export async function feeQuote(db: Db, encounterId: string, now: Date = new Date
   }
   const draft = await previewInvoice(
     db,
-    { encounterId, lines: [{ lineId: FEE_LINE_ID, serviceId: feeServiceId, qty: 1 }] },
+    {
+      encounterId,
+      lines: [{ lineId: FEE_LINE_ID, serviceId: feeServiceId, qty: 1 }],
+      // The whole of D2. An unknown or spent code is NOT an error here: `narrowToRedeemableCoupons`
+      // drops it and the quote simply carries no discount, so a mistyped code makes the clerk retype
+      // rather than making the counter stall on a patient who is standing there.
+      couponCodes: opts.couponCodes,
+    },
     now,
   );
   return { encounterId, visitType: encounter.visitType, free: false, feeServiceId, draft, freeReason: null };
