@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   Dossier, FindPanel, QueuesOverlay, QuotePanel, RegistrationCounter, SEAT_TENDER_ORDER, WaitLine,
@@ -1463,8 +1463,21 @@ describe("RC-4 T2 — bill-first through the ASSEMBLED seat, two patients (metho
    */
   type Log = { method: string; path: string; body: unknown }[];
 
-  function billFirstStub(over: { config?: unknown; drawer?: unknown; quoteFor?: (id: string) => unknown; join?: (log: Log) => unknown } = {}): Log {
-    const log: Log = [];
+  /**
+   * CLOSE REVIEW F1/F2/F4 — the stub is now a tiny SERVER MODEL, because the seat reads the server
+   * for the encounter in hand: `GET /opd/visits/:id` answers with the queue entries the stub's own
+   * join-queue calls (or the settle hook, `hook: true`) created, and `GET /billing/invoices`
+   * answers with the invoices its own POSTs issued. `seed` pre-loads that model for the reload
+   * tests, where the seat remembers nothing and the server remembers everything.
+   */
+  type ServerModel = { joined: Record<string, number>; invoiced: Record<string, boolean>; status: Record<string, string> };
+  function billFirstStub(over: {
+    config?: unknown; drawer?: unknown; quoteFor?: (id: string) => unknown; join?: (log: Log) => unknown;
+    /** The settle hook (core, RC-4 close F1): an invoice on a never-joined visit joins it server-side. */
+    hook?: boolean; seed?: Partial<ServerModel>; invoicesForbidden?: boolean;
+  } = {}): Log & { model: ServerModel } {
+    const model: ServerModel = { joined: {}, invoiced: {}, status: {}, ...over.seed };
+    const log: Log & { model: ServerModel } = Object.assign([], { model });
     let opened = 0;
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(typeof input === "string" ? input : (input as Request).url);
@@ -1486,6 +1499,7 @@ describe("RC-4 T2 — bill-first through the ASSEMBLED seat, two patients (metho
         const id = opened === 1 ? "A" : "B";
         // The DEFERRED shape, exactly as `walk-in.ts` returns it: null token, session and entry.
         const deferred = body.join === "defer";
+        if (!deferred) model.joined[`E-${id}`] = 9;
         return json({
           patientId: body.patient.existingId ?? `P-${id}`, registered: body.patient.existingId === undefined,
           encounter: { id: `E-${id}` },
@@ -1494,12 +1508,33 @@ describe("RC-4 T2 — bill-first through the ASSEMBLED seat, two patients (metho
       }
       const quoteMatch = /^\/api\/billing\/visits\/(E-[AB])\/fee-quote$/.exec(path);
       if (quoteMatch) return json(over.quoteFor?.(quoteMatch[1]!) ?? quoteWith({ encounterId: quoteMatch[1] }));
-      if (path === "/api/billing/invoices" && method === "POST") return json(ISSUED);
+      if (path === "/api/billing/invoices" && method === "POST") {
+        const enc = (JSON.parse(String(init?.body)) as { encounterId: string }).encounterId;
+        model.invoiced[enc] = true;
+        if (over.hook === true && model.joined[enc] === undefined) model.joined[enc] = 42; // the settle hook joined it
+        return json(ISSUED);
+      }
+      if (path === "/api/billing/invoices" && method === "GET") {
+        if (over.invoicesForbidden === true) return json({ statusCode: 403, message: "forbidden" }, 403);
+        const enc = new URL(url, "http://x").searchParams.get("encounterId") ?? "";
+        return json({ items: model.invoiced[enc] === true ? [{ id: "inv-1", encounterId: enc }] : [] });
+      }
+      const visitMatch = /^\/api\/opd\/visits\/(E-[AB])$/.exec(path);
+      if (visitMatch && method === "GET") {
+        const enc = visitMatch[1]!;
+        const tokenNo = model.joined[enc];
+        return json({
+          encounter: { id: enc, status: model.status[enc] ?? "registered" },
+          queueEntries: tokenNo === undefined ? [] : [{ tokenNo, status: "waiting_vitals", seq: 1 }],
+        });
+      }
       const joinMatch = /^\/api\/opd\/visits\/(E-[AB])\/join-queue$/.exec(path);
       if (joinMatch && method === "POST") {
         const custom = over.join?.(log);
         if (custom instanceof Response) return custom;
-        return json(custom ?? { encounter: { id: joinMatch[1] }, queueEntry: { id: "qe-1" }, tokenNo: 42, sessionId: "s-1", roomId: null, alreadyJoined: false });
+        const already = model.joined[joinMatch[1]!] !== undefined;
+        model.joined[joinMatch[1]!] ??= 42;
+        return json(custom ?? { encounter: { id: joinMatch[1] }, queueEntry: { id: "qe-1" }, tokenNo: model.joined[joinMatch[1]!], sessionId: "s-1", roomId: null, alreadyJoined: already });
       }
       return new Response("{}", { status: 404 });
     }));
@@ -1747,7 +1782,9 @@ describe("RC-4 T4 — the flow pill shows the server's sequence, and only the pe
     expect(seq.textContent).toContain("Register → Queue → Bill");
     expect(screen.getByTestId("flow-lane").textContent).toContain("Token at registration");
     expect(screen.getByTestId("flow-locked")).toBeTruthy();
-    expect(log).toHaveLength(0);
+    // (Close review B-F8: an `expect(log).toHaveLength(0)` stood here and was true regardless —
+    // nothing is clicked, so nothing could write. The SPAN assertion is the kill.)
+    void log;
   });
 
   it("the supervisor's write sends EXACTLY one flow key, and the pill then shows what the SERVER returned", async () => {
@@ -1819,5 +1856,411 @@ describe("RC-4 T4 — the flow pill shows the server's sequence, and only the pe
     renderWithProviders(<RegistrationCounter />);
     expect(await screen.findByTestId("flow-unknown")).toBeTruthy();
     expect(screen.queryByTestId("flow-sequence")).toBeNull(); // no sequence claimed at all
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   RC-4 CLOSE REVIEW — pass 1's findings, each proved by restoring its defect (method §5A.4)
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+describe("RC-4 close review — F1 (CRITICAL): a deferred visit's join must survive the seat forgetting it", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+  });
+  const ME = { actor: { type: "user", id: "u-rc4" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } };
+
+  /** The same server model as the T2 block, reachable here. */
+  function serverStub(seed: { joined?: Record<string, number>; invoiced?: Record<string, boolean>; status?: Record<string, string> }, over: { join?: () => Response | undefined; invoicesForbidden?: boolean; quoteFree?: boolean; drawer?: unknown } = {}): { joins: number } {
+    const model = { joined: { ...seed.joined }, invoiced: { ...seed.invoiced }, status: { ...seed.status } };
+    const counters = { joins: 0 };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(typeof input === "string" ? input : (input as Request).url);
+      const path = url.split("?")[0]!;
+      const method = init?.method ?? "GET";
+      const json = (body: unknown, status = 200): Response =>
+        new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+      if (path === "/api/auth/me") return json(ME);
+      if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      if (path === "/api/opd/config") return json(BILL_FIRST);
+      if (path === "/api/billing/sessions/current") return json(over.drawer ?? DRAWER_OPEN);
+      if (path === "/api/patients/search") return json({ items: [] });
+      const quoteMatch = /^\/api\/billing\/visits\/(E-[AB])\/fee-quote$/.exec(path);
+      if (quoteMatch) return json(quoteWith({ encounterId: quoteMatch[1], ...(over.quoteFree === true ? { free: true, draft: null, feeServiceId: null } : {}) }));
+      if (path === "/api/billing/invoices" && method === "GET") {
+        if (over.invoicesForbidden === true) return json({ statusCode: 403 }, 403);
+        const enc = new URL(url, "http://x").searchParams.get("encounterId") ?? "";
+        return json({ items: model.invoiced[enc] === true ? [{ id: "inv-1" }] : [] });
+      }
+      const visitMatch = /^\/api\/opd\/visits\/(E-[AB])$/.exec(path);
+      if (visitMatch && method === "GET") {
+        const t = model.joined[visitMatch[1]!];
+        return json({ encounter: { id: visitMatch[1], status: model.status[visitMatch[1]!] ?? "registered" }, queueEntries: t === undefined ? [] : [{ tokenNo: t, status: "waiting", seq: 1 }] });
+      }
+      const joinMatch = /^\/api\/opd\/visits\/(E-[AB])\/join-queue$/.exec(path);
+      if (joinMatch && method === "POST") {
+        counters.joins += 1;
+        const custom = over.join?.();
+        if (custom !== undefined) return custom;
+        model.joined[joinMatch[1]!] ??= 42;
+        return json({ encounter: { id: joinMatch[1] }, queueEntry: {}, tokenNo: model.joined[joinMatch[1]!], sessionId: "s-1", roomId: null, alreadyJoined: false });
+      }
+      return new Response("{}", { status: 404 });
+    }));
+    return counters;
+  }
+
+  /**
+   * THE RELOAD ROAD. The seat remembers nothing; the patient is in hand from sessionStorage; the
+   * server says: registered, never joined, and an invoice exists (issued at /billing, or here
+   * before the reload). The seat offers the join — and takes the server's token once it exists.
+   */
+  it("after a reload, a PAID never-joined visit is offered the join, and joining shows the server's token", async () => {
+    const c = serverStub({ invoiced: { "E-A": true } });
+    takeInHand("P-A", "E-A");
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+
+    const owed = await screen.findByTestId("join-owed");
+    expect(owed.textContent).toContain("not in the queue");
+    expect(screen.queryByTestId("collect-panel")).toBeNull();          // and no second collection (F2/F4)
+    expect(screen.getByTestId("invoiced-elsewhere")).toBeTruthy();
+    await user.click(screen.getByTestId("join-now"));
+
+    expect((await screen.findByTestId("dossier-token")).textContent).toContain("42");
+    expect(c.joins).toBe(1);
+    await waitFor(() => expect(screen.queryByTestId("join-owed")).toBeNull());
+  });
+
+  it("MUTANT — the door offered on an UNPAID deferred visit: no invoice, priced quote → no join offered, no collect elsewhere", async () => {
+    const c = serverStub({});
+    takeInHand("P-A", "E-A");
+    renderWithProviders(<RegistrationCounter />);
+    await screen.findByTestId("priced-elsewhere");
+    expect(screen.queryByTestId("join-owed")).toBeNull(); // THE KILL: the unpaid token this lane exists to keep off the board
+    expect(c.joins).toBe(0);
+  });
+
+  it("a visit the SERVER joined (the settle hook, or /billing) shows its token with no seat memory at all", async () => {
+    serverStub({ joined: { "E-A": 17 }, invoiced: { "E-A": true } });
+    takeInHand("P-A", "E-A");
+    renderWithProviders(<RegistrationCounter />);
+    expect((await screen.findByTestId("dossier-token")).textContent).toContain("17");
+    expect(screen.queryByTestId("join-owed")).toBeNull();
+  });
+
+  it("a FREE revisit after a reload is offered the join on the quote alone", async () => {
+    serverStub({}, { quoteFree: true });
+    takeInHand("P-A", "E-A");
+    renderWithProviders(<RegistrationCounter />);
+    expect(await screen.findByTestId("join-owed")).toBeTruthy();
+  });
+});
+
+describe("RC-4 close review — F2/F4: the seat's memory is not the truth about the money", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+  });
+
+  /**
+   * The seat opened A, the clerk was interrupted, and A was billed at /billing. The next poll
+   * of the seat's invoice read says so — and "Collect ₹400" must be gone. Fake timers drive the
+   * poll, as in the pill test.
+   */
+  it("an invoice issued for the seat's own visit from ANOTHER surface takes the collect panel away within a poll", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const model = { invoiced: false };
+      vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(typeof input === "string" ? input : (input as Request).url);
+        const path = url.split("?")[0]!;
+        const method = init?.method ?? "GET";
+        const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+        if (path === "/api/auth/me") return json({ actor: { type: "user", id: "u" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
+        if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+        if (path === "/api/opd/config") return json(QUEUE_FIRST);
+        if (path === "/api/billing/sessions/current") return json(DRAWER_OPEN);
+        if (path === "/api/patients/search") return json({ items: [] });
+        if (path === "/api/opd/walk-in") return json({ patientId: "P-A", registered: true, encounter: { id: "E-A" }, tokenNo: 9, sessionId: "s", queueEntry: {} });
+        if (path === "/api/billing/visits/E-A/fee-quote") return json(quoteWith({ encounterId: "E-A" }));
+        if (path === "/api/billing/invoices" && method === "GET") return json({ items: model.invoiced ? [{ id: "inv-x" }] : [] });
+        if (path === "/api/opd/visits/E-A") return json({ encounter: { id: "E-A", status: "registered" }, queueEntries: [{ tokenNo: 9, status: "waiting", seq: 1 }] });
+        return new Response("{}", { status: 404 });
+      }));
+      renderWithProviders(<RegistrationCounter />);
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await user.type(await screen.findByTestId("find-input"), "zzzz");
+      await user.click(await screen.findByTestId("find-register-new"));
+      await user.type(screen.getByTestId("reg-name"), "Interrupted");
+      await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
+      await user.click(screen.getByTestId("reg-submit"));
+      await screen.findByTestId("collect-panel");
+
+      model.invoiced = true; // billed at /billing while the clerk was away
+      await vi.advanceTimersByTimeAsync(FLOW_POLL_MS + 50);
+
+      await waitFor(() => expect(screen.queryByTestId("collect-panel")).toBeNull()); // THE KILL
+      expect(screen.getByTestId("priced-elsewhere")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a login that cannot READ invoices (403) is 'unknown', and unknown does not collect", async () => {
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+      "GET /api/opd/queues/summary": { items: [DOC_A] },
+      "GET /api/patients/search": { items: [] },
+      "GET /api/billing/sessions/current": DRAWER_OPEN,
+      "GET /api/billing/visits/E-A/fee-quote": quoteWith({ encounterId: "E-A" }),
+      "GET /api/opd/visits/E-A": { encounter: { id: "E-A", status: "registered" }, queueEntries: [] },
+      // no GET /api/billing/invoices → 404 → unknown
+    });
+    takeInHand("P-A", "E-A");
+    renderWithProviders(<RegistrationCounter />);
+    await screen.findByTestId("priced-elsewhere");
+    expect(screen.queryByTestId("collect-panel")).toBeNull();
+    expect(screen.queryByTestId("join-owed")).toBeNull();
+  });
+});
+
+describe("RC-4 close review — F3(A): a quote that failed is said, not swallowed", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+  });
+  it("shows the failure with a retry, and the retry re-asks", async () => {
+    let quoteCalls = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(typeof input === "string" ? input : (input as Request).url);
+      const path = url.split("?")[0]!;
+      const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+      if (path === "/api/auth/me") return json({ actor: { type: "user", id: "u" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
+      if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      if (path === "/api/billing/sessions/current") return json(DRAWER_OPEN);
+      if (path === "/api/billing/visits/E-A/fee-quote") { quoteCalls += 1; return quoteCalls === 1 ? json({ statusCode: 403, message: "no billing.invoice.read" }, 403) : json(quoteWith({ encounterId: "E-A" })); }
+      if (path === "/api/opd/visits/E-A") return json({ encounter: { id: "E-A", status: "registered" }, queueEntries: [] });
+      if (path === "/api/billing/invoices" && (init?.method ?? "GET") === "GET") return json({ items: [] });
+      return new Response("{}", { status: 404 });
+    }));
+    takeInHand("P-A", "E-A");
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+    expect(await screen.findByTestId("quote-error")).toBeTruthy();
+    await user.click(screen.getByTestId("quote-retry"));
+    await screen.findByTestId("priced-elsewhere");
+    expect(screen.queryByTestId("quote-error")).toBeNull();
+    expect(quoteCalls).toBe(2);
+  });
+});
+
+describe("RC-4 close review — F4(A)/F3(B)/F8(A): the drawer, read live and named exactly", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+  });
+  const ME = { actor: { type: "user", id: "u" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } };
+
+  function drawerStub(sequence: unknown[], config: unknown = BILL_FIRST): { walkIns: number; drawerReads: number } {
+    const c = { walkIns: 0, drawerReads: 0 };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(typeof input === "string" ? input : (input as Request).url);
+      const path = url.split("?")[0]!;
+      const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+      if (path === "/api/auth/me") return json(ME);
+      if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      if (path === "/api/opd/config") return json(config);
+      if (path === "/api/patients/search") return json({ items: [] });
+      if (path === "/api/billing/sessions/current") {
+        const answer = sequence[Math.min(c.drawerReads, sequence.length - 1)];
+        c.drawerReads += 1;
+        if (answer === 403) return json({ statusCode: 403 }, 403);
+        return json(answer);
+      }
+      if (path === "/api/opd/walk-in" && init?.method === "POST") { c.walkIns += 1; return json({ patientId: "P-A", registered: true, encounter: { id: "E-A" }, tokenNo: null, sessionId: null, queueEntry: null }); }
+      return new Response("{}", { status: 404 });
+    }));
+    return c;
+  }
+
+  /** The commit claimed "before the walk-in"; the gate read a cache. Now: open at mount, CLOSED at the click. */
+  it("the bill-first gate reads the drawer at the moment of opening — a drawer closed since mount refuses the walk-in", async () => {
+    const c = drawerStub([DRAWER_OPEN, { session: { id: "cs", status: "closed" } }]);
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+    await user.type(await screen.findByTestId("find-input"), "zzzz");
+    await user.click(await screen.findByTestId("find-register-new"));
+    await user.type(screen.getByTestId("reg-name"), "Late Close");
+    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
+    await user.click(screen.getByTestId("reg-submit"));
+
+    expect((await screen.findByTestId("reg-error")).textContent).toContain("not open");
+    expect(c.walkIns).toBe(0); // THE KILL
+    expect(c.drawerReads).toBeGreaterThanOrEqual(2); // mount + the live read at open
+  });
+
+  it.each([
+    [403, "drawer-forbidden", "cashier role"],
+    [{ session: { id: "cs", status: "closing" } }, "drawer-closing", "billing manager"],
+    [{ session: null }, "drawer-closed", "not open"],
+  ])("the drawer line names the state — %s", async (answer, testId, words) => {
+    drawerStub([answer], QUEUE_FIRST);
+    renderWithProviders(<RegistrationCounter />);
+    expect((await screen.findByTestId(testId)).textContent).toContain(words);
+    if (testId === "drawer-closing") expect(screen.getByTestId("drawer-cover")).toBeTruthy();
+    if (testId === "drawer-closed") expect(screen.getByTestId("drawer-open-link")).toBeTruthy();
+  });
+
+  it("an open drawer shows no line at all", async () => {
+    drawerStub([DRAWER_OPEN], QUEUE_FIRST);
+    renderWithProviders(<RegistrationCounter />);
+    await screen.findByTestId("find-input");
+    expect(screen.queryByTestId("drawer-closed")).toBeNull();
+    expect(screen.queryByTestId("drawer-forbidden")).toBeNull();
+  });
+
+  it("a front_office-only login under bill-first is told it is the ROLE, not the session", async () => {
+    const c = drawerStub([403]);
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+    await user.type(await screen.findByTestId("find-input"), "zzzz");
+    await user.click(await screen.findByTestId("find-register-new"));
+    await user.type(screen.getByTestId("reg-name"), "No Role");
+    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
+    await user.click(screen.getByTestId("reg-submit"));
+    expect((await screen.findByTestId("reg-error")).textContent).toContain("cashier role");
+    expect(c.walkIns).toBe(0);
+  });
+});
+
+describe("RC-4 close review — F6(A)/F2(B): Escape and Next agree while a join or a settle is in flight", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+  });
+
+  it("Escape during the join does not clear the desk; the token arrives and is shown", async () => {
+    let releaseJoin: (() => void) | null = null;
+    const joinGate = new Promise<void>((r) => { releaseJoin = r; });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(typeof input === "string" ? input : (input as Request).url);
+      const path = url.split("?")[0]!;
+      const method = init?.method ?? "GET";
+      const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path === "/api/auth/me") return json({ actor: { type: "user", id: "u" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
+      if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      if (path === "/api/opd/config") return json(BILL_FIRST);
+      if (path === "/api/billing/sessions/current") return json(DRAWER_OPEN);
+      if (path === "/api/patients/search") return json({ items: [] });
+      if (path === "/api/opd/walk-in") return json({ patientId: "P-A", registered: true, encounter: { id: "E-A" }, tokenNo: null, sessionId: null, queueEntry: null });
+      if (path === "/api/billing/visits/E-A/fee-quote") return json(quoteWith({ encounterId: "E-A" }));
+      if (path === "/api/billing/invoices" && method === "GET") return json({ items: [] });
+      if (path === "/api/billing/invoices" && method === "POST") return json(ISSUED);
+      if (path === "/api/opd/visits/E-A") return json({ encounter: { id: "E-A", status: "registered" }, queueEntries: [] });
+      if (path === "/api/opd/visits/E-A/join-queue") { await joinGate; return json({ encounter: { id: "E-A" }, queueEntry: {}, tokenNo: 42, sessionId: "s", roomId: null, alreadyJoined: false }); }
+      return new Response("{}", { status: 404 });
+    }));
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+    await user.type(await screen.findByTestId("find-input"), "zzzz");
+    await user.click(await screen.findByTestId("find-register-new"));
+    await user.type(screen.getByTestId("reg-name"), "Esc Habit");
+    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
+    await user.click(screen.getByTestId("reg-submit"));
+    await screen.findByTestId("collect-panel");
+    await user.type(screen.getByLabelText("Amount"), "400");
+    await user.click(screen.getByTestId("settle"));
+    await screen.findByTestId("dossier-token-joining");
+
+    fireEvent.keyDown(window, { key: "Escape" });                 // the habit
+    expect(screen.getByTestId("dossier-patient").textContent).toBe("P-A"); // THE KILL: still in hand
+    expect((screen.getByTestId("exit-confirm") as HTMLButtonElement).disabled).toBe(true);
+
+    releaseJoin!();
+    expect((await screen.findByTestId("dossier-token")).textContent).toContain("42");
+    fireEvent.keyDown(window, { key: "Escape" });                 // now it may
+    expect(await screen.findByTestId("dossier-empty")).toBeTruthy();
+  });
+});
+
+describe("RC-4 close review — F7(B): the change lane, asserted through the assembled seat", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+  });
+
+  function stub(): { invoiceBody: () => unknown } {
+    let body: unknown = null;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(typeof input === "string" ? input : (input as Request).url);
+      const path = url.split("?")[0]!;
+      const method = init?.method ?? "GET";
+      const json = (b: unknown): Response => new Response(JSON.stringify(b), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path === "/api/auth/me") return json({ actor: { type: "user", id: "u" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
+      if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      if (path === "/api/opd/config") return json(QUEUE_FIRST);
+      if (path === "/api/billing/sessions/current") return json(DRAWER_OPEN);
+      if (path === "/api/patients/search") return json({ items: [] });
+      if (path === "/api/opd/walk-in") return json({ patientId: "P-A", registered: true, encounter: { id: "E-A" }, tokenNo: 9, sessionId: "s", queueEntry: {} });
+      if (path === "/api/billing/visits/E-A/fee-quote") return json(quoteWith({ encounterId: "E-A" }));
+      if (path === "/api/billing/invoices" && method === "GET") return json({ items: [] });
+      if (path === "/api/billing/invoices" && method === "POST") { body = JSON.parse(String(init?.body)); return json(ISSUED); }
+      if (path === "/api/opd/visits/E-A") return json({ encounter: { id: "E-A", status: "registered" }, queueEntries: [{ tokenNo: 9, status: "waiting", seq: 1 }] });
+      return new Response("{}", { status: 404 });
+    }));
+    return { invoiceBody: () => body };
+  }
+
+  async function openAndCollect(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.type(await screen.findByTestId("find-input"), "zzzz");
+    await user.click(await screen.findByTestId("find-register-new"));
+    await user.type(screen.getByTestId("reg-name"), "Change Lane");
+    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
+    await user.click(screen.getByTestId("reg-submit"));
+    await screen.findByTestId("collect-panel");
+  }
+
+  it("cash 500 on a ₹400 bill declares the whole ₹100 as change by default", async () => {
+    const s = stub();
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+    await openAndCollect(user);
+    await user.type(screen.getByLabelText("Amount"), "500");
+    expect(await screen.findByTestId("change-lane")).toBeTruthy();
+    await user.click(screen.getByTestId("settle"));
+    await screen.findByTestId("exit-settled");
+    expect(s.invoiceBody()).toMatchObject({ receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }], changeGivenPaise: 10_000 } });
+  });
+
+  /** MIXED tender with cash < surplus: the M4 ceiling — change is capped at the CASH side, not the surplus. */
+  it("cash 50 + UPI 450 on a ₹400 bill: the ₹100 surplus is declared as ₹50 change — the cash ceiling, not the surplus", async () => {
+    const s = stub();
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+    await openAndCollect(user);
+    await user.type(screen.getByLabelText("Amount"), "50");
+    await user.click(screen.getByRole("button", { name: /add/i }));
+    const modes = screen.getAllByLabelText("Mode");
+    await user.selectOptions(modes[1]!, "upi");
+    const amounts = screen.getAllByLabelText("Amount");
+    await user.type(amounts[1]!, "450");
+    await user.type(screen.getAllByLabelText(/reference/i)[0]!, "UPI-REF-1");
+    expect(await screen.findByTestId("change-lane")).toBeTruthy();
+    await user.click(screen.getByTestId("settle"));
+    await screen.findByTestId("exit-settled");
+    expect(s.invoiceBody()).toMatchObject({ receipt: { changeGivenPaise: 5_000 } }); // THE KILL for a whole-surplus default (10_000)
+  });
+
+  it("a card-only surplus offers no change lane — returning money on a card is a refund", async () => {
+    stub();
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+    await openAndCollect(user);
+    await user.selectOptions(screen.getByLabelText("Mode"), "card");
+    await user.type(screen.getByLabelText("Amount"), "500");
+    await user.type(screen.getByLabelText(/reference/i), "CARD-1");
+    expect(await screen.findByTestId("surplus-no-cash")).toBeTruthy();
+    expect(screen.queryByTestId("change-lane")).toBeNull();
   });
 });

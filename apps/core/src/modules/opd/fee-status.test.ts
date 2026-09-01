@@ -6,8 +6,9 @@ import {
   allocateReceipt, encounterFeeStatuses, issueCreditNote, issueInvoice, markEnteredInError,
   recordReceipt, registerFeeStatusHook, reverseAllocation,
 } from "../billing";
-import { allocations, events, invoiceLines } from "../../kernel/db/schema";
-import { joinQueue, openVisit } from "./encounters";
+import { allocations, events, invoiceLines, opdQueueEntries } from "../../kernel/db/schema";
+import { joinQueue, moveEncounter, openVisit } from "./encounters";
+import { withTx } from "../../kernel/db/client";
 import { queueFeeStatusHook } from "./queue";
 import type { BillingBaseFixture } from "../../../test/helpers/billing";
 import type { Actor } from "@hmis/contracts";
@@ -31,6 +32,7 @@ describe("RC-1 T3 — fee status projection and the board flip", () => {
   let deptId: string;
   let roomId: string;
   let doctorId: string;
+  let doctor: Actor;
   let unregister: () => void;
 
   beforeAll(async () => {
@@ -50,7 +52,7 @@ describe("RC-1 T3 — fee status projection and the board flip", () => {
     ({ deptId, roomId } = await seedOpdMasters(db));
     base = await seedBillingBase(db);
     clerk = (await mkUser(db, "fs_clerk", ["front_office", "cashier"])).actor;
-    ({ doctorId } = await mkDoctor(db, { username: "fs_dr", departmentId: deptId, roomId, weekdays: [0, 1, 2, 3, 4, 5, 6] }));
+    ({ doctorId, actor: doctor } = await mkDoctor(db, { username: "fs_dr", departmentId: deptId, roomId, weekdays: [0, 1, 2, 3, 4, 5, 6] }));
     await openSessionFor(db, { id: clerk.id }, 200_000);
   });
 
@@ -147,16 +149,91 @@ describe("RC-1 T3 — fee status projection and the board flip", () => {
     expect(p.via).toBe("invoice");
   });
 
-  it("a DEFERRED visit settling flips nothing — its token is born PAID at joinQueue instead", async () => {
+  /**
+   * RC-4 CLOSE F1 (CRITICAL) — THE DEFERRED VISIT JOINS WHERE ITS MONEY LANDS. Until this close the
+   * join was the SEAT's call alone, and every road that lost the seat's component state (a reload,
+   * `/billing`, an Escape) left a paid patient with no token. Now the settling transaction joins
+   * the visit itself; the seat's later call is idempotent and reads the same token back.
+   */
+  it("a DEFERRED visit settling JOINS THE QUEUE in the settling transaction — its token is born PAID", async () => {
     const patient = await mkPatient(db, clerk, { phone: "9899100005" });
     const opened = await openVisit(db, clerk, { patientId: patient.id, departmentId: deptId, doctorId, join: "defer" });
+    expect(opened.tokenNo).toBeNull();
     await payFee(patient.id, opened.encounter.id, "fs-d5");
-    expect(await flips()).toHaveLength(0); // nothing on the board to flip
 
-    const joined = await joinQueue(db, clerk, opened.encounter.id);
+    const entries = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, opened.encounter.id));
+    expect(entries).toHaveLength(1);                     // THE KILL: joined by the money, not by the seat
+    expect(entries[0]!.tokenNo).toBe(1);
+    expect(entries[0]!.status).toBe("waiting_vitals");
     const status = (await encounterFeeStatuses(db, [opened.encounter])).get(opened.encounter.id);
-    expect(status).toBe("settled"); // the stamp the slip prints from — born PAID
+    expect(status).toBe("settled");                      // the stamp the slip prints from — born PAID
+    expect(await flips()).toHaveLength(0);               // no flip: the token never showed UNPAID
+    const checkedIn = await db.select().from(events).where(eq(events.name, "patient.checked_in"));
+    expect(checkedIn.some((e) => (e.payload as { encounterId: string }).encounterId === opened.encounter.id)).toBe(true);
+
+    // The seat's own call, arriving after the money: the SAME token, and it says so.
+    const joined = await joinQueue(db, clerk, opened.encounter.id);
+    expect(joined.alreadyJoined).toBe(true);
     expect(joined.tokenNo).toBe(1);
+    expect(await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, opened.encounter.id))).toHaveLength(1);
+  });
+
+  it("MUTANT — a queue-first visit's payment does NOT mint a second entry: the deferred proxy is 'no entry at all'", async () => {
+    const v = await newVisit("9899100013");            // queue_first: joined at open, token 1
+    await payFee(v.patientId, v.encounter.id, "fs-d13");
+    const entries = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, v.encounter.id));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.tokenNo).toBe(v.tokenNo);
+    expect(await flips()).toHaveLength(1);               // and the board flip is unchanged
+  });
+
+  it("MUTANT — a queue-first visit whose token has LEFT is not re-entered by a payment: that is re-enter's act, not the money's", async () => {
+    const v = await newVisit("9899100015");
+    await db.update(opdQueueEntries).set({ status: "left" }).where(eq(opdQueueEntries.encounterId, v.encounter.id));
+    await payFee(v.patientId, v.encounter.id, "fs-d15");
+    const entries = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, v.encounter.id));
+    expect(entries).toHaveLength(1);                     // THE KILL for a hook keyed on "no LIVE entry" instead of "no entry"
+    expect(entries[0]!.status).toBe("left");
+  });
+
+  /**
+   * `free` IS MONEY DONE, here as at the seat. A deferred free revisit (a completed consult inside
+   * its follow-up window) has nothing to settle, so the hook normally never fires for it — the
+   * seat joins it on the quote alone. But an invoice for something ELSE on that encounter (a
+   * dressing, a pharmacy line) does reach the hook with the fee status `free`, and the answer is
+   * the same as the seat's: the money is done, the visit joins. A hook that only joined on
+   * `settled | credit` would leave this visit for the seat to remember — F1's whole class.
+   */
+  it("a DEFERRED FREE revisit joins on the first invoice that reaches the hook — free is money done", async () => {
+    const vd = (await mkUser(db, "fs_vd", ["vitals_desk"])).actor;
+    const patient = await mkPatient(db, clerk, { phone: "9899100016" });
+    const t0 = new Date("2026-08-20T05:00:00.000Z");
+    const first = await openVisit(db, clerk, { patientId: patient.id, departmentId: deptId, doctorId }, t0);
+    let enc = await withTx(db, (tx) => moveEncounter(tx, vd, first.encounter, "waiting", {}, t0));
+    enc = await withTx(db, (tx) => moveEncounter(tx, doctor, enc, "in_consultation", {}, t0));
+    await withTx(db, (tx) => moveEncounter(tx, doctor, enc, "completed", { consultCompletedAt: t0, followUpDays: 30 }, t0));
+
+    const opened = await openVisit(db, clerk, { patientId: patient.id, departmentId: deptId, doctorId, join: "defer" });
+    expect(opened.visitType).toBe("revisit");
+    expect((await encounterFeeStatuses(db, [opened.encounter])).get(opened.encounter.id)).toBe("free");
+    await issueInvoice(db, clerk, {
+      draftId: "fs-d16", patientId: patient.id, encounterId: opened.encounter.id,
+      lines: [{ lineId: "l1", serviceId: base.genericServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 59_000 }] },
+    });
+    expect(await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, opened.encounter.id))).toHaveLength(1);
+  });
+
+  it("a DEFERRED visit whose fee is only PARTLY covered stays out of the queue — the money has not landed", async () => {
+    const patient = await mkPatient(db, clerk, { phone: "9899100014" });
+    const opened = await openVisit(db, clerk, { patientId: patient.id, departmentId: deptId, doctorId, join: "defer" });
+    // A non-fee invoice against the encounter (A-b's shape): an ARRIVING via that leaves the FEE unsettled.
+    await issueInvoice(db, clerk, {
+      draftId: "fs-d14", patientId: patient.id, encounterId: opened.encounter.id,
+      lines: [{ lineId: "l1", serviceId: base.genericServiceId, qty: 1 }],
+      receipt: { tenders: [{ mode: "cash", amountPaise: 59_000 }] }, // 50,000 + 12% GST → settled, but not the FEE
+    });
+    expect(await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, opened.encounter.id))).toHaveLength(0);
   });
 
   it("an allocation that CLOSES the fee invoice later in the day flips the board too", async () => {

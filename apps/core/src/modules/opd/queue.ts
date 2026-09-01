@@ -9,11 +9,11 @@ import { getPatientSummaries } from "../patients";
 import { encounterFeeStatuses } from "../billing";
 import type { FeeStatusVia } from "../billing";
 import { loadOpdConfig } from "./config";
-import { getEncounter } from "./encounters";
+import { getEncounter, joinQueueInTx } from "./encounters";
 import { OpdError } from "./errors";
 import { queueCalled, queueFeeStatusChanged, queueSkipped } from "./events";
 import { classOf, nextInQueue, orderQueue } from "./queue-engine";
-import { istWeekday } from "./time";
+import { istDate, istWeekday } from "./time";
 import type { OpdConfig } from "./config";
 import type { EncounterRow, QueueEntryRow } from "./encounters";
 import type { DoctorRow } from "./masters";
@@ -323,7 +323,6 @@ export async function queueFeeStatusHook(
   info: { encounterId: string; invoiceId: string; via: FeeStatusVia },
   now: Date,
 ): Promise<void> {
-  void now;
   const encounter = (await tx.select().from(opdEncounters).where(eq(opdEncounters.id, info.encounterId)))[0];
   if (!encounter) return;
   /**
@@ -360,7 +359,32 @@ export async function queueFeeStatusHook(
     .select().from(opdQueueEntries)
     .where(and(eq(opdQueueEntries.encounterId, encounter.id), inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES])))
     .orderBy(desc(opdQueueEntries.seq)).limit(1))[0];
-  if (!entry) return;
+  if (!entry) {
+    /**
+     * ═══ RC-4 CLOSE F1 (CRITICAL) — A DEFERRED VISIT JOINS WHERE ITS MONEY LANDS ═══
+     *
+     * "Its token is born PAID at `joinQueue`" was true only while the seat that opened the visit
+     * stayed mounted and remembered it; every other road to the money — a reload, `/billing`, an
+     * Escape — left a paid patient with no token. The join now happens HERE, inside the settling
+     * transaction, for exactly the visit that has never had an entry: `registered`, today, with a
+     * doctor, and (the deferred proxy) NO queue entry at all — a queue-first visit whose entry has
+     * `left` or `done` has rows and is not re-entered by a payment; that is `re-enter`'s act.
+     * Money done means `settled`, `credit`, or `free` (a revisit inside its window, reached here
+     * by an invoice for something else on the visit) — the same three the seat counts. The one
+     * status that must not join, `unsettled`, cannot reach this branch: on an ARRIVING via it
+     * returned above, and a LEAVING via needs money that was covering the fee, which would have
+     * joined the visit in its own transaction — so the visit would have an entry and not be here.
+     * That is by construction, not by a guard, and the R37 revert proved a guard here could not
+     * fail. A refusal from the join is not a refusal of the money: the invoice stands, and the
+     * seat's own `joinQueue` call surfaces the reason.
+     */
+    if (actor.type !== "user" || encounter.status !== "registered" || encounter.doctorId === null) return;
+    const anyEntry = (await tx.select({ id: opdQueueEntries.id }).from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounter.id)).limit(1))[0];
+    if (anyEntry) return;
+    if (encounter.serviceDate !== istDate(now)) return;
+    await joinQueueInTx(tx, actor, encounter.id, now);
+    return;
+  }
   const session = (await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, entry.sessionId)))[0];
   if (!session) return;
   await appendEvent(tx, queueFeeStatusChanged.make({

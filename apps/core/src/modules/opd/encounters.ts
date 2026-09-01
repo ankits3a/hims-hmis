@@ -170,39 +170,55 @@ export type JoinQueueResult = {
  */
 export async function joinQueue(db: Db, actor: Actor, encounterId: string, now: Date = new Date()): Promise<JoinQueueResult> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
-  return withTx(db, async (tx) => {
-    const rows = await tx.select().from(opdEncounters).where(eq(opdEncounters.id, encounterId)).for("update");
-    const encounter = rows[0];
-    if (!encounter) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
-    if (encounter.status !== "registered") {
-      throw new OpdError("encounter_state_conflict", `a queue join needs a registered visit, not ${encounter.status}`);
-    }
-    if (encounter.serviceDate !== istDate(now)) {
-      throw new OpdError("encounter_state_conflict", `visit ${encounterId} belongs to ${encounter.serviceDate} — a past day's visit cannot join today's queue`);
-    }
-    if (encounter.doctorId === null) {
-      throw new OpdError("unknown_doctor", `visit ${encounterId} has no responsible doctor to queue for`);
-    }
+  return withTx(db, (tx) => joinQueueInTx(tx, actor, encounterId, now));
+}
 
-    const existing = (await tx
-      .select().from(opdQueueEntries)
-      .where(and(eq(opdQueueEntries.encounterId, encounterId), inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES])))
-      .orderBy(desc(opdQueueEntries.seq)).limit(1))[0];
-    if (existing) {
-      const session = (await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, existing.sessionId)))[0]!;
-      return { encounter, queueEntry: existing, tokenNo: existing.tokenNo, sessionId: session.id, roomId: session.roomId, alreadyJoined: true };
-    }
+/**
+ * RC-4 CLOSE F1 — THE JOIN, AS A TRANSACTION STEP, so the money can call it where the money lands.
+ *
+ * The close review found that a deferred visit's "still owes a join" lived ONLY in the seat's
+ * component state: a reload, a navigation to open the drawer, an Escape mid-settle, the palette
+ * taking another patient, or the money being taken at `/billing` instead of at the seat — each
+ * left a PAID patient with no token and no surface in the system able to give them one. The
+ * server was ready (this function is idempotent) and had one ephemeral caller.
+ *
+ * So `queueFeeStatusHook` (`queue.ts`) now joins a deferred visit INSIDE the settling
+ * transaction when its fee becomes covered — "the token is BORN PAID" made literal — and the
+ * seat's own call afterwards answers `alreadyJoined: true` with the same token. One join path,
+ * one set of preconditions, whichever road the money takes.
+ */
+export async function joinQueueInTx(tx: Tx, actor: Actor, encounterId: string, now: Date): Promise<JoinQueueResult> {
+  const rows = await tx.select().from(opdEncounters).where(eq(opdEncounters.id, encounterId)).for("update");
+  const encounter = rows[0];
+  if (!encounter) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
+  if (encounter.status !== "registered") {
+    throw new OpdError("encounter_state_conflict", `a queue join needs a registered visit, not ${encounter.status}`);
+  }
+  if (encounter.serviceDate !== istDate(now)) {
+    throw new OpdError("encounter_state_conflict", `visit ${encounterId} belongs to ${encounter.serviceDate} — a past day's visit cannot join today's queue`);
+  }
+  if (encounter.doctorId === null) {
+    throw new OpdError("unknown_doctor", `visit ${encounterId} has no responsible doctor to queue for`);
+  }
 
-    const joined = await joinSessionInTx(tx, { id: encounter.id, doctorId: encounter.doctorId, serviceDate: encounter.serviceDate }, null);
-    await appendEvent(tx, patientCheckedIn.make({
-      actor, patientId: encounter.patientId, encounterId, correlationId: encounter.workflowInstanceId,
-      payload: {
-        encounterId, patientId: encounter.patientId, doctorId: encounter.doctorId, serviceDate: encounter.serviceDate,
-        sessionId: joined.sessionId, roomId: joined.roomId, tokenNo: joined.tokenNo, kind: "arrival",
-      },
-    }));
-    return { encounter, ...joined, alreadyJoined: false };
-  });
+  const existing = (await tx
+    .select().from(opdQueueEntries)
+    .where(and(eq(opdQueueEntries.encounterId, encounterId), inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES])))
+    .orderBy(desc(opdQueueEntries.seq)).limit(1))[0];
+  if (existing) {
+    const session = (await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, existing.sessionId)))[0]!;
+    return { encounter, queueEntry: existing, tokenNo: existing.tokenNo, sessionId: session.id, roomId: session.roomId, alreadyJoined: true };
+  }
+
+  const joined = await joinSessionInTx(tx, { id: encounter.id, doctorId: encounter.doctorId, serviceDate: encounter.serviceDate }, null);
+  await appendEvent(tx, patientCheckedIn.make({
+    actor, patientId: encounter.patientId, encounterId, correlationId: encounter.workflowInstanceId,
+    payload: {
+      encounterId, patientId: encounter.patientId, doctorId: encounter.doctorId, serviceDate: encounter.serviceDate,
+      sessionId: joined.sessionId, roomId: joined.roomId, tokenNo: joined.tokenNo, kind: "arrival",
+    },
+  }));
+  return { encounter, ...joined, alreadyJoined: false };
 }
 
 export type ReviewAnchor = { doctorName: string | null; seenOn: string; windowEndsOn: string };

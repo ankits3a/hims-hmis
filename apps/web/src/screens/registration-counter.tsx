@@ -759,11 +759,24 @@ export function RegistrationCounter(): React.ReactElement {
    * a patient nobody will call. So the drawer is read on mount and the bill-first door is shut
    * without it (`RegisterPanel`), while a queue-first visit that cannot be settled here says so.
    */
-  const drawer = useQuery({
+  /**
+   * ═══ CLOSE REVIEW F3(B)/F8(A) — THE DRAWER HAS FIVE ANSWERS, NOT TWO ═══
+   *
+   * `open` · `closing` (locked at a paise mismatch — O-1, the billing manager covers) · `closed`
+   * · `forbidden` (this login holds no `billing.session.own`: the seeded `front_office` alone
+   * cannot open a drawer, and telling them to is a message about a permission they do not have)
+   * · `pending`. Two of these read as "not open" and were being told the same thing. Polled at
+   * the ops cadence, because the other road here (F9) is a supervisor closing this clerk's
+   * session from another screen while this tab never loses focus.
+   */
+  const drawerQ = useQuery({
     queryKey: ["billing", "sessions", "current"],
-    queryFn: () => api<{ session: { id: string; status: "open" | "closing" | "closed" } | null }>("GET", "/billing/sessions/current"),
+    queryFn: fetchDrawerState,
+    refetchInterval: FLOW_POLL_MS,
+    staleTime: 0,
   });
-  const drawerOpen = drawer.data?.session?.status === "open";
+  const drawer: DrawerState = drawerQ.data ?? "pending";
+  const drawerOpen = drawer === "open";
 
   /**
    * D2's "live bill", and the CONTRACT PASS at close is what caught its absence: this screen was
@@ -775,12 +788,35 @@ export function RegistrationCounter(): React.ReactElement {
    * The seat RE-FETCHES and never computes: the quote already composes the benefits server-side
    * (RC-2's finding), so the money on this screen is the money the invoice will charge.
    */
-  const { quote, reprice } = useQuote(encounterId);
+  const { quote, reprice, error: quoteError } = useQuote(encounterId);
   useEffect(() => {
     void reprice([]);
   }, [reprice]);
 
+  /**
+   * ═══ CLOSE REVIEW F1 (CRITICAL) — WHAT THE SERVER KNOWS ABOUT THE VISIT IN HAND ═══
+   *
+   * The seat's own memory (`visit`, `issuedFor`) is one road to the truth and it is the road
+   * that a reload, a navigation to open the drawer, or the palette taking another patient
+   * erases. The server's is the other, and it is now read for EVERY encounter in hand:
+   * `GET /opd/visits/:id` says whether the visit has ever joined (and with which token), and
+   * `GET /billing/invoices?encounterId=` says whether an invoice already exists — issued here,
+   * at `/billing`, or at `/counter`. A 403 on the invoice read (no `billing.invoice.read`) is
+   * `null`, unknown, and unknown means the seat may price and must not instruct (F4's rule).
+   */
+  const server = useEncounterOnServer(encounterId);
+
+  const [settling, setSettling] = useState(false);
+  /**
+   * CLOSE REVIEW F2(B)/F6(A) — THE KEYBOARD AND THE BUTTON AGREE. "Next patient" was disabled
+   * while the join was in flight and Escape was not, so a clerk reaching for the keyboard by
+   * habit cleared the desk under a resolving join and the token it answered was discarded. Both
+   * roads now run through one guard, and a settle in flight is guarded the same way: an invoice
+   * landing on a cleared desk (F1 road b) is money the seat would never have shown.
+   */
+  const busy = settling || hereVisit?.joining === true;
   const clearDesk = useCallback((): void => {
+    if (busy) return;
     setOverlay(null);
     setRegistering(false);
     setVisit(null);
@@ -788,7 +824,7 @@ export function RegistrationCounter(): React.ReactElement {
     setSettleError(null);
     setDeskGen((n) => n + 1);
     release();
-  }, [release]);
+  }, [release, busy]);
 
   /**
    * RC-4 T2 — SETTLE, lifted from `counter-desk.tsx:settle`. The draft id is the visit's, stable
@@ -798,6 +834,7 @@ export function RegistrationCounter(): React.ReactElement {
   const settle = useCallback(async (tenders: WireTender[], changeGivenPaise: number | undefined, idemKey: string): Promise<void> => {
     if (hereVisit === null || quote === null || quote.draft === null || quote.encounterId !== hereVisit.encounterId) return;
     setSettleError(null);
+    setSettling(true);
     try {
       const result = await issueInvoice({
         draftId: hereVisit.draftId,
@@ -808,9 +845,18 @@ export function RegistrationCounter(): React.ReactElement {
       }, idemKey);
       setIssuedFor({ encounterId: hereVisit.encounterId, result });
     } catch (e) {
+      /*
+        CLOSE REVIEW F2(A) — a POST whose response is LOST after the server committed is the
+        one refusal that must not re-offer the tender block: the retry would carry a fresh
+        idempotency key and issue a second invoice. So a refusal re-reads the server's invoices
+        before the collect panel can come back, and if one now exists the panel does not.
+      */
       setSettleError(billingErrorMessage(e));
+      await server.refetch();
+    } finally {
+      setSettling(false);
     }
-  }, [hereVisit, quote]);
+  }, [hereVisit, quote, server]);
 
   /**
    * ═══ RC-4 T2 / D3 — THE DEFERRED JOIN FIRES AFTER THE MONEY, AND ONLY THEN ═══
@@ -822,6 +868,11 @@ export function RegistrationCounter(): React.ReactElement {
    * applied to it and killed on its own; the effect only carries its answer to the wire.
    */
   useEffect(() => {
+    // The server joined it first (the settle hook, F1's fix, or an earlier call): take its token.
+    if (hereVisit !== null && hereVisit.tokenNo === null && !hereVisit.joining && server.tokenNo !== null) {
+      setVisit({ ...hereVisit, tokenNo: server.tokenNo, joinError: null });
+      return;
+    }
     if (!shouldJoinNow(hereVisit, quote, issued)) return;
     const target = hereVisit!;
     setVisit({ ...target, joining: true });
@@ -829,7 +880,31 @@ export function RegistrationCounter(): React.ReactElement {
       (r) => setVisit((v) => (v?.encounterId === target.encounterId ? { ...v, joining: false, tokenNo: r.tokenNo } : v)),
       (e: unknown) => setVisit((v) => (v?.encounterId === target.encounterId ? { ...v, joining: false, joinError: opdErrorMessage(e) } : v)),
     );
-  }, [hereVisit, quote, issued]);
+  }, [hereVisit, quote, issued, server.tokenNo]);
+
+  /**
+   * CLOSE REVIEW F1 — THE RECOVERY DOOR, for the visit the seat does NOT remember. After a reload,
+   * or for a visit paid at `/billing` before the settle hook existed, or after a refused join: the
+   * server says `registered`, never joined, and the money is done (an invoice exists, or the
+   * quote is free) — and the seat offers "Join the queue". It never offers it on an UNPAID
+   * deferred visit: that would be the very token this lane exists to keep off the board.
+   */
+  const moneyDoneOnServer = server.invoiced === true || issued !== null
+    || (quote !== null && quote.encounterId === encounterId && quote.free === true);
+  const joinOwed = encounterId !== null && hereVisit === null
+    && server.status === "registered" && server.everJoined === false && moneyDoneOnServer;
+  const [manualJoin, setManualJoin] = useState<{ encounterId: string; error: string | null; busy: boolean } | null>(null);
+  const joinNow = useCallback(async (): Promise<void> => {
+    if (encounterId === null) return;
+    setManualJoin({ encounterId, error: null, busy: true });
+    try {
+      await joinQueue(encounterId);
+      setManualJoin(null);
+      await server.refetch();
+    } catch (e) {
+      setManualJoin({ encounterId, error: opdErrorMessage(e), busy: false });
+    }
+  }, [encounterId, server]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -863,11 +938,22 @@ export function RegistrationCounter(): React.ReactElement {
     return () => window.removeEventListener("keydown", onKey);
   }, [overlay, clearDesk, palette?.isOpen]);
 
-  const canCollect = hereVisit !== null && issued === null && drawerOpen;
+  /**
+   * CLOSE REVIEW F4(B)/F2(A) — `canCollect` IS ANSWERED BY THE SERVER, NOT BY MEMORY. "The seat
+   * opened it moments ago so there is no invoice yet" had no time bound: `visit` lived until
+   * Escape, and an invoice issued for the same encounter at `/billing` in between left "Collect
+   * ₹400" on screen. `server.invoiced === false` is the read that succeeded and found none;
+   * `null` is unknown and unknown does not collect.
+   */
+  const canCollect = hereVisit !== null && issued === null && drawerOpen && server.invoiced === false;
+  /** The number to read out: the seat's own (with `token_on_payment`'s hold-back), else the server's. */
+  const token = hereVisit !== null ? tokenToShow(hereVisit, quote, issued) : server.tokenNo;
   const tokenNote: "afterPayment" | "joining" | null =
-    hereVisit === null || tokenToShow(hereVisit, quote, issued) !== null ? null
-      : hereVisit.joining ? "joining"
-        : "afterPayment";
+    token !== null ? null
+      : hereVisit === null ? null
+        : hereVisit.joining ? "joining"
+          : hereVisit.joinError !== null ? null // F6(B): the join-failed block speaks instead
+            : "afterPayment";
 
   /**
    * ═══ CLOSE REVIEW F8 (MAJOR) — THE ALIAS LAYER HAD NO CONSUMER ═══
@@ -908,6 +994,7 @@ export function RegistrationCounter(): React.ReactElement {
           onSaved={(config) => queryClient.setQueryData(["opd", "config"], config)}
         />
       </header>
+      <DrawerLine state={drawer} />
       <div className="flex flex-col gap-6 p-6 lg:flex-row">
         {/*
           RC-4 T2 — `canCollect` and `issued` are now ANSWERED rather than admitted. Both are true
@@ -919,9 +1006,28 @@ export function RegistrationCounter(): React.ReactElement {
         <div className="w-full shrink-0 rounded-lg border border-border bg-card p-4 lg:w-80">
           <Dossier
             quote={quote} issued={issued} canCollect={canCollect}
-            token={tokenToShow(hereVisit, quote, issued)} tokenNote={tokenNote}
-            onConfirm={tokenNote === "joining" ? undefined : clearDesk} onSettle={settle} settleError={settleError}
+            token={token} tokenNote={tokenNote}
+            onConfirm={busy ? undefined : clearDesk} onSettle={settle} settleError={settleError}
           />
+          {/* F3(A) — a quote that FAILED is said, with a way to ask again; silence left a deferred visit priceless. */}
+          {inHand?.encounterId != null && quote === null && quoteError !== null && (
+            <div data-testid="quote-error" role="alert">
+              <p>{t("registrationCounter.quote.failed", { reason: quoteError })}</p>
+              <button type="button" data-testid="quote-retry" onClick={() => void reprice([])}>{t("registrationCounter.quote.retry")}</button>
+            </div>
+          )}
+          {hereVisit === null && issued === null && server.invoiced === true && (
+            <p data-testid="invoiced-elsewhere">{t("registrationCounter.exit.invoicedElsewhere")}</p>
+          )}
+          {joinOwed && (
+            <div data-testid="join-owed">
+              <p>{t("registrationCounter.join.owed")}</p>
+              {manualJoin?.error != null && <p role="alert" data-testid="join-owed-error">{t("registrationCounter.join.failed", { reason: manualJoin.error })}</p>}
+              <button type="button" data-testid="join-now" disabled={manualJoin?.busy === true} onClick={() => void joinNow()}>
+                {t("registrationCounter.join.retry")}
+              </button>
+            </div>
+          )}
           {hereVisit?.joinError != null && (
             <div data-testid="join-failed" role="alert">
               <p>{t("registrationCounter.join.failed", { reason: hereVisit.joinError })}</p>
@@ -933,7 +1039,7 @@ export function RegistrationCounter(): React.ReactElement {
         </div>
         <div className="min-w-0 flex-1 rounded-lg border border-border bg-card p-4">
           {inHand === null && (registering
-            ? <RegisterPanel doctors={summaries} drawerOpen={drawerOpen} onCancel={() => setRegistering(false)}
+            ? <RegisterPanel doctors={summaries} onCancel={() => setRegistering(false)}
                 onOpened={(o) => { setVisit(o); setRegistering(false); }} />
             : <FindPanel key={deskGen} onRegisterNew={() => setRegistering(true)} />)}
           {/*
@@ -944,7 +1050,7 @@ export function RegistrationCounter(): React.ReactElement {
             The same panel serves, with the four fields folded away.
           */}
           {inHand !== null && inHand.encounterId === null && (
-            <RegisterPanel doctors={summaries} drawerOpen={drawerOpen} existingId={inHand.patientId}
+            <RegisterPanel doctors={summaries} existingId={inHand.patientId}
               onOpened={(o) => setVisit(o)} />
           )}
         </div>
@@ -1062,6 +1168,87 @@ export function FlowPill({
       {error !== null && <span data-testid="flow-error" role="alert">{t("registrationCounter.flow.saveFailed", { reason: error })}</span>}
     </div>
   );
+}
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   RC-4 CLOSE — WHAT THE SERVER KNOWS: THE DRAWER, THE VISIT, THE INVOICES
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+export type DrawerState = "pending" | "open" | "closing" | "closed" | "forbidden";
+
+/**
+ * ONE read of the drawer, used by the polled query AND by the bill-first gate at the moment of
+ * opening. A 403 is `forbidden` — this login cannot hold a drawer — and is distinguished from
+ * `closed` because the two ask the clerk to do different things (F8(A)).
+ */
+export async function fetchDrawerState(): Promise<DrawerState> {
+  try {
+    const r = await api<{ session: { id: string; status: "open" | "closing" | "closed" } | null }>("GET", "/billing/sessions/current");
+    if (r.session === null) return "closed";
+    return r.session.status === "open" ? "open" : r.session.status === "closing" ? "closing" : "closed";
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 403) return "forbidden";
+    throw e;
+  }
+}
+
+/** The drawer's state, said once at the top of the seat — lifted from `counter-desk.tsx`'s blocker, with O-1's cover line. */
+export function DrawerLine({ state }: { state: DrawerState }): React.ReactElement | null {
+  const { t } = useTranslation();
+  if (state === "open" || state === "pending") return null;
+  return (
+    <div data-testid={`drawer-${state}`} role="status" className="border-b border-border px-6 py-2 text-sm text-muted-foreground">
+      <span>{t(`registrationCounter.drawer.${state}`)}</span>
+      {state === "closing" && <span data-testid="drawer-cover"> {t("registrationCounter.drawer.closingCover")}</span>}
+      {state === "closed" && (
+        <a href="/billing/session" data-testid="drawer-open-link" className="ml-2 underline">{t("registrationCounter.drawer.openLink")}</a>
+      )}
+    </div>
+  );
+}
+
+export type EncounterOnServer = {
+  /** `null` while unread or when there is no encounter in hand. */
+  status: string | null;
+  /** Has this visit EVER had a queue entry? `null` unknown. A deferred visit is `false`. */
+  everJoined: boolean | null;
+  /** The latest entry's token, whatever its state — the number the clerk reads out. */
+  tokenNo: number | null;
+  /** Does an invoice exist for this encounter? `null` when unknown (unread, or no `billing.invoice.read`). */
+  invoiced: boolean | null;
+  refetch: () => Promise<unknown>;
+};
+
+/**
+ * CLOSE REVIEW F1/F2/F4 — the server's account of the encounter in hand, polled while one is.
+ * Both reads are cheap and both are the truth the seat's memory can only approximate.
+ */
+export function useEncounterOnServer(encounterId: string | null): EncounterOnServer {
+  const visit = useQuery({
+    queryKey: ["rc-visit", encounterId],
+    queryFn: () => api<{ encounter: { status: string }; queueEntries: { tokenNo: number; status: string; seq: number }[] }>(
+      "GET", `/opd/visits/${encodeURIComponent(encounterId!)}`,
+    ),
+    enabled: encounterId !== null,
+    refetchInterval: FLOW_POLL_MS,
+    staleTime: 0,
+  });
+  const invoices = useQuery({
+    queryKey: ["rc-invoices", encounterId],
+    queryFn: () => api<{ items: unknown[] }>("GET", `/billing/invoices?encounterId=${encodeURIComponent(encounterId!)}`),
+    enabled: encounterId !== null,
+    refetchInterval: FLOW_POLL_MS,
+    staleTime: 0,
+  });
+  const entries = visit.data?.queueEntries ?? [];
+  const latest = entries.length === 0 ? null : entries.reduce((a, b) => (b.seq > a.seq ? b : a));
+  return {
+    status: visit.data?.encounter.status ?? null,
+    everJoined: visit.data === undefined ? null : entries.length > 0,
+    tokenNo: latest?.tokenNo ?? null,
+    invoiced: invoices.data === undefined ? null : invoices.data.items.length > 0,
+    refetch: async () => { await Promise.all([visit.refetch(), invoices.refetch()]); },
+  };
 }
 
 /* ════════════════════════════════════════════════════════════════════════════════════════════
@@ -1196,11 +1383,9 @@ export function walkInBodyFor(
  * is worse than the duplicate it was trying to prevent.
  */
 export function RegisterPanel({
-  doctors, drawerOpen, existingId, onCancel, onOpened,
+  doctors, existingId, onCancel, onOpened,
 }: {
   doctors: WireDoctorSummary[];
-  /** RC-4 T2 — the bill-first door is shut without a drawer: a deferred visit with no money is a patient nobody calls. */
-  drawerOpen: boolean;
   /** RC-4 T2 — a patient already on file: the four fields fold away and only the doctor is asked. */
   existingId?: string;
   onCancel?: () => void;
@@ -1234,9 +1419,19 @@ export function RegisterPanel({
       */
       const config = await getOpdConfig();
       const flow: WireCounterFlow = { counterSequence: config.counterSequence, tokenLane: config.tokenLane };
-      if (flow.counterSequence === "bill_first" && !drawerOpen) {
-        setError(t("registrationCounter.register.drawerNeeded"));
-        return;
+      /*
+        CLOSE REVIEW F4(A) — the bill-first door is shut without a drawer, and the DRAWER IS READ
+        LIVE HERE, beside the flow, for the same reason the flow is: a session closed from another
+        screen at 13:00 is invisible to a cache filled at 09:00 in a tab that never lost focus. A
+        deferred visit opened on that stale answer has no money possible from here. The two halves
+        of one guard now use one truth. The message names which of the not-open states it is.
+      */
+      if (flow.counterSequence === "bill_first") {
+        const drawer = await fetchDrawerState();
+        if (drawer !== "open") {
+          setError(t(`registrationCounter.drawer.${drawer === "pending" ? "closed" : drawer}`));
+          return;
+        }
       }
       const body = walkInBodyFor(existingId === undefined ? { fields } : { existingId }, doctor, acknowledgeDuplicates);
       const result = flow.counterSequence === "bill_first"

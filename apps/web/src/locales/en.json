@@ -2038,8 +2038,7 @@
       "submit": "Register and open visit",
       "cancel": "Cancel",
       "existingTitle": "Open a visit",
-      "openVisit": "Open visit",
-      "drawerNeeded": "Bill-first needs an open cash drawer — open your session before registering"
+      "openVisit": "Open visit"
     },
     "quote": {
       "title": "Bill",
@@ -2050,7 +2049,9 @@
       "aBiggerBenefitWon": "a bigger benefit won",
       "freeReviewWindow": "Review visit — free until {{until}} ({{doctor}})",
       "freeNoReason": "No charge for this visit",
-      "theDoctor": "the doctor"
+      "theDoctor": "the doctor",
+      "failed": "Could not price this visit: {{reason}}",
+      "retry": "Price again"
     },
     "dossier": {
       "title": "Patient in hand",
@@ -2074,7 +2075,8 @@
       "settled": "Paid in full",
       "credit": "Credit extended — billed to account",
       "next": "Next patient",
-      "pricedElsewhere": "This visit costs ₹{{amount}} — take payment at the billing counter"
+      "pricedElsewhere": "This visit costs ₹{{amount}} — take payment at the billing counter",
+      "invoicedElsewhere": "An invoice already exists for this visit — nothing more to collect here."
     },
     "collect": {
       "settle": "Take payment",
@@ -2085,7 +2087,8 @@
     },
     "join": {
       "failed": "Could not join the queue: {{reason}}",
-      "retry": "Join the queue"
+      "retry": "Join the queue",
+      "owed": "Paid, but not in the queue yet"
     },
     "flow": {
       "label": "Counter flow",
@@ -2099,6 +2102,13 @@
       "loading": "Reading…",
       "unknown": "Could not read the counter flow",
       "saveFailed": "Could not change the flow: {{reason}}"
+    },
+    "drawer": {
+      "closed": "Your cash drawer is not open — this seat can price a visit but cannot take payment.",
+      "openLink": "Open your session",
+      "closing": "Your drawer is locked at close — a billing manager must approve the variance before you can take payment.",
+      "closingCover": "Meanwhile a billing manager can cover this counter.",
+      "forbidden": "This login cannot hold a cash drawer — a cashier role is needed to take payment here."
     }
   }
 }
