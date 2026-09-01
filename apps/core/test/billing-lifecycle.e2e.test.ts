@@ -212,8 +212,21 @@ describe("billing lifecycle e2e", () => {
     expect(completed.body.encounter.status).toBe("completed");
 
     // RC-1 T3 — settling a live token's consult fee also narrates the board flip, in the same
-    // transaction and under the invoice's correlation (the queue.fee_settled hook).
-    expect(await eventsByCorrelation(invoiceId)).toEqual(["invoice.issued", "receipt.recorded", "payment.received", "queue.fee_settled"]);
+    // transaction and under the invoice's correlation (the `queue.fee_status_changed` hook).
+    //
+    // RC-3 T3 RENAMED THE EVENT, AND THIS PIN IS WHERE THE RENAME WAS INCOMPLETE. `fee_settled`
+    // could only ever say the board had flipped ONE way; the three writers that move an encounter
+    // back OUT of settled (`reverseAllocation`, `markEnteredInError`, `issueCreditNote`) reached no
+    // hook at all, so a PAID stamp survived the money being reversed. The event now carries a
+    // direction and the name says so.
+    //
+    // WHY THIS ONE LINE SURVIVED THE RENAME, recorded because it will happen again: RC-3 T3's
+    // evidence batch was scoped to `billing`/`opd`/`membership`/`partners`, and this file is a
+    // top-level `test/` e2e — one hop outside all four module paths. The pin was added by RC-1's
+    // OWN close (`9bcc05f`) as "the one red in a 3268-test full pass", and then sat outside the next
+    // lane's scope. §2.138's shape exactly: a census file in no task's Files list. Found by a peer
+    // lane's full run, not by this one's.
+    expect(await eventsByCorrelation(invoiceId)).toEqual(["invoice.issued", "receipt.recorded", "payment.received", "queue.fee_status_changed"]);
   });
 
   it("(2) the dues story: credit-extend -> dues list -> partial clear -> clearance discount under approval -> final clear -> settled", async () => {
