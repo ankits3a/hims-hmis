@@ -143,6 +143,18 @@ describe("pcpndt — 0047 structure", () => {
     const form = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
       id: "01FORMF00000000000000001",
       serialNo: 1, serialYear: 2026, machineId: MACHINE, personId: PERSON,
+      /**
+       * F61 — `device_resource_id` is NOT NULL on this table now: the serial counter is keyed on
+       * the PHYSICAL machine rather than on a registration-scoped row, because a renewal mints a
+       * new machine row for the same scanner and restarted the year's book at 1.
+       *
+       * It belongs in this HELPER and not in the individual cases, for the reason F2 recorded about
+       * this very table: **the row must otherwise be VALID for a constraint assertion to be about
+       * that constraint.** Without it every case below stopped asserting its own CHECK and started
+       * asserting a NOT NULL violation instead — which is how the full pass reported nine failures
+       * that were all one missing column.
+       */
+      deviceResourceId: DEVICE,
       studyId: STUDY, patientId: PATIENT, indicationCode: "obstetric_dating",
       sections: { A: {}, B: {}, C: {}, D: {}, E: {}, F: {}, G: {} },
       declaration: { signature_kind: "signature" },
@@ -319,9 +331,13 @@ describe("pcpndt — 0047 structure", () => {
       await db.insert(imagingBillDecisions).values({
         id: "01BILL00000000000000001", studyId: STUDY, kind: "acquired_unbilled",
       } as never);
-      await db.insert(pcpndtFormFSerials).values({ machineId: MACHINE, year: 2026, nextNo: 2 } as never);
+      /** F61 — the counter is keyed on the physical device; `machineId` rides along as provenance. */
+      await db.insert(pcpndtFormFSerials).values({
+        deviceResourceId: DEVICE, machineId: MACHINE, year: 2026, nextNo: 2,
+      } as never);
       await db.insert(pcpndtFormF).values({
         id: "01FORMF00000000000000001", serialNo: 1, serialYear: 2026, machineId: MACHINE,
+        deviceResourceId: DEVICE,
         personId: PERSON, studyId: STUDY, patientId: PATIENT, indicationCode: "obstetric_dating",
         sections: {}, declaration: { signature_kind: "signature" }, referral: { self_referral: false },
         applicability: "pregnant",
