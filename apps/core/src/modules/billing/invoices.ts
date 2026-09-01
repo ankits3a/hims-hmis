@@ -508,7 +508,25 @@ async function priceDraftWithBenefits(
   assertBoundaryPaise(draft);
   // D1 — THE FLAG IS LOAD-BEARING. With it off nothing above is called at all: no membership table
   // is read, no source is appended, and every pre-existing billing test prices exactly as before.
-  const composed = memberBenefitsEnabled()
+  //
+  // RC-2 T3 / D6 — AND THE SECOND CONDITION IS THE PAYER. Member, coupon and referral benefits
+  // apply to the SELF-PAY SHARE ONLY (department brainstorm O-3's default, made executable here):
+  // TPA, corporate and scheme rates are TARIFF SUBSTITUTION, not contestants, so a member discount
+  // composed on top of a panel rate is money given away twice — once as a rate the hospital already
+  // conceded, once as a benefit — on a bill the hospital does not collect from the patient at all.
+  //
+  // The gate sits HERE rather than inside `composeBenefits` because `resolveEncounter` has already
+  // read the payer one line above: no new query, and the refusal is visible at the same altitude as
+  // the flag it sits beside. An encounter-less draft resolves to `self` (see `resolveEncounter`), so
+  // every shipped caller that names no encounter prices exactly as before.
+  //
+  // NOT recorded as a rejected candidate, and that is a DECIDED correction to this phase's own
+  // doc: `AdjustmentCandidate.rejected` means "contested and refused", and a payer-ineligible
+  // instrument was never in the contest. Claiming otherwise would put a losing chip on screen that
+  // never ran. The fact the seat needs already travels — `PricedDraft.intendedPayer` — and T5 names
+  // it on the quote, which is the honest rendering of "bill to panel, nothing to collect".
+  const benefitsApply = memberBenefitsEnabled() && encounter.intendedPayer === "self";
+  const composed = benefitsApply
     ? await composeBenefits(
         db,
         {
