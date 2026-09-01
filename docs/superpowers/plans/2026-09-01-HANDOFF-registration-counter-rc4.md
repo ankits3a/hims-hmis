@@ -6,10 +6,13 @@ Paste everything below the line into a fresh Claude Code session opened at `/opt
 
 ## Mission state in one paragraph
 
-You are the **Registration Counter lane**, building the owner-approved **Desk One** seat in four phases. **RC-1 (rails), RC-2 (benefits) and RC-3 (the seat) are all CLOSED, code-complete, NOT deployed.** `main` is at `250979b`. **RC-4 is the last phase and it is BLOCKED on one owner ruling** — see §3. The standing prohibition holds: **no deploy anywhere in this series**; production has never left `commissioning` and code-complete + green evidence is the finish line.
+You are the **Registration Counter lane**, building the owner-approved **Desk One** seat. **RC-1 (rails), RC-2 (benefits) and RC-3 (the seat) are all CLOSED, code-complete, NOT deployed.** `main` is at `ece4760` or later.
+
+> **CORRECTION, made the same day this handoff was written.** An earlier version of this paragraph said RC-4 was the LAST phase and that its *"entire content"* was deleting one of the two counters, gating everything on one ruling. **Both claims were wrong.** The deletion is a decision RC-3's own D1 introduced; it appears nowhere in the series' authority, `2026-08-31-EXECUTE-PROMPT-registration-counter.md`. Measured against that prompt's four acceptance demos, **the remainder is roughly three phases, and RC-4 as re-cut is blocked by nothing.** Read **`2026-09-01-SCOPE-registration-counter-remainder.md` FIRST** — it walks the four demos, says what is built with the grep that proves it, and proposes the cut. This handoff's §3 and §4 are superseded by it. The standing prohibition holds: **no deploy anywhere in this series**; production has never left `commissioning` and code-complete + green evidence is the finish line.
 
 ## 1. Read these, in this order, before any edit
 
+0. **`docs/superpowers/plans/2026-09-01-SCOPE-registration-counter-remainder.md`** — what is left, measured against the series' four acceptance demos, and the proposed three-phase cut. **Read this before anything else; it supersedes §3 and §4 below.**
 1. **`docs/superpowers/plans/2026-09-01-phase3-rc3-the-seat.md`** — RC-3's phase doc. Read **§5 (the CLOSE)**, **§6 (the three rulings that remain)** and **§7 (the eight findings RC-3 deliberately declined)**. §7 is your inbox: it is the list RC-4 inherits, and it exists so you do not rediscover any of it by grep.
 2. `docs/superpowers/EXECUTE-METHOD-V3.md` — the method. **§5A is where RC-3's lessons landed**: 5A.1 the contract pass, 5A.2 this handoff, **5A.3 the assembled-artifact assertion**, **5A.4 revert every fix**. §6's stop-loss, §9.9's verify rules.
 3. `docs/superpowers/AGENT-RULES.md` — the binding contract. Then ledger **§5 only**; cite §2 entries BY NUMBER (`grep -A 30 "^### 2\.NNN"`). **Never open the whole ledger — it is 461KB / ~115k tokens and this lane has not opened it for three phases.**
@@ -27,15 +30,17 @@ Eleven commits, `9dee2bd`..`250979b`. New screen `apps/web/src/screens/registrat
 
 **Killing a mutant in a component proves the component.** Each of those was tested exhaustively and never once reached through the screen that mounts it — the assembly-render ratio was 2 to 14, and both of those two used the FREE branch, where the priced path is irrelevant. That is now method **§5A.3**, and RC-4 is a phase that assembles, so it applies to you directly: **drive the assembled screen through a full cycle — two patients, not one.**
 
-## 3. THE RULING THAT GATES YOU — do not start T1 without it
+## 3. THE RULINGS — and what they actually gate (SUPERSEDED by the SCOPE doc; read that first)
 
-**Does the seat REPLACE `/counter`, or keep sitting beside it?** RC-3's D1 kept both deliberately for one phase so a proven money path and an unproven layout were never in the same diff. **RC-4 deletes one, and which one is the owner's call, not yours** — it is the whole content of the phase and the owner is meant to make it by looking at both screens.
+**Does the seat REPLACE `/counter`, or keep sitting beside it?** RC-3's D1 kept both deliberately for one phase so a proven money path and an unproven layout were never in the same diff. Which one goes is the owner's call.
+
+**It is NOT the content of the phase and it does NOT gate authoring** — that was the error above. The SCOPE doc argues the honest moment to delete the shipped counter is when its replacement demonstrably finishes a patient (opens a visit, joins a queue, shows the PAID stamp), which is RC-4's actual work. Do that work first; the deletion is a one-line edit at the end of it.
 
 Two consequences already taken, so the ruling costs one edit and not a migration:
 - `/counter/seat` is **the only NAV row in the application with no module-manifest entry**, deliberately, so no permanent server-side declaration sits behind a screen scheduled for deletion.
 - `caddyfile-parity.test.ts` is pinned at **45** and its comment already says the number returns to 44 when one route goes.
 
-**Two more rulings are open and both are MONEY. Neither is yours to default:**
+**Two more rulings are open and both are MONEY. Neither is yours to default — and both gate RC-5 (the benefits UI), not RC-4:**
 1. **Is a plan-bundled coupon a BEARER instrument?** A stranger presenting it permanently spends the member's single-use coupon — `couponUnusableReason` never checks the holder and the redemption's uniqueness is `(coupon_id, cycle_no)` with no patient term.
 2. **Should a fully-refunded consult put the token back to UNPAID on the board?** **Confirmed by execution: a credit note CANNOT un-settle.** `settlementState` computes `covered = credited + allocated`, so a credit note counts toward coverage and can only move a fee status settled-ward. RC-3's D4 claimed the opposite and the test asserting it checked only `via`.
 
@@ -78,4 +83,4 @@ RC-3: ~1,007,000 of a 1,250,000 stop-loss (81%) — ~588k main-session across tw
 1. `git pull --rebase`, `git log --oneline -12`, `git status --porcelain` (**whose files are dirty?**), `ps -eo pid,cmd | grep -E "[j]est|[v]itest"` (**it must match `processChild` workers, not only supervisors**), `uptime`.
 2. `ListAgents`, and **message the peers before touching anything shared** — three lanes have shared this checkout all day and two of RC-3's real defects were found by another lane's instrument, never by its own.
 3. Re-measure the §5.3 rails table before believing it.
-4. **Get the §3 ruling before authoring T1.**
+4. **Read the SCOPE doc and get the CUT agreed.** No ruling blocks RC-4's own work.
