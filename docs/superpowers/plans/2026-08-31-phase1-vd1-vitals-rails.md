@@ -302,6 +302,11 @@ plus both e2e suites — **33 suites / 257 tests passed, 0 tests failed**. Two s
 has not grown it yet). Not this lane's diff and not this lane's file; core typecheck was clean at
 ~07:05 and that edit landed after. Named here rather than explained away, and owed a re-run.
 
+> **DISCHARGED.** The RC-2 lane landed the matching `feeQuote` signature; both suites re-run green
+> — `advised-tests` 23.9 s, `opd.e2e` 39.9 s, **2 suites / 13 tests passed, exit 0**. So VD-1
+> T1–T3's evidence is **35 of 35 suites green**, taken in two runs for a reason that is recorded
+> rather than glossed. Ledgered as **§2.153**.
+
 > **A SIGNATURE WORTH RECOGNISING, because it reads exactly like a real red and is not one:**
 > `Test Suites: 2 failed, 33 passed` beside `Tests: 257 passed` and **zero tests failed**. A suite
 > that fails to RUN reports no test counts at all, so the test line stays perfectly green while the

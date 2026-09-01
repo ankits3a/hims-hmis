@@ -1427,6 +1427,81 @@ read IMMEDIATELY before every commit, compared against your own Files list, on a
 session can reach. And in all cases: **read the commit's own stat line against the size of what you
 wrote** — a 4× insertion count is the tree telling you whose work you just took.
 
+### 2.153 — A SUITE THAT FAILS TO *RUN* CONTRIBUTES NO TEST COUNTS, SO THE GREEN NUMBER STAYS GREEN
+
+VD-1 T3's evidence run returned:
+
+```
+Test Suites: 2 failed, 33 passed, 35 total
+Tests:       257 passed, 257 total
+```
+
+**Zero tests failed, and two suites were red.** A suite that dies at load — a compile error anywhere
+in its import graph — never registers a test, so it contributes nothing to the `Tests:` line while
+contributing a failure to the `Test Suites:` line. The two numbers are counting different things
+and only one of them can see the failure.
+
+This is the **third** distinct shape of not-a-real-red on this project, beside §2.151's two (OOM
+kills naming a pid; `setupTestDb` hook timeouts with zero assertion diffs), and it is the most
+dangerous of the three, because **the number a reader's eye lands on is the reassuring one.** The
+cause here was `billing/billing.controller.ts:503` in a PARALLEL LANE's uncommitted work — a call
+site that had grown a `feeQuote` parameter the options type had not — which took down
+`advised-tests.test.ts` and `test/opd.e2e.test.ts`, neither of them in this phase's diff and
+neither of them a billing file.
+
+**The mechanical form:** when `Test Suites: N failed` disagrees with `Tests: 0 failed`, read the
+`● Test suite failed to run` blocks BEFORE forming any theory about your own diff — the message
+names the file and line, and on a shared checkout it is quite often another lane's. Never quote the
+`Tests:` line alone as a verdict; quote both, or quote the runner's exit value.
+
+**And the shared-checkout half, which §2.151 and §2.152 do not cover between them:** those two
+govern the BOX and the INDEX. This is the **window** — the interval in which a multi-file edit is
+uncompilable to everyone else in the tree. A lane typechecking at the end of a five-file thread is
+correct for itself and broken for every concurrent reader. *Land a multi-file thread in one shot and
+typecheck before yielding the tree.*
+
+### 2.154 — A RACE TEST THAT HAS NEVER BEEN SHOWN TO FAIL WITHOUT ITS LOCK HAS NOT BEEN SHOWN TO MEASURE THE LOCK
+
+VD-1 T3 built a mutant of `cancelEscalation` with the encounter-row `FOR UPDATE` removed. **The
+concurrency suite passed against it.** The suite's own docstring had asserted the property it
+lacked — *"Both promises are therefore started before either is awaited"* — which is true,
+necessary, and **not sufficient.**
+
+A probe against the unlocked mutant reported `settled: ["ok", "escalation_state_conflict"],
+events: 1`: the unlocked code behaving perfectly, because nothing concurrent had happened.
+**`pg.Pool` opens connections lazily.** Caller #1 reuses the idle connection the fixture left;
+caller #2 must establish a NEW one, and that TCP-and-auth handshake is longer than the entire first
+transaction. So caller #2 began its SELECT *after* caller #1 committed, read the settled state, and
+lost on the ordinary state check — the right answer, reached without the lock ever being exercised.
+**The connection-establishment cost sits INSIDE the window you believe you are measuring.**
+
+Warming the pool first — `await Promise.all(Array.from({length: 4}, () => db.execute(sql\`select
+pg_sleep(0.05)\`)))`, at least as many concurrent round-trips as the race has participants — moves
+that cost out of the window. Mutant C then died with the damage the lock exists to prevent:
+
+```
+Expected length: 1 · Received length: 2
+  two queue.escalation_cancelled events, actorId 01M1DWF41B… and actorId 01M1DWF42959…
+  both restoredClass: 3, both withinMs: 3000
+```
+
+**One act, recorded twice, under two different names — with the restored class correct either way,
+so nothing user-visible would ever have surfaced it.** That is why a race over an AUDIT TRAIL must
+actually race: the damage is entirely in the record.
+
+This is §2.99's sibling and it is sharper. §2.99 is *a race test that passes on an idle host*; this
+is **a race test that cannot fail at all**, because the concurrency it measures belongs to the
+connection pool rather than to the code. **The mechanical form, and it is two lines:** warm the pool
+before the measured window, and then REMOVE THE LOCK AND CONFIRM THE TEST GOES RED. A green race
+test whose mutant survives is certifying a lock it never touched.
+
+> **A live question this leaves, recorded rather than closed:** RC-1 T3's join-queue race mutant
+> died on an UNWARMED pool. That may have been the right kill or a lucky interleaving, and the two
+> are indistinguishable after the fact. Not grounds to reopen a closed phase; it IS grounds for the
+> next phase touching that path (RC-3) to warm the pool and re-run the mutant before trusting the
+> guard. Raised by the RC-2 lane against its own predecessor's work, which is the behaviour this
+> ledger exists to encourage.
+
 ## 3. Plan-authoring defects
 
 Fix these when writing the next plan, not when executing it.
