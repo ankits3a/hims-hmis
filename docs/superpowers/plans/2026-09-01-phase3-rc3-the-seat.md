@@ -75,8 +75,9 @@ Per D3. Ctrl+K · Ctrl+N · Q · 1/2/3 tender · Ctrl+⏎ · Esc.
 
 ## 5. CLOSE
 
-**Status: CODE-COMPLETE, NOT DEPLOYED.** Production has never left `commissioning` and the series-wide
-prohibition held — nothing in RC-1, RC-2 or RC-3 has been deployed anywhere. Written across two
+**Status: CODE-COMPLETE, NOT DEPLOYED. NOTHING OUTSTANDING** — every review finding is either fixed
+(§5.10) or recorded as deliberately declined with its reason (§7). Production has never left
+`commissioning` and the series-wide prohibition held — nothing in RC-1, RC-2 or RC-3 has been deployed anywhere. Written across two
 sessions: T1–T3 in the first, T4/T5 and this close in the second.
 
 ### 5.1 What shipped
@@ -236,7 +237,7 @@ being accepted; none was taken on the reviewer's word.
 | MAJOR | **Dismissing the command palette released the patient.** Its Escape is a React `onKeyDown` with `preventDefault` and no `stopPropagation`; React 18 dispatches below `window`, where the seat listens | `b3310f7` |
 | MAJOR | **Ctrl+N was dead where it was needed** — below the typing guard, with an `autoFocus` search box. (And it is a Chrome-reserved chord regardless: §6.) | `b3310f7` |
 | MAJOR | **The alias layer had no consumer.** Eighteen aliases, and the screen carried not one `className`. "Changes no colour on any OTHER screen" was true because it changed no colour on ANY screen | `b3310f7` |
-| MAJOR | **The cap alignment had no assertion at any level** and the `?referral=` half was never aligned at all — T1 fixed the coupon parser and left the identical silent drop five lines below | held, see §5.12 |
+| MAJOR | **The cap alignment had no assertion at any level** and the `?referral=` half was never aligned at all — T1 fixed the coupon parser and left the identical silent drop five lines below | `310cebe` |
 | MAJOR | **A test whose NAME claimed what it never asserted** — "a full-value credit note un-flips it too" asserted only `via`, and the claim is FALSE: `settlementState` counts credit notes toward coverage, so a credit note can only move a fee status settled-ward | `8fd05a2` |
 | MINOR | The rename rewrote its own history; dev scaffolding printed `upi` on the counter; "start again" left the search box full; `Ctrl+Enter`'s documented fall-through was unasserted; the CSS leak census was narrower than its own docstring | `b3310f7`, `8fd05a2` |
 
@@ -265,14 +266,36 @@ That practice caught three checks of mine that were worthless, all in one sessio
 trusting a check, ask what it would report if the thing you are looking for were absent — and if the
 answer is "the same", it is not a check.
 
-### 5.12 Held, not done — and why
+### 5.12 F6 — held for two hours, then LANDED (`310cebe`). Nothing is outstanding.
 
-**F6's referral-cap fix and its assertions are written and NOT committed.** `test/billing.e2e.test.ts`
-boots the whole Nest app, which imports the radiology module, and the 18a lane's in-flight close
-remediation does not compile — so **every top-level e2e in the repository is unrunnable right now**,
-not only mine. An assertion nobody has executed is not evidence. It lands when their tree compiles.
-(That fact was worth passing to them: they had cleared me on the grounds that my tests import no
-radiology, which is true of a unit test and false of any test that stands up the app.)
+The last open item, and the story of getting it proved is the phase's best specimen of §2.164.
+
+**The defect.** T1's `DECIDED` clause said the quote/invoice cap mismatch was "fixed in T1"; it was
+fixed for COUPONS. Five lines below, the `?referral=` parser still silently dropped an over-long
+code while `issueInvoiceBody.attributionCode` returns a hard 400 — so the clerk got a clean quote
+with no partner attribution and no error, then "request body failed validation" at issue. Partner
+attribution is money. And the larger half of the finding: **no test anywhere in `apps/core` sent
+that route an eleventh coupon, an over-long code, or an over-long referral** — neither the old
+behaviour nor T1's new one was pinned at any level, so T1's own change was unproven and T3's
+30-suite batch passed identically with or without it.
+
+**Three attempts to get evidence, and only the third produced any.**
+
+1. The e2e would not COMPILE: it boots the whole Nest app, so it compiles every module, and a peer
+   lane's in-flight remediation had three controllers whose call sites had not caught up with
+   signatures it had moved. **Their clearance — "my broken files are not in yours" — was true of a
+   unit test and false of anything that stands up the app** (§2.164).
+2. It compiled, then died in `setupTestDb`: their migration `0051` added a primary key ON a column
+   five statements BEFORE creating it, because drizzle-kit emits its constraint block ahead of its
+   column block. `setupTestDb` migrates before any suite touches a row, so **no test database in the
+   repository could be created, for any lane** — and `tsc` is structurally blind to it. Reported
+   across, fixed, and their from-scratch run then proved `0001`→`0051`.
+3. Green: 1 suite / 22 tests, exit 0. **R11** — the referral parser restored to its silent drop —
+   **1 failed / 21 passed**, the one failure being this commit's own test.
+
+The evidence line discloses that the run was over a tree carrying the peer's uncommitted
+remediation. That cannot make HTTP assertions against billing routes pass spuriously, but which
+tree an evidence line came from is part of the evidence (§2.152).
 
 ### 5.13 Carried to RC-4, with named owners
 
