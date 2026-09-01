@@ -2330,3 +2330,120 @@ Named because all three cost real clock at 18a and all three are mechanical.
    error rather than a verdict — six wasted turns across the session.
    **Fix: every command that runs a tool with a relative-path dependency begins with an absolute
    `cd`. Treat `cd X && <tool>` as the default shape, not a precaution.**
+
+### 2.162 — UNIT MUTANTS CANNOT REACH ASSEMBLY DEFECTS, AND RC-3 PUT NUMBERS ON IT
+
+**THE RULE. Killing a mutant in a component proves the component. It says nothing about the screen
+that mounts it, and "the screen that mounts it" is where the money defects live.**
+
+**THE SPECIMEN, RC-3 (the registration counter's seat), 2026-09-01.** Thirteen rule-21 mutants were
+BUILT, each APPLIED TO THE TREE AND RUN, and all thirteen DIED. Typecheck clean, lint clean, 36
+tests green, a full web suite of 67 files / 432 tests green. Two independent close reviewers then
+returned **3 CRITICAL and 12 MAJOR** (deduplicated across the passes).
+
+**Every CRITICAL was in the ASSEMBLY, and not one was reachable by any of the thirteen mutants:**
+
+| the defect | where the mutants were |
+|---|---|
+| The seat handed `quote={null}` into its own quote panel, so the entire benefits contest had no consumer on the screen | inside `QuotePanel`, which every test handed a quote DIRECTLY |
+| `useQuote` held a quote with no lifetime, so patient B was shown patient A's bill, A's chips and A's review-window reason (PHI) under B's name | inside `useQuote`'s fetch, which no test drove through a SECOND patient |
+| The seat hard-coded `issued={null}`, so "Collect ₹400" rendered on an encounter that had already been paid | inside `counterExit`, unit-tested as a pure function with `issued` passed in by hand |
+
+The common shape is one sentence: **each component was tested exhaustively and never once reached
+through the screen that mounts it.** That is §2.160's diagnosis — every assertion that touched the
+defect checked a state where right and wrong agree — arriving through composition rather than
+through a fixture.
+
+**THE MECHANICAL FORM.** For any phase that ASSEMBLES already-shipped components into a screen
+(every wiring phase, and every phase whose §1 finding is "rails with no consumers"), the assertion
+book must contain at least one test that drives the **assembled artifact through a full cycle of its
+own domain**, not a single state. At a counter that is TWO PATIENTS, not one: take A, act, clear,
+take B, and assert that nothing of A's survives. Grep the test file before close:
+
+```
+# every render of the top-level screen — if this is 0 or 1, the assembly is unasserted
+grep -c "renderWithProviders(<${SCREEN}" ${SCREEN_TEST}
+# and the components it mounts, rendered directly — if this dwarfs the number above, the
+# suite is testing the parts and trusting the whole
+grep -c "renderWithProviders(<${CHILD}" ${SCREEN_TEST}
+```
+
+RC-3's numbers before the review: two renders of the screen (both with the same single patient and
+a FREE quote — the one branch where the priced path is irrelevant) against fourteen direct renders
+of its children.
+
+---
+
+### 2.163 — REVERT THE FIX AND RE-RUN, OR THE TEST YOU JUST WROTE MAY NOT BE A TEST
+
+**THE RULE. A remediation test that passes proves nothing. Only a remediation test that FAILS
+against the original defect proves anything. Restore the defect, run, and watch it go red.**
+
+**THE SPECIMEN, RC-3's close, 2026-09-01 — three checks in one session that could not fail, none of
+them caught by reasoning, all three caught by running the revert.**
+
+1. **A mutant cleanup that deleted the task.** `git checkout -- apps/web/src/router.tsx` reverted a
+   mutant *and* discarded that task's uncommitted route mount — and the suite went straight back to
+   green, because the census the mutant kills reads the router and the reverted router is innocent.
+   A green run over a tree that had lost half a task, with nothing in the output saying so.
+2. **A remediation test with no prior state to corrupt.** It stubbed a fee-quote that always fails
+   and asserted no panel rendered — but with no prior SUCCESS there was never a stale quote to leave
+   standing, so it held whether or not the `catch` cleared anything. It was rewritten to drive
+   success-then-failure, which is the only sequence that distinguishes them.
+3. **A consumer test that grepped the source.** It asserted the screen file contained
+   `bg-background`; stripping the seat root's classes left it green, because the utility still
+   appeared on the search input. It asserts the RENDERED element's `className` now.
+
+**These three sit beside §2.158's calendar bomb and the `pkill`/`ps` blindness of the same week.
+The family is one question:** *what would this check report if the thing I am looking for were
+absent?* If the answer is "the same", it is not a check.
+
+**THE MECHANICAL FORM, and it is cheap — seconds per fix.** For every close-review fix:
+
+```
+cp <file> /tmp/fix.orig          # NEVER `git checkout` — a revert is a write, and a write to a
+                                  # file with uncommitted work is a deletion you did not type
+<restore the original defect>
+<run the suite>                  # MUST be red, and red in the test you just wrote
+cp /tmp/fix.orig <file>
+<run the suite>                  # MUST be green again
+```
+
+Record the pair in the commit message as `R<n> <what was restored> ... N failed / M passed`. RC-3's
+close carries eleven such pairs. Two of them found the test rather than the code.
+
+---
+
+### 2.164 — AN APP-BOOTING E2E IMPORTS EVERY MODULE, SO ONE LANE'S BROKEN CONTROLLER BLOCKS EVERY LANE'S e2e
+
+**THE RULE. In a shared checkout, a peer's in-flight compile error in ANY module makes every
+top-level e2e in the repository unrunnable — not merely the ones that touch their code.**
+
+**THE SPECIMEN, 2026-09-01.** The 18a lane, mid-remediation on 13 CRITICAL findings, cleared the
+RC-3 lane to take the box: *"neither imports anything under `modules/radiology` or `modules/pcpndt`,
+and ts-jest compiles per entry graph, so my broken files are not in yours."* True for
+`src/modules/opd/fee-status.test.ts`, which ran and passed 11/11. **False for
+`test/billing.e2e.test.ts`**, which stands up the whole Nest app:
+
+```
+FAIL test/billing.e2e.test.ts
+  ● Test suite failed to run
+    src/modules/radiology/radiology-schedule.controller.ts:128:31
+      error TS2554: Expected 3 arguments, but got 2.
+```
+
+**The app IS the entry graph.** A module-scoped unit test compiles a subtree; an e2e that calls
+`Test.createTestingModule` with the root module compiles everything the application imports.
+
+**THE MECHANICAL FORM.** Before clearing a peer for a slot, or accepting one:
+
+```
+# whose files are dirty, and does the workspace compile at all?
+git status --porcelain | grep -v '^??'
+pnpm --filter @hmis/core exec tsc --noEmit 2>&1 | grep -E '^src/' | sed 's/(.*//' | sort -u
+```
+
+Then attribute by directory rather than assuming — `grep -E "^src/modules/(billing|opd)/"` returning
+EMPTY is what makes "none of these are mine" a measurement instead of a hope. And state the
+consequence out loud: **while any module fails to compile, `test/*.e2e.test.ts` is not an available
+instrument for anybody**, which matters most to the lane whose findings need an e2e to prove.

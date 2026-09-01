@@ -105,7 +105,7 @@ ratchet started.
   place with one line saying why — the rule-6 pattern. The 2026-08-19 consolidation rule
   stands. An entry nobody can attach to a live mechanism is weight, not memory.
 
-## 5A. THE CLOSE'S TWO CHEAPEST STEPS, BOTH BEFORE THE REVIEWER
+## 5A. THE CLOSE'S CHEAP STEPS — TWO BEFORE THE REVIEWER, TWO AROUND IT
 
 **Added 2026-09-01 from Plan 18a's close (ledger §2.159, §2.160).** Both cost no box time, no
 database and no agent, and at 18a they returned six defects that 3,315 passing tests and thirty
@@ -140,6 +140,52 @@ names it FIRST and says **which sections of the phase document are not needed**.
 
 **Measure the phase document at every close (`wc -c`) and record it.** Past ~50k tokens it has
 stopped being a plan a successor reads and become an archive a successor greps.
+
+**5A.3 — A WIRING PHASE OWES ONE ASSERTION OVER THE ASSEMBLED ARTIFACT, DRIVEN THROUGH A FULL CYCLE.**
+
+**Added 2026-09-01 from RC-3's close (ledger §2.162).** RC-3 built thirteen rule-21 mutants, applied
+each to the tree, ran each, and killed all thirteen — over clean typecheck, clean lint, and a full
+web suite of 67 files / 432 tests. Two independent reviewers then returned **3 CRITICAL + 12 MAJOR**,
+and **every CRITICAL was in the assembly**: a screen handing `quote={null}` into its own quote panel;
+a quote with no lifetime showing patient A's bill and A's PHI under patient B's name; a hard-coded
+`issued={null}` printing "Collect ₹400" on an encounter already paid.
+
+**Killing a mutant in a component proves the component.** Each of those components was tested
+exhaustively and never once reached through the screen that mounts it.
+
+So: any phase that assembles already-shipped components into a screen — which is EVERY phase whose
+§1 finding is "rails built and never wired" — owes at least one assertion that drives the assembled
+artifact **through a full cycle of its own domain, not a single state**. At a counter that means TWO
+PATIENTS: take A, act, clear the desk, take B, and assert nothing of A's survives. Before close:
+
+```
+grep -c "renderWithProviders(<${SCREEN}"  ${SCREEN_TEST}   # renders of the ASSEMBLY
+grep -c "renderWithProviders(<${CHILD}"   ${SCREEN_TEST}   # renders of its parts
+```
+
+If the second dwarfs the first, the suite is testing the parts and trusting the whole. RC-3's ratio
+before its review was 2 to 14 — and both of those two used the one branch (a FREE quote) in which
+the priced path is irrelevant.
+
+**5A.4 — EVERY CLOSE-REVIEW FIX IS PROVED BY RESTORING THE DEFECT, NOT BY A GREEN SUITE.**
+
+**Added 2026-09-01 from RC-3's close (ledger §2.163).** A remediation test that passes proves
+nothing; only one that goes RED against the original defect proves anything. RC-3 ran eleven such
+pairs and **two of them condemned the test rather than the code** — one had no prior state to
+corrupt, one grepped the source for a string that appeared elsewhere in the same file.
+
+```
+cp <file> /tmp/fix.orig      # NEVER `git checkout`: a revert is a write, and a write to a file
+                             # with uncommitted work is a deletion you did not type (§2.163)
+<restore the original defect>
+<run>                        # MUST be red, and red in the test just written
+cp /tmp/fix.orig <file>
+<run>                        # MUST be green again
+```
+
+Record each pair in the commit message as `R<n> <what was restored> ... N failed / M passed`. This
+is the counterpart to the mutants of §3: a mutant proves a test can catch a defect that was never
+there; a revert proves it catches the defect that WAS.
 
 ## 6. Actuals and a stop-loss, not predictive budgets
 
