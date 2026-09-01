@@ -90,7 +90,7 @@ Per D7/D8 (`avg_consult_minutes` column lands in T2; this task reads it).
 
 ### Carries
 - **C1 vitals half** → VD-1 lane's next commit (guard + test theirs; confirmed in-flight with a mutant).
-- **M3** → RC-3 (the un-flip direction + event rename, with the board consumer).
+- **M3** → RC-3 (the un-flip direction + event rename, with the board consumer). **Pass 1's author re-verified all repairs independently at `5cb3593` and withdrew its blocking verdict (C1 vitals half "exceeds spec"); its M3 brief for RC-3, so nobody re-derives it:** `emitFeeSettled` has two call sites (`invoices.ts` at issue, `receipts.ts` at allocation); the three writers that move an encounter OUT of settled — `reverseAllocation` (receipts.ts:555), `markEnteredInError` (:659), `issueCreditNote` (credit-notes.ts:282) — reach neither, and no un-settle event exists. The derived read self-corrects on refetch; the missing push is stale in the OPTIMISTIC direction (PAID shown after the money reversed), which is the direction that matters. It needs an event, not just a call site.
 - Pass-2 MINORs accepted as-is, named: `heldSettlementPaise` excluded from the change surplus (conservative, over-refuses); error-code precedence flip on card-only over-change (`change_without_cash` now first); `feeServiceIds` union still feeds the ledger batch reads (row volume only, query count unchanged); `visit.abandoned` widened at version 1 (the visit.opened precedent); events for RC-4's ledger projection arriving from VD-1 (`vitals.recheck_demanded`, `queue.escalated`, `queue.escalation_cancelled` — to be confirmed as shipped).
 
 ### Actuals (recorded at close; the token audit's hook appends the baseline row)
