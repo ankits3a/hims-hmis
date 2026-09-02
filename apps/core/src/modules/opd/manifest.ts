@@ -19,7 +19,6 @@ export const opdManifest: ModuleManifest = {
     { label: "OPD desk", path: "/opd/desk", permission: "opd.visits.open" },
     { label: "Vitals", path: "/opd/vitals", permission: "opd.vitals.record" },
     // VD-2 T1 / D1 — Bay One beside the old vitals screen; the deletion is the owner's.
-    { label: "Vitals bay", path: "/opd/vitals/bay", permission: "opd.vitals.record" },
     { label: "Consultation", path: "/opd/consult", permission: "opd.consult" },
     { label: "Token display", path: "/opd/display", permission: "opd.display.read" },
     { label: "OPD admin", path: "/opd/admin", permission: "opd.masters.manage" },

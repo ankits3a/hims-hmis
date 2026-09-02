@@ -76,6 +76,8 @@
     "title": "शॉर्टकट",
     "search": "Ctrl+K या / — खोजें",
     "new": "Ctrl+N नया मरीज़ (Alt+N)",
+    "confirm": "Ctrl+⏎ पुष्टि",
+    "release": "Esc मरीज़ छोड़ें",
     "merge": "Alt+M मर्ज",
     "approvals": "Alt+A अनुमोदन",
     "opdDesk": "Alt+D OPD डेस्क",

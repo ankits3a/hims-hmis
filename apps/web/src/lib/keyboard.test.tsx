@@ -37,12 +37,32 @@ describe("the global keyboard map", () => {
    * handling keys at all, each of those would fail for a reason unrelated to what it tests. This
    * pins that the map is live and non-vacuous before anything else is claimed about it.
    */
-  it("reads a NON-VACUOUS map — the shipped Alt bindings still reach their screens", () => {
+  it("reads a NON-VACUOUS map — Ctrl+N still reaches its screen", () => {
     mountMap();
-    for (const [key, to] of [["m", "/merge"], ["a", "/approvals"], ["d", "/opd/desk"], ["p", "/opd/appointments"]] as const) {
+    fireEvent.keyDown(window, { key: "n", ctrlKey: true });
+    expect(navigate.mock.calls[0]?.[0]?.to).toBe("/registration");
+  });
+
+  /**
+   * ═══ FD-5 / OWNER RULING — THE SEVEN PARKED CHORDS REACH NOTHING ═══
+   *
+   *   > "park them for now and redesign them as new"
+   *
+   * `Alt+M`, `Alt+A`, `Alt+D`, `Alt+V`, `Alt+C`, `Alt+P` and `Alt+B` navigated to six screens and,
+   * in `Alt+B`'s case, carried the encounter in hand. None of them appears in any signed-off
+   * design; they grew by convention. They are out of the map and out of the legend until the
+   * redesign, and this row is what stops one of them quietly growing back — a future task that
+   * wants `Alt+D` has to delete a named assertion and read why it was parked.
+   *
+   * `Alt+N` is NOT in this list and must not be: it is the plain-tab half of the new-patient chord
+   * (Chrome eats `Ctrl+N` in an ordinary tab), which is a different thing from a parked navigation.
+   */
+  it("the seven parked Alt chords navigate NOWHERE until they are redesigned", () => {
+    mountMap();
+    for (const key of ["m", "a", "d", "v", "c", "p", "b"] as const) {
       navigate.mockClear();
       fireEvent.keyDown(window, { key, altKey: true });
-      expect({ key, to: navigate.mock.calls[0]?.[0]?.to }).toEqual({ key, to });
+      expect({ key, calls: navigate.mock.calls.length }).toEqual({ key, calls: 0 });
     }
   });
 
@@ -132,5 +152,13 @@ describe("the global keyboard map", () => {
     expect(legend).toHaveTextContent("Alt+N");
     // THE KILL for a legend that still trains the desk to press a reserved key.
     expect(legend.textContent).not.toContain("F2");
+    /*
+     * FD-5 — and it must not advertise a PARKED chord either. The strings stay in the locale files
+     * on purpose (the redesign should not have to re-translate seven labels); what must not happen
+     * is the footer teaching a desk a chord the map no longer answers.
+     */
+    for (const parked of ["Alt+M", "Alt+A", "Alt+D", "Alt+V", "Alt+C", "Alt+P", "Alt+B"]) {
+      expect(legend.textContent).not.toContain(parked);
+    }
   });
 });

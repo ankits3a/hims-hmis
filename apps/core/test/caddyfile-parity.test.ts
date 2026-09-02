@@ -351,11 +351,15 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // `/counter/seat/figures` became `/counter/figures`. Net -1 on top of 17c T5's +1, and the
     // MEASURED number is stated rather than predicted: this file's friction is the whole point of
     // pinning a count, so the pin moves only after the parser has been re-run against the tree.
-    expect(routes).toHaveLength(47);
+    // FD-5 / THE OWNER'S RULING, SECOND HALF — 47 -> 46. `/opd/vitals/bay` is gone and Bay One
+    // serves `/opd/vitals`, exactly as the registration seat took `/counter`: "keep the new design
+    // not the old one." Net -1, MEASURED against the tree rather than predicted.
+    expect(routes).toHaveLength(46);
     expect(routes).toContain("/lab/reports");
     expect(routes).toContain("/counter/figures");
     expect(routes).not.toContain("/counter/seat");
-    expect(routes).toContain("/opd/vitals/bay");
+    expect(routes).toContain("/opd/vitals");
+    expect(routes).not.toContain("/opd/vitals/bay");
     expect(routes).toContain("/radiology/reception");
     expect(routes).toContain("/radiology/worklist");
     // The three parameterised ones too: a parameterised path is still a SPA path, and if

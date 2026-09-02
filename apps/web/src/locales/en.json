@@ -76,6 +76,8 @@
     "title": "Shortcuts",
     "search": "Ctrl+K or / — Search",
     "new": "Ctrl+N New patient (Alt+N)",
+    "confirm": "Ctrl+⏎ Confirm",
+    "release": "Esc Release the patient",
     "merge": "Alt+M Merge",
     "approvals": "Alt+A Approvals",
     "opdDesk": "Alt+D OPD desk",

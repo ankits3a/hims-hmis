@@ -27,7 +27,6 @@ import { ApprovalsInbox } from "./screens/approvals-inbox";
 import { OpdAdmin } from "./screens/opd-admin";
 import { OpdAppointments } from "./screens/opd-appointments";
 import { OpdDesk } from "./screens/opd-desk";
-import { OpdVitals } from "./screens/opd-vitals";
 import { VitalsBay } from "./screens/vitals-bay";
 import { OpdConsult } from "./screens/opd-consult";
 import { OpdDisplay } from "./screens/opd-display";
@@ -101,6 +100,9 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/opd/admin", label: "nav.opdAdmin", permission: "opd.masters.manage", group: "opd" },
   { to: "/opd/appointments", label: "nav.opdAppointments", permission: "opd.appointments.read", group: "opd" },
   { to: "/opd/desk", label: "nav.opdDesk", permission: "opd.visits.open", group: "opd" },
+  // FD-5 / owner ruling 2026-09-02 — ONE vitals row, and it is Bay One's. The old `/opd/vitals`
+  // screen is deleted and the bay serves the path, exactly as the registration seat took
+  // `/counter`: "keep the new design not the old one."
   { to: "/opd/vitals", label: "nav.opdVitals", permission: "opd.vitals.record", group: "opd" },
   { to: "/opd/consult", label: "nav.opdConsult", permission: "opd.consult", group: "opd" },
   { to: "/opd/display", label: "nav.opdDisplay", permission: "opd.display.read", group: "opd" },
@@ -193,8 +195,6 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/lab/verify", label: "nav.labVerify", permission: "lab.results.verify", group: "opd" },
   /** PLAN 17c T5 — the fifth lab seat, the report centre, on the counter's own permission. */
   { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "opd" },
-  // VD-2 T1 / D1 — Bay One beside `/opd/vitals`, the way `/counter/seat` sits beside `/counter`.
-  { to: "/opd/vitals/bay", label: "nav.vitalsBay", permission: "opd.vitals.record", group: "opd" },
 ];
 
 function Shell(): React.ReactElement {
@@ -410,13 +410,22 @@ const counterDeskRoute = createRoute({
 });
 
 /**
- * VD-2 T1 / D1 — Bay One, the vitals desk, mounted BESIDE `/opd/vitals` for the same reason the
- * registration seat sits beside `/counter`: a shipped screen and an unproven layout are never in
- * one diff. The old screen's deletion is an owner item once the seven bay stories run.
+ * ═══ FD-5 / OWNER RULING 2026-09-02 — BAY ONE *IS* `/opd/vitals` NOW ═══
+ *
+ * VD-2 D1 mounted Bay One BESIDE the shipped `opd-vitals.tsx` for the reason the registration seat
+ * sat beside the old counter: a shipped screen and an unproven layout should never be in one diff.
+ * The bay's seven stories have run, and the owner ruled the same way they ruled for the counter —
+ * *"keep the new design not the old one"* — so `opd-vitals.tsx` and its suite are DELETED and the
+ * bay takes the path. Not a redirect: a second name for one screen is the two-doors problem that
+ * put the owner on the wrong counter in the first place.
+ *
+ * `opdManifest.menu` keeps `{ path: "/opd/vitals", permission: "opd.vitals.record" }` unchanged,
+ * which is why `nav-parity.test.ts` still passes — the bay has always required the same grant as
+ * the screen it replaces.
  */
 const vitalsBayRoute = createRoute({
   getParentRoute: () => authedRoute,
-  path: "/opd/vitals/bay",
+  path: "/opd/vitals",
   component: VitalsBay,
 });
 
@@ -608,12 +617,6 @@ const opdDeskRoute = createRoute({
   component: OpdDesk,
 });
 
-const opdVitalsRoute = createRoute({
-  getParentRoute: () => authedRoute,
-  path: "/opd/vitals",
-  component: OpdVitals,
-});
-
 const opdConsultRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/consult",
@@ -740,7 +743,7 @@ export const router = createRouter({
     changePasswordRoute,
     authedRoute.addChildren([
       indexRoute, myDayRoute, staffReportsRoute, counterDeskRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
-      opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
+      opdDeskRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and

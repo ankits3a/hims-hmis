@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
 import { usePalette } from "../components/command-palette";
-import { usePatientInHand } from "./patient-in-hand";
 
 function isTypingTarget(el: EventTarget | null): boolean {
   return el instanceof HTMLElement && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
@@ -27,59 +26,45 @@ export function shouldOpenPalette(
   return wants && !isTypingTarget(target);
 }
 
+    /**
+     * ═══ FD-5 / OWNER RULING 2026-09-02 — THE SEVEN `Alt+<letter>` CHORDS ARE PARKED ═══
+     *
+     *   > "park them for now and redesign them as new"
+     *
+     * Removed from the live map and from the legend, NOT quietly forgotten. What was here, and
+     * what each reached, so the redesign starts from the record rather than from archaeology:
+     *
+     *     Alt+M  /merge                    the duplicate-merge review
+     *     Alt+A  /approvals                the approvals inbox
+     *     Alt+D  /opd/desk                 the supervisor's OPD board
+     *     Alt+V  /opd/vitals               the vitals desk (Bay One serves this path now)
+     *     Alt+C  /opd/consult              the doctor's consultation screen
+     *     Alt+P  /opd/appointments         the appointment book
+     *     Alt+B  /billing, CARRYING the encounter in hand when there is one — that last part is
+     *            the only one of the seven that was an ACTION rather than a destination (07b T2),
+     *            and it is the property the redesign should not lose: a clerk mid-walk-in landed
+     *            on a loaded counter rather than an empty one.
+     *
+     * WHY PARKED RATHER THAN KEPT. None of the seven appears in any signed-off design. Desk One
+     * defines `Ctrl+K`, `Ctrl+N`, `Ctrl+Enter`, `Esc` and `1/2/3` and covers the COUNTER; it never
+     * claimed whole-application navigation, so these grew by convention instead of by design and
+     * the owner has sent them back to be designed.
+     *
+     * WHAT THIS COSTS TODAY, STATED PLAINLY: those six screens are mouse-only until the redesign
+     * lands. `Ctrl+K` reaches every one of them by name — it searches screens as well as patients
+     * — so nothing is unreachable from the keyboard, it is two keystrokes and a word rather than
+     * one chord.
+     */
 /** Global desk shortcuts (§15 keyboard-first). Mounted once in the authed layout. */
 export function KeyboardProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const navigate = useNavigate();
   const { open } = usePalette();
-  const { inHand } = usePatientInHand();
   useEffect(() => {
-    /**
-     * `/opd/vitals` and `/opd/consult` are registered by later tasks, but their shortcuts live here
-     * (this is the only task that owns keyboard.tsx). The router's generated path union therefore
-     * does not know them yet, so those two — and only those two — are navigated as plain strings.
-     * The navigation itself is correct at runtime; it is the compile-time union that is behind.
-     */
-    const goUnregistered = (to: string): void => {
-      void navigate({ to } as unknown as Parameters<typeof navigate>[0]);
-    };
     const onKey = (e: KeyboardEvent): void => {
       // The decision lives in `shouldOpenPalette` (above) so it can be mutated in isolation.
       if (shouldOpenPalette(e, e.target)) {
         e.preventDefault();
         open();
-      } else if (e.altKey && (e.key === "m" || e.key === "M")) {
-        e.preventDefault();
-        void navigate({ to: "/merge" });
-      } else if (e.altKey && (e.key === "a" || e.key === "A")) {
-        e.preventDefault();
-        void navigate({ to: "/approvals" });
-      } else if (e.altKey && (e.key === "b" || e.key === "B")) {
-        e.preventDefault();
-        /**
-         * PLAN 07b T2 — A SHORTCUT IS AN ACTION ON THE PATIENT IN HAND, NOT A DESTINATION.
-         *
-         * `Alt+B` went to a BARE `/billing`, so a clerk mid-walk-in landed on an empty counter and
-         * re-found the patient they were already serving. With a visit in hand it now carries the
-         * encounter, which is the same rail the token slip uses. With nobody in hand the bare route
-         * is still correct — that is a cashier opening the counter, not a handoff.
-         */
-        void navigate(
-          inHand?.encounterId != null
-            ? { to: "/billing", search: { encounterId: inHand.encounterId } }
-            : { to: "/billing" },
-        );
-      } else if (e.altKey && (e.key === "d" || e.key === "D")) {
-        e.preventDefault();
-        void navigate({ to: "/opd/desk" });
-      } else if (e.altKey && (e.key === "v" || e.key === "V")) {
-        e.preventDefault();
-        goUnregistered("/opd/vitals");
-      } else if (e.altKey && (e.key === "c" || e.key === "C")) {
-        e.preventDefault();
-        goUnregistered("/opd/consult");
-      } else if (e.altKey && (e.key === "p" || e.key === "P")) {
-        e.preventDefault();
-        void navigate({ to: "/opd/appointments" });
       } else if ((e.key === "n" || e.key === "N") && (e.altKey || e.ctrlKey || e.metaKey)) {
         /**
          * ═══ FD-3 / OWNER RULING 2026-09-02 — `Ctrl+N` IS THE NEW-PATIENT CHORD, AND `Alt+N`
@@ -131,7 +116,7 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }): R
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [navigate, open, inHand]);
+  }, [navigate, open]);
   return <>{children}</>;
 }
 
@@ -151,13 +136,8 @@ export function ShortcutLegend(): React.ReactElement {
     <footer className="no-print flex gap-4 border-t px-4 py-1 text-xs text-neutral-500">
       <span>{t("shortcuts.search")}</span>
       <span>{t("shortcuts.new")}</span>
-      <span>{t("shortcuts.merge")}</span>
-      <span>{t("shortcuts.approvals")}</span>
-      <span>{t("shortcuts.opdDesk")}</span>
-      <span>{t("shortcuts.opdVitals")}</span>
-      <span>{t("shortcuts.opdConsult")}</span>
-      <span>{t("shortcuts.opdAppointments")}</span>
-      <span>{t("shortcuts.billing")}</span>
+      <span>{t("shortcuts.confirm")}</span>
+      <span>{t("shortcuts.release")}</span>
     </footer>
   );
 }
