@@ -16,7 +16,8 @@ import { callNext } from "../../src/modules/opd/queue";
 import { recordVitals } from "../../src/modules/opd/vitals";
 import { activatePharmacyDefinitions, registerSaleItem } from "../../src/modules/pharmacy";
 import { upsertGstCategory } from "../../src/modules/tariff";
-import { seedBillingBase } from "./billing";
+import { issuePaidInvoice, seedBillingBase } from "./billing";
+import type { BillingBaseFixture } from "./billing";
 import { activateOpdVisitDefinition, ensureRole, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters, testCfg } from "./opd";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../src/kernel/db/client";
@@ -45,6 +46,7 @@ export type PharmacyFixture = {
   med: { crocin: string; calpol: string; azithro: string; alprax: string; ibuprofen: string };
   item: { crocin: string; calpol: string; azithro: string };
   patient: { id: string; uhid: string };
+  base: BillingBaseFixture;
   /** The OPD `V` resolver the order envelope needs (the app module registers it at boot; a suite does it here and undoes it after). */
   unregister: () => void;
 };
@@ -121,7 +123,7 @@ export async function seedPharmacyBase(db: Db): Promise<PharmacyFixture> {
 
   const patient = await mkPatient(db, clerk.actor, { ageYears: undefined, dob: DOB });
   const unregister = registerOpdEncounterResolver();
-  return { decls: collectOrderKinds(registry), registry, pharmacist, aide, clerk, vd, doctor, deptId, storeId, med, item, patient, unregister };
+  return { decls: collectOrderKinds(registry), registry, pharmacist, aide, clerk, vd, doctor, deptId, storeId, med, item, patient, base, unregister };
 }
 
 /** open → vitals → call → start → issue: the production path a prescription actually takes. */
@@ -129,10 +131,15 @@ export async function issueRx(
   db: Db,
   fx: PharmacyFixture,
   lines: RxLine[],
-  opts: { patientId?: string; at?: Date; overrides?: Omit<Parameters<typeof issuePrescription>[4], "lines"> } = {},
+  opts: { patientId?: string; at?: Date; overrides?: Omit<Parameters<typeof issuePrescription>[4], "lines">; payFee?: boolean } = {},
 ): Promise<{ encounter: EncounterRow; tokenNo: number | null; issued: IssuedPrescription }> {
   const at = opts.at ?? MON;
   const opened = await openVisit(db, fx.clerk.actor, { patientId: opts.patientId ?? fx.patient.id, departmentId: fx.deptId, doctorId: fx.doctor.doctorId }, at);
+  // Under the booted app the OPD consult gate wants the fee settled (`billing_fee_gate`); the unit
+  // suites register no gate. The pharmacist holds the cashier grants and, in the e2e, an open session.
+  if (opts.payFee === true) {
+    await issuePaidInvoice(db, { id: fx.pharmacist.id, actor: fx.pharmacist.actor }, { patientId: opened.encounter.patientId, serviceId: fx.base.consultNewServiceId, encounterId: opened.encounter.id }, at);
+  }
   await recordVitals(db, fx.vd.actor, opened.encounter.id, ADULT_OK, at);
   await callNext(db, fx.doctor.actor, opened.sessionId, at);
   const started = await startConsultation(db, fx.doctor.actor, opened.encounter.id, at);

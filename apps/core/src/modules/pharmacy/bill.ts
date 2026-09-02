@@ -67,7 +67,7 @@ export async function previewDispenseBill(db: Db, actor: Actor, dispenseId: stri
   if (encounter === null) throw new PharmacyError("not_found", `encounter ${d.encounterId} not found`);
   const plan = await priceLines(db, dispenseId, now);
   void actor;
-  return previewInvoice(db, { patientId: d.patientId, encounterId: encounter.visitNo, lines: plan.map((p) => p.input) }, now);
+  return previewInvoice(db, { patientId: d.patientId, encounterId: encounter.id, lines: plan.map((p) => p.input) }, now);
 }
 
 /**
@@ -75,7 +75,8 @@ export async function previewDispenseBill(db: Db, actor: Actor, dispenseId: stri
  * desk's documented cast (`lab/desk.ts` header): billing opens its own `withTx`, which on a `Tx`
  * is a savepoint inside ours, so invoice, receipt and the dispense's `billed` state commit or roll
  * back together. `draftId` is the DISPENSE id: a retried bill for the same dispense binds to the
- * same draft and the same approvals.
+ * same draft and the same approvals. The invoice carries the ENCOUNTER ID (the OPD counter's shape):
+ * billing accepts a visit number too, but `encounterFeeStatuses` and `listInvoices` match by id.
  */
 export async function billDispense(db: Db, actor: Actor, dispenseId: string, input: BillInput, now: Date): Promise<DispenseView> {
   const d = await getDispenseRow(db, dispenseId);
@@ -87,7 +88,7 @@ export async function billDispense(db: Db, actor: Actor, dispenseId: string, inp
   const invoiceInput: IssueInvoiceInput = {
     draftId: d.id,
     patientId: d.patientId,
-    encounterId: encounter.visitNo,
+    encounterId: encounter.id,
     lines: plan.map((p) => p.input),
     ...(input.tags === undefined ? {} : { tags: input.tags }),
     receipt: {
