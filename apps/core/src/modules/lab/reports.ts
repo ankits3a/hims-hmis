@@ -1140,6 +1140,8 @@ export async function reportsForPatient(
   await recordPhiAccess(db, {
     actor, patientId: canonical, surface: "lab.report", sealed: patient.isConfidential, now,
   });
+  /** Test names: ALL OR NOTHING by `orders.read.restricted` (close review pass 1, F3) — `collectionQueue`'s rule. */
+  const canSeeRestricted = await hasPermission(db, actor.id, "orders.read.restricted", "hospital");
   const chain = [canonical, ...(await listMergedLoserIds(db, canonical))];
   const orderRows = await db
     .select({ orderId: orders.id, orderNo: orders.orderNo, encounterNo: orders.encounterNo, serviceDate: orders.serviceDate,
@@ -1156,7 +1158,7 @@ export async function reportsForPatient(
     if (r.itemStatus !== "cancelled") {
       o.itemCount += 1;
       if (r.itemStatus === "completed") o.completedCount += 1;
-      if (!o.orderables.includes(r.code)) o.orderables.push(r.code);
+      if (canSeeRestricted && !o.orderables.includes(r.code)) o.orderables.push(r.code);
       if (r.sensitive) o.sensitive = true;
     }
     byOrder.set(r.orderId, o);
@@ -1176,7 +1178,14 @@ export async function reportsForPatient(
   const reports: PatientReportRow[] = [];
   for (const [orderId, report] of latest) {
     const o = byOrder.get(orderId)!;
-    const verdict = await deliveryAllowed(db, orderId);
+    /**
+     * Close review pass 1, F2(b) — a report RELEASED by a granted approval has a delivery row
+     * carrying the approval; without this the counter released, spent the one-use approval, and
+     * still had no page to print. `printReport` is where the approval is verified; this reader
+     * reads the fact it recorded.
+     */
+    const released = deliveries.some((d) => d.reportId === report.id && d.approvalId !== null);
+    const verdict = await deliveryAllowed(db, orderId, { releasedByApproval: released });
     const snapshot = report.snapshot as ReportSnapshot;
     const notice = notices.find((n) => n.refId === report.id);
     reports.push({
@@ -1228,6 +1237,7 @@ export type DeliveryRegisterRow = {
 export async function deliveryRegister(db: Db, actor: Actor, serviceDate: string): Promise<DeliveryRegisterRow[]> {
   await assertMay(db, actor, LAB_REPORTS_PRINT, "read the delivery register");
   const canSeeConfidential = await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
+  const canSeeRestricted = await hasPermission(db, actor.id, "orders.read.restricted", "hospital");
   /**
    * The IST day named by `serviceDate`, through the kernel's ONE clock (`istDayWindow`): UTC
    * midnight of that date is 05:30 IST on the same date, so the window it returns is the counter's
@@ -1262,12 +1272,14 @@ export async function deliveryRegister(db: Db, actor: Actor, serviceDate: string
       reportId: r.report.id, orderId: r.report.orderId, orderNo: r.orderNo,
       patientId: names.get(r.patientId)?.id ?? r.patientId,
       patientDisplay: names.get(r.patientId)?.display ?? "—",
-      orderables: [...new Set(mine.map((i) => i.code))],
+      orderables: canSeeRestricted ? [...new Set(mine.map((i) => i.code))] : [],
       sensitive: mine.some((i) => i.sensitive),
       partial: r.report.partial, version: r.report.version,
       publishedAt: r.report.publishedAt!.toISOString(),
       signedBy: r.signedBy ?? null,
-      delivery: await deliveryAllowed(db, r.report.orderId),
+      delivery: await deliveryAllowed(db, r.report.orderId, {
+        releasedByApproval: deliveries.some((d) => d.reportId === r.report.id && d.approvalId !== null),
+      }),
       deliveries: deliveries.filter((d) => d.reportId === r.report.id).map((d) => ({
         deliveryId: d.id, channel: d.channel, at: d.at.toISOString(), collectorIdentity: d.collectorIdentity, deliveredBy: d.deliveredBy,
       })),

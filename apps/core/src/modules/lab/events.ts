@@ -95,14 +95,18 @@ export const labRecollectionRequested = defineEvent("lab.recollection_requested"
 
 /* ─────────────────────────────── Results (T6) ─────────────────────────────── */
 
+/**
+ * 17c close review pass 1, F4 — NO FLAG on this payload. It rides `lab:bench` under the
+ * `lab.worklist.read` space, which reception and the phlebotomist hold; `HH` beside an analyte id
+ * is a result. The flag lives on the row; a reader with `lab.results.read` asks the row.
+ */
 export const labResultEntered = defineEvent("lab.result_entered", MODULE, z.object({
   resultId: id, orderItemId: id, orderGroupId: id, analyteId: id, enteredBy: id,
-  flag: z.string().nullable(), entryMode: z.string().min(1), absurdOverridden: z.boolean(),
+  entryMode: z.string().min(1), absurdOverridden: z.boolean(),
 }));
 
 export const labResultVerified = defineEvent("lab.result_verified", MODULE, z.object({
   resultId: id, orderItemId: id, orderGroupId: id, analyteId: id, verifiedBy: id,
-  pathologistReviewPending: z.boolean(),
 }));
 
 /**

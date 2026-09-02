@@ -116,7 +116,7 @@ export function LabVerify(): React.ReactElement {
     onError: (e: unknown) => { setError(labErrorText(e)); refresh(); },
   });
   const rerun = useMutation({
-    mutationFn: (resultId: string) => requestRerun(resultId, t("lab.verify.rerunReason")),
+    mutationFn: (resultId: string) => requestRerun(resultId, t("lab.verify.rerunReason"), newIdempotencyKey()),
     onSuccess: () => { setError(null); refresh(); },
     onError: (e: unknown) => setError(labErrorText(e)),
   });

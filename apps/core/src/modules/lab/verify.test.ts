@@ -148,7 +148,9 @@ describe("lab results — verification, SoD and reflex (17b T6)", () => {
     expect(out.pathologistReviewPending).toBe(false);
     const verified = await eventsNamed("lab.result_verified");
     expect(verified).toHaveLength(1);
-    expect(verified[0]!.payload).toMatchObject({ verifiedBy: fx.pathologist.id, pathologistReviewPending: false });
+    /** 17c pass 1 F4 — the review flag is the ROW's (asserted above); the payload rides `lab:bench` and carries ids only. */
+    expect(verified[0]!.payload).toMatchObject({ verifiedBy: fx.pathologist.id });
+    expect(verified[0]!.payload).not.toHaveProperty("pathologistReviewPending");
   });
 
   /* ══════════ A3 — `completed` FIRES WHEN THE LAST ANALYTE IS SIGNED, NEVER EARLIER ══════════ */
