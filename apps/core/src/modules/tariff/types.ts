@@ -50,6 +50,19 @@ export type InvoiceLineInput = {
    * one factor out.
    */
   capUnitPaise?: number;
+  /**
+   * PLAN 16c T0b — **THE LIST PRICE OF A DRUG IS THE MRP PRINTED ON ITS BATCH.**
+   *
+   * A pharmacy sells at the batch's MRP (capped by the NPPA ceiling, which rides `capUnitPaise`),
+   * and a new drug reaches the pharmacy master without a tariff revision. So for a service whose
+   * `category` starts with `pharmacy` this is the unit price when the active version carries no
+   * row for it, and it JOINS THE `min` when the version does (a contracted rate below MRP still
+   * wins). Integer paise per BASE UNIT, like `capUnitPaise`.
+   *
+   * **Refused with `batch_price_not_allowed` on every other category**: a consultation cannot be
+   * re-priced by whoever composes the line. The guard is the whole point of the field.
+   */
+  batchUnitPaise?: number;
 };
 
 export type AdjustmentCandidate = {
@@ -83,12 +96,15 @@ export type PricingContext = {
  * (D9) instead of inferring it from the number.
  */
 export type RegulatedClamp = {
-  boundApplied: "mrp" | "ceiling" | "caller_cap";
+  boundApplied: "mrp" | "ceiling" | "caller_cap" | "batch_mrp";
+  /** The version's price — or, when the version had none and the batch stood in, the batch price (16c T0b). */
   tariffPaise: number;
   mrpPaise: number | null;
   ceilingPaise: number | null;
   /** The caller's bound, when it was supplied. Recorded whether or not it won. */
   capUnitPaise?: number | null;
+  /** The batch MRP per base unit, when a pharmacy line supplied one (16c T0b). Recorded whether or not it won. */
+  batchUnitPaise?: number | null;
 };
 export type PricedLineGst = {
   sacCode: string; rateBps: number; exempt: boolean;
