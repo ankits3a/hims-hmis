@@ -70,6 +70,9 @@ export const RADIOLOGY_ERROR_CODES = [
   // ── 18b T3 — the viewer door ──
   "no_images",
   "pacs_not_configured",
+  // ── 18b close review ──
+  "invalid_date",
+  "machine_draft_not_signable",
   /**
    * ═══ F41 (CLOSE REVIEW, RULED) — THE TWO CODES THE UNION WAS MISSING ═══
    *
@@ -158,6 +161,8 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   duplicate_study_instance_uid: 409,
   no_images: 422,
   pacs_not_configured: 409,
+  invalid_date: 422,
+  machine_draft_not_signable: 422,
 
   second_factor_required: 403,
   laterality_mismatch: 422,

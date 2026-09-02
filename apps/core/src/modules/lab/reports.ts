@@ -1,19 +1,21 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
 import {
   approvals, labAnalytes, labItems, labOrderableAnalytes, labOrderables, labReportDeliveries,
-  labReports, labResults, orderItems, orders, patients, users, workflowInstances,
+  labReports, labResults, notifications, orderItems, orders, patients, users, workflowInstances,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
+import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { enqueueNotification } from "../../kernel/notify/enqueue";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { transition } from "../../kernel/workflow/instances";
 /** Spec §4 — through the module's INDEX, never a deep path: `kernel/orders/read.ts` may reach into
  *  `display-name.ts` because the kernel has no index of its own to go through; a module may not. */
-import { displayName, resolvePatientId } from "../patients";
+import { displayName, listMergedLoserIds, resolvePatientId } from "../patients";
 import { RELEASE_UNPAID_APPROVAL_TYPE } from "./approval-types";
+import { canonicalNames } from "./criticals";
 import { LabError } from "./errors";
 import { deliveryAllowed } from "./interlock";
 import {
@@ -1073,3 +1075,205 @@ export async function reportVersions(
     .where(eq(labReports.orderId, orderId)).orderBy(desc(labReports.version));
   return rows.map((r) => ({ ...r, publishedAt: r.publishedAt?.toISOString() ?? null }));
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════ */
+/* PLAN 17c T5 — THE REPORT CENTRE'S TWO READERS: by patient, and the day's register             */
+/* ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+export type ReportDeliveryRow = { deliveryId: string; channel: string; at: string; collectorIdentity: string | null; deliveredBy: string };
+/** The ready notice's fate — `notifications` by `refType = lab_report` (T7 A7's enqueue). */
+export type ReportNotice = { status: string; sentChannel: string | null; sentAt: string | null };
+
+export type PatientReportRow = {
+  reportId: string;
+  orderId: string;
+  orderNo: string;
+  encounterNo: string;
+  serviceDate: string;
+  version: number;
+  partial: boolean;
+  publishedAt: string | null;
+  channels: string[];
+  printCount: number;
+  orderables: string[];
+  sensitive: boolean;
+  delivery: DeliveryVerdict;
+  deliveries: ReportDeliveryRow[];
+  notice: ReportNotice | null;
+  /** The document, aliased — present ONLY when the verdict allows the hand-over (17b's web MAJOR). */
+  snapshot: ReportSnapshot | null;
+};
+
+export type PatientReports = {
+  patient: { id: string; uhid: string; display: string; restricted: boolean };
+  reports: PatientReportRow[];
+  /** Orders with no published report yet — "1 result still to come". */
+  pending: { orderId: string; orderNo: string; serviceDate: string; orderables: string[]; completedCount: number; itemCount: number }[];
+};
+
+/**
+ * ═══ THE COUNTER'S READER — gated on `lab.reports.print`, and that is a decision (17c §8.5) ═══
+ *
+ * `getReport` is gated on `lab.results.read`, which `lab_reception` does not hold: 17b's ruling is
+ * that reception "orders, bills, prints" and reads no result. But a counter that hands a document
+ * over must be able to put it on paper, and the paper IS the result. So the report centre reads
+ * through the PRINT permission, and pays for it the way `getReport` does: the alias rule on the
+ * name, and ONE `phi_access_log` row per call on the `lab.report` surface — never the raw
+ * snapshot, and never a snapshot the interlock has not released (the HELD document is not even
+ * sent to the browser; there is nothing for Ctrl+P to find).
+ */
+export async function reportsForPatient(
+  db: Db,
+  actor: Actor,
+  patientId: string,
+  now: Date = new Date(),
+): Promise<PatientReports> {
+  await assertMay(db, actor, LAB_REPORTS_PRINT, "read a patient's lab reports at the counter");
+  const canonical = await resolvePatientId(db, patientId);
+  if (!canonical) throw new LabError("unknown_report", `no patient ${patientId}`);
+  const [patient] = await db
+    .select({ id: patients.id, uhid: patients.uhid, name: patients.name, alias: patients.alias, isConfidential: patients.isConfidential })
+    .from(patients).where(eq(patients.id, canonical));
+  if (!patient) throw new LabError("unknown_report", `no patient ${patientId}`);
+  const canSeeConfidential = await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
+  const display = displayName(patient, canSeeConfidential);
+  await recordPhiAccess(db, {
+    actor, patientId: canonical, surface: "lab.report", sealed: patient.isConfidential, now,
+  });
+  const chain = [canonical, ...(await listMergedLoserIds(db, canonical))];
+  const orderRows = await db
+    .select({ orderId: orders.id, orderNo: orders.orderNo, encounterNo: orders.encounterNo, serviceDate: orders.serviceDate,
+      itemStatus: orderItems.status, code: labOrderables.code, sensitive: labOrderables.sensitive })
+    .from(orderItems)
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
+    .where(and(eq(orders.kind, "lab"), inArray(orders.patientId, chain)))
+    .orderBy(desc(orders.placedAt));
+  if (orderRows.length === 0) return { patient: { id: canonical, uhid: patient.uhid, display, restricted: patient.isConfidential && !canSeeConfidential }, reports: [], pending: [] };
+  const byOrder = new Map<string, { orderNo: string; encounterNo: string; serviceDate: string; orderables: string[]; sensitive: boolean; itemCount: number; completedCount: number }>();
+  for (const r of orderRows) {
+    const o = byOrder.get(r.orderId) ?? { orderNo: r.orderNo, encounterNo: r.encounterNo, serviceDate: r.serviceDate, orderables: [], sensitive: false, itemCount: 0, completedCount: 0 };
+    if (r.itemStatus !== "cancelled") {
+      o.itemCount += 1;
+      if (r.itemStatus === "completed") o.completedCount += 1;
+      if (!o.orderables.includes(r.code)) o.orderables.push(r.code);
+      if (r.sensitive) o.sensitive = true;
+    }
+    byOrder.set(r.orderId, o);
+  }
+  const orderIds = [...byOrder.keys()];
+  const published = await db.select().from(labReports)
+    .where(and(inArray(labReports.orderId, orderIds), eq(labReports.status, "published")))
+    .orderBy(desc(labReports.version));
+  const latest = new Map<string, typeof published[number]>();
+  for (const r of published) if (!latest.has(r.orderId)) latest.set(r.orderId, r);
+  const reportIds = [...latest.values()].map((r) => r.id);
+  const [deliveries, notices] = reportIds.length === 0 ? [[], []] : await Promise.all([
+    db.select().from(labReportDeliveries).where(inArray(labReportDeliveries.reportId, reportIds)).orderBy(asc(labReportDeliveries.at)),
+    db.select({ refId: notifications.refId, status: notifications.status, sentChannel: notifications.sentChannel, sentAt: notifications.sentAt })
+      .from(notifications).where(and(eq(notifications.refType, "lab_report"), inArray(notifications.refId, reportIds))),
+  ]);
+  const reports: PatientReportRow[] = [];
+  for (const [orderId, report] of latest) {
+    const o = byOrder.get(orderId)!;
+    const verdict = await deliveryAllowed(db, orderId);
+    const snapshot = report.snapshot as ReportSnapshot;
+    const notice = notices.find((n) => n.refId === report.id);
+    reports.push({
+      reportId: report.id, orderId, orderNo: o.orderNo, encounterNo: o.encounterNo, serviceDate: o.serviceDate,
+      version: report.version, partial: report.partial, publishedAt: report.publishedAt?.toISOString() ?? null,
+      channels: report.publishChannels, printCount: report.printCount, orderables: o.orderables, sensitive: o.sensitive,
+      delivery: verdict,
+      deliveries: deliveries.filter((d) => d.reportId === report.id).map((d) => ({
+        deliveryId: d.id, channel: d.channel, at: d.at.toISOString(), collectorIdentity: d.collectorIdentity, deliveredBy: d.deliveredBy,
+      })),
+      notice: notice ? { status: notice.status, sentChannel: notice.sentChannel, sentAt: notice.sentAt?.toISOString() ?? null } : null,
+      snapshot: verdict.allowed ? { ...snapshot, patient: { ...snapshot.patient, name: display } } : null,
+    });
+  }
+  const pending = orderIds.filter((id) => !latest.has(id)).map((id) => {
+    const o = byOrder.get(id)!;
+    return { orderId: id, orderNo: o.orderNo, serviceDate: o.serviceDate, orderables: o.orderables, completedCount: o.completedCount, itemCount: o.itemCount };
+  }).filter((p) => p.itemCount > 0);
+  return {
+    patient: { id: canonical, uhid: patient.uhid, display, restricted: patient.isConfidential && !canSeeConfidential },
+    reports: reports.sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? "")),
+    pending,
+  };
+}
+
+export type DeliveryRegisterRow = {
+  reportId: string;
+  orderId: string;
+  orderNo: string;
+  patientId: string;
+  patientDisplay: string;
+  orderables: string[];
+  sensitive: boolean;
+  partial: boolean;
+  version: number;
+  publishedAt: string;
+  signedBy: string | null;
+  delivery: DeliveryVerdict;
+  deliveries: ReportDeliveryRow[];
+  notice: ReportNotice | null;
+};
+
+/**
+ * PUBLISHED TODAY, AND HOW EACH ONE WENT OUT — the counter's register (design board 5). Names
+ * through the alias rule, test names beside them, the verdict, every hand-over row and the fate of
+ * the ready notice. No snapshot: the register is a list, and a list of results is a worklist's
+ * disclosure, not a document's.
+ */
+export async function deliveryRegister(db: Db, actor: Actor, serviceDate: string): Promise<DeliveryRegisterRow[]> {
+  await assertMay(db, actor, LAB_REPORTS_PRINT, "read the delivery register");
+  const canSeeConfidential = await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
+  /**
+   * The IST day named by `serviceDate`, through the kernel's ONE clock (`istDayWindow`): UTC
+   * midnight of that date is 05:30 IST on the same date, so the window it returns is the counter's
+   * day. `test/ist-clock-parity.test.ts` caught the first cut of this line carrying its own offset —
+   * the thirteenth copy, one phase after the twelfth was caught the same way.
+   */
+  const { start, end } = istDayWindow(new Date(`${serviceDate}T00:00:00Z`));
+  const rows = await db
+    .select({ report: labReports, orderNo: orders.orderNo, patientId: orders.patientId, signedBy: users.username })
+    .from(labReports)
+    .innerJoin(orders, eq(orders.id, labReports.orderId))
+    .leftJoin(users, eq(users.id, labReports.signedBy))
+    .where(and(eq(labReports.status, "published"), gte(labReports.publishedAt, start), lt(labReports.publishedAt, end)))
+    .orderBy(desc(labReports.publishedAt));
+  if (rows.length === 0) return [];
+  const orderIds = [...new Set(rows.map((r) => r.report.orderId))];
+  const reportIds = rows.map((r) => r.report.id);
+  const [items, deliveries, notices, names] = await Promise.all([
+    db.select({ orderId: orderItems.orderId, code: labOrderables.code, sensitive: labOrderables.sensitive, status: orderItems.status })
+      .from(orderItems).innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
+      .where(inArray(orderItems.orderId, orderIds)),
+    db.select().from(labReportDeliveries).where(inArray(labReportDeliveries.reportId, reportIds)).orderBy(asc(labReportDeliveries.at)),
+    db.select({ refId: notifications.refId, status: notifications.status, sentChannel: notifications.sentChannel, sentAt: notifications.sentAt })
+      .from(notifications).where(and(eq(notifications.refType, "lab_report"), inArray(notifications.refId, reportIds))),
+    canonicalNames(db, [...new Set(rows.map((r) => r.patientId))], canSeeConfidential),
+  ]);
+  const out: DeliveryRegisterRow[] = [];
+  for (const r of rows) {
+    const mine = items.filter((i) => i.orderId === r.report.orderId && i.status !== "cancelled");
+    const notice = notices.find((n) => n.refId === r.report.id);
+    out.push({
+      reportId: r.report.id, orderId: r.report.orderId, orderNo: r.orderNo,
+      patientId: names.get(r.patientId)?.id ?? r.patientId,
+      patientDisplay: names.get(r.patientId)?.display ?? "—",
+      orderables: [...new Set(mine.map((i) => i.code))],
+      sensitive: mine.some((i) => i.sensitive),
+      partial: r.report.partial, version: r.report.version,
+      publishedAt: r.report.publishedAt!.toISOString(),
+      signedBy: r.signedBy ?? null,
+      delivery: await deliveryAllowed(db, r.report.orderId),
+      deliveries: deliveries.filter((d) => d.reportId === r.report.id).map((d) => ({
+        deliveryId: d.id, channel: d.channel, at: d.at.toISOString(), collectorIdentity: d.collectorIdentity, deliveredBy: d.deliveredBy,
+      })),
+      notice: notice ? { status: notice.status, sentChannel: notice.sentChannel, sentAt: notice.sentAt?.toISOString() ?? null } : null,
+    });
+  }
+  return out;
+}
+

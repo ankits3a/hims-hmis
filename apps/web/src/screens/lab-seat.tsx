@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { fmtIst } from "../lib/format";
 
 /**
  * PLAN 17c T1 / D1 — THE LABORATORY'S SEAT FRAME, shared by the five seats.
@@ -14,17 +15,14 @@ import { useTranslation } from "react-i18next";
  * repository (17c D10) and the frame does not pretend it does.
  */
 
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-
-/** `HH:MM` in IST, ticking each minute. Display only — every stamp the server stores is its own. */
+/** `HH:MM` in IST through the SPA's one formatter (`fmtIst`), ticking each half-minute. Display only. */
 export function useIstClock(): string {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(id);
   }, []);
-  const shifted = new Date(now + IST_OFFSET_MS);
-  return `${String(shifted.getUTCHours()).padStart(2, "0")}:${String(shifted.getUTCMinutes()).padStart(2, "0")}`;
+  return fmtIst(new Date(now).toISOString());
 }
 
 export type SeatStat = { label: string; value: string | number; tone?: "plain" | "live" | "waiting" | "danger" };

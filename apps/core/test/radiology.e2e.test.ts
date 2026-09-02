@@ -347,6 +347,8 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     const proposedView = await get(`/radiology/reports/${proposed.body.reportId}`, radiologist.token);
     expect(proposedView.body.report.body.technique).toContain("80.00 ml Iohexol"); // numeric(8,2), as recorded
     expect([proposedView.body.report.body.findings, proposedView.body.report.impression]).toEqual(["", null]);
+    expect(proposedView.body.report.provenance).toMatchObject({ drafter: "offline_template", inputs: { requestedBy: radiologist.id } }); // C14
+    expect(proposed.body.body).toEqual(proposedView.body.report.body); // C4 — the answer carries the body
     const drafted = await post(`/radiology/studies/${study!.id}/reports/draft`, radiologist.token, {
       body: { technique: "Portal venous phase.", findings: "No collection." },
       impression: "No intra-abdominal abscess.",
@@ -355,6 +357,9 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
 
     /** The session's factor is stamped by the SERVER; the body cannot carry it. */
     await recordSecondFactor(db, radiologist.sessionId);
+    /** Close review B2 — even under a fresh factor the machine's proposal is not signable; the human's draft is. */
+    const signProposal = await post(`/radiology/studies/${study!.id}/reports/sign`, radiologist.token, { reportId: proposed.body.reportId });
+    expect([signProposal.status, signProposal.body.code]).toEqual([422, "machine_draft_not_signable"]);
     const signed = await post(`/radiology/studies/${study!.id}/reports/sign`, radiologist.token, {
       reportId: drafted.body.reportId,
     });
@@ -375,7 +380,7 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     expect(item!.status).toBe("completed");
 
     /** ── THE EVENTS, IN ORDER ── */
-    const all = await db.select().from(events);
+    const all = await db.select().from(events).orderBy(events.seq); // C13 — the dispatcher's own order
     const names = all.map((e) => e.name);
     for (const expected of [
       "order.placed", "imaging.study_scheduled", "imaging.gate_evaluated", "imaging.study_acquired",
@@ -402,7 +407,7 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     // 18b T1 — the worklist pulls above are the third surface, and every one of them is the bridge's.
     expect(new Set(phiRows.map((r) => r.surface))).toEqual(new Set(["imaging.study", "imaging.report", "imaging.worklist"]));
     const pulls = phiRows.filter((r) => r.surface === "imaging.worklist");
-    expect(pulls.length).toBeGreaterThanOrEqual(2);
+    expect(pulls).toHaveLength(2); // C15 — one patient, two authorised pulls: exactly two
     expect(new Set(pulls.map((r) => r.actorId))).toEqual(new Set([bridge.id]));
   }, 120_000);
 

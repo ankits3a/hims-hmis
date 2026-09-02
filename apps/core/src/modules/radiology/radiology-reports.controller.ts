@@ -134,15 +134,6 @@ export class RadiologyReportsController {
   }
 
   /** O-11 — the night registrar's UNVERIFIED read. Real, quotable, and not publishable. */
-  /** 18b T4 — the drafter proposes; the body is the study's own facts, so there is no body. */
-  @Post("studies/:studyId/reports/propose")
-  @RequirePermission("radiology.reports.write", "hospital")
-  async propose(@CurrentActor() actor: Actor, @Param("studyId") studyId: string): Promise<unknown> {
-    try {
-      return await withTx(this.db, (tx) => proposeDraft(tx, actor, { studyId }));
-    } catch (e) { toHttp(e); }
-  }
-
   @Post("studies/:studyId/reports/prelim")
   @RequirePermission("radiology.reports.write", "hospital")
   async prelim(
@@ -157,6 +148,15 @@ export class RadiologyReportsController {
   }
 
   /** THE SIGNATURE. `secondFactor: true` on the guard, and the session's instant to the service. */
+  /** 18b T4 — the drafter proposes from the study's own facts; no request body. Answer carries the draft body. */
+  @Post("studies/:studyId/reports/propose")
+  @RequirePermission("radiology.reports.write", "hospital")
+  async propose(@CurrentActor() actor: Actor, @Param("studyId") studyId: string): Promise<unknown> {
+    try {
+      return await withTx(this.db, (tx) => proposeDraft(tx, actor, { studyId }));
+    } catch (e) { toHttp(e); }
+  }
+
   @Post("studies/:studyId/reports/sign")
   @RequirePermission("radiology.reports.sign", "hospital", { secondFactor: true })
   async sign(

@@ -342,14 +342,17 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // VD-2 T1 / D1 — 46 with `/opd/vitals/bay`, Bay One: the vitals desk beside `/opd/vitals`, the
     // registration seat's pattern. The old screen's deletion is an owner item and brings it to 45.
     // FD-1 T4 / D4 — 47 with `/counter/seat/figures`, the clerk's own account inside the seat.
-    // FD-2 / THE OWNER'S RULING — 46. RC-3's D1 said in as many words that the two counters were a
-    // ONE-PHASE arrangement and that deleting one "brings the number back to 44"; the owner ruled
+    // PLAN 17c T5 — 47 -> 48: the laboratory's report centre, `/lab/reports`. Joined in the same
+    // edit as the route, per the rule above.
+    // FD-2 / THE OWNER'S RULING — 48 -> 47. RC-3's D1 said in as many words that the two counters
+    // were a ONE-PHASE arrangement and that deleting one "brings the number back"; the owner ruled
     // for Desk One on 2026-09-02 ("remove your old design and keep the new design"), so
     // `counter-desk.tsx` and `/counter/seat` are both gone, the seat serves `/counter`, and
-    // `/counter/seat/figures` became `/counter/figures`. Net −1, MEASURED: the run that made this
-    // change reported `Received length: 46` against the pinned 47, which is this file's friction
-    // doing the job its docstring promises rather than a number predicted and then written down.
-    expect(routes).toHaveLength(46);
+    // `/counter/seat/figures` became `/counter/figures`. Net -1 on top of 17c T5's +1, and the
+    // MEASURED number is stated rather than predicted: this file's friction is the whole point of
+    // pinning a count, so the pin moves only after the parser has been re-run against the tree.
+    expect(routes).toHaveLength(47);
+    expect(routes).toContain("/lab/reports");
     expect(routes).toContain("/counter/figures");
     expect(routes).not.toContain("/counter/seat");
     expect(routes).toContain("/opd/vitals/bay");

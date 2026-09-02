@@ -331,6 +331,52 @@ export const printReport = (
 ): Promise<{ deliveryId: string; printCount: number }> =>
   api("POST", `/lab/reports/${reportId}/print`, body, key);
 
+/* ─────────────────────────── 17c T5 — the report centre ─────────────────────────── */
+
+export type WireReportDelivery = { deliveryId: string; channel: string; at: string; collectorIdentity: string | null; deliveredBy: string };
+export type WireReportNotice = { status: string; sentChannel: string | null; sentAt: string | null };
+
+export type WirePatientReportRow = {
+  reportId: string; orderId: string; orderNo: string; encounterNo: string; serviceDate: string;
+  version: number; partial: boolean; publishedAt: string | null; channels: string[]; printCount: number;
+  orderables: string[]; sensitive: boolean; delivery: WireDeliveryVerdict; deliveries: WireReportDelivery[];
+  notice: WireReportNotice | null;
+  /** Present ONLY when the verdict allows the hand-over — a held document is never sent. */
+  snapshot: WireReportSnapshot | null;
+};
+
+export type WirePatientReports = {
+  patient: { id: string; uhid: string; display: string; restricted: boolean };
+  reports: WirePatientReportRow[];
+  pending: { orderId: string; orderNo: string; serviceDate: string; orderables: string[]; completedCount: number; itemCount: number }[];
+};
+
+export type WireDeliveryRegisterRow = {
+  reportId: string; orderId: string; orderNo: string; patientId: string; patientDisplay: string;
+  orderables: string[]; sensitive: boolean; partial: boolean; version: number; publishedAt: string; signedBy: string | null;
+  delivery: WireDeliveryVerdict; deliveries: WireReportDelivery[]; notice: WireReportNotice | null;
+};
+
+export const reportsForPatient = (patientId: string): Promise<WirePatientReports> =>
+  api("GET", `/lab/reports/patient/${patientId}`);
+
+export const deliveryRegister = (serviceDate: string): Promise<WireDeliveryRegisterRow[]> =>
+  api("GET", `/lab/reports/register?serviceDate=${serviceDate}`);
+
+/** DD6 — the release of a HELD report is a `lab_release_unpaid` approval ABOUT THE ORDER, decided by the billing manager. */
+export const requestReleaseApproval = (
+  body: { orderId: string; patientId: string; amountPaise: number; note: string },
+): Promise<{ approvalId: string }> =>
+  api("POST", "/approvals", {
+    typeKey: "lab_release_unpaid", subject: { type: "lab_order", id: body.orderId },
+    patientId: body.patientId, amountPaise: body.amountPaise, requestNote: body.note,
+  });
+
+export const releaseReport = (
+  reportId: string, body: { approvalId: string; collectorIdentity: string; channel?: "print" | "in_person" }, key: string,
+): Promise<{ deliveryId: string; printCount: number }> =>
+  api("POST", `/lab/reports/${reportId}/release`, body, key);
+
 export const resultsForEncounter = (encounterNo: string): Promise<WireEncounterResult[]> =>
   api("GET", `/lab/results/encounter/${encounterNo}`);
 

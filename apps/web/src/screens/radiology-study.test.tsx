@@ -43,7 +43,7 @@ const STUDY = {
   encounterNo: "V2608310001", patientId: "P1", patientName: "Asha Devi",
   formFRequired: true, restricted: true, ionising: false, contrastGiven: false,
   acquiredAt: null, authorisedBy: null, reports: [],
-  studyInstanceUid: null, imageSource: null, mintedStudyInstanceUid: "2.25.42", views: [],
+  studyInstanceUid: null, imageSource: null, mintedStudyInstanceUid: "2.25.42", views: [], canOpenImages: true,
 };
 
 const READINESS = {
@@ -152,12 +152,35 @@ it("18b T2: pre-fills the minted Study Instance UID for a PACS acquisition and o
 
 it("18b T2: once acquired, the recorded UID is shown and the source choice is gone", async () => {
   mockRoutes({
-    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, status: "acquired", imageSource: "pacs", studyInstanceUid: "1.2.826.0.1.3680043.9.7.1" } } },
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, status: "acquired", acquiredAt: "2026-08-31T09:30:00.000Z", imageSource: "pacs", studyInstanceUid: "1.2.826.0.1.3680043.9.7.1" } } },
     "GET /api/radiology/studies/S1/readiness": { status: 200, body: { state: "acquired", ready: true, gates: [], open: [] } },
   });
   renderWithProviders(<RadiologyStudy />);
   expect(await screen.findByTestId("study-uid-recorded")).toHaveTextContent("1.2.826.0.1.3680043.9.7.1");
   expect(screen.queryByLabelText(/study instance uid/i)).not.toBeInTheDocument();
+});
+
+/** Close review C5 — a study acquired WITHOUT DICOM is acquired: no source radio, no minted UID, no viewer. */
+it("close review C5: a no-DICOM acquisition shows its state and offers neither the radio nor the viewer", async () => {
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, status: "acquired", acquiredAt: "2026-08-31T09:30:00.000Z", imageSource: "no_pacs_images", studyInstanceUid: null } } },
+    "GET /api/radiology/studies/S1/readiness": { status: 200, body: { state: "acquired", ready: true, gates: [], open: [] } },
+  });
+  renderWithProviders(<RadiologyStudy />);
+  expect(await screen.findByTestId("study-uid-recorded")).toHaveTextContent(/no dicom images/i);
+  expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /open images/i })).not.toBeInTheDocument();
+});
+
+/** Close review B4 — the receptionist holds the worklist but no report: the server says no, the button is not there. */
+it("close review B4: no 'Open images' when the server says this reader may not", async () => {
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, status: "acquired", acquiredAt: "2026-08-31T09:30:00.000Z", imageSource: "pacs", studyInstanceUid: "2.25.42", canOpenImages: false } } },
+    "GET /api/radiology/studies/S1/readiness": { status: 200, body: { state: "acquired", ready: true, gates: [], open: [] } },
+  });
+  renderWithProviders(<RadiologyStudy />);
+  await screen.findByTestId("study-uid-recorded");
+  expect(screen.queryByRole("button", { name: /open images/i })).not.toBeInTheDocument();
 });
 
 /**
@@ -168,12 +191,12 @@ it("18b T3: opening the images posts to the door and opens the URL the server re
   const opened = vi.fn();
   vi.stubGlobal("open", opened);
   mockRoutes({
-    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, status: "acquired", imageSource: "pacs", studyInstanceUid: "2.25.42", views: [{ id: "v1", viewerId: "dr.rao", via: "external_pacs", viewedAt: "2026-08-31T09:00:00.000Z" }] } } },
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, status: "acquired", acquiredAt: "2026-08-31T09:30:00.000Z", imageSource: "pacs", studyInstanceUid: "2.25.42", views: [{ id: "v1", viewerId: "01J6ZK8Q3W9X2Y4V5T6R7S8P9N", viewerName: "Dr Rao", via: "external_pacs", viewedAt: "2026-08-31T09:00:00.000Z" }] } } },
     "GET /api/radiology/studies/S1/readiness": { status: 200, body: { state: "acquired", ready: true, gates: [], open: [] } },
     "POST /api/radiology/studies/S1/images/open": { status: 201, body: { url: "https://pacs.example.org/viewer?AccessionNumber=X2608310001", viewId: "v2", studyInstanceUid: "2.25.42" } },
   });
   renderWithProviders(<RadiologyStudy />);
-  expect(await screen.findByTestId("image-views")).toHaveTextContent(/1.*dr\.rao/);
+  expect(await screen.findByTestId("image-views")).toHaveTextContent(/1.*Dr Rao/); // C6 — a name, not the ULID
   await userEvent.click(screen.getByRole("button", { name: /open images/i }));
   expect(calls).toContain("POST /api/radiology/studies/S1/images/open");
   expect(opened).toHaveBeenCalledWith("https://pacs.example.org/viewer?AccessionNumber=X2608310001", "_blank", "noopener,noreferrer");
@@ -183,7 +206,7 @@ it("18b T3: a refusal from the door is shown with its code, and nothing opens", 
   const opened = vi.fn();
   vi.stubGlobal("open", opened);
   mockRoutes({
-    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, status: "acquired", imageSource: "pacs", studyInstanceUid: "2.25.42" } } },
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, status: "acquired", acquiredAt: "2026-08-31T09:30:00.000Z", imageSource: "pacs", studyInstanceUid: "2.25.42" } } },
     "GET /api/radiology/studies/S1/readiness": { status: 200, body: { state: "acquired", ready: true, gates: [], open: [] } },
     "POST /api/radiology/studies/S1/images/open": { status: 409, body: { statusCode: 409, code: "pacs_not_configured", message: "no viewer is published" } },
   });
