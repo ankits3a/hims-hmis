@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { fetchBench, fetchPreStage, getOpdConfig, listDepartments, todayIst } from "../lib/opd-api";
+import { fetchBench, fetchEscalation, fetchPreStage, getOpdConfig, listDepartments, setBenchState, todayIst } from "../lib/opd-api";
 import type { WireBenchRow, WireDangerRanges, WireDoctorSummary, WirePreStage, WireVitalsSaveResult } from "../lib/opd-api";
-import { CaptureCore, SavedBannerView, readLane, writeLane } from "./vitals-bay-capture";
-import type { Lane, SavedBanner } from "./vitals-bay-capture";
+import { CaptureCore, SavedBannerView, bandFor, flagOf, readLane, writeLane } from "./vitals-bay-capture";
+import type { Lane, SavedBanner, Take, TileKey, Tiles } from "./vitals-bay-capture";
+import {
+  ProtocolPanel, REST_MINUTES, RestOffer, heldFirstTake, holdFirstTake, isElevated, readingFrom, releaseFirstTake, useDangerProtocol,
+} from "./vitals-bay-protocol";
 import { verifyQrScan } from "../lib/patients-api";
 import { api } from "../lib/api";
 import { usePatientInHand } from "../lib/patient-in-hand";
@@ -265,6 +268,19 @@ export function VitalsBay(): React.ReactElement {
     : null;
   const { preStage, failed: preFailed, pending } = usePreStage(rowInHand?.encounterId ?? null);
 
+  // VD-2 T3 — the protocol's state is the SERVER's; a re-identified patient shows where it stands.
+  const escalationQ = useQuery({
+    queryKey: ["vitals-bay", "escalation", rowInHand?.encounterId ?? ""],
+    queryFn: () => fetchEscalation(rowInHand?.encounterId ?? ""),
+    enabled: rowInHand !== null,
+  });
+  const protocol = useDangerProtocol(rowInHand?.encounterId ?? null, escalationQ.data?.escalation ?? null);
+  const [restOffer, setRestOffer] = useState<[number, number] | null>(null);
+  const [restBusy, setRestBusy] = useState(false);
+  const band = bandFor(ranges, preStage?.band ?? null);
+  const held = useMemo(() => (rowInHand === null ? null : heldFirstTake(rowInHand.encounterId)), [rowInHand]);
+  const initialTakes = useMemo<Partial<Record<TileKey, Take[]>> | undefined>(() => (held === null ? undefined : { bp: [held] }), [held]);
+
   const take = useCallback((row: WireBenchRow) => {
     if (row.patient === null) { setError(t("vitalsBay.identify.unknownPatient")); return; }
     setError(null);
@@ -283,6 +299,47 @@ export function VitalsBay(): React.ReactElement {
   const onKeys = useCallback((typed: number, device: number) => setKeys({ typed, device }), []);
 
   /**
+   * VD-2 T3 — EVERY COMMITTED TAKE IS OFFERED TO THE PROTOCOL. A danger take with no protocol
+   * running demands the other arm; a danger take while the other arm was demanded confirms; an
+   * elevated-not-dangerous first BP with no history of the protocol offers the rest chairs. Rest is
+   * refused at danger numbers by construction: the offer only appears when nothing is dangerous.
+   */
+  const onCommitted = useCallback((key: TileKey, take: Take, tiles: Tiles) => {
+    const tint = flagOf(key, take, band, ranges);
+    const state = protocol.view?.state ?? "none";
+    if (tint === "danger" || tint === "sam") {
+      setRestOffer(null);
+      const reading = readingFrom(tiles);
+      if (state === "none" || state === "cancelled") void protocol.demand(reading).catch(() => undefined);
+      else if (state === "recheck_demanded") void protocol.confirm(reading);
+      return;
+    }
+    if (key === "bp" && state === "none" && tiles.bp.takes.length === 1 && Array.isArray(take) && isElevated(take, band, preStage?.last ?? null)) {
+      setRestOffer(take);
+    }
+  }, [band, ranges, protocol, preStage]);
+
+  const recallClock = (minutes: number): string => istClock(new Date(Date.now() + minutes * 60_000).toISOString());
+
+  const goRest = useCallback(async () => {
+    if (rowInHand === null || restOffer === null) return;
+    setRestBusy(true);
+    try {
+      const updated = await setBenchState(rowInHand.encounterId, { state: "resting", restMinutes: REST_MINUTES, note: `first reading ${restOffer[0]}/${restOffer[1]}` });
+      holdFirstTake(rowInHand.encounterId, restOffer);
+      const who = rowInHand.patient === null ? "" : rowInHand.patient.restricted ? (rowInHand.patient.alias ?? "") : (rowInHand.patient.name ?? rowInHand.patient.uhid);
+      setBanner({ who, doctorName: rowInHand.doctorName, flags: [], amended: false, rest: updated.recallAt === null ? recallClock(REST_MINUTES) : istClock(updated.recallAt) });
+      setRestOffer(null);
+      void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
+      clearDesk();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRestBusy(false);
+    }
+  }, [rowInHand, restOffer, qc, clearDesk]);
+
+  /**
    * THE BOLD ✓ (owner ruling 6): names who was saved and which doctor's board they landed on, then
    * the desk is cleared — the next person starts from nothing. The bench re-reads so the row wears
    * the same tick; the push is a hint and the refetch is the truth.
@@ -291,6 +348,7 @@ export function VitalsBay(): React.ReactElement {
     const who = row.patient === null ? t("vitalsBay.bench.unknownPatient")
       : row.patient.restricted ? (row.patient.alias ?? t("vitalsBay.bench.restricted")) : (row.patient.name ?? row.patient.uhid);
     setBanner({ who, doctorName: row.doctorName, flags: result.flags, amended: false });
+    releaseFirstTake(row.encounterId);
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "summary"] });
     clearDesk();
@@ -365,6 +423,16 @@ export function VitalsBay(): React.ReactElement {
                   key={`${deskGen}:${rowInHand.encounterId}`} resetKey={`${deskGen}:${rowInHand.encounterId}`}
                   row={rowInHand} preStage={preStage} ranges={ranges} lane={lane}
                   onSaved={(result) => onSaved(result, rowInHand)} onKeys={onKeys}
+                  onCommitted={onCommitted} initialTakes={initialTakes}
+                  protocol={
+                    <>
+                      {held !== null && <p data-testid="held-first-take" className="text-xs text-muted-foreground">{t("vitalsBay.rest.heldFirst", { value: `${held[0]}/${held[1]}` })}</p>}
+                      <ProtocolPanel p={protocol} doctorName={rowInHand.doctorName} />
+                      {restOffer !== null && (protocol.view?.state ?? "none") === "none" && (
+                        <RestOffer recallAt={recallClock(REST_MINUTES)} onRest={() => { void goRest(); }} busy={restBusy} />
+                      )}
+                    </>
+                  }
                 />
               )}
             </SessionColumn>

@@ -204,11 +204,17 @@ const CHIPS = [
   { key: "just_climbed_stairs", question: "abhi seedhi chadh kar aaye?", yes: "just climbed stairs", no: "rested" },
 ] as const;
 
-export type SavedBanner = { who: string; doctorName: string; flags: WireDangerFlag[]; amended: boolean };
+export type SavedBanner = { who: string; doctorName: string; flags: WireDangerFlag[]; amended: boolean; rest?: string };
 
-export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, onSaved, onKeys, resetKey }: {
+export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, onSaved, onKeys, resetKey, onCommitted, initialTakes, protocol }: {
   row: WireBenchRow; preStage: WirePreStage | null; ranges: WireDangerRanges | null; lane: Lane; driver?: DeviceDriver;
   onSaved: (result: WireVitalsSaveResult) => void; onKeys?: (typed: number, device: number) => void; resetKey: string;
+  /** VD-2 T3 — every committed take is offered to the danger protocol with the tiles as they now stand. */
+  onCommitted?: (key: TileKey, take: Take, tiles: Tiles) => void;
+  /** VD-2 T3 — a first take held across a rest, restored so the recall lands as a pair. */
+  initialTakes?: Partial<Record<TileKey, Take[]>>;
+  /** VD-2 T3 — the protocol's own panels, rendered above the tiles where the nurse is looking. */
+  protocol?: React.ReactNode;
 }): React.ReactElement {
   const { t } = useTranslation();
   const set = useMemo(() => tileSetFor(preStage), [preStage]);
@@ -244,10 +250,14 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
         if (v !== null) next[k].carried = v;
       }
     }
+    for (const [k, takes] of Object.entries(initialTakes ?? {}) as [TileKey, Take[]][]) {
+      if (takes.length > 0) next[k] = { ...next[k], takes: [...takes], carried: null };
+    }
     setTiles(next);
     setRaw(Object.fromEntries(TILE_KEYS.map((k) => [k, ""])) as Record<TileKey, string>);
     setMirror(null); setServerGates([]); setLockedByServer([]); setMissing([]); setError(null); setChips({});
     setKeys({ typed: 0, device: 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `initialTakes` is read once per patient, with the reset
   }, [resetKey, preStage]);
 
   useEffect(() => { onKeys?.(keys.typed, keys.device); }, [keys, onKeys]);
@@ -284,8 +294,9 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
     setMirror(null);
     const next = { ...tiles, [key]: { ...tile, takes: [...tile.takes, take], source, carried: null } };
     setTiles(next);
+    onCommitted?.(key, take, next);
     return next;
-  }, [tiles, preStage, ranges]);
+  }, [tiles, preStage, ranges, onCommitted]);
 
   const onEnter = useCallback((key: TileKey) => {
     const take = parseTake(key, raw[key]);
@@ -368,6 +379,7 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
 
   return (
     <div data-testid="capture" className="flex flex-col gap-3">
+      {protocol}
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4" data-testid="tiles">
         {order.map((k, idx) => {
           const tile = tiles[k];
@@ -495,7 +507,11 @@ export function SavedBannerView({ banner, onDismiss }: { banner: SavedBanner; on
   const notices = banner.flags.filter((f) => f.severity === "notice");
   return (
     <div role="status" data-testid="saved-banner" className="flex flex-col gap-1 rounded border border-primary bg-card p-3">
-      <p className="text-base font-semibold">✓ {t(banner.amended ? "vitalsBay.saved.amended" : "vitalsBay.saved.title", { who: banner.who, doctor: banner.doctorName })}</p>
+      {banner.rest !== undefined ? (
+        <p className="text-base font-semibold" data-testid="rest-banner">{t("vitalsBay.rest.sent", { who: banner.who, time: banner.rest })}</p>
+      ) : (
+        <p className="text-base font-semibold">✓ {t(banner.amended ? "vitalsBay.saved.amended" : "vitalsBay.saved.title", { who: banner.who, doctor: banner.doctorName })}</p>
+      )}
       {dangers.length > 0 && <p data-testid="saved-danger" className="font-semibold">{t("vitalsBay.saved.danger", { vitals: dangers.map((f) => `${f.vital} ${f.value}`).join(", ") })}</p>}
       {notices.length > 0 && <p data-testid="saved-notice">{t("vitalsBay.saved.notice", { vitals: notices.map((f) => `${f.vital} ${f.value}`).join(", ") })}</p>}
       <button type="button" className="self-start text-xs underline" onClick={onDismiss}>{t("vitalsBay.saved.dismiss")}</button>

@@ -555,3 +555,25 @@ export type WireVitalsSaveResult = { vitals: WireVitals; flags: WireDangerFlag[]
 export function postVitals(encounterId: string, body: WireVitalsPostBody): Promise<WireVitalsSaveResult> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/vitals`, body);
 }
+
+// ——— VD-2 T3 — the danger protocol and the bench state, on the wire ———
+export type WireEscalationView = {
+  entryId: string; state: WireEscalationState; escalatedAt: string | null;
+  escalatedFromClass: number | null; escalationBy: string | null; cancelMsRemaining: number;
+};
+export type WireEscalationReading = Partial<Record<Exclude<WireVitalKey, "heightCm" | "weightKg">, number>>;
+export function demandRecheck(encounterId: string, reading: WireEscalationReading): Promise<WireEscalationView> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/escalation/recheck`, reading);
+}
+export function escalateVisit(encounterId: string, reading: WireEscalationReading): Promise<WireEscalationView> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/escalation/escalate`, reading);
+}
+export function cancelEscalation(encounterId: string): Promise<WireEscalationView> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/escalation/cancel`, {});
+}
+export function fetchEscalation(encounterId: string): Promise<{ escalation: WireEscalationView | null }> {
+  return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/escalation`);
+}
+export function setBenchState(encounterId: string, body: { state: WireBenchState | null; restMinutes?: number; note?: string }): Promise<WireBenchRow> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/bench-state`, body);
+}

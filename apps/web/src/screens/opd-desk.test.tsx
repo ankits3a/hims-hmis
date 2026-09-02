@@ -586,3 +586,66 @@ describe("OpdDesk — the fee stamp (RC-4 T3)", () => {
     expect(screen.queryByTestId("fee-status-qe-fs-0")).toBeNull();               // THE KILL
   });
 });
+
+describe("VD-2 T3 — the doctor-board flash rides the queue topic", () => {
+  beforeEach(() => {
+    setToken(null);
+    localStorage.clear();
+    FakeWebSocket.reset();
+    resetRealtimeClientForTests();
+    vi.setSystemTime(new Date(NOW_ISO));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    setToken(null);
+    localStorage.clear();
+  });
+  it("queue.escalated paints the flash naming the token; queue.escalation_cancelled turns it into the cancel line", async () => {
+    vi.useRealTimers(); // the shared beforeEach already mocked Date; useFakeTimers refuses on top of that
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(NOW_ISO));
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    setToken("t");
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-1" }, permissions: { hospital: ["opd.visits.open", "opd.queue.read"], scoped: { department: {}, floor: {} } } },
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/queues/summary": { items: SUMMARY },
+      "GET /api/opd/queues": QUEUE_VIEW,
+    });
+    const flush = async (ms = 5): Promise<void> => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
+    renderWithProviders(<OpdDesk />);
+    await flush(); await flush();
+    fireEvent.change(screen.getByLabelText("Department"), { target: { value: "dep-1" } });
+    await flush(); await flush();
+    fireEvent.click(screen.getByTestId("board-pick-doc-1"));
+    await flush(); await flush();
+    expect(screen.queryByTestId("escalation-flash")).toBeNull();
+    const ws = FakeWebSocket.instances[0]!;
+    await act(async () => { ws.simulateOpen(); });
+    await act(async () => { ws.simulateMessage({ type: "authed", userId: "u-1" }); });
+    await flush();
+    await act(async () => {
+      ws.simulateMessage({ type: "event", topic: `queue:doc-1:${TODAY}`, name: "queue.escalated", seq: 42, occurredAt: NOW_ISO,
+        payload: { doctorId: "doc-1", serviceDate: TODAY, tokenNo: 7, entryId: "qe-7", fromClass: 3, toClass: 0, by: "agent" } });
+    });
+    await flush();
+    const flash = screen.getByTestId("escalation-flash");
+    expect(flash).toHaveTextContent("Token 7");
+    expect(flash.getAttribute("data-cancelled")).toBe("false");
+    await act(async () => {
+      ws.simulateMessage({ type: "event", topic: `queue:doc-1:${TODAY}`, name: "queue.escalation_cancelled", seq: 43, occurredAt: NOW_ISO,
+        payload: { doctorId: "doc-1", serviceDate: TODAY, tokenNo: 7, entryId: "qe-7", restoredClass: 3, withinMs: 4000 } });
+    });
+    await flush();
+    expect(screen.getByTestId("escalation-flash").getAttribute("data-cancelled")).toBe("true");
+    expect(screen.getByTestId("escalation-flash")).toHaveTextContent("cancelled");
+    // an unrelated frame leaves the flash alone
+    await act(async () => {
+      ws.simulateMessage({ type: "event", topic: `queue:doc-1:${TODAY}`, name: "queue.called", seq: 44, occurredAt: NOW_ISO, payload: { doctorId: "doc-1", serviceDate: TODAY, tokenNo: 4 } });
+    });
+    await flush();
+    expect(screen.getByTestId("escalation-flash")).toHaveTextContent("Token 7");
+  });
+});

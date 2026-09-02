@@ -442,7 +442,10 @@
     "transferred": "{{n}} moved",
     "pickDoctorFirst": "Choose a doctor on the board first",
     "takePayment": "Take payment →",
-    "noFeeToVitals": "No fee — send this follow-up to vitals"
+    "noFeeToVitals": "No fee — send this follow-up to vitals",
+    "escalationFlash": "Token {{tokenNo}} — bumped to class 0 by the vitals bay. Escort coming.",
+    "escalationCancelled": "Token {{tokenNo}} — the class-0 bump was cancelled at the bay.",
+    "flashDismiss": "dismiss"
   },
   "opdVitals": {
     "title": "Vitals desk",
@@ -2260,6 +2263,20 @@
       "danger": "DANGER flagged: {{vitals}}",
       "notice": "Told the doctor ahead of the call: {{vitals}}",
       "dismiss": "dismiss"
+    },
+    "protocol": {
+      "otherArm": "Danger reading — the OTHER ARM, now. Rest is refused at danger numbers.",
+      "calmed": "The other arm is inside the band — both readings go to the doctor as a pair, the board does not move.",
+      "escalated": "Went NOW as class 0 (was class {{from}}) — {{doctor}}'s screen flashed. Do not send them alone.",
+      "cancel": "CANCEL",
+      "committed": "cancel window closed — class 0 stands. Reversing now is a supervisor action, not a keystroke.",
+      "cancelled": "Cancelled — back to class {{from}}. The chart keeps the reading."
+    },
+    "rest": {
+      "offer": "Elevated, not dangerous — {{minutes}} minutes on the rest chairs, no chai, no phone-pacing. Recall at {{time}}; the first reading is held.",
+      "go": "Rest {{minutes}} min",
+      "sent": "To the rest chairs: {{who}} — recall at {{time}}. The desk is clear.",
+      "heldFirst": "First reading held from the bench: {{value}} — take the second, both go as a pair."
     }
   }
 }
