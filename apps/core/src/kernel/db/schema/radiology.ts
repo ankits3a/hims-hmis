@@ -239,6 +239,10 @@ export const imagingStudies = pgTable(
       .where(sql`${t.status} not in ('cancelled', 'rescheduled', 'no_show')`),
     /** The technologist's day and the radiologist's unread list, in one index (DD16). */
     index("imaging_studies_worklist_idx").on(t.status, t.priority, t.scheduledAt),
+    /** 18b T2 — one DICOM study is one HMIS study. Partial: most rows have no UID (D3). */
+    uniqueIndex("imaging_studies_study_uid_ux")
+      .on(t.studyInstanceUid)
+      .where(sql`${t.studyInstanceUid} is not null`),
     index("imaging_studies_patient_idx").on(t.patientId),
     index("imaging_studies_order_idx").on(t.orderId),
     check("imaging_studies_status_ck", inList(t.status, IMAGING_STUDY_STATUSES)),
