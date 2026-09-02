@@ -2095,7 +2095,11 @@
       "versions": "संस्करण",
       "published": "प्रकाशित",
       "publishedNotified": "प्रकाशित, और मरीज़ को सूचित कर दिया गया।",
-      "publishedNoMessage": "प्रकाशित। संदेश नहीं भेजा गया — बिल का भुगतान बाकी है।"
+      "publishedNoMessage": "प्रकाशित। संदेश नहीं भेजा गया — बिल का भुगतान बाकी है।",
+      "startFromTemplate": "टेम्पलेट से शुरू करें",
+      "technique": "तकनीक",
+      "proposed": "{{drafter}} द्वारा प्रस्तावित मसौदा — तकनीक भरी गई, निष्कर्ष और राय आपकी हैं।",
+      "machineDrafted": "मशीन-मसौदा"
     },
     "gate": {
       "identity_two_factor": "पहचान (दो कारक)",

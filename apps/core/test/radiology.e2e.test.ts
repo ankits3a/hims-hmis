@@ -332,6 +332,15 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     expect([afterAcq!.status, afterAcq!.ionising, afterAcq!.contrastGiven]).toEqual(["acquired", true, true]);
 
     /** ── THE REPORT: drafted, then signed under a FRESH second factor (T8 A1) ── */
+    /**
+     * 18b T4 — the drafter proposes first: technique from the recorded facts, findings and
+     * impression EMPTY, provenance on the row. The human's draft below supersedes it in the chain.
+     */
+    const proposed = await post(`/radiology/studies/${study!.id}/reports/propose`, radiologist.token);
+    expect([proposed.status, proposed.body.templateKey, proposed.body.provenance.drafter]).toEqual([201, "ct", "offline_template"]);
+    const proposedView = await get(`/radiology/reports/${proposed.body.reportId}`, radiologist.token);
+    expect(proposedView.body.report.body.technique).toContain("80.00 ml Iohexol"); // numeric(8,2), as recorded
+    expect([proposedView.body.report.body.findings, proposedView.body.report.impression]).toEqual(["", null]);
     const drafted = await post(`/radiology/studies/${study!.id}/reports/draft`, radiologist.token, {
       body: { technique: "Portal venous phase.", findings: "No collection." },
       impression: "No intra-abdominal abscess.",
@@ -344,6 +353,11 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
       reportId: drafted.body.reportId,
     });
     expect([signed.status, signed.body.version]).toEqual([201, drafted.body.version + 1]);
+    /** 18b T4 / §6.8 — the signed version carries no provenance; only the machine's draft does. */
+    expect((await get(`/radiology/reports/${signed.body.reportId}`, radiologist.token)).body.report.provenance).toBeNull();
+    const chain = (await get(`/radiology/studies/${study!.id}`, radiologist.token)).body.study.reports;
+    expect(chain.map((v: { version: number; machineDrafted: boolean }) => [v.version, v.machineDrafted]))
+      .toEqual([[3, false], [2, false], [1, true]]);
 
     /** ── PUBLICATION: the envelope closes, and money never gated it (T8 A6) ── */
     const published = await post(`/radiology/studies/${study!.id}/reports/publish`, radiologist.token);
