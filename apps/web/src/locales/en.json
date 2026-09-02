@@ -2205,7 +2205,28 @@
       "closing": "Your drawer is locked at close — a billing manager must approve the variance before you can take payment.",
       "closingCover": "Meanwhile a billing manager can cover this counter.",
       "forbidden": "This login cannot hold a cash drawer — a cashier role is needed to take payment here."
-    }
+    },
+      "figures": {
+        "door": "your figures",
+        "title": "Your figures",
+        "back": "Back to the counter",
+        "today": "Today so far",
+        "deskFailed": "Your desk could not be read — the figures below may be missing",
+        "cameBack": "What came back",
+        "cameBackHint": "the half of this job nobody measures, and the only half you can act on — last 30 days",
+        "duplicates_one": "{{count}} of your registrations turned out to be a duplicate — an urgent merge for somebody else, a four-hour clock, and a history split in half until it closed.",
+        "duplicates_other": "{{count}} of your registrations turned out to be duplicates — each an urgent merge for somebody else, a four-hour clock, and a history split in half until it closed.",
+        "seeMerges": "See them",
+        "noMobile_one": "{{count}} record you created has no mobile number — a follow-up SMS has nowhere to go. Fix it on the next visit.",
+        "noMobile_other": "{{count}} records you created have no mobile number — follow-up SMS have nowhere to go. Fix them on the next visit.",
+        "amended_one": "{{count}} was amended within a week — almost always a spelling, off an ID at the second visit. Reading the name back before Enter is the whole fix.",
+        "amended_other": "{{count}} were amended within a week — almost always a spelling, off an ID at the second visit. Reading the name back before Enter is the whole fix.",
+        "drawer": "The drawer",
+        "noDrawerRole": "This login holds no drawer — the billing counter collects.",
+        "varianceLine": "Counted at close, against this. A variance is a conversation, not an accusation — but it is always a conversation.",
+        "yourDay": "Your day",
+        "yourDayHint": "the signed document: what you registered, what you took, by tender. Provisional until the day is closed."
+      }
   },
   "vitalsBay": {
     "title": "Vitals bay",

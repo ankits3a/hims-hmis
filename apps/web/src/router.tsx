@@ -20,6 +20,7 @@ import { MyDay } from "./screens/my-day";
 import { StaffReports } from "./screens/staff-reports";
 import { CounterDesk } from "./screens/counter-desk";
 import { RegistrationCounter } from "./screens/registration-counter";
+import { CounterFigures } from "./screens/counter-figures";
 import { RegistrationDesk } from "./screens/registration-desk";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
@@ -417,6 +418,19 @@ const vitalsBayRoute = createRoute({
   component: VitalsBay,
 });
 
+/**
+ * FD-1 T4 / D4 — "your figures", the registration clerk's own account, inside the seat's alias
+ * layer; Escape returns to the seat with the patient in hand untouched.
+ */
+const counterFiguresRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/counter/seat/figures",
+  component: function CounterFiguresRoute() {
+    const navigate = useNavigate();
+    return <CounterFigures onBack={() => { void navigate({ to: "/counter/seat" }); }} />;
+  },
+});
+
 const registrationRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/registration",
@@ -718,6 +732,7 @@ export const router = createRouter({
       // `caddyfile-parity.test.ts` pins the count and joins this task's Files list — the S11 rule
       // this repository has now applied to itself eight times.
       registrationCounterRoute,
+      counterFiguresRoute,
       vitalsBayRoute,
       formularyAdminRoute,
       // PLAN 14 T9 — 25 -> 28. `caddyfile-parity.test.ts` pins the count and joins this task's

@@ -1016,6 +1016,8 @@ export function RegistrationCounter(): React.ReactElement {
           flow={flow} failed={flowFailed} canManage={can("opd.counter.flow.manage")}
           onSaved={(config) => queryClient.setQueryData(["opd", "config"], config)}
         />
+        {/* FD-1 T4 — the door to "your figures". A plain anchor: the seat mounts without a router in its suite, and the session in hand lives in storage. */}
+        <a href="/counter/seat/figures" data-testid="figures-door" className="text-sm underline-offset-2 hover:underline">{t("registrationCounter.figures.door")}</a>
       </header>
       <DrawerLine state={drawer} />
       <div className="flex flex-col gap-6 p-6 lg:flex-row">

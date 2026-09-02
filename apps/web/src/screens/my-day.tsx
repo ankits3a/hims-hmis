@@ -31,7 +31,7 @@ import { Button } from "@/components/ui/button";
  * (07a/07b finding: two of them OVERPRINT rather than making two pages). This screen therefore has
  * one printable node containing every section, never one per section.
  */
-function SectionTable({ section }: { section: WireReportSection }): React.ReactElement {
+export function SectionTable({ section }: { section: WireReportSection }): React.ReactElement {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1">
@@ -90,7 +90,7 @@ function SectionTable({ section }: { section: WireReportSection }): React.ReactE
  * — and it says so in a sentence rather than showing a spinner or a row of zeroes. A person whose
  * history is thin should be able to see that that is what they are looking at.
  */
-function BriefPanel({ date }: { date: string }): React.ReactElement {
+export function BriefPanel({ date }: { date: string }): React.ReactElement {
   const { t } = useTranslation();
   const [period, setPeriod] = useState<WireBriefPeriod>("week");
   const brief = useQuery({ queryKey: ["me", "brief", period, date], queryFn: () => fetchBrief(period, date) });
