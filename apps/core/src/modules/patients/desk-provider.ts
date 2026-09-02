@@ -1,4 +1,4 @@
-import { and, count, eq, gte, isNull, lt, sql } from "drizzle-orm";
+import { and, count, eq, gte, isNull, lt, ne, sql } from "drizzle-orm";
 import { events, patientMergeRequests, patients } from "../../kernel/db/schema";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
 import type { DeskCard, DeskProvider, DeskProviderCtx } from "../../kernel/desk/types";
@@ -48,7 +48,9 @@ async function one(rows: Promise<{ n: number }[]>): Promise<number> {
 async function registeredBy(db: Db, userId: string, w: { from: Date; to: Date }, noMobile = false): Promise<number> {
   return one(db.select({ n: count() }).from(patients).where(and(
     eq(patients.createdBy, userId), gte(patients.createdAt, w.from), lt(patients.createdAt, w.to),
-    ...(noMobile ? [isNull(patients.phone)] : []),
+    // CLOSE pass 1 — a merged LOSER keeps `created_by` and `phone = null` while its mobile lives on the
+    // winner: it stays a registration, it is no longer "without a mobile".
+    ...(noMobile ? [isNull(patients.phone), ne(patients.status, "merged")] : []),
   )));
 }
 
@@ -61,7 +63,14 @@ async function duplicatesOf(db: Db, userId: string, status: "requested" | "execu
     .where(and(eq(patients.createdBy, userId), eq(patientMergeRequests.status, status), gte(at, w.from), lt(at, w.to))));
 }
 
-/** `patient.updated` inside seven days of a registration this person made, registrations in the window. */
+/**
+ * `patient.updated` inside seven days of a registration this person made, registrations in the
+ * window — and only an update that changed a RECORD field. CLOSE pass 1: a photo attach and a QR
+ * reissue also append `patient.updated` (`photos.ts`, `qr.ts`, with `changes[].field` "photo" /
+ * "qrVersion"), so the count was converging on "registrations with a photo". The predicate reads
+ * the event's own `changes` and ignores those two fields. Bounded on `recorded_at` too: `events`
+ * is partitioned by it, and an amendment cannot be recorded before its registration.
+ */
 async function amendedWithinWeek(db: Db, userId: string, w: { from: Date; to: Date }): Promise<number> {
   const rows = await db
     .select({ n: sql<number>`count(distinct ${events.patientId})` })
@@ -71,7 +80,9 @@ async function amendedWithinWeek(db: Db, userId: string, w: { from: Date; to: Da
       eq(events.name, "patient.updated"),
       eq(patients.createdBy, userId),
       gte(patients.createdAt, w.from), lt(patients.createdAt, w.to),
+      gte(events.recordedAt, w.from),
       lt(events.occurredAt, sql`${patients.createdAt} + interval '7 days'`),
+      sql`exists (select 1 from jsonb_array_elements(coalesce(${events.payload}->'changes', '[]'::jsonb)) c where c->>'field' not in ('photo', 'qrVersion'))`,
     ));
   return Number(rows[0]?.n ?? 0);
 }

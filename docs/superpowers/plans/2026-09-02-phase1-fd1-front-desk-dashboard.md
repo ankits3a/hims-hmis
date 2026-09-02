@@ -172,6 +172,34 @@ zero permissions, zero kernel edits, zero index exports.
 | revert pairs | **R64–R81**: all red on first or second run; three needed fixture fixes to be falsifiable (R64 the merge winner another clerk's; R70 a last-week rebooking row; R76 an over-tender with change declared — receipts are append-only) |
 | assembly | `me.e2e` drives the REAL providers over the real roles; the web renders the server's cards through the unchanged home screen; the figures screen composes three rails with two clerks |
 
+### 5B. Pass 1 — two fresh reviewers over the green tree: 1 CRITICAL, 10 MAJOR — for the sixth phase running
+
+| # | finding | fix | revert pair |
+|---|---|---|---|
+| **C1** (B) | the query client outlives a logout and the keys carried only the date: the next clerk on the same counter tab read the last clerk's figures for up to five minutes and could print them over her own signature line | the ACTOR is in every `/me/*` key (figures, my-day, desk); a test with one client and two logins | R85 red |
+| M1 (A) | "amended within a week" counted photo attaches and QR reissues (both append `patient.updated`) | the predicate reads `changes[].field`; `recorded_at` bounded for partition pruning | R82 red |
+| M2 (A) | the appointments card named `queue:*` topics its own permission cannot subscribe to (silent refusal on the web); bookings are not realtime names anyway | no topics — the tile is as live as the poll, honestly | R84 red |
+| M3 (A) | the drawer moved three unindexed scans onto every home-screen load; past the 250 ms budget the whole collections card vanishes | `receipts(cashier_session_id)` and `refund_vouchers(cashier_session_id)` indexed — **migration 0055**, taken at rebase; the tile's three sums in one transaction | — (a budget pin is not written; recorded) |
+| M4 (B) | a failed `/me/report` printed as an honest empty day | said, never printed; print disabled until the report arrives; the brief says when it fails | R86 red |
+| M5 (B) | a missing came-back stat was spoken as "0 of your registrations…" (D6) | a sentence only for a figure the server gave | R87 red |
+| M6 (B) | a cleared date box sent `?date=` and 400'd three routes at once | the box asks nothing until it holds a date | R88 red |
+| M7 (B) | every door was a full page load, against the router's own rule | figures and the seat's door are client-side navigations handed in by the route wrappers; the anchor keeps its href | R89, R90 red |
+| M8 (B) | the round trip seat → figures → Escape → seat was untested | tested under the real router with the patient in hand | — |
+| M9 (B, inherited) | the print is one fixed page repeated for a long screen | **NOT fixed** — 07a's `.print-doc` model; the figures sections are `display:none` on print, so the page count is the document's; a 40-row day is the evidence to gather |
+| MINOR (A) | merged losers counted as "without a mobile"; the appointments card is hospital-wide (D8 unmet for it); the tile's reads were not one snapshot | excluded (R83 red); **DECIDED hospital-wide** and a second clerk asserted equal; one transaction |
+| MINOR (B) | Escape with the palette open navigated | the seat's F7 guard |
+
+**Assertions pass 1 named in-band, and the answer:** "not.toContain('Kamla')" and `rows === undefined` are D2 tripwires, kept; the 7-day and 30-day EDGES are still untested (2 d / 12 d and 16 d / 38 d) — recorded; the real-clock suite can flake at 00:00 IST — recorded; the cashier e2e's "float equals expected before any sale" is in-band under a formula ignoring tenders, and the billing unit test's over-tender is the discriminator.
+
+### 5C. Evidence after pass 1
+| instrument | result |
+|---|---|
+| web full `vitest run` | **75 files / 567 tests, exit 0** |
+| core `jest -w 2`: patients/desk-provider, opd/desk-appointments, billing/desk-provider, billing/sessions, me.e2e (over migration 0055) | **5 suites / 36 tests, exit 0** |
+| `pnpm lint` · `pnpm typecheck` | 0 errors (2 warnings in other lanes' kernel tests) · exit 0 |
+| revert pairs | **R64–R90**: 24 red on first or second run; three needed a fixture (R64, R70, R76) |
+| migrations · permissions · kernel · index exports | **1 (0055, two indexes)** · 0 · 0 · 0 |
+
 ## 6. Owner items
 None. (Deletions of `/counter` and `/opd/vitals`, and RC-5's money rulings, are in the lane scope doc.)
 

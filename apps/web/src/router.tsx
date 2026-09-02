@@ -404,7 +404,12 @@ const counterDeskRoute = createRoute({
 const registrationCounterRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/counter/seat",
-  component: RegistrationCounter,
+  // FD-1 T4 — the door to "your figures" is a client-side navigation handed in from here; the seat
+  // itself mounts without a router in its suite.
+  component: function RegistrationCounterRoute() {
+    const navigate = useNavigate();
+    return <RegistrationCounter onFigures={() => { void navigate({ to: "/counter/seat/figures" }); }} />;
+  },
 });
 
 /**
@@ -427,7 +432,12 @@ const counterFiguresRoute = createRoute({
   path: "/counter/seat/figures",
   component: function CounterFiguresRoute() {
     const navigate = useNavigate();
-    return <CounterFigures onBack={() => { void navigate({ to: "/counter/seat" }); }} />;
+    return (
+      <CounterFigures
+        onBack={() => { void navigate({ to: "/counter/seat" }); }}
+        onGo={(href) => { void navigate({ to: href as never }); }}
+      />
+    );
   },
 });
 

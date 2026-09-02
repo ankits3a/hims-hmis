@@ -1753,7 +1753,8 @@
       "plain": "{{total}} collected.",
       "compared": "{{total}} collected, against a median of {{median}}.",
       "drift": "{{total}} collected — {{first}} in the first half, {{second}} in the second."
-    }
+    },
+      "failed": "The brief could not be read — try again, or ask an administrator."
   },
   "staffReports": {
     "title": "Staff reports",
@@ -2225,8 +2226,9 @@
         "noDrawerRole": "This login holds no drawer — the billing counter collects.",
         "varianceLine": "Counted at close, against this. A variance is a conversation, not an accusation — but it is always a conversation.",
         "yourDay": "Your day",
-        "yourDayHint": "the signed document: what you registered, what you took, by tender. Provisional until the day is closed."
-      }
+        "yourDayHint": "the signed document: what you registered, what you took, by tender. Provisional until the day is closed.",
+        "reportFailed": "Your day could not be read — nothing is printed until it can be."
+    }
   },
   "vitalsBay": {
     "title": "Vitals bay",

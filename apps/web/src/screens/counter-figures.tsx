@@ -5,6 +5,7 @@ import { downloadReportCsv, fetchDesk, fetchReport, todayIst } from "../lib/desk
 import type { WireDeskCard } from "../lib/desk-api";
 import { useAuth } from "../lib/auth";
 import { BriefPanel, SectionTable } from "./my-day";
+import { usePaletteOptional } from "../components/command-palette";
 
 /**
  * FD-1 T4 — "YOUR FIGURES": the registration clerk's own account, inside the seat.
@@ -30,25 +31,42 @@ function statOf(card: WireDeskCard | undefined, key: string): { value: string; h
   return s === undefined ? null : { value: s.value, href: s.href ?? null };
 }
 
-function Figure({ card, statKey, label }: { card: WireDeskCard | undefined; statKey: string; label: string }): React.ReactElement | null {
+/**
+ * Every figure is a door, and a door is a client-side navigation (`router.tsx`'s own rule: a raw
+ * anchor reloads the bundle on every click, all day). The screen mounts without a router in its
+ * suite, so the route wrapper hands in `onGo` and the anchor keeps its href for the right-click.
+ */
+function Figure({ card, statKey, label, onGo }: { card: WireDeskCard | undefined; statKey: string; label: string; onGo: (href: string) => void }): React.ReactElement | null {
   const s = statOf(card, statKey);
   if (s === null) return null;
   const body = <><span className="font-mono text-lg">{s.value}</span> <span className="text-xs text-muted-foreground">{label}</span></>;
   return (
     <span data-testid={`figure-${statKey}`} className="flex items-baseline gap-1">
-      {s.href === null ? body : <a href={s.href} className="flex items-baseline gap-1 underline-offset-2 hover:underline">{body}</a>}
+      {s.href === null ? body : (
+        <a href={s.href} className="flex items-baseline gap-1 underline-offset-2 hover:underline" onClick={(e) => { e.preventDefault(); onGo(s.href!); }}>{body}</a>
+      )}
     </span>
   );
 }
 
-export function CounterFigures({ onBack }: { onBack: () => void }): React.ReactElement {
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function CounterFigures({ onBack, onGo }: { onBack: () => void; onGo: (href: string) => void }): React.ReactElement {
   const { t } = useTranslation();
   const { actor } = useAuth();
+  const palette = usePaletteOptional();
   const [date, setDate] = useState(todayIst());
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
-  const desk = useQuery({ queryKey: ["me", "desk", date], queryFn: () => fetchDesk(date) });
-  const report = useQuery({ queryKey: ["me", "report", date], queryFn: () => fetchReport(date) });
+  /**
+   * CLOSE pass 1 CRITICAL — THE ACTOR IS IN THE KEY. The query client outlives a logout and its
+   * keys carried only the date, so the next clerk on the same counter tab read the last clerk's
+   * figures for up to five minutes — and printed them over her own signature line. Keyed on the
+   * actor, a new login is a new cache entry; nothing renders until HER answer arrives.
+   */
+  const who = actor?.id ?? "";
+  const desk = useQuery({ queryKey: ["me", "desk", who, date], queryFn: () => fetchDesk(date), enabled: who !== "" });
+  const report = useQuery({ queryKey: ["me", "report", who, date], queryFn: () => fetchReport(date), enabled: who !== "" });
   const cards = desk.data?.cards ?? [];
   const card = (key: string): WireDeskCard | undefined => cards.find((c) => c.key === key);
   const registration = card("patients.registration");
@@ -60,13 +78,13 @@ export function CounterFigures({ onBack }: { onBack: () => void }): React.ReactE
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key !== "Escape" || isTypingTarget(e.target)) return;
+      if (e.key !== "Escape" || isTypingTarget(e.target) || palette?.isOpen === true) return;   // while the palette is open the screen claims no key (the seat's F7)
       e.preventDefault();
       onBack();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onBack]);
+  }, [onBack, palette?.isOpen]);
 
   return (
     <div data-seat="registration-counter" data-testid="counter-figures" className="min-h-screen bg-background text-foreground">
@@ -78,7 +96,10 @@ export function CounterFigures({ onBack }: { onBack: () => void }): React.ReactE
         <div className="flex items-center gap-3">
           <label className="text-sm">
             <span className="sr-only">{t("myDay.date")}</span>
-            <input type="date" data-testid="figures-date" className="rounded border border-input bg-card px-2 py-1" value={date} aria-label={t("myDay.date")} onChange={(e) => setDate(e.target.value)} />
+            <input
+              type="date" data-testid="figures-date" className="rounded border border-input bg-card px-2 py-1" value={date} aria-label={t("myDay.date")}
+              onChange={(e) => { if (ISO_DATE.test(e.target.value)) setDate(e.target.value); }}   // a cleared or half-typed box asks nothing of the server
+            />
           </label>
           <button type="button" data-testid="figures-back" className="rounded border border-border px-2 py-1 text-sm" onClick={onBack}>
             {t("registrationCounter.figures.back")} <kbd className="text-xs text-muted-foreground">Esc</kbd>
@@ -94,14 +115,14 @@ export function CounterFigures({ onBack }: { onBack: () => void }): React.ReactE
           {desk.isPending && <p className="text-sm text-muted-foreground">{t("app.loading")}</p>}
           {desk.isError && <p role="alert" className="text-sm">{t("registrationCounter.figures.deskFailed")}</p>}
           <div className="flex flex-wrap gap-6">
-            <Figure card={registration} statKey="desk.patients.registered" label={t("desk.patients.registered")} />
-            <Figure card={registration} statKey="desk.patients.noMobile" label={t("desk.patients.noMobile")} />
-            <Figure card={registration} statKey="desk.patients.duplicatesPending" label={t("desk.patients.duplicatesPending")} />
-            <Figure card={appointments} statKey="desk.appointments.dueToday" label={t("desk.appointments.dueToday")} />
-            <Figure card={appointments} statKey="desk.appointments.checkedIn" label={t("desk.appointments.checkedIn")} />
-            <Figure card={appointments} statKey="desk.appointments.needsRebooking" label={t("desk.appointments.needsRebooking")} />
-            <Figure card={billing} statKey="desk.billing.collected" label={t("desk.billing.collected")} />
-            <Figure card={billing} statKey="desk.billing.receipts" label={t("desk.billing.receipts")} />
+            <Figure card={registration} statKey="desk.patients.registered" label={t("desk.patients.registered")} onGo={onGo} />
+            <Figure card={registration} statKey="desk.patients.noMobile" label={t("desk.patients.noMobile")} onGo={onGo} />
+            <Figure card={registration} statKey="desk.patients.duplicatesPending" label={t("desk.patients.duplicatesPending")} onGo={onGo} />
+            <Figure card={appointments} statKey="desk.appointments.dueToday" label={t("desk.appointments.dueToday")} onGo={onGo} />
+            <Figure card={appointments} statKey="desk.appointments.checkedIn" label={t("desk.appointments.checkedIn")} onGo={onGo} />
+            <Figure card={appointments} statKey="desk.appointments.needsRebooking" label={t("desk.appointments.needsRebooking")} onGo={onGo} />
+            <Figure card={billing} statKey="desk.billing.collected" label={t("desk.billing.collected")} onGo={onGo} />
+            <Figure card={billing} statKey="desk.billing.receipts" label={t("desk.billing.receipts")} onGo={onGo} />
           </div>
         </section>
 
@@ -112,9 +133,16 @@ export function CounterFigures({ onBack }: { onBack: () => void }): React.ReactE
             !desk.isPending && <p className="text-sm text-muted-foreground">{t("registrationCounter.figures.noRegistrationCard")}</p>
           ) : (
             <ul className="flex flex-col gap-1 text-sm">
-              <li data-testid="sentence-duplicates">{t("registrationCounter.figures.duplicates", { count: Number(statOf(cameBack, "desk.patients.duplicatesConfirmed")?.value ?? 0) })} <a href="/merge" className="underline">{t("registrationCounter.figures.seeMerges")}</a></li>
-              <li data-testid="sentence-noMobile">{t("registrationCounter.figures.noMobile", { count: Number(statOf(cameBack, "desk.patients.noMobileMonth")?.value ?? 0) })}</li>
-              <li data-testid="sentence-amended">{t("registrationCounter.figures.amended", { count: Number(statOf(cameBack, "desk.patients.amendedWeek")?.value ?? 0) })}</li>
+              {/* a sentence is said only for a figure the server gave — a missing stat is silence, never "0" (D6) */}
+              {statOf(cameBack, "desk.patients.duplicatesConfirmed") !== null && (
+                <li data-testid="sentence-duplicates">{t("registrationCounter.figures.duplicates", { count: Number(statOf(cameBack, "desk.patients.duplicatesConfirmed")!.value) })} <a href="/merge" className="underline" onClick={(e) => { e.preventDefault(); onGo("/merge"); }}>{t("registrationCounter.figures.seeMerges")}</a></li>
+              )}
+              {statOf(cameBack, "desk.patients.noMobileMonth") !== null && (
+                <li data-testid="sentence-noMobile">{t("registrationCounter.figures.noMobile", { count: Number(statOf(cameBack, "desk.patients.noMobileMonth")!.value) })}</li>
+              )}
+              {statOf(cameBack, "desk.patients.amendedWeek") !== null && (
+                <li data-testid="sentence-amended">{t("registrationCounter.figures.amended", { count: Number(statOf(cameBack, "desk.patients.amendedWeek")!.value) })}</li>
+              )}
             </ul>
           )}
         </section>
@@ -127,9 +155,9 @@ export function CounterFigures({ onBack }: { onBack: () => void }): React.ReactE
             <p className="text-sm text-muted-foreground" data-testid="drawer-closed">{t("desk.billing.noDrawer")}</p>
           ) : (
             <div className="flex flex-wrap gap-6">
-              <Figure card={billing} statKey="desk.billing.float" label={t("desk.billing.float")} />
-              <Figure card={billing} statKey="desk.billing.cash" label={t("desk.billing.cash")} />
-              <Figure card={billing} statKey="desk.billing.expectedCash" label={t("desk.billing.expectedCash")} />
+              <Figure card={billing} statKey="desk.billing.float" label={t("desk.billing.float")} onGo={onGo} />
+              <Figure card={billing} statKey="desk.billing.cash" label={t("desk.billing.cash")} onGo={onGo} />
+              <Figure card={billing} statKey="desk.billing.expectedCash" label={t("desk.billing.expectedCash")} onGo={onGo} />
               <p className="w-full text-xs text-muted-foreground">{t("registrationCounter.figures.varianceLine")}</p>
             </div>
           )}
@@ -141,7 +169,7 @@ export function CounterFigures({ onBack }: { onBack: () => void }): React.ReactE
             {provisional && <span className="rounded border border-state-waiting px-2 py-0.5 text-xs text-state-waiting">{t("myDay.provisional")}</span>}
             <span className="text-xs text-muted-foreground">{t("registrationCounter.figures.yourDayHint")}</span>
             <div className="ml-auto flex gap-2">
-              <button type="button" data-testid="figures-print" className="rounded border border-border px-2 py-1 text-sm" onClick={() => { window.print(); }}>{t("myDay.print")}</button>
+              <button type="button" data-testid="figures-print" disabled={report.data === undefined} className="rounded border border-border px-2 py-1 text-sm" onClick={() => { window.print(); }}>{t("myDay.print")}</button>
               <button
                 type="button" data-testid="figures-csv" disabled={downloading} className="rounded bg-primary px-2 py-1 text-sm text-primary-foreground"
                 onClick={() => {
@@ -154,6 +182,9 @@ export function CounterFigures({ onBack }: { onBack: () => void }): React.ReactE
             </div>
           </div>
           {error !== null && <p role="alert" className="no-print text-sm">{error}</p>}
+          {/* a failed report is said, never printed as an honest empty day (CLOSE pass 1) */}
+          {report.isError && <p role="alert" data-testid="report-failed" className="no-print text-sm">{t("registrationCounter.figures.reportFailed")}</p>}
+          {report.data !== undefined && (
           <div className="print-doc flex flex-col gap-4 rounded border border-border bg-card p-3">
             <div className="flex flex-col gap-0.5 border-b pb-2">
               <span className="text-base font-semibold">{t("myDay.docTitle")}</span>
@@ -168,6 +199,7 @@ export function CounterFigures({ onBack }: { onBack: () => void }): React.ReactE
               <div className="flex-1 border-t pt-1">{t("myDay.receivedBy")}</div>
             </div>
           </div>
+          )}
         </section>
       </div>
     </div>

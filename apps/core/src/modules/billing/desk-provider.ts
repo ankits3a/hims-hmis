@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { cashierSessions, invoices, receiptTenders, receipts } from "../../kernel/db/schema";
 import { enteredInErrorDocIds } from "./daily-close";
 import { liveExpectedCashPaise } from "./sessions";
+import { withTx } from "../../kernel/db/client";
 import { formatPaise } from "../../kernel/report/money";
 import type { TenderTotals } from "./daily-close";
 import type { DeskCard, DeskProvider, DeskProviderCtx, DeskStat, ReportSection } from "../../kernel/desk/types";
@@ -92,7 +93,8 @@ async function drawerStats(ctx: DeskProviderCtx): Promise<DeskStat[]> {
   // DECIDED: a stat's value is a figure, never a word to translate — the open/closing state is the
   // session screen's; the tile carries the two numbers a cashier is asked about, or one dash.
   if (session === undefined) return [{ key: "desk.billing.noDrawer", value: "—", href: "/billing/session" }];
-  const expected = await liveExpectedCashPaise(ctx.db, session);
+  // one snapshot: the three sums read inside one transaction, as the close reads them
+  const expected = await withTx(ctx.db, (tx) => liveExpectedCashPaise(tx, session));
   return [
     { key: "desk.billing.float", value: formatPaise(session.openingFloatPaise), href: "/billing/session" },
     { key: "desk.billing.expectedCash", value: formatPaise(expected), href: "/billing/session" },

@@ -4,6 +4,7 @@ import { mkUser, seedOpdBase } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
 import { patientMergeRequests, patients } from "../../kernel/db/schema";
 import { registerPatient, updatePatient } from "./registration";
+import { storePatientPhoto } from "./photos";
 import { patientsDeskProvider } from "./desk-provider";
 import type { DeskProviderCtx } from "../../kernel/desk/types";
 import type { Db } from "../../kernel/db/client";
@@ -94,5 +95,24 @@ describe("patients desk provider (FD-1 T1)", () => {
     const cardsB = await patientsDeskProvider.load(ctxFor(b));
     expect(statOf(cardsB, "patients.cameBack", "desk.patients.duplicatesConfirmed")).toBe("0");
     expect(statOf(cardsB, "patients.cameBack", "desk.patients.amendedWeek")).toBe("0");
+  });
+
+  // ═══ CLOSE pass 1 ═══
+  it("a photo attached in the first week is NOT an amendment; a name fixed is; a merged loser is a registration but no longer 'without a mobile'", async () => {
+    const { patient: p1 } = await reg(a, "Sunita Devi", "9876500001");
+    const { patient: p2 } = await reg(a, "Kamla");                       // no mobile
+    await withTx(db, (tx) => storePatientPhoto(tx, a.actor, p1.id, { mimeType: "image/jpeg", bytes: Buffer.from([1, 2, 3, 4]) }));
+    let cards = await patientsDeskProvider.load(ctxFor(a));
+    expect(statOf(cards, "patients.cameBack", "desk.patients.amendedWeek")).toBe("0");   // the photo appended patient.updated; it is not a correction
+    expect(statOf(cards, "patients.cameBack", "desk.patients.noMobileMonth")).toBe("1");
+    await withTx(db, (tx) => updatePatient(tx, a.actor, p1.id, { name: "Sunita Kumari" }));
+    cards = await patientsDeskProvider.load(ctxFor(a));
+    expect(statOf(cards, "patients.cameBack", "desk.patients.amendedWeek")).toBe("1");
+    // Kamla merged into Sunita: she stays one of today's registrations, her mobile now lives on the winner
+    await db.update(patients).set({ status: "merged" }).where(eq(patients.id, p2.id));
+    cards = await patientsDeskProvider.load(ctxFor(a));
+    expect(statOf(cards, "patients.registration", "desk.patients.registered")).toBe("2");
+    expect(statOf(cards, "patients.registration", "desk.patients.noMobile")).toBe("0");
+    expect(statOf(cards, "patients.cameBack", "desk.patients.noMobileMonth")).toBe("0");
   });
 });

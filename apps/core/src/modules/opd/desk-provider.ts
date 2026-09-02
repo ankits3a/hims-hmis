@@ -273,12 +273,16 @@ export const opdDeskProvider: DeskProvider = {
  * sweep runs on YESTERDAY's rows — spike S3 measured it — so a 09:00 slot at 11:00 is still
  * `booked` on the wire and the derivation is honest, not a guess). "Needs rebooking" is every
  * `needs_rebooking` row from today on: the cascade lands them there and the desk must clear them.
+ *
+ * DECIDED (CLOSE pass 1): this card is HOSPITAL-WIDE, not "mine" — a counter checks in anyone's
+ * booking, and the leave cascade's list is the desk's to clear whoever booked the rows. The
+ * artboard's "your" figures are the registration and money tiles; two clerks see the same bookings.
  */
 const DUE: readonly string[] = ["booked", "checked_in", "no_show"];
 
 async function appointmentsCard(ctx: DeskProviderCtx): Promise<DeskCard> {
   const one = async (rows: Promise<{ n: number }[]>): Promise<number> => (await rows)[0]?.n ?? 0;
-  const [due, checkedIn, noShow, lateBooked, rebooking, doctorsToday] = await Promise.all([
+  const [due, checkedIn, noShow, lateBooked, rebooking] = await Promise.all([
     one(ctx.db.select({ n: count() }).from(opdAppointments)
       .where(and(eq(opdAppointments.serviceDate, ctx.date), inArray(opdAppointments.status, [...DUE])))),
     one(ctx.db.select({ n: count() }).from(opdAppointments)
@@ -292,16 +296,16 @@ async function appointmentsCard(ctx: DeskProviderCtx): Promise<DeskCard> {
       .innerJoin(opdDoctors, eq(opdAppointments.doctorId, opdDoctors.id))
       .where(and(eq(opdAppointments.status, "needs_rebooking"), gte(opdAppointments.serviceDate, ctx.date)))
       .groupBy(opdAppointments.doctorId, opdDoctors.displayName),
-    ctx.db.selectDistinct({ doctorId: opdAppointments.doctorId }).from(opdAppointments)
-      .where(eq(opdAppointments.serviceDate, ctx.date)),
   ]);
   const needsRebooking = rebooking.reduce((n, r) => n + Number(r.n), 0);
   return {
     key: "opd.appointments",
     band: "now",
     titleKey: "desk.appointments.title",
-    // a check-in is a queue join on the doctor's own topic: the tile flips live with the hall
-    topics: doctorsToday.map((d) => `queue:${d.doctorId}:${ctx.date}`),
+    // CLOSE pass 1 — NO TOPICS. `queue:*` subscriptions are gated on `opd.queue.read`, which this
+    // provider's permission does not imply (the seeded `opd_admin` holds bookings and not the queue,
+    // and a refused subscribe is silent on the web); and bookings, cancellations, the sweep and the
+    // leave cascade are not realtime names at all. The tile is as live as the poll, honestly.
     stats: [
       { key: "desk.appointments.dueToday", value: String(due), href: "/opd/appointments" },
       { key: "desk.appointments.checkedIn", value: String(checkedIn), href: "/opd/appointments" },

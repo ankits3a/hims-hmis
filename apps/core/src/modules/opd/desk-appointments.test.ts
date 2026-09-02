@@ -67,7 +67,11 @@ describe("opd appointments desk provider (FD-1 T2)", () => {
     expect(stat(card!, "desk.appointments.needsRebooking")).toBe("1");
     expect(card!.rows).toEqual([{ id: drb.doctorId, badge: "1", title: expect.any(String), subtitle: "desk.appointments.rebookRow", severity: "warn", href: "/opd/appointments" }]);
     expect(JSON.stringify(card)).not.toContain("P5");                     // a doctor, never a patient
-    expect(card!.topics!.sort()).toEqual([`queue:${dra.doctorId}:${DATE}`, `queue:${drb.doctorId}:${DATE}`].sort());
+    expect(card!.topics).toBeUndefined();   // CLOSE pass 1: no topic this permission cannot subscribe to
+    // DECIDED: the card is hospital-wide — a second clerk sees the same bookings
+    const other = await mkUser(db, "clerk2", ["front_office"]);
+    const [same] = await opdAppointmentsDeskProvider.load({ db, actor: other.actor, reader: other.actor, date: DATE, now: T0 });
+    expect(same!.stats!.map((s) => s.value)).toEqual(card!.stats!.map((s) => s.value));
     expect(card!.stats!.every((s) => s.href === "/opd/appointments")).toBe(true);
   });
 
@@ -77,6 +81,5 @@ describe("opd appointments desk provider (FD-1 T2)", () => {
     const [card] = await opdAppointmentsDeskProvider.load(ctx());
     expect(card!.stats!.map((s) => s.value)).toEqual(["0", "0", "0", "0"]);
     expect(card!.rows).toEqual([]);
-    expect(card!.topics).toEqual([]);
   });
 });
