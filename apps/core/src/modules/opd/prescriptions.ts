@@ -465,6 +465,28 @@ export async function listPrescriptions(db: Db, actor: Actor, encounterId: strin
   return db.select().from(opdPrescriptions).where(eq(opdPrescriptions.encounterId, encounterId)).orderBy(asc(opdPrescriptions.version));
 }
 
+/**
+ * PLAN 16c T0a — ONE prescription by id, for the dispensing counter.
+ *
+ * The id arrives from a scanned `rx1…` payload or a queued dispense row and is not a capability
+ * (07a T1): the row is found first, then its ENCOUNTER is put through the same read gate
+ * `listPrescriptions` walks, and an unknown id and an invisible patient give the same `null`. The
+ * read is a PHI access and is logged on the prescriptions surface (`PhiSurface` is a closed kernel
+ * union; a pharmacy-specific surface is a kernel edit this task does not make).
+ */
+export async function getPrescription(db: Db, actor: Actor, prescriptionId: string): Promise<PrescriptionRow | null> {
+  const rows = await db.select().from(opdPrescriptions).where(eq(opdPrescriptions.id, prescriptionId)).limit(1);
+  const row = rows[0];
+  if (row === undefined) return null;
+  const seen = await visibleEncounterFor(db, actor, row.encounterId);
+  if (!seen) return null;
+  await recordPhiAccess(db, {
+    actor, patientId: seen.encounter.patientId, surface: "opd.prescriptions", encounterId: row.encounterId,
+    sealed: seen.sealed, reason: seen.breakGlass?.reason ?? null,
+  });
+  return row;
+}
+
 export type RxVerifyReason = "malformed" | "invalid_signature" | "stale_version" | "unknown_prescription";
 export type RxVerifyResult =
   | {

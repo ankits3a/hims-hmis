@@ -4,13 +4,13 @@ import { withTx } from "../../kernel/db/client";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters, testCfg } from "../../../test/helpers/opd";
 import { hmacSign } from "../../kernel/crypto";
-import { events, patientAllergies } from "../../kernel/db/schema";
+import { events, patientAllergies, phiAccessLog } from "../../kernel/db/schema";
 import { completeConsultation, saveConsultNote, startConsultation } from "./consultation";
 import { openVisit } from "./encounters";
 import { toFhirBundle } from "./fhir";
 import { addInteraction, addMedicine, addSalt } from "../formulary";
 import {
-  buildRxQrPayload, getPrescriptionPrint, issuePrescription, listPrescriptions, matchAllergies,
+  buildRxQrPayload, getPrescription, getPrescriptionPrint, issuePrescription, listPrescriptions, matchAllergies,
   precheckPrescription, verifyPrescriptionQr,
 } from "./prescriptions";
 import { callNext } from "./queue";
@@ -593,5 +593,23 @@ describe("opd prescriptions — interactions, duplicates and their overrides (Pl
     expect(pre.unresolvedLineIndexes).toEqual([]);
     expect(await listPrescriptions(db, dra.actor, enc.id)).toHaveLength(0);
     expect(await db.select().from(events).where(eq(events.name, "prescription.issued"))).toHaveLength(0);
+  });
+
+  /**
+   * PLAN 16c T0a — the dispensing counter reads ONE prescription by id, through the same read gate
+   * `listPrescriptions` walks (07a T1: an id is not a capability), and the read is a PHI access.
+   */
+  it("getPrescription returns the row by id through the read gate, null for an unknown id, and logs the PHI read", async () => {
+    const enc = await inConsult();
+    const issued = await issuePrescription(db, dra.actor, testCfg, enc.id, { lines: TWO_LINES }, MON2);
+
+    const row = await getPrescription(db, dra.actor, issued.prescriptionId);
+    expect(row).toMatchObject({ id: issued.prescriptionId, encounterId: enc.id, patientId: patient.id, version: 1 });
+    expect(row!.lines).toEqual(TWO_LINES);
+    expect(await getPrescription(db, dra.actor, newId())).toBeNull();
+
+    const logged = await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "opd.prescriptions"));
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({ patientId: patient.id, encounterId: enc.id, actorId: dra.userId });
   });
 });
