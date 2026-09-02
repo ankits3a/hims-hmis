@@ -165,11 +165,17 @@ function compactReading(r: VitalsInput): Partial<Record<(typeof READING_KEYS)[nu
   }
   return out;
 }
+/**
+ * A replay is the demanded vitals unchanged. CLOSE pass 2 / F5: a demanded key OMITTED from the
+ * confirm counts as unchanged — leaving SpO₂ out of the second call must not turn the same cuff
+ * numbers into a "new" reading. (DECIDED, pass 2 / F6: a genuine other arm that matches the first
+ * on every demanded vital is refused too, and a third take clears it — fails closed.)
+ */
 function sameReading(a: VitalsInput, b: VitalsInput, on: Set<string>): boolean {
   const ca = compactReading(a);
   const cb = compactReading(b);
   const keys = on.size > 0 ? READING_KEYS.filter((k) => on.has(k)) : READING_KEYS;
-  return keys.every((k) => ca[k] === cb[k]);
+  return keys.every((k) => cb[k] === undefined || ca[k] === cb[k]);
 }
 
 export async function demandRecheck(
@@ -267,11 +273,30 @@ export async function escalate(
      * to class 0. The confirming reading must breach at least one vital the demand breached.
      */
     if (demandedVitals.size > 0 && !flags.some((f) => demandedVitals.has(f.vital))) {
-      throw new OpdError(
-        "escalation_state_conflict",
-        "a different vital is a NEW first reading — the other arm of the SAME reading is what escalates",
-        { escalation: current, demanded: [...demandedVitals], flagged: flags.map((f) => f.vital) },
-      );
+      /*
+       * CLOSE pass 2 / F3 — a different vital is a NEW first reading, and it gets its own demand:
+       * the old one is withdrawn (its vital is calm in this reading, or absent), the new vital is
+       * demanded, the state stays `recheck_demanded` with the NEW flags on record. A refusal here
+       * left the entry demanded with no exit — the bench said "other arm, now" for the rest of the
+       * visit and only the save could move the board, bypassing the cancel window and the flash.
+       */
+      await appendEvent(tx, vitalsRecheckWithdrawn.make({
+        actor, patientId: live.patientId, encounterId, correlationId: live.workflowInstanceId,
+        payload: {
+          encounterId, patientId: live.patientId, doctorId: live.doctorId, serviceDate: live.serviceDate,
+          sessionId: live.sessionId, roomId: live.roomId, tokenNo: live.entry.tokenNo,
+          reading: compactReading(reading),
+        },
+      }));
+      await appendEvent(tx, vitalsRecheckDemanded.make({
+        actor, patientId: live.patientId, encounterId, correlationId: live.workflowInstanceId,
+        payload: {
+          encounterId, patientId: live.patientId, doctorId: live.doctorId, serviceDate: live.serviceDate,
+          sessionId: live.sessionId, roomId: live.roomId, tokenNo: live.entry.tokenNo,
+          flags, demand: "other_arm_now", reading: compactReading(reading),
+        },
+      }));
+      return { entryId: live.entry.id, state: "recheck_demanded", escalatedAt: null, escalatedFromClass: null, escalationBy: null, cancelMsRemaining: 0 };
     }
     /*
      * VD-2 T0 / F4 — "DOUBLE-CONFIRMED" MEANS TWO READINGS. The protocol persists no chart of its

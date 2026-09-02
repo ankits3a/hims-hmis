@@ -379,4 +379,21 @@ describe("opd vitals (recording, danger flags, the registered→waiting move)", 
     const logged = await db.select().from(phiAccessLog).where(eq(phiAccessLog.patientId, vip.id));
     expect(logged.some((l) => l.surface === "opd.vitals" && l.encounterId === opened.encounter.id)).toBe(true);
   });
+
+  it("CLOSE/pass2 F2: a chart whose SpO₂ was CONFIRMED at 68 can have its WEIGHT amended — the prior row's own values are not gated again", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const r = await recordVitals(db, vd.actor, opened.encounter.id, { ...adultOk, spo2: 68, weightKg: 22 }, MON, {
+      readings: { spo2: { takes: [68], source: "typed", held: [68] }, weightKg: { takes: [22], source: "typed" } },
+      overrides: { spo2: "confirmed_reclip", weightKg: "confirmed_real" },
+    });
+    expect(r.vitals.spo2).toBe(68);
+    const a = await amendVitals(db, vd.actor, r.vitals.id, { ...adultOk, spo2: 68, weightKg: 22, pulse: 96 }, "pulse re-read", MON, {
+      readings: { spo2: { takes: [68], source: "typed", held: [68] }, weightKg: { takes: [22], source: "typed" }, pulse: { takes: [96], source: "typed" } },
+    });
+    expect(a.vitals.pulse).toBe(96);
+    expect(a.vitals.spo2).toBe(68);
+    // a NEW low value on the amendment is still held: the gate judges what changed
+    await expect(amendVitals(db, vd.actor, a.vitals.id, { ...adultOk, spo2: 40, weightKg: 22 }, "slipped", MON))
+      .rejects.toMatchObject({ code: "vitals_incomplete" });
+  });
 });

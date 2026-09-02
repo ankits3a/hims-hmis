@@ -96,7 +96,11 @@ export function useDangerProtocol(encounterId: string | null, initial: WireEscal
   const [msLeft, setMsLeft] = useState(0);
   const [demandedKey, setDemandedKey] = useState<TileKey | null>(null);
   const openedAt = useRef<number | null>(null);
-  useEffect(() => { setView(initial); setCalmed(false); setError(null); setDemandedKey(null); }, [initial, encounterId]);
+  // The view follows the server's answer AND the patient: a new encounter whose answer is the same
+  // value (null, null) must still drop the last patient's protocol state.
+  useEffect(() => { setView(initial); }, [initial, encounterId]);
+  // pass 2 / F10 — the demanded tile and the calmed line survive a refetch; they reset with the patient.
+  useEffect(() => { setCalmed(false); setError(null); setDemandedKey(null); }, [encounterId]);
 
   // The cosmetic countdown: one number, ticked every 250 ms, from the instant the server answered.
   useEffect(() => {

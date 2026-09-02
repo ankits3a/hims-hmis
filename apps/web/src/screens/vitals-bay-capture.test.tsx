@@ -163,6 +163,11 @@ describe("CLOSE pass 1 — the hypoxic patient, and a chip that was never asked"
     fireEvent.click(screen.getByTestId("mirror-confirm"));            // it is real
     expect(screen.getByTestId("value-spo2").textContent).toBe("68");
     expect(screen.getByTestId("tile-spo2").getAttribute("data-tint")).toBe("danger");
+    // pass 2 / F4 — a re-clip that slips to 40 is HELD again; the confirmed 68 stays the operative take
+    await user.click(screen.getByTestId("input-spo2")); await user.keyboard("40{Enter}");
+    expect(screen.getByTestId("mirror").getAttribute("data-kind")).toBe("probe_error");
+    expect(screen.getByTestId("value-spo2").textContent).toBe("68");
+    fireEvent.click(screen.getByTestId("mirror-retake"));
     await user.click(screen.getByTestId("input-bp")); await user.keyboard("100/60{Enter}");
     await user.click(screen.getByTestId("input-pulse")); await user.keyboard("118{Enter}");
     fireEvent.click(screen.getByTestId("save-emergency"));
@@ -170,7 +175,7 @@ describe("CLOSE pass 1 — the hypoxic patient, and a chip that was never asked"
     const body = posted[0]!.body as { overrides: Record<string, string>; readings: { spo2: { takes: number[]; held?: number[] } }; emergency: boolean };
     expect(body.overrides).toEqual({ spo2: "confirmed_reclip" });
     expect(body.readings.spo2.takes).toEqual([68]);
-    expect(body.readings.spo2.held).toEqual([68, 68]);   // both attempts were held before the confirm — the log keeps them
+    expect(body.readings.spo2.held).toEqual([68, 68, 40]);   // every hold stays in the log; only the confirmed 68 was charted
     expect(body.emergency).toBe(true);
     await waitFor(() => expect(screen.getByTestId("saved-danger").textContent).toContain("spo2 68"));
   });

@@ -262,6 +262,8 @@ export function VitalsBay(): React.ReactElement {
   const [keys, setKeys] = useState({ typed: 0, device: 0 });
   const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
+  const inHandRef = useRef(inHand);
+  inHandRef.current = inHand;
   const busyRef = useRef(false);
   busyRef.current = busy;
 
@@ -324,13 +326,16 @@ export function VitalsBay(): React.ReactElement {
     const tint = flagOf(key, take, band, ranges);
     const state = protocol.view?.state ?? "none";
     const reading = readingFrom(tiles);
-    // While the other arm is demanded, EVERY ranged take is the other arm: the server judges it —
-    // calm withdraws the demand, the same vital in danger escalates, another vital is refused.
-    if (state === "recheck_demanded" && RANGED.includes(key)) {
+    // While the other arm is demanded, the DEMANDED tile's next take is the other arm (calm
+    // withdraws, danger escalates) and a danger on another vital is a new first reading the server
+    // re-demands. A calm take on an undemanded tile is just a take (pass 2 / F1: routing every
+    // ranged take here answered "that is the first reading again" under a thermometer).
+    if (state === "recheck_demanded" && RANGED.includes(key) && (key === protocol.demandedKey || tint === "danger")) {
       setRestOffer(null);
       if (!protocol.busy) void protocol.confirm(reading);
       return;
     }
+    if (state === "recheck_demanded") return;
     // A SAM MUAC is its own emergency lane (the design's words): charted, flagged hard, and the SAVE
     // moves the board through the server's danger path. "The other arm, now" is a cuff instruction.
     if (tint === "danger") {
@@ -380,7 +385,7 @@ export function VitalsBay(): React.ReactElement {
     setBanner({ who, doctorName: row.doctorName, flags: a.result.flags, amended: true });
     setTrail(a);
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
-    void qc.invalidateQueries({ queryKey: ["vitals-bay", "chart", row.encounterId] });
+    void qc.invalidateQueries({ queryKey: ["vitals-bay", "chart"] });
     clearDesk();
   }, [qc, clearDesk, t]);
 
@@ -392,9 +397,10 @@ export function VitalsBay(): React.ReactElement {
     releaseFirstTake(row.encounterId);
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "summary"] });
-    // CLOSE pass 1 — a save that lands after the desk moved on clears NOTHING of the next patient.
-    if (inHand?.encounterId === row.encounterId) clearDesk();
-  }, [qc, clearDesk, t, inHand]);
+    // CLOSE pass 1 — a save that lands after the desk moved on clears NOTHING of the next patient
+    // (pass 2 / F8: read through a ref, the click-time closure could never disagree with its row).
+    if (inHandRef.current?.encounterId === row.encounterId) clearDesk();
+  }, [qc, clearDesk, t]);
 
   const identify = useCallback(async (raw: string) => {
     const door = classifyDoor(raw);

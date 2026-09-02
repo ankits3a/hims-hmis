@@ -239,17 +239,29 @@ describe("VD-1 T3 — recheck, the double confirm, and the ten seconds", () => {
     await expect(escalate(db, vd.actor, enc, WORSE, MON)).rejects.toMatchObject({ code: "escalation_state_conflict" });
   });
 
-  it("CLOSE/pass1: two single readings of DIFFERENT vitals are not a double confirm; a copied cuff reading with a new temperature is still a replay", async () => {
+  it("CLOSE/pass1+2: a DIFFERENT vital is a new first reading — the old demand is withdrawn and the new vital demanded (no exit-less state); a copied cuff reading with a new temperature is still a replay", async () => {
     const enc = await walkIn();
     await demandRecheck(db, vd.actor, enc, { ...CALM, pulse: 125 }, MON);            // pulse demanded
-    await expect(escalate(db, vd.actor, enc, { ...CALM, pulse: 80, spo2: 85 }, MON))  // a different vital
-      .rejects.toMatchObject({ code: "escalation_state_conflict" });
+    const re = await escalate(db, vd.actor, enc, { ...CALM, pulse: 80, spo2: 85 }, MON);  // pulse calm, SpO₂ now danger
+    expect(re.state).toBe("recheck_demanded");
     expect(await classNow(enc)).toBe(3);
+    const demands = await db.select().from(events).where(eq(events.name, "vitals.recheck_demanded")).orderBy(events.seq);
+    expect(demands).toHaveLength(2);
+    expect((demands[1]!.payload as { flags: { vital: string }[] }).flags.map((f) => f.vital)).toEqual(["spo2"]);
+    expect(await db.select().from(events).where(eq(events.name, "vitals.recheck_withdrawn"))).toHaveLength(1);
+    // and the new demand escalates on ITS vital
+    expect((await escalate(db, vd.actor, enc, { ...CALM, spo2: 84 }, MON)).state).toBe("escalated");
     const enc2 = await walkIn();
     await demandRecheck(db, vd.actor, enc2, DANGER, MON);
     await expect(escalate(db, vd.actor, enc2, { ...DANGER, tempC: 37.4 }, MON))      // same cuff numbers, new temperature
       .rejects.toMatchObject({ code: "escalation_state_conflict" });
     expect(await classNow(enc2)).toBe(3);
     expect((await escalate(db, vd.actor, enc2, WORSE, MON)).state).toBe("escalated");
+    // pass 2 / F5: a demanded key OMITTED from the confirm is a replay, not a new reading
+    const enc3 = await walkIn();
+    await demandRecheck(db, vd.actor, enc3, { ...CALM, sbp: 190, dbp: 85, spo2: 88 }, MON);   // sbp + spo2 demanded
+    await expect(escalate(db, vd.actor, enc3, { sbp: 190, dbp: 85, pulse: 104, tempC: 36.9 }, MON))   // spo2 OMITTED
+      .rejects.toMatchObject({ code: "escalation_state_conflict" });
+    expect(await classNow(enc3)).toBe(3);
   });
 });

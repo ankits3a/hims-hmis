@@ -147,8 +147,8 @@ review passes (pass 2 briefed at the fixes), the revert on every guard, counts p
 
 ## 5. CLOSE — 2026-09-02, code-complete, NOT deployed
 
-**Tip: PR #15 (`lane/front-desk-vd2-t5`), the stack's merge unit.** T0–T5 done; the two review
-passes below. Task PRs #8 (T1) · #9 (T0) · #10 (T2) · #12 (T3) · #14 (T4) stay as the per-task
+**Tip: PR #15 (`lane/front-desk-vd2-t5`), the stack's merge unit.** T0–T5 done; both review
+passes run and remediated (§5.5, §5.6); code-complete, NOT deployed. Task PRs #8 (T1) · #9 (T0) · #10 (T2) · #12 (T3) · #14 (T4) stay as the per-task
 record; three went DIRTY on the seat census after 17c T1/T2 merged and #15 carries main merged in.
 
 ### 5.1 T0 — the review VD-1 owed (one fresh reviewer, 138k tokens): 0 CRITICAL, 6 MAJOR, 6 MINOR
@@ -225,9 +225,46 @@ Reviewers: T0 138k · pass 1 A 217k + B 175k · pass 2 below. Session balance af
 
 **Assertions pass 1 named as in-band under both behaviours, now replaced:** the calm-arm test asserted only "no escalate call"; the rest test never asserted the offer absent under the next patient; the amend test seeded `readings: {}`; the restricted test checked the UHID only on the bench row; the chip test clicked once.
 
-### 5.6 Pass 2 — briefed at the fixes
+### 5.6 Pass 2 — briefed at the fixes (one fresh reviewer, 181k): 9 CORRECT, 3 INCOMPLETE, ONE WRONG road
 
-_(pending — appended below when the reviewer returns)_
+**The WRONG one was in pass 1's fix for the calm arm:** routing EVERY ranged take to `escalate`
+while the other arm was demanded made a thermometer take answer *"that is the first reading
+again"* — the server's own replay rule, painted red under the wrong tile. A defect the shipped code
+did not have. Now only the DEMANDED tile's next take, or a danger on another vital, is the other arm.
+
+| # | pass-2 finding | fix (this commit) | revert pair |
+|---|---|---|---|
+| F1 MAJOR (WRONG) | every ranged take posted as the confirm while demanded | only `demandedKey` or a danger take confirms; a calm undemanded take is a take | R58 red |
+| F2 MAJOR | the chart a confirmed 68 % SpO₂ produces could not be amended (the hold re-held it, `vitals_incomplete`) | the server gates only what CHANGED on an amendment: a value the prior row charted carries an `unchanged_on_amend` override | R63 red |
+| F3 MAJOR | a different vital refused with no exit: the bench said "other arm" for the rest of the visit | a new vital WITHDRAWS the old demand and is demanded itself (two events, state stays `recheck_demanded`, the new flags on record) | R61 red |
+| F4 MAJOR | after "it is real" the probe hold was OFF for every later take — a slip to 40 charted | the hold judges every NEW take; the confirmed value alone is exempt | R59 red |
+| F5 MINOR | a demanded key OMITTED from the confirm made a copied cuff reading "new" | an omitted demanded key counts as unchanged | R62 red |
+| F6 MINOR | a genuine other arm identical on every demanded vital is refused | **DECIDED: fails closed, a third take clears it** | — |
+| F8 MINOR | the landing guard compared a click-time closure with its own row | reads the current in-hand through a ref | (guarded by `saving`, no test can reach it) |
+| F9 MINOR | dead chart invalidation | prefix invalidation | — |
+| F10 MINOR | `demandedKey`/`calmed` reset on a refetch | reset with the PATIENT, the view with the patient AND the answer | R60 red (the first cut reset neither, and two suites went red) |
+| F7 / F11 | the amend-open log's `sealed` reads `restricted`, not `isConfidential`; the amend header claimed overrides ride along | recorded (§7), comment corrected |
+
+**Assertions pass 2 named in-band, and the honest answer:** the rest-offer "no bench-state call"
+lines cannot discriminate (nobody presses rest under either code) — the discriminating line is
+`rest-offer` absent under the next patient, which is asserted; the saving test's `session-empty`
+is in-band, the take-refusal line is the kill; the amend fixture's `heightCm: { takes: [] }` is a
+stub shape no real row produces.
+
+### 5.7 Evidence after both passes
+
+| instrument | result |
+|---|---|
+| web full `vitest run` | **74 files / 555 tests, exit 0** |
+| core `jest -w 2`: prestage, escalation(+concurrency), vitals, vitals-gates, bench, realtime, opd.e2e | **9 suites / 84 tests, exit 0** |
+| `pnpm lint` · `pnpm typecheck` | 0 errors (2 warnings in other lanes' kernel tests) · exit 0 |
+| revert pairs, whole phase | **R1–R63**: 57 red on first run; R2 re-cut and red; R28 replaced (R28' red); R33, R34, R41 equivalent on the assembly; R42 label-only |
+| review cost | T0 138k · pass 1 392k · pass 2 181k = **711k** against the 543k term (31% over — a third reviewer was needed by C1 alone) |
+| migrations · permissions · hub exports | 0 · 0 · 0 (one new OPD route, `GET /opd/vitals/:id`, under an existing permission) |
+
+**No pass 3.** Pass 2's four MAJORs are fixed with their roads as tests and six new revert pairs;
+the method's two passes are run. What a third pass would look at is recorded: F1's road (a calm
+take on an undemanded tile) is the seam where the two remediations met.
 
 ## 7. Findings deliberately NOT fixed in this phase — each verified, each with its reason
 

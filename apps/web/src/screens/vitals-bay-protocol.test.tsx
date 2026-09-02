@@ -184,6 +184,26 @@ describe("VD-2 T3 — story 3: the escalation, through the ASSEMBLED bay", () =>
     expect(screen.queryByTestId("rest-offer")).not.toBeInTheDocument();   // the pair is on the tiles; rest is not re-offered after a demand
   });
 
+  it("CLOSE pass 2 / F1: while the cuff is demanded, a calm THERMOMETER take is just a take — nothing is posted, nothing goes red", async () => {
+    const calls: Call[] = [];
+    stubBay([ROW_B], calls);
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-121"));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("input-bp")));
+    await user.keyboard("208/126{Enter}");
+    await waitFor(() => expect(screen.getByTestId("protocol").getAttribute("data-state")).toBe("recheck_demanded"));
+    await user.click(screen.getByTestId("input-tempC")); await user.keyboard("36.8{Enter}");
+    await user.click(screen.getByTestId("input-pulse")); await user.keyboard("88{Enter}");
+    expect(calls.filter((c) => c.key.endsWith("/escalation/escalate"))).toHaveLength(0);
+    expect(screen.queryByTestId("protocol-error")).not.toBeInTheDocument();
+    expect(screen.getByTestId("protocol-demand").textContent).toContain("OTHER ARM");
+    // the cuff's own next take is the other arm
+    await user.click(screen.getByTestId("input-bp")); await user.keyboard("214/132{Enter}");
+    await waitFor(() => expect(screen.getByTestId("protocol").getAttribute("data-state")).toBe("escalated"));
+  });
+
   it("CLOSE pass 1: after a named human's CANCEL the agent does not re-run the protocol by itself — the nurse is asked", async () => {
     const calls: Call[] = [];
     const server = stubBay([ROW_B], calls);

@@ -396,7 +396,16 @@ export async function amendVitals(
   const ageYears = summary?.dob ? ageYearsAt(summary.dob, now) : null;
   const band = bandFor(ageYears, cfg.dangerRanges);
   const carriedForward = detail.carriedForward ?? (prior.carriedForward as VitalKey[]);
-  const overrides = detail.overrides ?? {};
+  /*
+   * CLOSE pass 2 / F2 — A VALUE THE PRIOR ROW ALREADY CHARTED IS NOT GATED AGAIN. The gates and
+   * the probe hold judge what is NEW: a confirmed 68 % SpO₂ or a confirmed 22 kg is a chart fact
+   * the first save established with its override, and the override lives in a note. Re-holding
+   * it on the amendment of the WEIGHT made a hypoxic patient's chart un-amendable from the desk.
+   */
+  const overrides: GateOverrides = { ...(detail.overrides ?? {}) };
+  for (const k of ["weightKg", "heightCm", "spo2"] as const) {
+    if (overrides[k] === undefined && values[k] !== undefined && values[k] !== null && values[k] === prior[k]) overrides[k] = "unchanged_on_amend";
+  }
   // VD-2 T0 (review MINOR) — `emergency` was accepted on the amend body and silently dropped.
   const emergency = detail.emergency ?? prior.emergency;
 

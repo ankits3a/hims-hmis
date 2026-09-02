@@ -169,7 +169,8 @@ export function mirrorFor(key: TileKey, take: Take, ageYears: number | null, ran
   if (key === "heightCm" && tile.override === null && last !== null && last.heightCm !== null && Math.abs(take - last.heightCm) >= g.heightDeltaCm) {
     return { kind: "shrinking_adult", key, value: take, last: last.heightCm };
   }
-  if (key === "spo2" && tile.override === null && take < g.spo2ProbeFloorPct) return { kind: "probe_error", key, value: take };
+  // pass 2 / F4 — a confirmed 68 does not switch the hold OFF: a later slip to 40 is held again
+  if (key === "spo2" && take < g.spo2ProbeFloorPct && !tile.takes.includes(take)) return { kind: "probe_error", key, value: take };
   return null;
 }
 
