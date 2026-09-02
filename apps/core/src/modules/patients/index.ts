@@ -12,7 +12,7 @@ export type { PatientSummary } from "./registration";
 export { listAllergies } from "./allergies";
 export type { AllergyRow } from "./allergies";
 export { searchPatients, visiblePatientIds } from "./search";
-export type { PatientSearchResult } from "./search";
+export type { MatchLane, PatientSearchResult } from "./search";
 export { NO_AUTHORITY, effectiveGuardianAuthority, guardiansWithAuthority, sweepGuardianMajority } from "./guardians";
 export type { GuardianAuthority, GuardianRow } from "./guardians";
 /**
