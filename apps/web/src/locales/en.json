@@ -1645,7 +1645,10 @@
       "myCollections": "My collections",
       "collected": "Collected",
       "receipts": "Receipts",
-      "cash": "Cash"
+      "cash": "Cash",
+        "noDrawer": "No drawer open",
+        "float": "Opening float",
+        "expectedCash": "Cash the drawer should hold"
     },
       "patients": {
         "registration": "Registration",

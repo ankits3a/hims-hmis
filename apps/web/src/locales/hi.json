@@ -1645,7 +1645,10 @@
       "myCollections": "मेरी वसूली",
       "collected": "वसूली",
       "receipts": "रसीदें",
-      "cash": "नकद"
+      "cash": "नकद",
+        "noDrawer": "कोई दराज़ खुली नहीं",
+        "float": "शुरुआती फ़्लोट",
+        "expectedCash": "दराज़ में होनी चाहिए नक़दी"
     },
       "patients": {
         "registration": "पंजीकरण",
