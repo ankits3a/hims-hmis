@@ -114,6 +114,45 @@ export async function lastActiveVitals(db: Db | Tx, patientId: string): Promise<
 
 export type VitalsRow = typeof opdVitals.$inferSelect;
 
+/**
+ * VD-2 T0 / F1 — the chart BEFORE the one being amended. An amendment's gates and its carried lock
+ * compare against the visit's predecessor, never against the row being replaced: correcting a
+ * mistyped 151 → 147 on the same visit must not fire `shrinking_adult` against the number being
+ * corrected, and a carried height must still equal the chart it was carried FROM.
+ */
+export async function lastActiveVitalsBefore(db: Db | Tx, patientId: string, excludeVitalsId: string): Promise<VitalsRow | null> {
+  const rows = await db
+    .select().from(opdVitals)
+    .where(and(eq(opdVitals.patientId, patientId), eq(opdVitals.status, "active"), ne(opdVitals.id, excludeVitalsId)))
+    .orderBy(desc(opdVitals.recordedAt)).limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * VD-2 T0 / F3 — A CARRIED KEY WITH NO NUMBER CARRIES THE NUMBER IN. `checkCarriedLock` skips an
+ * absent value and `missingRequired` excuses a carried key, so a body naming `carriedForward:
+ * ["heightCm"]` with no height wrote a NULL scalar under carried provenance — the chart said
+ * "carried" and carried nothing, and the doctor dosed from a blank. The server owns the carried
+ * number (D7: a carried value is a claim about provenance), so it copies it in; a carry with no
+ * chart to carry from is refused by name rather than charted as nothing.
+ */
+export function carryIn(charted: VitalsInput, carriedForward: readonly VitalKey[], last: VitalsRow | null): void {
+  const nothingToCarry: { key: VitalKey; carried: null; supplied: null }[] = [];
+  for (const key of carriedForward) {
+    if (charted[key] !== undefined && charted[key] !== null) continue;
+    const carried = last?.[key] ?? null;
+    if (carried === null) { nothingToCarry.push({ key, carried: null, supplied: null }); continue; }
+    charted[key] = carried;
+  }
+  if (nothingToCarry.length > 0) {
+    throw new OpdError(
+      "carried_value_locked",
+      `nothing to carry forward for: ${nothingToCarry.map((l) => l.key).join(", ")} — measure it`,
+      { locked: nothingToCarry, reasons: UNLOCK_REASONS },
+    );
+  }
+}
+
 /** recordVitals runs on either of these; anything else is encounter_state_conflict. */
 const RECORDABLE: readonly string[] = ["registered", "waiting"];
 /** Queue-entry statuses a danger flag is stamped onto — the encounter's live-at-vitals-time set. */
@@ -206,6 +245,7 @@ export async function recordVitals(
   if (heldReadings.spo2 === undefined) charted.spo2 = undefined;
   else charted.spo2 = held.spo2;
 
+  carryIn(charted, carriedForward, last);
   const locked = checkCarriedLock(charted, carriedForward, last, detail.unlockReasons ?? {});
   if (locked.length > 0) {
     throw new OpdError(
@@ -248,6 +288,12 @@ export async function recordVitals(
     const { entry, roomId } = await latestEntryWhere(tx, encounterId);
     const where = { doctorId: encounter.doctorId!, serviceDate: encounter.serviceDate, sessionId: entry.sessionId, roomId, tokenNo: entry.tokenNo };
     const env = { actor, patientId: encounter.patientId, encounterId, correlationId: encounter.workflowInstanceId };
+
+    // VD-2 T0 — a chart ends the rest: a patient whose vitals are saved is no longer `resting`
+    // (a stale `recallDue` would light the bench forever) and no longer `away`.
+    if (entry.benchState !== null) {
+      await tx.update(opdQueueEntries).set({ benchState: null, recallAt: null }).where(eq(opdQueueEntries.id, entry.id));
+    }
 
     if (dangerFlags.length > 0) {
       // Not a status write — the mirror rule stands (only moveEncounter writes opd_encounters.status).
@@ -329,9 +375,17 @@ export async function amendVitals(
   if (prior.status !== "active") {
     throw new OpdError("vitals_state_conflict", "this reading has already been superseded — amend the current one", { vitalsId });
   }
-  // The read gate, not re-implemented: an encounter id is not a capability (07a T1).
-  const seen = await visibleEncounterFor(db, actor, prior.encounterId);
-  if (!seen) throw new OpdError("unknown_vitals", `unknown vitals ${vitalsId}`);
+  /*
+   * VD-2 T0 / F6 — THE SAME GATE AS THE RECORD PATH. `recordVitals` reads the encounter with
+   * `getEncounter` and the patient through `getPatientSummaries`, so a `vitals_desk` nurse charts
+   * a confidential patient (the summary arrives aliased). Amend went through `visibleEncounterFor`,
+   * which needs `patients.confidential.read` or break-glass — held by neither desk role — so the
+   * nurse who had just saved a VIP's transposed digit got `unknown_vitals` back. One rule: whoever
+   * may write the chart may correct it, and nothing more is revealed by the correction than by
+   * the save (the response is the row the caller wrote).
+   */
+  const enc = await getEncounter(db, prior.encounterId);
+  if (!enc) throw new OpdError("unknown_vitals", `unknown vitals ${vitalsId}`);
 
   const readings = detail.readings ?? inputToReadings(input);
   const values: VitalsInput = detail.readings === undefined ? input : { ...input, ...readingsToInput(detail.readings) };
@@ -343,20 +397,36 @@ export async function amendVitals(
   const band = bandFor(ageYears, cfg.dangerRanges);
   const carriedForward = detail.carriedForward ?? (prior.carriedForward as VitalKey[]);
   const overrides = detail.overrides ?? {};
+  // VD-2 T0 (review MINOR) — `emergency` was accepted on the amend body and silently dropped.
+  const emergency = detail.emergency ?? prior.emergency;
 
   // The gates apply to a correction exactly as they apply to a first save — a slipped digit is no
   // more acceptable the second time — and they compare against the reading BEFORE this one, which
-  // is the prior row's own predecessor rather than the row being replaced.
+  // is the prior row's own predecessor rather than the row being replaced (T0 / F1: the code passed
+  // `prior` itself, so a same-visit correction fired `shrinking_adult` against the value being fixed).
+  const before = await lastActiveVitalsBefore(db, prior.patientId, prior.id);
   const heldReadings = holdProbeErrors(readings, cfg.dangerRanges, overrides);
   const held = readingsToInput(heldReadings);
   const charted: VitalsInput = { ...values };
   charted.spo2 = heldReadings.spo2 === undefined ? undefined : held.spo2;
 
-  const gates = sanityGates(charted, ageYears, cfg.dangerRanges, prior, overrides);
+  // T0 / F1 — D7 holds on amend exactly as on record: a carried key arrives with the carried number
+  // or names a preset reason, and an absent number is carried in from the predecessor (F3).
+  carryIn(charted, carriedForward, before);
+  const locked = checkCarriedLock(charted, carriedForward, before, detail.unlockReasons ?? {});
+  if (locked.length > 0) {
+    throw new OpdError(
+      "carried_value_locked",
+      `carried values changed without a reason: ${locked.map((l) => l.key).join(", ")}`,
+      { locked, reasons: UNLOCK_REASONS },
+    );
+  }
+  const gates = sanityGates(charted, ageYears, cfg.dangerRanges, before, overrides);
   if (gates.length > 0) throw new OpdError("vitals_gate", gates.map((g) => g.message).join("; "), { gates });
-  const missing = missingRequired(charted, ageYears, cfg.dangerRanges, { emergency: prior.emergency, carriedForward });
+  const missing = missingRequired(charted, ageYears, cfg.dangerRanges, { emergency, carriedForward });
   if (missing.length > 0) throw new OpdError("vitals_incomplete", `missing: ${missing.join(", ")}`, { missing });
   const flags = evaluateVitals(charted, band, cfg.dangerRanges);
+  const dangerFlags = flags.filter((f) => f.severity !== "notice");
 
   return withTx(db, async (tx) => {
     await tx.update(opdVitals).set({ status: "superseded" }).where(eq(opdVitals.id, prior.id));
@@ -365,8 +435,8 @@ export async function amendVitals(
       heightCm: charted.heightCm ?? null, weightKg: charted.weightKg ?? null, sbp: charted.sbp ?? null, dbp: charted.dbp ?? null,
       pulse: charted.pulse ?? null, rr: charted.rr ?? null, spo2: charted.spo2 ?? null, tempC: charted.tempC ?? null,
       muacCm: charted.muacCm ?? null, notes: charted.notes ?? null,
-      readings: annotate(heldReadings, overrides, detail.unlockReasons ?? {}, prior),
-      contextChips: detail.contextChips ?? prior.contextChips, carriedForward, emergency: prior.emergency,
+      readings: annotate(heldReadings, overrides, detail.unlockReasons ?? {}, before),
+      contextChips: detail.contextChips ?? prior.contextChips, carriedForward, emergency,
       ageYearsAtRecord: ageYears, band: band.key, dangerFlags: flags,
       supersedesVitalsId: prior.id, amendmentReason: reason,
       recordedBy: actor.id, recordedAt: now,
@@ -375,19 +445,42 @@ export async function amendVitals(
     const entryRow = await latestEntry(tx, prior.encounterId);
     const session = entryRow === null ? null
       : (await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, entryRow.sessionId)))[0] ?? null;
-    const env = { actor, patientId: prior.patientId, encounterId: prior.encounterId, correlationId: seen.encounter.workflowInstanceId };
+    const env = { actor, patientId: prior.patientId, encounterId: prior.encounterId, correlationId: enc.workflowInstanceId };
 
-    // Never lowered: an amendment may REVEAL a danger, and can never clear one (D4).
-    if (flags.length > 0) {
+    /*
+     * VD-2 T0 / F2 — AN AMENDMENT THAT REVEALS A DANGER MOVES THE BOARD, and a notice does not.
+     * As shipped, `flags.length > 0` set `dangerFlagged` for a NOTICE (a child's fever corrected
+     * to 38.5 — the exact inversion of F1, and `reEnterVisit` copies that flag into `danger` on
+     * re-entry, seating a fever ahead of a stroke) while a revealed DANGER (SpO₂ 95 corrected to
+     * 85) touched neither the queue entry nor `vitals.danger_flagged`, so the token stayed class 3
+     * and the doctor's board never flashed. Now the record path's rule, verbatim: dangers move the
+     * board and fire the event; notices reach the doctor on the row and move nothing. Never lowered
+     * (D4): an amendment may reveal a danger and can never clear one.
+     */
+    if (dangerFlags.length > 0) {
       await tx.update(opdEncounters).set({ dangerFlagged: true }).where(eq(opdEncounters.id, prior.encounterId));
+      if (entryRow !== null && session !== null) {
+        await tx.update(opdQueueEntries)
+          .set({ danger: true })
+          .where(and(
+            eq(opdQueueEntries.id, entryRow.id),
+            inArray(opdQueueEntries.status, [...DANGER_ENTRY_STATUSES]),
+            ne(opdQueueEntries.escalation, "cancelled"),
+          ));
+        await appendEvent(tx, vitalsDangerFlagged.make({ ...env, payload: {
+          encounterId: prior.encounterId, patientId: prior.patientId, vitalsId: vitals!.id,
+          doctorId: session.doctorId, serviceDate: enc.serviceDate, sessionId: session.id, roomId: session.roomId, tokenNo: entryRow.tokenNo,
+          flags: dangerFlags,
+        } }));
+      }
     }
     await appendEvent(tx, vitalsAmended.make({
       ...env,
       payload: {
         encounterId: prior.encounterId, patientId: prior.patientId, vitalsId: vitals!.id, supersededId: prior.id,
-        doctorId: session?.doctorId ?? null, serviceDate: seen.encounter.serviceDate,
+        doctorId: session?.doctorId ?? null, serviceDate: enc.serviceDate,
         sessionId: session?.id ?? null, roomId: session?.roomId ?? null, tokenNo: entryRow?.tokenNo ?? null,
-        reason, changed: changedFields(prior, vitals!), dangerCount: flags.length,
+        reason, changed: changedFields(prior, vitals!), dangerCount: dangerFlags.length,
       },
     }));
     return { vitals: vitals!, flags, superseded: prior.id };

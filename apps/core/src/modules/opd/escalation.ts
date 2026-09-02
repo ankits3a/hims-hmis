@@ -2,7 +2,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
-import { opdEncounters, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
+import { events, opdEncounters, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { loadOpdConfig } from "./config";
 import { OpdError } from "./errors";
@@ -155,6 +155,22 @@ async function dangerOf(db: Db | Tx, actor: Actor, patientId: string, reading: V
  * minutes on the rest chairs is for elevated MAYBES. At danger numbers the recheck happens while
  * the patient is still on the stool.
  */
+const READING_KEYS = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm"] as const;
+/** The numbers only — `notes` is not a reading. */
+function compactReading(r: VitalsInput): Partial<Record<(typeof READING_KEYS)[number], number>> {
+  const out: Partial<Record<(typeof READING_KEYS)[number], number>> = {};
+  for (const k of READING_KEYS) {
+    const v = r[k];
+    if (typeof v === "number") out[k] = v;
+  }
+  return out;
+}
+function sameReading(a: VitalsInput, b: VitalsInput): boolean {
+  const ca = compactReading(a);
+  const cb = compactReading(b);
+  return READING_KEYS.every((k) => ca[k] === cb[k]);
+}
+
 export async function demandRecheck(
   db: Db, actor: Actor, encounterId: string, reading: VitalsInput, now: Date = new Date(),
 ): Promise<EscalationView> {
@@ -185,7 +201,7 @@ export async function demandRecheck(
       payload: {
         encounterId, patientId: live.patientId, doctorId: live.doctorId, serviceDate: live.serviceDate,
         sessionId: live.sessionId, roomId: live.roomId, tokenNo: live.entry.tokenNo,
-        flags, demand: "other_arm_now",
+        flags, demand: "other_arm_now", reading: compactReading(reading),
       },
     }));
     return {
@@ -219,6 +235,22 @@ export async function escalate(
     }
     const flags = await dangerOf(tx, actor, live.patientId, reading, now);
     if (flags.length === 0) throw new OpdError("escalation_not_warranted", "the recheck is inside the patient's band", { reading });
+    /*
+     * VD-2 T0 / F4 — "DOUBLE-CONFIRMED" MEANS TWO READINGS. The protocol persists no chart of its
+     * own (the bay charts the pair at save, with both takes — story 3's assertion), so the one
+     * thing that made the second call a second READING was nothing: the same body posted twice
+     * bumped a patient to class 0. The recheck's reading now rides its event, and an escalate whose
+     * reading is that reading, vital for vital, is refused as a replay. A genuine other-arm take
+     * that matches on every supplied vital is the case this refuses; it is answered by taking it again.
+     */
+    const demanded = await tx
+      .select({ payload: events.payload }).from(events)
+      .where(and(eq(events.name, "vitals.recheck_demanded"), eq(events.encounterId, encounterId)))
+      .orderBy(desc(events.seq)).limit(1);
+    const demandedReading = (demanded[0]?.payload as { reading?: VitalsInput } | undefined)?.reading;
+    if (demandedReading !== undefined && sameReading(demandedReading, reading)) {
+      throw new OpdError("escalation_state_conflict", "that is the first reading again — the other arm is a NEW reading", { escalation: current });
+    }
 
     const fromClass = classOf(stateOf(live.entry), now);
     await tx.update(opdQueueEntries)
@@ -265,8 +297,15 @@ export async function cancelEscalation(
       );
     }
     const restoredClass = (live.entry.escalatedFromClass ?? 3) as QueueClass;
+    /*
+     * VD-2 T0 / F5 — CANCEL REVERTS WHAT THE PROTOCOL DID AND NOTHING ELSE. A saved 190/120 puts
+     * the entry at class 0 BEFORE any protocol runs (`recordVitals` sets `danger`); an escalation
+     * on top of it records `escalatedFromClass = 0`, and a cancel that cleared `danger` un-bumped a
+     * danger the protocol never created while its event said "restored to 0". The board goes back
+     * to the class it was at: `danger` stays true exactly when that class was 0.
+     */
     await tx.update(opdQueueEntries)
-      .set({ escalation: "cancelled", danger: false, escalationBy: actor.id })
+      .set({ escalation: "cancelled", danger: restoredClass === 0, escalationBy: actor.id })
       .where(eq(opdQueueEntries.id, live.entry.id));
     await appendEvent(tx, queueEscalationCancelled.make({
       actor, patientId: live.patientId, encounterId, correlationId: live.workflowInstanceId,

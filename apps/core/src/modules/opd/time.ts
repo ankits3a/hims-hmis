@@ -46,10 +46,14 @@ export function istMonthBounds(at: Date): { start: Date; end: Date } {
 
 /** Whole years between dob and `at`, UTC, anniversary-aware (mirrors patients/types.ts yearsBetween, which is module-private). */
 export function ageYearsAt(dob: Date, at: Date): number {
-  const years = at.getUTCFullYear() - dob.getUTCFullYear();
+  // VD-2 T0 (review MINOR) — the birthday is an IST calendar day: a child who turns 13 today is 13
+  // from midnight IST, not from 05:30. `dob` is a calendar date stored at UTC midnight; `at` is
+  // an instant, shifted into the hospital's clock before its date is read.
+  const ist = new Date(at.getTime() + IST_OFFSET_MS);
+  const years = ist.getUTCFullYear() - dob.getUTCFullYear();
   const notYet =
-    at.getUTCMonth() < dob.getUTCMonth() ||
-    (at.getUTCMonth() === dob.getUTCMonth() && at.getUTCDate() < dob.getUTCDate());
+    ist.getUTCMonth() < dob.getUTCMonth() ||
+    (ist.getUTCMonth() === dob.getUTCMonth() && ist.getUTCDate() < dob.getUTCDate());
   return notYet ? years - 1 : years;
 }
 

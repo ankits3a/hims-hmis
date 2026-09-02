@@ -33,4 +33,12 @@ describe("IST helpers (pure, fixed +05:30, no DST)", () => {
     expect(ageYearsAt(new Date("2016-08-16T00:00:00.000Z"), at)).toBe(9); // birthday tomorrow
     expect(ageYearsAt(new Date("2016-08-15T00:00:00.000Z"), at)).toBe(10); // birthday today
   });
+
+  it("T0 (MINOR): a birthday is an IST calendar day — 13 from midnight IST, not from 05:30", () => {
+    const dob = new Date("2013-08-17T00:00:00.000Z");
+    // 2026-08-16 19:00 UTC = 2026-08-17 00:30 IST: the birthday has arrived in the hospital's clock.
+    expect(ageYearsAt(dob, new Date("2026-08-16T19:00:00.000Z"))).toBe(13);
+    // 2026-08-16 18:00 UTC = 23:30 IST on the 16th: not yet.
+    expect(ageYearsAt(dob, new Date("2026-08-16T18:00:00.000Z"))).toBe(12);
+  });
 });

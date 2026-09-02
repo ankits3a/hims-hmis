@@ -192,4 +192,37 @@ describe("VD-1 T3 — recheck, the double confirm, and the ten seconds", () => {
       .rejects.toMatchObject({ code: "unknown_queue_entry" });
     expect(await db.select().from(opdEncounters).where(eq(opdEncounters.id, deferred.encounter.id))).toHaveLength(1);
   });
+
+  // ═══ VD-2 T0 — the independent review VD-1 owed, findings F4 and F5 ═══
+
+  it("T0/F4: the same body posted twice is NOT a double confirm — the other arm is a new reading", async () => {
+    const enc = await walkIn();
+    await demandRecheck(db, vd.actor, enc, DANGER, MON);
+    await expect(escalate(db, vd.actor, enc, DANGER, MON))
+      .rejects.toMatchObject({ code: "escalation_state_conflict" });
+    expect(await classNow(enc)).toBe(3);
+    // The recheck's reading rides its event, which is what makes the replay detectable.
+    const demanded = (await db.select().from(events).where(eq(events.name, "vitals.recheck_demanded")))[0]!;
+    expect((demanded.payload as { reading: Record<string, number> }).reading).toMatchObject({ sbp: 208, dbp: 126 });
+    // A genuinely different second reading still escalates.
+    const view = await escalate(db, vd.actor, enc, WORSE, MON);
+    expect(view.state).toBe("escalated");
+    expect(await classNow(enc)).toBe(0);
+  });
+
+  it("T0/F5: cancel after a CHARTED danger leaves class 0 — the protocol reverts only what the protocol did", async () => {
+    const enc = await walkIn();
+    // A saved 190/120 puts the entry at class 0 before any protocol runs.
+    await recordVitals(db, vd.actor, enc, { ...DANGER, sbp: 190, dbp: 120 }, MON);
+    expect(await classNow(enc)).toBe(0);
+    await demandRecheck(db, vd.actor, enc, DANGER, new Date(MON.getTime() + 1_000));
+    const esc = await escalate(db, vd.actor, enc, WORSE, new Date(MON.getTime() + 2_000));
+    expect(esc.escalatedFromClass).toBe(0);
+    const view = await cancelEscalation(db, vd.actor, enc, new Date(MON.getTime() + 5_000));
+    expect(view.escalatedFromClass).toBe(0);
+    expect(await classNow(enc)).toBe(0);                 // the charted danger stands
+    expect((await entryOf(enc)).danger).toBe(true);
+    const cancelled = (await db.select().from(events).where(eq(events.name, "queue.escalation_cancelled")))[0]!;
+    expect((cancelled.payload as { restoredClass: number }).restoredClass).toBe(0);
+  });
 });
