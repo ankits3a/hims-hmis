@@ -7,6 +7,8 @@ import { patients } from "../../kernel/db/schema/patients";
 import { displayName } from "../patients";
 import { RadiologyError } from "./errors";
 import { mintStudyInstanceUid } from "./uid";
+import { studyImageViews } from "./views";
+import type { ImageViewRow } from "./views";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 
@@ -221,6 +223,8 @@ export type StudyView = WorklistRow & {
   imageSource: string | null;
   /** 18b T2 / D3 — what the worklist export carried and what `pacs` acquisition writes by default. */
   mintedStudyInstanceUid: string;
+  /** 18b T3 / D6 — who opened the images, latest first: the view table's consumer. */
+  views: ImageViewRow[];
   reports: { id: string; version: number; status: string; publishedAt: Date | null }[];
 };
 
@@ -276,6 +280,7 @@ export async function studyView(db: Db, actor: Actor, studyId: string): Promise<
     acquiredAt: row.study.acquiredAt, authorisedBy: row.study.authorisedBy,
     studyInstanceUid: row.study.studyInstanceUid, imageSource: row.study.imageSource,
     mintedStudyInstanceUid: mintStudyInstanceUid(row.study.id),
+    views: await studyImageViews(db, studyId),
     reports,
   };
 }

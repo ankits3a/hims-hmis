@@ -67,6 +67,9 @@ export const RADIOLOGY_ERROR_CODES = [
   // ── 18b T2 — the Study Instance UID ──
   "invalid_study_instance_uid",
   "duplicate_study_instance_uid",
+  // ── 18b T3 — the viewer door ──
+  "no_images",
+  "pacs_not_configured",
   /**
    * ═══ F41 (CLOSE REVIEW, RULED) — THE TWO CODES THE UNION WAS MISSING ═══
    *
@@ -153,6 +156,8 @@ const STATUS: Record<RadiologyErrorCode, number> = {
   contrast_mismatch: 422,
   invalid_study_instance_uid: 422,
   duplicate_study_instance_uid: 409,
+  no_images: 422,
+  pacs_not_configured: 409,
 
   second_factor_required: 403,
   laterality_mismatch: 422,
