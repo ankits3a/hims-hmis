@@ -6,6 +6,7 @@ import { orderItems } from "../../kernel/db/schema/orders";
 import { patients } from "../../kernel/db/schema/patients";
 import { displayName } from "../patients";
 import { RadiologyError } from "./errors";
+import { mintStudyInstanceUid } from "./uid";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 
@@ -215,6 +216,11 @@ export type StudyView = WorklistRow & {
   contrastGiven: boolean;
   acquiredAt: Date | null;
   authorisedBy: string | null;
+  /** 18b T2 — null until acquisition; the console shows `mintedStudyInstanceUid` before that. */
+  studyInstanceUid: string | null;
+  imageSource: string | null;
+  /** 18b T2 / D3 — what the worklist export carried and what `pacs` acquisition writes by default. */
+  mintedStudyInstanceUid: string;
   reports: { id: string; version: number; status: string; publishedAt: Date | null }[];
 };
 
@@ -268,6 +274,8 @@ export async function studyView(db: Db, actor: Actor, studyId: string): Promise<
     laterality: row.study.laterality,
     ionising: row.study.ionising, contrastGiven: row.study.contrastGiven,
     acquiredAt: row.study.acquiredAt, authorisedBy: row.study.authorisedBy,
+    studyInstanceUid: row.study.studyInstanceUid, imageSource: row.study.imageSource,
+    mintedStudyInstanceUid: mintStudyInstanceUid(row.study.id),
     reports,
   };
 }

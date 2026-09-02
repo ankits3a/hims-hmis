@@ -30,6 +30,8 @@ export type WireStudyView = WireWorklistRow & {
   /** F59/F73 — the side the `laterality_confirm` gate recorded at check-in. */
   laterality: string;
   ionising: boolean; contrastGiven: boolean; acquiredAt: string | null; authorisedBy: string | null;
+  /** 18b T2 — null until acquired; `mintedStudyInstanceUid` is what the console pre-fills (D3). */
+  studyInstanceUid: string | null; imageSource: string | null; mintedStudyInstanceUid: string;
   reports: { id: string; version: number; status: string; publishedAt: string | null }[];
 };
 

@@ -309,6 +309,9 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     expect(acquired.status).toBe(201);
 
     const [afterAcq] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study!.id));
+    /** 18b T2 — the UID acquisition wrote is the one the worklist offered the modality (D3). */
+    expect(afterAcq!.studyInstanceUid).toBe(mwl.body.rows[0].studyInstanceUid);
+    expect(acquired.body.studyInstanceUid).toBe(afterAcq!.studyInstanceUid);
     /** F18 — `ionising` is SNAPSHOTTED, which is what makes M4's dose CHECK mean anything. */
     expect([afterAcq!.status, afterAcq!.ionising, afterAcq!.contrastGiven]).toEqual(["acquired", true, true]);
 
