@@ -77,17 +77,18 @@
   },
   "shortcuts": {
     "title": "शॉर्टकट",
-    "search": "Ctrl+K या / — खोजें",
-    "new": "Ctrl+N नया मरीज़ (Alt+N)",
-    "confirm": "Ctrl+⏎ पुष्टि",
-    "release": "Esc मरीज़ छोड़ें",
+    "search": "/ — खोजें",
+    "new": "F4 नया मरीज़",
+    "confirm": "Ctrl+⏎ पुष्टि करें",
+    "release": "Esc मरीज़ को छोड़ें",
     "merge": "Alt+M मर्ज",
     "approvals": "Alt+A अनुमोदन",
     "opdDesk": "Alt+D OPD डेस्क",
     "opdVitals": "Alt+V वाइटल्स",
     "opdConsult": "Alt+C परामर्श",
     "opdAppointments": "Alt+P अपॉइंटमेंट",
-    "billing": "Alt+B काउंटर"
+    "billing": "Alt+B काउंटर",
+    "book": "F7 अपॉइंटमेंट"
   },
   "login": {
     "title": "साइन इन",
