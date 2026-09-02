@@ -869,6 +869,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   //      prints and hands over. A front-office login that could read every result in the building
   //      is exactly the confidentiality hole `restricted` and the alias rule exist to close, and
   //      granting `lab.results.read` "for convenience" would open it at the busiest desk.
+  //      **Amended by the OWNER 2026-09-02 (Plan 17c §7, decision 2):** printing IS reading the
+  //      paper. The report centre (`/lab/reports`) renders a SIGNED report to `lab.reports.print`
+  //      holders — aliased, one `phi_access_log` row per read, and only once the interlock allows
+  //      the hand-over; a HELD report never reaches the counter as a page. What stays refused is the
+  //      worklist's numbers before signature and every list's restricted test NAMES: the paper is
+  //      the decision, the lists are the guard (17c §8.8).
   //   3. **`phlebotomist` reads the worklist and touches no result.** The chair needs to know WHO
   //      is next and WHAT tube; it never needs a number.
   //   4. **`lab.reports.release_unpaid` goes to `billing_manager` and to nobody in the lab.** The
@@ -959,6 +965,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "billing.receipt.record",
       "billing.session.own",
       "billing.credit.extend",
+      /**
+       * OWNER RULING 2026-09-02 (Plan 17c §7, decision 1) — the counter RAISES the release request
+       * for a HELD report. DD6 keeps the DECISION with `billing_manager` (the approve/reject pair);
+       * this is only the right to ask, and the approval type it asks for (`lab_release_unpaid`) is
+       * bound to one order and spent on one hand-over. Until this grant no human role could raise
+       * it at all, and the seat's button was a 403 for everyone (17c close review pass 1, F2a).
+       */
+      "approvals.requests.create",
     ],
   },
   /**
@@ -1216,13 +1230,8 @@ export const NOT_YET_MODELLED: readonly NotYetModelled[] = [
       "without anyone noticing, that every clerk may read every restricted investigation in the " +
       "building — so it is a Class-A grant the runbook hands to the owner",
   },
-  {
-    permission: "approvals.requests.create",
-    reason:
-      "billing raises its own approval requests inside the issue transaction; no owner ruling " +
-      "yet names a human role that creates one directly (the billing table grants only the " +
-      "read/decide pair, to billing_manager)",
-  },
+  // `approvals.requests.create` LEFT this list on 2026-09-02: the owner ruled it onto
+  // `lab_reception` (Plan 17c §7, decision 1) — the counter asks, the billing manager decides.
   // ──────────────────────────────── PLAN 09 / DD18 — the ten ────────────────────────────────
   //
   // DD18 grants the counter's four (see ROLE_MODEL above) and enters everything partner-facing
@@ -1330,7 +1339,7 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   pathologist: "Pathologist (verifies and signs reports; the only role that may release a result)",
   lab_technician: "Lab Technician (accessions, runs the bench and keys results; never verifies)",
   phlebotomist: "Phlebotomist (calls the queue, scans the patient, draws and labels the tube)",
-  lab_reception: "Lab Reception (orders, bills, prints and hands over; reads no result)",
+  lab_reception: "Lab Reception (orders, bills, prints the signed report and hands it over; reads no result before signature)",
   // PLAN 18a T2 — the four radiology roles. Each title names the SEPARATION the role is defined by,
   // because a staffing card is where a hospital administrator decides who to assign, and "can this
   // person sign a report?" is the question the card has to answer without reading the code.
