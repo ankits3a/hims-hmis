@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../lib/api";
-import { billingErrorMessage, fetchFeeQuote, issueInvoice } from "../lib/billing-api";
+import { billingErrorMessage, fetchFeeQuote, fetchInvoicePrint, issueInvoice } from "../lib/billing-api";
 import type {
-  TenderMode, WireAdjustmentCandidate, WireFeeQuote, WireIssueInvoiceResult, WirePricedLine, WireTender,
+  TenderMode, WireAdjustmentCandidate, WireFeeQuote, WireInvoicePrint, WireIssueInvoiceResult, WirePricedLine, WireTender,
 } from "../lib/billing-api";
 import { fmtIst, useDebounced } from "../lib/format";
 import { COUNTER_SEQUENCES, TOKEN_LANES, getOpdConfig, joinQueue, opdErrorMessage, putCounterFlow, todayIst, walkIn } from "../lib/opd-api";
@@ -14,11 +14,15 @@ import type {
 import { SubmitButton } from "../components/submit-button";
 import { TenderEditor } from "../components/tender-editor";
 import { MoneyInput } from "../components/money-input";
+import { CounterSlip } from "../components/counter-slip";
+import { InvoicePrint } from "../components/invoice-print";
 import { usePaletteOptional } from "../components/command-palette";
 import { useAuth } from "../lib/auth";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { matchReasonKeys, searchPatients } from "../lib/patients-api";
 import type { WirePatientHit } from "../lib/patients-api";
+import type { QrCardData } from "../components/qr-card";
+import { Button } from "@/components/ui/button";
 
 /**
  * RC-3 — DESK ONE, THE REGISTRATION COUNTER SEAT.
@@ -178,7 +182,21 @@ export function useQuote(encounterId: string | null): {
       // F13 — and the failed fetch drops the stale price too. A refused or errored quote that
       // leaves the last one on screen is the same defect as F1 arriving by a different road.
       setPriced(null);
-      setError(e instanceof Error ? e.message : String(e));
+      /*
+        ═══ FD-2 — THE CLERK IS TOLD WHAT WENT WRONG, NOT WHICH HTTP STATUS IT WAS ═══
+
+        This read `e.message`, and `ApiError`'s message is the string its constructor builds:
+        `API ${status}`. So a counter with no activated tariff version — the single most likely
+        refusal on a hospital's first week, and the one this deployment actually hit — rendered
+        **"Could not price this visit: API 409"** at a desk with a patient waiting. The server had
+        sent the sentence ("no activated tariff version resolvable at …"); the screen threw it away
+        and printed the number instead.
+
+        `billingErrorMessage` is the house helper for exactly this and was already imported in this
+        file for the settle path. Every other billing call on this screen used it; the quote was the
+        one that did not.
+      */
+      setError(billingErrorMessage(e));
     }
   }, [encounterId]);
 
@@ -212,6 +230,100 @@ export function counterExit(
   return issued.creditExtended ? "credit" : "settled";
 }
 
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   FD-2 — WHO IS AT THE COUNTER, IN WORDS
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * ═══ THE DOSSIER SAID `01M1H5PTXP1QQV6E7GRC6CJ26M` WHERE A NAME BELONGS ═══
+ *
+ * `usePatientInHand` stores IDS ONLY, and deliberately: a cached NAME survives a merge that the
+ * record it names did not, so everything displayed is read live from the id (`patient-in-hand.tsx`
+ * states the rule at length). The dossier honoured the first half of that rule and never did the
+ * second — it rendered `inHand.patientId` and `inHand.encounterId` as text. The seat whose entire
+ * purpose is that the clerk knows who is in front of them showed them a ULID.
+ *
+ * The QUERY KEY IS THE STRIP'S. `patient-strip.tsx` already resolves the same id on every screen
+ * with `["patient-in-hand", patientId]`; sharing the key means the dossier and the strip are one
+ * fetch and can never disagree about who is in hand — two keys would be two answers during a
+ * refetch, on the two surfaces a clerk reads at the same moment.
+ *
+ * THE ALIAS RULE IS THE STRIP'S TOO. A confidential record shows its alias here for the reason the
+ * strip gives: this is furniture, pinned in front of whoever leans over the counter. A 404 is a
+ * sealed record the caller may not read (07a DD2) and is said as such, not left as a blank card
+ * that reads like a load that never finished.
+ */
+type SeatPatient = {
+  id: string; uhid: string; name: string | null; administrativeGender: string;
+  dob: string | null; isConfidential: boolean; alias: string | null;
+};
+
+export type SeatIdentity = {
+  label: string; uhid: string | null; sex: string | null; ageYears: number | null; restricted: boolean; pending: boolean;
+};
+
+/** Whole years between a date of birth and today. Pure, and `null` for an absent or unparseable dob. */
+export function ageFromDob(dob: string | null | undefined, now: Date = new Date()): number | null {
+  if (dob === null || dob === undefined || dob === "") return null;
+  const born = new Date(dob);
+  if (Number.isNaN(born.getTime())) return null;
+  let years = now.getFullYear() - born.getFullYear();
+  const monthDelta = now.getMonth() - born.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && now.getDate() < born.getDate())) years -= 1;
+  return years < 0 || years > 150 ? null : years;
+}
+
+export function useSeatPatient(patientId: string | null): SeatIdentity | null {
+  const { t } = useTranslation();
+  const q = useQuery({
+    queryKey: ["patient-in-hand", patientId ?? ""],
+    queryFn: () => api<{ patient: SeatPatient }>("GET", `/patients/${encodeURIComponent(patientId!)}`),
+    enabled: patientId !== null,
+    retry: false,
+  });
+  return useMemo(() => {
+    if (patientId === null) return null;
+    const restricted = q.isError && q.error instanceof ApiError && q.error.status === 404;
+    const row = q.data?.patient;
+    if (q.isPending) {
+      return { label: t("patientStrip.loading"), uhid: null, sex: null, ageYears: null, restricted: false, pending: true };
+    }
+    if (restricted || row === undefined) {
+      return { label: t("patientStrip.restricted"), uhid: null, sex: null, ageYears: null, restricted: true, pending: false };
+    }
+    return {
+      label: row.isConfidential
+        ? (row.alias ?? t("patientStrip.restricted"))
+        : (row.name ?? t("patientStrip.restricted")),
+      uhid: row.uhid,
+      sex: row.administrativeGender,
+      ageYears: ageFromDob(row.dob),
+      restricted: false,
+      pending: false,
+    };
+  }, [patientId, q.isPending, q.isError, q.error, q.data, t]);
+}
+
+/** The dossier's head: the name, the UHID, and the two facts a clerk reads back to confirm it. */
+export function DossierIdentity({ identity }: { identity: SeatIdentity }): React.ReactElement {
+  const { t } = useTranslation();
+  const facts = [
+    identity.sex === null ? null : t(`sex.${identity.sex}`, identity.sex),
+    identity.ageYears === null ? null : t("registrationCounter.dossier.age", { years: identity.ageYears }),
+  ].filter((x): x is string => x !== null);
+  return (
+    <div className="space-y-1 border-b border-border pb-3">
+      <p data-testid="dossier-name" className="text-base font-semibold leading-tight">{identity.label}</p>
+      {identity.uhid !== null && (
+        <p data-testid="dossier-uhid" className="font-mono text-sm text-muted-foreground">{identity.uhid}</p>
+      )}
+      {facts.length > 0 && (
+        <p data-testid="dossier-facts" className="text-xs text-muted-foreground">{facts.join(" · ")}</p>
+      )}
+    </div>
+  );
+}
+
 /**
  * T2 — THE DOSSIER. A RENDERING of `usePatientInHand`, never a second store (D2).
  *
@@ -222,6 +334,7 @@ export function counterExit(
  */
 export function Dossier({
   quote, issued, canCollect, token, tokenNote, onConfirm, onSettle, settleError, coveredElsewhere = false,
+  visitNo = null, serviceDate = null,
 }: {
   quote: WireFeeQuote | null;
   issued: WireIssueInvoiceResult | null;
@@ -259,23 +372,43 @@ export function Dossier({
    */
   canCollect: boolean;
   onConfirm?: () => void;
+  /** FD-2 — the visit's own number and date, so the rail names a VISIT rather than an encounter id. */
+  visitNo?: string | null;
+  serviceDate?: string | null;
 }): React.ReactElement {
   const { t } = useTranslation();
   const { inHand } = usePatientInHand();
   const exit = counterExit(quote, issued, inHand?.encounterId != null);
+  const identity = useSeatPatient(inHand?.patientId ?? null);
 
   return (
-    <aside aria-label={t("registrationCounter.dossier.title")} data-testid="dossier" className="text-sm">
+    <aside aria-label={t("registrationCounter.dossier.title")} data-testid="dossier" className="space-y-3 text-sm">
       {inHand === null ? (
         <p data-testid="dossier-empty" className="text-muted-foreground">{t("registrationCounter.dossier.nobody")}</p>
       ) : (
         <>
-          <p data-testid="dossier-patient">{inHand.patientId}</p>
-          {inHand.encounterId !== null && <p data-testid="dossier-encounter">{inHand.encounterId}</p>}
-          {token != null && (
-            <p data-testid="dossier-token" className="text-2xl font-semibold tabular-nums">
-              {t("registrationCounter.dossier.token", { token })}
+          {/*
+            FD-2 — the ids stay in the DOM for the suites and the support desk that read them, and
+            they leave the clerk's eye. `hidden` rather than deleted: `dossier-patient` and
+            `dossier-encounter` are the handles by which every test in this file, and the browser
+            console when a counter phones in a problem, identify which record is on screen.
+          */}
+          <p data-testid="dossier-patient" hidden>{inHand.patientId}</p>
+          {inHand.encounterId !== null && <p data-testid="dossier-encounter" hidden>{inHand.encounterId}</p>}
+
+          {identity !== null && <DossierIdentity identity={identity} />}
+
+          {visitNo != null && (
+            <p data-testid="dossier-visit-no" className="font-mono text-xs text-muted-foreground">
+              {visitNo}{serviceDate == null ? "" : ` · ${serviceDate}`}
             </p>
+          )}
+
+          {token != null && (
+            <div data-testid="dossier-token" className="rounded-md border border-border bg-background px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("counterSlip.token")}</p>
+              <p className="text-4xl font-bold leading-none tabular-nums">{token}</p>
+            </div>
           )}
           {token == null && tokenNote != null && (
             <p data-testid={`dossier-token-${tokenNote}`} className="text-muted-foreground">
@@ -294,14 +427,16 @@ export function Dossier({
           */}
           {quote?.free === false && issued === null && quote.draft !== null && (
             canCollect ? (
-              <div data-testid="collect">
-                <p>{t("registrationCounter.exit.collect", { amount: quote.draft.totals.netPayablePaise / 100 })}</p>
+              <div data-testid="collect" className="space-y-2">
+                <p className="text-base font-semibold">
+                  {t("registrationCounter.exit.collect", { amount: quote.draft.totals.netPayablePaise / 100 })}
+                </p>
                 {onSettle !== undefined && (
                   <CollectPanel payablePaise={quote.draft.totals.netPayablePaise} onSettle={onSettle} error={settleError ?? null} />
                 )}
               </div>
             ) : coveredElsewhere ? (
-              <p data-testid="covered-elsewhere">{t("registrationCounter.exit.coveredElsewhere")}</p>
+              <p data-testid="covered-elsewhere" className="text-muted-foreground">{t("registrationCounter.exit.coveredElsewhere")}</p>
             ) : (
               /*
                 F4 — the PRICE without the INSTRUCTION. A surface that cannot see whether the money
@@ -309,14 +444,21 @@ export function Dossier({
                 to collect it. The note names where the money is actually taken, so the screen is a
                 dead end for the clerk rather than a trap.
               */
-              <div data-testid="priced-elsewhere">
+              <div data-testid="priced-elsewhere" className="rounded-md border border-state-waiting/40 bg-state-waiting/10 px-3 py-2">
                 <p>{t("registrationCounter.exit.pricedElsewhere", { amount: quote.draft.totals.netPayablePaise / 100 })}</p>
               </div>
             )
           )}
 
           {exit !== null && (
-            <p data-testid={`exit-${exit}`}>
+            <p
+              data-testid={`exit-${exit}`}
+              className={`flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 font-medium ${
+                exit === "credit"
+                  ? "border-state-waiting/40 bg-state-waiting/10 text-state-waiting"
+                  : "border-state-settled/40 bg-state-settled/10 text-state-settled"
+              }`}
+            >
               {t(`registrationCounter.exit.${exit}`)}
               {/*
                 T2's assertion book asks for the exit AND its confirmation — "confirming releases
@@ -326,9 +468,12 @@ export function Dossier({
                 same call to `Esc` (T5's map), because a busy counter reaches for the keyboard; the
                 button is what makes the same act discoverable to a clerk on their first day.
               */}
-              <button type="button" data-testid="exit-confirm" disabled={onConfirm === undefined} onClick={() => onConfirm?.()}>
+              <Button
+                type="button" size="sm" variant="outline" className="ml-auto"
+                data-testid="exit-confirm" disabled={onConfirm === undefined} onClick={() => onConfirm?.()}
+              >
                 {t("registrationCounter.exit.next")}
-              </button>
+              </Button>
             </p>
           )}
         </>
@@ -505,40 +650,113 @@ export function FindPanel({ onRegisterNew }: { onRegisterNew?: () => void } = {}
         moment the system could not tell them whether the patient already existed.
       */}
       {q.length > 0 && hits.isError && (
-        <p data-testid="find-error">{t("registrationCounter.find.searchFailed")}</p>
-      )}
-
-      {q.length > 0 && items.length === 0 && !hits.isFetching && !hits.isError && (
-        <p data-testid="find-none">
-          {t("registrationCounter.find.none")}
-          <button type="button" data-testid="find-register-new" onClick={() => onRegisterNew?.()}>
-            {t("registrationCounter.find.registerNew")}
-          </button>
+        <p
+          data-testid="find-error" role="alert"
+          className="mt-3 rounded-md border border-state-danger/40 bg-state-danger/10 px-3 py-2 text-sm font-medium text-state-danger"
+        >
+          {t("registrationCounter.find.searchFailed")}
         </p>
       )}
 
-      <ul>
-        {items.map((hit) => (
-          <li key={hit.id}>
-            <button type="button" data-testid={`find-hit-${hit.id}`} onClick={() => takePatient(hit.id)}>
-              <span data-testid={`find-name-${hit.id}`}>{hit.name}</span>
-              <span data-testid={`find-uhid-${hit.id}`}>{hit.uhid}</span>
-              {hit.phone !== null && <span data-testid={`find-phone-${hit.id}`}>{hit.phone}</span>}
-              {/*
-                D6 — REASONS, NEVER A SCORE. `matchReasonKeys` is where the ruling is enforceable
-                and it is unit-asserted there; this renders exactly what it returns, in order, and
-                has no arithmetic of its own to get wrong. A row the server explained gets its
-                lanes; a row it did not gets "on file", so no row is ever the only unexplained one.
-              */}
-              <span data-testid={`find-why-${hit.id}`}>
-                {matchReasonKeys(hit.matchedOn).map((key) => (
-                  <span key={key} data-testid={`find-reason-${hit.id}`}>{t(key)}</span>
-                ))}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      {/*
+        ═══ FD-2 — THE EMPTY ANSWER IS A DOOR, NOT A SENTENCE WITH A WORD GLUED TO IT ═══
+
+        This rendered as `<p>Nobody on file matches that<button>Register new</button></p>` with no
+        classes anywhere, so the counter read, in one unbroken run of body text:
+
+            Nobody on file matches thatRegister new
+
+        The clerk reported it as "I can't see the new registration page". They could: it was the
+        last two words of a sentence. A door that looks like prose is not a door.
+      */}
+      {q.length > 0 && items.length === 0 && !hits.isFetching && !hits.isError && (
+        <div data-testid="find-none" className="mt-4 rounded-md border border-dashed border-border p-4 text-center">
+          <p className="text-sm text-muted-foreground">{t("registrationCounter.find.none")}</p>
+          <Button type="button" className="mt-3" data-testid="find-register-new" onClick={() => onRegisterNew?.()}>
+            {t("registrationCounter.find.registerNew")}
+          </Button>
+        </div>
+      )}
+
+      {/*
+        ═══ THE RESULT ROW — THE DEFECT THAT MADE A UHID INVISIBLE ═══
+
+        Every field was a bare `<span>`, so three inline elements with no separator, no wrapping and
+        no weight produced ONE STRING at the counter:
+
+            Ramesh KumarCRK123450139876543210same name
+
+        The UHID was on screen the whole time. Nobody could find it, because a name, an eleven-digit
+        UHID and a ten-digit mobile ran together into a twenty-nine character number with a person's
+        name in front of it — and the clerk's job at that moment is to read the UHID back to the
+        patient. Each field is now its own line or its own lane, the UHID is monospaced (the reason
+        every other id in this application is: a proportional font makes `CRK12345013` and
+        `CRK12345018` the same shape), and the row is a target the size of a finger.
+      */}
+      {items.length > 0 && (
+        <ul className="mt-4 space-y-2" data-testid="find-hits">
+          {items.map((hit) => (
+            <li key={hit.id}>
+              <button
+                type="button" data-testid={`find-hit-${hit.id}`} onClick={() => takePatient(hit.id)}
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-left transition-colors hover:border-primary hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span data-testid={`find-name-${hit.id}`} className="text-base font-semibold">{hit.name}</span>
+                  <span data-testid={`find-uhid-${hit.id}`} className="font-mono text-sm text-muted-foreground">{hit.uhid}</span>
+                  {hit.phone !== null && (
+                    <span data-testid={`find-phone-${hit.id}`} className="text-sm tabular-nums text-muted-foreground">{hit.phone}</span>
+                  )}
+                </span>
+                {/*
+                  D6 — REASONS, NEVER A SCORE. `matchReasonKeys` is where the ruling is enforceable
+                  and it is unit-asserted there; this renders exactly what it returns, in order, and
+                  has no arithmetic of its own to get wrong. A row the server explained gets its
+                  lanes; a row it did not gets "on file", so no row is ever the only unexplained one.
+                */}
+                <span data-testid={`find-why-${hit.id}`} className="mt-1 flex flex-wrap gap-1">
+                  {matchReasonKeys(hit.matchedOn).map((key) => (
+                    <span
+                      key={key} data-testid={`find-reason-${hit.id}`}
+                      className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground"
+                    >
+                      {t(key)}
+                    </span>
+                  ))}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/*
+        ═══ THE SECOND DOOR, AND WHY IT DOES NOT WEAKEN THE SEARCH-FIRST RULING ═══
+
+        The owner's ruling is *"search before you type a single form field"*, and the mechanism that
+        enforces it is that this door does not exist until a query has been typed AND has settled.
+        That is unchanged: `q.length > 0`, not fetching, not errored — an in-flight or refused
+        search still offers nothing, because the clerk cannot yet know whether the patient is
+        already on file.
+
+        What IS new is that the door also appears when the search FOUND people. That is the ruling
+        satisfied, not bypassed: the candidates are on screen, the clerk has read them, and the
+        judgement "none of these is the person in front of me" is the one a counter has to be able
+        to make out loud. Before this, a genuinely new patient whose name collided with an existing
+        one had NO way to be registered from this seat at all — the clerk had to type a deliberately
+        nonsense query to make the door appear, which is worse for duplicate control than showing it.
+      */}
+      {q.length > 0 && items.length > 0 && !hits.isFetching && !hits.isError && onRegisterNew !== undefined && (
+        <div className="mt-4 border-t border-border pt-3">
+          <p className="text-xs text-muted-foreground">{t("registrationCounter.find.noneOfThese")}</p>
+          <Button
+            type="button" variant="outline" size="sm" className="mt-2"
+            data-testid="find-register-new-anyway" onClick={() => onRegisterNew()}
+          >
+            {t("registrationCounter.find.registerNew")}
+          </Button>
+        </div>
+      )}
     </section>
   );
 }
@@ -752,6 +970,23 @@ export function RegistrationCounter({ onFigures }: { onFigures?: () => void } = 
   const [settleError, setSettleError] = useState<string | null>(null);
   const summaries = useQueueSummary(todayIst());
   const encounterId = inHand?.encounterId ?? null;
+  /**
+   * FD-2 — the department list, for the printed slip's department line and nothing else. One read,
+   * cached under the key the OPD screens already use, and a failure is silence rather than a
+   * blocked counter: a slip with a blank department still carries the token, the doctor, the room
+   * and the fee, and refusing to print one because a masters read was refused would trade the whole
+   * document for one line of it.
+   */
+  const departments = useQuery({
+    queryKey: ["opd", "departments"],
+    queryFn: () => api<{ items: { id: string; name: string }[] }>("GET", "/opd/departments"),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const departmentName = useCallback(
+    (departmentId: string): string => departments.data?.items.find((d) => d.id === departmentId)?.name ?? "",
+    [departments.data],
+  );
   const hereVisit = visit !== null && visit.encounterId === encounterId ? visit : null;
   const issued = issuedFor !== null && issuedFor.encounterId === encounterId ? issuedFor.result : null;
 
@@ -963,6 +1198,22 @@ export function RegistrationCounter({ onFigures }: { onFigures?: () => void } = 
    */
   const canCollect = hereVisit !== null && issued === null && drawerOpen && server.feeStatus === "unsettled";
   /**
+   * ═══ FD-2 — WHEN THE WORKSPACE SWITCHES FROM THE BILL TO THE PAPER ═══
+   *
+   * The three lawful exits (DD2) are one question, and the workspace asks it once. `issued` is this
+   * seat's own settlement; `quote.free` is the revisit inside the follow-up window that has no
+   * invoice at all; and `server.feeStatus` is the money taken somewhere else — at `/billing`, or at
+   * another counter, or by the settle hook — which is a finished walk-in from this seat's point of
+   * view even though this seat did not take it.
+   *
+   * DELIBERATELY NOT `issued !== null` ALONE. That was the shape of the rail's exit line and it is
+   * why a patient who paid at the billing counter and came back to this seat saw a bill rather than
+   * a receipt: the money was done and the only surface that knew it was the server.
+   */
+  const settledHere = issued !== null
+    || quote?.free === true
+    || server.feeStatus === "settled" || server.feeStatus === "credit" || server.feeStatus === "free";
+  /**
    * The number to read out: the seat's own (with `token_on_payment`'s hold-back), else the
    * server's — and on the server road the hold-back is applied from the CURRENT flow (pass 2, N4):
    * a reload does not turn a slip that has not left the printer into one that has.
@@ -971,6 +1222,20 @@ export function RegistrationCounter({ onFigures }: { onFigures?: () => void } = 
     && flow.counterSequence === "queue_first" && flow.tokenLane === "token_on_payment" && !moneyDoneOnServer;
   const token = hereVisit !== null ? tokenToShow(hereVisit, quote, issued) : heldBack ? null : server.tokenNo;
   const todays = useTodaysVisit(inHand !== null && inHand.encounterId === null ? inHand.patientId : null);
+  const identity = useSeatPatient(inHand?.patientId ?? null);
+  /**
+   * FD-2 — the signed QR for the slip, fetched once per patient in hand and only while there is one.
+   * `counter-desk.tsx` reads the same route at the same moment for the same reason; this is that
+   * read moved onto the seat, as a query rather than a `setState` in a handler so a reload or a
+   * re-entry to a settled visit still has its document.
+   */
+  const qrQ = useQuery({
+    queryKey: ["rc-patient-qr", inHand?.patientId ?? ""],
+    queryFn: () => api<QrCardData>("GET", `/patients/${encodeURIComponent(inHand!.patientId)}/qr`),
+    enabled: inHand !== null,
+    retry: false,
+  });
+  const qr = qrQ.data ?? null;
   const tokenNote: "afterPayment" | "joining" | null =
     token !== null ? null
       : hereVisit === null ? null
@@ -1018,7 +1283,7 @@ export function RegistrationCounter({ onFigures }: { onFigures?: () => void } = 
         />
         {/* FD-1 T4 — the door to "your figures": a client-side navigation when the route hands one in, an anchor for the right-click. */}
         <a
-          href="/counter/seat/figures" data-testid="figures-door" className="text-sm underline-offset-2 hover:underline"
+          href="/counter/figures" data-testid="figures-door" className="text-sm underline-offset-2 hover:underline"
           onClick={(e) => { if (onFigures !== undefined) { e.preventDefault(); onFigures(); } }}
         >
           {t("registrationCounter.figures.door")}
@@ -1039,6 +1304,7 @@ export function RegistrationCounter({ onFigures }: { onFigures?: () => void } = 
             token={token} tokenNote={tokenNote}
             onConfirm={busy ? undefined : clearDesk} onSettle={settle} settleError={settleError}
             coveredElsewhere={issued === null && (server.feeStatus === "settled" || server.feeStatus === "credit")}
+            visitNo={hereVisit?.slip?.visitNo ?? null} serviceDate={hereVisit?.slip?.serviceDate ?? null}
           />
           {/*
             Pass 2 N5 — the settle's refusal is said HERE, outside the collect panel: when the
@@ -1076,7 +1342,7 @@ export function RegistrationCounter({ onFigures }: { onFigures?: () => void } = 
         </div>
         <div className="min-w-0 flex-1 rounded-lg border border-border bg-card p-4">
           {inHand === null && (registering
-            ? <RegisterPanel doctors={summaries} onCancel={() => setRegistering(false)}
+            ? <RegisterPanel doctors={summaries} departmentName={departmentName} onCancel={() => setRegistering(false)}
                 onOpened={(o) => { setVisit(o); setRegistering(false); }} />
             : <FindPanel key={deskGen} onRegisterNew={() => setRegistering(true)} />)}
           {/*
@@ -1087,16 +1353,48 @@ export function RegistrationCounter({ onFigures }: { onFigures?: () => void } = 
             The same panel serves, with the four fields folded away.
           */}
           {inHand !== null && inHand.encounterId === null && todays != null && (
-            <div data-testid="todays-visit">
-              <p>{t("registrationCounter.register.todaysVisit")}</p>
-              <button type="button" data-testid="resume-visit" onClick={() => takeEncounter(todays.encounterId)}>
+            <div data-testid="todays-visit" className="rounded-md border border-state-waiting/50 bg-state-waiting/10 p-4">
+              <p className="font-medium">{t("registrationCounter.register.todaysVisit")}</p>
+              <Button type="button" className="mt-3" data-testid="resume-visit" onClick={() => takeEncounter(todays.encounterId)}>
                 {t("registrationCounter.register.resumeVisit")}
-              </button>
+              </Button>
             </div>
           )}
           {inHand !== null && inHand.encounterId === null && todays === null && (
-            <RegisterPanel doctors={summaries} existingId={inHand.patientId}
+            <RegisterPanel doctors={summaries} existingId={inHand.patientId} departmentName={departmentName}
               onOpened={(o) => setVisit(o)} />
+          )}
+
+          {/*
+            ═══ FD-2 — THE WORKSPACE WAS A BLANK WHITE BOX FROM THE MOMENT A VISIT OPENED ═══
+
+            Every branch above is guarded on `inHand === null` or `inHand.encounterId === null`. So
+            the instant the clerk opened a visit — the point at which there is the MOST to do — the
+            wide column rendered nothing at all, for the whole of the money, the token and the
+            handover, while the token, the price, the tender editor and the exit were crammed into
+            the 320px rail beside it. The counter's screenshot of that state is a 1000px empty
+            rectangle next to a squeezed sidebar, and it is the single largest reason the seat
+            "looks broken" before any individual defect is counted.
+
+            The stage below is the answer: once the visit is open, the workspace carries the BILL
+            while money is owed, and the CONFIRMATION AND THE PAPER once it is not.
+          */}
+          {inHand !== null && inHand.encounterId !== null && (
+            settledHere ? (
+              <SettledPanel
+                visit={hereVisit ?? {
+                  encounterId: inHand.encounterId, patientId: inHand.patientId, tokenNo: token,
+                  flow: flow ?? { counterSequence: "queue_first", tokenLane: "token_first" },
+                  draftId: "", joining: false, joinError: null,
+                }}
+                issued={issued} quote={quote} patient={identity} qr={qr}
+                onNext={busy ? undefined : clearDesk} busy={busy}
+              />
+            ) : quote !== null ? (
+              <BillPanel quote={quote} />
+            ) : (
+              <p data-testid="workspace-pricing" className="text-sm text-muted-foreground">{t("app.loading")}</p>
+            )
           )}
         </div>
       </div>
@@ -1340,6 +1638,27 @@ export type SeatVisit = {
   draftId: string;
   joining: boolean;
   joinError: string | null;
+  /**
+   * ═══ FD-2 — WHAT THE PRINTED SLIP NEEDS, CAPTURED AT THE MOMENT IT IS TRUE ═══
+   *
+   * The walk-in response has always carried the visit number, the service date and the visit type
+   * (`WireOpenVisitResult.encounter`), and the seat threw all three away — which is why the rail
+   * could only show the encounter ULID and why no slip could be printed at all. The doctor's name,
+   * department and room come from the summary the clerk PICKED FROM, not from a later lookup: a
+   * re-read at print time would name whichever doctor the row says now, and a session reassigned
+   * between the open and the print would print a room the patient was never sent to.
+   *
+   * Optional because `SeatVisit` is constructed in the seat's tests and in the recovery paths with
+   * nothing but the ids; the slip is offered when the fields are there and not when they are not.
+   */
+  slip?: {
+    visitNo: string;
+    serviceDate: string;
+    visitType: string;
+    doctorName: string;
+    departmentName: string;
+    roomCode: string | null;
+  };
 };
 
 export type SeatIssued = { encounterId: string; result: WireIssueInvoiceResult };
@@ -1389,6 +1708,251 @@ export function tokenToShow(visit: SeatVisit | null, quote: WireFeeQuote | null,
 /* ════════════════════════════════════════════════════════════════════════════════════════════
    RC-4 T1 — THE SEAT OPENS A VISIT, AND REGISTERS IN FOUR FIELDS WITHOUT LEAVING (D1 / D2)
    ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   FD-2 — THE PAPER THE PATIENT WALKS AWAY WITH, AND THE SENTENCE THAT SAYS IT IS DONE
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * ═══ THE SEAT TOOK MONEY AND PRINTED NOTHING ═══
+ *
+ * `counter-desk.tsx` — the screen this seat replaces — ends its walk-in with `CounterSlip`: the
+ * token, the doctor, the room, the fee and the signed QR on one piece of paper, with a Print
+ * button. Both of those components (`components/counter-slip.tsx`, `components/invoice-print.tsx`)
+ * were built, tested and shipped. **This seat imported neither.** A clerk took ₹400 in cash and the
+ * screen answered with the words "Paid in full" run into the words "Next patient", in a 320px rail,
+ * with no receipt for the patient and no way to produce one. That is the "no printable bill, not
+ * even to save as PDF" the counter reported, and it is a whole feature that was never wired rather
+ * than a feature that broke.
+ *
+ * ═══ ONE `.print-doc` AT A TIME, AND THAT IS WHY THIS IS A TOGGLE AND NOT TWO PANELS ═══
+ *
+ * `styles.css` prints by hiding everything and re-showing `.print-doc` at `position: fixed; left:0;
+ * top:0`. Two of them mounted at once do not make two pages — they STACK at the same origin and the
+ * paper comes out with the invoice overprinting the slip. `counter-slip.tsx`'s own header records
+ * that this was measured rather than reasoned about. So the slip and the tax invoice are mutually
+ * exclusive by construction here: one `document` state, never two mounted nodes.
+ *
+ * ═══ "SAVE AS PDF" IS `window.print()` AND NEEDS NOTHING ELSE ═══
+ *
+ * Every browser's print dialog offers "Save as PDF" as a destination. There is no PDF library here
+ * and there does not need to be one: the requirement is a document the counter can put on paper OR
+ * keep as a file, and the print path serves both from the same A5 stylesheet the rest of the
+ * application already prints through.
+ */
+/**
+ * ═══ THE BILL, ITEMISED, WHERE THERE IS ROOM FOR IT ═══
+ *
+ * The rail's `QuotePanel` says the TOTAL and the benefits contest that produced it, which is the
+ * right thing for a 320px column. What no surface on this seat said is what the patient is actually
+ * being charged FOR — the line, its quantity and its price — and "₹400" with no line under it is
+ * the first thing a patient queries at a counter and the first thing a clerk cannot answer.
+ *
+ * Every figure is the SERVER'S. `WirePricedLine` carries the computed net per line and the draft
+ * carries the totals; a client-side fold over the lines would post a different number from the
+ * invoice for exactly the discount and rounding fixtures the billing module's book was written to
+ * catch (`invoice-print.tsx` states the same rule for the printed document).
+ */
+export function BillPanel({ quote }: { quote: WireFeeQuote }): React.ReactElement {
+  const { t } = useTranslation();
+  const lines = quote.draft?.lines ?? [];
+  return (
+    <section data-testid="bill-panel" aria-label={t("registrationCounter.quote.title")} className="space-y-3">
+      <h2 className="text-base font-semibold">{t("registrationCounter.quote.title")}</h2>
+      {quote.free ? (
+        <p data-testid="bill-free" className="rounded-md border border-state-settled/40 bg-state-settled/10 px-3 py-2 font-medium text-state-settled">
+          {t("registrationCounter.exit.free")}
+        </p>
+      ) : lines.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t("app.loading")}</p>
+      ) : (
+        <>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
+                <th className="pb-1 font-medium">{t("billing.print.service")}</th>
+                <th className="pb-1 text-right font-medium">{t("billing.print.qty")}</th>
+                <th className="pb-1 text-right font-medium">{t("billing.print.net")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((line) => (
+                <tr key={line.lineId} data-testid={`bill-line-${line.lineId}`} className="border-b border-border/60">
+                  <td className="py-1.5">{line.serviceName}</td>
+                  <td className="py-1.5 text-right tabular-nums">{line.qty}</td>
+                  <td className="py-1.5 text-right tabular-nums">₹{(line.netPaise / 100).toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {quote.draft !== null && (
+            <p data-testid="bill-total" className="flex items-baseline justify-between border-t border-border pt-2 text-base font-semibold">
+              <span>{t("billing.print.netPayable")}</span>
+              <span className="tabular-nums">₹{(quote.draft.totals.netPayablePaise / 100).toFixed(2)}</span>
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+export type SeatDocument = "slip" | "invoice";
+
+export function SettledPanel({
+  visit, issued, quote, patient, qr, onNext, busy = false,
+}: {
+  visit: SeatVisit;
+  /** `null` for a FREE revisit — the lawful exit with no invoice at all (DD2's third). */
+  issued: WireIssueInvoiceResult | null;
+  quote: WireFeeQuote | null;
+  patient: SeatIdentity | null;
+  qr: QrCardData | null;
+  onNext?: () => void;
+  busy?: boolean;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const [doc, setDoc] = useState<SeatDocument>("slip");
+
+  /*
+    The tax invoice is fetched ONLY when it is asked for. `GET /billing/invoices/:id/print` is the
+    letterhead, the stored lines and the signed QR — a document, not a status — and fetching it on
+    every settle would put a request on the wire for the ninety-odd percent of walk-ins where the
+    patient wants the slip and nothing else.
+  */
+  const invoiceId = issued?.invoiceId ?? null;
+  const invoice = useQuery({
+    queryKey: ["rc-invoice-print", invoiceId],
+    queryFn: () => fetchInvoicePrint(invoiceId!),
+    enabled: invoiceId !== null && doc === "invoice",
+    retry: false,
+  });
+
+  const free = quote?.free === true;
+  const paidPaise = issued?.allocatedPaise ?? 0;
+
+  return (
+    <section data-testid="settled-panel" aria-label={t("registrationCounter.done.title")} className="space-y-4">
+      {/*
+        ═══ THE CONFIRMATION. IT IS THE FIRST THING ON THE SCREEN AND IT IS A SENTENCE ═══
+
+        "No confirmation message is displayed" was the counter's report, and it was accurate: the
+        only acknowledgement a settle produced was the two words "Paid in full" in the rail, at body
+        size, beside the button that clears the desk. A clerk who has just taken cash needs to see —
+        across a counter, without leaning in — that the money landed, how much of it, and against
+        which invoice number, because that number is what the patient will quote if anything is
+        wrong later.
+      */}
+      <div
+        data-testid="settled-banner"
+        className={`rounded-lg border p-4 ${
+          issued?.creditExtended === true
+            ? "border-state-waiting/50 bg-state-waiting/10"
+            : "border-state-settled/50 bg-state-settled/10"
+        }`}
+      >
+        <p className="text-lg font-semibold">
+          {free
+            ? t("registrationCounter.done.free")
+            : issued?.creditExtended === true
+              ? t("registrationCounter.done.credit")
+              : t("registrationCounter.done.paid", { amount: (paidPaise / 100).toFixed(2) })}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+          {visit.tokenNo !== null && (
+            <span data-testid="settled-token">{t("registrationCounter.dossier.token", { token: visit.tokenNo })}</span>
+          )}
+          {issued !== null && (
+            <span data-testid="settled-invoice-no" className="font-mono">{issued.invoiceNo}</span>
+          )}
+          {visit.slip !== undefined && <span className="font-mono">{visit.slip.visitNo}</span>}
+        </div>
+        {/*
+          The change the clerk owes the patient, said where the clerk is looking. `unallocatedPaise`
+          is money tendered above the bill that was NOT handed back — it sits on the account as an
+          advance — and a counter that does not say so hands back cash it has already banked.
+        */}
+        {issued !== null && issued.unallocatedPaise > 0 && (
+          <p data-testid="settled-unallocated" className="mt-2 text-sm">
+            {t("billing.counter.unallocated", { amount: `₹${(issued.unallocatedPaise / 100).toFixed(2)}` })}
+          </p>
+        )}
+      </div>
+
+      {/*
+        THE DOCUMENT. The slip is the default because it is what the patient is standing there
+        waiting for; the tax invoice is one click away for the patient who asks for one (and for
+        every corporate and insurance walk-in, which is when it is always asked for).
+      */}
+      <div className="no-print flex flex-wrap items-center gap-2">
+        <Button
+          type="button" size="sm" variant={doc === "slip" ? "default" : "outline"}
+          data-testid="doc-slip" onClick={() => setDoc("slip")}
+        >
+          {t("registrationCounter.done.tokenSlip")}
+        </Button>
+        {invoiceId !== null && (
+          <Button
+            type="button" size="sm" variant={doc === "invoice" ? "default" : "outline"}
+            data-testid="doc-invoice" onClick={() => setDoc("invoice")}
+          >
+            {t("registrationCounter.done.taxInvoice")}
+          </Button>
+        )}
+        <Button
+          type="button" size="sm" variant="ghost" className="ml-auto"
+          data-testid="settled-next" disabled={onNext === undefined || busy} onClick={() => onNext?.()}
+        >
+          {t("registrationCounter.exit.next")}
+        </Button>
+      </div>
+
+      {doc === "slip" && (
+        qr !== null && visit.slip !== undefined && visit.tokenNo !== null ? (
+          <div data-testid="slip-ready" className="space-y-3">
+            <CounterSlip
+              tokenNo={visit.tokenNo}
+              visitNo={visit.slip.visitNo}
+              serviceDate={visit.slip.serviceDate}
+              doctorName={visit.slip.doctorName}
+              departmentName={visit.slip.departmentName}
+              roomCode={visit.slip.roomCode}
+              patient={{ uhid: qr.uhid, name: patient?.restricted === true ? null : (patient?.label ?? qr.name) }}
+              qrPayload={qr.payload}
+              fee={issued === null ? null : {
+                invoiceNo: issued.invoiceNo,
+                paidPaise: issued.allocatedPaise,
+                creditExtended: issued.creditExtended,
+              }}
+            />
+            <Button type="button" className="no-print" data-testid="print-slip" onClick={() => window.print()}>
+              {t("counter.print")}
+            </Button>
+          </div>
+        ) : (
+          /*
+            A slip that cannot be assembled says so rather than showing a Print button that would
+            put a half-empty page through the printer. The token is still on the rail and the money
+            is still recorded — this is a missing DOCUMENT, not a missing transaction, and the two
+            deserve different sentences.
+          */
+          <p data-testid="slip-unavailable" className="text-sm text-muted-foreground">
+            {t("registrationCounter.done.slipUnavailable")}
+          </p>
+        )
+      )}
+
+      {doc === "invoice" && (
+        invoice.isPending ? <p className="text-sm text-muted-foreground">{t("app.loading")}</p>
+          : invoice.isError || invoice.data === undefined ? (
+            <p data-testid="invoice-unavailable" role="alert" className="text-sm text-state-danger">
+              {t("registrationCounter.done.invoiceUnavailable", { reason: billingErrorMessage(invoice.error) })}
+            </p>
+          ) : <InvoicePrint data={invoice.data as WireInvoicePrint} />
+      )}
+    </section>
+  );
+}
 
 /** The design's four: name · mobile · age · sex (`desk-one.html`'s `nm/mob/age/sex`). */
 export type SeatRegisterFields = { name: string; phone: string; ageYears: string; sex: string };
@@ -1453,13 +2017,20 @@ export function walkInBodyFor(
  * is worse than the duplicate it was trying to prevent.
  */
 export function RegisterPanel({
-  doctors, existingId, onCancel, onOpened,
+  doctors, existingId, onCancel, onOpened, departmentName,
 }: {
   doctors: WireDoctorSummary[];
   /** RC-4 T2 — a patient already on file: the four fields fold away and only the doctor is asked. */
   existingId?: string;
   onCancel?: () => void;
   onOpened?: (opened: SeatVisit) => void;
+  /**
+   * FD-2 — the printed slip names a DEPARTMENT, and `WireDoctor` carries only `departmentId`. The
+   * seat holds the department list (one read, cached) and hands the lookup down rather than making
+   * this panel fetch masters of its own. Absent in the panel's own suites, where the slip is not
+   * the subject; the slip then prints an empty department rather than the wrong one.
+   */
+  departmentName?: (departmentId: string) => string;
 }): React.ReactElement {
   const { t } = useTranslation();
   const { takePatient, takeEncounter } = usePatientInHand();
@@ -1510,6 +2081,19 @@ export function RegisterPanel({
       takePatient(result.patientId);
       takeEncounter(result.encounter.id);
       /*
+        FD-2 — the slip's facts, taken from the response that already carried them and from the
+        summary row the clerk just chose. See `SeatVisit.slip` for why the doctor is remembered
+        rather than looked up again at print time.
+      */
+      const slip = {
+        visitNo: result.encounter.visitNo,
+        serviceDate: result.encounter.serviceDate,
+        visitType: result.visitType,
+        doctorName: doctor.doctor.displayName,
+        departmentName: departmentName?.(doctor.doctor.departmentId) ?? "",
+        roomCode: doctor.roomCode,
+      };
+      /*
         RC-4 T3 / D2's "token" noun — and it costs NO extra fetch. `WireWalkInResult` extends
         `WireOpenVisitResult`, which has carried `tokenNo` since 07b; the seat was throwing it
         away. Under `bill_first` it is NULL here by the wire's own shape (`WireWalkInDeferredResult`)
@@ -1517,7 +2101,7 @@ export function RegisterPanel({
       */
       onOpened?.({
         encounterId: result.encounter.id, patientId: result.patientId, tokenNo: result.tokenNo,
-        flow, draftId: newDraftId(), joining: false, joinError: null,
+        flow, draftId: newDraftId(), joining: false, joinError: null, slip,
       });
     } catch (e) {
       // LIFTED VERBATIM: a 409 carrying candidates is a QUESTION, not a failure.
@@ -1535,46 +2119,70 @@ export function RegisterPanel({
         {t(existingId === undefined ? "registrationCounter.register.title" : "registrationCounter.register.existingTitle")}
       </h2>
 
-      {existingId === undefined && <>
-      <label htmlFor="rc-reg-name">{t("registrationCounter.register.name")}</label>
-      <input id="rc-reg-name" data-testid="reg-name" value={fields.name} onChange={set("name")}
-        className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3" />
+      {/*
+        FD-2 — the four fields sit on a GRID rather than in one 1440px-wide column. A name box the
+        width of the screen with its label stacked above it reads as a form somebody forgot to lay
+        out, and it costs the clerk a full head-sweep per field. Two columns at counter width, one
+        on a narrow terminal.
+      */}
+      {existingId === undefined && (
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <label htmlFor="rc-reg-name" className="text-xs font-medium text-muted-foreground">{t("registrationCounter.register.name")}</label>
+          <input id="rc-reg-name" data-testid="reg-name" value={fields.name} onChange={set("name")} autoFocus
+            className="mt-1 h-11 w-full rounded-md border border-input bg-background px-3 text-base outline-none focus:ring-2 focus:ring-ring" />
+        </div>
 
-      <label htmlFor="rc-reg-phone">{t("registrationCounter.register.phone")}</label>
-      <input id="rc-reg-phone" data-testid="reg-phone" inputMode="numeric" value={fields.phone} onChange={set("phone")}
-        className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3" />
+        <div>
+          <label htmlFor="rc-reg-phone" className="text-xs font-medium text-muted-foreground">{t("registrationCounter.register.phone")}</label>
+          <input id="rc-reg-phone" data-testid="reg-phone" inputMode="numeric" value={fields.phone} onChange={set("phone")}
+            className="mt-1 h-11 w-full rounded-md border border-input bg-background px-3 text-base tabular-nums outline-none focus:ring-2 focus:ring-ring" />
+        </div>
 
-      <label htmlFor="rc-reg-age">{t("registrationCounter.register.ageYears")}</label>
-      <input id="rc-reg-age" data-testid="reg-age" inputMode="numeric" value={fields.ageYears} onChange={set("ageYears")}
-        className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3" />
+        <div>
+          <label htmlFor="rc-reg-age" className="text-xs font-medium text-muted-foreground">{t("registrationCounter.register.ageYears")}</label>
+          <input id="rc-reg-age" data-testid="reg-age" inputMode="numeric" value={fields.ageYears} onChange={set("ageYears")}
+            className="mt-1 h-11 w-full rounded-md border border-input bg-background px-3 text-base tabular-nums outline-none focus:ring-2 focus:ring-ring" />
+        </div>
 
-      <label htmlFor="rc-reg-sex">{t("registrationCounter.register.sex")}</label>
-      <select id="rc-reg-sex" data-testid="reg-sex" value={fields.sex} onChange={set("sex")}
-        className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3">
-        <option value="unknown">{t("registrationCounter.register.sexUnknown")}</option>
-        <option value="male">{t("registrationCounter.register.sexMale")}</option>
-        <option value="female">{t("registrationCounter.register.sexFemale")}</option>
-        <option value="other">{t("registrationCounter.register.sexOther")}</option>
-      </select>
-      </>}
+        <div className="sm:col-span-2">
+          <label htmlFor="rc-reg-sex" className="text-xs font-medium text-muted-foreground">{t("registrationCounter.register.sex")}</label>
+          <select id="rc-reg-sex" data-testid="reg-sex" value={fields.sex} onChange={set("sex")}
+            className="mt-1 h-11 w-full rounded-md border border-input bg-background px-3 text-base outline-none focus:ring-2 focus:ring-ring">
+            <option value="unknown">{t("registrationCounter.register.sexUnknown")}</option>
+            <option value="male">{t("registrationCounter.register.sexMale")}</option>
+            <option value="female">{t("registrationCounter.register.sexFemale")}</option>
+            <option value="other">{t("registrationCounter.register.sexOther")}</option>
+          </select>
+        </div>
+      </div>
+      )}
 
-      <label htmlFor="rc-reg-doctor">{t("registrationCounter.register.doctor")}</label>
-      <select id="rc-reg-doctor" data-testid="reg-doctor" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}
-        className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3">
-        <option value="">{t("registrationCounter.register.pickDoctor")}</option>
-        {doctors.map((d) => (
-          <option key={d.doctor.id} value={d.doctor.id}>
-            {d.doctor.displayName} · {d.waitingCount}
-          </option>
-        ))}
-      </select>
+      <div className="mt-3">
+        <label htmlFor="rc-reg-doctor" className="text-xs font-medium text-muted-foreground">{t("registrationCounter.register.doctor")}</label>
+        <select id="rc-reg-doctor" data-testid="reg-doctor" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}
+          className="mt-1 h-11 w-full rounded-md border border-input bg-background px-3 text-base outline-none focus:ring-2 focus:ring-ring">
+          <option value="">{t("registrationCounter.register.pickDoctor")}</option>
+          {doctors.map((d) => (
+            <option key={d.doctor.id} value={d.doctor.id}>
+              {d.doctor.displayName} · {t("registrationCounter.wait.ahead", { count: d.waitingCount })}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {duplicates !== null && (
-        <div data-testid="reg-duplicates" role="alert">
-          <p>{t("registrationCounter.register.duplicateWarning")}</p>
-          <ul>
+        <div
+          data-testid="reg-duplicates" role="alert"
+          className="mt-3 space-y-2 rounded-md border border-state-waiting/50 bg-state-waiting/10 p-3"
+        >
+          <p className="font-medium">{t("registrationCounter.register.duplicateWarning")}</p>
+          <ul className="space-y-1">
             {duplicates.map((c) => (
-              <li key={c.id} data-testid={`reg-dup-${c.id}`}>{c.name ?? "—"} · {c.uhid}</li>
+              <li key={c.id} data-testid={`reg-dup-${c.id}`} className="flex flex-wrap items-baseline gap-x-3">
+                <span className="font-semibold">{c.name ?? "—"}</span>
+                <span className="font-mono text-xs text-muted-foreground">{c.uhid}</span>
+              </li>
             ))}
           </ul>
           {/*
@@ -1588,14 +2196,25 @@ export function RegisterPanel({
         </div>
       )}
 
-      {error !== null && <p data-testid="reg-error" role="alert">{error}</p>}
-
-      <SubmitButton data-testid="reg-submit" disabled={!ready} onClick={(k) => open(false, k)}>
-        {t(existingId === undefined ? "registrationCounter.register.submit" : "registrationCounter.register.openVisit")}
-      </SubmitButton>
-      {onCancel !== undefined && (
-        <button type="button" data-testid="reg-cancel" onClick={onCancel}>{t("registrationCounter.register.cancel")}</button>
+      {error !== null && (
+        <p
+          data-testid="reg-error" role="alert"
+          className="mt-3 rounded-md border border-state-danger/40 bg-state-danger/10 px-3 py-2 font-medium text-state-danger"
+        >
+          {error}
+        </p>
       )}
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <SubmitButton data-testid="reg-submit" disabled={!ready} onClick={(k) => open(false, k)}>
+          {t(existingId === undefined ? "registrationCounter.register.submit" : "registrationCounter.register.openVisit")}
+        </SubmitButton>
+        {onCancel !== undefined && (
+          <Button type="button" variant="ghost" data-testid="reg-cancel" onClick={onCancel}>
+            {t("registrationCounter.register.cancel")}
+          </Button>
+        )}
+      </div>
     </section>
   );
 }

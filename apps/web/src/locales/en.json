@@ -40,7 +40,7 @@
     "otList": "Theatre list",
     "otBook": "Book day-care case",
     "otRecovery": "Recovery",
-    "counterDesk": "Counter",
+    "counterDesk": "Registration counter",
     "group": {
       "desk": "Desk",
       "patients": "Patients",
@@ -56,7 +56,6 @@
     "labVerify": "Verify & report",
     "radiologyReception": "Imaging reception",
     "radiologyWorklist": "Imaging worklist",
-    "counterSeat": "Registration counter (new)",
     "vitalsBay": "Vitals bay"
   },
   "palette": {
@@ -2142,6 +2141,7 @@
       "hint": "Search before you type a single form field — a duplicate stopped here costs nothing.",
       "none": "Nobody on file matches that",
       "registerNew": "Register new",
+      "noneOfThese": "None of these is the person in front of you?",
       "reason": {
         "uhid": "same UHID",
         "mobile": "same mobile",
@@ -2189,7 +2189,18 @@
       "nobody": "Nobody at the counter yet",
       "token": "Token {{token}}",
       "token_afterPayment": "Token after payment",
-      "token_joining": "Joining the queue…"
+      "token_joining": "Joining the queue…",
+      "age": "{{years}} yrs"
+    },
+    "done": {
+      "title": "Done — the patient's paper",
+      "paid": "Paid ₹{{amount}}",
+      "credit": "Billed on credit — the amount is owed and recorded",
+      "free": "Free follow-up — nothing to collect",
+      "tokenSlip": "Token slip",
+      "taxInvoice": "Tax invoice",
+      "slipUnavailable": "The slip could not be assembled for this visit. The token and the payment are recorded — print the tax invoice instead, or reprint from the billing counter.",
+      "invoiceUnavailable": "Could not load the tax invoice: {{reason}}"
     },
     "wait": {
       "ahead": "{{count}} ahead",

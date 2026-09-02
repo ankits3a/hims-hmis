@@ -18,7 +18,6 @@ import { PatientStrip } from "./components/patient-strip";
 import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
 import { StaffReports } from "./screens/staff-reports";
-import { CounterDesk } from "./screens/counter-desk";
 import { RegistrationCounter } from "./screens/registration-counter";
 import { CounterFigures } from "./screens/counter-figures";
 import { RegistrationDesk } from "./screens/registration-desk";
@@ -88,19 +87,13 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   // PLAN 07b T3 — the counter, first in the row for the reason `otManifest`-style menus give: it is
   // the screen a one-person desk lives on. Path and permission match `opdManifest.menu` exactly,
   // which `nav-parity.test.ts` enforces rather than trusts.
+  //
+  // FD-2 — THIS ROW IS NOW THE ONLY ONE. RC-3 D1 put a second row here, `/counter/seat`, so the
+  // owner could compare the shipped counter with Desk One side by side. That comparison is over and
+  // the owner ruled for the seat, so the second row is gone with the screen it pointed at. Two nav
+  // links reading "Counter" and "Registration counter (new)" for one job is how the owner ended up
+  // on the wrong one — a nav is a list of places, and a place should appear in it once.
   { to: "/counter", label: "nav.counterDesk", permission: "opd.visits.open", group: "desk" },
-  // RC-3 T5 / D1 — DESK ONE, THE SEAT, BESIDE THE COUNTER AND NOT INSTEAD OF IT, FOR ONE PHASE.
-  //
-  // `opd.visits.open` is the SAME permission `/counter` carries, because it is the same work by the
-  // same person on a different surface; the two links are therefore visible to exactly the same
-  // people, which is what makes the comparison the owner is being asked to make a fair one.
-  //
-  // NO MANIFEST ENTRY, deliberately, and this is the one NAV row that has none on purpose. RC-4
-  // deletes one of these two routes and §6's second ruling is WHICH — declaring `/counter/seat` in
-  // `opdManifest.menu` now would put a permanent server-side declaration behind a screen that is
-  // scheduled for a decision. `nav-parity.test.ts` compares only paths present in BOTH lists and
-  // its docstring names this case as legitimate; the row that MUST agree, `/counter`, still does.
-  { to: "/counter/seat", label: "nav.counterSeat", permission: "opd.visits.open", group: "desk" },
   { to: "/registration", label: "nav.registration", permission: "patients.register", group: "patients" },
   { to: "/merge", label: "nav.merge", permission: "patients.merge", group: "patients" },
   { to: "/approvals", label: "nav.approvals", permission: "approvals.requests.read", group: "admin" },
@@ -380,35 +373,36 @@ const staffReportsRoute = createRoute({
 });
 
 /**
- * PLAN 07b T3 — THE COUNTER. One screen for the whole walk-in: find the patient once, open the
- * visit, take the money, hand them to vitals. It sits BESIDE `/opd/desk` and `/billing` rather than
- * replacing them (DD11) — the supervisor's board, the transfer lane and the dues desk still need
- * their own surfaces, and Plan 22's multi-counter model needs them intact.
+ * ═══ FD-2 / THE OWNER'S RULING, 2026-09-02 — THE SEAT *IS* `/counter` NOW ═══
+ *
+ * D1 mounted Desk One at `/counter/seat` BESIDE the shipped `counter-desk.tsx` on purpose: a proven
+ * money path and an unproven layout should never be in one diff, and a reviewer had to be able to
+ * tell which half a defect came from. RC-4 §6 left "which of the two survives" as an owner ruling,
+ * and it stayed open through RC-4 and FD-1 — so the deploy that reached production carried BOTH,
+ * and the nav read *Counter · Registration counter (new)*, two links to the same work, and the
+ * owner used the wrong one and reported the right one as broken.
+ *
+ * The owner has now ruled: *"you can remove your old design and keep the new design. no need to
+ * keep the old design just for the sake of keeping it."* So `counter-desk.tsx` and its suite are
+ * DELETED and the seat takes the path — not a redirect. A redirect would leave a second name for
+ * one screen in the router, in the manifest, in every bookmark a clerk made this week and in the
+ * caddyfile census, which is the same two-doors problem one layer down.
+ *
+ * WHAT SURVIVES THE DELETION, deliberately:
+ *   · `components/counter-slip.tsx` — the old screen's best idea (token and receipt on ONE piece of
+ *     paper, because two `.print-doc` nodes overprint), now mounted by the seat instead.
+ *   · `opdManifest.menu`'s `{ path: "/counter", permission: "opd.visits.open" }` — unchanged, which
+ *     is why `nav-parity.test.ts` still passes: the path and the permission are what it compares,
+ *     and the seat has always required the same grant as the screen it replaces.
  */
 const counterDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/counter",
-  component: CounterDesk,
-});
-
-/**
- * RC-3 T5 — the seat. `/counter/seat` rather than a replacement for `/counter`: D1 keeps both for
- * one phase so a proven money path and an unproven layout are never the same diff.
- *
- * RC-4 T1 — THE ROUTE NO LONGER HANDS DOWN A NAVIGATION. It used to pass `onRegisterNew`, which
- * left for `/registration?new=true` — and leaving is exactly the defect the seat exists to remove:
- * the clerk had a dossier, a search and a patient session in hand, and creating a record abandoned
- * all three. The seat registers in four fields IN PLACE now (D1), so the screen needs no navigation
- * at all and mounts cleanly without a router, which is why its suite still needs none.
- */
-const registrationCounterRoute = createRoute({
-  getParentRoute: () => authedRoute,
-  path: "/counter/seat",
   // FD-1 T4 — the door to "your figures" is a client-side navigation handed in from here; the seat
   // itself mounts without a router in its suite.
   component: function RegistrationCounterRoute() {
     const navigate = useNavigate();
-    return <RegistrationCounter onFigures={() => { void navigate({ to: "/counter/seat/figures" }); }} />;
+    return <RegistrationCounter onFigures={() => { void navigate({ to: "/counter/figures" }); }} />;
   },
 });
 
@@ -429,12 +423,14 @@ const vitalsBayRoute = createRoute({
  */
 const counterFiguresRoute = createRoute({
   getParentRoute: () => authedRoute,
-  path: "/counter/seat/figures",
+  // FD-2 — `/counter/figures`, following the seat off `/counter/seat`. It was never a nav row and
+  // is reached only from the seat's header, so this rename costs nothing a clerk has memorised.
+  path: "/counter/figures",
   component: function CounterFiguresRoute() {
     const navigate = useNavigate();
     return (
       <CounterFigures
-        onBack={() => { void navigate({ to: "/counter/seat" }); }}
+        onBack={() => { void navigate({ to: "/counter" }); }}
         onGo={(href) => { void navigate({ to: href as never }); }}
       />
     );
@@ -737,11 +733,10 @@ export const router = createRouter({
       opdDeskRoute, opdVitalsRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
-      // RC-3 T5 — 44 -> 45 with `/counter/seat`, Desk One. ONE route and ONE nav link, and it is
-      // the only NAV row in this table with no manifest counterpart (see its own comment above).
-      // `caddyfile-parity.test.ts` pins the count and joins this task's Files list — the S11 rule
-      // this repository has now applied to itself eight times.
-      registrationCounterRoute,
+      // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and
+      // `/counter/seat/figures` follows it to `/counter/figures`. `caddyfile-parity.test.ts` pins
+      // the count and joins this task's Files list — the S11 rule this repository has now applied
+      // to itself nine times.
       counterFiguresRoute,
       vitalsBayRoute,
       formularyAdminRoute,
