@@ -92,6 +92,8 @@ IPD indents, eMAR charge point (O-1); ward stock, crash carts; NDPS, Schedule X,
 
 ## 7. Owner rulings — money and law only, each with a recommended default
 
+**RULED 2026-09-02: the owner adopted every recommended default below ("do the needful which is most logical"); execution proceeds on them.**
+
 - **R-1 (money, law) — price at batch grain.** Recommend `min(batch MRP per base unit, NPPA ceiling on the dispense date, contracted tariff if any)`; no MRP and no ceiling → unsaleable; the invoice line records the winner. Plan 14 F5: pharmacy bills BEFORE it consumes, so the invoice line is the freeze.
 - **R-2 (money) — GST on medicines.** Recommend the item's slab from `items.gst_rate_bps` (5/12/18, nil), mechanism per S2; HSN on the invoice.
 - **R-3 (law) — Schedule X and NDPS at the OPD counter.** Recommend refused in 16c; no such stock until 16d's double custody and the RMI application (doc 16 O-2).
