@@ -76,9 +76,7 @@ export {
   SECOND_FACTOR_WINDOW_MINUTES, acknowledgeCritical, amendReport, draftReport, flagCritical,
   latestSigned, proposeDraft, publishReport, savePrelim, signReport,
 } from "./reports";
-export {
-  activeDrafter, offlineTemplateDrafter, proposalLockoutHits, setActiveDrafter,
-} from "./drafter";
+export { activeDrafter, offlineTemplateDrafter, proposalLockoutHits } from "./drafter";
 export type { DraftProposal, DrafterFacts, ReportDrafter } from "./drafter";
 export type { ReportContent, ReportRow } from "./reports";
 export { REPORT_TEMPLATES, templateFor, templateKeyFor } from "./templates";

@@ -25,7 +25,7 @@ service-account door (18b S1), so the safeguard is the role, and only the role.
 
 | # | precondition | how to check |
 |---|---|---|
-| 1.1 | Production is at migration `0054` or later (`0053` the UID index, `0054` the view table + the `pacs_settings` kind) | `select count(*) from drizzle.__drizzle_migrations` |
+| 1.1 | Migrations `0053` (the UID index) and `0054` (the view table + the `pacs_settings` kind) are applied | `select count(*) from drizzle.__drizzle_migrations` reads **55** or more (the journal is 0-based: 0054 is the 55th entry) |
 | 1.2 | 18a's three human items are done | `pregnancy_policy` active; a `pcpndt_registrations` row; four role keys assigned |
 | 1.3 | R2 ruled: which modalities have the DICOM worklist option licensed | the AMC / purchase order |
 | 1.4 | R1 ruled: where Orthanc runs and its worklist directory path | the compose file on that host |
@@ -36,8 +36,11 @@ service-account door (18b S1), so the safeguard is the role, and only the role.
 ## 2. Devices: AE titles (T1, D2) — works with NO hardware decision
 
 For every `device` resource that will read the worklist, set `attributes.aeTitle` to the modality's
-configured AE title (the string the vendor engineer typed into the console — case and length exact,
-≤ 16 characters). Registry screen → the device → attributes, keeping `modality` beside it:
+configured AE title (the string the vendor engineer typed into the console — case exact, 1–16
+printable ASCII characters, no backslash). The export ENFORCES that shape: a device whose title
+fails it is absent from the worklist and named in the response's `malformedAeTitle` list, so an
+empty console with `withheld: 0` and a non-empty `malformedAeTitle` is a typo, not a booking gap.
+Registry screen → the device → attributes, keeping `modality` beside it:
 
 ```json
 { "modality": "ct", "aeTitle": "CT1" }
@@ -49,13 +52,23 @@ registration BEFORE its AE title, or the worklist stays empty for it and the res
 count says so.
 
 Prove: `GET /radiology/mwl?date=<today>` as a user holding `radiology.mwl.read` returns
-`{ rows: [...], withheld: 0 }` for a scheduled study on that device.
+`{ rows: [...], withheld: 0, malformedAeTitle: [] }` for a scheduled study on that device.
+
+**The Station AE title is the modality's own filter, not HMIS's.** One directory serves every
+modality; each item carries `(0040,0001)` and a console configured to query the worklist by its
+own AE title (the vendor default) sees only its items. A console configured to query by date and
+modality alone sees every item of its modality, including a Form F study meant for the registered
+machine next door — D2's withholding is per DEVICE and cannot reach inside a misconfigured
+console. Check the console's worklist query settings at commissioning.
 
 ## 3. The bridge account (T1, S1)
 
 1. Create a user `modality-bridge` (`seed:staff` or `/admin/users`), assign role `modality_bridge`
    at hospital scope, password in the ops vault.
 2. Confirm it can do nothing else: `GET /radiology/worklist` as that user must answer **403**.
+3. The bearer token is a SESSION token and expires (`sessionTtlMinutes`); the bridge logs in again
+   when a pull answers 401 (`POST /auth/login` with `{ "username", "password" }` → `{ "token" }`),
+   which is what §5's script does. Store the password in `/etc/hmis-bridge/password`, mode 0600.
 
 ## 4. The viewer book (T3, D5) — works with NO hardware decision, but points nowhere until R1/R3
 
@@ -73,19 +86,41 @@ new tab and the console shows "Opened 1×".
 
 ## 5. The worklist bridge on the Orthanc host (T1, D1) — needs R1 + R2
 
-Install dcmtk (`apt install dcmtk`) beside Orthanc. Run every 15 s from the bridge account's token:
+Install dcmtk (`apt install dcmtk`) beside Orthanc. Run every 15 s as the bridge account. **The
+script replaces the directory ONLY after a successful pull** (close review C7): an HMIS outage,
+an expired session or a 5xx leaves yesterday's worklist in place rather than emptying every
+console's worklist in silence every 15 s.
 
 ```sh
 #!/bin/sh
-# /opt/hmis-bridge/mwl.sh — pull today's worklist, write one .wl per study, remove the stale ones
+# /opt/hmis-bridge/mwl.sh — pull today's worklist, write one .wl per study INSIDE the directory
+# (never rename the directory: Orthanc's bind mount follows the inode — pass 2 C7), one run at a time.
 set -eu
-API=https://hmis.<hospital>/api; DIR=/var/lib/orthanc/worklists; TOKEN=$(cat /etc/hmis-bridge/token)
-TMP=$(mktemp -d)
-curl -fsS -H "Authorization: Bearer $TOKEN" "$API/radiology/mwl?format=dump" \
-  | awk -v d="$TMP" 'BEGIN{n=0} /^# HMIS modality worklist item/{n++; f=sprintf("%s/%04d.dump",d,n)} n>0{print > f}'
+umask 077
+API=https://hmis.<hospital>/api; DIR=/var/lib/orthanc/worklists
+TOKEN_FILE=/etc/hmis-bridge/token; USER=modality-bridge; PASS_FILE=/etc/hmis-bridge/password
+exec 9>/run/hmis-bridge.lock; flock -n 9 || exit 0          # a slow pull is not overlapped by the next
+TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+login() {
+  curl -fsS -X POST -H 'Content-Type: application/json' -o "$TMP/login.json" \
+    -d "{\"username\":\"$USER\",\"password\":\"$(cat $PASS_FILE)\"}" "$API/auth/login" || return 1
+  sed -n 's/.*"token":"\([^"]*\)".*/\1/p' "$TMP/login.json" > "$TOKEN_FILE"; [ -s "$TOKEN_FILE" ]
+}
+[ -s "$TOKEN_FILE" ] || login
+pull() { curl -fsS -H "Authorization: Bearer $(cat $TOKEN_FILE)" "$API/radiology/mwl?format=dump" > "$TMP/all.dump"; }
+pull || { login; pull; }   # one login on an expired session; a wrong password fails here ONCE per run and never loops
+awk -v d="$TMP" 'BEGIN{n=0} /^# Dicom-File-Format/{n++; f=sprintf("%s/%04d.dump",d,n)} n>0{print > f}' "$TMP/all.dump"
 for f in "$TMP"/*.dump; do [ -e "$f" ] || break; dump2dcm "$f" "$f.wl" >/dev/null; done
-mkdir -p "$DIR"; rm -f "$DIR"/*.wl; mv "$TMP"/*.wl "$DIR"/ 2>/dev/null || true; rm -rf "$TMP"
+mkdir -p "$DIR"
+for w in "$TMP"/*.wl; do [ -e "$w" ] || break; cp "$w" "$DIR/.$(basename "$w").tmp" && mv "$DIR/.$(basename "$w").tmp" "$DIR/$(basename "$w")"; done
+for old in "$DIR"/*.wl; do [ -e "$old" ] || break; [ -e "$TMP/$(basename "$old")" ] || rm -f "$old"; done
 ```
+
+Each `.wl` lands by an atomic rename inside the mounted directory and stale names are removed
+afterwards; the directory itself is never renamed. A wrong password fails the run once (no swap) —
+watch the bridge's exit status, because five wrong attempts lock the account (`refuseIfThrottled`).
+
+(An empty worklist from a SUCCESSFUL pull is real — no study is booked — and is written as empty.)
 
 Orthanc: enable the worklist plugin with `"Worklists": { "Enable": true, "Database": "/var/lib/orthanc/worklists" }`.
 Prove on the modality: query the worklist, see the scheduled patient by accession; acquire; the

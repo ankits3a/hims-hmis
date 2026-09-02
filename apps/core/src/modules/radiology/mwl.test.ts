@@ -2,13 +2,13 @@ import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { placeAndCreateStudy, setupRadiologyFixture, studyTypeRow } from "../../../test/helpers/radiology";
 import { ensureRole, mkUser } from "../../../test/helpers/opd";
-import { imagingDefinitions, phiAccessLog, resources } from "../../kernel/db/schema";
+import { imagingDefinitions, patients, phiAccessLog, resources } from "../../kernel/db/schema";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
 import { addMachine, createRegistration } from "../pcpndt";
 import { cancelStudy, scheduleStudy } from "./schedule";
-import { MWL_READ, istDayWindow, mwlExport, renderMwlDump, toPersonName } from "./mwl";
+import { AE_TITLE_RE, MWL_READ, istDayWindow, mwlExport, renderMwlDump, renderMwlDumpHeader, toPersonName } from "./mwl";
 import { mintStudyInstanceUid } from "./uid";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
 import type { Actor } from "@hmis/contracts";
@@ -73,6 +73,8 @@ describe("the modality worklist export (18b T1)", () => {
     expect(start.toISOString()).toBe("2026-08-30T18:30:00.000Z");
     expect(end.toISOString()).toBe("2026-08-31T18:30:00.000Z");
     expect(() => istDayWindow("31-08-2026")).toThrow(/calendar day/);
+    // Close review A5 — a day that does not exist is refused, not rolled over to 2 March.
+    expect(() => istDayWindow("2026-02-30")).toThrow(expect.objectContaining({ code: "invalid_date" }));
   });
 
   it("holds exactly the day's studies in the three statuses — a cancelled one and tomorrow's are not on it", async () => {
@@ -84,8 +86,12 @@ describe("the modality worklist export (18b T1)", () => {
     const tomorrow = await place();
     await schedule(tomorrow.studyId, "usg", NEXT_DAY_SLOT);
 
+    // Close review A6 (D4) — the clinical marker and the administrative one DISAGREE on purpose,
+    // so a reader of `patients.sex` fails this test.
+    await db.update(patients).set({ sex: "other" }).where(eq(patients.id, fx.patientId));
     const out = await mwlExport(db, bridge, { date: DAY, deviceResourceId: fx.devices["usg"]! });
     expect(out.withheld).toBe(0);
+    expect(out.malformedAeTitle).toEqual([]);
     expect(out.rows.map((r) => r.studyId)).toEqual([kept.studyId]);
     const row = out.rows[0]!;
     expect(row.accessionNo).toBe(kept.accessionNo);
@@ -98,10 +104,18 @@ describe("the modality worklist export (18b T1)", () => {
     expect(row.procedureCode).toBe("USG-ABDO");
     expect(row.priority).toBe("ROUTINE");
 
-    // Tomorrow's is on tomorrow's list, and a pull is the same list twice (D1).
+    /**
+     * ═══ CLOSE REVIEW A1 (CRITICAL) — THE 01:30 IST SLOT CARRIES ITS OWN DATE ═══
+     * Tomorrow's study is 20:00Z on 31 August = 01:30 IST on 1 September. It is on 1 September's
+     * list (the window was always right) AND its SPS date says 1 September (the date was UTC and
+     * said 31 August, with an IST time beside it — a modality filtering by today's date never saw
+     * the night CT). Pinned by DATE now.
+     */
     const next = await mwlExport(db, bridge, { date: "2026-09-01" });
-    expect(next.rows.map((r) => r.studyId)).toEqual([tomorrow.studyId]);
-    expect(await mwlExport(db, bridge, { date: DAY })).toEqual(out);
+    expect(next.rows.map((r) => [r.studyId, r.scheduledDate, r.scheduledTime]))
+      .toEqual([[tomorrow.studyId, "20260901", "013000"]]);
+    // A pull is the same list twice (D1) — the SAME query, twice (close review A8).
+    expect(await mwlExport(db, bridge, { date: DAY, deviceResourceId: fx.devices["usg"]! })).toEqual(out);
   });
 
   it("a device without an AE title is simply absent — not an error, and not a withheld row", async () => {
@@ -125,6 +139,8 @@ describe("the modality worklist export (18b T1)", () => {
     const before = await mwlExport(db, bridge, { date: DAY });
     expect(before.rows).toEqual([]);
     expect(before.withheld).toBe(1);
+    // Close review A3 — nothing was disclosed, so nothing is logged as disclosed.
+    expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "imaging.worklist"))).toHaveLength(0);
 
     const { registrationId } = await withTx(db, (tx) => createRegistration(tx, incharge, {
       site: "Main", registrationNo: "PNDT/MH/2026/0001", validFrom: "2026-01-01", validTo: "2027-12-31",
@@ -153,20 +169,41 @@ describe("the modality worklist export (18b T1)", () => {
     await expect(mwlExport(db, { type: "system", id: "cron" } as Actor, { date: DAY })).rejects.toMatchObject({ code: "forbidden" });
   });
 
+  it("close review A2 — a device whose AE title is not a legal AE title is absent and NAMED, never exported", async () => {
+    await db.update(resources).set({ attributes: { modality: "usg", aeTitle: "USG_ROOM_1_VOLUSON" } }) // 18 chars
+      .where(eq(resources.id, fx.devices["usg"]!));
+    await db.update(resources).set({ attributes: { modality: "ct", aeTitle: "CT\\1" } }) // a backslash
+      .where(eq(resources.id, fx.devices["ct"]!));
+    const usg = await place();
+    await schedule(usg.studyId, "usg", SLOT);
+    const ct = await place("CT-HEAD");
+    await schedule(ct.studyId, "ct", SLOT);
+    const out = await mwlExport(db, bridge, { date: DAY });
+    expect(out.rows).toEqual([]);
+    expect(out.malformedAeTitle.sort()).toEqual([fx.devices["ct"]!, fx.devices["usg"]!].sort());
+    // Pass 2 A2 — the dump the bridge pulls says so too, and the shape rule matches PS3.5 AE.
+    expect(renderMwlDumpHeader(out)).toContain(`malformed AE title on device(s): ${out.malformedAeTitle.join(",")}`);
+    for (const bad of ["", "   ", "CT]1", "CT\\1", "A".repeat(17), "CT\u00071"]) expect(AE_TITLE_RE.test(bad)).toBe(false);
+    for (const good of ["CT1", "USG_ROOM_1", "A".repeat(16), "MR 1.5T"]) expect(AE_TITLE_RE.test(good)).toBe(true);
+    expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "imaging.worklist"))).toHaveLength(0);
+  });
+
   it("renders the dcmtk dump a bridge feeds to dump2dcm, and PN puts the last token in the family component", () => {
     expect(toPersonName("Asha Devi")).toBe("Devi^Asha");
     expect(toPersonName("Ramesh Kumar Yadav")).toBe("Yadav^Ramesh Kumar");
     expect(toPersonName("Mononym")).toBe("Mononym");
     expect(toPersonName("Ev^il=Na\\me")).toBe("me^Ev il Na");
+    expect(toPersonName(`${"A".repeat(70)} B`)).toBe(`B^${"A".repeat(64)}`);
     const dump = renderMwlDump({
-      studyId: "s1", accessionNo: "X2608310001", studyInstanceUid: "2.25.1", status: "scheduled", priority: "STAT",
+      studyId: "s1", patientId: "p1", accessionNo: "X2608310001", studyInstanceUid: "2.25.1", status: "scheduled", priority: "STAT",
       patient: { uhid: "HMS-1", personName: "Devi^Asha", birthDate: "19960101", sex: "F" },
-      referringPhysician: "dr-consultant", procedureCode: "USG-ABDO", modality: "US",
+      orderingClinicianId: "01J6ZK8Q3W9X2Y4V5T6R7S8P9N", procedureCode: "USG]ABDO\\X", modality: "US",
       deviceResourceId: "d1", aeTitle: "USG1", scheduledDate: "20260831", scheduledTime: "143000",
     });
     for (const line of [
       "(0008,0050) SH [X2608310001]", "(0010,0010) PN [Devi^Asha]", "(0010,0020) LO [HMS-1]",
       "(0010,0030) DA [19960101]", "(0010,0040) CS [F]", "(0020,000d) UI [2.25.1]",
+      "(0008,0090) PN []", "(0032,1060) LO [USG ABDO X]",
       "(0040,1003) CS [STAT]", "    (0008,0060) CS [US]", "    (0040,0001) AE [USG1]",
       "    (0040,0002) DA [20260831]", "    (0040,0003) TM [143000]", "    (0040,0009) SH [X2608310001]",
     ]) {
