@@ -80,3 +80,16 @@ export async function searchPatients(q: string, limit = 8): Promise<WirePatientH
   );
   return items;
 }
+
+/**
+ * VD-2 T1 — the scanner door. The card payload is `q1.<patientId>.<uhid>.<qrVersion>.<sig>`
+ * (`patients/qr.ts:15`); a keyboard-wedge scanner types it into whatever field has focus and
+ * presses Enter, so the bay's identify box receives it exactly as a typed token would arrive.
+ * A failed scan is a domain answer (`ok: false`) on HTTP 200, never a thrown transport error.
+ */
+export type WireQrVerifyResult =
+  | { ok: true; patient: { id: string; uhid: string; name: string; administrativeGender: string; dob: string | null } }
+  | { ok: false; reason: "malformed" | "invalid_signature" | "stale_version" | "unknown_patient" };
+export function verifyQrScan(payload: string): Promise<WireQrVerifyResult> {
+  return api("POST", "/patients/qr/verify", { payload });
+}

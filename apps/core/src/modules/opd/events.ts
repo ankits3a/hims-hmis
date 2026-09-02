@@ -194,6 +194,14 @@ export const vitalsRecheckDemanded = defineEvent("vitals.recheck_demanded", MODU
   flags: z.array(dangerFlagSchema).min(1),
   /** The arm/site the bay is being told to use. One danger reading demands the OTHER arm, now. */
   demand: z.literal("other_arm_now"),
+  /** VD-2 T0 / F4 — the first reading, so the confirm can refuse its own replay. Optional: older rows lack it. */
+  reading: z.record(z.string(), z.number()).optional(),
+}));
+
+/** VD-2 CLOSE — the other arm was inside the band: the demand is withdrawn, the pair goes to the doctor on the chart. */
+export const vitalsRecheckWithdrawn = defineEvent("vitals.recheck_withdrawn", MODULE, z.object({
+  encounterId: id, patientId: id, ...where,
+  reading: z.record(z.string(), z.number()),
 }));
 
 export const queueEscalated = defineEvent("queue.escalated", MODULE, z.object({

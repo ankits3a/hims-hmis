@@ -1,13 +1,13 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { opdEncounters, opdVitals } from "../../kernel/db/schema";
-import { getPatient } from "../patients";
+import { getPatient, getPatientSummaries } from "../patients";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { loadOpdConfig } from "./config";
 import { OpdError } from "./errors";
 import { ageYearsAt } from "./time";
 import { bandFor, evaluateVitals } from "./vitals-rules";
-import type { BandKey, VitalKey } from "./config";
+import type { BandConfig, BandKey, DangerRangesConfig, VitalKey } from "./config";
 import type { DangerFlag } from "./events";
 import type { Db } from "../../kernel/db/client";
 
@@ -50,6 +50,19 @@ export type PreStage = {
   patientId: string;
   ageYears: number | null;
   band: BandKey;
+  /**
+   * VD-2 CLOSE / pass-1 CRITICAL — THE BAND'S LIMITS TRAVEL WITH THE PRE-STAGE. The bay mirrored
+   * its gates from `GET /opd/config`, which is `opd.masters.read` — a permission `vitals_desk` does
+   * not hold — so for the one role that works the bench every mirror and the whole other-arm
+   * protocol were silently unreachable. The reader the bay already holds now carries exactly what
+   * the tiles need: this band's ranges, its notice ranges, the three gate numbers and the MUAC zones.
+   */
+  ranges: BandConfig["ranges"];
+  noticeRanges: BandConfig["noticeRanges"];
+  gates: DangerRangesConfig["gates"];
+  muacBands: DangerRangesConfig["muacBands"];
+  /** True when the patient is confidential to this actor: the band is answered, the history is not (T0/F6's rule). */
+  sealed: boolean;
   /** The band's demanded set, and the ones it records but never range-flags (D5). */
   required: VitalKey[];
   notRoutine: VitalKey[];
@@ -101,25 +114,38 @@ export async function preStage(db: Db, actor: Actor, encounterId: string, now: D
   const encounter = encounters[0];
   if (!encounter) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
 
+  /*
+   * VD-2 CLOSE / pass-1 MAJOR — A CONFIDENTIAL PATIENT IS STAGED WITHOUT HISTORY, NOT REFUSED.
+   * The bay charts a sealed patient (the record path reads the patient through the aliased
+   * summary — T0/F6), so refusing the pre-stage left the bay capturing a sealed four-year-old on
+   * the ADULT tile set: no MUAC tile, the adult weight gate, and `vitals_incomplete: muacCm` for a
+   * tile that never rendered. One rule now: whoever may write the chart is told the BAND; the
+   * cross-visit HISTORY (the last chart, the carry, the expected flags) stays behind the
+   * confidential gate and answers as nothing.
+   */
   const visible = await getPatient(db, actor, encounter.patientId);
-  if (visible === null) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
+  const [summary] = await getPatientSummaries(db, actor, [encounter.patientId]);
+  if (visible === null && summary === undefined) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
+  const patientId = visible?.patient.id ?? summary!.id;
+  const sealed = visible === null;
+  const dob = visible?.patient.dob ?? summary?.dob ?? null;
 
   await recordPhiAccess(db, {
-    actor, patientId: visible.patient.id, surface: "opd.vitals_prestage", encounterId,
-    sealed: visible.patient.isConfidential, reason: visible.breakGlass?.reason ?? null,
+    actor, patientId, surface: "opd.vitals_prestage", encounterId,
+    sealed: visible?.patient.isConfidential ?? true, reason: visible?.breakGlass?.reason ?? null,
   });
 
   const cfg = await loadOpdConfig(db);
-  const ageYears = visible.patient.dob === null ? null : ageYearsAt(visible.patient.dob, now);
+  const ageYears = dob === null ? null : ageYearsAt(dob, now);
   const band = bandFor(ageYears, cfg.dangerRanges);
 
   // The last ACTIVE chart for the CANONICAL patient. Superseded rows are an amendment's
-  // predecessor and are not what anything is carried from (D2).
-  const rows = await db
+  // predecessor and are not what anything is carried from (D2). Sealed: no history at all.
+  const rows = sealed ? [] : await db
     .select({ v: opdVitals, serviceDate: opdEncounters.serviceDate })
     .from(opdVitals)
     .innerJoin(opdEncounters, eq(opdVitals.encounterId, opdEncounters.id))
-    .where(and(eq(opdVitals.patientId, visible.patient.id), eq(opdVitals.status, "active")))
+    .where(and(eq(opdVitals.patientId, patientId), eq(opdVitals.status, "active")))
     .orderBy(desc(opdVitals.recordedAt)).limit(1);
 
   const row = rows[0];
@@ -130,8 +156,11 @@ export async function preStage(db: Db, actor: Actor, encounterId: string, now: D
   };
 
   return {
-    patientId: visible.patient.id,
+    patientId,
     ageYears, band: band.key,
+    ranges: band.ranges, noticeRanges: band.noticeRanges,
+    gates: cfg.dangerRanges.gates, muacBands: cfg.dangerRanges.muacBands,
+    sealed,
     required: [...band.required],
     notRoutine: [...band.notRoutine],
     last,

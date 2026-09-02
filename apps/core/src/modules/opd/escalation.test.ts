@@ -192,4 +192,76 @@ describe("VD-1 T3 — recheck, the double confirm, and the ten seconds", () => {
       .rejects.toMatchObject({ code: "unknown_queue_entry" });
     expect(await db.select().from(opdEncounters).where(eq(opdEncounters.id, deferred.encounter.id))).toHaveLength(1);
   });
+
+  // ═══ VD-2 T0 — the independent review VD-1 owed, findings F4 and F5 ═══
+
+  it("T0/F4: the same body posted twice is NOT a double confirm — the other arm is a new reading", async () => {
+    const enc = await walkIn();
+    await demandRecheck(db, vd.actor, enc, DANGER, MON);
+    await expect(escalate(db, vd.actor, enc, DANGER, MON))
+      .rejects.toMatchObject({ code: "escalation_state_conflict" });
+    expect(await classNow(enc)).toBe(3);
+    // The recheck's reading rides its event, which is what makes the replay detectable.
+    const demanded = (await db.select().from(events).where(eq(events.name, "vitals.recheck_demanded")))[0]!;
+    expect((demanded.payload as { reading: Record<string, number> }).reading).toMatchObject({ sbp: 208, dbp: 126 });
+    // A genuinely different second reading still escalates.
+    const view = await escalate(db, vd.actor, enc, WORSE, MON);
+    expect(view.state).toBe("escalated");
+    expect(await classNow(enc)).toBe(0);
+  });
+
+  it("T0/F5: cancel after a CHARTED danger leaves class 0 — the protocol reverts only what the protocol did", async () => {
+    const enc = await walkIn();
+    // A saved 190/120 puts the entry at class 0 before any protocol runs.
+    await recordVitals(db, vd.actor, enc, { ...DANGER, sbp: 190, dbp: 120 }, MON);
+    expect(await classNow(enc)).toBe(0);
+    await demandRecheck(db, vd.actor, enc, DANGER, new Date(MON.getTime() + 1_000));
+    const esc = await escalate(db, vd.actor, enc, WORSE, new Date(MON.getTime() + 2_000));
+    expect(esc.escalatedFromClass).toBe(0);
+    const view = await cancelEscalation(db, vd.actor, enc, new Date(MON.getTime() + 5_000));
+    expect(view.escalatedFromClass).toBe(0);
+    expect(await classNow(enc)).toBe(0);                 // the charted danger stands
+    expect((await entryOf(enc)).danger).toBe(true);
+    const cancelled = (await db.select().from(events).where(eq(events.name, "queue.escalation_cancelled")))[0]!;
+    expect((cancelled.payload as { restoredClass: number }).restoredClass).toBe(0);
+  });
+
+  // ═══ VD-2 CLOSE, pass 1 — the confirm is the SAME vital re-measured; a calm other arm withdraws ═══
+
+  it("CLOSE/pass1: a calm other arm WITHDRAWS the demand — state back to none, its own event, and the next danger needs a fresh demand", async () => {
+    const enc = await walkIn();
+    await demandRecheck(db, vd.actor, enc, DANGER, MON);
+    const view = await escalate(db, vd.actor, enc, CALM, MON);
+    expect(view.state).toBe("none");
+    expect((await entryOf(enc)).escalation).toBe("none");
+    expect(await classNow(enc)).toBe(3);
+    expect(await db.select().from(events).where(eq(events.name, "vitals.recheck_withdrawn"))).toHaveLength(1);
+    await expect(escalate(db, vd.actor, enc, WORSE, MON)).rejects.toMatchObject({ code: "escalation_state_conflict" });
+  });
+
+  it("CLOSE/pass1+2: a DIFFERENT vital is a new first reading — the old demand is withdrawn and the new vital demanded (no exit-less state); a copied cuff reading with a new temperature is still a replay", async () => {
+    const enc = await walkIn();
+    await demandRecheck(db, vd.actor, enc, { ...CALM, pulse: 125 }, MON);            // pulse demanded
+    const re = await escalate(db, vd.actor, enc, { ...CALM, pulse: 80, spo2: 85 }, MON);  // pulse calm, SpO₂ now danger
+    expect(re.state).toBe("recheck_demanded");
+    expect(await classNow(enc)).toBe(3);
+    const demands = await db.select().from(events).where(eq(events.name, "vitals.recheck_demanded")).orderBy(events.seq);
+    expect(demands).toHaveLength(2);
+    expect((demands[1]!.payload as { flags: { vital: string }[] }).flags.map((f) => f.vital)).toEqual(["spo2"]);
+    expect(await db.select().from(events).where(eq(events.name, "vitals.recheck_withdrawn"))).toHaveLength(1);
+    // and the new demand escalates on ITS vital
+    expect((await escalate(db, vd.actor, enc, { ...CALM, spo2: 84 }, MON)).state).toBe("escalated");
+    const enc2 = await walkIn();
+    await demandRecheck(db, vd.actor, enc2, DANGER, MON);
+    await expect(escalate(db, vd.actor, enc2, { ...DANGER, tempC: 37.4 }, MON))      // same cuff numbers, new temperature
+      .rejects.toMatchObject({ code: "escalation_state_conflict" });
+    expect(await classNow(enc2)).toBe(3);
+    expect((await escalate(db, vd.actor, enc2, WORSE, MON)).state).toBe("escalated");
+    // pass 2 / F5: a demanded key OMITTED from the confirm is a replay, not a new reading
+    const enc3 = await walkIn();
+    await demandRecheck(db, vd.actor, enc3, { ...CALM, sbp: 190, dbp: 85, spo2: 88 }, MON);   // sbp + spo2 demanded
+    await expect(escalate(db, vd.actor, enc3, { sbp: 190, dbp: 85, pulse: 104, tempC: 36.9 }, MON))   // spo2 OMITTED
+      .rejects.toMatchObject({ code: "escalation_state_conflict" });
+    expect(await classNow(enc3)).toBe(3);
+  });
 });

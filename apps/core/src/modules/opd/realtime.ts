@@ -19,7 +19,7 @@ export const OPD_REALTIME_NAMES = [
   // `queue:<doctorId>:<date>` topic as the call, so the consulting room learns that somebody just
   // became class 0 in the same breath the bay learns it. The cancel rides it too, because a board
   // that flashed and then went quiet would leave the doctor expecting a patient nobody is sending.
-  "vitals.recheck_demanded", "queue.escalated", "queue.escalation_cancelled",
+  "vitals.recheck_demanded", "vitals.recheck_withdrawn", "queue.escalated", "queue.escalation_cancelled",
   // VD-1 T4 — the bench rail repaints on it: a rest started at one bay is a recall every screen
   // watching that doctor-day should already know about.
   "bench.state_set",

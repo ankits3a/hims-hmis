@@ -1,9 +1,10 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
-import { events, opdQueueEntries, opdVitals, workflowInstances, workflowTimers } from "../../kernel/db/schema";
+import { events, opdQueueEntries, opdVitals, phiAccessLog, workflowInstances, workflowTimers } from "../../kernel/db/schema";
 import { abandonVisit, getEncounter, openVisit } from "./encounters";
-import { recordVitals } from "./vitals";
+import { amendVitals, getVitalsForAmend, recordVitals } from "./vitals";
+import { setBenchState } from "./bench";
 import type { Db } from "../../kernel/db/client";
 
 /** Monday 2026-08-17, 09:30 IST — the encounters.test.ts anchor. */
@@ -282,5 +283,117 @@ describe("opd vitals (recording, danger flags, the registered→waiting move)", 
     expect(r.encounter.dangerFlagged).toBe(true);
     const entry = (await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, opened.encounter.id)))[0]!;
     expect(entry.danger).toBe(true);
+  });
+
+  // ═══ VD-2 T0 — the independent review VD-1 owed, findings F1 F2 F3 F6 and two MINORs ═══
+
+  it("T0/F1: amend holds the carried lock — a carried key changed without a reason is refused, and a same-visit correction is gated against the PREDECESSOR", async () => {
+    const first = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    await recordVitals(db, vd.actor, first.encounter.id, { ...adultOk, heightCm: 151 }, MON);
+    const second = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const r = await recordVitals(db, vd.actor, second.encounter.id, { ...adultOk, heightCm: 151 }, MON, { carriedForward: ["heightCm"] });
+    // 149 under carried provenance with no reason: refused, ZERO new rows.
+    await expect(amendVitals(db, vd.actor, r.vitals.id, { ...adultOk, heightCm: 149 }, "typo", MON, { carriedForward: ["heightCm"] }))
+      .rejects.toMatchObject({ code: "carried_value_locked", detail: { locked: [{ key: "heightCm", carried: 151, supplied: 149 }] } });
+    const rows = await db.select().from(opdVitals).where(eq(opdVitals.encounterId, second.encounter.id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe("active");
+    // With a preset reason the amendment lands and names the old value.
+    const a = await amendVitals(db, vd.actor, r.vitals.id, { ...adultOk, heightCm: 149 }, "re-measured", MON, {
+      carriedForward: ["heightCm"], unlockReasons: { heightCm: "patient_disputes_old_value" },
+    });
+    expect(a.vitals.heightCm).toBe(149);
+    expect((a.vitals.readings as { heightCm?: { note?: string } }).heightCm?.note).toContain("was 151");
+  });
+
+  it("T0/F1: a same-visit correction is gated against the PREDECESSOR, not the row being replaced", async () => {
+    const first = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    await recordVitals(db, vd.actor, first.encounter.id, { ...adultOk, heightCm: 151 }, MON);
+    const second = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const r = await recordVitals(db, vd.actor, second.encounter.id, { ...adultOk, heightCm: 153 }, MON); // 2 cm: passes
+    // 153 → 150 is 3 cm from the row being replaced (the gate's threshold) and 1 cm from the
+    // predecessor. Compared against `prior` this fired `shrinking_adult` at the value being corrected.
+    const fixed = await amendVitals(db, vd.actor, r.vitals.id, { ...adultOk, heightCm: 150 }, "mistyped", MON);
+    expect(fixed.vitals.heightCm).toBe(150);
+    // The gate still runs, against the predecessor: 5 cm from 151 is held.
+    await expect(amendVitals(db, vd.actor, fixed.vitals.id, { ...adultOk, heightCm: 156 }, "again", MON))
+      .rejects.toMatchObject({ code: "vitals_gate" });
+  });
+
+  it("T0/F2: an amendment that REVEALS a danger moves the board and fires vitals.danger_flagged; a notice-only amendment sets nothing", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const r = await recordVitals(db, vd.actor, opened.encounter.id, { ...adultOk, spo2: 95 }, MON);
+    expect((await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, opened.encounter.id)))[0]!.danger).toBe(false);
+    const a = await amendVitals(db, vd.actor, r.vitals.id, { ...adultOk, spo2: 85 }, "probe was on the wrong finger", MON);
+    expect(a.flags.map((f) => f.vital)).toEqual(["spo2"]);
+    const entry = (await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, opened.encounter.id)))[0]!;
+    expect(entry.danger).toBe(true);
+    expect((await getEncounter(db, opened.encounter.id))!.dangerFlagged).toBe(true);
+    const flagged = await db.select().from(events).where(eq(events.name, "vitals.danger_flagged"));
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0]!.payload).toMatchObject({ vitalsId: a.vitals.id, tokenNo: 1 });
+
+    // The child: 37.4 corrected to 38.5 is a NOTICE (F1) — the doctor sees it, the board does not move.
+    const kid = await openVisit(db, clerk.actor, { patientId: childPatient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const childOk = { heightCm: 95, weightKg: 14, pulse: 100, rr: 24, spo2: 98, tempC: 37.4, muacCm: 15 };
+    const k = await recordVitals(db, vd.actor, kid.encounter.id, childOk, MON);
+    const ka = await amendVitals(db, vd.actor, k.vitals.id, { ...childOk, tempC: 38.5 }, "re-read the strip", MON);
+    expect(ka.flags.map((f) => f.severity)).toEqual(["notice"]);
+    expect((await getEncounter(db, kid.encounter.id))!.dangerFlagged).toBe(false);
+    expect((await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, kid.encounter.id)))[0]!.danger).toBe(false);
+    expect(await db.select().from(events).where(eq(events.name, "vitals.danger_flagged"))).toHaveLength(1); // still the adult's
+  });
+
+  it("T0/F6: the nurse who charted a CONFIDENTIAL patient can amend that chart — one rule for record and correct", async () => {
+    const vip = await mkPatient(db, clerk.actor, { ageYears: undefined, dob: DOB_ADULT, isConfidential: true, alias: "Patient 4F2" });
+    const opened = await openVisit(db, clerk.actor, { patientId: vip.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const r = await recordVitals(db, vd.actor, opened.encounter.id, { ...adultOk, pulse: 27 }, MON); // transposed 72
+    const a = await amendVitals(db, vd.actor, r.vitals.id, { ...adultOk, pulse: 72 }, "transposed digits", MON, {
+      overrides: {},
+    });
+    expect(a.vitals.pulse).toBe(72);
+    expect(a.superseded).toBe(r.vitals.id);
+  });
+
+  it("T0 (MINOR): emergency on the amend body is honoured, and a chart save clears the bench state", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    await setBenchState(db, vd.actor, opened.encounter.id, { state: "resting", restMinutes: 5 }, MON);
+    expect((await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, opened.encounter.id)))[0]!.benchState).toBe("resting");
+    const r = await recordVitals(db, vd.actor, opened.encounter.id, adultOk, MON);
+    const entry = (await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, opened.encounter.id)))[0]!;
+    expect(entry.benchState).toBeNull();
+    expect(entry.recallAt).toBeNull();
+    // An amendment declared an emergency saves on BP + pulse + SpO₂ alone.
+    const a = await amendVitals(db, vd.actor, r.vitals.id, { sbp: 118, dbp: 78, pulse: 70, spo2: 97 }, "collapsed at the bench", MON, { emergency: true });
+    expect(a.vitals.emergency).toBe(true);
+    expect(a.vitals.heightCm).toBeNull();
+  });
+
+  it("CLOSE/pass1: the chart a nurse may amend, she may READ — a confidential patient's row under vitals_desk, logged", async () => {
+    const vip = await mkPatient(db, clerk.actor, { ageYears: undefined, dob: DOB_ADULT, isConfidential: true, alias: "Patient 4F2" });
+    const opened = await openVisit(db, clerk.actor, { patientId: vip.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const r = await recordVitals(db, vd.actor, opened.encounter.id, adultOk, MON);
+    const row = await getVitalsForAmend(db, vd.actor, r.vitals.id);
+    expect(row?.id).toBe(r.vitals.id);
+    expect(await getVitalsForAmend(db, vd.actor, "no-such-row")).toBeNull();
+    const logged = await db.select().from(phiAccessLog).where(eq(phiAccessLog.patientId, vip.id));
+    expect(logged.some((l) => l.surface === "opd.vitals" && l.encounterId === opened.encounter.id)).toBe(true);
+  });
+
+  it("CLOSE/pass2 F2: a chart whose SpO₂ was CONFIRMED at 68 can have its WEIGHT amended — the prior row's own values are not gated again", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const r = await recordVitals(db, vd.actor, opened.encounter.id, { ...adultOk, spo2: 68, weightKg: 22 }, MON, {
+      readings: { spo2: { takes: [68], source: "typed", held: [68] }, weightKg: { takes: [22], source: "typed" } },
+      overrides: { spo2: "confirmed_reclip", weightKg: "confirmed_real" },
+    });
+    expect(r.vitals.spo2).toBe(68);
+    const a = await amendVitals(db, vd.actor, r.vitals.id, { ...adultOk, spo2: 68, weightKg: 22, pulse: 96 }, "pulse re-read", MON, {
+      readings: { spo2: { takes: [68], source: "typed", held: [68] }, weightKg: { takes: [22], source: "typed" }, pulse: { takes: [96], source: "typed" } },
+    });
+    expect(a.vitals.pulse).toBe(96);
+    expect(a.vitals.spo2).toBe(68);
+    // a NEW low value on the amendment is still held: the gate judges what changed
+    await expect(amendVitals(db, vd.actor, a.vitals.id, { ...adultOk, spo2: 40, weightKg: 22 }, "slipped", MON))
+      .rejects.toMatchObject({ code: "vitals_incomplete" });
   });
 });

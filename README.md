@@ -1139,7 +1139,9 @@ invoices for the reflex, add-on and walk-in lines the counter never sees. All fo
 created by `seed:roles` with grants and **no holders**, the `pharmacy` and `storekeeper` precedent.
 
 **Radiology and the PCPNDT register (Plan 18a T2) declare twenty permissions across four new roles,
-and the SHAPE is three separations.** `radiology.reports.sign` is the `radiologist`'s alone: the
+and the SHAPE is three separations.** (Plan 18b T1 adds a twenty-first, `radiology.mwl.read`, and a
+fifth role, `modality_bridge`, which is a MACHINE account holding that one string and nothing else —
+the bridge that pulls the modality worklist must never be able to satisfy a safety gate.) `radiology.reports.sign` is the `radiologist`'s alone: the
 technologist acquires and the radiologist reports, which is the division the whole department is
 built around, and a `radiographer` who could sign would put a signature on their own work.
 `radiology_receptionist` holds NO `radiology.gates.satisfy` — the person who books the scan and takes
@@ -1153,28 +1155,29 @@ self-verify a statutory declaration is a single point of failure with a criminal
 it is a different decision — DD7 makes the radiologist the second clinical opinion on a gate the
 floor raised, and the override demands a reason and is evented.
 
-| Permission | radiologist | radiographer | radiology_receptionist | pcpndt_incharge |
-|---|---|---|---|---|
-| `radiology.orders.place` | | | ✓ | |
-| `radiology.worklist.read` | ✓ | ✓ | ✓ | |
-| `radiology.schedule` | | | ✓ | |
-| `radiology.checkin` | | ✓ | | |
-| `radiology.gates.satisfy` | | ✓ | | |
-| `radiology.gates.override` | ✓ | | | |
-| `radiology.acquire` | ✓ | ✓ | | |
-| `radiology.reports.write` | ✓ | | | |
-| `radiology.reports.sign` | ✓ | | | |
-| `radiology.reports.amend` | ✓ | | | |
-| `radiology.reports.read` | ✓ | ✓ | | |
-| `radiology.definitions.read` | ✓ | ✓ | ✓ | |
-| `radiology.definitions.manage` | ✓ | | | |
-| `radiology.bill_decisions.manage` | | | ✓ | |
-| `radiology.criticals.ack` | ✓ | | | |
-| `pcpndt.registrations.manage` | | | | ✓ |
-| `pcpndt.registrations.read` | ✓ | | | ✓ |
-| `pcpndt.form_f.write` | ✓ | | | |
-| `pcpndt.form_f.read` | ✓ | ✓ | | ✓ |
-| `pcpndt.form_f.verify` | | | | ✓ |
+| Permission | radiologist | radiographer | radiology_receptionist | pcpndt_incharge | modality_bridge |
+|---|---|---|---|---|---|
+| `radiology.orders.place` | | | ✓ | | |
+| `radiology.worklist.read` | ✓ | ✓ | ✓ | | |
+| `radiology.schedule` | | | ✓ | | |
+| `radiology.checkin` | | ✓ | | | |
+| `radiology.gates.satisfy` | | ✓ | | | |
+| `radiology.gates.override` | ✓ | | | | |
+| `radiology.acquire` | ✓ | ✓ | | | |
+| `radiology.reports.write` | ✓ | | | | |
+| `radiology.reports.sign` | ✓ | | | | |
+| `radiology.reports.amend` | ✓ | | | | |
+| `radiology.reports.read` | ✓ | ✓ | | | |
+| `radiology.definitions.read` | ✓ | ✓ | ✓ | | |
+| `radiology.definitions.manage` | ✓ | | | | |
+| `radiology.bill_decisions.manage` | | | ✓ | | |
+| `radiology.criticals.ack` | ✓ | | | | |
+| `radiology.mwl.read` | | ✓ | | | ✓ |
+| `pcpndt.registrations.manage` | | | | ✓ | |
+| `pcpndt.registrations.read` | ✓ | | | ✓ | |
+| `pcpndt.form_f.write` | ✓ | | | | |
+| `pcpndt.form_f.read` | ✓ | ✓ | | ✓ | |
+| `pcpndt.form_f.verify` | | | | ✓ | |
 
 Thirteen grants are held outside that table. **`doctor` gains `radiology.orders.place` and
 `radiology.reports.read`** — the referring clinician orders the scan and reads the REPORT, and not

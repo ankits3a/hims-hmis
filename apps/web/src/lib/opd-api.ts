@@ -470,3 +470,131 @@ export type WireVitalsHistoryItem = {
   band: string;
   dangerFlags: unknown[];
 };
+
+// ——— VD-2 T1 — the bench, the pre-stage reader, and the escalation state, on the wire ———
+/**
+ * VD-1 shipped these three shapes on the server (`bench.ts:46`, `prestage.ts:49`,
+ * `escalation.ts:71`) and NO web type declared them — the `feeStatus` / `avgConsultMinutes` /
+ * `matchedOn` finding for the fourth time. Declared here in the PR of the screen that reads them,
+ * so a rail and its consumer cannot drift apart again. Dates arrive as ISO strings.
+ */
+export type WireBenchState = "resting" | "away";
+export type WireEscalationState = "none" | "recheck_demanded" | "escalated" | "cancelled";
+export type WireBenchRow = {
+  encounterId: string; entryId: string; tokenNo: number; seq: number;
+  doctorId: string; doctorName: string; serviceDate: string;
+  patient: WirePatientSummary | null;
+  benchState: WireBenchState | null;
+  recallAt: string | null;
+  vitalsDone: boolean;
+  vitalsId: string | null;
+  escalation: WireEscalationState;
+  cancelMsRemaining: number;
+  recallDue: boolean;
+};
+export function fetchBench(filter: { departmentId?: string; doctorId?: string; serviceDate: string }): Promise<{ items: WireBenchRow[] }> {
+  const qs = new URLSearchParams({ serviceDate: filter.serviceDate });
+  if (filter.departmentId !== undefined) qs.set("departmentId", filter.departmentId);
+  if (filter.doctorId !== undefined) qs.set("doctorId", filter.doctorId);
+  return api("GET", `/opd/bench?${qs.toString()}`);
+}
+
+export type WireRange = { min?: number; max?: number };
+export type WireVitalKey = "heightCm" | "weightKg" | "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm";
+export type WireBandKey = "infant" | "child_1_5" | "child_6_12" | "adult";
+export type WirePreStage = {
+  patientId: string;
+  ageYears: number | null;
+  band: WireBandKey;
+  /** CLOSE pass 1 — the band's limits travel with the pre-stage; the bay mirrors nothing from `GET /opd/config` (a permission `vitals_desk` does not hold). */
+  ranges: Partial<Record<WireVitalKey, WireRange>>;
+  noticeRanges: Partial<Record<WireVitalKey, WireRange>>;
+  gates: { adultWeightFloorKg: number; heightDeltaCm: number; spo2ProbeFloorPct: number };
+  muacBands: { samUnderCm: number; mamUnderCm: number };
+  /** The patient is confidential to this actor: the band is answered, the history is not. */
+  sealed: boolean;
+  required: WireVitalKey[];
+  notRoutine: WireVitalKey[];
+  last: {
+    vitalsId: string; recordedAt: string; serviceDate: string;
+    heightCm: number | null; weightKg: number | null; sbp: number | null; dbp: number | null;
+    pulse: number | null; rr: number | null; spo2: number | null; tempC: number | null; muacCm: number | null;
+  } | null;
+  carryCandidates: WireVitalKey[];
+  expectedFlags: WireDangerFlag[];
+};
+/** `opd.vitals.history.read` — the last chart, the band and the carry candidates, nothing else (VD-1 D6). */
+export function fetchPreStage(encounterId: string): Promise<WirePreStage> {
+  return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/prestage`);
+}
+
+// ——— VD-2 T2 — the capture body, the save result, and the danger-range config the tiles mirror ———
+export type WireBandConfig = {
+  key: WireBandKey; upToAgeYears: number | null;
+  required: WireVitalKey[]; notRoutine: WireVitalKey[];
+  ranges: Partial<Record<WireVitalKey, WireRange>>;
+  noticeRanges: Partial<Record<WireVitalKey, WireRange>>;
+};
+/** `GET /opd/config`'s `dangerRanges`, typed at last — the bay's client-side mirrors read it; the server stays the authority. */
+export type WireDangerRanges = {
+  weightRequiredUnderYears: number;
+  bands: WireBandConfig[];
+  gates: { adultWeightFloorKg: number; heightDeltaCm: number; spo2ProbeFloorPct: number };
+  muacBands: { samUnderCm: number; mamUnderCm: number };
+};
+export type WireReadingSource = "typed" | "device" | "counted";
+export type WireReading = { takes: number[]; source: WireReadingSource; held?: number[]; note?: string };
+export type WireBpReading = { takes: [number, number][]; source: WireReadingSource; held?: number[]; note?: string };
+export type WireReadings = Partial<Record<Exclude<WireVitalKey, "sbp" | "dbp">, WireReading>> & { bp?: WireBpReading };
+export const UNLOCK_REASONS = ["yearly_remeasure_due", "patient_disputes_old_value", "posture_or_device_changed", "surgical_or_limb_change"] as const;
+export type WireUnlockReason = (typeof UNLOCK_REASONS)[number];
+export type WireVitalsPostBody = Partial<Record<WireVitalKey, number | null>> & {
+  notes?: string | null;
+  readings?: WireReadings;
+  contextChips?: { key: string; question: string; answer: string }[];
+  carriedForward?: WireVitalKey[];
+  emergency?: boolean;
+  overrides?: Partial<Record<WireVitalKey, string>>;
+  unlockReasons?: Partial<Record<WireVitalKey, WireUnlockReason>>;
+};
+export type WireVitalsGate = { key: WireVitalKey; kind: "slipped_digit" | "shrinking_adult" | "probe_error"; value: number; suggestion?: number; message: string };
+export type WireVitalsSaveResult = { vitals: WireVitals; flags: WireDangerFlag[]; encounter: WireEncounter };
+export function postVitals(encounterId: string, body: WireVitalsPostBody): Promise<WireVitalsSaveResult> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/vitals`, body);
+}
+
+// ——— VD-2 T3 — the danger protocol and the bench state, on the wire ———
+export type WireEscalationView = {
+  entryId: string; state: WireEscalationState; escalatedAt: string | null;
+  escalatedFromClass: number | null; escalationBy: string | null; cancelMsRemaining: number;
+};
+export type WireEscalationReading = Partial<Record<Exclude<WireVitalKey, "heightCm" | "weightKg">, number>>;
+export function demandRecheck(encounterId: string, reading: WireEscalationReading): Promise<WireEscalationView> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/escalation/recheck`, reading);
+}
+export function escalateVisit(encounterId: string, reading: WireEscalationReading): Promise<WireEscalationView> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/escalation/escalate`, reading);
+}
+export function cancelEscalation(encounterId: string): Promise<WireEscalationView> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/escalation/cancel`, {});
+}
+export function fetchEscalation(encounterId: string): Promise<{ escalation: WireEscalationView | null }> {
+  return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/escalation`);
+}
+export function setBenchState(encounterId: string, body: { state: WireBenchState | null; restMinutes?: number; note?: string }): Promise<WireBenchRow> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/bench-state`, body);
+}
+
+// ——— VD-2 T4 — amend after save ———
+export function fetchVisitVitals(encounterId: string): Promise<{ items: WireVitals[] }> {
+  return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/vitals`);
+}
+/** CLOSE pass 1 — the row a nurse may amend, she may read: `opd.vitals.record`, gated as the amend is. */
+export function fetchVitalsRow(vitalsId: string): Promise<{ vitals: WireVitals }> {
+  return api("GET", `/opd/vitals/${encodeURIComponent(vitalsId)}`);
+}
+export type WireVitalsAmendBody = WireVitalsPostBody & { reason: string };
+export type WireVitalsAmendResult = { vitals: WireVitals; flags: WireDangerFlag[]; superseded: string };
+export function amendVitals(vitalsId: string, body: WireVitalsAmendBody): Promise<WireVitalsAmendResult> {
+  return api("POST", `/opd/vitals/${encodeURIComponent(vitalsId)}/amend`, body);
+}

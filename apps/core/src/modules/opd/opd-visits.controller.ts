@@ -16,7 +16,7 @@ import { OpdError } from "./errors";
 import { parsed, toHttp } from "./opd-masters.controller";
 import { availableSlots } from "./schedules";
 import { istDate } from "./time";
-import { amendVitals, listVitals, recordVitals } from "./vitals";
+import { amendVitals, getVitalsForAmend, listVitals, recordVitals } from "./vitals";
 import { BENCH_STATES, listBench, setBenchState } from "./bench";
 import { cancelEscalation, demandRecheck, escalate, escalationFor } from "./escalation";
 import { preStage } from "./prestage";
@@ -381,6 +381,18 @@ export class OpdVisitsController {
    * is recording a vital, and the owner ruled it a staff RIGHT at this desk rather than a
    * supervisory one. The audit is the superseding row and its event, not a narrower gate.
    */
+  @RequirePermission("opd.vitals.record", "hospital")
+  @Get("vitals/:vitalsId")
+  async getVitalsRow(@CurrentActor() actor: Actor, @Param("vitalsId") vitalsId: string): Promise<{ vitals: VitalsRow }> {
+    try {
+      const vitals = await getVitalsForAmend(this.db, actor, vitalsId);
+      if (vitals === null) throw new OpdError("unknown_vitals", `unknown vitals ${vitalsId}`);
+      return { vitals };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   @RequirePermission("opd.vitals.record", "hospital")
   @Post("vitals/:vitalsId/amend")
   async postVitalsAmend(@CurrentActor() actor: Actor, @Param("vitalsId") vitalsId: string, @Body() body: unknown): Promise<unknown> {
