@@ -10,6 +10,7 @@ import { PARTNERS_ACCRUAL_CONSUMER } from "../../modules/partners";
 import { MATERIALS_CONSUMPTION_CONSUMER } from "../../modules/materials";
 import { OT_IMPLANT_CONFIRMED_CONSUMER, OT_PATIENT_MERGED_CONSUMER } from "../../modules/ot";
 import { RADIOLOGY_ORDER_PLACED_CONSUMER } from "../../modules/radiology";
+import { PHARMACY_RX_ISSUED_CONSUMER } from "../../modules/pharmacy";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -92,6 +93,7 @@ describe("seedCursors", () => {
         // second consumer census, recorded as finding F14 rather than fixed silently, exactly as
         // Plan 15 recorded T2-f.
         RADIOLOGY_ORDER_PLACED_CONSUMER,
+        PHARMACY_RX_ISSUED_CONSUMER, // PLAN 16c T3
       ].sort());
   });
 

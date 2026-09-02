@@ -20,6 +20,7 @@ import { materialsManifest } from "../../modules/materials";
 import { otManifest } from "../../modules/ot";
 import { pcpndtManifest } from "../../modules/pcpndt";
 import { radiologyManifest } from "../../modules/radiology";
+import { pharmacyManifest } from "../../modules/pharmacy";
 import { labManifest } from "../../modules/lab";
 
 /**
@@ -71,6 +72,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   labManifest,
   pcpndtManifest,
   radiologyManifest,
+  pharmacyManifest, // PLAN 16c T3
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -276,7 +278,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      `app.module.ts`, so a module declaring `orderKinds` meets the seam's three boot refusals
     //      in both processes. Plan 13 shipped a collector the worker never called and Plan 14 had to
     //      close it; this one is wired into both in the commit that creates it.
-    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "pharmacy"]); // PLAN 16c T1: app-side only until T3 lands its subscription with its handler
+    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders"]);
 
     // (2) The worker ADDS `notify`. It declares five `kernel.notify` subscriptions, and
     //     `buildSubscriptionBus` (kernel/worker/jobs.ts) makes a declared subscription with no
@@ -320,7 +322,9 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // `pcpndt` before `radiology`, the same order and the same reason as `ALL_MANIFESTS`.
       "pcpndt",
       "radiology",
+      // PLAN 16c T3 — the pharmacy's `prescription.issued` consumer; installed in both processes.
+      "pharmacy",
     ]);
-    expect(workerKeys).toHaveLength(15);
+    expect(workerKeys).toHaveLength(16);
   });
 });

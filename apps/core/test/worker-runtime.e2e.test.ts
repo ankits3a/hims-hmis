@@ -415,6 +415,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
           "partners.accrual",
           ["allocation.reversed", "credit_note.issued", "payment.received", "payment.refunded"],
         ],
+        // PLAN 16c T3 / D10 — the counter's queue: `prescription.issued` → a queued dispense. Sorts before `radiology.*`.
+        ["pharmacy.rx_issued", ["prescription.issued"]],
         ["radiology.order_placed", ["order.placed"]],
       ]);
 

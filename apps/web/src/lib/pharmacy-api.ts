@@ -58,3 +58,59 @@ export function pharmacyErrorText(e: unknown, t: (key: string) => string): strin
   }
   return e instanceof Error ? e.message : String(e);
 }
+
+// ── T3 — the counter ──
+export type WireRxLine = { drug: string; medicineId?: string | null; dose: string; route: string; frequency: string; durationDays: number | null; instructions: string | null; noSubstitution: boolean };
+export type WireMedicine = { id: string; brandName: string; strengthLabel: string | null; form: string; scheduleFlag?: string | null };
+export type WireDispenseLine = {
+  lineIdx: number; rxLine: WireRxLine; status: string; declinedReason: string | null; substitutionType: string;
+  qtyBase: number | null; scheduleFlag: string | null;
+  orderedMedicine: WireMedicine | null; dispensedMedicine: WireMedicine | null;
+  item: { id: string; code: string; name: string; baseUom: string; uoms: { uom: string; toBaseMultiplier: number }[] } | null;
+  saleable: boolean; available: number | null; batchId: string | null; reservationId: string | null; orderItemId: string | null;
+  unitPaise: number | null; priceWinner: string | null;
+};
+export type WirePatientSummary = { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
+export type WireDispense = {
+  id: string; status: string; dispenseNo: string | null; orderId: string | null; prescriptionId: string; prescriptionVersion: number;
+  encounterId: string; storeResourceId: string | null; scheduled: boolean; invoiceId: string | null; identityConfirmedVia: string | null;
+  claimedAt: string | null; verifiedAt: string | null; pickedAt: string | null; billedAt: string | null; handedOverAt: string | null;
+  cancelReason: string | null; patient: WirePatientSummary; allergies: { substance: string; severity: string | null }[]; lines: WireDispenseLine[];
+};
+export type WireQueueRow = {
+  dispenseId: string; status: string; dispenseNo: string | null; scheduled: boolean; lineCount: number;
+  createdAt: string; claimedAt: string | null; patient: WirePatientSummary;
+};
+export type WireFindResult =
+  | { kind: "dispense"; door: string; dispense: WireDispense }
+  | { kind: "patients"; door: "uhid"; patients: WirePatientSummary[] }
+  | { kind: "none"; door: string; reason: "not_found" | "qr_invalid" | "no_prescription_today" };
+export type WireAlternative = { medicineId: string; brandName: string; strengthLabel: string | null; form: string; itemId: string; itemCode: string; available: number };
+
+export async function fetchQueue(): Promise<WireQueueRow[]> {
+  const { items } = await api<{ items: WireQueueRow[] }>("GET", "/pharmacy/queue");
+  return items;
+}
+export async function findAtCounter(q: string): Promise<WireFindResult> {
+  return api<WireFindResult>("GET", `/pharmacy/find${qs({ q })}`);
+}
+export async function fetchDispense(id: string): Promise<WireDispense> {
+  return api<WireDispense>("GET", `/pharmacy/dispenses/${id}`);
+}
+export async function fetchAlternatives(id: string, lineIdx: number): Promise<WireAlternative[]> {
+  const { items } = await api<{ items: WireAlternative[] }>("GET", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/alternatives`);
+  return items;
+}
+export async function claimDispense(dispenseId: string, door: string, idempotencyKey: string): Promise<WireDispense> {
+  return api<WireDispense>("POST", "/pharmacy/dispenses", { dispenseId, door }, idempotencyKey);
+}
+export type VerifyLine = { lineIdx: number; qtyBase: number; dispensedMedicineId?: string; patientConsent?: boolean };
+export async function verifyDispense(id: string, lines: VerifyLine[], idempotencyKey: string): Promise<WireDispense> {
+  return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/verify`, { lines }, idempotencyKey);
+}
+export async function declineLine(id: string, lineIdx: number, reason: string): Promise<WireDispense> {
+  return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/lines/${String(lineIdx)}/decline`, { reason });
+}
+export async function cancelDispense(id: string, reason: string): Promise<WireDispense> {
+  return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/cancel`, { reason });
+}

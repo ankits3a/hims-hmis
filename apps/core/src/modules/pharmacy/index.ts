@@ -36,3 +36,14 @@ export {
 } from "./sale-items";
 export type { SaleItemRow, SaleItemView } from "./sale-items";
 export { PHARMACY_IDEMPOTENT_ROUTES, toHttp as pharmacyToHttp } from "./pharmacy-http";
+
+// ── T3 — the counter: queue, the three doors, claim, verify, decline, cancel; the Rx-issued consumer ──
+export { PHARMACY_RX_ISSUED_CONSUMER, handlePrescriptionIssued, rxIssuedConsumer } from "./consumers";
+export { enqueueDispense, getDispense, getDispenseRow, linesOf, listQueue, liveDispenseFor } from "./queue";
+export type { DispenseLineRow, DispenseLineView, DispenseRow, DispenseView, QueueRow } from "./queue";
+export { claimDispense, findAtCounter } from "./claim";
+export type { CounterDoor, FindResult } from "./claim";
+export { alternativesFor, cancelDispense, declineLine, verifyDispense } from "./verify";
+export type { Alternative, VerifyInput, VerifyLineInput } from "./verify";
+export { doseUnits, dosesPerDay, prefillQtyBase } from "./qty";
+export { istDateOf } from "./config";
