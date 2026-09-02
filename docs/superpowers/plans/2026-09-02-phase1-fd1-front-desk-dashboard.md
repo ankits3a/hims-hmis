@@ -141,6 +141,37 @@ pnpm --filter @hmis/web exec vitest run src/screens/desk.test.tsx src/screens/co
 `tools/lane.sh status` before any full core run. CI is the full-suite instrument. Close per method
 §5A: two passes, the revert on every guard, counts pasted.
 
+## 5A. CLOSE — 2026-09-02, T1–T5 done, code-complete, NOT deployed (review passes below when run)
+
+**PRs, one per task, stacked:** #21 T1 · #22 T2 · #23 T3 · #28 T4 · T5 (this commit). Zero migrations,
+zero permissions, zero kernel edits, zero index exports.
+
+### 5A.1 The Dashboard artboard, clause by clause, against the shipped screen
+
+| the artboard says | verdict |
+|---|---|
+| "CRK Registration · Ramesh Kumar · your figures" header, "Back to the counter · Esc" | **met** — the actor id, the date, Escape outside a field returns (T4) |
+| period bar Day / Week / Month / 3 months / 6 months, the range | **met** — `BriefPanel` re-read with `period=` |
+| "your week in sentences, not tiles — a median is a comparison and a comparison is a sentence" | **met** — the brief's `compared`/`drift`/`plain` clauses (07c) |
+| "a comparison needs a fortnight of history before it can be made honestly" | **met** — `brief.nothingToSay` |
+| "Median 1 m 24 s at the counter. The slow ones are almost all minors" | **NOT met, by decision (D6)** — no timing rail exists; nothing is estimated |
+| what came back: 3 duplicates → urgent merges, "all three already had that mobile on file", See all three | **met** as the three sentences from `patients.cameBack`; "already had that mobile on file" is NOT computed (it needs the merge snapshot's phone) — recorded |
+| 11 records with no mobile, six SMS bounced, four missed a follow-up | **met** for the count; SMS bounces and missed follow-ups are **NOT built** (no SMS rail) |
+| 8 amended within a week — "almost all a spelling, off an ID at the second visit" | **met** for the count (the `patient.updated` event inside seven days) |
+| "this is your own account and nobody else's; your supervisor sees the same counts under Staff reports" | **met** — self-scoped rails; `/staff` is 07c's |
+| today so far: 38 (median 31) registered, ₹1,900 · 38 receipts, 1 m 24 s median | **met** for registered and money (the day brief's `compared` clause and the collections card); timing omitted |
+| the drawer: opening float, cash / UPI / card, "cash the drawer should hold", "a variance is a conversation" | **met** — `liveExpectedCashPaise` (T3), the close's own formula; UPI/card by mode were 07c's |
+| "Your day — PROVISIONAL … Print · Download CSV", signature and received-by lines | **met** — one `.print-doc`, `/me/report` |
+
+### 5A.2 Evidence at T5
+| instrument | result |
+|---|---|
+| web full `vitest run` | **75 files / 562 tests, exit 0** (T4) · desk.test 7/7 with the three tiles (T5) |
+| core `jest -w 2`: patients/desk-provider, opd/desk-appointments, opd/desk-provider, billing/desk-provider, billing/sessions, kernel/desk, me.e2e, nav-parity, seed-roles, caddyfile-parity | green in every task's run; me.e2e **12/12** with the two FD-1 assemblies (a registration clerk's desk: five cards, no drawer; a cashier's: the drawer, no registration tile) |
+| `pnpm typecheck` · eslint | 0 · clean |
+| revert pairs | **R64–R81**: all red on first or second run; three needed fixture fixes to be falsifiable (R64 the merge winner another clerk's; R70 a last-week rebooking row; R76 an over-tender with change declared — receipts are append-only) |
+| assembly | `me.e2e` drives the REAL providers over the real roles; the web renders the server's cards through the unchanged home screen; the figures screen composes three rails with two clerks |
+
 ## 6. Owner items
 None. (Deletions of `/counter` and `/opd/vitals`, and RC-5's money rulings, are in the lane scope doc.)
 
