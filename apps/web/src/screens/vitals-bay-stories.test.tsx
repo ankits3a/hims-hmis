@@ -4,7 +4,7 @@ import { VitalsBay } from "./vitals-bay";
 import { renderWithProviders } from "../test-utils";
 import { setToken } from "../lib/api";
 import { resetRealtimeClientForTests } from "../lib/realtime";
-import type { WireBenchRow, WireDangerRanges, WireEscalationView, WirePreStage, WireVitals } from "../lib/opd-api";
+import type { WireBenchRow, WireEscalationView, WirePreStage, WireVitals } from "../lib/opd-api";
 
 /**
  * VD-2 T5 — THE SEVEN STORIES AS ONE ASSEMBLY (method §5A.3).
@@ -23,21 +23,6 @@ class FakeWebSocket {
   send(): void {}
   close(): void { this.readyState = 3; this.onclose?.(); }
 }
-const RANGES: WireDangerRanges = {
-  weightRequiredUnderYears: 18,
-  bands: [
-    { key: "infant", upToAgeYears: 1, required: ["weightKg", "tempC", "spo2", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"],
-      ranges: { pulse: { min: 90, max: 180 }, rr: { min: 25, max: 60 }, spo2: { min: 90 }, tempC: { min: 35, max: 38.5 } }, noticeRanges: { tempC: { max: 37.9 } } },
-    { key: "child_1_5", upToAgeYears: 6, required: ["heightCm", "weightKg", "tempC", "spo2", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"],
-      ranges: { sbp: { min: 75, max: 130 }, dbp: { min: 45, max: 85 }, pulse: { min: 70, max: 150 }, rr: { min: 20, max: 40 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: { tempC: { max: 37.9 } } },
-    { key: "child_6_12", upToAgeYears: 13, required: ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"], notRoutine: [],
-      ranges: { sbp: { min: 80, max: 140 }, dbp: { min: 50, max: 90 }, pulse: { min: 60, max: 130 }, rr: { min: 14, max: 30 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: { tempC: { max: 37.9 } } },
-    { key: "adult", upToAgeYears: null, required: ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"], notRoutine: [],
-      ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: {} },
-  ],
-  gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 },
-  muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 },
-};
 const row = (encounterId: string, tokenNo: number, seq: number, id: string, uhid: string, name: string, dob: string, doctor: [string, string]): WireBenchRow => ({
   encounterId, entryId: `Q-${encounterId}`, tokenNo, seq, doctorId: doctor[0], doctorName: doctor[1], serviceDate: "2026-09-02",
   patient: { requestedId: id, id, uhid, name, alias: null, restricted: false, administrativeGender: "female", dob },
