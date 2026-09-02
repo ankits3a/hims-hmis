@@ -110,7 +110,25 @@ it("07b T8: the nav is grouped, and a counter clerk's Desk group comes before th
   // Reading order is the order a desk WORKS in: the counter first, not the ninth similar-looking word.
   const text = nav.textContent ?? "";
   expect(text.indexOf("Desk")).toBeLessThan(text.indexOf("Patients"));
-  expect(text.indexOf("Counter")).toBeLessThan(text.indexOf("Registration"));
+
+  /**
+   * ═══ FD-2 — THIS ASSERTION IS NOW ABOUT LINK ORDER, NOT SUBSTRING POSITIONS ═══
+   *
+   * It used to read `text.indexOf("Counter") < text.indexOf("Registration")` over the nav's whole
+   * `textContent`, and that only worked while the desk link was called "Counter" and nothing else
+   * in the row contained the word "Registration". FD-2 renamed the desk link to **"Registration
+   * counter"** (the seat replaced `counter-desk.tsx` and took its path), and the old form promptly
+   * asserted something it never meant: `indexOf("Registration")` found the DESK link at 4 and
+   * `indexOf("Counter")` found the BILLING group's link at 62, so the desk leading the row made the
+   * assertion FAIL.
+   *
+   * The claim the test exists to make is about ORDER OF LINKS, so it is now made against the links
+   * themselves. This is immune to any future rename, which is the point: a label is a product
+   * decision and should not be able to break a structural test.
+   */
+  const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
+  expect(hrefs.indexOf("/counter")).toBeGreaterThanOrEqual(0);
+  expect(hrefs.indexOf("/counter")).toBeLessThan(hrefs.indexOf("/registration"));
 });
 
 /** A group with nothing in it must not render its label — an empty heading is furniture. */

@@ -223,10 +223,26 @@ describe("the alias layer and the route pin move with the screen", () => {
     const css = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
     expect(css).toMatch(/\[data-seat="registration-counter"\],\s*\[data-seat="vitals-bay"\]\s*\{/);
   });
-  it("router.tsx mounts /opd/vitals/bay beside /opd/vitals and NAV offers it under opd.vitals.record", () => {
+  /**
+   * ═══ FD-5 / OWNER RULING 2026-09-02 — THE BAY *IS* `/opd/vitals` NOW ═══
+   *
+   * VD-2 D1 mounted Bay One at `/opd/vitals/bay` BESIDE the shipped `opd-vitals.tsx`, and this row
+   * pinned that arrangement. The owner has ruled the same way they ruled for the counter — "keep
+   * the new design not the old one" — so the old screen is deleted and the bay took the path.
+   *
+   * The row is INVERTED rather than deleted: what has to stay true is that there is exactly ONE
+   * vitals route and ONE nav entry, and that the bay is what they point at. A second `/opd/vitals/*`
+   * route growing back is the two-doors problem this ruling exists to end, so it is asserted as an
+   * absence.
+   */
+  it("router.tsx mounts the BAY at /opd/vitals, with one nav row and no second vitals path", () => {
     const src = readFileSync(resolve(__dirname, "../router.tsx"), "utf8");
-    expect(src).toContain('path: "/opd/vitals/bay"');
     expect(src).toContain('path: "/opd/vitals",');
-    expect(src).toMatch(/to: "\/opd\/vitals\/bay", label: "nav\.vitalsBay", permission: "opd\.vitals\.record"/);
+    expect(src).toContain("component: VitalsBay");
+    expect(src).not.toContain('path: "/opd/vitals/bay"');
+    expect(src).toMatch(/to: "\/opd\/vitals", label: "nav\.opdVitals", permission: "opd\.vitals\.record"/);
+    expect(src).not.toContain("nav.vitalsBay");
+    // THE KILL for the old screen coming back: nothing may import it again.
+    expect(src).not.toContain("screens/opd-vitals");
   });
 });

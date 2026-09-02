@@ -345,11 +345,17 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // PLAN 17c T5 — 47 -> 48: the laboratory's report centre, `/lab/reports`. Joined in the same
     // edit as the route, per the rule above.
     // PLAN 16c T5 — 48 -> 50: /pharmacy/counter and /pharmacy/items.
-    expect(routes).toHaveLength(50);
+    // FD-2 + FD-5 / THE OWNER'S RULING — 50 -> 48. Two screens deleted, each replaced by the design
+    // that superseded it: `/counter/seat` is gone because the seat serves `/counter`, and
+    // `/opd/vitals/bay` is gone because Bay One serves `/opd/vitals`. "Keep the new design not the
+    // old one." `/counter/seat/figures` also became `/counter/figures` — a rename, net zero.
+    // MEASURED against the tree rather than predicted, which is what pinning a count is for.
+    expect(routes).toHaveLength(48);
     expect(routes).toContain("/lab/reports");
-    expect(routes).toContain("/counter/seat/figures");
-    expect(routes).toContain("/counter/seat");
-    expect(routes).toContain("/opd/vitals/bay");
+    expect(routes).toContain("/counter/figures");
+    expect(routes).not.toContain("/counter/seat");
+    expect(routes).toContain("/opd/vitals");
+    expect(routes).not.toContain("/opd/vitals/bay");
     expect(routes).toContain("/radiology/reception");
     expect(routes).toContain("/radiology/worklist");
     // The three parameterised ones too: a parameterised path is still a SPA path, and if

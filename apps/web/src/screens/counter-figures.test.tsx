@@ -211,7 +211,7 @@ describe("FD-1 T4 — your figures", () => {
     const onFigures = vi.fn();
     renderWithProviders(<RegistrationCounter onFigures={onFigures} />);
     await waitFor(() => expect(screen.getByTestId("figures-door")).toBeInTheDocument());
-    expect(screen.getByTestId("figures-door").getAttribute("href")).toBe("/counter/seat/figures");
+    expect(screen.getByTestId("figures-door").getAttribute("href")).toBe("/counter/figures");
     expect(fireEvent.click(screen.getByTestId("figures-door"))).toBe(false);   // handed to the router, no reload
     expect(onFigures).toHaveBeenCalledTimes(1);
   });
@@ -225,7 +225,7 @@ describe("FD-1 T5 (pass 1) — the round trip: figures → Escape → the seat, 
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
-        <AuthProvider><RouterProvider router={router} history={createMemoryHistory({ initialEntries: ["/counter/seat/figures"] })} /></AuthProvider>
+        <AuthProvider><RouterProvider router={router} history={createMemoryHistory({ initialEntries: ["/counter/figures"] })} /></AuthProvider>
       </QueryClientProvider>,
     );
     await waitFor(() => expect(screen.getByTestId("counter-figures")).toBeInTheDocument());

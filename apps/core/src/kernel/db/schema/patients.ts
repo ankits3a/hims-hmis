@@ -20,7 +20,10 @@ export const bytea = customType<{ data: Buffer }>({
  * sequence reset below the floor fails loudly at the counter instead of quietly minting a UHID
  * that the hospital has promised itself it would never issue.
  */
-export const uhidSeq = pgSequence("uhid_seq", { startWith: 1234501, increment: 1 });
+// FD-4 / owner ruling 2026-09-02 — the floor dropped to 11,000, so the first issued serial is
+// 11,001 and the first card reads U00110012. `UHID_RESERVED_THROUGH` in modules/patients/uhid.ts
+// is the authority and enforces it at the counter; this is the sequence agreeing with it.
+export const uhidSeq = pgSequence("uhid_seq", { startWith: 11001, increment: 1 });
 
 /**
  * Registration configuration — a single audited row (id = 'main'). The UHID prefix is
