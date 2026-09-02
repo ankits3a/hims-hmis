@@ -1,8 +1,8 @@
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { deskAndLabel, seedLabDeskBase } from "../../../test/helpers/lab";
+import { deskAndLabel, grantLabResultPermissions, runLabOrder, seedLabDeskBase } from "../../../test/helpers/lab";
 import { withTx } from "../../kernel/db/client";
 import { receive } from "./accession";
-import { benchArrivals, benchWorklist } from "./worklist";
+import { benchArrivals, benchWorklist, verifyWorklist } from "./worklist";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
 
@@ -47,5 +47,38 @@ describe("the bench's arrivals (17c T3)", () => {
 
   it("a reader that is not a user is refused, and so is one without the worklist permission", async () => {
     await expect(benchArrivals(db, { type: "system", id: "sys" })).rejects.toMatchObject({ code: "user_actor_required" });
+  });
+});
+
+/**
+ * ═══ PLAN 17c T4 / D11 — THE PREVIOUS VALUE IS THE LAST VERIFIED ONE ═══
+ */
+describe("the verify seat's previous value (17c T4)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let fx: LabDeskFixture;
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => { await teardown(); });
+  beforeEach(async () => { await truncateAll(db); fx = await seedLabDeskBase(db); });
+  afterEach(() => { fx.unregister(); });
+
+  it("previous is the last VERIFIED TSH, never a later UNVERIFIED one; the TAT target follows the priority", async () => {
+    await grantLabResultPermissions(db, fx);
+    const t0 = new Date("2026-08-29T04:00:00Z");
+    // 1. Signed last week: TSH 5.5 — the comparison the pathologist wants.
+    await runLabOrder(db, fx, ["TSH"], { at: new Date(t0.getTime() - 7 * 86_400_000), values: { TSH: "5.5" } });
+    // 2. Keyed yesterday and NEVER signed: 4.0 — the mutant's answer (latest by entered_at).
+    await runLabOrder(db, fx, ["TSH"], { at: new Date(t0.getTime() - 86_400_000), values: { TSH: "4.0" }, verify: false });
+    // 3. Today, on the pathologist's queue.
+    const today = await runLabOrder(db, fx, ["TSH"], { at: t0, values: { TSH: "3.0" }, verify: false });
+
+    const queue = await verifyWorklist(db, fx.pathologist.actor);
+    const row = queue.find((r) => r.orderId === today.orderId)!;
+    const tsh = row.analytes.find((a) => a.code === "TSH")!;
+    expect(Number(tsh.value)).toBe(3);
+    expect(Number(tsh.previous?.value)).toBe(5.5); // THE KILL: 4
+    expect(tsh.previous?.flag).not.toBeUndefined();
+    expect(row.tatTargetMinutes).toBeGreaterThan(0);
   });
 });

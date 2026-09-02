@@ -1,44 +1,50 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
-import { LabVerify } from "./lab-verify";
+import { deltaText, LabVerify, orderQueue } from "./lab-verify";
+import type { WireCriticalCall, WireWorklistRow } from "../lib/lab-api";
 
 /**
- * PLAN 17b T8 — verify & report.
- *
- * **The refusal path asserted here is `sod_violation`** (DD11): a technologist who keyed a number
- * cannot sign it, and the message says why. The second and more important property is DD6/DD23's:
- * **the print button follows the SERVER's `delivery` verdict and the screen never computes it**,
- * and when it is held the sentence names the money so a clerk can act at the cash window.
+ * PLAN 17c T4 — the pathologist's seat. Carried from 17b: SoD refusal shown verbatim; the print
+ * button follows the server's verdict; a settled report renders. Added: the queue order is a pure
+ * function; the previous value and its delta are on the row; Sign N is N signatures.
  */
 type Reply = { status: number; body: unknown };
+type Seen = { method: string; path: string; body: unknown }[];
 
-function mockRoutes(handlers: Record<string, Reply | (() => Reply)>): void {
+function mockRoutes(handlers: Record<string, Reply | (() => Reply)>): Seen {
+  const seen: Seen = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-    const key = `${init?.method ?? "GET"} ${raw.split("?")[0]!}`;
-    const handler = handlers[key];
+    const method = init?.method ?? "GET";
+    const path = raw.split("?")[0]!;
+    seen.push({ method, path, body: typeof init?.body === "string" ? JSON.parse(init.body) as unknown : undefined });
+    const handler = handlers[`${method} ${path}`];
     if (handler === undefined) return new Response("{}", { status: 404 });
     const reply = typeof handler === "function" ? handler() : handler;
     return new Response(JSON.stringify(reply.body), {
       status: reply.status, headers: { "Content-Type": "application/json" },
     });
   }));
+  return seen;
 }
 
-const QUEUE = [{
+const analyte = (code: string, over: Partial<WireWorklistRow["analytes"][number]> = {}): WireWorklistRow["analytes"][number] => ({
+  analyteId: `a-${code}`, code, nameEn: code, unit: "mg/dL", resultType: "numeric", resultId: `r-${code}`, value: "1",
+  flag: "N", refLow: "0", refHigh: "10", refText: null, verificationStatus: "unverified", enteredById: "u-tech",
+  pathologistReviewPending: false, previous: null, ...over,
+});
+const row = (over: Partial<WireWorklistRow>): WireWorklistRow => ({
   orderItemId: "i-1", orderId: "o-1", orderNo: "L2608300001", encounterNo: "V2608290001",
   patientId: "p-1", patientDisplay: "Ram Kumar",
   serviceId: "svc-tsh", orderableCode: "TSH", orderableName: "Thyroid stimulating hormone",
   discipline: "biochemistry", priority: "routine", state: "resulted",
-  specimenNo: "S2608300001", tatStartedAt: "2026-08-30T06:00:00.000Z",
-  analytes: [{
-    analyteId: "a-tsh", code: "TSH", nameEn: "TSH", unit: "uIU/mL", resultType: "numeric",
-    resultId: "r-1", value: "5.5", flag: "H", refLow: "0.35", refHigh: "4.94", refText: null,
-    verificationStatus: "unverified", enteredById: "u-tech", pathologistReviewPending: false,
-  }],
-}];
+  specimenNo: "S2608300001", tatStartedAt: "2026-08-30T06:00:00.000Z", tatTargetMinutes: 240,
+  analytes: [analyte("TSH", { unit: "uIU/mL", value: "5.5", flag: "H", refLow: "0.35", refHigh: "4.94" })],
+  ...over,
+});
+const QUEUE = [row({})];
 
 const snapshot = {
   orderId: "o-1", orderNo: "L2608300001", encounterNo: "V2608290001", serviceDate: "2026-08-30",
@@ -56,16 +62,11 @@ const snapshot = {
     }],
   }],
 };
-
-/** An order whose every item has finished — the shape the publish queue serves (web C3). */
 const PUBLISHABLE = {
   orderId: "o-1", orderNo: "L2608300001", encounterNo: "V2608290001",
   patientId: "p-1", patientDisplay: "Ram Kumar", serviceDate: "2026-08-30",
-  complete: true, itemCount: 1, completedCount: 1, orderables: ["TSH"],
-  /** No partial version stands, so this row PUBLISHES rather than amends (pass 2, F9). */
-  amendsReportId: null,
+  complete: true, itemCount: 1, completedCount: 1, orderables: ["TSH"], amendsReportId: null,
 };
-
 const heldReport = {
   reportId: "rep-1", orderId: "o-1", version: 1, status: "published", partial: false,
   channels: ["print", "whatsapp", "in_person"], printCount: 0, priorVersionId: null,
@@ -76,55 +77,107 @@ const heldReport = {
 beforeEach(() => { setToken("t"); });
 afterEach(() => { setToken(null); vi.unstubAllGlobals(); });
 
+it("orderQueue — a critical or an open call first, then STAT, then the oldest clock", () => {
+  const now = new Date("2026-08-30T10:00:00Z").getTime();
+  const routineOld = row({ orderItemId: "i-a", orderId: "o-a", orderNo: "L-a", tatStartedAt: "2026-08-30T06:00:00.000Z" });
+  const statNew = row({ orderItemId: "i-b", orderId: "o-b", orderNo: "L-b", priority: "stat", tatStartedAt: "2026-08-30T09:50:00.000Z" });
+  const critical = row({ orderItemId: "i-c", orderId: "o-c", orderNo: "L-c", tatStartedAt: "2026-08-30T09:55:00.000Z",
+    analytes: [analyte("K", { value: "6.4", flag: "HH" })] });
+  const withCall = row({ orderItemId: "i-d", orderId: "o-d", orderNo: "L-d", tatStartedAt: "2026-08-30T09:58:00.000Z" });
+  const calls = [{ orderNo: "L-d" } as WireCriticalCall];
+  const out = orderQueue([routineOld, statNew, critical, withCall], calls, now);
+  expect(out.map((r) => r.orderNo)).toEqual(["L-c", "L-d", "L-b", "L-a"]);
+  expect(out[3]!.ageMinutes).toBe(240);
+});
+
+it("deltaText — arithmetic on two numbers the server chose, signed, or nothing", () => {
+  expect(deltaText("41", "96")).toBe("−55");
+  expect(deltaText("11.2", "11.8")).toBe("−0.6");
+  expect(deltaText("62", "41")).toBe("+21");
+  expect(deltaText("Reactive", "Non-reactive")).toBeNull();
+  expect(deltaText("5", null)).toBeNull();
+});
+
+it("D11 — the previous value and its delta sit beside the result; Sign N posts N signatures in order", async () => {
+  const gluf = row({
+    orderItemId: "i-g", orderId: "o-g", orderNo: "L2609010102", orderableCode: "GLUF", orderableName: "Glucose, fasting",
+    patientDisplay: "Farida Khatoon",
+    analytes: [analyte("GLUF", { value: "41", flag: "LL", previous: { resultId: "r-old", value: "96", flag: "N", at: "2026-08-24T05:00:00.000Z" } })],
+  });
+  const lft = row({
+    orderItemId: "i-l", orderId: "o-g", orderNo: "L2609010102", orderableCode: "LFT", orderableName: "Liver function test",
+    patientDisplay: "Farida Khatoon",
+    analytes: [
+      analyte("AST", { value: "48", flag: "H", previous: { resultId: "r-a", value: "39", flag: "N", at: "2026-08-24T05:00:00.000Z" } }),
+      analyte("TBIL", { value: "1.1", flag: "N", verificationStatus: "verified" }),
+    ],
+  });
+  const seen = mockRoutes({
+    "GET /api/lab/verify/worklist": { status: 200, body: [gluf, lft] },
+    "GET /api/lab/bench/criticals": { status: 200, body: [] },
+    "GET /api/lab/reports/publishable": { status: 200, body: [] },
+    "POST /api/lab/verify/results/r-GLUF": { status: 201, body: {} },
+    "POST /api/lab/verify/results/r-AST": { status: 201, body: {} },
+  });
+  renderWithProviders(<LabVerify />);
+  await waitFor(() => expect(screen.getByText("Farida Khatoon")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: /Farida Khatoon/ }));
+  const glufRow = screen.getByTestId("row-GLUF");
+  expect(glufRow).toHaveTextContent("41");
+  expect(glufRow).toHaveTextContent("96");
+  expect(glufRow).toHaveTextContent("Δ −55");
+  const tbil = screen.getByTestId("row-TBIL");
+  expect(tbil).toHaveTextContent("signed");
+  expect(within(tbil).queryByRole("button", { name: "Sign" })).toBeNull();
+  /** Two unsigned, one already signed: the button says two, and posts exactly two, in order. */
+  const signAll = screen.getByRole("button", { name: "Sign 2 results" });
+  await userEvent.click(signAll);
+  await waitFor(() => expect(seen.filter((s) => s.path.startsWith("/api/lab/verify/results/"))).toHaveLength(2));
+  expect(seen.filter((s) => s.path.startsWith("/api/lab/verify/results/")).map((s) => s.path))
+    .toEqual(["/api/lab/verify/results/r-GLUF", "/api/lab/verify/results/r-AST"]);
+});
+
 it("DD11 — a verifier who keyed the number is refused, and the message says why", async () => {
   mockRoutes({
     "GET /api/lab/verify/worklist": { status: 200, body: QUEUE },
+    "GET /api/lab/bench/criticals": { status: 200, body: [] },
     "GET /api/lab/reports/publishable": { status: 200, body: [] },
-    "POST /api/lab/verify/results/r-1": { status: 403, body: {
+    "POST /api/lab/verify/results/r-TSH": { status: 403, body: {
       statusCode: 403, code: "sod_violation",
       message: "result r-1 was keyed by this same user — a result is signed by a second pair of hands, and holding both permissions is not the same as being two people",
     } },
   });
   renderWithProviders(<LabVerify />);
-  await waitFor(() => expect(screen.getByText("L2608300001")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText("Ram Kumar")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: /Ram Kumar/ }));
   await userEvent.click(screen.getByRole("button", { name: "Sign" }));
-  await waitFor(() =>
-    expect(screen.getByRole("alert")).toHaveTextContent(/second pair of hands/));
+  await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/second pair of hands/));
 });
 
 it("DD23 — the print button follows the SERVER's verdict and names the money when it is held", async () => {
   mockRoutes({
     "GET /api/lab/verify/worklist": { status: 200, body: [] },
+    "GET /api/lab/bench/criticals": { status: 200, body: [] },
     "GET /api/lab/reports/publishable": { status: 200, body: [PUBLISHABLE] },
     "POST /api/lab/reports": { status: 201, body: { reportId: "rep-1", version: 1 } },
     "GET /api/lab/reports/rep-1": { status: 200, body: heldReport },
   });
   renderWithProviders(<LabVerify />);
-  /**
-   * PUBLISHED FROM THE PUBLISH QUEUE, NOT FROM THE VERIFY WORKLIST (close review, web C3). The two
-   * are mutually exclusive: an item leaves the verify worklist at the exact moment it becomes
-   * publishable, so the button that used to sit there could never be pressed.
-   */
   await waitFor(() => expect(screen.getByText("L2608300001")).toBeInTheDocument());
   await userEvent.click(screen.getByRole("button", { name: "Publish report" }));
-
   await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/₹300.00 outstanding/));
   expect(screen.getByRole("alert")).toHaveTextContent(/1 invoice/);
-  /** Held: disabled EVEN WITH a collector typed — the money verdict is the server's, not the form's. */
   await userEvent.type(screen.getByLabelText("Collected by"), "the patient");
   expect(screen.getByRole("button", { name: "Print and hand over" })).toBeDisabled();
-  /** AND THE A4 IS NOT MOUNTED, so Ctrl+P cannot walk around the register (close review MAJOR). */
   expect(screen.queryByText("HMS-00000101-7")).not.toBeInTheDocument();
   expect(screen.getByText(/report is held/i)).toBeInTheDocument();
 });
 
 it("a settled report prints, and the A4 document renders from the snapshot", async () => {
-  const settled = {
-    ...heldReport,
-    delivery: { allowed: true, reason: "settled", unpaidInvoiceIds: [], outstandingPaise: 0 },
-  };
+  const settled = { ...heldReport, delivery: { allowed: true, reason: "settled", unpaidInvoiceIds: [], outstandingPaise: 0 } };
   mockRoutes({
     "GET /api/lab/verify/worklist": { status: 200, body: [] },
+    "GET /api/lab/bench/criticals": { status: 200, body: [] },
     "GET /api/lab/reports/publishable": { status: 200, body: [PUBLISHABLE] },
     "POST /api/lab/reports": { status: 201, body: { reportId: "rep-1", version: 1 } },
     "GET /api/lab/reports/rep-1": { status: 200, body: settled },
@@ -133,11 +186,8 @@ it("a settled report prints, and the A4 document renders from the snapshot", asy
   renderWithProviders(<LabVerify />);
   await waitFor(() => expect(screen.getByText("L2608300001")).toBeInTheDocument());
   await userEvent.click(screen.getByRole("button", { name: "Publish report" }));
-
-  /** The A4 document is mounted — one `.print-doc` on the screen and no other printable surface. */
   await waitFor(() => expect(screen.getByText("HMS-00000101-7")).toBeInTheDocument());
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-
   expect(screen.getByRole("button", { name: "Print and hand over" })).toBeDisabled();
   await userEvent.type(screen.getByLabelText("Collected by"), "Sunita Kumar (daughter)");
   expect(screen.getByRole("button", { name: "Print and hand over" })).toBeEnabled();

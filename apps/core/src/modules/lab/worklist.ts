@@ -1,10 +1,11 @@
-import { and, asc, eq, gte, inArray, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, ne } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { LIVE_ITEM_STATUSES } from "../../kernel/orders/transitions";
 import {
   labAnalytes, labItems, labOrderableAnalytes, labOrderables, labReports, labResults,
   labSpecimenItems, labSpecimens, orderItems, orders, patients, workflowInstances,
 } from "../../kernel/db/schema";
+import { listMergedLoserIds } from "../patients";
 import { canonicalNames } from "./criticals";
 import { LabError } from "./errors";
 import type { Actor } from "@hmis/contracts";
@@ -49,12 +50,20 @@ export type WorklistRow = {
   state: string;
   specimenNo: string | null;
   tatStartedAt: string | null;
+  /** 17c T4 — the orderable's target for THIS item's priority (`tat_minutes_stat` when STAT, else routine). */
+  tatTargetMinutes: number;
   analytes: {
     analyteId: string; code: string; nameEn: string; unit: string | null; resultType: string;
     resultId: string | null; value: string | null; flag: string | null;
     refLow: string | null; refHigh: string | null; refText: string | null;
     verificationStatus: string | null; enteredById: string | null;
     pathologistReviewPending: boolean;
+    /**
+     * 17c T4 / D11 — the last VERIFIED value of this analyte on the canonical patient (the merge
+     * chain, edge case 5), from any earlier item. Never an unverified or superseded row: a number
+     * nobody signed is not a number a pathologist compares against.
+     */
+    previous: { resultId: string; value: string; flag: string | null; at: string } | null;
   }[];
 };
 
@@ -97,6 +106,8 @@ export async function labWorklist(
       priority: labItems.priority,
       state: workflowInstances.currentState,
       tatStartedAt: labItems.tatStartedAt,
+      tatRoutine: labOrderables.tatMinutesRoutine,
+      tatStat: labOrderables.tatMinutesStat,
     })
     .from(orderItems)
     .innerJoin(orders, eq(orders.id, orderItems.orderId))
@@ -133,6 +144,11 @@ export async function labWorklist(
 
   /** THE CANONICAL PATIENT DECIDES THE ALIAS (pass 2, F8) — see `canonicalNames`' own header. */
   const canonical = await canonicalNames(db, rows.map((r) => r.patientId), canSeeConfidential);
+  const previous = await previousVerified(
+    db,
+    [...new Set(rows.map((r) => canonical.get(r.patientId)?.id ?? r.patientId))],
+    [...new Set(joins.map((j) => j.analyte.id))],
+  );
 
   return rows.map((r) => ({
     orderItemId: r.orderItemId,
@@ -149,6 +165,7 @@ export async function labWorklist(
     state: r.state,
     specimenNo: tubeBy.get(r.orderItemId) ?? null,
     tatStartedAt: r.tatStartedAt?.toISOString() ?? null,
+    tatTargetMinutes: r.priority === "stat" && r.tatStat !== null ? r.tatStat : r.tatRoutine,
     analytes: joins
       .filter((j) => j.serviceId === r.serviceId)
       .map((j) => {
@@ -171,9 +188,63 @@ export async function labWorklist(
           verificationStatus: value?.verificationStatus ?? null,
           enteredById: value?.enteredById ?? null,
           pathologistReviewPending: value?.pathologistReviewPending ?? false,
+          /**
+           * The row's OWN item is excluded here, per row — not the whole worklist's items up in the
+           * query. The first cut excluded every listed item, and the assertion book's mutant
+           * (latest by `entered_at`, verified or not) SURVIVED it: yesterday's unverified TSH was on
+           * the same queue and vanished by exclusion rather than by the verified filter.
+           */
+          previous: (previous.get(`${canonical.get(r.patientId)?.id ?? r.patientId}|${j.analyte.id}`) ?? [])
+            .find((p) => p.orderItemId !== r.orderItemId) ?? null,
         };
       }),
   }));
+}
+
+type PreviousValue = { resultId: string; value: string; flag: string | null; at: string; orderItemId: string };
+
+/**
+ * D11 — for each (canonical patient, analyte): the VERIFIED results across the patient's merge
+ * chain, newest first. One query for the whole worklist; the caller drops its own item.
+ */
+async function previousVerified(
+  db: Db,
+  canonicalIds: readonly string[],
+  analyteIds: readonly string[],
+): Promise<Map<string, PreviousValue[]>> {
+  const out = new Map<string, PreviousValue[]>();
+  if (canonicalIds.length === 0 || analyteIds.length === 0) return out;
+  const canonicalOf = new Map<string, string>();
+  for (const id of canonicalIds) {
+    canonicalOf.set(id, id);
+    for (const loser of await listMergedLoserIds(db, id)) canonicalOf.set(loser, id);
+  }
+  const rows = await db
+    .select({
+      id: labResults.id, analyteId: labResults.analyteId, patientId: orders.patientId, orderItemId: labResults.orderItemId,
+      valueNumeric: labResults.valueNumeric, valueText: labResults.valueText, valueCoded: labResults.valueCoded,
+      flag: labResults.flag, verifiedAt: labResults.verifiedAt,
+    })
+    .from(labResults)
+    .innerJoin(orderItems, eq(orderItems.id, labResults.orderItemId))
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .where(and(
+      inArray(labResults.analyteId, [...analyteIds]),
+      eq(labResults.verificationStatus, "verified"),
+      inArray(orders.patientId, [...canonicalOf.keys()]),
+    ))
+    .orderBy(desc(labResults.verifiedAt));
+  for (const r of rows) {
+    if (r.verifiedAt === null) continue;
+    const key = `${canonicalOf.get(r.patientId) ?? r.patientId}|${r.analyteId}`;
+    const list = out.get(key) ?? [];
+    list.push({
+      resultId: r.id, value: r.valueNumeric ?? r.valueText ?? r.valueCoded ?? "",
+      flag: r.flag, at: r.verifiedAt.toISOString(), orderItemId: r.orderItemId,
+    });
+    out.set(key, list);
+  }
+  return out;
 }
 
 /** The bench: work received and being run. */
