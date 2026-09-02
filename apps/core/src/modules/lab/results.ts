@@ -449,7 +449,7 @@ async function writeResult(
     correlationId: ctx.orderId,
     payload: {
       resultId, orderItemId: ctx.orderItemId, orderGroupId: ctx.orderGroupId, analyteId: analyte.id, enteredBy: actor.id,
-      flag, entryMode: input.entryMode, absurdOverridden: input.absurdOverriddenBy !== null,
+      entryMode: input.entryMode, absurdOverridden: input.absurdOverriddenBy !== null,
     },
   }));
 

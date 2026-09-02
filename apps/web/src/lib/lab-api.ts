@@ -139,7 +139,9 @@ export type WireDeskFindHit = {
   orders: { orderId: string; orderNo: string; status: string; itemCount: number }[];
 };
 
-export const deskFind = (q: string, serviceDate: string): Promise<{ hits: WireDeskFindHit[] }> =>
+export type WireLabDoctor = { id: string; displayName: string };
+
+export const deskFind = (q: string, serviceDate: string): Promise<{ hits: WireDeskFindHit[]; labDoctors: WireLabDoctor[] }> =>
   api("GET", `/lab/desk/find?q=${encodeURIComponent(q)}&serviceDate=${serviceDate}`);
 
 export type WireDeliveryVerdict = {
@@ -300,8 +302,8 @@ export const publishableOrders = (): Promise<WirePublishable[]> =>
 export const verifyResult = (resultId: string, key: string): Promise<unknown> =>
   api("POST", `/lab/verify/results/${resultId}`, undefined, key);
 
-export const requestRerun = (resultId: string, reason: string): Promise<unknown> =>
-  api("POST", "/lab/verify/rerun", { resultId, reason });
+export const requestRerun = (resultId: string, reason: string, key?: string): Promise<unknown> =>
+  api("POST", "/lab/verify/rerun", { resultId, reason }, key);
 
 export const publishReport = (
   orderId: string, key: string, partial = false,
@@ -368,7 +370,7 @@ export const requestReleaseApproval = (
   body: { orderId: string; patientId: string; amountPaise: number; note: string },
 ): Promise<{ approvalId: string }> =>
   api("POST", "/approvals", {
-    typeKey: "lab_release_unpaid", subject: { type: "lab_order", id: body.orderId },
+    typeKey: "lab_release_unpaid", subject: { type: "lab_report", id: body.orderId },
     patientId: body.patientId, amountPaise: body.amountPaise, requestNote: body.note,
   });
 

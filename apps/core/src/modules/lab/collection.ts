@@ -401,7 +401,7 @@ export type AwaitingLabelRow = {
   tokenNo: number | null;
   priority: LabPriority;
   requiresFasting: boolean;
-  /** Hidden for a restricted item unless the reader holds `orders.read.restricted` — the tube stays, the test name leaves. */
+  /** ALL OR NOTHING (close review pass 1, F1): no codes on ANY row unless the reader holds `orders.read.restricted` — see `collectionQueue`. */
   orderableCodes: string[];
   itemIds: string[];
   placedAt: string;
@@ -484,7 +484,12 @@ export async function awaitingLabels(
       tokenNo: tokens.get(mine[0]!.encounterNo) ?? null,
       priority,
       requiresFasting: mine.some((m) => m.requiresFasting),
-      orderableCodes: mine.filter((m) => canSeeRestricted || !m.restricted).map((m) => m.code),
+      /**
+       * 17c close review pass 1, F1 — the first cut filtered restricted codes out and left
+       * `itemIds` beside them: the counting oracle `collectionQueue` documents above, re-created
+       * one function down. All or nothing, every row alike.
+       */
+      orderableCodes: canSeeRestricted ? mine.map((m) => m.code) : [],
       itemIds: mine.map((m) => m.itemId),
       placedAt: placedAt.toISOString(),
       waitingMinutes: Math.max(0, Math.floor((now.getTime() - placedAt.getTime()) / 60_000)),

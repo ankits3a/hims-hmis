@@ -3,7 +3,7 @@ import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
   counterparties, invoiceLines, labItems, labOrderables, labSpecimens, opdDepartments, opdDoctors,
-  opdEncounters, opdQueueEntries, orderItems, orders,
+  opdEncounters, opdQueueEntries, orderItems, orders, patients,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { placeOrder } from "../../kernel/orders/place";
@@ -716,6 +716,7 @@ async function hitFor(
 ): Promise<DeskFindHit | null> {
   const [summary] = await getPatientSummaries(exec as Db, actor, [patientId]);
   if (!summary) return null;
+  const [sealedRow] = await (exec as Db).select({ sealed: patients.isConfidential }).from(patients).where(eq(patients.id, summary.id));
   const patient: DeskFindHit["patient"] = {
     id: summary.id, uhid: summary.uhid,
     display: summary.restricted ? (summary.alias ?? "—") : (summary.name ?? "—"),
@@ -748,7 +749,8 @@ async function hitFor(
    * the seat asks on Enter.
    */
   await recordPhiAccess(exec as Db, {
-    actor, patientId: summary.id, surface: "opd.visit", encounterId: encounter.id, sealed: summary.restricted, reason: null,
+    /** Pass 1 F8 — `sealed` is the PATIENT's fact, not the reader's (`getReport`'s rule). */
+    actor, patientId: summary.id, surface: "opd.visit", encounterId: encounter.id, sealed: sealedRow?.sealed ?? false, reason: null,
   });
   return {
     matchedOn, patient,
@@ -771,6 +773,17 @@ async function hitFor(
  * A token is per doctor-day (`opd_queue_entries.token_no`), so two doctors' 118s are two hits and
  * the seat shows both; the mutant this guards against is a token matched on the NAME beside it.
  */
+/**
+ * Pass 1 F6 — a laboratory with TWO active pathologists cannot open a walk-in without naming one
+ * (`openLabWalkinInTx` refuses to let the counter choose). The seat asks the clerk; this is the list.
+ */
+export async function labDoctors(db: Db): Promise<{ id: string; displayName: string }[]> {
+  const [dept] = await db.select({ id: opdDepartments.id }).from(opdDepartments).where(eq(opdDepartments.code, "LAB"));
+  if (!dept) return [];
+  return db.select({ id: opdDoctors.id, displayName: opdDoctors.displayName }).from(opdDoctors)
+    .where(and(eq(opdDoctors.departmentId, dept.id), eq(opdDoctors.active, true))).orderBy(asc(opdDoctors.id));
+}
+
 export async function deskFind(db: Db, actor: Actor, q: string, serviceDate: string): Promise<DeskFindHit[]> {
   await assertMayDesk(db, actor);
   const query = q.trim();

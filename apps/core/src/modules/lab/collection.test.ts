@@ -4,6 +4,7 @@ import { deskAndLabel, seedLabDeskBase, serviceIdForLabCode, uhidOf } from "../.
 import { openOpdVisit } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
 import { opdEncounters, opdQueueEntries } from "../../kernel/db/schema";
+import { grantPermissionToRole } from "../../kernel/auth/permissions";
 import { registerEncounterResolver } from "../../kernel/episodes/encounter-resolvers";
 import { getEncounter, openLabWalkin } from "../opd";
 import { reject } from "./accession";
@@ -68,11 +69,19 @@ describe("the collection seat's queue (17c T2)", () => {
      */
     const [walkinEntry] = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, walkin.encounter.id));
     const awaiting = await awaitingLabels(db, fx.bench.actor, { serviceDate: fx.serviceDate });
-    /** STAT first, then arrival; the token rides the visit. */
+    /**
+     * STAT first, then arrival; the token rides the visit. Codes are ALL OR NOTHING by
+     * `orders.read.restricted` (close review pass 1, F1 — the first cut filtered per row and
+     * re-created the counting oracle `collectionQueue` documents): the bench holds no such
+     * permission, so every row carries `[]`; a reader who holds it sees every code.
+     */
     expect(awaiting.map((r) => [r.orderGroupId, r.tokenNo, r.priority, r.orderableCodes])).toEqual([
-      [placed.orderGroupId, entry!.tokenNo, "stat", ["CBC", "LFT"]],
-      [placedWalkin.orderGroupId, walkinEntry!.tokenNo, "routine", ["TSH"]],
+      [placed.orderGroupId, entry!.tokenNo, "stat", []],
+      [placedWalkin.orderGroupId, walkinEntry!.tokenNo, "routine", []],
     ]);
+    await grantPermissionToRole(db, fx.registry, "lab_technician", "orders.read.restricted");
+    const cleared = await awaitingLabels(db, fx.bench.actor, { serviceDate: fx.serviceDate });
+    expect(cleared.map((r) => r.orderableCodes)).toEqual([["CBC", "LFT"], ["TSH"]]);
     expect(walkinEntry!.tokenNo).toBeGreaterThan(0);
     expect(awaiting[0]!.itemIds.sort()).toEqual([...placed.itemIds].sort());
     expect(awaiting[0]!.patientDisplay).toBe("Ram Kumar");
