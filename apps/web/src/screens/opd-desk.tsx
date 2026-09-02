@@ -17,7 +17,7 @@ import { TokenSlip } from "../components/token-slip";
 import type { TokenSlipProps } from "../components/token-slip";
 import type { QrCardData } from "../components/qr-card";
 import { FormKit, SelectField, TextField } from "../components/form-kit";
-import { PatientPhoto } from "./registration-desk";
+import { PatientPhoto } from "../components/patient-photo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";

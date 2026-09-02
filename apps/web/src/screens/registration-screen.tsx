@@ -6,9 +6,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
+import { usePatientInHand } from "../lib/patient-in-hand";
 import { CONFIDENTIAL_CAPTURE_ENABLED } from "../lib/confidential-capture";
 import { FormKit, TextField, SelectField, CheckboxField } from "../components/form-kit";
 import { PhotoCapture } from "../components/photo-capture";
+import { PatientPhoto } from "../components/patient-photo";
 import { QrCard, type QrCardData } from "../components/qr-card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -25,16 +28,6 @@ function useDebounced(value: string, ms: number): string {
     return () => clearTimeout(timer);
   }, [value, ms]);
   return debounced;
-}
-
-export function PatientPhoto({ patientId, className }: { patientId: string; className: string }): React.ReactElement {
-  const photo = useQuery({
-    queryKey: ["patient-photo", patientId],
-    queryFn: () => api<{ mimeType: string; imageBase64: string }>("GET", `/patients/${patientId}/photo`),
-    retry: false,
-  });
-  if (!photo.data) return <div className={`${className} bg-neutral-100`} />;
-  return <img alt="" className={`${className} object-cover`} src={`data:${photo.data.mimeType};base64,${photo.data.imageBase64}`} />;
 }
 
 // ——— C-18: the attach confirmation — photo LARGE, demographics beside, explicit yes/no ———
@@ -268,9 +261,26 @@ function NewPatientForm({
   );
 }
 
-export function RegistrationDesk(): React.ReactElement {
+/**
+ * ═══ FD-7 T3 — REGISTRATION ENDS AT THE UHID ═══
+ *
+ * The owner's ruling of 03-Sep, and the one thing this screen was missing. The stages were already
+ * right — search, then the form, then the card — and the approved artboard was the thing that had it
+ * wrong, drawing a doctor field and a complaint field INSIDE the registration form under one button
+ * reading "Register and open the visit". Two decisions fused into one screen.
+ *
+ * So: no doctor field, no complaint field, no visit opened here. The card IS the end of this screen's
+ * work. What was missing is what happens next — the card used to offer "registered ✓" and drop the
+ * clerk back into an empty search box, abandoning the patient they had just created. Now it takes
+ * them IN HAND and hands over to `/appointment`, and only to a caller who may book: a clerk without
+ * `opd.appointments.manage` gets the card and is done, and somebody else books. Same composition rule
+ * the dashboard uses — the union of what the caller's grants unlock, from one piece of code.
+ */
+export function RegistrationScreen(): React.ReactElement {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { can } = useAuth();
+  const { takePatient } = usePatientInHand();
   const routeSearch = useSearch({ strict: false }) as { new?: boolean };
   const [q, setQ] = useState("");
   const debounced = useDebounced(q, 250);
@@ -303,26 +313,46 @@ export function RegistrationDesk(): React.ReactElement {
   });
 
   if (view.kind === "card") {
+    /*
+     * THE HAND-OVER. `takePatient` first, then navigate: `/appointment` is a rendering of the patient
+     * in hand (07b T1's provider), so a navigation without it would land the clerk on a seat with a
+     * search box and the patient they just created nowhere in sight — which is the "loses patient
+     * context" defect this whole series exists to remove, re-created at the last step.
+     */
+    const bookable = can("opd.appointments.manage");
     return (
-      <div className="p-6">
+      <div data-seat="registration-screen" data-testid="registration-screen" className="p-6">
         {card.data ? <QrCard data={card.data} /> : <p>{t("app.loading")}</p>}
-        <Button variant="outline" className="no-print mt-4" onClick={() => { setView({ kind: "search" }); setQ(""); }}>
-          {t("register.registered")} ✓
-        </Button>
+        <div className="no-print mt-4 flex flex-wrap items-center gap-2">
+          {bookable && (
+            <Button
+              data-testid="reg-to-appointment"
+              onClick={() => {
+                takePatient(view.patientId);
+                void navigate({ to: "/appointment" });
+              }}
+            >
+              {t("register.bookAppointment")}
+            </Button>
+          )}
+          <Button variant="outline" data-testid="reg-done" onClick={() => { setView({ kind: "search" }); setQ(""); }}>
+            {t("register.registered")} ✓
+          </Button>
+        </div>
       </div>
     );
   }
 
   if (view.kind === "new") {
     return (
-      <div className="p-6">
+      <div data-seat="registration-screen" data-testid="registration-screen" className="p-6">
         <NewPatientForm prefillPhone={view.prefillPhone} onRegistered={(patientId) => setView({ kind: "card", patientId })} />
       </div>
     );
   }
 
   return (
-    <div className="space-y-4 p-6">
+    <div data-seat="registration-screen" data-testid="registration-screen" className="space-y-4 p-6">
       <div className="max-w-xl">
         <input
           data-search-input

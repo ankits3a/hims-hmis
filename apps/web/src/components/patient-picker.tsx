@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { usePatientInHandOptional } from "../lib/patient-in-hand";
-import { PatientPhoto } from "../screens/registration-desk";
+import { PatientPhoto } from "./patient-photo";
 
 /**
  * The smallest shape both lanes of the picker can produce: the free-text search route returns

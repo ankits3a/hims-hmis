@@ -137,7 +137,8 @@
     "consentNote": "Consent note (DPDP)",
     "promotionalOptIn": "Promotional messages: opted in",
     "submit": "Register (Alt+S)",
-    "registered": "Registered"
+    "registered": "Registered",
+    "bookAppointment": "Book an appointment"
   },
   "photo": {
     "title": "Photo",
