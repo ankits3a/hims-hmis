@@ -21,6 +21,8 @@ const SERVICES: Record<string, ServiceInfo> = {
   "svc-drug-d": { id: "svc-drug-d", code: "DRUG-D", name: "Drug D", category: "pharmacy", regulated: true, active: true },
   "svc-retired": { id: "svc-retired", code: "CONS-OLD", name: "Retired consultation", category: "consultation", regulated: false, active: false },
   "svc-unpriced": { id: "svc-unpriced", code: "CONS-NEW", name: "Unpriced consultation", category: "consultation", regulated: false, active: true },
+  // PLAN 16c T0b — a sale item's service: pharmacy category, NOT regulated (the law arrives per batch), no version price.
+  "svc-drug-e": { id: "svc-drug-e", code: "RX-DRUG-E", name: "Drug E", category: "pharmacy", regulated: false, active: true },
 };
 
 const CATEGORIES: Record<string, GstCategoryConfig> = {
@@ -237,4 +239,49 @@ test("a regulated row with UNDEFINED bounds (a hand-built ctx) is refused exactl
   // a legal 0-paise bound still survives (0 == null is false).
   expect(thrownCode(() => priceInvoiceLines(ctx, [{ lineId: "L1", serviceId: "svc-drug-d", qty: 1 }])))
     .toBe("regulated_price_missing");
+});
+
+/**
+ * PLAN 16c T0b — A PHARMACY LINE MAY PRICE FROM THE BATCH.
+ *
+ * A drug's list price is the MRP printed on the batch it came from, and a new drug arrives at the
+ * pharmacy master without a tariff revision. So `batchUnitPaise` stands in when the active version
+ * carries no row for a `pharmacy*` service, joins the `min` when it does, and is REFUSED for any
+ * other category — a consultation cannot be re-priced by whoever composes the line.
+ */
+describe("batchUnitPaise — pharmacy lines price from the batch (16c T0b)", () => {
+  it("refuses batchUnitPaise on a non-pharmacy category (the guard is the whole point)", () => {
+    expect(() => priceInvoiceLines(makeCtx(), [{ lineId: "l1", serviceId: "svc-cons", qty: 1, batchUnitPaise: 100 }]))
+      .toThrow(expect.objectContaining({ code: "batch_price_not_allowed" }));
+  });
+
+  it("stands in for a missing version price on a pharmacy service and records the bound", () => {
+    const [l] = priceInvoiceLines(makeCtx(), [{ lineId: "l1", serviceId: "svc-drug-e", qty: 3, batchUnitPaise: 1250 }]);
+    expect(l!.unitPaise).toBe(1250);
+    expect(l!.grossPaise).toBe(3750);
+    expect(l!.regulatedClamp).toEqual({ boundApplied: "batch_mrp", tariffPaise: 1250, mrpPaise: null, ceilingPaise: null, batchUnitPaise: 1250 });
+    expect(l!.gst.rateBps).toBe(1200);
+  });
+
+  it("still throws tariff_item_missing for a pharmacy service with neither a version price nor a batch price", () => {
+    expect(() => priceInvoiceLines(makeCtx(), [{ lineId: "l1", serviceId: "svc-drug-e", qty: 1 }]))
+      .toThrow(expect.objectContaining({ code: "tariff_item_missing" }));
+  });
+
+  it("joins the min when the version has a price: a lower batch MRP wins, a higher one loses to the tariff", () => {
+    // svc-drug-a: tariff 12000, regulated MRP 10000 / ceiling 15000 — the MRP clamps first (existing behaviour)
+    const ctx = makeCtx({ services: { ...SERVICES, "svc-drug-a": { ...SERVICES["svc-drug-a"]!, regulated: false } } });
+    const [lower] = priceInvoiceLines(ctx, [{ lineId: "l1", serviceId: "svc-drug-a", qty: 1, batchUnitPaise: 9000 }]);
+    expect(lower!.unitPaise).toBe(9000);
+    expect(lower!.regulatedClamp).toEqual({ boundApplied: "batch_mrp", tariffPaise: 12000, mrpPaise: null, ceilingPaise: null, batchUnitPaise: 9000 });
+    const [higher] = priceInvoiceLines(ctx, [{ lineId: "l2", serviceId: "svc-drug-a", qty: 1, batchUnitPaise: 13000 }]);
+    expect(higher!.unitPaise).toBe(12000);
+    expect(higher!.regulatedClamp).toBeNull();
+  });
+
+  it("composes with capUnitPaise: the ceiling per base unit caps a batch MRP above it", () => {
+    const [l] = priceInvoiceLines(makeCtx(), [{ lineId: "l1", serviceId: "svc-drug-e", qty: 2, batchUnitPaise: 1250, capUnitPaise: 1000 }]);
+    expect(l!.unitPaise).toBe(1000);
+    expect(l!.regulatedClamp).toMatchObject({ boundApplied: "caller_cap", tariffPaise: 1250, capUnitPaise: 1000, batchUnitPaise: 1250 });
+  });
 });
