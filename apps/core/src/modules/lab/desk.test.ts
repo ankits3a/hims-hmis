@@ -4,12 +4,19 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { deactivateLabDepartment, seedLabDeskBase, serviceIdForLabCode, UNPRICED_LAB_CODE } from "../../../test/helpers/lab";
 import { withTx } from "../../kernel/db/client";
 import { events } from "../../kernel/db/schema";
-import { labItems, opdDepartments, opdDoctors, opdEncounters, orderItems, orders } from "../../kernel/db/schema";
+import { labItems, opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, orderItems, orders, patients } from "../../kernel/db/schema";
 import { invoices } from "../../kernel/db/schema";
 import { withIdempotency } from "../billing";
 import { BillingError } from "../billing";
 import { openLabWalkin } from "../opd";
-import { addOnOrder, advisedTestItems, deskOrder } from "./desk";
+import { mkCashier, openSessionFor } from "../../../test/helpers/billing";
+import { mkPatient, openOpdVisit } from "../../../test/helpers/opd";
+import { grantPermissionToRole } from "../../kernel/auth/permissions";
+import { registerEncounterResolver } from "../../kernel/episodes/encounter-resolvers";
+import { getEncounter } from "../opd";
+import { settleInvoice } from "../../../test/helpers/lab";
+import { addOnOrder, advisedTestItems, deskFind, deskOrder, deskWalkinOrder, tubePlan } from "./desk";
+import { deliveryAllowed } from "./interlock";
 import { LabError } from "./errors";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { DeskOrderInput } from "./desk";
@@ -306,5 +313,135 @@ describe("the lab desk (17a T4)", () => {
     /** Naming one is what unblocks it — the medico-legal chain wants a person, not a row order. */
     const visit = await openLabWalkin(db, fx.desk.actor, { patientId: fx.patientId, doctorId: fx.pathologist.doctorId });
     expect(visit.encounter.doctorId).toBe(fx.pathologist.doctorId);
+  });
+});
+
+/**
+ * ═══ PLAN 17c T1 — THE RECEPTION SEAT'S RAILS ═══
+ *
+ * Three doors and one door that did not exist. `advisedTestItems` and `openLabWalkin` shipped in
+ * 17a with NO caller outside this file (17c §2 rows 1 and 14): the consult's Rx lines never reached
+ * a desk, and a walk-in with an outside prescription could not be ordered through any route.
+ */
+describe("the reception seat (17c T1)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let fx: LabDeskFixture;
+  /** 10:30 IST on the fixture's service date. */
+  const AT = new Date("2026-08-29T05:00:00Z");
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => { await teardown(); });
+  beforeEach(async () => {
+    await truncateAll(db);
+    fx = await seedLabDeskBase(db);
+  });
+  afterEach(() => { fx.unregister(); });
+
+  async function twoSameNameVisits(): Promise<{ first: string; second: string }> {
+    // Two Ram Kumars, both in the lab doctor's queue today: tokens 1 and 2.
+    await db.update(patients).set({ name: "Ram Kumar" }).where(eq(patients.id, fx.otherPatientId));
+    const first = await openOpdVisit(db, {
+      clerk: fx.desk.actor, patientId: fx.patientId, departmentId: fx.labDepartmentId, doctorId: fx.pathologist.doctorId,
+    }, AT);
+    const second = await openOpdVisit(db, {
+      clerk: fx.desk.actor, patientId: fx.otherPatientId, departmentId: fx.labDepartmentId, doctorId: fx.pathologist.doctorId,
+    }, new Date(AT.getTime() + 60_000));
+    await db.update(opdEncounters).set({
+      advisedTests: [
+        { serviceId: serviceIdForLabCode("CBC"), code: "CBC", name: "Complete blood count", pricePaise: 30000 },
+        { serviceId: serviceIdForLabCode("HBA1C"), code: "HBA1C", name: "Glycated haemoglobin", pricePaise: 40000 },
+      ],
+    }).where(eq(opdEncounters.id, first.encounterId));
+    return { first: first.encounterId, second: second.encounterId };
+  }
+
+  it("A1: the TOKEN door returns the ONE visit holding that token today, with its Rx lines — never a name match", async () => {
+    const { first } = await twoSameNameVisits();
+    const [entry] = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, first));
+    const hits = await deskFind(db, fx.desk.actor, `T-${String(entry!.tokenNo)}`, fx.serviceDate);
+    /** The mutant matches on the patient's name: two Ram Kumars, two hits. */
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.matchedOn).toBe("token");
+    expect(hits[0]!.patient.id).toBe(fx.patientId);
+    expect(hits[0]!.visit?.encounterId).toBe(first);
+    expect(hits[0]!.visit?.tokenNo).toBe(entry!.tokenNo);
+    /** The Rx lines the consult wrote, each joined to the catalogue it will be drawn from. */
+    expect(hits[0]!.visit?.advised.map((a) => [a.code, a.orderable?.container])).toEqual([
+      ["CBC", "edta"], ["HBA1C", "edta"],
+    ]);
+    /** The name door is a candidate list, and it says so. */
+    const byName = await deskFind(db, fx.desk.actor, "Ram Kumar", fx.serviceDate);
+    expect(byName.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(byName.map((h) => h.matchedOn))).toEqual(new Set(["name"]));
+    /** The V door and the UHID door each land on the same person. */
+    const [enc] = await db.select().from(opdEncounters).where(eq(opdEncounters.id, first));
+    expect((await deskFind(db, fx.desk.actor, enc!.visitNo, fx.serviceDate))[0]?.visit?.encounterId).toBe(first);
+    /** The fixture's UHIDs are not the production shape; a REGISTERED patient's is. */
+    await grantPermissionToRole(db, fx.registry, "lab_reception", "patients.register");
+    const sunita = await mkPatient(db, fx.desk.actor, { name: "Sunita Devi" });
+    const byUhid = await deskFind(db, fx.desk.actor, sunita.uhid, fx.serviceDate);
+    expect(byUhid.map((h) => [h.matchedOn, h.patient.id, h.visit])).toEqual([["uhid", sunita.id, null]]);
+  });
+
+  it("A2: a WALK-IN order opens the lab visit and places the order in ONE transaction — a refused order opens no visit", async () => {
+    /**
+     * 17a's lesson (`d1f316b`): a fixture that stands in for a production REGISTRATION tests
+     * everything except whether the registration works. The fixture's fake `V` resolver knows two
+     * visit numbers; a walk-in mints a third. The e2e walks this door through the REAL OPD
+     * registration; here the resolver is the real reader on the real row.
+     */
+    fx.unregister();
+    fx.unregister = registerEncounterResolver("V", async (exec, no) => {
+      const e = await getEncounter(exec, no);
+      return e ? { patientId: e.patientId, intendedPayer: e.intendedPayer } : null;
+    });
+    const placed = await withTx(db, (tx) => deskWalkinOrder(tx, fx.desk.actor, fx.decls, {
+      patientId: fx.patientId, serviceDate: fx.serviceDate,
+      walkIn: { referrerName: "Dr Sharma" },
+      items: [{ serviceId: serviceIdForLabCode("CBC") }],
+      credit: { reason: "outside prescription, pays at the counter" },
+    }));
+    const [enc] = await db.select().from(opdEncounters).where(eq(opdEncounters.visitNo, placed.encounterNo));
+    expect(enc!.departmentId).toBe(fx.labDepartmentId);
+    expect(enc!.referrerName).toBe("Dr Sharma");
+    const [order] = await db.select().from(orders).where(eq(orders.id, placed.orderId));
+    expect([order!.encounterNo, order!.authority, order!.orderingClinicianId])
+      .toEqual([placed.encounterNo, "external_prescription", fx.pathologist.id]);
+    const [item] = await db.select().from(labItems).where(eq(labItems.orderItemId, placed.itemIds[0]!));
+    expect(item!.chargeReason).toBe("lab_walkin");
+
+    const before = (await db.select().from(opdEncounters)).length;
+    await expect(withTx(db, (tx) => deskWalkinOrder(tx, fx.desk.actor, fx.decls, {
+      patientId: fx.patientId, serviceDate: fx.serviceDate, walkIn: {},
+      items: [{ serviceId: "svc-not-a-test" }], credit: { reason: "x" },
+    }))).rejects.toMatchObject({ code: "unknown_service" });
+    expect((await db.select().from(opdEncounters)).length).toBe(before);
+  });
+
+  it("A3: a line ON CREDIT beside paid lines is HELD at delivery until the invoice settles (D3)", async () => {
+    await openSessionFor(db, fx.desk, 0);
+    const placed = await withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
+      patientId: fx.patientId, encounterNo: fx.encounterNo, serviceDate: fx.serviceDate,
+      orderingClinicianId: fx.pathologist.id,
+      items: [{ serviceId: serviceIdForLabCode("CBC") }, { serviceId: serviceIdForLabCode("LFT") }],
+      // ₹300 of a ₹600 bill in the drawer; the second line rides on credit.
+      receipt: { tenders: [{ mode: "cash", amountPaise: 30000 }] },
+      credit: { reason: "rx_line_unpaid" },
+    }));
+    expect(placed.invoice.creditExtended).toBe(true);
+    const held = await deliveryAllowed(db, placed.orderId);
+    expect([held.allowed, held.reason, held.outstandingPaise]).toEqual([false, "unpaid_invoices", 30000]);
+    const cashier = await mkCashier(db, "lab.desk.cashier");
+    await openSessionFor(db, cashier, 0);
+    await settleInvoice(db, cashier, fx.patientId, placed.invoice.invoiceId, 30000);
+    expect((await deliveryAllowed(db, placed.orderId)).allowed).toBe(true);
+  });
+
+  it("A4: the tube plan groups the basket by container — CBC and HbA1c share one lavender tube", async () => {
+    const plan = await tubePlan(db, [serviceIdForLabCode("CBC"), serviceIdForLabCode("HBA1C"), serviceIdForLabCode("LFT")]);
+    expect(plan.map((t) => [t.container, t.codes])).toEqual([
+      ["sst", ["LFT"]], ["edta", ["CBC", "HBA1C"]],
+    ]);
   });
 });
