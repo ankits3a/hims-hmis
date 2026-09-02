@@ -114,11 +114,26 @@ function verhoeffValidates(digitsWithCheck: string): boolean {
  * seven, not eight. Consequence, accepted at the ruling: consecutive registrations no longer
  * READ as consecutive (…013, …021, …032) because the check digit moves independently.
  *
+ * ═══ THE FLOOR — OWNER RULING 2026-09-02, LOWERED FROM 1,234,500 TO 11,000 ═══
+ *
+ *   > "The counter should start with U0011001 and Not CRK1234500."
+ *
+ * The first issuable serial is now **11,001**, so the first card reads **U00110012** — `U`, the
+ * seven-digit serial `0011001`, and the Verhoeff check digit `2`. The owner asked for the first
+ * eight characters exactly; the ninth is the check digit, which is retained (see below) and is the
+ * only difference between the number requested and the number issued.
+ *
+ * WHAT THE OLD FLOOR BOUGHT AND WHY IT WAS THE WRONG TRADE. 1,234,500 existed so a first card
+ * would read `U12345013` rather than `U00000017` — a hospital not advertising that it has one
+ * patient. The cost is that every UHID is nine characters of which the first four are always the
+ * same and carry nothing, read aloud across a counter and typed into a search box all day. The
+ * owner has weighed both and chosen the short number. `11,000` is kept rather than dropping to
+ * zero for the OTHER reason the band existed and which still holds: a memorable number can be
+ * minted by hand out of 1..11,000 without ever colliding with the counter.
+ *
  * WHY THE FLOOR IS NOT A VIP BAND — the part most likely to be "helpfully" re-added later.
- * Serials 1..1,234,500 are reserved and carry NO MEANING. The reservation exists for exactly two
- * reasons: the first patient's card should read U12345013 rather than U00000017, and a memorable
- * number can be minted by hand out of that band one day. It is deliberately NOT a VIP or
- * membership range, and encoding status here would be a defect, not a feature:
+ * The reserved serials carry NO MEANING. It is deliberately NOT a VIP or membership range, and
+ * encoding status here would be a defect, not a feature:
  *   - A UHID is printed on the card, the prescription and the receipt, spoken across a crowded
  *     counter and sent by SMS. A semantic low band would broadcast to a ward boy or a competitor
  *     precisely the fact that `patients.is_confidential` (§14) exists to SEAL.
@@ -130,8 +145,8 @@ function verhoeffValidates(digitsWithCheck: string): boolean {
  *     Plan 09's membership instrument for membership.
  */
 export const UHID_SERIAL_DIGITS = 7;
-export const UHID_RESERVED_THROUGH = 1_234_500;
-export const UHID_MAX_SERIAL = 9_999_999; // 8,765,499 issuable serials above the floor
+export const UHID_RESERVED_THROUGH = 11_000;
+export const UHID_MAX_SERIAL = 9_999_999; // 9,988,999 issuable serials above the floor
 
 const UHID_RE = /^([A-Z]{1,5})(\d{7})(\d)$/;
 
