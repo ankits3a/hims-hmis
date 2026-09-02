@@ -8,7 +8,7 @@ import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permis
 import { withTx } from "../../kernel/db/client";
 import { addMachine, createRegistration } from "../pcpndt";
 import { cancelStudy, scheduleStudy } from "./schedule";
-import { MWL_READ, istDayWindow, mwlExport, renderMwlDump, toPersonName } from "./mwl";
+import { AE_TITLE_RE, MWL_READ, istDayWindow, mwlExport, renderMwlDump, renderMwlDumpHeader, toPersonName } from "./mwl";
 import { mintStudyInstanceUid } from "./uid";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
 import type { Actor } from "@hmis/contracts";
@@ -181,6 +181,10 @@ describe("the modality worklist export (18b T1)", () => {
     const out = await mwlExport(db, bridge, { date: DAY });
     expect(out.rows).toEqual([]);
     expect(out.malformedAeTitle.sort()).toEqual([fx.devices["ct"]!, fx.devices["usg"]!].sort());
+    // Pass 2 A2 — the dump the bridge pulls says so too, and the shape rule matches PS3.5 AE.
+    expect(renderMwlDumpHeader(out)).toContain(`malformed AE title on device(s): ${out.malformedAeTitle.join(",")}`);
+    for (const bad of ["", "   ", "CT]1", "CT\\1", "A".repeat(17), "CT\u00071"]) expect(AE_TITLE_RE.test(bad)).toBe(false);
+    for (const good of ["CT1", "USG_ROOM_1", "A".repeat(16), "MR 1.5T"]) expect(AE_TITLE_RE.test(good)).toBe(true);
     expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "imaging.worklist"))).toHaveLength(0);
   });
 

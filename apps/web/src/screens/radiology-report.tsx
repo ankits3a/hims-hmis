@@ -49,7 +49,9 @@ export function RadiologyReport(): React.ReactElement {
    * starts from what was saved — the drafter's technique included — instead of from `{}`, which
    * used to drop the machine's technique from the human's next save in silence.
    */
-  const latestUnsignedId = study.data?.study?.reports.find((v) => v.status === "draft" || v.status === "prelim")?.id ?? null;
+  /** Pass 2 C4/NEW-2 — a MACHINE draft is neither the seed nor the signable: only a human's version is. */
+  const humanUnsigned = (v: { status: string; machineDrafted: boolean }) => (v.status === "draft" || v.status === "prelim") && !v.machineDrafted;
+  const latestUnsignedId = study.data?.study?.reports.find(humanUnsigned)?.id ?? null;
   const latest = useQuery({
     queryKey: ["radiology", "report", latestUnsignedId],
     queryFn: () => fetchReport(latestUnsignedId!),
@@ -127,9 +129,7 @@ export function RadiologyReport(): React.ReactElement {
 
   const s = study.data?.study ?? null;
   /** F81 — the newest unsigned version, from the server, with the in-session draft as a fast path. */
-  const signableId = draftId
-    ?? s?.reports.find((v) => v.status === "draft" || v.status === "prelim")?.id
-    ?? null;
+  const signableId = draftId ?? s?.reports.find(humanUnsigned)?.id ?? null;
 
   return (
     <div className="p-4 space-y-4">

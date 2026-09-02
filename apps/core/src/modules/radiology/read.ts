@@ -7,7 +7,7 @@ import { patients } from "../../kernel/db/schema/patients";
 import { displayName } from "../patients";
 import { RadiologyError } from "./errors";
 import { mintStudyInstanceUid } from "./uid";
-import { studyImageViews } from "./views";
+import { IMAGES_READ, studyImageViews } from "./views"; // pass 2 N2 — the button follows the door's own string
 import type { ImageViewRow } from "./views";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -70,7 +70,6 @@ import type { Actor } from "@hmis/contracts";
 
 const WORKLIST_READ = "radiology.worklist.read";
 const REPORT_READ = "radiology.reports.read";
-const IMAGES_READ = REPORT_READ;
 
 type Clearance = { canSeeConfidential: boolean; userId: string };
 

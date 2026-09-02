@@ -93,22 +93,32 @@ console's worklist in silence every 15 s.
 
 ```sh
 #!/bin/sh
-# /opt/hmis-bridge/mwl.sh — pull today's worklist, write one .wl per study, swap the directory
+# /opt/hmis-bridge/mwl.sh — pull today's worklist, write one .wl per study INSIDE the directory
+# (never rename the directory: Orthanc's bind mount follows the inode — pass 2 C7), one run at a time.
 set -eu
+umask 077
 API=https://hmis.<hospital>/api; DIR=/var/lib/orthanc/worklists
 TOKEN_FILE=/etc/hmis-bridge/token; USER=modality-bridge; PASS_FILE=/etc/hmis-bridge/password
+exec 9>/run/hmis-bridge.lock; flock -n 9 || exit 0          # a slow pull is not overlapped by the next
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
-login() { curl -fsS -X POST -H 'Content-Type: application/json' \
-  -d "{\"username\":\"$USER\",\"password\":\"$(cat $PASS_FILE)\"}" "$API/auth/login" \
-  | sed -n 's/.*"token":"\([^"]*\)".*/\1/p' > "$TOKEN_FILE"; }
+login() {
+  curl -fsS -X POST -H 'Content-Type: application/json' -o "$TMP/login.json" \
+    -d "{\"username\":\"$USER\",\"password\":\"$(cat $PASS_FILE)\"}" "$API/auth/login" || return 1
+  sed -n 's/.*"token":"\([^"]*\)".*/\1/p' "$TMP/login.json" > "$TOKEN_FILE"; [ -s "$TOKEN_FILE" ]
+}
 [ -s "$TOKEN_FILE" ] || login
 pull() { curl -fsS -H "Authorization: Bearer $(cat $TOKEN_FILE)" "$API/radiology/mwl?format=dump" > "$TMP/all.dump"; }
-pull || { login; pull; }            # a 401 (expired session) logs in once and retries; any other failure exits here
+pull || { login; pull; }   # one login on an expired session; a wrong password fails here ONCE per run and never loops
 awk -v d="$TMP" 'BEGIN{n=0} /^# Dicom-File-Format/{n++; f=sprintf("%s/%04d.dump",d,n)} n>0{print > f}' "$TMP/all.dump"
 for f in "$TMP"/*.dump; do [ -e "$f" ] || break; dump2dcm "$f" "$f.wl" >/dev/null; done
-mkdir -p "$DIR.new" && rm -f "$DIR.new"/*.wl && mv "$TMP"/*.wl "$DIR.new"/ 2>/dev/null || true
-rm -rf "$DIR.old"; [ -d "$DIR" ] && mv "$DIR" "$DIR.old"; mv "$DIR.new" "$DIR"; rm -rf "$DIR.old"
+mkdir -p "$DIR"
+for w in "$TMP"/*.wl; do [ -e "$w" ] || break; cp "$w" "$DIR/.$(basename "$w").tmp" && mv "$DIR/.$(basename "$w").tmp" "$DIR/$(basename "$w")"; done
+for old in "$DIR"/*.wl; do [ -e "$old" ] || break; [ -e "$TMP/$(basename "$old")" ] || rm -f "$old"; done
 ```
+
+Each `.wl` lands by an atomic rename inside the mounted directory and stale names are removed
+afterwards; the directory itself is never renamed. A wrong password fails the run once (no swap) —
+watch the bridge's exit status, because five wrong attempts lock the account (`refuseIfThrottled`).
 
 (An empty worklist from a SUCCESSFUL pull is real — no study is booked — and is written as empty.)
 

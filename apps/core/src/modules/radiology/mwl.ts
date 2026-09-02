@@ -61,8 +61,12 @@ export const DICOM_MODALITY: Readonly<Record<string, string>> = {
  */
 const IST_OFFSET_MS = IST_UTC_OFFSET_MINUTES * 60_000;
 
-/** PS3.5 AE — 16 characters of the default repertoire, no backslash, no control characters. */
-export const AE_TITLE_RE = /^[\x20-\x5b\x5d-\x7e]{1,16}$/;
+/**
+ * PS3.5 AE — 1–16 characters of the default repertoire, no backslash, no control characters, not
+ * only spaces. `]` is excluded too (pass 2 A2): the dump's value closer, which `v()` would rewrite
+ * to a space, so JSON and dump would name two different titles.
+ */
+export const AE_TITLE_RE = /^(?=.*[^ ])[\x20-\x5b\x5e-\x7e]{1,16}$/;
 
 export type MwlRow = {
   studyId: string;
@@ -231,6 +235,13 @@ export async function mwlExport(
  * Scheduled Procedure Step sequence has exactly one item; the identifiers are the accession so a
  * DICOM study coming back from the modality carries the join key on its face.
  */
+/** Pass 2 A2 — the dump is what the bridge pulls, so the dump names the malformed devices too. */
+export function renderMwlDumpHeader(out: MwlExport): string {
+  return `# HMIS modality worklist ${out.date} — ${String(out.rows.length)} items, ${String(out.withheld)} withheld`
+    + (out.malformedAeTitle.length === 0 ? "" : `, malformed AE title on device(s): ${out.malformedAeTitle.join(",")}`)
+    + "\n";
+}
+
 export function renderMwlDump(row: MwlRow): string {
   // dump2dcm: `\` separates values and `]` closes one; neither may ride inside a value (close review A2).
   const v = (s: string | null): string => `[${(s ?? "").replace(/[\u0000-\u001f\\\]]/g, " ")}]`;

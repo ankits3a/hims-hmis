@@ -28,6 +28,8 @@ export type DrafterFacts = {
   accessionNo: string;
   studyType: Pick<StudyType, "code" | "name" | "modality" | "body_part" | "contrast_option" | "ionising">;
   laterality: string;
+  /** Pass 2 B1 — the §5(2) tier THIS patient's report gets (F66), so the drafter can keep a label out of it. */
+  lockoutTier: LockoutTier;
   contrastGiven: boolean;
   contrastAgent: string | null;
   contrastVolumeMl: string | null;
@@ -66,7 +68,8 @@ const MODALITY_WORDS: Readonly<Record<string, string>> = {
  * and DLP (mGy·cm) have one unit each; fluoroscopy is seconds. DAP's unit belongs to 18c's register.
  */
 function techniqueOf(f: DrafterFacts): string {
-  const parts = [`${MODALITY_WORDS[f.studyType.modality] ?? f.studyType.modality}: ${f.studyType.name}`];
+  const word = MODALITY_WORDS[f.studyType.modality] ?? f.studyType.modality;
+  const parts = [f.studyType.name === "" ? word : `${word}: ${f.studyType.name}`];
   if (f.laterality !== "na") parts.push(`(${f.laterality})`);
   if (f.contrastGiven) {
     const agent = f.contrastAgent ?? "contrast";
@@ -92,7 +95,17 @@ export const offlineTemplateDrafter: ReportDrafter = {
     const templateKey = templateKeyFor(facts.studyType.modality, facts.studyType.body_part);
     const body: Record<string, string> = {};
     for (const section of templateFor(templateKey).sections) body[section] = "";
-    body.technique = techniqueOf(facts);
+    /**
+     * Pass 2 B1 — the book's type LABEL may carry a demographic word ("USG pelvis (female)"), and
+     * under F66 that word is refused for exactly the patients the type exists for. The drafter
+     * never emits a lexicon term itself: if the label would, the sentence names the modality only
+     * and the human writes the rest. Deterministic, and the refusal path stays for a drafter that
+     * puts such a word in a FINDING.
+     */
+    const named = techniqueOf(facts);
+    body.technique = findLockoutHits(named, facts.lockoutTier).length === 0
+      ? named
+      : techniqueOf({ ...facts, studyType: { ...facts.studyType, name: "" } });
     return {
       templateKey,
       body,

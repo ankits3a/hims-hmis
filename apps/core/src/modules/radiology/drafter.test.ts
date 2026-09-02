@@ -59,7 +59,7 @@ describe("the report drafter seam, offline (18b T4)", () => {
   const FACTS: DrafterFacts = {
     studyId: "s1", accessionNo: "X1",
     studyType: { code: "CT-ABDO", name: "CT abdomen", modality: "ct", body_part: "abdomen", contrast_option: "required", ionising: true },
-    laterality: "na", contrastGiven: true, contrastAgent: "Iohexol", contrastVolumeMl: "80.00",
+    laterality: "na", lockoutTier: "coded", contrastGiven: true, contrastAgent: "Iohexol", contrastVolumeMl: "80.00",
     dose: { ctdivol: "6.400", dlp: "320.500", dap: null, fluoroSeconds: null },
   };
 
@@ -118,10 +118,11 @@ describe("the report drafter seam, offline (18b T4)", () => {
     await db.update(imagingDefinitions).set({
       body: { types: [studyTypeRow({ code: "USG-ABDO", service_id: fx.services["USG-ABDO"]!, modality: "usg", body_part: "pelvis", name: "USG pelvis (female)" })] },
     }).where(eq(imagingDefinitions.kind, "study_types"));
-    // The fixture patient is a 30-year-old woman: FULL tier, exactly as a human typing the same words.
+    // The fixture patient is a 30-year-old woman: FULL tier. Pass 2 B1 — the drafter does not put
+    // the book's label in front of her; it names the modality alone and the human writes the rest.
     const hers = await acquired();
-    await expect(withTx(db, (tx) => proposeDraft(tx, fx.radiologist, { studyId: hers.studyId, now: NOW })))
-      .rejects.toMatchObject({ code: "lexical_lockout", detail: { terms: ["female"] } });
+    const hersOut = await withTx(db, (tx) => proposeDraft(tx, fx.radiologist, { studyId: hers.studyId, now: NOW }));
+    expect(hersOut.body.technique).toBe("Ultrasound.");
     // A 62-year-old man: CODED tier, and the type's name is not a coded term — the draft is written.
     await db.update(patients).set({ sex: "male", administrativeGender: "male", dob: new Date(Date.UTC(1964, 0, 1)) })
       .where(eq(patients.id, fx.patientId));

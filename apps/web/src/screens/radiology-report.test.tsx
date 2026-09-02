@@ -178,7 +178,7 @@ it("close review C3: on load the latest unsigned draft seeds the editor, and sav
   mockRoutes({
     "GET /api/radiology/studies/S1": {
       status: 200,
-      body: { study: { ...STUDY, reports: [{ id: "r1", version: 1, status: "draft", publishedAt: null, machineDrafted: true }] } },
+      body: { study: { ...STUDY, reports: [{ id: "r1", version: 1, status: "draft", publishedAt: null, machineDrafted: false }] } },
     },
     "GET /api/radiology/reports/r1": {
       status: 200,
@@ -192,4 +192,19 @@ it("close review C3: on load the latest unsigned draft seeds the editor, and sav
   await userEvent.click(screen.getByRole("button", { name: /^save/i }));
   const saved = sent.find((b) => (b as { body?: { technique?: string } }).body?.technique !== undefined) as { body: Record<string, string> };
   expect(saved.body).toEqual({ technique: "Ultrasound of the abdomen.", findings: "Normal study." });
+});
+
+/** Pass 2 NEW-2 / C4 — the machine's proposal is neither signable nor read back: only a human's draft is. */
+it("pass 2: with only the machine's draft in the chain, Sign is disabled and the proposal is never fetched", async () => {
+  mockRoutes({
+    "GET /api/radiology/studies/S1": {
+      status: 200,
+      body: { study: { ...STUDY, reports: [{ id: "r1", version: 1, status: "draft", publishedAt: null, machineDrafted: true }] } },
+    },
+    "GET /api/radiology/reports/r1": { status: 200, body: { report: { reportId: "r1", body: { technique: "x", findings: "" }, impression: null } } },
+  });
+  renderWithProviders(<RadiologyReport />);
+  await screen.findByTestId("version-1");
+  expect(screen.getByRole("button", { name: /sign/i })).toBeDisabled();
+  expect(calls).not.toContain("GET /api/radiology/reports/r1");
 });
