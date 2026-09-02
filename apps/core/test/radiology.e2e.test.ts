@@ -104,6 +104,8 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
   let radiographer: { id: string; token: string; sessionId: string };
   let radiologist: { id: string; token: string; sessionId: string };
   let counter: { id: string; token: string; sessionId: string };
+  /** 18b T1 — the machine account on the PACS host that pulls the modality worklist. */
+  let bridge: { id: string; token: string; sessionId: string };
   let services: Record<string, string>;
   let devices: Record<string, string>;
 
@@ -166,6 +168,7 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
       "orders.read.restricted",
     ], "rad");
     counter = await staff(["radiology.bill_decisions.manage"], "csh");
+    bridge = await staff(["radiology.mwl.read"], "mwl");
 
     /** The two Class-A workflow definitions, activated the way the go-live runbook does it. */
     await seedSodPairs(db);
@@ -194,7 +197,8 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     for (const modality of ["ct", "usg"]) {
       const { resourceId } = await withTx(db, (tx) => createResource(tx, ownerActor, RADIOLOGY_RESOURCE_KINDS, {
         kind: "device", code: `DEV-${modality.toUpperCase()}`, name: `${modality} machine`,
-        attributes: { modality },
+        // 18b T1 — an AE title is what puts a device on the modality worklist export (D2).
+        attributes: { modality, aeTitle: `${modality.toUpperCase()}1` },
       }));
       devices[modality] = resourceId;
     }
@@ -244,6 +248,21 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
       deviceResourceId: devices.ct, scheduledAt: "2026-08-31T09:00:00.000Z",
     });
     expect(scheduled.status).toBe(201);
+
+    /**
+     * ── 18b T1 — THE MOMENT THE SLOT IS TAKEN THE STUDY IS ON THE MODALITY'S WORKLIST. ──
+     * The JSON a screen reads, the dcmtk dump the bridge feeds to `dump2dcm`, and a 403 for a
+     * reader without the machine permission. The UID here is the one acquisition writes (T2).
+     */
+    const mwl = await get(`/radiology/mwl?date=${DAY}&deviceResourceId=${devices.ct}`, bridge.token);
+    expect([mwl.status, mwl.body.withheld, mwl.body.rows.length]).toEqual([200, 0, 1]);
+    expect([mwl.body.rows[0].accessionNo, mwl.body.rows[0].aeTitle, mwl.body.rows[0].modality])
+      .toEqual([study!.accessionNo, "CT1", "CT"]);
+    const dump = await get(`/radiology/mwl?date=${DAY}&format=dump`, bridge.token);
+    expect([dump.status, dump.headers["content-type"]]).toEqual([200, expect.stringMatching(/text\/plain/)]);
+    expect(dump.text).toContain(`(0008,0050) SH [${study!.accessionNo}]`);
+    expect(dump.text).toContain("(0040,0001) AE [CT1]");
+    expect((await get(`/radiology/mwl?date=${DAY}`, doctor.token)).status).toBe(403);
 
     /** ── CHECK-IN: five gates open from the type's flags and the patient's own facts (T5 A1). ── */
     const checked = await post(`/radiology/studies/${study!.id}/check-in`, radiographer.token);
@@ -329,8 +348,12 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     /** ── AND EVERY READER LEFT A PHI ROW ── */
     expect((await get(`/radiology/studies/${study!.id}`, radiologist.token)).status).toBe(200);
     expect((await get(`/radiology/reports/${signed.body.reportId}`, radiologist.token)).status).toBe(200);
-    const surfaces = (await db.select().from(phiAccessLog)).map((r) => r.surface);
-    expect(new Set(surfaces)).toEqual(new Set(["imaging.study", "imaging.report"]));
+    const phiRows = await db.select().from(phiAccessLog);
+    // 18b T1 — the worklist pulls above are the third surface, and every one of them is the bridge's.
+    expect(new Set(phiRows.map((r) => r.surface))).toEqual(new Set(["imaging.study", "imaging.report", "imaging.worklist"]));
+    const pulls = phiRows.filter((r) => r.surface === "imaging.worklist");
+    expect(pulls.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(pulls.map((r) => r.actorId))).toEqual(new Set([bridge.id]));
   }, 120_000);
 
   /* ══════════════════════════════════════════════════════════════════════════════════════ */
