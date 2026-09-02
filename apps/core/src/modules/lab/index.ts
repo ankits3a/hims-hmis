@@ -38,6 +38,9 @@ export { addOnOrder, advisedTestItems, deskOrder, LAB_DESK_OPERATE } from "./des
 export type {
   AddOnOrderInput, DeskItemInput, DeskOrderInput, DeskOrderResult, LabCollectionSite, LabPriority,
 } from "./desk";
+// ── PLAN 17c T1 — the reception seat: three doors, the Rx lines' first consumer, the walk-in door ──
+export { deskFind, deskWalkinOrder, drawRank, DRAW_ORDER, tubePlan } from "./desk";
+export type { DeskAdvisedLine, DeskFindHit, DeskWalkinInput, TubePlanRow } from "./desk";
 export {
   LAB_ITEM_DEFINITION_JSON, LAB_ITEM_DEF_KEY, LAB_ITEM_STATES,
   LAB_SPECIMEN_DEFINITION_JSON, LAB_SPECIMEN_DEF_KEY, LAB_SPECIMEN_STATES,

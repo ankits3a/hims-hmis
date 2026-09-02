@@ -5,6 +5,9 @@ import { eq } from "drizzle-orm";
 import { AppModule } from "../src/app.module";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { mkCashier, openSessionFor } from "./helpers/billing";
+import { openOpdVisit } from "./helpers/opd";
+import { registerEncounterResolver } from "../src/kernel/episodes/encounter-resolvers";
+import { getEncounter } from "../src/modules/opd";
 import {
   grantLabResultPermissions, seedLabDeskBase, serviceIdForLabCode, settleInvoice, uhidOf,
 } from "./helpers/lab";
@@ -15,7 +18,7 @@ import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import {
-  events, labAnalytes, labItems, labReportDeliveries, labReports, labResults, labSpecimens,
+  events, labAnalytes, labItems, labReportDeliveries, labReports, labResults, labSpecimens, opdEncounters,
   orderItems, orders,
 } from "../src/kernel/db/schema";
 import type { LabDeskFixture } from "./helpers/lab";
@@ -133,6 +136,7 @@ describe("the laboratory over HTTP (17b T8)", () => {
   it("401 WITHOUT A TOKEN on every controller", async () => {
     await request(server()).get("/lab/catalogue/search").expect(401);
     await request(server()).post("/lab/desk/orders").send({}).expect(401);
+    await request(server()).get("/lab/desk/find").expect(401);
     await request(server()).post("/lab/collection/labels").send({}).expect(401);
     await request(server()).post("/lab/bench/receive").send({}).expect(401);
     await request(server()).post("/lab/reports").send({}).expect(401);
@@ -142,6 +146,7 @@ describe("the laboratory over HTTP (17b T8)", () => {
     const { token } = await userWith(["opd.visits.read"]);
     await request(server()).get("/lab/catalogue/search").set(...auth(token)).expect(403);
     await request(server()).post("/lab/desk/orders").set(...auth(token)).send({}).expect(403);
+    await request(server()).get("/lab/desk/find?q=T-1&serviceDate=2026-08-29").set(...auth(token)).expect(403);
     await request(server()).post("/lab/collection/labels").set(...auth(token)).send({}).expect(403);
     await request(server()).post("/lab/bench/results").set(...auth(token)).send({}).expect(403);
     await request(server()).post("/lab/verify/results/r1").set(...auth(token)).expect(403);
@@ -196,6 +201,65 @@ describe("the laboratory over HTTP (17b T8)", () => {
   });
 
   /* ══════════════════ THE WHOLE CHAIN, OVER THE WIRE, ROW BY ROW ══════════════════ */
+
+  /* ══════════════════ PLAN 17c T1 — the reception seat's three doors, over the wire ══════════════════ */
+
+  it("17c T1 — find by TOKEN returns the Rx lines; a WALK-IN with no visit is ordered in one request", async () => {
+    const op = await labOperator();
+    /**
+     * The fixture's fake `V` resolver knows two visit numbers and the walk-in mints a third
+     * (17a `d1f316b`'s lesson). The REAL registration is pinned by `opd/encounter-resolver.test.ts`;
+     * this suite swaps in the real reader on the real row for the walk-in door.
+     */
+    fx.unregister();
+    fx.unregister = registerEncounterResolver("V", async (exec, no) => {
+      const e = await getEncounter(exec, no);
+      return e ? { patientId: e.patientId, intendedPayer: e.intendedPayer } : null;
+    });
+
+    /* ── the token door ── */
+    const visit = await openOpdVisit(db, {
+      clerk: fx.desk.actor, patientId: fx.patientId, departmentId: fx.labDepartmentId, doctorId: fx.pathologist.doctorId,
+    }, new Date("2026-08-29T05:00:00Z"));
+    await db.update(opdEncounters).set({
+      advisedTests: [{ serviceId: serviceIdForLabCode("TSH"), code: "TSH", name: "Thyroid stimulating hormone", pricePaise: 30000 }],
+    }).where(eq(opdEncounters.id, visit.encounterId));
+    const found = await request(server()).get("/lab/desk/find?q=T-1&serviceDate=2026-08-29").set(...auth(op.token)).expect(200);
+    const hits = (found.body as { hits: { matchedOn: string; patient: { id: string }; visit: { encounterNo: string; tokenNo: number; advised: { code: string }[] } | null }[] }).hits;
+    expect(hits).toHaveLength(1);
+    expect([hits[0]!.matchedOn, hits[0]!.patient.id, hits[0]!.visit?.tokenNo, hits[0]!.visit?.advised.map((a) => a.code)])
+      .toEqual(["token", fx.patientId, 1, ["TSH"]]);
+
+    /* ── the walk-in door: no encounterNo on the wire, a `V` visit on the row ── */
+    const placed = await request(server()).post("/lab/desk/orders").set(...auth(op.token))
+      .set("Idempotency-Key", "e2e-walkin-1")
+      .send({
+        patientId: fx.otherPatientId, serviceDate: fx.serviceDate,
+        walkIn: { referrerName: "Dr Sharma" },
+        items: [{ serviceId: serviceIdForLabCode("CBC") }],
+        credit: { reason: "outside prescription" },
+      })
+      .expect(201);
+    const encounterNo = (placed.body as { encounterNo: string }).encounterNo;
+    expect(encounterNo).toMatch(/^V\d{10}$/);
+    const [enc] = await db.select().from(opdEncounters).where(eq(opdEncounters.visitNo, encounterNo));
+    expect([enc!.patientId, enc!.departmentId, enc!.referrerName]).toEqual([fx.otherPatientId, fx.labDepartmentId, "Dr Sharma"]);
+    const [order] = await db.select().from(orders).where(eq(orders.encounterNo, encounterNo));
+    expect(order!.authority).toBe("external_prescription");
+
+    /* ── both doors at once is a 400, not a guess ── */
+    await request(server()).post("/lab/desk/orders").set(...auth(op.token))
+      .send({ patientId: fx.patientId, encounterNo: fx.encounterNo, walkIn: {}, serviceDate: fx.serviceDate,
+        orderingClinicianId: fx.pathologist.id, items: [{ serviceId: serviceIdForLabCode("CBC") }] })
+      .expect(400);
+
+    /* ── the preview names the tubes beside the price ── */
+    const preview = await request(server()).post("/lab/desk/preview").set(...auth(op.token))
+      .send({ patientId: fx.patientId, encounterNo: fx.encounterNo,
+        serviceIds: [serviceIdForLabCode("CBC"), serviceIdForLabCode("LFT")] })
+      .expect(201);
+    expect((preview.body as { tubes: { container: string; codes: string[] }[] }).tubes.map((t) => t.container)).toEqual(["sst", "edta"]);
+  });
 
   it("desk → labels → collect → receive → result → verify → publish → print, and every row is READ BACK", async () => {
     const op = await labOperator();
