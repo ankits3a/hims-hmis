@@ -32,6 +32,8 @@ export type WireStudyView = WireWorklistRow & {
   ionising: boolean; contrastGiven: boolean; acquiredAt: string | null; authorisedBy: string | null;
   /** 18b T2 — null until acquired; `mintedStudyInstanceUid` is what the console pre-fills (D3). */
   studyInstanceUid: string | null; imageSource: string | null; mintedStudyInstanceUid: string;
+  /** 18b T3 — who opened the images, latest first. */
+  views: { id: string; viewerId: string; via: string; viewedAt: string }[];
   reports: { id: string; version: number; status: string; publishedAt: string | null }[];
 };
 
@@ -120,6 +122,10 @@ export const startAcquisition = (studyId: string) =>
 
 export const recordAcquired = (studyId: string, body: Record<string, unknown>) =>
   api("POST", `/radiology/studies/${studyId}/acquisition/acquired`, body);
+
+/** 18b T3 — a POST: the view row, the event and the PHI line exist before the URL comes back. */
+export const openImages = (studyId: string) =>
+  api<{ url: string; viewId: string; studyInstanceUid: string }>("POST", `/radiology/studies/${studyId}/images/open`);
 
 export const draftReport = (studyId: string, body: Record<string, unknown>) =>
   api<{ reportId: string; version: number }>("POST", `/radiology/studies/${studyId}/reports/draft`, body);
