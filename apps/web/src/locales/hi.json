@@ -1646,7 +1646,17 @@
       "collected": "वसूली",
       "receipts": "रसीदें",
       "cash": "नकद"
-    }
+    },
+      "patients": {
+        "registration": "पंजीकरण",
+        "registered": "मैंने पंजीकृत किए",
+        "noMobile": "बिना मोबाइल",
+        "duplicatesPending": "डुप्लिकेट चिह्नित",
+        "cameBack": "क्या लौटा — पिछले 30 दिन",
+        "duplicatesConfirmed": "डुप्लिकेट निकले",
+        "noMobileMonth": "बिना मोबाइल पंजीकृत",
+        "amendedWeek": "एक हफ़्ते में संशोधित"
+      }
   },
   "report": {
     "opd": {

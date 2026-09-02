@@ -1646,7 +1646,17 @@
       "collected": "Collected",
       "receipts": "Receipts",
       "cash": "Cash"
-    }
+    },
+      "patients": {
+        "registration": "Registration",
+        "registered": "Registered by me",
+        "noMobile": "Without a mobile",
+        "duplicatesPending": "Duplicates flagged",
+        "cameBack": "What came back — last 30 days",
+        "duplicatesConfirmed": "Turned out to be duplicates",
+        "noMobileMonth": "Registered without a mobile",
+        "amendedWeek": "Amended within a week"
+      }
   },
   "report": {
     "opd": {
