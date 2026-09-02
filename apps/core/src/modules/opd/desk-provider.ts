@@ -1,6 +1,6 @@
 import { and, count, eq, gte, inArray, lt } from "drizzle-orm";
 import {
-  opdAppointments, opdEncounters, opdPrescriptions, opdVitals, patients,
+  opdAppointments, opdDoctors, opdEncounters, opdPrescriptions, opdVitals, patients,
 } from "../../kernel/db/schema";
 
 import { summaryByDoctor } from "./queue";
@@ -256,4 +256,69 @@ export const opdDeskProvider: DeskProvider = {
   },
   report: async (ctx) => [await myVisitsSection(ctx)],
   facts: opdFacts,
+};
+
+/**
+ * FD-1 T2 — THE APPOINTMENTS TILE, a SECOND provider so it is gated on its own permission
+ * (`opd.appointments.read`): a clerk who holds bookings but not the queue still gets it, and the
+ * hall card's `opd.queue.read` does not have to widen. Counts with doors; the only rows name
+ * DOCTORS — the leave cascade's landing page is a list of doctors whose patients need rebooking,
+ * never the patients (07c's hall-card rule).
+ *
+ * ═══ THE GRAIN ═══
+ *
+ * A booking is due on its SLOT's day (`service_date`), unlike the brief's "booked" fact which is
+ * counted on the day the booking was made. "Missed so far" is what the no-show sweep has not yet
+ * reached: `booked` with `slot_end` already past on the day, plus `no_show` already marked (the
+ * sweep runs on YESTERDAY's rows — spike S3 measured it — so a 09:00 slot at 11:00 is still
+ * `booked` on the wire and the derivation is honest, not a guess). "Needs rebooking" is every
+ * `needs_rebooking` row from today on: the cascade lands them there and the desk must clear them.
+ */
+const DUE: readonly string[] = ["booked", "checked_in", "no_show"];
+
+async function appointmentsCard(ctx: DeskProviderCtx): Promise<DeskCard> {
+  const one = async (rows: Promise<{ n: number }[]>): Promise<number> => (await rows)[0]?.n ?? 0;
+  const [due, checkedIn, noShow, lateBooked, rebooking, doctorsToday] = await Promise.all([
+    one(ctx.db.select({ n: count() }).from(opdAppointments)
+      .where(and(eq(opdAppointments.serviceDate, ctx.date), inArray(opdAppointments.status, [...DUE])))),
+    one(ctx.db.select({ n: count() }).from(opdAppointments)
+      .where(and(eq(opdAppointments.serviceDate, ctx.date), eq(opdAppointments.status, "checked_in")))),
+    one(ctx.db.select({ n: count() }).from(opdAppointments)
+      .where(and(eq(opdAppointments.serviceDate, ctx.date), eq(opdAppointments.status, "no_show")))),
+    one(ctx.db.select({ n: count() }).from(opdAppointments)
+      .where(and(eq(opdAppointments.serviceDate, ctx.date), eq(opdAppointments.status, "booked"), lt(opdAppointments.slotEnd, ctx.now)))),
+    ctx.db.select({ doctorId: opdAppointments.doctorId, doctorName: opdDoctors.displayName, n: count() })
+      .from(opdAppointments)
+      .innerJoin(opdDoctors, eq(opdAppointments.doctorId, opdDoctors.id))
+      .where(and(eq(opdAppointments.status, "needs_rebooking"), gte(opdAppointments.serviceDate, ctx.date)))
+      .groupBy(opdAppointments.doctorId, opdDoctors.displayName),
+    ctx.db.selectDistinct({ doctorId: opdAppointments.doctorId }).from(opdAppointments)
+      .where(eq(opdAppointments.serviceDate, ctx.date)),
+  ]);
+  const needsRebooking = rebooking.reduce((n, r) => n + Number(r.n), 0);
+  return {
+    key: "opd.appointments",
+    band: "now",
+    titleKey: "desk.appointments.title",
+    // a check-in is a queue join on the doctor's own topic: the tile flips live with the hall
+    topics: doctorsToday.map((d) => `queue:${d.doctorId}:${ctx.date}`),
+    stats: [
+      { key: "desk.appointments.dueToday", value: String(due), href: "/opd/appointments" },
+      { key: "desk.appointments.checkedIn", value: String(checkedIn), href: "/opd/appointments" },
+      { key: "desk.appointments.missed", value: String(noShow + lateBooked), href: "/opd/appointments" },
+      { key: "desk.appointments.needsRebooking", value: String(needsRebooking), href: "/opd/appointments" },
+    ],
+    rows: rebooking
+      .sort((a, b) => Number(b.n) - Number(a.n) || a.doctorName.localeCompare(b.doctorName))
+      .map((r) => ({
+        id: r.doctorId, badge: String(r.n), title: r.doctorName, subtitle: "desk.appointments.rebookRow",
+        severity: "warn" as const, href: "/opd/appointments",
+      })),
+  };
+}
+
+export const opdAppointmentsDeskProvider: DeskProvider = {
+  key: "opd.appointments",
+  permission: "opd.appointments.read",
+  load: async (ctx) => [await appointmentsCard(ctx)],
 };

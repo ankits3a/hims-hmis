@@ -1656,6 +1656,14 @@
         "duplicatesConfirmed": "डुप्लिकेट निकले",
         "noMobileMonth": "बिना मोबाइल पंजीकृत",
         "amendedWeek": "एक हफ़्ते में संशोधित"
+      },
+      "appointments": {
+        "title": "अपॉइंटमेंट",
+        "dueToday": "आज देय",
+        "checkedIn": "चेक-इन",
+        "missed": "अब तक छूटे",
+        "needsRebooking": "दोबारा बुक करने हैं",
+        "rebookRow": "मरीज़ दोबारा बुक करने हैं — डॉक्टर अवकाश पर"
       }
   },
   "report": {

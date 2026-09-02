@@ -1656,6 +1656,14 @@
         "duplicatesConfirmed": "Turned out to be duplicates",
         "noMobileMonth": "Registered without a mobile",
         "amendedWeek": "Amended within a week"
+      },
+      "appointments": {
+        "title": "Appointments",
+        "dueToday": "Due today",
+        "checkedIn": "Checked in",
+        "missed": "Missed so far",
+        "needsRebooking": "Need rebooking",
+        "rebookRow": "patients to rebook — doctor on leave"
       }
   },
   "report": {
