@@ -1,10 +1,12 @@
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { acquireStudy, setupRadiologyFixture, studyTypeRow } from "../../../test/helpers/radiology";
-import { imagingDefinitions, imagingReports } from "../../kernel/db/schema";
+import { imagingDefinitions, imagingReports, patients } from "../../kernel/db/schema";
+import { ModuleRegistry } from "../../kernel/modules/loader";
+import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
 import { offlineTemplateDrafter, proposalLockoutHits, setActiveDrafter } from "./drafter";
-import { proposeDraft, signReport } from "./reports";
+import { draftReport, proposeDraft, signReport } from "./reports";
 import { templateFor } from "./templates";
 import type { DrafterFacts, ReportDrafter } from "./drafter";
 import type { RadiologyFixture } from "../../../test/helpers/radiology";
@@ -34,6 +36,11 @@ describe("the report drafter seam, offline (18b T4)", () => {
     seq = 0;
     setActiveDrafter(null);
     fx = await setupRadiologyFixture(db, { serviceDate: DAY, now: NOW });
+    // Close review B7 — `proposeDraft` checks the permission at its boundary now.
+    const registry = new ModuleRegistry();
+    registry.install({ key: "radiology", title: "R", menu: [], permissions: ["radiology.reports.write"], subscriptions: [] });
+    await syncPermissions(db, registry);
+    await grantPermissionToRole(db, registry, "radiologist", "radiology.reports.write");
   });
   afterEach(() => { fx.unregister(); setActiveDrafter(null); });
 
@@ -52,7 +59,7 @@ describe("the report drafter seam, offline (18b T4)", () => {
   const FACTS: DrafterFacts = {
     studyId: "s1", accessionNo: "X1",
     studyType: { code: "CT-ABDO", name: "CT abdomen", modality: "ct", body_part: "abdomen", contrast_option: "required", ionising: true },
-    laterality: "na", contrastGiven: true, contrastAgent: "Iohexol", contrastVolumeMl: "80.00",
+    laterality: "na", lockoutTier: "coded", contrastGiven: true, contrastAgent: "Iohexol", contrastVolumeMl: "80.00",
     dose: { ctdivol: "6.400", dlp: "320.500", dap: null, fluoroSeconds: null },
   };
 
@@ -62,10 +69,13 @@ describe("the report drafter seam, offline (18b T4)", () => {
     expect(a).toEqual(b);
     expect(a.templateKey).toBe("ct");
     expect(Object.keys(a.body).sort()).toEqual([...templateFor("ct").sections].sort());
-    expect(a.body.technique).toBe("CT of the abdomen with 80.00 ml Iohexol intravenously. Dose: CTDIvol 6.400 mGy, DLP 320.500 mGy·cm.");
+    expect(a.body.technique).toBe("CT: CT abdomen with 80.00 ml Iohexol intravenously. Dose: CTDIvol 6.400 mGy, DLP 320.500 mGy·cm.");
     expect([a.body.findings, a.impression]).toEqual(["", null]);
     expect(a.provenance).toMatchObject({ drafter: "offline_template", version: "1", at: NOW.toISOString() });
-    expect(proposalLockoutHits(a)).toEqual([]);
+    expect(proposalLockoutHits(a, "full")).toEqual([]);
+    // Close review B3 — DAP has no house unit; it is NOT rendered (the register, 18c, owns its unit).
+    const withDap = await offlineTemplateDrafter.draft({ ...FACTS, dose: { ...FACTS.dose, dap: "245.600" } }, NOW);
+    expect(withDap.body.technique).not.toMatch(/DAP/);
   });
 
   it("an obstetric USG proposal is the template's sections, findings and impression EMPTY, provenance on the row", async () => {
@@ -77,22 +87,48 @@ describe("the report drafter seam, offline (18b T4)", () => {
     const body = row!.body as Record<string, string>;
     expect(Object.keys(body).sort()).toEqual([...templateFor("usg_obstetric").sections].sort());
     expect([body.findings, body.biometry, row!.impression, row!.status]).toEqual(["", "", null, "draft"]);
-    expect(body.technique).toBe("Ultrasound of the obstetric.");
-    expect(row!.provenance).toMatchObject({ drafter: "offline_template", inputs: { studyTypeCode: "USG-ABDO", modality: "usg" } });
-    expect(proposalLockoutHits({ templateKey: out.templateKey, body, impression: row!.impression, laterality: null, provenance: out.provenance as never })).toEqual([]);
+    expect(body.technique).toBe("Ultrasound: Study USG-ABDO."); // B6 — the type's NAME, not the body-part label
+    expect(row!.provenance).toMatchObject({ drafter: "offline_template", inputs: { studyTypeCode: "USG-ABDO", modality: "usg", requestedBy: fx.radiologist.id } });
+    expect(proposalLockoutHits({ templateKey: out.templateKey, body, impression: row!.impression, laterality: null, provenance: out.provenance as never }, "full")).toEqual([]);
+    expect(out.body).toEqual(body); // C4 — the answer carries the body
   });
 
-  it("§6.8 — signing copies the content and NOT the provenance: the signed version is a human's, the draft keeps its mark", async () => {
+  it("§6.8 — the machine's proposal is NOT signable as it stands; the human's own draft over it is, and carries no provenance", async () => {
     const study = await acquired({ serviceCode: "XR-CHEST", deviceKey: "xray", dose: true });
-    const draft = await withTx(db, (tx) => proposeDraft(tx, fx.radiologist, { studyId: study.studyId, now: NOW }));
+    const proposal = await withTx(db, (tx) => proposeDraft(tx, fx.radiologist, { studyId: study.studyId, now: NOW }));
+    // Close review B2 — "Start from template" then "Sign" used to produce a signed report with no finding.
+    await expect(withTx(db, (tx) => signReport(tx, fx.radiologist, {
+      studyId: study.studyId, reportId: proposal.reportId, secondFactorAt: FRESH, now: NOW,
+    }))).rejects.toMatchObject({ code: "machine_draft_not_signable", detail: { drafter: "offline_template" } });
+    const human = await withTx(db, (tx) => draftReport(tx, fx.radiologist, {
+      studyId: study.studyId, body: { ...proposal.body, findings: "Clear lung fields." }, impression: "Normal chest radiograph.",
+    }));
     const signed = await withTx(db, (tx) => signReport(tx, fx.radiologist, {
-      studyId: study.studyId, reportId: draft.reportId, secondFactorAt: FRESH, now: NOW,
+      studyId: study.studyId, reportId: human.reportId, secondFactorAt: FRESH, now: NOW,
     }));
     const rows = await db.select().from(imagingReports).where(eq(imagingReports.studyId, study.studyId));
     const byId = new Map(rows.map((r) => [r.id, r]));
     expect(byId.get(signed.reportId)!.provenance).toBeNull();
-    expect(byId.get(draft.reportId)!.provenance).not.toBeNull();
-    expect((byId.get(signed.reportId)!.body as Record<string, string>).technique).toBe((byId.get(draft.reportId)!.body as Record<string, string>).technique);
+    expect(byId.get(human.reportId)!.provenance).toBeNull();
+    expect(byId.get(proposal.reportId)!.provenance).not.toBeNull();
+    expect((byId.get(signed.reportId)!.body as Record<string, string>).technique).toBe(proposal.body.technique);
+  });
+
+  it("close review B1 — the drafter gets the HUMAN tier (F66): the same type name is refused in an obstetric context and allowed outside one", async () => {
+    await db.update(imagingDefinitions).set({
+      body: { types: [studyTypeRow({ code: "USG-ABDO", service_id: fx.services["USG-ABDO"]!, modality: "usg", body_part: "pelvis", name: "USG pelvis (female)" })] },
+    }).where(eq(imagingDefinitions.kind, "study_types"));
+    // The fixture patient is a 30-year-old woman: FULL tier. Pass 2 B1 — the drafter does not put
+    // the book's label in front of her; it names the modality alone and the human writes the rest.
+    const hers = await acquired();
+    const hersOut = await withTx(db, (tx) => proposeDraft(tx, fx.radiologist, { studyId: hers.studyId, now: NOW }));
+    expect(hersOut.body.technique).toBe("Ultrasound.");
+    // A 62-year-old man: CODED tier, and the type's name is not a coded term — the draft is written.
+    await db.update(patients).set({ sex: "male", administrativeGender: "male", dob: new Date(Date.UTC(1964, 0, 1)) })
+      .where(eq(patients.id, fx.patientId));
+    const his = await acquired();
+    const out = await withTx(db, (tx) => proposeDraft(tx, fx.radiologist, { studyId: his.studyId, now: NOW }));
+    expect(out.body.technique).toBe("Ultrasound: USG pelvis (female).");
   });
 
   it("a drafter that emits a §5(2) term is REFUSED with lexical_lockout and writes no version — no override lane", async () => {

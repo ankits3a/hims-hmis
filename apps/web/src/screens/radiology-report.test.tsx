@@ -134,7 +134,8 @@ it("18b T4: proposing fills technique from the server, saves it alongside the hu
       body: { study: { ...STUDY, reports: [{ id: "r1", version: 1, status: "draft", publishedAt: null, machineDrafted: true }] } },
     },
     "POST /api/radiology/studies/S1/reports/propose": {
-      status: 201, body: { reportId: "r1", version: 1, templateKey: "usg", provenance: { drafter: "offline_template" } },
+      status: 201,
+      body: { reportId: "r1", version: 1, templateKey: "usg", body: { technique: "Ultrasound of the abdomen.", findings: "" }, impression: null, provenance: { drafter: "offline_template" } },
     },
     "GET /api/radiology/reports/r1": {
       status: 200,
@@ -151,4 +152,59 @@ it("18b T4: proposing fills technique from the server, saves it alongside the hu
   await userEvent.click(screen.getByRole("button", { name: /^save/i }));
   const saved = sent.find((b) => (b as { body?: { technique?: string } }).body?.technique !== undefined) as { body: Record<string, string> };
   expect(saved.body).toEqual({ technique: "Ultrasound of the abdomen.", findings: "Normal study." });
+});
+
+/** Close review C2 (CRITICAL) — the template button must never wipe what the radiologist typed. */
+it("close review C2: proposing after typing keeps the typed findings and impression", async () => {
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: STUDY } },
+    "POST /api/radiology/studies/S1/reports/propose": {
+      status: 201,
+      body: { reportId: "r1", version: 1, templateKey: "usg", body: { technique: "Ultrasound of the abdomen.", findings: "" }, impression: null, provenance: { drafter: "offline_template" } },
+    },
+  });
+  renderWithProviders(<RadiologyReport />);
+  await screen.findByText(/X2608310001/);
+  await userEvent.type(screen.getByLabelText(/findings/i), "Five lines of findings.");
+  await userEvent.type(screen.getByLabelText(/impression/i), "An impression.");
+  await userEvent.click(screen.getByRole("button", { name: /start from template/i }));
+  expect(await screen.findByTestId("technique")).toHaveTextContent("Ultrasound of the abdomen.");
+  expect(screen.getByLabelText(/findings/i)).toHaveValue("Five lines of findings.");
+  expect(screen.getByLabelText(/impression/i)).toHaveValue("An impression.");
+});
+
+/** Close review C3 — after a reload the saved draft (the drafter's technique included) is the starting point. */
+it("close review C3: on load the latest unsigned draft seeds the editor, and save carries its technique", async () => {
+  mockRoutes({
+    "GET /api/radiology/studies/S1": {
+      status: 200,
+      body: { study: { ...STUDY, reports: [{ id: "r1", version: 1, status: "draft", publishedAt: null, machineDrafted: false }] } },
+    },
+    "GET /api/radiology/reports/r1": {
+      status: 200,
+      body: { report: { reportId: "r1", body: { technique: "Ultrasound of the abdomen.", findings: "" }, impression: null } },
+    },
+    "POST /api/radiology/studies/S1/reports/draft": { status: 201, body: { reportId: "r2", version: 2 } },
+  });
+  renderWithProviders(<RadiologyReport />);
+  expect(await screen.findByTestId("technique")).toHaveTextContent("Ultrasound of the abdomen.");
+  await userEvent.type(screen.getByLabelText(/findings/i), "Normal study.");
+  await userEvent.click(screen.getByRole("button", { name: /^save/i }));
+  const saved = sent.find((b) => (b as { body?: { technique?: string } }).body?.technique !== undefined) as { body: Record<string, string> };
+  expect(saved.body).toEqual({ technique: "Ultrasound of the abdomen.", findings: "Normal study." });
+});
+
+/** Pass 2 NEW-2 / C4 — the machine's proposal is neither signable nor read back: only a human's draft is. */
+it("pass 2: with only the machine's draft in the chain, Sign is disabled and the proposal is never fetched", async () => {
+  mockRoutes({
+    "GET /api/radiology/studies/S1": {
+      status: 200,
+      body: { study: { ...STUDY, reports: [{ id: "r1", version: 1, status: "draft", publishedAt: null, machineDrafted: true }] } },
+    },
+    "GET /api/radiology/reports/r1": { status: 200, body: { report: { reportId: "r1", body: { technique: "x", findings: "" }, impression: null } } },
+  });
+  renderWithProviders(<RadiologyReport />);
+  await screen.findByTestId("version-1");
+  expect(screen.getByRole("button", { name: /sign/i })).toBeDisabled();
+  expect(calls).not.toContain("GET /api/radiology/reports/r1");
 });

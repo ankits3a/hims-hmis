@@ -136,6 +136,8 @@ export const VIEWER_URL_PLACEHOLDERS = ["accessionNo", "studyInstanceUid"] as co
 export const pacsSettingsBodySchema = z.object({
   viewer_url_template: z.string().min(12).max(2000)
     .refine((t) => t.startsWith("https://"), { message: "the viewer URL must be https://" })
+    // Close review B5 — a template that is not a URL would 500 at the door; refuse it at publish.
+    .refine((t) => { try { new URL(t); return true; } catch { return false; } }, { message: "the viewer URL must parse as a URL" })
     .refine((t) => {
       const names = [...t.matchAll(/\{([^}]*)\}/g)].map((m) => m[1] ?? "");
       return names.length > 0 && names.every((n) => (VIEWER_URL_PLACEHOLDERS as readonly string[]).includes(n));

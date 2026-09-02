@@ -7,7 +7,7 @@ import { patients } from "../../kernel/db/schema/patients";
 import { displayName } from "../patients";
 import { RadiologyError } from "./errors";
 import { mintStudyInstanceUid } from "./uid";
-import { studyImageViews } from "./views";
+import { IMAGES_READ, studyImageViews } from "./views"; // pass 2 N2 — the button follows the door's own string
 import type { ImageViewRow } from "./views";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -225,6 +225,8 @@ export type StudyView = WorklistRow & {
   mintedStudyInstanceUid: string;
   /** 18b T3 / D6 — who opened the images, latest first: the view table's consumer. */
   views: ImageViewRow[];
+  /** Close review B4 — the screen renders "Open images" because the SERVER says this reader may. */
+  canOpenImages: boolean;
   reports: { id: string; version: number; status: string; publishedAt: Date | null; machineDrafted: boolean }[];
 };
 
@@ -283,6 +285,7 @@ export async function studyView(db: Db, actor: Actor, studyId: string): Promise<
     studyInstanceUid: row.study.studyInstanceUid, imageSource: row.study.imageSource,
     mintedStudyInstanceUid: mintStudyInstanceUid(row.study.id),
     views: await studyImageViews(db, studyId),
+    canOpenImages: await hasPermission(db, actor.id, IMAGES_READ, "hospital"),
     reports,
   };
 }

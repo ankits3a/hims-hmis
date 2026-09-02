@@ -92,7 +92,10 @@ export function RadiologyStudy(): React.ReactElement {
   const acquire = useMutation({
     mutationFn: () => recordAcquired(
       studyId,
-      source === "pacs" ? { imageSource: "pacs", studyInstanceUid: uid } : { imageSource: "no_pacs_images" },
+      // Close review C12 — a cleared field means "the minted one", so nothing is sent and the server defaults.
+      source === "pacs"
+        ? { imageSource: "pacs", ...(uid.trim() === "" ? {} : { studyInstanceUid: uid.trim() }) }
+        : { imageSource: "no_pacs_images" },
     ),
     onSuccess, onError,
   });
@@ -182,18 +185,28 @@ export function RadiologyStudy(): React.ReactElement {
       <section className="space-y-2">
         {s === null
           ? null
-          : s.studyInstanceUid !== null
+          : s.acquiredAt !== null
           ? (
+            /** Close review C5 — keyed on ACQUISITION, so a no-DICOM study shows its state, not the radio. */
             <div className="space-y-1 text-sm" data-testid="study-uid-recorded">
-              <p>{t("radiology.study.studyUidRecorded")}: <code>{s.studyInstanceUid}</code></p>
-              <p className="flex items-center gap-2">
-                <Button variant="outline" onClick={() => { open.mutate(); }}>{t("radiology.study.openImages")}</Button>
-                <span data-testid="image-views">
-                  {s.views.length === 0
-                    ? t("radiology.study.imagesNeverOpened")
-                    : t("radiology.study.imagesOpened", { count: s.views.length, by: s.views[0]!.viewerId })}
-                </span>
-              </p>
+              {s.studyInstanceUid !== null
+                ? <p>{t("radiology.study.studyUidRecorded")}: <code>{s.studyInstanceUid}</code></p>
+                : <p>{t("radiology.study.sourceNoImages")}</p>}
+              {s.studyInstanceUid !== null
+                ? (
+                  <p className="flex items-center gap-2">
+                    {/** Close review B4 — the button exists because the SERVER said this reader may open images. */}
+                    {s.canOpenImages
+                      ? <Button variant="outline" onClick={() => { open.mutate(); }}>{t("radiology.study.openImages")}</Button>
+                      : null}
+                    <span data-testid="image-views">
+                      {s.views.length === 0
+                        ? t("radiology.study.imagesNeverOpened")
+                        : t("radiology.study.imagesOpened", { count: s.views.length, by: s.views[0]!.viewerName })}
+                    </span>
+                  </p>
+                )
+                : null}
             </div>
           )
           : (
