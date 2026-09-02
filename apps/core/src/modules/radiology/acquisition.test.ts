@@ -16,6 +16,7 @@ import {
   addMachine, addPerson, createRegistration, deactivateRegistration, openFormF, recordFormF,
 } from "../pcpndt";
 import { abortAcquisition, recordAcquired, startAcquisition } from "./acquisition";
+import { mintStudyInstanceUid } from "./uid";
 import { checkIn } from "./checkin";
 import { evaluateReadiness, requireStudyGate, satisfyGate } from "./gates";
 import { scheduleStudy } from "./schedule";
@@ -532,5 +533,56 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
     await acquired(study.studyId, { imageSource: "no_pacs_images" });
     const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
     expect(row!.lateEntry).toBe(false);
+  });
+
+  /* ═══════════════════════ 18b T2 — THE STUDY INSTANCE UID (D3) ═══════════════════════ */
+
+  it("18b T2: `pacs` with no UID writes the MINTED one — the value the worklist export carried", async () => {
+    const study = await readyStudy("XR-CHEST", "xray");
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await start(study.studyId);
+    await acquired(study.studyId, { imageSource: "pacs", doseDap: 1.2 });
+    const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
+    expect(row!.studyInstanceUid).toBe(mintStudyInstanceUid(study.studyId));
+    expect(row!.studyInstanceUid!.startsWith("2.25.")).toBe(true);
+  });
+
+  it("18b T2: a no-MWL modality's own UID is accepted if DICOM-valid, and a malformed one is refused", async () => {
+    const study = await readyStudy("XR-CHEST", "xray");
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await start(study.studyId);
+    await expect(acquired(study.studyId, { imageSource: "pacs", doseDap: 1.2, studyInstanceUid: "1.2.3.abc" }))
+      .rejects.toMatchObject({ code: "invalid_study_instance_uid" });
+    await expect(acquired(study.studyId, { imageSource: "pacs", doseDap: 1.2, studyInstanceUid: "1.2.03" }))
+      .rejects.toMatchObject({ code: "invalid_study_instance_uid" });
+    await acquired(study.studyId, { imageSource: "pacs", doseDap: 1.2, studyInstanceUid: "1.2.826.0.1.3680043.9.7.1" });
+    const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
+    expect(row!.studyInstanceUid).toBe("1.2.826.0.1.3680043.9.7.1");
+  });
+
+  it("18b T2: one DICOM study is one HMIS study — a second study given the first's UID is refused at the index", async () => {
+    const first = await readyStudy("XR-CHEST", "xray");
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, first.studyId));
+    await start(first.studyId);
+    await acquired(first.studyId, { imageSource: "pacs", doseDap: 1.2 });
+    const second = await readyStudy("XR-CHEST", "xray");
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, second.studyId));
+    await start(second.studyId);
+    await expect(acquired(second.studyId, {
+      imageSource: "pacs", doseDap: 1.2, studyInstanceUid: mintStudyInstanceUid(first.studyId),
+    })).rejects.toMatchObject({ code: "duplicate_study_instance_uid" });
+    const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, second.studyId));
+    expect(row!.status).toBe("in_acquisition"); // the refusal left the study on the machine
+  });
+
+  it("18b T2: a UID against `no_pacs_images` is refused, not dropped — there is no DICOM study to name", async () => {
+    const study = await readyStudy("USG-ABDO", "usg");
+    await db.update(imagingStudies).set({ priority: "stat" }).where(eq(imagingStudies.id, study.studyId));
+    await start(study.studyId);
+    await expect(acquired(study.studyId, { imageSource: "no_pacs_images", studyInstanceUid: "2.25.1" }))
+      .rejects.toMatchObject({ code: "invalid_study_instance_uid" });
+    await acquired(study.studyId, { imageSource: "no_pacs_images" });
+    const [row] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study.studyId));
+    expect(row!.studyInstanceUid).toBeNull();
   });
 });

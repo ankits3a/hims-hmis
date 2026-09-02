@@ -2014,7 +2014,13 @@
       "acquired": "Record acquired",
       "ionising": "ionising",
       "badEvidence": "The evidence must be valid JSON.",
-      "openFormF": "Form F required — open it"
+      "openFormF": "Form F required — open it",
+      "imageSource": "Image source",
+      "sourcePacs": "PACS (DICOM images from the modality)",
+      "sourceNoImages": "No DICOM images",
+      "studyUid": "Study Instance UID",
+      "studyUidHint": "Pre-filled from the worklist. Type the machine's own UID only if it did not read the worklist.",
+      "studyUidRecorded": "Study Instance UID recorded"
     },
     "report": {
       "title": "Report",

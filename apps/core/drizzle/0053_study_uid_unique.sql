@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "imaging_studies_study_uid_ux" ON "imaging_studies" USING btree ("study_instance_uid") WHERE "imaging_studies"."study_instance_uid" is not null;
