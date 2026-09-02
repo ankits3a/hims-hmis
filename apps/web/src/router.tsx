@@ -20,6 +20,7 @@ import { MyDay } from "./screens/my-day";
 import { StaffReports } from "./screens/staff-reports";
 import { CounterDesk } from "./screens/counter-desk";
 import { RegistrationCounter } from "./screens/registration-counter";
+import { CounterFigures } from "./screens/counter-figures";
 import { RegistrationDesk } from "./screens/registration-desk";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
@@ -403,7 +404,12 @@ const counterDeskRoute = createRoute({
 const registrationCounterRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/counter/seat",
-  component: RegistrationCounter,
+  // FD-1 T4 — the door to "your figures" is a client-side navigation handed in from here; the seat
+  // itself mounts without a router in its suite.
+  component: function RegistrationCounterRoute() {
+    const navigate = useNavigate();
+    return <RegistrationCounter onFigures={() => { void navigate({ to: "/counter/seat/figures" }); }} />;
+  },
 });
 
 /**
@@ -415,6 +421,24 @@ const vitalsBayRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/vitals/bay",
   component: VitalsBay,
+});
+
+/**
+ * FD-1 T4 / D4 — "your figures", the registration clerk's own account, inside the seat's alias
+ * layer; Escape returns to the seat with the patient in hand untouched.
+ */
+const counterFiguresRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/counter/seat/figures",
+  component: function CounterFiguresRoute() {
+    const navigate = useNavigate();
+    return (
+      <CounterFigures
+        onBack={() => { void navigate({ to: "/counter/seat" }); }}
+        onGo={(href) => { void navigate({ to: href as never }); }}
+      />
+    );
+  },
 });
 
 const registrationRoute = createRoute({
@@ -718,6 +742,7 @@ export const router = createRouter({
       // `caddyfile-parity.test.ts` pins the count and joins this task's Files list — the S11 rule
       // this repository has now applied to itself eight times.
       registrationCounterRoute,
+      counterFiguresRoute,
       vitalsBayRoute,
       formularyAdminRoute,
       // PLAN 14 T9 — 25 -> 28. `caddyfile-parity.test.ts` pins the count and joins this task's

@@ -1,9 +1,10 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { invoices, receiptTenders, receipts } from "../../kernel/db/schema";
+import { cashierSessions, invoices, receiptTenders, receipts } from "../../kernel/db/schema";
 import { enteredInErrorDocIds } from "./daily-close";
+import { liveExpectedCashPaise } from "./sessions";
 import { formatPaise } from "../../kernel/report/money";
 import type { TenderTotals } from "./daily-close";
-import type { DeskCard, DeskProvider, DeskProviderCtx, ReportSection } from "../../kernel/desk/types";
+import type { DeskCard, DeskProvider, DeskProviderCtx, DeskStat, ReportSection } from "../../kernel/desk/types";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -79,8 +80,31 @@ export async function cashierDay(exec: Db | Tx, userId: string, day: string): Pr
   };
 }
 
+/**
+ * FD-1 T3 — THE DRAWER on the collections card: the session this person holds open, its float,
+ * and the cash it should hold now (`liveExpectedCashPaise`, the close's own formula — D5). No
+ * session open says so in words; a cashier with a drawer sees "counted at close, against this".
+ */
+async function drawerStats(ctx: DeskProviderCtx): Promise<DeskStat[]> {
+  const open = await ctx.db.select().from(cashierSessions)
+    .where(and(eq(cashierSessions.cashierUserId, ctx.actor.id), inArray(cashierSessions.status, ["open", "closing"])));
+  const session = open[0];
+  // DECIDED: a stat's value is a figure, never a word to translate — the open/closing state is the
+  // session screen's; the tile carries the two numbers a cashier is asked about, or one dash.
+  if (session === undefined) return [{ key: "desk.billing.noDrawer", value: "—", href: "/billing/session" }];
+  // Three reads, NOT one snapshot (pass 2): a transaction here would be READ COMMITTED — each
+  // SELECT its own snapshot — and would only add two round trips inside the 250 ms budget. A receipt
+  // landing between the sums shows for one poll; the close's transaction is the figure of record.
+  const expected = await liveExpectedCashPaise(ctx.db, session);
+  return [
+    { key: "desk.billing.float", value: formatPaise(session.openingFloatPaise), href: "/billing/session" },
+    { key: "desk.billing.expectedCash", value: formatPaise(expected), href: "/billing/session" },
+  ];
+}
+
 async function collectionsCard(ctx: DeskProviderCtx): Promise<DeskCard> {
   const d = await cashierDay(ctx.db, ctx.actor.id, ctx.date);
+  const drawer = await drawerStats(ctx);
   return {
     key: "billing.myCollections",
     band: "today",
@@ -94,6 +118,7 @@ async function collectionsCard(ctx: DeskProviderCtx): Promise<DeskCard> {
        * against a drawer somebody has to count. The figure a cashier needs at 20:00 is this one.
        */
       { key: "desk.billing.cash", value: formatPaise(d.byMode.cash), href: "/billing/session" },
+      ...drawer,
     ],
   };
 }

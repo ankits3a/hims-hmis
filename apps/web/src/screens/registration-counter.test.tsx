@@ -597,7 +597,8 @@ describe("RC-3 T5 / D3 — the alias layer is scoped to the seat", () => {
     // VD-2 T1 / D9 — Bay One opts in (RC-3 D1 said "one attribute per seat"), and PLAN 17c T1 / D1 —
     // the laboratory's shared seat frame, on ITS root element. The census still kills the hoist:
     // `router.tsx`, the shell or `main.tsx` carrying it fails here.
-    expect(carriers).toEqual(["screens/lab-seat.tsx", "screens/registration-counter.tsx", "screens/vitals-bay.tsx"]); // THE KILL
+    // FD-1 T4 / D4 — "your figures" is a screen OF the registration seat and carries its attribute.
+    expect(carriers).toEqual(["screens/counter-figures.tsx", "screens/lab-seat.tsx", "screens/registration-counter.tsx", "screens/vitals-bay.tsx"]); // THE KILL
 
     renderWithProviders(<RegistrationCounter />);
     expect(screen.getByTestId("registration-counter").getAttribute("data-seat")).toBe("registration-counter");

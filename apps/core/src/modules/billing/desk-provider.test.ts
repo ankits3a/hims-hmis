@@ -5,6 +5,11 @@ import {
 } from "../../../test/helpers/billing";
 import { mkPatient } from "../../../test/helpers/opd";
 import { billingDeskProvider, cashierDay } from "./desk-provider";
+import { liveExpectedCashPaise } from "./sessions";
+import { issueInvoice, previewInvoice } from "./invoices";
+import { newId } from "@hmis/contracts";
+import { formatPaise } from "../../kernel/report/money";
+import { cashierSessions } from "../../kernel/db/schema";
 import { dayBook } from "./daily-close";
 import { markEnteredInError } from "./receipts";
 import { receipts, registrationConfig } from "../../kernel/db/schema";
@@ -148,5 +153,40 @@ describe("billing desk provider — the per-cashier day (07c T2, spike S1)", () 
     for (const [k, v] of Object.entries(facts)) {
       expect({ [k]: Number.isInteger(v) && v >= 0 }).toEqual({ [k]: true });
     }
+  });
+
+  // ═══ FD-1 T3 — the drawer on the card: float, and the cash it should hold NOW (the close's formula) ═══
+  it("the drawer: my float and the cash I should hold now — the close's own arithmetic, live; no session says so", async () => {
+    await issuePaidInvoice(db, asha, { patientId, serviceId: base.genericServiceId }, T0);
+    const [card] = await billingDeskProvider.load(ctxFor(asha));
+    const stat = (k: string): string | undefined => card!.stats!.find((s) => s.key === k)?.value;
+    expect(stat("desk.billing.float")).toBe(formatPaise(200000));
+    const session = (await db.select().from(cashierSessions).where(eq(cashierSessions.cashierUserId, asha.id)))[0]!;
+    const live = await liveExpectedCashPaise(db, session);
+    const cash = (await db.select().from(receipts).where(eq(receipts.cashierSessionId, session.id)))
+      .reduce((n, r) => n + r.totalPaise - r.changeGivenPaise, 0);
+    expect(live).toBe(200000 + cash);
+    expect(cash).toBeGreaterThan(0);
+    expect(stat("desk.billing.expectedCash")).toBe(formatPaise(live));
+    // change handed back leaves the drawer: a second sale tendered ₹5 over, ₹5 handed back —
+    // receipts are append-only, so the declaration rides the issue itself (07b T5)
+    const lines = [{ lineId: newId(), serviceId: base.genericServiceId, qty: 1 }];
+    const preview = await previewInvoice(db, { lines }, T0);
+    await issueInvoice(db, asha.actor, {
+      draftId: newId(), patientId, lines,
+      receipt: { tenders: [{ mode: "cash", amountPaise: preview.totals.netPayablePaise + 500 }], changeGivenPaise: 500 },
+    }, T0);
+    expect(await liveExpectedCashPaise(db, session)).toBe(live + preview.totals.netPayablePaise);   // +tender −change = +net
+    const [after] = await billingDeskProvider.load(ctxFor(asha));
+    expect(after!.stats!.find((s) => s.key === "desk.billing.expectedCash")!.value).toBe(formatPaise(live + preview.totals.netPayablePaise));
+    expect(stat("desk.billing.noDrawer")).toBeUndefined();
+    // Bimal's drawer is his own: float only, nothing of Asha's cash
+    const [bimalCard] = await billingDeskProvider.load(ctxFor(bimal));
+    expect(bimalCard!.stats!.find((s) => s.key === "desk.billing.expectedCash")!.value).toBe(formatPaise(200000));
+    // a cashier with no drawer open
+    const carol = await mkCashier(db, "carol_cashier");
+    const [carolCard] = await billingDeskProvider.load(ctxFor(carol));
+    expect(carolCard!.stats!.find((s) => s.key === "desk.billing.noDrawer")!.value).toBe("—");
+    expect(carolCard!.stats!.find((s) => s.key === "desk.billing.float")).toBeUndefined();
   });
 });

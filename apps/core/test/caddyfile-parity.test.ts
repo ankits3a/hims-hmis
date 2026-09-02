@@ -341,7 +341,9 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // so the evidence is the passing run, stated as such rather than as a failure not observed.
     // VD-2 T1 / D1 — 46 with `/opd/vitals/bay`, Bay One: the vitals desk beside `/opd/vitals`, the
     // registration seat's pattern. The old screen's deletion is an owner item and brings it to 45.
-    expect(routes).toHaveLength(46);
+    // FD-1 T4 / D4 — 47 with `/counter/seat/figures`, the clerk's own account inside the seat.
+    expect(routes).toHaveLength(47);
+    expect(routes).toContain("/counter/seat/figures");
     expect(routes).toContain("/counter/seat");
     expect(routes).toContain("/opd/vitals/bay");
     expect(routes).toContain("/radiology/reception");
