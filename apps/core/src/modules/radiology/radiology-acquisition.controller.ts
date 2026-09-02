@@ -41,6 +41,8 @@ const startBody = z.object({}).strict();
 
 const acquiredBody = z.object({
   imageSource: z.enum(["pacs", "no_pacs_images", "outside"]),
+  /** 18b T2 — optional for `pacs` (the minted one is used), refused for the other two sources. */
+  studyInstanceUid: z.string().min(1).max(64).nullish(),
   doseCtdivol: z.number().nonnegative().max(9_999_999).nullish(),
   doseDlp: z.number().nonnegative().max(9_999_999).nullish(),
   doseDap: z.number().nonnegative().max(9_999_999).nullish(),
@@ -98,6 +100,7 @@ export class RadiologyAcquisitionController {
       return await withTx(this.db, (tx) => recordAcquired(tx, actor, this.decls(), {
         studyId,
         imageSource: input.imageSource,
+        studyInstanceUid: input.studyInstanceUid ?? null,
         doseCtdivol: input.doseCtdivol ?? null,
         doseDlp: input.doseDlp ?? null,
         doseDap: input.doseDap ?? null,
