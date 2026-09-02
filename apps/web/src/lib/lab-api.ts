@@ -56,11 +56,28 @@ export type WireDeskOrder = {
   duplicates: { acknowledged: string[]; warnings: WireDuplicateWarning[] };
 };
 
+/**
+ * 17c T2 F1 — this type was written in 17b T8 against fields the server never sent
+ * (`patientDisplay`, `waitingMinutes`, `labelledAt`), so the shipped queue rendered blanks. It now
+ * mirrors `CollectionQueueRow` exactly, and the server sends every field named here.
+ */
 export type WireCollectionRow = {
-  specimenId: string; specimenNo: string; patientId: string; patientDisplay: string;
-  specimenType: string; container: string; status: string; orderGroupId: string;
-  itemIds: string[]; labelledAt: string | null; waitingMinutes: number;
+  specimenId: string; specimenNo: string; orderGroupId: string; patientId: string;
+  patientName: string; patientDisplay: string; uhid: string; encounterNo: string;
+  tokenNo: number | null; labelledAt: string; waitingMinutes: number;
+  specimenType: string; container: string; collectionSite: string; priority: string;
+  requiresFasting: boolean; orderableCodes: string[]; itemIds: string[];
 };
+
+/** 17c T2 — an order group waiting for its LABEL, the half of the chair's queue 17a did not have. */
+export type WireAwaitingRow = {
+  orderGroupId: string; patientId: string; patientDisplay: string; uhid: string; encounterNo: string;
+  tokenNo: number | null; priority: string; requiresFasting: boolean; orderableCodes: string[];
+  itemIds: string[]; placedAt: string; waitingMinutes: number;
+};
+
+export const awaitingLabels = (serviceDate: string): Promise<WireAwaitingRow[]> =>
+  api("GET", `/lab/collection/awaiting?serviceDate=${serviceDate}`);
 
 export type WirePrintedSpecimen = {
   specimenId: string; specimenNo: string; specimenType: string; container: string; itemIds: string[];

@@ -52,8 +52,8 @@ export type { ActivateLabDefinitionsReport } from "./definitions";
 // ── PLAN 17a T5 — collection, accession, and the two worker sweeps ──
 // The phase STOPS at `receive`, which is DD4's first projection point: the item's `accessioned`
 // becomes the envelope's `in_progress` and the TAT clock starts. 17b begins by reading that triple.
-export { assertRightPatient, collect, collectionQueue } from "./collection";
-export type { CollectInput, CollectionQueueRow } from "./collection";
+export { assertRightPatient, awaitingLabels, collect, collectionQueue, tokensByVisit } from "./collection";
+export type { AwaitingLabelRow, CollectInput, CollectionQueueRow } from "./collection";
 export { getSpecimenByNo, printLabels } from "./specimens";
 export type { PrintedSpecimen, PrintLabelsInput, PrintLabelsResult, SpecimenView } from "./specimens";
 export { orderableCodesFor, receive, reject } from "./accession";
