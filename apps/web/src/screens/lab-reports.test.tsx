@@ -30,8 +30,22 @@ function mockRoutes(handlers: Record<string, Reply | (() => Reply)>): Seen {
   return seen;
 }
 
+/**
+ * ═══ FD-6 — THE FIXTURE'S SERVICE DATE IS *TODAY*, AND HARD-CODING IT WAS A DAILY TIME BOMB ═══
+ *
+ * These rows were dated `"2026-09-02"`. `lab-reports.tsx:220` buckets a patient's reports with
+ * `r.serviceDate === serviceDate` where `serviceDate = istToday()`, so from IST midnight on
+ * 2026-09-03 the fixture's only report stopped being "1 report ready" and became "1 earlier report
+ * on file" — and the D9 assertion failed. Not a flake: a hard red, on every run, for every lane,
+ * from that moment on. It was FOUND that way, at 00:06 IST, by a full suite run in another lane.
+ *
+ * The date a test means is "the day the counter is open", which is today by definition — so it is
+ * computed the same way the screen computes it rather than written down once and left to rot.
+ */
+const IST_TODAY = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+
 const snapshot = {
-  orderId: "o-1", orderNo: "L2609010102", encounterNo: "V2609010044", serviceDate: "2026-09-02",
+  orderId: "o-1", orderNo: "L2609010102", encounterNo: "V2609010044", serviceDate: IST_TODAY,
   patient: { id: "p-1", uhid: "U23011884", name: "Farida Khatoon", sex: "female", dob: "1974-03-02" },
   orderingClinicianId: "u-doc",
   signatory: { userId: "u-path", username: "dr.iyer", signedAt: "2026-09-02T09:04:00.000Z" },
@@ -62,17 +76,17 @@ const REGISTER: WireDeliveryRegisterRow[] = [
 const FARIDA: WirePatientReports = {
   patient: { id: "p-1", uhid: "U23011884", display: "Farida Khatoon", restricted: false },
   reports: [{
-    reportId: "rep-1", orderId: "o-1", orderNo: "L2609010102", encounterNo: "V2609010044", serviceDate: "2026-09-02",
+    reportId: "rep-1", orderId: "o-1", orderNo: "L2609010102", encounterNo: "V2609010044", serviceDate: IST_TODAY,
     version: 1, partial: true, publishedAt: "2026-09-02T09:04:00.000Z", channels: ["print", "whatsapp", "in_person"], printCount: 0,
     orderables: ["LFT", "CBC", "GLUF"], sensitive: false, delivery: settled, deliveries: [],
     notice: { status: "sent", sentChannel: "whatsapp", sentAt: "2026-09-02T09:05:00.000Z" }, snapshot,
   }],
-  pending: [{ orderId: "o-1", orderNo: "L2609010102", serviceDate: "2026-09-02", orderables: ["HBA1C"], completedCount: 0, itemCount: 1 }],
+  pending: [{ orderId: "o-1", orderNo: "L2609010102", serviceDate: IST_TODAY, orderables: ["HBA1C"], completedCount: 0, itemCount: 1 }],
 };
 const RAMESH: WirePatientReports = {
   patient: { id: "p-2", uhid: "U23011990", display: "Ramesh Mahto", restricted: false },
   reports: [{
-    reportId: "rep-2", orderId: "o-2", orderNo: "L2609010088", encounterNo: "V2609010031", serviceDate: "2026-09-02",
+    reportId: "rep-2", orderId: "o-2", orderNo: "L2609010088", encounterNo: "V2609010031", serviceDate: IST_TODAY,
     version: 1, partial: false, publishedAt: "2026-09-02T09:11:00.000Z", channels: ["print", "whatsapp", "in_person"], printCount: 0,
     orderables: ["RFT"], sensitive: false, delivery: held, deliveries: [], notice: { status: "queued", sentChannel: null, sentAt: null }, snapshot: null,
   }],

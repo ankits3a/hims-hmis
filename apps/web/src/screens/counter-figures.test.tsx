@@ -174,8 +174,21 @@ describe("FD-1 T4 — your figures", () => {
     fail = true;
     // the same key refetches (a window focus, a poll) and fails: v5 keeps the old data — the screen must not print it
     fireEvent(window, new Event("focus"));
-    fireEvent.change(screen.getByTestId("figures-date"), { target: { value: "2026-09-03" } });
-    fireEvent.change(screen.getByTestId("figures-date"), { target: { value: new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10) } });
+    /*
+     * ═══ FD-6 — BOTH DATES ARE DERIVED, AND THE HARD-CODED ONE WAS A DAILY TIME BOMB ═══
+     *
+     * The first line read `value: "2026-09-03"` and the second sets today-in-IST. The test needs
+     * TWO DIFFERENT dates so the second change actually refetches. From IST midnight on
+     * 2026-09-03 those two expressions returned the SAME string, the second `change` became a
+     * no-op, the failing refetch never happened and `report-failed` never rendered. Not a flake:
+     * a hard red for every lane, on exactly the day the literal came due. Found at 00:06 IST.
+     *
+     * "Some other day" is now derived FROM today, so the pair can never collapse again.
+     */
+    const istToday = (offsetDays = 0): string =>
+      new Date(Date.now() + 330 * 60_000 + offsetDays * 86_400_000).toISOString().slice(0, 10);
+    fireEvent.change(screen.getByTestId("figures-date"), { target: { value: istToday(-1) } });
+    fireEvent.change(screen.getByTestId("figures-date"), { target: { value: istToday() } });
     await waitFor(() => expect(screen.getByTestId("report-failed")).toBeInTheDocument());
     expect(document.querySelectorAll(".print-doc")).toHaveLength(0);
     expect(screen.getByTestId("figures-print")).toBeDisabled();

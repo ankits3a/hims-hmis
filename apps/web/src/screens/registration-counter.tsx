@@ -707,6 +707,25 @@ export function FindPanel({ onRegisterNew }: { onRegisterNew?: () => void } = {}
                   {hit.phone !== null && (
                     <span data-testid={`find-phone-${hit.id}`} className="text-sm tabular-nums text-muted-foreground">{hit.phone}</span>
                   )}
+                  {/*
+                    ═══ FD-6 — SEX AND AGE, BECAUSE A UHID IS NOT HOW A HUMAN TELLS TWO PEOPLE APART ═══
+
+                    MEASURED ON 10,000 PATIENTS: a search for "Ramesh" returned eight rows, every one
+                    of them reading "Ramesh Kumar", distinguished only by an eleven-character UHID the
+                    clerk has not been told. The patient standing there cannot recite their UHID —
+                    that is what they came to the counter to be given — so the row offered the clerk
+                    nothing they could actually check against the person in front of them.
+                    `administrativeGender` and `dob` were ALREADY on the wire (`WirePatientHit`), and
+                    the command palette has rendered both as "male · 42y" since 11h. The counter,
+                    which is the surface where picking the wrong Ramesh Kumar opens the wrong chart,
+                    was the one that did not.
+                  */}
+                  <span data-testid={`find-facts-${hit.id}`} className="text-sm text-muted-foreground">
+                    {[
+                      t(`sex.${hit.administrativeGender}`, hit.administrativeGender),
+                      ageFromDob(hit.dob) === null ? null : t("registrationCounter.dossier.age", { years: ageFromDob(hit.dob) }),
+                    ].filter((x): x is string => x !== null).join(" · ")}
+                  </span>
                 </span>
                 {/*
                   D6 — REASONS, NEVER A SCORE. `matchReasonKeys` is where the ruling is enforceable

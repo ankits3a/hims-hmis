@@ -235,6 +235,29 @@ describe("FD-2 F2 — the search result is a row, not a run-on string", () => {
   });
 
   /**
+   * ═══ FD-6 — A UHID IS NOT HOW A HUMAN TELLS TWO PEOPLE APART ═══
+   *
+   * MEASURED ON 10,000 PATIENTS: a search for "Ramesh" returned eight rows, every one of them
+   * reading "Ramesh Kumar", separated only by an eleven-character UHID. The patient standing at the
+   * counter cannot recite their UHID — being given one is why they are there — so the row offered
+   * the clerk nothing they could check against the person in front of them, on the surface where
+   * picking the wrong Ramesh Kumar opens the wrong chart.
+   *
+   * `administrativeGender` and `dob` were ALREADY on the wire and the command palette has rendered
+   * both as "male · 42y" since 11h. The counter was the one that did not.
+   */
+  it("the row carries sex and age — the two facts a clerk can check against the person", async () => {
+    stubSearch([HIT]);
+    const user = userEvent.setup();
+    renderWithProviders(<FindPanel />);
+    await user.type(screen.getByTestId("find-input"), "Ramesh");
+
+    const facts = await screen.findByTestId("find-facts-p-1");
+    expect(facts.textContent).toContain("male");
+    expect(facts.textContent).toMatch(/41/); // dob 1985-04-02, fixed in the fixture
+  });
+
+  /**
    * ═══ "I CAN'T SEE NEW REGISTRATION PAGE" ═══
    *
    * The empty answer was `<p>Nobody on file matches that<button>Register new</button></p>` with no
