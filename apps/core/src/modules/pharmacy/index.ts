@@ -47,3 +47,13 @@ export { alternativesFor, cancelDispense, declineLine, verifyDispense } from "./
 export type { Alternative, VerifyInput, VerifyLineInput } from "./verify";
 export { doseUnits, dosesPerDay, prefillQtyBase } from "./qty";
 export { istDateOf } from "./config";
+
+// ── T4 — pick, bill, hand over, the label ──
+export { pickDispense } from "./pick";
+export type { PickInput, PickLineInput } from "./pick";
+export { billDispense, previewDispenseBill } from "./bill";
+export type { BillInput } from "./bill";
+export { handOverDispense } from "./handover";
+export type { HandoverInput } from "./handover";
+export { labelFor } from "./label";
+export type { LabelData, LabelLine } from "./label";

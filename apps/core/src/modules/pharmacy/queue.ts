@@ -130,9 +130,13 @@ export type DispenseLineView = {
   available: number | null;
   batchId: string | null;
   reservationId: string | null;
+  ledgerEntryId: string | null;
   orderItemId: string | null;
+  invoiceLineId: string | null;
   unitPaise: number | null;
   priceWinner: string | null;
+  fefoOverride: boolean;
+  pickNote: string | null;
 };
 
 export type DispenseView = {
@@ -201,8 +205,9 @@ export async function getDispense(db: Db, actor: Actor, dispenseId: string): Pro
       orderedMedicine: om === undefined ? null : { id: om.id, brandName: om.brandName, strengthLabel: om.strengthLabel, form: om.form },
       dispensedMedicine: dm === undefined ? null : { id: dm.id, brandName: dm.brandName, strengthLabel: dm.strengthLabel, form: dm.form, scheduleFlag: dm.scheduleFlag },
       item: item === undefined ? null : { id: item.id, code: item.code, name: item.name, baseUom: item.baseUom, uoms },
-      saleable, available, batchId: l.batchId, reservationId: l.reservationId, orderItemId: l.orderItemId,
-      unitPaise: l.unitPaise, priceWinner: l.priceWinner,
+      saleable, available, batchId: l.batchId, reservationId: l.reservationId, ledgerEntryId: l.ledgerEntryId,
+      orderItemId: l.orderItemId, invoiceLineId: l.invoiceLineId, unitPaise: l.unitPaise, priceWinner: l.priceWinner,
+      fefoOverride: l.fefoOverride, pickNote: l.pickNote,
     });
   }
   return {

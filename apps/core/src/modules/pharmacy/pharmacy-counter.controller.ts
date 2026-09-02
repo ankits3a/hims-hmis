@@ -8,6 +8,10 @@ import { claimDispense, findAtCounter } from "./claim";
 import { istDateOf } from "./config";
 import { PHARMACY_IDEMPOTENT_ROUTES, idSchema, parsed, toHttp } from "./pharmacy-http";
 import { getDispense, listQueue } from "./queue";
+import { billDispense, previewDispenseBill } from "./bill";
+import { handOverDispense } from "./handover";
+import { labelFor } from "./label";
+import { pickDispense } from "./pick";
 import { alternativesFor, cancelDispense, declineLine, verifyDispense } from "./verify";
 import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
@@ -16,6 +20,8 @@ import type { ModuleRegistry } from "../../kernel/modules/loader";
 import type { FindResult } from "./claim";
 import type { DispenseView, QueueRow } from "./queue";
 import type { Alternative } from "./verify";
+import type { PricedDraft } from "../billing";
+import type { LabelData } from "./label";
 
 const claimBody = z.object({ dispenseId: idSchema, door: z.enum(["rx_qr", "patient_qr", "token", "uhid"]) });
 const verifyBody = z.object({
@@ -27,6 +33,24 @@ const verifyBody = z.object({
   })),
 });
 const reasonBody = z.object({ reason: z.string().min(1).max(240) });
+const pickBody = z.object({
+  lines: z.array(z.object({
+    lineIdx: z.number().int().nonnegative(),
+    qtyBase: z.number().int().positive().optional(),
+    pickNote: z.string().max(240).optional(),
+    batchId: idSchema.optional(),
+  })).optional(),
+});
+const billBody = z.object({
+  tenders: z.array(z.object({ mode: z.enum(["cash", "upi", "card"]), amountPaise: z.number().int().nonnegative(), refText: z.string().max(120).optional() })).min(1),
+  panNumber: z.string().max(20).optional(),
+  form60: z.boolean().optional(),
+  changeGivenPaise: z.number().int().nonnegative().optional(),
+  tags: z.array(z.string().min(1)).optional(),
+});
+const handoverBody = z.object({
+  identity: z.object({ via: z.enum(["token", "phone_last4"]), value: z.string().min(1).max(12) }).optional(),
+});
 
 /**
  * PLAN 16c T3 — the counter's routes. `decls` come from the INSTALLED registry (17a F2), the
@@ -98,6 +122,62 @@ export class PharmacyCounterController {
     try {
       return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.verify, key }, { id, ...input },
         () => verifyDispense(this.db, actor, this.decls(), id, input, new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("dispenses/:id/pick")
+  async pick(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<DispenseView> {
+    const input = parsed(pickBody, body);
+    try {
+      return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.pick, key }, { id, ...input },
+        () => pickDispense(this.db, actor, this.decls(), id, input, new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Get("dispenses/:id/bill/preview")
+  async preview(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<PricedDraft> {
+    try {
+      return await previewDispenseBill(this.db, actor, id, new Date());
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  @RequirePermission("billing.invoice.issue", "hospital")
+  @Post("dispenses/:id/bill")
+  async bill(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<DispenseView> {
+    const input = parsed(billBody, body);
+    try {
+      return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.bill, key }, { id, ...input },
+        () => billDispense(this.db, actor, id, input, new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  @RequirePermission("pharmacy.dispense.place", "hospital")
+  @Post("dispenses/:id/handover")
+  async handover(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") key?: string): Promise<DispenseView> {
+    const input = parsed(handoverBody, body);
+    try {
+      return await withIdempotency(this.db, { actorId: actor.id, route: PHARMACY_IDEMPOTENT_ROUTES.handover, key }, { id, ...input },
+        () => handOverDispense(this.db, actor, this.decls(), id, input, new Date()));
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  @RequirePermission("pharmacy.dispense.read", "hospital")
+  @Get("dispenses/:id/label")
+  async label(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<LabelData> {
+    try {
+      return await labelFor(this.db, actor, id);
     } catch (e) {
       return toHttp(e);
     }

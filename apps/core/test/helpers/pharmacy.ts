@@ -1,13 +1,13 @@
 import { newId } from "@hmis/contracts";
 import { grantPermissionToRole, syncPermissions } from "../../src/kernel/auth/permissions";
 import { withTx } from "../../src/kernel/db/client";
-import { patientAllergies } from "../../src/kernel/db/schema";
+import { patientAllergies, stockBatches } from "../../src/kernel/db/schema";
 import { ModuleRegistry } from "../../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../../src/kernel/modules/manifests";
 import { collectOrderKinds } from "../../src/kernel/orders/kinds";
 import { ORDERS_PLACE } from "../../src/kernel/orders/place";
 import { addMedicine, addSalt } from "../../src/modules/formulary";
-import { createStore, registerItem } from "../../src/modules/materials";
+import { createStore, postMovement, registerItem } from "../../src/modules/materials";
 import { startConsultation } from "../../src/modules/opd/consultation";
 import { openVisit } from "../../src/modules/opd/encounters";
 import { registerOpdEncounterResolver } from "../../src/modules/opd/opd.module";
@@ -15,6 +15,7 @@ import { issuePrescription } from "../../src/modules/opd/prescriptions";
 import { callNext } from "../../src/modules/opd/queue";
 import { recordVitals } from "../../src/modules/opd/vitals";
 import { activatePharmacyDefinitions, registerSaleItem } from "../../src/modules/pharmacy";
+import { upsertGstCategory } from "../../src/modules/tariff";
 import { seedBillingBase } from "./billing";
 import { activateOpdVisitDefinition, ensureRole, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters, testCfg } from "./opd";
 import type { Actor } from "@hmis/contracts";
@@ -63,6 +64,10 @@ export async function seedPharmacyBase(db: Db): Promise<PharmacyFixture> {
   for (const m of ALL_MANIFESTS) registry.install(m);
   await syncPermissions(db, registry);
   const base = await seedBillingBase(db);
+  // The three medicine slabs `seed:tariff` carries (16c T2 / S2); the billing base seeds only `pharmacy` (12%).
+  for (const [category, rateBps, exempt] of [["pharmacy_exempt", 0, true], ["pharmacy_5", 500, false], ["pharmacy_18", 1800, false]] as const) {
+    await withTx(db, (tx) => upsertGstCategory(tx, base.drafter, { category, sacCode: "3004", exempt, rateBps, specialRule: null, thresholdPaise: null }));
+  }
 
   await ensureRole(db, "pharmacy");
   await ensureRole(db, "pharmacy_assistant");
@@ -152,4 +157,28 @@ export async function reissueRx(
   opts: { at?: Date; overrides?: Omit<Parameters<typeof issuePrescription>[4], "lines"> } = {},
 ): Promise<IssuedPrescription> {
   return issuePrescription(db, fx.doctor.actor, testCfg, encounterId, { lines, ...(opts.overrides ?? {}) }, opts.at ?? MON2);
+}
+
+/**
+ * Stock at the counter's store, the way the ledger sees it: a `stock_batches` row in the storage
+ * shape the GRN writes (the `ledger.test.ts` fixture) and ONE `grn` movement through
+ * `postMovement` — the only writer of balances. MRP is printed per STRIP of 10 unless told otherwise.
+ */
+export async function stockIn(
+  db: Db,
+  fx: PharmacyFixture,
+  input: { itemId: string; batchNo: string; expiryDate?: string | null; mrpPaise?: number | null; mrpUom?: string | null; qtyBase: number; at?: Date },
+): Promise<string> {
+  const HEAD: Actor = { type: "user", id: "01HMATERIALSHEAD00000000001" };
+  const batchId = newId();
+  await db.insert(stockBatches).values({
+    id: batchId, itemId: input.itemId, batchNo: input.batchNo,
+    expiryDate: input.expiryDate === undefined ? "2027-06-30" : input.expiryDate,
+    mrpPaise: input.mrpPaise === undefined ? 12000 : input.mrpPaise, mrpUom: input.mrpUom === undefined ? "strip" : input.mrpUom,
+    landedCostPaise: 500, ownership: "owned", createdBy: HEAD.id,
+  });
+  await withTx(db, (tx) => postMovement(tx, HEAD, {
+    resourceId: fx.storeId, batchId, qtyDelta: input.qtyBase, reason: "grn", refType: "test", refId: batchId, occurredAt: input.at ?? MON,
+  }));
+  return batchId;
 }
