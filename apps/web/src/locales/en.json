@@ -452,7 +452,9 @@
     "noFeeToVitals": "No fee — send this follow-up to vitals",
     "escalationFlash": "Token {{tokenNo}} — bumped to class 0 by the vitals bay. Escort coming.",
     "escalationCancelled": "Token {{tokenNo}} — the class-0 bump was cancelled at the bay.",
-    "flashDismiss": "dismiss"
+    "flashDismiss": "dismiss",
+    "onLeaveToday": "On leave today",
+    "onLeaveWithWaiting": "On leave today — {{count}} still waiting; transfer them"
   },
   "opdVitals": {
     "title": "Vitals desk",
@@ -2726,6 +2728,7 @@
     "doneToken": "Done. Token {{token}}.",
     "doneBooked": "Booked for {{at}}.",
     "next": "Next patient",
-    "forbidden": "This account may not book or route appointments."
+    "forbidden": "This account may not book or route appointments.",
+    "anchorOnLeave": "{{doctor}} has seen this patient before but is on leave today."
   }
 }

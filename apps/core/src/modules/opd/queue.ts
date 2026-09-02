@@ -1,9 +1,9 @@
-import { and, asc, desc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
 import {
-  opdDepartments, opdDoctorSchedules, opdDoctors, opdEncounters, opdQueueEntries, opdQueueSessions, resources,
+  opdDepartments, opdDoctorLeaves, opdDoctorSchedules, opdDoctors, opdEncounters, opdQueueEntries, opdQueueSessions, resources,
 } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { encounterFeeStatuses } from "../billing";
@@ -245,6 +245,27 @@ export type DoctorSummary = {
   doctor: DoctorRow; sessionId: string | null; status: SessionStatus | "none"; waitingCount: number;
   waitingVitalsCount: number; nowServing: number | null; scheduledToday: boolean; roomCode: string | null;
   /**
+   * ═══ FD-7 T8 — THE BOARD DID NOT KNOW ABOUT LEAVE, AT ALL ═══
+   *
+   * `scheduledToday` was read off `opd_doctor_schedules` alone, so a doctor on approved leave stayed
+   * on the board all day reading "scheduled, 0 waiting". Two things followed from that, and the
+   * second is the one that reaches a patient:
+   *
+   *   · the desk's "session not opened" alert (`desk-provider.ts:56`) nagged about a doctor who was
+   *     away, every day of their leave;
+   *   · **an empty queue is the SHORTEST queue.** With the owner's 03-Sep ruling that the department
+   *     queue auto-assigns to the least-waiting doctor, a doctor on leave would win that comparison
+   *     every time — the walk-in router would have sent every arriving patient to the one person in
+   *     the building guaranteed not to see them.
+   *
+   * `availableSlots` and `bookAppointment` have consulted `opd_doctor_leaves` since Plan 07
+   * (`appointments.ts:23`); the QUEUE side never did. `scheduledToday` now means "working today" —
+   * which is what every one of its five readers already assumed it meant — and `onLeaveToday` says
+   * WHY somebody is not, because "not on the board" and "away today" are different things to a clerk
+   * standing in front of a patient who asked for that doctor by name.
+   */
+  onLeaveToday: boolean;
+  /**
    * RC-1 T5 / D7 — wait v0's pace term: the department's `avg_consult_minutes` (a masters column,
    * default 6). The seat renders `waitingCount × this` as minutes AND a clock time; a future pace
    * model replaces THIS COLUMN'S READ, never the wire shape.
@@ -282,6 +303,21 @@ export async function summaryByDoctor(db: Db, departmentId: string | undefined, 
     if (!scheduledRoom.has(t.doctorId)) scheduledRoom.set(t.doctorId, t.roomId);
   }
 
+  /*
+   * FD-7 T8 — the day's approved leave, batched over the same doctor set. The predicate is exactly
+   * `appointments.ts:23`'s (`status = 'scheduled'`, `from <= date <= to`, inclusive both ends) so
+   * the queue and the appointment book cannot disagree about who is away — a doctor the book refuses
+   * to book and the board offers a walk-in to would be worse than either behaviour alone.
+   */
+  const leaves = await db
+    .select({ doctorId: opdDoctorLeaves.doctorId })
+    .from(opdDoctorLeaves)
+    .where(and(
+      inArray(opdDoctorLeaves.doctorId, doctorIds), eq(opdDoctorLeaves.status, "scheduled"),
+      lte(opdDoctorLeaves.fromDate, serviceDate), gte(opdDoctorLeaves.toDate, serviceDate),
+    ));
+  const onLeave = new Set(leaves.map((l) => l.doctorId));
+
   const roomIds = [...new Set([...sessions.map((s) => s.roomId), ...scheduledRoom.values()].filter((r): r is string => r !== null))];
   const rooms = roomIds.length === 0 ? [] : await db.select({ id: resources.id, code: resources.code }).from(resources).where(inArray(resources.id, roomIds));
   const roomCode = new Map(rooms.map((r) => [r.id, r.code] as const));
@@ -302,7 +338,11 @@ export async function summaryByDoctor(db: Db, departmentId: string | undefined, 
       return {
         doctor, sessionId: session?.id ?? null, status: (session?.status as SessionStatus | undefined) ?? "none",
         waitingCount, waitingVitalsCount: entries.filter((r) => r.status === "waiting_vitals").length,
-        nowServing, scheduledToday: scheduledRoom.has(doctor.id), roomCode: room === null ? null : roomCode.get(room) ?? null,
+        nowServing,
+        // A doctor on leave is NOT scheduled today, whatever the weekly template says.
+        scheduledToday: scheduledRoom.has(doctor.id) && !onLeave.has(doctor.id),
+        onLeaveToday: onLeave.has(doctor.id),
+        roomCode: room === null ? null : roomCode.get(room) ?? null,
         avgConsultMinutes: avgByDept.get(doctor.departmentId) ?? 6,
       };
     })

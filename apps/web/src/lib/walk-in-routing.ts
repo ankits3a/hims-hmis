@@ -45,15 +45,25 @@ export type WalkInProposal = {
   anchor: WireContinuityAnchor | null;
   /** The anchor doctor exists but is not on today's board — rule 1 dropped out to rule 2. */
   anchorUnavailable: boolean;
+  /** …and this says leave is the reason, so the clerk can tell the patient the true thing. */
+  anchorOnLeave: boolean;
 };
 
 const waitOf = (s: WireDoctorSummary): number => s.waitingCount * s.avgConsultMinutes;
 
 /**
  * Who can actually take a patient in this department today. `scheduledToday` is the server's own
- * answer to "is this doctor sitting" — a doctor on leave, off the weekly template or without a
- * session is not on the board, which is exactly how "a doctor on leave drops out to rule 2" is
- * implemented: it needs no leave lookup of its own, because the board already knows.
+ * answer to "is this doctor working today", and since FD-7 T8 it means that — the summary consults
+ * `opd_doctor_leaves`, so a doctor on approved leave is not a candidate here without this function
+ * needing a leave lookup of its own.
+ *
+ * ═══ WHY THAT MATTERS MORE THAN IT LOOKS ═══
+ *
+ * Under the owner's 03-Sep ruling the department queue AUTO-ASSIGNS to the least-waiting doctor. An
+ * absent doctor has an empty queue, and an empty queue is the shortest one — so before T8 taught the
+ * board about leave, this function would have sent every arriving patient to the one person in the
+ * building guaranteed not to see them. The filter below is the whole guard, and `walk-in-routing`
+ * and `queue.ts` both have a test that kills it.
  */
 function availableIn(departmentId: string, summaries: readonly WireDoctorSummary[]): WireDoctorSummary[] {
   return summaries.filter((s) => s.doctor.departmentId === departmentId && s.doctor.active && s.scheduledToday);
@@ -81,12 +91,19 @@ export function proposeWalkIn(
 
   const anchored = anchor === null ? null : candidates.find((s) => s.doctor.id === anchor.doctorId) ?? null;
   const anchorUnavailable = anchor !== null && anchored === null;
+  /*
+   * FD-7 T8 — the anchor is looked up across ALL summaries, not just the available candidates,
+   * precisely because an on-leave doctor is no longer a candidate. Reading `onLeaveToday` off the
+   * filtered list would always be false and the clerk would always be told the vaguer thing.
+   */
+  const anchorRow = anchor === null ? null : summaries.find((s) => s.doctor.id === anchor.doctorId) ?? null;
+  const anchorOnLeave = anchorUnavailable && anchorRow?.onLeaveToday === true;
 
   const chosen = anchored ?? quickest;
   if (chosen === null) {
     return {
       rule: "department_queue", doctor: null, waitMinutes: null, delayed: false,
-      alternative: null, alternativeWaitMinutes: null, anchor, anchorUnavailable,
+      alternative: null, alternativeWaitMinutes: null, anchor, anchorUnavailable, anchorOnLeave,
     };
   }
 
@@ -112,5 +129,6 @@ export function proposeWalkIn(
     alternativeWaitMinutes: alternative === null ? null : waitOf(alternative),
     anchor,
     anchorUnavailable,
+    anchorOnLeave,
   };
 }

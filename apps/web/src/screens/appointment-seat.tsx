@@ -82,10 +82,15 @@ export function ProposalCard({
           {t("appointmentSeat.seenOn", { date: proposal.anchor.seenOn })}
         </p>
       )}
-      {/* Rule 1 dropped out — the clerk is told WHY the familiar doctor is not being proposed. */}
+      {/*
+        Rule 1 dropped out — and the clerk is told WHICH reason, because they have to say it out loud
+        to a patient who asked for that doctor by name. "Dr Sharma is on leave today" is an answer;
+        "Dr Sharma is not on today's board" is a shrug.
+      */}
       {proposal.anchorUnavailable && proposal.anchor !== null && (
         <p data-testid="appt-anchor-unavailable" className="mt-1 text-sm text-muted-foreground">
-          {t("appointmentSeat.anchorUnavailable", { doctor: proposal.anchor.doctorName })}
+          {t(proposal.anchorOnLeave ? "appointmentSeat.anchorOnLeave" : "appointmentSeat.anchorUnavailable",
+            { doctor: proposal.anchor.doctorName })}
         </p>
       )}
 
