@@ -18,6 +18,13 @@ export type PhiSurface =
   /** PLAN 16c T3 — the dispensing counter's read of a dispense (its Rx lines): its own name, so the pharmacy's reads count apart from the consult's. */
   | "pharmacy.dispense"
   /**
+   * FD-7 T2 — the front desk asking "has this patient been seen in THIS department, and by whom?"
+   * before it routes a walk-in. Its own name rather than a reuse of `opd.visit`: this read answers
+   * about a department the clerk named, without opening a visit, and a desk that runs it on every
+   * arrival should be countable apart from the consult reads.
+   */
+  | "opd.continuity"
+  /**
    * PLAN 07d T1 / DD5 — THE TWO CROSS-VISIT SURFACES, and they are their own names rather than a
    * reuse of `opd.vitals` / `opd.prescriptions`.
    *

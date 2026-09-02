@@ -15,6 +15,10 @@ export const opdManifest: ModuleManifest = {
     // find, open, collect, hand on. The module screens below it stay for the supervisor and for the
     // multi-counter model Plan 22 brings (07b DD11).
     { label: "Counter", path: "/counter", permission: "opd.visits.open" },
+    // FD-7 T2 — the front desk's own appointment SEAT, on the WRITE permission. `/opd/appointments`
+    // below is the supervisor's book (read); this is the one screen a clerk routes a walk-in from,
+    // and it exists because the owner ruled the appointment out of the registration form.
+    { label: "Appointment", path: "/appointment", permission: "opd.appointments.manage" },
     { label: "Appointments", path: "/opd/appointments", permission: "opd.appointments.read" },
     { label: "OPD desk", path: "/opd/desk", permission: "opd.visits.open" },
     { label: "Vitals", path: "/opd/vitals", permission: "opd.vitals.record" },

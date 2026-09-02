@@ -11,6 +11,8 @@ import { abandonVisit, counterState, getVisit, joinQueue, listVisits, openVisit,
 import { patientRxHistory, patientVitalsHistory } from "./history";
 import type { RxHistoryItem, VitalsHistoryItem } from "./history";
 import { walkIn } from "./walk-in";
+import { continuityDoctorFor } from "./continuity";
+import type { ContinuityAnchor } from "./continuity";
 import type { WalkInDeferredResult, WalkInInput, WalkInResult } from "./walk-in";
 import { OpdError } from "./errors";
 import { parsed, toHttp } from "./opd-masters.controller";
@@ -32,6 +34,15 @@ import type { PatientSummary } from "../patients";
 import type { Db } from "../../kernel/db/client";
 
 const slotsQuery = z.object({ doctorId: z.string().min(1), date: z.string().max(10).optional() });
+/**
+ * FD-7 T2 — both ids are REQUIRED. A continuity read without a department would be "list the places
+ * this patient has been", which is the diagnosis-shaped read this route exists not to be.
+ */
+const continuityQuery = z.object({
+  patientId: z.string().min(1),
+  departmentId: z.string().min(1),
+});
+
 const appointmentsQuery = z.object({
   doctorId: z.string().min(1).optional(),
   serviceDate: z.string().max(10).optional(),
@@ -178,6 +189,22 @@ export class OpdVisitsController {
     const q = parsed(slotsQuery, query);
     try {
       return { slots: await availableSlots(this.db, q.doctorId, q.date ?? istDate(new Date())) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * RULE 1 OF THE WALK-IN. Guarded on `opd.visits.open` — the permission the FRONT DESK holds,
+   * because routing an arriving patient is a visit act; `opd.appointments.manage` is what the seat's
+   * NAV row needs, and a clerk who may open a visit but not book one still has to route the walk-in.
+   */
+  @RequirePermission("opd.visits.open", "hospital")
+  @Get("continuity")
+  async continuity(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ anchor: ContinuityAnchor | null }> {
+    const q = parsed(continuityQuery, query);
+    try {
+      return { anchor: await continuityDoctorFor(this.db, actor, q) };
     } catch (e) {
       toHttp(e);
     }

@@ -216,3 +216,39 @@ Two review passes, fresh readers, the second briefed **at the fixes** — pass 2
 first at **the assembly**, not the components: every CRITICAL in RC-3 and RC-4 was in the screen that
 mounted the parts, never in a part. Then the money path (T6) and the consent path (T3). Findings, the
 counts, and the token balance land in this doc.
+
+## 9. Execution log
+
+**T1 — DONE** (PR #44, merged). Widening the candidate exposed a second defect it had been hiding:
+`nearMatches` probes twice and the bare `Map.set` kept the LAST probe, so the person matching on both
+phone and name — the likeliest duplicate — was labelled "same name" and never "same mobile". Lanes
+are now unioned. The 409 lane had never been rendered in a test before this.
+
+**THE TASK ORDER CHANGED AT T2, and measuring is what changed it.** §5 ordered registration before
+the appointment seat. But D2's hand-off has registration navigate to `/appointment` **by permission**,
+so building registration first means shipping either a dead link or a placeholder route — and a
+placeholder is the rail-without-a-consumer pattern §1 says this codebase already has too much of.
+`/appointment` depends on nothing (it takes a patient in hand and books), so it goes first and
+registration hands over to a screen that exists. **New order: T1 → T2 `/appointment` → T3
+`/registration` → T4 delete the old screen → T5 ABDM → T6 `/billing` → T7 the keymap.**
+
+**T2 — DONE.** Three things were measured that the design could not have known:
+
+- **S4 ANSWERED.** `checkInAppointment` returns `OpenVisitResult`, the same shape the walk-in returns,
+  so the arrival door and the walk-in door converge on one state and the seat has one shape.
+- **THE CONTINUITY RAIL DID NOT EXIST, at all.** `visitsQuery` has no `patientId` — there was no way
+  to ask what a patient's history was. `GET /opd/continuity` is new: both ids required, one department
+  per question, its own PHI surface (`opd.continuity`), and a 6-month window the client cannot widen.
+- **RULE 3 CANNOT OPEN A VISIT.** `visitOpenBody` requires `doctorId` (`opd-visits.controller.ts:80`),
+  so "join the department queue naming nobody" is not a thing the server can do. The seat therefore
+  does not offer a confirm it could not honour: it says nobody is sitting and sends the clerk to the
+  future lane. **This is a real gap between the drawn design and the system, and it is the owner's to
+  rule if they want a doctor-less department queue — it would need a schema change.**
+
+Two clauses were deleted because mutants proved no test could kill them: the id-comparison in the
+alternative picker (strict `<` already excludes self) and, in an earlier draft of the continuity
+query, one of two null-sensitive filters. `status = 'completed'` stayed and is **documented as
+untested**, with the measurement in the code, rather than counted as covered.
+
+**Mutants run at T2: 19, all dead** — 4 on the continuity query, 9 on the routing rules, 6 on the
+assembled seat.

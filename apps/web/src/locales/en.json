@@ -59,7 +59,8 @@
     "vitalsBay": "Vitals bay",
     "labReports": "Report centre",
     "pharmacyCounter": "Dispense counter",
-    "pharmacyItems": "Pharmacy sale items"
+    "pharmacyItems": "Pharmacy sale items",
+    "appointmentSeat": "Appointment"
   },
   "palette": {
     "title": "Search",
@@ -2690,5 +2691,39 @@
     "directions": "Directions",
     "expiry": "Exp",
     "substitutedFor": "in place of {{brand}}"
+  },
+  "appointmentSeat": {
+    "title": "Appointment",
+    "mode": "Walk-in or a future appointment",
+    "walkIn": "Walk-in (today)",
+    "future": "Future appointment",
+    "department": "What brings them in — the department",
+    "pickDepartment": "Choose a department",
+    "doctor": "A doctor, by name",
+    "byProposal": "Let the desk propose",
+    "board": "Sitting today",
+    "confirm": "Send to {{doctor}}",
+    "backToProposal": "Back to the proposal",
+    "rule": {
+      "continuity": "Seen here before",
+      "shortestWait": "Shortest wait",
+      "departmentQueue": "No doctor is sitting"
+    },
+    "seenOn": "Last seen here on {{date}}",
+    "anchorUnavailable": "{{doctor}} has seen this patient before but is not on today's board.",
+    "noDoctorToday": "Nobody is sitting in this department today. Book a future appointment instead.",
+    "delay": "The wait is {{minutes}} minutes — longer than {{threshold}}.",
+    "alternative": "{{doctor}} is free in about {{minutes}} minutes.",
+    "takeAlternative": "Use this doctor",
+    "noAlternative": "Nobody in this department is quicker right now.",
+    "date": "Date",
+    "pickDoctorFirst": "Choose a doctor to see their free slots.",
+    "noSlots": "No free slots on this date.",
+    "alreadyBooked": "This patient already has a booking.",
+    "checkIn": "They have arrived — check in",
+    "doneToken": "Done. Token {{token}}.",
+    "doneBooked": "Booked for {{at}}.",
+    "next": "Next patient",
+    "forbidden": "This account may not book or route appointments."
   }
 }
