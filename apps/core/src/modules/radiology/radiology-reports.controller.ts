@@ -5,7 +5,7 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import {
-  acknowledgeCritical, amendReport, draftReport, flagCritical, publishReport, savePrelim, signReport,
+  acknowledgeCritical, amendReport, draftReport, flagCritical, proposeDraft, publishReport, savePrelim, signReport,
 } from "./reports";
 import { reportView, studyView, worklist } from "./read";
 import { idSchema, parsed, toHttp } from "./radiology-http";
@@ -134,6 +134,15 @@ export class RadiologyReportsController {
   }
 
   /** O-11 — the night registrar's UNVERIFIED read. Real, quotable, and not publishable. */
+  /** 18b T4 — the drafter proposes; the body is the study's own facts, so there is no body. */
+  @Post("studies/:studyId/reports/propose")
+  @RequirePermission("radiology.reports.write", "hospital")
+  async propose(@CurrentActor() actor: Actor, @Param("studyId") studyId: string): Promise<unknown> {
+    try {
+      return await withTx(this.db, (tx) => proposeDraft(tx, actor, { studyId }));
+    } catch (e) { toHttp(e); }
+  }
+
   @Post("studies/:studyId/reports/prelim")
   @RequirePermission("radiology.reports.write", "hospital")
   async prelim(

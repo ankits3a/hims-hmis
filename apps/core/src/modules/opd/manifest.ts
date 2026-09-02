@@ -1,4 +1,4 @@
-import { opdDeskProvider } from "./desk-provider";
+import { opdAppointmentsDeskProvider, opdDeskProvider } from "./desk-provider";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 import { opdSearchProviders } from "./search-providers";
 
@@ -24,7 +24,8 @@ export const opdManifest: ModuleManifest = {
     { label: "Token display", path: "/opd/display", permission: "opd.display.read" },
     { label: "OPD admin", path: "/opd/admin", permission: "opd.masters.manage" },
   ],
-  desk: [opdDeskProvider],
+  // FD-1 T2 — the appointments tile rides its own permission (`opd.appointments.read`).
+  desk: [opdDeskProvider, opdAppointmentsDeskProvider],
   permissions: [
     "opd.masters.read", "opd.masters.manage", "opd.config.manage",
     // RC-1 T2 / D5 — the counter-flow lock, deliberately narrower than `opd.config.manage`:

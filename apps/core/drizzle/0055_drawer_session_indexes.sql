@@ -1,0 +1,2 @@
+CREATE INDEX "receipts_session_idx" ON "receipts" USING btree ("cashier_session_id");--> statement-breakpoint
+CREATE INDEX "refund_vouchers_session_idx" ON "refund_vouchers" USING btree ("cashier_session_id");

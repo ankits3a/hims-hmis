@@ -2,6 +2,7 @@ import { Test } from "@nestjs/testing";
 import { INestApplication } from "@nestjs/common";
 import { eq } from "drizzle-orm";
 import request from "supertest";
+import { openSessionFor } from "./helpers/billing";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/app.bootstrap";
 import { setupTestDb, truncateAll } from "./helpers/db";
@@ -177,5 +178,39 @@ describe("me (desk / report / export) e2e — 07c", () => {
   it("T8: a brief with no period asked for is the week", async () => {
     const res = await get("/me/brief", clerkA.token).expect(200);
     expect(res.body.period).toBe("week");
+  });
+
+  // ═══ FD-1 T5 — the front desk's home, assembled: the three tiles ride the role's permissions ═══
+
+  it("FD-1: a registration clerk's desk carries the registration tile, what came back and the appointments tile beside the hall — and no drawer", async () => {
+    await ensureRole(db, "front_desk_t");
+    await grantPermissionToRole(db, registry, "front_desk_t", "opd.queue.read");
+    await grantPermissionToRole(db, registry, "front_desk_t", "patients.register");
+    await grantPermissionToRole(db, registry, "front_desk_t", "opd.appointments.read");
+    const ramesh = await mkUser(db, "ramesh", ["front_desk_t"]);
+    await mkPatient(db, ramesh.actor, { name: "Kamla", phone: undefined });   // no mobile, registered today by him
+    const res = await get(`/me/desk?date=${new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)}`, ramesh.token).expect(200);
+    const cards = res.body.cards as { key: string; stats?: { key: string; value: string; href?: string }[]; rows?: unknown[] }[];
+    expect(cards.map((c) => c.key).sort()).toEqual(["opd.appointments", "opd.hall", "opd.myVisits", "patients.cameBack", "patients.registration"]);
+    const reg = cards.find((c) => c.key === "patients.registration")!;
+    expect(reg.stats!.find((s) => s.key === "desk.patients.registered")!.value).toBe("1");
+    expect(reg.stats!.find((s) => s.key === "desk.patients.noMobile")!.value).toBe("1");
+    expect(cards.every((c) => (c.stats ?? []).every((s) => typeof s.href === "string"))).toBe(true);   // every figure is a door
+    expect(JSON.stringify(cards)).not.toContain("Kamla");                                              // no card names a patient
+    expect(cards.some((c) => c.key === "billing.myCollections")).toBe(false);                          // no drawer for a role with no billing.*
+  });
+
+  it("FD-1: a cashier's desk carries the drawer — float and the cash it should hold — and no registration tile", async () => {
+    await ensureRole(db, "cashier_t");
+    await grantPermissionToRole(db, registry, "cashier_t", "billing.session.own");
+    const asha = await mkUser(db, "asha", ["cashier_t"]);
+    await openSessionFor(db, asha, 225000);
+    const res = await get(`/me/desk?date=${DATE}`, asha.token).expect(200);
+    const cards = res.body.cards as { key: string; stats?: { key: string; value: string }[] }[];
+    expect(cards.map((c) => c.key)).toEqual(["billing.myCollections"]);
+    const stats = cards[0]!.stats!;
+    expect(stats.find((s) => s.key === "desk.billing.float")!.value).toBe(stats.find((s) => s.key === "desk.billing.expectedCash")!.value);   // nothing taken yet: the drawer should hold the float
+    expect(stats.find((s) => s.key === "desk.billing.float")!.value).toContain("2,250");
+    expect(stats.find((s) => s.key === "desk.billing.noDrawer")).toBeUndefined();
   });
 });
