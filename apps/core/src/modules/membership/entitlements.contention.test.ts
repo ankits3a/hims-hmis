@@ -161,7 +161,8 @@ describe("entitlement and coupon contention: the DD10 serializer is observable",
   const consumeOnce = (args: { instanceId: string; invoiceLineId: string; invoiceId: string }): Promise<unknown> =>
     withTx(db, (tx) => consumeEntitlements(tx, cashier.actor, {
       invoiceId: args.invoiceId, at: NOW,
-      consumes: [{ instanceId: args.instanceId, benefitKey: BENEFIT_KEY, invoiceLineId: args.invoiceLineId }],
+      // FD-7 T6 — a COUNT counter ignores `amountPaise`; this suite is about the lock, not the unit.
+      consumes: [{ instanceId: args.instanceId, benefitKey: BENEFIT_KEY, invoiceLineId: args.invoiceLineId, amountPaise: 0 }],
     }));
 
   const redeemOnce = (args: { couponId: string; patientId: string; invoiceId: string }): Promise<unknown> =>

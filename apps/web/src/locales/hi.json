@@ -707,7 +707,13 @@
       "issue": "बिल जारी करें",
       "issued": "जारी: {{invoiceNo}}",
       "unallocated": "लौटाना / अग्रिम में जमा: {{amount}}",
-      "nextBill": "अगला बिल"
+      "nextBill": "अगला बिल",
+      "schemes": "योजनाएँ",
+      "coupons": "कूपन कोड",
+      "couponsHint": "जैसा छपा है — एक से अधिक हों तो कॉमा से अलग करें",
+      "partnerSlip": "पार्टनर स्लिप कोड",
+      "balanceCount": "{{granted}} में से {{left}} शेष",
+      "balanceMoney": "{{granted}} में से {{left}} शेष"
     },
     "money": {
       "paiseOnly": "राशि पैसे तक — अधिकतम दो दशमलव"

@@ -84,7 +84,8 @@ import { issueCreditNote, listCreditNotes } from "./credit-notes";
 import { MembershipError, membershipHttpStatus } from "../membership";
 import { BillingError, billingHttpStatus } from "./errors";
 import { withIdempotency } from "./idempotency";
-import { getInvoice, invoiceSettlement, issueInvoice, listInvoices, previewInvoice } from "./invoices";
+import { getInvoice, invoiceSettlement, issueInvoice, listInvoices, previewInvoiceWithBalances } from "./invoices";
+import type { BenefitBalance } from "./invoices";
 import {
   allocateReceipt, listDues, markEnteredInError, patientBalance, recordReceipt, reverseAllocation,
 } from "./receipts";
@@ -463,12 +464,19 @@ export class BillingController {
     }
   }
 
+  /**
+   * FD-7 T6 — the response gains `balances`, a NARROW projection of the patient's entitlement
+   * counters (key, title, unit, granted, remaining) and nothing that identifies a card. The priced
+   * draft's own shape is unchanged and still spreads at the top level, so every existing caller —
+   * `billing-counter.tsx` and the seat's quote among them — reads exactly what it read before.
+   */
   @RequirePermission("billing.invoice.issue", "hospital")
   @Post("invoices/preview")
-  async preview(@Body() body: unknown): Promise<PricedDraft> {
+  async preview(@Body() body: unknown): Promise<PricedDraft & { balances: BenefitBalance[] }> {
     const b = parsed(previewInvoiceBody, body);
     try {
-      return await previewInvoice(this.db, b);
+      const { priced, balances } = await previewInvoiceWithBalances(this.db, b);
+      return { ...priced, balances };
     } catch (e) {
       toHttp(e);
     }

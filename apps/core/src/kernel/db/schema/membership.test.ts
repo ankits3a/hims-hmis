@@ -294,4 +294,26 @@ describe("the membership tables (Plan 09 T1)", () => {
     expect(quarantined.filter((q) => q.reason === "duplicate_key")).toHaveLength(2);
     expect(quarantined.map((q) => q.source).sort()).toEqual(["holder_book", "holder_book", "partner_statement"]);
   });
+
+  /**
+   * ═══ FD-7 T6 / R3 — THE UNIT CONSTRAINT IS THE MIGRATION'S, NOT THE ORM'S ═══
+   *
+   * `setupTestDb` runs the real `drizzle/*.sql` files, so this asserts what migration 0058 actually
+   * did to the database rather than what `schema/membership.ts` says. The drizzle definition alone
+   * would happily accept any string: without the CHECK, a typo'd `'paisa'` would be stored, read
+   * back as "not paise", and silently drawn down as ONE VISIT off a money package.
+   */
+  it("FD-7 T6: entitlement_counters.unit defaults to 'count' and accepts only the two lanes", async () => {
+    const base = { instanceId: INSTANCE, validFrom: new Date("2026-01-01T00:00:00Z"), validTo: new Date("2026-12-31T00:00:00Z") };
+
+    await db.insert(entitlementCounters).values({ id: "01HCTR00000000000000UNIT1", benefitKey: "defaulted", grantedQty: 8, ...base });
+    const [defaulted] = await db.select().from(entitlementCounters).where(eq(entitlementCounters.id, "01HCTR00000000000000UNIT1"));
+    expect(defaulted!.unit).toBe("count"); // every counter that existed before 0058 keeps its meaning
+
+    await db.insert(entitlementCounters).values({ id: "01HCTR00000000000000UNIT2", benefitKey: "wallet", unit: "paise", grantedQty: 1_000_000, ...base });
+
+    await expect(
+      db.insert(entitlementCounters).values({ id: "01HCTR00000000000000UNIT3", benefitKey: "typo", unit: "paisa", grantedQty: 1, ...base }),
+    ).rejects.toThrow(/entitlement_counters_unit_ck/); // THE KILL for a third, silently-mismeasured lane
+  });
 });

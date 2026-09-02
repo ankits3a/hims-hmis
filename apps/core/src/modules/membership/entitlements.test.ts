@@ -14,6 +14,7 @@ import { registerPatient } from "../patients";
 import { issueCreditNote, issueInvoice, memberBenefitsEnabled, previewInvoice } from "../billing";
 import {
   consumeEntitlements, entitlementCountersOf, entitlementMovementsOf, narrowToUsableEntitlements,
+  restoreEntitlements,
 } from "./entitlements";
 import type { EntitlementCounterState } from "./entitlements";
 import type { ResolvedInstruments } from "./instruments";
@@ -333,7 +334,9 @@ describe("entitlements: consume, restore, and the flag that arms them", () => {
       billGrossPaise: 0,
     };
     const counter = (over: Partial<EntitlementCounterState>): EntitlementCounterState => ({
-      counterId: COUNTER_ID, instanceId: INSTANCE_ID, benefitKey: BENEFIT_KEY, grantedQty: 1,
+      // FD-7 T6 — `unit` defaults to the pre-existing meaning, so every row below still reads as
+      // whole visits and the value lane is opted into explicitly where it is under test.
+      counterId: COUNTER_ID, instanceId: INSTANCE_ID, benefitKey: BENEFIT_KEY, unit: "count", grantedQty: 1,
       movedQty: 0, remainingQty: 1, validFrom: VALID_FROM, validTo: VALID_TO, state: "active", ...over,
     });
 
@@ -346,6 +349,158 @@ describe("entitlements: consume, restore, and the flag that arms them", () => {
       .toEqual(["always-on"]);
     expect(narrowToUsableEntitlements(resolved, [counter({ validTo: new Date("2026-08-31T00:00:00Z") })], NOW).memberships[0]!.benefits.map((b) => b.benefitKey))
       .toEqual(["always-on"]);
+  });
+
+  /* ══════════════════════════════════════════════════════════════════════════════════════════
+     FD-7 T6 / OWNER RULING R3 — THE VALUE LANE
+     ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+  /**
+   * A COUNT counter answers one question — is there another visit left — and a boolean is the whole
+   * of it. A MONEY balance is a different shape: ₹4,200 left against a benefit that would take
+   * ₹5,000 off is neither "exhausted" nor "available in full". It is a benefit worth exactly ₹4,200
+   * today, and the patient pays the rest.
+   *
+   * `capPaise` is where that already lives, so the balance is expressed in the vocabulary the money
+   * path already speaks rather than as a second mechanism beside it — and nothing divides.
+   */
+  it("FD-7 T6: a paise counter NARROWS the benefit's cap to its remaining balance", () => {
+    const resolved: ResolvedInstruments = {
+      patientId: "p1",
+      memberships: [{
+        instanceId: INSTANCE_ID, planId: PLAN_ID, planTitle: "Prepaid package", cardCode: "PKG-1",
+        status: "active", validFrom: VALID_FROM, validTo: VALID_TO,
+        benefits: [
+          { benefitKey: BENEFIT_KEY, title: "package money", kind: "percent_bps", value: 10_000, capPaise: null, scope: { serviceCategories: null, serviceIds: null } },
+        ],
+      }],
+      coupons: [], billGrossPaise: 0,
+    };
+    const paise = (over: Partial<EntitlementCounterState> = {}): EntitlementCounterState => ({
+      counterId: COUNTER_ID, instanceId: INSTANCE_ID, benefitKey: BENEFIT_KEY, unit: "paise",
+      grantedQty: 1_000_000, movedQty: -580_000, remainingQty: 420_000,
+      validFrom: VALID_FROM, validTo: VALID_TO, state: "active", ...over,
+    });
+
+    const narrowed = narrowToUsableEntitlements(resolved, [paise()], NOW).memberships[0]!.benefits;
+    expect(narrowed).toHaveLength(1);                    // NOT dropped — there is money left
+    expect(narrowed[0]!.capPaise).toBe(420_000);         // ₹4,200, and no more
+
+    // A cap the PLAN already set lower wins: the balance can only ever narrow, never widen.
+    const tighter = { ...resolved, memberships: [{ ...resolved.memberships[0]!, benefits: [{ ...resolved.memberships[0]!.benefits[0]!, capPaise: 50_000 }] }] };
+    expect(narrowToUsableEntitlements(tighter, [paise()], NOW).memberships[0]!.benefits[0]!.capPaise).toBe(50_000);
+
+    // And an EMPTY balance is exhausted, exactly as a spent count counter is.
+    expect(narrowToUsableEntitlements(resolved, [paise({ remainingQty: 0, movedQty: -1_000_000 })], NOW).memberships[0]!.benefits)
+      .toEqual([]);
+  });
+
+  /** The count lane must be untouched by all of this — the regression that would cost the most. */
+  it("FD-7 T6: a count counter's terms are returned by IDENTITY, uncapped and unchanged", () => {
+    const resolved: ResolvedInstruments = {
+      patientId: "p1",
+      memberships: [{
+        instanceId: INSTANCE_ID, planId: PLAN_ID, planTitle: "Member card", cardCode: "T4-1",
+        status: "active", validFrom: VALID_FROM, validTo: VALID_TO,
+        benefits: [{ benefitKey: BENEFIT_KEY, title: "consults", kind: "percent_bps", value: 2_000, capPaise: null, scope: { serviceCategories: null, serviceIds: null } }],
+      }],
+      coupons: [], billGrossPaise: 0,
+    };
+    const counted: EntitlementCounterState = {
+      counterId: COUNTER_ID, instanceId: INSTANCE_ID, benefitKey: BENEFIT_KEY, unit: "count",
+      grantedQty: 8, movedQty: -3, remainingQty: 5, validFrom: VALID_FROM, validTo: VALID_TO, state: "active",
+    };
+    const out = narrowToUsableEntitlements(resolved, [counted], NOW);
+    expect(out.memberships[0]!.benefits[0]!.capPaise).toBeNull();   // THE KILL for capping a count counter
+    expect(out.memberships[0]).toBe(resolved.memberships[0]);       // and not even a copy was made
+  });
+
+  // ── the write ────────────────────────────────────────────────────────────────────────────────
+
+  it("FD-7 T6: consuming a paise counter draws down the MONEY, and a count counter still spends one", async () => {
+    // A REAL invoice and REAL lines: `entitlement_movements.invoice_id` and `invoice_line_id` are
+    // foreign keys, deliberately — "a consumption that named an invoice line which never existed
+    // would be a benefit nobody can audit" (schema/membership.ts). No counter is granted for
+    // BENEFIT_KEY, so issuing consumes nothing and the two counters below are the only movement.
+    const { invoiceId } = await issuePaid(2);
+    const [lineA, lineB] = await storedLines(invoiceId);
+    const paiseCounterId = newId();
+    const countCounterId = newId();
+    await db.insert(entitlementCounters).values([
+      { id: paiseCounterId, instanceId: INSTANCE_ID, benefitKey: "wallet", unit: "paise", grantedQty: 1_000_000, validFrom: VALID_FROM, validTo: VALID_TO },
+      { id: countCounterId, instanceId: INSTANCE_ID, benefitKey: "visits", unit: "count", grantedQty: 8, validFrom: VALID_FROM, validTo: VALID_TO },
+    ]);
+
+    await withTx(db, (tx) => consumeEntitlements(tx, cashier.actor, {
+      invoiceId, at: NOW,
+      consumes: [
+        { instanceId: INSTANCE_ID, benefitKey: "wallet", invoiceLineId: lineA!.id, amountPaise: 42_500 },
+        { instanceId: INSTANCE_ID, benefitKey: "visits", invoiceLineId: lineB!.id, amountPaise: 42_500 },
+      ],
+    }));
+
+    const wallet = await entitlementMovementsOf(db, paiseCounterId);
+    const visits = await entitlementMovementsOf(db, countCounterId);
+    expect(wallet.map((m) => m.delta)).toEqual([-42_500]);   // the money
+    expect(visits.map((m) => m.delta)).toEqual([-1]);        // THE KILL — a visit is still one visit
+  });
+
+  /** The balance is a real balance: asking for more than is left is refused, in the counter's unit. */
+  it("FD-7 T6: a paise counter refuses a draw larger than its balance", async () => {
+    const counterId = newId();
+    await db.insert(entitlementCounters).values({
+      id: counterId, instanceId: INSTANCE_ID, benefitKey: "wallet", unit: "paise",
+      grantedQty: 30_000, validFrom: VALID_FROM, validTo: VALID_TO,
+    });
+    await expect(
+      withTx(db, (tx) => consumeEntitlements(tx, cashier.actor, {
+        invoiceId: newId(), at: NOW,
+        consumes: [{ instanceId: INSTANCE_ID, benefitKey: "wallet", invoiceLineId: newId(), amountPaise: 30_001 }],
+      })),
+    ).rejects.toMatchObject({ code: "entitlement_exhausted", detail: { remainingQty: 30_000, askQty: 30_001 } });
+  });
+
+  /** A winning benefit that took nothing off draws nothing down — no zero-delta rows in the log. */
+  it("FD-7 T6: a zero-value benefit writes no movement at all", async () => {
+    const { invoiceId } = await issuePaid(1);
+    const [line] = await storedLines(invoiceId);
+    const counterId = newId();
+    await db.insert(entitlementCounters).values({
+      id: counterId, instanceId: INSTANCE_ID, benefitKey: "wallet", unit: "paise",
+      grantedQty: 50_000, validFrom: VALID_FROM, validTo: VALID_TO,
+    });
+    await withTx(db, (tx) => consumeEntitlements(tx, cashier.actor, {
+      invoiceId, at: NOW,
+      consumes: [{ instanceId: INSTANCE_ID, benefitKey: "wallet", invoiceLineId: line!.id, amountPaise: 0 }],
+    }));
+    expect(await entitlementMovementsOf(db, counterId)).toEqual([]);
+  });
+
+  /**
+   * THE PROPERTY THAT MADE THIS CHEAP. `restoreEntitlements` negates `-movement.delta` without ever
+   * knowing which unit it is in, so the value lane's reversal needed NO code change — and this row
+   * is what stops somebody "simplifying" that negation back into a `+1`.
+   */
+  it("FD-7 T6: restoring a paise draw-down hands back the MONEY, with no change to the restore path", async () => {
+    const { invoiceId } = await issuePaid(1);
+    const [line] = await storedLines(invoiceId);
+    const lineId = line!.id;
+    const counterId = newId();
+    await db.insert(entitlementCounters).values({
+      id: counterId, instanceId: INSTANCE_ID, benefitKey: "wallet", unit: "paise",
+      grantedQty: 1_000_000, validFrom: VALID_FROM, validTo: VALID_TO,
+    });
+    await withTx(db, (tx) => consumeEntitlements(tx, cashier.actor, {
+      invoiceId, at: NOW,
+      consumes: [{ instanceId: INSTANCE_ID, benefitKey: "wallet", invoiceLineId: lineId, amountPaise: 42_500 }],
+    }));
+    await withTx(db, (tx) => restoreEntitlements(tx, cashier.actor, {
+      invoiceId, invoiceLineIds: [lineId], at: NOW, reason: "invoice voided",
+    }));
+
+    const log = await entitlementMovementsOf(db, counterId);
+    expect(log.map((m) => m.delta)).toEqual([-42_500, 42_500]);   // THE KILL for a +1 restore
+    expect(log.reduce((sum, m) => sum + m.delta, 0)).toBe(0);     // the balance is whole again
   });
 
   // ── the flag reader itself ──────────────────────────────────────────────────────────────────
@@ -505,7 +660,7 @@ describe("RC-2 T5 — package v0 rides membership_plans.kind='package' and the s
     await expect(
       withTx(db, (tx) => consumeEntitlements(tx, cashier.actor, {
         invoiceId: newId(), at: NOW,
-        consumes: [{ instanceId: PKG_INSTANCE_ID, benefitKey: PKG_BENEFIT_KEY, invoiceLineId: newId() }],
+        consumes: [{ instanceId: PKG_INSTANCE_ID, benefitKey: PKG_BENEFIT_KEY, invoiceLineId: newId(), amountPaise: 0 }],
       })),
     ).rejects.toMatchObject({ code: "entitlement_exhausted", detail: { remainingQty: 0, askQty: 1 } });
   });

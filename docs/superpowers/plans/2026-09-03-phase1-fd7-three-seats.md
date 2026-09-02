@@ -352,3 +352,50 @@ so nobody loses their place in the line.
 **Mutants at T8: 9, all dead** — 5 on the server (leave ignored, cancelled leave counted, the window
 opened, the stranded scope, the live-status filter) and 4 on the web (the two desk sentences merged,
 the count dropped, the availability filter, the on-leave reason).
+
+## 11. T6 — the scheme rail gets a cashier · **migration 0058**
+
+**The scheme engine was already complete server-side and had no way in.** `couponCodes` and
+`attributionCode` have been on the issue body and the preview helper since RC-2 and on the server
+since T2 — and **nothing on `/billing` could set either**. Memberships, coupon rules, entitlement
+counters, redemptions and their reversal were reachable only by a caller writing JSON by hand. That
+is this codebase's characteristic defect (§1) in its largest instance yet: not a rail with one
+missing consumer, but a whole subsystem with none.
+
+**R3's value lane, built where the model already had room for it.** `entitlement_counters` was a
+count of whole units and the file says in as many words that "a counter unit is not divisible" — fine
+for a membership granting eight consultations, useless for a ₹10,000 prepaid package. Migration 0058
+adds `unit` (`'count'` default, `'paise'`), additive and defaulted, with a CHECK constraint so a
+typo'd third lane cannot be stored and silently drawn down as one visit.
+
+The narrowing is where the design earns itself: a count counter answers *is there another visit left*
+and a boolean is the whole of it, but ₹4,200 against a ₹5,000 benefit is neither exhausted nor
+available in full. So a paise counter **narrows `capPaise`** — the cap the plan's own benefit terms
+already carry, that the pricing engine already honours and the contest already explains — rather than
+introducing a second mechanism beside it. **Nothing divides anywhere**, which is the property this
+file's header asks every change to preserve.
+
+**And the reversal needed NO CODE AT ALL.** `restoreEntitlements` negates `-movement.delta` without
+knowing which unit it is in, so a value draw-down reverses correctly by construction. A test now pins
+that, because the obvious "simplification" back to `+1` would be silent and would hand money back
+wrong.
+
+**`balances` is a NARROW projection, deliberately.** `previewInvoice` withholds the benefit context
+on purpose — its docstring says the resolved instruments carry card codes and plan ids the route does
+not gate — so this does not widen that return. What crosses is key, title, unit, granted and
+remaining; what does not is the card code, the plan id and the instance id. A balance is not an
+identity, and the priced lines already name the winning benefit.
+
+**Deferred, and named rather than quietly dropped:**
+
+- **R4's registration half** stays blocked for the reason T3 recorded: nothing in the repository ever
+  writes `attribution_ids.state = 'claimed'`, no route binds a slip code to a patient, and the lookup
+  needs `partners.receivable.operate`, which the front desk does not hold. The **billing half is
+  built** — the slip reaches the money, which is the half that matters most — and the capture needs
+  its own task with a permission and a write.
+- **`F8` / `F9`** stay unbound: they are still actions rather than re-mappings (T7's reasoning).
+
+**Mutants at T6: 11, all dead** — 6 on the entitlement engine (the cap not narrowed, the cap widened,
+`delta` back to `-1`, the count lane treated as money, the zero guard removed, the count lane capped)
+and 5 on the cashier (codes off the preview, codes off the invoice, blanks sent as empty, the two
+units merged into one sentence, the panel always shown).

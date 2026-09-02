@@ -625,7 +625,12 @@ async function consumeWinningInstruments(
       });
       // No counter for this key means an UNLIMITED percentage benefit: there is nothing to move.
       if (target !== null) {
-        consumes.push({ instanceId: target.instanceId, benefitKey: winner.ruleKey, invoiceLineId });
+        // FD-7 T6 / R3 — `amountPaise` is what a PAISE counter draws down; a count counter ignores
+        // it and still spends one visit. It is the same number the coupon redemption below sums.
+        consumes.push({
+          instanceId: target.instanceId, benefitKey: winner.ruleKey, invoiceLineId,
+          amountPaise: winner.amountPaise,
+        });
       }
       continue;
     }
@@ -661,6 +666,57 @@ async function consumeWinningInstruments(
  */
 export async function previewInvoice(db: Db, input: PreviewInvoiceInput, now: Date = new Date()): Promise<PricedDraft> {
   return (await priceDraftWithBenefits(db, input, now)).priced;
+}
+
+/**
+ * ═══ FD-7 T6 — WHAT IS LEFT ON THE PATIENT'S PACKAGE, AND NOTHING ELSE ═══
+ *
+ * The cashier's screen has to be able to say *"consult 3 of 8"* and *"₹4,200 of ₹10,000 left"*. It
+ * could not: `previewInvoice` returns the priced draft and DELIBERATELY not the benefit context,
+ * for the reason its docstring gives — the resolved instruments carry card codes and plan ids that
+ * the recognition surface gates and this route does not.
+ *
+ * So this is a NARROW PROJECTION rather than a widening of that return. What crosses is the benefit
+ * key, its title, the unit and the two numbers; what does not is the card code, the plan id and the
+ * instance id. A balance is not an identity, and the priced lines already name the benefit that won
+ * — this adds how much of it is left, which is the one thing the clerk cannot otherwise answer when
+ * the patient asks.
+ */
+export type BenefitBalance = {
+  benefitKey: string;
+  title: string;
+  /** `'count'` (whole visits) or `'paise'` (money). FD-7 T6 / R3. */
+  unit: string;
+  grantedQty: number;
+  remainingQty: number;
+};
+
+export async function previewInvoiceWithBalances(
+  db: Db, input: PreviewInvoiceInput, now: Date = new Date(),
+): Promise<{ priced: PricedDraft; balances: BenefitBalance[] }> {
+  const { priced, benefits } = await priceDraftWithBenefits(db, input, now);
+  if (benefits === null) return { priced, balances: [] };
+  /*
+   * The TITLE comes off the plan's own benefit term, so the counter reads in the words the hospital
+   * sells it in rather than as a bare key. A counter whose key no term names is skipped: it belongs
+   * to a benefit this bill cannot use, and listing it would invite the clerk to promise it.
+   */
+  const titles = new Map<string, string>();
+  for (const instrument of benefits.resolved.memberships) {
+    for (const term of instrument.benefits) titles.set(term.benefitKey, term.title);
+  }
+  return {
+    priced,
+    balances: benefits.counters
+      .filter((c) => titles.has(c.benefitKey))
+      .map((c) => ({
+        benefitKey: c.benefitKey,
+        title: titles.get(c.benefitKey)!,
+        unit: c.unit,
+        grantedQty: c.grantedQty,
+        remainingQty: c.remainingQty,
+      })),
+  };
 }
 
 // ---------------------------------------------------------------------------------------------

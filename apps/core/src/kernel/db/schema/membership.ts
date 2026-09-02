@@ -233,6 +233,20 @@ export const entitlementCounters = pgTable(
     id: text("id").primaryKey(),
     instanceId: text("instance_id").notNull().references(() => membershipInstances.id),
     benefitKey: text("benefit_key").notNull(), // from the plan's own `entitlements` config
+    /**
+     * ═══ FD-7 T6 / OWNER RULING R3 — WHAT ONE UNIT OF THIS COUNTER IS ═══
+     *
+     * `'count'` (the default, and every counter that existed before migration 0058) or `'paise'`.
+     * The owner ruled that packages draw down BOTH ways, chosen per package: a membership granting
+     * eight consultations counts visits, a ₹10,000 prepaid package counts money.
+     *
+     * It is ONE column rather than two tables because the movement log does not care: `delta` is a
+     * signed integer either way, `remaining = granted_qty + Σ delta` holds either way, and
+     * `restoreEntitlements` negates `-movement.delta` without knowing which lane it is in — which is
+     * why the reversal path needed no change at all for the value lane.
+     */
+    unit: text("unit").notNull().default("count"), // 'count' | 'paise'
+    /** In this counter's UNIT: whole visits when `unit = 'count'`, paise when `unit = 'paise'`. */
     grantedQty: integer("granted_qty").notNull(),
     validFrom: timestamp("valid_from", { withTimezone: true }).notNull(),
     validTo: timestamp("valid_to", { withTimezone: true }).notNull(), // O-2: the bundle's own validity
