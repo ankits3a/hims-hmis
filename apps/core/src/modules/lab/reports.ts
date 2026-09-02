@@ -7,6 +7,7 @@ import {
   labReports, labResults, notifications, orderItems, orders, patients, users, workflowInstances,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
+import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { enqueueNotification } from "../../kernel/notify/enqueue";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { transition } from "../../kernel/workflow/instances";
@@ -1218,8 +1219,6 @@ export type DeliveryRegisterRow = {
   notice: ReportNotice | null;
 };
 
-const IST_OFFSET_MS = 5.5 * 3600_000;
-
 /**
  * PUBLISHED TODAY, AND HOW EACH ONE WENT OUT — the counter's register (design board 5). Names
  * through the alias rule, test names beside them, the verdict, every hand-over row and the fate of
@@ -1229,8 +1228,13 @@ const IST_OFFSET_MS = 5.5 * 3600_000;
 export async function deliveryRegister(db: Db, actor: Actor, serviceDate: string): Promise<DeliveryRegisterRow[]> {
   await assertMay(db, actor, LAB_REPORTS_PRINT, "read the delivery register");
   const canSeeConfidential = await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
-  const start = new Date(new Date(`${serviceDate}T00:00:00Z`).getTime() - IST_OFFSET_MS);
-  const end = new Date(start.getTime() + 86_400_000);
+  /**
+   * The IST day named by `serviceDate`, through the kernel's ONE clock (`istDayWindow`): UTC
+   * midnight of that date is 05:30 IST on the same date, so the window it returns is the counter's
+   * day. `test/ist-clock-parity.test.ts` caught the first cut of this line carrying its own offset —
+   * the thirteenth copy, one phase after the twelfth was caught the same way.
+   */
+  const { start, end } = istDayWindow(new Date(`${serviceDate}T00:00:00Z`));
   const rows = await db
     .select({ report: labReports, orderNo: orders.orderNo, patientId: orders.patientId, signedBy: users.username })
     .from(labReports)
