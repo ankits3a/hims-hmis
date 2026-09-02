@@ -1,0 +1,146 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#ffffff;color:#000000;
+      font-family:"Helvetica Neue",Helvetica,Arial,"Liberation Sans",sans-serif;
+      font-size:12px;line-height:16px;-webkit-font-smoothing:antialiased}
+    a{color:#000000;text-decoration:none}
+    .num{font-variant-numeric:tabular-nums}
+    .dash{height:1px;background:repeating-linear-gradient(to right,#000 0 4px,transparent 4px 8px);opacity:0.45}
+    .kv{display:flex;justify-content:space-between;gap:10px}
+    .k{color:#444444}
+    .v{font-weight:700;text-align:right}
+    .cap{font-size:9.5px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#555555}
+    .bar{background:#000000}
+  </style>
+</helmet>
+
+<div style="width:302px;background:#ffffff;padding:16px 14px 18px;display:flex;flex-direction:column;gap:0">
+
+  <!-- LETTERHEAD -->
+  <div style="display:flex;align-items:center;gap:10px;padding-bottom:11px">
+    <img src="crk-logo.png" alt="CRK" style="width:42px;height:auto;display:block;flex-shrink:0">
+    <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+      <span style="font-size:12.5px;font-weight:700;line-height:15px;letter-spacing:-0.01em">CRK MEDICAL COLLEGE<br>&amp; HOSPITAL</span>
+      <span style="font-size:9.5px;color:#444444">Chaurasia Chowk, Hajipur — 844101</span>
+    </div>
+  </div>
+  <div class="dash"></div>
+
+  <!-- TOKEN -->
+  <div style="text-align:center;padding:13px 0 11px">
+    <div class="cap">Your token</div>
+    <div class="num" style="font-size:76px;font-weight:700;line-height:76px;letter-spacing:-0.04em;margin-top:2px">53</div>
+    <div style="font-size:16px;font-weight:700;margin-top:7px">Dr Anand Rao</div>
+    <div style="font-size:12px;color:#333333">General Medicine</div>
+    <div style="display:inline-flex;align-items:center;gap:7px;margin-top:9px;border:1.5px solid #000000;padding:4px 13px">
+      <span class="cap" style="letter-spacing:0.10em">Room</span>
+      <span class="num" style="font-size:20px;font-weight:700;line-height:20px">104</span>
+      <span style="font-size:11px;color:#333333">1st floor</span>
+    </div>
+  </div>
+  <div class="dash"></div>
+
+  <!-- PATIENT -->
+  <div style="padding:11px 0;display:flex;flex-direction:column;gap:4px">
+    <div class="kv"><span class="k">Patient</span><span class="v">Muskan Arora</span></div>
+    <div class="kv"><span class="k">Age / Sex</span><span class="v num">28 y / F</span></div>
+    <div class="kv"><span class="k">UHID</span><span class="v num">CRK0000184213</span></div>
+    <div class="kv"><span class="k">Visit no.</span><span class="v num">V2608290047</span></div>
+    <div class="kv"><span class="k">Date</span><span class="v num">29-Aug-2026, 11:18</span></div>
+    <div class="kv"><span class="k">Visit type</span><span class="v">Walk-in</span></div>
+  </div>
+  <div class="dash"></div>
+
+  <!-- MONEY -->
+  <div style="padding:11px 0;display:flex;flex-direction:column;gap:4px">
+    <div class="cap" style="margin-bottom:3px">To pay at billing, Counter 5</div>
+    <div class="kv"><span class="k">OPD consultation</span><span class="v num">₹300.00</span></div>
+    <div class="kv" style="align-items:baseline;padding-top:5px;border-top:1px solid #cccccc">
+      <span style="font-weight:700;font-size:14px">TOTAL</span>
+      <span class="num" style="font-weight:700;font-size:20px;letter-spacing:-0.02em">₹300.00</span>
+    </div>
+  </div>
+  <div class="dash"></div>
+
+  <!-- CODES -->
+  <div style="padding:13px 0 10px;display:flex;align-items:center;gap:13px">
+    <div style="width:96px;height:96px;flex-shrink:0;background:#000000;padding:4px;display:grid;grid-template-columns:repeat(11,1fr);grid-template-rows:repeat(11,1fr)">
+      <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div>
+      <div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div>
+      <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div>
+      <div></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div></div><div></div><div style="background:#fff"></div><div></div>
+      <div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div>
+      <div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div>
+      <div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div>
+      <div></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div>
+      <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div>
+      <div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div></div>
+      <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div>
+    </div>
+    <div style="flex-grow:1;font-size:10.5px;line-height:15px;color:#333333">
+      Show this square at billing, at the vitals desk and at the pharmacy. It carries the visit number, not your name.
+      <div class="num" style="margin-top:7px;color:#000000"><strong>QR password: 31610093</strong></div>
+    </div>
+  </div>
+
+  <!-- BARCODE -->
+  <div style="padding-bottom:10px">
+    <div style="display:flex;align-items:stretch;gap:1px;height:42px">
+      <div class="bar" style="width:3px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:4px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:3px"></div><div class="bar" style="width:2px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:3px"></div><div style="width:2px"></div><div class="bar" style="width:1px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:3px"></div><div class="bar" style="width:3px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:2px"></div><div class="bar" style="width:4px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:2px"></div><div class="bar" style="width:1px"></div><div style="width:3px"></div>
+      <div class="bar" style="width:3px"></div><div style="width:1px"></div><div class="bar" style="width:2px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:1px"></div><div class="bar" style="width:3px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:3px"></div><div class="bar" style="width:1px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:4px"></div><div style="width:2px"></div><div class="bar" style="width:2px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:2px"></div><div class="bar" style="width:3px"></div><div style="width:3px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:3px"></div><div style="width:1px"></div><div class="bar" style="width:2px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:3px"></div><div class="bar" style="width:4px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:2px"></div><div class="bar" style="width:1px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:3px"></div><div style="width:2px"></div><div class="bar" style="width:2px"></div><div style="width:3px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:1px"></div><div class="bar" style="width:3px"></div>
+    </div>
+    <div class="num" style="text-align:center;font-size:11px;letter-spacing:0.12em;margin-top:4px">V2608290047</div>
+  </div>
+  <div class="dash"></div>
+
+  <!-- NEXT STEP -->
+  <div style="padding:12px 0 10px;text-align:center">
+    <div class="cap" style="margin-bottom:4px">Where to go next</div>
+    <div style="font-size:14px;font-weight:700">Billing, Counter 5 — ground floor</div>
+    <div style="font-size:11.5px;color:#333333;margin-top:3px;line-height:16px">
+      Then the vitals desk on the 1st floor.<br>
+      Watch for token <strong class="num">53</strong> on the display.
+    </div>
+  </div>
+  <div class="dash"></div>
+
+  <!-- FOOT -->
+  <div style="padding-top:9px;display:flex;flex-direction:column;gap:2px;text-align:center;font-size:10px;color:#444444;line-height:14px">
+    <span class="num">24×7 Hotline +91 77648 88189 · Emergency 1068</span>
+    <span>info@crkmch.com · www.crkmch.com</span>
+    <span class="num" style="margin-top:5px">Printed by anshuman.prasad on 29-Aug-2026 11:18</span>
+    <span style="margin-top:4px;font-size:9.5px">Keep this slip. A lost token cannot be reissued without your UHID.</span>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":302,"height":880}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

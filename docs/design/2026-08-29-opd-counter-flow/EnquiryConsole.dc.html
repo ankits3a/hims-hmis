@@ -1,0 +1,257 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#ffffff;color:#0a0a0a;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90;text-decoration:underline}
+    button{font:inherit;color:inherit;cursor:pointer}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .card{border:1px solid #e5e5e5;border-radius:14px;background:#ffffff;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden">
+
+  <!-- CHROME -->
+  <div style="display:flex;align-items:center;gap:16px;height:52px;padding:0 20px;border-bottom:1px solid #e5e5e5;background:#fafafa;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:24px;height:24px;border-radius:6px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:-0.02em">CRK</div>
+      <span style="font-size:14px;font-weight:600">Enquiry desk</span>
+    </div>
+    <div style="width:1px;height:20px;background:#e5e5e5"></div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#525252">
+      <span>Main lobby</span><span style="color:#d4d4d4">·</span>
+      <span style="color:#0a0a0a;font-weight:500">Ekta Gandhi</span>
+    </div>
+    <div style="flex-grow:1"></div>
+    <div style="display:flex;align-items:center;gap:14px;font-size:13px;color:#737373">
+      <span class="num">Sat 29 Aug 2026 · 11:06</span>
+      <div style="width:26px;height:26px;border-radius:9999px;background:#e5e5e5;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#404040">EG</div>
+    </div>
+  </div>
+
+  <!-- READ-ONLY BAND — the permission model, said out loud -->
+  <div style="display:flex;align-items:center;gap:10px;padding:9px 20px;background:rgba(33,140,181,0.07);border-bottom:1px solid rgba(33,140,181,0.25);flex-shrink:0">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#218cb5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    <span style="font-size:13px;color:#0a0a0a"><strong style="font-weight:600">Read only.</strong> You can look anything up and tell the patient. The only two things you can write are a grievance and a note to administration — both are at the bottom right.</span>
+  </div>
+
+  <!-- SEARCH -->
+  <div style="padding:20px 24px 16px;flex-shrink:0">
+    <div style="position:relative;display:flex;align-items:center;max-width:720px">
+      <svg style="position:absolute;left:14px" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <div style="height:46px;width:100%;border-radius:10px;border:1px solid #171717;background:#ffffff;box-shadow:0 0 0 3px rgba(161,161,161,0.35);display:flex;align-items:center;padding:0 14px 0 40px;font-size:16px">
+        Dr Anand Rao<span style="width:1px;height:20px;background:#0a0a0a;margin-left:2px"></span>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+      <span style="font-size:12px;color:#737373">Also try:</span>
+      <span style="display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:9999px;background:#f5f5f5;font-size:12px;color:#404040">a mobile number → UHID</span>
+      <span style="display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:9999px;background:#f5f5f5;font-size:12px;color:#404040">"beds"</span>
+      <span style="display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:9999px;background:#f5f5f5;font-size:12px;color:#404040">a department</span>
+      <span style="display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:9999px;background:#f5f5f5;font-size:12px;color:#404040">"OPD timings"</span>
+    </div>
+  </div>
+
+  <!-- ANSWERS -->
+  <div style="flex-grow:1;min-height:0;display:flex;gap:16px;padding:0 24px 16px">
+
+    <!-- LEFT COLUMN — the doctor answer -->
+    <div style="width:640px;display:flex;flex-direction:column;gap:14px;min-height:0">
+
+      <div class="card" style="padding:18px 20px">
+        <div style="display:flex;align-items:flex-start;gap:14px">
+          <div style="width:44px;height:44px;border-radius:9999px;background:#f5f5f5;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#404040;flex-shrink:0">AR</div>
+          <div style="display:flex;flex-direction:column;gap:2px;flex-grow:1">
+            <span style="font-size:17px;font-weight:600;letter-spacing:-0.01em">Dr Anand Rao</span>
+            <span style="font-size:13px;color:#525252">MD General Medicine · General Medicine · Room 104, 1st floor</span>
+          </div>
+          <span style="display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:9999px;background:rgba(49,143,90,0.10);font-size:13px;font-weight:600;color:#318f5a">
+            <span style="width:7px;height:7px;border-radius:9999px;background:#318f5a"></span>In now
+          </span>
+        </div>
+
+        <div style="display:flex;gap:0;margin-top:18px;border:1px solid #e5e5e5;border-radius:10px;overflow:hidden">
+          <div style="flex-grow:1;padding:11px 14px;border-right:1px solid #e5e5e5">
+            <div class="lbl">Usual timing</div>
+            <div class="num" style="font-size:15px;font-weight:600;margin-top:3px">09:00 – 17:00</div>
+            <div style="font-size:12px;color:#737373">Monday to Saturday</div>
+          </div>
+          <div style="flex-grow:1;padding:11px 14px;border-right:1px solid #e5e5e5">
+            <div class="lbl">Waiting now</div>
+            <div class="num" style="font-size:15px;font-weight:600;margin-top:3px">12 patients</div>
+            <div style="font-size:12px;color:#cb882e">about 55 minutes</div>
+          </div>
+          <div style="flex-grow:1;padding:11px 14px">
+            <div class="lbl">Consulting</div>
+            <div class="num" style="font-size:15px;font-weight:600;margin-top:3px">Token 45</div>
+            <div style="font-size:12px;color:#737373">since 11:02</div>
+          </div>
+        </div>
+
+        <!-- THE WEEK, WITH LEAVE ON IT -->
+        <div style="margin-top:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px">
+            <span class="lbl">Next two weeks</span>
+            <span style="font-size:12px;color:#737373">Leave is shown as soon as the doctor files it</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px">
+            <div style="text-align:center;font-size:11px;color:#a1a1a1;padding-bottom:2px">Sun</div>
+            <div style="text-align:center;font-size:11px;color:#a1a1a1;padding-bottom:2px">Mon</div>
+            <div style="text-align:center;font-size:11px;color:#a1a1a1;padding-bottom:2px">Tue</div>
+            <div style="text-align:center;font-size:11px;color:#a1a1a1;padding-bottom:2px">Wed</div>
+            <div style="text-align:center;font-size:11px;color:#a1a1a1;padding-bottom:2px">Thu</div>
+            <div style="text-align:center;font-size:11px;color:#a1a1a1;padding-bottom:2px">Fri</div>
+            <div style="text-align:center;font-size:11px;color:#a1a1a1;padding-bottom:2px">Sat</div>
+
+            <div style="border-radius:8px;border:1px solid #e5e5e5;background:#fafafa;padding:7px 6px;text-align:center"><div class="num" style="font-size:13px;font-weight:600;color:#a1a1a1">30</div><div style="font-size:10px;color:#a1a1a1">closed</div></div>
+            <div style="border-radius:8px;border:1px solid #e5e5e5;padding:7px 6px;text-align:center"><div class="num" style="font-size:13px;font-weight:600">31</div><div class="num" style="font-size:10px;color:#318f5a">9–5</div></div>
+            <div style="border-radius:8px;border:1px solid rgba(203,136,46,0.45);background:rgba(203,136,46,0.10);padding:7px 6px;text-align:center"><div class="num" style="font-size:13px;font-weight:700;color:#cb882e">1</div><div style="font-size:10px;font-weight:600;color:#cb882e">LEAVE</div></div>
+            <div style="border-radius:8px;border:1px solid #e5e5e5;padding:7px 6px;text-align:center"><div class="num" style="font-size:13px;font-weight:600">2</div><div class="num" style="font-size:10px;color:#318f5a">9–5</div></div>
+            <div style="border-radius:8px;border:1px solid #e5e5e5;padding:7px 6px;text-align:center"><div class="num" style="font-size:13px;font-weight:600">3</div><div class="num" style="font-size:10px;color:#318f5a">9–5</div></div>
+            <div style="border-radius:8px;border:1px solid #e5e5e5;padding:7px 6px;text-align:center"><div class="num" style="font-size:13px;font-weight:600">4</div><div class="num" style="font-size:10px;color:#318f5a">9–5</div></div>
+            <div style="border-radius:8px;border:1px solid #e5e5e5;padding:7px 6px;text-align:center"><div class="num" style="font-size:13px;font-weight:600">5</div><div class="num" style="font-size:10px;color:#318f5a">9–5</div></div>
+
+            <div style="border-radius:8px;border:1px solid #e5e5e5;background:#fafafa;padding:7px 6px;text-align:center"><div class="num" style="font-size:13px;font-weight:600;color:#a1a1a1">6</div><div style="font-size:10px;color:#a1a1a1">closed</div></div>
+            <div style="border-radius:8px;border:1px solid #e5e5e5;padding:7px 6px;text-align:center"><div class="num" style="font-size:13px;font-weight:600">7</div><div class="num" style="font-size:10px;color:#318f5a">9–5</div></div>
+            <div style="border-radius:8px;border:1px solid #e5e5e5;padding:7px 6px;text-align:center"><div class="num" style="font-size:13px;font-weight:600">8</div><div class="num" style="font-size:10px;color:#318f5a">9–5</div></div>
+            <div style="border-radius:8px;border:1px solid #e5e5e5;padding:7px 6px;text-align:center"><div class="num" style="font-size:13px;font-weight:600">9</div><div class="num" style="font-size:10px;color:#318f5a">9–5</div></div>
+            <div style="border-radius:8px;border:1px solid #e5e5e5;padding:7px 6px;text-align:center"><div class="num" style="font-size:13px;font-weight:600">10</div><div class="num" style="font-size:10px;color:#318f5a">9–5</div></div>
+            <div style="border-radius:8px;border:1px solid #e5e5e5;padding:7px 6px;text-align:center"><div class="num" style="font-size:13px;font-weight:600">11</div><div class="num" style="font-size:10px;color:#318f5a">9–5</div></div>
+            <div style="border-radius:8px;border:1px solid #e5e5e5;padding:7px 6px;text-align:center"><div class="num" style="font-size:13px;font-weight:600">12</div><div class="num" style="font-size:10px;color:#318f5a">9–5</div></div>
+          </div>
+
+          <!-- THE ANSWER, IN WORDS EKTA CAN READ ALOUD -->
+          <div style="display:flex;align-items:flex-start;gap:11px;margin-top:14px;padding:12px 14px;border-radius:10px;background:rgba(203,136,46,0.08);border:1px solid rgba(203,136,46,0.30)">
+            <svg style="margin-top:1px;flex-shrink:0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cb882e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></svg>
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <span style="font-size:14px;font-weight:600;color:#0a0a0a">Tuesday 1 September — Dr Rao is on leave.</span>
+              <span style="font-size:13px;color:#404040">Next available: <strong style="font-weight:600">Wednesday 2 September, 09:00</strong>. Dr Gurdas Maan covers General Medicine on Tuesday, Room 106.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- WHAT SHE CANNOT DO, WHERE TO SEND THEM -->
+      <div class="card" style="padding:14px 20px;display:flex;align-items:center;gap:14px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        <div style="display:flex;flex-direction:column;gap:2px;flex-grow:1">
+          <span style="font-size:14px;font-weight:600">To book, send the patient on</span>
+          <span style="font-size:13px;color:#525252">First visit → <strong style="font-weight:600">Registration, Counter 1</strong>. Has a UHID → <strong style="font-weight:600">Appointment, Counter 3</strong>.</span>
+        </div>
+        <button style="height:32px;padding:0 12px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:13px;font-weight:500;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)">Print directions slip</button>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div style="flex-grow:1;display:flex;flex-direction:column;gap:14px;min-height:0">
+
+      <!-- UHID LOOKUP -->
+      <div class="card" style="padding:16px 18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <span style="font-size:14px;font-weight:600">Find a UHID</span>
+          <span style="font-size:12px;color:#737373">by mobile number</span>
+        </div>
+        <div style="height:36px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;display:flex;align-items:center;padding:0 11px;font-size:14px;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)">
+          <span class="num">+91 98350 41772</span>
+        </div>
+        <div style="margin-top:11px;padding:12px 13px;border-radius:10px;border:1px solid #e5e5e5;background:#fafafa">
+          <div style="display:flex;align-items:center;gap:9px">
+            <span style="font-size:14px;font-weight:600">Muskan Arora</span>
+            <span style="font-size:13px;color:#525252">28 y · F</span>
+          </div>
+          <div class="mono num" style="font-size:14px;font-weight:600;margin-top:5px;letter-spacing:0.01em">CRK0000184213</div>
+          <div style="font-size:12px;color:#737373;margin-top:4px">Registered 11-Mar-2024 · last visit 14-Jun-2026</div>
+          <div style="display:flex;gap:7px;margin-top:10px">
+            <button style="height:30px;padding:0 11px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12px;font-weight:500">Copy UHID</button>
+            <button style="height:30px;padding:0 11px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12px;font-weight:500">SMS it to her</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:8px;margin-top:10px">
+          <svg style="margin-top:2px;flex-shrink:0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span style="font-size:11px;color:#737373;line-height:16px">Name, age, sex and UHID only. No diagnosis, no address, no bill. A confidential patient shows an alias and this desk is told nothing more.</span>
+        </div>
+      </div>
+
+      <!-- BEDS -->
+      <div class="card" style="padding:16px 18px;flex-grow:1;min-height:0;display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:11px">
+          <span style="font-size:14px;font-weight:600">Beds free right now</span>
+          <span class="num" style="font-size:12px;color:#737373">refreshed 11:06</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+
+          <div style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:8px;border:1px solid #e5e5e5">
+            <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+              <span style="font-size:13px;font-weight:500">General ward</span>
+              <span style="font-size:11px;color:#737373">Block A, 2nd floor</span>
+            </div>
+            <span class="num" style="font-size:16px;font-weight:600;color:#318f5a">12</span>
+            <span class="num" style="font-size:12px;color:#a1a1a1">/ 40</span>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:8px;border:1px solid #e5e5e5">
+            <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+              <span style="font-size:13px;font-weight:500">Semi-private</span>
+              <span style="font-size:11px;color:#737373">Block A, 3rd floor</span>
+            </div>
+            <span class="num" style="font-size:16px;font-weight:600;color:#cb882e">2</span>
+            <span class="num" style="font-size:12px;color:#a1a1a1">/ 10</span>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:8px;border:1px solid rgba(231,0,11,0.30);background:rgba(231,0,11,0.05)">
+            <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+              <span style="font-size:13px;font-weight:500">Private room</span>
+              <span style="font-size:11px;color:#e7000b;font-weight:500">Next free about 16:00 — 2 discharges planned</span>
+            </div>
+            <span class="num" style="font-size:16px;font-weight:600;color:#e7000b">0</span>
+            <span class="num" style="font-size:12px;color:#a1a1a1">/ 6</span>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:8px;border:1px solid #e5e5e5">
+            <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+              <span style="font-size:13px;font-weight:500">ICU</span>
+              <span style="font-size:11px;color:#737373">Block B, 1st floor</span>
+            </div>
+            <span class="num" style="font-size:16px;font-weight:600;color:#cb882e">1</span>
+            <span class="num" style="font-size:12px;color:#a1a1a1">/ 8</span>
+          </div>
+        </div>
+
+        <div style="flex-grow:1"></div>
+
+        <!-- THE ONLY TWO WRITES -->
+        <div style="border-top:1px solid #e5e5e5;padding-top:12px;margin-top:14px">
+          <div class="lbl" style="margin-bottom:8px">The only things you can write</div>
+          <div style="display:flex;gap:8px">
+            <button style="flex-grow:1;height:36px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:13px;font-weight:500;display:inline-flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/></svg>
+              Raise a grievance
+            </button>
+            <button style="flex-grow:1;height:36px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:13px;font-weight:500;display:inline-flex;align-items:center;justify-content:center;gap:7px;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+              Notify administration
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

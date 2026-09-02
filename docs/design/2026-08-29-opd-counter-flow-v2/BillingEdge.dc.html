@@ -1,0 +1,235 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#ffffff;color:#0a0a0a;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90;text-decoration:underline}
+    button{font:inherit;color:inherit;cursor:pointer;text-align:left}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .card{border:1px solid #e5e5e5;border-radius:14px;background:#ffffff;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+    .exit{border:1px solid #e5e5e5;border-radius:12px;background:#ffffff;padding:13px 15px;display:flex;
+          flex-direction:column;gap:6px}
+    .who{display:inline-flex;align-items:center;height:19px;padding:0 8px;border-radius:9999px;font-size:10px;
+         font-weight:700;letter-spacing:0.04em}
+    .ex{border:1px solid #e5e5e5;border-radius:12px;background:#ffffff;padding:12px 14px}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden">
+
+  <!-- CHROME -->
+  <div style="display:flex;align-items:center;gap:16px;height:52px;padding:0 20px;border-bottom:1px solid #e5e5e5;background:#fafafa;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:24px;height:24px;border-radius:6px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:-0.02em">CRK</div>
+      <span style="font-size:14px;font-weight:600">Billing counter</span>
+    </div>
+    <div style="width:1px;height:20px;background:#e5e5e5"></div>
+    <span style="font-size:13px;color:#525252">Counter 5 · <span style="color:#0a0a0a;font-weight:500">Bhuvan Pratap</span></span>
+    <div style="flex-grow:1"></div>
+    <div style="display:flex;align-items:center;gap:14px;font-size:13px;color:#737373">
+      <span class="num">Sat 29 Aug 2026 · 16:41</span>
+      <div style="width:26px;height:26px;border-radius:9999px;background:#e5e5e5;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#404040">BP</div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-grow:1;min-height:0">
+
+    <!-- ── LEFT: SHE IS FIFTY RUPEES SHORT ──────────────────────────────── -->
+    <div style="width:880px;border-right:1px solid #e5e5e5;overflow-y:auto;padding:18px 22px 22px;display:flex;flex-direction:column;gap:14px">
+
+      <div style="display:flex;align-items:center;gap:13px;padding:12px 16px;border-radius:12px;background:rgba(203,136,46,0.08);border:1px solid rgba(203,136,46,0.32)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#cb882e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
+        <div style="flex-grow:1">
+          <span style="font-size:14px;font-weight:600;display:block">Kamla Devi has ₹250. The consultation is ₹300.</span>
+          <span style="font-size:12.5px;color:#404040">She has already been seen by Dr Rao. Sending her away does not unsee the consultation — it only loses the ₹250.</span>
+        </div>
+        <div style="text-align:right;padding-left:14px;border-left:1px solid rgba(203,136,46,0.30)">
+          <div class="lbl" style="color:#cb882e">Short by</div>
+          <div class="num" style="font-size:24px;font-weight:700;line-height:26px;letter-spacing:-0.02em;color:#cb882e">₹50</div>
+        </div>
+      </div>
+
+      <div>
+        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:11px">
+          <span style="font-size:15px;font-weight:600">Four lawful ways out. Pick one — you cannot leave it open.</span>
+          <div style="flex-grow:1"></div>
+          <span style="font-size:12px;color:#737373">Every one of them balances the drawer</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px">
+
+          <div class="exit" style="border-color:#171717;box-shadow:0 0 0 3px rgba(161,161,161,0.20)">
+            <div style="display:flex;align-items:center;gap:9px">
+              <span style="font-size:14px;font-weight:600">Take ₹250, waive ₹50</span>
+              <div style="flex-grow:1"></div>
+              <span class="who" style="background:rgba(203,136,46,0.14);color:#cb882e">DUTY MANAGER</span>
+            </div>
+            <span style="font-size:12.5px;color:#525252;line-height:18px">A concession against a named reason. It shows in the day's concession total and in the Duty Manager's morning report — a counter that can waive quietly is a counter that will.</span>
+            <div style="display:flex;gap:6px;margin-top:3px;flex-wrap:wrap">
+              <span style="display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:9999px;background:#171717;color:#fafafa;font-size:11.5px;font-weight:500">Genuine hardship</span>
+              <span style="display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:9999px;background:#f5f5f5;font-size:11.5px">Staff relative</span>
+              <span style="display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:9999px;background:#f5f5f5;font-size:11.5px">Camp referral</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding-top:9px;border-top:1px solid #e5e5e5">
+              <span style="width:7px;height:7px;border-radius:9999px;background:#cb882e"></span>
+              <span class="num" style="font-size:11.5px;color:#525252">Approval requested 16:39 · Ashok Verma · pending 2 min</span>
+            </div>
+          </div>
+
+          <div class="exit">
+            <div style="display:flex;align-items:center;gap:9px">
+              <span style="font-size:14px;font-weight:600">Take ₹250, ₹50 on credit</span>
+              <div style="flex-grow:1"></div>
+              <span class="who" style="background:rgba(33,140,181,0.13);color:#218cb5">YOU, WITH A REASON</span>
+            </div>
+            <span style="font-size:12.5px;color:#525252;line-height:18px">A real receivable against her UHID, chased at her next visit. Honest, but it puts ₹50 into a ledger somebody has to work — do not use it for amounts nobody will ever collect.</span>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:9px;border-top:1px solid #e5e5e5">
+              <span class="num" style="font-size:11.5px;color:#525252">She already owes <strong style="font-weight:600">₹0</strong> · credit limit ₹500</span>
+            </div>
+          </div>
+
+          <div class="exit">
+            <div style="display:flex;align-items:center;gap:9px">
+              <span style="font-size:14px;font-weight:600">She pays ₹50 by UPI</span>
+              <div style="flex-grow:1"></div>
+              <span class="who" style="background:rgba(49,143,90,0.13);color:#318f5a">NO APPROVAL</span>
+            </div>
+            <span style="font-size:12.5px;color:#525252;line-height:18px">Ask before anything else. Cash short and phone in hand is the commonest version of this, and one QR scan closes it with no paperwork at all.</span>
+            <div style="display:flex;align-items:center;gap:9px;margin-top:auto;padding-top:9px;border-top:1px solid #e5e5e5">
+              <div style="width:28px;height:28px;background:#0a0a0a;border-radius:3px;flex-shrink:0"></div>
+              <span style="font-size:11.5px;color:#525252">Counter QR shown on the pole display facing her</span>
+            </div>
+          </div>
+
+          <div class="exit">
+            <div style="display:flex;align-items:center;gap:9px">
+              <span style="font-size:14px;font-weight:600">Somebody brings the ₹50</span>
+              <div style="flex-grow:1"></div>
+              <span class="who" style="background:#f5f5f5;color:#525252">HOLD, 30 MIN</span>
+            </div>
+            <span style="font-size:12.5px;color:#525252;line-height:18px">The invoice parks as <strong style="font-weight:600">part-paid</strong>, her ₹250 is receipted so it is never in your pocket, and the balance sits on the drawer's open list until it clears or lapses into credit.</span>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:9px;border-top:1px solid #e5e5e5">
+              <span class="num" style="font-size:11.5px;color:#525252">Lapses at 17:11 → becomes credit automatically</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:flex-start;gap:11px;padding:12px 15px;border-radius:12px;background:#f5f5f5;border:1px solid #e5e5e5">
+        <svg style="margin-top:2px;flex-shrink:0" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div style="font-size:12.5px;color:#404040;line-height:18px">
+          <strong style="font-weight:600">What is not on this screen is the point.</strong> There is no "skip", no "adjust later", and no way to close the window.
+          Every route receipts the ₹250 immediately, because the only version of this that actually loses money is the one where the cash goes in the drawer and nothing is written down.
+        </div>
+      </div>
+
+      <div style="flex-grow:1"></div>
+
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="flex-grow:1;font-size:13px;color:#525252">Waiting on the Duty Manager. She can sit down — you are not holding the queue for this.</div>
+        <button style="height:36px;padding:0 15px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:13px;font-weight:500">Ask again</button>
+        <button style="height:44px;padding:0 20px;border-radius:8px;border:none;background:#171717;color:#fafafa;font-size:15px;font-weight:600">Take ₹250 now</button>
+      </div>
+    </div>
+
+    <!-- ── RIGHT: THE REST OF THE MONEY ─────────────────────────────────── -->
+    <div style="flex-grow:1;background:#fafafa;display:flex;flex-direction:column;min-height:0">
+      <div style="padding:15px 18px 12px;border-bottom:1px solid #e5e5e5;flex-shrink:0">
+        <span style="font-size:14px;font-weight:600;display:block">Open on this drawer</span>
+        <span style="font-size:12px;color:#737373">Everything here must be zero before 17:30</span>
+      </div>
+
+      <div style="flex-grow:1;overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:10px">
+
+        <div class="ex" style="border-color:rgba(231,0,11,0.32);background:rgba(231,0,11,0.04)">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="width:7px;height:7px;border-radius:9999px;background:#e7000b;flex-shrink:0"></span>
+            <span style="font-size:13px;font-weight:600">UPI debited, never confirmed</span>
+            <div style="flex-grow:1"></div>
+            <span class="num" style="font-size:13px;font-weight:700;color:#e7000b">₹300</span>
+          </div>
+          <div style="font-size:12px;color:#525252;line-height:17px">
+            Sarita Jha, 15:22. Her bank says paid, our gateway says pending. <strong style="font-weight:600">Give her the receipt.</strong>
+            She showed you the debit — that is enough at the counter, and the reconciliation is the finance team's problem tomorrow, not hers today.
+          </div>
+          <div style="display:flex;gap:7px;margin-top:9px">
+            <button style="height:28px;padding:0 11px;border-radius:8px;border:1px solid rgba(231,0,11,0.30);background:#ffffff;font-size:11.5px;font-weight:500">Receipt on her evidence</button>
+            <button style="height:28px;padding:0 11px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:11.5px;font-weight:500">Re-check gateway</button>
+          </div>
+        </div>
+
+        <div class="ex">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="width:7px;height:7px;border-radius:9999px;background:#cb882e;flex-shrink:0"></span>
+            <span style="font-size:13px;font-weight:600">Refunds queued</span>
+            <div style="flex-grow:1"></div>
+            <span class="num" style="font-size:13px;font-weight:700">₹900</span>
+          </div>
+          <div style="font-size:12px;color:#525252;line-height:17px">
+            Three of Dr Rao's patients, sent home at 11:43. Approved. They may not come back today — hold the cash, do not bank it.
+          </div>
+        </div>
+
+        <div class="ex">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="width:7px;height:7px;border-radius:9999px;background:#218cb5;flex-shrink:0"></span>
+            <span style="font-size:13px;font-weight:600">Ayushman Bharat — nothing to collect</span>
+            <div style="flex-grow:1"></div>
+            <span class="num" style="font-size:13px;font-weight:700;color:#318f5a">₹0</span>
+          </div>
+          <div style="font-size:12px;color:#525252;line-height:17px">
+            Four patients today. The screen must say <strong style="font-weight:600">₹0 — do not collect</strong> in words, not show an empty total. An empty total is what gets a cardholder charged.
+          </div>
+        </div>
+
+        <div class="ex">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="width:7px;height:7px;border-radius:9999px;background:#cb882e;flex-shrink:0"></span>
+            <span style="font-size:13px;font-weight:600">Part-paid, awaiting balance</span>
+            <div style="flex-grow:1"></div>
+            <span class="num" style="font-size:13px;font-weight:700">₹50</span>
+          </div>
+          <div style="font-size:12px;color:#525252;line-height:17px">Kamla Devi — the one on your screen now.</div>
+        </div>
+
+        <!-- CLOSE PREVIEW -->
+        <div class="card" style="padding:14px 16px;margin-top:4px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:11px">
+            <span class="lbl">If you closed the drawer now</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;font-size:12.5px">
+            <div style="display:flex;justify-content:space-between"><span style="color:#525252">Opening float</span><span class="num">₹2,000</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#525252">Cash receipted</span><span class="num">₹24,150</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#525252">Refunds paid out</span><span class="num">− ₹600</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#525252">Refunds still held</span><span class="num">− ₹900</span></div>
+            <div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid #e5e5e5;font-weight:600"><span>Drawer should hold</span><span class="num">₹24,650</span></div>
+          </div>
+          <div style="margin-top:12px;padding:11px 12px;border-radius:10px;background:rgba(203,136,46,0.08);border:1px solid rgba(203,136,46,0.30)">
+            <div style="font-size:12px;font-weight:600;color:#cb882e;margin-bottom:3px">Count it before you see the figure</div>
+            <div style="font-size:11.5px;color:#404040;line-height:16px">
+              The count box opens blank and the expected total stays hidden until you have typed yours. A cashier shown the answer first will find it every time — and a real short will never be found.
+            </div>
+          </div>
+          <button style="width:100%;height:38px;margin-top:11px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:13px;font-weight:500;display:flex;align-items:center;justify-content:center">Start blind count</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

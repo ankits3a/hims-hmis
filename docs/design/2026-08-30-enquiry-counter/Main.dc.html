@@ -1,0 +1,492 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#ffffff;color:#0a0a0a;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none}
+    button{font:inherit;color:inherit;cursor:pointer}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .hi{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.55}
+    .lbl{font-size:10.5px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#a1a1a1}
+    .k{display:inline-flex;align-items:center;justify-content:center;height:17px;min-width:22px;padding:0 5px;
+       border-radius:4px;background:#f5f5f5;border:1px solid #e5e5e5;font-size:9.5px;font-weight:700;color:#737373;
+       font-variant-numeric:tabular-nums;flex-shrink:0}
+    .chip{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:8px;
+      border:1px solid #e5e5e5;background:#ffffff;font-size:12.5px;flex-shrink:0}
+    .row{display:flex;align-items:flex-start;gap:14px;padding:13px 0;border-bottom:1px solid #f0f0f0}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden;position:relative">
+
+  <!-- ══════════ CHROME — thin ══════════ -->
+  <div style="display:flex;align-items:center;gap:12px;height:46px;padding:0 28px;border-bottom:1px solid #f0f0f0;flex-shrink:0">
+    <div style="width:22px;height:22px;border-radius:6px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;letter-spacing:-0.02em">CRK</div>
+    <span style="font-size:13.5px;font-weight:600">Enquiry</span>
+    <span style="color:#e5e5e5">|</span>
+    <span style="font-size:12.5px;color:#525252">Ekta Gandhi</span>
+    <div style="flex-grow:1"></div>
+    <span class="num" style="font-size:12.5px;color:#a1a1a1">Sat 29-Aug &#183; 11:06</span>
+    <button onClick="{{ openMenu }}" style="display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#404040" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      <span style="font-size:12.5px;font-weight:500">Reference</span>
+      <span class="k">F1</span>
+    </button>
+  </div>
+
+  <!-- ══════════ CHANNELS — compact, and the rule appears only when it bites ══════════ -->
+  <div style="display:flex;align-items:center;gap:8px;padding:11px 28px;border-bottom:1px solid #f0f0f0;flex-shrink:0">
+    <button onClick="{{ pickCounter }}" class="chip" style="border-color:{{ ctrBorder }};background:{{ ctrBg }};color:{{ ctrFg }}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{ ctrFg }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      <span style="font-weight:600">Counter</span><span class="num" style="color:{{ ctrSub }}">{{ ctrNote }}</span>
+    </button>
+    <button onClick="{{ pickLine }}" class="chip" style="border-color:{{ lnBorder }};background:{{ lnBg }};color:{{ lnFg }}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{ lnFg }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      <span style="font-weight:600">Line 1</span><span class="num" style="color:{{ lnSub }}">{{ lnNote }}</span>
+    </button>
+    <div class="chip" style="border-color:rgba(203,136,46,0.40);background:rgba(203,136,46,0.07)">
+      <span style="width:6px;height:6px;border-radius:9999px;background:#cb882e"></span>
+      <span style="font-weight:600">Line 2</span><span class="num" style="color:#cb882e">ringing 0:09</span>
+    </div>
+    <div class="chip" style="border-style:dashed;color:#a1a1a1">
+      <span style="font-size:12px">2 parked &#183; a rep, an admission query</span>
+    </div>
+
+    <sc-if value="{{ onLine }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;align-items:center;gap:9px;height:34px;padding:0 13px;border-radius:8px;background:rgba(231,0,11,0.06);border:1px solid rgba(231,0,11,0.30);flex-shrink:1;min-width:0">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e7000b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <span style="font-size:12px;color:#0a0a0a">You cannot see who is asking &#8212; nothing that names a person.</span>
+    </div>
+    </sc-if>
+
+    <div style="flex-grow:1"></div>
+    <button class="chip" style="color:#525252"><span>Away</span><span class="k">Ctrl A</span></button>
+  </div>
+
+  <!-- ══════════ BODY ══════════ -->
+  <div style="flex-grow:1;min-height:0;display:flex;flex-direction:column;padding:26px 120px 0">
+
+    <!-- SEARCH — the one thing she does -->
+    <div style="position:relative;display:flex;align-items:center;flex-shrink:0">
+      <svg style="position:absolute;left:18px" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <div style="height:54px;width:100%;border-radius:11px;border:1px solid {{ boxBorder }};background:#ffffff;box-shadow:{{ boxShadow }};display:flex;align-items:center;gap:10px;padding:0 16px 0 48px">
+        <span class="hi" style="font-size:17px;color:{{ qColor }}">{{ qText }}</span>
+        <sc-if value="{{ asking }}" hint-placeholder-val="{{ true }}"><span style="width:1px;height:21px;background:#0a0a0a"></span></sc-if>
+        <div style="flex-grow:1"></div>
+        <sc-if value="{{ asking }}" hint-placeholder-val="{{ true }}">
+          <span style="display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:5px;font-size:9.5px;font-weight:700;letter-spacing:0.05em;background:{{ shBg }};color:{{ shFg }};border:1px solid {{ shBorder }}">{{ shName }}</span>
+        </sc-if>
+      </div>
+    </div>
+
+    <!-- recents — real feature, and the demo switcher -->
+    <div style="display:flex;gap:6px;margin-top:10px;align-items:center;flex-shrink:0">
+      <span class="lbl" style="margin-right:3px">Recent</span>
+      <button onClick="{{ qLive }}" style="height:25px;padding:0 10px;border-radius:9999px;border:1px solid {{ bLive }};background:{{ gLive }};color:{{ fLive }};font-size:11.5px">Dr Anand Rao</button>
+      <button onClick="{{ qJudge }}" class="hi" style="height:25px;padding:0 10px;border-radius:9999px;border:1px solid {{ bJudge }};background:{{ gJudge }};color:{{ fJudge }};font-size:11.5px">पेट में जलन</button>
+      <button onClick="{{ qRoute }}" class="hi" style="height:25px;padding:0 10px;border-radius:9999px;border:1px solid {{ bRoute }};background:{{ gRoute }};color:{{ fRoute }};font-size:11.5px">भाई भर्ती हैं?</button>
+      <button onClick="{{ qPerson }}" style="height:25px;padding:0 10px;border-radius:9999px;border:1px solid {{ bPerson }};background:{{ gPerson }};color:{{ fPerson }};font-size:11.5px">98350 41772</button>
+      <button onClick="{{ qRefuse }}" class="hi" style="height:25px;padding:0 10px;border-radius:9999px;border:1px solid {{ bRefuse }};background:{{ gRefuse }};color:{{ fRefuse }};font-size:11.5px">लड़का है या लड़की</button>
+      <div style="flex-grow:1"></div>
+      <sc-if value="{{ asking }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ qRest }}" style="display:flex;align-items:center;gap:7px;height:25px;padding:0 10px;border-radius:9999px;border:1px solid #e5e5e5;background:#ffffff;font-size:11.5px;color:#525252"><span class="k" style="height:15px">Esc</span>today</button>
+      </sc-if>
+    </div>
+
+    <!-- ═══════ HOME — ONLY WHAT SHE CANNOT ALREADY KNOW ═══════ -->
+    <sc-if value="{{ atRest }}" hint-placeholder-val="{{ true }}">
+    <div style="flex-grow:1;min-height:0;display:flex;flex-direction:column;padding-top:26px">
+
+      <div style="display:flex;align-items:baseline;gap:12px;flex-shrink:0;margin-bottom:2px">
+        <span style="font-size:16px;font-weight:600;letter-spacing:-0.01em">Different today</span>
+        <span style="font-size:12.5px;color:#a1a1a1">in the order you will be asked about it</span>
+        <div style="flex-grow:1"></div>
+        <span class="num" style="font-size:11.5px;color:#a1a1a1">5 things &#183; as of 11:06</span>
+      </div>
+
+      <div class="row">
+        <span style="width:7px;height:7px;border-radius:9999px;background:#e7000b;flex-shrink:0;margin-top:7px"></span>
+        <div style="flex-grow:1;min-width:0">
+          <div style="font-size:14.5px;font-weight:600">Orthopaedics &#8212; Dr Verma is on leave. Dr Gupta is covering, Room <span class="num">202</span>.</div>
+          <div style="font-size:12.5px;color:#737373;margin-top:2px">Whoever came for Verma will not know. Say the change before they ask, and before they pay at Counter 1.</div>
+        </div>
+        <span class="num" style="font-size:11.5px;color:#a1a1a1;flex-shrink:0;margin-top:3px">all day</span>
+      </div>
+
+      <div class="row">
+        <span style="width:7px;height:7px;border-radius:9999px;background:#e7000b;flex-shrink:0;margin-top:7px"></span>
+        <div style="flex-grow:1;min-width:0">
+          <div style="font-size:14.5px;font-weight:600">Counter <span class="num">2</span> is empty and <span class="num">14</span> people are standing at it.</div>
+          <div style="font-size:12.5px;color:#737373;margin-top:2px">Send registrations to Counter 1 until it is manned again.</div>
+        </div>
+        <button style="height:29px;padding:0 12px;border-radius:8px;border:1px solid #171717;background:#ffffff;font-size:12px;font-weight:600;flex-shrink:0">Tell the Duty Manager</button>
+      </div>
+
+      <div class="row">
+        <span style="width:7px;height:7px;border-radius:9999px;background:#cb882e;flex-shrink:0;margin-top:7px"></span>
+        <div style="flex-grow:1;min-width:0">
+          <div style="font-size:14.5px;font-weight:600">Lift <span class="num">2</span> is out.</div>
+          <div style="font-size:12.5px;color:#737373;margin-top:2px">Everything upstairs goes via Lift 1, past the pharmacy. Anyone who cannot manage stairs should not be sent to the 2nd floor at all &#8212; ring the department down instead.</div>
+        </div>
+        <span class="num" style="font-size:11.5px;color:#a1a1a1;flex-shrink:0;margin-top:3px">since 08:20</span>
+      </div>
+
+      <div class="row">
+        <span style="width:7px;height:7px;border-radius:9999px;background:#cb882e;flex-shrink:0;margin-top:7px"></span>
+        <div style="flex-grow:1;min-width:0">
+          <div style="font-size:14.5px;font-weight:600">Surgery is running <span class="num">25</span> minutes behind.</div>
+          <div style="font-size:12.5px;color:#737373;margin-top:2px">Dr Prasad started at <span class="num">09:25</span>. Say &#8220;behind&#8221;, never a finishing time.</div>
+        </div>
+        <span class="num" style="font-size:11.5px;color:#a1a1a1;flex-shrink:0;margin-top:3px">7 waiting</span>
+      </div>
+
+      <div class="row" style="border-bottom:none">
+        <span style="width:7px;height:7px;border-radius:9999px;background:#a1a1a1;flex-shrink:0;margin-top:7px"></span>
+        <div style="flex-grow:1;min-width:0">
+          <div style="font-size:14.5px;font-weight:600">Eye camp in the OPD hall until <span class="num">13:00</span>, and CT is down until <span class="num">14:00</span>.</div>
+          <div style="font-size:12.5px;color:#737373;margin-top:2px">The hall looks far busier than it is; camp patients need no slip. X-ray and ultrasound are running normally.</div>
+        </div>
+      </div>
+
+      <div style="flex-grow:1"></div>
+
+      <!-- HELD — hers, dynamic, and the only other thing that earns space -->
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 0 0;border-top:1px solid #f0f0f0;flex-shrink:0">
+        <span class="lbl">Waiting on you</span>
+        <div style="display:flex;align-items:center;gap:9px;padding:7px 12px;border-radius:8px;border:1px solid rgba(231,0,11,0.30);background:rgba(231,0,11,0.04)">
+          <span class="num" style="font-size:12.5px;font-weight:700;color:#e7000b">86</span>
+          <span style="font-size:12px">Disability certificate &#8212; which day does the board sit?</span>
+          <span class="num" style="font-size:11px;color:#e7000b;font-weight:600">overdue 40 min</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;padding:7px 12px;border-radius:8px;border:1px solid #e5e5e5">
+          <span class="num" style="font-size:12.5px;font-weight:700">88</span>
+          <span style="font-size:12px">Ayushman for an MRI</span>
+          <span class="num" style="font-size:11px;color:#737373">due 11:45</span>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ═══════ ANSWERING ═══════ -->
+    <sc-if value="{{ asking }}" hint-placeholder-val="{{ false }}">
+    <div style="flex-grow:1;min-height:0;display:flex;flex-direction:column;padding-top:26px;gap:16px">
+
+      <div style="flex-shrink:0">
+        <div class="hi" style="font-size:26px;font-weight:500;line-height:1.55;color:#0a0a0a">{{ sayHi }}</div>
+        <div style="font-size:13.5px;color:#737373;margin-top:10px;line-height:19px">{{ sayEn }}</div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-top:14px">
+          <span style="display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:4px;background:rgba(231,0,11,0.10);color:#e7000b;font-size:9.5px;font-weight:700;letter-spacing:0.05em;flex-shrink:0;margin-top:1px">DO NOT ADD</span>
+          <span style="font-size:12px;color:#737373;line-height:17px">{{ neverSay }}</span>
+        </div>
+      </div>
+
+      <!-- LIVE — one strip, no card -->
+      <sc-if value="{{ isLive }}" hint-placeholder-val="{{ true }}">
+      <div style="flex-grow:1;min-height:0">
+        <div style="display:flex;align-items:center;gap:0;border:1px solid #e5e5e5;border-radius:11px;overflow:hidden">
+          <div style="flex-grow:1;padding:11px 15px;border-right:1px solid #f0f0f0"><div class="lbl">Room</div><div class="num" style="font-size:15px;font-weight:600;margin-top:1px">104 &#183; 1st floor</div></div>
+          <div style="flex-grow:1;padding:11px 15px;border-right:1px solid #f0f0f0"><div class="lbl">On token</div><div class="num" style="font-size:15px;font-weight:600;margin-top:1px">45</div></div>
+          <div style="flex-grow:1;padding:11px 15px;border-right:1px solid #f0f0f0"><div class="lbl">Ahead</div><div class="num" style="font-size:15px;font-weight:600;margin-top:1px">12</div></div>
+          <div style="flex-grow:1;padding:11px 15px;border-right:1px solid #f0f0f0"><div class="lbl">Calling at</div><div class="num" style="font-size:15px;font-weight:600;margin-top:1px">1 / 5 min</div></div>
+          <div style="flex-grow:1;padding:11px 15px;border-right:1px solid #f0f0f0"><div class="lbl">Next leave</div><div class="num" style="font-size:15px;font-weight:600;margin-top:1px;color:#cb882e">Tue 1-Sep</div></div>
+          <div style="padding:11px 15px"><div class="lbl">Known true</div><div class="num" style="font-size:15px;font-weight:600;margin-top:1px">11:04</div></div>
+        </div>
+        <div style="font-size:12px;color:#a1a1a1;margin-top:10px">No duration is shown, and that is deliberate &#8212; nothing in the system computes one yet.</div>
+      </div>
+      </sc-if>
+
+      <!-- JUDGE — the one shape that is allowed to be big -->
+      <sc-if value="{{ isJudge }}" hint-placeholder-val="{{ false }}">
+      <div style="flex-grow:1;min-height:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#e7000b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></svg>
+          <span style="font-size:12.5px;font-weight:700;color:#e7000b;letter-spacing:0.03em">ASK THESE THREE FIRST &#183; ANY YES &#8594; EMERGENCY, NOW</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+          <div style="border:1px solid rgba(231,0,11,0.30);border-radius:10px;padding:12px 14px">
+            <div class="hi" style="font-size:15px;font-weight:500">छाती में भी दर्द है? बाएँ हाथ या जबड़े तक जाता है?</div>
+          </div>
+          <div style="border:1px solid rgba(231,0,11,0.30);border-radius:10px;padding:12px 14px">
+            <div class="hi" style="font-size:15px;font-weight:500">उल्टी में खून, या मल काला आ रहा है?</div>
+          </div>
+          <div style="border:1px solid rgba(231,0,11,0.30);border-radius:10px;padding:12px 14px">
+            <div class="hi" style="font-size:15px;font-weight:500">अचानक तेज़ दर्द? पेट छूने में सख्त?</div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:#737373;line-height:17px;margin-top:12px">
+          <strong style="font-weight:600;color:#0a0a0a">She is not deciding whether it is serious</strong> &#8212; only whether it goes upstairs or to Emergency,
+          and every uncertain answer goes to Emergency. Acidity and a heart attack arrive at this counter saying the same sentence.
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ROUTE -->
+      <sc-if value="{{ isRoute }}" hint-placeholder-val="{{ false }}">
+      <div style="flex-grow:1;min-height:0">
+        <div style="display:flex;align-items:center;gap:13px;padding:13px 16px;border:1px solid #e5e5e5;border-radius:11px">
+          <div style="width:34px;height:34px;border-radius:9999px;background:#f5f5f5;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:600;color:#404040;flex-shrink:0">SK</div>
+          <div style="display:flex;flex-direction:column;flex-grow:1">
+            <span style="font-size:14px;font-weight:600">Sushma Kumari &#183; IPD counter, right of the lift</span>
+            <span style="font-size:12px;color:#737373">Send them with a photo ID. After <span class="num">20:00</span> the counter shuts and the ward desk takes it &#8212; send them up, with the ward and the sister's name.</span>
+          </div>
+          <span style="display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 10px;border-radius:9999px;background:rgba(49,143,90,0.10);font-size:11.5px;font-weight:600;color:#318f5a;flex-shrink:0"><span style="width:6px;height:6px;border-radius:9999px;background:#318f5a"></span>manned</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;margin-top:11px">
+          <span style="font-size:12px;color:#737373;flex-grow:1">If they come back, it becomes a held question with her name on it &#8212; and a second bounce files itself as a complaint.</span>
+          <button style="height:30px;padding:0 12px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12px;font-weight:500;flex-shrink:0">They were sent back</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- PERSON -->
+      <sc-if value="{{ isPerson }}" hint-placeholder-val="{{ false }}">
+      <div style="flex-grow:1;min-height:0">
+        <sc-if value="{{ atCounter }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:center;gap:14px;padding:11px 14px;border-radius:10px;border:1px solid #171717;background:#fafafa">
+              <span style="font-size:13.5px;font-weight:600;width:108px">Sunita Devi</span><span class="num" style="font-size:12.5px;color:#525252;width:54px">42 y</span>
+              <span class="mono num" style="font-size:13px;font-weight:600;flex-grow:1">CRK0000184213</span><span class="num" style="font-size:11.5px;color:#318f5a;font-weight:600">visit today</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:11px 14px;border-radius:10px;border:1px solid #e5e5e5">
+              <span style="font-size:13.5px;font-weight:600;width:108px">Sunita Devi</span><span class="num" style="font-size:12.5px;color:#525252;width:54px">31 y</span>
+              <span class="mono num" style="font-size:13px;font-weight:600;flex-grow:1">CRK0000097841</span><span class="num" style="font-size:11.5px;color:#a1a1a1">last seen 2024</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:11px 14px;border-radius:10px;border:1px solid #e5e5e5">
+              <span style="font-size:13.5px;font-weight:600;width:108px">Sunita Devi</span><span class="num" style="font-size:12.5px;color:#525252;width:54px">67 y</span>
+              <span class="mono num" style="font-size:13px;font-weight:600;flex-grow:1">CRK0000203355</span><span class="num" style="font-size:11.5px;color:#a1a1a1">last seen 2025</span>
+            </div>
+          </div>
+          <div style="font-size:12px;color:#737373;line-height:17px;margin-top:12px">
+            Age separates them and nothing clinical does. <strong style="font-weight:600;color:#0a0a0a">Ekta reads the ages back and the person picks their own</strong> &#8212;
+            she never chooses. And it must be the patient's own ID: somebody asking for a relative is Counter 1, not a lookup.
+          </div>
+        </div>
+        </sc-if>
+        <sc-if value="{{ onLine }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:11px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e7000b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span style="font-size:15px;font-weight:600">Sealed</span>
+          </div>
+          <span style="font-size:12.5px;color:#737373;line-height:18px;max-width:820px">
+            The search ran and nothing is shown &#8212; not &#8220;no such patient&#8221;, not &#8220;three matches&#8221;, because a count is an answer too.
+            The same blank appears whether the number is on file or not, so a caller learns nothing by asking twice.
+            Everything that belongs to the hospital is still fully answerable on this call.
+          </span>
+        </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <!-- REFUSE -->
+      <sc-if value="{{ isRefuse }}" hint-placeholder-val="{{ false }}">
+      <div style="flex-grow:1;min-height:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:11px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#e7000b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>
+          <span style="font-size:12.5px;font-weight:700;color:#e7000b;letter-spacing:0.03em">PCPNDT &#183; A CRIMINAL OFFENCE, NOT A SERVICE WE DECLINE</span>
+        </div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px;max-width:860px">
+          Say it once, flatly, and stop. No softening, no &#8220;we don't, but&#8230;&#8221;, nowhere else to try, and
+          <strong style="font-weight:600;color:#0a0a0a">no argument</strong> &#8212; a conversation is what the asker came for.
+          It arrives obliquely (&#8220;just tell us if everything is normal&#8221;) and it is tested at this desk first because this is the
+          least official-feeling counter in the building. That is why the line is written down and not left to her to compose.
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;margin-top:14px">
+          <span style="font-size:12px;color:#a1a1a1">Every other scripted refusal</span>
+          <span class="k">F1</span><span style="font-size:12px;color:#a1a1a1">&#8594; What I must not say</span>
+        </div>
+      </div>
+      </sc-if>
+    </div>
+    </sc-if>
+  </div>
+
+  <!-- ══════════ FOOT — three writes and the two physical keys, mirrored ══════════ -->
+  <div style="display:flex;align-items:center;gap:9px;padding:12px 28px;border-top:1px solid #f0f0f0;flex-shrink:0">
+    <button class="chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#404040" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/></svg><span>Complaint</span><span class="k">Ctrl G</span></button>
+    <button class="chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#404040" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/></svg><span>Floor note</span><span class="k">Ctrl N</span></button>
+    <button class="chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#404040" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg><span>Hold this question</span><span class="k">Ctrl H</span></button>
+    <div style="flex-grow:1"></div>
+    <span style="font-size:11.5px;color:#a1a1a1">Emergency and Security are the two red keys on the desk, not on this screen</span>
+    <span style="width:26px;height:16px;border-radius:4px;background:rgba(231,0,11,0.12);border:1px solid rgba(231,0,11,0.35)"></span>
+    <span style="width:26px;height:16px;border-radius:4px;background:#f5f5f5;border:1px solid #d4d4d4"></span>
+  </div>
+
+  <!-- ══════════ REFERENCE MENU — everything permanent, one key away ══════════ -->
+  <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;left:0;top:0;width:1440px;height:900px;background:rgba(10,10,10,0.45);display:flex;align-items:flex-start;justify-content:center;padding-top:78px">
+    <div style="width:840px;background:#ffffff;border-radius:16px;box-shadow:0 24px 60px 0 rgba(0,0,0,0.30);overflow:hidden">
+
+      <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid #f0f0f0">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <span style="font-size:15px;color:#a1a1a1">Type to find anything &#8212; timings, a fee, a room, what to say</span>
+        <div style="flex-grow:1"></div>
+        <button onClick="{{ closeMenu }}" style="display:flex;align-items:center;gap:7px;background:none;border:none;padding:0"><span class="k">Esc</span></button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0">
+        <div style="padding:16px 20px;border-right:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><span class="k">1</span><span style="font-size:13.5px;font-weight:600">Timings &amp; fees</span></div>
+          <div style="font-size:12px;color:#737373;line-height:18px">OPD hours by department &#183; registration &#8377;50 / &#8377;20 &#183; slip validity &#183; visiting hours &#183; what each test costs</div>
+        </div>
+        <div style="padding:16px 20px;border-bottom:1px solid #f0f0f0">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><span class="k">2</span><span style="font-size:13.5px;font-weight:600">Where things are</span></div>
+          <div style="font-size:12px;color:#737373;line-height:18px">The spoken route to every department, counter, ward and the canteen &#8212; written from this desk, so it starts with a direction she can point in</div>
+        </div>
+        <div style="padding:16px 20px;border-right:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><span class="k">3</span><span style="font-size:13.5px;font-weight:600">Who to call</span></div>
+          <div style="font-size:12px;color:#737373;line-height:18px">Duty Manager &#183; IPD counter &#183; every ward sister &#183; ambulance &#183; blood bank &#183; security &#183; the college office</div>
+        </div>
+        <div style="padding:16px 20px;border-bottom:1px solid #f0f0f0;background:rgba(231,0,11,0.03)">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><span class="k" style="background:rgba(231,0,11,0.10);border-color:rgba(231,0,11,0.30);color:#e7000b">4</span><span style="font-size:13.5px;font-weight:600;color:#e7000b">What I must not say</span></div>
+          <div style="font-size:12px;color:#737373;line-height:18px">Every scripted refusal, word for word &#8212; PCPNDT, diagnoses and results, whether a person is admitted, police and press</div>
+        </div>
+        <div style="padding:16px 20px;border-right:1px solid #f0f0f0">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><span class="k">5</span><span style="font-size:13.5px;font-weight:600">Forms &amp; certificates</span></div>
+          <div style="font-size:12px;color:#737373;line-height:18px">Birth, death, fitness, disability, sick leave, insurance &#8212; which desk, which days, what to bring</div>
+        </div>
+        <div style="padding:16px 20px">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><span class="k">6</span><span style="font-size:13.5px;font-weight:600">Test preparation</span></div>
+          <div style="font-size:12px;color:#737373;line-height:18px">Fasting, timings, how long a report takes, what to bring &#8212; the answers that stop a wasted second trip</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;padding:13px 20px;background:#fafafa;border-top:1px solid #f0f0f0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <span style="font-size:11.5px;color:#737373;line-height:16px">
+          None of this changes, so none of it is on the home screen &#8212; she will know it by her second week.
+          All of it is also printed on the laminated card on the desk, which is what she uses on the day the system is down.
+        </span>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { q: "rest", channel: "counter", menu: false };
+  }
+  renderVals() {
+    const q = this.state.q;
+    const atRest = q === "rest";
+    const atCounter = this.state.channel === "counter";
+
+    const ON = { bg: "#171717", fg: "#fafafa", border: "#171717", sub: "#a1a1a1" };
+    const OFF = { bg: "#ffffff", fg: "#0a0a0a", border: "#e5e5e5", sub: "#a1a1a1" };
+    const c = atCounter ? ON : OFF;
+    const l = atCounter ? OFF : ON;
+
+    const SHAPES = {
+      live:   { name: "LIVE",     bg: "rgba(33,140,181,0.10)", fg: "#218cb5", border: "rgba(33,140,181,0.30)" },
+      judge:  { name: "JUDGE",    bg: "rgba(203,136,46,0.12)", fg: "#cb882e", border: "rgba(203,136,46,0.35)" },
+      route:  { name: "ROUTE",    bg: "#ffffff",               fg: "#404040", border: "#a1a1a1" },
+      person: { name: "IDENTITY", bg: "rgba(33,140,181,0.10)", fg: "#218cb5", border: "rgba(33,140,181,0.30)" },
+      refuse: { name: "REFUSE",   bg: "rgba(231,0,11,0.08)",   fg: "#e7000b", border: "rgba(231,0,11,0.30)" },
+    };
+    const shape = SHAPES[q] ?? SHAPES.live;
+
+    const TEXT = {
+      rest: "A doctor, a department, a symptom, a mobile number…",
+      live: "Dr Anand Rao",
+      judge: "पेट में जलन",
+      route: "भाई भर्ती हैं?",
+      person: "98350 41772",
+      refuse: "अल्ट्रासाउंड — लड़का है या लड़की",
+    };
+
+    const SAY = {
+      live: {
+        hi: "डॉक्टर राव अभी कक्ष 104 में बैठे हैं। इस समय टोकन 45 चल रहा है और आपसे पहले 12 लोग हैं।",
+        en: "Dr Rao is in Room 104 now. Token 45 is being seen and there are 12 people ahead of you.",
+        never: "a time in minutes · that he is “almost free” · anything about who else is in the queue",
+      },
+      judge: {
+        hi: "इसके लिए मेडिसिन विभाग में दिखाइए — पहली मंज़िल, कक्ष 104। पर्चा पहले काउंटर 1 से बनवा लीजिए।",
+        en: "For this, see General Medicine — first floor, Room 104. Make your slip at Counter 1 first.",
+        never: "that it is acidity · that it is nothing serious · the name of any medicine · which test to get",
+      },
+      route: {
+        hi: "भर्ती मरीज़ों की जानकारी IPD काउंटर पर मिलती है — लिफ़्ट के दाईं ओर। पहचान-पत्र साथ ले जाइए।",
+        en: "Information about admitted patients is at the IPD counter — to the right of the lift. Take your ID.",
+        never: "whether the person is here · whether they ever were · which ward · “I think he went home yesterday”",
+      },
+      person: atCounter ? {
+        hi: "आपका नंबर है CRK0000184213। लिख लीजिए — अगली बार यही बताइएगा।",
+        en: "Your number is CRK0000184213. Write it down — give this next time.",
+        never: "anything beyond the name, age and number · why they came last time · any amount they owe",
+      } : {
+        hi: "माफ़ कीजिए, फ़ोन पर किसी मरीज़ की जानकारी नहीं दी जाती। काउंटर 1 पर आ जाइए, पहचान-पत्र साथ लाइएगा।",
+        en: "I'm sorry, we don't give patient information over the phone. Come to Counter 1 and bring an ID.",
+        never: "confirming a name they gave you · “yes, that number is registered” · how many matches there were",
+      },
+      refuse: {
+        hi: "यह जाँच क़ानूनन नहीं होती। PCPNDT अधिनियम के तहत गर्भ में लिंग की जाँच अपराध है — यहाँ भी नहीं, कहीं भी नहीं।",
+        en: "That test is not done, by law. Determining the sex of a foetus is an offence under the PCPNDT Act — not here, not anywhere.",
+        never: "“we don't, but…” · any softening · anywhere else to try · a second sentence of any kind",
+      },
+    };
+    const say = SAY[q] ?? SAY.live;
+
+    const pill = (k) => ({
+      bg: q === k ? "#171717" : "#ffffff",
+      fg: q === k ? "#fafafa" : "#525252",
+      border: q === k ? "#171717" : "#e5e5e5",
+    });
+    const pl = pill("live"), pj = pill("judge"), pr = pill("route"), pp = pill("person"), px = pill("refuse");
+
+    return {
+      atRest, asking: !atRest,
+      atCounter, onLine: !atCounter,
+      menuOpen: this.state.menu,
+      isLive: q === "live", isJudge: q === "judge", isRoute: q === "route",
+      isPerson: q === "person", isRefuse: q === "refuse",
+
+      openMenu: () => this.setState({ menu: true }),
+      closeMenu: () => this.setState({ menu: false }),
+      pickCounter: () => this.setState({ channel: "counter" }),
+      pickLine: () => this.setState({ channel: "line" }),
+      qRest: () => this.setState({ q: "rest" }),
+      qLive: () => this.setState({ q: "live" }),
+      qJudge: () => this.setState({ q: "judge" }),
+      qRoute: () => this.setState({ q: "route" }),
+      qPerson: () => this.setState({ q: "person" }),
+      qRefuse: () => this.setState({ q: "refuse" }),
+
+      ctrBg: c.bg, ctrFg: c.fg, ctrBorder: c.border, ctrSub: c.sub,
+      lnBg: l.bg, lnFg: l.fg, lnBorder: l.border, lnSub: l.sub,
+      ctrNote: atCounter ? "0:14" : "waiting 1:02",
+      lnNote: atCounter ? "holding 0:47" : "serving",
+
+      qText: TEXT[q],
+      qColor: atRest ? "#a1a1a1" : "#0a0a0a",
+      boxBorder: atRest ? "#e5e5e5" : "#171717",
+      boxShadow: atRest ? "none" : "0 0 0 3px rgba(161,161,161,0.30)",
+      shName: shape.name, shBg: shape.bg, shFg: shape.fg, shBorder: shape.border,
+      sayHi: say.hi, sayEn: say.en, neverSay: say.never,
+
+      gLive: pl.bg, fLive: pl.fg, bLive: pl.border,
+      gJudge: pj.bg, fJudge: pj.fg, bJudge: pj.border,
+      gRoute: pr.bg, fRoute: pr.fg, bRoute: pr.border,
+      gPerson: pp.bg, fPerson: pp.fg, bPerson: pp.border,
+      gRefuse: px.bg, fRefuse: px.fg, bRefuse: px.border,
+    };
+  }
+}
+</script>
+</body>
+</html>

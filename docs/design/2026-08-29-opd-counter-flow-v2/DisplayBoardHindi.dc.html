@@ -1,0 +1,186 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#0a0a0a;color:#fafafa;
+      font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      font-size:16px;-webkit-font-smoothing:antialiased}
+    a{color:#5abbe6;text-decoration:none}
+    .num{font-variant-numeric:tabular-nums}
+    /* Devanagari on a dark board: 1.5 leading and one weight lighter than the Latin,
+       because the shirorekha bulks up and blooms on an LED panel. */
+    .hi{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.5}
+    .capHi{font-size:20px;font-weight:600;letter-spacing:0.02em;color:rgba(250,250,250,0.62)}
+    .capEn{font-size:14px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:rgba(250,250,250,0.38)}
+  </style>
+</helmet>
+
+<div style="width:1920px;height:1080px;display:flex;flex-direction:column;background:#0a0a0a;overflow:hidden">
+
+  <!-- HEADER -->
+  <div style="display:flex;align-items:center;gap:26px;padding:22px 44px;border-bottom:1px solid rgba(255,255,255,0.12);flex-shrink:0">
+    <div style="width:56px;height:56px;border-radius:12px;background:#fafafa;color:#0a0a0a;display:flex;align-items:center;justify-content:center;font-size:21px;font-weight:700;letter-spacing:-0.02em;flex-shrink:0">CRK</div>
+    <div style="display:flex;flex-direction:column;gap:0">
+      <span class="hi" style="font-size:32px;font-weight:700;letter-spacing:-0.01em">सामान्य चिकित्सा विभाग</span>
+      <span style="font-size:19px;font-weight:500;color:rgba(250,250,250,0.55);letter-spacing:0.02em">GENERAL MEDICINE</span>
+    </div>
+    <div style="width:1px;height:44px;background:rgba(255,255,255,0.16)"></div>
+    <div style="display:flex;flex-direction:column;gap:0">
+      <span class="hi" style="font-size:20px;color:rgba(250,250,250,0.72)">प्रथम तल, ब्लॉक ए</span>
+      <span style="font-size:14px;color:rgba(250,250,250,0.40);letter-spacing:0.08em">1ST FLOOR, BLOCK A</span>
+    </div>
+    <div style="flex-grow:1"></div>
+    <div style="text-align:right">
+      <div class="num" style="font-size:46px;font-weight:600;letter-spacing:-0.02em;line-height:48px">11:32</div>
+      <div class="hi" style="font-size:17px;color:rgba(250,250,250,0.55)">शनिवार, 29 अगस्त 2026</div>
+    </div>
+  </div>
+
+  <!-- NOW SERVING -->
+  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;padding:26px 44px 22px;flex-shrink:0">
+
+    <div style="border-radius:22px;background:#171717;border:2px solid #5abbe6;padding:22px 28px;box-shadow:0 0 0 6px rgba(90,187,230,0.10)">
+      <div style="display:flex;align-items:center;gap:11px">
+        <span style="width:12px;height:12px;border-radius:9999px;background:#5abbe6;flex-shrink:0"></span>
+        <div>
+          <div class="hi capHi" style="color:#5abbe6;line-height:1.3">अभी बुलाया जा रहा है</div>
+          <div class="capEn" style="color:rgba(90,187,230,0.62)">Now serving</div>
+        </div>
+      </div>
+      <div class="num" style="font-size:124px;font-weight:700;line-height:124px;letter-spacing:-0.04em;margin-top:8px">41</div>
+      <div style="display:flex;align-items:baseline;gap:12px;margin-top:10px">
+        <span class="hi" style="font-size:28px;font-weight:600">कक्ष</span>
+        <span class="num" style="font-size:34px;font-weight:700">104</span>
+      </div>
+      <div class="hi" style="font-size:22px;color:rgba(250,250,250,0.72);margin-top:2px">डॉ. आनंद राव</div>
+      <div style="font-size:16px;color:rgba(250,250,250,0.45);letter-spacing:0.03em">DR ANAND RAO</div>
+    </div>
+
+    <div style="border-radius:22px;background:#171717;border:1px solid rgba(255,255,255,0.14);padding:22px 28px">
+      <div class="hi capHi" style="line-height:1.3">अभी बुलाया जा रहा है</div>
+      <div class="capEn">Now serving</div>
+      <div class="num" style="font-size:124px;font-weight:700;line-height:124px;letter-spacing:-0.04em;margin-top:8px">28</div>
+      <div style="display:flex;align-items:baseline;gap:12px;margin-top:10px">
+        <span class="hi" style="font-size:28px;font-weight:600">कक्ष</span>
+        <span class="num" style="font-size:34px;font-weight:700">106</span>
+      </div>
+      <div class="hi" style="font-size:22px;color:rgba(250,250,250,0.72);margin-top:2px">डॉ. गुरदास मान</div>
+      <div style="font-size:16px;color:rgba(250,250,250,0.45);letter-spacing:0.03em">DR GURDAS MAAN</div>
+    </div>
+
+    <div style="border-radius:22px;background:#171717;border:1px solid rgba(243,174,88,0.40);padding:22px 28px">
+      <div class="hi capHi" style="color:#f3ae58;line-height:1.3">थोड़ी देर के लिए विराम</div>
+      <div class="capEn" style="color:rgba(243,174,88,0.60)">On a short break</div>
+      <div class="num" style="font-size:124px;font-weight:700;line-height:124px;letter-spacing:-0.04em;margin-top:8px;color:rgba(250,250,250,0.30)">—</div>
+      <div style="display:flex;align-items:baseline;gap:12px;margin-top:10px">
+        <span class="hi" style="font-size:28px;font-weight:600;color:rgba(250,250,250,0.72)">कक्ष</span>
+        <span class="num" style="font-size:34px;font-weight:700;color:rgba(250,250,250,0.72)">108</span>
+      </div>
+      <div class="hi" style="font-size:21px;color:#f3ae58;margin-top:2px">दोपहर <span class="num">12:00</span> बजे से</div>
+      <div style="font-size:16px;color:rgba(250,250,250,0.45);letter-spacing:0.03em">BACK AT <span class="num">12:00</span></div>
+    </div>
+  </div>
+
+  <!-- NEXT -->
+  <div style="flex-grow:1;padding:0 44px;min-height:0;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:baseline;gap:18px;padding-bottom:14px">
+      <span class="hi" style="font-size:24px;font-weight:700;color:rgba(250,250,250,0.78)">अगली बारी</span>
+      <span class="capEn">Next in line</span>
+      <div style="flex-grow:1"></div>
+      <span class="hi" style="font-size:18px;color:rgba(250,250,250,0.42)">कृपया बैठकर प्रतीक्षा करें — आपका टोकन यहाँ दिखेगा</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 36px;flex-grow:1;align-content:start">
+
+      <div style="display:flex;align-items:center;gap:22px;padding:16px 24px;border-radius:16px;background:#171717;border-left:5px solid #5abbe6">
+        <span class="num" style="font-size:50px;font-weight:700;letter-spacing:-0.03em;width:92px">38</span>
+        <div style="display:flex;flex-direction:column;gap:0;flex-grow:1">
+          <span class="hi" style="font-size:23px;font-weight:600">कक्ष 104 · डॉ. आनंद राव</span>
+          <span style="font-size:15px;color:rgba(250,250,250,0.42);letter-spacing:0.03em">ROOM 104 · DR ANAND RAO</span>
+        </div>
+        <div style="text-align:right">
+          <div class="hi" style="font-size:17px;font-weight:600;color:#5abbe6;line-height:1.4">रिपोर्ट लेकर लौटे</div>
+          <div style="font-size:12px;font-weight:600;color:rgba(90,187,230,0.60);letter-spacing:0.10em">WITH RESULTS</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:22px;padding:16px 24px;border-radius:16px;background:#171717;border-left:5px solid rgba(255,255,255,0.16)">
+        <span class="num" style="font-size:50px;font-weight:700;letter-spacing:-0.03em;width:92px">29</span>
+        <div style="display:flex;flex-direction:column;gap:0;flex-grow:1">
+          <span class="hi" style="font-size:23px;font-weight:600">कक्ष 106 · डॉ. गुरदास मान</span>
+          <span style="font-size:15px;color:rgba(250,250,250,0.42);letter-spacing:0.03em">ROOM 106 · DR GURDAS MAAN</span>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:22px;padding:16px 24px;border-radius:16px;background:#171717;border-left:5px solid #5abbe6">
+        <span class="num" style="font-size:50px;font-weight:700;letter-spacing:-0.03em;width:92px">43</span>
+        <div style="display:flex;flex-direction:column;gap:0;flex-grow:1">
+          <span class="hi" style="font-size:23px;font-weight:600">कक्ष 104 · डॉ. आनंद राव</span>
+          <span style="font-size:15px;color:rgba(250,250,250,0.42);letter-spacing:0.03em">ROOM 104 · DR ANAND RAO</span>
+        </div>
+        <div style="text-align:right">
+          <div class="hi" style="font-size:17px;font-weight:600;color:#5abbe6;line-height:1.4">रिपोर्ट लेकर लौटे</div>
+          <div style="font-size:12px;font-weight:600;color:rgba(90,187,230,0.60);letter-spacing:0.10em">WITH RESULTS</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:22px;padding:16px 24px;border-radius:16px;background:#171717;border-left:5px solid rgba(255,255,255,0.16)">
+        <span class="num" style="font-size:50px;font-weight:700;letter-spacing:-0.03em;width:92px">30</span>
+        <div style="display:flex;flex-direction:column;gap:0;flex-grow:1">
+          <span class="hi" style="font-size:23px;font-weight:600">कक्ष 106 · डॉ. गुरदास मान</span>
+          <span style="font-size:15px;color:rgba(250,250,250,0.42);letter-spacing:0.03em">ROOM 106 · DR GURDAS MAAN</span>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:22px;padding:16px 24px;border-radius:16px;background:#171717;border-left:5px solid #f3ae58">
+        <span class="num" style="font-size:50px;font-weight:700;letter-spacing:-0.03em;width:92px">44</span>
+        <div style="display:flex;flex-direction:column;gap:0;flex-grow:1">
+          <span class="hi" style="font-size:23px;font-weight:600">कक्ष 104 · डॉ. आनंद राव</span>
+          <span style="font-size:15px;color:rgba(250,250,250,0.42);letter-spacing:0.03em">ROOM 104 · DR ANAND RAO</span>
+        </div>
+        <div style="text-align:right">
+          <div class="hi" style="font-size:17px;font-weight:600;color:#f3ae58;line-height:1.4">समय <span class="num">11:15</span></div>
+          <div style="font-size:12px;font-weight:600;color:rgba(243,174,88,0.60);letter-spacing:0.10em">APPOINTMENT</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:22px;padding:16px 24px;border-radius:16px;background:#171717;border-left:5px solid rgba(255,255,255,0.16)">
+        <span class="num" style="font-size:50px;font-weight:700;letter-spacing:-0.03em;width:92px">31</span>
+        <div style="display:flex;flex-direction:column;gap:0;flex-grow:1">
+          <span class="hi" style="font-size:23px;font-weight:600">कक्ष 106 · डॉ. गुरदास मान</span>
+          <span style="font-size:15px;color:rgba(250,250,250,0.42);letter-spacing:0.03em">ROOM 106 · DR GURDAS MAAN</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TICKER -->
+  <div style="display:flex;align-items:center;gap:22px;padding:18px 44px;border-top:1px solid rgba(255,255,255,0.12);background:#171717;flex-shrink:0">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:1px;height:44px;padding:0 16px;border-radius:9999px;background:#6ac48c;color:#0a0a0a;justify-content:center;flex-shrink:0">
+      <span class="hi" style="font-size:16px;font-weight:700;line-height:1.2">सूचना</span>
+      <span style="font-size:9px;font-weight:700;letter-spacing:0.12em">NOTICE</span>
+    </div>
+    <span class="hi" style="font-size:22px;color:rgba(250,250,250,0.86)">प्राथमिक जाँच डेस्क दोपहर <span class="num">1:30</span> से <span class="num">2:00</span> तक बंद रहेगा · अपनी पर्ची साथ रखें · आपातकाल <span class="num">1068</span></span>
+    <div style="flex-grow:1"></div>
+    <div style="display:flex;align-items:center;gap:9px;flex-shrink:0">
+      <span style="width:22px;height:14px;border-radius:2px;background:#6ac48c"></span>
+      <span style="width:22px;height:14px;border-radius:2px;background:rgba(255,255,255,0.18)"></span>
+      <span style="font-size:14px;color:rgba(250,250,250,0.38);letter-spacing:0.04em">हिंदी / ENGLISH · <span class="num">8s</span></span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1920,"height":1080}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

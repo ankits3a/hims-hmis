@@ -1,0 +1,305 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#ffffff;color:#0a0a0a;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none}
+    button{font:inherit;color:inherit;cursor:pointer}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .hi{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.55}
+    .lbl{font-size:10.5px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#a1a1a1}
+    .k{display:inline-flex;align-items:center;justify-content:center;height:17px;min-width:22px;padding:0 5px;
+       border-radius:4px;background:#f5f5f5;border:1px solid #e5e5e5;font-size:9.5px;font-weight:700;color:#737373;
+       font-variant-numeric:tabular-nums;flex-shrink:0}
+    .chip{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:8px;
+      border:1px solid #e5e5e5;background:#ffffff;font-size:12.5px;flex-shrink:0}
+    .why{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:5px;font-size:10px;
+      font-weight:600;letter-spacing:0.02em;white-space:nowrap}
+    .fld{display:flex;flex-direction:column;gap:5px;min-width:0}
+    .inp{height:44px;border-radius:9px;border:1px solid #e5e5e5;background:#ffffff;display:flex;align-items:center;
+      padding:0 13px;font-size:15px}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden">
+
+  <!-- CHROME -->
+  <div style="display:flex;align-items:center;gap:12px;height:46px;padding:0 28px;border-bottom:1px solid #f0f0f0;flex-shrink:0">
+    <div style="width:22px;height:22px;border-radius:6px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;letter-spacing:-0.02em">CRK</div>
+    <span style="font-size:13.5px;font-weight:600">Registration</span>
+    <span style="color:#e5e5e5">|</span>
+    <span style="font-size:12.5px;color:#525252">Counter <span class="num">1</span> &#183; Ramesh Kumar</span>
+    <span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:9999px;background:#ffffff;border:1px solid #e5e5e5;font-size:11.5px;color:#404040">
+      <span style="width:6px;height:6px;border-radius:9999px;background:#318f5a"></span>Drawer open &#183; <span class="num">&#8377;4,150</span>
+    </span>
+    <div style="flex-grow:1"></div>
+    <span class="num" style="font-size:12.5px;color:#a1a1a1">Sat 29-Aug &#183; 11:06</span>
+    <span class="chip" style="border-color:rgba(203,136,46,0.40);background:rgba(203,136,46,0.07)"><span class="num" style="font-weight:600">9</span><span style="color:#525252">in the queue</span></span>
+    <button style="display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#404040" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      <span style="font-size:12.5px;font-weight:500">Reference</span><span class="k">F1</span>
+    </button>
+  </div>
+
+  <!-- STATE SWITCHER (demo) -->
+  <div style="display:flex;align-items:center;gap:7px;padding:9px 28px;border-bottom:1px solid #f0f0f0;background:#fafafa;flex-shrink:0">
+    <span class="lbl" style="margin-right:3px">The whole seat, in three states</span>
+    <button onClick="{{ sFind }}" style="height:27px;padding:0 12px;border-radius:9999px;border:1px solid {{ bFind }};background:{{ gFind }};color:{{ fFind }};font-size:12px;font-weight:500">1 &#183; Find first</button>
+    <button onClick="{{ sNew }}" style="height:27px;padding:0 12px;border-radius:9999px;border:1px solid {{ bNew }};background:{{ gNew }};color:{{ fNew }};font-size:12px;font-weight:500">2 &#183; Register</button>
+    <button onClick="{{ sDone }}" style="height:27px;padding:0 12px;border-radius:9999px;border:1px solid {{ bDone }};background:{{ gDone }};color:{{ fDone }};font-size:12px;font-weight:500">3 &#183; Done</button>
+    <div style="flex-grow:1"></div>
+    <span style="font-size:11.5px;color:#a1a1a1">{{ stateNote }}</span>
+  </div>
+
+  <!-- BODY -->
+  <div style="flex-grow:1;min-height:0;display:flex;flex-direction:column;padding:28px 120px 0">
+
+    <!-- ═════════ 1 · FIND FIRST ═════════ -->
+    <sc-if value="{{ isFind }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;flex-direction:column;min-height:0;flex-grow:1">
+
+      <div style="flex-shrink:0">
+        <div style="font-size:16px;font-weight:600;letter-spacing:-0.01em">Have they been here before?</div>
+        <div style="font-size:12.5px;color:#737373;margin-top:3px">Almost half of walk-ins have. This question comes first because it is the only place a duplicate can be stopped for free.</div>
+      </div>
+
+      <div style="position:relative;display:flex;align-items:center;margin-top:16px;flex-shrink:0">
+        <svg style="position:absolute;left:18px" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <div style="height:56px;width:100%;border-radius:11px;border:1px solid #171717;background:#ffffff;box-shadow:0 0 0 3px rgba(161,161,161,0.30);display:flex;align-items:center;gap:10px;padding:0 16px 0 48px">
+          <span class="num" style="font-size:18px">98350 41772</span><span style="width:1px;height:22px;background:#0a0a0a"></span>
+          <div style="flex-grow:1"></div>
+          <span style="font-size:12px;color:#a1a1a1">mobile, name, or an old UHID</span>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:baseline;gap:11px;margin-top:22px;flex-shrink:0">
+        <span style="font-size:14px;font-weight:600">Three people could be her</span>
+        <span style="font-size:12px;color:#a1a1a1">what matched is shown &#8212; never a percentage, because nobody can act on 87%</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:11px;flex-shrink:0">
+        <div style="display:flex;align-items:center;gap:14px;padding:13px 16px;border-radius:11px;border:1px solid #171717;background:#fafafa">
+          <div style="width:38px;height:38px;border-radius:9999px;background:#e5e5e5;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600;color:#404040;flex-shrink:0">SD</div>
+          <div style="display:flex;flex-direction:column;width:190px">
+            <span style="font-size:14.5px;font-weight:600">Sunita Devi</span>
+            <span class="num" style="font-size:12px;color:#737373">42 y &#183; F</span>
+          </div>
+          <span class="mono num" style="font-size:13.5px;font-weight:600;width:130px">CRK00018427</span>
+          <div style="display:flex;gap:6px;flex-grow:1">
+            <span class="why" style="background:rgba(49,143,90,0.12);color:#318f5a">SAME MOBILE</span>
+            <span class="why" style="background:rgba(49,143,90,0.12);color:#318f5a">NAME MATCHES</span>
+          </div>
+          <span class="num" style="font-size:12px;color:#737373">last visit 14-Jun-2026</span>
+          <button style="height:34px;padding:0 14px;border-radius:8px;border:1px solid #171717;background:#171717;color:#fafafa;font-size:12.5px;font-weight:600;flex-shrink:0">This is her <span class="k" style="background:#404040;border-color:#525252;color:#d4d4d4;margin-left:6px">Enter</span></button>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:14px;padding:13px 16px;border-radius:11px;border:1px solid #e5e5e5">
+          <div style="width:38px;height:38px;border-radius:9999px;background:#f5f5f5;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600;color:#737373;flex-shrink:0">SD</div>
+          <div style="display:flex;flex-direction:column;width:190px">
+            <span style="font-size:14.5px;font-weight:600">Sunita Devi</span>
+            <span class="num" style="font-size:12px;color:#737373">31 y &#183; F</span>
+          </div>
+          <span class="mono num" style="font-size:13.5px;font-weight:600;width:130px">CRK00009786</span>
+          <div style="display:flex;gap:6px;flex-grow:1">
+            <span class="why" style="background:rgba(203,136,46,0.14);color:#cb882e">SAME MOBILE</span>
+          </div>
+          <span class="num" style="font-size:12px;color:#737373">last visit 2024</span>
+          <button style="height:34px;padding:0 14px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12.5px;font-weight:500;flex-shrink:0">This is her</button>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:14px;padding:13px 16px;border-radius:11px;border:1px solid #e5e5e5">
+          <div style="width:38px;height:38px;border-radius:9999px;background:#f5f5f5;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600;color:#737373;flex-shrink:0">SK</div>
+          <div style="display:flex;flex-direction:column;width:190px">
+            <span style="font-size:14.5px;font-weight:600">Sunita Kumari</span>
+            <span class="num" style="font-size:12px;color:#737373">44 y &#183; F</span>
+          </div>
+          <span class="mono num" style="font-size:13.5px;font-weight:600;width:130px">CRK00014502</span>
+          <div style="display:flex;gap:6px;flex-grow:1">
+            <span class="why" style="background:#f5f5f5;color:#737373">SAME ADDRESS</span>
+            <span class="why" style="background:#f5f5f5;color:#737373">NAME CLOSE</span>
+          </div>
+          <span class="num" style="font-size:12px;color:#737373">last visit 09-Aug-2026</span>
+          <button style="height:34px;padding:0 14px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12.5px;font-weight:500;flex-shrink:0">This is her</button>
+        </div>
+      </div>
+
+      <div style="flex-grow:1"></div>
+
+      <div style="display:flex;align-items:center;gap:16px;padding:14px 0 22px;border-top:1px solid #f0f0f0;flex-shrink:0">
+        <button style="display:flex;align-items:center;gap:9px;height:40px;padding:0 16px;border-radius:9px;border:1px solid #e5e5e5;background:#ffffff;font-size:13.5px;font-weight:500">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#404040" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Nobody here matches &#8212; register new
+          <span class="k">Ctrl N</span>
+        </button>
+        <span style="font-size:12px;color:#737373;line-height:17px;max-width:660px">
+          Enabled only after a search has actually run. <strong style="font-weight:600;color:#0a0a0a">Today this screen has no such check at all</strong> &#8212;
+          <span class="mono" style="font-size:11.5px">registerPatient</span> is called straight from the controller, and the duplicate is
+          discovered later as an <em>urgent, 240-minute</em> merge approval.
+        </span>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ═════════ 2 · REGISTER ═════════ -->
+    <sc-if value="{{ isNew }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;min-height:0;flex-grow:1">
+
+      <div style="display:flex;align-items:baseline;gap:12px;flex-shrink:0">
+        <span style="font-size:16px;font-weight:600;letter-spacing:-0.01em">Four fields make a UHID</span>
+        <span style="font-size:12.5px;color:#737373">the shipped form asks twenty, and there are nine people waiting</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.7fr 1.2fr 0.8fr 1fr;gap:12px;margin-top:16px;flex-shrink:0">
+        <div class="fld"><span class="lbl">Full name</span><div class="inp" style="border-color:#171717;box-shadow:0 0 0 3px rgba(161,161,161,0.30)"><span>Sunita Devi</span><span style="width:1px;height:19px;background:#0a0a0a;margin-left:2px"></span></div></div>
+        <div class="fld"><span class="lbl">Mobile</span><div class="inp"><span class="num">98350 41772</span></div></div>
+        <div class="fld"><span class="lbl">Age <span style="text-transform:none;letter-spacing:0;font-weight:400">or DOB</span></span><div class="inp"><span class="num">42</span></div></div>
+        <div class="fld"><span class="lbl">Sex</span>
+          <div style="display:flex;gap:5px;height:44px">
+            <span style="flex-grow:1;border-radius:9px;border:1px solid #171717;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:13.5px;font-weight:600">F</span>
+            <span style="flex-grow:1;border-radius:9px;border:1px solid #e5e5e5;display:flex;align-items:center;justify-content:center;font-size:13.5px;color:#525252">M</span>
+            <span style="flex-grow:1;border-radius:9px;border:1px solid #e5e5e5;display:flex;align-items:center;justify-content:center;font-size:13.5px;color:#525252">Other</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-top:14px;padding:11px 14px;border-radius:10px;background:#f5f5f5;border:1px solid #e5e5e5;flex-shrink:0">
+        <svg style="flex-shrink:0" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <span style="font-size:12px;color:#404040;line-height:17px">
+          Age <em>or</em> date of birth &#8212; never both, and the server refuses both
+          (<span class="mono" style="font-size:11px">dob_or_age</span>). Under 18 opens the guardian block below and it becomes required
+          (<span class="mono" style="font-size:11px">minor_needs_guardian</span>, D-31 / DPDP &#167;9).
+        </span>
+      </div>
+
+      <div style="display:flex;align-items:baseline;gap:11px;margin-top:22px;flex-shrink:0">
+        <span style="font-size:14px;font-weight:600">Everything else waits</span>
+        <span style="font-size:12px;color:#a1a1a1">fifteen fields the counter is not asking for, and where each one actually gets filled</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:11px;flex-shrink:0">
+        <div style="border:1px solid #e5e5e5;border-radius:10px;padding:11px 13px">
+          <div style="font-size:12.5px;font-weight:600">Address, district, PIN</div>
+          <div style="font-size:11.5px;color:#737373;line-height:16px;margin-top:3px">Asked once, at the first visit that is not a queue &#8212; or on the patient's own phone behind the QR.</div>
+        </div>
+        <div style="border:1px solid #e5e5e5;border-radius:10px;padding:11px 13px">
+          <div style="font-size:12.5px;font-weight:600">ABHA number and address</div>
+          <div style="font-size:11.5px;color:#737373;line-height:16px;margin-top:3px">A scan, not typing. Nobody dictates a fourteen-digit ABHA across a counter with nine people behind them.</div>
+        </div>
+        <div style="border:1px solid #e5e5e5;border-radius:10px;padding:11px 13px">
+          <div style="font-size:12.5px;font-weight:600">Blood group, language, old UHID</div>
+          <div style="font-size:11.5px;color:#737373;line-height:16px;margin-top:3px">Blood group at the first admission, language from the SMS that bounces, old UHID when a paper file turns up.</div>
+        </div>
+      </div>
+
+      <div style="flex-grow:1"></div>
+
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 0 22px;border-top:1px solid #f0f0f0;flex-shrink:0">
+        <button style="display:flex;align-items:center;gap:10px;height:44px;padding:0 20px;border-radius:9px;border:1px solid #171717;background:#171717;color:#fafafa;font-size:14px;font-weight:600">
+          Register and print the card <span class="k" style="background:#404040;border-color:#525252;color:#d4d4d4">Ctrl &#9166;</span>
+        </button>
+        <div style="display:flex;flex-direction:column;gap:1px">
+          <span style="font-size:12px;color:#404040">The record will carry <span class="mono" style="font-size:11px">staff_verified</span> &#8212; the second rung of four.</span>
+          <span style="font-size:11.5px;color:#a1a1a1">A scanned ID lifts it to <span class="mono" style="font-size:11px">id_verified</span>; ABHA to <span class="mono" style="font-size:11px">abha_verified</span>. Neither is worth the queue right now.</span>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ═════════ 3 · DONE ═════════ -->
+    <sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column;min-height:0;flex-grow:1">
+
+      <div style="display:flex;align-items:center;gap:14px;flex-shrink:0">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#318f5a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>
+        <div>
+          <div style="font-size:17px;font-weight:600;letter-spacing:-0.01em">Sunita Devi is registered</div>
+          <div class="num" style="font-size:12.5px;color:#737373;margin-top:1px">42 y &#183; F &#183; card printed &#183; 1 m 12 s at the counter</div>
+        </div>
+        <div style="flex-grow:1"></div>
+        <div style="text-align:right">
+          <div class="lbl" style="margin-bottom:2px">UHID</div>
+          <div class="mono num" style="font-size:26px;font-weight:700;letter-spacing:0.01em">CRK00018434</div>
+        </div>
+      </div>
+
+      <div class="hi" style="font-size:22px;font-weight:500;margin-top:24px;padding:16px 20px;border-radius:12px;border:2px solid #171717;flex-shrink:0">
+        यह आपका नंबर है — <span class="mono num" style="font-weight:700">CRK00018434</span>। पर्ची सँभाल कर रखिए, हर बार यही लेकर आइए। अब सीधे पहली मंज़िल पर, कक्ष <span class="num">104</span> में चले जाइए।
+      </div>
+      <div style="font-size:12.5px;color:#737373;margin-top:9px;flex-shrink:0">
+        &#8220;This is your number &#8212; CRK00018434. Keep the slip and bring it every time. Now go straight up to the first floor, Room 104.&#8221;
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:22px;flex-shrink:0">
+        <div style="border:1px solid #e5e5e5;border-radius:11px;padding:13px 15px">
+          <div class="lbl" style="margin-bottom:6px">Collected</div>
+          <div class="num" style="font-size:19px;font-weight:600">&#8377;50 &#183; cash</div>
+          <div class="num" style="font-size:11.5px;color:#737373;margin-top:3px">Drawer now &#8377;4,200 &#183; 83 receipts</div>
+        </div>
+        <div style="border:1px solid #e5e5e5;border-radius:11px;padding:13px 15px">
+          <div class="lbl" style="margin-bottom:6px">Sent to her phone</div>
+          <div style="font-size:13.5px;font-weight:600">UHID by SMS, in Hindi</div>
+          <div style="font-size:11.5px;color:#737373;margin-top:3px">The only copy that survives a lost slip.</div>
+        </div>
+        <div style="border:1px solid rgba(203,136,46,0.40);background:rgba(203,136,46,0.06);border-radius:11px;padding:13px 15px">
+          <div class="lbl" style="margin-bottom:6px;color:#cb882e">One thing missing</div>
+          <div style="font-size:13.5px;font-weight:600">No address on file</div>
+          <div style="font-size:11.5px;color:#404040;margin-top:3px">Fine today. It is on her QR page and on your dashboard's list.</div>
+        </div>
+      </div>
+
+      <div style="flex-grow:1"></div>
+
+      <div style="display:flex;align-items:center;gap:12px;padding:14px 0 22px;border-top:1px solid #f0f0f0;flex-shrink:0">
+        <button style="height:42px;padding:0 18px;border-radius:9px;border:1px solid #171717;background:#171717;color:#fafafa;font-size:13.5px;font-weight:600">Next patient <span class="k" style="background:#404040;border-color:#525252;color:#d4d4d4;margin-left:6px">Esc</span></button>
+        <button class="chip" style="height:42px">Reprint the card</button>
+        <button class="chip" style="height:42px">Add address and ABHA now</button>
+        <div style="flex-grow:1"></div>
+        <span style="font-size:11.5px;color:#a1a1a1">Esc clears everything. Nothing carries over to the next person &#8212; that is how the wrong name lands on the right UHID.</span>
+      </div>
+    </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { s: "find" }; }
+  renderVals() {
+    const s = this.state.s;
+    const pill = (k) => ({
+      bg: s === k ? "#171717" : "#ffffff",
+      fg: s === k ? "#fafafa" : "#525252",
+      border: s === k ? "#171717" : "#e5e5e5",
+    });
+    const a = pill("find"), b = pill("new"), c = pill("done");
+    const NOTE = {
+      find: "The screen opens here, always — the form is what you get when the search fails.",
+      new: "Reached only from a search that found nothing, with what was typed already carried across.",
+      done: "The UHID, the sentence she says, the money, and what is still missing.",
+    };
+    return {
+      isFind: s === "find", isNew: s === "new", isDone: s === "done",
+      sFind: () => this.setState({ s: "find" }),
+      sNew: () => this.setState({ s: "new" }),
+      sDone: () => this.setState({ s: "done" }),
+      gFind: a.bg, fFind: a.fg, bFind: a.border,
+      gNew: b.bg, fNew: b.fg, bNew: b.border,
+      gDone: c.bg, fDone: c.fg, bDone: c.border,
+      stateNote: NOTE[s],
+    };
+  }
+}
+</script>
+</body>
+</html>

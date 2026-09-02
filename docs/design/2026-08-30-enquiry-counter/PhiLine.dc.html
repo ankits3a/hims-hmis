@@ -1,0 +1,245 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#fafafa;color:#0a0a0a;
+      font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+    .hi{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.55}
+    .card{background:#ffffff;border:1px solid #e5e5e5;border-radius:14px;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+    .n{width:26px;height:26px;border-radius:9999px;background:#171717;color:#fafafa;display:flex;
+       align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+    .h2{font-size:17px;font-weight:600;letter-spacing:-0.01em}
+    .sub{font-size:13px;color:#525252;line-height:19px}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .yes{color:#318f5a;font-weight:600}
+    .no{color:#e7000b;font-weight:600}
+    .tag{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:9999px;
+         font-size:10px;font-weight:700;letter-spacing:0.06em}
+    .th{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373;
+        padding:9px 12px;background:#f5f5f5;border-bottom:1px solid #e5e5e5}
+    .td{padding:11px 12px;border-bottom:1px solid #e5e5e5;font-size:12.5px;line-height:17px;vertical-align:top}
+  </style>
+</helmet>
+
+<div style="width:1120px;background:#fafafa;padding:34px 38px 40px;display:flex;flex-direction:column;gap:18px">
+
+  <div>
+    <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">
+      <h1 style="margin:0;font-size:27px;font-weight:600;letter-spacing:-0.02em">The line she cannot cross</h1>
+      <span class="hi" style="font-size:21px;color:#737373">क्या बताया जा सकता है, किसे</span>
+    </div>
+    <p style="margin:8px 0 0;font-size:14px;color:#525252;max-width:880px;line-height:21px">
+      This seat can read more of the hospital than any other and is the only one with no clinical reason to read any of it.
+      The current console states the rule in a blue band and then leaves the enforcement to Ekta's judgement forty times an hour.
+      The screen should make the wrong thing hard, so this sheet is one rule, four askers, and the two traps that get hospitals sued.
+    </p>
+  </div>
+
+  <!-- THE RULE -->
+  <div style="border:2px solid #171717;border-radius:14px;background:#ffffff;padding:22px 26px">
+    <div class="lbl" style="margin-bottom:9px">The rule, and everything below follows from it</div>
+    <div style="font-size:23px;font-weight:600;letter-spacing:-0.01em;line-height:31px;max-width:820px">
+      The boundary is <span style="border-bottom:3px solid #cb882e">identity</span>, not information.
+    </div>
+    <div style="font-size:14px;color:#404040;line-height:21px;margin-top:12px;max-width:880px">
+      Doctor timings, department hours, bed counts by ward, fees, directions, which counter to go to &#8212; none of that
+      belongs to anybody, and she gives it to anyone who asks, in any channel, all day. The moment a question
+      <strong style="font-weight:600;color:#0a0a0a">names or confirms a person</strong>, it stops being an enquiry and becomes a disclosure,
+      and a disclosure needs somebody she can identify on the other side of it.
+    </div>
+    <div style="display:flex;gap:14px;margin-top:16px">
+      <div style="flex-grow:1;border:1px solid rgba(49,143,90,0.35);background:rgba(49,143,90,0.05);border-radius:10px;padding:13px 15px">
+        <div class="tag" style="background:#318f5a;color:#fff;margin-bottom:9px">ABOUT THE HOSPITAL</div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px">&#8220;Is Dr Rao in today?&#8221; &#183; &#8220;How much is a consultation?&#8221; &#183; &#8220;Are there beds in the male ward?&#8221; &#183; &#8220;When does the lab open?&#8221; &#183; &#8220;Where is X-ray?&#8221;</div>
+        <div style="font-size:11.5px;color:#318f5a;font-weight:600;margin-top:9px">Answered to anyone, on any channel.</div>
+      </div>
+      <div style="flex-grow:1;border:1px solid rgba(231,0,11,0.35);background:rgba(231,0,11,0.04);border-radius:10px;padding:13px 15px">
+        <div class="tag" style="background:#e7000b;color:#fff;margin-bottom:9px">ABOUT A PERSON</div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px">&#8220;What is my UHID?&#8221; &#183; &#8220;Is my brother admitted?&#8221; &#183; &#8220;Which ward is she in?&#8221; &#183; &#8220;Did his report come?&#8221; &#183; &#8220;Has she been here before?&#8221;</div>
+        <div style="font-size:11.5px;color:#e7000b;font-weight:600;margin-top:9px">Counter only, with a face and a card. Never on the phone.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1 · THE FOUR ASKERS -->
+  <div class="card" style="padding:20px 22px">
+    <div style="display:flex;align-items:flex-start;gap:13px;margin-bottom:15px">
+      <div class="n">1</div>
+      <div>
+        <div class="h2">Four people ask, and only one of them can be verified</div>
+        <div class="sub">The console does not ask Ekta to classify anybody. The channel does most of it, and the rest is one question she is prompted to ask.</div>
+      </div>
+    </div>
+
+    <div style="border:1px solid #e5e5e5;border-radius:10px;overflow:hidden;background:#ffffff">
+      <div style="display:grid;grid-template-columns:1.15fr 1.25fr 1.3fr 1.3fr">
+        <div class="th">Who is asking</div>
+        <div class="th">May be told</div>
+        <div class="th">May not be told</div>
+        <div class="th">What the screen does</div>
+
+        <div class="td" style="font-weight:600">The patient, at the counter, with an ID<div style="font-weight:400;color:#737373;font-size:11.5px;margin-top:3px">Aadhaar, a hospital card, an old slip</div></div>
+        <div class="td">UHID &#183; name and age on file &#183; whether there is a visit today &#183; which counter to go to</div>
+        <div class="td">Their own past diagnoses, results and bills &#8212; those are the treating desk's to release, not the lobby's</div>
+        <div class="td">The directory card unlocks. One line records the read.</div>
+
+        <div class="td" style="font-weight:600">An attender, at the counter<div style="font-weight:400;color:#737373;font-size:11.5px;margin-top:3px">a son, a wife, a neighbour who drove them</div></div>
+        <div class="td">Everything about the hospital &#183; where to wait &#183; how visiting works &#183; who to speak to on the ward</div>
+        <div class="td"><span class="no">Whether the person is here at all.</span> Not the ward, not the bed, not &#8220;yes he was discharged&#8221;</div>
+        <div class="td">Directory search is not offered for a third party. There is no field to type a relative's name into.</div>
+
+        <div class="td" style="font-weight:600">A caller<div style="font-weight:400;color:#737373;font-size:11.5px;margin-top:3px">could be anybody; often is</div></div>
+        <div class="td">Everything about the hospital, in full, warmly &#8212; this is most of the call volume and it is real work</div>
+        <div class="td"><span class="no">Anything naming a person.</span> Including confirming a name they supplied themselves</div>
+        <div class="td">The whole person-side of the console is sealed while the line is the active channel.</div>
+
+        <div class="td" style="font-weight:600">Police, an employer, a journalist<div style="font-weight:400;color:#737373;font-size:11.5px;margin-top:3px">and anyone in a uniform</div></div>
+        <div class="td">Nothing. That someone will come.</div>
+        <div class="td"><span class="no">Everything</span>, however the request is worded and whoever is standing behind it</div>
+        <div class="td">One button: <strong style="font-weight:600">Call the Duty Manager</strong>. It is not her decision and the screen says so.</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:10px;margin-top:13px">
+      <svg style="margin-top:2px;flex-shrink:0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <span style="font-size:12px;color:#737373;line-height:17px">
+        Row four is a policy, not a screen behaviour, and it is on this sheet because the person it protects is Ekta.
+        A twenty-three-year-old on her second month should never be the one deciding what to tell a sub-inspector.
+      </span>
+    </div>
+  </div>
+
+  <!-- 2 · THE ADMITTED-RELATIVE TRAP -->
+  <div class="card" style="padding:20px 22px">
+    <div style="display:flex;align-items:flex-start;gap:13px;margin-bottom:15px">
+      <div class="n">2</div>
+      <div>
+        <div class="h2">&#8220;Is my brother admitted here?&#8221;</div>
+        <div class="sub">The kindest question on this list and the one that breaks the rule hardest, because the answer &#8212; either answer &#8212; is the disclosure.</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">
+      <div style="border:1px solid rgba(231,0,11,0.35);background:rgba(231,0,11,0.04);border-radius:10px;padding:14px 16px">
+        <div class="tag" style="background:#e7000b;color:#fff;margin-bottom:10px">WHY &#8220;NO&#8221; IS ALSO A LEAK</div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px">
+          If she says &#8220;he isn't here&#8221; when he isn't, and stays silent when he is, then silence means yes. A rule that
+          only holds for one of the two answers is not a rule &#8212; it is a tell, and the third person who asks will read it.
+        </div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px;margin-top:10px">
+          The same shape governs the confidential flag, which is why it is not a separate case: the search provider excludes a
+          confidential record <em>in the WHERE clause</em>, so from this desk that patient does not exist. Ekta must not be able
+          to tell &#8220;no such person&#8221; from &#8220;a person I am not allowed to see&#8221; &#8212; and the screen must not tell her either.
+          Identical wording, identical timing, no extra spinner.
+        </div>
+      </div>
+      <div style="border:1px solid #171717;border-radius:10px;background:#ffffff;padding:14px 16px">
+        <div class="tag" style="background:#171717;color:#fff;margin-bottom:10px">WHAT SHE SAYS INSTEAD</div>
+        <div class="hi" style="font-size:17px;font-weight:500">भर्ती मरीज़ों की जानकारी यहाँ नहीं मिलती। आप वार्ड के काउंटर पर जाइए, पहचान-पत्र लेकर — वहाँ से मिलने का पास बनता है।</div>
+        <div style="font-size:12px;color:#525252;margin-top:9px;line-height:17px">
+          &#8220;We don't give information about admitted patients here. Go to the ward desk with your ID &#8212; the visitor pass is issued there.&#8221;
+        </div>
+        <div style="font-size:11.5px;color:#525252;margin-top:11px;padding-top:10px;border-top:1px solid #e5e5e5;line-height:16.5px">
+          It is a real, walkable next step rather than a refusal, and it moves the decision to the desk that can see the
+          patient, ask them, and check a relationship. Ekta can do none of those three things from the lobby.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3 · THE AUDIT CONSEQUENCE -->
+  <div class="card" style="padding:20px 22px">
+    <div style="display:flex;align-items:flex-start;gap:13px;margin-bottom:15px">
+      <div class="n">3</div>
+      <div>
+        <div class="h2">This seat can destroy the access log by working normally</div>
+        <div class="sub">The most consequential finding on this canvas, and it is invisible until the seat has been live for a month.</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px">
+      <div style="border:1px solid #e5e5e5;border-radius:10px;background:#ffffff;padding:14px 16px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:9px">How the log is built</div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px">
+          Every PHI read is stamped with a care context. <span class="mono">careContextFor</span> returns
+          <span class="mono">treating</span> for the doctor on the encounter, <span class="mono">serving</span> for anyone whose
+          patient has a live visit today, and <span class="mono">none</span> for everybody else. The file says outright why:
+          <em>&#8220;`none` stays rare enough to mean something &#8212; nobody at this hospital is looking after this patient today, and
+          somebody opened their chart anyway.&#8221;</em>
+        </div>
+      </div>
+      <div style="border:1px solid rgba(231,0,11,0.35);border-radius:10px;background:rgba(231,0,11,0.04);padding:14px 16px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:9px;color:#e7000b">What this seat does to it</div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px">
+          A person off the street asking for their own UHID has no live visit &#8212; that is <em>why</em> they are at the enquiry
+          desk. So every lookup here returns <span class="mono">none</span>. Forty an hour, six days a week, from one lobby
+          terminal, is more <span class="mono">none</span> rows than the rest of the hospital produces put together.
+          The review worklist fills with blameless noise and the one signal it exists for is gone.
+        </div>
+      </div>
+    </div>
+
+    <div style="border:2px solid #171717;border-radius:12px;background:#ffffff;padding:16px 18px">
+      <div style="display:flex;align-items:baseline;gap:11px;margin-bottom:10px">
+        <span class="tag" style="background:#171717;color:#fff">DECIDED</span>
+        <span style="font-size:14px;font-weight:600">A directory read is not a chart read, and it gets its own surface</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:4px">
+        <div>
+          <div class="lbl" style="margin-bottom:6px">What it returns</div>
+          <div style="font-size:12.5px;color:#404040;line-height:18px">Name, age, sex, UHID, and one boolean: is there a visit today. Nothing that varies by encounter. Nothing clinical. Nothing financial.</div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:6px">How it is logged</div>
+          <div style="font-size:12.5px;color:#404040;line-height:18px">Its own <span class="mono">PhiSurface</span> &#8212; <span class="mono">directory.lookup</span> &#8212; reviewed on its own volume curve, so it never lands in the same worklist as somebody opening a chart.</div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:6px">Why not just narrow the permissions</div>
+          <div style="font-size:12.5px;color:#404040;line-height:18px">Because a permission-narrowed chart read is still a chart read in the log. The distinction that matters to a reviewer is <em>what kind of question was asked</em>, and only a separate surface records that.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4 · NEVER, ON ANY CHANNEL -->
+  <div style="border:1px solid rgba(231,0,11,0.35);border-radius:14px;background:rgba(231,0,11,0.04);padding:20px 24px">
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:13px">
+      <span style="font-size:16px;font-weight:700;letter-spacing:0.02em;color:#e7000b">NEVER, TO ANYONE, ON ANY CHANNEL</span>
+      <span style="font-size:12.5px;color:#525252">not a judgement call, not a supervisor override &#8212; there is no path through this desk to any of it</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 26px">
+      <div style="font-size:13px;color:#404040;line-height:19px">&#183; A diagnosis, or a guess at one</div>
+      <div style="font-size:13px;color:#404040;line-height:19px">&#183; A test result, or whether one is ready</div>
+      <div style="font-size:13px;color:#404040;line-height:19px">&#183; Whether a named person is admitted</div>
+      <div style="font-size:13px;color:#404040;line-height:19px">&#183; A ward, a bed or a room a patient is in</div>
+      <div style="font-size:13px;color:#404040;line-height:19px">&#183; What anything will cost in total</div>
+      <div style="font-size:13px;color:#404040;line-height:19px">&#183; Whether a doctor is any good</div>
+      <div style="font-size:13px;color:#404040;line-height:19px">&#183; That a room will be free by a certain hour</div>
+      <div style="font-size:13px;color:#404040;line-height:19px">&#183; Whether somebody survived, or did not</div>
+      <div style="font-size:13px;color:#404040;line-height:19px">&#183; Anything at all about a colleague's care</div>
+    </div>
+    <div style="font-size:12.5px;color:#525252;line-height:18px;margin-top:15px;padding-top:13px;border-top:1px solid rgba(231,0,11,0.25)">
+      Six of these nine are impossible from this seat because the data never reaches the screen &#8212; that is the design doing the work.
+      The other three &#8212; the cost, the doctor's quality, the room by four o'clock &#8212; are things she could say from general
+      knowledge, so they are the three printed under <strong style="font-weight:600;color:#0a0a0a">DO NOT ADD</strong> on the answer card itself,
+      next to the sentence she is about to read out.
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1120,"height":1760}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

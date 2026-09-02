@@ -1,0 +1,23 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html",      "x": 0,    "y": 0, "w": 1440, "h": 900, "title": "Registration — find first, then register", "is_interactive": true },
+    { "file": "Dashboard.dc.html", "x": 1600, "y": 0, "w": 1440, "h": 900, "title": "Ramesh's own figures — and what came back" }
+  ],
+  "annotations": [
+    {
+      "id": "n-find",
+      "x": 0,
+      "y": -300,
+      "w": 920,
+      "text": "THE SEAT IS BUILT AROUND ONE INVERSION: REGISTRATION BEGINS WITH A SEARCH, AND THE FORM IS WHAT YOU GET WHEN THE SEARCH FAILS.\n\nThe reason is in the code. `registerPatient` is called straight from the controller with NO duplicate check before it creates — while the codebase's own comment calls duplicates \"the exact disease this whole programme exists to cure\", and the merge that cleans one up carries an URGENT / 240-MINUTE approval SLA. All the expensive machinery exists: merge requests, an approvals lane, a merge-review screen, an unmerge path. The three seconds that would prevent the work do not.\n\nSo state 1 is the default and state 2 is only reachable through it.\n\nWHAT MATCHED, NEVER A SCORE. \"Same mobile\" is a fact Ramesh can act on with the person standing in front of him. \"87% match\" is a number nobody can do anything with, and it teaches clerks to ignore the panel.\n\nFOUR FIELDS MAKE A UHID — name, mobile, age-or-DOB, sex. The shipped form asks for twenty, with nine people in the queue. The other fifteen are not deleted, they are DEFERRED, and state 2 names where each one actually gets filled: address on a quiet visit or the patient's own phone, ABHA by scan rather than dictation, blood group at the first admission.\n\nThe server's three refusals are drawn as they are: dob XOR age, an alias for a confidential record, and a guardian for a known minor.\n\nUHID format is the shipped one — prefix, seven digits, Verhoeff check digit, no separators. The comment in `uhid.ts` says why: separators cost fourteen keystrokes and broke numeric-keypad flow for no information the fixed width did not already carry."
+    },
+    {
+      "id": "n-dash",
+      "x": 1600,
+      "y": -300,
+      "w": 920,
+      "text": "HIS OWN FIGURES, AND THE HALF OF THE JOB NOBODY MEASURES.\n\nIN SENTENCES, NOT TILES. The system already writes them — `brief` ships with plain / compared-to-median / drift variants for registered, visits and consults. A median IS a comparison and a comparison is a sentence; a tile showing \"142\" against nothing is a number pretending to be an insight. So the brief leads and the tiles are three, not twelve.\n\nWHAT CAME BACK is the part that does not exist yet and is worth more than everything above it. A registration clerk is measured on speed and volume everywhere in the world, and the thing that actually costs the hospital is the record that has to be repaired later:\n\n· Three duplicates this month, each an urgent four-hour merge for somebody else — AND ALL THREE ALREADY HAD THAT MOBILE ON FILE, which is the sentence that proves the find-first screen would have caught them.\n· Eleven records with no phone; six bounced SMS; four missed follow-ups.\n· Eight amended within a week, each dropping the record a rung on the assurance ladder.\n\nThe framing is deliberate and it is the difference between this being useful and being resented: every line is about the WORK and points at something he can do differently tomorrow. The slow-registration line blames the guardian block, not him — because that is where the four extra fields actually are.\n\nAND THE TRUST LINE AT THE FOOT IS TRUE TO WHAT SHIPPED: `staff-reports` shows counts, money and timings, does not list patients, and opening the rows behind a figure needs a written reason recorded against the person who opened them."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

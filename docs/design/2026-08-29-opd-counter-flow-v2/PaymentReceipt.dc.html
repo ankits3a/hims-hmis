@@ -1,0 +1,157 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&amp;display=swap">
+  <style>
+    *{box-sizing:border-box}
+    /*
+      80 mm roll, 72 mm printable — the SAME roll and the SAME printer as the
+      token slip. A roll has no fixed height, which is the whole reason Next
+      Steps survives here and could not survive on a 4 × 6 die-cut label.
+    */
+    body{margin:0;background:#ffffff;color:#000000;
+      font-family:"Helvetica Neue",Helvetica,Arial,"Liberation Sans",sans-serif;
+      font-size:11px;line-height:15px;font-weight:400;-webkit-font-smoothing:antialiased}
+    a{color:#000000;text-decoration:none}
+    .num{font-variant-numeric:tabular-nums}
+    .hi{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.55}
+    .dash{height:1px;background:repeating-linear-gradient(to right,#000 0 3px,transparent 3px 6px);opacity:0.5}
+    .kv{display:flex;justify-content:space-between;gap:8px;line-height:16px}
+    .k{color:#3a3a3a}
+    .v{font-weight:600;text-align:right}
+    .cap{font-size:8.5px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:#4a4a4a}
+    .sep{color:#8a8a8a;font-weight:400}
+    .bar{background:#000000}
+  </style>
+</helmet>
+
+<div style="width:272px;background:#ffffff;padding:12px 10px 13px;display:flex;flex-direction:column">
+
+  <!-- ── LETTERHEAD ────────────────────────────────────────────────────── -->
+  <div style="text-align:center">
+    <div style="font-size:12px;font-weight:600;letter-spacing:-0.01em;line-height:14px">CRK MEDICAL COLLEGE &amp; HOSPITAL</div>
+    <div style="font-size:9px;color:#3a3a3a;line-height:12px;margin-top:2px">Chaurasia Chowk, Hajipur — 844101, Bihar</div>
+    <div class="num" style="font-size:9px;color:#3a3a3a;line-height:12px">Hotline +91 77648 88189 · Emergency 1068</div>
+  </div>
+
+  <!-- ── BARCODE, DIRECTLY BELOW THE ADDRESS ───────────────────────────── -->
+  <div style="display:flex;flex-direction:column;align-items:center;margin-top:9px">
+    <div style="display:flex;align-items:stretch;gap:0;height:36px">
+      <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:3px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:2px"></div><div class="bar" style="width:2px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:3px"></div><div class="bar" style="width:3px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:1px"></div><div class="bar" style="width:2px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:3px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:3px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:2px"></div><div class="bar" style="width:2px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:1px"></div><div class="bar" style="width:3px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:3px"></div><div style="width:2px"></div><div class="bar" style="width:2px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:2px"></div><div class="bar" style="width:1px"></div><div style="width:3px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:3px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:1px"></div><div class="bar" style="width:2px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:3px"></div><div style="width:1px"></div><div class="bar" style="width:2px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:2px"></div><div class="bar" style="width:3px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:3px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:1px"></div><div class="bar" style="width:2px"></div>
+    </div>
+    <div class="num" style="font-size:9.5px;letter-spacing:0.16em;margin-top:3px">RCP260804387</div>
+  </div>
+
+  <div class="dash" style="margin-top:9px"></div>
+
+  <!-- ── WHAT SHE PAID · bold zone 1 ───────────────────────────────────── -->
+  <div style="text-align:center;padding:9px 0 8px">
+    <div class="cap">Payment receipt</div>
+    <div class="hi" style="font-size:14px;color:#2a2a2a;line-height:1.4">भुगतान रसीद</div>
+    <div class="num" style="font-size:40px;font-weight:700;line-height:44px;letter-spacing:-0.03em;margin-top:4px">₹300</div>
+    <div style="display:inline-flex;align-items:center;gap:7px;margin-top:5px;border:1.5px solid #000000;padding:3px 13px">
+      <span style="font-size:13px;font-weight:700;letter-spacing:0.10em">PAID</span>
+      <span class="sep">·</span>
+      <span class="hi" style="font-size:14px;font-weight:700">भुगतान प्राप्त</span>
+    </div>
+  </div>
+
+  <div class="dash"></div>
+
+  <!-- ── THE RECORD ────────────────────────────────────────────────────── -->
+  <div style="padding:9px 0">
+    <div class="kv"><span class="k">Receipt no.</span><span class="v num">RCP-2608-04387</span></div>
+    <div class="kv"><span class="k">Date / Time</span><span class="v num">29-Aug-2026, 11:04</span></div>
+    <div class="kv"><span class="k">Patient</span><span class="v">Urvashi Rathod</span></div>
+    <div class="kv"><span class="k">Age / Sex</span><span class="v num">34 y / F</span></div>
+    <div class="kv"><span class="k">UHID</span><span class="v num">CRK0000184220</span></div>
+  </div>
+
+  <div class="dash"></div>
+
+  <div style="padding:9px 0">
+    <div class="kv"><span class="k">OPD consultation</span><span class="v num">₹300.00</span></div>
+    <div style="font-size:9px;color:#4a4a4a;line-height:12px;margin-top:1px">Flat fee — any department, any doctor</div>
+    <div class="kv" style="margin-top:5px"><span class="k">Paid by</span><span class="v">UPI</span></div>
+    <div class="kv"><span class="k">Reference</span><span class="v num">4287 1190 5563</span></div>
+    <div class="kv"><span class="k">Counter / Cashier</span><span class="v">5 · bhuvan.pratap</span></div>
+  </div>
+
+  <div class="dash"></div>
+
+  <div style="font-size:9px;color:#4a4a4a;line-height:12px;text-align:center;padding:7px 2px">
+    Valid <span class="num" style="font-weight:600">29-Aug-2026 only</span>. Refundable the same day at this counter against this printed copy.
+  </div>
+
+  <div class="dash"></div>
+
+  <!-- ══ NEXT STEPS · the reason this piece of paper exists ══════════════ -->
+  <div style="border:1.5px solid #000000;margin-top:9px;padding:8px 9px 9px">
+    <div style="text-align:center;padding-bottom:6px;border-bottom:1px solid #000000">
+      <div style="font-size:11.5px;font-weight:700;letter-spacing:0.06em">NEXT STEPS</div>
+      <div class="hi" style="font-size:14px;font-weight:700">आगे क्या करें</div>
+    </div>
+
+    <div style="text-align:center;padding:7px 0 8px;border-bottom:1px solid #b5b5b5">
+      <div style="font-size:10.5px;font-weight:700;line-height:13px">THIS IS NOT A TOKEN</div>
+      <div class="hi" style="font-size:14px;font-weight:700">यह टोकन नहीं है</div>
+      <div class="hi" style="font-size:14px;color:#2a2a2a;margin-top:2px">डॉक्टर अभी तय नहीं हुआ है।</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:7px;padding-top:8px">
+      <div>
+        <div style="font-size:11px;line-height:14px"><span style="font-weight:700">1</span> <span class="sep">·</span> <span style="font-weight:600">General Medicine reception</span>, 1st floor, Block A</div>
+        <div class="hi" style="font-size:14px;color:#1a1a1a">सामान्य चिकित्सा रिसेप्शन, प्रथम तल</div>
+      </div>
+      <div>
+        <div style="font-size:11px;line-height:14px"><span style="font-weight:700">2</span> <span class="sep">·</span> Show this slip — they give you the token</div>
+        <div class="hi" style="font-size:14px;color:#1a1a1a">यह रसीद दिखाएँ, टोकन मिलेगा</div>
+      </div>
+      <div>
+        <div style="font-size:11px;line-height:14px"><span style="font-weight:700">3</span> <span class="sep">·</span> Vitals desk, then watch the display</div>
+        <div class="hi" style="font-size:14px;color:#1a1a1a">जाँच डेस्क, फिर पटल देखें</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dash" style="margin-top:10px"></div>
+
+  <!-- ── FOOT ──────────────────────────────────────────────────────────── -->
+  <div style="padding-top:8px;text-align:center;display:flex;flex-direction:column;gap:2px">
+    <div style="font-size:9px;color:#3a3a3a;line-height:12px">info@crkmch.com · www.crkmch.com</div>
+    <div class="num" style="font-size:9px;color:#3a3a3a;line-height:12px">Printed by bhuvan.pratap on 29-Aug-2026 11:04</div>
+    <div style="font-size:8.5px;color:#4a4a4a;line-height:11px;margin-top:3px">Consultation by a clinical establishment — treated as GST-exempt. Receipt, not a tax invoice.</div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":272,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

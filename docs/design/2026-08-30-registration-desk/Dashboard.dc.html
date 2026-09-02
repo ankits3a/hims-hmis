@@ -1,0 +1,179 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#ffffff;color:#0a0a0a;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none}
+    button{font:inherit;color:inherit;cursor:pointer}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .lbl{font-size:10.5px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#a1a1a1}
+    .k{display:inline-flex;align-items:center;justify-content:center;height:17px;min-width:22px;padding:0 5px;
+       border-radius:4px;background:#f5f5f5;border:1px solid #e5e5e5;font-size:9.5px;font-weight:700;color:#737373;
+       font-variant-numeric:tabular-nums;flex-shrink:0}
+    .chip{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px;border-radius:8px;
+      border:1px solid #e5e5e5;background:#ffffff;font-size:12.5px;flex-shrink:0}
+    .qrow{display:flex;align-items:flex-start;gap:14px;padding:12px 0;border-bottom:1px solid #f0f0f0}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden">
+
+  <!-- CHROME -->
+  <div style="display:flex;align-items:center;gap:12px;height:46px;padding:0 28px;border-bottom:1px solid #f0f0f0;flex-shrink:0">
+    <div style="width:22px;height:22px;border-radius:6px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;letter-spacing:-0.02em">CRK</div>
+    <span style="font-size:13.5px;font-weight:600">Registration</span>
+    <span style="color:#e5e5e5">|</span>
+    <span style="font-size:12.5px;color:#525252">Ramesh Kumar &#183; your figures</span>
+    <div style="flex-grow:1"></div>
+    <span class="num" style="font-size:12.5px;color:#a1a1a1">Sat 29-Aug &#183; 11:06</span>
+    <button class="chip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#404040" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>Back to the counter <span class="k">Esc</span></button>
+  </div>
+
+  <!-- PERIOD -->
+  <div style="display:flex;align-items:center;gap:7px;padding:11px 28px;border-bottom:1px solid #f0f0f0;flex-shrink:0">
+    <span class="lbl" style="margin-right:4px">Period</span>
+    <span style="display:inline-flex;align-items:center;height:29px;padding:0 13px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12.5px;color:#525252">Day</span>
+    <span style="display:inline-flex;align-items:center;height:29px;padding:0 13px;border-radius:8px;border:1px solid #171717;background:#171717;color:#fafafa;font-size:12.5px;font-weight:600">Week</span>
+    <span style="display:inline-flex;align-items:center;height:29px;padding:0 13px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12.5px;color:#525252">Month</span>
+    <span style="display:inline-flex;align-items:center;height:29px;padding:0 13px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12.5px;color:#525252">3 months</span>
+    <span style="display:inline-flex;align-items:center;height:29px;padding:0 13px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12.5px;color:#525252">6 months</span>
+    <span class="num" style="font-size:12px;color:#a1a1a1;margin-left:8px">24-Aug-2026 to 29-Aug-2026</span>
+  </div>
+
+  <!-- BODY -->
+  <div style="flex-grow:1;min-height:0;display:flex;gap:34px;padding:24px 28px 0">
+
+    <!-- LEFT -->
+    <div style="width:800px;display:flex;flex-direction:column;min-height:0">
+
+      <!-- THE BRIEF — sentences, because the system already writes them -->
+      <div style="flex-shrink:0">
+        <div style="display:flex;align-items:baseline;gap:11px">
+          <span style="font-size:16px;font-weight:600;letter-spacing:-0.01em">Your week</span>
+          <span style="font-size:12px;color:#a1a1a1">in sentences, not tiles &#8212; a median is a comparison and a comparison is a sentence</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:9px;margin-top:13px">
+          <div style="font-size:19px;line-height:27px;color:#0a0a0a"><span class="num" style="font-weight:600">142</span> patients registered, against a median of <span class="num" style="font-weight:600">118</span>.</div>
+          <div style="font-size:19px;line-height:27px;color:#0a0a0a"><span class="num" style="font-weight:600">&#8377;7,100</span> collected &#8212; <span class="num">&#8377;3,950</span> in the first half of the week, <span class="num">&#8377;3,150</span> in the second.</div>
+          <div style="font-size:19px;line-height:27px;color:#0a0a0a">Median <span class="num" style="font-weight:600">1 m 24 s</span> at the counter. <span style="color:#737373">The slow ones are almost all minors &#8212; the guardian block adds four fields.</span></div>
+        </div>
+        <div style="font-size:11.5px;color:#a1a1a1;margin-top:11px">A comparison needs a fortnight of history before it can be made honestly; before that these read as plain counts.</div>
+      </div>
+
+      <!-- QUALITY -->
+      <div style="margin-top:26px;flex-shrink:0">
+        <div style="display:flex;align-items:baseline;gap:11px">
+          <span style="font-size:16px;font-weight:600;letter-spacing:-0.01em">What came back</span>
+          <span style="font-size:12px;color:#a1a1a1">the half of this job nobody measures, and the only half you can act on</span>
+        </div>
+
+        <div class="qrow">
+          <span style="width:7px;height:7px;border-radius:9999px;background:#e7000b;flex-shrink:0;margin-top:7px"></span>
+          <div style="flex-grow:1;min-width:0">
+            <div style="font-size:14.5px;font-weight:600"><span class="num">3</span> of your registrations this month turned out to be duplicates.</div>
+            <div style="font-size:12.5px;color:#737373;margin-top:2px">Each became an urgent merge for somebody else &#8212; a four-hour clock, and a history split in half until it closed. <strong style="font-weight:600;color:#0a0a0a">All three already had that mobile number on file.</strong></div>
+          </div>
+          <button style="height:30px;padding:0 12px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12px;flex-shrink:0;margin-top:2px">See all three</button>
+        </div>
+
+        <div class="qrow">
+          <span style="width:7px;height:7px;border-radius:9999px;background:#cb882e;flex-shrink:0;margin-top:7px"></span>
+          <div style="flex-grow:1;min-width:0">
+            <div style="font-size:14.5px;font-weight:600"><span class="num">11</span> records you created this month have no mobile number.</div>
+            <div style="font-size:12.5px;color:#737373;margin-top:2px">Six SMS bounced. Four of those people missed a follow-up they had been told to come back for.</div>
+          </div>
+          <button style="height:30px;padding:0 12px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12px;flex-shrink:0;margin-top:2px">Fix on next visit</button>
+        </div>
+
+        <div class="qrow" style="border-bottom:none">
+          <span style="width:7px;height:7px;border-radius:9999px;background:#a1a1a1;flex-shrink:0;margin-top:7px"></span>
+          <div style="flex-grow:1;min-width:0">
+            <div style="font-size:14.5px;font-weight:600"><span class="num">8</span> were amended within a week &#8212; almost all a spelling, off an ID at the second visit.</div>
+            <div style="font-size:12.5px;color:#737373;margin-top:2px">Harmless, but each one drops the record a rung on the assurance ladder. Reading the name back before you press Enter is the whole fix.</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex-grow:1"></div>
+
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 0 20px;border-top:1px solid #f0f0f0;flex-shrink:0">
+        <svg style="flex-shrink:0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>
+        <span style="font-size:11.5px;color:#737373;line-height:16px">
+          This is your own account and nobody else's. Your supervisor sees the same counts, money and timings under <strong style="font-weight:600;color:#404040">Staff reports</strong> &#8212;
+          it does not list patients, and opening the rows behind a figure needs a written reason that is recorded against them.
+        </span>
+      </div>
+    </div>
+
+    <!-- RIGHT — today, and the document -->
+    <div style="flex-grow:1;display:flex;flex-direction:column;min-height:0">
+
+      <div class="lbl" style="flex-shrink:0">Today so far</div>
+      <div style="display:flex;flex-direction:column;gap:0;margin-top:9px;border:1px solid #e5e5e5;border-radius:12px;overflow:hidden;flex-shrink:0">
+        <div style="padding:12px 15px;border-bottom:1px solid #f0f0f0">
+          <div style="display:flex;align-items:baseline;justify-content:space-between">
+            <span class="num" style="font-size:24px;font-weight:600">38</span>
+            <span class="num" style="font-size:11.5px;color:#318f5a;font-weight:600">median 31</span>
+          </div>
+          <div style="font-size:11.5px;color:#737373;margin-top:1px">registered</div>
+        </div>
+        <div style="padding:12px 15px;border-bottom:1px solid #f0f0f0">
+          <div class="num" style="font-size:24px;font-weight:600">&#8377;1,900</div>
+          <div class="num" style="font-size:11.5px;color:#737373;margin-top:1px">collected &#183; 38 receipts</div>
+        </div>
+        <div style="padding:12px 15px">
+          <div class="num" style="font-size:24px;font-weight:600">1 m 24 s</div>
+          <div style="font-size:11.5px;color:#737373;margin-top:1px">median at the counter</div>
+        </div>
+      </div>
+
+      <div class="lbl" style="margin-top:22px;flex-shrink:0">The drawer</div>
+      <div style="border:1px solid #e5e5e5;border-radius:12px;padding:13px 15px;margin-top:9px;flex-shrink:0">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;justify-content:space-between"><span style="font-size:12.5px;color:#525252">Opening float</span><span class="num" style="font-size:12.5px;font-weight:600">&#8377;2,250</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="font-size:12.5px;color:#525252">Cash</span><span class="num" style="font-size:12.5px;font-weight:600">&#8377;1,550</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="font-size:12.5px;color:#525252">UPI</span><span class="num" style="font-size:12.5px;font-weight:600">&#8377;350</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="font-size:12.5px;color:#525252">Card</span><span class="num" style="font-size:12.5px;color:#a1a1a1">&#8212;</span></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:9px;padding-top:9px;border-top:1px solid #e5e5e5">
+          <span style="font-size:12.5px;font-weight:600">Cash the drawer should hold</span><span class="num" style="font-size:14px;font-weight:700">&#8377;3,800</span>
+        </div>
+        <div style="font-size:11px;color:#a1a1a1;line-height:15px;margin-top:7px">Counted at close, against this. A variance is a conversation, not an accusation &#8212; but it is always a conversation.</div>
+      </div>
+
+      <div style="flex-grow:1"></div>
+
+      <div style="border:1px solid #171717;border-radius:12px;padding:14px 16px;flex-shrink:0;margin-bottom:20px">
+        <div style="display:flex;align-items:center;gap:9px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v5h5"/></svg>
+          <span style="font-size:14px;font-weight:600">Your day</span>
+          <span style="display:inline-flex;align-items:center;height:19px;padding:0 8px;border-radius:5px;background:rgba(203,136,46,0.14);color:#cb882e;font-size:9.5px;font-weight:700;letter-spacing:0.04em">PROVISIONAL</span>
+        </div>
+        <div style="font-size:11.5px;color:#737373;line-height:16px;margin-top:7px">
+          The signed document: what you registered, what you took, by tender, with a signature and a received-by line.
+          It stays provisional until the day is closed &#8212; the figures can still move.
+        </div>
+        <div style="display:flex;gap:7px;margin-top:11px">
+          <button style="flex-grow:1;height:34px;border-radius:8px;border:1px solid #171717;background:#171717;color:#fafafa;font-size:12.5px;font-weight:600">Print</button>
+          <button style="flex-grow:1;height:34px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12.5px;font-weight:500">Download CSV</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

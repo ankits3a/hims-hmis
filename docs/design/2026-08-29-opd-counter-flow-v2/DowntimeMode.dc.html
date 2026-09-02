@@ -1,0 +1,276 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#ffffff;color:#0a0a0a;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90;text-decoration:underline}
+    button{font:inherit;color:inherit;cursor:pointer;text-align:left}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .hi{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.55}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .card{border:1px solid #e5e5e5;border-radius:14px;background:#ffffff;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+    .yes{display:flex;align-items:flex-start;gap:9px;padding:9px 11px;border-radius:9px;background:rgba(49,143,90,0.06);border:1px solid rgba(49,143,90,0.28)}
+    .no{display:flex;align-items:flex-start;gap:9px;padding:9px 11px;border-radius:9px;background:#f5f5f5;border:1px solid #e5e5e5}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden">
+
+  <!-- CHROME — muted, because the app is not itself right now -->
+  <div style="display:flex;align-items:center;gap:16px;height:52px;padding:0 20px;border-bottom:1px solid #e5e5e5;background:#f5f5f5;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:24px;height:24px;border-radius:6px;background:#737373;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:-0.02em">CRK</div>
+      <span style="font-size:14px;font-weight:600">Appointment counter</span>
+    </div>
+    <div style="width:1px;height:20px;background:#e5e5e5"></div>
+    <span style="font-size:13px;color:#525252">Counter 3 · <span style="color:#0a0a0a;font-weight:500">Anshuman Prasad</span></span>
+    <div style="flex-grow:1"></div>
+    <div style="display:flex;align-items:center;gap:14px;font-size:13px;color:#737373">
+      <span class="num">Sat 29 Aug 2026 · 10:41</span>
+      <div style="width:26px;height:26px;border-radius:9999px;background:#e5e5e5;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#404040">AP</div>
+    </div>
+  </div>
+
+  <!-- THE BANNER -->
+  <div style="display:flex;align-items:center;gap:14px;padding:13px 20px;background:#cb882e;color:#1a1204;flex-shrink:0">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a1204" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M12 20h.01M8.5 16.4a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 14 0M1.4 9.4a15 15 0 0 1 21.2 0"/><path d="m2 2 20 20"/></svg>
+    <div style="flex-grow:1">
+      <span style="font-size:15px;font-weight:700;display:block">Offline since 10:17 — keep working. Nothing you do now will be lost.</span>
+      <span style="font-size:13px;opacity:0.82">Server unreachable. Everything below is held on this machine and sent the moment the link is back. Do not restart the browser and do not switch machines.</span>
+    </div>
+    <div style="text-align:right;padding-left:16px;border-left:1px solid rgba(26,18,4,0.25)">
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;opacity:0.7">HELD HERE</div>
+      <div class="num" style="font-size:26px;font-weight:700;line-height:28px;letter-spacing:-0.02em">17</div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-grow:1;min-height:0">
+
+    <!-- ── LEFT: WHAT STILL WORKS ───────────────────────────────────────── -->
+    <div style="width:880px;border-right:1px solid #e5e5e5;overflow-y:auto;padding:18px 22px 22px;display:flex;flex-direction:column;gap:14px">
+
+      <!-- THE BLOCKS — the idea that makes offline registration real -->
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 18px;background:#fafafa;border-bottom:1px solid #e5e5e5">
+          <span class="lbl" style="flex-grow:1">Your reserved numbers</span>
+          <span style="font-size:11.5px;color:#737373">handed out every morning, whether or not anything breaks</span>
+        </div>
+        <div style="padding:16px 18px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">
+          <div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:7px">
+              <span style="font-size:13px;font-weight:600">UHID block</span>
+              <span class="num" style="font-size:12px;color:#737373">6 of 50 used</span>
+            </div>
+            <div class="mono num" style="font-size:14px;font-weight:600;padding:9px 11px;border-radius:9px;background:#f5f5f5;border:1px solid #e5e5e5">CRK0000186001 – 186050</div>
+            <div style="height:7px;border-radius:9999px;background:#e5e5e5;overflow:hidden;margin-top:8px"><div style="width:12%;height:100%;background:#171717"></div></div>
+            <div style="font-size:11.5px;color:#525252;line-height:16px;margin-top:8px">Pre-allocated to this counter alone, so an offline registration gets a <strong style="font-weight:600">real, permanent, non-colliding</strong> UHID — not a temporary one somebody has to reconcile and re-print later.</div>
+          </div>
+          <div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:7px">
+              <span style="font-size:13px;font-weight:600">Token block · General Medicine</span>
+              <span class="num" style="font-size:12px;color:#737373">11 of 40 used</span>
+            </div>
+            <div class="mono num" style="font-size:14px;font-weight:600;padding:9px 11px;border-radius:9px;background:#f5f5f5;border:1px solid #e5e5e5">C3-201 – C3-240</div>
+            <div style="height:7px;border-radius:9999px;background:#e5e5e5;overflow:hidden;margin-top:8px"><div style="width:27%;height:100%;background:#171717"></div></div>
+            <div style="font-size:11.5px;color:#525252;line-height:16px;margin-top:8px">Prefixed by counter, so three counters issuing offline at once cannot hand two people the same token. The doctor's list interleaves them by issue time when the link returns.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CAN / CANNOT -->
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+        <div class="card" style="padding:16px 18px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:11px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#318f5a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            <span style="font-size:14px;font-weight:600">Still works</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <div class="yes"><span style="font-size:12.5px;color:#404040">Register a new patient and issue a UHID</span></div>
+            <div class="yes"><span style="font-size:12.5px;color:#404040">Issue a token and print the slip</span></div>
+            <div class="yes"><span style="font-size:12.5px;color:#404040">Print the prescription sheet</span></div>
+            <div class="yes"><span style="font-size:12.5px;color:#404040">Take cash and print a receipt</span></div>
+            <div class="yes"><span style="font-size:12.5px;color:#404040">Look up anyone seen in the last 30 days</span></div>
+          </div>
+          <div style="font-size:11.5px;color:#737373;line-height:16px;margin-top:11px;padding-top:11px;border-top:1px solid #e5e5e5">
+            The last 30 days of patients are cached on this machine every night. That covers almost every returning patient who walks up.
+          </div>
+        </div>
+
+        <div class="card" style="padding:16px 18px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:11px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            <span style="font-size:14px;font-weight:600">Cannot, and says so</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <div class="no"><span style="font-size:12.5px;color:#525252">Live queue length — the slip prints no wait estimate</span></div>
+            <div class="no"><span style="font-size:12.5px;color:#525252">Doctor leave and availability — ask the floor</span></div>
+            <div class="no"><span style="font-size:12.5px;color:#525252">UPI and card — cash only, and the slip says so</span></div>
+            <div class="no"><span style="font-size:12.5px;color:#525252">Concession approvals — Duty Manager signs on paper</span></div>
+            <div class="no"><span style="font-size:12.5px;color:#525252">Anything for a confidential patient</span></div>
+          </div>
+          <div style="font-size:11.5px;color:#737373;line-height:16px;margin-top:11px;padding-top:11px;border-top:1px solid #e5e5e5">
+            A confidential record is never cached to a counter machine. Offline, that patient is handled on paper by the Duty Manager — the one refusal worth making.
+          </div>
+        </div>
+      </div>
+
+      <!-- THE SLIP CHANGES -->
+      <div class="card" style="padding:16px 18px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <span style="font-size:14px;font-weight:600">The paper tells the truth too</span>
+          <div style="flex-grow:1"></div>
+          <span style="font-size:11.5px;color:#737373">so the vitals desk knows why the queue looks odd</span>
+        </div>
+        <div style="display:flex;gap:16px">
+          <div style="width:194px;flex-shrink:0;border:1px solid #d4d4d4;background:#ffffff;padding:11px 12px;box-shadow:0 3px 10px rgba(0,0,0,0.06);font-size:10px;line-height:14px">
+            <div style="text-align:center;font-size:10px;font-weight:700">CRK MEDICAL COLLEGE &amp; HOSPITAL</div>
+            <div style="height:1px;background:repeating-linear-gradient(to right,#000 0 4px,transparent 4px 8px);opacity:0.4;margin:7px 0"></div>
+            <div style="text-align:center">
+              <div style="font-size:8px;letter-spacing:0.12em;color:#666;font-weight:700">TOKEN</div>
+              <div class="num" style="font-size:34px;font-weight:700;line-height:36px">C3-212</div>
+              <div style="font-size:11px;font-weight:700;margin-top:3px">Dr Anand Rao</div>
+              <div style="font-size:9px;color:#444">General Medicine · Room 104</div>
+            </div>
+            <div style="border:1.5px solid #cb882e;padding:5px 7px;margin-top:9px;text-align:center">
+              <div style="font-size:9.5px;font-weight:800;letter-spacing:0.06em;color:#a06a12">ISSUED OFFLINE</div>
+              <div class="hi" style="font-size:9px;color:#a06a12;margin-top:1px">बिना नेटवर्क जारी</div>
+              <div style="font-size:8.5px;color:#444;line-height:12px;margin-top:3px">No waiting time shown. Your turn is by the time on this slip.</div>
+            </div>
+            <div style="height:1px;background:repeating-linear-gradient(to right,#000 0 4px,transparent 4px 8px);opacity:0.4;margin:8px 0"></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#555">Issued</span><span class="num" style="font-weight:700">10:41:22</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#555">UHID</span><span class="num" style="font-weight:700">CRK0000186007</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#555">Pay</span><span class="num" style="font-weight:700">₹300 cash</span></div>
+            <div style="margin-top:8px;display:flex;justify-content:center">
+              <div style="width:44px;height:44px;background:#000"></div>
+            </div>
+          </div>
+
+          <div style="flex-grow:1;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:flex-start;gap:10px">
+              <div style="width:6px;height:6px;border-radius:9999px;background:#171717;flex-shrink:0;margin-top:7px"></div>
+              <div><span style="font-size:13px;font-weight:600;display:block">The token is prefixed <span class="mono">C3-</span>, not a bare number</span><span style="font-size:12px;color:#525252;line-height:17px">Nobody can be handed a duplicate, and the display board can show it unchanged once the link is back.</span></div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:10px">
+              <div style="width:6px;height:6px;border-radius:9999px;background:#171717;flex-shrink:0;margin-top:7px"></div>
+              <div><span style="font-size:13px;font-weight:600;display:block">No waiting time is printed</span><span style="font-size:12px;color:#525252;line-height:17px">Printing a guess is worse than printing nothing. The slip says the order is by issue time and leaves it there.</span></div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:10px">
+              <div style="width:6px;height:6px;border-radius:9999px;background:#171717;flex-shrink:0;margin-top:7px"></div>
+              <div><span style="font-size:13px;font-weight:600;display:block">The QR still works</span><span style="font-size:12px;color:#525252;line-height:17px">It carries the UHID and the reserved encounter number — both are already final, so vitals and billing scan it normally.</span></div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:10px">
+              <div style="width:6px;height:6px;border-radius:9999px;background:#e7000b;flex-shrink:0;margin-top:7px"></div>
+              <div><span style="font-size:13px;font-weight:600;display:block">The band is amber and it is in Hindi</span><span style="font-size:12px;color:#525252;line-height:17px">The patient is the one who will be confused when the board does not show their number. Tell them on the paper, in the language they read.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RIGHT: THE HOLD QUEUE ────────────────────────────────────────── -->
+    <div style="flex-grow:1;background:#fafafa;display:flex;flex-direction:column;min-height:0">
+      <div style="padding:15px 18px 12px;border-bottom:1px solid #e5e5e5;flex-shrink:0">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:14px;font-weight:600">Waiting to be sent</span>
+          <span class="num" style="display:inline-flex;align-items:center;height:21px;padding:0 9px;border-radius:9999px;background:#cb882e;color:#fff;font-size:11px;font-weight:700">17</span>
+        </div>
+        <span style="font-size:12px;color:#737373">In order. Nothing is dropped, nothing is guessed at.</span>
+      </div>
+
+      <div style="flex-grow:1;overflow-y:auto;padding:12px 18px;display:flex;flex-direction:column;gap:7px">
+
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:10px;background:#ffffff;border:1px solid #e5e5e5">
+          <span class="num" style="width:22px;font-size:11px;color:#a1a1a1">17</span>
+          <div style="display:flex;flex-direction:column;gap:0;flex-grow:1;min-width:0">
+            <span style="font-size:12.5px;font-weight:600">Token C3-212 · Meera Sinha</span>
+            <span class="num" style="font-size:11px;color:#737373">10:41 · registration + visit + ₹300 cash</span>
+          </div>
+          <span style="width:7px;height:7px;border-radius:9999px;background:#cb882e;flex-shrink:0"></span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:10px;background:#ffffff;border:1px solid #e5e5e5">
+          <span class="num" style="width:22px;font-size:11px;color:#a1a1a1">16</span>
+          <div style="display:flex;flex-direction:column;gap:0;flex-grow:1;min-width:0">
+            <span style="font-size:12.5px;font-weight:600">Token C3-211 · Jitendra Rai</span>
+            <span class="num" style="font-size:11px;color:#737373">10:38 · visit + ₹300 cash</span>
+          </div>
+          <span style="width:7px;height:7px;border-radius:9999px;background:#cb882e;flex-shrink:0"></span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:10px;background:#ffffff;border:1px solid #e5e5e5">
+          <span class="num" style="width:22px;font-size:11px;color:#a1a1a1">15</span>
+          <div style="display:flex;flex-direction:column;gap:0;flex-grow:1;min-width:0">
+            <span style="font-size:12.5px;font-weight:600">Token C3-210 · Sunita Kumari</span>
+            <span class="num" style="font-size:11px;color:#737373">10:35 · visit only</span>
+          </div>
+          <span style="width:7px;height:7px;border-radius:9999px;background:#cb882e;flex-shrink:0"></span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:10px;background:rgba(231,0,11,0.04);border:1px solid rgba(231,0,11,0.30)">
+          <span class="num" style="width:22px;font-size:11px;color:#e7000b">14</span>
+          <div style="display:flex;flex-direction:column;gap:0;flex-grow:1;min-width:0">
+            <span style="font-size:12.5px;font-weight:600;color:#e7000b">Token C3-209 · will need a decision</span>
+            <span class="num" style="font-size:11px;color:#e7000b">10:31 · possible duplicate UHID</span>
+          </div>
+          <span style="width:7px;height:7px;border-radius:9999px;background:#e7000b;flex-shrink:0"></span>
+        </div>
+
+        <div style="text-align:center;padding:8px;font-size:11.5px;color:#737373">13 more</div>
+
+        <div style="border:1px solid #e5e5e5;border-radius:12px;background:#ffffff;padding:13px 15px;margin-top:4px">
+          <div class="lbl" style="margin-bottom:9px">When the link comes back</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:flex-start;gap:9px">
+              <span class="num" style="width:17px;height:17px;border-radius:9999px;background:#171717;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">1</span>
+              <span style="font-size:12px;color:#404040;line-height:17px">The 16 clean ones send themselves, in issue order, and vanish from this list.</span>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:9px">
+              <span class="num" style="width:17px;height:17px;border-radius:9999px;background:#171717;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">2</span>
+              <span style="font-size:12px;color:#404040;line-height:17px">The one conflict opens as a question, with both records side by side. It is never resolved automatically.</span>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:9px">
+              <span class="num" style="width:17px;height:17px;border-radius:9999px;background:#171717;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">3</span>
+              <span style="font-size:12px;color:#404040;line-height:17px">The display board picks up the C3- tokens in issue order and the hall stops asking.</span>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:9px">
+              <span class="num" style="width:17px;height:17px;border-radius:9999px;background:#171717;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">4</span>
+              <span style="font-size:12px;color:#404040;line-height:17px">Your drawer reconciles against the cash you actually took, not against what the server thinks it missed.</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;gap:9px;padding:11px 13px;border-radius:11px;background:#ffffff;border:1px dashed #d4d4d4">
+          <svg style="margin-top:2px;flex-shrink:0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span style="font-size:11.5px;color:#525252;line-height:16px">
+            If the machine itself dies, the paper fallback in the downtime kit takes over — pre-numbered slip books drawn from the same reserved blocks, so even the paper cannot collide with the app.
+          </span>
+        </div>
+      </div>
+
+      <div style="flex-shrink:0;border-top:1px solid #e5e5e5;background:#ffffff;padding:13px 18px">
+        <button style="width:100%;height:40px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:13px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:8px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+          Try the connection now
+        </button>
+        <div class="num" style="font-size:11px;color:#737373;text-align:center;margin-top:7px">Retrying by itself every 20 s · last attempt 10:41:03</div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

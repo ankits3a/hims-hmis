@@ -1,0 +1,457 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root{
+      --bg:#ffffff; --fg:#0a0a0a; --muted:#f5f5f5; --mfg:#737373;
+      --border:#e5e5e5; --primary:#171717; --pfg:#fafafa; --ring:#a1a1a1;
+      --sidebar:#fafafa; --n300:#d4d4d4; --n600:#525252; --n700:#404040;
+      --waiting:#cb882e; --danger:#e7000b; --settled:#318f5a; --live:#218cb5;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:var(--bg);color:var(--fg);font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:var(--live);text-decoration:none} a:hover{color:#1a6f90;text-decoration:underline}
+    button{font:inherit;color:inherit;cursor:pointer}
+    .num{font-variant-numeric:tabular-nums}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden">
+
+  <!-- ── APP CHROME ─────────────────────────────────────────────────────── -->
+  <div style="display:flex;align-items:center;gap:16px;height:52px;padding:0 20px;border-bottom:1px solid #e5e5e5;background:#fafafa;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:24px;height:24px;border-radius:6px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:-0.02em">CRK</div>
+      <span style="font-size:14px;font-weight:600">Appointment counter</span>
+    </div>
+    <div style="width:1px;height:20px;background:#e5e5e5"></div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#525252">
+      <span>Counter 3</span><span style="color:#d4d4d4">·</span>
+      <span style="color:#0a0a0a;font-weight:500">Anshuman Prasad</span>
+      <span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:9999px;background:#ffffff;border:1px solid #e5e5e5;font-size:12px;font-weight:500;color:#525252">
+        <span style="width:6px;height:6px;border-radius:9999px;background:#318f5a"></span>Signed in 09:02
+      </span>
+    </div>
+    <div style="flex-grow:1"></div>
+    <div style="display:flex;align-items:center;gap:14px;font-size:13px;color:#737373">
+      <span class="num">Sat 29 Aug 2026 · 11:18</span>
+      <div style="width:1px;height:20px;background:#e5e5e5"></div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
+      <div style="width:26px;height:26px;border-radius:9999px;background:#e5e5e5;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#404040">AP</div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-grow:1;min-height:0">
+
+    <!-- ── LEFT: THE WORK ───────────────────────────────────────────────── -->
+    <div style="width:944px;display:flex;flex-direction:column;min-height:0;border-right:1px solid #e5e5e5">
+
+      <!-- PATIENT IN HAND -->
+      <div style="display:flex;align-items:center;gap:14px;padding:12px 24px;background:#f5f5f5;border-bottom:1px solid #e5e5e5;flex-shrink:0">
+        <div style="width:36px;height:36px;border-radius:9999px;background:#ffffff;border:1px solid #e5e5e5;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#404040">MA</div>
+        <div style="display:flex;flex-direction:column;gap:1px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:15px;font-weight:600">Muskan Arora</span>
+            <span style="font-size:13px;color:#525252">28 y · F</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#737373">
+            <span class="num" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace">CRK0000184213</span>
+            <span style="color:#d4d4d4">·</span><span class="num">+91 98350 41772</span>
+            <span style="color:#d4d4d4">·</span><span>Last visit 14-Jun-2026, General Medicine</span>
+          </div>
+        </div>
+        <div style="flex-grow:1"></div>
+        <span style="display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:9999px;background:#ffffff;border:1px solid #e5e5e5;font-size:12px;font-weight:500;color:#525252">Held since 11:16</span>
+        <button style="height:32px;padding:0 12px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:13px;font-weight:500;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)">Change patient</button>
+      </div>
+
+      <!-- SEARCH -->
+      <div style="padding:20px 24px 14px;flex-shrink:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <label style="font-size:13px;font-weight:500;color:#404040">What has she come for?</label>
+          <span style="font-size:12px;color:#737373">Type a symptom, a department, or a doctor</span>
+        </div>
+        <div style="position:relative;display:flex;align-items:center">
+          <svg style="position:absolute;left:12px" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <div style="height:44px;width:100%;border-radius:10px;border:1px solid #171717;background:#ffffff;box-shadow:0 0 0 3px rgba(161,161,161,0.35);display:flex;align-items:center;padding:0 12px 0 36px;font-size:16px">
+            cough<span style="width:1px;height:20px;background:#0a0a0a;margin-left:2px"></span>
+            <span style="color:#a1a1a1;margin-left:6px">and fever</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:10px">
+          <span style="display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:9999px;background:#f5f5f5;font-size:12px;font-weight:500;color:#404040">cough</span>
+          <span style="display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:9999px;background:#f5f5f5;font-size:12px;font-weight:500;color:#404040">fever</span>
+          <span style="font-size:12px;color:#737373;align-self:center;margin-left:4px">2 symptoms · matched to 2 departments</span>
+        </div>
+      </div>
+
+      <!-- RESULTS -->
+      <div style="flex-grow:1;overflow-y:auto;padding:0 24px 12px;display:flex;flex-direction:column;gap:12px">
+        <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+          <div style="border:1px solid {{g.border}};border-radius:14px;background:#ffffff;overflow:hidden;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)">
+
+            <!-- DEPARTMENT ROW -->
+            <div onClick="{{ g.pick }}" style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:{{g.headBg}};cursor:pointer;border-bottom:1px solid #e5e5e5">
+              <div style="width:16px;height:16px;border-radius:9999px;border:{{g.dotBorder}};background:{{g.dotFill}};flex-shrink:0;display:flex;align-items:center;justify-content:center">
+                <div style="width:6px;height:6px;border-radius:9999px;background:{{g.dotInner}}"></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-size:15px;font-weight:600">{{g.dept}}</span>
+                  <span style="display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:9999px;background:{{g.tagBg}};color:{{g.tagFg}};font-size:11px;font-weight:600;letter-spacing:0.01em">{{g.tag}}</span>
+                </div>
+                <span style="font-size:12px;color:#737373">{{g.floor}}</span>
+              </div>
+              <div style="flex-grow:1"></div>
+              <div style="display:flex;align-items:baseline;gap:6px">
+                <span class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.02em">{{g.deptQ}}</span>
+                <span style="font-size:12px;color:#737373">in department</span>
+              </div>
+              <div style="width:1px;height:26px;background:#e5e5e5"></div>
+              <div style="display:flex;align-items:center;gap:6px;width:96px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cb882e" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                <span class="num" style="font-size:13px;font-weight:500;color:#cb882e">~{{g.deptWait}} min</span>
+              </div>
+            </div>
+
+            <!-- DOCTOR ROWS -->
+            <sc-for list="{{g.doctors}}" as="d" hint-placeholder-count="2">
+              <div onClick="{{ d.pick }}" style="display:flex;align-items:center;gap:12px;padding:11px 16px 11px 44px;cursor:pointer;background:{{d.rowBg}};border-top:1px solid #f5f5f5">
+                <div style="width:14px;height:14px;border-radius:9999px;border:{{d.dotBorder}};background:{{d.dotFill}};flex-shrink:0;display:flex;align-items:center;justify-content:center">
+                  <div style="width:5px;height:5px;border-radius:9999px;background:{{d.dotInner}}"></div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:1px;width:230px">
+                  <span style="font-size:14px;font-weight:{{d.weight}}">{{d.name}}</span>
+                  <span style="font-size:12px;color:#737373">{{d.sub}}</span>
+                </div>
+                <span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:9999px;background:{{d.statusBg}};font-size:12px;font-weight:500;color:{{d.statusFg}}">
+                  <span style="width:6px;height:6px;border-radius:9999px;background:{{d.statusFg}}"></span>{{d.status}}
+                </span>
+                <div style="flex-grow:1"></div>
+                <span class="num" style="font-size:13px;color:#525252;width:80px;text-align:right">Room {{d.room}}</span>
+                <div style="display:flex;align-items:baseline;gap:5px;width:78px;justify-content:flex-end">
+                  <span class="num" style="font-size:18px;font-weight:600">{{d.q}}</span>
+                  <span style="font-size:12px;color:#737373">waiting</span>
+                </div>
+                <span class="num" style="font-size:13px;font-weight:500;color:#cb882e;width:96px;text-align:right">~{{d.wait}} min</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+
+        <!-- AUTO-PICK EXPLANATION -->
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border-radius:10px;background:#f5f5f5;border:1px solid #e5e5e5">
+          <svg style="margin-top:2px;flex-shrink:0" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span style="font-size:13px;color:#404040;line-height:19px" data-testid="resolve-note">{{note}}</span>
+        </div>
+      </div>
+
+      <!-- VISIT TYPE + ACTION BAR -->
+      <div style="flex-shrink:0;border-top:1px solid #e5e5e5;background:#fafafa;padding:14px 24px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+          <span style="font-size:13px;font-weight:500;color:#404040;width:88px">Visit type</span>
+          <div style="display:flex;gap:6px">
+            <sc-for list="{{visitTypes}}" as="v" hint-placeholder-count="3">
+              <button onClick="{{ v.pick }}" style="height:32px;padding:0 14px;border-radius:8px;border:1px solid {{v.border}};background:{{v.bg}};color:{{v.fg}};font-size:13px;font-weight:500;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)">{{v.label}}</button>
+            </sc-for>
+          </div>
+          <div style="flex-grow:1"></div>
+          <span style="font-size:13px;color:#525252">{{feeLabel}}</span>
+          <span class="num" style="font-size:20px;font-weight:600;letter-spacing:-0.02em">{{fee}}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="display:flex;align-items:center;gap:8px;flex-grow:1;font-size:13px;color:#525252">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#318f5a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            <span>{{summary}}</span>
+          </div>
+          <button style="height:32px;padding:0 14px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:13px;font-weight:500">Book for later</button>
+          <button style="height:40px;padding:0 20px;border-radius:8px;border:none;background:#171717;color:#fafafa;font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:8px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3h12v6M6 14h12v8H6z"/></svg>
+            Add to queue &amp; print token
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RIGHT: LIVE LADDER PREVIEW ───────────────────────────────────── -->
+    <div style="width:496px;display:flex;flex-direction:column;min-height:0;background:#fafafa">
+      <div style="padding:16px 20px 12px;border-bottom:1px solid #e5e5e5;flex-shrink:0">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:14px;font-weight:600">Where she will land</span>
+          <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#737373">
+            <span style="width:6px;height:6px;border-radius:9999px;background:#218cb5"></span>live
+          </span>
+        </div>
+        <div style="font-size:13px;color:#525252;margin-top:3px">{{ladderTitle}}</div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-top:12px">
+          <span class="num" style="font-size:34px;font-weight:600;letter-spacing:-0.03em;line-height:36px">{{position}}</span>
+          <span style="font-size:13px;color:#525252">of {{total}} · seen by about</span>
+          <span class="num" style="font-size:15px;font-weight:600;color:#cb882e">{{eta}}</span>
+        </div>
+      </div>
+
+      <div style="flex-grow:1;overflow-y:auto;padding:8px 12px 16px">
+        <sc-for list="{{ladder}}" as="row" hint-placeholder-count="8">
+          <sc-if value="{{row.isBand}}" hint-placeholder-val="{{false}}">
+            <div style="display:flex;align-items:center;gap:8px;padding:12px 8px 5px">
+              <span style="width:3px;height:12px;border-radius:2px;background:{{row.colour}}"></span>
+              <span style="font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:{{row.colour}}">{{row.label}}</span>
+              <span style="font-size:11px;color:#a1a1a1">{{row.count}}</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{row.isPatient}}" hint-placeholder-val="{{true}}">
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:{{row.bg}};border:{{row.outline}};margin-bottom:2px">
+              <span class="num" style="width:34px;font-size:15px;font-weight:600;color:{{row.tokenFg}};text-align:right">{{row.token}}</span>
+              <div style="display:flex;flex-direction:column;gap:1px;min-width:0;flex-grow:1">
+                <span style="font-size:13px;font-weight:{{row.weight}};color:{{row.nameFg}};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{row.name}}</span>
+                <span style="font-size:11px;color:#737373;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{row.meta}}</span>
+              </div>
+              <span class="num" style="font-size:12px;color:#737373">{{row.wait}}</span>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+
+      <div style="flex-shrink:0;border-top:1px solid #e5e5e5;padding:12px 20px;background:#ffffff">
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373;margin-bottom:7px">Priority ladder</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:7px;font-size:12px;color:#525252"><span style="width:8px;height:8px;border-radius:2px;background:#e7000b"></span>Danger vitals — jumps everything</div>
+          <div style="display:flex;align-items:center;gap:7px;font-size:12px;color:#525252"><span style="width:8px;height:8px;border-radius:2px;background:#218cb5"></span>Returned with results — first-come among themselves</div>
+          <div style="display:flex;align-items:center;gap:7px;font-size:12px;color:#525252"><span style="width:8px;height:8px;border-radius:2px;background:#cb882e"></span>Appointment due within the slot</div>
+          <div style="display:flex;align-items:center;gap:7px;font-size:12px;color:#525252"><span style="width:8px;height:8px;border-radius:2px;background:#a1a1a1"></span>Walk-in — first-come</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  cur() { return this.state || { target: "rao", visit: "walkin" }; }
+  put(patch) { this.setState(Object.assign({}, this.cur(), patch)); }
+
+  book() {
+    return {
+      genmed: {
+        dept: "General Medicine", floor: "1st floor · Block A", tag: "BEST FIT",
+        tagBg: "#171717", tagFg: "#fafafa", deptQ: 22, deptWait: 46,
+        doctors: [
+          { id: "rao",  name: "Dr Anand Rao",   sub: "MD General Medicine · 18 y",  room: "104", q: 12, wait: 55, status: "In",       ok: true },
+          { id: "maan", name: "Dr Gurdas Maan", sub: "MD General Medicine · 9 y",   room: "106", q: 10, wait: 42, status: "In",       ok: true }
+        ]
+      },
+      community: {
+        dept: "Community Medicine", floor: "Ground floor · Block C", tag: "ALSO TREATS",
+        tagBg: "#f5f5f5", tagFg: "#525252", deptQ: 6, deptWait: 15,
+        doctors: [
+          { id: "priya", name: "Dr S. Priyadarshini", sub: "MD Community Medicine · 6 y", room: "G-12", q: 6, wait: 15, status: "In", ok: true }
+        ]
+      }
+    };
+  }
+
+  /* Every doctor's live ladder, ordered by the four priority classes the kernel already
+     computes (opd.queueClass 0..4). Muskan is inserted into whichever class her visit type
+     puts her in — that insertion IS the thing the counter cannot see today. */
+  ladders() {
+    return {
+      rao: [
+        { band: "Danger vitals",         colour: "#e7000b", rows: [
+          { token: 41, name: "Sunil Mahto",   meta: "62 M · BP 178/104 · flagged 10:52", wait: "26 min" } ] },
+        { band: "Returned with results", colour: "#218cb5", rows: [
+          { token: 38, name: "Raju Singh",    meta: "45 M · X-ray + CBC in hand",        wait: "22 min" },
+          { token: 43, name: "Nisha Kumari",  meta: "31 F · LFT in hand",                wait: "9 min"  } ] },
+        { band: "Appointment due",       colour: "#cb882e", rows: [
+          { token: 44, name: "P. Venkatesan", meta: "58 M · 11:15 slot",                 wait: "3 min"  },
+          { token: 46, name: "Asha Devi",     meta: "40 F · 11:30 slot",                 wait: "—"      },
+          { token: 48, name: "Imran Sheikh",  meta: "27 M · 11:45 slot",                 wait: "—"      } ] },
+        { band: "Walk-in",               colour: "#a1a1a1", rows: [
+          { token: 45, name: "Kamlesh Yadav", meta: "36 M · fever",                      wait: "14 min" },
+          { token: 47, name: "Rekha Sharma",  meta: "52 F · joint pain",                 wait: "11 min" },
+          { token: 49, name: "Md. Sabir",     meta: "23 M · headache",                   wait: "7 min"  },
+          { token: 50, name: "Preeti Ranjan", meta: "34 F · acidity",                    wait: "5 min"  },
+          { token: 51, name: "Bhola Paswan",  meta: "61 M · weakness",                   wait: "3 min"  },
+          { token: 52, name: "Anita Kumari",  meta: "29 F · cough",                      wait: "1 min"  } ] }
+      ],
+      maan: [
+        { band: "Returned with results", colour: "#218cb5", rows: [
+          { token: 40, name: "Farhan Ali",    meta: "38 M · USG in hand",                wait: "18 min" } ] },
+        { band: "Appointment due",       colour: "#cb882e", rows: [
+          { token: 42, name: "Sarita Jha",    meta: "47 F · 11:15 slot",                 wait: "4 min"  },
+          { token: 53, name: "Dinesh Kumar",  meta: "55 M · 11:30 slot",                 wait: "—"      } ] },
+        { band: "Walk-in",               colour: "#a1a1a1", rows: [
+          { token: 54, name: "Guddi Devi",    meta: "44 F · body ache",                  wait: "12 min" },
+          { token: 55, name: "Ravi Shankar",  meta: "30 M · sore throat",                wait: "9 min"  },
+          { token: 56, name: "Sunita Raj",    meta: "26 F · fever",                      wait: "6 min"  },
+          { token: 57, name: "Ajay Mandal",   meta: "48 M · cough",                      wait: "4 min"  },
+          { token: 58, name: "Neha Gupta",    meta: "22 F · cold",                       wait: "3 min"  },
+          { token: 59, name: "Rakesh Roshan", meta: "39 M · fever",                      wait: "2 min"  },
+          { token: 60, name: "Laxmi Devi",    meta: "66 F · giddiness",                  wait: "1 min"  } ] }
+      ],
+      priya: [
+        { band: "Walk-in", colour: "#a1a1a1", rows: [
+          { token: 12, name: "Sanjay Oraon",  meta: "33 M · fever",                      wait: "13 min" },
+          { token: 13, name: "Pinky Kumari",  meta: "19 F · cough",                      wait: "10 min" },
+          { token: 14, name: "Mahesh Sah",    meta: "51 M · cough",                      wait: "8 min"  },
+          { token: 15, name: "Rani Khatoon",  meta: "42 F · fever",                      wait: "5 min"  },
+          { token: 16, name: "Vikas Kumar",   meta: "28 M · body ache",                  wait: "3 min"  },
+          { token: 17, name: "Sita Devi",     meta: "59 F · cough",                      wait: "1 min"  } ] }
+      ]
+    };
+  }
+
+  resolve(s) {
+    const book = this.book();
+    if (s.target === "genmed" || s.target === "community") {
+      const g = book[s.target];
+      const best = g.doctors.slice().sort(function (a, b) { return a.q - b.q; })[0];
+      return { doctorId: best.id, doctor: best, dept: g.dept, auto: true };
+    }
+    for (const key in book) {
+      const hit = book[key].doctors.filter(function (d) { return d.id === s.target; })[0];
+      if (hit) return { doctorId: hit.id, doctor: hit, dept: book[key].dept, auto: false };
+    }
+    return { doctorId: "rao", doctor: book.genmed.doctors[0], dept: "General Medicine", auto: false };
+  }
+
+  renderVals() {
+    const self = this;
+    const s = this.cur();
+    const book = this.book();
+    const chosen = this.resolve(s);
+
+    /* ── the two result cards ─────────────────────────────────────────── */
+    const groups = ["genmed", "community"].map(function (key) {
+      const g = book[key];
+      const deptSel = s.target === key;
+      const childSel = g.doctors.some(function (d) { return d.id === s.target; });
+      return {
+        dept: g.dept, floor: g.floor, tag: g.tag, tagBg: g.tagBg, tagFg: g.tagFg,
+        deptQ: g.deptQ, deptWait: g.deptWait,
+        border: deptSel || childSel ? "#171717" : "#e5e5e5",
+        headBg: deptSel ? "#f5f5f5" : "#ffffff",
+        dotBorder: deptSel ? "5px solid #171717" : "1px solid #d4d4d4",
+        dotFill: deptSel ? "#171717" : "#ffffff",
+        dotInner: "transparent",
+        pick: function () { self.put({ target: key }); },
+        doctors: g.doctors.map(function (d) {
+          const sel = s.target === d.id;
+          return {
+            name: d.name, sub: d.sub, room: d.room, q: d.q, wait: d.wait, status: d.status,
+            weight: sel ? "600" : "500",
+            rowBg: sel ? "#f5f5f5" : "#ffffff",
+            dotBorder: sel ? "4px solid #171717" : "1px solid #d4d4d4",
+            dotFill: sel ? "#171717" : "#ffffff",
+            dotInner: "transparent",
+            statusBg: d.ok ? "rgba(49,143,90,0.10)" : "#f5f5f5",
+            statusFg: d.ok ? "#318f5a" : "#737373",
+            pick: function () { self.put({ target: d.id }); }
+          };
+        })
+      };
+    });
+
+    /* ── visit type ───────────────────────────────────────────────────── */
+    const types = [
+      { id: "walkin",  label: "Walk-in" },
+      { id: "revisit", label: "Returned with results" },
+      { id: "appt",    label: "Appointment due" }
+    ];
+    const visitTypes = types.map(function (v) {
+      const sel = s.visit === v.id;
+      return {
+        label: v.label,
+        bg: sel ? "#171717" : "#ffffff",
+        fg: sel ? "#fafafa" : "#0a0a0a",
+        border: sel ? "#171717" : "#e5e5e5",
+        pick: function () { self.put({ visit: v.id }); }
+      };
+    });
+
+    /* ── build the ladder with her ghost row inserted ─────────────────── */
+    const bandFor = { walkin: "Walk-in", revisit: "Returned with results", appt: "Appointment due" };
+    const targetBand = bandFor[s.visit];
+    const src = this.ladders()[chosen.doctorId] || [];
+    const ladder = [];
+    let placed = false, seen = 0, position = 0, total = 0;
+
+    src.forEach(function (b) { total += b.rows.length; });
+    total += 1;
+
+    src.forEach(function (b) {
+      const isTarget = b.band === targetBand;
+      ladder.push({
+        isBand: true, isPatient: false, label: b.band, colour: b.colour,
+        count: String(b.rows.length + (isTarget ? 1 : 0))
+      });
+      b.rows.forEach(function (r) {
+        seen += 1;
+        ladder.push({
+          isBand: false, isPatient: true, token: String(r.token), name: r.name, meta: r.meta,
+          wait: r.wait, bg: "#ffffff", outline: "1px solid #e5e5e5",
+          tokenFg: "#525252", nameFg: "#0a0a0a", weight: "500"
+        });
+      });
+      if (isTarget) {
+        placed = true;
+        position = seen + 1;
+        ladder.push({
+          isBand: false, isPatient: true, token: "—", name: "Muskan Arora  ← lands here",
+          meta: "28 F · cough, fever · not yet in the queue", wait: "now",
+          bg: "rgba(33,140,181,0.08)", outline: "1px dashed #218cb5",
+          tokenFg: "#218cb5", nameFg: "#218cb5", weight: "600"
+        });
+      }
+    });
+    if (!placed) {
+      position = seen + 1;
+      ladder.push({ isBand: true, isPatient: false, label: targetBand, colour: "#a1a1a1", count: "1" });
+      ladder.push({
+        isBand: false, isPatient: true, token: "—", name: "Muskan Arora  ← lands here",
+        meta: "28 F · cough, fever · not yet in the queue", wait: "now",
+        bg: "rgba(33,140,181,0.08)", outline: "1px dashed #218cb5",
+        tokenFg: "#218cb5", nameFg: "#218cb5", weight: "600"
+      });
+    }
+
+    const eta = Math.max(4, Math.round((position - 1) * 4.5));
+
+    /* ── the sentence that explains the pick ──────────────────────────── */
+    let note;
+    if (chosen.auto) {
+      note = "Department chosen, so the system picks the shortest queue: " + chosen.doctor.name +
+             " (" + chosen.doctor.q + " waiting) over the other consultant in " + chosen.dept + ". " +
+             "Click a doctor instead to pin one — do that when the patient asks for them by name.";
+    } else {
+      note = chosen.doctor.name + " pinned by name. " + chosen.dept + " has a shorter queue elsewhere, " +
+             "but the patient asked for this consultant, so the auto-pick is off.";
+    }
+
+    const free = s.visit === "revisit";
+
+    return {
+      groups: groups,
+      visitTypes: visitTypes,
+      note: note,
+      fee: free ? "Free" : "₹300",
+      feeLabel: free ? "Within the 14-day follow-up window —" : "Consultation fee",
+      ladderTitle: chosen.doctor.name + " · Room " + chosen.doctor.room + " · " + chosen.dept,
+      position: String(position),
+      total: String(total),
+      eta: eta + " min",
+      ladder: ladder,
+      summary: "Token prints with room, doctor, amount and the QR the vitals desk scans."
+    };
+  }
+}
+</script>
+</body>
+</html>
