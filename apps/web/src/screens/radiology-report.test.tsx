@@ -121,3 +121,34 @@ it("`Sign` is disabled until a draft exists — a signature needs something to s
   await screen.findByText(/X2608310001/);
   expect(screen.getByRole("button", { name: "Sign" })).toBeDisabled();
 });
+
+/**
+ * 18b T4 / D7 — "Start from template" asks the SERVER to propose: the drafted technique is shown
+ * and rides along on save beside the human's findings; a machine-drafted version is badged in the
+ * chain so a reader can see which draft a machine wrote (§6.8).
+ */
+it("18b T4: proposing fills technique from the server, saves it alongside the human's findings, and badges the machine draft", async () => {
+  mockRoutes({
+    "GET /api/radiology/studies/S1": {
+      status: 200,
+      body: { study: { ...STUDY, reports: [{ id: "r1", version: 1, status: "draft", publishedAt: null, machineDrafted: true }] } },
+    },
+    "POST /api/radiology/studies/S1/reports/propose": {
+      status: 201, body: { reportId: "r1", version: 1, templateKey: "usg", provenance: { drafter: "offline_template" } },
+    },
+    "GET /api/radiology/reports/r1": {
+      status: 200,
+      body: { report: { reportId: "r1", body: { technique: "Ultrasound of the abdomen.", findings: "" }, impression: null } },
+    },
+    "POST /api/radiology/studies/S1/reports/draft": { status: 201, body: { reportId: "r2", version: 2 } },
+  });
+  renderWithProviders(<RadiologyReport />);
+  expect(await screen.findByTestId("version-1")).toHaveTextContent(/machine-drafted/);
+  await userEvent.click(screen.getByRole("button", { name: /start from template/i }));
+  expect(await screen.findByTestId("technique")).toHaveTextContent("Ultrasound of the abdomen.");
+  expect(await screen.findByRole("status")).toHaveTextContent(/offline_template/);
+  await userEvent.type(screen.getByLabelText(/findings/i), "Normal study.");
+  await userEvent.click(screen.getByRole("button", { name: /^save/i }));
+  const saved = sent.find((b) => (b as { body?: { technique?: string } }).body?.technique !== undefined) as { body: Record<string, string> };
+  expect(saved.body).toEqual({ technique: "Ultrasound of the abdomen.", findings: "Normal study." });
+});

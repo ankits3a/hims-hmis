@@ -1642,8 +1642,29 @@
       "myCollections": "My collections",
       "collected": "Collected",
       "receipts": "Receipts",
-      "cash": "Cash"
-    }
+      "cash": "Cash",
+        "noDrawer": "No drawer open",
+        "float": "Opening float",
+        "expectedCash": "Cash the drawer should hold"
+    },
+      "patients": {
+        "registration": "Registration",
+        "registered": "Registered by me",
+        "noMobile": "Without a mobile",
+        "duplicatesPending": "Duplicates flagged",
+        "cameBack": "What came back — last 30 days",
+        "duplicatesConfirmed": "Turned out to be duplicates",
+        "noMobileMonth": "Registered without a mobile",
+        "amendedWeek": "Amended within a week"
+      },
+      "appointments": {
+        "title": "Appointments",
+        "dueToday": "Due today",
+        "checkedIn": "Checked in",
+        "missed": "Missed so far",
+        "needsRebooking": "Need rebooking",
+        "rebookRow": "patients to rebook — doctor on leave"
+      }
   },
   "report": {
     "opd": {
@@ -1729,7 +1750,8 @@
       "plain": "{{total}} collected.",
       "compared": "{{total}} collected, against a median of {{median}}.",
       "drift": "{{total}} collected — {{first}} in the first half, {{second}} in the second."
-    }
+    },
+      "failed": "The brief could not be read — try again, or ask an administrator."
   },
   "staffReports": {
     "title": "Staff reports",
@@ -2150,7 +2172,11 @@
       "versions": "Versions",
       "published": "published",
       "publishedNotified": "Published, and the patient has been notified.",
-      "publishedNoMessage": "Published. No message was sent — the invoice is not settled."
+      "publishedNoMessage": "Published. No message was sent — the invoice is not settled.",
+      "startFromTemplate": "Start from template",
+      "technique": "Technique",
+      "proposed": "Draft proposed by {{drafter}} — technique filled, findings and impression are yours.",
+      "machineDrafted": "machine-drafted"
     },
     "gate": {
       "identity_two_factor": "Identity (two factor)",
@@ -2291,6 +2317,29 @@
       "closing": "Your drawer is locked at close — a billing manager must approve the variance before you can take payment.",
       "closingCover": "Meanwhile a billing manager can cover this counter.",
       "forbidden": "This login cannot hold a cash drawer — a cashier role is needed to take payment here."
+    },
+      "figures": {
+        "door": "your figures",
+        "title": "Your figures",
+        "back": "Back to the counter",
+        "today": "Today so far",
+        "deskFailed": "Your desk could not be read — the figures below may be missing",
+        "cameBack": "What came back",
+        "cameBackHint": "the half of this job nobody measures, and the only half you can act on — last 30 days",
+        "duplicates_one": "{{count}} of your registrations turned out to be a duplicate — an urgent merge for somebody else, a four-hour clock, and a history split in half until it closed.",
+        "duplicates_other": "{{count}} of your registrations turned out to be duplicates — each an urgent merge for somebody else, a four-hour clock, and a history split in half until it closed.",
+        "seeMerges": "See them",
+        "noMobile_one": "{{count}} record you created has no mobile number — a follow-up SMS has nowhere to go. Fix it on the next visit.",
+        "noMobile_other": "{{count}} records you created have no mobile number — follow-up SMS have nowhere to go. Fix them on the next visit.",
+        "amended_one": "{{count}} was amended within a week — almost always a spelling, off an ID at the second visit. Reading the name back before Enter is the whole fix.",
+        "amended_other": "{{count}} were amended within a week — almost always a spelling, off an ID at the second visit. Reading the name back before Enter is the whole fix.",
+        "drawer": "The drawer",
+        "noDrawerRole": "This login holds no drawer — the billing counter collects.",
+        "varianceLine": "Counted at close, against this. A variance is a conversation, not an accusation — but it is always a conversation.",
+        "yourDay": "Your day",
+        "yourDayHint": "the signed document: what you registered, what you took, by tender. Provisional until the day is closed.",
+        "reportFailed": "Your day could not be read — nothing is printed until it can be.",
+        "everyone": "everyone's bookings —"
     }
   }
 }

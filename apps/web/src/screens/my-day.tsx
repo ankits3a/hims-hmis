@@ -31,7 +31,7 @@ import { Button } from "@/components/ui/button";
  * (07a/07b finding: two of them OVERPRINT rather than making two pages). This screen therefore has
  * one printable node containing every section, never one per section.
  */
-function SectionTable({ section }: { section: WireReportSection }): React.ReactElement {
+export function SectionTable({ section }: { section: WireReportSection }): React.ReactElement {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1">
@@ -90,10 +90,13 @@ function SectionTable({ section }: { section: WireReportSection }): React.ReactE
  * — and it says so in a sentence rather than showing a spinner or a row of zeroes. A person whose
  * history is thin should be able to see that that is what they are looking at.
  */
-function BriefPanel({ date }: { date: string }): React.ReactElement {
+export function BriefPanel({ date }: { date: string }): React.ReactElement {
   const { t } = useTranslation();
+  const { actor } = useAuth();
   const [period, setPeriod] = useState<WireBriefPeriod>("week");
-  const brief = useQuery({ queryKey: ["me", "brief", period, date], queryFn: () => fetchBrief(period, date) });
+  // FD-1 CLOSE pass 1 — the actor is in the key: the cache outlives a logout (see counter-figures.tsx)
+  const who = actor?.id ?? "";
+  const brief = useQuery({ queryKey: ["me", "brief", who, period, date], queryFn: () => fetchBrief(period, date), enabled: who !== "" });
 
   return (
     <section className="no-print flex flex-col gap-2 rounded border p-3">
@@ -120,6 +123,7 @@ function BriefPanel({ date }: { date: string }): React.ReactElement {
       </div>
 
       {brief.isPending ? <p className="text-sm text-muted-foreground">{t("app.loading")}</p> : null}
+      {brief.isError ? <p role="alert" className="text-sm">{t("brief.failed")}</p> : null}
 
       {brief.data !== undefined && brief.data.clauses.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("brief.nothingToSay")}</p>
@@ -140,7 +144,8 @@ export function MyDay(): React.ReactElement {
   const [date, setDate] = useState(todayIst());
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
-  const report = useQuery({ queryKey: ["me", "report", date], queryFn: () => fetchReport(date) });
+  const who = actor?.id ?? "";
+  const report = useQuery({ queryKey: ["me", "report", who, date], queryFn: () => fetchReport(date), enabled: who !== "" });
 
   const sections = report.data?.sections ?? [];
   const provisional = report.data?.provisional ?? false;

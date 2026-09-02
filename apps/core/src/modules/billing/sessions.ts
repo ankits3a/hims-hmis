@@ -80,7 +80,7 @@ export async function requireOpenSession(db: Db | Tx, actor: Actor): Promise<Cas
  * so importing it would be a cycle, and copying it a fifth time would be worse. A correlated
  * NOT EXISTS in the query the fold already runs needs neither.
  */
-async function sumCashTendersPaise(tx: Tx, sessionId: string): Promise<number> {
+async function sumCashTendersPaise(tx: Db | Tx, sessionId: string): Promise<number> {
   const rows = await tx
     .select({ total: sql<string>`coalesce(sum(${receiptTenders.amountPaise}), 0)` })
     .from(receiptTenders)
@@ -109,7 +109,7 @@ async function sumCashTendersPaise(tx: Tx, sessionId: string): Promise<number> {
  * exactly, INCLUDING the entered-in-error exclusion: a receipt struck from the ledger takes its
  * change with it, or reversing a mistaken receipt would leave the drawer permanently short.
  */
-async function sumChangeGivenPaise(tx: Tx, sessionId: string): Promise<number> {
+async function sumChangeGivenPaise(tx: Db | Tx, sessionId: string): Promise<number> {
   const rows = await tx
     .select({ total: sql<string>`coalesce(sum(${receipts.changeGivenPaise}), 0)` })
     .from(receipts)
@@ -125,7 +125,7 @@ async function sumChangeGivenPaise(tx: Tx, sessionId: string): Promise<number> {
   return Number(rows[0]?.total ?? 0);
 }
 
-async function sumCashVouchersPaidPaise(tx: Tx, sessionId: string): Promise<number> {
+async function sumCashVouchersPaidPaise(tx: Db | Tx, sessionId: string): Promise<number> {
   const rows = await tx
     .select({ total: sql<string>`coalesce(sum(${refundVouchers.amountPaise}), 0)` })
     .from(refundVouchers)
@@ -150,6 +150,20 @@ async function sumCashVouchersPaidPaise(tx: Tx, sessionId: string): Promise<numb
  * or a second `beginClose` while `closing` -- reports `session_state_conflict` rather than
  * silently double-filing an approval or double-closing.
  */
+/**
+ * FD-1 T3 / D5 — ONE MONEY FORMULA. The cash the drawer should hold RIGHT NOW is the same sum the
+ * close counts against — float + cash tenders − cash vouchers paid − change given, over the live
+ * receipts of this session (entered-in-error excluded). The desk card reads THIS function and the
+ * close reads THIS function; a second arithmetic on the tile would be a figure the cashier could
+ * defend to nobody.
+ */
+export async function liveExpectedCashPaise(exec: Db | Tx, session: Pick<CashierSessionRow, "id" | "openingFloatPaise">): Promise<number> {
+  const cashTenders = await sumCashTendersPaise(exec, session.id);
+  const cashVouchers = await sumCashVouchersPaidPaise(exec, session.id);
+  const changeGiven = await sumChangeGivenPaise(exec, session.id);
+  return expectedCash(session.openingFloatPaise, cashTenders, cashVouchers, changeGiven);
+}
+
 export async function beginClose(
   db: Db,
   actor: Actor,
@@ -168,10 +182,7 @@ export async function beginClose(
     }
 
     const counted = sumDenominations(input.denominations);
-    const cashTenders = await sumCashTendersPaise(tx, session.id);
-    const cashVouchers = await sumCashVouchersPaidPaise(tx, session.id);
-    const changeGiven = await sumChangeGivenPaise(tx, session.id);
-    const expected = expectedCash(session.openingFloatPaise, cashTenders, cashVouchers, changeGiven);
+    const expected = await liveExpectedCashPaise(tx, session);
     const variancePaise = counted - expected;
     const closed = variancePaise === 0;
 

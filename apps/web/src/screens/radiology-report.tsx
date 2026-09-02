@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useParams } from "@tanstack/react-router";
 import {
-  draftReport, fetchStudy, publishReport, radiologyErrorText, signReport,
+  draftReport, fetchReport, fetchStudy, proposeDraft, publishReport, radiologyErrorText, signReport,
 } from "../lib/radiology-api";
 import { Button } from "@/components/ui/button";
 
@@ -34,6 +34,13 @@ export function RadiologyReport(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
+  /**
+   * 18b T4 / D7 — the sections the drafter filled (technique, from the recorded facts). They ride
+   * along on save so a human's edit of `findings` does not drop the machine's `technique`; the
+   * screen shows technique read-only because a human who wants to change it edits the study, not
+   * the sentence.
+   */
+  const [sections, setSections] = useState<Record<string, string>>({});
 
   const study = useQuery({ queryKey: ["radiology", "study", studyId], queryFn: () => fetchStudy(studyId) });
   const refresh = () => qc.invalidateQueries({ queryKey: ["radiology", "study", studyId] });
@@ -54,9 +61,23 @@ export function RadiologyReport(): React.ReactElement {
    * which is the whole defect E3 is about. The report carries the study's side, and `assertSignable`
    * still refuses a disagreement.
    */
+  const propose = useMutation({
+    mutationFn: async () => {
+      const r = await proposeDraft(studyId);
+      const view = await fetchReport(r.reportId);
+      return { ...r, body: (view.report?.body ?? {}) as Record<string, string> };
+    },
+    onSuccess: (r) => {
+      setError(null); setDraftId(r.reportId);
+      setSections(r.body); setFindings(r.body.findings ?? ""); setImpression("");
+      setNote(t("radiology.report.proposed", { drafter: r.provenance.drafter }));
+      void refresh();
+    },
+    onError: (e: unknown) => { setError(radiologyErrorText(e)); },
+  });
   const save = useMutation({
     mutationFn: () => draftReport(studyId, {
-      body: { findings }, impression, laterality: study.data?.study?.laterality ?? null,
+      body: { ...sections, findings }, impression, laterality: study.data?.study?.laterality ?? null,
     }),
     onSuccess: (r) => { setError(null); setDraftId(r.reportId); setNote(t("radiology.report.saved")); void refresh(); },
     onError: (e) => { setError(radiologyErrorText(e)); },
@@ -94,6 +115,12 @@ export function RadiologyReport(): React.ReactElement {
       {error !== null ? <p role="alert" className="text-red-600">{error}</p> : null}
       {note !== null ? <p role="status" className="text-green-700">{note}</p> : null}
 
+      <div className="flex items-center gap-2 text-sm">
+        <Button variant="outline" onClick={() => { propose.mutate(); }}>{t("radiology.report.startFromTemplate")}</Button>
+        {sections.technique !== undefined && sections.technique !== ""
+          ? <span data-testid="technique">{t("radiology.report.technique")}: {sections.technique}</span>
+          : null}
+      </div>
       <label className="flex flex-col text-sm">
         {t("radiology.report.findings")}
         <textarea className="border px-2 py-1" rows={6} value={findings}
@@ -139,6 +166,7 @@ export function RadiologyReport(): React.ReactElement {
               {s.reports.map((v) => (
                 <li key={v.id} data-testid={`version-${String(v.version)}`}>
                   v{v.version} — {v.status}{v.publishedAt === null ? "" : ` · ${t("radiology.report.published")}`}
+                  {v.machineDrafted ? <span className="ml-2 rounded bg-slate-200 px-1">{t("radiology.report.machineDrafted")}</span> : null}
                 </li>
               ))}
             </ul>

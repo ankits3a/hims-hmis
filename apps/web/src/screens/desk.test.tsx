@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { AuthProvider } from "../lib/auth";
@@ -103,6 +103,40 @@ beforeEach(() => {
   vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
 });
 afterEach(() => { setToken(null); vi.unstubAllGlobals(); });
+
+const REGISTRATION = {
+  key: "patients.registration", band: "today", titleKey: "desk.patients.registration",
+  stats: [{ key: "desk.patients.registered", value: "38", href: "/registration" }, { key: "desk.patients.noMobile", value: "2", href: "/registration" }, { key: "desk.patients.duplicatesPending", value: "1", href: "/merge" }],
+};
+const CAME_BACK = {
+  key: "patients.cameBack", band: "today", titleKey: "desk.patients.cameBack",
+  stats: [{ key: "desk.patients.duplicatesConfirmed", value: "3", href: "/merge" }, { key: "desk.patients.noMobileMonth", value: "11", href: "/registration" }, { key: "desk.patients.amendedWeek", value: "8", href: "/registration" }],
+};
+const APPOINTMENTS = {
+  key: "opd.appointments", band: "now", titleKey: "desk.appointments.title", topics: ["queue:doc-1:2026-08-29"],
+  stats: [{ key: "desk.appointments.dueToday", value: "12", href: "/opd/appointments" }, { key: "desk.appointments.needsRebooking", value: "2", href: "/opd/appointments" }],
+  rows: [{ id: "doc-2", badge: "2", title: "Dr Sneha Toppo", subtitle: "desk.appointments.rebookRow", severity: "warn", href: "/opd/appointments" }],
+};
+
+describe("FD-1 T5 — the three tiles on the front door, rendered by the home screen unchanged", () => {
+  it("registration, what came back and appointments render with their words, their figures as doors, and the rebooking doctor as a row", async () => {
+    renderAt("/", [APPOINTMENTS, HALL, REGISTRATION, CAME_BACK, MY_VISITS]);
+    expect(await screen.findByText("Registration")).toBeInTheDocument();
+    expect(screen.getByText("What came back — last 30 days")).toBeInTheDocument();
+    expect(screen.getByText("Appointments")).toBeInTheDocument();
+    // a stat with an href renders as a LINK (A2), so the figure is found by its words
+    const figure = (card: string, value: string): HTMLElement => within(screen.getByTestId(`stats-${card}`)).getByText(value);
+    expect(figure("patients.registration", "38").closest("a")?.getAttribute("href")).toBe("/registration");
+    expect(figure("patients.cameBack", "3").closest("a")?.getAttribute("href")).toBe("/merge");
+    expect(figure("opd.appointments", "12").closest("a")?.getAttribute("href")).toBe("/opd/appointments");
+    expect(screen.getByText("Turned out to be duplicates")).toBeInTheDocument();
+    expect(screen.getByText("Registered by me")).toBeInTheDocument();
+    expect(screen.getByText("Dr Sneha Toppo")).toBeInTheDocument();
+    expect(screen.getByText("patients to rebook — doctor on leave")).toBeInTheDocument();
+    expect(screen.getByTestId("stats-patients.registration")).toBeInTheDocument();
+    expect(screen.getByTestId("stats-opd.appointments")).toBeInTheDocument();
+  });
+});
 
 describe("07c T4 — the desk is the front door", () => {
   it("A1: `/` renders the desk, and NOT the registration screen it used to redirect to", async () => {

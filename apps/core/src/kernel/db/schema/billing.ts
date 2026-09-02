@@ -217,6 +217,9 @@ export const receipts = pgTable("receipts", {
    * whole point of the rollup.
    */
   index("receipts_day_cashier_idx").on(t.serviceDay, t.receivedBy),
+  // FD-1 CLOSE — the drawer's live expected cash sums this session's receipts on every home-screen
+  // load; the close did it once a day and never needed the index.
+  index("receipts_session_idx").on(t.cashierSessionId),
 ]);
 
 /** E-25 lifecycle: captured → reconciled | mismatched. `expected_net_paise` is stamped at CAPTURE. */
@@ -281,7 +284,10 @@ export const refundVouchers = pgTable("refund_vouchers", {
   paidBy: text("paid_by"),
   paidAt: timestamp("paid_at", { withTimezone: true }),
   cashierSessionId: text("cashier_session_id"), // set when a cash voucher is paid from a drawer
-});
+}, (t) => [
+  // FD-1 CLOSE — the drawer sums this session's cash vouchers on every home-screen load.
+  index("refund_vouchers_session_idx").on(t.cashierSessionId),
+]);
 
 export const cashierSessions = pgTable(
   "cashier_sessions",
