@@ -2196,11 +2196,57 @@ export function RegisterPanel({
           className="mt-3 space-y-2 rounded-md border border-state-waiting/50 bg-state-waiting/10 p-3"
         >
           <p className="font-medium">{t("registrationCounter.register.duplicateWarning")}</p>
-          <ul className="space-y-1">
+          {/*
+            ═══ FD-7 T1 — THE ROW HAS TO ANSWER THE QUESTION IT IS ASKING ═══
+
+            This list used to be a name and a UHID. FD-6 measured what that costs on the SEARCH row
+            (eight "Ramesh Kumar"s told apart by an eleven-character number the patient cannot
+            recite) and fixed it there; the same list survived here, on the one surface where being
+            unable to tell two people apart creates the duplicate record instead of merely picking
+            the wrong chart. So this row is the search row's twin, deliberately: the same fields, in
+            the same order, with the same separators and the same reason chips.
+          */}
+          <ul className="space-y-2">
             {duplicates.map((c) => (
-              <li key={c.id} data-testid={`reg-dup-${c.id}`} className="flex flex-wrap items-baseline gap-x-3">
-                <span className="font-semibold">{c.name ?? "—"}</span>
-                <span className="font-mono text-xs text-muted-foreground">{c.uhid}</span>
+              <li key={c.id} data-testid={`reg-dup-${c.id}`}>
+                <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span data-testid={`reg-dup-name-${c.id}`} className="font-semibold">{c.name ?? "—"}</span>
+                  <span data-testid={`reg-dup-uhid-${c.id}`} className="font-mono text-xs text-muted-foreground">{c.uhid}</span>
+                  {/* No phone on file renders NO node — an empty span beside a filled one reads as a blank value. */}
+                  {c.phone !== null && (
+                    <span data-testid={`reg-dup-phone-${c.id}`} className="text-sm tabular-nums text-muted-foreground">{c.phone}</span>
+                  )}
+                  <span data-testid={`reg-dup-facts-${c.id}`} className="text-sm text-muted-foreground">
+                    {[
+                      t(`sex.${c.administrativeGender}`, c.administrativeGender),
+                      ageFromDob(c.dob) === null ? null : t("registrationCounter.dossier.age", { years: ageFromDob(c.dob) }),
+                    ].filter((x): x is string => x !== null).join(" · ")}
+                  </span>
+                  {/*
+                    The flag is a MARKER, not the access control: `searchPatients` already refuses
+                    confidential rows to a clerk without `patients.confidential.read`, so a row that
+                    reached this list is one they may see — and one they should handle as such.
+                  */}
+                  {c.isConfidential && (
+                    <span
+                      data-testid={`reg-dup-confidential-${c.id}`}
+                      className="rounded-full border border-state-danger/40 px-2 py-0.5 text-[11px] font-medium text-state-danger"
+                    >
+                      {t("patient.confidentialBadge")}
+                    </span>
+                  )}
+                </span>
+                {/* WHY this row is a candidate — reasons, never a score (D6), through the search row's own helper. */}
+                <span data-testid={`reg-dup-why-${c.id}`} className="mt-1 flex flex-wrap gap-1">
+                  {matchReasonKeys(c.matchedOn).map((key) => (
+                    <span
+                      key={key} data-testid={`reg-dup-reason-${c.id}`}
+                      className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground"
+                    >
+                      {t(key)}
+                    </span>
+                  ))}
+                </span>
               </li>
             ))}
           </ul>

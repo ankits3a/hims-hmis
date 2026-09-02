@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   Dossier, FindPanel, QueuesOverlay, QuotePanel, RegistrationCounter, SEAT_TENDER_ORDER, WaitLine,
@@ -1288,6 +1288,123 @@ describe("RC-4 T1 — registering in place, and the duplicate that must not be a
     // duplicate lane — and the clerk still gets a message rather than silence.
     expect(await screen.findByTestId("reg-error")).toBeTruthy();
     expect(acknowledged).toBeUndefined();
+  });
+});
+
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════
+   FD-7 T1 — THE DUPLICATE LIST A CLERK CAN ACTUALLY READ
+   ════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The 409 lane had NO test that rendered it. The suite's one duplicate test throws a plain Error,
+ * which is not an `ApiError`, so it asserts the ERROR branch and `reg-duplicates` has never been on
+ * screen in a test. That is how a list of five identical-looking names survives a green suite —
+ * exactly FD-6's finding, one surface along.
+ *
+ * `stubFetch` always answers 200, so this stubs `fetch` directly: the panel's duplicate branch is
+ * reached only by a real 409 whose body carries `detail.candidates`.
+ */
+describe("FD-7 T1 — five rows reading the same name, told apart", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setToken("test-token");
+  });
+
+  const ME = { actor: { type: "user", id: "u-fd7" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } };
+
+  const CANDIDATES = [
+    {
+      id: "p-1", uhid: "U00110012", name: "Ramesh Kale", phone: "9876540002",
+      administrativeGender: "male", dob: "1982-04-11", isConfidential: false, matchedOn: ["mobile", "name"],
+    },
+    {
+      id: "p-2", uhid: "U00110029", name: "Ramesh Kale", phone: "9811110000",
+      administrativeGender: "male", dob: "1996-01-20", isConfidential: false, matchedOn: ["name"],
+    },
+    {
+      id: "p-3", uhid: "U00110036", name: "Ramesh Kale", phone: null,
+      administrativeGender: "female", dob: null, isConfidential: true, matchedOn: ["name"],
+    },
+  ];
+
+  function stubWithDuplicates(): void {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input instanceof URL ? input.pathname : input.url;
+      const key = `${init?.method ?? "GET"} ${path.split("?")[0]}`;
+      if (key === "POST /api/opd/walk-in") {
+        return new Response(
+          JSON.stringify({ code: "duplicate_suspected", detail: { candidates: CANDIDATES } }),
+          { status: 409, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      const table: Record<string, unknown> = {
+        "GET /api/auth/me": ME,
+        "GET /api/opd/queues/summary": { items: [DOC_A] },
+        "GET /api/patients/search": { items: [] },
+        "GET /api/opd/config": QUEUE_FIRST,
+      };
+      if (!(key in table)) return new Response("{}", { status: 404 });
+      return new Response(JSON.stringify(table[key]), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+  }
+
+  async function openTheWarning(): Promise<void> {
+    stubWithDuplicates();
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("find-input"), "zzzz");
+    await user.click(await screen.findByTestId("find-register-new"));
+    await user.type(screen.getByTestId("reg-name"), "Ramesh Kale");
+    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
+    await user.click(screen.getByTestId("reg-submit"));
+    await screen.findByTestId("reg-duplicates");
+  }
+
+  /**
+   * THE KILL. Three rows, one name. If the row carries only name + UHID this passes on presence and
+   * fails here — which is the whole of FD-6's lesson: assert what a human can READ, and assert the
+   * nodes are SEPARATE, never that a testid exists.
+   */
+  it("each candidate row carries phone, sex and age as separate, readable nodes", async () => {
+    await openTheWarning();
+
+    expect(screen.getByTestId("reg-dup-phone-p-1").textContent).toBe("9876540002");
+    expect(screen.getByTestId("reg-dup-phone-p-2").textContent).toBe("9811110000");
+    expect(screen.queryByTestId("reg-dup-phone-p-3")).toBeNull();   // no phone on file — no empty node
+
+    // Sex and age, the two facts a clerk can check against the person standing there.
+    expect(screen.getByTestId("reg-dup-facts-p-1").textContent).toContain("44");
+    expect(screen.getByTestId("reg-dup-facts-p-2").textContent).toContain("30");
+    expect(screen.getByTestId("reg-dup-facts-p-1").textContent)
+      .not.toBe(screen.getByTestId("reg-dup-facts-p-2").textContent);
+
+    // SEPARATION: the name and the UHID are distinct nodes, not one run-together string.
+    expect(screen.getByTestId("reg-dup-name-p-1").textContent).toBe("Ramesh Kale");
+    expect(screen.getByTestId("reg-dup-uhid-p-1").textContent).toBe("U00110012");
+  });
+
+  /** `matchedOn` is why this row is in front of the clerk — the same chips the search row wears. */
+  it("the row says WHY it is a candidate, and the both-lanes row says so", async () => {
+    await openTheWarning();
+    const why1 = within(screen.getByTestId("reg-dup-why-p-1")).getAllByTestId("reg-dup-reason-p-1");
+    // Asserted as the VISIBLE TEXT, not the key: what the clerk reads is the thing under test (D9).
+    expect(why1.map((n) => n.textContent)).toEqual(["same mobile", "same name"]);
+    const why2 = within(screen.getByTestId("reg-dup-why-p-2")).getAllByTestId("reg-dup-reason-p-2");
+    expect(why2.map((n) => n.textContent)).toEqual(["same name"]);
+  });
+
+  /** A confidential candidate the clerk MAY see is marked, so the row is handled as one. */
+  it("a confidential candidate wears its marker", async () => {
+    await openTheWarning();
+    expect(screen.getByTestId("reg-dup-confidential-p-3")).toBeTruthy();
+    expect(screen.queryByTestId("reg-dup-confidential-p-1")).toBeNull();
+  });
+
+  /** The way through is unchanged: the warning is a question, never a gate (DD8). */
+  it("the clerk can still register anyway", async () => {
+    await openTheWarning();
+    expect(screen.getByTestId("reg-acknowledge")).toBeTruthy();
   });
 });
 

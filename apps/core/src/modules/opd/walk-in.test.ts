@@ -6,6 +6,7 @@ import { patients } from "../../kernel/db/schema";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { walkIn } from "./walk-in";
+import type { DuplicateCandidate } from "./walk-in";
 import { OpdError } from "./errors";
 import type { Db } from "../../kernel/db/client";
 
@@ -113,6 +114,48 @@ describe("walk-in (07b T6)", () => {
     const detail = (err as OpdError).detail as { candidates: { uhid: string }[] };
     expect(detail.candidates.length).toBeGreaterThan(0);
     expect(await patientCount()).toBe(1); // the existing one only — nothing was written
+  });
+
+  /**
+   * ═══ FD-7 T1 — A CANDIDATE THE CLERK CAN ACTUALLY TELL APART ═══
+   *
+   * The warning above fires correctly and then hands the clerk five rows that all read "Ramesh
+   * Kale" and a UHID they have never been told. That is FD-6's search-row defect again, on a
+   * strictly worse surface: this is the exact moment somebody decides whether to create a second
+   * medical record for a person who already has one.
+   *
+   * Nothing here is new data. `nearMatches` already calls `searchPatients`, whose hits carry the
+   * phone, the sex, the date of birth and the LANES THAT MATCHED — and the old literal threw all
+   * of it away into `{id, uhid, name}`. `matchedOn` is the one that turns the list from a lineup
+   * into an answer: "same mobile" tells the clerk why this row is in front of them.
+   */
+  it("FD-7 T1: the candidate carries phone, sex, dob and the lanes that matched", async () => {
+    await mkPatient(db, clerk.actor, { name: "Ramesh Kale", phone: "9876540002", sex: "male", ageYears: 44 });
+    const err = await walk().catch((e: unknown) => e);
+    expect((err as OpdError).code).toBe("duplicate_suspected");
+    const [candidate] = ((err as OpdError).detail as { candidates: DuplicateCandidate[] }).candidates;
+    expect(candidate).toBeDefined();
+    expect(candidate!.phone).toBe("9876540002");
+    expect(candidate!.administrativeGender).toBe("male");
+    expect(candidate!.dob).not.toBeNull();          // ageYears 44 is stored as an estimated dob
+    expect(candidate!.isConfidential).toBe(false);
+    // The probes are the phone AND the name, so both lanes fired on this row.
+    expect([...candidate!.matchedOn].sort()).toEqual(["mobile", "name"]);
+  });
+
+  /**
+   * The privacy half. `searchPatients` already refuses confidential rows to an actor without
+   * `patients.confidential.read`, so a candidate that arrives here is one this clerk may see — but
+   * the flag travels so the seat can MARK the row rather than render it like any other.
+   */
+  it("FD-7 T1: a confidential near-match is not offered to a clerk who may not see it", async () => {
+    await mkPatient(db, clerk.actor, {
+      name: "Ramesh Kale", phone: "9876540002", isConfidential: true, alias: "Blue Heron",
+    });
+    const err = await walk().catch((e: unknown) => e);
+    // No visible candidate at all — so the registration goes through rather than warning about a
+    // patient this clerk cannot be shown.
+    expect(err).not.toBeInstanceOf(OpdError);
   });
 
   it("DD8b: acknowledging the warning registers anyway", async () => {

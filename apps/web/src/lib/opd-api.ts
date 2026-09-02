@@ -1,4 +1,5 @@
 import { api, ApiError } from "./api";
+import type { WireMatchLane } from "./patients-api";
 
 /**
  * The OPD wire contract, shared by all six Plan 07 screens (the plan's File Structure names this file
@@ -397,8 +398,24 @@ export type WireWalkInDeferredResult = Omit<WireOpenVisitResult, "queueEntry" | 
   queueEntry: null; tokenNo: null; sessionId: null; patientId: string; registered: boolean;
 };
 
-/** The near-matches a refused registration comes back with (`duplicate_suspected`). */
-export type WireDuplicateCandidate = { id: string; uhid: string; name: string | null };
+/**
+ * The near-matches a refused registration comes back with (`duplicate_suspected`).
+ *
+ * FD-7 T1 — this was `{id, uhid, name}`, which put five rows reading "Ramesh Kale" in front of the
+ * clerk at the exact moment they decide whether to create a second medical record. Every field
+ * added below was already in the server's hand (`walk-in.ts` calls `searchPatients`); `matchedOn`
+ * renders through the same `matchReasonKeys` the search row uses, so a candidate says WHY it is one.
+ */
+export type WireDuplicateCandidate = {
+  id: string;
+  uhid: string;
+  name: string | null;
+  phone: string | null;
+  administrativeGender: string;
+  dob: string | null;
+  isConfidential: boolean;
+  matchedOn: WireMatchLane[];
+};
 
 /**
  * RC-4 T2 — the overloads say which shape comes back, so a bill-first caller cannot read `tokenNo`

@@ -1,5 +1,6 @@
 import { withIdempotency } from "../billing";
 import { listMergedLoserIds, registerPatient, resolvePatientId, searchPatients } from "../patients";
+import type { MatchLane } from "../patients";
 import { withTx } from "../../kernel/db/client";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { openVisitInTx } from "./encounters";
@@ -50,7 +51,34 @@ export type WalkInInput = Omit<OpenVisitInput, "patientId"> & {
   acknowledgedDuplicates?: boolean;
 };
 
-export type DuplicateCandidate = { id: string; uhid: string; name: string | null };
+/**
+ * ═══ FD-7 T1 — WHAT A CLERK NEEDS IN ORDER TO ANSWER THE QUESTION THEY ARE BEING ASKED ═══
+ *
+ * This used to be `{id, uhid, name}`, and FD-6 had already proved on 10,000 patients why that is
+ * not enough: a list of rows reading "Ramesh Kale" beside an eleven-character UHID the patient
+ * cannot recite tells the clerk nothing they can check against the person in front of them. Here it
+ * matters more than it did on the search row, because this list is shown at the one moment somebody
+ * decides whether to create a SECOND medical record for a person who already has one.
+ *
+ * Every field below was already in `nearMatches`'s hand and thrown away — this is the display
+ * subset of `PatientSearchResult`, minus `hasPhoto` (the bytes are a second round trip). `matchedOn`
+ * is the one that changes the list from a lineup into an answer: the seat renders it through the
+ * same `matchReasonKeys` the search row uses, so a candidate says *why* it is a candidate.
+ *
+ * `isConfidential` travels so the seat can MARK the row. It is not the access control — that is
+ * `searchPatients`, which refuses confidential rows to an actor without `patients.confidential.read`
+ * before they ever reach this type, and `walk-in.test.ts` pins it.
+ */
+export type DuplicateCandidate = {
+  id: string;
+  uhid: string;
+  name: string | null;
+  phone: string | null;
+  administrativeGender: string;
+  dob: Date | null;
+  isConfidential: boolean;
+  matchedOn: MatchLane[];
+};
 
 export type WalkInResult = OpenVisitResult & {
   patientId: string;
@@ -80,7 +108,23 @@ async function nearMatches(db: Db, actor: Actor, input: RegisterPatientInput): P
   const seen = new Map<string, DuplicateCandidate>();
   for (const probe of probes) {
     for (const hit of await searchPatients(db, actor, probe, 5)) {
-      seen.set(hit.id, { id: hit.id, uhid: hit.uhid, name: hit.name });
+      /*
+       * FD-7 T1 — THE LANES ARE UNIONED ACROSS PROBES, NOT OVERWRITTEN.
+       *
+       * This loop runs `searchPatients` once per probe (the phone, then the name), and each call
+       * reports only the lanes ITS OWN query fired. A bare `set` therefore kept whichever probe ran
+       * LAST, so the person who matches on both — the most likely duplicate in the list, and the
+       * only one the clerk should hesitate over — was labelled "same name" and never "same mobile".
+       * The stronger signal was the one being dropped. Widening the type is what exposed this; the
+       * old `{id, uhid, name}` had nowhere for it to show.
+       */
+      const before = seen.get(hit.id);
+      seen.set(hit.id, {
+        id: hit.id, uhid: hit.uhid, name: hit.name, phone: hit.phone,
+        administrativeGender: hit.administrativeGender, dob: hit.dob,
+        isConfidential: hit.isConfidential,
+        matchedOn: [...new Set([...(before?.matchedOn ?? []), ...hit.matchedOn])],
+      });
     }
   }
   return [...seen.values()];
