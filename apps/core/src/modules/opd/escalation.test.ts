@@ -225,4 +225,31 @@ describe("VD-1 T3 — recheck, the double confirm, and the ten seconds", () => {
     const cancelled = (await db.select().from(events).where(eq(events.name, "queue.escalation_cancelled")))[0]!;
     expect((cancelled.payload as { restoredClass: number }).restoredClass).toBe(0);
   });
+
+  // ═══ VD-2 CLOSE, pass 1 — the confirm is the SAME vital re-measured; a calm other arm withdraws ═══
+
+  it("CLOSE/pass1: a calm other arm WITHDRAWS the demand — state back to none, its own event, and the next danger needs a fresh demand", async () => {
+    const enc = await walkIn();
+    await demandRecheck(db, vd.actor, enc, DANGER, MON);
+    const view = await escalate(db, vd.actor, enc, CALM, MON);
+    expect(view.state).toBe("none");
+    expect((await entryOf(enc)).escalation).toBe("none");
+    expect(await classNow(enc)).toBe(3);
+    expect(await db.select().from(events).where(eq(events.name, "vitals.recheck_withdrawn"))).toHaveLength(1);
+    await expect(escalate(db, vd.actor, enc, WORSE, MON)).rejects.toMatchObject({ code: "escalation_state_conflict" });
+  });
+
+  it("CLOSE/pass1: two single readings of DIFFERENT vitals are not a double confirm; a copied cuff reading with a new temperature is still a replay", async () => {
+    const enc = await walkIn();
+    await demandRecheck(db, vd.actor, enc, { ...CALM, pulse: 125 }, MON);            // pulse demanded
+    await expect(escalate(db, vd.actor, enc, { ...CALM, pulse: 80, spo2: 85 }, MON))  // a different vital
+      .rejects.toMatchObject({ code: "escalation_state_conflict" });
+    expect(await classNow(enc)).toBe(3);
+    const enc2 = await walkIn();
+    await demandRecheck(db, vd.actor, enc2, DANGER, MON);
+    await expect(escalate(db, vd.actor, enc2, { ...DANGER, tempC: 37.4 }, MON))      // same cuff numbers, new temperature
+      .rejects.toMatchObject({ code: "escalation_state_conflict" });
+    expect(await classNow(enc2)).toBe(3);
+    expect((await escalate(db, vd.actor, enc2, WORSE, MON)).state).toBe("escalated");
+  });
 });

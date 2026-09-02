@@ -503,6 +503,28 @@ export function changedFields(prior: VitalsRow, next: VitalsRow): { field: strin
   return out;
 }
 
+/**
+ * VD-2 CLOSE / pass-1 MAJOR — THE CHART, FOR THE NURSE WHO MAY CORRECT IT. T0/F6 opened `amend` to
+ * the desk for a confidential patient; the bay then read the chart through `listVitals`, which is
+ * the 07a read gate and answers `[]` without `patients.confidential.read` — so the correction F6
+ * made lawful was unreachable from the screen it was fixed for. The same rule as the write, then:
+ * whoever may amend the chart may read the row they are about to amend, and the read is logged.
+ */
+export async function getVitalsForAmend(db: Db, actor: Actor, vitalsId: string): Promise<VitalsRow | null> {
+  if (actor.type !== "user") throw new OpdError("user_actor_required");
+  const rows = await db.select().from(opdVitals).where(eq(opdVitals.id, vitalsId));
+  const row = rows[0];
+  if (!row) return null;
+  const enc = await getEncounter(db, row.encounterId);
+  if (!enc) return null;
+  const [summary] = await getPatientSummaries(db, actor, [row.patientId]);
+  await recordPhiAccess(db, {
+    actor, patientId: row.patientId, surface: "opd.vitals", encounterId: row.encounterId,
+    sealed: summary?.restricted ?? true, reason: null,
+  });
+  return row;
+}
+
 export async function listVitals(db: Db, actor: Actor, encounterId: string): Promise<VitalsRow[]> {
   // PLAN 07a T1 — an encounter id is not a capability. Same empty answer as an unknown encounter.
   const seen = await visibleEncounterFor(db, actor, encounterId);

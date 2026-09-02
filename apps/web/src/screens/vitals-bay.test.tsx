@@ -47,11 +47,11 @@ const ROW_C: WireBenchRow = {
   benchState: "resting", recallAt: "2026-09-02T04:27:00.000Z", recallDue: true,
 };
 const PRE_A: WirePreStage = {
-  patientId: "P-A", ageYears: 55, band: "adult", required: ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC"], notRoutine: [],
+  patientId: "P-A", ageYears: 55, band: "adult", ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: {}, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC"], notRoutine: [],
   last: { vitalsId: "V-A0", recordedAt: "2026-06-11T04:00:00.000Z", serviceDate: "2026-06-11", heightCm: 151, weightKg: 62, sbp: 132, dbp: 84, pulse: 78, rr: 16, spo2: 98, tempC: 36.8, muacCm: null },
   carryCandidates: ["heightCm"], expectedFlags: [],
 };
-const PRE_B: WirePreStage = { patientId: "P-B", ageYears: 61, band: "adult", required: PRE_A.required, notRoutine: [], last: null, carryCandidates: [], expectedFlags: [] };
+const PRE_B: WirePreStage = { patientId: "P-B", ageYears: 61, band: "adult", ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: {}, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: PRE_A.required, notRoutine: [], last: null, carryCandidates: [], expectedFlags: [] };
 const SUMMARY: WireDoctorSummary[] = [{
   doctor: { id: "D-RAO", userId: "u-rao", displayName: "Dr Nishant Rao", registrationNo: null, departmentId: "DEP-GM", specialty: null, active: true, createdBy: "x", createdAt: "", updatedBy: "x", updatedAt: "" },
   sessionId: "S1", status: "in", waitingCount: 6, waitingVitalsCount: 1, nowServing: 117, scheduledToday: true, roomCode: "3", avgConsultMinutes: 6,
@@ -62,7 +62,6 @@ function stubBay(rows: WireBenchRow[]): void {
     "GET /api/auth/me": { actor: { type: "user", id: "u-vd" }, permissions: { hospital: ["opd.vitals.record", "opd.queue.read", "opd.vitals.history.read"], scoped: { department: {}, floor: {} } } },
     "GET /api/opd/bench": { items: rows },
     "GET /api/opd/queues/summary": { items: SUMMARY },
-    "GET /api/opd/departments": { items: [{ id: "DEP-GM", code: "GM", name: "General Medicine", active: true }] },
     "GET /api/opd/visits/E-A/prestage": PRE_A,
     "GET /api/opd/visits/E-B/prestage": PRE_B,
     "POST /api/patients/qr/verify": (init?: RequestInit) => {
@@ -180,6 +179,7 @@ describe("VD-2 T1 — the ASSEMBLED bay, two patients, three doors (method §5A.
     await waitFor(() => expect(screen.getByTestId("prestage-failed")).toBeInTheDocument());
     expect(screen.queryByTestId("prestage-last")).not.toBeInTheDocument();
     expect(screen.getByTestId("session").textContent).toContain("Patient 4F2");
+    expect(screen.getByTestId("session").textContent).not.toContain("UH-26-00125");   // CLOSE pass 1: alias, never name or UHID
   });
 
   it("subscribes to one queue topic per doctor on the bench, and the root carries the alias-layer attribute", async () => {
@@ -187,6 +187,9 @@ describe("VD-2 T1 — the ASSEMBLED bay, two patients, three doors (method §5A.
     renderWithProviders(<VitalsBay />);
     await waitFor(() => expect(screen.getByTestId("bench-row-125")).toBeInTheDocument());
     expect(screen.getByTestId("vitals-bay").getAttribute("data-seat")).toBe("vitals-bay");
+    // the doctor filter is built from the bench itself — no masters route
+    const doctor = screen.getByTestId("doctor") as HTMLSelectElement;
+    expect([...doctor.options].map((o) => o.textContent)).toEqual(["All doctors on the bench", "Dr Nishant Rao", "Dr Sneha Toppo"]);
     await waitFor(() => expect(FakeWebSocket.instances.length).toBeGreaterThan(0));
     const ws = FakeWebSocket.instances[0]!;
     ws.simulateAuthed();

@@ -198,6 +198,12 @@ export const vitalsRecheckDemanded = defineEvent("vitals.recheck_demanded", MODU
   reading: z.record(z.string(), z.number()).optional(),
 }));
 
+/** VD-2 CLOSE — the other arm was inside the band: the demand is withdrawn, the pair goes to the doctor on the chart. */
+export const vitalsRecheckWithdrawn = defineEvent("vitals.recheck_withdrawn", MODULE, z.object({
+  encounterId: id, patientId: id, ...where,
+  reading: z.record(z.string(), z.number()),
+}));
+
 export const queueEscalated = defineEvent("queue.escalated", MODULE, z.object({
   encounterId: id, patientId: id, ...where,
   entryId: id, fromClass: z.number().int().min(0).max(4), toClass: z.literal(0),

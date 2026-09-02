@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VitalsBay } from "./vitals-bay";
-import { activeChart, diffOf } from "./vitals-bay-amend";
+import { activeChart, amendedReadings, diffOf } from "./vitals-bay-amend";
 import { renderWithProviders } from "../test-utils";
 import { setToken } from "../lib/api";
 import { resetRealtimeClientForTests } from "../lib/realtime";
@@ -21,7 +21,7 @@ class FakeWebSocket {
 }
 const chart = (id: string, encounterId: string, patientId: string, over: Partial<WireVitals> = {}): WireVitals => ({
   id, encounterId, patientId, heightCm: 151, weightKg: 62, sbp: 128, dbp: 84, pulse: 78, rr: 16, spo2: 97, tempC: 36.8, muacCm: null, notes: null,
-  ageYearsAtRecord: 55, band: "adult", dangerFlags: [], recordedBy: "u-vd", recordedAt: "2026-09-02T04:20:00.000Z",
+  ageYearsAtRecord: 55, band: "adult",dangerFlags: [], recordedBy: "u-vd", recordedAt: "2026-09-02T04:20:00.000Z",
   readings: {}, contextChips: [], carriedForward: [], supersedesVitalsId: null, amendmentReason: null, status: "active", emergency: false, ...over,
 });
 const ROW_A: WireBenchRow = {
@@ -33,7 +33,8 @@ const ROW_B: WireBenchRow = { ...ROW_A, encounterId: "E-B", entryId: "Q-B", toke
   patient: { ...ROW_A.patient!, requestedId: "P-B", id: "P-B", uhid: "UH-26-00121", name: "Ganesh Oraon" } };
 
 type Call = { key: string; body: unknown };
-function stubBay(rows: WireBenchRow[], calls: Call[], charts: Record<string, WireVitals[]>): void {
+function stubBay(seed: WireBenchRow[], calls: Call[], charts: Record<string, WireVitals[]>, onAmend?: (body: Record<string, unknown>, prior: WireVitals) => Response | null): void {
+  const rows = seed.map((r) => ({ ...r }));   // the stub mutates vitalsId after an amend; the module constants must not carry that into the next test
   const json = (b: unknown, status = 200): Response => new Response(JSON.stringify(b), { status, headers: { "Content-Type": "application/json" } });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.pathname : input.url;
@@ -43,21 +44,27 @@ function stubBay(rows: WireBenchRow[], calls: Call[], charts: Record<string, Wir
     if (key === "GET /api/auth/me") return json({ actor: { type: "user", id: "u-vd" }, permissions: { hospital: ["opd.vitals.record", "opd.visits.read"], scoped: { department: {}, floor: {} } } });
     if (key === "GET /api/opd/bench") return json({ items: rows });
     if (key === "GET /api/opd/queues/summary") return json({ items: [] });
-    if (key === "GET /api/opd/departments") return json({ items: [] });
-    if (key === "GET /api/opd/config") return json({ dangerRanges: null });
-    const m = /\/opd\/visits\/([^/]+)\/vitals$/.exec(path);
-    if (m !== null && init?.method !== "POST") return json({ items: charts[m[1]!] ?? [] });
+    if (key === "GET /api/opd/departments") return json({ code: "forbidden" }, 403);
+    if (key === "GET /api/opd/config") return json({ code: "forbidden" }, 403);
+    const g = /\/opd\/vitals\/([^/]+)$/.exec(path);
+    if (g !== null && init?.method !== "POST") {
+      const v = Object.values(charts).flat().find((x) => x.id === g[1]);
+      return v === undefined ? json({ code: "unknown_vitals" }, 404) : json({ vitals: v });
+    }
     if (key.startsWith("POST /api/opd/vitals/") && key.endsWith("/amend")) {
       const id = /\/opd\/vitals\/([^/]+)\/amend/.exec(path)![1]!;
-      const b = body as Record<string, number | null> & { reason: string };
+      const b = body as Record<string, number | null> & { reason: string; readings?: unknown; carriedForward?: string[]; unlockReasons?: Record<string, string>; overrides?: Record<string, string> };
       const prior = Object.values(charts).flat().find((v) => v.id === id)!;
+      if (onAmend !== undefined) { const r = onAmend(b, prior); if (r !== null) return r; }
       const next = chart(`${id}-amended`, prior.encounterId, prior.patientId, {
         heightCm: b.heightCm ?? null, weightKg: b.weightKg ?? null, sbp: b.sbp ?? null, dbp: b.dbp ?? null, pulse: b.pulse ?? null, rr: b.rr ?? null,
         spo2: b.spo2 ?? null, tempC: b.tempC ?? null, muacCm: b.muacCm ?? null,
         supersedesVitalsId: id, amendmentReason: b.reason, recordedAt: "2026-09-02T04:31:00.000Z",
+        readings: b.readings ?? {}, carriedForward: b.carriedForward ?? [],
       });
       const flags = (b.spo2 ?? 100) < 90 ? [{ vital: "spo2", value: b.spo2, bound: "min", limit: 90, severity: "danger" }] : [];
       charts[prior.encounterId] = [{ ...prior, status: "superseded" }, next];
+      const r = rows.find((x) => x.encounterId === prior.encounterId); if (r !== undefined) r.vitalsId = next.id;   // the bench re-reads the new active id
       return json({ vitals: next, flags, superseded: id });
     }
     return new Response("{}", { status: 404 });
@@ -74,6 +81,76 @@ describe("the pure rules", () => {
     expect(activeChart([{ ...a, status: "superseded" }, b], "V2")?.id).toBe("V2");
     expect(activeChart([{ ...a, status: "superseded" }, b], "V1")?.id).toBe("V2"); // the bench's id is superseded → the latest active
     expect(activeChart([], null)).toBeNull();
+  });
+});
+
+describe("CLOSE pass 1 — the amendment keeps the pair, unlocks a carried key with a reason, and answers a gate", () => {
+  it("amendedReadings replaces the OPERATIVE take of a changed key and keeps the rest — the pair, the held value, the device source", () => {
+    const prior = chart("V1", "E", "P", { sbp: 214, dbp: 132, spo2: 96, readings: { bp: { takes: [[208, 126], [214, 132]], source: "typed" }, spo2: { takes: [96], source: "device", held: [45] } } });
+    const r = amendedReadings(prior, { weightKg: 64, spo2: 95, sbp: 214, dbp: 130 });
+    expect(r.bp).toEqual({ takes: [[208, 126], [214, 130]], source: "typed" });
+    expect(r.spo2).toEqual({ takes: [95], source: "device", held: [45] });
+    expect(r.weightKg).toEqual({ takes: [64], source: "typed" });
+  });
+
+  it("amending Ganesh's weight posts his BP PAIR untouched, his notes, his chips; changing a CARRIED height asks for a reason and sends it", async () => {
+    const calls: Call[] = [];
+    const g = chart("V-A1", "E-A", "P-A", { sbp: 214, dbp: 132, notes: "escort sent", carriedForward: ["heightCm"], readings: { bp: { takes: [[208, 126], [214, 132]], source: "typed" }, heightCm: { takes: [], source: "typed" } } });
+    stubBay([ROW_A], calls, { "E-A": [g] });
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-118")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-118"));
+    await waitFor(() => expect(screen.getByTestId("amend")).toBeInTheDocument());
+    await user.clear(screen.getByTestId("amend-weightKg")); await user.type(screen.getByTestId("amend-weightKg"), "64");
+    await user.type(screen.getByTestId("amend-reason"), "re-weighed");
+    fireEvent.click(screen.getByTestId("amend-save"));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    const b1 = calls[0]!.body as { readings: { bp: { takes: unknown } }; notes: string; carriedForward: string[]; heightCm: number };
+    expect(b1.readings.bp.takes).toEqual([[208, 126], [214, 132]]);   // the pair survives the correction
+    expect(b1.notes).toBe("escort sent");
+    expect(b1.carriedForward).toEqual(["heightCm"]);
+    expect(b1.heightCm).toBe(151);
+
+    // the carried height changed: a reason is asked BEFORE the round trip, then it travels
+    await waitFor(() => expect(screen.getByTestId("session-empty")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-118"));
+    await waitFor(() => expect(screen.getByTestId("amend")).toBeInTheDocument());
+    await user.clear(screen.getByTestId("amend-heightCm")); await user.type(screen.getByTestId("amend-heightCm"), "149");
+    await user.type(screen.getByTestId("amend-reason"), "measured again");
+    fireEvent.click(screen.getByTestId("amend-save"));
+    await waitFor(() => expect(screen.getByTestId("amend-unlock-heightCm")).toBeInTheDocument());
+    expect(calls).toHaveLength(1);
+    fireEvent.change(screen.getByTestId("amend-unlock-heightCm"), { target: { value: "patient_disputes_old_value" } });
+    fireEvent.click(screen.getByTestId("amend-save"));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    const b2 = calls[1]!.body as { unlockReasons: Record<string, string>; carriedForward: string[]; heightCm: number };
+    expect(b2.unlockReasons).toEqual({ heightCm: "patient_disputes_old_value" });
+    expect(b2.carriedForward).toEqual([]);
+    expect(b2.heightCm).toBe(149);
+  });
+
+  it("a gate the server raises on the amendment is confirmed, not dead-ended: overrides travel on the retry", async () => {
+    const calls: Call[] = [];
+    let n = 0;
+    stubBay([ROW_A], calls, { "E-A": [chart("V-A1", "E-A", "P-A")] }, () => {
+      n += 1;
+      return n === 1 ? new Response(JSON.stringify({ statusCode: 409, code: "vitals_gate", message: "4.8 kg on an adult", detail: { gates: [{ key: "weightKg", kind: "slipped_digit", value: 22, message: "22 kg on an adult — a slipped digit" }] } }), { status: 409, headers: { "Content-Type": "application/json" } }) : null;
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-118")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-118"));
+    await waitFor(() => expect(screen.getByTestId("amend")).toBeInTheDocument());
+    await user.clear(screen.getByTestId("amend-weightKg")); await user.type(screen.getByTestId("amend-weightKg"), "22");
+    await user.type(screen.getByTestId("amend-reason"), "cachexia — it is real");
+    fireEvent.click(screen.getByTestId("amend-save"));
+    await waitFor(() => expect(screen.getByTestId("amend-gate-weightKg")).toBeInTheDocument());
+    expect(screen.queryByTestId("amend-error")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("amend-gate-confirm-weightKg"));
+    fireEvent.click(screen.getByTestId("amend-save"));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect((calls[1]!.body as { overrides: Record<string, string> }).overrides).toEqual({ weightKg: "confirmed_real" });
   });
 });
 

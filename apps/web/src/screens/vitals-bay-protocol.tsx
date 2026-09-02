@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { cancelEscalation, demandRecheck, escalateVisit, opdErrorMessage } from "../lib/opd-api";
 import type { WireBandConfig, WireEscalationReading, WireEscalationView, WirePreStage } from "../lib/opd-api";
 import { operative } from "./vitals-bay-capture";
-import type { Take, Tiles } from "./vitals-bay-capture";
+import type { Take, TileKey, Tiles } from "./vitals-bay-capture";
 
 /**
  * VD-2 T3 — THE DANGER PROTOCOL AND THE REST (stories 3 and 4).
@@ -77,13 +77,15 @@ export type ProtocolState = {
   view: WireEscalationView | null;
   busy: boolean;
   error: string | null;
-  /** Set when the server said the second arm was inside the band. */
+  /** Set when the server said the second arm was inside the band and withdrew the demand. */
   calmed: boolean;
   msLeft: number;
+  /** The tile the demand was raised on: "the other arm" is a cuff instruction, a thermometer is "take it again". */
+  demandedKey: TileKey | null;
 };
 
 export function useDangerProtocol(encounterId: string | null, initial: WireEscalationView | null): ProtocolState & {
-  demand: (reading: WireEscalationReading) => Promise<void>;
+  demand: (reading: WireEscalationReading, key: TileKey) => Promise<void>;
   confirm: (reading: WireEscalationReading) => Promise<void>;
   cancel: () => Promise<void>;
 } {
@@ -92,8 +94,9 @@ export function useDangerProtocol(encounterId: string | null, initial: WireEscal
   const [error, setError] = useState<string | null>(null);
   const [calmed, setCalmed] = useState(false);
   const [msLeft, setMsLeft] = useState(0);
+  const [demandedKey, setDemandedKey] = useState<TileKey | null>(null);
   const openedAt = useRef<number | null>(null);
-  useEffect(() => { setView(initial); setCalmed(false); setError(null); }, [initial, encounterId]);
+  useEffect(() => { setView(initial); setCalmed(false); setError(null); setDemandedKey(null); }, [initial, encounterId]);
 
   // The cosmetic countdown: one number, ticked every 250 ms, from the instant the server answered.
   useEffect(() => {
@@ -115,16 +118,24 @@ export function useDangerProtocol(encounterId: string | null, initial: WireEscal
     try { setView(await fn()); } catch (e) { setError(opdErrorMessage(e)); throw e; } finally { setBusy(false); }
   }, [encounterId]);
 
-  const demand = useCallback(async (reading: WireEscalationReading) => {
+  const demand = useCallback(async (reading: WireEscalationReading, key: TileKey) => {
     if (encounterId === null) return;
+    setDemandedKey(key);
     await call(() => demandRecheck(encounterId, reading));
   }, [call, encounterId]);
+  /**
+   * CLOSE pass 1 — the SERVER judges the other arm, whatever the tile's tint: a calm second arm
+   * WITHDRAWS the demand (the server answers `state: "none"`, and says so), a danger one on the
+   * same vital escalates, a danger on a different vital is refused as a new first reading.
+   */
   const confirm = useCallback(async (reading: WireEscalationReading) => {
     if (encounterId === null) return;
-    try { await call(() => escalateVisit(encounterId, reading)); setCalmed(false); }
-    catch (e) {
-      const body = (e as { body?: { code?: string } }).body;
-      if (body?.code === "escalation_not_warranted") { setCalmed(true); setError(null); return; }
+    try {
+      let next: WireEscalationView | null = null;
+      await call(async () => { next = await escalateVisit(encounterId, reading); return next; });
+      setCalmed(next !== null && (next as WireEscalationView).state === "none");
+    } catch {
+      // the refusal is on screen (p.error): a replay, or a different vital
     }
   }, [call, encounterId]);
   const cancel = useCallback(async () => {
@@ -132,21 +143,30 @@ export function useDangerProtocol(encounterId: string | null, initial: WireEscal
     try { await call(() => cancelEscalation(encounterId)); } catch { /* the error is on screen: the window closed, or nothing to cancel */ }
   }, [call, encounterId]);
 
-  return { view, busy, error, calmed, msLeft, demand, confirm, cancel };
+  return { view, busy, error, calmed, msLeft, demandedKey, demand, confirm, cancel };
 }
 
-export function ProtocolPanel({ p, doctorName }: { p: ProtocolState & { cancel: () => Promise<void> }; doctorName: string }): React.ReactElement | null {
+export function ProtocolPanel({ p, doctorName, rerun }: {
+  p: ProtocolState & { cancel: () => Promise<void> }; doctorName: string;
+  /** CLOSE pass 1 — after a named human's cancel, a new danger take does not re-run the protocol by itself. */
+  rerun?: { onRerun: () => void } | null;
+}): React.ReactElement | null {
   const { t } = useTranslation();
   const state = p.view?.state ?? "none";
-  if (state === "none" && p.error === null) return null;
+  if (state === "none" && p.error === null && !p.calmed && (rerun === null || rerun === undefined)) return null;
   const secs = Math.ceil(p.msLeft / 1000);
   return (
     <div role="status" data-testid="protocol" data-state={state} className={`flex flex-col gap-1 rounded border p-3 text-sm ${state === "escalated" || state === "recheck_demanded" ? "border-destructive" : "border-border"}`}>
-      {state === "recheck_demanded" && !p.calmed && (
-        <p className="font-semibold" data-testid="protocol-demand">{t("vitalsBay.protocol.otherArm")}</p>
+      {state === "recheck_demanded" && (
+        <p className="font-semibold" data-testid="protocol-demand">{t(p.demandedKey === "bp" || p.demandedKey === null ? "vitalsBay.protocol.otherArm" : "vitalsBay.protocol.again")}</p>
       )}
-      {state === "recheck_demanded" && p.calmed && (
+      {state === "none" && p.calmed && (
         <p data-testid="protocol-calmed">{t("vitalsBay.protocol.calmed")}</p>
+      )}
+      {rerun !== null && rerun !== undefined && (
+        <p data-testid="protocol-rerun">
+          {t("vitalsBay.protocol.rerunAsk")} <button type="button" data-testid="protocol-rerun-go" className="underline" onClick={rerun.onRerun}>{t("vitalsBay.protocol.rerunGo")}</button>
+        </p>
       )}
       {state === "escalated" && (
         <>

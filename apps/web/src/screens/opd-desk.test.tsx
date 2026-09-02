@@ -647,5 +647,9 @@ describe("VD-2 T3 — the doctor-board flash rides the queue topic", () => {
     });
     await flush();
     expect(screen.getByTestId("escalation-flash")).toHaveTextContent("Token 7");
+    // CLOSE pass 1 — Dr Rao's flash does not follow the picker to another doctor's board
+    fireEvent.click(screen.getByTestId("board-pick-doc-2"));
+    await flush(); await flush();
+    expect(screen.queryByTestId("escalation-flash")).toBeNull();
   });
 });

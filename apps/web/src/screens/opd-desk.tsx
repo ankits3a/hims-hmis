@@ -253,6 +253,7 @@ export function OpdDesk(): React.ReactElement {
    * nobody is sending.
    */
   const [flash, setFlash] = useState<{ tokenNo: number; cancelled: boolean } | null>(null);
+  useEffect(() => { setFlash(null); }, [selectedDoctorId]); // Dr Rao's flash does not follow the picker to Dr Toppo's board
 
   const form = useForm<OpenVisitForm>({
     defaultValues: { doctorId: "", intendedPayer: "self", referralSource: "", referrerName: "" },

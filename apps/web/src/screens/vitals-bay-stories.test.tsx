@@ -46,11 +46,11 @@ const row = (encounterId: string, tokenNo: number, seq: number, id: string, uhid
 const RAO: [string, string] = ["D-RAO", "Dr Nishant Rao"]; const TOPPO: [string, string] = ["D-TOPPO", "Dr Sneha Toppo"];
 const JUNE = { vitalsId: "V-S0", recordedAt: "2026-06-11T04:00:00.000Z", serviceDate: "2026-06-11", heightCm: 151, weightKg: 62, sbp: 132, dbp: 84, pulse: 78, rr: 16, spo2: 98, tempC: 36.8, muacCm: null };
 const PRE: Record<string, WirePreStage> = {
-  "E-S": { patientId: "P-S", ageYears: 55, band: "adult", required: ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"], notRoutine: [], last: JUNE, carryCandidates: ["heightCm"], expectedFlags: [] },
-  "E-G": { patientId: "P-G", ageYears: 61, band: "adult", required: ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"], notRoutine: [], last: null, carryCandidates: [], expectedFlags: [{ vital: "sbp", value: 0, bound: "max", limit: 180, severity: "danger" }] },
-  "E-M": { patientId: "P-M", ageYears: 4, band: "child_1_5", required: ["heightCm", "weightKg", "tempC", "spo2", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"], last: null, carryCandidates: [], expectedFlags: [] },
-  "E-K": { patientId: "P-K", ageYears: 46, band: "adult", required: ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"], notRoutine: [], last: JUNE, carryCandidates: [], expectedFlags: [] },
-  "E-R": { patientId: "P-R", ageYears: 76, band: "adult", required: ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"], notRoutine: [], last: null, carryCandidates: [], expectedFlags: [] },
+  "E-S": { patientId: "P-S", ageYears: 55, band: "adult", ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: {}, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"], notRoutine: [], last: JUNE, carryCandidates: ["heightCm"], expectedFlags: [] },
+  "E-G": { patientId: "P-G", ageYears: 61, band: "adult", ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: {}, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"], notRoutine: [], last: null, carryCandidates: [], expectedFlags: [{ vital: "sbp", value: 0, bound: "max", limit: 180, severity: "danger" }] },
+  "E-M": { patientId: "P-M", ageYears: 4, band: "child_1_5", ranges: { sbp: { min: 75, max: 130 }, dbp: { min: 45, max: 85 }, pulse: { min: 70, max: 150 }, rr: { min: 20, max: 40 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: { tempC: { max: 37.9 } }, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: ["heightCm", "weightKg", "tempC", "spo2", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"], last: null, carryCandidates: [], expectedFlags: [] },
+  "E-K": { patientId: "P-K", ageYears: 46, band: "adult", ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: {}, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"], notRoutine: [], last: JUNE, carryCandidates: [], expectedFlags: [] },
+  "E-R": { patientId: "P-R", ageYears: 76, band: "adult", ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: {}, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse"], notRoutine: [], last: null, carryCandidates: [], expectedFlags: [] },
 };
 
 type Call = { key: string; body: unknown };
@@ -77,8 +77,8 @@ function serve(): Server {
     if (key === "GET /api/auth/me") return json({ actor: { type: "user", id: "sister-kavita" }, permissions: { hospital: ["opd.vitals.record", "opd.visits.read", "opd.queue.read", "opd.vitals.history.read"], scoped: { department: {}, floor: {} } } });
     if (key === "GET /api/opd/bench") return json({ items: S.rows.map((r) => ({ ...r, escalation: S.esc.get(r.encounterId)?.state ?? "none" })) });
     if (key === "GET /api/opd/queues/summary") return json({ items: [] });
-    if (key === "GET /api/opd/departments") return json({ items: [] });
-    if (key === "GET /api/opd/config") return json({ dangerRanges: RANGES });
+    if (key === "GET /api/opd/departments") return json({ code: "forbidden" }, 403);
+    if (key === "GET /api/opd/config") return json({ code: "forbidden" }, 403);
     if (key === "POST /api/patients/qr/verify") {
       const payload = String(body.payload);
       const r = S.rows.find((x) => payload === `q1.${x.patient!.id}.${x.patient!.uhid}.1.sig`);
@@ -127,6 +127,11 @@ function serve(): Server {
       return json({ vitals: v, flags, encounter: { id: enc } });
     }
     if (key.endsWith("/vitals")) return json({ items: S.charts[enc] ?? [] });
+    const gv = /\/opd\/vitals\/([^/]+)$/.exec(path);
+    if (gv !== null && init?.method !== "POST") {
+      const v = Object.values(S.charts).flat().find((x) => x.id === gv[1]);
+      return v === undefined ? json({ code: "unknown_vitals" }, 404) : json({ vitals: v });
+    }
     const am = /\/opd\/vitals\/([^/]+)\/amend/.exec(path);
     if (am !== null) {
       const prior = Object.values(S.charts).flat().find((v) => v.id === am[1])!;

@@ -39,7 +39,7 @@ const ROW_S: WireBenchRow = { ...ROW_B, encounterId: "E-S", entryId: "Q-S", toke
 const ROW_C: WireBenchRow = { ...ROW_B, encounterId: "E-C", entryId: "Q-C", tokenNo: 125, seq: 3,
   patient: { ...ROW_B.patient!, requestedId: "P-C", id: "P-C", uhid: "UH-26-00125", name: "Kamla", dob: "1980-01-01" } };
 const PRE = (patientId: string, last: WirePreStage["last"] = null): WirePreStage =>
-  ({ patientId, ageYears: 55, band: "adult", required: [...ADULT.required], notRoutine: [], last, carryCandidates: [], expectedFlags: [] });
+  ({ patientId, ageYears: 55, band: "adult", ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: {}, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: [...ADULT.required], notRoutine: [], last, carryCandidates: [], expectedFlags: [] });
 const JUNE = { vitalsId: "V0", recordedAt: "2026-06-11T04:00:00.000Z", serviceDate: "2026-06-11", heightCm: 151, weightKg: 62, sbp: 132, dbp: 84, pulse: 78, rr: 16, spo2: 98, tempC: 36.8, muacCm: null };
 
 type Call = { key: string; body: unknown };
@@ -56,8 +56,8 @@ function stubBay(rows: WireBenchRow[], calls: Call[]): { set: (encounterId: stri
     if (key === "GET /api/auth/me") return json({ actor: { type: "user", id: "u-vd" }, permissions: { hospital: ["opd.vitals.record"], scoped: { department: {}, floor: {} } } });
     if (key === "GET /api/opd/bench") return json({ items: rows });
     if (key === "GET /api/opd/queues/summary") return json({ items: [] });
-    if (key === "GET /api/opd/departments") return json({ items: [] });
-    if (key === "GET /api/opd/config") return json({ dangerRanges: RANGES, counterSequence: "queue_first", tokenLane: "token_first" });
+    if (key === "GET /api/opd/departments") return json({ code: "forbidden" }, 403);
+    if (key === "GET /api/opd/config") return json({ code: "forbidden" }, 403);
     if (key === "GET /api/opd/visits/E-B/prestage") return json(PRE("P-B"));
     if (key === "GET /api/opd/visits/E-S/prestage") return json(PRE("P-S", JUNE));
     if (key === "GET /api/opd/visits/E-C/prestage") return json(PRE("P-C"));
@@ -71,7 +71,11 @@ function stubBay(rows: WireBenchRow[], calls: Call[]): { set: (encounterId: stri
     }
     if (key.endsWith("/escalation/escalate")) {
       const r = body as { sbp?: number };
-      if (r.sbp !== undefined && r.sbp <= 180) return json({ statusCode: 409, code: "escalation_not_warranted", message: "the recheck is inside the patient's band" }, 409);
+      if (r.sbp !== undefined && r.sbp <= 180) {
+        // CLOSE pass 1 — a calm other arm WITHDRAWS the demand (the server's new answer)
+        const v: WireEscalationView = { entryId: "Q-B", state: "none", escalatedAt: null, escalatedFromClass: null, escalationBy: null, cancelMsRemaining: 0 };
+        states.set(enc, v); return json(v);
+      }
       const v: WireEscalationView = { entryId: "Q-B", state: "escalated", escalatedAt: "2026-09-02T04:30:00.000Z", escalatedFromClass: 3, escalationBy: null, cancelMsRemaining: 10_000 };
       states.set(enc, v); return json(v);
     }
@@ -170,11 +174,78 @@ describe("VD-2 T3 — story 3: the escalation, through the ASSEMBLED bay", () =>
     await waitFor(() => expect(screen.getByTestId("protocol").getAttribute("data-state")).toBe("recheck_demanded"));
     await user.click(screen.getByTestId("input-bp"));
     await user.keyboard("150/92{Enter}");
-    // a calm second take is not "danger": the tile is not re-offered to the protocol at all — the nurse saves the pair
+    // the calm second arm IS posted: the server judges it, withdraws the demand, and the bay says so
     expect(screen.getByTestId("pair-bp").textContent).toBe("208/126 · 150/92");
-    expect(calls.filter((c) => c.key.endsWith("/escalation/escalate"))).toHaveLength(0);
-    expect(screen.queryByTestId("protocol-escalated")).not.toBeInTheDocument();
+    await waitFor(() => expect(calls.filter((c) => c.key.endsWith("/escalation/escalate"))).toHaveLength(1));
+    await waitFor(() => expect(screen.getByTestId("protocol-calmed")).toBeInTheDocument());
+    expect(screen.getByTestId("protocol").getAttribute("data-state")).toBe("none");
+    expect(screen.queryByTestId("protocol-demand")).not.toBeInTheDocument();
     expect(screen.queryByTestId("protocol-error")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("rest-offer")).not.toBeInTheDocument();   // the pair is on the tiles; rest is not re-offered after a demand
+  });
+
+  it("CLOSE pass 1: after a named human's CANCEL the agent does not re-run the protocol by itself — the nurse is asked", async () => {
+    const calls: Call[] = [];
+    const server = stubBay([ROW_B], calls);
+    server.set("E-B", { entryId: "Q-B", state: "cancelled", escalatedAt: null, escalatedFromClass: 3, escalationBy: "u-vd", cancelMsRemaining: 0 });
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-121"));
+    await waitFor(() => expect(screen.getByTestId("protocol").getAttribute("data-state")).toBe("cancelled"));
+    await user.click(screen.getByTestId("input-bp")); await user.keyboard("210/128{Enter}");
+    await waitFor(() => expect(screen.getByTestId("protocol-rerun")).toBeInTheDocument());
+    expect(calls.filter((c) => c.key.endsWith("/escalation/recheck"))).toHaveLength(0);
+    fireEvent.click(screen.getByTestId("protocol-rerun-go"));
+    await waitFor(() => expect(calls.filter((c) => c.key.endsWith("/escalation/recheck"))).toHaveLength(1));
+    await waitFor(() => expect(screen.getByTestId("protocol").getAttribute("data-state")).toBe("recheck_demanded"));
+  });
+
+  it("CLOSE pass 1 CRITICAL: a rest offer does not survive the desk — A's elevated BP is never offered as B's rest", async () => {
+    const calls: Call[] = [];
+    stubBay([ROW_S, ROW_C], calls);
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-118")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-118"));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("input-bp")));
+    await user.keyboard("172/104{Enter}");
+    await waitFor(() => expect(screen.getByTestId("rest-offer")).toBeInTheDocument());
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.getByTestId("session-empty")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-125"));
+    await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
+    expect(screen.queryByTestId("rest-offer")).not.toBeInTheDocument();
+    expect(calls.filter((c) => c.key.endsWith("/bench-state"))).toHaveLength(0);
+    expect(heldFirstTake("E-C")).toBeNull();
+  });
+
+  it("CLOSE pass 1: a save in flight holds the desk — nobody else can be taken until the ✓, and the landing save clears only its own patient", async () => {
+    const calls: Call[] = [];
+    let release: (() => void) | null = null;
+    stubBay([ROW_B, ROW_C], calls);
+    const base = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input instanceof URL ? input.pathname : input.url;
+      if (init?.method === "POST" && path.endsWith("/vitals")) {
+        await new Promise<void>((r) => { release = r; });
+      }
+      return base(input, init);
+    }));
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-121"));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("input-bp")));
+    await user.keyboard("120/80{Enter}70{Enter}98{Enter}36.6{Enter}16{Enter}70{Enter}168{Enter}");
+    fireEvent.click(screen.getByTestId("save"));
+    await waitFor(() => expect(release).not.toBeNull());
+    fireEvent.click(screen.getByTestId("bench-row-125"));
+    expect(screen.getByTestId("session").getAttribute("data-encounter")).toBe("E-B");   // refused: still saving
+    expect(screen.getByTestId("identify-error").textContent).toContain("save is still on its way");
+    await act(async () => { release!(); });
+    await waitFor(() => expect(screen.getByTestId("saved-banner").textContent).toContain("Ganesh Oraon"));
+    expect(screen.getByTestId("session-empty")).toBeInTheDocument();
   });
 });
 

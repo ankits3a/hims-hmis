@@ -6,7 +6,7 @@ import { events, opdEncounters, opdQueueEntries, opdQueueSessions } from "../../
 import { getPatientSummaries } from "../patients";
 import { loadOpdConfig } from "./config";
 import { OpdError } from "./errors";
-import { queueEscalated, queueEscalationCancelled, vitalsRecheckDemanded } from "./events";
+import { queueEscalated, queueEscalationCancelled, vitalsRecheckDemanded, vitalsRecheckWithdrawn } from "./events";
 import { classOf } from "./queue-engine";
 import { ageYearsAt } from "./time";
 import { bandFor, evaluateVitals } from "./vitals-rules";
@@ -165,10 +165,11 @@ function compactReading(r: VitalsInput): Partial<Record<(typeof READING_KEYS)[nu
   }
   return out;
 }
-function sameReading(a: VitalsInput, b: VitalsInput): boolean {
+function sameReading(a: VitalsInput, b: VitalsInput, on: Set<string>): boolean {
   const ca = compactReading(a);
   const cb = compactReading(b);
-  return READING_KEYS.every((k) => ca[k] === cb[k]);
+  const keys = on.size > 0 ? READING_KEYS.filter((k) => on.has(k)) : READING_KEYS;
+  return keys.every((k) => ca[k] === cb[k]);
 }
 
 export async function demandRecheck(
@@ -233,8 +234,45 @@ export async function escalate(
         { escalation: current },
       );
     }
+    const demanded = await tx
+      .select({ payload: events.payload }).from(events)
+      .where(and(eq(events.name, "vitals.recheck_demanded"), eq(events.encounterId, encounterId)))
+      .orderBy(desc(events.seq)).limit(1);
+    const demandPayload = demanded[0]?.payload as { reading?: VitalsInput; flags?: DangerFlag[] } | undefined;
+    const demandedVitals = new Set((demandPayload?.flags ?? []).map((f) => f.vital));
+
     const flags = await dangerOf(tx, actor, live.patientId, reading, now);
-    if (flags.length === 0) throw new OpdError("escalation_not_warranted", "the recheck is inside the patient's band", { reading });
+    if (flags.length === 0) {
+      /*
+       * VD-2 CLOSE / pass-1 MAJOR — A CALM OTHER ARM WITHDRAWS THE DEMAND. As shipped the demand
+       * stayed `recheck_demanded` for the rest of the visit: the bench painted "other arm, now"
+       * on a patient whose second arm was fine, and the NEXT danger take on the same visit
+       * escalated straight to class 0 without a fresh demand. Both readings go to the doctor as
+       * the pair the bay saves; the board's state goes back to nothing.
+       */
+      await tx.update(opdQueueEntries).set({ escalation: "none" }).where(eq(opdQueueEntries.id, live.entry.id));
+      await appendEvent(tx, vitalsRecheckWithdrawn.make({
+        actor, patientId: live.patientId, encounterId, correlationId: live.workflowInstanceId,
+        payload: {
+          encounterId, patientId: live.patientId, doctorId: live.doctorId, serviceDate: live.serviceDate,
+          sessionId: live.sessionId, roomId: live.roomId, tokenNo: live.entry.tokenNo,
+          reading: compactReading(reading),
+        },
+      }));
+      return { entryId: live.entry.id, state: "none", escalatedAt: null, escalatedFromClass: null, escalationBy: null, cancelMsRemaining: 0 };
+    }
+    /*
+     * VD-2 CLOSE / pass-1 MAJOR — "DOUBLE-CONFIRMED" IS THE SAME VITAL, RE-MEASURED. A pulse of
+     * 125 followed by an SpO₂ of 89 was two single readings of two vitals, and it bumped a patient
+     * to class 0. The confirming reading must breach at least one vital the demand breached.
+     */
+    if (demandedVitals.size > 0 && !flags.some((f) => demandedVitals.has(f.vital))) {
+      throw new OpdError(
+        "escalation_state_conflict",
+        "a different vital is a NEW first reading — the other arm of the SAME reading is what escalates",
+        { escalation: current, demanded: [...demandedVitals], flagged: flags.map((f) => f.vital) },
+      );
+    }
     /*
      * VD-2 T0 / F4 — "DOUBLE-CONFIRMED" MEANS TWO READINGS. The protocol persists no chart of its
      * own (the bay charts the pair at save, with both takes — story 3's assertion), so the one
@@ -243,12 +281,10 @@ export async function escalate(
      * reading is that reading, vital for vital, is refused as a replay. A genuine other-arm take
      * that matches on every supplied vital is the case this refuses; it is answered by taking it again.
      */
-    const demanded = await tx
-      .select({ payload: events.payload }).from(events)
-      .where(and(eq(events.name, "vitals.recheck_demanded"), eq(events.encounterId, encounterId)))
-      .orderBy(desc(events.seq)).limit(1);
-    const demandedReading = (demanded[0]?.payload as { reading?: VitalsInput } | undefined)?.reading;
-    if (demandedReading !== undefined && sameReading(demandedReading, reading)) {
+    const demandedReading = demandPayload?.reading;
+    // The replay is judged on the DEMANDED vitals: a changed temperature does not make a copied
+    // cuff reading a second arm (pass-1 finding on the T0 fix).
+    if (demandedReading !== undefined && sameReading(demandedReading, reading, demandedVitals)) {
       throw new OpdError("escalation_state_conflict", "that is the first reading again — the other arm is a NEW reading", { escalation: current });
     }
 

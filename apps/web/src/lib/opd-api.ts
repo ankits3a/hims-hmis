@@ -499,12 +499,20 @@ export function fetchBench(filter: { departmentId?: string; doctorId?: string; s
   return api("GET", `/opd/bench?${qs.toString()}`);
 }
 
+export type WireRange = { min?: number; max?: number };
 export type WireVitalKey = "heightCm" | "weightKg" | "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm";
 export type WireBandKey = "infant" | "child_1_5" | "child_6_12" | "adult";
 export type WirePreStage = {
   patientId: string;
   ageYears: number | null;
   band: WireBandKey;
+  /** CLOSE pass 1 — the band's limits travel with the pre-stage; the bay mirrors nothing from `GET /opd/config` (a permission `vitals_desk` does not hold). */
+  ranges: Partial<Record<WireVitalKey, WireRange>>;
+  noticeRanges: Partial<Record<WireVitalKey, WireRange>>;
+  gates: { adultWeightFloorKg: number; heightDeltaCm: number; spo2ProbeFloorPct: number };
+  muacBands: { samUnderCm: number; mamUnderCm: number };
+  /** The patient is confidential to this actor: the band is answered, the history is not. */
+  sealed: boolean;
   required: WireVitalKey[];
   notRoutine: WireVitalKey[];
   last: {
@@ -521,7 +529,6 @@ export function fetchPreStage(encounterId: string): Promise<WirePreStage> {
 }
 
 // ——— VD-2 T2 — the capture body, the save result, and the danger-range config the tiles mirror ———
-export type WireRange = { min?: number; max?: number };
 export type WireBandConfig = {
   key: WireBandKey; upToAgeYears: number | null;
   required: WireVitalKey[]; notRoutine: WireVitalKey[];
@@ -581,6 +588,10 @@ export function setBenchState(encounterId: string, body: { state: WireBenchState
 // ——— VD-2 T4 — amend after save ———
 export function fetchVisitVitals(encounterId: string): Promise<{ items: WireVitals[] }> {
   return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/vitals`);
+}
+/** CLOSE pass 1 — the row a nurse may amend, she may read: `opd.vitals.record`, gated as the amend is. */
+export function fetchVitalsRow(vitalsId: string): Promise<{ vitals: WireVitals }> {
+  return api("GET", `/opd/vitals/${encodeURIComponent(vitalsId)}`);
 }
 export type WireVitalsAmendBody = WireVitalsPostBody & { reason: string };
 export type WireVitalsAmendResult = { vitals: WireVitals; flags: WireDangerFlag[]; superseded: string };

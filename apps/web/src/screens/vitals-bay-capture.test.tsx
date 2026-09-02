@@ -48,13 +48,13 @@ const ROW_B: WireBenchRow = { ...ROW_A, encounterId: "E-B", entryId: "Q-B", toke
 const ROW_K: WireBenchRow = { ...ROW_A, encounterId: "E-K", entryId: "Q-K", tokenNo: 130, seq: 3, doctorId: "D-TOPPO", doctorName: "Dr Sneha Toppo",
   patient: { ...ROW_A.patient!, requestedId: "P-K", id: "P-K", uhid: "UH-26-00130", name: "Munna", dob: "2022-06-01" } };
 const PRE_A: WirePreStage = {
-  patientId: "P-A", ageYears: 55, band: "adult", required: ["heightCm", "weightKg", "sbp", "dbp", "pulse", "spo2", "tempC"], notRoutine: [],
+  patientId: "P-A", ageYears: 55, band: "adult", ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: {}, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: ["heightCm", "weightKg", "sbp", "dbp", "pulse", "spo2", "tempC"], notRoutine: [],
   last: { vitalsId: "V-A0", recordedAt: "2026-06-11T04:00:00.000Z", serviceDate: "2026-06-11", heightCm: 151, weightKg: 62, sbp: 132, dbp: 84, pulse: 78, rr: 16, spo2: 98, tempC: 36.8, muacCm: null },
   carryCandidates: ["heightCm"], expectedFlags: [],
 };
-const PRE_B: WirePreStage = { patientId: "P-B", ageYears: 61, band: "adult", required: PRE_A.required, notRoutine: [], last: null, carryCandidates: [],
+const PRE_B: WirePreStage = { patientId: "P-B", ageYears: 61, band: "adult", ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 }, pulse: { min: 50, max: 120 }, rr: { min: 8, max: 30 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: {}, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: PRE_A.required, notRoutine: [], last: null, carryCandidates: [],
   expectedFlags: [{ vital: "sbp", value: 172, bound: "max", limit: 180, severity: "danger" }] };
-const PRE_K: WirePreStage = { patientId: "P-K", ageYears: 4, band: "child_1_5", required: ["heightCm", "weightKg", "tempC", "spo2", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"], last: null, carryCandidates: [], expectedFlags: [] };
+const PRE_K: WirePreStage = { patientId: "P-K", ageYears: 4, band: "child_1_5", ranges: { sbp: { min: 75, max: 130 }, dbp: { min: 45, max: 85 }, pulse: { min: 70, max: 150 }, rr: { min: 20, max: 40 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: { tempC: { max: 37.9 } }, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: ["heightCm", "weightKg", "tempC", "spo2", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"], last: null, carryCandidates: [], expectedFlags: [] };
 
 type Posted = { path: string; body: unknown };
 function stubBay(rows: WireBenchRow[], onVitals: (body: unknown, path: string) => Response, posted: Posted[] = []): void {
@@ -65,8 +65,9 @@ function stubBay(rows: WireBenchRow[], onVitals: (body: unknown, path: string) =
     if (key === "GET /api/auth/me") return json({ actor: { type: "user", id: "u-vd" }, permissions: { hospital: ["opd.vitals.record"], scoped: { department: {}, floor: {} } } });
     if (key === "GET /api/opd/bench") return json({ items: rows });
     if (key === "GET /api/opd/queues/summary") return json({ items: [] });
-    if (key === "GET /api/opd/departments") return json({ items: [] });
-    if (key === "GET /api/opd/config") return json({ dangerRanges: RANGES, counterSequence: "queue_first", tokenLane: "token_first" });
+    // CLOSE pass 1 CRITICAL — the desk holds neither `opd.masters.read` route; the bay must not need them.
+    if (key === "GET /api/opd/departments") return new Response(JSON.stringify({ code: "forbidden" }), { status: 403 });
+    if (key === "GET /api/opd/config") return new Response(JSON.stringify({ code: "forbidden" }), { status: 403 });
     if (key === "GET /api/opd/visits/E-A/prestage") return json(PRE_A);
     if (key === "GET /api/opd/visits/E-B/prestage") return json(PRE_B);
     if (key === "GET /api/opd/visits/E-K/prestage") return json(PRE_K);
@@ -142,6 +143,55 @@ describe("the pure rules mirror the server's", () => {
   it("dates on the staff screen read 31-Aug-2026 (ruling 9)", () => {
     expect(humanDate("2026-06-11")).toBe("11-Jun-2026");
     expect(humanDate("nonsense")).toBe("nonsense");
+  });
+});
+
+describe("CLOSE pass 1 — the hypoxic patient, and a chip that was never asked", () => {
+  it("SpO₂ 68 twice: held, then CONFIRMED real — charted with overrides.spo2, and Save & send NOW takes it", async () => {
+    const posted: Posted[] = [];
+    stubBay([ROW_B], () => saved([{ vital: "spo2", value: 68, bound: "min", limit: 90, severity: "danger" }]), posted);
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-121"));
+    await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
+    await user.click(screen.getByTestId("input-spo2")); await user.keyboard("68{Enter}");
+    expect(screen.getByTestId("mirror").getAttribute("data-kind")).toBe("probe_error");
+    fireEvent.click(screen.getByTestId("mirror-retake"));
+    await user.keyboard("68{Enter}");
+    expect(screen.getByTestId("held-spo2").textContent).toContain("68");
+    fireEvent.click(screen.getByTestId("mirror-confirm"));            // it is real
+    expect(screen.getByTestId("value-spo2").textContent).toBe("68");
+    expect(screen.getByTestId("tile-spo2").getAttribute("data-tint")).toBe("danger");
+    await user.click(screen.getByTestId("input-bp")); await user.keyboard("100/60{Enter}");
+    await user.click(screen.getByTestId("input-pulse")); await user.keyboard("118{Enter}");
+    fireEvent.click(screen.getByTestId("save-emergency"));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    const body = posted[0]!.body as { overrides: Record<string, string>; readings: { spo2: { takes: number[]; held?: number[] } }; emergency: boolean };
+    expect(body.overrides).toEqual({ spo2: "confirmed_reclip" });
+    expect(body.readings.spo2.takes).toEqual([68]);
+    expect(body.readings.spo2.held).toEqual([68, 68]);   // both attempts were held before the confirm — the log keeps them
+    expect(body.emergency).toBe(true);
+    await waitFor(() => expect(screen.getByTestId("saved-danger").textContent).toContain("spo2 68"));
+  });
+
+  it("a chip cycles not-asked → yes → no → not-asked, and only an ASKED chip is posted", async () => {
+    const posted: Posted[] = [];
+    stubBay([ROW_B], () => saved(), posted);
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-121"));
+    await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
+    const chip = screen.getByTestId("chip-bp_med_taken");
+    fireEvent.click(chip); expect(chip.getAttribute("data-answer")).toBe("yes");
+    fireEvent.click(chip); expect(chip.getAttribute("data-answer")).toBe("no");
+    fireEvent.click(chip); expect(chip.getAttribute("data-answer")).toBe("");
+    fireEvent.click(screen.getByTestId("chip-fasting")); fireEvent.click(screen.getByTestId("chip-fasting"));   // asked: no
+    await user.keyboard("120/80{Enter}70{Enter}98{Enter}36.6{Enter}16{Enter}70{Enter}168{Enter}");
+    fireEvent.click(screen.getByTestId("save"));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect((posted[0]!.body as { contextChips: unknown }).contextChips).toEqual([{ key: "fasting", question: "khali pet?", answer: "not fasting" }]);
   });
 });
 

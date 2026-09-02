@@ -2194,7 +2194,8 @@
         "invalid_signature": "That card did not verify — a copied or edited code",
         "stale_version": "That card was reissued — ask for the new one",
         "unknown_patient": "That card belongs to no patient on file"
-      }
+      },
+        "saving": "A save is still on its way — wait for the ✓ before taking the next person"
     },
     "valve": {
       "bench": "bench {{count}}",
@@ -2227,7 +2228,8 @@
       "last": "Last chart {{date}}:",
       "carry": "Carried forward, locked until a reason: {{vitals}}",
       "expectedFlags": "{{count}} expected flag(s) from history",
-      "noHistory": "No history to show for this visit"
+      "noHistory": "No history to show for this visit",
+        "sealed": "Confidential record — the band is known, the history is sealed at this desk"
     },
     "band": {
       "infant": "Infant",
@@ -2296,7 +2298,8 @@
       "probeError": "SpO₂ read {{value}}% — held OUT of the chart. A talking patient at {{value}}% is a probe problem until proven otherwise; re-clip and take it again",
       "fix": "It was {{value}}",
       "retake": "Take it again",
-      "confirm": "It is real — chart it"
+      "confirm": "It is real — chart it",
+        "confirmProbe": "It is real — the patient IS that low. Chart it and send"
     },
     "unlock": {
       "label": "Reason to re-measure",
@@ -2313,7 +2316,9 @@
     "chips": {
       "fasting": "khali pet?",
       "bp_med_taken": "BP ki dawa li?",
-      "just_climbed_stairs": "abhi seedhi chadh kar aaye?"
+      "just_climbed_stairs": "abhi seedhi chadh kar aaye?",
+        "yes": "yes",
+        "no": "no"
     },
     "lane": {
       "typing": "serial lane OFF · typing",
@@ -2334,7 +2339,10 @@
       "escalated": "Went NOW as class 0 (was class {{from}}) — {{doctor}}'s screen flashed. Do not send them alone.",
       "cancel": "CANCEL",
       "committed": "cancel window closed — class 0 stands. Reversing now is a supervisor action, not a keystroke.",
-      "cancelled": "Cancelled — back to class {{from}}. The chart keeps the reading."
+      "cancelled": "Cancelled — back to class {{from}}. The chart keeps the reading.",
+        "again": "Danger reading — take it AGAIN, now, before anything else. Rest is refused at danger numbers.",
+        "rerunAsk": "A cancelled bump is not re-run by the agent. This reading is danger again —",
+        "rerunGo": "run the protocol again"
     },
     "rest": {
       "offer": "Elevated, not dangerous — {{minutes}} minutes on the rest chairs, no chai, no phone-pacing. Recall at {{time}}; the first reading is held.",
@@ -2351,7 +2359,11 @@
       "save": "Save amendment ({{count}} changed)",
       "escHint": "Esc abandons",
       "readFailed": "The saved chart could not be read",
-      "trail": "by {{by}} at {{at}} — the old value stays in the trail"
-    }
+      "trail": "by {{by}} at {{at}} — the old value stays in the trail",
+        "carried": "carried forward",
+        "stale": "This chart was amended elsewhere while you were typing — re-open it from the bench to correct the current one"
+    },
+      "doctor": "Doctor",
+      "allDoctors": "All doctors on the bench"
   }
 }

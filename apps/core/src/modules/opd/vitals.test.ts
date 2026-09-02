@@ -1,9 +1,9 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
-import { events, opdQueueEntries, opdVitals, workflowInstances, workflowTimers } from "../../kernel/db/schema";
+import { events, opdQueueEntries, opdVitals, phiAccessLog, workflowInstances, workflowTimers } from "../../kernel/db/schema";
 import { abandonVisit, getEncounter, openVisit } from "./encounters";
-import { amendVitals, recordVitals } from "./vitals";
+import { amendVitals, getVitalsForAmend, recordVitals } from "./vitals";
 import { setBenchState } from "./bench";
 import type { Db } from "../../kernel/db/client";
 
@@ -367,5 +367,16 @@ describe("opd vitals (recording, danger flags, the registered→waiting move)", 
     const a = await amendVitals(db, vd.actor, r.vitals.id, { sbp: 118, dbp: 78, pulse: 70, spo2: 97 }, "collapsed at the bench", MON, { emergency: true });
     expect(a.vitals.emergency).toBe(true);
     expect(a.vitals.heightCm).toBeNull();
+  });
+
+  it("CLOSE/pass1: the chart a nurse may amend, she may READ — a confidential patient's row under vitals_desk, logged", async () => {
+    const vip = await mkPatient(db, clerk.actor, { ageYears: undefined, dob: DOB_ADULT, isConfidential: true, alias: "Patient 4F2" });
+    const opened = await openVisit(db, clerk.actor, { patientId: vip.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const r = await recordVitals(db, vd.actor, opened.encounter.id, adultOk, MON);
+    const row = await getVitalsForAmend(db, vd.actor, r.vitals.id);
+    expect(row?.id).toBe(r.vitals.id);
+    expect(await getVitalsForAmend(db, vd.actor, "no-such-row")).toBeNull();
+    const logged = await db.select().from(phiAccessLog).where(eq(phiAccessLog.patientId, vip.id));
+    expect(logged.some((l) => l.surface === "opd.vitals" && l.encounterId === opened.encounter.id)).toBe(true);
   });
 });

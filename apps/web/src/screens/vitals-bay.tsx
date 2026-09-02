@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { fetchBench, fetchEscalation, fetchPreStage, getOpdConfig, listDepartments, setBenchState, todayIst } from "../lib/opd-api";
-import type { WireBenchRow, WireDangerRanges, WireDoctorSummary, WirePreStage, WireVitalsSaveResult } from "../lib/opd-api";
-import { CaptureCore, SavedBannerView, bandFor, flagOf, humanDate, istClock, readLane, writeLane } from "./vitals-bay-capture";
+import { fetchBench, fetchEscalation, fetchPreStage, setBenchState, todayIst } from "../lib/opd-api";
+import type { WireBenchRow, WireDoctorSummary, WirePreStage, WireVitalsSaveResult } from "../lib/opd-api";
+import { CaptureCore, SavedBannerView, bandFor, flagOf, humanDate, istClock, rangesFrom, readLane, writeLane } from "./vitals-bay-capture";
 import type { Lane, SavedBanner, Take, TileKey, Tiles } from "./vitals-bay-capture";
 import {
   ProtocolPanel, REST_MINUTES, RestOffer, heldFirstTake, holdFirstTake, isElevated, readingFrom, releaseFirstTake, useDangerProtocol,
@@ -44,6 +44,8 @@ import { useRealtime } from "../lib/realtime";
  * mapped onto the shadcn variables; nothing here uses a Radix portal, so nothing escapes the scope.
  */
 export const BENCH_POLL_MS = 5_000;
+/** The tiles the other-arm protocol judges; MUAC zones and the measurements are not readings of a moment. */
+const RANGED: readonly TileKey[] = ["bp", "pulse", "spo2", "tempC", "rr"];
 
 export type Door =
   | { kind: "token"; tokenNo: number }
@@ -75,11 +77,11 @@ export function isTypingTarget(el: EventTarget | null): boolean {
   return el instanceof HTMLElement && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
 }
 
-export function useBench(departmentId: string | undefined, serviceDate: string): { rows: WireBenchRow[]; failed: boolean } {
+export function useBench(doctorId: string | undefined, serviceDate: string): { rows: WireBenchRow[]; failed: boolean } {
   const qc = useQueryClient();
   const q = useQuery({
-    queryKey: ["vitals-bay", "bench", departmentId ?? "", serviceDate],
-    queryFn: () => fetchBench({ departmentId, serviceDate }),
+    queryKey: ["vitals-bay", "bench", doctorId ?? "", serviceDate],
+    queryFn: () => fetchBench({ doctorId, serviceDate }),
     refetchInterval: BENCH_POLL_MS,
   });
   const rows = useMemo(() => q.data?.items ?? [], [q.data]);
@@ -172,7 +174,7 @@ export function SessionColumn({ row, preStage, failed, pending, children }: {
       <h2 className="text-base font-semibold">
         <span className="font-mono">#{row.tokenNo}</span> {patientLabel(row, t)}
       </h2>
-      <p className="text-muted-foreground">{row.doctorName}{row.patient !== null ? ` · ${row.patient.uhid}` : ""}</p>
+      <p className="text-muted-foreground">{row.doctorName}{row.patient !== null && !row.patient.restricted ? ` · ${row.patient.uhid}` : ""}</p>
       {pending && <p>{t("app.loading")}</p>}
       {failed && <p data-testid="prestage-failed" className="text-muted-foreground">{t("vitalsBay.session.noHistory")}</p>}
       {preStage !== null && (
@@ -242,9 +244,12 @@ export function VitalsBay(): React.ReactElement {
   const { t } = useTranslation();
   const { inHand, takePatient, takeEncounter, release } = usePatientInHand();
   const today = todayIst();
-  const [departmentId, setDepartmentId] = useState<string | undefined>(undefined);
-  const departments = useQuery({ queryKey: ["vitals-bay", "departments"], queryFn: listDepartments });
-  const { rows, failed: benchFailed } = useBench(departmentId, today);
+  // CLOSE pass 1 — the filter is by DOCTOR, from the bench itself: `GET /opd/departments` is
+  // `opd.masters.read`, which the desk does not hold, and the doctors on the bench are the doctors.
+  const [doctorId, setDoctorId] = useState<string | undefined>(undefined);
+  const { rows: allRows } = useBench(undefined, today);
+  const { rows, failed: benchFailed } = useBench(doctorId, today);
+  const doctors = useMemo(() => [...new Map(allRows.map((r) => [r.doctorId, r.doctorName])).entries()].sort((a, b) => a[1].localeCompare(b[1])), [allRows]);
   const summaries = useQueueSummary(today);
   const [taken, setTaken] = useState<WireBenchRow | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -255,9 +260,8 @@ export function VitalsBay(): React.ReactElement {
   const [trail, setTrail] = useState<Amended | null>(null);
   const { actor } = useAuth();
   const [keys, setKeys] = useState({ typed: 0, device: 0 });
-  const config = useQuery({ queryKey: ["opd", "config"], queryFn: getOpdConfig });
-  const ranges = (config.data?.dangerRanges as WireDangerRanges | undefined) ?? null;
   const qc = useQueryClient();
+  const [saving, setSaving] = useState(false);
   const busyRef = useRef(false);
   busyRef.current = busy;
 
@@ -267,6 +271,7 @@ export function VitalsBay(): React.ReactElement {
     ? (rows.find((r) => r.encounterId === taken.encounterId) ?? taken)
     : null;
   const { preStage, failed: preFailed, pending } = usePreStage(rowInHand?.encounterId ?? null);
+  const ranges = useMemo(() => rangesFrom(preStage), [preStage]);
 
   // VD-2 T3 — the protocol's state is the SERVER's; a re-identified patient shows where it stands.
   const escalationQ = useQuery({
@@ -277,21 +282,32 @@ export function VitalsBay(): React.ReactElement {
   const protocol = useDangerProtocol(rowInHand?.encounterId ?? null, escalationQ.data?.escalation ?? null);
   const [restOffer, setRestOffer] = useState<[number, number] | null>(null);
   const [restBusy, setRestBusy] = useState(false);
+  const [rerun, setRerun] = useState<{ reading: ReturnType<typeof readingFrom>; key: TileKey } | null>(null);
   const band = bandFor(ranges, preStage?.band ?? null);
   const held = useMemo(() => (rowInHand === null ? null : heldFirstTake(rowInHand.encounterId)), [rowInHand]);
   const initialTakes = useMemo<Partial<Record<TileKey, Take[]>> | undefined>(() => (held === null ? undefined : { bp: [held] }), [held]);
 
   const take = useCallback((row: WireBenchRow) => {
     if (row.patient === null) { setError(t("vitalsBay.identify.unknownPatient")); return; }
+    if (saving) { setError(t("vitalsBay.identify.saving")); return; }
     setError(null);
+    setRestOffer(null); setRerun(null);
     setTaken(row);
     takePatient(row.patient.id);
     takeEncounter(row.encounterId);
-  }, [t, takePatient, takeEncounter]);
+  }, [t, takePatient, takeEncounter, saving]);
 
+  /**
+   * CLOSE pass 1 CRITICAL — EVERYTHING THE LAST PATIENT LEFT IS CLEARED HERE. `restOffer` survived
+   * this function: patient A's elevated first BP was offered as patient B's rest and then held under
+   * B's encounter. The offer, the re-run prompt and the row go together; the tiles go with the
+   * remount the generation forces.
+   */
   const clearDesk = useCallback(() => {
     setTaken(null);
     setError(null);
+    setRestOffer(null);
+    setRerun(null);
     release();
     setDeskGen((g) => g + 1);
   }, [release]);
@@ -307,16 +323,24 @@ export function VitalsBay(): React.ReactElement {
   const onCommitted = useCallback((key: TileKey, take: Take, tiles: Tiles) => {
     const tint = flagOf(key, take, band, ranges);
     const state = protocol.view?.state ?? "none";
+    const reading = readingFrom(tiles);
+    // While the other arm is demanded, EVERY ranged take is the other arm: the server judges it —
+    // calm withdraws the demand, the same vital in danger escalates, another vital is refused.
+    if (state === "recheck_demanded" && RANGED.includes(key)) {
+      setRestOffer(null);
+      if (!protocol.busy) void protocol.confirm(reading);
+      return;
+    }
     // A SAM MUAC is its own emergency lane (the design's words): charted, flagged hard, and the SAVE
     // moves the board through the server's danger path. "The other arm, now" is a cuff instruction.
     if (tint === "danger") {
       setRestOffer(null);
-      const reading = readingFrom(tiles);
-      if (state === "none" || state === "cancelled") void protocol.demand(reading).catch(() => undefined);
-      else if (state === "recheck_demanded") void protocol.confirm(reading);
+      // After a named human's cancel the protocol is not re-run by the agent: the nurse is asked.
+      if (state === "cancelled") { setRerun({ reading, key }); return; }
+      if (state === "none" && !protocol.busy) void protocol.demand(reading, key).catch(() => undefined);
       return;
     }
-    if (key === "bp" && state === "none" && tiles.bp.takes.length === 1 && Array.isArray(take) && isElevated(take, band, preStage?.last ?? null)) {
+    if (key === "bp" && state === "none" && !protocol.calmed && tiles.bp.takes.length === 1 && Array.isArray(take) && isElevated(take, band, preStage?.last ?? null)) {
       setRestOffer(take);
     }
   }, [band, ranges, protocol, preStage]);
@@ -368,8 +392,9 @@ export function VitalsBay(): React.ReactElement {
     releaseFirstTake(row.encounterId);
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "summary"] });
-    clearDesk();
-  }, [qc, clearDesk, t]);
+    // CLOSE pass 1 — a save that lands after the desk moved on clears NOTHING of the next patient.
+    if (inHand?.encounterId === row.encounterId) clearDesk();
+  }, [qc, clearDesk, t, inHand]);
 
   const identify = useCallback(async (raw: string) => {
     const door = classifyDoor(raw);
@@ -397,14 +422,14 @@ export function VitalsBay(): React.ReactElement {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key !== "Escape" || busyRef.current) return;
+      if (e.key !== "Escape" || busyRef.current || saving) return;
       if (isTypingTarget(e.target) && (e.target as HTMLInputElement).value !== "") return; // Escape in a filled box clears the box, the browser's job
       e.preventDefault();
       clearDesk();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [clearDesk]);
+  }, [clearDesk, saving]);
 
   return (
     <div data-seat="vitals-bay" data-testid="vitals-bay" className="min-h-screen bg-background text-foreground">
@@ -412,11 +437,11 @@ export function VitalsBay(): React.ReactElement {
         <h1 className="text-lg font-semibold tracking-tight">{t("vitalsBay.title")}</h1>
         <div className="flex items-center gap-3">
           <select
-            aria-label={t("vitalsBay.department")} data-testid="department" className="rounded border border-input bg-card px-2 py-1 text-sm"
-            value={departmentId ?? ""} onChange={(e) => setDepartmentId(e.target.value === "" ? undefined : e.target.value)}
+            aria-label={t("vitalsBay.doctor")} data-testid="doctor" className="rounded border border-input bg-card px-2 py-1 text-sm"
+            value={doctorId ?? ""} onChange={(e) => setDoctorId(e.target.value === "" ? undefined : e.target.value)}
           >
-            <option value="">{t("vitalsBay.allDepartments")}</option>
-            {(departments.data?.items ?? []).filter((d) => d.active).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            <option value="">{t("vitalsBay.allDoctors")}</option>
+            {doctors.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
           </select>
           <ValvePill benchCount={rows.length} summaries={summaries} />
           <LaneToggle lane={lane} onChange={(next) => { writeLane(next); setLane(next); }} />
@@ -443,12 +468,16 @@ export function VitalsBay(): React.ReactElement {
                 <CaptureCore
                   key={`${deskGen}:${rowInHand.encounterId}`} resetKey={`${deskGen}:${rowInHand.encounterId}`}
                   row={rowInHand} preStage={preStage} ranges={ranges} lane={lane}
-                  onSaved={(result) => onSaved(result, rowInHand)} onKeys={onKeys}
+                  onSaved={(result) => onSaved(result, rowInHand)} onKeys={onKeys} onBusy={setSaving}
                   onCommitted={onCommitted} initialTakes={initialTakes}
                   protocol={
                     <>
+                      {preStage?.sealed === true && <p data-testid="sealed-line" className="text-xs text-muted-foreground">{t("vitalsBay.session.sealed")}</p>}
                       {held !== null && <p data-testid="held-first-take" className="text-xs text-muted-foreground">{t("vitalsBay.rest.heldFirst", { value: `${held[0]}/${held[1]}` })}</p>}
-                      <ProtocolPanel p={protocol} doctorName={rowInHand.doctorName} />
+                      <ProtocolPanel
+                        p={protocol} doctorName={rowInHand.doctorName}
+                        rerun={rerun === null ? null : { onRerun: () => { const r = rerun; setRerun(null); void protocol.demand(r.reading, r.key).catch(() => undefined); } }}
+                      />
                       {restOffer !== null && (protocol.view?.state ?? "none") === "none" && (
                         <RestOffer recallAt={recallClock(REST_MINUTES)} onRest={() => { void goRest(); }} busy={restBusy} />
                       )}

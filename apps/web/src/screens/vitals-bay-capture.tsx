@@ -114,6 +114,20 @@ export function bandFor(ranges: WireDangerRanges | null, bandKey: WirePreStage["
   return ranges.bands.find((b) => b.key === bandKey) ?? null;
 }
 
+/**
+ * CLOSE pass 1 CRITICAL — the mirrors' limits come from the PRE-STAGE, which carries this
+ * patient's band with its ranges, the gate numbers and the MUAC zones (`opd.vitals.history.read`,
+ * a permission the desk holds). `GET /opd/config` is `opd.masters.read`, which it does not.
+ */
+export function rangesFrom(pre: WirePreStage | null): WireDangerRanges | null {
+  if (pre === null || pre.gates === undefined) return null;
+  return {
+    weightRequiredUnderYears: 18,
+    bands: [{ key: pre.band, upToAgeYears: null, required: pre.required, notRoutine: pre.notRoutine, ranges: pre.ranges, noticeRanges: pre.noticeRanges }],
+    gates: pre.gates, muacBands: pre.muacBands,
+  };
+}
+
 /** The tile's tint: the server's `evaluateVitals`, mirrored, for a single value. */
 export function flagOf(key: TileKey, take: Take, band: WireBandConfig | null, ranges: WireDangerRanges | null): "danger" | "notice" | "sam" | "mam" | null {
   if (band === null) return null;
@@ -181,10 +195,9 @@ export function buildBody(tiles: Tiles, opts: { emergency: boolean; chips: { key
     if (takes.length > 0) {
       readings[k] = { takes, source: t.source };
       if (t.held.length > 0) readings[k]!.held = t.held;
-    } else if (t.held.length > 0) {
-      // a probe error with nothing surviving still goes in the log (the server says incomplete)
-      readings[k] = { takes: [], source: t.source, held: t.held } as unknown as WireReadings[typeof k];
     }
+    // a held value with no surviving take is NOT sent: the wire needs one take, and the save is
+    // refused as incomplete before it is built (a held-only SpO₂ stays in the tile, not the log)
     if (t.carried !== null && takes.length === 0) {
       carriedForward.push(k);
       body[k] = t.carried;
@@ -220,9 +233,11 @@ const CHIPS = [
 
 export type SavedBanner = { who: string; doctorName: string; flags: WireDangerFlag[]; amended: boolean; rest?: string };
 
-export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, onSaved, onKeys, resetKey, onCommitted, initialTakes, protocol }: {
+export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, onSaved, onKeys, resetKey, onCommitted, initialTakes, protocol, onBusy }: {
   row: WireBenchRow; preStage: WirePreStage | null; ranges: WireDangerRanges | null; lane: Lane; driver?: DeviceDriver;
   onSaved: (result: WireVitalsSaveResult) => void; onKeys?: (typed: number, device: number) => void; resetKey: string;
+  /** CLOSE pass 1 — a save in flight is a fact the bay must know before it lets anyone else be taken. */
+  onBusy?: (busy: boolean) => void;
   /** VD-2 T3 — every committed take is offered to the danger protocol with the tiles as they now stand. */
   onCommitted?: (key: TileKey, take: Take, tiles: Tiles) => void;
   /** VD-2 T3 — a first take held across a rest, restored so the recall lands as a pair. */
@@ -242,7 +257,8 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
   const [lockedByServer, setLockedByServer] = useState<WireVitalKey[]>([]);
   const [missing, setMissing] = useState<TileKey[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [chips, setChips] = useState<Record<string, boolean | null>>({});
+  /** Ruling: a chip is ASKED (yes / no) or not asked. Cycle null → yes → no → null; a mis-click never fabricates an answer. */
+  const [chips, setChips] = useState<Record<string, "yes" | "no" | undefined>>({});
   const [busy, setBusy] = useState(false);
   const [keys, setKeys] = useState({ typed: 0, device: 0 });
   const refs = useRef<Partial<Record<TileKey, HTMLInputElement | null>>>({});
@@ -385,11 +401,17 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
       setTiles((prev) => ({ ...prev, [key]: { ...prev[key], takes: [...prev[key].takes, m.suggestion!], carried: null } }));
       setMirror(null); return;
     }
-    // confirm real: the override is per key and travels on the wire (VD-1 D9)
+    // confirm real: the override is per key and travels on the wire (VD-1 D9). For the probe
+    // error this is the HYPOXIC patient's only road (CLOSE pass 1 CRITICAL): a genuine 68 % must be
+    // chartable, must reach the protocol, and must be sendable with "Save & send NOW".
     const reason = m.kind === "slipped_digit" ? "confirmed_real" : m.kind === "shrinking_adult" ? "confirmed_after_remeasure" : "confirmed_reclip";
-    setTiles((prev) => ({ ...prev, [key]: { ...prev[key], takes: [...prev[key].takes, m.value], override: reason, carried: null } }));
+    const tile = tiles[key];
+    // the earlier hold stays in the log (`held`); only the confirmed take is charted
+    const next = { ...tiles, [key]: { ...tile, takes: [...tile.takes, m.value], override: reason, carried: null } };
+    setTiles(next);
     setMirror(null);
-  }, [mirror]);
+    onCommitted?.(key, m.value, next);
+  }, [mirror, tiles, onCommitted]);
 
   const unlock = useCallback((key: TileKey, reason: WireUnlockReason) => {
     setTiles((prev) => ({ ...prev, [key]: { ...prev[key], unlockReason: reason, carried: null } }));
@@ -400,9 +422,9 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
   const save = useCallback(async (emergency: boolean) => {
     const miss = missingFor(tiles, set.required, emergency);
     if (miss.length > 0) { setMissing(miss); refs.current[miss[0]!]?.focus(); return; }
-    setMissing([]); setError(null); setBusy(true);
-    const chipList = CHIPS.filter((c) => chips[c.key] !== undefined && chips[c.key] !== null)
-      .map((c) => ({ key: c.key, question: c.question, answer: chips[c.key] === true ? c.yes : c.no }));
+    setMissing([]); setError(null); setBusy(true); onBusy?.(true);
+    const chipList = CHIPS.filter((c) => chips[c.key] !== undefined)
+      .map((c) => ({ key: c.key, question: c.question, answer: chips[c.key] === "yes" ? c.yes : c.no }));
     try {
       const result = await postVitals(row.encounterId, buildBody(tiles, { emergency, chips: chipList }));
       onSaved(result);
@@ -418,9 +440,9 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
       }
       setError(opdErrorMessage(e));
     } finally {
-      setBusy(false);
+      setBusy(false); onBusy?.(false);
     }
-  }, [tiles, set.required, chips, row.encounterId, onSaved]);
+  }, [tiles, set.required, chips, row.encounterId, onSaved, onBusy]);
 
   const acceptServerGate = useCallback((g: WireVitalsGate, action: "confirm" | "fix") => {
     const key: TileKey = g.key === "sbp" || g.key === "dbp" ? "bp" : g.key;
@@ -530,9 +552,9 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
             <button type="button" data-testid="mirror-fix" className="rounded border px-2" onClick={() => resolveMirror("fix")}>{t("vitalsBay.gate.fix", { value: mirror.m.suggestion })}</button>
           )}
           <button type="button" data-testid="mirror-retake" className="rounded border px-2" onClick={() => resolveMirror("retake")}>{t("vitalsBay.gate.retake")}</button>
-          {mirror.m.kind !== "probe_error" && (
-            <button type="button" data-testid="mirror-confirm" className="rounded border px-2" onClick={() => resolveMirror("confirm")}>{t("vitalsBay.gate.confirm")}</button>
-          )}
+          <button type="button" data-testid="mirror-confirm" className="rounded border px-2" onClick={() => resolveMirror("confirm")}>
+            {t(mirror.m.kind === "probe_error" ? "vitalsBay.gate.confirmProbe" : "vitalsBay.gate.confirm")}
+          </button>
         </div>
       )}
       {serverGates.map((g) => (
@@ -546,11 +568,11 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
       <div className="flex flex-wrap gap-2 text-xs" data-testid="chips">
         {CHIPS.map((c) => (
           <button
-            key={c.key} type="button" data-testid={`chip-${c.key}`} aria-pressed={chips[c.key] === true}
-            className={`rounded-full border px-2 py-0.5 ${chips[c.key] === true ? "bg-accent" : ""}`}
-            onClick={() => setChips((p) => ({ ...p, [c.key]: p[c.key] === true ? false : true }))}
+            key={c.key} type="button" data-testid={`chip-${c.key}`} aria-pressed={chips[c.key] === "yes"} data-answer={chips[c.key] ?? ""}
+            className={`rounded-full border px-2 py-0.5 ${chips[c.key] === "yes" ? "bg-accent" : chips[c.key] === "no" ? "line-through" : ""}`}
+            onClick={() => setChips((p) => ({ ...p, [c.key]: p[c.key] === undefined ? "yes" : p[c.key] === "yes" ? "no" : undefined }))}
           >
-            {t(`vitalsBay.chips.${c.key}`)}
+            {t(`vitalsBay.chips.${c.key}`)}{chips[c.key] !== undefined ? ` · ${t(chips[c.key] === "yes" ? "vitalsBay.chips.yes" : "vitalsBay.chips.no")}` : ""}
           </button>
         ))}
       </div>
