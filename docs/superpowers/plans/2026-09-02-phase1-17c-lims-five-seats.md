@@ -117,3 +117,13 @@ Nothing here is money, procurement or law; Desk One vs greyscale is D1. **Owner 
 - Mutant A1 applied and killed: the token door admitting every same-name patient returned 2 hits against 1. Evidence: `desk.test.ts` 22/22, `errors`, `money`, `lab.e2e` — 4 suites 44 tests; web `lab-desk.test.tsx` 6/6 + i18n parity; typecheck 0, lint 0 errors.
 - Branch hygiene: PR #2 was squash-merged while T1 was in flight; `origin/main` was MERGED into `lane/lims` rather than rebased, because the lane's commits were already pushed and the rule is never to rewrite pushed history. Squash-merge flattens it on `main`.
 
+### 8.2 T2 — Collection (executed 2026-09-02)
+
+- **F1 — the shipped collection screen rendered fields the server never sent.** `WireCollectionRow` (17b T8) declared `patientDisplay`, `waitingMinutes`, `labelledAt`; `CollectionQueueRow` sent `patientName` and neither time. The queue showed blank names. The wire type now mirrors the server row and the server sends every field.
+- **F2 — the chair's queue had no first half.** `collectionQueue` lists TUBES, which exist only after `printLabels`; a patient who had just left reception was on nobody's list. `awaitingLabels` (`GET /lab/collection/awaiting`) is the order-group half; the seat merges both, STAT first, then longest wait.
+- **Assertion book corrected by execution:** "the row carries the OPD token when the encounter has one and `null` for a walk-in" is WRONG — a lab walk-in is an OPD visit in the LAB department and `openVisitInTx` joins the pathologist's doctor-day queue, so it carries a token of that series. `null` is a visit that never joined (RC-1's deferred join). Test A1 asserts the walk-in's own token.
+- A rejected tube's free recollection already mints a replacement LABELLED specimen (17a T5), so it lands on the tube queue by itself (A2).
+- The label is a Code 128 B SVG at 0.25 mm/module, asserted against the specification's worked example (checksum 88 for "Wikipedia"); order of draw is sorted server-side in the tube plan and client-side on the labelled tubes (the rank copied once, disclosed). `.specimen-labels` is its own print isolation.
+- The RC-3 alias-layer censuses pinned ONE seat; D1 adds a second. Both widened to the set of scoped seats — the intent (no seat colour in an unscoped block) is unchanged. Found by PR #7's web job, not locally: the touched-suites rule does not run a peer's census.
+- Evidence: core `collection` + `accession` 2 suites 15 tests; web `lab-collection` 4/4, `specimen-label` 4/4, i18n parity, `registration-counter` 99/99; typecheck 0, lint 0 errors.
+
