@@ -245,6 +245,15 @@ export function OpdDesk(): React.ReactElement {
   const [openError, setOpenError] = useState<string | null>(null);
   const [checkInError, setCheckInError] = useState<string | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
+  /**
+   * VD-2 T3 — THE FLASH. `queue.escalated` rides the doctor's own queue topic (VD-1 T5): the bay
+   * bumped somebody to class 0 and this board learns it in the same breath. The re-read below
+   * repaints the row; the flash is the part a doctor mid-consultation actually sees. A cancel
+   * clears it — a board that flashed and went quiet would leave the doctor expecting a patient
+   * nobody is sending.
+   */
+  const [flash, setFlash] = useState<{ tokenNo: number; cancelled: boolean } | null>(null);
+  useEffect(() => { setFlash(null); }, [selectedDoctorId]); // Dr Rao's flash does not follow the picker to Dr Toppo's board
 
   const form = useForm<OpenVisitForm>({
     defaultValues: { doctorId: "", intendedPayer: "self", referralSource: "", referrerName: "" },
@@ -294,7 +303,11 @@ export function OpdDesk(): React.ReactElement {
   });
 
   // D6: a frame on the picked doctor's topic is a HINT to re-read. Correctness rides the poll above.
-  useRealtime(selectedDoctorId === "" ? [] : [`queue:${selectedDoctorId}:${today}`], () => {
+  useRealtime(selectedDoctorId === "" ? [] : [`queue:${selectedDoctorId}:${today}`], (f) => {
+    if (f.name === "queue.escalated" || f.name === "queue.escalation_cancelled") {
+      const tokenNo = (f.payload as { tokenNo?: unknown } | null)?.tokenNo;
+      if (typeof tokenNo === "number") setFlash({ tokenNo, cancelled: f.name === "queue.escalation_cancelled" });
+    }
     void queryClient.invalidateQueries({ queryKey: ["opd", "queue", selectedDoctorId, today] });
     void queryClient.invalidateQueries({ queryKey: ["opd", "queues", "summary"] });
   });
@@ -581,6 +594,15 @@ export function OpdDesk(): React.ReactElement {
           {selectedDoctorId === "" && <p className="text-sm text-neutral-500">{t("opdDesk.pickDoctorHint")}</p>}
           {selectedDoctorId !== "" && queue.data !== undefined && queueView === null && (
             <p className="text-sm text-neutral-500">{t("opdDesk.noSession")}</p>
+          )}
+          {flash !== null && (
+            <p
+              role="status" data-testid="escalation-flash" data-cancelled={flash.cancelled ? "true" : "false"}
+              className={`rounded border px-3 py-2 text-sm font-semibold ${flash.cancelled ? "border-neutral-300" : "border-[var(--state-danger)]"}`}
+            >
+              {t(flash.cancelled ? "opdDesk.escalationCancelled" : "opdDesk.escalationFlash", { tokenNo: flash.tokenNo })}
+              <button type="button" className="ml-2 text-xs underline" onClick={() => setFlash(null)}>{t("opdDesk.flashDismiss")}</button>
+            </p>
           )}
           {queueView !== null && orderedEntries.length === 0 && (
             <p className="text-sm text-neutral-500">{t("opdDesk.emptyQueue")}</p>

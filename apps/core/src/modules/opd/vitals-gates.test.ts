@@ -183,4 +183,18 @@ describe("VD-1 T2 — the sanity gates", () => {
     expect(r.vitals.sbp).toBe(120);
     expect(r.encounter.status).toBe("waiting");
   });
+
+  it("T0/F3: a carried key with NO number carries the last chart's number IN; with nothing to carry it is refused by name", async () => {
+    const first = await visit(savitri.id, MON);
+    await recordVitals(db, vd.actor, first, { ...adultOk, heightCm: 151 }, MON);
+    const second = await visit(savitri.id, TUE);
+    const r = await recordVitals(db, vd.actor, second, { ...adultOk, heightCm: undefined }, TUE, { carriedForward: ["heightCm"] });
+    expect(r.vitals.heightCm).toBe(151);                 // the server owns the carried number
+    expect(r.vitals.carriedForward).toEqual(["heightCm"]);
+    // A stranger's first visit: nothing to carry from — refused, not charted as nothing.
+    const stranger = await visit(child.id, TUE);
+    await expect(recordVitals(db, vd.actor, stranger, { heightCm: undefined, weightKg: 14, pulse: 100, rr: 24, spo2: 98, tempC: 37, muacCm: 15 }, TUE, { carriedForward: ["heightCm"] }))
+      .rejects.toMatchObject({ code: "carried_value_locked", detail: { locked: [{ key: "heightCm", carried: null, supplied: null }] } });
+    expect(await rowsFor(stranger)).toHaveLength(0);
+  });
 });

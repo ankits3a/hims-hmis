@@ -239,7 +239,9 @@
  * gold, specified on white. A dark inversion of it is a design decision nobody has made, and
  * inventing one here would ship an unsigned-off palette under a signed-off name.
  */
-[data-seat="registration-counter"] {
+/* VD-2 T1 / D9 — Bay One opts into the same tokens; one block, two seats, no second palette. */
+[data-seat="registration-counter"],
+[data-seat="vitals-bay"] {
   --background: #f4f7f4;          /* paper */
   --card: #ffffff;
   --popover: #ffffff;
