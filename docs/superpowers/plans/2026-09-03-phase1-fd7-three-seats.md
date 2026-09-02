@@ -312,7 +312,8 @@ has to say out loud that they were overturned.
 - **T5 (ABDM)** — code not started; blocked on §7's four owner deliverables.
 - **T6 (`/billing` + the scheme rail)** — not started. It also now carries R4's registration capture
   and the `attribution_ids` claim rail (see T3), and `F8`/`F9` (see T7).
-- **Rule 3's server limit** — a doctor-less department queue would need a schema change. Owner's call.
+- ~~**Rule 3's server limit**~~ — **RULED AND CLOSED at T8**: the department queue *is* the
+  shortest-wait assignment, so there is no doctor-less queue to build and no schema change. See §10.
 
 ## 10. T8 — the department queue auto-assigns (owner ruling, 2026-09-03)
 
