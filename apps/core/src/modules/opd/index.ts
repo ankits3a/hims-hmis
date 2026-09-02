@@ -25,6 +25,7 @@ export { getPrescription, listPrescriptions, matchAllergies, runRxChecks, verify
 export type {
   AllergyMatch, AllergyOverride, RxCheckOutcome, RxNotice, RxOverride, RxVerifyReason, RxVerifyResult,
 } from "./prescriptions";
+export { findVisitByToken } from "./encounters";
 export type { PrescriptionRow } from "./encounters";
 export type { RxLine } from "./fhir";
 export { classifyVisit } from "./visit-type";
