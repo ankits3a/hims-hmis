@@ -135,3 +135,11 @@ Nothing here is money, procurement or law; Desk One vs greyscale is D1. **Owner 
 - The seat resolves a scan in two lists and never asks the chair's route; a tube drawn without a wristband scan cannot be received until a re-checker is NAMED; Save & complete posts one record per value (D6), and a refusal stops the run with the first two standing.
 - Evidence: core `events`, `realtime`, `accession`, `results`, `verify`, `collection`, `worklist` — 7 suites 53 tests; web `lab-bench` 7/7 + i18n parity; typecheck 0, lint 0 errors.
 
+### 8.4 T4 — Verify (executed 2026-09-02)
+
+- `WorklistRow` carries `tatTargetMinutes` (the orderable's STAT or routine target by the item's priority) and, per analyte, `previous` — the newest VERIFIED value of that analyte on the canonical patient across the merge chain, from any other item.
+- **The D11 mutant SURVIVED the first implementation and found a real defect.** The first cut excluded every item on the worklist from the candidate set; yesterday's unverified TSH was itself on the verify queue, so it vanished by exclusion and the mutant (latest by `entered_at`, verified or not) returned the same answer as the code. Fixed to exclude only the row's OWN item; the mutant then returned 4 against 5.5 and died. A mutant that survives is a finding, not a formality.
+- Numeric values come back with four decimals (`3.0000`); the test compares numbers, not strings.
+- The seat: queue ordered by a pure function (critical or open call first, STAT, then oldest clock — asserted on the function), TAT elapsed against target per panel, previous value with a signed delta beside each result, Sign N as N signatures in order (a refusal stops the run, the rest stand), rerun per analyte, the publish queue and the held/settled report carried from 17b. It watches `lab:bench` and `lab_critical`.
+- Evidence: core `worklist` 3/3 (+ e2e 8/8); web `lab-verify` 6/6, `lab-bench` 7/7, i18n parity; typecheck 0, lint 0 errors.
+

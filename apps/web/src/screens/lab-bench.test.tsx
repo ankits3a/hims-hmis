@@ -34,14 +34,15 @@ function mockRoutes(handlers: Record<string, Reply | ((body: unknown) => Reply)>
 
 const analyte = (code: string, over: Partial<WireWorklistRow["analytes"][number]> = {}): WireWorklistRow["analytes"][number] => ({
   analyteId: `a-${code}`, code, nameEn: code, unit: "mg/dL", resultType: "numeric", resultId: null, value: null, flag: null,
-  refLow: "70", refHigh: "100", refText: null, verificationStatus: null, enteredById: null, pathologistReviewPending: false, ...over,
+  refLow: "70", refHigh: "100", refText: null, verificationStatus: null, enteredById: null, pathologistReviewPending: false,
+  previous: null, ...over,
 });
 const WORKLIST: WireWorklistRow[] = [{
   orderItemId: "i-1", orderId: "o-1", orderNo: "L2608300001", encounterNo: "V2608290001",
   patientId: "p-1", patientDisplay: "Ram Kumar",
   serviceId: "svc-gluf", orderableCode: "GLUF", orderableName: "Glucose, fasting",
   discipline: "biochemistry", priority: "routine", state: "in_analysis",
-  specimenNo: "S2608300001", tatStartedAt: "2026-08-30T06:00:00.000Z",
+  specimenNo: "S2608300001", tatStartedAt: "2026-08-30T06:00:00.000Z", tatTargetMinutes: 240,
   analytes: [analyte("GLUF")],
 }];
 const LFT: WireWorklistRow = {
