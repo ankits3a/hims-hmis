@@ -2124,7 +2124,11 @@
       "versions": "Versions",
       "published": "published",
       "publishedNotified": "Published, and the patient has been notified.",
-      "publishedNoMessage": "Published. No message was sent — the invoice is not settled."
+      "publishedNoMessage": "Published. No message was sent — the invoice is not settled.",
+      "startFromTemplate": "Start from template",
+      "technique": "Technique",
+      "proposed": "Draft proposed by {{drafter}} — technique filled, findings and impression are yours.",
+      "machineDrafted": "machine-drafted"
     },
     "gate": {
       "identity_two_factor": "Identity (two factor)",
