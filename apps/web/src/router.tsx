@@ -20,6 +20,7 @@ import { MyDay } from "./screens/my-day";
 import { StaffReports } from "./screens/staff-reports";
 import { CounterDesk } from "./screens/counter-desk";
 import { RegistrationCounter } from "./screens/registration-counter";
+import { CounterFigures } from "./screens/counter-figures";
 import { RegistrationDesk } from "./screens/registration-desk";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
@@ -28,6 +29,7 @@ import { OpdAdmin } from "./screens/opd-admin";
 import { OpdAppointments } from "./screens/opd-appointments";
 import { OpdDesk } from "./screens/opd-desk";
 import { OpdVitals } from "./screens/opd-vitals";
+import { VitalsBay } from "./screens/vitals-bay";
 import { OpdConsult } from "./screens/opd-consult";
 import { OpdDisplay } from "./screens/opd-display";
 import { BillingCounter } from "./screens/billing-counter";
@@ -198,6 +200,8 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/lab/verify", label: "nav.labVerify", permission: "lab.results.verify", group: "opd" },
   /** PLAN 17c T5 — the fifth lab seat, the report centre, on the counter's own permission. */
   { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "opd" },
+  // VD-2 T1 / D1 — Bay One beside `/opd/vitals`, the way `/counter/seat` sits beside `/counter`.
+  { to: "/opd/vitals/bay", label: "nav.vitalsBay", permission: "opd.vitals.record", group: "opd" },
 ];
 
 function Shell(): React.ReactElement {
@@ -403,7 +407,41 @@ const counterDeskRoute = createRoute({
 const registrationCounterRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/counter/seat",
-  component: RegistrationCounter,
+  // FD-1 T4 — the door to "your figures" is a client-side navigation handed in from here; the seat
+  // itself mounts without a router in its suite.
+  component: function RegistrationCounterRoute() {
+    const navigate = useNavigate();
+    return <RegistrationCounter onFigures={() => { void navigate({ to: "/counter/seat/figures" }); }} />;
+  },
+});
+
+/**
+ * VD-2 T1 / D1 — Bay One, the vitals desk, mounted BESIDE `/opd/vitals` for the same reason the
+ * registration seat sits beside `/counter`: a shipped screen and an unproven layout are never in
+ * one diff. The old screen's deletion is an owner item once the seven bay stories run.
+ */
+const vitalsBayRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/opd/vitals/bay",
+  component: VitalsBay,
+});
+
+/**
+ * FD-1 T4 / D4 — "your figures", the registration clerk's own account, inside the seat's alias
+ * layer; Escape returns to the seat with the patient in hand untouched.
+ */
+const counterFiguresRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/counter/seat/figures",
+  component: function CounterFiguresRoute() {
+    const navigate = useNavigate();
+    return (
+      <CounterFigures
+        onBack={() => { void navigate({ to: "/counter/seat" }); }}
+        onGo={(href) => { void navigate({ to: href as never }); }}
+      />
+    );
+  },
 });
 
 const registrationRoute = createRoute({
@@ -713,6 +751,8 @@ export const router = createRouter({
       // `caddyfile-parity.test.ts` pins the count and joins this task's Files list — the S11 rule
       // this repository has now applied to itself eight times.
       registrationCounterRoute,
+      counterFiguresRoute,
+      vitalsBayRoute,
       formularyAdminRoute,
       // PLAN 14 T9 — 25 -> 28. `caddyfile-parity.test.ts` pins the count and joins this task's
       // Files list, which is the S11 rule the repo has applied to itself four times.
