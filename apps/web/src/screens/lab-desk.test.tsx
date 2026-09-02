@@ -86,7 +86,7 @@ async function findByToken(seen: Seen): Promise<void> {
 it("the TOKEN door: one hit is the person, and the consult's Rx lines are on the screen before anybody types", async () => {
   const seen = mockRoutes({
     "GET /api/lab/collection/queue": { status: 200, body: [] },
-    "GET /api/lab/desk/find": { status: 200, body: { hits: [FARIDA] } },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [FARIDA], labDoctors: [] } },
     "POST /api/lab/catalogue/duplicates": { status: 200, body: [] },
     "POST /api/lab/desk/preview": { status: 200, body: PRICED },
     "POST /api/lab/desk/orders": { status: 201, body: PLACED },
@@ -131,7 +131,7 @@ it("the NAME door lists candidates to confirm; a patient with no visit goes thro
   const noVisit = { ...FARIDA, matchedOn: "name", patient: { ...FARIDA.patient, id: "p-2", uhid: "U23011885", display: "Sunita Devi" }, visit: null };
   const seen = mockRoutes({
     "GET /api/lab/collection/queue": { status: 200, body: [] },
-    "GET /api/lab/desk/find": { status: 200, body: { hits: [noVisit, { ...noVisit, patient: { ...noVisit.patient, id: "p-3", uhid: "U23011886" } }] } },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [noVisit, { ...noVisit, patient: { ...noVisit.patient, id: "p-3", uhid: "U23011886" } }], labDoctors: [] } },
     "GET /api/lab/catalogue/search": { status: 200, body: [CBC, HIV] },
     "POST /api/lab/catalogue/duplicates": { status: 200, body: [] },
     "POST /api/lab/desk/preview": { status: 200, body: { ...PRICED, lines: [PRICED.lines[0]], totals: { ...PRICED.totals, netPayablePaise: 30000 }, tubes: [{ container: "edta", specimenType: "whole_blood", codes: ["CBC"] }] } },
@@ -172,7 +172,7 @@ it("the NAME door lists candidates to confirm; a patient with no visit goes thro
 it("nobody on file: the four-field register opens in place and the new patient is the one in hand", async () => {
   const seen = mockRoutes({
     "GET /api/lab/collection/queue": { status: 200, body: [] },
-    "GET /api/lab/desk/find": { status: 200, body: { hits: [] } },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [], labDoctors: [] } },
     "POST /api/patients": { status: 201, body: { patient: { id: "p-new", uhid: "U23019999" } } },
   });
   renderWithProviders(<LabDesk />);
@@ -193,7 +193,7 @@ it("nobody on file: the four-field register opens in place and the new patient i
 it("DD14 — a consent-class test cannot be ordered until the consent NAMES somebody", async () => {
   mockRoutes({
     "GET /api/lab/collection/queue": { status: 200, body: [] },
-    "GET /api/lab/desk/find": { status: 200, body: { hits: [{ ...FARIDA, visit: { ...FARIDA.visit, advised: [] } }] } },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [{ ...FARIDA, visit: { ...FARIDA.visit, advised: [] } }], labDoctors: [] } },
     "GET /api/lab/catalogue/search": { status: 200, body: [CBC, HIV] },
     "POST /api/lab/catalogue/duplicates": { status: 200, body: [] },
     "POST /api/lab/desk/preview": { status: 200, body: PRICED },
@@ -216,7 +216,7 @@ it("DD14 — a consent-class test cannot be ordered until the consent NAMES some
 it("shows the server's refusal verbatim rather than inventing a message", async () => {
   mockRoutes({
     "GET /api/lab/collection/queue": { status: 200, body: [] },
-    "GET /api/lab/desk/find": { status: 200, body: { hits: [FARIDA] } },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [FARIDA], labDoctors: [] } },
     "POST /api/lab/catalogue/duplicates": { status: 200, body: [] },
     "POST /api/lab/desk/preview": { status: 200, body: PRICED },
     "POST /api/lab/desk/orders": { status: 404, body: {

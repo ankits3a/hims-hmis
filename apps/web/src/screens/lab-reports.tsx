@@ -7,6 +7,7 @@ import {
   deliveryRegister, istToday, LAB_BENCH_TOPIC, labErrorText, printReport, releaseReport, reportsForPatient,
   requestReleaseApproval,
 } from "../lib/lab-api";
+import { useAuth } from "../lib/auth";
 import { useRealtime } from "../lib/realtime";
 import { LabReportPrint } from "../components/lab-report-print";
 import { PatientPicker } from "../components/patient-picker";
@@ -56,13 +57,18 @@ export function LabReports(): React.ReactElement {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const serviceDate = istToday();
+  const { can } = useAuth();
   const [picked, setPicked] = useState<PatientPickerHit | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [collector, setCollector] = useState("");
-  const [channel, setChannel] = useState<"print" | "in_person" | "whatsapp">("print");
-  const [approvalId, setApprovalId] = useState("");
-  const [requested, setRequested] = useState<string | null>(null);
+  /** Pass 1 F14 — per REPORT, never shared across cards: a channel chosen for one report is not another's. */
+  const [collectorBy, setCollectorBy] = useState<Record<string, string>>({});
+  const [channelBy, setChannelBy] = useState<Record<string, "print" | "in_person" | "whatsapp">>({});
+  const [approvalBy, setApprovalBy] = useState<Record<string, string>>({});
+  const [requestedBy, setRequestedBy] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const collectorOf = (id: string): string => collectorBy[id] ?? "";
+  const channelOf = (r: WirePatientReportRow): "print" | "in_person" | "whatsapp" =>
+    channelBy[r.reportId] ?? ((r.channels[0] ?? "in_person") as "print" | "in_person" | "whatsapp");
 
   const register = useQuery({
     queryKey: ["lab", "reports", "register", serviceDate],
@@ -78,12 +84,22 @@ export function LabReports(): React.ReactElement {
   const { connected } = useRealtime([LAB_BENCH_TOPIC], () => refresh());
 
   const hand = useMutation({
-    mutationFn: (v: { reportId: string }) => printReport(
-      v.reportId,
-      channel === "whatsapp" ? { channel } : { channel, collectorIdentity: collector.trim() },
-      newIdempotencyKey(),
-    ),
-    onSuccess: () => { setError(null); setCollector(""); refresh(); },
+    mutationFn: (r: WirePatientReportRow) => {
+      const channel = channelOf(r);
+      return printReport(
+        r.reportId,
+        channel === "whatsapp" ? { channel } : { channel, collectorIdentity: collectorOf(r.reportId).trim() },
+        newIdempotencyKey(),
+      );
+    },
+    onSuccess: (_res, r) => {
+      setError(null);
+      setCollectorBy((c) => ({ ...c, [r.reportId]: "" }));
+      setOpenId(r.reportId);
+      refresh();
+      /** The paper: the document is open; the print dialog is the hand-over's last step. */
+      if (channelOf(r) === "print" && typeof window.print === "function") window.print();
+    },
     onError: (e: unknown) => setError(labErrorText(e)),
   });
   const ask = useMutation({
@@ -91,18 +107,29 @@ export function LabReports(): React.ReactElement {
       orderId: r.orderId, patientId: picked!.id, amountPaise: r.delivery.outstandingPaise,
       note: `report ${r.orderNo} — patient cannot settle today`,
     }),
-    onSuccess: (res) => { setError(null); setRequested(res.approvalId); },
+    onSuccess: (res, r) => { setError(null); setRequestedBy((m) => ({ ...m, [r.reportId]: res.approvalId })); },
     onError: (e: unknown) => setError(labErrorText(e)),
   });
   const release = useMutation({
     mutationFn: (r: WirePatientReportRow) => releaseReport(
-      r.reportId, { approvalId: approvalId.trim(), collectorIdentity: collector.trim(), channel: channel === "in_person" ? "in_person" : "print" },
+      r.reportId,
+      { approvalId: (approvalBy[r.reportId] ?? "").trim(), collectorIdentity: collectorOf(r.reportId).trim(),
+        channel: channelOf(r) === "in_person" ? "in_person" : "print" },
       newIdempotencyKey(),
     ),
-    onSuccess: () => { setError(null); setCollector(""); setApprovalId(""); setRequested(null); refresh(); },
+    onSuccess: (_res, r) => {
+      setError(null);
+      setCollectorBy((c) => ({ ...c, [r.reportId]: "" }));
+      setApprovalBy((a) => ({ ...a, [r.reportId]: "" }));
+      setRequestedBy((m) => { const next = { ...m }; delete next[r.reportId]; return next; });
+      setOpenId(r.reportId);
+      refresh();
+    },
     onError: (e: unknown) => setError(labErrorText(e)),
   });
 
+  /** Pass 1 F2(a) — `approvals.requests.create` is granted to no role by the seed; the button appears only for a holder. */
+  const mayAsk = can("approvals.requests.create");
   const rows = register.data ?? [];
   const heldCount = rows.filter((r) => !r.delivery.allowed).length;
   const collected = rows.filter((r) => r.deliveries.some((d) => d.channel === "print" || d.channel === "in_person")).length;
@@ -177,7 +204,7 @@ export function LabReports(): React.ReactElement {
         {/* ── hand over at the counter · one field ── */}
         <section className="space-y-3">
           <h2 className="text-sm font-semibold">{t("lab.reports.find")}</h2>
-          <PatientPicker onPick={(hit) => { setPicked(hit); setOpenId(null); setError(null); setRequested(null); }} />
+          <PatientPicker onPick={(hit) => { setPicked(hit); setOpenId(null); setError(null); }} />
           {picked === null && <p className="text-sm text-muted-foreground">{t("lab.reports.pick")}</p>}
           {mine.isError && <p role="alert" className="text-sm font-semibold">{t("lab.reports.registerUnavailable")}</p>}
           {mine.data !== undefined && (() => {
@@ -222,26 +249,30 @@ export function LabReports(): React.ReactElement {
                             {t("lab.reports.heldLine", { amount: (r.delivery.outstandingPaise / 100).toFixed(2), count: r.delivery.unpaidInvoiceIds.length })}
                           </p>
                           <p className="text-xs text-muted-foreground">{t("lab.reports.releaseHint")}</p>
-                          {requested === null ? (
+                          {requestedBy[r.reportId] !== undefined ? (
+                            <p className="text-xs">{t("lab.reports.releaseRequested", { id: requestedBy[r.reportId] })}</p>
+                          ) : mayAsk ? (
                             <Button type="button" variant="outline" size="sm" disabled={ask.isPending} onClick={() => ask.mutate(r)}>
                               {t("lab.reports.requestRelease")}
                             </Button>
                           ) : (
-                            <p className="text-xs">{t("lab.reports.releaseRequested", { id: requested })}</p>
+                            <p className="text-xs">{t("lab.reports.askElsewhere")}</p>
                           )}
                           <div className="flex flex-wrap items-end gap-2">
                             <label className="text-sm">
                               {t("lab.reports.approvalId")}
-                              <input className="mt-1 block rounded border border-input px-2 py-1 font-mono" value={approvalId}
-                                onChange={(e) => setApprovalId(e.target.value)} />
+                              <input className="mt-1 block rounded border border-input px-2 py-1 font-mono" value={approvalBy[r.reportId] ?? ""}
+                                aria-label={`${t("lab.reports.approvalId")} ${r.orderNo}`}
+                                onChange={(e) => setApprovalBy((a) => ({ ...a, [r.reportId]: e.target.value }))} />
                             </label>
                             <label className="text-sm">
                               {t("lab.reports.collector")}
-                              <input className="mt-1 block rounded border border-input px-2 py-1" value={collector}
+                              <input className="mt-1 block rounded border border-input px-2 py-1" value={collectorOf(r.reportId)}
                                 aria-label={`${t("lab.reports.collector")} ${r.orderNo}`}
-                                onChange={(e) => setCollector(e.target.value)} />
+                                onChange={(e) => setCollectorBy((c) => ({ ...c, [r.reportId]: e.target.value }))} />
                             </label>
-                            <Button type="button" disabled={approvalId.trim() === "" || collector.trim() === "" || release.isPending}
+                            <Button type="button"
+                              disabled={(approvalBy[r.reportId] ?? "").trim() === "" || collectorOf(r.reportId).trim() === "" || release.isPending}
                               onClick={() => release.mutate(r)}>
                               {t("lab.reports.release")}
                             </Button>
@@ -252,25 +283,31 @@ export function LabReports(): React.ReactElement {
                           <div className="flex flex-wrap items-end gap-2">
                             <label className="text-sm">
                               {t("lab.reports.channel")}
-                              <select className="mt-1 block rounded border border-input px-2 py-1" value={channel}
-                                onChange={(e) => setChannel(e.target.value as typeof channel)}>
+                              <select className="mt-1 block rounded border border-input px-2 py-1" value={channelOf(r)}
+                                aria-label={`${t("lab.reports.channel")} ${r.orderNo}`}
+                                onChange={(e) => setChannelBy((c) => ({ ...c, [r.reportId]: e.target.value as "print" | "in_person" | "whatsapp" }))}>
                                 {r.channels.map((c) => <option key={c} value={c}>{t(`lab.reports.channel_${c}`)}</option>)}
                               </select>
                             </label>
                             <label className="text-sm">
                               {t("lab.reports.collector")}
-                              <input className="mt-1 block rounded border border-input px-2 py-1" value={collector}
+                              <input className="mt-1 block rounded border border-input px-2 py-1" value={collectorOf(r.reportId)}
                                 aria-label={`${t("lab.reports.collector")} ${r.orderNo}`}
-                                onChange={(e) => setCollector(e.target.value)} />
+                                onChange={(e) => setCollectorBy((c) => ({ ...c, [r.reportId]: e.target.value }))} />
                             </label>
                             <Button type="button"
-                              disabled={hand.isPending || (channel !== "whatsapp" && collector.trim() === "")}
-                              onClick={() => hand.mutate({ reportId: r.reportId })}>
+                              disabled={hand.isPending || (channelOf(r) !== "whatsapp" && collectorOf(r.reportId).trim() === "")}
+                              onClick={() => hand.mutate(r)}>
                               {t("lab.reports.print")}
                             </Button>
                             <Button type="button" variant="outline" size="sm" onClick={() => setOpenId(isOpen ? null : r.reportId)}>
                               {isOpen ? "▲" : "▼"}
                             </Button>
+                            {isOpen && view !== null && (
+                              <Button type="button" variant="outline" size="sm" className="no-print" onClick={() => window.print()}>
+                                {t("lab.reports.printPaper")}
+                              </Button>
+                            )}
                           </div>
                           {isOpen && view !== null && <LabReportPrint report={view} />}
                         </div>

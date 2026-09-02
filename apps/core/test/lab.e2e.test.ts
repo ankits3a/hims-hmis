@@ -8,6 +8,7 @@ import { mkCashier, openSessionFor } from "./helpers/billing";
 import { openOpdVisit } from "./helpers/opd";
 import { registerEncounterResolver } from "../src/kernel/episodes/encounter-resolvers";
 import { getEncounter } from "../src/modules/opd";
+import { istDayString } from "../src/kernel/approvals/cumulative";
 import {
   grantLabResultPermissions, seedLabDeskBase, serviceIdForLabCode, settleInvoice, uhidOf,
 } from "./helpers/lab";
@@ -216,7 +217,7 @@ describe("the laboratory over HTTP (17b T8)", () => {
       return e ? { patientId: e.patientId, intendedPayer: e.intendedPayer } : null;
     });
     const uhid = await uhidOf(db, fx.patientId);
-    const today = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
+    const today = istDayString(new Date());
 
     /* ── 1. RECEPTION: the token door, the Rx lines, the tube plan, one line on credit ── */
     const visit = await openOpdVisit(db, {

@@ -137,6 +137,8 @@ it("DD6 — a HELD report reaches the browser as a verdict, never as a page; rel
     "GET /api/lab/reports/register": { status: 200, body: REGISTER },
     "GET /api/patients/search": { status: 200, body: { items: [hit("p-2", "Ramesh Mahto", "U23011990")] } },
     "GET /api/lab/reports/patient/p-2": { status: 200, body: RAMESH },
+    /** The ask button appears only for a holder of `approvals.requests.create` (pass 1 F2a). */
+    "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" }, permissions: { hospital: ["approvals.requests.create"], scoped: { department: {}, floor: {} } } } },
     "POST /api/approvals": { status: 201, body: { approvalId: "apr-77", instanceId: "wf-1" } },
     "POST /api/lab/reports/rep-2/release": { status: 201, body: { deliveryId: "d-8", printCount: 1 } },
   });
@@ -156,7 +158,7 @@ it("DD6 — a HELD report reaches the browser as a verdict, never as a page; rel
 
   const release = within(card).getByRole("button", { name: "Release and hand over" });
   expect(release).toBeDisabled();
-  await userEvent.type(within(card).getByLabelText("Approval id"), "apr-77");
+  await userEvent.type(within(card).getByLabelText("Approval id L2609010088"), "apr-77");
   await userEvent.type(within(card).getByLabelText("Collected by (name and relation) L2609010088"), "Ramesh Mahto (self)");
   expect(release).toBeEnabled();
   await userEvent.click(release);

@@ -240,7 +240,7 @@ async function verifyResultInTx(
     correlationId: ctx.orderId,
     payload: {
       resultId: input.resultId, orderItemId: ctx.orderItemId, orderGroupId: ctx.orderGroupId, analyteId: result.analyteId,
-      verifiedBy: actor.id, pathologistReviewPending,
+      verifiedBy: actor.id,
     },
   }));
 

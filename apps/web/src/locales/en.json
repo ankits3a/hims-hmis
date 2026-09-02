@@ -1825,7 +1825,8 @@
         "female": "Female",
         "other": "Other",
         "unknown": "Unknown"
-      }
+      },
+      "pathologistOfRecord": "Pathologist of record (walk-in)"
     },
     "collection": {
       "title": "Collection",
@@ -2087,7 +2088,9 @@
       "live": "live",
       "offline": "offline",
       "channels": "How the patient's copy travels",
-      "channelsNote": "WhatsApp / SMS carry a values-free notice today; the counter is the door for the paper and for in-person-only tests."
+      "channelsNote": "WhatsApp / SMS carry a values-free notice today; the counter is the door for the paper and for in-person-only tests.",
+      "askElsewhere": "Your login cannot raise the release request — ask the billing manager to raise it in the approvals inbox, then enter the approval id here.",
+      "printPaper": "Print the paper"
     }
   },
   "radiology": {

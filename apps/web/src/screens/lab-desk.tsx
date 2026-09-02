@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { LabSeatFrame, sexAge } from "./lab-seat";
 import type {
-  DeskOrderRequest, WireDeskFindHit, WireDeskOrder, WireDuplicateWarning, WireOrderable, WirePricedDraft,
+  DeskOrderRequest, WireDeskFindHit, WireDeskOrder, WireDuplicateWarning, WireLabDoctor, WireOrderable, WirePricedDraft,
 } from "../lib/lab-api";
 
 /**
@@ -90,6 +90,9 @@ export function LabDesk(): React.ReactElement {
   const [selected, setSelected] = useState<WireDeskFindHit | null>(null);
   const [registering, setRegistering] = useState(false);
   const [fields, setFields] = useState<RegisterFields>(EMPTY_REGISTER);
+  /** Pass 1 F6 — with two active pathologists the walk-in must name one; the server refuses to choose. */
+  const [labDoctors, setLabDoctors] = useState<WireLabDoctor[]>([]);
+  const [walkInDoctorId, setWalkInDoctorId] = useState("");
   const fieldRef = useRef<HTMLInputElement>(null);
 
   /* ── the order ── */
@@ -124,9 +127,14 @@ export function LabDesk(): React.ReactElement {
     mutationFn: () => deskFind(q, serviceDate),
     onSuccess: (r) => {
       setHits(r.hits);
+      setLabDoctors(r.labDoctors);
       setError(null);
-      /** ONE hit through the token, visit or order door is the person — the clerk confirms by reading. */
-      if (r.hits.length === 1 && r.hits[0]!.matchedOn !== "name") choose(r.hits[0]!);
+      /**
+       * ONE hit through an EXACT door — token, visit, order, UHID — is the person. A mobile is not
+       * exact (pass 1 F10: a family phone with one registered member must still be confirmed), and
+       * a name never is (D4).
+       */
+      if (r.hits.length === 1 && ["token", "visit", "order", "uhid"].includes(r.hits[0]!.matchedOn)) choose(r.hits[0]!);
       else setSelected(null);
     },
     onError: (e: unknown) => setError(labErrorText(e)),
@@ -210,17 +218,31 @@ export function LabDesk(): React.ReactElement {
         )),
         ...(selected.visit !== null
           ? { encounterNo: selected.visit.encounterNo, orderingClinicianId: selected.visit.doctorUserId ?? undefined }
-          : { walkIn: referrerName.trim() === "" ? {} : { referrerName: referrerName.trim() } }),
+          : { walkIn: {
+              ...(referrerName.trim() === "" ? {} : { referrerName: referrerName.trim() }),
+              ...(walkInDoctorId === "" ? {} : { doctorId: walkInDoctorId }),
+            } }),
         ...money,
       };
       return placeLabOrder(body, idempotencyKey);
     },
-    onSuccess: (order) => {
-      setPlaced(order);
+    onSuccess: async (order) => {
       setError(null);
       setLines([]); setWarnings(null); setAcknowledged([]); setPriced(null);
       setIdempotencyKey(newIdempotencyKey());
       void qc.invalidateQueries({ queryKey: ["lab"] });
+      /**
+       * Pass 1 F7 — a walk-in order OPENED a visit; a second Save on the same patient must ride it,
+       * not open another. Re-find by the visit number the server minted and take that hit.
+       */
+      if (selected !== null && selected.visit === null) {
+        try {
+          const again = await deskFind(order.encounterNo, serviceDate);
+          const hit = again.hits.find((h) => h.visit?.encounterNo === order.encounterNo);
+          if (hit) { setSelected(hit); setReferrerName(hit.visit?.referrerName ?? ""); }
+        } catch { /* the order stands; the next find will show the visit */ }
+      }
+      setPlaced(order);
     },
     onError: (e: unknown) => setError(labErrorText(e)),
   });
@@ -527,6 +549,17 @@ export function LabDesk(): React.ReactElement {
                       onChange={(e) => setReferrerName(e.target.value)} />
                   </label>
                 )}
+                {selected.visit === null && labDoctors.length > 1 && (
+                  <label className="text-sm">
+                    {t("lab.desk.pathologistOfRecord")}
+                    <select className="mt-1 w-full rounded border border-input px-2 py-1" value={walkInDoctorId}
+                      aria-label={t("lab.desk.pathologistOfRecord")}
+                      onChange={(e) => setWalkInDoctorId(e.target.value)}>
+                      <option value="">—</option>
+                      {labDoctors.map((d) => <option key={d.id} value={d.id}>{d.displayName}</option>)}
+                    </select>
+                  </label>
+                )}
                 <label className="text-sm">
                   {t("lab.desk.tender")}
                   <select className="mt-1 w-full rounded border border-input px-2 py-1" value={tender}
@@ -564,6 +597,8 @@ export function LabDesk(): React.ReactElement {
                     orderableLines.length === 0 || missingConsent.length > 0 || unacknowledged.length > 0
                     /** Taking money needs a PRICE, and the price is the server's. */
                     || priced === null || place.isPending || check.isPending
+                    /** Two pathologists: the walk-in names one (F6). */
+                    || (selected.visit === null && labDoctors.length > 1 && walkInDoctorId === "")
                   }
                   onClick={() => place.mutate()}
                 >

@@ -1,5 +1,6 @@
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { deskAndLabel, grantLabResultPermissions, runLabOrder, seedLabDeskBase } from "../../../test/helpers/lab";
+import { grantPermissionToRole } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
 import { receive } from "./accession";
 import { benchArrivals, benchWorklist, verifyWorklist } from "./worklist";
@@ -31,10 +32,15 @@ describe("the bench's arrivals (17c T3)", () => {
       expect(a.wristbandScanned).toBe(false);
       expect(a.orderGroupId).toBe(drawn.orderGroupId);
     }
-    /** The tube stays on the list and the RESTRICTED test's name leaves it (collectionQueue's rule). */
-    const codes = arrivals.flatMap((a) => a.orderableCodes);
-    expect(codes).toContain("CBC");
-    expect(codes).not.toContain("HBSAG");
+    /**
+     * ALL OR NOTHING (close review pass 1, F1): the first cut filtered the restricted code out and
+     * left `itemIds` beside it — `[]` next to one item PROVES a restricted test. Every row alike:
+     * no codes for a reader without `orders.read.restricted`, every code for one who holds it.
+     */
+    expect(arrivals.map((a) => a.orderableCodes)).toEqual([[], []]);
+    await grantPermissionToRole(db, fx.registry, "lab_technician", "orders.read.restricted");
+    const cleared = await benchArrivals(db, fx.bench.actor);
+    expect(cleared.flatMap((a) => a.orderableCodes).sort()).toEqual(["CBC", "HBSAG"]);
     expect(await benchWorklist(db, fx.bench.actor)).toEqual([]);
 
     const cbcTube = drawn.specimens.find((s) => s.itemIds.includes(drawn.itemIds[0]!))!;
