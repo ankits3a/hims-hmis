@@ -470,3 +470,52 @@ export type WireVitalsHistoryItem = {
   band: string;
   dangerFlags: unknown[];
 };
+
+// ——— VD-2 T1 — the bench, the pre-stage reader, and the escalation state, on the wire ———
+/**
+ * VD-1 shipped these three shapes on the server (`bench.ts:46`, `prestage.ts:49`,
+ * `escalation.ts:71`) and NO web type declared them — the `feeStatus` / `avgConsultMinutes` /
+ * `matchedOn` finding for the fourth time. Declared here in the PR of the screen that reads them,
+ * so a rail and its consumer cannot drift apart again. Dates arrive as ISO strings.
+ */
+export type WireBenchState = "resting" | "away";
+export type WireEscalationState = "none" | "recheck_demanded" | "escalated" | "cancelled";
+export type WireBenchRow = {
+  encounterId: string; entryId: string; tokenNo: number; seq: number;
+  doctorId: string; doctorName: string; serviceDate: string;
+  patient: WirePatientSummary | null;
+  benchState: WireBenchState | null;
+  recallAt: string | null;
+  vitalsDone: boolean;
+  vitalsId: string | null;
+  escalation: WireEscalationState;
+  cancelMsRemaining: number;
+  recallDue: boolean;
+};
+export function fetchBench(filter: { departmentId?: string; doctorId?: string; serviceDate: string }): Promise<{ items: WireBenchRow[] }> {
+  const qs = new URLSearchParams({ serviceDate: filter.serviceDate });
+  if (filter.departmentId !== undefined) qs.set("departmentId", filter.departmentId);
+  if (filter.doctorId !== undefined) qs.set("doctorId", filter.doctorId);
+  return api("GET", `/opd/bench?${qs.toString()}`);
+}
+
+export type WireVitalKey = "heightCm" | "weightKg" | "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm";
+export type WireBandKey = "infant" | "child_1_5" | "child_6_12" | "adult";
+export type WirePreStage = {
+  patientId: string;
+  ageYears: number | null;
+  band: WireBandKey;
+  required: WireVitalKey[];
+  notRoutine: WireVitalKey[];
+  last: {
+    vitalsId: string; recordedAt: string; serviceDate: string;
+    heightCm: number | null; weightKg: number | null; sbp: number | null; dbp: number | null;
+    pulse: number | null; rr: number | null; spo2: number | null; tempC: number | null; muacCm: number | null;
+  } | null;
+  carryCandidates: WireVitalKey[];
+  expectedFlags: WireDangerFlag[];
+};
+/** `opd.vitals.history.read` — the last chart, the band and the carry candidates, nothing else (VD-1 D6). */
+export function fetchPreStage(encounterId: string): Promise<WirePreStage> {
+  return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/prestage`);
+}

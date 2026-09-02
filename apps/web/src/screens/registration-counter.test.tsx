@@ -581,12 +581,15 @@ describe("RC-3 T5 / D3 — the alias layer is scoped to the seat", () => {
    * which scopes the block to everything. A census over the source tree is what catches that, since
    * the CSS itself would look correct.
    */
-  it("MUTANT — exactly ONE file carries `data-seat`, and it is the seat's own root element", () => {
+  it("MUTANT — only the SEATS carry `data-seat`, each on its own root element", () => {
     const carriers = readdirSync(resolve(__dirname, ".."), { recursive: true, encoding: "utf8" })
       .filter((f) => f.endsWith(".tsx") || f.endsWith(".ts"))
       .filter((f) => !f.endsWith(".test.tsx") && !f.endsWith(".test.ts"))
-      .filter((f) => readFileSync(resolve(__dirname, "..", f), "utf8").includes("data-seat"));
-    expect(carriers).toEqual(["screens/registration-counter.tsx"]); // THE KILL
+      .filter((f) => readFileSync(resolve(__dirname, "..", f), "utf8").includes("data-seat"))
+      .sort();
+    // VD-2 T1 / D9 — Bay One is the second seat to opt in (RC-3 D1 said "one attribute per seat").
+    // The census still kills the hoist: `router.tsx`, the shell or `main.tsx` carrying it fails here.
+    expect(carriers).toEqual(["screens/registration-counter.tsx", "screens/vitals-bay.tsx"]); // THE KILL
 
     renderWithProviders(<RegistrationCounter />);
     expect(screen.getByTestId("registration-counter").getAttribute("data-seat")).toBe("registration-counter");

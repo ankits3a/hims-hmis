@@ -56,7 +56,8 @@
     "labVerify": "Verify & report",
     "radiologyReception": "Imaging reception",
     "radiologyWorklist": "Imaging worklist",
-    "counterSeat": "Registration counter (new)"
+    "counterSeat": "Registration counter (new)",
+    "vitalsBay": "Vitals bay"
   },
   "palette": {
     "title": "Search",
@@ -2111,6 +2112,76 @@
       "closing": "Your drawer is locked at close — a billing manager must approve the variance before you can take payment.",
       "closingCover": "Meanwhile a billing manager can cover this counter.",
       "forbidden": "This login cannot hold a cash drawer — a cashier role is needed to take payment here."
+    }
+  },
+  "vitalsBay": {
+    "title": "Vitals bay",
+    "department": "Department",
+    "allDepartments": "All departments",
+    "clearDesk": "Clear desk",
+    "identify": {
+      "label": "Who is in front of you?",
+      "placeholder": "scan the slip, or type the token no. / UHID",
+      "hint": "Scan, token number or UHID — all three start the same lane. ⏎ to begin.",
+      "notOnBench": "{{who}} is not on this bench — check the slip, or send them to the front desk",
+      "unknownPatient": "This row has no patient record the bay can read",
+      "scanUnavailable": "The scanner check is unavailable — type the token number instead",
+      "scanFailed": {
+        "malformed": "That scan is not a patient card",
+        "invalid_signature": "That card did not verify — a copied or edited code",
+        "stale_version": "That card was reissued — ask for the new one",
+        "unknown_patient": "That card belongs to no patient on file"
+      }
+    },
+    "valve": {
+      "bench": "bench {{count}}",
+      "callable": "callable {{count}}"
+    },
+    "bench": {
+      "title": "The bench",
+      "empty": "Bench clear — nobody waiting",
+      "failed": "The bench could not be read — the list may be stale",
+      "unknownPatient": "(no record)",
+      "restricted": "(restricted)",
+      "recallAt": "resting · recall {{time}}",
+      "state": {
+        "waiting": "waiting",
+        "resting": "resting",
+        "due": "recall due",
+        "away": "away — turn held",
+        "done": "✓ with doctor",
+        "escalated": "class 0 — escalated",
+        "recheck": "other arm, now"
+      }
+    },
+    "session": {
+      "empty": "Nobody in hand — scan, or type a token number or UHID",
+      "band": "Band",
+      "age": "{{years}} y",
+      "required": "Required",
+      "notRoutine": "Not routine",
+      "firstVisit": "No history — first visit",
+      "last": "Last chart {{date}}:",
+      "carry": "Carried forward, locked until a reason: {{vitals}}",
+      "expectedFlags": "{{count}} expected flag(s) from history",
+      "noHistory": "No history to show for this visit"
+    },
+    "band": {
+      "infant": "Infant",
+      "child_1_5": "Child 1–5",
+      "child_6_12": "Child 6–12",
+      "adult": "Adult"
+    },
+    "vital": {
+      "heightCm": "Height",
+      "weightKg": "Weight",
+      "sbp": "SBP",
+      "dbp": "DBP",
+      "pulse": "Pulse",
+      "rr": "RR",
+      "spo2": "SpO₂",
+      "tempC": "Temp",
+      "muacCm": "MUAC"
     }
   }
 }

@@ -339,8 +339,11 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // came from. RC-4 deletes one of the two and the number comes back to 44. The pin was raised in
     // the same edit as the route rather than after watching it fail — like 17b's and unlike 18a's —
     // so the evidence is the passing run, stated as such rather than as a failure not observed.
-    expect(routes).toHaveLength(45);
+    // VD-2 T1 / D1 — 46 with `/opd/vitals/bay`, Bay One: the vitals desk beside `/opd/vitals`, the
+    // registration seat's pattern. The old screen's deletion is an owner item and brings it to 45.
+    expect(routes).toHaveLength(46);
     expect(routes).toContain("/counter/seat");
+    expect(routes).toContain("/opd/vitals/bay");
     expect(routes).toContain("/radiology/reception");
     expect(routes).toContain("/radiology/worklist");
     // The three parameterised ones too: a parameterised path is still a SPA path, and if
