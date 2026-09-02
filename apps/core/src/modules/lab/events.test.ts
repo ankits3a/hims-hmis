@@ -97,7 +97,7 @@ describe("the lab's event catalogue (Plan 17 T2)", () => {
     // THE TAT CLOCK'S EVENT. `itemIds` may be empty here and that is deliberate: a tube received
     // whose every item was cancelled meanwhile is a real occurrence (CONTRACT 2's quarantine).
     expect(labSpecimenReceived.make({
-      payload: { specimenId: "s-1", specimenNo: "S2608290001", itemIds: [], receivedBy: "u-1", at: "2026-08-29T10:00:00Z" },
+      payload: { specimenId: "s-1", specimenNo: "S2608290001", orderGroupId: "g-1", itemIds: [], receivedBy: "u-1", at: "2026-08-29T10:00:00Z" },
       actor,
     }).payload).toMatchObject({ specimenNo: "S2608290001" });
 

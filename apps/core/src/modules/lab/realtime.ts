@@ -47,12 +47,33 @@ export const LAB_TOPIC_SPACES: TopicSpace[] = [
  * REMOVED and recorded as §9.2 F43; the phase that may edit `events.ts` adds `orderGroupId` to
  * their payloads and puts them back.
  */
+/** The tube-and-result events the department-wide bench topic carries (17c T3). */
+export const LAB_BENCH_NAMES = [
+  "lab.specimen_collected", "lab.specimen_received", "lab.specimen_rejected",
+  "lab.recollection_requested", "lab.result_entered", "lab.result_verified",
+] as const;
+
+/**
+ * `lab:bench` — the WHOLE department's tube traffic, under the `lab` space (`lab.worklist.read`).
+ * A bench watching every group has no group to subscribe to; this is the topic it watches. It
+ * exists beside the per-group topic, never instead of it.
+ */
+export const LAB_BENCH_TOPIC = "lab:bench";
+
 export const LAB_REALTIME_NAMES = [
   "lab.order_desked", "lab.label_printed",
   "lab.report_published", "lab.report_amended", "lab.report_printed", "lab.report_print_blocked",
   "lab.result_critical_flagged", "lab.critical_acknowledged",
   "lab.reflex_added", "lab.sla_breached",
+  /**
+   * PLAN 17c T3 / D8 — THE SIX ARE BACK. 17b F43 removed them because their payloads named no
+   * order; `events.ts` now carries `orderGroupId` on every one, so a counter watching one patient
+   * AND the bench watching the whole department both see the tube drawn, received, rejected,
+   * re-requested, resulted and signed. Structural payloads only — no value, no analyte name.
+   */
+  ...LAB_BENCH_NAMES,
 ];
+
 
 type P = { orderGroupId?: string; orderId?: string; callId?: string };
 
@@ -69,6 +90,7 @@ export function labTopicsFor(e: Pick<TailedEvent, "name" | "payload">): string[]
   if (e.name === "lab.result_critical_flagged" || e.name === "lab.critical_acknowledged") {
     out.push("lab_critical");
   }
+  if ((LAB_BENCH_NAMES as readonly string[]).includes(e.name)) out.push(LAB_BENCH_TOPIC);
   return out;
 }
 

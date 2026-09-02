@@ -362,7 +362,7 @@ export async function collect(
     correlationId: specimen.orderGroupId,
     payload: {
       specimenId: specimen.id, specimenNo: specimen.specimenNo, patientId: specimen.patientId,
-      collectedBy: actor.id, at: now.toISOString(),
+      orderGroupId: specimen.orderGroupId, collectedBy: actor.id, at: now.toISOString(),
       wristbandScanned: input.wristbandScanned, collectionSite: site,
     },
   }));
