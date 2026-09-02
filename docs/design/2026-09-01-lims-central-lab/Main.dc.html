@@ -1,0 +1,163 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;600;700&amp;display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#f4f7f4;color:#132420;font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:#0e6b4e;text-decoration:none} a:hover{color:#0a4f3a}
+    .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+    .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#8ea69a}
+    .box{background:#ffffff;border:1px solid #dfe7e1;border-radius:8px}
+    .pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:99px;font-size:10.5px;font-weight:600;border:1px solid #dfe7e1;background:#ffffff;color:#5c6f66;white-space:nowrap}
+    .pill.on{border-color:rgba(14,107,78,.35);background:rgba(14,107,78,.08);color:#0e6b4e}
+    .pill.rd{border-color:rgba(178,58,48,.45);background:rgba(178,58,48,.08);color:#b23a30}
+    .seat{display:flex;flex-direction:column;gap:10px;min-width:0}
+    .seat .who{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:8px;background:#132420;color:#f4f7f4}
+    .seat .who b{font-size:14px;font-weight:600}
+    .seat .who span{font-size:11.5px;color:#7fa392}
+    .step{padding:10px 14px;font-size:12.5px;line-height:17px}
+    .step b{font-weight:600}
+    .st{display:flex;flex-wrap:wrap;gap:4px;padding:0 14px 10px}
+    .st span{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px;background:#eef3ef;color:#5c6f66}
+    .st span.now{background:rgba(14,107,78,.12);color:#0e6b4e}
+    .carry{display:flex;align-items:center;gap:8px;padding:8px 14px;border-top:1px solid #ecf1ed;font-size:11.5px;color:#5c6f66}
+    .arrow{display:flex;align-items:center;justify-content:center;color:#8ea69a}
+    .src{display:flex;align-items:center;gap:10px;padding:9px 12px;border-top:1px solid #ecf1ed;font-size:12.5px}
+    .src .k{font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:700;letter-spacing:.1em;width:84px;color:#5c6f66}
+    .ic{width:16px;height:16px;flex-shrink:0}
+    .chain{display:grid;grid-template-columns:150px 1fr 1fr 1fr 1fr 1fr;gap:0 12px;align-items:start;padding:8px 14px;border-top:1px solid #ecf1ed;font-size:12px;line-height:16px;color:#5c6f66}
+    .chain b{color:#132420;font-weight:600}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:820px;display:flex;flex-direction:column;background:#f4f7f4;overflow:hidden">
+
+  <div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 18px;background:#ffffff;border-bottom:1px solid #dfe7e1;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:10px;height:10px;border-radius:2px;background:#0e6b4e;transform:rotate(45deg)"></div>
+      <span class="mo" style="font-size:12.5px;font-weight:700;letter-spacing:.08em">CENTRAL LAB</span>
+    </div>
+    <span style="color:#dfe7e1">/</span>
+    <span style="font-size:12.5px;color:#5c6f66">The journey of one tube · five seats, one barcode</span>
+    <div style="flex-grow:1"></div>
+    <span class="pill on">each seat is drawn on its own board to the right</span>
+    <span class="pill"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(14,107,78,.12);border:1px solid rgba(14,107,78,.35)"></span>state this seat sets · grey = passes through</span>
+  </div>
+
+  <div style="flex-grow:1;min-height:0;padding:18px 26px 20px;display:flex;flex-direction:column;gap:14px">
+
+    <div style="display:grid;grid-template-columns:250px 40px minmax(0,1fr) 28px minmax(0,1fr) 28px minmax(0,1fr) 28px minmax(0,1fr) 28px minmax(0,1fr);gap:0;align-items:stretch">
+
+      <!-- intake -->
+      <div class="box" style="display:flex;flex-direction:column">
+        <div style="padding:12px 14px 8px"><span class="tag">how work arrives</span></div>
+        <div class="src"><span class="k">OPD</span><span>Doctor orders on the consult screen · patient walks to the lab</span></div>
+        <div class="src"><span class="k">IPD</span><span>Ward order · the nurse draws at the bed, tubes come down</span></div>
+        <div class="src"><span class="k" style="color:#b23a30">EMERGENCY</span><span><b style="font-weight:600">STAT</b> · jumps every queue, 30–60 min targets</span></div>
+        <div class="src"><span class="k">WALK-IN</span><span>Comes with the front-desk slip and a token, or an outside prescription</span></div>
+        <div style="flex-grow:1"></div>
+        <div style="padding:10px 14px 12px;border-top:1px solid #ecf1ed;font-size:11.5px;line-height:16px;color:#5c6f66">Portal orders need no typing at reception. Only the walk-in slip does.</div>
+      </div>
+
+      <div class="arrow"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></div>
+
+      <!-- seat 1 -->
+      <div class="seat">
+        <div class="who"><b>1 · Reception</b><span>Sanjay · lab_reception · counter L-01</span></div>
+        <div class="box" style="flex-grow:1;display:flex;flex-direction:column">
+          <div class="step">Scans the token or the slip, or types the <b>token / UHID</b>. Enters the tests from the prescription. Sees what the slip already paid for. <b>Save</b> — the tubes are decided and labels queue at the chair.</div>
+          <div class="st"><span class="now">ordered</span><span class="now">awaiting_collection</span></div>
+          <div style="flex-grow:1"></div>
+          <div class="carry"><span class="tag">carries</span><span class="mo">T-118 · UHID · L2609010102</span></div>
+        </div>
+      </div>
+
+      <div class="arrow"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></div>
+
+      <!-- seat 2 -->
+      <div class="seat">
+        <div class="who"><b>2 · Collection</b><span>Vikas · phlebotomist · chair 1</span></div>
+        <div class="box" style="flex-grow:1;display:flex;flex-direction:column">
+          <div class="step">Calls the token. Checks identity (wristband scan, or name and age). Labels print per tube in <b>order of draw</b>, one barcode each. Draws, scans each tube, <b>Drawn — to the lab</b>.</div>
+          <div class="st"><span class="now">collected</span><span>in_transit</span></div>
+          <div style="flex-grow:1"></div>
+          <div class="carry"><span class="tag">carries</span><span class="mo">S2609010211 · 212 · 213</span></div>
+        </div>
+      </div>
+
+      <div class="arrow"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></div>
+
+      <!-- seat 3 -->
+      <div class="seat">
+        <div class="who"><b>3 · Bench</b><span>Abha Rani · lab_technician · BIOCHEM-1</span></div>
+        <div class="box" style="flex-grow:1;display:flex;flex-direction:column">
+          <div class="step">Scans the tube — the patient and the tests come up by themselves; <b>Receive</b> starts the TAT clock. Results arrive from the analyser over the serial interface, or she <b>types them from the printout</b>. Flags and criticals fire on entry. <b>Save &amp; complete</b>.</div>
+          <div class="st"><span class="now">received</span><span class="now">in_analysis</span><span class="now">resulted</span></div>
+          <div style="flex-grow:1"></div>
+          <div class="carry"><span class="tag">carries</span><span class="mo">S-barcode → analyser ID</span></div>
+        </div>
+      </div>
+
+      <div class="arrow"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></div>
+
+      <!-- seat 4 -->
+      <div class="seat">
+        <div class="who"><b>4 · Verification</b><span>Dr. Meera Iyer · pathologist</span></div>
+        <div class="box" style="flex-grow:1;display:flex;flex-direction:column">
+          <div class="step">Reads every result against its range, the patient's previous values and any open critical call. <b>Sign</b> or send back for <b>rerun</b>. The report is generated on the signature — nobody lays it out.</div>
+          <div class="st"><span class="now">verified</span><span class="now">published</span></div>
+          <div style="flex-grow:1"></div>
+          <div class="carry"><span class="tag">carries</span><span class="mo">report v1 · signed · QR</span></div>
+        </div>
+      </div>
+
+      <div class="arrow"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></div>
+
+      <!-- seat 5 -->
+      <div class="seat">
+        <div class="who"><b>5 · Delivery</b><span>Report centre · patient · doctor</span></div>
+        <div class="box" style="flex-grow:1;display:flex;flex-direction:column">
+          <div class="step">The doctor's screen has it the moment it is signed. The patient gets it on <b>WhatsApp, SMS or email</b>, or collects it at the counter by <b>UHID or mobile</b>. Unpaid slips hold the print, never the fact. Sensitive tests: in person only.</div>
+          <div class="st"><span class="now">delivered</span><span>amended</span></div>
+          <div style="flex-grow:1"></div>
+          <div class="carry"><span class="tag">carries</span><span class="mo">UHID · mobile · OTP</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- what the chains do -->
+    <div class="box">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;padding:12px 14px 8px">
+        <span style="font-size:13px;font-weight:600">What the national chains do at each seat, and what this design takes from them</span>
+        <span style="font-size:11.5px;color:#5c6f66">Dr Lal PathLabs · Pathkind · Agilus (SRL) · Apollo Diagnostics — from their public process and reference guides</span>
+      </div>
+      <div class="chain" style="border-top:none;padding-top:0"><span class="tag">seat</span><span class="tag">reception</span><span class="tag">collection</span><span class="tag">bench</span><span class="tag">verification</span><span class="tag">delivery</span></div>
+      <div class="chain">
+        <b>The chains</b>
+        <span>One visit ID per patient per day, printed on the receipt. Barcode minted at registration, not at the bench.</span>
+        <span>Colour-coded tubes with the test list printed on the label. Order of draw is a wall chart. Home-collection kits carry a master barcode for transport.</span>
+        <span>Analysers interfaced both ways (ASTM / HL7): orders go down, results come up. Manual entry only when the interface is down.</span>
+        <span>Auto-validation for normal, in-range results; a doctor authorises everything flagged. Two signatures for some disciplines.</span>
+        <span>Report by WhatsApp and SMS as a password-protected PDF, an app login, or the website with visit ID + OTP. Counter copy on request.</span>
+      </div>
+      <div class="chain">
+        <b>Taken here</b>
+        <span>Token + UHID are the visit ID. The L order number and S tube barcodes are minted on Save, and print at the chair.</span>
+        <span>Order of draw is on the screen, not the wall. One barcode per tube; a scan confirms each. A missed wristband scan forces a named re-check at the bench.</span>
+        <span>Scan-to-identify; serial interface first, printout second, and a typed value outside the absurd envelope needs a second enterer.</span>
+        <span>Every result passes a pathologist today (auto-verification ships with zero rules). Criticals are telephoned at entry, not at signature.</span>
+        <span>Doctor's screen never waits. WhatsApp / SMS / email / counter. The print is held on an unpaid slip; only the billing manager can release it.</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

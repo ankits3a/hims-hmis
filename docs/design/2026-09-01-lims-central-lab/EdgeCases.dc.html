@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;600;700&amp;display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#f4f7f4;color:#132420;font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:#0e6b4e;text-decoration:none} a:hover{color:#0a4f3a}
+    .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+    .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#8ea69a}
+    .box{background:#ffffff;border:1px solid #dfe7e1;border-radius:8px}
+    .pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:99px;font-size:10.5px;font-weight:600;border:1px solid #dfe7e1;background:#ffffff;color:#5c6f66;white-space:nowrap}
+    .pill.on{border-color:rgba(14,107,78,.35);background:rgba(14,107,78,.08);color:#0e6b4e}
+    .pill.gd{border-color:rgba(221,143,28,.45);background:rgba(221,143,28,.10);color:#dd8f1c}
+    .pill.rd{border-color:rgba(178,58,48,.45);background:rgba(178,58,48,.08);color:#b23a30}
+    .row{display:grid;grid-template-columns:28px 300px 96px 1fr 118px;gap:14px;align-items:start;padding:9px 16px;border-top:1px solid #ecf1ed;font-size:12.5px;line-height:17px}
+    .row:hover{background:#eef3ef}
+    .row .w{font-weight:600}
+    .row .a{color:#5c6f66}
+    .row .a b{color:#132420;font-weight:600}
+    .seat{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:700;letter-spacing:.08em;color:#5c6f66;padding-top:2px}
+    .v{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:99px;font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:700;letter-spacing:.08em;white-space:nowrap}
+    .v.ok{border:1px solid rgba(14,107,78,.35);background:rgba(14,107,78,.08);color:#0e6b4e}
+    .v.ch{border:1px solid rgba(221,143,28,.45);background:rgba(221,143,28,.10);color:#dd8f1c}
+    .v.gap{border:1px solid rgba(178,58,48,.45);background:rgba(178,58,48,.08);color:#b23a30}
+    .grp{display:flex;align-items:baseline;gap:12px;padding:12px 16px 4px;border-top:1px solid #ecf1ed}
+    .grp:first-child{border-top:none}
+    .grp h2{margin:0;font-size:13px;font-weight:600}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:1800px;display:flex;flex-direction:column;background:#f4f7f4;overflow:hidden">
+
+  <div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 18px;background:#ffffff;border-bottom:1px solid #dfe7e1;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:10px;height:10px;border-radius:2px;background:#0e6b4e;transform:rotate(45deg)"></div>
+      <span class="mo" style="font-size:12.5px;font-weight:700;letter-spacing:.08em">CENTRAL LAB</span>
+    </div>
+    <span style="color:#dfe7e1">/</span>
+    <span style="font-size:12.5px;color:#5c6f66">Does the process survive an Indian day? · 26 things that happen, run against the five seats</span>
+    <div style="flex-grow:1"></div>
+    <span class="v ok">HOLDS · 14</span><span class="v ch">CHANGE · 9</span><span class="v gap">GAP · 3</span>
+  </div>
+
+  <div style="flex-grow:1;min-height:0;overflow-y:auto;padding:18px 26px 20px">
+    <section class="box">
+      <div class="row" style="border-top:none;padding-top:12px;padding-bottom:4px"><span></span><span class="tag">what happens</span><span class="tag">seat</span><span class="tag">what the screens do about it · what the code already has</span><span class="tag">verdict</span></div>
+
+      <div class="grp"><h2>Identity and the patient</h2><span style="font-size:11.5px;color:#5c6f66">the family phone, the same name, no UHID</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">1</span><span class="w">One mobile number for the whole family; three patients on it this month</span><span class="seat">DELIVERY</span><span class="a">The WhatsApp PDF is locked with <b>year of birth + UHID last four</b>, so a brother cannot open a sister's report. A mobile that matches two people at the counter asks for the name. <b>Add:</b> “this phone belongs to” at registration so the message greets the right person.</span><span class="v ch">CHANGE</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">2</span><span class="w">Three Sunita Devis, all 32, on the same morning</span><span class="seat">ALL</span><span class="a">No seat ever searches by name after reception: the token, the UHID and the S barcode carry identity. The bench scans; it never picks from a list. Names are shown to <em>confirm</em>, never to <em>select</em>.</span><span class="v ok">HOLDS</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">3</span><span class="w">Walk-in with an outside prescription and no UHID</span><span class="seat">RECEPTION</span><span class="a">Reception cannot order without a patient. The registration counter already registers in four fields without leaving the seat (RC-4). <b>Add the same four-field register-in-place</b> to lab reception, so Sanjay does not send them across the hall.</span><span class="v ch">CHANGE</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">4</span><span class="w">The ordering doctor is outside the hospital</span><span class="seat">RECEPTION · DELIVERY</span><span class="a">The order needs a clinician today (<span class="mo">requiresClinician</span>). <b>Add</b> “referred by” as a named outside doctor; the report goes to the patient only, and the doctor's-screen column reads “outside”.</span><span class="v ch">CHANGE</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">5</span><span class="w">Two records for one patient; last month's result sits under the other UHID</span><span class="seat">VERIFY</span><span class="a">Delta checks and “previous” already follow the <b>merge chain</b> to the canonical patient, so the comparison finds the other record once merged. Duplicate detection is the registration counter's job.</span><span class="v ok">HOLDS</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">6</span><span class="w">A relative comes to collect; the patient is bedridden at home</span><span class="seat">DELIVERY</span><span class="a">The counter records <b>who collected</b> — name and relation — on every print or in-person hand-over; the code requires it. In-person-only tests (HIV) are the exception: the patient, with ID.</span><span class="v ok">HOLDS</span></div>
+
+      <div class="grp"><h2>Money</h2><span style="font-size:11.5px;color:#5c6f66">the unpaid slip, the scheme card, the outside test</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">7</span><span class="w">Ayushman / PM-JAY, TPA or corporate patient with dues on paper</span><span class="seat">DELIVERY</span><span class="a"><b>Never held.</b> <span class="mo">tpa · pmjay · corporate</span> payers and day-care encounters are exempt from the print interlock in code. The report prints like any paid one.</span><span class="v ok">HOLDS</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">8</span><span class="w">Slip paid for three tests; the prescription has four</span><span class="seat">RECEPTION</span><span class="a">Reception shows <b>billed / not billed</b> per line. The tube is drawn either way; only the unbilled line of the report waits for money. Sanjay can bill it there or send them back to the front desk.</span><span class="v ok">HOLDS</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">9</span><span class="w">Test not done here — vitamin D, HLA-B27, culture sensitivity to a referral lab</span><span class="seat">RECEPTION · BENCH</span><span class="a">The <span class="mo">sent_out</span> state exists and is driven by nobody: no partner lab, no dispatch manifest, no returned-report import. Reception cannot even tell the patient a day. <b>Plan 17-M.</b></span><span class="v gap">GAP</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">10</span><span class="w">Health camp or corporate screening: 200 samples in a morning</span><span class="seat">RECEPTION · COLLECTION</span><span class="a">Nothing for bulk: no pre-printed barcode sheets, no camp roster import, no batch registration. The chains do this daily. <b>Plan it as its own slice</b>; the ELISA plate map on the instruments board is the bench half of it.</span><span class="v gap">GAP</span></div>
+
+      <div class="grp"><h2>The sample</h2><span style="font-size:11.5px;color:#5c6f66">tea before the fasting test, the smudged label, the neonate</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">11</span><span class="w">“Bas ek chai” — not fasting for the glucose</span><span class="seat">COLLECTION</span><span class="a">Vikas has the button: <b>Not fasting → send back with a morning slot</b>; the other tubes are still drawn. If the patient insists, the draw is marked non-fasting and the report says so beside the value.</span><span class="v ok">HOLDS</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">12</span><span class="w">Label smudged in the ice box; the bench scanner cannot read it</span><span class="seat">BENCH</span><span class="a">Typing an S number by hand is allowed, and re-labelling is a witnessed act. <b>Add:</b> “re-label · second person” on the bench, recorded like the absurd-value override, so a mislabel cannot be made silently.</span><span class="v ch">CHANGE</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">13</span><span class="w">Ward tube arrives with a handwritten name and no barcode</span><span class="seat">BENCH</span><span class="a">Rejected as <span class="mo">unlabelled</span>, charged to <span class="mo">collection</span>; a free recollection lands on the ward. The bench never accepts a name in place of a barcode.</span><span class="v ok">HOLDS</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">14</span><span class="w">Three-day-old baby: heel prick, half a millilitre</span><span class="seat">COLLECTION · BENCH</span><span class="a">Reference ranges resolve by <b>age in days</b> at collection (0–28 d, 28–365 d …). Insufficient volume is a named rejection; a paediatric tube is flagged in the queue so Vikas plans the draw.</span><span class="v ok">HOLDS</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">15</span><span class="w">A man's tube shows a pregnancy hormone: tubes swapped at the chair</span><span class="seat">BENCH · VERIFY</span><span class="a">Delta checks catch a value that jumps against the same patient's history; nothing catches a value impossible for the <b>sex or age</b> on the record. <b>Add</b> an impossibility rule at entry that parks the result and flags both tubes drawn in that minute.</span><span class="v ch">CHANGE</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">16</span><span class="w">Patient never returns for the recollection</span><span class="seat">RECEPTION</span><span class="a">A daily 07:00 sweep cancels anything <span class="mo">recollection_pending</span> for 7 days and raises the credit note in the same transaction. Nothing is left hanging on a worklist.</span><span class="v ok">HOLDS</span></div>
+
+      <div class="grp"><h2>The result</h2><span style="font-size:11.5px;color:#5c6f66">a critical value at 9 pm, a machine down, a correction after WhatsApp</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">17</span><span class="w">Potassium 6.8 at 21:10; OPD over, ordering doctor's phone off</span><span class="seat">BENCH</span><span class="a">The call opens itself and every attempt is logged; only a read-back closes it. <b>Add the ladder</b>: ordering doctor → duty medical officer / casualty → patient or attendant directly, each a named contact with a time limit, so a technician is never left dialling one number.</span><span class="v ch">CHANGE</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">18</span><span class="w">Doctor wants the numbers by phone before the pathologist signs</span><span class="seat">VERIFY</span><span class="a">The single-operator path releases a <b>provisional</b> report, marked as such, when no pathologist is on. Separation of duties blocks the same person entering and verifying. <b>Add:</b> the doctor's screen may show <em>unverified</em> values with that word on them.</span><span class="v ch">CHANGE</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">19</span><span class="w">Chemistry analyser down; reagent for HbA1c not delivered</span><span class="seat">BENCH · DELIVERY</span><span class="a">The analyser statuses (<span class="mo">qc_locked · calibration_due · interface_down · maintenance</span>) are declared and written by nobody; no reagent stock; and nothing tells the patient “your report will be tomorrow 10:00”. <b>Plan 17-E</b> plus one delay message.</span><span class="v gap">GAP</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">20</span><span class="w">Server or internet down for an hour</span><span class="seat">ALL</span><span class="a">Labels have a <span class="mo">downtime_kit</span> path with pre-printed serials mapped at accession; the instrument bridge queues locally. <b>Add</b> a visible downtime mode on collection and bench so the paper register and the later reconciliation are one screen, not a habit.</span><span class="v ch">CHANGE</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">21</span><span class="w">Haemolysed sample gives a false high potassium</span><span class="seat">BENCH</span><span class="a"><span class="mo">haemolysed</span> is a named rejection with attribution; the value is never entered, the tube is recollected free. The instrument's own haemolysis index, where it sends one, should park the result before a human sees a number.</span><span class="v ok">HOLDS</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">22</span><span class="w">Report already on WhatsApp; a value was wrong</span><span class="seat">VERIFY · DELIVERY</span><span class="a">A correction is a new version (<span class="mo">amended</span>, reason coded); the old PDF cannot be recalled, so v2 goes out on the same channel saying what it supersedes, and the doctor's screen shows the retraction. Critical corrections are telephoned again.</span><span class="v ok">HOLDS</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">23</span><span class="w">Night shift: one technician draws, runs, enters and wants to release</span><span class="seat">BENCH · VERIFY</span><span class="a">Separation of duties is enforced (<span class="mo">sod_violation_blocked</span>); the single-operator release is allowed only as a provisional report and is counted for NABL. The design shows both.</span><span class="v ok">HOLDS</span></div>
+
+      <div class="grp"><h2>Law and language</h2><span style="font-size:11.5px;color:#5c6f66">consent, notification, Hindi</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">24</span><span class="w">HIV screen reactive; malaria positive</span><span class="seat">RECEPTION · DELIVERY</span><span class="a">HIV needs recorded consent before the draw and is in-person only; reactive screens are repeated and go to ICTC counselling. Malaria, dengue, hepatitis feed the IDSP register by event. The counselling referral is the in-person hand-over itself: the counsellor, not the counter, gives the result.</span><span class="v ok">HOLDS</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">25</span><span class="w">Patient reads Hindi only</span><span class="seat">DELIVERY</span><span class="a">The SMS and WhatsApp text are already bilingual in the app; the report body is English by NABL convention. <b>Add</b> Hindi headings and the flag words (उच्च / निम्न) on the patient copy; the doctor's copy stays as is.</span><span class="v ch">CHANGE</span></div>
+      <div class="row"><span class="mo" style="color:#8ea69a">26</span><span class="w">Ultrasound-style sex disclosure asked of the lab</span><span class="seat">ALL</span><span class="a">No lab orderable may report foetal sex — pinned false by a database check the catalogue cannot route around. PCPNDT is radiology's law; the lab is simply unable to break it.</span><span class="v ok">HOLDS</span></div>
+    </section>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

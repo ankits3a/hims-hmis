@@ -1,0 +1,244 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;600;700&amp;display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#f4f7f4;color:#132420;font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:#0e6b4e;text-decoration:none} a:hover{color:#0a4f3a}
+    button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0;text-align:left}
+    input{font:inherit;color:inherit}
+    .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+    .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#8ea69a}
+    .kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:18px;padding:0 4px;border-radius:3px;border:1px solid #dfe7e1;background:#ffffff;font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;color:#5c6f66;flex-shrink:0}
+    .kb.dk{border-color:#2c4438;background:#1c332b;color:#7fa392}
+    .box{background:#ffffff;border:1px solid #dfe7e1;border-radius:8px}
+    .pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:99px;font-size:10.5px;font-weight:600;border:1px solid #dfe7e1;background:#ffffff;color:#5c6f66;white-space:nowrap}
+    .pill.on{border-color:rgba(14,107,78,.35);background:rgba(14,107,78,.08);color:#0e6b4e}
+    .pill.gd{border-color:rgba(221,143,28,.45);background:rgba(221,143,28,.10);color:#dd8f1c}
+    .pill.rd{border-color:rgba(178,58,48,.45);background:rgba(178,58,48,.08);color:#b23a30}
+    .stamp{display:inline-flex;padding:2px 10px;border-radius:4px;font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:700;letter-spacing:.14em}
+    .stamp.pd{border:2px solid #0e6b4e;color:#0e6b4e}
+    .stamp.un{border:2px solid #dd8f1c;color:#dd8f1c}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 20px;border-radius:6px;background:#0e6b4e;color:#f2faf6;font-size:14px;font-weight:600;border:1px solid #0e6b4e}
+    .sec{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:6px;border:1px solid #dfe7e1;background:#ffffff;font-size:12.5px;font-weight:500}
+    .in{height:40px;width:100%;border-radius:6px;border:1px solid #dfe7e1;background:#ffffff;padding:0 12px;font-size:14px}
+    .src{font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:700;letter-spacing:.1em;padding:1px 6px;border-radius:3px;background:#eef3ef;color:#5c6f66;flex-shrink:0}
+    .src.em{background:rgba(178,58,48,.10);color:#b23a30}
+    .qrow{display:flex;align-items:flex-start;gap:10px;padding:9px 14px;border-top:1px solid #ecf1ed}
+    .qrow:hover{background:#eef3ef}
+    .trow{display:grid;grid-template-columns:20px 1fr 150px 100px 90px;gap:12px;align-items:center;height:38px;padding:0 14px;border-top:1px solid #ecf1ed;font-size:13px}
+    .tube{width:12px;height:18px;border-radius:2px 2px 4px 4px;border:1px solid rgba(19,36,32,.25);flex-shrink:0}
+    .ic{width:14px;height:14px;flex-shrink:0}
+    .dot{width:7px;height:7px;border-radius:99px;flex-shrink:0}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#f4f7f4;overflow:hidden">
+
+  <!-- header -->
+  <div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 18px;background:#ffffff;border-bottom:1px solid #dfe7e1;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:10px;height:10px;border-radius:2px;background:#0e6b4e;transform:rotate(45deg)"></div>
+      <span class="mo" style="font-size:12.5px;font-weight:700;letter-spacing:.08em">CENTRAL LAB</span>
+    </div>
+    <span style="color:#dfe7e1">/</span>
+    <span style="font-size:12.5px;color:#5c6f66">Lab reception · Counter L-01 · <strong style="color:#132420;font-weight:600">Sanjay Kumar</strong></span>
+    <div style="flex-grow:1"></div>
+    <span class="mo" style="font-size:11.5px;color:#8ea69a">MON 1 SEP · 10:42</span>
+    <button class="pill gd" style="height:24px"><span class="mo">7</span> waiting at this counter <span class="kb">Q</span></button>
+    <button class="pill" style="height:24px"><span class="mo">38</span> arrived on the portal today</button>
+    <button class="pill" style="height:24px;border-color:#132420"><strong>⌘</strong> command <span class="kb">Ctrl K</span></button>
+  </div>
+
+  <div style="flex-grow:1;min-height:0;display:flex">
+
+    <!-- portal arrivals -->
+    <aside style="width:330px;flex-shrink:0;border-right:1px solid #dfe7e1;background:#ffffff;overflow-y:auto;display:flex;flex-direction:column">
+      <div style="padding:14px 14px 8px;display:flex;align-items:baseline;justify-content:space-between">
+        <span class="tag">arrived on the portal · no typing needed</span>
+        <span class="mo" style="font-size:10.5px;color:#8ea69a">live</span>
+      </div>
+
+      <div class="qrow" style="background:rgba(178,58,48,.04)">
+        <span class="src em">EMERGENCY</span>
+        <div style="min-width:0;flex-grow:1">
+          <div style="font-weight:600">Kamla Devi <span style="font-weight:400;color:#5c6f66">· 68 F</span> <span class="pill rd" style="height:18px;padding:0 6px">STAT</span></div>
+          <div style="font-size:11.5px;color:#5c6f66">Troponin I · Electrolytes · CBC · Dr. Ila Chandra</div>
+          <div class="mo" style="font-size:10.5px;color:#8ea69a">L2609010097 · 2 min ago · on her way from Emergency</div>
+        </div>
+      </div>
+      <div class="qrow">
+        <span class="src">IPD</span>
+        <div style="min-width:0;flex-grow:1">
+          <div style="font-weight:600">Mohan Prasad <span style="font-weight:400;color:#5c6f66">· 47 M · Ward 3, bed 12</span></div>
+          <div style="font-size:11.5px;color:#5c6f66">RFT · Potassium · drawn on the ward by Sister Rekha</div>
+          <div class="mo" style="font-size:10.5px;color:#8ea69a">L2609010093 · tubes on the way down</div>
+        </div>
+      </div>
+      <div class="qrow">
+        <span class="src">OPD</span>
+        <div style="min-width:0;flex-grow:1">
+          <div style="font-weight:600">Anjali Verma <span style="font-weight:400;color:#5c6f66">· 38 F</span></div>
+          <div style="font-size:11.5px;color:#5c6f66">Lipid profile · HbA1c · Dr. Nishant Rao · <span style="color:#dd8f1c">fasting</span></div>
+          <div class="mo" style="font-size:10.5px;color:#8ea69a">L2609010095 · 10:31 · waiting at the chair</div>
+        </div>
+      </div>
+      <div class="qrow">
+        <span class="src">OPD</span>
+        <div style="min-width:0;flex-grow:1">
+          <div style="font-weight:600">Suresh Munda <span style="font-weight:400;color:#5c6f66">· 29 M</span></div>
+          <div style="font-size:11.5px;color:#5c6f66">Widal · Malaria parasite · CBC · Dr. T. Minz</div>
+          <div class="mo" style="font-size:10.5px;color:#8ea69a">L2609010096 · 10:36 · not yet at the lab</div>
+        </div>
+      </div>
+      <div class="qrow">
+        <span class="src">OPD</span>
+        <div style="min-width:0;flex-grow:1">
+          <div style="font-weight:600">Restricted record <span style="font-weight:400;color:#5c6f66">· 34 M</span></div>
+          <div style="font-size:11.5px;color:#5c6f66">HIV I &amp; II <span class="mo" style="font-size:10px;color:#dd8f1c">[consent] [in person]</span> · Dr. Nishant Rao</div>
+          <div class="mo" style="font-size:10.5px;color:#8ea69a">L2609010094 · consent recorded at the consult</div>
+        </div>
+      </div>
+
+      <div style="flex-grow:1"></div>
+      <div style="padding:10px 14px 12px;border-top:1px solid #ecf1ed;font-size:11.5px;line-height:16px;color:#5c6f66">
+        Portal orders flow straight to Vikas's queue. They are listed here so Sanjay can answer “has my order reached?” and hand a token to a portal patient who has none.
+      </div>
+    </aside>
+
+    <!-- walk-in -->
+    <main style="flex-grow:1;min-width:0;overflow-y:auto;padding:20px 26px 22px;display:flex;flex-direction:column;gap:14px">
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span class="tag">walk-in with a slip · one field, three doors</span>
+        <div style="display:flex;gap:10px;align-items:center">
+          <div style="position:relative;flex-grow:1">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#8ea69a" stroke-width="2.4" stroke-linecap="round" style="position:absolute;left:13px;top:13px"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8"/><path d="M11 8v8"/><path d="M15 8v8"/></svg>
+            <input class="in" value="T-118" style="padding-left:38px;height:44px;border-color:#0e6b4e;box-shadow:0 0 0 3px rgba(14,107,78,.08);font-size:15px">
+          </div>
+          <span style="font-size:11.5px;color:#5c6f66;width:300px;line-height:15px">Scan the token or the billing slip, or type the token number or the UHID. Same field.</span>
+        </div>
+      </div>
+
+      <!-- identified patient -->
+      <section class="box" style="display:flex;align-items:center;gap:18px;padding:12px 16px">
+        <div style="width:44px;height:44px;border-radius:6px;background:#eef3ef;display:flex;align-items:center;justify-content:center;font-weight:600;color:#5c6f66">FK</div>
+        <div style="flex-grow:1;min-width:0">
+          <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:16px;font-weight:600">Farida Khatoon</span><span style="color:#5c6f66">52 F</span><span class="mo" style="font-size:12px;color:#5c6f66">UH2301188</span><span class="mo" style="font-size:12px;color:#5c6f66">82102 55917</span></div>
+          <div style="font-size:12px;color:#5c6f66">Visit <span class="mo">V2609010044</span> · Dr. Nishant Rao, General Medicine · paper prescription, not ordered on the consult screen · token <span class="mo" style="color:#132420;font-weight:600">T-118</span> issued 10:20</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <span class="stamp pd">PAID · ₹830</span>
+          <span class="mo" style="font-size:10.5px;color:#8ea69a">INV2609010231 · cash · front desk</span>
+        </div>
+      </section>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px;align-items:start">
+
+        <!-- tests -->
+        <section class="box">
+          <div style="display:flex;align-items:center;gap:12px;padding:12px 14px 10px">
+            <span style="font-size:13px;font-weight:600">Tests on the prescription</span>
+            <div style="position:relative;flex-grow:1;max-width:360px">
+              <input class="in" placeholder="Find a test — CBC, LFT, HbA1c, urine…" style="height:34px;font-size:13px">
+            </div>
+            <span class="kb">/</span>
+          </div>
+          <div class="trow" style="height:auto;padding-bottom:6px;border-top:none"><span></span><span class="tag">test</span><span class="tag">tube</span><span class="tag">on the slip</span><span class="tag">price</span></div>
+          <div class="trow">
+            <div class="tube" style="background:#e9d5f5"></div>
+            <div><span style="font-weight:600">CBC</span> <span style="color:#5c6f66">· Complete blood count</span></div>
+            <span style="font-size:12px;color:#5c6f66">Lavender · EDTA</span>
+            <span class="pill on" style="height:20px">billed</span>
+            <span class="mo" style="font-size:12px;text-align:right">₹300</span>
+          </div>
+          <div class="trow">
+            <div class="tube" style="background:#f3c95a"></div>
+            <div><span style="font-weight:600">LFT</span> <span style="color:#5c6f66">· Liver function test</span></div>
+            <span style="font-size:12px;color:#5c6f66">Gold · SST</span>
+            <span class="pill on" style="height:20px">billed</span>
+            <span class="mo" style="font-size:12px;text-align:right">₹450</span>
+          </div>
+          <div class="trow">
+            <div class="tube" style="background:#c9cdd1"></div>
+            <div><span style="font-weight:600">GLUF</span> <span style="color:#5c6f66">· Fasting glucose</span> <span class="pill gd" style="height:18px;padding:0 6px">fasting</span></div>
+            <span style="font-size:12px;color:#5c6f66">Grey · fluoride</span>
+            <span class="pill on" style="height:20px">billed</span>
+            <span class="mo" style="font-size:12px;text-align:right">₹80</span>
+          </div>
+          <div class="trow" style="background:rgba(221,143,28,.05)">
+            <div class="tube" style="background:#e9d5f5"></div>
+            <div><span style="font-weight:600">HBA1C</span> <span style="color:#5c6f66">· Glycated haemoglobin</span></div>
+            <span style="font-size:12px;color:#5c6f66">Lavender · shares CBC tube</span>
+            <span class="pill gd" style="height:20px">on the Rx, not billed</span>
+            <span class="mo" style="font-size:12px;text-align:right">₹400</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid #ecf1ed;font-size:12px;color:#5c6f66;line-height:16px">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#dd8f1c" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0"/></svg>
+            <span><b style="font-weight:600;color:#132420">HbA1c is on the prescription but not on the slip.</b> The tube is drawn either way; the HbA1c line of the report is held until ₹400 is settled — or send her back to the front desk first.</span>
+            <button class="sec" style="height:30px;flex-shrink:0">Bill it here</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px 10px;border-top:1px solid #ecf1ed;font-size:12px;color:#5c6f66">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#8ea69a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg>
+            <span>Already ordered recently: <b style="font-weight:600;color:#132420">CBC, LFT, glucose and HbA1c on 26 Aug</b> (L2608260031, reported). Proceeding marks these confirmed repeats — Dr. Rao is tracking them.</span>
+          </div>
+        </section>
+
+        <!-- right: tubes + priority + action -->
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <section class="box">
+            <div style="padding:12px 14px 6px"><span style="font-size:13px;font-weight:600">What Vikas will draw</span> <span style="font-size:11.5px;color:#5c6f66">· decided from the tests</span></div>
+            <div style="display:flex;gap:16px;padding:6px 14px 12px">
+              <div style="display:flex;align-items:center;gap:8px"><div class="tube" style="background:#f3c95a;width:16px;height:26px"></div><div style="font-size:12px;line-height:15px"><b style="font-weight:600">Gold SST</b><br><span style="color:#5c6f66">LFT</span></div></div>
+              <div style="display:flex;align-items:center;gap:8px"><div class="tube" style="background:#e9d5f5;width:16px;height:26px"></div><div style="font-size:12px;line-height:15px"><b style="font-weight:600">Lavender EDTA</b><br><span style="color:#5c6f66">CBC · HbA1c</span></div></div>
+              <div style="display:flex;align-items:center;gap:8px"><div class="tube" style="background:#c9cdd1;width:16px;height:26px"></div><div style="font-size:12px;line-height:15px"><b style="font-weight:600">Grey fluoride</b><br><span style="color:#5c6f66">Fasting glucose</span></div></div>
+            </div>
+            <div style="padding:8px 14px 12px;border-top:1px solid #ecf1ed;font-size:12px;color:#5c6f66">3 tubes · labels print at chair 1 when Sanjay saves · expected report by <span class="mo" style="color:#132420">15:00</span> (4 h routine)</div>
+          </section>
+
+          <section class="box" style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="tag" style="width:64px">priority</span>
+              <span class="pill on">Routine</span><span class="pill">Urgent</span><span class="pill">STAT</span>
+              <span style="font-size:11.5px;color:#8ea69a;margin-left:auto">Emergency orders arrive STAT by themselves</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="tag" style="width:64px">report to</span>
+              <span class="pill on">WhatsApp</span><span class="pill">SMS</span><span class="pill">Email</span><span class="pill">Counter</span>
+            </div>
+          </section>
+
+          <button class="btn" style="width:100%">Save — send to collection <span class="kb dk" style="border-color:#2c4438">Enter</span></button>
+          <div style="font-size:11.5px;color:#5c6f66;line-height:16px;text-align:center">Order <span class="mo">L2609010102</span> is minted on save. Farida walks to chair 1; her token is already in Vikas's queue.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- agent dock -->
+  <div style="flex-shrink:0;background:#132420;color:#d9efe4">
+    <div style="display:flex;align-items:center;gap:13px;height:54px;padding:0 18px">
+      <span style="position:relative;width:9px;height:9px;flex-shrink:0">
+        <span style="position:absolute;inset:0;border-radius:99px;background:#35c48f"></span>
+        <span style="position:absolute;inset:-3px;border-radius:99px;border:1px solid #35c48f;opacity:.35"></span>
+      </span>
+      <span class="tag" style="color:#7fa392;flex-shrink:0">lab agent</span>
+      <span class="mo" style="font-size:11px;line-height:15px;color:#d9efe4;min-width:0;flex-grow:1;overflow:hidden;max-height:30px">I read Dr. Rao's prescription from the visit: CBC, LFT, fasting glucose and HbA1c. The front desk billed three of the four. Farida says she has been fasting since 22:00 — the grey tube is fine to draw.</span>
+      <div style="flex-shrink:0;display:flex;align-items:center;gap:8px;width:360px;height:36px;border:1px solid #2c4438;border-radius:6px;padding:0 11px;background:#1c332b">
+        <input placeholder="ask — “yeh test kitne mein hai?”" style="border:none;background:transparent;color:#d9efe4;flex-grow:1;font-size:12px;outline:none">
+        <span class="kb dk">F2</span>
+      </div>
+      <button class="mo" style="flex-shrink:0;font-size:10.5px;color:#7fa392;letter-spacing:.1em">▲ LOG</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

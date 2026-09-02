@@ -1,0 +1,397 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;600;700&amp;display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#f4f7f4;color:#132420;font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:#0e6b4e;text-decoration:none} a:hover{color:#0a4f3a}
+    button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0;text-align:left}
+    input{font:inherit;color:inherit}
+    button:focus-visible,input:focus-visible{outline:2px solid #0e6b4e;outline-offset:2px}
+    .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+    .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#8ea69a}
+    .kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:18px;padding:0 4px;border-radius:3px;border:1px solid #dfe7e1;background:#ffffff;font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;color:#5c6f66;flex-shrink:0}
+    .kb.dk{border-color:#2c4438;background:#1c332b;color:#7fa392}
+    .box{background:#ffffff;border:1px solid #dfe7e1;border-radius:8px}
+    .pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:99px;font-size:10.5px;font-weight:600;border:1px solid #dfe7e1;background:#ffffff;color:#5c6f66;white-space:nowrap}
+    .pill.on{border-color:rgba(14,107,78,.35);background:rgba(14,107,78,.08);color:#0e6b4e}
+    .pill.gd{border-color:rgba(221,143,28,.45);background:rgba(221,143,28,.10);color:#dd8f1c}
+    .pill.rd{border-color:rgba(178,58,48,.45);background:rgba(178,58,48,.08);color:#b23a30}
+    .stamp{display:inline-flex;padding:1px 8px;border-radius:4px;font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:700;letter-spacing:.12em}
+    .stamp.hh{border:2px solid #b23a30;color:#b23a30}
+    .stamp.ll{border:2px solid #b23a30;color:#b23a30}
+    .stamp.held{border:2px solid #dd8f1c;color:#dd8f1c}
+    .srow{display:flex;align-items:center;gap:10px;height:28px;padding:0 14px;border-top:1px solid #ecf1ed}
+    .srow:hover{background:#eef3ef}
+    .srow .n{width:34px;text-align:right;font-weight:600;font-size:13px}
+    .srow .l{flex-grow:1;min-width:0;font-size:12.5px}
+    .srow .age{font-size:10.5px;color:#8ea69a}
+    .trow{display:grid;grid-template-columns:150px 44px 1fr 96px 92px;gap:14px;align-items:center;height:34px;padding:0 16px;border-top:1px solid #ecf1ed}
+    .trow:hover{background:#eef3ef}
+    .crow{display:grid;grid-template-columns:1fr 200px 150px 190px 96px;gap:14px;align-items:center;padding:8px 16px;border-top:1px solid #ecf1ed}
+    .crow:hover{background:#eef3ef}
+    .hd{display:flex;align-items:baseline;justify-content:space-between;padding:10px 16px 8px}
+    .hd h2{margin:0;font-size:13px;font-weight:600;letter-spacing:.01em}
+    .hd .sub{font-size:11.5px;color:#5c6f66}
+    .bar{position:relative;height:10px;background:#eef3ef;border-radius:2px}
+    .bar .fill{position:absolute;left:0;top:0;bottom:0;border-radius:2px 4px 4px 2px}
+    .bar .tgt{position:absolute;top:-4px;bottom:-4px;width:2px;background:#132420;left:72%}
+    .bar:hover .tip{display:block}
+    .tip{display:none;position:absolute;left:0;top:-38px;padding:5px 8px;border-radius:4px;background:#132420;color:#f4f7f4;font-size:11px;line-height:14px;white-space:nowrap;z-index:2}
+    .sig{display:flex;flex-direction:column;gap:2px;padding:8px 14px;border-right:1px solid #ecf1ed;min-width:0}
+    .sig:last-child{border-right:none}
+    .sig .v{font-size:18px;font-weight:600;line-height:22px}
+    .sig .k{font-size:11px;color:#5c6f66;line-height:14px}
+    .chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:99px;font-size:11.5px;font-weight:500;border:1px solid #dfe7e1;background:#ffffff;color:#5c6f66;white-space:nowrap}
+    .chip:hover{border-color:#8ea69a}
+    .ic{width:14px;height:14px;flex-shrink:0}
+    .bench{display:flex;align-items:center;gap:8px;height:26px;padding:0 14px;border-top:1px solid #ecf1ed;font-size:12px}
+    .dot{width:7px;height:7px;border-radius:99px;flex-shrink:0}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#f4f7f4;overflow:hidden">
+
+  <!-- header -->
+  <div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 18px;background:#ffffff;border-bottom:1px solid #dfe7e1;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:10px;height:10px;border-radius:2px;background:#0e6b4e;transform:rotate(45deg)"></div>
+      <span class="mo" style="font-size:12.5px;font-weight:700;letter-spacing:.08em">CENTRAL LAB</span>
+    </div>
+    <span style="color:#dfe7e1">/</span>
+    <span style="font-size:12.5px;color:#5c6f66">Department of Laboratory Medicine · <strong style="color:#132420;font-weight:600">Dr. Meera Iyer</strong> · pathologist in charge</span>
+    <span class="pill on"><span class="dot" style="background:#0e6b4e;width:5px;height:5px"></span>day shift · 07:00–15:00</span>
+    <div style="flex-grow:1"></div>
+    <span class="mo" style="font-size:11.5px;color:#8ea69a">MON 1 SEP · 14:10</span>
+    <button class="pill rd" style="height:24px">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>
+      <span class="mo">3</span> critical calls open <span class="kb">C</span>
+    </button>
+    <button class="pill" style="height:24px"><span class="mo">12</span> to sign <span class="kb">S</span></button>
+    <button class="pill" style="height:24px;border-color:#132420"><strong>⌘</strong> command <span class="kb">Ctrl K</span></button>
+  </div>
+
+  <!-- body -->
+  <div style="flex-grow:1;min-height:0;display:flex">
+
+    <!-- stage board -->
+    <aside style="width:296px;flex-shrink:0;border-right:1px solid #dfe7e1;background:#ffffff;overflow-y:auto;display:flex;flex-direction:column">
+      <div style="padding:14px 14px 8px;display:flex;align-items:baseline;justify-content:space-between">
+        <span class="tag">where every tube is</span>
+        <span class="mo" style="font-size:10.5px;color:#8ea69a">since 07:00</span>
+      </div>
+
+      <div class="tag" style="padding:6px 14px 4px;color:#5c6f66">collection</div>
+      <div class="srow"><span class="n mo">4</span><span class="l">ordered, not yet queued</span><span class="age mo">12m</span></div>
+      <div class="srow"><span class="n mo" style="color:#dd8f1c">9</span><span class="l">waiting at the chair</span><span class="age mo" style="color:#dd8f1c">38m</span></div>
+      <div class="srow"><span class="n mo">6</span><span class="l">drawn, in transit</span><span class="age mo">9m</span></div>
+
+      <div class="tag" style="padding:8px 14px 3px;color:#5c6f66">bench · TAT clock running</div>
+      <div class="srow"><span class="n mo">11</span><span class="l">received, not started</span><span class="age mo">22m</span></div>
+      <div class="srow"><span class="n mo">31</span><span class="l">in analysis <span style="color:#b23a30">· 7 breached</span></span><span class="age mo" style="color:#b23a30">3h 12m</span></div>
+
+      <div class="tag" style="padding:8px 14px 3px;color:#5c6f66">yours</div>
+      <div class="srow"><span class="n mo">12</span><span class="l">resulted, awaiting signature</span><span class="age mo">47m</span></div>
+      <div class="srow"><span class="n mo">5</span><span class="l">signed, ready to publish</span><span class="age mo">15m</span></div>
+
+      <div class="tag" style="padding:8px 14px 3px;color:#5c6f66">done</div>
+      <div class="srow"><span class="n mo" style="color:#0e6b4e">149</span><span class="l">published</span><span class="age mo">—</span></div>
+      <div class="srow"><span class="n mo" style="color:#dd8f1c">6</span><span class="l" style="padding-left:12px;color:#5c6f66">of which print held for money</span><span class="age mo">—</span></div>
+      <div class="srow"><span class="n mo">6</span><span class="l">rejected, recollection asked</span><span class="age mo">—</span></div>
+
+      <div class="tag" style="padding:8px 14px 3px;color:#5c6f66">parked · not on any worklist</div>
+      <div class="srow"><span class="n mo" style="color:#dd8f1c">3</span><span class="l">recollection pending</span><span class="age mo" style="color:#dd8f1c">2d</span></div>
+      <div class="srow"><span class="n mo" style="color:#8ea69a">0</span><span class="l" style="color:#8ea69a">sent out to referral lab</span><span class="age mo">—</span></div>
+      <div class="srow"><span class="n mo">2</span><span class="l">cancelled today</span><span class="age mo">—</span></div>
+
+      <div style="flex-grow:1"></div>
+
+      <div class="tag" style="padding:10px 14px 3px;color:#5c6f66;border-top:1px solid #ecf1ed">benches</div>
+      <div class="bench"><span class="dot" style="background:#0e6b4e"></span><span class="mo" style="width:84px">HAEM-1</span><span style="color:#5c6f66">occupied · 9 tubes</span></div>
+      <div class="bench"><span class="dot" style="background:#0e6b4e"></span><span class="mo" style="width:84px">COAG-1</span><span style="color:#5c6f66">occupied · 2</span></div>
+      <div class="bench"><span class="dot" style="background:#b23a30"></span><span class="mo" style="width:84px">BIOCHEM-1</span><span style="color:#b23a30;font-weight:600">occupied · 19 tubes</span></div>
+      <div class="bench"><span class="dot" style="background:#dd8f1c"></span><span class="mo" style="width:84px">BIOCHEM-2</span><span style="color:#dd8f1c">available · nothing since 11:05</span></div>
+      <div class="bench"><span class="dot" style="background:#0e6b4e"></span><span class="mo" style="width:84px">IMMUNO-1</span><span style="color:#5c6f66">occupied · 1</span></div>
+      <div class="bench"><span class="dot" style="background:#dfe7e1"></span><span class="mo" style="width:84px">SERO-1</span><span style="color:#5c6f66">available</span></div>
+      <div class="bench" style="border-bottom:none;margin-bottom:8px"><span class="dot" style="background:#dfe7e1"></span><span class="mo" style="width:84px">CP-1</span><span style="color:#5c6f66">available</span></div>
+    </aside>
+
+    <!-- stage -->
+    <main style="flex-grow:1;min-width:0;overflow-y:auto;padding:16px 26px 18px;display:flex;flex-direction:column;gap:12px">
+
+      <!-- the brief -->
+      <div style="display:flex;flex-direction:column;gap:6px;max-width:980px">
+        <span class="tag">the shift in three sentences</span>
+        <p style="margin:0;font-size:15.5px;line-height:23px;font-weight:500;text-wrap:pretty">
+          Since 07:00 the lab has received <span class="mo">214</span> tubes and published <span class="mo">149</span> reports.
+          Turnaround is inside target in every measured section but one: <strong style="color:#b23a30;font-weight:600">biochemistry has 7 routine breaches since 11:20, all at the bench stage and all on BIOCHEM-1</strong>, while BIOCHEM-2 has received nothing since 11:05.
+          Three critical calls are open, and one has been open <span class="mo" style="color:#b23a30">41 minutes</span> with two attempts and no read-back.
+        </p>
+      </div>
+
+      <!-- discipline filter -->
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="tag" style="margin-right:4px">section</span>
+        <button class="chip" onClick="{{ pickAll }}" style="background:{{ cAll.bg }};color:{{ cAll.fg }};border-color:{{ cAll.bd }}">All</button>
+        <button class="chip" onClick="{{ pickHaem }}" style="background:{{ cHaem.bg }};color:{{ cHaem.fg }};border-color:{{ cHaem.bd }}">Haematology</button>
+        <button class="chip" onClick="{{ pickBio }}" style="background:{{ cBio.bg }};color:{{ cBio.fg }};border-color:{{ cBio.bd }}">Biochemistry <span class="mo" style="font-size:10.5px;color:#b23a30">7</span></button>
+        <button class="chip" onClick="{{ pickSero }}" style="background:{{ cSero.bg }};color:{{ cSero.fg }};border-color:{{ cSero.bd }}">Serology</button>
+        <button class="chip" onClick="{{ pickCp }}" style="background:{{ cCp.bg }};color:{{ cCp.fg }};border-color:{{ cCp.bd }}">Clinical pathology</button>
+        <button class="chip" onClick="{{ pickMicro }}" style="background:{{ cMicro.bg }};color:{{ cMicro.fg }};border-color:{{ cMicro.bd }}">Microbiology</button>
+        <button class="chip" onClick="{{ pickHisto }}" style="background:{{ cHisto.bg }};color:{{ cHisto.fg }};border-color:{{ cHisto.bd }}">Histopathology</button>
+        <div style="flex-grow:1"></div>
+        <span style="font-size:11.5px;color:#8ea69a">{{ filterNote }}</span>
+      </div>
+
+      <!-- critical calls -->
+      <section class="box" style="border-color:rgba(178,58,48,.45)">
+        <div class="hd">
+          <h2 style="display:flex;align-items:center;gap:8px;color:#b23a30">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>
+            Critical values — telephone now
+          </h2>
+          <span class="sub">A call closes only when the clinician repeats the value back. 5 closed today, median 11 min to read-back.</span>
+        </div>
+        <div class="crow" style="padding-top:0;padding-bottom:6px;border-top:none">
+          <span class="tag">patient · order</span><span class="tag">value</span><span class="tag">open for</span><span class="tag">attempts</span><span class="tag">read-back</span>
+        </div>
+
+        <sc-if value="{{ showBio }}" hint-placeholder-val="{{ true }}">
+        <div class="crow">
+          <div style="min-width:0">
+            <div style="font-weight:600;font-size:13px">Ramesh Mahto <span style="color:#5c6f66;font-weight:400">· 61 M</span></div>
+            <div class="mo" style="font-size:11px;color:#8ea69a">L2609010071 · S2609010188 · BIOCHEM-1 · Dr. Nishant Rao, Gen Med</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px"><span class="mo" style="font-size:15px;font-weight:600">6.4</span><span style="font-size:11px;color:#5c6f66">mmol/L K</span><span class="stamp hh">HH</span></div>
+          <div class="mo" style="font-size:13px;font-weight:600;color:#b23a30">41 min <span style="font-weight:400;color:#8ea69a;font-size:11px">· 13:29</span></div>
+          <div style="font-size:11.5px;line-height:15px;color:#5c6f66"><span class="mo">13:31</span> no answer<br><span class="mo">13:47</span> engaged</div>
+          <button class="pill rd" style="height:26px;justify-content:center">record call</button>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ showHaem }}" hint-placeholder-val="{{ true }}">
+        <div class="crow">
+          <div style="min-width:0">
+            <div style="font-weight:600;font-size:13px">B/o Sunita Devi <span style="color:#5c6f66;font-weight:400">· 3 d F</span></div>
+            <div class="mo" style="font-size:11px;color:#8ea69a">L2609010094 · S2609010203 · HAEM-1 · Dr. Sneha Toppo, Paediatrics</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px"><span class="mo" style="font-size:15px;font-weight:600">22</span><span style="font-size:11px;color:#5c6f66">10³/µL PLT</span><span class="stamp ll">LL</span></div>
+          <div class="mo" style="font-size:13px;font-weight:600;color:#dd8f1c">18 min <span style="font-weight:400;color:#8ea69a;font-size:11px">· 13:52</span></div>
+          <div style="font-size:11.5px;line-height:15px;color:#5c6f66"><span class="mo">13:55</span> message left</div>
+          <button class="pill rd" style="height:26px;justify-content:center">record call</button>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ showBio }}" hint-placeholder-val="{{ true }}">
+        <div class="crow">
+          <div style="min-width:0">
+            <div style="font-weight:600;font-size:13px">Farida Khatoon <span style="color:#5c6f66;font-weight:400">· 52 F</span></div>
+            <div class="mo" style="font-size:11px;color:#8ea69a">L2609010102 · S2609010211 · BIOCHEM-1 · Dr. Nishant Rao, Gen Med</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px"><span class="mo" style="font-size:15px;font-weight:600">41</span><span style="font-size:11px;color:#5c6f66">mg/dL fasting glucose</span><span class="stamp ll">LL</span></div>
+          <div class="mo" style="font-size:13px;font-weight:600">8 min <span style="font-weight:400;color:#8ea69a;font-size:11px">· 14:02</span></div>
+          <div style="font-size:11.5px;line-height:15px;color:#8ea69a">not yet called</div>
+          <button class="pill rd" style="height:26px;justify-content:center">record call</button>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ noCriticals }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:14px 16px 16px;font-size:12.5px;color:#5c6f66;border-top:1px solid #ecf1ed">No critical call is open in this section.</div>
+        </sc-if>
+      </section>
+
+      <div style="display:grid;grid-template-columns:minmax(0, 1.45fr) minmax(0, 1fr);gap:12px;align-items:start">
+
+        <!-- TAT -->
+        <section class="box">
+          <div class="hd">
+            <h2>Turnaround since 07:00 <span style="font-weight:400;color:#5c6f66">· routine, clock from receipt</span></h2>
+            <span class="sub">bar is the 90th percentile · mark is the target</span>
+          </div>
+          <div class="trow" style="height:auto;padding-bottom:6px;border-top:none">
+            <span class="tag">section</span><span class="tag" style="text-align:right">done</span><span class="tag">p90 against target</span><span class="tag">p50 · p90</span><span class="tag">breaches</span>
+          </div>
+
+          <sc-if value="{{ showHaem }}" hint-placeholder-val="{{ true }}">
+          <div class="trow">
+            <span style="font-weight:500">Haematology</span>
+            <span class="mo" style="text-align:right;color:#5c6f66">65</span>
+            <div class="bar"><div class="fill" style="width:53%;background:#0e6b4e"></div><div class="tgt"></div><div class="tip">p90 176 min · target 240</div></div>
+            <span class="mo" style="font-size:12px">88 · 176</span>
+            <span class="mo" style="font-size:12px;color:#8ea69a">0</span>
+          </div>
+          </sc-if>
+
+          <sc-if value="{{ showBio }}" hint-placeholder-val="{{ true }}">
+          <div class="trow" style="background:rgba(178,58,48,.04)">
+            <span style="font-weight:500">Biochemistry</span>
+            <span class="mo" style="text-align:right;color:#5c6f66">52</span>
+            <div class="bar"><div class="fill" style="width:79%;background:#b23a30"></div><div class="tgt"></div><div class="tip">p90 262 min · target 240 · 7 over</div></div>
+            <span class="mo" style="font-size:12px">142 · <strong style="color:#b23a30">262</strong></span>
+            <span style="display:flex;align-items:center;gap:6px"><span class="mo" style="font-size:12px;font-weight:600;color:#b23a30">7</span><span style="font-size:10.5px;color:#b23a30">bench</span></span>
+          </div>
+          </sc-if>
+
+          <sc-if value="{{ showSero }}" hint-placeholder-val="{{ true }}">
+          <div class="trow">
+            <span style="font-weight:500">Serology</span>
+            <span class="mo" style="text-align:right;color:#5c6f66">12</span>
+            <div class="bar"><div class="fill" style="width:57%;background:#0e6b4e"></div><div class="tgt"></div><div class="tip">p90 190 min · target 240</div></div>
+            <span class="mo" style="font-size:12px">96 · 190</span>
+            <span class="mo" style="font-size:12px;color:#8ea69a">0</span>
+          </div>
+          </sc-if>
+
+          <sc-if value="{{ showCp }}" hint-placeholder-val="{{ true }}">
+          <div class="trow">
+            <span style="font-weight:500">Clinical pathology</span>
+            <span class="mo" style="text-align:right;color:#5c6f66">17</span>
+            <div class="bar"><div class="fill" style="width:48%;background:#0e6b4e"></div><div class="tgt"></div><div class="tip">p90 121 min · target 180</div></div>
+            <span class="mo" style="font-size:12px">61 · 121</span>
+            <span class="mo" style="font-size:12px;color:#8ea69a">0</span>
+          </div>
+          </sc-if>
+
+          <sc-if value="{{ showMicro }}" hint-placeholder-val="{{ true }}">
+          <div class="trow">
+            <span style="font-weight:500">Microbiology</span>
+            <span class="mo" style="text-align:right;color:#5c6f66">3</span>
+            <span style="font-size:12px;color:#5c6f66">cultures run in days, not minutes · 3 reported, 2 fall due today</span>
+            <span class="mo" style="font-size:12px;color:#8ea69a">—</span>
+            <span class="mo" style="font-size:12px;color:#8ea69a">0</span>
+          </div>
+          </sc-if>
+
+          <sc-if value="{{ showHisto }}" hint-placeholder-val="{{ true }}">
+          <div class="trow">
+            <span style="font-weight:500">Histopathology</span>
+            <span class="mo" style="text-align:right;color:#8ea69a">0</span>
+            <span style="font-size:12px;color:#8ea69a">nothing received today</span>
+            <span class="mo" style="font-size:12px;color:#8ea69a">—</span>
+            <span class="mo" style="font-size:12px;color:#8ea69a">0</span>
+          </div>
+          </sc-if>
+
+          <div style="display:flex;align-items:center;gap:14px;padding:10px 16px 12px;border-top:1px solid #ecf1ed;font-size:12px;color:#5c6f66">
+            <span class="tag">stat</span>
+            <span><span class="mo" style="color:#132420;font-weight:600">9</span> items · p90 <span class="mo" style="color:#132420">47</span> of 60 min</span>
+            <span style="color:#dfe7e1">|</span>
+            <span><span class="mo" style="color:#b23a30;font-weight:600">1</span> over: a troponin at <span class="mo">38</span> min against its 30</span>
+          </div>
+        </section>
+
+        <!-- right column -->
+        <div style="display:flex;flex-direction:column;gap:12px">
+
+          <!-- rejections -->
+          <section class="box">
+            <div class="hd">
+              <h2>Tubes rejected <span style="font-weight:400;color:#5c6f66">· 6 of 214</span></h2>
+              <span class="sub">recollection is free; who it is charged to is not</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr auto auto;gap:4px 18px;padding:0 16px 10px;font-size:12.5px">
+              <span class="tag">reason</span><span class="tag">n</span><span class="tag">attributable to</span>
+              <span>Haemolysed</span><span class="mo" style="text-align:right">3</span><span style="color:#5c6f66">collection 2 · transport 1</span>
+              <span>Clotted</span><span class="mo" style="text-align:right">1</span><span style="color:#5c6f66">collection</span>
+              <span>Insufficient volume</span><span class="mo" style="text-align:right">1</span><span style="color:#5c6f66">collection · paediatric</span>
+              <span>Mislabelled</span><span class="mo" style="text-align:right">1</span><span style="color:#b23a30">collection · no wristband scan</span>
+            </div>
+            <div style="padding:10px 16px 12px;border-top:1px solid #ecf1ed;font-size:12px;color:#5c6f66;line-height:17px">
+              <span class="mo" style="color:#132420">4</span> of 6 recollected within the day. <span class="mo" style="color:#b23a30;font-weight:600">11</span> draws today were made without a wristband scan — each of those needed a named identity re-check at the bench.
+            </div>
+          </section>
+
+          <!-- held for money -->
+          <section class="box">
+            <div class="hd">
+              <h2 style="display:flex;align-items:center;gap:8px">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                Reports held at the counter
+              </h2>
+              <span class="stamp held">HELD · 6</span>
+            </div>
+            <div style="padding:0 16px 12px;font-size:12.5px;line-height:18px;color:#5c6f66">
+              <span class="mo" style="color:#132420;font-weight:600">₹4,860</span> outstanding across 6 invoices. The doctor's screen was never held; only the printed copy waits.
+              <span class="mo" style="color:#132420">1</span> report was released unpaid today by the billing manager on approval — the dues stand.
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- quality signals -->
+      <section class="box" style="display:grid;grid-template-columns:repeat(7, minmax(0, 1fr))">
+        <div class="sig"><span class="v mo">1</span><span class="k">amendment · clerical</span></div>
+        <div class="sig"><span class="v mo">4</span><span class="k">reruns sent back from verify</span></div>
+        <div class="sig"><span class="v mo" style="color:#dd8f1c">2</span><span class="k">provisional · single operator</span></div>
+        <div class="sig"><span class="v mo">1</span><span class="k">absurd-value override</span></div>
+        <div class="sig"><span class="v mo">3</span><span class="k">delta flags vs last verified</span></div>
+        <div class="sig"><span class="v mo" style="color:#0e6b4e">0</span><span class="k">tube mismatches</span></div>
+        <div class="sig"><span class="v mo" style="color:#0e6b4e">0</span><span class="k">separation-of-duty blocks</span></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- agent dock -->
+  <div style="flex-shrink:0;background:#132420;color:#d9efe4">
+    <div style="display:flex;align-items:center;gap:13px;height:54px;padding:0 18px">
+      <span style="position:relative;width:9px;height:9px;flex-shrink:0">
+        <span style="position:absolute;inset:0;border-radius:99px;background:#35c48f"></span>
+        <span style="position:absolute;inset:-3px;border-radius:99px;border:1px solid #35c48f;opacity:.35"></span>
+      </span>
+      <span class="tag" style="color:#7fa392;flex-shrink:0">lab agent</span>
+      <span class="mo" style="font-size:11px;line-height:15px;color:#d9efe4;min-width:0;flex-grow:1;overflow:hidden;max-height:30px">BIOCHEM-2 has been idle since 11:05 while BIOCHEM-1 holds 19 tubes. Moving the 12 waiting RFTs across clears the breach clock by 14:40 — say “move” and I will draft the reassignment for the bench to accept.</span>
+      <div style="flex-shrink:0;display:flex;align-items:center;gap:8px;width:360px;height:36px;border:1px solid #2c4438;border-radius:6px;padding:0 11px;background:#1c332b">
+        <input placeholder="ask — “biochem mein kya atka hai?”" style="border:none;background:transparent;color:#d9efe4;flex-grow:1;font-size:12px;outline:none">
+        <span class="kb dk">F2</span>
+      </div>
+      <button class="mo" style="flex-shrink:0;font-size:10.5px;color:#7fa392;letter-spacing:.1em">▲ LOG</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { d: "all" }; }
+  renderVals() {
+    const d = this.state.d;
+    const chip = (k) => (d === k
+      ? { bg: "#132420", fg: "#f4f7f4", bd: "#132420" }
+      : { bg: "#ffffff", fg: "#5c6f66", bd: "#dfe7e1" });
+    const show = (k) => d === "all" || d === k;
+    const NOTE = {
+      all: "all six sections",
+      haem: "HAEM-1 and COAG-1 · 65 published",
+      bio: "BIOCHEM-1 and BIOCHEM-2 · 52 published · 7 breaches",
+      sero: "SERO-1 and IMMUNO-1 · 12 published",
+      cp: "CP-1 · 17 published",
+      micro: "cultures · 3 reported · 2 due today",
+      histo: "nothing received today",
+    };
+    const noCriticals = !(show("bio") || show("haem"));
+    return {
+      pickAll: () => this.setState({ d: "all" }),
+      pickHaem: () => this.setState({ d: "haem" }),
+      pickBio: () => this.setState({ d: "bio" }),
+      pickSero: () => this.setState({ d: "sero" }),
+      pickCp: () => this.setState({ d: "cp" }),
+      pickMicro: () => this.setState({ d: "micro" }),
+      pickHisto: () => this.setState({ d: "histo" }),
+      cAll: chip("all"), cHaem: chip("haem"), cBio: chip("bio"), cSero: chip("sero"),
+      cCp: chip("cp"), cMicro: chip("micro"), cHisto: chip("histo"),
+      showHaem: show("haem"), showBio: show("bio"), showSero: show("sero"),
+      showCp: show("cp"), showMicro: show("micro"), showHisto: show("histo"),
+      noCriticals,
+      filterNote: NOTE[d],
+    };
+  }
+}
+</script>
+</body>
+</html>

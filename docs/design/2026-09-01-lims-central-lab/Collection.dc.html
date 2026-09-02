@@ -1,0 +1,200 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;600;700&amp;display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#f4f7f4;color:#132420;font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:#0e6b4e;text-decoration:none} a:hover{color:#0a4f3a}
+    button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0;text-align:left}
+    input{font:inherit;color:inherit}
+    .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+    .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#8ea69a}
+    .kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:18px;padding:0 4px;border-radius:3px;border:1px solid #dfe7e1;background:#ffffff;font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;color:#5c6f66;flex-shrink:0}
+    .kb.dk{border-color:#2c4438;background:#1c332b;color:#7fa392}
+    .box{background:#ffffff;border:1px solid #dfe7e1;border-radius:8px}
+    .pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:99px;font-size:10.5px;font-weight:600;border:1px solid #dfe7e1;background:#ffffff;color:#5c6f66;white-space:nowrap}
+    .pill.on{border-color:rgba(14,107,78,.35);background:rgba(14,107,78,.08);color:#0e6b4e}
+    .pill.gd{border-color:rgba(221,143,28,.45);background:rgba(221,143,28,.10);color:#dd8f1c}
+    .pill.rd{border-color:rgba(178,58,48,.45);background:rgba(178,58,48,.08);color:#b23a30}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:48px;padding:0 22px;border-radius:6px;background:#0e6b4e;color:#f2faf6;font-size:15px;font-weight:600;border:1px solid #0e6b4e}
+    .sec{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:6px;border:1px solid #dfe7e1;background:#ffffff;font-size:12.5px;font-weight:500}
+    .sec.rd{border-color:rgba(178,58,48,.45);color:#b23a30}
+    .qrow{display:flex;align-items:center;gap:10px;height:46px;padding:0 14px;border-top:1px solid #ecf1ed}
+    .qrow:hover{background:#eef3ef}
+    .qrow.now{background:#eef3ef}
+    .tk{font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:700;width:48px;flex-shrink:0}
+    .tube{width:22px;height:40px;border-radius:3px 3px 8px 8px;border:1px solid rgba(19,36,32,.25);flex-shrink:0;position:relative}
+    .tube::after{content:"";position:absolute;left:-1px;right:-1px;top:-1px;height:9px;border-radius:3px 3px 0 0;background:rgba(19,36,32,.55)}
+    .drow{display:grid;grid-template-columns:28px 44px 1fr 170px 130px 120px;gap:14px;align-items:center;padding:10px 16px;border-top:1px solid #ecf1ed}
+    .bc{font-family:"IBM Plex Mono",monospace;font-size:12.5px;font-weight:600;letter-spacing:.04em}
+    .bars{display:flex;gap:1.5px;height:14px;align-items:stretch}
+    .bars i{display:block;width:1.5px;background:#132420}
+    .bars i.w{width:2.5px}
+    .ic{width:14px;height:14px;flex-shrink:0}
+    .dot{width:7px;height:7px;border-radius:99px;flex-shrink:0}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#f4f7f4;overflow:hidden">
+
+  <!-- header -->
+  <div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 18px;background:#ffffff;border-bottom:1px solid #dfe7e1;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:10px;height:10px;border-radius:2px;background:#0e6b4e;transform:rotate(45deg)"></div>
+      <span class="mo" style="font-size:12.5px;font-weight:700;letter-spacing:.08em">CENTRAL LAB</span>
+    </div>
+    <span style="color:#dfe7e1">/</span>
+    <span style="font-size:12.5px;color:#5c6f66">Collection · Chair 1 · <strong style="color:#132420;font-weight:600">Vikas Oraon</strong></span>
+    <span class="pill on"><span class="dot" style="background:#0e6b4e;width:5px;height:5px"></span>label printer ready</span>
+    <div style="flex-grow:1"></div>
+    <span class="mo" style="font-size:11.5px;color:#8ea69a">MON 1 SEP · 10:47</span>
+    <button class="pill gd" style="height:24px"><span class="mo">9</span> waiting · longest <span class="mo">38</span> min</button>
+    <button class="pill" style="height:24px"><span class="mo">96</span> drawn today · <span class="mo">4</span> rejected back</button>
+    <button class="pill" style="height:24px;border-color:#132420"><strong>⌘</strong> command <span class="kb">Ctrl K</span></button>
+  </div>
+
+  <div style="flex-grow:1;min-height:0;display:flex">
+
+    <!-- queue -->
+    <aside style="width:330px;flex-shrink:0;border-right:1px solid #dfe7e1;background:#ffffff;overflow-y:auto;display:flex;flex-direction:column">
+      <div style="padding:14px 14px 8px;display:flex;align-items:baseline;justify-content:space-between">
+        <span class="tag">waiting · STAT first, then by arrival</span>
+        <span class="mo" style="font-size:10.5px;color:#8ea69a">min</span>
+      </div>
+      <div class="qrow" style="background:rgba(178,58,48,.04)">
+        <span class="tk" style="color:#b23a30">T-121</span>
+        <div style="flex-grow:1;min-width:0;line-height:16px"><div style="font-weight:600">Kamla Devi <span style="font-weight:400;color:#5c6f66">68 F</span></div><div style="font-size:11.5px;color:#b23a30">STAT · Emergency · 2 tubes</div></div>
+        <span class="mo" style="font-size:12px;color:#b23a30;font-weight:600">2</span>
+      </div>
+      <div class="qrow now">
+        <span class="tk">T-118</span>
+        <div style="flex-grow:1;min-width:0;line-height:16px"><div style="font-weight:600">Farida Khatoon <span style="font-weight:400;color:#5c6f66">52 F</span></div><div style="font-size:11.5px;color:#5c6f66">3 tubes · fasting · <span style="color:#0e6b4e;font-weight:600">in the chair</span></div></div>
+        <span class="mo" style="font-size:12px;color:#5c6f66">5</span>
+      </div>
+      <div class="qrow">
+        <span class="tk">T-115</span>
+        <div style="flex-grow:1;min-width:0;line-height:16px"><div style="font-weight:600">Anjali Verma <span style="font-weight:400;color:#5c6f66">38 F</span></div><div style="font-size:11.5px;color:#5c6f66">2 tubes · fasting</div></div>
+        <span class="mo" style="font-size:12px;color:#5c6f66">16</span>
+      </div>
+      <div class="qrow">
+        <span class="tk">T-112</span>
+        <div style="flex-grow:1;min-width:0;line-height:16px"><div style="font-weight:600">Bimal Kumar Sahu <span style="font-weight:400;color:#5c6f66">61 M</span></div><div style="font-size:11.5px;color:#5c6f66">2 tubes · urine cup</div></div>
+        <span class="mo" style="font-size:12px;color:#dd8f1c">24</span>
+      </div>
+      <div class="qrow">
+        <span class="tk">T-109</span>
+        <div style="flex-grow:1;min-width:0;line-height:16px"><div style="font-weight:600">B/o Sunita Devi <span style="font-weight:400;color:#5c6f66">3 d F</span></div><div style="font-size:11.5px;color:#5c6f66">1 tube · paediatric · heel prick</div></div>
+        <span class="mo" style="font-size:12px;color:#dd8f1c">31</span>
+      </div>
+      <div class="qrow">
+        <span class="tk">T-107</span>
+        <div style="flex-grow:1;min-width:0;line-height:16px"><div style="font-weight:600">Restricted record <span style="font-weight:400;color:#5c6f66">34 M</span></div><div style="font-size:11.5px;color:#5c6f66">1 tube · consent recorded</div></div>
+        <span class="mo" style="font-size:12px;color:#dd8f1c">38</span>
+      </div>
+      <div style="padding:8px 14px;border-top:1px solid #ecf1ed;font-size:11.5px;color:#8ea69a">+ 3 more · chair 2 is closed until 11:00</div>
+      <div style="flex-grow:1"></div>
+      <div style="padding:10px 14px 12px;border-top:1px solid #ecf1ed;font-size:11.5px;line-height:16px;color:#5c6f66">Ward draws do not queue here. Sister Rekha's tubes from Ward 3 arrive labelled and go straight to the bench.</div>
+    </aside>
+
+    <!-- the chair -->
+    <main style="flex-grow:1;min-width:0;overflow-y:auto;padding:20px 26px 22px;display:flex;flex-direction:column;gap:14px">
+
+      <!-- identity -->
+      <section class="box" style="display:flex;align-items:center;gap:18px;padding:12px 16px">
+        <span class="mo" style="font-size:22px;font-weight:700;letter-spacing:.02em">T-118</span>
+        <div style="flex-grow:1;min-width:0">
+          <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:16px;font-weight:600">Farida Khatoon</span><span style="color:#5c6f66">52 F</span><span class="mo" style="font-size:12px;color:#5c6f66">UH2301188</span><span class="mo" style="font-size:12px;color:#5c6f66">L2609010102</span></div>
+          <div style="font-size:12px;color:#5c6f66">Dr. Nishant Rao · routine · <span style="color:#0e6b4e;font-weight:600">fasting confirmed</span>, last meal 22:00 · note from last visit: <em>left hand, small veins</em></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+          <span class="pill on"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>wristband scanned 10:45</span>
+          <span style="font-size:10.5px;color:#8ea69a">no band? ask name and age, then tick — the bench will re-check</span>
+        </div>
+      </section>
+
+      <!-- tubes in order of draw -->
+      <section class="box">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;padding:12px 16px 8px">
+          <span style="font-size:13px;font-weight:600">Draw in this order <span style="font-weight:400;color:#5c6f66">· one barcode per tube · scan each after you fill it</span></span>
+          <button class="sec" style="height:28px"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="9" rx="2"/><path d="M7 21h10v-6H7z"/></svg>reprint a label</button>
+        </div>
+        <div class="drow" style="padding-top:0;padding-bottom:4px;border-top:none"><span></span><span class="tag">tube</span><span class="tag">tests · volume</span><span class="tag">barcode</span><span class="tag">label</span><span class="tag">filled</span></div>
+
+        <div class="drow">
+          <span class="mo" style="font-size:12px;color:#8ea69a">1</span>
+          <div class="tube" style="background:#f3c95a"></div>
+          <div style="line-height:17px"><b style="font-weight:600">Gold · SST</b> <span style="color:#5c6f66">clot activator, gel</span><br><span style="font-size:12px;color:#5c6f66">LFT · 3 mL · invert 5×</span></div>
+          <div><div class="bars"><i></i><i class="w"></i><i></i><i></i><i class="w"></i><i></i><i class="w"></i><i></i><i></i><i class="w"></i><i></i><i></i><i class="w"></i><i></i><i class="w"></i><i></i><i></i><i class="w"></i><i></i><i></i><i class="w"></i><i></i></div><span class="bc">S2609010211</span></div>
+          <span class="pill on">printed 10:45</span>
+          <span class="pill on"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>scanned 10:46</span>
+        </div>
+        <div class="drow" style="background:#eef3ef">
+          <span class="mo" style="font-size:12px;color:#8ea69a">2</span>
+          <div class="tube" style="background:#e9d5f5"></div>
+          <div style="line-height:17px"><b style="font-weight:600">Lavender · EDTA</b> <span style="color:#5c6f66">whole blood</span><br><span style="font-size:12px;color:#5c6f66">CBC · HbA1c · 3 mL · invert 8×</span></div>
+          <div><div class="bars"><i class="w"></i><i></i><i></i><i class="w"></i><i></i><i class="w"></i><i></i><i></i><i class="w"></i><i></i><i></i><i class="w"></i><i></i><i class="w"></i><i></i><i></i><i class="w"></i><i></i><i></i><i class="w"></i><i></i><i></i></div><span class="bc">S2609010212</span></div>
+          <span class="pill on">printed 10:45</span>
+          <span class="pill gd">scan now</span>
+        </div>
+        <div class="drow">
+          <span class="mo" style="font-size:12px;color:#8ea69a">3</span>
+          <div class="tube" style="background:#c9cdd1"></div>
+          <div style="line-height:17px"><b style="font-weight:600">Grey · fluoride oxalate</b> <span style="color:#5c6f66">plasma</span><br><span style="font-size:12px;color:#5c6f66">Fasting glucose · 2 mL · invert 8×</span></div>
+          <div><div class="bars"><i></i><i></i><i class="w"></i><i></i><i class="w"></i><i></i><i></i><i class="w"></i><i></i><i class="w"></i><i></i><i></i><i class="w"></i><i></i><i></i><i class="w"></i><i></i><i class="w"></i><i></i><i></i><i class="w"></i><i></i></div><span class="bc">S2609010213</span></div>
+          <span class="pill on">printed 10:45</span>
+          <span class="pill">—</span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:14px;padding:10px 16px 12px;border-top:1px solid #ecf1ed;font-size:12px;color:#5c6f66;line-height:16px">
+          <span class="tag">order of draw</span>
+          <span>blood culture → <b style="font-weight:600;color:#132420">citrate (blue)</b> → <b style="font-weight:600;color:#132420">serum / SST (red, gold)</b> → heparin (green) → <b style="font-weight:600;color:#132420">EDTA (lavender)</b> → <b style="font-weight:600;color:#132420">fluoride (grey)</b> — so one tube's additive never reaches the next.</span>
+        </div>
+      </section>
+
+      <!-- actions -->
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:14px;align-items:stretch">
+        <section class="box" style="padding:12px 16px;display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:13px;font-weight:600">If it does not go to plan</span>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            <button class="sec rd">Not fasting — send back with a morning slot</button>
+            <button class="sec rd">No vein after two tries — call a senior</button>
+            <button class="sec rd">Patient fainted / refused</button>
+            <button class="sec">Short draw — mark tube volume</button>
+          </div>
+          <span style="font-size:11.5px;color:#5c6f66;line-height:16px">A tube the bench later rejects as haemolysed, clotted or short comes back to this queue as a free recollection, charged to <em>collection</em>. Four today.</span>
+        </section>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="btn" style="width:100%;height:56px">Drawn — 3 tubes to the lab <span class="kb dk">Enter</span></button>
+          <span style="font-size:11.5px;color:#5c6f66;line-height:16px;text-align:center">Enabled when all three barcodes are scanned. Abha sees them arrive; the TAT clock starts when she receives.</span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- agent dock -->
+  <div style="flex-shrink:0;background:#132420;color:#d9efe4">
+    <div style="display:flex;align-items:center;gap:13px;height:54px;padding:0 18px">
+      <span style="position:relative;width:9px;height:9px;flex-shrink:0">
+        <span style="position:absolute;inset:0;border-radius:99px;background:#35c48f"></span>
+        <span style="position:absolute;inset:-3px;border-radius:99px;border:1px solid #35c48f;opacity:.35"></span>
+      </span>
+      <span class="tag" style="color:#7fa392;flex-shrink:0">lab agent</span>
+      <span class="mo" style="font-size:11px;line-height:15px;color:#d9efe4;min-width:0;flex-grow:1;overflow:hidden;max-height:30px">Kamla Devi (T-121) is STAT — her troponin has a 30-minute clock from receipt. Take her the moment Farida's third tube is scanned; I have told Abha to hold BIOCHEM-1 for the gold tube.</span>
+      <div style="flex-shrink:0;display:flex;align-items:center;gap:8px;width:360px;height:36px;border:1px solid #2c4438;border-radius:6px;padding:0 11px;background:#1c332b">
+        <input placeholder="ask — “bacche ka kaunsa tube?”" style="border:none;background:transparent;color:#d9efe4;flex-grow:1;font-size:12px;outline:none">
+        <span class="kb dk">F2</span>
+      </div>
+      <button class="mo" style="flex-shrink:0;font-size:10.5px;color:#7fa392;letter-spacing:.1em">▲ LOG</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

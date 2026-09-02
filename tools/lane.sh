@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # tools/lane.sh — one isolated lane per Claude Code session.
 #
-#   lane.sh new <name> [base-ref]   worktree at /opt/hmis-lanes/<name>, branch lane/<name>,
-#                                   its own test databases, dependencies installed
+#   lane.sh new <name> [base-ref]   worktree at /opt/hmis-lanes/<name>/hmis, branch lane/<name>,
+#                                   its own test databases, dependencies installed, memory shared
 #   lane.sh drop <name> [--force]   remove the worktree and drop its databases (branch is kept)
 #   lane.sh list                    lanes, their branches, and how far each is from origin/main
 #   lane.sh status                  sessions and test runners on the box, and free memory
@@ -14,21 +14,31 @@
 # A lane is a git worktree OUTSIDE the main checkout, on its own branch, with TEST_DATABASE_URL
 # pointing at databases only it uses (test/helpers/db.ts derives the per-worker names from it).
 # /opt/hmis stays on main and is the integration checkout: nothing is edited there.
+#
+# TWO THINGS A WORKTREE WOULD OTHERWISE LOSE, measured 2026-09-02:
+#  - Claude Code keys its project memory (MEMORY.md and the fact files) by the working directory
+#    (`/opt/hmis-lanes/x` -> `~/.claude/projects/-opt-hmis-lanes-x/`). CLAUDE_CODE_PROJECT_DIR_NAME
+#    does NOT redirect it (tested). So `new` symlinks the lane's memory dir to the main one.
+#  - claude-mem names the project after the git toplevel's basename. The worktree therefore lives
+#    at <lanes>/<name>/hmis, so every lane is still project "hmis" to it.
 set -euo pipefail
 
 MAIN="${HMIS_MAIN_CHECKOUT:-/opt/hmis}"
 LANES_DIR="${HMIS_LANES_DIR:-/opt/hmis-lanes}"
+MEMORY_DIR="${HMIS_MEMORY_DIR:-$HOME/.claude/projects/-opt-hmis/memory}"
 pg_admin() { docker exec hmis-db-1 psql -U hmis -d postgres -v ON_ERROR_STOP=1 -qAt -c "set client_min_messages=warning" "$@"; }
 
 die() { echo "lane.sh: $*" >&2; exit 1; }
 need_name() { [[ "${1:-}" =~ ^[a-z0-9][a-z0-9-]{1,30}$ ]] || die "name must be [a-z0-9-], 2-31 chars: '${1:-}'"; }
 db_base() { echo "hmis_lane_${1//-/_}"; }
+lane_dir() { echo "$LANES_DIR/$1/hmis"; }
+project_dir() { echo "$HOME/.claude/projects/$(echo "$1" | tr '/' '-')"; }
 
 cmd_new() {
   need_name "${1:-}"; local name="$1" base="${2:-origin/main}" dir branch db
-  dir="$LANES_DIR/$name"; branch="lane/$name"; db="$(db_base "$name")_test"
+  dir="$(lane_dir "$name")"; branch="lane/$name"; db="$(db_base "$name")_test"
   [ -e "$dir" ] && die "$dir already exists (lane.sh drop $name first)"
-  mkdir -p "$LANES_DIR"
+  mkdir -p "$LANES_DIR/$name"
   git -C "$MAIN" fetch -q origin
   if git -C "$MAIN" show-ref --verify --quiet "refs/heads/$branch"; then
     git -C "$MAIN" worktree add "$dir" "$branch"
@@ -45,12 +55,17 @@ cmd_new() {
     echo "warning: $MAIN/apps/core/.env missing; copy .env.example yourself" >&2
   fi
   (cd "$dir" && pnpm install --frozen-lockfile --prefer-offline --reporter=silent)
+  # shared memory: the lane's project directory points at the main checkout's memory
+  local proj; proj="$(project_dir "$dir")"; mkdir -p "$proj"
+  if [ -e "$proj/memory" ] && [ ! -L "$proj/memory" ]; then die "$proj/memory exists and is not a symlink; merge it by hand"; fi
+  ln -sfn "$MEMORY_DIR" "$proj/memory"
   cat <<MSG
 
 lane '$name' is ready
   worktree : $dir
   branch   : $branch (from $base)
   test db  : $db (+ _1, _2 per jest worker, created on first run)
+  memory   : $proj/memory -> $MEMORY_DIR
 
 next:  cd $dir && claude
 finish: push the branch, open a PR (gh pr create), let CI gate it, then: tools/lane.sh drop $name
@@ -59,7 +74,7 @@ MSG
 
 cmd_drop() {
   need_name "${1:-}"; local name="$1" force="${2:-}" dir db
-  dir="$LANES_DIR/$name"; db="$(db_base "$name")_test"
+  dir="$(lane_dir "$name")"; db="$(db_base "$name")_test"
   if [ -d "$dir" ]; then
     if [ "$force" != "--force" ] && [ -n "$(git -C "$dir" status --porcelain)" ]; then
       die "$dir has uncommitted changes; commit/push them or pass --force"
@@ -70,6 +85,8 @@ cmd_drop() {
     fi
     git -C "$MAIN" worktree remove --force "$dir"
   fi
+  rmdir "$LANES_DIR/$name" 2>/dev/null || true
+  if [ -L "$(project_dir "$dir")/memory" ]; then rm -f "$(project_dir "$dir")/memory"; fi
   git -C "$MAIN" worktree prune
   for suffix in "" _1 _2 _3 _4; do
     pg_admin -c "drop database if exists \"${db}${suffix}\" with (force)" >/dev/null || true

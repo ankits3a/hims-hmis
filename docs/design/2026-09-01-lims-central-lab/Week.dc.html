@@ -1,0 +1,220 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;600;700&amp;display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#f4f7f4;color:#132420;font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:#0e6b4e;text-decoration:none} a:hover{color:#0a4f3a}
+    button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0;text-align:left}
+    .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+    .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#8ea69a}
+    .kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:18px;padding:0 4px;border-radius:3px;border:1px solid #dfe7e1;background:#ffffff;font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;color:#5c6f66;flex-shrink:0}
+    .box{background:#ffffff;border:1px solid #dfe7e1;border-radius:8px}
+    .pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:99px;font-size:10.5px;font-weight:600;border:1px solid #dfe7e1;background:#ffffff;color:#5c6f66;white-space:nowrap}
+    .pill.on{border-color:rgba(14,107,78,.35);background:rgba(14,107,78,.08);color:#0e6b4e}
+    .hd{display:flex;align-items:baseline;justify-content:space-between;padding:10px 16px 8px}
+    .hd h2{margin:0;font-size:13px;font-weight:600;letter-spacing:.01em}
+    .hd .sub{font-size:11.5px;color:#5c6f66}
+    .grid7{display:grid;grid-template-columns:150px repeat(7, minmax(0, 1fr));gap:6px 8px;align-items:center;padding:0 16px}
+    .cell{height:30px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600}
+    .cell:hover{outline:2px solid #132420;outline-offset:-2px}
+    .hbar{display:grid;grid-template-columns:120px 1fr 40px;gap:12px;align-items:center;padding:0 16px;height:30px}
+    .hbar .trk{position:relative;height:10px;background:#eef3ef;border-radius:2px}
+    .hbar .fill{position:absolute;left:0;top:0;bottom:0;background:#0e6b4e;border-radius:2px 4px 4px 2px}
+    .col{display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;min-width:0}
+    .col .stk{width:22px;background:#0e6b4e;border-radius:4px 4px 2px 2px}
+    .sig{display:flex;flex-direction:column;gap:2px;padding:10px 14px;border-right:1px solid #ecf1ed;min-width:0}
+    .sig:last-child{border-right:none}
+    .sig .v{font-size:18px;font-weight:600;line-height:22px}
+    .sig .k{font-size:11px;color:#5c6f66;line-height:14px}
+    .ic{width:14px;height:14px;flex-shrink:0}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:860px;display:flex;flex-direction:column;background:#f4f7f4;overflow:hidden">
+
+  <!-- header -->
+  <div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 18px;background:#ffffff;border-bottom:1px solid #dfe7e1;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:10px;height:10px;border-radius:2px;background:#0e6b4e;transform:rotate(45deg)"></div>
+      <span class="mo" style="font-size:12.5px;font-weight:700;letter-spacing:.08em">CENTRAL LAB</span>
+    </div>
+    <span style="color:#dfe7e1">/</span>
+    <span style="font-size:12.5px;color:#5c6f66">Quality register · <strong style="color:#132420;font-weight:600">week 35</strong> · Mon 25 – Sun 31 Aug</span>
+    <span class="pill"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg>week 34</span><span class="pill on">this week</span>
+    <div style="flex-grow:1"></div>
+    <span class="mo" style="font-size:11.5px;color:#8ea69a">MON 1 SEP · 14:10</span>
+    <button class="pill" style="height:24px">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 19h16"/></svg>
+      export for NABL file
+    </button>
+    <button class="pill" style="height:24px;border-color:#132420"><strong>⌘</strong> command <span class="kb">Ctrl K</span></button>
+  </div>
+
+  <main style="flex-grow:1;min-height:0;overflow-y:auto;padding:20px 26px 24px;display:flex;flex-direction:column;gap:16px">
+
+    <div style="display:flex;flex-direction:column;gap:6px;max-width:1040px">
+      <span class="tag">the week in three sentences</span>
+      <p style="margin:0;font-size:17px;line-height:26px;font-weight:500;text-wrap:pretty">
+        The lab published <span class="mo">1,118</span> reports this week and <span class="mo">94%</span> of its <span class="mo">3,912</span> routine items were inside their turnaround target, two points better than last week.
+        <strong style="color:#b23a30;font-weight:600">Biochemistry slipped on Thursday and Friday</strong> — both afternoons a single bench carried the load, and that is where 156 of the week's 234 breaches sit.
+        <span class="mo">31</span> tubes were rejected; <span class="mo">24</span> of them were charged to collection, and <span class="mo">9</span> of those were drawn without a wristband scan.
+      </p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0, 1.5fr) minmax(0, 1fr);gap:16px;align-items:start">
+
+      <!-- TAT compliance heat table -->
+      <section class="box">
+        <div class="hd">
+          <h2>Routine turnaround inside target <span style="font-weight:400;color:#5c6f66">· % of items, by day</span></h2>
+          <span class="sub">darker is better · a red cell is under 85%</span>
+        </div>
+        <div class="grid7" style="padding-bottom:8px">
+          <span class="tag">section</span>
+          <span class="tag" style="text-align:center">Mon</span><span class="tag" style="text-align:center">Tue</span><span class="tag" style="text-align:center">Wed</span><span class="tag" style="text-align:center">Thu</span><span class="tag" style="text-align:center">Fri</span><span class="tag" style="text-align:center">Sat</span><span class="tag" style="text-align:center">Sun</span>
+        </div>
+        <div class="grid7" style="padding-bottom:14px">
+          <span style="font-weight:500">Haematology</span>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">98</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">97</div>
+          <div class="cell" style="background:rgba(14,107,78,.56);color:#f4f7f4">95</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">99</div>
+          <div class="cell" style="background:rgba(14,107,78,.56);color:#f4f7f4">96</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">100</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">100</div>
+
+          <span style="font-weight:500">Biochemistry</span>
+          <div class="cell" style="background:rgba(14,107,78,.56);color:#f4f7f4">94</div>
+          <div class="cell" style="background:rgba(14,107,78,.40);color:#132420">91</div>
+          <div class="cell" style="background:rgba(14,107,78,.56);color:#f4f7f4">93</div>
+          <div class="cell" style="background:rgba(178,58,48,.14);color:#b23a30;outline:1px solid rgba(178,58,48,.45);outline-offset:-1px">81</div>
+          <div class="cell" style="background:rgba(178,58,48,.14);color:#b23a30;outline:1px solid rgba(178,58,48,.45);outline-offset:-1px">78</div>
+          <div class="cell" style="background:rgba(14,107,78,.56);color:#f4f7f4">95</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">97</div>
+
+          <span style="font-weight:500">Serology</span>
+          <div class="cell" style="background:rgba(14,107,78,.56);color:#f4f7f4">96</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">100</div>
+          <div class="cell" style="background:rgba(14,107,78,.56);color:#f4f7f4">94</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">100</div>
+          <div class="cell" style="background:rgba(14,107,78,.56);color:#f4f7f4">96</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">100</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">100</div>
+
+          <span style="font-weight:500">Clinical pathology</span>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">99</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">98</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">100</div>
+          <div class="cell" style="background:rgba(14,107,78,.56);color:#f4f7f4">96</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">98</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">100</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">100</div>
+
+          <span style="font-weight:500">STAT · all sections</span>
+          <div class="cell" style="background:rgba(14,107,78,.56);color:#f4f7f4">95</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">100</div>
+          <div class="cell" style="background:rgba(14,107,78,.56);color:#f4f7f4">93</div>
+          <div class="cell" style="background:rgba(14,107,78,.40);color:#132420">89</div>
+          <div class="cell" style="background:rgba(14,107,78,.56);color:#f4f7f4">92</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">100</div>
+          <div class="cell" style="background:rgba(14,107,78,.72);color:#f4f7f4">100</div>
+        </div>
+        <div style="display:flex;gap:18px;padding:10px 16px 12px;border-top:1px solid #ecf1ed;font-size:12px;color:#5c6f66;line-height:17px">
+          <span><span class="tag">breaches by stage</span></span>
+          <span>bench <span class="mo" style="color:#132420;font-weight:600">156</span></span>
+          <span>awaiting collection <span class="mo" style="color:#132420;font-weight:600">51</span></span>
+          <span>awaiting signature <span class="mo" style="color:#132420;font-weight:600">27</span></span>
+          <span style="flex-grow:1"></span>
+          <span>Microbiology and histopathology report in days; they are counted on their own page.</span>
+        </div>
+      </section>
+
+      <!-- critical calls -->
+      <section class="box">
+        <div class="hd">
+          <h2>Critical calls <span style="font-weight:400;color:#5c6f66">· 41 opened</span></h2>
+          <span class="sub">longest value-to-read-back each day, minutes</span>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:10px;height:132px;padding:0 20px 6px">
+          <div class="col"><span class="mo" style="font-size:11px;color:#5c6f66">9</span><div class="stk" style="height:27px"></div><span class="tag">Mon</span></div>
+          <div class="col"><span class="mo" style="font-size:11px;color:#5c6f66">12</span><div class="stk" style="height:36px"></div><span class="tag">Tue</span></div>
+          <div class="col"><span class="mo" style="font-size:11px;color:#5c6f66">8</span><div class="stk" style="height:24px"></div><span class="tag">Wed</span></div>
+          <div class="col"><span class="mo" style="font-size:11px;color:#b23a30;font-weight:600">27</span><div class="stk" style="height:81px;background:#b23a30"></div><span class="tag">Thu</span></div>
+          <div class="col"><span class="mo" style="font-size:11px;color:#5c6f66">14</span><div class="stk" style="height:42px"></div><span class="tag">Fri</span></div>
+          <div class="col"><span class="mo" style="font-size:11px;color:#5c6f66">10</span><div class="stk" style="height:30px"></div><span class="tag">Sat</span></div>
+          <div class="col"><span class="mo" style="font-size:11px;color:#5c6f66">7</span><div class="stk" style="height:21px"></div><span class="tag">Sun</span></div>
+        </div>
+        <div style="padding:10px 16px 12px;border-top:1px solid #ecf1ed;font-size:12px;color:#5c6f66;line-height:17px">
+          Median <span class="mo" style="color:#132420;font-weight:600">11 min</span> to read-back. Thursday's <span class="mo">27</span> was one call: a potassium at 18:40, four attempts, the ward phone engaged. <span class="mo" style="color:#132420">2</span> values were retracted after the call opened and the correction had to be telephoned again.
+        </div>
+      </section>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);gap:16px;align-items:start">
+
+      <!-- rejections -->
+      <section class="box">
+        <div class="hd">
+          <h2>Tubes rejected <span style="font-weight:400;color:#5c6f66">· 31 of 1,204</span></h2>
+          <span class="sub">2.6% · last week 3.1%</span>
+        </div>
+        <div style="padding-bottom:6px"><span class="tag" style="padding:0 16px">attributable to</span></div>
+        <div class="hbar"><span style="font-size:12.5px">Collection</span><div class="trk"><div class="fill" style="width:77%"></div></div><span class="mo" style="font-size:12px;text-align:right">24</span></div>
+        <div class="hbar"><span style="font-size:12.5px">Transport</span><div class="trk"><div class="fill" style="width:13%"></div></div><span class="mo" style="font-size:12px;text-align:right">4</span></div>
+        <div class="hbar"><span style="font-size:12.5px">Laboratory</span><div class="trk"><div class="fill" style="width:6%"></div></div><span class="mo" style="font-size:12px;text-align:right">2</span></div>
+        <div class="hbar"><span style="font-size:12.5px">Patient</span><div class="trk"><div class="fill" style="width:3%"></div></div><span class="mo" style="font-size:12px;text-align:right">1</span></div>
+        <div style="padding:10px 16px 12px;border-top:1px solid #ecf1ed;margin-top:6px;font-size:12px;color:#5c6f66;line-height:17px">
+          Haemolysed <span class="mo" style="color:#132420">17</span> · clotted <span class="mo" style="color:#132420">6</span> · insufficient <span class="mo" style="color:#132420">5</span> · mislabelled <span class="mo" style="color:#b23a30;font-weight:600">3</span>. All three mislabelled tubes were drawn without a wristband scan. <span class="mo" style="color:#132420">28</span> recollected within a day, <span class="mo" style="color:#dd8f1c">1</span> still pending; <span class="mo" style="color:#132420">2</span> patients never came back and were cancelled with a credit note.
+        </div>
+      </section>
+
+      <!-- amendments & reruns -->
+      <section class="box">
+        <div class="hd">
+          <h2>Corrections after the fact</h2>
+          <span class="sub">every one is a versioned report</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:5px 18px;padding:0 16px 10px;font-size:12.5px">
+          <span class="tag">amendment reason</span><span class="tag">n</span>
+          <span>Corrected result</span><span class="mo" style="text-align:right;color:#b23a30;font-weight:600">3</span>
+          <span>Corrected demographics</span><span class="mo" style="text-align:right">2</span>
+          <span>Added analyte</span><span class="mo" style="text-align:right">1</span>
+          <span>Clerical</span><span class="mo" style="text-align:right">4</span>
+        </div>
+        <div style="padding:10px 16px 12px;border-top:1px solid #ecf1ed;font-size:12px;color:#5c6f66;line-height:17px">
+          <span class="mo" style="color:#132420;font-weight:600">10</span> amendments on 1,118 reports. <span class="mo" style="color:#132420">23</span> results were sent back for rerun from the verify queue; <span class="mo" style="color:#132420">14</span> of those were haematology on Wednesday, the morning the HAEM-1 analyser was serviced.
+        </div>
+      </section>
+
+      <!-- money & discipline -->
+      <section class="box">
+        <div class="hd">
+          <h2>Held reports and single-operator work</h2>
+          <span class="sub">what the accreditation file asks</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr))">
+          <div class="sig"><span class="v mo">38</span><span class="k">reports held for money</span></div>
+          <div class="sig"><span class="v mo">₹29,140</span><span class="k">outstanding at week end</span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));border-top:1px solid #ecf1ed">
+          <div class="sig"><span class="v mo">4</span><span class="k">released unpaid · billing manager</span></div>
+          <div class="sig"><span class="v mo" style="color:#dd8f1c">17</span><span class="k">provisional, single operator</span></div>
+        </div>
+        <div style="padding:10px 16px 12px;border-top:1px solid #ecf1ed;font-size:12px;color:#5c6f66;line-height:17px">
+          <span class="mo" style="color:#132420">0</span> separation-of-duty blocks, <span class="mo" style="color:#132420">3</span> absurd-value overrides, each by a second named enterer. The <span class="mo">17</span> provisional reports were all Thursday and Friday nights, when one pathologist covered the roster.
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+</body>
+</html>
