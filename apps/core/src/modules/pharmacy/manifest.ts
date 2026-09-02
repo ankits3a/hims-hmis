@@ -14,16 +14,19 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * patient does not order their own Schedule H drug. `kernel/orders/parity.test.ts` pins the claimed
  * set and grew by one in this commit.
  *
- * ═══ `menu: []` UNTIL T5 — the `partnersManifest` rule ═══
+ * ═══ THE MENU LANDED AT T5 WITH THE ROUTES — the `partnersManifest` rule ═══
  *
- * The two routes land at T5 with the NAV entries (`nav-parity` compares the two). The
+ * Each path matches `apps/web/src/router.tsx`'s own route exactly (`nav-parity` compares the two). The
  * `prescription.issued` subscription landed at T3 with its handler, the worker install and the
  * census in ONE commit, so no commit ever existed in which the worker could not boot.
  */
 export const pharmacyManifest: ModuleManifest = {
   key: "pharmacy",
   title: "Pharmacy",
-  menu: [],
+  menu: [
+    { label: "Dispense counter", path: "/pharmacy/counter", permission: "pharmacy.dispense.read" },
+    { label: "Sale items", path: "/pharmacy/items", permission: "pharmacy.sale_items.manage" },
+  ],
   permissions: [
     /** Claim a queued Rx at the counter, which places the `medication` order; verify, pick, bill. */
     "pharmacy.dispense.place",

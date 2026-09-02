@@ -344,7 +344,8 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // FD-1 T4 / D4 — 47 with `/counter/seat/figures`, the clerk's own account inside the seat.
     // PLAN 17c T5 — 47 -> 48: the laboratory's report centre, `/lab/reports`. Joined in the same
     // edit as the route, per the rule above.
-    expect(routes).toHaveLength(48);
+    // PLAN 16c T5 — 48 -> 50: /pharmacy/counter and /pharmacy/items.
+    expect(routes).toHaveLength(50);
     expect(routes).toContain("/lab/reports");
     expect(routes).toContain("/counter/seat/figures");
     expect(routes).toContain("/counter/seat");

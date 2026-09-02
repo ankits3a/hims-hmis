@@ -58,7 +58,9 @@
     "radiologyWorklist": "इमेजिंग वर्कलिस्ट",
     "counterSeat": "पंजीकरण काउंटर (नया)",
     "vitalsBay": "वाइटल्स बे",
-    "labReports": "रिपोर्ट केंद्र"
+    "labReports": "रिपोर्ट केंद्र",
+    "pharmacyCounter": "दवा वितरण काउंटर",
+    "pharmacyItems": "फ़ार्मेसी बिक्री वस्तुएँ"
   },
   "palette": {
     "title": "खोज",

@@ -58,7 +58,9 @@
     "radiologyWorklist": "Imaging worklist",
     "counterSeat": "Registration counter (new)",
     "vitalsBay": "Vitals bay",
-    "labReports": "Report centre"
+    "labReports": "Report centre",
+    "pharmacyCounter": "Dispense counter",
+    "pharmacyItems": "Pharmacy sale items"
   },
   "palette": {
     "title": "Search",
