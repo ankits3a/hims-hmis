@@ -26,6 +26,9 @@ export type {
   AllergyMatch, AllergyOverride, RxCheckOutcome, RxNotice, RxOverride, RxVerifyReason, RxVerifyResult,
 } from "./prescriptions";
 export { findVisitByToken } from "./encounters";
+// PLAN 16c T4 — the prescriber on the Schedule H1 register (Rule 65(3): name and registration number).
+export { getDoctor } from "./masters";
+export type { DoctorRow } from "./masters";
 export type { PrescriptionRow } from "./encounters";
 export type { RxLine } from "./fhir";
 export { classifyVisit } from "./visit-type";
