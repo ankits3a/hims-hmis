@@ -1,10 +1,9 @@
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
-import { imagingBillDecisions, imagingStudies } from "../../kernel/db/schema/radiology";
+import { imagingStudies } from "../../kernel/db/schema/radiology";
 import { resources } from "../../kernel/db/schema/resources";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition } from "../../kernel/workflow/instances";
 import { recordPhiAccess } from "../../kernel/phi/audit";
-import { newId } from "@hmis/contracts";
 import { DEVICE_MODALITY_ATTRIBUTE, SCHEDULABLE_DEVICE_STATUSES } from "./kinds";
 import { RadiologyError } from "./errors";
 import { imagingStudyScheduled } from "./events";
@@ -597,5 +596,9 @@ export async function deviceDiary(
   for (const patientId of new Set(rows.map((r) => r.patientId))) {
     await recordPhiAccess(exec, { actor, patientId, surface: "imaging.worklist", reason });
   }
-  return rows.map(({ patientId: _patientId, ...r }) => r);
+  return rows.map((row) => {
+    const { patientId: _omitted, ...rest } = row;
+    void _omitted;
+    return rest;
+  });
 }
