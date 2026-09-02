@@ -1,0 +1,198 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;600;700&amp;display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#f4f7f4;color:#132420;font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:#0e6b4e;text-decoration:none} a:hover{color:#0a4f3a}
+    button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0;text-align:left}
+    input{font:inherit;color:inherit}
+    .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+    .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#8ea69a}
+    .kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:18px;padding:0 4px;border-radius:3px;border:1px solid #dfe7e1;background:#ffffff;font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;color:#5c6f66;flex-shrink:0}
+    .kb.dk{border-color:#2c4438;background:#1c332b;color:#7fa392}
+    .box{background:#ffffff;border:1px solid #dfe7e1;border-radius:8px}
+    .pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:99px;font-size:10.5px;font-weight:600;border:1px solid #dfe7e1;background:#ffffff;color:#5c6f66;white-space:nowrap}
+    .pill.on{border-color:rgba(14,107,78,.35);background:rgba(14,107,78,.08);color:#0e6b4e}
+    .pill.gd{border-color:rgba(221,143,28,.45);background:rgba(221,143,28,.10);color:#dd8f1c}
+    .pill.rd{border-color:rgba(178,58,48,.45);background:rgba(178,58,48,.08);color:#b23a30}
+    .stamp{display:inline-flex;padding:2px 10px;border-radius:4px;font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:700;letter-spacing:.14em}
+    .stamp.pd{border:2px solid #0e6b4e;color:#0e6b4e}
+    .stamp.held{border:2px solid #dd8f1c;color:#dd8f1c}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 20px;border-radius:6px;background:#0e6b4e;color:#f2faf6;font-size:14px;font-weight:600;border:1px solid #0e6b4e}
+    .sec{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:6px;border:1px solid #dfe7e1;background:#ffffff;font-size:12.5px;font-weight:500}
+    .in{height:40px;width:100%;border-radius:6px;border:1px solid #dfe7e1;background:#ffffff;padding:0 12px;font-size:14px}
+    .prow{display:grid;grid-template-columns:1fr 100px 190px 56px;gap:12px;align-items:center;padding:9px 14px;border-top:1px solid #ecf1ed;font-size:12.5px}
+    .prow:hover{background:#eef3ef}
+    .ch{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#5c6f66}
+    .ic{width:14px;height:14px;flex-shrink:0}
+    .dot{width:7px;height:7px;border-radius:99px;flex-shrink:0}
+    .rrow{display:grid;grid-template-columns:1fr 150px 200px;gap:14px;align-items:center;padding:12px 16px;border-top:1px solid #ecf1ed}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#f4f7f4;overflow:hidden">
+
+  <!-- header -->
+  <div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 18px;background:#ffffff;border-bottom:1px solid #dfe7e1;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:10px;height:10px;border-radius:2px;background:#0e6b4e;transform:rotate(45deg)"></div>
+      <span class="mo" style="font-size:12.5px;font-weight:700;letter-spacing:.08em">CENTRAL LAB</span>
+    </div>
+    <span style="color:#dfe7e1">/</span>
+    <span style="font-size:12.5px;color:#5c6f66">Report centre · Counter L-01 · <strong style="color:#132420;font-weight:600">Sanjay Kumar</strong></span>
+    <div style="flex-grow:1"></div>
+    <span class="mo" style="font-size:11.5px;color:#8ea69a">MON 1 SEP · 14:52</span>
+    <button class="pill on" style="height:24px"><span class="mo">163</span> published today</button>
+    <button class="pill gd" style="height:24px"><span class="mo">6</span> held for money</button>
+    <button class="pill" style="height:24px;border-color:#132420"><strong>⌘</strong> command <span class="kb">Ctrl K</span></button>
+  </div>
+
+  <div style="flex-grow:1;min-height:0;display:flex">
+
+    <!-- published today, how it went out -->
+    <aside style="width:560px;flex-shrink:0;border-right:1px solid #dfe7e1;background:#ffffff;overflow-y:auto;display:flex;flex-direction:column">
+      <div style="padding:14px 14px 8px;display:flex;align-items:baseline;justify-content:space-between">
+        <span class="tag">published · how each one went out</span>
+        <span class="mo" style="font-size:10.5px;color:#8ea69a">live</span>
+      </div>
+      <div class="prow" style="padding-top:0;padding-bottom:6px;border-top:none"><span class="tag">patient · tests</span><span class="tag">doctor</span><span class="tag">patient copy</span><span class="tag">signed</span></div>
+
+      <div class="prow" style="background:#eef3ef">
+        <div style="line-height:16px"><b style="font-weight:600">Farida Khatoon</b><br><span style="color:#5c6f66;font-size:11.5px">LFT · CBC · glucose · PARTIAL</span></div>
+        <span class="ch"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#0e6b4e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>Dr. Rao's screen</span>
+        <div class="ch" style="flex-direction:column;align-items:flex-start;gap:1px"><span><b style="font-weight:600;color:#0e6b4e">WhatsApp</b> sent 14:35 · read 14:38</span><span style="color:#8ea69a">PDF locked · she is at the counter too</span></div>
+        <span class="mo" style="font-size:11.5px;color:#5c6f66">14:34</span>
+      </div>
+      <div class="prow">
+        <div style="line-height:16px"><b style="font-weight:600">Ramesh Mahto</b><br><span style="color:#5c6f66;font-size:11.5px">RFT · potassium 6.4 critical</span></div>
+        <span class="ch"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#0e6b4e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>Dr. Rao's screen</span>
+        <div class="ch" style="flex-direction:column;align-items:flex-start;gap:1px"><span class="stamp held" style="font-size:9.5px;padding:0 6px">HELD · ₹1,150</span><span style="color:#8ea69a">print waits for the slip</span></div>
+        <span class="mo" style="font-size:11.5px;color:#5c6f66">14:41</span>
+      </div>
+      <div class="prow">
+        <div style="line-height:16px"><b style="font-weight:600">Anjali Verma</b><br><span style="color:#5c6f66;font-size:11.5px">Lipid profile · HbA1c</span></div>
+        <span class="ch"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#0e6b4e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>Dr. Rao's screen</span>
+        <div class="ch" style="flex-direction:column;align-items:flex-start;gap:1px"><span><b style="font-weight:600;color:#0e6b4e">WhatsApp</b> sent 14:45 · delivered</span><span style="display:flex;align-items:center;gap:4px">Email sent · portal <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#0e6b4e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg></span></div>
+        <span class="mo" style="font-size:11.5px;color:#5c6f66">14:44</span>
+      </div>
+      <div class="prow">
+        <div style="line-height:16px"><b style="font-weight:600">Restricted record</b><br><span style="color:#5c6f66;font-size:11.5px">HIV I &amp; II · <span style="color:#dd8f1c">in person only</span></span></div>
+        <span class="ch"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#0e6b4e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>Dr. Rao's screen</span>
+        <span class="ch" style="color:#5c6f66">no message goes out · collects here with ID</span>
+        <span class="mo" style="font-size:11.5px;color:#5c6f66">13:52</span>
+      </div>
+      <div class="prow">
+        <div style="line-height:16px"><b style="font-weight:600">Suresh Munda</b><br><span style="color:#5c6f66;font-size:11.5px">Widal · MP · CBC · <span style="color:#dd8f1c">notifiable</span></span></div>
+        <span class="ch"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#0e6b4e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>Dr. Minz's screen</span>
+        <div class="ch" style="flex-direction:column;align-items:flex-start;gap:1px"><span><b style="font-weight:600;color:#dd8f1c">SMS</b> link sent 14:40 · not opened</span><span style="color:#8ea69a">no WhatsApp on file · IDSP register fed</span></div>
+        <span class="mo" style="font-size:11.5px;color:#5c6f66">14:39</span>
+      </div>
+      <div class="prow">
+        <div style="line-height:16px"><b style="font-weight:600">Kamla Devi</b> <span class="pill rd" style="height:16px;padding:0 5px;font-size:9px">STAT</span><br><span style="color:#5c6f66;font-size:11.5px">Troponin I · Electrolytes</span></div>
+        <span class="ch"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#0e6b4e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>Emergency board</span>
+        <span class="ch" style="color:#8ea69a">— inpatient, no patient copy</span>
+        <span class="mo" style="font-size:11.5px;color:#5c6f66">12:10</span>
+      </div>
+      <div style="padding:8px 14px;border-top:1px solid #ecf1ed;font-size:11.5px;color:#8ea69a">+ 157 more today · 141 on WhatsApp · 12 SMS · 19 collected here · 6 held</div>
+      <div style="flex-grow:1"></div>
+      <div style="padding:10px 14px 12px;border-top:1px solid #ecf1ed;font-size:11.5px;line-height:16px;color:#5c6f66">The doctor's screen is never held and never waits. Only the patient's copy carries a channel, a password, or a hold.</div>
+    </aside>
+
+    <!-- counter hand-over -->
+    <main style="flex-grow:1;min-width:0;overflow-y:auto;padding:20px 26px 22px;display:flex;flex-direction:column;gap:14px">
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span class="tag">hand over at the counter · one field</span>
+        <div style="display:flex;gap:10px;align-items:center">
+          <div style="position:relative;flex-grow:1">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#8ea69a" stroke-width="2.4" stroke-linecap="round" style="position:absolute;left:13px;top:13px"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input class="in" value="82102 55917" style="padding-left:38px;height:44px;border-color:#0e6b4e;box-shadow:0 0 0 3px rgba(14,107,78,.08);font-size:15px">
+          </div>
+          <span style="font-size:11.5px;color:#5c6f66;width:300px;line-height:15px">UHID, mobile number, token, or scan the slip. A mobile that matches two people asks for the name.</span>
+        </div>
+      </div>
+
+      <section class="box" style="display:flex;align-items:center;gap:18px;padding:12px 16px">
+        <div style="width:44px;height:44px;border-radius:6px;background:#eef3ef;display:flex;align-items:center;justify-content:center;font-weight:600;color:#5c6f66">FK</div>
+        <div style="flex-grow:1;min-width:0">
+          <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:16px;font-weight:600">Farida Khatoon</span><span style="color:#5c6f66">52 F</span><span class="mo" style="font-size:12px;color:#5c6f66">UH2301188</span><span class="mo" style="font-size:12px;color:#5c6f66">82102 55917</span></div>
+          <div style="font-size:12px;color:#5c6f66">1 report ready today · 1 result still to come (HbA1c, 16:00 batch) · 4 earlier reports on file</div>
+        </div>
+        <span class="stamp pd">PAID · ₹830</span>
+      </section>
+
+      <section class="box">
+        <div class="rrow" style="border-top:none">
+          <div style="line-height:17px">
+            <div style="display:flex;align-items:center;gap:8px"><b style="font-weight:600;font-size:14px">Laboratory report · v1 · PARTIAL</b><span class="pill">27 results</span></div>
+            <div style="font-size:12px;color:#5c6f66">LFT · CBC · fasting glucose · signed 14:34 by Dr. Meera Iyer · <span class="mo">L2609010102</span></div>
+            <div style="font-size:12px;color:#5c6f66">Sent to her WhatsApp 14:35, read 14:38. HbA1c will come as v2, an amendment, and go out the same way — its ₹400 is still due.</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#5c6f66;line-height:15px">
+            <span class="tag">collected by</span>
+            <span class="pill on">the patient herself</span>
+            <span style="color:#8ea69a">or a relative — name and relation are recorded</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <button class="btn" style="height:44px">Print &amp; hand over <span class="kb dk">Enter</span></button>
+            <button class="sec" style="height:32px;justify-content:center">Send again · WhatsApp</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;padding:10px 16px 12px;border-top:1px solid #ecf1ed;font-size:12px;color:#5c6f66;line-height:16px">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#8ea69a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3"/><path d="M21 14v7h-7"/></svg>
+          <span>Every printed and messaged copy carries a QR that opens the signed version on the hospital's site — a doctor elsewhere can check it was not edited. The WhatsApp PDF opens with her <b style="font-weight:600;color:#132420">year of birth and UHID last four</b>, the way the chains lock theirs.</span>
+        </div>
+      </section>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start">
+        <section class="box" style="border-color:rgba(221,143,28,.45)">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;padding:12px 16px 6px">
+            <span style="font-size:13px;font-weight:600">When the slip is not settled</span>
+            <span class="stamp held">HELD</span>
+          </div>
+          <div style="padding:0 16px 12px;font-size:12.5px;line-height:18px;color:#5c6f66">
+            Ramesh Mahto's report is signed and on Dr. Rao's screen. His <span class="mo" style="color:#132420">₹1,150</span> slip is unpaid, so the counter shows <b style="font-weight:600;color:#132420">HELD</b> and prints nothing. The moment billing settles it, the print button lights. If he cannot pay today, only the <b style="font-weight:600;color:#132420">billing manager</b> can release it — the dues stand. TPA, PM-JAY and corporate patients are never held.
+          </div>
+        </section>
+        <section class="box">
+          <div style="padding:12px 16px 6px"><span style="font-size:13px;font-weight:600">How the patient's copy travels</span></div>
+          <div style="display:grid;grid-template-columns:110px 1fr;gap:4px 12px;padding:0 16px 12px;font-size:12px;line-height:16px;color:#5c6f66">
+            <b style="font-weight:600;color:#132420">WhatsApp</b><span>default when a number is on file · locked PDF · delivery and read receipts shown here</span>
+            <b style="font-weight:600;color:#132420">SMS</b><span>a link that asks for date of birth · for phones without WhatsApp</span>
+            <b style="font-weight:600;color:#132420">Email</b><span>on request at reception · same locked PDF</span>
+            <b style="font-weight:600;color:#132420">Portal / app</b><span>UHID + OTP to the mobile · all reports, all visits</span>
+            <b style="font-weight:600;color:#132420">Counter</b><span>this screen · collector recorded · the only door for in-person-only tests</span>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- agent dock -->
+  <div style="flex-shrink:0;background:#132420;color:#d9efe4">
+    <div style="display:flex;align-items:center;gap:13px;height:54px;padding:0 18px">
+      <span style="position:relative;width:9px;height:9px;flex-shrink:0">
+        <span style="position:absolute;inset:0;border-radius:99px;background:#35c48f"></span>
+        <span style="position:absolute;inset:-3px;border-radius:99px;border:1px solid #35c48f;opacity:.35"></span>
+      </span>
+      <span class="tag" style="color:#7fa392;flex-shrink:0">lab agent</span>
+      <span class="mo" style="font-size:11px;line-height:15px;color:#d9efe4;min-width:0;flex-grow:1;overflow:hidden;max-height:30px">Farida already has the report on WhatsApp and has read it. If she wants the paper anyway, print it — and tell her Dr. Rao has seen the glucose and his OPD is open till 16:00, since a 41 wants a same-day word with him.</span>
+      <div style="flex-shrink:0;display:flex;align-items:center;gap:8px;width:360px;height:36px;border:1px solid #2c4438;border-radius:6px;padding:0 11px;background:#1c332b">
+        <input placeholder="ask — “report kab tak aayegi?”" style="border:none;background:transparent;color:#d9efe4;flex-grow:1;font-size:12px;outline:none">
+        <span class="kb dk">F2</span>
+      </div>
+      <button class="mo" style="flex-shrink:0;font-size:10.5px;color:#7fa392;letter-spacing:.1em">▲ LOG</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,174 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;600;700&amp;display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#f4f7f4;color:#132420;font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:#0e6b4e;text-decoration:none} a:hover{color:#0a4f3a}
+    button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0;text-align:left}
+    input{font:inherit;color:inherit}
+    .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+    .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#8ea69a}
+    .kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:18px;padding:0 4px;border-radius:3px;border:1px solid #dfe7e1;background:#ffffff;font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;color:#5c6f66;flex-shrink:0}
+    .kb.dk{border-color:#2c4438;background:#1c332b;color:#7fa392}
+    .box{background:#ffffff;border:1px solid #dfe7e1;border-radius:8px}
+    .pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:99px;font-size:10.5px;font-weight:600;border:1px solid #dfe7e1;background:#ffffff;color:#5c6f66;white-space:nowrap}
+    .pill.on{border-color:rgba(14,107,78,.35);background:rgba(14,107,78,.08);color:#0e6b4e}
+    .pill.gd{border-color:rgba(221,143,28,.45);background:rgba(221,143,28,.10);color:#dd8f1c}
+    .pill.rd{border-color:rgba(178,58,48,.45);background:rgba(178,58,48,.08);color:#b23a30}
+    .stamp{display:inline-flex;padding:1px 8px;border-radius:4px;font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:700;letter-spacing:.12em}
+    .stamp.rd{border:2px solid #b23a30;color:#b23a30}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 20px;border-radius:6px;background:#0e6b4e;color:#f2faf6;font-size:14px;font-weight:600;border:1px solid #0e6b4e}
+    .sec{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:6px;border:1px solid #dfe7e1;background:#ffffff;font-size:12.5px;font-weight:500}
+    .sec.rd{border-color:rgba(178,58,48,.45);color:#b23a30}
+    .in{height:40px;width:100%;border-radius:6px;border:1px solid #dfe7e1;background:#ffffff;padding:0 12px;font-size:14px}
+    .wrow{display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border-top:1px solid #ecf1ed}
+    .wrow:hover{background:#eef3ef}
+    .wrow.now{background:#eef3ef}
+    .tube{width:10px;height:18px;border-radius:2px 2px 4px 4px;border:1px solid rgba(19,36,32,.25);flex-shrink:0}
+    .arow{display:grid;grid-template-columns:150px 90px 70px 150px 70px 1fr;gap:12px;align-items:center;height:34px;padding:0 16px;border-top:1px solid #ecf1ed;font-size:13px}
+    .arow:hover{background:#eef3ef}
+    .val{font-family:"IBM Plex Mono",monospace;font-size:13.5px;font-weight:600;text-align:right}
+    .flag{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:700;letter-spacing:.08em}
+    .ic{width:14px;height:14px;flex-shrink:0}
+    .dot{width:7px;height:7px;border-radius:99px;flex-shrink:0}
+    .cell{height:30px;border-radius:6px;border:1px solid #dfe7e1;background:#ffffff;padding:0 10px;font-family:"IBM Plex Mono",monospace;font-size:13px;text-align:right;width:88px}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#f4f7f4;overflow:hidden">
+
+  <!-- header -->
+  <div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 18px;background:#ffffff;border-bottom:1px solid #dfe7e1;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:10px;height:10px;border-radius:2px;background:#0e6b4e;transform:rotate(45deg)"></div>
+      <span class="mo" style="font-size:12.5px;font-weight:700;letter-spacing:.08em">CENTRAL LAB</span>
+    </div>
+    <span style="color:#dfe7e1">/</span>
+    <span style="font-size:12.5px;color:#5c6f66">Bench · BIOCHEM-1 · <strong style="color:#132420;font-weight:600">Abha Rani</strong></span>
+    <span class="pill on"><span class="dot" style="background:#0e6b4e;width:5px;height:5px"></span>AU480 · online · serial ASTM</span>
+    <span class="pill gd"><span class="dot" style="background:#dd8f1c;width:5px;height:5px"></span>EL-120 · run sheet only</span>
+    <span class="pill">9 instruments · see the inbox</span>
+    <div style="flex-grow:1"></div>
+    <span class="mo" style="font-size:11.5px;color:#8ea69a">MON 1 SEP · 11:34</span>
+    <button class="pill rd" style="height:24px">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>
+      <span class="mo">1</span> critical call open <span class="kb">C</span>
+    </button>
+    <button class="pill" style="height:24px;border-color:#132420"><strong>⌘</strong> command <span class="kb">Ctrl K</span></button>
+  </div>
+
+  <div style="flex-grow:1;min-height:0;display:flex">
+
+    <!-- worklist -->
+    <aside style="width:330px;flex-shrink:0;border-right:1px solid #dfe7e1;background:#ffffff;overflow-y:auto;display:flex;flex-direction:column">
+      <div style="padding:12px 14px 10px;border-bottom:1px solid #ecf1ed">
+        <div style="position:relative">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#8ea69a" stroke-width="2.4" stroke-linecap="round" style="position:absolute;left:12px;top:13px"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8"/><path d="M11 8v8"/><path d="M15 8v8"/></svg>
+          <input class="in" placeholder="scan a tube to receive it" style="padding-left:36px">
+        </div>
+        <div style="font-size:11px;color:#8ea69a;margin-top:6px;line-height:14px">The scan finds the patient and the tests. Receive starts the TAT clock.</div>
+      </div>
+
+      <div class="tag" style="padding:10px 14px 4px;color:#5c6f66">arrived · not yet received</div>
+      <div class="wrow"><div class="tube" style="background:#f3c95a"></div><div style="flex-grow:1;min-width:0;line-height:15px"><div style="font-weight:600;font-size:12.5px">Dilip Soren <span class="stamp rd" style="font-size:9px;padding:0 5px">STAT</span></div><div class="mo" style="font-size:10.5px;color:#8ea69a">S2609010230 · TROP I · ELECT · Emergency</div></div><span class="mo" style="font-size:11px;color:#b23a30">2m</span></div>
+      <div class="wrow"><div class="tube" style="background:#f3c95a"></div><div style="flex-grow:1;min-width:0;line-height:15px"><div style="font-weight:600;font-size:12.5px">Mohan Prasad <span style="font-weight:400;color:#5c6f66;font-size:11px">· Ward 3</span></div><div class="mo" style="font-size:10.5px;color:#8ea69a">S2609010209 · RFT · K</div></div><span class="mo" style="font-size:11px;color:#5c6f66">6m</span></div>
+
+      <div class="tag" style="padding:10px 14px 4px;color:#5c6f66">on the analyser</div>
+      <div class="wrow now"><div class="tube" style="background:#f3c95a"></div><div style="flex-grow:1;min-width:0;line-height:15px"><div style="font-weight:600;font-size:12.5px">Farida Khatoon</div><div class="mo" style="font-size:10.5px;color:#8ea69a">S2609010211 · LFT · 6 of 10 in</div></div><span class="mo" style="font-size:11px;color:#0e6b4e">AU480</span></div>
+      <div class="wrow"><div class="tube" style="background:#c9cdd1"></div><div style="flex-grow:1;min-width:0;line-height:15px"><div style="font-weight:600;font-size:12.5px">Farida Khatoon</div><div class="mo" style="font-size:10.5px;color:#8ea69a">S2609010213 · GLUF</div></div><span class="mo" style="font-size:11px;color:#0e6b4e">AU480</span></div>
+      <div class="wrow"><div class="tube" style="background:#f3c95a"></div><div style="flex-grow:1;min-width:0;line-height:15px"><div style="font-weight:600;font-size:12.5px">Bimal Kumar Sahu</div><div class="mo" style="font-size:10.5px;color:#8ea69a">S2609010205 · LIPID · RFT</div></div><span class="mo" style="font-size:11px;color:#0e6b4e">AU480</span></div>
+
+      <div class="tag" style="padding:10px 14px 4px;color:#5c6f66">batch runs · results land together</div>
+      <div class="wrow"><div class="tube" style="background:#e9d5f5"></div><div style="flex-grow:1;min-width:0;line-height:15px"><div style="font-weight:600;font-size:12.5px">Autolab ESR 20 · run 3</div><div class="mo" style="font-size:10.5px;color:#8ea69a">loading · 7 of 10 positions · 25 min once full</div></div><span class="mo" style="font-size:11px;color:#5c6f66">ESR</span></div>
+      <div class="wrow"><div class="tube" style="background:#c9cdd1"></div><div style="flex-grow:1;min-width:0;line-height:15px"><div style="font-weight:600;font-size:12.5px">Mission U120 · run sheet 7</div><div class="mo" style="font-size:10.5px;color:#8ea69a">strips 41–58 · scanned in order</div></div><span class="mo" style="font-size:11px;color:#5c6f66">urine</span></div>
+
+      <div class="tag" style="padding:10px 14px 4px;color:#5c6f66">results in · review and complete</div>
+      <div class="wrow"><div class="tube" style="background:#f3c95a"></div><div style="flex-grow:1;min-width:0;line-height:15px"><div style="font-weight:600;font-size:12.5px">Ramesh Mahto</div><div class="mo" style="font-size:10.5px;color:#b23a30">S2609010188 · K 6.4 HH · call open</div></div><span class="mo" style="font-size:11px;color:#5c6f66">3h 05m</span></div>
+      <div class="wrow"><div class="tube" style="background:#f3c95a"></div><div style="flex-grow:1;min-width:0;line-height:15px"><div style="font-weight:600;font-size:12.5px">Anjali Verma</div><div class="mo" style="font-size:10.5px;color:#8ea69a">S2609010214 · LIPID · typed from printout</div></div><span class="mo" style="font-size:11px;color:#5c6f66">41m</span></div>
+
+      <div style="flex-grow:1"></div>
+      <div style="padding:10px 14px 12px;border-top:1px solid #ecf1ed;font-size:11.5px;line-height:16px;color:#5c6f66"><span class="mo" style="color:#132420">19</span> tubes on this bench · BIOCHEM-2 is free — ask the agent to move the RFTs.</div>
+    </aside>
+
+    <!-- the sample -->
+    <main style="flex-grow:1;min-width:0;overflow-y:auto;padding:20px 26px 22px;display:flex;flex-direction:column;gap:14px">
+
+      <section class="box" style="display:flex;align-items:center;gap:18px;padding:12px 16px">
+        <div class="tube" style="background:#f3c95a;width:18px;height:32px"></div>
+        <div style="flex-grow:1;min-width:0">
+          <div style="display:flex;align-items:baseline;gap:10px"><span class="mo" style="font-size:16px;font-weight:700">S2609010211</span><span style="font-size:15px;font-weight:600">Farida Khatoon</span><span style="color:#5c6f66">52 F</span><span class="mo" style="font-size:12px;color:#5c6f66">UH2301188</span></div>
+          <div style="font-size:12px;color:#5c6f66">LFT · gold SST · drawn 10:47 by Vikas, wristband scanned · received <span class="mo">10:54</span> · <span style="color:#0e6b4e;font-weight:600">TAT 40 min of 240</span> · Dr. Nishant Rao</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <span class="pill on"><span class="dot" style="background:#0e6b4e;width:5px;height:5px"></span>AU480 · rack 3, pos 7</span>
+          <span class="pill">6 of 10 results in</span>
+        </div>
+      </section>
+
+      <section class="box">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;padding:12px 16px 8px">
+          <span style="font-size:13px;font-weight:600">Liver function test <span style="font-weight:400;color:#5c6f66">· results as they arrive</span></span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="pill on"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>from the analyser</span>
+            <span class="pill">typed from the printout</span>
+          </div>
+        </div>
+        <div class="arow" style="height:auto;padding-bottom:4px;border-top:none"><span class="tag">analyte</span><span class="tag" style="text-align:right">result</span><span class="tag">unit</span><span class="tag">reference · 52 F</span><span class="tag">flag</span><span class="tag">arrived</span></div>
+        <div class="arow"><span>Bilirubin, total</span><span class="val">1.1</span><span style="color:#5c6f66;font-size:12px">mg/dL</span><span class="mo" style="font-size:12px;color:#5c6f66">0.2 – 1.2</span><span class="flag" style="color:#8ea69a">N</span><span style="font-size:11.5px;color:#5c6f66">AU480 · 11:31</span></div>
+        <div class="arow"><span>Bilirubin, direct</span><span class="val">0.3</span><span style="color:#5c6f66;font-size:12px">mg/dL</span><span class="mo" style="font-size:12px;color:#5c6f66">0.0 – 0.3</span><span class="flag" style="color:#8ea69a">N</span><span style="font-size:11.5px;color:#5c6f66">AU480 · 11:31</span></div>
+        <div class="arow"><span>Bilirubin, indirect <span class="mo" style="font-size:10px;color:#8ea69a">calc</span></span><span class="val" style="color:#5c6f66">0.8</span><span style="color:#5c6f66;font-size:12px">mg/dL</span><span class="mo" style="font-size:12px;color:#5c6f66">0.2 – 0.9</span><span class="flag" style="color:#8ea69a">N</span><span style="font-size:11.5px;color:#8ea69a">TBIL − DBIL</span></div>
+        <div class="arow"><span>SGOT (AST)</span><span class="val" style="font-weight:700">48</span><span style="color:#5c6f66;font-size:12px">U/L</span><span class="mo" style="font-size:12px;color:#5c6f66">10 – 40</span><span class="flag">H</span><span style="font-size:11.5px;color:#5c6f66">AU480 · 11:32</span></div>
+        <div class="arow"><span>SGPT (ALT)</span><span class="val" style="font-weight:700">62</span><span style="color:#5c6f66;font-size:12px">U/L</span><span class="mo" style="font-size:12px;color:#5c6f66">7 – 45</span><span class="flag">H</span><span style="font-size:11.5px;color:#5c6f66">AU480 · 11:32 · last visit 41</span></div>
+        <div class="arow"><span>Alkaline phosphatase</span><span class="val">96</span><span style="color:#5c6f66;font-size:12px">U/L</span><span class="mo" style="font-size:12px;color:#5c6f66">40 – 130</span><span class="flag" style="color:#8ea69a">N</span><span style="font-size:11.5px;color:#5c6f66">AU480 · 11:33</span></div>
+        <div class="arow" style="background:rgba(221,143,28,.05)"><span>Protein, total</span><input class="cell" placeholder="—"><span style="color:#5c6f66;font-size:12px">g/dL</span><span class="mo" style="font-size:12px;color:#5c6f66">6.0 – 8.3</span><span class="flag" style="color:#dfe7e1">·</span><span style="font-size:11.5px;color:#dd8f1c">waiting for the analyser · usually within 90 s</span></div>
+        <div class="arow" style="background:rgba(221,143,28,.05)"><span>Albumin</span><input class="cell" placeholder="—"><span style="color:#5c6f66;font-size:12px">g/dL</span><span class="mo" style="font-size:12px;color:#5c6f66">3.5 – 5.2</span><span class="flag" style="color:#dfe7e1">·</span><span style="font-size:11.5px;color:#dd8f1c">waiting · globulin and A/G ratio calculate from it</span></div>
+        <div style="display:flex;align-items:center;gap:14px;padding:10px 16px 12px;border-top:1px solid #ecf1ed;font-size:12px;color:#5c6f66;line-height:16px">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#8ea69a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M11 12h1v4h1"/></svg>
+          <span>Flags are set from the range for her age and sex the moment a value lands. A typed value outside the absurd envelope is refused until a <b style="font-weight:600;color:#132420">second named enterer</b> confirms it. A critical value opens the telephone call by itself — you do not decide.</span>
+        </div>
+      </section>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:14px;align-items:stretch">
+        <section class="box" style="padding:12px 16px;display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:13px;font-weight:600">Or the tube is no good</span>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            <button class="sec rd">Haemolysed</button><button class="sec rd">Clotted</button><button class="sec rd">Insufficient volume</button><button class="sec rd">Wrong container</button><button class="sec rd">Mislabelled</button><button class="sec">more…</button>
+          </div>
+          <span style="font-size:11.5px;color:#5c6f66;line-height:16px">Reject names who it is charged to — collection, transport, laboratory or patient — and a free recollection appears in Vikas's queue. The rejected barcode is never reused.</span>
+        </section>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="btn" style="width:100%;height:56px;background:#eef3ef;color:#8ea69a;border-color:#dfe7e1">Save &amp; complete — to Dr. Iyer <span class="kb">Enter</span></button>
+          <span style="font-size:11.5px;color:#5c6f66;line-height:16px;text-align:center">Lights up when all 10 analytes have a value. The pathologist sees it in her queue within a second.</span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- agent dock -->
+  <div style="flex-shrink:0;background:#132420;color:#d9efe4">
+    <div style="display:flex;align-items:center;gap:13px;height:54px;padding:0 18px">
+      <span style="position:relative;width:9px;height:9px;flex-shrink:0">
+        <span style="position:absolute;inset:0;border-radius:99px;background:#35c48f"></span>
+        <span style="position:absolute;inset:-3px;border-radius:99px;border:1px solid #35c48f;opacity:.35"></span>
+      </span>
+      <span class="tag" style="color:#7fa392;flex-shrink:0">lab agent</span>
+      <span class="mo" style="font-size:11px;line-height:15px;color:#d9efe4;min-width:0;flex-grow:1;overflow:hidden;max-height:30px">Ramesh Mahto's potassium call has been open 41 minutes — Dr. Rao's OPD line was engaged at 10:53; his mobile is on the roster. Dilip Soren's STAT gold tube is 2 minutes away from breaching its receive window: scan it before anything else.</span>
+      <div style="flex-shrink:0;display:flex;align-items:center;gap:8px;width:360px;height:36px;border:1px solid #2c4438;border-radius:6px;padding:0 11px;background:#1c332b">
+        <input placeholder="ask — “AU480 se result kyun nahi aaya?”" style="border:none;background:transparent;color:#d9efe4;flex-grow:1;font-size:12px;outline:none">
+        <span class="kb dk">F2</span>
+      </div>
+      <button class="mo" style="flex-shrink:0;font-size:10.5px;color:#7fa392;letter-spacing:.1em">▲ LOG</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

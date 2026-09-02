@@ -1,0 +1,176 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;600;700&amp;display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#f4f7f4;color:#132420;font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:#0e6b4e;text-decoration:none} a:hover{color:#0a4f3a}
+    button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0;text-align:left}
+    .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+    .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#8ea69a}
+    .kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:18px;padding:0 4px;border-radius:3px;border:1px solid #dfe7e1;background:#ffffff;font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;color:#5c6f66;flex-shrink:0}
+    .kb.dk{border-color:#2c4438;background:#1c332b;color:#7fa392}
+    .box{background:#ffffff;border:1px solid #dfe7e1;border-radius:8px}
+    .pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:99px;font-size:10.5px;font-weight:600;border:1px solid #dfe7e1;background:#ffffff;color:#5c6f66;white-space:nowrap}
+    .pill.on{border-color:rgba(14,107,78,.35);background:rgba(14,107,78,.08);color:#0e6b4e}
+    .pill.gd{border-color:rgba(221,143,28,.45);background:rgba(221,143,28,.10);color:#dd8f1c}
+    .pill.rd{border-color:rgba(178,58,48,.45);background:rgba(178,58,48,.08);color:#b23a30}
+    .stamp{display:inline-flex;padding:1px 8px;border-radius:4px;font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:700;letter-spacing:.12em}
+    .stamp.rd{border:2px solid #b23a30;color:#b23a30}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 20px;border-radius:6px;background:#0e6b4e;color:#f2faf6;font-size:14px;font-weight:600;border:1px solid #0e6b4e}
+    .sec{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:6px;border:1px solid #dfe7e1;background:#ffffff;font-size:12.5px;font-weight:500}
+    .qrow{display:flex;align-items:center;gap:10px;height:46px;padding:0 14px;border-top:1px solid #ecf1ed}
+    .qrow:hover{background:#eef3ef}
+    .qrow.now{background:#eef3ef}
+    .arow{display:grid;grid-template-columns:24px 170px 80px 60px 140px 60px 1fr;gap:12px;align-items:center;height:32px;padding:0 16px;border-top:1px solid #ecf1ed;font-size:13px}
+    .arow:hover{background:#eef3ef}
+    .val{font-family:"IBM Plex Mono",monospace;font-size:13.5px;font-weight:600;text-align:right}
+    .flag{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:700;letter-spacing:.08em}
+    .grp{padding:8px 16px 4px;border-top:1px solid #ecf1ed}
+    .chk{width:14px;height:14px;border-radius:3px;border:1.5px solid #0e6b4e;background:#0e6b4e;display:inline-flex;align-items:center;justify-content:center}
+    .ic{width:14px;height:14px;flex-shrink:0}
+    .dot{width:7px;height:7px;border-radius:99px;flex-shrink:0}
+    .paper{background:#ffffff;border:1px solid #dfe7e1;border-radius:4px;padding:14px 16px;font-size:10px;line-height:14px;color:#132420;box-shadow:0 6px 18px rgba(19,36,32,.08)}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#f4f7f4;overflow:hidden">
+
+  <!-- header -->
+  <div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 18px;background:#ffffff;border-bottom:1px solid #dfe7e1;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:10px;height:10px;border-radius:2px;background:#0e6b4e;transform:rotate(45deg)"></div>
+      <span class="mo" style="font-size:12.5px;font-weight:700;letter-spacing:.08em">CENTRAL LAB</span>
+    </div>
+    <span style="color:#dfe7e1">/</span>
+    <span style="font-size:12.5px;color:#5c6f66">Verify &amp; report · <strong style="color:#132420;font-weight:600">Dr. Meera Iyer</strong> · pathologist</span>
+    <div style="flex-grow:1"></div>
+    <span class="mo" style="font-size:11.5px;color:#8ea69a">MON 1 SEP · 14:31</span>
+    <button class="pill rd" style="height:24px"><span class="mo">2</span> criticals in the queue</button>
+    <button class="pill gd" style="height:24px"><span class="mo">12</span> awaiting signature · oldest <span class="mo">3</span> h</button>
+    <button class="pill" style="height:24px;border-color:#132420"><strong>⌘</strong> command <span class="kb">Ctrl K</span></button>
+  </div>
+
+  <div style="flex-grow:1;min-height:0;display:flex">
+
+    <!-- queue -->
+    <aside style="width:330px;flex-shrink:0;border-right:1px solid #dfe7e1;background:#ffffff;overflow-y:auto;display:flex;flex-direction:column">
+      <div style="padding:14px 14px 8px;display:flex;align-items:baseline;justify-content:space-between">
+        <span class="tag">awaiting signature · criticals and STAT first</span>
+      </div>
+      <div class="qrow" style="background:rgba(178,58,48,.04)">
+        <div style="flex-grow:1;min-width:0;line-height:16px"><div style="font-weight:600">Ramesh Mahto <span style="font-weight:400;color:#5c6f66">61 M</span></div><div style="font-size:11.5px;color:#b23a30">RFT · K 6.4 HH · call closed, read-back 14:12</div></div>
+        <span class="mo" style="font-size:11px;color:#5c6f66">3h</span>
+      </div>
+      <div class="qrow now">
+        <div style="flex-grow:1;min-width:0;line-height:16px"><div style="font-weight:600">Farida Khatoon <span style="font-weight:400;color:#5c6f66">52 F</span></div><div style="font-size:11.5px;color:#5c6f66">LFT · CBC · fasting glucose · 4 flags · 1 delta</div></div>
+        <span class="mo" style="font-size:11px;color:#5c6f66">18m</span>
+      </div>
+      <div class="qrow">
+        <div style="flex-grow:1;min-width:0;line-height:16px"><div style="font-weight:600">Bimal Kumar Sahu <span style="font-weight:400;color:#5c6f66">61 M</span></div><div style="font-size:11.5px;color:#5c6f66">Lipid profile · RFT · 2 flags</div></div>
+        <span class="mo" style="font-size:11px;color:#5c6f66">26m</span>
+      </div>
+      <div class="qrow">
+        <div style="flex-grow:1;min-width:0;line-height:16px"><div style="font-weight:600">Anjali Verma <span style="font-weight:400;color:#5c6f66">38 F</span></div><div style="font-size:11.5px;color:#5c6f66">Lipid profile · HbA1c · all normal · typed from printout</div></div>
+        <span class="mo" style="font-size:11px;color:#5c6f66">33m</span>
+      </div>
+      <div class="qrow">
+        <div style="flex-grow:1;min-width:0;line-height:16px"><div style="font-weight:600">Suresh Munda <span style="font-weight:400;color:#5c6f66">29 M</span></div><div style="font-size:11.5px;color:#5c6f66">Widal · MP · CBC · <span style="color:#dd8f1c">MP positive — notifiable</span></div></div>
+        <span class="mo" style="font-size:11px;color:#dd8f1c">47m</span>
+      </div>
+      <div style="padding:8px 14px;border-top:1px solid #ecf1ed;font-size:11.5px;color:#8ea69a">+ 6 more, all normal · 5 signed, ready to publish</div>
+      <div style="flex-grow:1"></div>
+      <div style="padding:10px 14px 12px;border-top:1px solid #ecf1ed;font-size:11.5px;line-height:16px;color:#5c6f66">Every result passes a pathologist. Auto-verification of in-range results ships with zero rules switched on; that is a decision for you, not a default.</div>
+    </aside>
+
+    <!-- the case -->
+    <main style="flex-grow:1;min-width:0;overflow-y:auto;padding:20px 26px 22px;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start">
+
+      <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+        <section class="box" style="display:flex;align-items:center;gap:18px;padding:12px 16px">
+          <div style="flex-grow:1;min-width:0">
+            <div style="display:flex;align-items:baseline;gap:10px"><span style="font-size:16px;font-weight:600">Farida Khatoon</span><span style="color:#5c6f66">52 F</span><span class="mo" style="font-size:12px;color:#5c6f66">UH2301188</span><span class="mo" style="font-size:12px;color:#5c6f66">L2609010102</span></div>
+            <div style="font-size:12px;color:#5c6f66">Dr. Nishant Rao, General Medicine · drawn 10:47 · received 10:54 · resulted 14:13 · Abha Rani (BIOCHEM-1), Priya Toppo (HAEM-1) · <span style="color:#0e6b4e;font-weight:600">3 h 19 min, inside target</span></div>
+          </div>
+          <span class="pill on"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>call closed · read-back · Dr. Rao 14:09</span>
+        </section>
+
+        <section class="box">
+          <div class="arow" style="height:auto;padding:12px 16px 4px;border-top:none"><span></span><span class="tag">analyte</span><span class="tag" style="text-align:right">result</span><span class="tag">flag</span><span class="tag">reference · 52 F</span><span class="tag">prev</span><span class="tag">note</span></div>
+
+          <div class="grp"><span class="tag" style="color:#5c6f66">fasting glucose · grey · AU480</span></div>
+          <div class="arow" style="background:rgba(178,58,48,.04)"><span class="chk"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#f4f7f4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px"><path d="m5 12 5 5L20 7"/></svg></span><span>Glucose, fasting</span><span class="val" style="font-weight:700">41</span><span class="flag" style="color:#b23a30">LL</span><span class="mo" style="font-size:12px;color:#5c6f66">70 – 99 · crit &lt;45</span><span class="mo" style="font-size:12px;color:#5c6f66">96</span><span style="font-size:11.5px;color:#b23a30">Δ −55 in 6 days · delta flag · call closed</span></div>
+
+          <div class="grp"><span class="tag" style="color:#5c6f66">liver function · gold · AU480</span></div>
+          <div class="arow"><span class="chk"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#f4f7f4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px"><path d="m5 12 5 5L20 7"/></svg></span><span>Bilirubin, total</span><span class="val">1.1</span><span class="flag" style="color:#8ea69a">N</span><span class="mo" style="font-size:12px;color:#5c6f66">0.2 – 1.2</span><span class="mo" style="font-size:12px;color:#5c6f66">0.9</span><span></span></div>
+          <div class="arow"><span class="chk"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#f4f7f4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px"><path d="m5 12 5 5L20 7"/></svg></span><span>SGOT (AST)</span><span class="val" style="font-weight:700">48</span><span class="flag">H</span><span class="mo" style="font-size:12px;color:#5c6f66">10 – 40</span><span class="mo" style="font-size:12px;color:#5c6f66">39</span><span style="font-size:11.5px;color:#5c6f66">mild, consistent with ALT</span></div>
+          <div class="arow"><span class="chk"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#f4f7f4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px"><path d="m5 12 5 5L20 7"/></svg></span><span>SGPT (ALT)</span><span class="val" style="font-weight:700">62</span><span class="flag">H</span><span class="mo" style="font-size:12px;color:#5c6f66">7 – 45</span><span class="mo" style="font-size:12px;color:#5c6f66">41</span><span></span></div>
+          <div class="arow"><span class="chk"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#f4f7f4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px"><path d="m5 12 5 5L20 7"/></svg></span><span>Albumin</span><span class="val">4.1</span><span class="flag" style="color:#8ea69a">N</span><span class="mo" style="font-size:12px;color:#5c6f66">3.5 – 5.2</span><span class="mo" style="font-size:12px;color:#5c6f66">4.0</span><span style="font-size:11.5px;color:#8ea69a">+ 6 more normal, collapsed</span></div>
+
+          <div class="grp"><span class="tag" style="color:#5c6f66">complete blood count · lavender · XN-550</span></div>
+          <div class="arow"><span class="chk"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#f4f7f4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px"><path d="m5 12 5 5L20 7"/></svg></span><span>Haemoglobin</span><span class="val" style="font-weight:700">11.2</span><span class="flag">L</span><span class="mo" style="font-size:12px;color:#5c6f66">12.0 – 15.0</span><span class="mo" style="font-size:12px;color:#5c6f66">11.8</span><span style="font-size:11.5px;color:#5c6f66">Δ −0.6, under the 2.0 delta rule</span></div>
+          <div class="arow"><span class="chk"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#f4f7f4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px"><path d="m5 12 5 5L20 7"/></svg></span><span>Platelets</span><span class="val">212</span><span class="flag" style="color:#8ea69a">N</span><span class="mo" style="font-size:12px;color:#5c6f66">150 – 410</span><span class="mo" style="font-size:12px;color:#5c6f66">228</span><span style="font-size:11.5px;color:#8ea69a">+ 14 more normal, collapsed</span></div>
+          <div class="grp"><span class="tag" style="color:#5c6f66">glycated haemoglobin · lavender · BIOCHEM-2</span></div>
+          <div class="arow" style="background:rgba(221,143,28,.05)"><span style="width:14px;height:14px;border-radius:3px;border:1.5px solid #dfe7e1;display:inline-block"></span><span>HbA1c</span><span class="val" style="color:#8ea69a">—</span><span class="flag" style="color:#dfe7e1">·</span><span class="mo" style="font-size:12px;color:#5c6f66">4.0 – 5.6 %</span><span class="mo" style="font-size:12px;color:#5c6f66">7.8</span><span style="font-size:11.5px;color:#dd8f1c">not billed · runs at 16:00 batch · publish the rest now, amend later</span></div>
+        </section>
+
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="btn">Sign 27 results &amp; publish <span class="kb dk">Enter</span></button>
+          <button class="sec">Sign, hold publish</button>
+          <button class="sec">Rerun SGPT</button>
+          <button class="sec">Add a comment to the report</button>
+        </div>
+      </div>
+
+      <!-- report preview -->
+      <aside style="display:flex;flex-direction:column;gap:8px">
+        <span class="tag">what she will receive · v1</span>
+        <div class="paper">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1.5px solid #132420;padding-bottom:6px;margin-bottom:8px">
+            <div><div style="font-weight:700;font-size:11px">Department of Laboratory Medicine</div><div style="color:#5c6f66">Laboratory report · NABL-format</div></div>
+            <div style="width:26px;height:26px;border:1.5px solid #132420;border-radius:2px;display:grid;grid-template-columns:repeat(3,1fr);gap:1.5px;padding:3px"><span style="background:#132420"></span><span></span><span style="background:#132420"></span><span></span><span style="background:#132420"></span><span></span><span style="background:#132420"></span><span></span><span style="background:#132420"></span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin-bottom:8px"><span><b>Name</b> Farida Khatoon</span><span><b>UHID</b> UH2301188</span><span><b>Sex / age</b> F · 52</span><span><b>Visit</b> V2609010044</span><span><b>Specimens</b> S…211 · 212 · 213</span><span><b>Referred by</b> Dr. Nishant Rao</span></div>
+          <div style="border-top:1px solid #dfe7e1;padding-top:6px;display:grid;grid-template-columns:1.6fr .6fr .5fr 1fr;gap:2px 6px">
+            <b>Test</b><b style="text-align:right">Result</b><b>Flag</b><b>Ref. interval</b>
+            <span>Glucose, fasting</span><span class="mo" style="text-align:right;font-weight:700">41</span><span style="font-weight:700">Critical low</span><span>70 – 99 mg/dL</span>
+            <span>SGOT (AST)</span><span class="mo" style="text-align:right;font-weight:600">48</span><span style="font-weight:600">High</span><span>10 – 40 U/L</span>
+            <span>SGPT (ALT)</span><span class="mo" style="text-align:right;font-weight:600">62</span><span style="font-weight:600">High</span><span>7 – 45 U/L</span>
+            <span>Haemoglobin</span><span class="mo" style="text-align:right;font-weight:600">11.2</span><span style="font-weight:600">Low</span><span>12.0 – 15.0 g/dL</span>
+            <span style="color:#8ea69a">… 23 more lines</span><span></span><span></span><span></span>
+          </div>
+          <div style="border-top:1px solid #dfe7e1;margin-top:8px;padding-top:6px;color:#5c6f66">PARTIAL REPORT — HbA1c to follow. Test results are to be clinically correlated.</div>
+          <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:flex-end"><div><div style="border-bottom:1px solid #132420;width:110px;height:16px"></div><b>Dr. Meera Iyer</b><br>MD Pathology · Reg. no. JMC 21873</div><div style="text-align:right;color:#5c6f66">Authorised on signature · scan the QR to verify</div></div>
+        </div>
+        <span style="font-size:11.5px;color:#5c6f66;line-height:16px">Generated on your signature; Dr. Rao's screen has it at once. Flags print as weight and words, never colour. The reference interval is the one in force at collection, snapshotted onto the result.</span>
+      </aside>
+    </main>
+  </div>
+
+  <!-- agent dock -->
+  <div style="flex-shrink:0;background:#132420;color:#d9efe4">
+    <div style="display:flex;align-items:center;gap:13px;height:54px;padding:0 18px">
+      <span style="position:relative;width:9px;height:9px;flex-shrink:0">
+        <span style="position:absolute;inset:0;border-radius:99px;background:#35c48f"></span>
+        <span style="position:absolute;inset:-3px;border-radius:99px;border:1px solid #35c48f;opacity:.35"></span>
+      </span>
+      <span class="tag" style="color:#7fa392;flex-shrink:0">lab agent</span>
+      <span class="mo" style="font-size:11px;line-height:15px;color:#d9efe4;min-width:0;flex-grow:1;overflow:hidden;max-height:30px">Farida's glucose was 96 six days ago; she is on glimepiride per Dr. Rao's 26-Aug note. The call is closed with a read-back. Nothing blocks the signature — the only open item is the unbilled HbA1c, and publishing now marks the report PARTIAL, not provisional.</span>
+      <div style="flex-shrink:0;display:flex;align-items:center;gap:8px;width:360px;height:36px;border:1px solid #2c4438;border-radius:6px;padding:0 11px;background:#1c332b">
+        <input placeholder="ask — “show me her last three LFTs”" style="border:none;background:transparent;color:#d9efe4;flex-grow:1;font-size:12px;outline:none">
+        <span class="kb dk">F2</span>
+      </div>
+      <button class="mo" style="flex-shrink:0;font-size:10.5px;color:#7fa392;letter-spacing:.1em">▲ LOG</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

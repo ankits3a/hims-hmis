@@ -9,8 +9,8 @@ Production runs from `/opt/hmis-prod` on this same box; never touch `hmis-prod-*
 `/opt/hmis` is the integration checkout and stays on `main`. Work happens in a lane:
 
 ```
-tools/lane.sh new <name>        # worktree /opt/hmis-lanes/<name>, branch lane/<name>, own test DBs
-cd /opt/hmis-lanes/<name> && claude
+tools/lane.sh new <name>        # worktree /opt/hmis-lanes/<name>/hmis, branch lane/<name>, own test DBs
+cd /opt/hmis-lanes/<name>/hmis && claude
 tools/lane.sh status            # who else is running tests, free memory, every lane's drift
 ```
 

@@ -1,0 +1,152 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;600;700&amp;display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#f4f7f4;color:#132420;font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:#0e6b4e;text-decoration:none} a:hover{color:#0a4f3a}
+    button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0;text-align:left}
+    .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+    .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#8ea69a}
+    .kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:18px;padding:0 4px;border-radius:3px;border:1px solid #dfe7e1;background:#ffffff;font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;color:#5c6f66;flex-shrink:0}
+    .box{background:#ffffff;border:1px solid #dfe7e1;border-radius:8px}
+    .pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:99px;font-size:10.5px;font-weight:600;border:1px solid #dfe7e1;background:#ffffff;color:#5c6f66;white-space:nowrap}
+    .pill.on{border-color:rgba(14,107,78,.35);background:rgba(14,107,78,.08);color:#0e6b4e}
+    .pill.gd{border-color:rgba(221,143,28,.45);background:rgba(221,143,28,.10);color:#dd8f1c}
+    .pill.rd{border-color:rgba(178,58,48,.45);background:rgba(178,58,48,.08);color:#b23a30}
+    .sec{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:6px;border:1px solid #dfe7e1;background:#ffffff;font-size:12px;font-weight:500}
+    .irow{display:grid;grid-template-columns:8px 1fr 92px;gap:10px;align-items:start;padding:8px 14px;border-top:1px solid #ecf1ed}
+    .irow:hover{background:#eef3ef}
+    .irow .n{font-weight:600;font-size:12.5px;line-height:16px}
+    .irow .d{font-size:11px;color:#5c6f66;line-height:15px}
+    .dot{width:7px;height:7px;border-radius:99px;flex-shrink:0;margin-top:5px}
+    .rrow{display:grid;grid-template-columns:44px 120px 1fr 90px 150px;gap:12px;align-items:center;height:30px;padding:0 16px;border-top:1px solid #ecf1ed;font-size:12.5px}
+    .rrow:hover{background:#eef3ef}
+    .well{width:100%;aspect-ratio:1;border-radius:2px;background:#eef3ef;border:1px solid #dfe7e1;display:flex;align-items:center;justify-content:center;font-family:"IBM Plex Mono",monospace;font-size:8px;font-weight:700}
+    .well.p{background:rgba(14,107,78,.18);border-color:rgba(14,107,78,.35)}
+    .well.c{background:#132420;color:#f4f7f4}
+    .well.r{background:rgba(178,58,48,.14);border-color:#b23a30;color:#b23a30}
+    .ic{width:14px;height:14px;flex-shrink:0}
+    .rule{display:grid;grid-template-columns:170px 1fr;gap:4px 14px;padding:6px 16px;border-top:1px solid #ecf1ed;font-size:12px;line-height:16px;color:#5c6f66}
+    .rule b{color:#132420;font-weight:600}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:1040px;display:flex;flex-direction:column;background:#f4f7f4;overflow:hidden">
+
+  <!-- header -->
+  <div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 18px;background:#ffffff;border-bottom:1px solid #dfe7e1;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:10px;height:10px;border-radius:2px;background:#0e6b4e;transform:rotate(45deg)"></div>
+      <span class="mo" style="font-size:12.5px;font-weight:700;letter-spacing:.08em">CENTRAL LAB</span>
+    </div>
+    <span style="color:#dfe7e1">/</span>
+    <span style="font-size:12.5px;color:#5c6f66">Instruments · the interface inbox · <strong style="color:#132420;font-weight:600">Abha Rani</strong></span>
+    <span class="pill on"><span class="dot" style="background:#0e6b4e;width:5px;height:5px;margin:0"></span>bridge on the bench PC · 8 ports · queue empty</span>
+    <div style="flex-grow:1"></div>
+    <span class="mo" style="font-size:11.5px;color:#8ea69a">MON 1 SEP · 12:41</span>
+    <button class="pill gd" style="height:24px"><span class="mo">3</span> results waiting for a patient</button>
+    <button class="pill" style="height:24px"><span class="mo">126</span> results matched since 07:00</button>
+    <button class="pill" style="height:24px;border-color:#132420"><strong>⌘</strong> command <span class="kb">Ctrl K</span></button>
+  </div>
+
+  <div style="flex-grow:1;min-height:0;display:flex">
+
+    <!-- instruments -->
+    <aside style="width:400px;flex-shrink:0;border-right:1px solid #dfe7e1;background:#ffffff;overflow-y:auto;display:flex;flex-direction:column">
+      <div style="padding:14px 14px 8px;display:flex;align-items:baseline;justify-content:space-between">
+        <span class="tag">on the bench · how each one names a sample</span>
+      </div>
+      <div class="irow" style="padding-top:0;padding-bottom:4px;border-top:none"><span></span><span class="tag">instrument · what it runs</span><span class="tag">sample id</span></div>
+
+      <div class="irow"><span class="dot" style="background:#0e6b4e"></span><div><div class="n">Chemistry analyser · random access</div><div class="d">LFT, RFT, lipids, glucose · racks · reads the tube barcode · <span class="mo">ASTM</span> both ways: it asks the server what to run</div></div><span class="pill on">barcode</span></div>
+      <div class="irow"><span class="dot" style="background:#0e6b4e"></span><div><div class="n">Zybio Z3 · 3-part haematology</div><div class="d">CBC, 21 parameters · one tube at a time, 70/h · <span class="mo">HL7 v2.3.1</span> over LAN, or RS-232 · id typed or scanned at the analyser</div></div><span class="pill on">scanned id</span></div>
+      <div class="irow"><span class="dot" style="background:#0e6b4e"></span><div><div class="n">Peerless Autolab ESR 20</div><div class="d">ESR · <b style="font-weight:600;color:#132420">batch of 10 positions, 25 min, all results land together</b> · built-in barcode reader · USB-serial</div></div><span class="pill on">barcode</span></div>
+      <div class="irow" style="background:rgba(221,143,28,.05)"><span class="dot" style="background:#dd8f1c"></span><div><div class="n">Erma EL-120 · electrolytes</div><div class="d">Na, K, Cl, Ca · one sample · RS-232 print stream · <b style="font-weight:600;color:#132420">knows only a sequence number</b></div></div><span class="pill gd">run sheet</span></div>
+      <div class="irow" style="background:rgba(221,143,28,.05)"><span class="dot" style="background:#dd8f1c"></span><div><div class="n">Mission U120 Smart · urine strips</div><div class="d">10-parameter strip, 120/h, holds 2,000 results · RS-232 / USB · <b style="font-weight:600;color:#132420">sequence number per strip, dumps in a block</b></div></div><span class="pill gd">run sheet</span></div>
+      <div class="irow" style="background:rgba(221,143,28,.05)"><span class="dot" style="background:#dd8f1c"></span><div><div class="n">ELISA reader ADX-150</div><div class="d">HBsAg, HCV, HIV screens · <b style="font-weight:600;color:#132420">96 wells, one plate = up to 92 patients</b> · optical density per well · the plate map is ours, not the reader's</div></div><span class="pill gd">plate map</span></div>
+      <div class="irow"><span class="dot" style="background:#0e6b4e"></span><div><div class="n">Quicklab Quickclia C5000 · CLIA</div><div class="d">TSH, β-hCG, ferritin · semi-automated, one cartridge per sample · LAN / Wi-Fi to the server · id entered at load</div></div><span class="pill on">typed id</span></div>
+      <div class="irow"><span class="dot" style="background:#0e6b4e"></span><div><div class="n">Zybio EXR 110 · fluorescence immunoassay</div><div class="d">Troponin, CRP, HbA1c, vitamin D · 3 channels, cartridges, 3–15 min · id entered at load · LAN / USB</div></div><span class="pill on">typed id</span></div>
+      <div class="irow" style="background:rgba(178,58,48,.04)"><span class="dot" style="background:#b23a30"></span><div><div class="n">Coagulation · semi-auto</div><div class="d">PT / INR · <b style="font-weight:600;color:#b23a30">no port on this model</b> — results come off the printout, typed with a second enterer for anything absurd</div></div><span class="pill rd">printout</span></div>
+
+      <div style="flex-grow:1"></div>
+      <div style="padding:10px 14px 12px;border-top:1px solid #ecf1ed;font-size:11.5px;line-height:16px;color:#5c6f66">The bridge is one small program on the bench PC. It listens on every COM / USB-serial / LAN port, keeps working when the server is unreachable, and hands each result to the server with the instrument's name, its sample id and the time it arrived.</div>
+    </aside>
+
+    <!-- inbox -->
+    <main style="flex-grow:1;min-width:0;overflow-y:auto;padding:18px 26px 20px;display:flex;flex-direction:column;gap:14px">
+
+      <!-- batch arrival -->
+      <section class="box">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;padding:12px 16px 8px">
+          <span style="font-size:13px;font-weight:600">Autolab ESR 20 · run 3 <span style="font-weight:400;color:#5c6f66">· landed 12:38 · 10 results in one transmission, each matched on its own</span></span>
+          <span class="pill on">9 matched · <span style="color:#dd8f1c">1 waiting</span></span>
+        </div>
+        <div class="rrow" style="height:auto;padding-bottom:4px;border-top:none"><span class="tag">pos</span><span class="tag">analyser id</span><span class="tag">patient · tube</span><span class="tag" style="text-align:right">ESR mm/h</span><span class="tag">matched by</span></div>
+        <div class="rrow"><span class="mo" style="color:#8ea69a">1</span><span class="mo">S2609010212</span><span>Farida Khatoon · lavender</span><span class="mo" style="text-align:right;font-weight:600">28</span><span class="pill on">barcode</span></div>
+        <div class="rrow"><span class="mo" style="color:#8ea69a">2</span><span class="mo">S2609010199</span><span>Suresh Munda · lavender</span><span class="mo" style="text-align:right;font-weight:600">64</span><span class="pill on">barcode</span></div>
+        <div class="rrow"><span class="mo" style="color:#8ea69a">3</span><span class="mo">S2609010204</span><span>Bimal Kumar Sahu · lavender</span><span class="mo" style="text-align:right;font-weight:600">12</span><span class="pill on">barcode</span></div>
+        <div class="rrow" style="background:rgba(221,143,28,.06)"><span class="mo" style="color:#8ea69a">4</span><span class="mo" style="color:#dd8f1c">— unread —</span><span style="color:#dd8f1c">did not scan · <b style="font-weight:600">parked, not guessed</b> · match by hand</span><span class="mo" style="text-align:right;font-weight:600">41</span><button class="sec" style="height:24px">match tube</button></div>
+        <div class="rrow"><span class="mo" style="color:#8ea69a">5–10</span><span class="mo" style="color:#8ea69a">…</span><span style="color:#8ea69a">6 more, all matched by barcode</span><span></span><span></span></div>
+      </section>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:14px;align-items:start">
+
+        <!-- run sheet -->
+        <section class="box">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;padding:12px 16px 8px">
+            <span style="font-size:13px;font-weight:600">Mission U120 · run sheet 7 <span style="font-weight:400;color:#5c6f66">· strips 41–58 · dumped 12:40</span></span>
+            <span class="pill on">18 matched by run sheet</span>
+          </div>
+          <div style="padding:0 16px 10px;font-size:12px;line-height:16px;color:#5c6f66">An instrument that knows only a <b style="font-weight:600;color:#132420">sequence number</b> gets a run sheet: before loading, Abha scans each cup in order and the sheet remembers <span class="mo">strip 41 → S2609010215</span>. When the block arrives, every strip finds its patient. A sheet with a gap parks that one result.</div>
+          <div class="rrow" style="height:auto;padding-bottom:4px;grid-template-columns:40px 110px 1fr 70px 96px"><span class="tag">strip</span><span class="tag">scanned as</span><span class="tag">patient</span><span class="tag" style="text-align:right">result</span><span class="tag">matched by</span></div>
+          <div class="rrow" style="grid-template-columns:40px 110px 1fr 70px 96px"><span class="mo" style="color:#8ea69a">41</span><span class="mo">S2609010215</span><span>Bimal Kumar Sahu · urine</span><span class="mo" style="text-align:right;font-weight:600">GLU ++</span><span class="pill on">run sheet</span></div>
+          <div class="rrow" style="grid-template-columns:40px 110px 1fr 70px 96px"><span class="mo" style="color:#8ea69a">42</span><span class="mo">S2609010219</span><span>Anjali Verma · urine</span><span class="mo" style="text-align:right;font-weight:600">normal</span><span class="pill on">run sheet</span></div>
+          <div class="rrow" style="grid-template-columns:40px 110px 1fr 70px 96px"><span class="mo" style="color:#8ea69a">43–58</span><span class="mo" style="color:#8ea69a">…</span><span style="color:#8ea69a">16 more</span><span></span><span></span></div>
+          <div style="padding:8px 16px 12px;border-top:1px solid #ecf1ed;font-size:12px;color:#5c6f66;line-height:16px">Same for the EL-120: one sample at a time, but its sequence counter is the only name it gives a result. The run sheet is built by scanning; nothing is typed.</div>
+        </section>
+
+        <!-- plate -->
+        <section class="box">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;padding:12px 16px 8px">
+            <span style="font-size:13px;font-weight:600">ADX-150 · plate 2 · HBsAg</span>
+            <span class="pill rd">3 reactive · repeat in duplicate</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(12, minmax(0,1fr));gap:3px;padding:0 16px 8px">
+            <div class="well c">B</div><div class="well c">NC</div><div class="well c">PC</div><div class="well c">CO</div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div>
+            <div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well r">R</div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div>
+            <div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div>
+            <div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well r">R</div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div>
+            <div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well r">R</div><div class="well p"></div>
+            <div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div>
+            <div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div>
+            <div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div><div class="well p"></div>
+          </div>
+          <div style="display:flex;gap:14px;padding:4px 16px 6px;font-size:11px;color:#5c6f66;align-items:center"><span style="display:inline-flex;align-items:center;gap:5px"><span class="well p" style="width:12px"></span>non-reactive</span><span style="display:inline-flex;align-items:center;gap:5px"><span class="well r" style="width:12px;font-size:7px">R</span>reactive</span><span style="display:inline-flex;align-items:center;gap:5px"><span class="well c" style="width:12px"></span>B · NC · PC · CO controls</span></div>
+          <div style="padding:2px 16px 12px;font-size:12px;line-height:16px;color:#5c6f66">The reader sends 96 optical densities and nothing else. The <b style="font-weight:600;color:#132420">plate map</b> — blank, negative and positive controls, cut-off, then 92 patient wells scanned in order — is built here before the plate goes in. The cut-off is computed from the controls; a plate whose controls fail is rejected whole, and no patient gets a result from it. Reactive screens are repeated before anyone is told.</div>
+        </section>
+      </div>
+
+      <!-- rules -->
+      <section class="box">
+        <div style="padding:12px 16px 6px"><span style="font-size:13px;font-weight:600">Rules the inbox lives by</span></div>
+        <div class="rule"><b>Never attach by guess</b><span>A result with no barcode, no run-sheet position and no plate-map well is parked. Somebody names the tube, or the result is discarded with a reason.</span></div>
+        <div class="rule"><b>One block, many patients</b><span>A batch transmission is split into single results. One unreadable row parks that row; the other nine go on.</span></div>
+        <div class="rule"><b>Repeats keep both</b><span>The same instrument sending the same analyte twice for one sample is a rerun, not a duplicate. Both values are kept; Abha chooses which one the report carries and says why.</span></div>
+        <div class="rule"><b>Codes and units are mapped once</b><span>Each instrument's test code and unit map to ours per instrument: the Z3's platelets in 10³/µL, a U120 "++" as text, the EL-120's calcium in mmol/L. The instrument's own H/L flags are ignored; ours come from our ranges.</span></div>
+        <div class="rule"><b>Two clocks</b><span>The time the result arrived is ours; the instrument's clock is stored beside it and never trusted for TAT.</span></div>
+        <div class="rule"><b>Interface down</b><span>The instrument turns grey in the header, its results are typed from the printout, and a typed value outside the absurd envelope needs a second named enterer. Nothing else about the bench changes.</span></div>
+      </section>
+    </main>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

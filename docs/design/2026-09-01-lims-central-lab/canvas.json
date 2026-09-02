@@ -1,0 +1,135 @@
+{
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "The journey · five seats"
+    },
+    {
+      "id": "page-2",
+      "name": "Supervisor · earlier draft"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 820,
+      "title": "0 · The journey of one tube",
+      "page": "page-1"
+    },
+    {
+      "file": "Reception.dc.html",
+      "x": 1600,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "1 · Reception — Sanjay accepts the walk-in slip",
+      "page": "page-1"
+    },
+    {
+      "file": "Collection.dc.html",
+      "x": 3200,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "2 · Collection — Vikas draws in order, one barcode per tube",
+      "page": "page-1"
+    },
+    {
+      "file": "Bench.dc.html",
+      "x": 0,
+      "y": 1040,
+      "w": 1440,
+      "h": 900,
+      "title": "3 · Bench — Abha Rani scans the tube, results arrive",
+      "page": "page-1"
+    },
+    {
+      "file": "Verify.dc.html",
+      "x": 1600,
+      "y": 1040,
+      "w": 1440,
+      "h": 900,
+      "title": "4 · Verification — Dr. Iyer signs, the report generates itself",
+      "page": "page-1"
+    },
+    {
+      "file": "Delivery.dc.html",
+      "x": 3200,
+      "y": 1040,
+      "w": 1440,
+      "h": 900,
+      "title": "5 · Delivery — WhatsApp, SMS, email, or the counter",
+      "page": "page-1"
+    },
+    {
+      "file": "Supervisor.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Shift board — where every tube is (earlier draft)",
+      "is_interactive": true,
+      "page": "page-2"
+    },
+    {
+      "file": "Week.dc.html",
+      "x": 1600,
+      "y": 0,
+      "w": 1440,
+      "h": 860,
+      "title": "Quality register — the week (earlier draft)",
+      "page": "page-2"
+    },
+    {
+      "file": "Instruments.dc.html",
+      "x": 0,
+      "y": 2080,
+      "w": 1440,
+      "h": 1040,
+      "title": "6 · Instruments — many patients in one transmission, matched one by one",
+      "page": "page-1"
+    },
+    {
+      "file": "EdgeCases.dc.html",
+      "x": 1600,
+      "y": 2080,
+      "w": 1440,
+      "h": 1800,
+      "title": "7 · Edge cases — does the process survive an Indian day?",
+      "page": "page-1"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "n-journey",
+      "x": 0,
+      "y": -440,
+      "w": 1440,
+      "page": "page-1",
+      "text": "READ LEFT TO RIGHT, TOP ROW THEN BOTTOM. Board 0 is the whole journey on one page; boards 1–5 are the five seats, each drawn as the screen that person works in, on the same patient (Farida Khatoon, T-118) so the hand-offs can be followed: token and UHID at reception → three barcodes at the chair → the scan at the bench → the signature → WhatsApp and the counter.\n\nTHE STORY YOU GAVE, MAPPED TO WHAT THE CODE ALREADY HAS. Portal orders (OPD / IPD / Emergency) are the `orders` envelope with kind `lab`; they need no typing and flow straight to collection. The walk-in slip is the one case reception types. The token (T-118) and UHID identify the patient; the L number is the order; each tube gets its own S barcode (S + YYMMDD + counter), minted on save and printed at the chair. The bench scan resolves the S number to the patient and the tests. Results arrive by serial interface (ASTM) or are typed from the printout; flags, criticals, deltas and the absurd envelope fire on entry. Only a pathologist reaches `verified`; the report is a signed snapshot generated on the signature; delivery channels are print / WhatsApp / in person / doctor's screen, and the unpaid-slip hold is on the printed copy only.\n\nTHE CHAINS. Dr Lal PathLabs, Pathkind, Agilus (SRL) and Apollo Diagnostics all do the same five things: one visit ID minted at registration with the barcode; colour-coded tubes with the test list on the label; analysers interfaced both ways; a doctor's authorisation before release (auto-validation for normals where they have it); and report delivery by WhatsApp / SMS / email / app, locked with a password or an OTP, with a counter copy on request. Board 0's bottom strip shows, seat by seat, what was taken from them.\n\nWHAT IS NOT DRAWN, ON PURPOSE. Analyser QC (Levey-Jennings), reagent lots, the referral-lab dispatch (`sent_out`), and prices — none are seeded or driven by code yet (17-E, 17-M, and the owner's price list). Home collection is the chains' business, not a hospital lab's.\n\nDESIGN LANGUAGE: Desk One (paper and pine, IBM Plex), the seat signed off on 31 Aug. The four shipped lab screens are greyscale shadcn; whichever way that ruling goes, the layouts here hold."
+    },
+    {
+      "id": "n-super",
+      "x": 0,
+      "y": -220,
+      "w": 1440,
+      "page": "page-2",
+      "text": "EARLIER DRAFT, KEPT FOR REFERENCE. The first pass drew a pathologist-in-charge scoreboard (live shift board + weekly quality register) before the owner set the brief straight: the dashboard is the five working seats, in flow order. These two boards may still be useful as the department head's page once the seats exist; nothing on them is needed to build the seats."
+    },
+    {
+      "id": "n-edge",
+      "x": 3200,
+      "y": 2080,
+      "w": 1440,
+      "page": "page-1",
+      "text": "ROW THREE ANSWERS TWO QUESTIONS THE OWNER ASKED ON 1 SEP.\n\nBOARD 6 — THE MACHINES. The bench board (3) shows the easy case: a random-access chemistry analyser that reads the barcode and asks the server what to run. The owner's actual bench is mixed: a Zybio Z3 (one tube at a time, HL7 over LAN), an Autolab ESR 20 (a batch of 10 that lands as one transmission), an Erma EL-120 and a Mission U120 that know only a sequence number, an ELISA reader that sends 96 optical densities and no names, a Quickclia C5000 and a Zybio EXR 110 with an id typed at load, and at least one semi-auto with no port at all. So the design adds ONE thing: an interface inbox on the bench, with three ways a result finds its patient — barcode, run sheet (scan the cups into positions before loading), plate map — and a hard rule that a result with none of the three is PARKED, never guessed. A block of many patients is split and matched row by row. Code and unit mapping is per instrument. The bridge is a small program on the bench PC reading COM/USB-serial/LAN, queueing when the server is down. This is the shape of Plan 17-E.\n\nBOARD 7 — THE EDGE CASES. 26 situations that a hospital lab in India meets every week, each run against the five seats and against what the code already enforces. 14 HOLD as drawn (identity carried by token/UHID/barcode, scheme patients never held, rejection with attribution, 7-day non-return sweep, SoD + provisional, amendments as versions, PCPNDT pinned at the schema). 9 need a CHANGE to the screens, all small: “this phone belongs to” at registration, register-in-place at lab reception, an outside referring doctor, a witnessed re-label, a sex/age impossibility rule, a critical-call escalation ladder, unverified values on the doctor's screen, a visible downtime mode, Hindi headings on the patient copy. 3 are GAPS that are plans, not screens: referral-lab send-out (17-M), camp/bulk registration, and analyser status + reagent stock + a delay message to the patient (17-E). Home collection is left out by choice; it is the chains' business."
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-1"
+  }
+}
