@@ -137,6 +137,7 @@ describe("the laboratory over HTTP (17b T8)", () => {
     await request(server()).get("/lab/catalogue/search").expect(401);
     await request(server()).post("/lab/desk/orders").send({}).expect(401);
     await request(server()).get("/lab/desk/find").expect(401);
+    await request(server()).get("/lab/reports/register?serviceDate=2026-08-29").expect(401);
     await request(server()).post("/lab/collection/labels").send({}).expect(401);
     await request(server()).post("/lab/bench/receive").send({}).expect(401);
     await request(server()).post("/lab/reports").send({}).expect(401);
@@ -147,6 +148,8 @@ describe("the laboratory over HTTP (17b T8)", () => {
     await request(server()).get("/lab/catalogue/search").set(...auth(token)).expect(403);
     await request(server()).post("/lab/desk/orders").set(...auth(token)).send({}).expect(403);
     await request(server()).get("/lab/desk/find?q=T-1&serviceDate=2026-08-29").set(...auth(token)).expect(403);
+    await request(server()).get("/lab/reports/register?serviceDate=2026-08-29").set(...auth(token)).expect(403);
+    await request(server()).get("/lab/reports/patient/p-1").set(...auth(token)).expect(403);
     await request(server()).post("/lab/collection/labels").set(...auth(token)).send({}).expect(403);
     await request(server()).post("/lab/bench/results").set(...auth(token)).send({}).expect(403);
     await request(server()).post("/lab/verify/results/r1").set(...auth(token)).expect(403);
@@ -201,6 +204,19 @@ describe("the laboratory over HTTP (17b T8)", () => {
   });
 
   /* ══════════════════ THE WHOLE CHAIN, OVER THE WIRE, ROW BY ROW ══════════════════ */
+
+  /* ══════════════════ PLAN 17c T5 — the report centre's readers, over the wire ══════════════════ */
+
+  it("17c T5 — the register and the by-patient reader answer on the counter's permission alone", async () => {
+    /** `lab.reports.print` and `patients.read` — the counter, and NOT `lab.results.read`. */
+    const counter = await userWith(["lab.reports.print", "patients.read"], ["lab_reception"]);
+    const register = await request(server()).get("/lab/reports/register?serviceDate=2026-08-29").set(...auth(counter.token)).expect(200);
+    expect(register.body).toEqual([]);
+    const mine = await request(server()).get(`/lab/reports/patient/${fx.patientId}`).set(...auth(counter.token)).expect(200);
+    expect((mine.body as { patient: { display: string }; reports: unknown[] }).patient.display).toBe("Ram Kumar");
+    expect((mine.body as { reports: unknown[] }).reports).toEqual([]);
+    await request(server()).get("/lab/reports/register").set(...auth(counter.token)).expect(400);
+  });
 
   /* ══════════════════ PLAN 17c T1 — the reception seat's three doors, over the wire ══════════════════ */
 

@@ -339,7 +339,10 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // came from. RC-4 deletes one of the two and the number comes back to 44. The pin was raised in
     // the same edit as the route rather than after watching it fail — like 17b's and unlike 18a's —
     // so the evidence is the passing run, stated as such rather than as a failure not observed.
-    expect(routes).toHaveLength(45);
+    // PLAN 17c T5 — 45 -> 46: the laboratory's report centre, `/lab/reports`. Joined in the same
+    // edit as the route, per the rule above.
+    expect(routes).toHaveLength(46);
+    expect(routes).toContain("/lab/reports");
     expect(routes).toContain("/counter/seat");
     expect(routes).toContain("/radiology/reception");
     expect(routes).toContain("/radiology/worklist");

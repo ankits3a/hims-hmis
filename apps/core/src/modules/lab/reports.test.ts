@@ -16,8 +16,7 @@ import {
 import { patientBalance } from "../billing";
 import { registerLabApprovalTypes, RELEASE_UNPAID_APPROVAL_TYPE } from "./approval-types";
 import {
-  amendReport, getReport, listResultsForEncounter, printReport, publishReport, releaseUnpaid,
-  reportVersions,
+  amendReport, deliveryRegister, getReport, listResultsForEncounter, printReport, publishReport, releaseUnpaid, reportVersions, reportsForPatient,
 } from "./reports";
 import { amendResult } from "./results";
 import { verifyResult } from "./verify";
@@ -466,5 +465,83 @@ describe("lab reports — publish, interlock, print, amend (17b T7)", () => {
     const [instance] = await db.select({ state: workflowInstances.currentState, status: workflowInstances.status })
       .from(workflowInstances).where(eq(workflowInstances.subjectId, run.itemIds[0]!));
     expect([instance!.state, instance!.status]).toEqual(["published", "completed"]);
+  });
+});
+
+/**
+ * ═══ PLAN 17c T5 — THE REPORT CENTRE'S READERS ═══
+ */
+describe("the report centre (17c T5)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let fx: LabDeskFixture;
+  const AT = new Date("2026-08-29T05:30:00Z");
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => { await teardown(); });
+  beforeEach(async () => {
+    await truncateAll(db);
+    fx = await seedLabDeskBase(db);
+    await grantLabResultPermissions(db, fx);
+    await registerLabApprovalTypes(db, fx.pathologist.actor);
+  });
+  afterEach(() => { fx.unregister(); });
+
+  it("A1: a sealed patient's reports read as the ALIAS, ONE phi_access_log row per call, and a HELD report carries NO snapshot", async () => {
+    await db.update(patients).set({ isConfidential: true, alias: "Patient A" }).where(eq(patients.id, fx.patientId));
+    const run = await runLabOrder(db, fx, ["TSH"], { at: AT });
+    const report = await publishReport(db, fx.pathologist.actor, { orderId: run.orderId }, AT);
+
+    const before = (await db.select().from(phiAccessLog)).length;
+    /** `lab_reception` holds `lab.reports.print` and NOT `patients.confidential.read`. */
+    const view = await reportsForPatient(db, fx.desk.actor, fx.patientId, AT);
+    expect(view.patient.display).toBe("Patient A");
+    expect(view.patient.restricted).toBe(true);
+    expect(view.reports).toHaveLength(1);
+    const r = view.reports[0]!;
+    expect([r.reportId, r.delivery.allowed, r.delivery.reason]).toEqual([report.reportId, false, "unpaid_invoices"]);
+    /** THE KILL for the raw-select mutant: a held report sends no document, and no legal name anywhere. */
+    expect(r.snapshot).toBeNull();
+    expect(JSON.stringify(view)).not.toContain("Ram Kumar");
+    const after = await db.select().from(phiAccessLog);
+    expect(after.length).toBe(before + 1);
+    expect([after.at(-1)!.surface, after.at(-1)!.sealed, after.at(-1)!.patientId]).toEqual(["lab.report", true, fx.patientId]);
+
+    /** Settled ⇒ the snapshot travels, aliased; the read is logged again. */
+    const cashier = await mkCashier(db, "lab.centre.cashier");
+    await openSessionFor(db, cashier, 0);
+    await settleInvoice(db, cashier, fx.patientId, run.invoiceId, run.netPayablePaise, AT);
+    const settled = await reportsForPatient(db, fx.desk.actor, fx.patientId, AT);
+    expect(settled.reports[0]!.delivery.allowed).toBe(true);
+    expect(settled.reports[0]!.snapshot?.patient.name).toBe("Patient A");
+    expect(JSON.stringify(settled)).not.toContain("Ram Kumar");
+    expect((await db.select().from(phiAccessLog)).length).toBe(before + 2);
+  });
+
+  it("A2: the register lists the day's published reports with how each went out; a hand-over appears as a delivery row", async () => {
+    const run = await runLabOrder(db, fx, ["TSH"], { at: AT });
+    const report = await publishReport(db, fx.pathologist.actor, { orderId: run.orderId }, AT);
+    const cashier = await mkCashier(db, "lab.centre.cashier2");
+    await openSessionFor(db, cashier, 0);
+    await settleInvoice(db, cashier, fx.patientId, run.invoiceId, run.netPayablePaise, AT);
+    await printReport(db, fx.desk.actor, { reportId: report.reportId, channel: "print", collectorIdentity: "the patient" }, AT);
+
+    const rows = await deliveryRegister(db, fx.desk.actor, "2026-08-29");
+    expect(rows).toHaveLength(1);
+    expect([rows[0]!.reportId, rows[0]!.patientDisplay, rows[0]!.orderables, rows[0]!.delivery.allowed])
+      .toEqual([report.reportId, "Ram Kumar", ["TSH"], true]);
+    expect(rows[0]!.deliveries.map((d) => [d.channel, d.collectorIdentity])).toEqual([["print", "the patient"]]);
+    /** The ready notice was enqueued on publish (T7 A7) and its fate is on the row. */
+    expect(rows[0]!.notice?.status).toBe("queued");
+    /** Another day is another register. */
+    expect(await deliveryRegister(db, fx.desk.actor, "2026-08-28")).toEqual([]);
+    /** No snapshot on the register — it is a list, not a document. */
+    expect(JSON.stringify(rows)).not.toContain("HMS-00000101-7");
+  });
+
+  it("A3: a reader without the print permission is refused", async () => {
+    const stranger = await mkUser(db, "lab.centre.stranger", []);
+    await expect(reportsForPatient(db, stranger.actor, fx.patientId, AT)).rejects.toMatchObject({ code: "permission_denied" });
+    await expect(deliveryRegister(db, stranger.actor, "2026-08-29")).rejects.toMatchObject({ code: "permission_denied" });
   });
 });

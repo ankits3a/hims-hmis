@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Inject, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -7,13 +7,12 @@ import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { withIdempotency } from "../billing";
 import { deliveryAllowed } from "./interlock";
 import {
-  amendReport, getReport, listResultsForEncounter, printReport, publishReport, releaseUnpaid,
-  reportVersions,
+  amendReport, getReport, listResultsForEncounter, printReport, publishReport, releaseUnpaid, reportVersions, deliveryRegister, reportsForPatient,
 } from "./reports";
 import { amendResult, requestRerun } from "./results";
 import { verifyResult } from "./verify";
 import { publishableOrders, verifyWorklist } from "./worklist";
-import { idSchema, LAB_IDEMPOTENT_ROUTES, LAB_REPORT_ROUTES, parsed, toHttp } from "./lab-http";
+import { LAB_IDEMPOTENT_ROUTES, LAB_REPORT_ROUTES, idSchema, isoDateSchema, parsed, toHttp } from "./lab-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
@@ -148,6 +147,24 @@ export class LabVerifyController {
         () => publishReport(this.db, actor, input),
       );
     } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * PLAN 17c T5 — THE REPORT CENTRE. Both readers are gated on `lab.reports.print`, the counter's
+   * permission (§8.5's decision); the by-patient reader logs the read and sends a snapshot only
+   * when the interlock allows the hand-over.
+   */
+  @Get("reports/patient/:patientId")
+  @RequirePermission("lab.reports.print", "hospital")
+  async byPatient(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<unknown> {
+    try { return await reportsForPatient(this.db, actor, patientId); } catch (e) { toHttp(e); }
+  }
+
+  @Get("reports/register")
+  @RequirePermission("lab.reports.print", "hospital")
+  async register(@CurrentActor() actor: Actor, @Query("serviceDate") serviceDate?: string): Promise<unknown> {
+    const q = parsed(z.object({ serviceDate: isoDateSchema }), { serviceDate });
+    try { return await deliveryRegister(this.db, actor, q.serviceDate); } catch (e) { toHttp(e); }
   }
 
   @Get("reports/:reportId")
