@@ -305,4 +305,36 @@
 
   /* Seat-local: the second, lighter weight of `--dim` that the registry has no slot for. */
   --seat-faint: #8ea69a;
+
+ * PLAN 16c D11 — THE DISPENSE COUNTER IS A SEAT (Desk One), and it opts in the way the registration
+ * counter does: a `data-seat` on its root, token VALUES copied rather than shared through `:root`
+ * (RC-3's own mutant — a shared root would restyle every screen that never asked). Same paper, ink,
+ * line and pine as the front desk so a person moving between the two counters sees one hospital.
+ */
+[data-seat="pharmacy-counter"] {
+  --background: #f4f7f4;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --foreground: #132420;
+  --card-foreground: #132420;
+  --popover-foreground: #132420;
+  --border: #dfe7e1;
+  --input: #dfe7e1;
+  --muted: #eef3ef;
+  --secondary: #eef3ef;
+  --accent: #eef3ef;
+  --muted-foreground: #5c6f66;
+  --secondary-foreground: #132420;
+  --accent-foreground: #132420;
+  --primary: #0e6b4e;
+  --primary-foreground: #f4f7f4;
+  --ring: #0e6b4e;
+  --destructive: #b23a30;
+  --state-waiting: #dd8f1c;
+  --state-danger: #b23a30;
+  --state-settled: #0e6b4e;
+  --state-live: #0e6b4e;
+  --seat-faint: #8ea69a;
+  background: var(--background);
+  color: var(--foreground);
 }

@@ -103,6 +103,43 @@ IPD indents, eMAR charge point (O-1); ward stock, crash carts; NDPS, Schedule X,
 
 **Owner ACTIONS:** a second administrator; a registered pharmacist holding `pharmacy`; Plan 14's deploy.
 
-## 8. CLOSE — filled at execution
+## 8. CLOSE — executed 2026-09-02, one session, code-complete, NOT deployed
 
-§8.0 §2 re-measured · §8.1 PRs and CI SHAs · §8.2 findings · §8.3 assertion book as executed · §8.4 evidence · §8.5 two fresh close passes, pass 2 briefed at the fixes (§2.140) · §8.6 actuals vs stop-loss.
+### 8.0 §2 re-measured at kickoff
+Every row held. Two of the "consumer today" cells changed under us during the day: the LIMS lane's 17c T1/T2 merged (`798611c`, `b362f02`) and appended to `styles.css` and both locale files — one conflict at rebase (the stylesheet's seat block), resolved by keeping both blocks. Main moved five times in the session; PR #4 was re-based four times because branch protection requires an up-to-date branch and the token cannot re-run a workflow.
+
+### 8.1 The commits (one PR each, in this order)
+| task | commit | what moved |
+|---|---|---|
+| doc | `docs(pharmacy): Plan 16c phase doc…` + §7 RULED + a CI re-run commit | PR #4 |
+| T0a | `feat(opd): prescription read surface…`; part 2 `findVisitByToken`; part 3 `getDoctor` on the index | three tiny OPD exports, each its own commit |
+| T0b | `feat(tariff): pharmacy lines price from the batch MRP, category-guarded` | `batchUnitPaise`, `batch_price_not_allowed`, clamp `batch_mrp` |
+| T1 | `feat(pharmacy): module seam — four tables, the medication kind claimed on the P series, two roles` | migration `0056`, README's seventh role table, every census pin |
+| T2 | `feat(pharmacy): sale items bridge…; the batch-grain price rule with golden fixtures` | 9 golden rows, 3 GST slab rows in `seed:tariff` |
+| T3 | `feat(pharmacy): the counter — three doors…; the Rx-issued consumer` | queue/claim/verify/decline/cancel, worker install, `PhiSurface` +1 |
+| T4 | `feat(pharmacy): pick FEFO under the ledger lock, bill at batch grain, hand over…` | reserve/consume, `material.consumed`, H1 register, label |
+| T5 | `test(pharmacy): one patient from e-Rx to hand over over HTTP; …` | 2 routes, NAV, menu, `seed-pharmacy`, e2e, runbook |
+
+### 8.2 Findings and deviations — recorded, not hidden
+- **F1 — the order is placed at VERIFY, not at claim** (D1 as executed). A line's tariff service is known only after resolution, substitution or decline; placing at claim would mean cancelling envelope items for every declined line. The `P` number is minted at verify. `pharmacy_dispenses_claimed_has_order_ck` was tightened to verified-or-later.
+- **F2 — Class C, not Class B** (D8). Class B activation needs a `department_head` and a `duty_manager` approval no seed can supply on a one-administrator box; the lab made the same call at 17a. The gate that matters (schedule) is a permission, not a transition role.
+- **F3 — S1 answered NO:** `consumeReservation` posts the movement and emits nothing; the pharmacy appends `material.consumed` itself with the batch's price facts (`caseRef.type = "pharmacy_dispense"`; the OT consumer already skips it).
+- **F4 — S2 answered:** `computeGst` is category-keyed; four `pharmacy*` categories are data (`seed:tariff` +3) and `gstCategoryFor` maps `items.gst_rate_bps` to one.
+- **F5 — S3 answered:** `issueInvoice` needs the cashier grants and an open session; `pharmacy` gained `lab_reception`'s four billing strings; the aide none. Verify needs `orders.place`, so verify is the pharmacist's act and the aide claims and picks.
+- **F6 — supersession is keyed by ENCOUNTER:** a re-issued Rx is a new `opd_prescriptions` row (version + 1), so the queue cancels the older queued version on the same encounter, and a claimed one is told `prescription_superseded` at verify.
+- **F7 — the aide lost `materials.stock.read`** (README census guard: a materials pair must live in the materials table); the counter's routes read stock for it.
+- **F8 — the invoice carries the ENCOUNTER ID**, not the visit number: billing accepts both, but `encounterFeeStatuses` and `listInvoices` match by id (found by the e2e's consult gate).
+- **F9 — one batch per line.** Short stock is a partial with a reason or a named later batch (evented); a line never spans two batches in 16c.
+- **F10 — `PhiSurface` gained `pharmacy.dispense`** (a one-line kernel edit) so the counter's reads count apart from the consult's.
+
+### 8.3 Assertion book as executed
+T0b guard: DIED (category guard dropped → priced instead of thrown). T1: boot lists `medication` on `P`; `pharmacy_reg_h1` UPDATE and DELETE both raise. T2 A2: `max`-for-`min` mutant DIED on the ceiling row and the property leg (2 of 17). T3 A1: two concurrent claims → one `claimed`, one `dispense_not_in_state`, lines written once. T3 second: an allergy recorded after issue blocks verify; the prescriber's override lets the re-issue through. T4 A1: two dispenses on the last ten tablets → one holds, one refused by the ledger, `qty_reserved` 10 on 10. T4 second: the ceiling row prices at 1000 not 1500, `boundApplied: caller_cap`, totals to the paisa. T4 third: the aide's hand-over of an H1 line refused, no ledger row after.
+
+### 8.4 Evidence (local, the suites touched; CI runs everything per PR)
+core: `modules/pharmacy` 55/55 + `pharmacy.e2e` 2/2 + `seed-pharmacy` 1/1 + schema 4/4 + parity (deploy, caddy, nav, manifests, orders) green + `seed-roles` 16/16 + `seed-tariff` 5/5 + `opd/prescriptions` 21/21 + `tariff/pricing` 16/16. web: 71 files, 514/514. `pnpm typecheck` 0 errors; `pnpm lint` 0 errors (2 pre-existing warnings on main).
+
+### 8.5 Close review
+Not yet run. Two fresh passes owed before deploy (§2.140), pass 2 briefed at the fixes.
+
+### 8.6 Actuals
+One authoring-plus-execution session; token count not readable by the session about itself (the 11e precedent). Stop-loss 2,120,000 not breached by the visible token meter.

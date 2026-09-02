@@ -477,6 +477,10 @@ compose run --rm api node dist/scripts/seed-formulary-interactions.js
 # `patient_merge` and `tariff_revision` gaps, both of which ran for weeks before a human noticed.
 compose run --rm api node dist/scripts/seed-materials.js
 compose run --rm api node dist/scripts/seed-ot.js
+# PLAN 16c T5 — the OPD pharmacy counter's store (`PHARM-OPD`) and the `pharmacy_dispense`
+# definition. Without the store every claim refuses `store_missing`; without the definition the
+# claim's `startInstance` throws. Idempotent; runs before `seed-roles` for the same reason as the rest.
+compose run --rm api node dist/scripts/seed-pharmacy.js
 
 # `seed-roles` IS RUN, AND ITS EXIT STATUS IS DELIBERATELY NOT THIS DEPLOY'S.
 #

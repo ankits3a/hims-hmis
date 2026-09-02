@@ -26,3 +26,34 @@ export {
 export type { PharmacyDispenseState } from "./workflow-def";
 export { PHARMACY_DEFINITIONS, PHARMACY_DEF_KEYS, activatePharmacyDefinitions } from "./definitions";
 export type { ActivatePharmacyDefinitionsReport } from "./definitions";
+
+// ── T2 — the sale-items bridge, and the price rule at batch grain ──
+export { PHARMACY_GST_CATEGORIES, gstCategoryFor, priceForBatch } from "./price";
+export type { BatchPrice, BatchPriceInput, BatchPriceWinner } from "./price";
+export {
+  SALE_SERVICE_PREFIX, getSaleItem, listSaleItems, registerSaleItem, requireActiveSaleItem, saleItemCandidates,
+  setSaleItemActive,
+} from "./sale-items";
+export type { SaleItemRow, SaleItemView } from "./sale-items";
+export { PHARMACY_IDEMPOTENT_ROUTES, toHttp as pharmacyToHttp } from "./pharmacy-http";
+
+// ── T3 — the counter: queue, the three doors, claim, verify, decline, cancel; the Rx-issued consumer ──
+export { PHARMACY_RX_ISSUED_CONSUMER, handlePrescriptionIssued, rxIssuedConsumer } from "./consumers";
+export { enqueueDispense, getDispense, getDispenseRow, linesOf, listQueue, liveDispenseFor } from "./queue";
+export type { DispenseLineRow, DispenseLineView, DispenseRow, DispenseView, QueueRow } from "./queue";
+export { claimDispense, findAtCounter } from "./claim";
+export type { CounterDoor, FindResult } from "./claim";
+export { alternativesFor, cancelDispense, declineLine, verifyDispense } from "./verify";
+export type { Alternative, VerifyInput, VerifyLineInput } from "./verify";
+export { doseUnits, dosesPerDay, prefillQtyBase } from "./qty";
+export { istDateOf } from "./config";
+
+// ── T4 — pick, bill, hand over, the label ──
+export { pickDispense } from "./pick";
+export type { PickInput, PickLineInput } from "./pick";
+export { billDispense, previewDispenseBill } from "./bill";
+export type { BillInput } from "./bill";
+export { handOverDispense } from "./handover";
+export type { HandoverInput } from "./handover";
+export { labelFor } from "./label";
+export type { LabelData, LabelLine } from "./label";

@@ -51,6 +51,8 @@ import { OtBook } from "./screens/ot-book";
 import { OtCockpit } from "./screens/ot-cockpit";
 import { OtRecovery } from "./screens/ot-recovery";
 import { LabDesk } from "./screens/lab-desk";
+import { PharmacyCounter } from "./screens/pharmacy-counter";
+import { PharmacyItems } from "./screens/pharmacy-items";
 import { RadiologyReception } from "./screens/radiology-reception";
 import { RadiologyWorklist } from "./screens/radiology-worklist";
 import { RadiologyStudy } from "./screens/radiology-study";
@@ -195,6 +197,9 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/lab/verify", label: "nav.labVerify", permission: "lab.results.verify", group: "opd" },
   /** PLAN 17c T5 — the fifth lab seat, the report centre, on the counter's own permission. */
   { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "opd" },
+  // PLAN 16c T5 — the dispense counter beside the OPD stations it serves; sale items with the stores.
+  { to: "/pharmacy/counter", label: "nav.pharmacyCounter", permission: "pharmacy.dispense.read", group: "opd" },
+  { to: "/pharmacy/items", label: "nav.pharmacyItems", permission: "pharmacy.sale_items.manage", group: "stores" },
 ];
 
 function Shell(): React.ReactElement {
@@ -536,6 +541,18 @@ const otRecoveryRoute = createRoute({
 });
 
 /** PLAN 17b T8 — the laboratory's four screens. Paths match `labManifest.menu` exactly. */
+const pharmacyCounterRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/counter",
+  component: PharmacyCounter,
+});
+
+const pharmacyItemsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/pharmacy/items",
+  component: PharmacyItems,
+});
+
 const labDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/desk",
@@ -772,6 +789,9 @@ export const router = createRouter({
       // count and joins this task's Files list, the S11 rule applied for the seventh time.
       radiologyReceptionRoute, radiologyWorklistRoute, radiologyStudyRoute, radiologyReportRoute,
       pcpndtFormFRoute,
+      // PLAN 16c T5 — 45 -> 47, the pharmacy: the dispense counter and the sale-items admin. TWO routes
+      // and two NAV links. `caddyfile-parity.test.ts` pins the count and joins this task's Files list.
+      pharmacyCounterRoute, pharmacyItemsRoute,
     ]),
   ]),
 });

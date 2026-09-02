@@ -344,17 +344,13 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // FD-1 T4 / D4 — 47 with `/counter/seat/figures`, the clerk's own account inside the seat.
     // PLAN 17c T5 — 47 -> 48: the laboratory's report centre, `/lab/reports`. Joined in the same
     // edit as the route, per the rule above.
-    // FD-2 / THE OWNER'S RULING — 48 -> 47. RC-3's D1 said in as many words that the two counters
-    // were a ONE-PHASE arrangement and that deleting one "brings the number back"; the owner ruled
-    // for Desk One on 2026-09-02 ("remove your old design and keep the new design"), so
-    // `counter-desk.tsx` and `/counter/seat` are both gone, the seat serves `/counter`, and
-    // `/counter/seat/figures` became `/counter/figures`. Net -1 on top of 17c T5's +1, and the
-    // MEASURED number is stated rather than predicted: this file's friction is the whole point of
-    // pinning a count, so the pin moves only after the parser has been re-run against the tree.
-    // FD-5 / THE OWNER'S RULING, SECOND HALF — 47 -> 46. `/opd/vitals/bay` is gone and Bay One
-    // serves `/opd/vitals`, exactly as the registration seat took `/counter`: "keep the new design
-    // not the old one." Net -1, MEASURED against the tree rather than predicted.
-    expect(routes).toHaveLength(46);
+    // PLAN 16c T5 — 48 -> 50: /pharmacy/counter and /pharmacy/items.
+    // FD-2 + FD-5 / THE OWNER'S RULING — 50 -> 48. Two screens deleted, each replaced by the design
+    // that superseded it: `/counter/seat` is gone because the seat serves `/counter`, and
+    // `/opd/vitals/bay` is gone because Bay One serves `/opd/vitals`. "Keep the new design not the
+    // old one." `/counter/seat/figures` also became `/counter/figures` — a rename, net zero.
+    // MEASURED against the tree rather than predicted, which is what pinning a count is for.
+    expect(routes).toHaveLength(48);
     expect(routes).toContain("/lab/reports");
     expect(routes).toContain("/counter/figures");
     expect(routes).not.toContain("/counter/seat");

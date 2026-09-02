@@ -1,3 +1,4 @@
+import { PHARMACY_RX_ISSUED_CONSUMER } from "./consumers";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -13,16 +14,19 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * patient does not order their own Schedule H drug. `kernel/orders/parity.test.ts` pins the claimed
  * set and grew by one in this commit.
  *
- * ═══ `menu: []` AND `subscriptions: []` THIS TASK — the `partnersManifest` rule, twice ═══
+ * ═══ THE MENU LANDED AT T5 WITH THE ROUTES — the `partnersManifest` rule ═══
  *
- * The two routes land at T5 with the NAV entries (`nav-parity` compares the two), and the
- * `prescription.issued` subscription lands at T3 with its handler, the worker install and the
- * census in ONE commit, so no commit ever exists in which the worker cannot boot.
+ * Each path matches `apps/web/src/router.tsx`'s own route exactly (`nav-parity` compares the two). The
+ * `prescription.issued` subscription landed at T3 with its handler, the worker install and the
+ * census in ONE commit, so no commit ever existed in which the worker could not boot.
  */
 export const pharmacyManifest: ModuleManifest = {
   key: "pharmacy",
   title: "Pharmacy",
-  menu: [],
+  menu: [
+    { label: "Dispense counter", path: "/pharmacy/counter", permission: "pharmacy.dispense.read" },
+    { label: "Sale items", path: "/pharmacy/items", permission: "pharmacy.sale_items.manage" },
+  ],
   permissions: [
     /** Claim a queued Rx at the counter, which places the `medication` order; verify, pick, bill. */
     "pharmacy.dispense.place",
@@ -32,7 +36,8 @@ export const pharmacyManifest: ModuleManifest = {
     /** D3 — bridge a drug item to its tariff service. */
     "pharmacy.sale_items.manage",
   ],
-  subscriptions: [],
+  /** T3 — D10: the Rx is at the counter before the patient is. Handler, worker install and census landed in the same commit. */
+  subscriptions: [{ event: "prescription.issued", consumer: PHARMACY_RX_ISSUED_CONSUMER }],
   orderKinds: [
     {
       kind: "medication",

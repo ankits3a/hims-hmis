@@ -371,6 +371,7 @@ const SEED_STEP_SCRIPTS = [
   // than cosmetic: `ensureOtUnit` creates `OT-CONSIGN` through `materials.createStore`, so the
   // materials module's own seed must have run first.
   "seed-ot.js",
+  "seed-pharmacy.js", // PLAN 16c T5
   "seed-roles.js",
 ] as const;
 
@@ -426,7 +427,9 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
     // AND the day-care unit's four registry rows (one theatre, two kernel `bed` bays, the
     // `OT-CONSIGN` store). The ORDER matters and is asserted separately below — `ensureOtUnit`
     // creates that store through `materials.createStore`, so the materials seed must run first.
-    expect(order).toHaveLength(13);
+    // 14 since Plan 16c T5 added `seed-pharmacy.js` after `seed-ot.js` (the `PHARM-OPD` store is a
+    // materials store too, so the materials seed still runs first).
+    expect(order).toHaveLength(14);
     expect(order[0]).toBe("migrate.js");
     expect(order[1]).toBe("seed-cursors.js");
   });

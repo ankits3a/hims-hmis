@@ -12,6 +12,7 @@ export const PHARMACY_ERROR_CODES = [
   "unknown_sale_item",
   "sale_item_inactive",
   "price_unknown",
+  "gst_slab_unknown",
   // ── queue, claim, verify (T3) ──
   "unknown_dispense",
   "unknown_line",
@@ -33,6 +34,9 @@ export const PHARMACY_ERROR_CODES = [
   "identity_confirmation_required",
   "nothing_to_dispense",
   "batch_not_saleable",
+  "short_stock",
+  "fefo_override_unavailable",
+  "identity_mismatch",
 ] as const;
 
 export type PharmacyErrorCode = (typeof PHARMACY_ERROR_CODES)[number];
@@ -56,6 +60,7 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   unknown_sale_item: 404,
   sale_item_inactive: 409,
   price_unknown: 409,
+  gst_slab_unknown: 409,
   unknown_dispense: 404,
   unknown_line: 404,
   unknown_prescription: 404,
@@ -75,6 +80,9 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   identity_confirmation_required: 409,
   nothing_to_dispense: 409,
   batch_not_saleable: 409,
+  short_stock: 409,
+  fefo_override_unavailable: 409,
+  identity_mismatch: 409,
 };
 
 export function pharmacyHttpStatus(code: PharmacyErrorCode): number {
