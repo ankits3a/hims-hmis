@@ -148,7 +148,7 @@ describe("the order kind seam (Plan 17 phase 0 T2)", () => {
      * order is manifest INSTALL order, so a second claimant lands after `lab` rather than anywhere
      * else. `medication` and `package` stay unclaimed.
      */
-    it("ALL_MANIFESTS claims exactly two order kinds today: the lab's and radiology's", () => {
+    it("ALL_MANIFESTS claims exactly three order kinds today: the lab's, radiology's and the pharmacy's", () => {
       const registry = new ModuleRegistry();
       for (const m of ALL_MANIFESTS) registry.install(m);
       expect(collectOrderKinds(registry)).toEqual([{
@@ -175,6 +175,18 @@ describe("the order kind seam (Plan 17 phase 0 T2)", () => {
         placePermission: "radiology.orders.place",
         requiresClinician: true,
         requiresIndication: true,
+        selfOrderable: false,
+      }, {
+        /**
+         * PLAN 16c T1 — the third claimant, and the reservation DD9 took out for Plan 16 taken up:
+         * `medication` on the `pharmacy_dispense` (`P`) series, placed at the counter with the
+         * prescriber as the responsible clinician. `package` (Plan 26) stays reserved.
+         */
+        kind: "medication",
+        seriesKey: "pharmacy_dispense",
+        placePermission: "pharmacy.dispense.place",
+        requiresClinician: true,
+        requiresIndication: false,
         selfOrderable: false,
       }]);
     });

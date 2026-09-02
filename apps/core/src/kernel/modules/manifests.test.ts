@@ -161,13 +161,15 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // kind that no manifest had claimed before (`device` — the vocabulary the cath lab and
       // biomedical engineering inherit, because `collectResourceKinds` refuses a second declarer).
       "radiology",
+      // PLAN 16c T1 — appended, so the twenty above keep the order they were installed in.
+      "pharmacy",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(20);
+    expect(ALL_MANIFESTS).toHaveLength(21); // PLAN 16c T1: 20 -> 21, the pharmacy
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(20);
+    expect(registry.all()).toHaveLength(21);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -274,7 +276,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      `app.module.ts`, so a module declaring `orderKinds` meets the seam's three boot refusals
     //      in both processes. Plan 13 shipped a collector the worker never called and Plan 14 had to
     //      close it; this one is wired into both in the commit that creates it.
-    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders"]);
+    expect(allKeys.filter((k) => !workerKeys.includes(k))).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "pharmacy"]); // PLAN 16c T1: app-side only until T3 lands its subscription with its handler
 
     // (2) The worker ADDS `notify`. It declares five `kernel.notify` subscriptions, and
     //     `buildSubscriptionBus` (kernel/worker/jobs.ts) makes a declared subscription with no

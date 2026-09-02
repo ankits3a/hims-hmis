@@ -1200,6 +1200,36 @@ NOT gain `patients.update` or `billing.credit.extend`: imaging bills at the coun
 so no imaging path issues an invoice that leaves a remainder. All four new roles are created by
 `seed:roles` with grants and **no holders**, the `pharmacy` and `storekeeper` precedent.
 
+**The OPD dispense counter (Plan 16c T1) declares four permissions and one new role, and the SHAPE
+is the Pharmacy Act.** `pharmacy.dispense.scheduled` — the hand-over of a dispense carrying a
+Schedule H or H1 line — is the `pharmacy` role's alone: the Pharmacy Act 1948 §42 reserves the
+completion of such a dispense to a registered pharmacist, and the new `pharmacy_assistant` (doc 16
+role 25c) may claim, verify-assist and pick but holds no `.scheduled`, so `handOver` refuses the
+transition rather than trusting a screen to hide it. `pharmacy.sale_items.manage` — bridging a drug
+item to the tariff service it is billed as — is the pharmacist's too, because a wrong bridge is a
+wrong price on every strip that item ever sells. The pharmacy manifest also CLAIMS the `medication`
+order kind on the `P` series (`pharmacy_dispense`), which Plan 17 reserved by name.
+
+| Permission | pharmacy | pharmacy_assistant |
+|---|---|---|
+| `pharmacy.dispense.place` | ✓ | ✓ |
+| `pharmacy.dispense.read` | ✓ | ✓ |
+| `pharmacy.dispense.scheduled` | ✓ | |
+| `pharmacy.sale_items.manage` | ✓ | |
+
+Ten grants are held outside that table. **`pharmacy` gains the kernel's `orders.place`,
+`orders.read` and `orders.cancel`** because the claim at the counter PLACES the `medication` order
+with the prescriber as the responsible clinician (the `lab_reception` shape), and `placeOrder`
+requires the kernel permission AND the kind's own. `pharmacy` also carries the four cashier strings
+its window needs — `billing.invoice.issue`, `billing.invoice.read`, `billing.receipt.record`,
+`billing.session.own` — the `lab_reception` precedent, for the same reason: a counter that could
+pick but not bill would be a split with nothing to compensate for it. It does NOT gain
+`billing.credit.extend`: an OPD dispense is paid before the drug leaves, and the credit holds for
+IPD and TPA are 16d's. `pharmacy_assistant` gains `orders.read`, `patients.read` (the allergy
+register at the window, Group B's reason) and `formulary.read`, and no billing string at all — the
+aide picks, the pharmacist bills; the shelf it picks from is read for it by the counter's own routes. Both roles carry grants and, on this
+deployment, **no holders** until a registered pharmacist is assigned.
+
 **Plan 07c T9 / DD14 — who may open the patient rows (owner ruling, 2026-08-29).** A new role,
 `staff_auditor`, carries `staff.reports.read` AND `staff.reports.drill`, and it is assigned to **one
 named person**. The obvious shortcut was to add the drill to `duty_manager`, which that person
