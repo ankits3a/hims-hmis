@@ -127,3 +127,11 @@ Nothing here is money, procurement or law; Desk One vs greyscale is D1. **Owner 
 - The RC-3 alias-layer censuses pinned ONE seat; D1 adds a second. Both widened to the set of scoped seats — the intent (no seat colour in an unscoped block) is unchanged. Found by PR #7's web job, not locally: the touched-suites rule does not run a peer's census.
 - Evidence: core `collection` + `accession` 2 suites 15 tests; web `lab-collection` 4/4, `specimen-label` 4/4, i18n parity, `registration-counter` 99/99; typecheck 0, lint 0 errors.
 
+### 8.3 T3 — Bench, and realtime restored (executed 2026-09-02)
+
+- The six F43 events (`specimen_collected/received/rejected`, `recollection_requested`, `result_entered/verified`) carry `orderGroupId` from every emitter (specimen row, `resultContext`, the amend row) and are back in `LAB_REALTIME_NAMES` — sixteen routed names. Payloads stay structural: `realtime.test.ts` pins that no value or analyte name crosses the bench topic.
+- **S3 resolved without a new space:** the department topic is `lab:bench` under the existing `lab` space (`lab.worklist.read`), pushed beside the group topic for the six. The gateway looks spaces up by the prefix before the colon, so no registrar change.
+- `benchArrivals` (`GET /lab/bench/arrivals`, `lab.accession.operate`) is the bench's first column: tubes collected / in transit with the patient through the alias rule and a restricted item's code hidden — the chair's specimen route carries no patient by design. First cut filtered `in_progress` and returned nothing: the envelope is `placed` until receive; the kernel's live set is what the query wants (17a's five-call-site lesson, once more).
+- The seat resolves a scan in two lists and never asks the chair's route; a tube drawn without a wristband scan cannot be received until a re-checker is NAMED; Save & complete posts one record per value (D6), and a refusal stops the run with the first two standing.
+- Evidence: core `events`, `realtime`, `accession`, `results`, `verify`, `collection`, `worklist` — 7 suites 53 tests; web `lab-bench` 7/7 + i18n parity; typecheck 0, lint 0 errors.
+

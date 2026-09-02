@@ -1,5 +1,6 @@
 import { and, asc, eq, gte, inArray, ne } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
+import { LIVE_ITEM_STATUSES } from "../../kernel/orders/transitions";
 import {
   labAnalytes, labItems, labOrderableAnalytes, labOrderables, labReports, labResults,
   labSpecimenItems, labSpecimens, orderItems, orders, patients, workflowInstances,
@@ -307,3 +308,92 @@ export async function publishableOrders(
     .filter((o) => o.completedCount > 0)
     .map(({ reportable, ...o }) => ({ ...o, complete: o.completedCount === reportable }));
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════ */
+/* PLAN 17c T3 / D7 — WHAT HAS ARRIVED AND IS NOT YET RECEIVED                                  */
+/* ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+export type BenchArrivalRow = {
+  specimenId: string;
+  specimenNo: string;
+  orderGroupId: string;
+  patientId: string;
+  patientDisplay: string;
+  encounterNo: string;
+  container: string;
+  specimenType: string;
+  collectionSite: string;
+  priority: string;
+  /** Hidden for a restricted item unless the reader holds `orders.read.restricted` — `collectionQueue`'s rule. */
+  orderableCodes: string[];
+  itemIds: string[];
+  collectedAt: string | null;
+  /** DD10 / 02 A2 — false means the bench must name who re-checked identity before receiving. */
+  wristbandScanned: boolean;
+  waitingMinutes: number;
+};
+
+/**
+ * THE BENCH'S FIRST COLUMN — tubes drawn and in transit, not yet received. `GET
+ * /lab/collection/specimen/:no` carries no patient by design (17a F18: no actor, no alias, no
+ * log), so a scan at the bench had nothing to show until the tube was received. This reader takes
+ * the actor, applies the alias rule through `canonicalNames`, and hides a restricted item's code
+ * exactly as the chair's queue does. Sorted STAT first, then longest in transit.
+ */
+export async function benchArrivals(db: Db, actor: Actor): Promise<BenchArrivalRow[]> {
+  if (actor.type !== "user") {
+    throw new LabError("user_actor_required", `a ${actor.type} actor may not read a lab worklist`);
+  }
+  if (!(await hasPermission(db, actor.id, WORKLIST_READ, "hospital"))) {
+    throw new LabError("permission_denied", `reading a lab worklist requires ${WORKLIST_READ}`);
+  }
+  const canSeeConfidential = await hasPermission(db, actor.id, "patients.confidential.read", "hospital");
+  const canSeeRestricted = await hasPermission(db, actor.id, "orders.read.restricted", "hospital");
+  const specimens = await db
+    .select()
+    .from(labSpecimens)
+    .where(inArray(labSpecimens.status, ["collected", "in_transit"]))
+    .orderBy(asc(labSpecimens.collectedAt));
+  if (specimens.length === 0) return [];
+  const links = await db
+    .select({ specimenId: labSpecimenItems.specimenId, orderItemId: labSpecimenItems.orderItemId })
+    .from(labSpecimenItems)
+    .where(and(inArray(labSpecimenItems.specimenId, specimens.map((s) => s.id)), eq(labSpecimenItems.active, true)));
+  if (links.length === 0) return [];
+  const items = await db
+    .select({
+      itemId: orderItems.id, status: orderItems.status, restricted: orderItems.restricted,
+      encounterNo: orders.encounterNo, priority: labItems.priority, code: labOrderables.code,
+    })
+    .from(orderItems)
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .innerJoin(labItems, eq(labItems.orderItemId, orderItems.id))
+    .innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
+    /** LIVE, not `in_progress`: the envelope is `placed` until `receive` starts the clock (17a F-set's own lesson). */
+    .where(and(inArray(orderItems.id, links.map((l) => l.orderItemId)), inArray(orderItems.status, [...LIVE_ITEM_STATUSES])));
+  const byItem = new Map(items.map((i) => [i.itemId, i]));
+  const names = await canonicalNames(db, [...new Set(specimens.map((s) => s.patientId))], canSeeConfidential);
+  const rank: Record<string, number> = { stat: 0, urgent: 1, routine: 2 };
+  const now = Date.now();
+  const rows: BenchArrivalRow[] = [];
+  for (const s of specimens) {
+    const mine = links.filter((l) => l.specimenId === s.id).map((l) => byItem.get(l.orderItemId))
+      .filter((i): i is NonNullable<typeof i> => i !== undefined);
+    if (mine.length === 0) continue;
+    rows.push({
+      specimenId: s.id, specimenNo: s.specimenNo, orderGroupId: s.orderGroupId,
+      patientId: names.get(s.patientId)?.id ?? s.patientId,
+      patientDisplay: names.get(s.patientId)?.display ?? "—",
+      encounterNo: mine[0]!.encounterNo,
+      container: s.container, specimenType: s.specimenType, collectionSite: s.collectionSite,
+      priority: mine.map((m) => m.priority).sort((a, b) => (rank[a] ?? 3) - (rank[b] ?? 3))[0]!,
+      orderableCodes: mine.filter((m) => canSeeRestricted || !m.restricted).map((m) => m.code),
+      itemIds: mine.map((m) => m.itemId),
+      collectedAt: s.collectedAt?.toISOString() ?? null,
+      wristbandScanned: s.wristbandScanned === true,
+      waitingMinutes: s.collectedAt ? Math.max(0, Math.floor((now - s.collectedAt.getTime()) / 60_000)) : 0,
+    });
+  }
+  return rows.sort((a, b) => (rank[a.priority] ?? 3) - (rank[b.priority] ?? 3) || b.waitingMinutes - a.waitingMinutes);
+}
+
