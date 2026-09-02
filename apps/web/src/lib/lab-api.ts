@@ -46,6 +46,7 @@ export type WireDuplicateWarning = {
 };
 
 export type WireDeskOrder = {
+  encounterNo: string;
   orderId: string; orderNo: string; orderGroupId: string; itemIds: string[];
   invoice: {
     invoiceId: string; invoiceNo: string; netPayablePaise: number;
@@ -87,9 +88,38 @@ export type WirePublishable = {
 export type WirePricedDraft = {
   tariffVersionId: string;
   intendedPayer: string;
+  /** Billing's own per-line net — the seat sums the PAID lines from these, never from a tariff of its own. */
+  lines: { lineId: string; serviceId: string; serviceName: string; netPaise: number }[];
   totals: { grossPaise: number; discountPaise: number; taxableBasePaise: number;
     cgstPaise: number; sgstPaise: number; roundingPaise: number; netPayablePaise: number };
+  /** 17c T1 — what the chair will draw, in order of draw. */
+  tubes: WireTubePlanRow[];
 };
+
+export type WireTubePlanRow = { container: string; specimenType: string; codes: string[] };
+
+/* ─────────────────────────── 17c T1 — the reception seat's find ─────────────────────────── */
+
+export type WireAdvisedLine = {
+  serviceId: string; code: string; name: string; pricePaise: number;
+  orderable: { container: string; specimenType: string; consentRequired: boolean; sensitive: boolean; requiresFasting: boolean } | null;
+  alreadyOrderedItemId: string | null;
+};
+
+export type WireDeskFindHit = {
+  matchedOn: "token" | "visit" | "order" | "uhid" | "mobile" | "name";
+  patient: { id: string; uhid: string; display: string; administrativeGender: string; dob: string | null; restricted: boolean };
+  visit: {
+    encounterId: string; encounterNo: string; serviceDate: string; status: string;
+    tokenNo: number | null; doctorName: string | null; doctorUserId: string | null; departmentName: string | null;
+    referrerName: string | null;
+    advised: WireAdvisedLine[];
+  } | null;
+  orders: { orderId: string; orderNo: string; status: string; itemCount: number }[];
+};
+
+export const deskFind = (q: string, serviceDate: string): Promise<{ hits: WireDeskFindHit[] }> =>
+  api("GET", `/lab/desk/find?q=${encodeURIComponent(q)}&serviceDate=${serviceDate}`);
 
 export type WireDeliveryVerdict = {
   allowed: boolean;
@@ -149,7 +179,10 @@ export const duplicateWarnings = (
 /* ─────────────────────────────────── the desk ─────────────────────────────────── */
 
 export type DeskOrderRequest = {
-  patientId: string; encounterNo: string; serviceDate: string; orderingClinicianId: string;
+  patientId: string; serviceDate: string;
+  /** A visit order names its visit and clinician; a walk-in names neither (17c T1, the walk-in door). */
+  encounterNo?: string; orderingClinicianId?: string;
+  walkIn?: { referrerName?: string; doctorId?: string; intendedPayer?: "self" | "tpa" | "pmjay" | "corporate" };
   items: { serviceId: string; consent?: { recordedBy: string } }[];
   priority?: "routine" | "urgent" | "stat";
   reflexConsent?: boolean;
@@ -166,9 +199,9 @@ export const cancelLabItem = (itemId: string, reason: string, key: string): Prom
 
 /** What the basket costs, priced by BILLING's own engine — never totalled on the client (§2.54). */
 export const previewLabOrder = (
-  patientId: string, encounterNo: string, serviceIds: string[],
+  patientId: string, encounterNo: string | null, serviceIds: string[],
 ): Promise<WirePricedDraft> =>
-  api("POST", "/lab/desk/preview", { patientId, encounterNo, serviceIds });
+  api("POST", "/lab/desk/preview", { patientId, ...(encounterNo === null ? {} : { encounterNo }), serviceIds });
 
 /* ───────────────────────────────── collection ───────────────────────────────── */
 

@@ -107,3 +107,13 @@ Nothing here is money, procurement or law; Desk One vs greyscale is D1. **Owner 
 ## 8. CLOSE — filled at execution
 
 §8.0 §2 re-measured · §8.1 PRs and CI SHAs · §8.2 findings · §8.3 assertion book as executed · §8.4 evidence (suite counts, CI run ids) · §8.5 close review: two fresh passes, pass 2 briefed at the fixes (§2.140) · §8.6 actuals vs stop-loss.
+
+### 8.1 T1 — Reception (executed 2026-09-02)
+
+- **A FOURTH unconsumed rail:** `openLabWalkin` (17a A9) had no caller outside its own tests — a walk-in with an outside prescription could not be ordered through any route. T1's `deskWalkinOrder` is its first consumer; `POST /lab/desk/orders` takes `encounterNo` XOR `walkIn`.
+- `GET /lab/desk/advised` was FOLDED into `find`: a visit hit carries its Rx lines, so the seat asks once. Preview also carries `tubes[]` in **order of draw** (D5's rank lives server-side in `DRAW_ORDER`; the chair reuses it in T2).
+- The fixture's UHIDs (`HMS-…`) are not the production shape, so the UHID door is asserted on a REGISTERED patient. The fixture's fake `V` resolver cannot see a real walk-in visit (17a `d1f316b`'s lesson); desk.test and the e2e swap in the real reader on the real row, and `opd/encounter-resolver.test.ts` pins the real registration.
+- `preview` accepts no `encounterNo` for a walk-in — billing prices it as self-pay (`resolveEncounter` returns `self` on an absent id).
+- Mutant A1 applied and killed: the token door admitting every same-name patient returned 2 hits against 1. Evidence: `desk.test.ts` 22/22, `errors`, `money`, `lab.e2e` — 4 suites 44 tests; web `lab-desk.test.tsx` 6/6 + i18n parity; typecheck 0, lint 0 errors.
+- Branch hygiene: PR #2 was squash-merged while T1 was in flight; `origin/main` was MERGED into `lane/lims` rather than rebased, because the lane's commits were already pushed and the rule is never to rewrite pushed history. Squash-merge flattens it on `main`.
+

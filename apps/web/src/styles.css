@@ -261,3 +261,39 @@
   /* Seat-local: the second, lighter weight of `--dim` that the registry has no slot for. */
   --seat-faint: #8ea69a;
 }
+
+/*
+ * PLAN 17c T1 / D1 — THE LABORATORY'S FIVE SEATS wear Desk One too. The VALUES are copied from the
+ * registration counter's block above rather than shared through `:root` — RC-3's own mutant is a
+ * shadcn screen turning green, and the scope is what keeps it dead. Two blocks that must agree are
+ * the price of that; a diff between them is a design change, not drift.
+ */
+[data-seat="lab"] {
+  --background: #f4f7f4;          /* paper */
+  --card: #ffffff;
+  --popover: #ffffff;
+  --foreground: #132420;          /* ink */
+  --card-foreground: #132420;
+  --popover-foreground: #132420;
+  --border: #dfe7e1;              /* line */
+  --input: #dfe7e1;
+  --muted: #eef3ef;               /* wash */
+  --secondary: #eef3ef;
+  --accent: #eef3ef;
+  --muted-foreground: #5c6f66;    /* dim */
+  --secondary-foreground: #132420;
+  --accent-foreground: #132420;
+  --primary: #0e6b4e;             /* pine */
+  --primary-foreground: #f4f7f4;  /* paper on pine — the registry's near-white would glare */
+  --ring: #0e6b4e;
+  --destructive: #b23a30;         /* red */
+
+  /* The four state meanings (DD10) keep their meanings and take the design's hues. */
+  --state-waiting: #dd8f1c;       /* gold — six or more in a line */
+  --state-danger: #b23a30;
+  --state-settled: #0e6b4e;
+  --state-live: #0e6b4e;
+
+  /* Seat-local: the second, lighter weight of `--dim` that the registry has no slot for. */
+  --seat-faint: #8ea69a;
+}

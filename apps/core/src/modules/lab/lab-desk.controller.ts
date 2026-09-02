@@ -6,13 +6,13 @@ import { withTx } from "../../kernel/db/client";
 import { listOrdersForEncounter, listOrdersForPatient } from "../../kernel/orders/read";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { previewInvoice, withIdempotency } from "../billing";
-import { addOnOrder } from "./desk";
+import { addOnOrder, deskFind, tubePlan } from "./desk";
 import { cancelLabItem, deskOrderAtCounter } from "./money";
 import { idSchema, isoDateSchema, LAB_IDEMPOTENT_ROUTES, parsed, toHttp } from "./lab-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
-import type { DeskOrderInput } from "./desk";
+import type { DeskOrderInput, DeskWalkinInput } from "./desk";
 
 /**
  * PLAN 17b T8 — **THE LAB DESK OVER HTTP**: what a doctor advised becomes an order and an invoice.
@@ -43,11 +43,22 @@ const tenderSchema = z.object({
   amountPaise: z.number().int().positive(),
   reference: z.string().max(64).optional(),
 });
+/**
+ * PLAN 17c T1 — the walk-in door. `encounterNo` OR `walkIn`, never both and never neither: a
+ * walk-in with an outside prescription has no visit yet, and `deskWalkinOrder` opens one in the
+ * same transaction as the order (17a A9's `openLabWalkin`, which shipped with no caller).
+ */
+const walkInSchema = z.object({
+  referrerName: z.string().max(160).optional(),
+  doctorId: idSchema.optional(),
+  intendedPayer: z.enum(["self", "tpa", "pmjay", "corporate"]).optional(),
+});
 const orderBody = z.object({
   patientId: idSchema,
-  encounterNo: z.string().min(1).max(32),
+  encounterNo: z.string().min(1).max(32).optional(),
+  walkIn: walkInSchema.optional(),
   serviceDate: isoDateSchema,
-  orderingClinicianId: idSchema,
+  orderingClinicianId: idSchema.optional(),
   orderGroupId: idSchema.optional(),
   priority: z.enum(["routine", "urgent", "stat"]).optional(),
   items: z.array(itemSchema).min(1),
@@ -65,7 +76,13 @@ const orderBody = z.object({
     changeGivenPaise: z.number().int().nonnegative().optional(),
   }).optional(),
   credit: z.object({ reason: z.string().min(1).max(200), approvalId: idSchema.optional() }).optional(),
-});
+}).refine(
+  (b) => (b.encounterNo === undefined) !== (b.walkIn === undefined),
+  { message: "exactly one of encounterNo or walkIn" },
+).refine(
+  (b) => b.walkIn !== undefined || b.orderingClinicianId !== undefined,
+  { message: "orderingClinicianId is required on a visit order" },
+);
 const addOnBody = z.object({
   parentItemId: idSchema,
   serviceIds: z.array(idSchema).min(1),
@@ -75,9 +92,11 @@ const addOnBody = z.object({
   credit: z.object({ reason: z.string().min(1).max(200), approvalId: idSchema.optional() }).optional(),
 });
 const cancelBody = z.object({ reason: z.string().min(1).max(300) });
+const findQuery = z.object({ q: z.string().max(80), serviceDate: isoDateSchema });
 const previewBody = z.object({
   patientId: idSchema,
-  encounterNo: z.string().min(1).max(32),
+  /** 17c T1 — absent for a walk-in that has no visit yet: billing prices it as self-pay. */
+  encounterNo: z.string().min(1).max(32).optional(),
   serviceIds: z.array(idSchema).min(1),
 });
 
@@ -112,7 +131,7 @@ export class LabDeskController {
         this.db,
         { actorId: actor.id, route: LAB_IDEMPOTENT_ROUTES.deskOrder, key },
         input,
-        () => deskOrderAtCounter(this.db, actor, this.decls(), input as DeskOrderInput),
+        () => deskOrderAtCounter(this.db, actor, this.decls(), input as unknown as DeskOrderInput | DeskWalkinInput),
       );
     } catch (e) { toHttp(e); }
   }
@@ -180,11 +199,13 @@ export class LabDeskController {
   async preview(@Body() body: unknown): Promise<unknown> {
     const input = parsed(previewBody, body);
     try {
-      return await previewInvoice(this.db, {
+      const priced = await previewInvoice(this.db, {
         patientId: input.patientId,
         encounterId: input.encounterNo,
         lines: input.serviceIds.map((serviceId, i) => ({ lineId: `preview-${String(i)}`, serviceId, qty: 1 })),
       });
+      /** 17c T1 — the price and the tubes are one question at the counter: "what am I placing?" */
+      return { ...priced, tubes: await tubePlan(this.db, input.serviceIds) };
     } catch (e) { toHttp(e); }
   }
 
@@ -193,6 +214,23 @@ export class LabDeskController {
    * access itself (`orders.patient`). The lab does not re-implement it and does not log again: two
    * rows for one read would make the log answer "what did they see" wrong in the other direction.
    */
+  /**
+   * PLAN 17c T1 / D4 — ONE FIELD, THREE DOORS. Gated on the desk permission, not the worklist's:
+   * it returns the Rx lines of a visit, which is the desk's business and nobody else's.
+   */
+  @Get("find")
+  @RequirePermission("lab.desk.operate", "hospital")
+  async find(
+    @CurrentActor() actor: Actor,
+    @Query("q") q?: string,
+    @Query("serviceDate") serviceDate?: string,
+  ): Promise<unknown> {
+    const input = parsed(findQuery, { q: q ?? "", serviceDate });
+    try {
+      return { hits: await deskFind(this.db, actor, input.q, input.serviceDate) };
+    } catch (e) { toHttp(e); }
+  }
+
   @Get("orders")
   @RequirePermission("lab.worklist.read", "hospital")
   async orders(

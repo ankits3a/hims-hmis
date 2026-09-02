@@ -6,13 +6,13 @@ import { appendEvent } from "../../kernel/events/append";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition, WorkflowError } from "../../kernel/workflow/instances";
 import { BillingError, cashThresholdBlocked, issueCreditNote } from "../billing";
-import { deskOrder } from "./desk";
+import { deskOrder, deskWalkinOrder } from "./desk";
 import { LabError } from "./errors";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
 import type { OrderItemOrigin } from "../../kernel/db/schema/orders";
-import type { DeskOrderInput, DeskOrderResult } from "./desk";
+import type { DeskOrderInput, DeskOrderResult, DeskWalkinInput } from "./desk";
 
 /**
  * PLAN 17b T7 / DD7, DD6 — **THE MONEY**, and it is the reviewer's first file for that reason.
@@ -290,9 +290,30 @@ export async function deskOrderAtCounter(
   db: Db,
   actor: Actor,
   decls: readonly OrderKindDecl[],
-  input: DeskOrderInput,
+  input: DeskOrderInput | DeskWalkinInput,
   now: Date = new Date(),
 ): Promise<DeskOrderResult> {
+  /** PLAN 17c T1 — the walk-in door: the visit and the order are one transaction (`deskWalkinOrder`). */
+  if ("walkIn" in input) {
+    try {
+      return await withTx(db, (tx) => deskWalkinOrder(tx, actor, decls, input, now));
+    } catch (e) {
+      if (e instanceof BillingError && e.code === "cash_threshold_blocked") {
+        const detail = (e.detail ?? {}) as CashThresholdDetail;
+        await withTx(db, (audit) => appendEvent(audit, cashThresholdBlocked.make({
+          actor,
+          patientId: input.patientId,
+          encounterId: undefined,
+          payload: {
+            patientId: input.patientId,
+            episodeCashPaise: detail.episodeCashPaise ?? 0,
+            thresholdPaise: detail.thresholdPaise ?? 0,
+          },
+        })));
+      }
+      throw e;
+    }
+  }
   /**
    * THE WALK-IN'S CHARGE REASON IS DECIDED HERE, WHICH IS WHY `chargeReasonFor` IS NOT DEAD CODE.
    *
