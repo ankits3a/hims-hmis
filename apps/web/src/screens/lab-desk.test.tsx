@@ -246,3 +246,82 @@ it("moneyBlockFor — the four cases, written once", () => {
   expect(moneyBlockFor(priced, [paid(false, "svc-cbc"), paid(true, "svc-hba1c")], "card", "r"))
     .toEqual({ receipt: { tenders: [{ mode: "card", amountPaise: 30000 }] }, credit: { reason: "r" } });
 });
+
+it("F6 — with two active pathologists a walk-in must NAME one: Save waits for the choice and sends walkIn.doctorId", async () => {
+  const noVisit = { ...FARIDA, matchedOn: "uhid", visit: null };
+  const seen = mockRoutes({
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [noVisit], labDoctors: [{ id: "d-iyer", displayName: "Dr Iyer" }, { id: "d-sen", displayName: "Dr Sen" }] } },
+    "GET /api/lab/catalogue/search": { status: 200, body: [CBC] },
+    "POST /api/lab/catalogue/duplicates": { status: 200, body: [] },
+    "POST /api/lab/desk/preview": { status: 200, body: { ...PRICED, lines: [PRICED.lines[0]], totals: { ...PRICED.totals, netPayablePaise: 30000 }, tubes: [] } },
+    "POST /api/lab/desk/orders": { status: 201, body: { ...PLACED, encounterNo: "V2609020009" } },
+  });
+  renderWithProviders(<LabDesk />);
+  await userEvent.type(screen.getByLabelText(/Scan the token/), "U23011884{enter}");
+  await waitFor(() => expect(screen.getByTestId("patient-card")).toBeInTheDocument());
+  await userEvent.type(screen.getByLabelText("Add a test"), "cbc");
+  await waitFor(() => expect(screen.getByText(/Complete blood count/)).toBeInTheDocument());
+  await userEvent.click(screen.getAllByRole("button", { name: "Add" })[0]!);
+  await userEvent.click(screen.getByRole("button", { name: "Check & price" }));
+  await waitFor(() => expect(screen.getByTestId("money")).toBeInTheDocument());
+  /** Priced, consented, nothing missing — and still disabled until the pathologist is named. */
+  expect(screen.getByRole("button", { name: /Save/ })).toBeDisabled();
+  await userEvent.selectOptions(screen.getByLabelText("Pathologist of record (walk-in)"), "d-sen");
+  expect(screen.getByRole("button", { name: /Save/ })).toBeEnabled();
+  await userEvent.click(screen.getByRole("button", { name: /Save/ }));
+  await waitFor(() => expect(seen.find((s) => s.path === "/api/lab/desk/orders")).toBeDefined());
+  expect((seen.find((s) => s.path === "/api/lab/desk/orders")!.body as { walkIn: { doctorId?: string } }).walkIn).toEqual({ doctorId: "d-sen" });
+});
+
+it("F7 — after a walk-in order the seat RE-FINDS by the minted visit and the next Save rides it, never a second visit", async () => {
+  const noVisit = { ...FARIDA, matchedOn: "uhid", visit: null };
+  const onVisit = { ...FARIDA, matchedOn: "visit", visit: { ...FARIDA.visit, encounterNo: "V2609020009", advised: [], tokenNo: 3 } };
+  let finds = 0;
+  const seen = mockRoutes({
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/find": () => { finds += 1; return { status: 200, body: { hits: [finds === 1 ? noVisit : onVisit], labDoctors: [] } }; },
+    "GET /api/lab/catalogue/search": { status: 200, body: [CBC] },
+    "POST /api/lab/catalogue/duplicates": { status: 200, body: [] },
+    "POST /api/lab/desk/preview": { status: 200, body: { ...PRICED, lines: [PRICED.lines[0]], totals: { ...PRICED.totals, netPayablePaise: 30000 }, tubes: [] } },
+    "POST /api/lab/desk/orders": { status: 201, body: { ...PLACED, encounterNo: "V2609020009" } },
+  });
+  renderWithProviders(<LabDesk />);
+  await userEvent.type(screen.getByLabelText(/Scan the token/), "U23011884{enter}");
+  await waitFor(() => expect(screen.getByTestId("patient-card")).toHaveTextContent(/walk-in visit/));
+  await userEvent.type(screen.getByLabelText("Add a test"), "cbc");
+  await waitFor(() => expect(screen.getByText(/Complete blood count/)).toBeInTheDocument());
+  await userEvent.click(screen.getAllByRole("button", { name: "Add" })[0]!);
+  await userEvent.click(screen.getByRole("button", { name: "Check & price" }));
+  await waitFor(() => expect(screen.getByTestId("money")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: /Save/ }));
+  await waitFor(() => expect(screen.getByTestId("placed")).toHaveTextContent("V2609020009"));
+  /** The card now carries the VISIT the order opened — the second find, by its V number. */
+  await waitFor(() => expect(screen.getByTestId("patient-card")).toHaveTextContent("V2609020009"));
+  expect(screen.getByTestId("patient-card")).not.toHaveTextContent(/walk-in visit/);
+  const second = seen.filter((s) => s.path === "/api/lab/desk/find")[1]!;
+  expect(second).toBeDefined();
+  /** A second order now names the visit and carries no walkIn. */
+  await userEvent.type(screen.getByLabelText("Add a test"), "cbc");
+  await waitFor(() => expect(screen.getByText(/Complete blood count/)).toBeInTheDocument());
+  await userEvent.click(screen.getAllByRole("button", { name: "Add" })[0]!);
+  await userEvent.click(screen.getByRole("button", { name: "Check & price" }));
+  await waitFor(() => expect(screen.getByTestId("money")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: /Save/ }));
+  await waitFor(() => expect(seen.filter((s) => s.path === "/api/lab/desk/orders")).toHaveLength(2));
+  const again = seen.filter((s) => s.path === "/api/lab/desk/orders")[1]!.body as { encounterNo?: string; walkIn?: unknown };
+  expect([again.encounterNo, again.walkIn]).toEqual(["V2609020009", undefined]);
+});
+
+it("F10 — a single MOBILE hit is a candidate to confirm, never auto-selected; a single UHID hit is", async () => {
+  const byMobile = { ...FARIDA, matchedOn: "mobile" };
+  mockRoutes({
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [byMobile], labDoctors: [] } },
+  });
+  renderWithProviders(<LabDesk />);
+  await userEvent.type(screen.getByLabelText(/Scan the token/), "8210255917{enter}");
+  await waitFor(() => expect(screen.getByRole("button", { name: /Farida Khatoon/ })).toBeInTheDocument());
+  expect(screen.queryByTestId("patient-card")).toBeNull();
+});
+

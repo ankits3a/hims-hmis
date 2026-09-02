@@ -10,7 +10,7 @@ import { placeOrder } from "../../kernel/orders/place";
 import { startInstance } from "../../kernel/workflow/instances";
 import { issueInvoice } from "../billing";
 import { recordPhiAccess } from "../../kernel/phi/audit";
-import { getEncounter, openLabWalkinInTx } from "../opd";
+import { getEncounter, LAB_DEPARTMENT_CODE, openLabWalkinInTx } from "../opd";
 import { getPatientSummaries, listMergedLoserIds, resolvePatientId, searchPatients } from "../patients";
 import { duplicateWarnings } from "./duplicates";
 import { LabError } from "./errors";
@@ -778,7 +778,7 @@ async function hitFor(
  * (`openLabWalkinInTx` refuses to let the counter choose). The seat asks the clerk; this is the list.
  */
 export async function labDoctors(db: Db): Promise<{ id: string; displayName: string }[]> {
-  const [dept] = await db.select({ id: opdDepartments.id }).from(opdDepartments).where(eq(opdDepartments.code, "LAB"));
+  const [dept] = await db.select({ id: opdDepartments.id }).from(opdDepartments).where(eq(opdDepartments.code, LAB_DEPARTMENT_CODE));
   if (!dept) return [];
   return db.select({ id: opdDoctors.id, displayName: opdDoctors.displayName }).from(opdDoctors)
     .where(and(eq(opdDoctors.departmentId, dept.id), eq(opdDoctors.active, true))).orderBy(asc(opdDoctors.id));
