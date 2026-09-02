@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
@@ -60,6 +60,8 @@ export function LabReports(): React.ReactElement {
   const { can } = useAuth();
   const [picked, setPicked] = useState<PatientPickerHit | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  /** Pass 2 NEW-1 — the print dialog opens only AFTER the document has mounted (`window.print` in the same tick printed a blank page). */
+  const [printPending, setPrintPending] = useState<string | null>(null);
   /** Pass 1 F14 — per REPORT, never shared across cards: a channel chosen for one report is not another's. */
   const [collectorBy, setCollectorBy] = useState<Record<string, string>>({});
   const [channelBy, setChannelBy] = useState<Record<string, "print" | "in_person" | "whatsapp">>({});
@@ -96,9 +98,8 @@ export function LabReports(): React.ReactElement {
       setError(null);
       setCollectorBy((c) => ({ ...c, [r.reportId]: "" }));
       setOpenId(r.reportId);
+      if (channelOf(r) === "print") setPrintPending(r.reportId);
       refresh();
-      /** The paper: the document is open; the print dialog is the hand-over's last step. */
-      if (channelOf(r) === "print" && typeof window.print === "function") window.print();
     },
     onError: (e: unknown) => setError(labErrorText(e)),
   });
@@ -127,6 +128,13 @@ export function LabReports(): React.ReactElement {
     },
     onError: (e: unknown) => setError(labErrorText(e)),
   });
+
+  useEffect(() => {
+    if (printPending === null || openId !== printPending) return;
+    if (document.querySelector(".print-doc") === null) return; // not mounted yet — the next commit re-runs this
+    setPrintPending(null);
+    if (typeof window.print === "function") window.print();
+  }, [printPending, openId, mine.data]);
 
   /** Pass 1 F2(a) — `approvals.requests.create` is granted to no role by the seed; the button appears only for a holder. */
   const mayAsk = can("approvals.requests.create");
@@ -295,11 +303,14 @@ export function LabReports(): React.ReactElement {
                                 aria-label={`${t("lab.reports.collector")} ${r.orderNo}`}
                                 onChange={(e) => setCollectorBy((c) => ({ ...c, [r.reportId]: e.target.value }))} />
                             </label>
-                            <Button type="button"
-                              disabled={hand.isPending || (channelOf(r) !== "whatsapp" && collectorOf(r.reportId).trim() === "")}
-                              onClick={() => hand.mutate(r)}>
-                              {t("lab.reports.print")}
-                            </Button>
+                            {/* Pass 2 NEW-2 — a RELEASED report was handed over by the release itself; `printReport` without the approval would refuse. */}
+                            {r.delivery.reason !== "released_by_approval" && (
+                              <Button type="button"
+                                disabled={hand.isPending || (channelOf(r) !== "whatsapp" && collectorOf(r.reportId).trim() === "")}
+                                onClick={() => hand.mutate(r)}>
+                                {t("lab.reports.print")}
+                              </Button>
+                            )}
                             <Button type="button" variant="outline" size="sm" onClick={() => setOpenId(isOpen ? null : r.reportId)}>
                               {isOpen ? "▲" : "▼"}
                             </Button>

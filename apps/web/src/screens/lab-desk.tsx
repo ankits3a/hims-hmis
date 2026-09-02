@@ -148,6 +148,7 @@ export function LabDesk(): React.ReactElement {
   function choose(hit: WireDeskFindHit): void {
     setSelected(hit);
     setRegistering(false);
+    setWalkInDoctorId(""); // pass 2 NEW-4 — a decision the server refuses to make is not carried to the next patient
     resetOrder();
     const advised: Line[] = [];
     for (const a of hit.visit?.advised ?? []) {

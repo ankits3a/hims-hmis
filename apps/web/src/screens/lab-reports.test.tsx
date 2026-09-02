@@ -82,7 +82,7 @@ const hit = (id: string, name: string, uhid: string) => ({
   id, uhid, name, phone: "9876543210", administrativeGender: "female", dob: "1974-03-02", isConfidential: false, hasPhoto: false, matchedOn: ["uhid"],
 });
 
-beforeEach(() => { setToken("t"); });
+beforeEach(() => { setToken("t"); vi.stubGlobal("print", vi.fn()); });
 afterEach(() => { setToken(null); vi.unstubAllGlobals(); });
 
 async function pickPatient(uhid: string, name: string): Promise<void> {
@@ -130,6 +130,29 @@ it("D9 — a settled report prints with the collector's name and relation; the p
   await userEvent.click(print);
   await waitFor(() => expect(seen.find((s) => s.path === "/api/lab/reports/rep-1/print")).toBeDefined());
   expect(seen.find((s) => s.path === "/api/lab/reports/rep-1/print")!.body).toEqual({ channel: "print", collectorIdentity: "Farida Khatoon (self)" });
+  /** Pass 2 NEW-1 — the dialog opens only once the document is on the page, never onto a blank one. */
+  await waitFor(() => expect(window.print).toHaveBeenCalledTimes(1));
+  expect(document.querySelector(".print-doc")).not.toBeNull();
+});
+
+it("NEW-1 — with the card CLOSED, the hand-over still prints the mounted document, not a blank page", async () => {
+  mockRoutes({
+    "GET /api/lab/reports/register": { status: 200, body: REGISTER },
+    "GET /api/patients/search": { status: 200, body: { items: [hit("p-1", "Farida Khatoon", "U23011884")] } },
+    "GET /api/lab/reports/patient/p-1": { status: 200, body: FARIDA },
+    "POST /api/lab/reports/rep-1/print": { status: 201, body: { deliveryId: "d-9", printCount: 1 } },
+  });
+  const printed: boolean[] = [];
+  vi.stubGlobal("print", vi.fn(() => { printed.push(document.querySelector(".print-doc") !== null); }));
+  renderWithProviders(<LabReports />);
+  await waitFor(() => expect(screen.getByTestId("register")).toBeInTheDocument());
+  await pickPatient("U23011884", "Farida Khatoon");
+  const card = await screen.findByTestId("report-L2609010102");
+  expect(document.querySelector(".print-doc")).toBeNull();
+  await userEvent.type(within(card).getByLabelText("Collected by (name and relation) L2609010102"), "Farida Khatoon (self)");
+  await userEvent.click(within(card).getByRole("button", { name: "Print & hand over" }));
+  await waitFor(() => expect(printed).toHaveLength(1));
+  expect(printed[0]).toBe(true); // THE KILL: `false` is a blank page the register says was handed over
 });
 
 it("DD6 — a HELD report reaches the browser as a verdict, never as a page; release is an APPROVAL about the order", async () => {
