@@ -118,9 +118,14 @@ export function CounterFigures({ onBack, onGo }: { onBack: () => void; onGo: (hr
             <Figure card={registration} statKey="desk.patients.registered" label={t("desk.patients.registered")} onGo={onGo} />
             <Figure card={registration} statKey="desk.patients.noMobile" label={t("desk.patients.noMobile")} onGo={onGo} />
             <Figure card={registration} statKey="desk.patients.duplicatesPending" label={t("desk.patients.duplicatesPending")} onGo={onGo} />
-            <Figure card={appointments} statKey="desk.appointments.dueToday" label={t("desk.appointments.dueToday")} onGo={onGo} />
-            <Figure card={appointments} statKey="desk.appointments.checkedIn" label={t("desk.appointments.checkedIn")} onGo={onGo} />
-            <Figure card={appointments} statKey="desk.appointments.needsRebooking" label={t("desk.appointments.needsRebooking")} onGo={onGo} />
+            {appointments !== undefined && (
+              <span data-testid="figures-hospital" data-scope="hospital" className="flex flex-wrap items-baseline gap-6 border-l border-border pl-4">
+                <span className="text-xs text-muted-foreground">{t("registrationCounter.figures.everyone")}</span>
+                <Figure card={appointments} statKey="desk.appointments.dueToday" label={t("desk.appointments.dueToday")} onGo={onGo} />
+                <Figure card={appointments} statKey="desk.appointments.checkedIn" label={t("desk.appointments.checkedIn")} onGo={onGo} />
+                <Figure card={appointments} statKey="desk.appointments.needsRebooking" label={t("desk.appointments.needsRebooking")} onGo={onGo} />
+              </span>
+            )}
             <Figure card={billing} statKey="desk.billing.collected" label={t("desk.billing.collected")} onGo={onGo} />
             <Figure card={billing} statKey="desk.billing.receipts" label={t("desk.billing.receipts")} onGo={onGo} />
           </div>
@@ -169,7 +174,7 @@ export function CounterFigures({ onBack, onGo }: { onBack: () => void; onGo: (hr
             {provisional && <span className="rounded border border-state-waiting px-2 py-0.5 text-xs text-state-waiting">{t("myDay.provisional")}</span>}
             <span className="text-xs text-muted-foreground">{t("registrationCounter.figures.yourDayHint")}</span>
             <div className="ml-auto flex gap-2">
-              <button type="button" data-testid="figures-print" disabled={report.data === undefined} className="rounded border border-border px-2 py-1 text-sm" onClick={() => { window.print(); }}>{t("myDay.print")}</button>
+              <button type="button" data-testid="figures-print" disabled={report.data === undefined || report.isError} className="rounded border border-border px-2 py-1 text-sm" onClick={() => { window.print(); }}>{t("myDay.print")}</button>
               <button
                 type="button" data-testid="figures-csv" disabled={downloading} className="rounded bg-primary px-2 py-1 text-sm text-primary-foreground"
                 onClick={() => {
@@ -184,7 +189,7 @@ export function CounterFigures({ onBack, onGo }: { onBack: () => void; onGo: (hr
           {error !== null && <p role="alert" className="no-print text-sm">{error}</p>}
           {/* a failed report is said, never printed as an honest empty day (CLOSE pass 1) */}
           {report.isError && <p role="alert" data-testid="report-failed" className="no-print text-sm">{t("registrationCounter.figures.reportFailed")}</p>}
-          {report.data !== undefined && (
+          {report.data !== undefined && !report.isError && (
           <div className="print-doc flex flex-col gap-4 rounded border border-border bg-card p-3">
             <div className="flex flex-col gap-0.5 border-b pb-2">
               <span className="text-base font-semibold">{t("myDay.docTitle")}</span>

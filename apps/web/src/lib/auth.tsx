@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, getToken, setToken } from "./api";
 import { isPasswordChangeRequired } from "./admin-api";
 
@@ -31,6 +32,7 @@ type AuthState = {
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }): React.ReactElement {
+  const queryClient = useQueryClient();
   const [actor, setActor] = useState<Actor | null>(null);
   const [permissions, setPermissions] = useState<EffectivePermissions>(NO_PERMISSIONS);
   const [ready, setReady] = useState(false);
@@ -63,7 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
            *
            * Every OTHER failure still clears the token — that is what this line is for.
            */
-          if (!isPasswordChangeRequired(e)) setToken(null); // stale token — start signed out
+          if (!isPasswordChangeRequired(e)) setToken(null); // stale token — start signed out (the cache is cleared by logout, not here: screens boot before /auth/me answers)
         }
       }
       if (!cancelled) setReady(true);
@@ -81,6 +83,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     setPermissions(me.permissions ?? NO_PERMISSIONS);
   }, []);
 
+  /**
+   * FD-1 CLOSE pass 2 — A LOGOUT EMPTIES THE CACHE. The query client outlives the person: every
+   * per-person key (the drawer, the desk, the brief, the doctor's identity, the alerts) stayed
+   * cached across a logout and painted for the NEXT login on the same counter tab until its
+   * refetch landed — up to five minutes for a key inside `staleTime`. Keying the front-desk
+   * screens on the actor closed three consumers; this closes the class.
+   */
   const logout = useCallback(async () => {
     try {
       await api("POST", "/auth/logout");
@@ -88,8 +97,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       setToken(null);
       setActor(null);
       setPermissions(NO_PERMISSIONS);
+      queryClient.clear();
     }
-  }, []);
+  }, [queryClient]);
 
   const can = useCallback((permission: string) => permissions.hospital.includes(permission), [permissions]);
 

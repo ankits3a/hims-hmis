@@ -156,6 +156,42 @@ describe("FD-1 T4 — your figures", () => {
     expect((screen.getByTestId("figures-date") as HTMLInputElement).value).toBe(new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10));
   });
 
+  it("CLOSE pass 2: a report that was there and then fails to refetch is NOT printable — the alert and the button agree", async () => {
+    let fail = false;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.pathname + input.search : input.url;
+      const path = url.split("?")[0]!;
+      const json = (b: unknown, status = 200): Response => new Response(JSON.stringify(b), { status, headers: { "Content-Type": "application/json" } });
+      if (path === "/api/auth/me") return json({ actor: { type: "user", id: "ramesh" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
+      if (path === "/api/me/desk") return json({ date: "2026-09-02", cards: [] });
+      if (path === "/api/me/brief") return json({ period: "week", from: "", to: "", clauses: [], totals: {}, daysWithActivity: 0 });
+      if (path === "/api/me/report") return fail ? json({ code: "boom" }, 500) : json(reportA);
+      return new Response("{}", { status: 404 });
+    }));
+    renderWithProviders(<CounterFigures onBack={() => {}} onGo={() => {}} />);
+    await waitFor(() => expect(document.querySelectorAll(".print-doc")).toHaveLength(1));
+    expect(screen.getByTestId("figures-print")).toBeEnabled();
+    fail = true;
+    // the same key refetches (a window focus, a poll) and fails: v5 keeps the old data — the screen must not print it
+    fireEvent(window, new Event("focus"));
+    fireEvent.change(screen.getByTestId("figures-date"), { target: { value: "2026-09-03" } });
+    fireEvent.change(screen.getByTestId("figures-date"), { target: { value: new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10) } });
+    await waitFor(() => expect(screen.getByTestId("report-failed")).toBeInTheDocument());
+    expect(document.querySelectorAll(".print-doc")).toHaveLength(0);
+    expect(screen.getByTestId("figures-print")).toBeDisabled();
+  });
+
+  it("CLOSE pass 2: everyone's bookings are labelled as everyone's beside my figures", async () => {
+    const seen: string[] = [];
+    stubFigures("A", seen);
+    renderWithProviders(<CounterFigures onBack={() => {}} onGo={() => {}} />);
+    await waitFor(() => expect(screen.getByTestId("figures-hospital")).toBeInTheDocument());
+    expect(screen.getByTestId("figures-hospital").getAttribute("data-scope")).toBe("hospital");
+    expect(screen.getByTestId("figures-hospital").textContent).toContain("everyone's bookings");
+    expect(screen.getByTestId("figures-hospital").contains(screen.getByTestId("figure-desk.appointments.dueToday"))).toBe(true);
+    expect(screen.getByTestId("figures-hospital").contains(screen.getByTestId("figure-desk.patients.registered"))).toBe(false);
+  });
+
   it("CLOSE pass 1: a figure is a client-side door, not a reload — the anchor keeps its href and hands the click to the router", async () => {
     const seen: string[] = [];
     stubFigures("A", seen);

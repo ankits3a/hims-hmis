@@ -106,8 +106,8 @@ against seeded rows; two actors; `collectDeskProviders` passes; `desk.test.ts` c
 `opdAppointmentsDeskProvider`, key `opd.appointments`, permission `opd.appointments.read` (a separate
 provider so a clerk without `opd.queue.read` still gets it — S1). Card band *now*: due today,
 checked in, missed so far (S3), needs rebooking → `/opd/appointments`; rows: doctors with
-needs-rebooking counts (leave cascade), never patients. Topics: the day's doctor queue topics so
-check-ins flip live. **Done when:** unit-tested against seeded bookings across the three statuses;
+needs-rebooking counts (leave cascade), never patients. ~~Topics: the day's doctor queue topics so
+check-ins flip live.~~ (CLOSE pass 1: no topics — `queue:*` needs `opd.queue.read`.) **Done when:** unit-tested against seeded bookings across the three statuses;
 a doctor on leave produces a row; nobody else's bookings are counted.
 
 ### T3 — ROUTINE · the drawer on the billing card
@@ -199,6 +199,35 @@ zero permissions, zero kernel edits, zero index exports.
 | `pnpm lint` · `pnpm typecheck` | 0 errors (2 warnings in other lanes' kernel tests) · exit 0 |
 | revert pairs | **R64–R90**: 24 red on first or second run; three needed a fixture (R64, R70, R76) |
 | migrations · permissions · kernel · index exports | **1 (0055, two indexes)** · 0 · 0 · 0 |
+
+### 5D. Pass 2 — briefed at the fixes (one fresh reviewer, 102k): 7 CORRECT, 4 INCOMPLETE, NO WRONG
+
+| # | pass-2 finding | fix | revert pair |
+|---|---|---|---|
+| C1 INCOMPLETE | the ROOT was untouched: `logout()` never touched the query client, so every other per-person key (the seat's drawer line, `/billing/session`, the doctor's identity, alerts) still painted for the next login | `logout()` clears the query client — the class, not three consumers (`lib/auth.tsx`, a shared file: the one change outside this lane's screens, named here). A boot-time clear on a stale token was tried and REMOVED: screens fetch before `/auth/me` answers and three GRN tests proved it | R91 red |
+| M4 INCOMPLETE | a report that was there and then failed to refetch stayed printable under "nothing is printed" | the print doc and the button follow `!report.isError` too | R92 red |
+| M3 INCOMPLETE | "one snapshot" was READ COMMITTED with two extra round trips | the transaction is gone and the comment is honest: three reads, the close's transaction is the figure of record | — |
+| MINOR | "today so far" mixed my figures with everyone's bookings under one heading | the bookings are labelled "everyone's bookings" in their own scope | R93 red |
+| MINOR | the phase doc's T2 still promised live check-ins; a stray blank line in the schema | corrected |
+
+**No pass 3.** The two passes are run; what a third would look at is recorded: the fixed-page print model (07a's) with a forty-row day, and the 7-/30-day window edges.
+
+### 5E. Evidence after both passes
+| instrument | result |
+|---|---|
+| web full `vitest run` | **76 files / 570 tests, exit 0** |
+| core `jest -w 2`: patients/desk-provider, opd/desk-appointments, billing/desk-provider, billing/sessions, me.e2e over migration 0055 | **5 suites / 36, exit 0** (pass 1) · billing/desk-provider 7/7 (pass 2) |
+| `pnpm lint` · `pnpm typecheck` | 0 errors (2 warnings in other lanes' kernel tests) · exit 0 |
+| revert pairs, whole phase | **R64–R93**: 27 red; three needed a fixture to be falsifiable |
+| review cost | pass 1 A 124k + B 108k · pass 2 102k = **334k** against the 405k term |
+| migrations · permissions · kernel · index exports | **1 (0055, two indexes)** · 0 · 0 · 0 |
+
+## 7. Findings deliberately NOT fixed — each with its reason
+1. **The fixed-page print** (`styles.css` `.print-doc { position: fixed }`, 07a): a long screen prints its first page repeatedly; the figures sections are `display:none` on print so the page count is the document's, but a forty-row day is the evidence to gather on a real printer. A print-model change is every printable screen's, not this phase's.
+2. **The 7-day and 30-day window edges** are untested (2 d / 12 d and 16 d / 38 d only); the real-clock suite can flake across 00:00 IST.
+3. **"Already had that mobile on file"**, SMS bounces and missed follow-ups (the artboard's sentences) need rails that do not exist (the merge snapshot's phone; an SMS log).
+4. **Counter timing**: no rail; nothing is estimated (D6).
+5. **A provider budget pin** for the drawer under load: the indexes are there; an EXPLAIN pin is not.
 
 ## 6. Owner items
 None. (Deletions of `/counter` and `/opd/vitals`, and RC-5's money rulings, are in the lane scope doc.)

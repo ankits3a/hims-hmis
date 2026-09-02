@@ -310,7 +310,6 @@ export const cashierSessions = pgTable(
     // database layer (the tariff_versions_activated_effective_ux precedent). A closed
     // session frees the cashier; the predicate is live, not decorative.
     uniqueIndex("cashier_sessions_live_ux").on(t.cashierUserId).where(sql`${t.status} in ('open', 'closing')`),
-  
   ],
 );
 
