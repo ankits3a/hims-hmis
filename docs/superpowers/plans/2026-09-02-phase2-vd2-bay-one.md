@@ -1,7 +1,7 @@
 # Phase VD-2 — Bay One, the vitals desk (Vitals Desk series, 2 of 2)
 
-> **AUTHORED 2026-09-02, NOT APPROVED.** Owner-approving this doc also authorises T0, the
-> independent review VD-1 has owed since `59e5943` (handoff §8). **No owner ruling gates this phase**
+> **APPROVED 2026-09-02 ("go ahead"), EXECUTED THE SAME DAY — see §5 CLOSE.** T0, the independent
+> review VD-1 owed since `59e5943`, ran as the first task. **No owner ruling gates this phase**
 > except the procurement ledger, and the bay ships around it (serial lane OFF — ruling 2 of 31-Aug).
 
 **Lane: LIGHT** (6 tasks, one PR each, `lane/front-desk`). **This is a WIRING phase**: every rail
@@ -145,8 +145,138 @@ A new test file runs **alone** before joining a batch. `tools/lane.sh status` be
 run; never alongside another lane's. CI is the full-suite instrument. Close: method §5A only — two
 review passes (pass 2 briefed at the fixes), the revert on every guard, counts pasted not remembered.
 
-## 6. Owner items (none block the phase)
-1. **Procurement** — the serial-device ledger (₹70,960/bay serial vs ₹16,110 manual); the bay ships
-   with the lane OFF and the seam stubbed. Nothing here needs the devices.
-2. **Deletion of `/opd/vitals`** once T5's seven stories run — listed in the lane scope doc beside
-   RC-4 T5. Recommended default: delete, one edit, route pin −1.
+## 5. CLOSE — 2026-09-02, code-complete, NOT deployed
+
+**Tip: PR #15 (`lane/front-desk-vd2-t5`), the stack's merge unit.** T0–T5 done; both review
+passes run and remediated (§5.5, §5.6); code-complete, NOT deployed. Task PRs #8 (T1) · #9 (T0) · #10 (T2) · #12 (T3) · #14 (T4) stay as the per-task
+record; three went DIRTY on the seat census after 17c T1/T2 merged and #15 carries main merged in.
+
+### 5.1 T0 — the review VD-1 owed (one fresh reviewer, 138k tokens): 0 CRITICAL, 6 MAJOR, 6 MINOR
+
+| # | finding | fix (`edad1f5`) | revert pair |
+|---|---|---|---|
+| F1 | amend skipped the carried lock and gated against the row being replaced | `carryIn` + `checkCarriedLock` on amend; gates against `lastActiveVitalsBefore` | R4, R5 red |
+| F2 | amend: a NOTICE set `dangerFlagged`, a revealed DANGER moved nothing | the record path's rule on amend: dangers move the board + `vitals.danger_flagged`; notices do not | R6 red |
+| F3 | a carried key with no number wrote NULL under carried provenance | the server carries the predecessor's number in; nothing to carry from → `carried_value_locked` | R7 red |
+| F4 | the same body twice was a "double confirm" | the recheck's reading rides its event; a replayed escalate is refused | R11 red |
+| F5 | cancel un-bumped a CHARTED danger, reporting `restoredClass: 0` | `danger` stays exactly when `escalatedFromClass === 0` | R12 red |
+| F6 | `vitals_desk` could record a confidential patient's chart and not amend it | amend reads the encounter as record does | R8 red |
+| MINOR | bench state never cleared by a save · `emergency` dropped on amend · `ageYearsAt` in UTC | fixed | R9, R10, R13 red |
+
+**Not fixed, recorded:** the cancelled-entry predicate suppresses a LATER new danger on the same
+entry (D4 says `cancelled` is terminal; the state table or the code is wrong — RC-6/VD-3); the
+carried lock is opt-in (omit `carriedForward` and any height inside 3 cm passes); `GET
+…/escalation` has no read gate (an existence oracle under `opd.vitals.record`); `setBenchState`
+accepts non-`waiting_vitals` entries.
+
+### 5.2 The contract pass — the owner's nine rulings against the shipped screen
+
+| ruling | verdict |
+|---|---|
+| 1 auto-bump with 10-s cancel; one reading only demands | **met** (T3; T0/F4 makes "double" mean two readings) |
+| 2 serial toggle shipped OFF, gates identical in both lanes | **met** (D4; the device lane commits through the same `commit`) |
+| 3 ⏎ commits and jumps, 1–8 address, lead-vital autofocus, no click-before-type | **met after T5** — 1–8 was NOT built until the pass |
+| 4 amend from the bench row, old value in the trail with name+clock, abandon untouched | **met** (T4) |
+| 5 three doors, identical lane | **met** (T1) |
+| 6 bold ✓ naming who and which board; tick on the row | **met** (T2; row state `done`) |
+| 7 Desk One identity | **partly**: alias-layer colours yes; **Plex type trio NOT in the alias layer** (RC-3's block carries colours only); **footer agent bar, F2, log, in-sight cards = RC-6**, not built; Ctrl+K is the global palette; Esc discipline met; bench rail always on screen met; tiles not a form met |
+| 8 pairs never averaged · BP not routine <5 · MUAC required <6 · weight never spoken · emergency = BP+pulse+SpO₂ · sub-75 SpO₂ held · RR nudge + 15-s counter · rest for elevated maybes only | **met after T5** — the RR nudge was NOT built until the pass; "weight never spoken" is a bay-side practice the screen cannot enforce; the patient display is untouched |
+| 9 English leads staff screens, Hindi to the patient, dates `31-Aug-2026` | **met after T5** for dates; the say-this Hindi lines are the agent surface (RC-6) |
+
+### 5.3 Evidence at close, before the review passes
+
+| instrument | result |
+|---|---|
+| web full `vitest run` | **74 files / 546 tests, exit 0** (T1 69/511 · T2 70/522 · T3 71/529 · T4 72/534 · T5 74/546); **after pass 1's remediation 74 / 554** |
+| core `jest -w 2` on `hmis_lane_front_desk` (T0): vitals, vitals-gates, escalation(+concurrency), time, bench, prestage, opd.e2e, opd-lifecycle.e2e | **10 suites / 90 tests, exit 0** |
+| `pnpm typecheck` · eslint over every touched file | exit 0 · clean |
+| locale parity en/hi | `lib/i18n.test.ts` green in every run |
+| revert pairs | **R1–R40**: 36 red on first run; **R2 could not fail through Escape** (RC-4 R26's shape — a sibling-release test now drives the road, red); **R28 equivalent** (replaced by a fake-timer countdown test + R28', red); **R33, R34 equivalent on the assembly** (recorded, guards kept) |
+| assembly-render ratio (§5A.3) | every screen test mounts the whole bay; the seven-story file drives it end to end with five patients |
+| migrations · permissions · hub exports | 0 · 0 · 0 |
+
+### 5.4 Cost
+Session balance at kickoff (docs PRs done) 14,918k · T1 done 14,913k · T0 done 14,859k · T2 done
+14,798k · T3 done 14,749k · T4 done 14,725k · T5 done 14,682k. **Coding T0–T5 ≈ 236k of the 885k term**
+(the measured seams in the phase doc's spike table did that, as RC-4's handoff did for T2+T4).
+Reviewers: T0 138k · pass 1 A 217k + B 175k · pass 2 below. Session balance after the pass-1 remediation 14,570k; **phase total so far ≈ 350k main + 530k reviewers ≈ 880k of 1,470,000 (60%)**.
+
+### 5.5 Pass 1 — two fresh reviewers over the green tree: 3 CRITICAL, 11 MAJOR — for the fifth phase running
+
+**Every CRITICAL was in the assembly or at the permission boundary, none in a component.**
+
+| # | finding | fix (`4c3bfe0`) | revert pair |
+|---|---|---|---|
+| **C1** (B) | the bay mirrored its band and gates from `GET /opd/config` = `opd.masters.read`, which `vitals_desk` does not hold: every mirror and the whole other-arm protocol were silently unreachable **for the one role that works the bench** | the limits travel WITH the pre-stage (`ranges`, `noticeRanges`, `gates`, `muacBands`); the doctor filter is built from the bench (no `GET /opd/departments`); the tests answer 403 to both masters routes | R53 red |
+| **C2** (A) | `restOffer` survived `clearDesk`: A's elevated BP offered as B's rest and held under B's encounter | cleared with the desk and on every take | R41 **equivalent** (`take()` clears it too) |
+| **C3** (A) | a hypoxic patient could never be charted, never reached the protocol, could not be sent NOW — the probe hold had no confirm | "It is real" charts the value with `overrides.spo2`, offers it to the protocol, the holds stay in the log | R42b red |
+| M1 (A+B) | amend posted nine flat scalars: the active row lost the pair, held values, device source, notes; a carried key could not be unlocked; a gate dead-ended | `amendedReadings` (operative take replaced, the rest kept), notes/chips/carried keys ride along, a changed carried key asks a preset reason, a gate is confirmed, a stale copy refused | R48 R49 R50 red |
+| M2 (B) | T0/F6 unreachable from the screen: the amend read went through `listVitals` = the confidential gate | `GET /opd/vitals/:id` under `opd.vitals.record`, gated as the amend is, PHI-logged | R57 red |
+| M3 (B) | a sealed four-year-old was captured on the ADULT tile set (pre-stage refused) | the pre-stage answers the BAND with the history sealed | R52 red |
+| M4 (A+B) | "double-confirmed" across different vitals; a calm second arm left `recheck_demanded` for the rest of the day; the replay guard bypassed by any changed vital | same vital re-measured; a calm arm WITHDRAWS (`none`, `vitals.recheck_withdrawn`); replay judged on the demanded vitals | R54 R55 R56 red |
+| M5 (B) | a recheck accepted after a named human's cancel | the screen asks the nurse to re-run; the server stays permissive (recorded) | R45 red |
+| M6 (A) | the session header printed a restricted patient's UHID | masked | R43 red |
+| M7 (A) | a save in flight was not guarded: a late landing cleared the next patient | a save holds the desk; a landing after the desk moved on clears nothing | R46 red |
+| M8 (A) | a chip un-clicked posted as NO | asked (yes/no) or not asked | R47 red |
+| M9 (A) | the held first take is one tab's `sessionStorage` | **NOT FIXED** — server truth needs a column on the entry (the bench note lives only in the event); VD-3, a migration | — |
+| minor | flash follows the picker · held-only `takes: []` · "other arm" for a thermometer · second arm typed before the demand answers | fixed / fixed / fixed / `protocol.busy` guard | R51 red |
+
+**The instrument that found the most:** reviewer B read the ROUTES' permissions against the ROLE. Nothing in 40 revert pairs and 546 green tests could see C1, because every test stubs the config route and no test logs in as the role.
+
+**Assertions pass 1 named as in-band under both behaviours, now replaced:** the calm-arm test asserted only "no escalate call"; the rest test never asserted the offer absent under the next patient; the amend test seeded `readings: {}`; the restricted test checked the UHID only on the bench row; the chip test clicked once.
+
+### 5.6 Pass 2 — briefed at the fixes (one fresh reviewer, 181k): 9 CORRECT, 3 INCOMPLETE, ONE WRONG road
+
+**The WRONG one was in pass 1's fix for the calm arm:** routing EVERY ranged take to `escalate`
+while the other arm was demanded made a thermometer take answer *"that is the first reading
+again"* — the server's own replay rule, painted red under the wrong tile. A defect the shipped code
+did not have. Now only the DEMANDED tile's next take, or a danger on another vital, is the other arm.
+
+| # | pass-2 finding | fix (this commit) | revert pair |
+|---|---|---|---|
+| F1 MAJOR (WRONG) | every ranged take posted as the confirm while demanded | only `demandedKey` or a danger take confirms; a calm undemanded take is a take | R58 red |
+| F2 MAJOR | the chart a confirmed 68 % SpO₂ produces could not be amended (the hold re-held it, `vitals_incomplete`) | the server gates only what CHANGED on an amendment: a value the prior row charted carries an `unchanged_on_amend` override | R63 red |
+| F3 MAJOR | a different vital refused with no exit: the bench said "other arm" for the rest of the visit | a new vital WITHDRAWS the old demand and is demanded itself (two events, state stays `recheck_demanded`, the new flags on record) | R61 red |
+| F4 MAJOR | after "it is real" the probe hold was OFF for every later take — a slip to 40 charted | the hold judges every NEW take; the confirmed value alone is exempt | R59 red |
+| F5 MINOR | a demanded key OMITTED from the confirm made a copied cuff reading "new" | an omitted demanded key counts as unchanged | R62 red |
+| F6 MINOR | a genuine other arm identical on every demanded vital is refused | **DECIDED: fails closed, a third take clears it** | — |
+| F8 MINOR | the landing guard compared a click-time closure with its own row | reads the current in-hand through a ref | (guarded by `saving`, no test can reach it) |
+| F9 MINOR | dead chart invalidation | prefix invalidation | — |
+| F10 MINOR | `demandedKey`/`calmed` reset on a refetch | reset with the PATIENT, the view with the patient AND the answer | R60 red (the first cut reset neither, and two suites went red) |
+| F7 / F11 | the amend-open log's `sealed` reads `restricted`, not `isConfidential`; the amend header claimed overrides ride along | recorded (§7), comment corrected |
+
+**Assertions pass 2 named in-band, and the honest answer:** the rest-offer "no bench-state call"
+lines cannot discriminate (nobody presses rest under either code) — the discriminating line is
+`rest-offer` absent under the next patient, which is asserted; the saving test's `session-empty`
+is in-band, the take-refusal line is the kill; the amend fixture's `heightCm: { takes: [] }` is a
+stub shape no real row produces.
+
+### 5.7 Evidence after both passes
+
+| instrument | result |
+|---|---|
+| web full `vitest run` | **74 files / 555 tests, exit 0** |
+| core `jest -w 2`: prestage, escalation(+concurrency), vitals, vitals-gates, bench, realtime, opd.e2e | **9 suites / 84 tests, exit 0** |
+| `pnpm lint` · `pnpm typecheck` | 0 errors (2 warnings in other lanes' kernel tests) · exit 0 |
+| revert pairs, whole phase | **R1–R63**: 57 red on first run; R2 re-cut and red; R28 replaced (R28' red); R33, R34, R41 equivalent on the assembly; R42 label-only |
+| review cost | T0 138k · pass 1 392k · pass 2 181k = **711k** against the 543k term (31% over — a third reviewer was needed by C1 alone) |
+| migrations · permissions · hub exports | 0 · 0 · 0 (one new OPD route, `GET /opd/vitals/:id`, under an existing permission) |
+
+**No pass 3.** Pass 2's four MAJORs are fixed with their roads as tests and six new revert pairs;
+the method's two passes are run. What a third pass would look at is recorded: F1's road (a calm
+take on an undemanded tile) is the seam where the two remediations met.
+
+## 7. Findings deliberately NOT fixed in this phase — each verified, each with its reason
+
+1. **The held first take is the bay's, not the server's** (pass 1 M9). A recall at another bay or after a closed tab lands the second reading alone; the first reading survives only in the `bench.state_set` event's note. Server truth needs `held_reading` on `opd_queue_entries` — a migration, VD-3.
+2. **The cancelled-entry predicate** (T0 MINOR): `recordVitals` never sets board danger on an entry whose escalation is `cancelled`, so a LATER new danger on the same entry moves nothing unless the nurse re-runs the protocol (which the bay now offers). D4 says `cancelled` is terminal; the state table or the code is wrong.
+3. **The carried lock is opt-in** (T0 MINOR): omit `carriedForward` and any height inside 3 cm passes. The bay always declares its carries.
+4. **`GET /opd/visits/:id/escalation` has no read gate** (T0 MINOR): an existence oracle under `opd.vitals.record`.
+5. **`setBenchState` accepts non-`waiting_vitals` entries** (T0 MINOR).
+6. **Desk One's type trio is not in the alias layer** (contract ruling 7): RC-3's block carries colours only; a decision for the seat series, not this bay.
+7. **The agent surface** (footer bar, F2, log, in-sight cards, say-this Hindi lines) is RC-6's.
+
+## 6. OWNER ITEMS
+1. **Procurement** — the serial-device ledger (₹70,960/bay serial vs ₹16,110 manual); the bay ships with the lane OFF and the driver seam stubbed.
+2. **Deletion of `/opd/vitals`** now that the seven stories run — in the lane scope doc beside RC-4 T5. Recommended: delete, one edit, route pin −1.
+3. **Merge order** — PR #15 (`lane/front-desk-vd2-t5`) is the stack's merge unit; #8/#9/#10/#12/#14 are the per-task record and conflict with main on the seat census.

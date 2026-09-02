@@ -109,13 +109,34 @@ describe("VD-1 T4 — pre-stage", () => {
     expect(docStage.last!.weightKg).toBe(67);
   });
 
-  it("a confidential patient answers exactly as an unknown encounter does", async () => {
+  it("an unknown encounter is refused; a CONFIDENTIAL patient is staged on the BAND with the history sealed (CLOSE pass 1)", async () => {
     const enc = await visit(adult.id, MON);
     const stranger = await mkUser(db, "stranger", ["front_office"]);
-    // `front_office` can see this patient, so the refusal below is about the ENCOUNTER id being
-    // unknown — the same answer, which is the property 07a DD2 requires.
     await expect(preStage(db, stranger.actor, "enc-does-not-exist", MON))
       .rejects.toMatchObject({ code: "unknown_encounter" });
     expect((await preStage(db, vd.actor, enc, MON)).patientId).toBe(adult.id);
+
+    // A sealed four-year-old must not be captured on the adult tile set.
+    const vip = await mkPatient(db, clerk.actor, { ageYears: undefined, dob: DOB_CHILD, isConfidential: true, alias: "Patient 4F2", guardian: { name: "G", relationship: "mother" } });
+    const first = await visit(vip.id, MON);
+    await recordVitals(db, vd.actor, first, { heightCm: 95, weightKg: 14, pulse: 100, rr: 24, spo2: 98, tempC: 37.0, muacCm: 15 }, MON);
+    const second = await visit(vip.id, MON);
+    const staged = await preStage(db, vd.actor, second, MON);
+    expect(staged.sealed).toBe(true);
+    expect(staged.band).toBe("child_1_5");
+    expect(staged.required).toContain("muacCm");
+    expect(staged.last).toBeNull();                 // the history stays behind the gate
+    expect(staged.carryCandidates).toEqual([]);
+    expect(staged.expectedFlags).toEqual([]);
+  });
+
+  it("the band's limits travel with the pre-stage — the bay's mirrors need no `opd.masters.read` (CLOSE pass 1 CRITICAL)", async () => {
+    const enc = await visit(child.id, MON);
+    const staged = await preStage(db, vd.actor, enc, MON);
+    expect(staged.sealed).toBe(false);
+    expect(staged.ranges.tempC).toEqual({ min: 35.0, max: 39.5 });
+    expect(staged.noticeRanges.tempC).toEqual({ max: 37.9 });
+    expect(staged.gates).toEqual({ adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 });
+    expect(staged.muacBands).toEqual({ samUnderCm: 11.5, mamUnderCm: 12.5 });
   });
 });

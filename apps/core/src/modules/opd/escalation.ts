@@ -2,11 +2,11 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
-import { opdEncounters, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
+import { events, opdEncounters, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { loadOpdConfig } from "./config";
 import { OpdError } from "./errors";
-import { queueEscalated, queueEscalationCancelled, vitalsRecheckDemanded } from "./events";
+import { queueEscalated, queueEscalationCancelled, vitalsRecheckDemanded, vitalsRecheckWithdrawn } from "./events";
 import { classOf } from "./queue-engine";
 import { ageYearsAt } from "./time";
 import { bandFor, evaluateVitals } from "./vitals-rules";
@@ -155,6 +155,29 @@ async function dangerOf(db: Db | Tx, actor: Actor, patientId: string, reading: V
  * minutes on the rest chairs is for elevated MAYBES. At danger numbers the recheck happens while
  * the patient is still on the stool.
  */
+const READING_KEYS = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm"] as const;
+/** The numbers only — `notes` is not a reading. */
+function compactReading(r: VitalsInput): Partial<Record<(typeof READING_KEYS)[number], number>> {
+  const out: Partial<Record<(typeof READING_KEYS)[number], number>> = {};
+  for (const k of READING_KEYS) {
+    const v = r[k];
+    if (typeof v === "number") out[k] = v;
+  }
+  return out;
+}
+/**
+ * A replay is the demanded vitals unchanged. CLOSE pass 2 / F5: a demanded key OMITTED from the
+ * confirm counts as unchanged — leaving SpO₂ out of the second call must not turn the same cuff
+ * numbers into a "new" reading. (DECIDED, pass 2 / F6: a genuine other arm that matches the first
+ * on every demanded vital is refused too, and a third take clears it — fails closed.)
+ */
+function sameReading(a: VitalsInput, b: VitalsInput, on: Set<string>): boolean {
+  const ca = compactReading(a);
+  const cb = compactReading(b);
+  const keys = on.size > 0 ? READING_KEYS.filter((k) => on.has(k)) : READING_KEYS;
+  return keys.every((k) => cb[k] === undefined || ca[k] === cb[k]);
+}
+
 export async function demandRecheck(
   db: Db, actor: Actor, encounterId: string, reading: VitalsInput, now: Date = new Date(),
 ): Promise<EscalationView> {
@@ -185,7 +208,7 @@ export async function demandRecheck(
       payload: {
         encounterId, patientId: live.patientId, doctorId: live.doctorId, serviceDate: live.serviceDate,
         sessionId: live.sessionId, roomId: live.roomId, tokenNo: live.entry.tokenNo,
-        flags, demand: "other_arm_now",
+        flags, demand: "other_arm_now", reading: compactReading(reading),
       },
     }));
     return {
@@ -217,8 +240,78 @@ export async function escalate(
         { escalation: current },
       );
     }
+    const demanded = await tx
+      .select({ payload: events.payload }).from(events)
+      .where(and(eq(events.name, "vitals.recheck_demanded"), eq(events.encounterId, encounterId)))
+      .orderBy(desc(events.seq)).limit(1);
+    const demandPayload = demanded[0]?.payload as { reading?: VitalsInput; flags?: DangerFlag[] } | undefined;
+    const demandedVitals = new Set((demandPayload?.flags ?? []).map((f) => f.vital));
+
     const flags = await dangerOf(tx, actor, live.patientId, reading, now);
-    if (flags.length === 0) throw new OpdError("escalation_not_warranted", "the recheck is inside the patient's band", { reading });
+    if (flags.length === 0) {
+      /*
+       * VD-2 CLOSE / pass-1 MAJOR — A CALM OTHER ARM WITHDRAWS THE DEMAND. As shipped the demand
+       * stayed `recheck_demanded` for the rest of the visit: the bench painted "other arm, now"
+       * on a patient whose second arm was fine, and the NEXT danger take on the same visit
+       * escalated straight to class 0 without a fresh demand. Both readings go to the doctor as
+       * the pair the bay saves; the board's state goes back to nothing.
+       */
+      await tx.update(opdQueueEntries).set({ escalation: "none" }).where(eq(opdQueueEntries.id, live.entry.id));
+      await appendEvent(tx, vitalsRecheckWithdrawn.make({
+        actor, patientId: live.patientId, encounterId, correlationId: live.workflowInstanceId,
+        payload: {
+          encounterId, patientId: live.patientId, doctorId: live.doctorId, serviceDate: live.serviceDate,
+          sessionId: live.sessionId, roomId: live.roomId, tokenNo: live.entry.tokenNo,
+          reading: compactReading(reading),
+        },
+      }));
+      return { entryId: live.entry.id, state: "none", escalatedAt: null, escalatedFromClass: null, escalationBy: null, cancelMsRemaining: 0 };
+    }
+    /*
+     * VD-2 CLOSE / pass-1 MAJOR — "DOUBLE-CONFIRMED" IS THE SAME VITAL, RE-MEASURED. A pulse of
+     * 125 followed by an SpO₂ of 89 was two single readings of two vitals, and it bumped a patient
+     * to class 0. The confirming reading must breach at least one vital the demand breached.
+     */
+    if (demandedVitals.size > 0 && !flags.some((f) => demandedVitals.has(f.vital))) {
+      /*
+       * CLOSE pass 2 / F3 — a different vital is a NEW first reading, and it gets its own demand:
+       * the old one is withdrawn (its vital is calm in this reading, or absent), the new vital is
+       * demanded, the state stays `recheck_demanded` with the NEW flags on record. A refusal here
+       * left the entry demanded with no exit — the bench said "other arm, now" for the rest of the
+       * visit and only the save could move the board, bypassing the cancel window and the flash.
+       */
+      await appendEvent(tx, vitalsRecheckWithdrawn.make({
+        actor, patientId: live.patientId, encounterId, correlationId: live.workflowInstanceId,
+        payload: {
+          encounterId, patientId: live.patientId, doctorId: live.doctorId, serviceDate: live.serviceDate,
+          sessionId: live.sessionId, roomId: live.roomId, tokenNo: live.entry.tokenNo,
+          reading: compactReading(reading),
+        },
+      }));
+      await appendEvent(tx, vitalsRecheckDemanded.make({
+        actor, patientId: live.patientId, encounterId, correlationId: live.workflowInstanceId,
+        payload: {
+          encounterId, patientId: live.patientId, doctorId: live.doctorId, serviceDate: live.serviceDate,
+          sessionId: live.sessionId, roomId: live.roomId, tokenNo: live.entry.tokenNo,
+          flags, demand: "other_arm_now", reading: compactReading(reading),
+        },
+      }));
+      return { entryId: live.entry.id, state: "recheck_demanded", escalatedAt: null, escalatedFromClass: null, escalationBy: null, cancelMsRemaining: 0 };
+    }
+    /*
+     * VD-2 T0 / F4 — "DOUBLE-CONFIRMED" MEANS TWO READINGS. The protocol persists no chart of its
+     * own (the bay charts the pair at save, with both takes — story 3's assertion), so the one
+     * thing that made the second call a second READING was nothing: the same body posted twice
+     * bumped a patient to class 0. The recheck's reading now rides its event, and an escalate whose
+     * reading is that reading, vital for vital, is refused as a replay. A genuine other-arm take
+     * that matches on every supplied vital is the case this refuses; it is answered by taking it again.
+     */
+    const demandedReading = demandPayload?.reading;
+    // The replay is judged on the DEMANDED vitals: a changed temperature does not make a copied
+    // cuff reading a second arm (pass-1 finding on the T0 fix).
+    if (demandedReading !== undefined && sameReading(demandedReading, reading, demandedVitals)) {
+      throw new OpdError("escalation_state_conflict", "that is the first reading again — the other arm is a NEW reading", { escalation: current });
+    }
 
     const fromClass = classOf(stateOf(live.entry), now);
     await tx.update(opdQueueEntries)
@@ -265,8 +358,15 @@ export async function cancelEscalation(
       );
     }
     const restoredClass = (live.entry.escalatedFromClass ?? 3) as QueueClass;
+    /*
+     * VD-2 T0 / F5 — CANCEL REVERTS WHAT THE PROTOCOL DID AND NOTHING ELSE. A saved 190/120 puts
+     * the entry at class 0 BEFORE any protocol runs (`recordVitals` sets `danger`); an escalation
+     * on top of it records `escalatedFromClass = 0`, and a cancel that cleared `danger` un-bumped a
+     * danger the protocol never created while its event said "restored to 0". The board goes back
+     * to the class it was at: `danger` stays true exactly when that class was 0.
+     */
     await tx.update(opdQueueEntries)
-      .set({ escalation: "cancelled", danger: false, escalationBy: actor.id })
+      .set({ escalation: "cancelled", danger: restoredClass === 0, escalationBy: actor.id })
       .where(eq(opdQueueEntries.id, live.entry.id));
     await appendEvent(tx, queueEscalationCancelled.make({
       actor, patientId: live.patientId, encounterId, correlationId: live.workflowInstanceId,
