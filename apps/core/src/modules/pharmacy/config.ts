@@ -1,3 +1,5 @@
+import { IST_UTC_OFFSET_MINUTES } from "../../kernel/approvals/cumulative";
+
 /**
  * PLAN 16c — the dispense counter's constants. Values, not logic: a later phase or an owner ruling
  * moves a number here without touching a transition (the `materials/config.ts` posture).
@@ -20,3 +22,11 @@ export const REFUSED_FLAGS = ["X"] as const;
 
 /** R-4 — the schedule whose hand-over writes a register row (Rule 65(3)). */
 export const REGISTER_FLAGS = ["H1"] as const;
+
+/**
+ * The IST calendar date of an instant, `YYYY-MM-DD` — what `serviceDate` means everywhere in OPD.
+ * Derived from the kernel's one exported offset (`ist-clock-parity.test.ts` pins every literal copy).
+ */
+export function istDateOf(at: Date): string {
+  return new Date(at.getTime() + IST_UTC_OFFSET_MINUTES * 60_000).toISOString().slice(0, 10);
+}

@@ -11,10 +11,9 @@ describe("the pharmacy event catalog (16c T1)", () => {
     ]);
   });
 
-  it("the claim carries the P number and the door; the hand-over carries the ledger rows", () => {
+  it("the claim carries the door; the hand-over carries the ledger rows", () => {
     expect(dispenseClaimed.payloadSchema.safeParse({
-      dispenseId: "d", dispenseNo: "P-1", orderId: "o", patientId: "p", encounterId: "e", prescriptionId: "rx",
-      lineCount: 2, scheduled: true, door: "rx_qr",
+      dispenseId: "d", patientId: "p", encounterId: "e", prescriptionId: "rx", lineCount: 2, door: "rx_qr",
     }).success).toBe(true);
     expect(dispenseClaimed.payloadSchema.safeParse({ dispenseId: "d", door: "window" }).success).toBe(false);
     expect(dispenseHandedOver.payloadSchema.safeParse({

@@ -16,16 +16,21 @@ export const dispenseQueued = defineEvent("dispense.queued", MODULE, z.object({
   patientId: id, encounterId: id, source: z.enum(["prescription_issued", "scan"]),
 }));
 
-/** D1 — the claim placed the `medication` order; `dispenseNo` is its `P` number. */
+/** The counter took the Rx: through which door, and how many lines it carries. The order comes at verify. */
 export const dispenseClaimed = defineEvent("dispense.claimed", MODULE, z.object({
-  dispenseId: id, dispenseNo: id, orderId: id, patientId: id, encounterId: id,
-  prescriptionId: id, lineCount: z.number().int().positive(), scheduled: z.boolean(), door: z.enum(["rx_qr", "patient_qr", "token", "uhid"]),
+  dispenseId: id, patientId: id, encounterId: id, prescriptionId: id,
+  lineCount: z.number().int().positive(), door: z.enum(["rx_qr", "patient_qr", "token", "uhid"]),
 }));
 
-/** D9 — the re-check ran on the RESOLVED medicines; counts are the KPI numerators, like `prescription.issued`. */
+/**
+ * D1 as executed + D9 — every line is settled, the re-check ran on the RESOLVED medicines, and
+ * the `medication` order is placed: `dispenseNo` is its `P` number. Counts are KPI numerators.
+ */
 export const dispenseVerified = defineEvent("dispense.verified", MODULE, z.object({
-  dispenseId: id, patientId: id, allergyHits: z.number().int().nonnegative(),
-  interactionHits: z.number().int().nonnegative(), substitutions: z.number().int().nonnegative(),
+  dispenseId: id, dispenseNo: id, orderId: id, patientId: id, encounterId: id,
+  lineCount: z.number().int().positive(), declinedCount: z.number().int().nonnegative(), scheduled: z.boolean(),
+  allergyHits: z.number().int().nonnegative(), interactionHits: z.number().int().nonnegative(),
+  substitutions: z.number().int().nonnegative(),
 }));
 
 export const dispenseLineDeclined = defineEvent("dispense.line_declined", MODULE, z.object({

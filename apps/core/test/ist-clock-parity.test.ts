@@ -117,6 +117,10 @@ const SITES: { file: string; expr: string }[] = [
   // is yesterday's item, invisible to a modality filtering by today (18a F52's window; 18b close
   // review A1 found exactly that). Derived from the kernel's export, declared here, one place.
   { file: "src/modules/radiology/mwl.ts", expr: "IST_UTC_OFFSET_MINUTES * 60_000" },
+  // PLAN 16c T3 — the dispense counter's "today": the token and UHID doors read today's VISITS,
+  // and a visit's `serviceDate` is an IST calendar day (`opd/time.ts`, not importable across the
+  // §4 seam). Derived from the kernel's export, the mwl shape.
+  { file: "src/modules/pharmacy/config.ts", expr: "IST_UTC_OFFSET_MINUTES * 60_000" },
 ];
 
 /** A product of number literals, with `IST_UTC_OFFSET_MINUTES` resolved. No eval, no Function. */
@@ -162,7 +166,7 @@ describe("the IST clock is the same clock everywhere (09a close, ledger §2.105)
       .toEqual({ sitesWhoseExpressionMoved: [] });
   });
 
-  it("the census is pinned — a THIRTEENTH copy of the hospital clock is a deliberate change", () => {
+  it("the census is pinned — a FOURTEENTH copy of the hospital clock is a deliberate change", () => {
     const carrying = new Set<string>();
     for (const file of sourceFiles(join(CORE, "src"))) {
       for (const line of readFileSync(file, "utf8").split("\n")) {

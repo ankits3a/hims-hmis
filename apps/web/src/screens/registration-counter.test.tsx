@@ -532,7 +532,8 @@ describe("RC-3 T5 / D3 — the alias layer is scoped to the seat", () => {
      * through `:root`, for exactly the reason this test exists). The assertion's intent is
      * unchanged: no Desk One colour in any UNSCOPED block. A seat is a scope.
      */
-    const SEATS = ['[data-seat="registration-counter"]', '[data-seat="lab"]'];
+    /** PLAN 16c T3 / D11 — the dispense counter is the third seat, same values copied. */
+    const SEATS = ['[data-seat="registration-counter"]', '[data-seat="lab"]', '[data-seat="pharmacy-counter"]'];
     const others = blocks.filter((b) => !SEATS.some((seat) => b.selector.includes(seat)));
     // The census, pinned before anything is compared: `:root`, `.dark`, `*` and `body` are the
     // four a global-token mutant would reach for, and all four must be in the list being checked.
@@ -598,7 +599,8 @@ describe("RC-3 T5 / D3 — the alias layer is scoped to the seat", () => {
     // the laboratory's shared seat frame, on ITS root element. The census still kills the hoist:
     // `router.tsx`, the shell or `main.tsx` carrying it fails here.
     // FD-1 T4 / D4 — "your figures" is a screen OF the registration seat and carries its attribute.
-    expect(carriers).toEqual(["screens/counter-figures.tsx", "screens/lab-seat.tsx", "screens/registration-counter.tsx", "screens/vitals-bay.tsx"]); // THE KILL
+    // PLAN 16c T3 / D11 — the dispense counter, on its own root element.
+    expect(carriers).toEqual(["screens/counter-figures.tsx", "screens/lab-seat.tsx", "screens/pharmacy-counter.tsx", "screens/registration-counter.tsx", "screens/vitals-bay.tsx"]); // THE KILL
 
     renderWithProviders(<RegistrationCounter />);
     expect(screen.getByTestId("registration-counter").getAttribute("data-seat")).toBe("registration-counter");

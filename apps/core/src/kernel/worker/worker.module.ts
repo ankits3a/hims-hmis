@@ -29,6 +29,7 @@ import { pcpndtManifest } from "../../modules/pcpndt";
 import {
   RADIOLOGY_ORDER_PLACED_CONSUMER, orderPlacedConsumer, radiologyManifest,
 } from "../../modules/radiology";
+import { PHARMACY_RX_ISSUED_CONSUMER, pharmacyManifest, rxIssuedConsumer } from "../../modules/pharmacy";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";
@@ -166,6 +167,9 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
          */
         registry.install(pcpndtManifest);
         registry.install(radiologyManifest);
+        // PLAN 16c T3 — the `prescription.issued` consumer that queues a dispense (D10). Installed in
+        // BOTH processes: the API mounts the counter, the worker runs the subscription.
+        registry.install(pharmacyManifest);
         // ══ PLAN 13 CLOSE / M2's CARRY-FORWARD, CLOSED HERE (Plan 14 DD2, Spike Q6) ══
         //
         // This is `app.module.ts:73`'s line, in the process that did not have it. Plan 13's close
@@ -264,6 +268,7 @@ export function workerConsumers(db: Db): Record<string, Handler> {
     // orders too and returns on `kind !== "imaging"` before touching anything. That is why a second
     // ordering module can be added without this line changing.
     [RADIOLOGY_ORDER_PLACED_CONSUMER]: orderPlacedConsumer(db),
+    [PHARMACY_RX_ISSUED_CONSUMER]: rxIssuedConsumer(db),
     // PLAN 15 T5 / DD9 — the scan's asynchronous half. `otManifest` declares
     // `material.consumed` -> `ot.implant_confirmed` in the commit that adds this line.
     [OT_IMPLANT_CONFIRMED_CONSUMER]: implantConfirmedConsumer(db),

@@ -15,6 +15,8 @@ import type { Db } from "../db/client";
 export type PhiSurface =
   | "patient.detail" | "patient.allergies"
   | "opd.timeline" | "opd.vitals" | "opd.prescriptions" | "opd.visit"
+  /** PLAN 16c T3 — the dispensing counter's read of a dispense (its Rx lines): its own name, so the pharmacy's reads count apart from the consult's. */
+  | "pharmacy.dispense"
   /**
    * PLAN 07d T1 / DD5 — THE TWO CROSS-VISIT SURFACES, and they are their own names rather than a
    * reuse of `opd.vitals` / `opd.prescriptions`.
