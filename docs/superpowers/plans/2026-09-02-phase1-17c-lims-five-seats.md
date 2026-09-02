@@ -151,3 +151,13 @@ Nothing here is money, procurement or law; Desk One vs greyscale is D1. **Owner 
 - **The IST census caught a THIRTEENTH clock** — `deliveryRegister`'s first cut carried its own 5.5 h offset, one phase after the census caught `verify.ts` the same way, and again only in the lab-MODULE run, never in the touched suites. Replaced by the kernel's `istDayWindow`; the web seat clock formats through `fmtIst`. The habit 17b wrote down ("read `ist-clock-parity.test.ts` BEFORE committing an IST anything") was not followed; the wider local run at the end of the phase is what found it (`8431e3e`).
 - Evidence: core `reports` 22/22, `caddyfile-parity`, `nav-parity`, `manifest`, `lab.e2e` (+ the two routes in the 401/403 censuses and a counter-only walk); web `lab-reports` 3/3, `shell-nav` 7/7, i18n parity; typecheck 0, lint 0 errors.
 
+### 8.6 T6 — The walk (executed 2026-09-02)
+
+- `lab.e2e.test.ts` "17c T6": one patient through the five seats' OWN routes — find by token → preview (tubes in draw order) → order with the CBC paid and the LFT on credit → awaiting list with the token → labels → one collect per tube → arrivals with the patient → receive ×2 → every analyte keyed at mid-range → the pathologist's queue with `tatTargetMinutes` and `previous: null` → every result signed → publishable, published → the register says HELD with the notice queued → the counter's by-patient read carries NO page → print refused 422 → the balance settles → the page travels, aliased → printed with the collector → the register shows the delivery row → the doctor's read on the real visit was never held. **Green on the first run, 5.5 s.**
+- The runbook gained §11, the same walk by hand, one person per seat, with what "done" looks like in the tables.
+- Not done in this phase, stated: no browser was opened; the seats were driven by their tests and by the routes. The `run` drill is the pilot's first morning (§9 of the runbook).
+
+### 8.0 Kickoff — §2 re-measured
+
+Every §2 row held except two, both corrected in execution: row 14 said the token door might need an OPD PR (it did not — the lab reads `opd_queue_entries` by visit, S1); row 18 said `caddyfile-parity` is `≥` (the API-prefix census is; the SPA route count is an exact pin, 45 → 46). A **fourth** unconsumed rail was found at kickoff: `openLabWalkin` (§8.1).
+
