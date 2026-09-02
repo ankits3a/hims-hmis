@@ -91,6 +91,12 @@ export function parseTake(key: TileKey, raw: string): Take | null {
   return /^\d+(\.\d+)?$/.test(s) ? Number(s) : null;
 }
 
+/** HH:MM on the hospital's clock (IST, fixed +05:30), from an ISO instant. */
+export function istClock(iso: string): string {
+  const d = new Date(new Date(iso).getTime() + 330 * 60_000);
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+}
+
 export function operative(tile: Tile): Take | null {
   return tile.takes.length === 0 ? null : tile.takes[tile.takes.length - 1]!;
 }

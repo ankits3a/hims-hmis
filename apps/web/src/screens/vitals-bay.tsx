@@ -3,14 +3,17 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { fetchBench, fetchEscalation, fetchPreStage, getOpdConfig, listDepartments, setBenchState, todayIst } from "../lib/opd-api";
 import type { WireBenchRow, WireDangerRanges, WireDoctorSummary, WirePreStage, WireVitalsSaveResult } from "../lib/opd-api";
-import { CaptureCore, SavedBannerView, bandFor, flagOf, readLane, writeLane } from "./vitals-bay-capture";
+import { CaptureCore, SavedBannerView, bandFor, flagOf, istClock, readLane, writeLane } from "./vitals-bay-capture";
 import type { Lane, SavedBanner, Take, TileKey, Tiles } from "./vitals-bay-capture";
 import {
   ProtocolPanel, REST_MINUTES, RestOffer, heldFirstTake, holdFirstTake, isElevated, readingFrom, releaseFirstTake, useDangerProtocol,
 } from "./vitals-bay-protocol";
+import { AmendPanel, AmendTrail } from "./vitals-bay-amend";
+import type { Amended } from "./vitals-bay-amend";
 import { verifyQrScan } from "../lib/patients-api";
 import { api } from "../lib/api";
 import { usePatientInHand } from "../lib/patient-in-hand";
+import { useAuth } from "../lib/auth";
 import { useRealtime } from "../lib/realtime";
 
 /**
@@ -103,11 +106,6 @@ export function useQueueSummary(serviceDate: string): WireDoctorSummary[] {
     refetchInterval: BENCH_POLL_MS,
   });
   return q.data?.items ?? [];
-}
-
-function istClock(iso: string): string {
-  const d = new Date(new Date(iso).getTime() + 330 * 60_000);
-  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 }
 
 function patientLabel(row: WireBenchRow, t: (k: string) => string): string {
@@ -254,6 +252,8 @@ export function VitalsBay(): React.ReactElement {
   const [deskGen, setDeskGen] = useState(0);
   const [lane, setLane] = useState<Lane>(readLane);
   const [banner, setBanner] = useState<SavedBanner | null>(null);
+  const [trail, setTrail] = useState<Amended | null>(null);
+  const { actor } = useAuth();
   const [keys, setKeys] = useState({ typed: 0, device: 0 });
   const config = useQuery({ queryKey: ["opd", "config"], queryFn: getOpdConfig });
   const ranges = (config.data?.dangerRanges as WireDangerRanges | undefined) ?? null;
@@ -344,10 +344,25 @@ export function VitalsBay(): React.ReactElement {
    * the desk is cleared — the next person starts from nothing. The bench re-reads so the row wears
    * the same tick; the push is a hint and the refetch is the truth.
    */
+  /**
+   * VD-2 T4 — the amended save: the diff is the trail (old value, actor, clock), the board is
+   * refreshed by `vitals.amended` on the doctor's topic, and the desk clears like any save.
+   */
+  const onAmended = useCallback((a: Amended, row: WireBenchRow) => {
+    const who = row.patient === null ? t("vitalsBay.bench.unknownPatient")
+      : row.patient.restricted ? (row.patient.alias ?? t("vitalsBay.bench.restricted")) : (row.patient.name ?? row.patient.uhid);
+    setBanner({ who, doctorName: row.doctorName, flags: a.result.flags, amended: true });
+    setTrail(a);
+    void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
+    void qc.invalidateQueries({ queryKey: ["vitals-bay", "chart", row.encounterId] });
+    clearDesk();
+  }, [qc, clearDesk, t]);
+
   const onSaved = useCallback((result: WireVitalsSaveResult, row: WireBenchRow) => {
     const who = row.patient === null ? t("vitalsBay.bench.unknownPatient")
       : row.patient.restricted ? (row.patient.alias ?? t("vitalsBay.bench.restricted")) : (row.patient.name ?? row.patient.uhid);
     setBanner({ who, doctorName: row.doctorName, flags: result.flags, amended: false });
+    setTrail(null);
     releaseFirstTake(row.encounterId);
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
     void qc.invalidateQueries({ queryKey: ["vitals-bay", "summary"] });
@@ -415,10 +430,14 @@ export function VitalsBay(): React.ReactElement {
         </div>
         <main className="flex flex-1 flex-col gap-4">
           <IdentifyBox key={deskGen} onSubmit={(raw) => { void identify(raw); }} error={error} busy={busy} />
-          {banner !== null && <SavedBannerView banner={banner} onDismiss={() => setBanner(null)} />}
+          {banner !== null && <SavedBannerView banner={banner} onDismiss={() => { setBanner(null); setTrail(null); }} />}
+          {banner !== null && trail !== null && <AmendTrail amended={trail} by={actor?.id ?? ""} />}
           <div className="rounded-lg border border-border bg-card p-4">
             <SessionColumn row={rowInHand} preStage={preStage} failed={preFailed} pending={pending}>
-              {rowInHand !== null && !pending && (
+              {rowInHand !== null && rowInHand.vitalsDone && (
+                <AmendPanel key={`${deskGen}:${rowInHand.encounterId}`} row={rowInHand} onAmended={(a) => onAmended(a, rowInHand)} />
+              )}
+              {rowInHand !== null && !rowInHand.vitalsDone && !pending && (
                 <CaptureCore
                   key={`${deskGen}:${rowInHand.encounterId}`} resetKey={`${deskGen}:${rowInHand.encounterId}`}
                   row={rowInHand} preStage={preStage} ranges={ranges} lane={lane}

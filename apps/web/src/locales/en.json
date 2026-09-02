@@ -2277,6 +2277,17 @@
       "go": "Rest {{minutes}} min",
       "sent": "To the rest chairs: {{who}} — recall at {{time}}. The desk is clear.",
       "heldFirst": "First reading held from the bench: {{value}} — take the second, both go as a pair."
+    },
+    "amend": {
+      "title": "Amend the chart saved at {{at}}",
+      "hint": "You are working on a copy — nothing changes until you save with a reason. Esc abandons and the saved chart stands untouched.",
+      "was": "was {{value}}",
+      "reason": "Reason for the amendment",
+      "reasonRequired": "An amendment needs a reason — it is the record",
+      "save": "Save amendment ({{count}} changed)",
+      "escHint": "Esc abandons",
+      "readFailed": "The saved chart could not be read",
+      "trail": "by {{by}} at {{at}} — the old value stays in the trail"
     }
   }
 }

@@ -577,3 +577,13 @@ export function fetchEscalation(encounterId: string): Promise<{ escalation: Wire
 export function setBenchState(encounterId: string, body: { state: WireBenchState | null; restMinutes?: number; note?: string }): Promise<WireBenchRow> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/bench-state`, body);
 }
+
+// ——— VD-2 T4 — amend after save ———
+export function fetchVisitVitals(encounterId: string): Promise<{ items: WireVitals[] }> {
+  return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/vitals`);
+}
+export type WireVitalsAmendBody = WireVitalsPostBody & { reason: string };
+export type WireVitalsAmendResult = { vitals: WireVitals; flags: WireDangerFlag[]; superseded: string };
+export function amendVitals(vitalsId: string, body: WireVitalsAmendBody): Promise<WireVitalsAmendResult> {
+  return api("POST", `/opd/vitals/${encodeURIComponent(vitalsId)}/amend`, body);
+}
