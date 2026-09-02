@@ -175,6 +175,13 @@
   .qr-card { position: fixed; left: 0; top: 0; width: 85.6mm; height: 54mm; border: none; }
 }
 
+/* PLAN 17c T2: specimen labels — 50 x 25 mm roll stock, one label per page, only the labels reach the printer. */
+@media print {
+  .specimen-labels, .specimen-labels * { visibility: visible; }
+  .specimen-labels { position: fixed; left: 0; top: 0; display: block; border: none; padding: 0; }
+  .specimen-labels .specimen-label { display: block; page-break-after: always; break-after: page; }
+}
+
 /* Plan 07: printable documents (token slip, e-Rx). Only the .print-doc reaches the paper; A5 portrait default. */
 @media print {
   .print-doc, .print-doc * { visibility: visible; }
@@ -235,6 +242,42 @@
 /* VD-2 T1 / D9 — Bay One opts into the same tokens; one block, two seats, no second palette. */
 [data-seat="registration-counter"],
 [data-seat="vitals-bay"] {
+  --background: #f4f7f4;          /* paper */
+  --card: #ffffff;
+  --popover: #ffffff;
+  --foreground: #132420;          /* ink */
+  --card-foreground: #132420;
+  --popover-foreground: #132420;
+  --border: #dfe7e1;              /* line */
+  --input: #dfe7e1;
+  --muted: #eef3ef;               /* wash */
+  --secondary: #eef3ef;
+  --accent: #eef3ef;
+  --muted-foreground: #5c6f66;    /* dim */
+  --secondary-foreground: #132420;
+  --accent-foreground: #132420;
+  --primary: #0e6b4e;             /* pine */
+  --primary-foreground: #f4f7f4;  /* paper on pine — the registry's near-white would glare */
+  --ring: #0e6b4e;
+  --destructive: #b23a30;         /* red */
+
+  /* The four state meanings (DD10) keep their meanings and take the design's hues. */
+  --state-waiting: #dd8f1c;       /* gold — six or more in a line */
+  --state-danger: #b23a30;
+  --state-settled: #0e6b4e;
+  --state-live: #0e6b4e;
+
+  /* Seat-local: the second, lighter weight of `--dim` that the registry has no slot for. */
+  --seat-faint: #8ea69a;
+}
+
+/*
+ * PLAN 17c T1 / D1 — THE LABORATORY'S FIVE SEATS wear Desk One too. The VALUES are copied from the
+ * registration counter's block above rather than shared through `:root` — RC-3's own mutant is a
+ * shadcn screen turning green, and the scope is what keeps it dead. Two blocks that must agree are
+ * the price of that; a diff between them is a design change, not drift.
+ */
+[data-seat="lab"] {
   --background: #f4f7f4;          /* paper */
   --card: #ffffff;
   --popover: #ffffff;

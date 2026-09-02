@@ -1,8 +1,8 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray } from "drizzle-orm";
 import { withTx } from "../../kernel/db/client";
 import {
   labItems, labOrderables, labSpecimenItems, labSpecimens, orderItems, orders, patients,
-  workflowInstances,
+  workflowInstances, opdEncounters, opdQueueEntries,
 } from "../../kernel/db/schema";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { appendEvent } from "../../kernel/events/append";
@@ -76,12 +76,22 @@ export async function assertRightPatient(
 export type CollectionQueueRow = {
   specimenId: string;
   specimenNo: string;
+  orderGroupId: string;
   patientId: string;
   /** Through `displayNameFor` — the alias for a confidential patient (07a). */
   patientName: string;
+  /** The same string under the name the web wire has used since 17b T8 (17c T2 F1: it was never sent). */
+  patientDisplay: string;
   uhid: string;
-  /** The `V` number. **The queue TOKEN is not resolved here — finding F17.** */
+  /** The `V` number. */
   encounterNo: string;
+  /**
+   * 17c T2 — the OPD queue token for the visit (`opd_queue_entries.token_no`). A lab walk-in has one
+   * too (it joins the pathologist's doctor-day queue); `null` only for a visit that never joined.
+   */
+  tokenNo: number | null;
+  labelledAt: string;
+  waitingMinutes: number;
   specimenType: string;
   container: string;
   collectionSite: LabCollectionSite;
@@ -196,6 +206,8 @@ export async function collectionQueue(
     .from(patients)
     .where(inArray(patients.id, [...new Set(specimens.map((s) => s.patientId))]));
   const byPatient = new Map(patientRows.map((p) => [p.id, p]));
+  const tokens = await tokensByVisit(db, [...new Set(itemRows.map((r) => r.encounterNo))]);
+  const now = new Date();
 
   const rows: CollectionQueueRow[] = [];
   for (const specimen of specimens) {
@@ -216,13 +228,19 @@ export async function collectionQueue(
       .map((m) => m.priority as LabPriority)
       .sort((a, b) => (PRIORITY_RANK[a] ?? 3) - (PRIORITY_RANK[b] ?? 3))[0]!;
 
+    const display = await displayNameFor(db, actor, patient);
     rows.push({
       specimenId: specimen.id,
       specimenNo: specimen.specimenNo,
+      orderGroupId: specimen.orderGroupId,
       patientId: specimen.patientId,
-      patientName: await displayNameFor(db, actor, patient),
+      patientName: display,
+      patientDisplay: display,
       uhid: patient.uhid,
       encounterNo: mine[0]!.encounterNo,
+      tokenNo: tokens.get(mine[0]!.encounterNo) ?? null,
+      labelledAt: specimen.createdAt.toISOString(),
+      waitingMinutes: Math.max(0, Math.floor((now.getTime() - specimen.createdAt.getTime()) / 60_000)),
       specimenType: specimen.specimenType,
       container: specimen.container,
       collectionSite: site,
@@ -351,3 +369,129 @@ export async function collect(
 
   return { specimenId: specimen.id, specimenNo: specimen.specimenNo, itemIds };
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════ */
+/* PLAN 17c T2 — THE CHAIR'S QUEUE BEFORE A LABEL EXISTS, and the token on every row              */
+/* ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The OPD queue token behind each `V` number — the newest queue entry of the visit. A lab
+ * walk-in (`openLabWalkin`) joins the pathologist's own doctor-day queue and so carries a token of
+ * that series; `null` is a visit that never joined (RC-1's deferred `bill_first` join).
+ */
+export async function tokensByVisit(exec: Db | Tx, encounterNos: readonly string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (encounterNos.length === 0) return out;
+  const rows = await (exec as Db)
+    .select({ visitNo: opdEncounters.visitNo, tokenNo: opdQueueEntries.tokenNo, seq: opdQueueEntries.seq })
+    .from(opdQueueEntries)
+    .innerJoin(opdEncounters, eq(opdEncounters.id, opdQueueEntries.encounterId))
+    .where(inArray(opdEncounters.visitNo, [...encounterNos]))
+    .orderBy(desc(opdQueueEntries.seq));
+  for (const r of rows) if (!out.has(r.visitNo)) out.set(r.visitNo, r.tokenNo);
+  return out;
+}
+
+export type AwaitingLabelRow = {
+  orderGroupId: string;
+  patientId: string;
+  patientDisplay: string;
+  uhid: string;
+  encounterNo: string;
+  tokenNo: number | null;
+  priority: LabPriority;
+  requiresFasting: boolean;
+  /** Hidden for a restricted item unless the reader holds `orders.read.restricted` — the tube stays, the test name leaves. */
+  orderableCodes: string[];
+  itemIds: string[];
+  placedAt: string;
+  waitingMinutes: number;
+};
+
+/**
+ * WHO IS WAITING FOR A LABEL — the half of the chair's queue 17a did not have.
+ *
+ * `collectionQueue` lists TUBES, and a tube exists only once `printLabels` has run; a patient who
+ * has just left reception was on nobody's list (17c §2 row 6). This reads the order GROUPS on the
+ * service date whose live lab items are on no active tube, one row per group, STAT first and then
+ * by the moment the order was placed. Gated exactly as `collectionQueue` is.
+ */
+export async function awaitingLabels(
+  db: Db,
+  actor: Actor,
+  filter: { serviceDate: string },
+): Promise<AwaitingLabelRow[]> {
+  if (actor.type !== "user") {
+    throw new OrderError("actor_cannot_read", `a ${actor.type} actor may not read the collection worklist`);
+  }
+  if (!(await hasPermission(db, actor.id, LAB_WORKLIST_READ, "hospital"))) {
+    throw new OrderError("permission_denied", `reading the collection worklist requires ${LAB_WORKLIST_READ}`);
+  }
+  const canSeeRestricted = await hasPermission(db, actor.id, ORDERS_READ_RESTRICTED, "hospital");
+  const onATube = db
+    .select({ orderItemId: labSpecimenItems.orderItemId })
+    .from(labSpecimenItems)
+    .where(eq(labSpecimenItems.active, true));
+  const items = await db
+    .select({
+      itemId: orderItems.id,
+      restricted: orderItems.restricted,
+      orderGroupId: orders.orderGroupId,
+      patientId: orders.patientId,
+      encounterNo: orders.encounterNo,
+      placedAt: orders.placedAt,
+      priority: labItems.priority,
+      code: labOrderables.code,
+      requiresFasting: labOrderables.requiresFasting,
+    })
+    .from(orderItems)
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .innerJoin(labItems, eq(labItems.orderItemId, orderItems.id))
+    .innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
+    .where(and(
+      eq(orders.kind, "lab"),
+      eq(orders.serviceDate, filter.serviceDate),
+      inArray(orderItems.status, [...LIVE_ITEM_STATUSES]),
+      notInArray(orderItems.id, onATube),
+    ))
+    .orderBy(asc(orders.placedAt));
+  if (items.length === 0) return [];
+  const groups = new Map<string, typeof items>();
+  for (const it of items) {
+    const g = groups.get(it.orderGroupId) ?? [];
+    g.push(it);
+    groups.set(it.orderGroupId, g);
+  }
+  const patientRows = await db.select().from(patients)
+    .where(inArray(patients.id, [...new Set(items.map((i) => i.patientId))]));
+  const byPatient = new Map(patientRows.map((p) => [p.id, p]));
+  const tokens = await tokensByVisit(db, [...new Set(items.map((i) => i.encounterNo))]);
+  const now = new Date();
+  const rows: AwaitingLabelRow[] = [];
+  for (const [orderGroupId, mine] of groups) {
+    const patient = byPatient.get(mine[0]!.patientId);
+    if (!patient) continue;
+    const priority = mine
+      .map((m) => m.priority as LabPriority)
+      .sort((a, b) => (PRIORITY_RANK[a] ?? 3) - (PRIORITY_RANK[b] ?? 3))[0]!;
+    const placedAt = mine.map((m) => m.placedAt).sort((a, b) => a.getTime() - b.getTime())[0]!;
+    rows.push({
+      orderGroupId,
+      patientId: mine[0]!.patientId,
+      patientDisplay: await displayNameFor(db, actor, patient),
+      uhid: patient.uhid,
+      encounterNo: mine[0]!.encounterNo,
+      tokenNo: tokens.get(mine[0]!.encounterNo) ?? null,
+      priority,
+      requiresFasting: mine.some((m) => m.requiresFasting),
+      orderableCodes: mine.filter((m) => canSeeRestricted || !m.restricted).map((m) => m.code),
+      itemIds: mine.map((m) => m.itemId),
+      placedAt: placedAt.toISOString(),
+      waitingMinutes: Math.max(0, Math.floor((now.getTime() - placedAt.getTime()) / 60_000)),
+    });
+  }
+  return rows.sort((a, b) =>
+    (PRIORITY_RANK[a.priority] ?? 3) - (PRIORITY_RANK[b.priority] ?? 3) ||
+    a.placedAt.localeCompare(b.placedAt));
+}
+

@@ -1,14 +1,17 @@
-import { asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
-  counterparties, invoiceLines, labItems, labOrderables, labSpecimens, orderItems, orders,
+  counterparties, invoiceLines, labItems, labOrderables, labSpecimens, opdDepartments, opdDoctors,
+  opdEncounters, opdQueueEntries, orderItems, orders,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { placeOrder } from "../../kernel/orders/place";
 import { startInstance } from "../../kernel/workflow/instances";
 import { issueInvoice } from "../billing";
-import { resolvePatientId } from "../patients";
+import { recordPhiAccess } from "../../kernel/phi/audit";
+import { getEncounter, openLabWalkinInTx } from "../opd";
+import { getPatientSummaries, listMergedLoserIds, resolvePatientId, searchPatients } from "../patients";
 import { duplicateWarnings } from "./duplicates";
 import { LabError } from "./errors";
 import { labAttributionUnverifiedFlagged, labOrderDesked } from "./events";
@@ -19,6 +22,7 @@ import type { OrderKindDecl } from "../../kernel/orders/kinds";
 import type { OrderItemOrigin } from "../../kernel/db/schema/orders";
 import type { PlaceOrderItemInput } from "../../kernel/orders/place";
 import type { IssueInvoiceInput } from "../billing";
+import type { AdvisedTest, EncounterRow } from "../opd";
 import type { DuplicateWarning } from "./duplicates";
 
 /**
@@ -619,4 +623,288 @@ export async function addOnOrder(
     },
     now,
   );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════ */
+/* PLAN 17c T1 — THE RECEPTION SEAT'S RAILS: one field with three doors, the Rx lines, the walk-in */
+/* ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * One line of the consult's prescription, joined to the catalogue it will be drawn from.
+ * `advisedTestItems` (17a T4) is the converter — it shipped with no caller (17c §2 row 1); this is
+ * the first. `orderable` is null when the doctor advised something this laboratory does not run.
+ */
+export type DeskAdvisedLine = {
+  serviceId: string;
+  code: string;
+  name: string;
+  pricePaise: number;
+  orderable: { container: string; specimenType: string; consentRequired: boolean; sensitive: boolean; requiresFasting: boolean } | null;
+  /** A lab item ALREADY placed for this service on this visit — the seat shows it, never re-orders it. */
+  alreadyOrderedItemId: string | null;
+};
+
+export type DeskFindHit = {
+  matchedOn: "token" | "visit" | "order" | "uhid" | "mobile" | "name";
+  patient: {
+    id: string; uhid: string;
+    /** Through the alias rule — a sealed patient's legal name never leaves this reader. */
+    display: string;
+    administrativeGender: string; dob: string | null; restricted: boolean;
+  };
+  visit: {
+    encounterId: string; encounterNo: string; serviceDate: string; status: string;
+    tokenNo: number | null; doctorName: string | null;
+    /** The `users.id` behind the visit's doctor — what `orderingClinicianId` wants. */
+    doctorUserId: string | null;
+    departmentName: string | null;
+    referrerName: string | null;
+    advised: DeskAdvisedLine[];
+  } | null;
+  /** Lab orders already standing on that visit. */
+  orders: { orderId: string; orderNo: string; status: string; itemCount: number }[];
+};
+
+/** The three doors, decided by SHAPE so a typed name can never be mistaken for a token. */
+const TOKEN_RE = /^T-?(\d{1,5})$/i;
+const VISIT_RE = /^V\d{6,}$/i;
+const ORDER_RE = /^L\d{6,}$/i;
+
+async function todaysEncounterFor(exec: Db | Tx, patientId: string, serviceDate: string): Promise<EncounterRow | null> {
+  const rows = await (exec as Db)
+    .select()
+    .from(opdEncounters)
+    .where(and(eq(opdEncounters.patientId, patientId), eq(opdEncounters.serviceDate, serviceDate)))
+    .orderBy(desc(opdEncounters.openedAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+async function advisedLinesFor(exec: Db | Tx, encounter: EncounterRow): Promise<DeskAdvisedLine[]> {
+  const advised = (encounter.advisedTests ?? []) as AdvisedTest[];
+  if (advised.length === 0) return [];
+  const items = advisedTestItems(advised);
+  const serviceIds = [...new Set(items.map((i) => i.serviceId))];
+  const orderables = await (exec as Db)
+    .select()
+    .from(labOrderables)
+    .where(inArray(labOrderables.serviceId, serviceIds));
+  const byService = new Map(orderables.map((o) => [o.serviceId, o]));
+  const placed = await (exec as Db)
+    .select({ id: orderItems.id, serviceId: orderItems.serviceId, status: orderItems.status })
+    .from(orderItems)
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .where(and(eq(orders.encounterNo, encounter.visitNo), eq(orders.kind, "lab"), inArray(orderItems.serviceId, serviceIds)));
+  const placedFor = new Map<string, string>();
+  for (const p of placed) if (p.status !== "cancelled" && !placedFor.has(p.serviceId)) placedFor.set(p.serviceId, p.id);
+  return advised.map((a) => {
+    const o = byService.get(a.serviceId);
+    return {
+      serviceId: a.serviceId, code: a.code, name: a.name, pricePaise: a.pricePaise,
+      orderable: o
+        ? { container: o.container, specimenType: o.specimenType, consentRequired: o.consentRequired,
+            sensitive: o.sensitive, requiresFasting: o.requiresFasting }
+        : null,
+      alreadyOrderedItemId: placedFor.get(a.serviceId) ?? null,
+    };
+  });
+}
+
+async function hitFor(
+  exec: Db | Tx, actor: Actor, matchedOn: DeskFindHit["matchedOn"], patientId: string,
+  encounter: EncounterRow | null, tokenNo: number | null,
+): Promise<DeskFindHit | null> {
+  const [summary] = await getPatientSummaries(exec as Db, actor, [patientId]);
+  if (!summary) return null;
+  const patient: DeskFindHit["patient"] = {
+    id: summary.id, uhid: summary.uhid,
+    display: summary.restricted ? (summary.alias ?? "—") : (summary.name ?? "—"),
+    administrativeGender: summary.administrativeGender,
+    dob: summary.dob ? summary.dob.toISOString().slice(0, 10) : null,
+    restricted: summary.restricted,
+  };
+  if (!encounter) return { matchedOn, patient, visit: null, orders: [] };
+  const [doctor] = encounter.doctorId === null ? [undefined]
+    : await (exec as Db).select({ displayName: opdDoctors.displayName, userId: opdDoctors.userId }).from(opdDoctors).where(eq(opdDoctors.id, encounter.doctorId));
+  const [dept] = encounter.departmentId === null ? [undefined]
+    : await (exec as Db).select({ name: opdDepartments.name }).from(opdDepartments).where(eq(opdDepartments.id, encounter.departmentId));
+  let resolvedToken = tokenNo;
+  if (resolvedToken === null) {
+    const [entry] = await (exec as Db)
+      .select({ tokenNo: opdQueueEntries.tokenNo })
+      .from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounter.id))
+      .orderBy(desc(opdQueueEntries.seq)).limit(1);
+    resolvedToken = entry?.tokenNo ?? null;
+  }
+  const standing = await (exec as Db)
+    .select({ orderId: orders.id, orderNo: orders.orderNo, status: orders.status, itemCount: sql<number>`count(${orderItems.id})::int` })
+    .from(orders)
+    .leftJoin(orderItems, eq(orderItems.orderId, orders.id))
+    .where(and(eq(orders.encounterNo, encounter.visitNo), eq(orders.kind, "lab")))
+    .groupBy(orders.id, orders.orderNo, orders.status);
+  /**
+   * The Rx lines are clinical content read off the visit, so the read is logged the way
+   * `getVisit` logs its own (`opd.visit`), once per visit returned — never per keystroke, because
+   * the seat asks on Enter.
+   */
+  await recordPhiAccess(exec as Db, {
+    actor, patientId: summary.id, surface: "opd.visit", encounterId: encounter.id, sealed: summary.restricted, reason: null,
+  });
+  return {
+    matchedOn, patient,
+    visit: {
+      encounterId: encounter.id, encounterNo: encounter.visitNo, serviceDate: encounter.serviceDate,
+      status: encounter.status, tokenNo: resolvedToken,
+      doctorName: doctor?.displayName ?? null, doctorUserId: doctor?.userId ?? null, departmentName: dept?.name ?? null,
+      referrerName: encounter.referrerName ?? null,
+      advised: await advisedLinesFor(exec, encounter),
+    },
+    orders: standing,
+  };
+}
+
+/**
+ * ONE FIELD, THREE DOORS (17c D4). `T-118` is today's queue token; `V…` a visit; `L…` an order;
+ * anything else is a patient search, which returns CANDIDATES the clerk confirms by name — names
+ * confirm, they never select (design edge case 2: three Sunita Devis on one morning).
+ *
+ * A token is per doctor-day (`opd_queue_entries.token_no`), so two doctors' 118s are two hits and
+ * the seat shows both; the mutant this guards against is a token matched on the NAME beside it.
+ */
+export async function deskFind(db: Db, actor: Actor, q: string, serviceDate: string): Promise<DeskFindHit[]> {
+  await assertMayDesk(db, actor);
+  const query = q.trim();
+  if (query.length === 0) return [];
+  const token = TOKEN_RE.exec(query);
+  if (token) {
+    const n = Number(token[1]);
+    const rows = await db
+      .select({ encounter: opdEncounters, tokenNo: opdQueueEntries.tokenNo })
+      .from(opdQueueEntries)
+      .innerJoin(opdEncounters, eq(opdEncounters.id, opdQueueEntries.encounterId))
+      .where(and(eq(opdQueueEntries.tokenNo, n), eq(opdEncounters.serviceDate, serviceDate)))
+      .orderBy(desc(opdQueueEntries.seq));
+    const seen = new Set<string>();
+    const hits: DeskFindHit[] = [];
+    for (const r of rows) {
+      if (seen.has(r.encounter.id) || r.encounter.status === "abandoned") continue;
+      seen.add(r.encounter.id);
+      const hit = await hitFor(db, actor, "token", r.encounter.patientId, r.encounter, r.tokenNo);
+      if (hit) hits.push(hit);
+    }
+    return hits;
+  }
+  if (VISIT_RE.test(query)) {
+    const encounter = await getEncounter(db, query.toUpperCase());
+    if (!encounter) return [];
+    const hit = await hitFor(db, actor, "visit", encounter.patientId, encounter, null);
+    return hit ? [hit] : [];
+  }
+  if (ORDER_RE.test(query)) {
+    const [order] = await db.select().from(orders).where(and(eq(orders.orderNo, query.toUpperCase()), eq(orders.kind, "lab")));
+    if (!order) return [];
+    const encounter = await getEncounter(db, order.encounterNo);
+    const hit = await hitFor(db, actor, "order", order.patientId, encounter, null);
+    return hit ? [hit] : [];
+  }
+  const people = await searchPatients(db, actor, query, 8);
+  const hits: DeskFindHit[] = [];
+  for (const p of people) {
+    const encounter = await todaysEncounterFor(db, p.id, serviceDate);
+    const lane = p.matchedOn.includes("uhid") ? "uhid" : p.matchedOn.includes("mobile") ? "mobile" : "name";
+    const hit = await hitFor(db, actor, lane, p.id, encounter, null);
+    if (hit) hits.push(hit);
+  }
+  return hits;
+}
+
+/** What the chair will draw for a basket: tubes grouped by container, in ORDER OF DRAW (D5). */
+export type TubePlanRow = { container: string; specimenType: string; codes: string[] };
+
+/**
+ * CLSI order of draw, keyed on the catalogue's container vocabulary: culture bottles, then citrate
+ * (blue), serum (SST / plain red), heparin (green), EDTA (lavender), fluoride (grey); everything
+ * that is not a blood tube comes after. One additive never reaches the next tube.
+ */
+export const DRAW_ORDER: readonly string[] = [
+  "blood_culture", "citrate", "sst", "plain", "heparin", "edta", "fluoride",
+];
+export function drawRank(container: string): number {
+  const i = DRAW_ORDER.indexOf(container);
+  return i === -1 ? DRAW_ORDER.length : i;
+}
+
+export async function tubePlan(exec: Db | Tx, serviceIds: readonly string[]): Promise<TubePlanRow[]> {
+  if (serviceIds.length === 0) return [];
+  const rows = await (exec as Db)
+    .select({ serviceId: labOrderables.serviceId, code: labOrderables.code, container: labOrderables.container, specimenType: labOrderables.specimenType })
+    .from(labOrderables)
+    .where(inArray(labOrderables.serviceId, [...new Set(serviceIds)]));
+  const byService = new Map(rows.map((r) => [r.serviceId, r]));
+  const plan = new Map<string, TubePlanRow>();
+  for (const id of serviceIds) {
+    const o = byService.get(id);
+    if (!o) continue;
+    const key = `${o.container}|${o.specimenType}`;
+    const row = plan.get(key) ?? { container: o.container, specimenType: o.specimenType, codes: [] };
+    if (!row.codes.includes(o.code)) row.codes.push(o.code);
+    plan.set(key, row);
+  }
+  return [...plan.values()].sort((a, b) => drawRank(a.container) - drawRank(b.container));
+}
+
+/**
+ * THE WALK-IN DOOR. `openLabWalkin` (17a A9) shipped with no caller: a patient with an outside
+ * prescription and no visit could not be ordered through any route. This opens the `V` visit in
+ * the LAB department under the pathologist of record AND places the order, in the caller's one
+ * transaction (DD6 — a refused order leaves no visit behind). Authority defaults to
+ * `external_prescription` and the charge reason to `lab_walkin`; the ordering clinician is the
+ * visit's doctor unless the caller names one.
+ */
+export type DeskWalkinInput = Omit<DeskOrderBase, "encounterNo" | "orderingClinicianId" | "chargeReason"> & {
+  orderingClinicianId?: string;
+  walkIn: { referrerName?: string; doctorId?: string; intendedPayer?: "self" | "tpa" | "pmjay" | "corporate" };
+  externalReferrerId?: string | null;
+  referrerName?: string | null;
+  attributionConfirmed?: boolean;
+  chargeReason?: "lab_walkin";
+};
+
+export async function deskWalkinOrder(
+  tx: Tx,
+  actor: Actor,
+  decls: readonly OrderKindDecl[],
+  input: DeskWalkinInput,
+  now: Date = new Date(),
+): Promise<DeskOrderResult> {
+  await assertMayDesk(tx, actor);
+  const canonical = await resolvePatientId(tx, input.patientId);
+  if (!canonical) throw new LabError("unknown_service", `unknown patient ${input.patientId} — a walk-in is a person first`);
+  const chainIds = [canonical, ...(await listMergedLoserIds(tx, canonical))];
+  const visit = await openLabWalkinInTx(tx, actor, {
+    patientId: canonical, chainIds,
+    doctorId: input.walkIn.doctorId,
+    intendedPayer: input.walkIn.intendedPayer,
+    referrerName: input.walkIn.referrerName ?? input.referrerName ?? undefined,
+  }, now);
+  let clinicianId = input.orderingClinicianId;
+  if (clinicianId === undefined) {
+    const [doctor] = visit.encounter.doctorId === null ? [undefined]
+      : await tx.select({ userId: opdDoctors.userId }).from(opdDoctors).where(eq(opdDoctors.id, visit.encounter.doctorId));
+    clinicianId = doctor?.userId ?? actor.id;
+  }
+  const rest: Omit<DeskWalkinInput, "walkIn"> & { walkIn?: unknown } = { ...input };
+  delete rest.walkIn;
+  const order: DeskOrderInput = {
+    ...(rest as Omit<DeskWalkinInput, "walkIn">),
+    patientId: canonical,
+    encounterNo: visit.encounter.visitNo,
+    orderingClinicianId: clinicianId,
+    chargeReason: "lab_walkin",
+    authority: "external_prescription",
+    externalReferrerId: input.externalReferrerId ?? null,
+    referrerName: input.walkIn.referrerName ?? input.referrerName ?? null,
+    attributionConfirmed: input.attributionConfirmed,
+  };
+  return deskOrder(tx, actor, decls, order, now);
 }

@@ -5,6 +5,7 @@ import { OrderError, orderHttpStatus } from "../../kernel/orders/errors";
 import { ResourceError, resourceHttpStatus } from "../../kernel/resources/errors";
 import { WorkflowError } from "../../kernel/workflow/instances";
 import { BillingError, billingHttpStatus } from "../billing";
+import { OpdError } from "../opd";
 import { TariffError, tariffHttpStatus } from "../tariff";
 import { LabError, labHttpStatus } from "./errors";
 
@@ -52,6 +53,17 @@ export function toHttp(e: unknown): never {
   if (e instanceof ResourceError) throw httpError(resourceHttpStatus(e.code), e.message, e.code);
   if (e instanceof WorkflowError) {
     throw httpError(e.code === "role_denied" ? 403 : 409, e.message, e.code);
+  }
+  /**
+   * PLAN 17c T1 — the walk-in door opens a `V` visit through OPD, so OPD's refusals now reach this
+   * mapper (`unknown_department` on day one, `unknown_doctor` when two pathologists are active).
+   * OPD exports no status table; the shape of the code decides, the way its own controller does.
+   */
+  if (e instanceof OpdError) {
+    const code = String(e.code);
+    const status = /not_found$|^unknown_/.test(code) ? 404
+      : /inactive$|mismatch$|^user_actor_required$/.test(code) ? 409 : 422;
+    throw httpError(status, e.message, code);
   }
   throw e;
 }

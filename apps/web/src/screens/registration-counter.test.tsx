@@ -526,7 +526,14 @@ describe("RC-3 T5 / D3 — the alias layer is scoped to the seat", () => {
    * and what the assertion book asks for.
    */
   it("MUTANT — no Desk One colour is declared in ANY block but the seat's", () => {
-    const others = blocks.filter((b) => !b.selector.includes('[data-seat="registration-counter"]'));
+    /**
+     * PLAN 17c T1 / D1 — a SECOND seat block, `[data-seat="lab"]`, legitimately carries the same
+     * hexes (the laboratory's five seats wear Desk One too; the values are copied, not shared
+     * through `:root`, for exactly the reason this test exists). The assertion's intent is
+     * unchanged: no Desk One colour in any UNSCOPED block. A seat is a scope.
+     */
+    const SEATS = ['[data-seat="registration-counter"]', '[data-seat="lab"]'];
+    const others = blocks.filter((b) => !SEATS.some((seat) => b.selector.includes(seat)));
     // The census, pinned before anything is compared: `:root`, `.dark`, `*` and `body` are the
     // four a global-token mutant would reach for, and all four must be in the list being checked.
     expect(others.length).toBeGreaterThanOrEqual(10);
@@ -587,9 +594,10 @@ describe("RC-3 T5 / D3 — the alias layer is scoped to the seat", () => {
       .filter((f) => !f.endsWith(".test.tsx") && !f.endsWith(".test.ts"))
       .filter((f) => readFileSync(resolve(__dirname, "..", f), "utf8").includes("data-seat"))
       .sort();
-    // VD-2 T1 / D9 — Bay One is the second seat to opt in (RC-3 D1 said "one attribute per seat").
-    // The census still kills the hoist: `router.tsx`, the shell or `main.tsx` carrying it fails here.
-    expect(carriers).toEqual(["screens/registration-counter.tsx", "screens/vitals-bay.tsx"]); // THE KILL
+    // VD-2 T1 / D9 — Bay One opts in (RC-3 D1 said "one attribute per seat"), and PLAN 17c T1 / D1 —
+    // the laboratory's shared seat frame, on ITS root element. The census still kills the hoist:
+    // `router.tsx`, the shell or `main.tsx` carrying it fails here.
+    expect(carriers).toEqual(["screens/lab-seat.tsx", "screens/registration-counter.tsx", "screens/vitals-bay.tsx"]); // THE KILL
 
     renderWithProviders(<RegistrationCounter />);
     expect(screen.getByTestId("registration-counter").getAttribute("data-seat")).toBe("registration-counter");
