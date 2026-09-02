@@ -2115,7 +2115,7 @@
       "offline": "offline",
       "channels": "How the patient's copy travels",
       "channelsNote": "WhatsApp / SMS carry a values-free notice today; the counter is the door for the paper and for in-person-only tests.",
-      "askElsewhere": "No role can raise this request yet (an owner action). When a billing manager grants a release, enter the approval id here.",
+      "askElsewhere": "Your login cannot raise this request. The lab reception counter can, and a billing manager decides it in the approvals inbox; enter the granted approval id here.",
       "printPaper": "Print the paper"
     }
   },

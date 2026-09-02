@@ -1096,6 +1096,11 @@ the hole `restricted` and the alias rule exist to close. `phlebotomist` reads th
 touches no result: the chair needs to know who is next and which tube, never a number.
 `lab.reports.release_unpaid` is held by `billing_manager` and by nobody in the lab, because
 releasing a held report is a decision to carry a receivable and that is the money office's to make.
+**Amended by the owner on 2026-09-02 (Plan 17c §7):** `lab_reception` gains
+`approvals.requests.create` — the counter may raise the release request for a held report; the
+billing manager still decides it — and the counter's report centre (`/lab/reports`) may render a
+SIGNED report to print it, aliased and logged per read and only once the interlock allows the
+hand-over; what stays refused is any result before signature and every list's restricted test names.
 
 | Permission | pathologist | lab_technician | phlebotomist | lab_reception |
 |---|---|---|---|---|
