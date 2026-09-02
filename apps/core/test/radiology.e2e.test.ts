@@ -234,7 +234,13 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
 
   /* ══════════════════════════════════════════════════════════════════════════════════════ */
 
-  it("STUDY ONE — a contrast CT from order to published report, over HTTP", async () => {
+  /**
+   * 18b T5 — THIS IS THE PHASE'S FINISH LINE. One study, over HTTP, through every DICOM seam:
+   * ordered → scheduled → on the worklist export (T1) → acquired with the UID the worklist offered
+   * (T2) → images opened and the view recorded (T3) → drafted by the offline drafter with
+   * provenance (T4) → signed by a human → published. Every row is read back below.
+   */
+  it("STUDY ONE — a contrast CT from order to published report, over HTTP, through the DICOM seams (18b T5)", async () => {
     /** ── PLACEMENT. The kind resolves off the REAL manifest, not off a fixture's decl. ── */
     const placed = await post("/radiology/orders", doctor.token, {
       patientId: PATIENT, encounterNo: VISIT, serviceDate: DAY,
@@ -369,14 +375,25 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     expect(item!.status).toBe("completed");
 
     /** ── THE EVENTS, IN ORDER ── */
-    const names = (await db.select().from(events)).map((e) => e.name);
+    const all = await db.select().from(events);
+    const names = all.map((e) => e.name);
     for (const expected of [
-      "order.placed", "imaging.gate_evaluated", "imaging.study_acquired", "imaging.report_published",
+      "order.placed", "imaging.study_scheduled", "imaging.gate_evaluated", "imaging.study_acquired",
+      "imaging.image_viewed", "imaging.report_published",
     ]) {
       expect(names).toContain(expected);
     }
-    expect(names.indexOf("imaging.study_acquired"))
-      .toBeLessThan(names.indexOf("imaging.report_published"));
+    expect(names.indexOf("imaging.study_scheduled")).toBeLessThan(names.indexOf("imaging.study_acquired"));
+    expect(names.indexOf("imaging.study_acquired")).toBeLessThan(names.indexOf("imaging.image_viewed"));
+    expect(names.indexOf("imaging.image_viewed")).toBeLessThan(names.indexOf("imaging.report_published"));
+    /** 18b T5 — the payload 18b-ii's reconciliation will join on, pinned: accession, source, UID. */
+    const acquiredEvent = all.find((e) => e.name === "imaging.study_acquired")!;
+    expect(acquiredEvent.payload).toMatchObject({
+      accessionNo: study!.accessionNo, imageSource: "pacs", studyInstanceUid: afterAcq!.studyInstanceUid,
+      deviceResourceId: devices.ct,
+    });
+    expect(all.find((e) => e.name === "imaging.image_viewed")!.payload)
+      .toEqual({ studyId: study!.id, viewerId: doctor.id, via: "external_pacs" });
 
     /** ── AND EVERY READER LEFT A PHI ROW ── */
     expect((await get(`/radiology/studies/${study!.id}`, radiologist.token)).status).toBe(200);
