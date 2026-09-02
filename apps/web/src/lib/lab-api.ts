@@ -239,6 +239,20 @@ export const drawSpecimen = (
 
 export const benchWorklist = (): Promise<WireWorklistRow[]> => api("GET", "/lab/bench/worklist");
 
+/** 17c T3 / D7 — a tube drawn and not yet received, WITH its patient: what a scan at the bench resolves against first. */
+export type WireBenchArrival = {
+  specimenId: string; specimenNo: string; orderGroupId: string; patientId: string; patientDisplay: string;
+  encounterNo: string; container: string; specimenType: string; collectionSite: string; priority: string;
+  orderableCodes: string[]; itemIds: string[]; collectedAt: string | null; wristbandScanned: boolean;
+  waitingMinutes: number;
+};
+
+export const benchArrivals = (): Promise<WireBenchArrival[]> => api("GET", "/lab/bench/arrivals");
+
+/** The department-wide topics the bench and the verify seat watch (server: `LAB_BENCH_TOPIC`, `lab_critical`). */
+export const LAB_BENCH_TOPIC = "lab:bench";
+export const LAB_CRITICAL_TOPIC = "lab_critical";
+
 export const receiveSpecimen = (
   body: { specimenNo: string; containerSeen?: string; identityRecheckBy?: string }, key: string,
 ): Promise<unknown> => api("POST", "/lab/bench/receive", body, key);

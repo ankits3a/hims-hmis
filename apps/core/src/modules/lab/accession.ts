@@ -226,7 +226,7 @@ export async function receive(
     patientId: specimen.patientId,
     correlationId: specimen.orderGroupId,
     payload: {
-      specimenId: specimen.id, specimenNo: specimen.specimenNo, itemIds: liveIds,
+      specimenId: specimen.id, specimenNo: specimen.specimenNo, orderGroupId: specimen.orderGroupId, itemIds: liveIds,
       receivedBy: actor.id, at: now.toISOString(),
     },
   }));
@@ -294,7 +294,7 @@ export async function reject(
     patientId: specimen.patientId,
     correlationId: specimen.orderGroupId,
     payload: {
-      specimenId: specimen.id, specimenNo: specimen.specimenNo, reason: input.reason,
+      specimenId: specimen.id, specimenNo: specimen.specimenNo, orderGroupId: specimen.orderGroupId, reason: input.reason,
       attributableTo: input.attributableTo, rejectedBy: actor.id, at: now.toISOString(),
     },
   }));
@@ -376,7 +376,7 @@ export async function reject(
     correlationId: specimen.orderGroupId,
     payload: {
       priorSpecimenId: specimen.id, specimenId: replacementId, specimenNo: replacementNo,
-      itemIds: liveIds, reason: input.reason,
+      orderGroupId: specimen.orderGroupId, itemIds: liveIds, reason: input.reason,
     },
   }));
 
