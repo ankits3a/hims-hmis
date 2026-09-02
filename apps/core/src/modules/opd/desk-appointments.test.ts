@@ -45,7 +45,7 @@ describe("opd appointments desk provider (FD-1 T2)", () => {
     const p2 = await mkPatient(db, clerk.actor, { name: "P2", phone: "9000000002" });
     const p3 = await mkPatient(db, clerk.actor, { name: "P3", phone: "9000000003" });
     const p4 = await mkPatient(db, clerk.actor, { name: "P4", phone: "9000000004" });
-    const p5 = await mkPatient(db, clerk.actor, { name: "P5", phone: "9000000005" });
+    const p5 = await mkPatient(db, clerk.actor, { name: "Phoolmani Devi", phone: "9000000005" });
     const a1 = await bookAppointment(db, clerk.actor, { patientId: p1.id, doctorId: dra.doctorId, slotStart: S0930 }, NOW_SUN);   // slot ended, still booked → missed
     const a2 = await bookAppointment(db, clerk.actor, { patientId: p2.id, doctorId: dra.doctorId, slotStart: S0940 }, NOW_SUN);   // checked in
     await bookAppointment(db, clerk.actor, { patientId: p3.id, doctorId: drb.doctorId, slotStart: S1000 }, NOW_SUN);              // due, later
@@ -66,7 +66,11 @@ describe("opd appointments desk provider (FD-1 T2)", () => {
     expect(stat(card!, "desk.appointments.missed")).toBe("2");            // a1 (slot ended, unswept) + a4 (marked)
     expect(stat(card!, "desk.appointments.needsRebooking")).toBe("1");
     expect(card!.rows).toEqual([{ id: drb.doctorId, badge: "1", title: expect.any(String), subtitle: "desk.appointments.rebookRow", severity: "warn", href: "/opd/appointments" }]);
-    expect(JSON.stringify(card)).not.toContain("P5");                     // a doctor, never a patient
+    // a doctor, never a patient: no patient NAME and no patient ID anywhere on the card. (Not a
+    // substring like "P5" — a ULID can contain it by chance; the radiology lane's CI proved it.)
+    expect(JSON.stringify(card)).not.toContain("Phoolmani");
+    expect(JSON.stringify(card)).not.toContain(p5.id);
+    expect(card!.rows!.map((r) => r.title)).toEqual([expect.stringMatching(/^Dr /)]);
     expect(card!.topics).toBeUndefined();   // CLOSE pass 1: no topic this permission cannot subscribe to
     // DECIDED: the card is hospital-wide — a second clerk sees the same bookings
     const other = await mkUser(db, "clerk2", ["front_office"]);
