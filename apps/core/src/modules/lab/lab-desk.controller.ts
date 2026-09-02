@@ -6,7 +6,7 @@ import { withTx } from "../../kernel/db/client";
 import { listOrdersForEncounter, listOrdersForPatient } from "../../kernel/orders/read";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { previewInvoice, withIdempotency } from "../billing";
-import { addOnOrder, deskFind, tubePlan } from "./desk";
+import { addOnOrder, deskFind, labDoctors, tubePlan } from "./desk";
 import { cancelLabItem, deskOrderAtCounter } from "./money";
 import { idSchema, isoDateSchema, LAB_IDEMPOTENT_ROUTES, parsed, toHttp } from "./lab-http";
 import type { Actor } from "@hmis/contracts";
@@ -227,7 +227,7 @@ export class LabDeskController {
   ): Promise<unknown> {
     const input = parsed(findQuery, { q: q ?? "", serviceDate });
     try {
-      return { hits: await deskFind(this.db, actor, input.q, input.serviceDate) };
+      return { hits: await deskFind(this.db, actor, input.q, input.serviceDate), labDoctors: await labDoctors(this.db) };
     } catch (e) { toHttp(e); }
   }
 

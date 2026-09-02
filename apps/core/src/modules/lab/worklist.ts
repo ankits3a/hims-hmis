@@ -395,7 +395,7 @@ export type BenchArrivalRow = {
   specimenType: string;
   collectionSite: string;
   priority: string;
-  /** Hidden for a restricted item unless the reader holds `orders.read.restricted` — `collectionQueue`'s rule. */
+  /** ALL OR NOTHING — `collectionQueue`'s rule (17c close review pass 1, F1): no codes on any row without `orders.read.restricted`. */
   orderableCodes: string[];
   itemIds: string[];
   collectedAt: string | null;
@@ -458,7 +458,7 @@ export async function benchArrivals(db: Db, actor: Actor): Promise<BenchArrivalR
       encounterNo: mine[0]!.encounterNo,
       container: s.container, specimenType: s.specimenType, collectionSite: s.collectionSite,
       priority: mine.map((m) => m.priority).sort((a, b) => (rank[a] ?? 3) - (rank[b] ?? 3))[0]!,
-      orderableCodes: mine.filter((m) => canSeeRestricted || !m.restricted).map((m) => m.code),
+      orderableCodes: canSeeRestricted ? mine.map((m) => m.code) : [],
       itemIds: mine.map((m) => m.itemId),
       collectedAt: s.collectedAt?.toISOString() ?? null,
       wristbandScanned: s.wristbandScanned === true,

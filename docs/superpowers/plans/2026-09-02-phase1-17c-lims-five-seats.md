@@ -104,6 +104,13 @@ Instrument inbox and bridge (17-E, board 6); send-outs (17-M, edge 9); camp bulk
 
 Nothing here is money, procurement or law; Desk One vs greyscale is D1. **Owner ACTIONS, unchanged from 17b:** a second administrator for DD11's separation of duties; WhatsApp template submission (`not_submitted`) before any patient message; the four lab role keys assigned (runbook §0, F39).
 
+**RULED BY THE OWNER 2026-09-02 — both DECIDED YES:** (1) `approvals.requests.create` granted to `lab_reception` (seed-roles; the counter asks, the billing manager decides); (2) the report counter may render the signed report to print it — 17b's role note is amended to say so. Originally put as: **two access decisions for the owner, neither money:** (1) grant `approvals.requests.create` to `lab_reception` (or name the role that raises a `lab_release_unpaid` request) — the seed deliberately grants it to no one, so today only a billing manager could raise the release in the approvals inbox; (2) confirm that the report counter (`lab_reception`, holder of `lab.reports.print`) may render the signed report on screen to print it — §8.5 decided yes because the paper IS the result, but 17b's role note says reception "reads no result", and a decision that reverses a written ruling is the owner's to keep or overturn.
+
+### 8.8 Reported, not changed — F5
+
+`reportsForPatient` sends the aliased snapshot to `lab.reports.print` holders once the interlock allows the hand-over (§8.5). Pass 1 read that as a reversal of 17b's `seed-roles.ts` note that `lab_reception` "reads no result". It is. The alternatives — a server-rendered document the clerk cannot read (no renderer exists; 22c-F's territory), or granting `lab.results.read` to reception (the exact "convenience" the note refused) — are both larger decisions than this phase should take alone. The code stays as decided: alias rule, one log row per read, no page while HELD; the decision is put to the owner in §7. **And the full fact, from pass 2:** the page the counter prints carries the panel names — so a `lab.reports.print` holder reads a restricted test's NAME on a deliverable report even though every LIST on the seat is all-or-nothing by `orders.read.restricted`. The lists are a guard on the register; the paper is the decision. `sensitive: true` beside an empty list, and `channels: ["in_person"]`, say "a consent-class panel is here" — DD14 needs the channel at the counter, so that part is design.
+
+
 ## 8. CLOSE — filled at execution
 
 §8.0 §2 re-measured · §8.1 PRs and CI SHAs · §8.2 findings · §8.3 assertion book as executed · §8.4 evidence (suite counts, CI run ids) · §8.5 close review: two fresh passes, pass 2 briefed at the fixes (§2.140) · §8.6 actuals vs stop-loss.
@@ -160,4 +167,36 @@ Nothing here is money, procurement or law; Desk One vs greyscale is D1. **Owner 
 ### 8.0 Kickoff — §2 re-measured
 
 Every §2 row held except two, both corrected in execution: row 14 said the token door might need an OPD PR (it did not — the lab reads `opd_queue_entries` by visit, S1); row 18 said `caddyfile-parity` is `≥` (the API-prefix census is; the SPA route count is an exact pin, 45 → 46). A **fourth** unconsumed rail was found at kickoff: `openLabWalkin` (§8.1).
+
+### 8.7 Close review — pass 1 (fresh, read-only, 2026-09-02): 1 CRITICAL, 6 MAJOR, 9 MINOR
+
+**The CRITICAL was 17a pass 2's finding, re-created twice.** `awaitingLabels` and `benchArrivals` filtered a restricted item's code OUT and left `itemIds` beside it — the counting oracle `collectionQueue` documents in its own body ("`[]` next to one item PROVES a restricted test"). D7 said "as `collectionQueue`"; the code did not do what the sentence said, and the test PINNED the mutant (`not.toContain("HBSAG")` beside unfiltered ids). Fixed to all-or-nothing on both readers and on the report centre's two lists (F3), with tests that assert both states (no permission → `[]` on every row; permission → every code).
+
+| # | sev | finding | fix |
+|---|---|---|---|
+| 1 | CRITICAL | counting oracle on `awaitingLabels`, `benchArrivals` | all-or-nothing (above) |
+| 2 | MAJOR | HELD → release dead at both ends: no role may create the approval; after release the reader still sent no page and the one-use approval was spent | (b) `reportsForPatient`/`deliveryRegister` pass `releasedByApproval` from the delivery row — test A4 is the kill; (a) the seat shows the ask button only to a holder of `approvals.requests.create` and otherwise says who can raise it. **The grant itself is an OWNER ACTION** (seed-roles says no ruling names a human requester) — recorded in §7 |
+| 3 | MAJOR | restricted codes on the report centre | all-or-nothing |
+| 4 | MAJOR | `flag` (`HH`) and `pathologistReviewPending` crossed `lab:bench` to reception | removed from the two payloads; the census regex widened to `flag`; the verify test asserts the flag on the ROW |
+| 5 | MAJOR | §8.5 reverses 17b's role note by renaming the door | **Reported, not changed** (§8.8) |
+| 6 | MAJOR | two active pathologists → no walk-in | `find` returns `labDoctors`; the seat asks and sends `walkIn.doctorId` |
+| 7 | MAJOR | a second Save on a fresh walk-in opened a second visit | after a walk-in order the seat re-finds by the minted `V` number and rides the visit |
+| 8 | MINOR | find logged the reader's `restricted`, not the patient's sealed flag | patient's fact |
+| 10 | MINOR | a mobile hit auto-selected | only token / visit / order / UHID auto-select |
+| 12 | MINOR | hand-over never printed | the hand-over opens the page and calls `window.print` on the print channel; a "Print the paper" button beside the open document |
+| 13 | MINOR | rerun without an idempotency key | key added |
+| 14 | MINOR | one channel/collector/approval state shared across cards | per report |
+| 16 | MINOR | the e2e computed today with its own offset | `istDayString` |
+
+**Declined or reported, with reasons (§8.8):** F5 (a decision the owner should see, not a code change); F9 (the name door returns what `searchPatients` returns and logs the way it does — the visit hit is logged); F11 (credit above the cap has no approval door on the seat — the server's refusal is shown; a cap approval is a billing-counter feature); F12's `@page` (a label roll needs its own `@page`, which CSS cannot scope by class — the print block isolates the labels, one per page; a per-seat print stylesheet is a follow-up); F15 (`urgent` takes the routine target — the catalogue has no urgent column; a rerun's previous is hidden because its original is on the same item, which the seat shows beside it anyway).
+
+### 8.9 Close review — pass 2 (fresh, briefed at the fixes, 2026-09-02): 1 WRONG, 2 INCOMPLETE, 12 CORRECT, 4 NEW
+
+- **WRONG — F12's fix printed a blank page.** `window.print()` ran in the same tick as opening the document, before React committed; with the card closed the print CSS found no `.print-doc`, and the register said the report was handed over. Fixed: the dialog opens from an effect that runs once the document is mounted; the web test stubs `window.print` and asserts the document is on the page when it fires (the mutant's answer is `false`).
+- **INCOMPLETE — F3 by rule (coupled to F5):** the all-or-nothing lists hold; the PAPER carries restricted names. Stated in §8.8 so the owner's F5 decision is made on the full fact.
+- **INCOMPLETE — F7 client-only:** the re-find closes the ordinary path (tested now, mutant killed) but nothing on the server refuses a second lab walk-in for the same patient and day. **May-carry** — `openLabWalkinInTx` is OPD's, and a same-day-open-visit guard is an OPD rule.
+- **NEW-1** (above), **NEW-2** (a released report showed "Print & hand over", which would refuse without the approval — hidden when the verdict is `released_by_approval`; "Print the paper" remains), **NEW-3** (the copy sent the clerk to a billing manager who cannot raise the request either — reworded to the owner action), **NEW-4** (the walk-in doctor choice carried to the next patient — reset per patient). `desk.ts` now imports `LAB_DEPARTMENT_CODE` instead of a literal.
+- **Tests that did not exist for three fixes (F6, F7, F10) now do,** each run under its mutant first: three red, then green.
+- **May-carry, recorded:** an amendment after a release re-holds the report with the one-use approval spent (per-version delivery fact vs per-order approval); `lab.report_published.channels` and `lab.reflex_added` are weak result oracles on the `lab` space (17b's, pre-existing); `lab.result_critical_flagged` routes to `lab_critical` ONLY (its payload names no order) — pass 1's premise on it was wrong, recorded as checked.
+- Evidence after pass 2: core `desk` + `lab.e2e` 32/32; web `lab-desk` 9/9, `lab-reports` 4/4, i18n parity; typecheck 0, lint 0 errors.
 

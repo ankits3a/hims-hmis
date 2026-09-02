@@ -38,7 +38,8 @@ describe("the laboratory's live topics (17c T3)", () => {
     for (const name of LAB_BENCH_NAMES) {
       const schema = LAB_EVENTS.find((e) => e.name === name)!;
       const keys = Object.keys((schema.payloadSchema as unknown as { shape: Record<string, unknown> }).shape);
-      expect({ name, leaks: keys.filter((k) => /value|analyteCode|nameEn/.test(k)) }).toEqual({ name, leaks: [] });
+      /** Pass 1 F4 widened this census: a FLAG beside an analyte id is a result. */
+      expect({ name, leaks: keys.filter((k) => /value|flag|analyteCode|nameEn|pathologistReviewPending/.test(k)) }).toEqual({ name, leaks: [] });
     }
   });
 });

@@ -82,7 +82,7 @@ const hit = (id: string, name: string, uhid: string) => ({
   id, uhid, name, phone: "9876543210", administrativeGender: "female", dob: "1974-03-02", isConfidential: false, hasPhoto: false, matchedOn: ["uhid"],
 });
 
-beforeEach(() => { setToken("t"); });
+beforeEach(() => { setToken("t"); vi.stubGlobal("print", vi.fn()); });
 afterEach(() => { setToken(null); vi.unstubAllGlobals(); });
 
 async function pickPatient(uhid: string, name: string): Promise<void> {
@@ -130,6 +130,29 @@ it("D9 — a settled report prints with the collector's name and relation; the p
   await userEvent.click(print);
   await waitFor(() => expect(seen.find((s) => s.path === "/api/lab/reports/rep-1/print")).toBeDefined());
   expect(seen.find((s) => s.path === "/api/lab/reports/rep-1/print")!.body).toEqual({ channel: "print", collectorIdentity: "Farida Khatoon (self)" });
+  /** Pass 2 NEW-1 — the dialog opens only once the document is on the page, never onto a blank one. */
+  await waitFor(() => expect(window.print).toHaveBeenCalledTimes(1));
+  expect(document.querySelector(".print-doc")).not.toBeNull();
+});
+
+it("NEW-1 — with the card CLOSED, the hand-over still prints the mounted document, not a blank page", async () => {
+  mockRoutes({
+    "GET /api/lab/reports/register": { status: 200, body: REGISTER },
+    "GET /api/patients/search": { status: 200, body: { items: [hit("p-1", "Farida Khatoon", "U23011884")] } },
+    "GET /api/lab/reports/patient/p-1": { status: 200, body: FARIDA },
+    "POST /api/lab/reports/rep-1/print": { status: 201, body: { deliveryId: "d-9", printCount: 1 } },
+  });
+  const printed: boolean[] = [];
+  vi.stubGlobal("print", vi.fn(() => { printed.push(document.querySelector(".print-doc") !== null); }));
+  renderWithProviders(<LabReports />);
+  await waitFor(() => expect(screen.getByTestId("register")).toBeInTheDocument());
+  await pickPatient("U23011884", "Farida Khatoon");
+  const card = await screen.findByTestId("report-L2609010102");
+  expect(document.querySelector(".print-doc")).toBeNull();
+  await userEvent.type(within(card).getByLabelText("Collected by (name and relation) L2609010102"), "Farida Khatoon (self)");
+  await userEvent.click(within(card).getByRole("button", { name: "Print & hand over" }));
+  await waitFor(() => expect(printed).toHaveLength(1));
+  expect(printed[0]).toBe(true); // THE KILL: `false` is a blank page the register says was handed over
 });
 
 it("DD6 — a HELD report reaches the browser as a verdict, never as a page; release is an APPROVAL about the order", async () => {
@@ -137,6 +160,8 @@ it("DD6 — a HELD report reaches the browser as a verdict, never as a page; rel
     "GET /api/lab/reports/register": { status: 200, body: REGISTER },
     "GET /api/patients/search": { status: 200, body: { items: [hit("p-2", "Ramesh Mahto", "U23011990")] } },
     "GET /api/lab/reports/patient/p-2": { status: 200, body: RAMESH },
+    /** The ask button appears only for a holder of `approvals.requests.create` (pass 1 F2a). */
+    "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" }, permissions: { hospital: ["approvals.requests.create"], scoped: { department: {}, floor: {} } } } },
     "POST /api/approvals": { status: 201, body: { approvalId: "apr-77", instanceId: "wf-1" } },
     "POST /api/lab/reports/rep-2/release": { status: 201, body: { deliveryId: "d-8", printCount: 1 } },
   });
@@ -156,7 +181,7 @@ it("DD6 — a HELD report reaches the browser as a verdict, never as a page; rel
 
   const release = within(card).getByRole("button", { name: "Release and hand over" });
   expect(release).toBeDisabled();
-  await userEvent.type(within(card).getByLabelText("Approval id"), "apr-77");
+  await userEvent.type(within(card).getByLabelText("Approval id L2609010088"), "apr-77");
   await userEvent.type(within(card).getByLabelText("Collected by (name and relation) L2609010088"), "Ramesh Mahto (self)");
   expect(release).toBeEnabled();
   await userEvent.click(release);

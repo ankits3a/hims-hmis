@@ -528,8 +528,11 @@ describe("the report centre (17c T5)", () => {
 
     const rows = await deliveryRegister(db, fx.desk.actor, "2026-08-29");
     expect(rows).toHaveLength(1);
+    /** Test names are ALL OR NOTHING by `orders.read.restricted` (pass 1, F3): the counter holds none. */
     expect([rows[0]!.reportId, rows[0]!.patientDisplay, rows[0]!.orderables, rows[0]!.delivery.allowed])
-      .toEqual([report.reportId, "Ram Kumar", ["TSH"], true]);
+      .toEqual([report.reportId, "Ram Kumar", [], true]);
+    await grantPermissionToRole(db, fx.registry, "lab_reception", "orders.read.restricted");
+    expect((await deliveryRegister(db, fx.desk.actor, "2026-08-29"))[0]!.orderables).toEqual(["TSH"]);
     expect(rows[0]!.deliveries.map((d) => [d.channel, d.collectorIdentity])).toEqual([["print", "the patient"]]);
     /** The ready notice was enqueued on publish (T7 A7) and its fate is on the row. */
     expect(rows[0]!.notice?.status).toBe("queued");
@@ -537,6 +540,23 @@ describe("the report centre (17c T5)", () => {
     expect(await deliveryRegister(db, fx.desk.actor, "2026-08-28")).toEqual([]);
     /** No snapshot on the register — it is a list, not a document. */
     expect(JSON.stringify(rows)).not.toContain("HMS-00000101-7");
+  });
+
+  it("A4 (pass 1, F2b): a HELD report RELEASED by a granted approval carries its page on the next read", async () => {
+    const run = await runLabOrder(db, fx, ["TSH"], { at: AT });
+    const report = await publishReport(db, fx.pathologist.actor, { orderId: run.orderId }, AT);
+    expect((await reportsForPatient(db, fx.desk.actor, fx.patientId, AT)).reports[0]!.snapshot).toBeNull();
+    const { approvalId } = await withTx(db, (tx) => requestApproval(tx, fx.desk.actor, {
+      typeKey: RELEASE_UNPAID_APPROVAL_TYPE, subject: { type: "lab_report", id: run.orderId }, patientId: fx.patientId,
+    }));
+    const billingManager = await mkUser(db, "lab.centre.bm", ["billing_manager"]);
+    await approveRequest(db, billingManager.actor, { approvalId, note: "carry the receivable" });
+    await releaseUnpaid(db, fx.desk.actor, { reportId: report.reportId, approvalId, collectorIdentity: "the patient" }, AT);
+    const after = await reportsForPatient(db, fx.desk.actor, fx.patientId, AT);
+    /** THE KILL: before this fix the release spent the approval and the counter still had no page. */
+    expect([after.reports[0]!.delivery.allowed, after.reports[0]!.delivery.reason, after.reports[0]!.snapshot !== null])
+      .toEqual([true, "released_by_approval", true]);
+    expect((await deliveryRegister(db, fx.desk.actor, "2026-08-29"))[0]!.delivery.reason).toBe("released_by_approval");
   });
 
   it("A3: a reader without the print permission is refused", async () => {
