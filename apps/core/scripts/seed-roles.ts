@@ -1035,6 +1035,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.definitions.read",
       "pcpndt.form_f.read",
       "orders.read",
+      // PLAN 18b T1 — the worklist export, so a radiographer can check what the console will show.
+      "radiology.mwl.read",
     ],
   },
   {
@@ -1088,6 +1090,20 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pcpndt.form_f.read",
       "pcpndt.form_f.verify",
     ],
+  },
+  {
+    /**
+     * PLAN 18b T1 — **A MACHINE ACCOUNT, AND THE ONLY ROLE IN THIS MODEL WITH ONE STRING.**
+     *
+     * The bridge on the PACS host pulls `GET /radiology/mwl` every few seconds and writes what it
+     * gets into the modality worklist directory. It needs exactly that read and nothing else, and
+     * the role exists so that it never holds anything else: the shortcut — a bridge logging in as a
+     * `radiographer` — would hand a cron job `radiology.gates.satisfy`, which is a clinical
+     * declaration about a patient's pregnancy. The kernel has no service-account door (18b S1), so
+     * the bridge is a user with this role and a password in the runbook's vault line.
+     */
+    roleKey: "modality_bridge",
+    permissions: ["radiology.mwl.read"],
   },
 ];
 
@@ -1322,6 +1338,9 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   radiographer: "Radiographer (checks in, satisfies the safety gates, acquires; signs no report)",
   radiology_receptionist: "Imaging Reception (orders, schedules, bills; satisfies no safety gate)",
   pcpndt_incharge: "PCPNDT In-charge (registration, machines, persons; VERIFIES Form F, writes none)",
+  // PLAN 18b T1 — a machine account. The title says so, because a staffing card is where an
+  // administrator would otherwise assign it to a person.
+  modality_bridge: "Modality bridge (a MACHINE account: pulls the worklist export; holds nothing else)",
 };
 
 /** The title for a model role key. Throws rather than inventing one — an unresolved role is a defect. */

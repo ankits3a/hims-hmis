@@ -92,6 +92,10 @@ export const radiologyManifest: ModuleManifest = {
     "radiology.definitions.manage",
     "radiology.bill_decisions.manage",
     "radiology.criticals.ack",
+    // PLAN 18b T1 — the modality worklist export. A MACHINE permission: the bridge on the
+    // PACS host pulls `GET /radiology/mwl`, and `radiographer` holds it so a console can be
+    // checked by a human. It reads names, so it is a PHI surface (`imaging.worklist`).
+    "radiology.mwl.read",
   ],
   subscriptions: [{ event: orderPlaced.name, consumer: RADIOLOGY_ORDER_PLACED_CONSUMER }],
   resourceKinds: RADIOLOGY_RESOURCE_KINDS,
