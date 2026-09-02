@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { fetchBench, fetchEscalation, fetchPreStage, getOpdConfig, listDepartments, setBenchState, todayIst } from "../lib/opd-api";
 import type { WireBenchRow, WireDangerRanges, WireDoctorSummary, WirePreStage, WireVitalsSaveResult } from "../lib/opd-api";
-import { CaptureCore, SavedBannerView, bandFor, flagOf, istClock, readLane, writeLane } from "./vitals-bay-capture";
+import { CaptureCore, SavedBannerView, bandFor, flagOf, humanDate, istClock, readLane, writeLane } from "./vitals-bay-capture";
 import type { Lane, SavedBanner, Take, TileKey, Tiles } from "./vitals-bay-capture";
 import {
   ProtocolPanel, REST_MINUTES, RestOffer, heldFirstTake, holdFirstTake, isElevated, readingFrom, releaseFirstTake, useDangerProtocol,
@@ -186,7 +186,7 @@ export function SessionColumn({ row, preStage, failed, pending, children }: {
             <p data-testid="prestage-none">{t("vitalsBay.session.firstVisit")}</p>
           ) : (
             <p data-testid="prestage-last">
-              <span className="text-muted-foreground">{t("vitalsBay.session.last", { date: preStage.last.serviceDate })}</span>{" "}
+              <span className="text-muted-foreground">{t("vitalsBay.session.last", { date: humanDate(preStage.last.serviceDate) })}</span>{" "}
               {LAST_KEYS.filter((k) => preStage.last![k] !== null).map((k) => `${t(`vitalsBay.vital.${k}`)} ${String(preStage.last![k])}`).join(" · ")}
             </p>
           )}
@@ -307,7 +307,9 @@ export function VitalsBay(): React.ReactElement {
   const onCommitted = useCallback((key: TileKey, take: Take, tiles: Tiles) => {
     const tint = flagOf(key, take, band, ranges);
     const state = protocol.view?.state ?? "none";
-    if (tint === "danger" || tint === "sam") {
+    // A SAM MUAC is its own emergency lane (the design's words): charted, flagged hard, and the SAVE
+    // moves the board through the server's danger path. "The other arm, now" is a cuff instruction.
+    if (tint === "danger") {
       setRestOffer(null);
       const reading = readingFrom(tiles);
       if (state === "none" || state === "cancelled") void protocol.demand(reading).catch(() => undefined);

@@ -2284,7 +2284,11 @@
         "notice": "outside band — the doctor is told ahead of the call",
         "sam": "SAM — severe; its own emergency lane",
         "mam": "MAM — nutrition counter flagged"
-      }
+      },
+      "rrNudge": "RR {{value}} in under fifteen seconds? Charted — but count it:",
+      "rrCount": "count 15 s",
+      "rrCounting": "counting… {{seconds}} s — watch the chest",
+      "rrCounted": "fifteen seconds done — type the count"
     },
     "gate": {
       "slippedDigit": "{{value}} kg on an adult — a slipped digit becomes a chart fact in one keystroke",

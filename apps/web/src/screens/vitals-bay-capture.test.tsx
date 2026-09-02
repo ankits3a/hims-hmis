@@ -1,8 +1,8 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VitalsBay } from "./vitals-bay";
 import {
-  buildBody, emptyTiles, flagOf, leadTileFor, mirrorFor, missingFor, parseTake, readLane, tileOrder, tileSetFor,
+  buildBody, emptyTiles, flagOf, humanDate, leadTileFor, mirrorFor, missingFor, parseTake, readLane, tileOrder, tileSetFor,
 } from "./vitals-bay-capture";
 import { renderWithProviders } from "../test-utils";
 import { setToken } from "../lib/api";
@@ -138,6 +138,68 @@ describe("the pure rules mirror the server's", () => {
   });
   it("the serial lane is per-bay device state and ships OFF", () => {
     expect(readLane()).toBe("typing");
+  });
+  it("dates on the staff screen read 31-Aug-2026 (ruling 9)", () => {
+    expect(humanDate("2026-06-11")).toBe("11-Jun-2026");
+    expect(humanDate("nonsense")).toBe("nonsense");
+  });
+});
+
+describe("VD-2 T5 — the contract pass closed three clauses: 1–8 address a tile, the RR honesty nudge, the dates", () => {
+  it("a bare digit with nobody typing focuses that tile of THIS patient's order; inside a tile it is a value", async () => {
+    stubBay([ROW_A], () => saved());
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-118")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-118"));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("input-bp")));
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.keyDown(window, { key: "4" });                      // tile 4 of [bp, pulse, spo2, tempC, rr, weightKg]
+    expect(document.activeElement).toBe(screen.getByTestId("input-tempC"));
+    await user.keyboard("37.1");                                   // digits inside the tile are the value
+    expect((screen.getByTestId("input-tempC") as HTMLInputElement).value).toBe("37.1");
+    expect(document.activeElement).toBe(screen.getByTestId("input-tempC"));
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.keyDown(window, { key: "9" });                       // no ninth tile: nothing moves
+    expect(document.activeElement).not.toBe(screen.getByTestId("input-tempC"));
+    expect(screen.getByTestId("prestage-last").textContent).toContain("11-Jun-2026");
+  });
+
+  it("an RR committed within fifteen seconds of reaching the tile is charted AND nudged; the counter runs fifteen seconds and the re-take goes as `counted`", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const posted: Posted[] = [];
+      stubBay([ROW_B], () => saved(), posted);
+      renderWithProviders(<VitalsBay />);
+      await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
+      fireEvent.click(screen.getByTestId("bench-row-121"));
+      await waitFor(() => expect(screen.getByTestId("input-rr")).toBeInTheDocument());
+      fireEvent.focus(screen.getByTestId("input-rr"));
+      fireEvent.change(screen.getByTestId("input-rr"), { target: { value: "16" } });
+      fireEvent.keyDown(screen.getByTestId("input-rr"), { key: "Enter" });
+      expect(screen.getByTestId("value-rr").textContent).toBe("16");           // never a block
+      expect(screen.getByTestId("rr-nudge").textContent).toContain("under fifteen seconds");
+      fireEvent.click(screen.getByTestId("rr-count"));
+      expect(screen.getByTestId("rr-nudge").textContent).toContain("counting");
+      await act(async () => { await vi.advanceTimersByTimeAsync(15_500); });
+      expect(screen.getByTestId("rr-nudge").textContent).toContain("fifteen seconds done");
+      expect(document.activeElement).toBe(screen.getByTestId("input-rr"));
+      fireEvent.change(screen.getByTestId("input-rr"), { target: { value: "18" } });
+      fireEvent.keyDown(screen.getByTestId("input-rr"), { key: "Enter" });
+      expect(screen.getByTestId("pair-rr").textContent).toBe("16 · 18");
+      // the wire says which take was counted
+      fireEvent.change(screen.getByTestId("input-bp"), { target: { value: "120/80" } }); fireEvent.keyDown(screen.getByTestId("input-bp"), { key: "Enter" });
+      fireEvent.change(screen.getByTestId("input-pulse"), { target: { value: "70" } }); fireEvent.keyDown(screen.getByTestId("input-pulse"), { key: "Enter" });
+      fireEvent.change(screen.getByTestId("input-spo2"), { target: { value: "98" } }); fireEvent.keyDown(screen.getByTestId("input-spo2"), { key: "Enter" });
+      fireEvent.change(screen.getByTestId("input-tempC"), { target: { value: "36.6" } }); fireEvent.keyDown(screen.getByTestId("input-tempC"), { key: "Enter" });
+      fireEvent.change(screen.getByTestId("input-weightKg"), { target: { value: "70" } }); fireEvent.keyDown(screen.getByTestId("input-weightKg"), { key: "Enter" });
+      fireEvent.change(screen.getByTestId("input-heightCm"), { target: { value: "168" } }); fireEvent.keyDown(screen.getByTestId("input-heightCm"), { key: "Enter" });
+      fireEvent.click(screen.getByTestId("save"));
+      await waitFor(() => expect(posted).toHaveLength(1));
+      expect((posted[0]!.body as { readings: { rr: { takes: number[]; source: string } } }).readings.rr).toEqual({ takes: [16, 18], source: "counted" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

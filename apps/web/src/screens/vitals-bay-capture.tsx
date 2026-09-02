@@ -33,7 +33,7 @@ export type Take = number | [number, number];
 export type Tile = {
   takes: Take[];
   held: number[];
-  source: "typed" | "device";
+  source: "typed" | "device" | "counted";
   /** D7 — a carried value: shown from the last chart, sent as `carriedForward` unless unlocked. */
   carried: number | null;
   unlockReason: WireUnlockReason | null;
@@ -89,6 +89,14 @@ export function parseTake(key: TileKey, raw: string): Take | null {
     return m === null ? null : [Number(m[1]), Number(m[2])];
   }
   return /^\d+(\.\d+)?$/.test(s) ? Number(s) : null;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** `31-Aug-2026` — the seat-pass ruling for dates on staff screens (EXECUTE prompt, ruling 9). */
+export function humanDate(serviceDate: string): string {
+  const [y, m, d] = serviceDate.split("-");
+  const month = MONTHS[Number(m) - 1];
+  return month === undefined ? serviceDate : `${d}-${month}-${y}`;
 }
 
 /** HH:MM on the hospital's clock (IST, fixed +05:30), from an ISO instant. */
@@ -240,6 +248,50 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
   const refs = useRef<Partial<Record<TileKey, HTMLInputElement | null>>>({});
   // A tile that has just been unlocked has no input until the next render; the focus request waits for it.
   const [focusReq, setFocusReq] = useState<TileKey | null>(null);
+  /**
+   * Ruling 8 — "a suspiciously instant RR gets a nudge and a 15-second counter, never a block."
+   * The RR tile remembers when it was focused; a rate committed inside fifteen seconds of that
+   * is charted (never blocked) and nudged: the counter runs fifteen seconds and re-takes as
+   * `counted`. A nudge is a sentence beside the tile, not a dialog.
+   */
+  const rrFocusedAt = useRef<number | null>(null);
+  const [rrNudge, setRrNudge] = useState<{ value: number; secondsLeft: number | null } | null>(null);
+  const rrTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => () => { if (rrTimer.current !== null) clearInterval(rrTimer.current); }, []);
+  const startRrCounter = useCallback(() => {
+    if (rrTimer.current !== null) clearInterval(rrTimer.current);
+    const startedAt = Date.now();
+    setRrNudge((n) => (n === null ? null : { ...n, secondsLeft: 15 }));
+    rrTimer.current = setInterval(() => {
+      const left = Math.max(0, 15 - Math.floor((Date.now() - startedAt) / 1000));
+      setRrNudge((n) => (n === null ? null : { ...n, secondsLeft: left }));
+      if (left === 0 && rrTimer.current !== null) {
+        clearInterval(rrTimer.current); rrTimer.current = null;
+        setRaw((r) => ({ ...r, rr: "" }));
+        setFocusReq("rr");
+      }
+    }, 250);
+  }, []);
+
+  /**
+   * Ruling 3 — `1`–`8` address a tile when nobody is typing (a bare digit inside a tile is a value).
+   * The window listener reads the tile order of THIS patient, so `1` is always the lead vital.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const el = e.target;
+      if (el instanceof HTMLElement && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      const n = Number(e.key);
+      if (!Number.isInteger(n) || n < 1 || n > 8) return;
+      const key = order[n - 1];
+      if (key === undefined) return;
+      e.preventDefault();
+      refs.current[key]?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [order]);
   useEffect(() => {
     if (focusReq === null) return;
     refs.current[focusReq]?.focus();
@@ -287,7 +339,7 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
    * side effects React may run later or twice — so the jump to the next empty tile reads the
    * tiles the keystroke actually produced (the first draft focused the wrong tile for this reason).
    */
-  const commit = useCallback((key: TileKey, source: "typed" | "device", take: Take): Tiles | null => {
+  const commit = useCallback((key: TileKey, source: "typed" | "device" | "counted", take: Take): Tiles | null => {
     const tile = tiles[key];
     const m = mirrorFor(key, take, preStage?.ageYears ?? null, ranges, preStage?.last ?? null, tile);
     if (m !== null && m.kind === "probe_error") {
@@ -308,10 +360,14 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
     const take = parseTake(key, raw[key]);
     if (take === null) { setError(key === "bp" ? t("vitalsBay.capture.bpBoth") : t("vitalsBay.capture.notANumber")); return; }
     setError(null);
-    const next = commit(key, "typed", take);
+    if (key === "rr" && typeof take === "number") {
+      const instant = rrFocusedAt.current !== null && Date.now() - rrFocusedAt.current < 15_000 && (rrNudge === null || rrNudge.secondsLeft !== 0);
+      setRrNudge(instant ? { value: take, secondsLeft: null } : null);
+    }
+    const next = commit(key, rrNudge !== null && rrNudge.secondsLeft === 0 && key === "rr" ? "counted" : "typed", take);
     setRaw((r) => ({ ...r, [key]: "" }));
     if (next !== null) focusNextEmpty(key, next);
-  }, [raw, commit, focusNextEmpty, t]);
+  }, [raw, commit, focusNextEmpty, t, rrNudge]);
 
   const readDevice = useCallback(async (key: TileKey) => {
     const take = await driver.read(key);
@@ -437,11 +493,19 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
                     placeholder={k === "bp" ? "158/96" : ""}
                     value={raw[k]}
                     onChange={(e) => setRaw((r) => ({ ...r, [k]: e.target.value }))}
+                    onFocus={() => { if (k === "rr" && rrFocusedAt.current === null) rrFocusedAt.current = Date.now(); }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") { e.preventDefault(); onEnter(k); return; }
                       if (e.key.length === 1 || e.key === "Backspace") setKeys((c) => ({ ...c, typed: c.typed + 1 }));
                     }}
                   />
+                  {k === "rr" && rrNudge !== null && (
+                    <span data-testid="rr-nudge" className="text-xs">
+                      {rrNudge.secondsLeft === null
+                        ? <>{t("vitalsBay.capture.rrNudge", { value: rrNudge.value })} <button type="button" data-testid="rr-count" className="underline" onClick={startRrCounter}>{t("vitalsBay.capture.rrCount")}</button></>
+                        : rrNudge.secondsLeft > 0 ? t("vitalsBay.capture.rrCounting", { seconds: rrNudge.secondsLeft }) : t("vitalsBay.capture.rrCounted")}
+                    </span>
+                  )}
                   {lane === "serial" && (
                     <button type="button" data-testid={`device-${k}`} className="rounded border border-border px-1 text-xs" onClick={() => { void readDevice(k); }}>
                       {t("vitalsBay.capture.readDevice")}
