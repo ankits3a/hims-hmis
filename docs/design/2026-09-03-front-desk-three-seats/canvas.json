@@ -1,0 +1,74 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "The three seats" },
+    { "id": "page-2", "name": "Routing & the keyboard" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "page": "page-1", "x": 0, "y": 0, "w": 1440, "h": 980, "title": "Dashboard — the composer", "is_interactive": true },
+    { "file": "Registration.dc.html", "page": "page-1", "x": 1560, "y": 0, "w": 1440, "h": 980, "title": "/registration", "is_interactive": true },
+    { "file": "Appointment.dc.html", "page": "page-1", "x": 0, "y": 1120, "w": 1440, "h": 980, "title": "/appointment", "is_interactive": true },
+    { "file": "Billing.dc.html", "page": "page-1", "x": 1560, "y": 1120, "w": 1440, "h": 980, "title": "/billing", "is_interactive": true },
+
+    { "file": "Routing.dc.html", "page": "page-2", "x": 0, "y": 0, "w": 1440, "h": 1080, "title": "Walk-in — finding a doctor", "is_interactive": true },
+    { "file": "Keymap.dc.html", "page": "page-2", "x": 1560, "y": 0, "w": 1440, "h": 1180, "title": "The keyboard", "is_interactive": true }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "page": "page-1",
+      "x": 0,
+      "y": -230,
+      "w": 700,
+      "text": "THREE SEATS, ONE DESK — 03-Sep-2026\n\nDesk One's identity throughout: paper #f4f7f4, pine #0e6b4e, IBM Plex, the dark agent dock along the foot. Tokens and control anatomy lifted from desk-one.html, not re-invented.\n\nEvery artboard has working controls — the tweak chips above each frame drive them. Page 2 carries the walk-in routing and the keyboard."
+    },
+    {
+      "id": "composer",
+      "page": "page-1",
+      "x": 0,
+      "y": -110,
+      "w": 700,
+      "text": "THE DASHBOARD ANSWERS YOUR QUESTION WITH \"BOTH\".\nThe `seat` chip switches who is signed in. One clerk holding all three grants sees three doors; a cashier holding one sees one door. Same code — the dashboard renders the union of what your permissions unlock, which is how FD-1 was already built."
+    },
+    {
+      "id": "four",
+      "page": "page-1",
+      "x": 1560,
+      "y": -230,
+      "w": 700,
+      "text": "ALL FOUR CARRIED OVER, as ruled.\nGuardian appears on its own when the age says minor — drag the `age` chip below 18. DPDP §9 is not an optional section: the server refuses a known minor without a guardian, so the form asks rather than failing at submit.\n\nABHA, photograph and the confidential/alias control are folded away until wanted — a walk-in form that shows all three to everyone is a form nobody finishes. Open them with the `openFold` chip.\n\nAt the foot: the two doors to a doctor, and the proposal with its reason."
+    },
+    {
+      "id": "book",
+      "page": "page-1",
+      "x": 0,
+      "y": 1010,
+      "w": 700,
+      "text": "THE BOOK.\nFree / taken / yours are three different facts and look like three different things — a grey slot that might be either is how a desk double-books. Check-in is a button on the row, not a screen: the clerk is looking at the person, and check-in is where an appointment becomes a visit and a token comes out.\n\nThe `leave` chip shows the cascade — the only screen that answers \"the doctor is away, who do I have to call?\""
+    },
+    {
+      "id": "money",
+      "page": "page-1",
+      "x": 1560,
+      "y": 1010,
+      "w": 700,
+      "text": "SCHEMES SIT BESIDE THE BILL, NEVER AFTER IT.\nA scheme applied after settlement is a refund. Switch the `scheme` chip and watch the bill reprice.\n\nBest single benefit — they never stack — and the LOSER is named on the bill, so the clerk can answer \"what about my camp slip?\" without opening another screen. Corporate/TPA collects nothing at this counter and the token stamps PANEL, not UNPAID."
+    },
+    {
+      "id": "routing",
+      "page": "page-2",
+      "x": 0,
+      "y": -240,
+      "w": 700,
+      "text": "THE WALK-IN'S TWO DOORS, AND THE RULE BEHIND THE SECOND.\n\nDoctor by name, or the complaint. When the complaint picks a department, three rules fire in order:\n\n1. CONTINUITY — a prior consultation in that department routes them back to that doctor, even when his line is longer. Switch the `rule` chip to see it: Dr Rao is 4 ahead of the shortest line and still wins, because the history is already in his head.\n2. SHORTEST WAIT — only when nobody has seen them here.\n3. NO DOCTOR AT ALL — \"join the department queue\" names nobody; whoever frees first takes them.\n\nEvery one is a PROPOSAL the clerk confirms, and it says which rule fired — a clerk who disagrees knows what they are overruling instead of fighting an invisible preference.\n\nWait is always minutes AND a clock time. Desk One's own note: the clerk reasons in minutes, the patient asks kitne baje."
+    },
+    {
+      "id": "keys",
+      "page": "page-2",
+      "x": 1560,
+      "y": -240,
+      "w": 700,
+      "text": "TWO CHORDS YOU PICKED HAVE TO MOVE — your no-browser-overlap rule forces it.\n\nCtrl+N is Chrome's new window and is NON-OVERRIDABLE: the keystroke never reaches the page, so there is nothing for us to intercept. Ctrl+K is Chrome's address-bar search.\n\n· New patient: Ctrl+N → F4\n· Search: no chord at all. The box is focused the moment a seat opens, and Esc returns to it. A shortcut for a field that already has the cursor is a shortcut nobody presses.\n· F2 for the assistant SURVIVES — one of only five function keys no browser claims.\n\nThe board shows every key Chrome, Edge or Firefox answers first. Most of the alphabet is gone the moment you add Ctrl, which is why this desk is built on Tab, bare keys and F-keys.\n\nSwitch the `seat` chip for each screen's Tab order."
+    }
+  ],
+  "launch": { "view": "canvas", "page": "page-2" }
+}

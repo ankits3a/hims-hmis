@@ -1,0 +1,270 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    :root{
+      --paper:#f4f7f4; --card:#ffffff; --ink:#132420; --line:#dfe7e1; --line2:#ecf1ed;
+      --dim:#5c6f66; --faint:#8ea69a; --wash:#eef3ef;
+      --green:#0e6b4e; --green-soft:rgba(14,107,78,.08); --green-line:rgba(14,107,78,.35);
+      --gold:#dd8f1c; --gold-soft:rgba(221,143,28,.10); --gold-line:rgba(221,143,28,.45);
+      --red:#b23a30; --red-soft:rgba(178,58,48,.09); --red-line:rgba(178,58,48,.35);
+      --agent:#132420; --agent-fg:#d9efe4; --agent-dim:#7fa392; --mint:#35c48f;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--paper);color:var(--ink);
+      font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:var(--green)} a:hover{color:#0a5039}
+    button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0;text-align:left}
+    input{font:inherit;color:inherit} input:focus{outline:none}
+    .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+    .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;
+      letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+    .kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:20px;padding:0 5px;
+      border-radius:3px;border:1px solid var(--line);background:var(--card);font-family:"IBM Plex Mono",monospace;
+      font-size:9px;font-weight:600;color:var(--dim);flex-shrink:0}
+    .kb.dk{border-color:#2c443a;background:#1c332b;color:var(--agent-dim)}
+    .box{background:var(--card);border:1px solid var(--line);border-radius:8px}
+    .in{height:40px;width:100%;border-radius:6px;border:1px solid var(--line);background:var(--card);padding:0 12px;font-size:14px}
+    .in:focus{border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+    .lbl{font-size:10.5px;font-weight:600;color:var(--dim);margin-bottom:5px;display:block}
+    .pri{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 18px;
+      border-radius:6px;background:var(--green);color:#f2faf6;font-size:13px;font-weight:600;border:1px solid var(--green)}
+    .sec{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 13px;
+      border-radius:6px;border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:500}
+    .sec:hover{border-color:var(--faint)}
+    .pill{display:inline-flex;align-items:center;gap:6px;height:23px;padding:0 9px;border-radius:4px;
+      font-size:10.5px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--dim);white-space:nowrap}
+    .pill.on{border-color:var(--green-line);background:var(--green-soft);color:var(--green)}
+    .pill.gd{border-color:var(--gold-line);background:var(--gold-soft);color:var(--gold)}
+    .pill.rd{border-color:var(--red-line);background:var(--red-soft);color:var(--red)}
+    .slot{display:flex;align-items:center;justify-content:center;height:34px;border-radius:5px;
+      border:1px solid var(--line);background:var(--card);font-family:"IBM Plex Mono",monospace;
+      font-size:11.5px;font-variant-numeric:tabular-nums}
+    .slot.free:hover{border-color:var(--green);color:var(--green)}
+    .slot.taken{background:var(--wash);color:var(--faint);border-style:dashed;cursor:not-allowed}
+    .slot.sel{background:var(--green);border-color:var(--green);color:#f2faf6;font-weight:600}
+    .brow{display:flex;align-items:center;gap:11px;padding:9px 12px;border-top:1px solid var(--line2)}
+    .brow:hover{background:var(--wash)}
+    .agchip{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border-radius:6px;
+      background:var(--agent);color:var(--agent-fg);font-size:11.5px;line-height:16px}
+    .agchip b{color:#fff;font-weight:600}
+    .agdo{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:5px;flex-shrink:0;
+      background:var(--mint);color:#0b2018;font-size:11px;font-weight:700}
+  </style>
+</helmet>
+
+<div style="min-height:980px;display:flex;flex-direction:column;background:var(--paper)">
+
+  <div style="display:flex;align-items:center;gap:14px;padding:11px 22px;background:var(--card);border-bottom:1px solid var(--line)">
+    <span style="font-weight:700">CRK</span><span style="color:var(--faint)">|</span>
+    <span style="font-weight:600">Appointments</span>
+    <span class="mo" style="font-size:11px;color:var(--faint)">/appointment</span>
+    <span style="margin-left:auto;display:flex;align-items:center;gap:14px">
+      <span class="pill {{leaveCls}}">{{leaveNote}}</span>
+      <button class="sec" style="gap:9px"><span>Search — the cursor starts here</span><span class="kb">Esc</span></button>
+    </span>
+  </div>
+
+  <div style="flex-grow:1;display:flex;gap:16px;padding:18px 22px">
+
+    <!-- ═══ THE RAIL — the patient being booked, and today's arrivals. Same dossier as the other
+         two seats: one person in hand, carried across every screen. ═══ -->
+    <div style="width:290px;flex-shrink:0;display:flex;flex-direction:column;gap:13px">
+      <div class="box" style="padding:14px">
+        <span class="tag">Booking for</span>
+        <div style="margin-top:9px;display:flex;flex-direction:column;gap:3px">
+          <span style="font-size:16px;font-weight:600;line-height:20px">Ramesh Kumar</span>
+          <span class="mo" style="font-size:12.5px;color:var(--dim)">U00110012</span>
+          <span style="font-size:11.5px;color:var(--dim)">male · 41y · Hajipur</span>
+        </div>
+        <div style="margin-top:11px;padding-top:11px;border-top:1px solid var(--line2)">
+          <span class="tag">Their history</span>
+          <div style="margin-top:7px;display:flex;flex-direction:column;gap:6px">
+            <sc-for list="{{history}}" as="h" hint-placeholder-count="3">
+              <div style="display:flex;align-items:baseline;gap:8px">
+                <span class="mo" style="font-size:11px;color:var(--faint);width:56px;flex-shrink:0">{{h.when}}</span>
+                <span style="font-size:12px">{{h.what}}</span>
+                <span class="pill {{h.cls}}" style="margin-left:auto">{{h.state}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <!-- The rebooking queue: the leave cascade's landing place. This is the only screen in the
+           product that can answer "the doctor is away — who do I have to call?" -->
+      <div class="box" style="padding:0;overflow:hidden">
+        <div style="padding:12px 14px 9px;display:flex;align-items:baseline;gap:8px">
+          <span class="tag">Need rebooking</span>
+          <span class="pill rd" style="margin-left:auto">{{rebookN}}</span>
+        </div>
+        <sc-for list="{{rebook}}" as="r" hint-placeholder-count="3">
+          <button class="brow" style="width:100%">
+            <span style="display:flex;flex-direction:column;gap:1px;min-width:0">
+              <span style="font-size:12.5px;font-weight:500">{{r.name}}</span>
+              <span class="mo" style="font-size:10.5px;color:var(--faint)">{{r.was}}</span>
+            </span>
+            <span class="mo" style="margin-left:auto;font-size:11px;color:var(--dim)">{{r.phone}}</span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+
+    <!-- ═══ THE WORKSPACE — the book itself ═══ -->
+    <div style="flex-grow:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+
+      <div class="box" style="padding:15px 16px;display:flex;flex-direction:column;gap:13px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:15px;font-weight:600">Book a slot</span>
+          <span style="font-size:11.5px;color:var(--faint)">a booking is a promise about a time — the board only shows times that exist</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:13px">
+          <div><label class="lbl">Doctor</label><input class="in" value="Dr Meera Iyer · Paediatrics" /></div>
+          <div><label class="lbl">Day</label><input class="in mo" value="Fri 04-Sep" /></div>
+          <div><label class="lbl">Room</label><input class="in" value="OPD-1 · Ground" /></div>
+        </div>
+
+        <!-- THE SLOT BOARD. Free, taken and unavailable are three different facts and look like
+             three different things — a greyed slot that might be either is how a desk double-books. -->
+        <div>
+          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px">
+            <span class="tag">Morning · 09:00–13:00</span>
+            <span style="font-size:11px;color:var(--faint)">{{slotNote}}</span>
+            <span style="margin-left:auto;display:flex;gap:12px;font-size:10.5px;color:var(--faint)">
+              <span style="display:flex;align-items:center;gap:5px"><span style="width:9px;height:9px;border-radius:2px;border:1px solid var(--line);background:var(--card)"></span>free</span>
+              <span style="display:flex;align-items:center;gap:5px"><span style="width:9px;height:9px;border-radius:2px;border:1px dashed var(--line);background:var(--wash)"></span>taken</span>
+              <span style="display:flex;align-items:center;gap:5px"><span style="width:9px;height:9px;border-radius:2px;background:var(--green)"></span>yours</span>
+            </span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(8, minmax(0, 1fr));gap:7px">
+            <sc-for list="{{slots}}" as="s" hint-placeholder-count="24">
+              <button class="slot {{s.cls}}" onClick="{{s.pick}}">{{s.t}}</button>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:11px;border-top:1px solid var(--line2);padding-top:13px">
+          <button class="pri">{{bookLabel}} <span class="kb" style="border-color:rgba(255,255,255,.3);background:transparent;color:#cfe8dc">Ctrl ⏎</span></button>
+          <button class="sec">Book without leaving registration <span class="kb">F7</span></button>
+          <span style="margin-left:auto;font-size:11.5px;color:var(--faint)">{{bookNote}}</span>
+        </div>
+      </div>
+
+      <!-- ═══ TODAY'S BOOK — arrivals, and the one action each row needs.
+           Check-in is where an appointment becomes a visit and a token comes out; it is a BUTTON on
+           the row rather than a screen of its own, because the clerk is looking at the person. ═══ -->
+      <div class="box" style="padding:0;overflow:hidden;flex-grow:1">
+        <div style="padding:13px 16px 10px;display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:14px;font-weight:600">Today's book</span>
+          <span style="font-size:11.5px;color:var(--faint)">Thu 03-Sep · Dr Meera Iyer</span>
+          <span style="margin-left:auto;display:flex;gap:6px">
+            <span class="pill on">55 checked in</span><span class="pill gd">9 to arrive</span><span class="pill rd">3 missed</span>
+          </span>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;padding:6px 16px;background:var(--wash)">
+          <span class="tag" style="width:52px">Time</span>
+          <span class="tag" style="flex-grow:1">Patient</span>
+          <span class="tag" style="width:96px">Status</span>
+          <span class="tag" style="width:120px;text-align:right">Action</span>
+        </div>
+        <sc-for list="{{book}}" as="b" hint-placeholder-count="6">
+          <div class="brow" style="padding-left:16px;padding-right:16px">
+            <span class="mo" style="width:52px;font-size:12px;color:var(--dim);flex-shrink:0">{{b.t}}</span>
+            <span style="flex-grow:1;min-width:0;display:flex;flex-direction:column;gap:1px">
+              <span style="font-size:13px;font-weight:500">{{b.name}}</span>
+              <span style="font-size:11px;color:var(--faint)">{{b.sub}}</span>
+            </span>
+            <span style="width:96px;flex-shrink:0"><span class="pill {{b.cls}}">{{b.state}}</span></span>
+            <span style="width:120px;flex-shrink:0;display:flex;justify-content:flex-end">
+              <sc-if value="{{b.act}}" hint-placeholder-val="{{ true }}">
+                <button class="sec" style="height:28px;font-size:11.5px;{{b.actStyle}}">{{b.actLabel}}</button>
+              </sc-if>
+              <sc-if value="{{b.tok}}" hint-placeholder-val="{{ false }}">
+                <span class="mo" style="font-size:12px;color:var(--dim)">token {{b.token}}</span>
+              </sc-if>
+            </span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="background:var(--agent);color:var(--agent-fg);padding:9px 22px;display:flex;align-items:center;gap:12px">
+    <span class="agchip" style="padding:0"><b>Assistant</b></span>
+    <span style="font-size:11.5px;color:var(--agent-dim)">{{tick}}</span>
+    <span class="agdo" style="margin-left:auto">Draft the calls</span>
+    <span style="display:flex;align-items:center;gap:5px"><span class="kb dk">F2</span><span style="font-size:10.5px;color:var(--agent-dim)">pull up</span></span>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{
+  "leave": {"editor":"boolean","default":true,"section":"Try it"},
+  "picked": {"editor":"enum","default":"10:20","options":["none","09:40","10:20","11:00"],
+             "tsType":"string","section":"Try it"}
+}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { picked: null }; }
+
+  renderVals() {
+    const leave = this.props.leave ?? true;
+    const chosen = this.state.picked ?? (this.props.picked === "none" ? null : (this.props.picked ?? "10:20"));
+
+    const taken = ["09:00", "09:10", "09:20", "09:50", "10:00", "10:40", "11:20", "11:30", "12:10"];
+    const times = [];
+    for (let m = 9 * 60; m < 13 * 60; m += 10) {
+      times.push(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+    }
+    const slots = times.map((t) => ({
+      t,
+      cls: t === chosen ? "sel" : taken.includes(t) ? "taken" : "free",
+      pick: taken.includes(t) ? () => {} : () => this.setState({ picked: t }),
+    }));
+
+    const book = [
+      { t: "09:00", name: "Sunita Devi", sub: "U00110020 · revisit", state: "seen", cls: "", tok: true, token: "4", act: false },
+      { t: "09:10", name: "Amit Verma", sub: "U00110031 · new", state: "in consult", cls: "on", tok: true, token: "5", act: false },
+      { t: "09:20", name: "Priya Nair", sub: "U00110049 · revisit", state: "waiting", cls: "on", tok: true, token: "6", act: false },
+      { t: "09:30", name: "Mohammed Ali", sub: "U00110054 · new", state: "booked", cls: "gd", act: true, actLabel: "Check in", tok: false,
+        actStyle: "border-color:var(--green);color:var(--green);font-weight:600" },
+      { t: "09:40", name: "Kavita Sharma", sub: "U00110066 · new", state: "booked", cls: "gd", act: true, actLabel: "Check in", tok: false,
+        actStyle: "border-color:var(--green);color:var(--green);font-weight:600" },
+      { t: "08:50", name: "Lakshmi Prasad", sub: "U00110078 · revisit", state: "missed", cls: "rd", act: true, actLabel: "Rebook", tok: false, actStyle: "" },
+    ];
+
+    const rebook = [
+      { name: "Bhola Sah", was: "Mon 07-Sep 10:00 · Dr Rao", phone: "98351 20114" },
+      { name: "Rekha Devi", was: "Mon 07-Sep 10:20 · Dr Rao", phone: "97711 33902" },
+      { name: "Arjun Yadav", was: "Mon 07-Sep 11:40 · Dr Rao", phone: "99001 76220" },
+    ];
+
+    return {
+      slots, book, rebook,
+      rebookN: leave ? "5 patients" : "none",
+      leaveCls: leave ? "gd" : "on",
+      leaveNote: leave ? "Dr Rao on leave from Mon 07-Sep" : "no leave declared this week",
+      slotNote: chosen ? `10-minute slots · ${chosen} held for this patient` : "10-minute slots · nothing held yet",
+      bookLabel: chosen ? `Book ${chosen} with Dr Iyer` : "Pick a time first",
+      bookNote: chosen ? "confirms by SMS in Hindi · no token until they arrive" : "a slot is not held until it is booked",
+      history: [
+        { when: "14-Aug", what: "Dr Iyer · Paediatrics", state: "seen", cls: "" },
+        { when: "02-Jul", what: "Dr Sharma · General", state: "seen", cls: "" },
+        { when: "19-Jun", what: "Dr Iyer · Paediatrics", state: "missed", cls: "gd" },
+      ],
+      tick: leave
+        ? "Dr Rao's Monday list is 5 people. Dr Iyer has 5 free slots that morning — shall I draft the calls?"
+        : "Nothing needs moving today.",
+    };
+  }
+}
+</script>
+</body>
+</html>

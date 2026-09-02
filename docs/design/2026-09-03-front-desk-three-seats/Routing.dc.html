@@ -1,0 +1,316 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Devanagari:wght@400;600&display=swap">
+  <style>
+    :root{
+      --paper:#f4f7f4; --card:#ffffff; --ink:#132420; --line:#dfe7e1; --line2:#ecf1ed;
+      --dim:#5c6f66; --faint:#8ea69a; --wash:#eef3ef;
+      --green:#0e6b4e; --green-soft:rgba(14,107,78,.08); --green-line:rgba(14,107,78,.35);
+      --gold:#dd8f1c; --gold-soft:rgba(221,143,28,.10); --gold-line:rgba(221,143,28,.45);
+      --red:#b23a30; --agent:#132420; --agent-fg:#d9efe4; --agent-dim:#7fa392; --mint:#35c48f;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--paper);color:var(--ink);
+      font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:var(--green)} a:hover{color:#0a5039}
+    button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0;text-align:left}
+    input{font:inherit;color:inherit} input:focus{outline:none}
+    .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+    .dev{font-family:"IBM Plex Sans Devanagari","Nirmala UI",Mangal,sans-serif}
+    .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;
+      letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+    .kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:20px;padding:0 5px;
+      border-radius:3px;border:1px solid var(--line);background:var(--card);font-family:"IBM Plex Mono",monospace;
+      font-size:9px;font-weight:600;color:var(--dim);flex-shrink:0}
+    .kb.dk{border-color:#2c443a;background:#1c332b;color:var(--agent-dim)}
+    .box{background:var(--card);border:1px solid var(--line);border-radius:8px}
+    .in{height:46px;width:100%;border-radius:6px;border:1px solid var(--line);background:var(--card);padding:0 13px;font-size:15px}
+    .in:focus{border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+    .pri{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 18px;
+      border-radius:6px;background:var(--green);color:#f2faf6;font-size:13px;font-weight:600;border:1px solid var(--green)}
+    .sec{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 13px;
+      border-radius:6px;border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:500}
+    .sec:hover{border-color:var(--faint)}
+    .pill{display:inline-flex;align-items:center;gap:6px;height:23px;padding:0 9px;border-radius:4px;
+      font-size:10.5px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--dim);white-space:nowrap}
+    .pill.on{border-color:var(--green-line);background:var(--green-soft);color:var(--green)}
+    .pill.gd{border-color:var(--gold-line);background:var(--gold-soft);color:var(--gold)}
+    .drow{display:flex;align-items:center;gap:11px;padding:9px 13px;border-top:1px solid var(--line2)}
+    .drow:hover{background:var(--wash)}
+    .drow.pick{background:var(--green-soft)}
+    .bar{height:8px;border-radius:2px;flex-grow:1;background:var(--wash);overflow:hidden}
+    .bar i{display:block;height:100%;border-radius:2px}
+    .agchip{display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border-radius:6px;
+      background:var(--agent);color:var(--agent-fg);font-size:12px;line-height:17px}
+    .agchip b{color:#fff;font-weight:600}
+    .agdo{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:5px;flex-shrink:0;
+      background:var(--mint);color:#0b2018;font-size:11px;font-weight:700}
+    .tabp{display:inline-flex;align-items:center;height:27px;padding:0 11px;border-radius:5px;
+      border:1px solid var(--line);background:var(--card);font-size:11.5px;font-weight:600;color:var(--dim)}
+    .tabp.on{border-color:var(--green-line);background:var(--green-soft);color:var(--green)}
+  </style>
+</helmet>
+
+<div style="min-height:1080px;display:flex;flex-direction:column;background:var(--paper)">
+
+  <div style="display:flex;align-items:center;gap:14px;padding:11px 22px;background:var(--card);border-bottom:1px solid var(--line)">
+    <span style="font-weight:700">CRK</span><span style="color:var(--faint)">|</span>
+    <span style="font-weight:600">Walk-in · finding a doctor</span>
+    <span class="mo" style="font-size:11px;color:var(--faint)">/registration → the visit</span>
+    <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
+      <span class="pill">28 waiting in the building</span>
+      <span class="pill on">Ramesh Kumar · U00110012</span>
+    </span>
+  </div>
+
+  <div style="flex-grow:1;padding:18px 22px;display:flex;flex-direction:column;gap:15px">
+
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="tabp on">walk-in now</span>
+      <span class="tabp">future appointment</span>
+      <span style="font-size:11px;color:var(--faint)">a future booking never drops today's session</span>
+    </div>
+
+    <!-- ═══ TWO DOORS, EQUAL WEIGHT.
+         Desk One offers both and neither is the fallback: a clerk who KNOWS the doctor should not
+         have to describe a symptom to reach them, and a clerk who does not should not have to guess
+         a name. Tab moves between the two — the left is field 1, the right is field 2. ═══ -->
+    <div style="display:grid;grid-template-columns:1fr 1.35fr;gap:15px;align-items:start">
+
+      <!-- DOOR A — the clerk already knows -->
+      <div class="box" style="padding:15px 16px;display:flex;flex-direction:column;gap:11px">
+        <div style="display:flex;align-items:baseline;gap:9px">
+          <span style="font-size:15px;font-weight:600">They asked for a doctor</span>
+          <span class="kb" style="margin-left:auto">Tab 1</span>
+        </div>
+        <input class="in" value="{{docQ}}" placeholder="type a doctor's name…" />
+        <div style="display:flex;flex-direction:column;gap:0">
+          <sc-for list="{{named}}" as="d" hint-placeholder-count="2">
+            <div class="drow" style="padding-left:0;padding-right:0">
+              <span style="font-size:12.5px;font-weight:500;width:118px">{{d.n}}</span>
+              <span class="mo" style="font-size:10.5px;color:var(--faint);width:44px">{{d.rm}}</span>
+              <span class="bar"><i style="width:{{d.pct}};background:{{d.ink}}"></i></span>
+              <span class="mo" style="font-size:11px;color:var(--dim);width:96px;text-align:right">{{d.wait}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <p style="margin:0;font-size:11px;color:var(--faint);line-height:15px">
+          The wait is minutes AND a clock time, always both — the clerk reasons in minutes and the
+          patient asks <span class="dev">kितने बजे?</span>
+        </p>
+      </div>
+
+      <!-- DOOR B — the department, from the complaint -->
+      <div class="box" style="padding:15px 16px;display:flex;flex-direction:column;gap:11px">
+        <div style="display:flex;align-items:baseline;gap:9px">
+          <span style="font-size:15px;font-weight:600">Or say what brings them in</span>
+          <span class="kb" style="margin-left:auto">Tab 2</span>
+        </div>
+        <input class="in" value="{{sy}}" placeholder="seene mein dard · fever · knee · sugar-BP…" />
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          <sc-for list="{{chips}}" as="c" hint-placeholder-count="5">
+            <button class="pill {{c.cls}}" style="height:26px" onClick="{{c.pick}}">{{c.t}}</button>
+          </sc-for>
+        </div>
+
+        <!-- ═══ THE ASSIGNMENT, WITH ITS REASON. This is the heart of the request.
+             The OS picks; the clerk sees WHY and can overrule with one keystroke. It never routes
+             silently — the clerk is the one talking to the patient and may know something the
+             board does not ("she wants a lady doctor"). ═══ -->
+        <sc-if value="{{assigned}}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px solid {{pickEdge}};background:{{pickWash}};border-radius:7px;padding:12px 13px">
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px">
+              <span class="tag" style="color:{{pickInk}}">{{pickWhy}}</span>
+              <span class="pill {{pickCls}}" style="margin-left:auto">{{pickBadge}}</span>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:10px">
+              <span style="font-size:17px;font-weight:600">{{pick.n}}</span>
+              <span style="font-size:12px;color:var(--dim)">{{dept}}</span>
+              <span class="mo" style="font-size:11px;color:var(--faint)">{{pick.rm}}</span>
+            </div>
+            <p style="margin:6px 0 0;font-size:12px;color:var(--dim);line-height:17px">{{pickLine}}</p>
+            <div style="display:flex;align-items:center;gap:9px;margin-top:11px">
+              <span class="bar" style="max-width:160px"><i style="width:{{pick.pct}};background:{{pick.ink}}"></i></span>
+              <span class="mo" style="font-size:12.5px;font-weight:600">{{pick.wait}}</span>
+              <button class="pri" style="margin-left:auto;height:36px">Seat with {{pick.short}} <span class="kb" style="border-color:rgba(255,255,255,.3);background:transparent;color:#cfe8dc">⏎</span></button>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- The rest of the department, so the override is one glance and one arrow key -->
+        <div>
+          <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:2px">
+            <span class="tag">{{dept}} — everyone on today</span>
+            <span style="font-size:10.5px;color:var(--faint);margin-left:auto">↑ ↓ to move · ⏎ to seat</span>
+          </div>
+          <sc-for list="{{pool}}" as="d" hint-placeholder-count="4">
+            <div class="drow {{d.selCls}}" style="padding-left:0;padding-right:0">
+              <span style="width:5px;height:5px;border-radius:50%;background:{{d.dot}};flex-shrink:0"></span>
+              <span style="font-size:12.5px;font-weight:{{d.wt}};width:126px">{{d.n}}</span>
+              <span class="mo" style="font-size:10.5px;color:var(--faint);width:44px">{{d.rm}}</span>
+              <span class="bar"><i style="width:{{d.pct}};background:{{d.ink}}"></i></span>
+              <span class="mo" style="font-size:11px;color:var(--dim);width:96px;text-align:right">{{d.wait}}</span>
+              <sc-if value="{{d.tagged}}" hint-placeholder-val="{{ false }}">
+                <span class="pill on">{{d.tag}}</span>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+
+        <!-- The pure department queue: no doctor named at all -->
+        <div style="display:flex;align-items:center;gap:10px;border-top:1px solid var(--line2);padding-top:11px">
+          <button class="sec">Join the {{dept}} queue, any doctor</button>
+          <span style="font-size:11px;color:var(--faint);line-height:15px">
+            pool ~{{poolWait}} — whoever frees first takes them; the board decides at call time, not now
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ THE RULE, WRITTEN DOWN. A routing rule nobody can read is a rule nobody trusts, and the
+         first time it surprises a clerk they stop using the department door entirely. ═══ -->
+    <div class="box" style="padding:14px 16px">
+      <span class="tag">How the department door picks a doctor</span>
+      <div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:15px;margin-top:11px">
+        <sc-for list="{{rules}}" as="r" hint-placeholder-count="3">
+          <div style="display:flex;gap:11px">
+            <span class="mo" style="font-size:19px;font-weight:700;color:{{r.ink}};line-height:20px">{{r.n}}</span>
+            <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+              <span style="font-size:12.5px;font-weight:600">{{r.t}}</span>
+              <span style="font-size:11.5px;color:var(--dim);line-height:16px">{{r.b}}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin:11px 0 0;padding-top:11px;border-top:1px solid var(--line2);font-size:11.5px;color:var(--dim);line-height:16px">
+        Every one of these is a PROPOSAL the clerk confirms. The system never seats a patient on its
+        own — and when it proposes, it says which rule fired, so a clerk who disagrees knows what
+        they are overruling rather than fighting an invisible preference.
+      </p>
+    </div>
+  </div>
+
+  <div style="background:var(--agent);color:var(--agent-fg);padding:11px 22px;display:flex;align-items:flex-start;gap:12px">
+    <span style="font-weight:600;color:#fff;font-size:11.5px;flex-shrink:0;padding-top:2px">Assistant</span>
+    <span style="font-size:11.5px;color:var(--agent-dim);line-height:17px;flex-grow:1" innerHTML="{{tick}}"></span>
+    <span class="agdo">{{tickDo}}</span>
+    <span style="display:flex;align-items:center;gap:5px;flex-shrink:0;padding-top:2px"><span class="kb dk">F2</span><span style="font-size:10.5px;color:var(--agent-dim)">pull up</span></span>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{
+  "rule": {"editor":"enum","default":"continuity",
+           "options":["continuity","shortest","review"],
+           "tsType":"string","section":"Which rule fired"},
+  "symptom": {"editor":"enum","default":"sugar BP","options":["sugar BP","chest","fever","knee","pregnancy"],
+              "tsType":"string","section":"Which rule fired"}
+}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { sy: null }; }
+
+  renderVals() {
+    const rule = this.props.rule ?? "continuity";
+    const sy = this.state.sy ?? this.props.symptom ?? "sugar BP";
+
+    const DEPT = {
+      "sugar BP":  { name: "General Medicine", where: "Ground · Block A" },
+      "chest":     { name: "General Medicine", where: "Ground · Block A" },
+      "fever":     { name: "General Medicine", where: "Ground · Block A" },
+      "knee":      { name: "Orthopaedics",     where: "First · Block B" },
+      "pregnancy": { name: "Obstetrics",       where: "First · Block C" },
+    };
+    const dept = DEPT[sy].name;
+
+    // 12 minutes a consult, the department's measured average — the same number the built
+    // `waitEstimate` uses. Wait is ALWAYS minutes and a clock time, never one of the two.
+    const avg = 12, now = 9 * 60 + 12;
+    const clock = (m) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+    const mk = (n, rm, q) => {
+      const w = q * avg;
+      return { n, rm, q, short: n.replace(/^Dr /, "Dr "),
+               wait: `${q} ahead · ~${w}m · ${clock(now + w)}`,
+               pct: `${Math.min(100, q * 14)}%`,
+               ink: q >= 6 ? "#b23a30" : q >= 3 ? "#dd8f1c" : "#0e6b4e",
+               dot: q >= 6 ? "#b23a30" : q >= 3 ? "#dd8f1c" : "#0e6b4e" };
+    };
+
+    const pools = {
+      "General Medicine": [mk("Dr Nishant Rao", "G-12", 6), mk("Dr Anil Sharma", "G-14", 2), mk("Dr Farah Ahmed", "G-15", 4)],
+      "Orthopaedics":     [mk("Dr Faisal Khan", "B-21", 3), mk("Dr Sneha Patil", "B-22", 1)],
+      "Obstetrics":       [mk("Dr Meera Iyer", "C-04", 5), mk("Dr Anita Bose", "C-05", 2)],
+    };
+    const pool = pools[dept];
+
+    // ═══ THE THREE RULES, IN PRECEDENCE ORDER ═══
+    // Continuity beats a shorter line. A patient who saw Dr Rao in June is HIS patient: he has the
+    // history in his head, and sending them to whoever is free costs a re-taken history and loses
+    // the thread. The clerk can still overrule — it is a proposal.
+    const seenBefore = pool[0];              // Dr Nishant Rao — the longest line, deliberately
+    const shortest = pool.reduce((a, b) => (a.q <= b.q ? a : b));
+
+    const cfg = {
+      continuity: {
+        pick: seenBefore, badge: "seen him before", cls: "on",
+        why: "Rule 1 · continuity of care", ink: "#0e6b4e",
+        edge: "rgba(14,107,78,.35)", wash: "rgba(14,107,78,.08)",
+        line: `Dr Rao consulted Ramesh on 14-Aug for the same complaint. He is 4 ahead of the shortest line today — continuity wins that trade, and the history does not have to be taken again.`,
+      },
+      review: {
+        pick: seenBefore, badge: "free review window", cls: "on",
+        why: "Rule 1 · continuity, and the visit is free", ink: "#0e6b4e",
+        edge: "rgba(14,107,78,.35)", wash: "rgba(14,107,78,.08)",
+        line: `Dr Rao saw Ramesh on 28-Aug; the review window runs to 11-Sep. Back to him and there is nothing to collect — the bill zeroes itself and the token prints PAID.`,
+      },
+      shortest: {
+        pick: shortest, badge: "shortest wait", cls: "gd",
+        why: "Rule 2 · nobody has seen them here", ink: "#dd8f1c",
+        edge: "rgba(221,143,28,.45)", wash: "rgba(221,143,28,.10)",
+        line: `No prior consultation in ${dept}. Of the doctors on today, ${shortest.n} has the shortest line — ${shortest.q} ahead. Availability decides only when continuity has nothing to say.`,
+      },
+    }[rule];
+
+    const poolWait = `${Math.min(...pool.map((d) => d.q)) * avg} min`;
+
+    return {
+      dept, sy, poolWait,
+      docQ: "",
+      named: pools["General Medicine"].slice(0, 2),
+      chips: ["chest", "fever", "knee", "sugar BP", "pregnancy"].map((t) => ({
+        t, cls: t === sy ? "on" : "", pick: () => this.setState({ sy: t }),
+      })),
+      assigned: true,
+      pick: cfg.pick, pickBadge: cfg.badge, pickCls: cfg.cls, pickWhy: cfg.why,
+      pickInk: cfg.ink, pickEdge: cfg.edge, pickWash: cfg.wash, pickLine: cfg.line,
+      pool: pool.map((d) => ({
+        ...d,
+        selCls: d.n === cfg.pick.n ? "pick" : "",
+        wt: d.n === cfg.pick.n ? "600" : "500",
+        tagged: d.n === seenBefore.n && rule !== "shortest",
+        tag: rule === "review" ? "free till 11-Sep" : "saw them 14-Aug",
+      })),
+      rules: [
+        { n: "1", t: "Have we seen them here before?", ink: "#0e6b4e",
+          b: "A prior consultation in this department routes the patient back to that doctor — even when his line is longer. The history is already in his head." },
+        { n: "2", t: "Otherwise, who is free soonest?", ink: "#dd8f1c",
+          b: "Among the doctors actually on duty today, the shortest line wins. Availability decides only when continuity has nothing to say." },
+        { n: "3", t: "Or no doctor at all", ink: "#5c6f66",
+          b: "“Join the department queue” names nobody: whoever frees first takes them. The board decides at call time, which is the honest answer when the line is long." },
+      ],
+      tick: rule === "shortest"
+        ? `<b>${sy}</b> → ${dept}. Nobody here has seen Ramesh before, so I have taken the shorter line: ${shortest.n}, ${shortest.q} ahead.`
+        : `<b>Dr Rao saw Ramesh on 14-Aug.</b> He is 4 ahead of Dr Sharma today — worth the wait to keep the same doctor, but say the word and I will move him.`,
+      tickDo: rule === "shortest" ? "assign" : "move to Dr Sharma",
+    };
+  }
+}
+</script>
+</body>
+</html>

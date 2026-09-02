@@ -1,0 +1,364 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Devanagari:wght@400;600&display=swap">
+  <style>
+    :root{
+      --paper:#f4f7f4; --card:#ffffff; --ink:#132420; --line:#dfe7e1; --line2:#ecf1ed;
+      --dim:#5c6f66; --faint:#8ea69a; --wash:#eef3ef;
+      --green:#0e6b4e; --green-soft:rgba(14,107,78,.08); --green-line:rgba(14,107,78,.35);
+      --gold:#dd8f1c; --gold-soft:rgba(221,143,28,.10); --gold-line:rgba(221,143,28,.45);
+      --red:#b23a30; --agent:#132420; --agent-fg:#d9efe4; --agent-dim:#7fa392; --mint:#35c48f;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--paper);color:var(--ink);
+      font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:var(--green)} a:hover{color:#0a5039}
+    button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0;text-align:left}
+    input{font:inherit;color:inherit} input:focus{outline:none}
+    .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+    .dev{font-family:"IBM Plex Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.6}
+    .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;
+      letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+    .kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:20px;padding:0 5px;
+      border-radius:3px;border:1px solid var(--line);background:var(--card);font-family:"IBM Plex Mono",monospace;
+      font-size:9px;font-weight:600;color:var(--dim);flex-shrink:0}
+    .kb.dk{border-color:#2c443a;background:#1c332b;color:var(--agent-dim)}
+    .box{background:var(--card);border:1px solid var(--line);border-radius:8px}
+    .in{height:40px;width:100%;border-radius:6px;border:1px solid var(--line);background:var(--card);padding:0 12px;font-size:14px}
+    .in:focus{border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+    .lbl{font-size:10.5px;font-weight:600;color:var(--dim);margin-bottom:5px;display:block}
+    .pri{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 18px;
+      border-radius:6px;background:var(--green);color:#f2faf6;font-size:13px;font-weight:600;border:1px solid var(--green)}
+    .sec{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 13px;
+      border-radius:6px;border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:500}
+    .sec:hover{border-color:var(--faint)}
+    .pill{display:inline-flex;align-items:center;gap:6px;height:23px;padding:0 9px;border-radius:4px;
+      font-size:10.5px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--dim);white-space:nowrap}
+    .pill.on{border-color:var(--green-line);background:var(--green-soft);color:var(--green)}
+    .pill.gd{border-color:var(--gold-line);background:var(--gold-soft);color:var(--gold)}
+    .hit{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);
+      border-radius:6px;background:var(--card);width:100%}
+    .hit:hover{border-color:var(--green-line);background:var(--green-soft)}
+    .agchip{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border-radius:6px;
+      background:var(--agent);color:var(--agent-fg);font-size:11.5px;line-height:16px}
+    .agchip b{color:#fff;font-weight:600}
+    .agdo{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:5px;flex-shrink:0;
+      background:var(--mint);color:#0b2018;font-size:11px;font-weight:700}
+    .grd{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:13px}
+  </style>
+</helmet>
+
+<div style="min-height:980px;display:flex;flex-direction:column;background:var(--paper)">
+
+  <div style="display:flex;align-items:center;gap:14px;padding:11px 22px;background:var(--card);border-bottom:1px solid var(--line)">
+    <span style="font-weight:700">CRK</span><span style="color:var(--faint)">|</span>
+    <span style="font-weight:600">Registration</span>
+    <span class="mo" style="font-size:11px;color:var(--faint)">/registration</span>
+    <span style="margin-left:auto;display:flex;align-items:center;gap:14px">
+      <span class="pill on">drawer not needed here</span>
+      <button class="sec" style="gap:9px"><span>Search — the cursor starts here</span><span class="kb">Esc</span></button>
+    </span>
+  </div>
+
+  <div style="flex-grow:1;display:flex;gap:16px;padding:18px 22px">
+
+    <!-- ═══ THE DOSSIER RAIL — Desk One's left column, and it now says who rather than which row.
+         Name, UHID, the two facts a clerk can check against the person standing there. ═══ -->
+    <div style="width:290px;flex-shrink:0;display:flex;flex-direction:column;gap:13px">
+      <div class="box" style="padding:14px">
+        <span class="tag">Patient in hand</span>
+        <sc-if value="{{hasPatient}}" hint-placeholder-val="{{ true }}">
+          <div style="margin-top:9px;display:flex;flex-direction:column;gap:3px">
+            <span style="font-size:16px;font-weight:600;line-height:20px">{{p.name}}</span>
+            <span class="dev" style="font-size:12.5px;color:var(--dim)">{{p.hindi}}</span>
+            <span class="mo" style="font-size:12.5px;color:var(--dim);margin-top:3px">{{p.uhid}}</span>
+            <span style="font-size:11.5px;color:var(--dim)">{{p.facts}}</span>
+          </div>
+          <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:5px">
+            <sc-for list="{{p.flags}}" as="f" hint-placeholder-count="2">
+              <span class="pill {{f.cls}}">{{f.t}}</span>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{noPatient}}" hint-placeholder-val="{{ false }}">
+          <p style="margin:9px 0 0;color:var(--faint);font-size:12.5px">Nobody at the counter yet.</p>
+        </sc-if>
+      </div>
+
+      <!-- The card that will be printed. Shown while registering so the clerk knows what the
+           patient walks away with — not discovered after the fact. -->
+      <div class="box" style="padding:14px;display:flex;flex-direction:column;gap:9px">
+        <span class="tag">Their card</span>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:52px;height:52px;border-radius:6px;border:1px dashed var(--line);
+                      display:flex;align-items:center;justify-content:center;color:var(--faint);flex-shrink:0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M3 8h3l2-3h8l2 3h3v11H3V8Z"/></svg>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+            <span class="mo" style="font-size:15px;font-weight:600">{{nextUhid}}</span>
+            <span style="font-size:10.5px;color:var(--faint);line-height:14px">the next number this hospital will issue</span>
+          </div>
+        </div>
+        <button class="sec" style="justify-content:flex-start;gap:8px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M3 8h3l2-3h8l2 3h3v11H3V8Z"/></svg>
+          Take a photo
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══ THE WORKSPACE ═══ -->
+    <div style="flex-grow:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+
+      <!-- SEARCH FIRST. The owner's ruling, kept twice over on Desk One: search before a single
+           form field, and say why in the same breath. -->
+      <div class="box" style="padding:15px 16px">
+        <label class="lbl" style="font-size:15px;font-weight:600;color:var(--ink);margin-bottom:9px">Who is in front of you?</label>
+        <input class="in" value="{{q}}" placeholder="name, mobile or UHID — any part of the name" />
+        <p style="margin:7px 0 0;font-size:11.5px;color:var(--faint)">
+          Search before you type a single form field — a duplicate stopped here costs nothing.
+          A surname works: <span class="mo">Kumar</span> finds every Kumar.
+        </p>
+
+        <sc-if value="{{showHits}}" hint-placeholder-val="{{ true }}">
+          <div style="margin-top:12px;display:flex;flex-direction:column;gap:7px">
+            <sc-for list="{{hits}}" as="h" hint-placeholder-count="3">
+              <button class="hit">
+                <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex-grow:1">
+                  <div style="display:flex;align-items:baseline;gap:9px">
+                    <span style="font-size:14px;font-weight:600">{{h.name}}</span>
+                    <span class="mo" style="font-size:12px;color:var(--dim)">{{h.uhid}}</span>
+                  </div>
+                  <div style="display:flex;align-items:baseline;gap:9px">
+                    <span style="font-size:11.5px;color:var(--dim)">{{h.facts}}</span>
+                    <span class="mo" style="font-size:11.5px;color:var(--dim)">{{h.phone}}</span>
+                    <span style="font-size:11px;color:var(--faint)">{{h.last}}</span>
+                  </div>
+                </div>
+                <span class="pill">{{h.why}}</span>
+              </button>
+            </sc-for>
+            <div style="display:flex;align-items:center;gap:11px;padding-top:9px;border-top:1px solid var(--line2)">
+              <span style="font-size:11.5px;color:var(--faint)">None of these is the person in front of you?</span>
+              <button class="sec" style="border-color:var(--green);color:var(--green);font-weight:600">
+                Register new <span class="kb">F4</span>
+              </button>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- THE FORM. Four fields, then the four things the old registration desk owned and the
+           counter did not: guardian, photo, ABHA, confidential. -->
+      <div class="box" style="padding:15px 16px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span style="font-size:15px;font-weight:600">New patient</span>
+          <span style="font-size:11.5px;color:var(--faint)">four fields open a visit — the rest is only asked when it applies</span>
+        </div>
+
+        <div class="grd">
+          <div style="grid-column:span 2"><label class="lbl">Name</label><input class="in" value="Farida Khatoon" /></div>
+          <div><label class="lbl">Mobile</label><input class="in mo" value="98350 41772" /></div>
+          <div><label class="lbl">Age</label><input class="in mo" value="{{age}}" /></div>
+          <div><label class="lbl">Sex</label>
+            <div style="display:flex;gap:7px">
+              <sc-for list="{{sexes}}" as="s" hint-placeholder-count="3">
+                <button class="pill {{s.cls}}" style="height:40px;flex-grow:1;justify-content:center;font-size:12.5px">{{s.t}}</button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ THE TWO DOORS TO A DOCTOR — Desk One's walk-in, inline.
+             Neither is the fallback. A clerk who KNOWS the doctor should not have to describe a
+             symptom to reach them; a clerk who does not should not have to guess a name. Tab lands
+             on whichever door the clerk starts typing in. The full routing rule, and the wait model
+             it reads, is the Routing artboard. ═══ -->
+        <div style="border-top:1px solid var(--line2);padding-top:13px">
+          <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:9px">
+            <span style="font-size:13px;font-weight:600">Who will see them?</span>
+            <span style="font-size:11px;color:var(--faint)">a doctor by name, or the complaint and we route it</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px">
+            <div>
+              <label class="lbl">A doctor, by name <span class="mo" style="color:var(--faint);font-weight:400">Tab 9</span></label>
+              <input class="in" value="{{docField}}" placeholder="type a name…" />
+            </div>
+            <div>
+              <label class="lbl">Or what brings them in <span class="mo" style="color:var(--faint);font-weight:400">Tab 10</span></label>
+              <input class="in" value="{{syField}}" placeholder="seene mein dard · fever · sugar-BP…" />
+            </div>
+          </div>
+
+          <!-- The proposal, with its reason. Never a silent assignment. -->
+          <div style="margin-top:11px;border:1px solid var(--green-line);background:var(--green-soft);
+                      border-radius:7px;padding:11px 13px">
+            <div style="display:flex;align-items:center;gap:9px">
+              <span class="tag" style="color:var(--green)">{{routeWhy}}</span>
+              <span class="pill on" style="margin-left:auto">{{routeBadge}}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:11px;margin-top:8px">
+              <span style="font-size:15px;font-weight:600">{{routeDoc}}</span>
+              <span style="font-size:11.5px;color:var(--dim)">{{routeDept}}</span>
+              <span class="mo" style="font-size:11px;color:var(--faint)">{{routeRoom}}</span>
+              <span class="mo" style="margin-left:auto;font-size:12.5px;font-weight:600">{{routeWait}}</span>
+            </div>
+            <p style="margin:6px 0 0;font-size:11.5px;color:var(--dim);line-height:16px">{{routeLine}}</p>
+          </div>
+        </div>
+
+        <!-- ═══ GUARDIAN — DPDP §9 / D-31. It APPEARS when the age says minor and not before.
+             This is the block the counter did not have, which is why a child could not be
+             registered from it at all. It is not an optional section a clerk may skip: the
+             server refuses a known minor without one, so the form asks rather than failing. ═══ -->
+        <sc-if value="{{minor}}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px solid var(--gold-line);background:var(--gold-soft);border-radius:8px;padding:13px 14px">
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:11px">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#dd8f1c" stroke-width="1.7"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <span style="font-size:13px;font-weight:600;color:var(--gold)">{{age}} years old — a guardian is required</span>
+              <span class="pill gd" style="margin-left:auto">DPDP §9</span>
+            </div>
+            <div class="grd">
+              <div><label class="lbl">Guardian's name</label><input class="in" value="Imran Khatoon" /></div>
+              <div><label class="lbl">Relationship</label>
+                <div style="display:flex;gap:6px">
+                  <sc-for list="{{rels}}" as="r" hint-placeholder-count="3">
+                    <button class="pill {{r.cls}}" style="height:40px;flex-grow:1;justify-content:center;font-size:12px">{{r.t}}</button>
+                  </sc-for>
+                </div>
+              </div>
+              <div><label class="lbl">Guardian's mobile</label><input class="in mo" value="98350 41772" /></div>
+              <div><label class="lbl">Authority</label>
+                <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;height:40px">
+                  <span class="pill on">messages</span><span class="pill on">bills</span>
+                  <span class="pill">consents</span><span class="pill">records</span>
+                </div>
+              </div>
+            </div>
+            <p style="margin:9px 0 0;font-size:11px;color:var(--dim);line-height:15px">
+              What the guardian may do on this child's behalf is recorded now, and it is revocable.
+              Consent is not the same as billing — the two are separate switches on purpose.
+            </p>
+          </div>
+        </sc-if>
+
+        <!-- ═══ THE OTHER THREE, folded away until asked for. A counter form that shows ABHA,
+             photo and a confidentiality control to every walk-in is a form nobody finishes. ═══ -->
+        <div style="display:flex;flex-direction:column;gap:9px;border-top:1px solid var(--line2);padding-top:13px">
+          <sc-for list="{{folds}}" as="f" hint-placeholder-count="3">
+            <div>
+              <button style="display:flex;align-items:center;gap:10px;width:100%;padding:3px 0">
+                <span style="color:{{f.ink}};display:flex" innerHTML="{{f.icon}}"></span>
+                <span style="font-size:12.5px;font-weight:600">{{f.name}}</span>
+                <span style="font-size:11.5px;color:var(--faint)">{{f.note}}</span>
+                <span class="pill {{f.cls}}" style="margin-left:auto">{{f.state}}</span>
+              </button>
+              <sc-if value="{{f.open}}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:9px;padding:12px 13px;background:var(--wash);border-radius:6px">
+                  <div class="grd">
+                    <div><label class="lbl">{{f.aLabel}}</label><input class="in mo" value="{{f.aValue}}" /></div>
+                    <div><label class="lbl">{{f.bLabel}}</label><input class="in mo" value="{{f.bValue}}" /></div>
+                  </div>
+                  <p style="margin:9px 0 0;font-size:11px;color:var(--dim);line-height:15px">{{f.body}}</p>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:11px;border-top:1px solid var(--line2);padding-top:13px">
+          <button class="pri">Register and open the visit <span class="kb" style="border-color:rgba(255,255,255,.3);background:transparent;color:#cfe8dc">Ctrl ⏎</span></button>
+          <button class="sec">Cancel <span class="kb">Esc</span></button>
+          <span style="margin-left:auto;font-size:11.5px;color:var(--faint)">
+            issues <span class="mo" style="color:var(--dim)">{{nextUhid}}</span> · prints the card and the token
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="background:var(--agent);color:var(--agent-fg);padding:9px 22px;display:flex;align-items:center;gap:12px">
+    <span class="agchip" style="padding:0"><b>Assistant</b></span>
+    <span style="font-size:11.5px;color:var(--agent-dim)">{{tick}}</span>
+    <span class="agdo" style="margin-left:auto">Show me</span>
+    <span style="display:flex;align-items:center;gap:5px"><span class="kb dk">F2</span><span style="font-size:10.5px;color:var(--agent-dim)">pull up</span></span>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{
+  "age": {"editor":"int","default":8,"min":0,"max":110,"section":"Try it",
+          "tsType":"number"},
+  "stage": {"editor":"enum","default":"searched","options":["empty","searched","inhand"],
+            "tsType":"string","section":"Try it"},
+  "openFold": {"editor":"enum","default":"abha","options":["none","abha","photo","confidential"],
+               "tsType":"string","section":"Try it"}
+}'>
+class Component extends DCLogic {
+  renderVals() {
+    const age = this.props.age ?? 8;
+    const stage = this.props.stage ?? "searched";
+    const open = this.props.openFold ?? "abha";
+    const ic = (d) => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+
+    const hits = [
+      { name: "Farida Khatoon", uhid: "U00110012", facts: "female · 51y", phone: "98350 41772", last: "last seen 14-Aug", why: "same mobile" },
+      { name: "Farida Begum",   uhid: "U00121447", facts: "female · 33y", phone: "97710 20388", last: "last seen 02-Mar", why: "same name" },
+      { name: "Farida Khatun",  uhid: "U00133910", facts: "female · 51y", phone: "—",           last: "never returned", why: "approximate" },
+    ];
+
+    const folds = [
+      { key: "abha", name: "ABHA", note: "the national health id, if they have one",
+        ink: "#0e6b4e", state: open === "abha" ? "open" : "not linked", cls: open === "abha" ? "on" : "",
+        aLabel: "ABHA address", aValue: "farida.khatoon@abdm", bLabel: "ABHA number", bValue: "12-3456-7890-1234",
+        body: "One OTP links it. Verification status is recorded — self-declared and verified are different facts and the record keeps them apart.",
+        icon: ic('<path d="M12 2 4 6v6c0 5 3.4 8.9 8 10 4.6-1.1 8-5 8-10V6l-8-4Z"/><path d="M9 12h6M12 9v6"/>') },
+      { key: "photo", name: "Photograph", note: "taken at the counter, attached to the card",
+        ink: "#5c6f66", state: open === "photo" ? "open" : "none on file", cls: open === "photo" ? "on" : "",
+        aLabel: "Captured", aValue: "—", bLabel: "Attached to", bValue: "—",
+        body: "The photo is confirmed against the demographics before it attaches — large, side by side, an explicit yes. A photo on the wrong record is worse than no photo.",
+        icon: ic('<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M3 8h3l2-3h8l2 3h3v11H3V8Z"/>') },
+      { key: "confidential", name: "Confidential record", note: "a VIP, a staff member, a sensitive context",
+        ink: "#b23a30", state: open === "confidential" ? "open" : "ordinary record", cls: open === "confidential" ? "gd" : "",
+        aLabel: "Alias shown on every screen", aValue: "Patient 44", bLabel: "Reason (recorded)", bValue: "staff member",
+        body: "The alias replaces the name on furniture — the strip, the board, the queue display — for everyone, including people who may read the real name. Sealing is revocable; a UHID is not, which is why status never lives in the number.",
+        icon: ic('<rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>') },
+    ].map((f) => ({ ...f, open: f.key === open }));
+
+    const sexes = ["Female", "Male", "Other"].map((t, i) => ({ t, cls: i === 0 ? "on" : "" }));
+    const rels = ["Father", "Mother", "Other"].map((t, i) => ({ t, cls: i === 1 ? "on" : "" }));
+
+    return {
+      age, minor: age < 18, sexes, rels, folds, hits,
+      q: stage === "empty" ? "" : "Farida",
+      showHits: stage === "searched",
+      hasPatient: stage === "inhand", noPatient: stage !== "inhand",
+      nextUhid: "U00110012",
+      docField: "", syField: "sugar BP",
+      routeWhy: age < 18 ? "Rule 2 · nobody has seen them here" : "Rule 1 · continuity of care",
+      routeBadge: age < 18 ? "shortest wait" : "seen her before",
+      routeDoc: age < 18 ? "Dr Sneha Patil" : "Dr Nishant Rao",
+      routeDept: age < 18 ? "Paediatrics" : "General Medicine",
+      routeRoom: age < 18 ? "C-08" : "G-12",
+      routeWait: age < 18 ? "1 ahead · ~12m · 09:24" : "6 ahead · ~72m · 10:24",
+      routeLine: age < 18
+        ? "First visit to Paediatrics. Of the doctors on today, Dr Patil has the shortest line — availability decides only when continuity has nothing to say."
+        : "Dr Rao consulted her on 14-Aug for the same complaint. He is 4 ahead of the shortest line — continuity wins that trade, and the history does not have to be taken again. Overrule it on the routing screen if she asks for someone else.",
+      p: { name: "Farida Khatoon", hindi: "फ़रीदा ख़ातून", uhid: "U00110012", facts: "female · 51y · Hajipur",
+           flags: [{ t: "guardian on file", cls: "on" }, { t: "no ABHA", cls: "" }] },
+      tick: age < 18
+        ? "This child was here in June with a different guardian on the form — worth a look."
+        : "Three people on file share this mobile. They may be one family, or one duplicate.",
+    };
+  }
+}
+</script>
+</body>
+</html>

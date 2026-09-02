@@ -1,0 +1,269 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    :root{
+      --paper:#f4f7f4; --card:#ffffff; --ink:#132420; --line:#dfe7e1; --line2:#ecf1ed;
+      --dim:#5c6f66; --faint:#8ea69a; --wash:#eef3ef;
+      --green:#0e6b4e; --green-soft:rgba(14,107,78,.08); --green-line:rgba(14,107,78,.35);
+      --gold:#dd8f1c; --gold-soft:rgba(221,143,28,.10); --gold-line:rgba(221,143,28,.45);
+      --red:#b23a30; --red-soft:rgba(178,58,48,.09); --red-line:rgba(178,58,48,.38);
+      --agent:#132420; --agent-fg:#d9efe4; --agent-dim:#7fa392; --mint:#35c48f;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--paper);color:var(--ink);
+      font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:var(--green)} a:hover{color:#0a5039}
+    .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+    .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;
+      letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+    .box{background:var(--card);border:1px solid var(--line);border-radius:8px}
+    .k{display:flex;align-items:center;justify-content:center;height:30px;border-radius:4px;
+      border:1px solid var(--line);background:var(--card);font-family:"IBM Plex Mono",monospace;
+      font-size:10px;font-weight:600;color:var(--dim);flex-shrink:0}
+    .k.ours{border-color:var(--green);background:var(--green-soft);color:var(--green)}
+    .k.bad{border-color:var(--red-line);background:var(--red-soft);color:var(--red);
+      text-decoration:line-through;text-decoration-thickness:1px}
+    .k.wide{flex-grow:1}
+    .kb{display:inline-flex;align-items:center;justify-content:center;height:17px;min-width:21px;padding:0 5px;
+      border-radius:3px;border:1px solid var(--green);background:var(--green-soft);
+      font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:700;color:var(--green);flex-shrink:0}
+    .row{display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--line2)}
+    .pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:4px;
+      font-size:10.5px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--dim)}
+    .pill.on{border-color:var(--green-line);background:var(--green-soft);color:var(--green)}
+    .pill.rd{border-color:var(--red-line);background:var(--red-soft);color:var(--red)}
+    .tb{display:flex;align-items:center;gap:9px;padding:7px 11px;border-radius:6px;background:var(--card);
+      border:1px solid var(--line)}
+    .tbn{display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:50%;
+      background:var(--green);color:#f2faf6;font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:700;flex-shrink:0}
+  </style>
+</helmet>
+
+<div style="min-height:1180px;display:flex;flex-direction:column;background:var(--paper)">
+
+  <div style="display:flex;align-items:center;gap:14px;padding:11px 22px;background:var(--card);border-bottom:1px solid var(--line)">
+    <span style="font-weight:700">CRK</span><span style="color:var(--faint)">|</span>
+    <span style="font-weight:600">The counter is a keyboard</span>
+    <span style="margin-left:auto;display:flex;gap:7px">
+      <span class="pill on">the desk's keys</span>
+      <span class="pill rd">the browser already owns these</span>
+    </span>
+  </div>
+
+  <div style="flex-grow:1;padding:20px 22px;display:flex;flex-direction:column;gap:17px">
+
+    <!-- ═══ THE RULING THAT FORCED THIS BOARD ═══ -->
+    <div style="border:1px solid var(--red-line);background:var(--red-soft);border-radius:8px;padding:14px 16px">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:7px">
+        <span class="tag" style="color:var(--red)">Two chords you picked have to move</span>
+      </div>
+      <p style="margin:0;font-size:12.5px;line-height:18px;color:var(--ink);max-width:1080px">
+        <b>Ctrl+N</b> and <b>Ctrl+K</b> both belong to Chrome. Ctrl+N opens a new window and is on
+        Chrome's non-overridable list — the keystroke never reaches the page, so there is nothing to
+        intercept. Ctrl+K focuses the address bar as a search box. Your rule — no shortcut may
+        overlap a browser shortcut — settles both: they move to <b>F4</b> and to <b>nothing at all</b>,
+        because the search box is focused the moment a seat opens and <b>Esc</b> returns to it. A
+        shortcut for a field that already has the cursor is a shortcut nobody presses.
+        <b>F2 for the assistant survives untouched</b> — it is one of the five function keys no
+        browser claims.
+      </p>
+    </div>
+
+    <!-- ═══ THE BOARD ═══ -->
+    <div class="box" style="padding:16px 18px">
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:12px">
+        <span class="tag">What is safe, and what is already taken</span>
+        <span style="font-size:11.5px;color:var(--faint)">struck through = Chrome, Edge or Firefox answers it first, with or without our code</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:6px;max-width:1060px">
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+          <div style="display:flex;gap:6px">
+            <sc-for list="{{r.keys}}" as="k" hint-placeholder-count="14">
+              <div class="k {{k.cls}}" style="width:{{k.w}}">{{k.t}}</div>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+
+      <p style="margin:13px 0 0;font-size:11.5px;color:var(--dim);line-height:17px;max-width:1060px">
+        Every letter above is struck because <span class="mo">Ctrl</span> + that letter is a browser
+        command — new tab, close tab, bookmark, history, downloads, print, save, find, reload, view
+        source, address bar. That is most of the alphabet, which is why this desk uses
+        <b>unmodified keys and function keys</b> rather than chords. The digits are struck for the
+        same reason: <span class="mo">Ctrl+1…9</span> jumps between browser tabs — but <b>bare</b>
+        1, 2 and 3 are free, and that is what the tender lanes use.
+      </p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:16px;align-items:start">
+
+      <!-- ═══ THE MAP ═══ -->
+      <div class="box" style="padding:16px 18px">
+        <span class="tag">The whole map — nine keys and Tab</span>
+        <div style="margin-top:10px">
+          <sc-for list="{{map}}" as="m" hint-placeholder-count="9">
+            <div class="row">
+              <span style="display:flex;gap:4px;width:104px;flex-shrink:0">
+                <sc-for list="{{m.keys}}" as="kk" hint-placeholder-count="1">
+                  <span class="kb">{{kk}}</span>
+                </sc-for>
+              </span>
+              <span style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                <span style="font-size:12.5px;font-weight:600">{{m.what}}</span>
+                <span style="font-size:11px;color:var(--dim);line-height:15px">{{m.why}}</span>
+              </span>
+            </div>
+          </sc-for>
+        </div>
+        <p style="margin:12px 0 0;padding-top:11px;border-top:1px solid var(--line2);font-size:11.5px;color:var(--dim);line-height:16px">
+          <b>F1, F3, F5, F6, F10, F11 and F12 are deliberately unused</b> — help, find, reload,
+          address bar, menu, fullscreen and dev tools. F12 sits next to the power button on counter
+          keyboards, which is a second reason to leave it alone.
+        </p>
+      </div>
+
+      <!-- ═══ TAB ORDER ═══ -->
+      <div class="box" style="padding:16px 18px">
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <span class="tag">Tab is the main instrument</span>
+          <span style="font-size:11px;color:var(--faint);margin-left:auto">{{tabTitle}}</span>
+        </div>
+        <p style="margin:8px 0 12px;font-size:11.5px;color:var(--dim);line-height:16px">
+          One pass, top to bottom, no backtracking and no reaching for the mouse. Shift+Tab reverses.
+          Everything that can be a field IS one, in the order a clerk asks the questions out loud.
+        </p>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <sc-for list="{{tabs}}" as="t" hint-placeholder-count="8">
+            <div class="tb" style="border-color:{{t.edge}};background:{{t.bg}}">
+              <span class="tbn" style="background:{{t.ink}}">{{t.n}}</span>
+              <span style="font-size:12.5px;font-weight:{{t.wt}}">{{t.f}}</span>
+              <span style="margin-left:auto;font-size:10.5px;color:var(--faint);text-align:right">{{t.note}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <p style="margin:12px 0 0;padding-top:11px;border-top:1px solid var(--line2);font-size:11.5px;color:var(--dim);line-height:16px">
+          <b>The guardian block joins the order only when it appears.</b> Tab must never stop at a
+          field that is not on screen, and it must never skip one that is — so the block's four
+          fields insert themselves at position 5 the moment the age reads under 18, and the doctor
+          field slides to 9.
+        </p>
+      </div>
+    </div>
+
+    <!-- ═══ THE RULES BEHIND THE MAP ═══ -->
+    <div class="box" style="padding:15px 18px">
+      <span class="tag">Rules this map keeps</span>
+      <div style="display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:16px;margin-top:11px">
+        <sc-for list="{{laws}}" as="l" hint-placeholder-count="4">
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-size:12.5px;font-weight:600">{{l.t}}</span>
+            <span style="font-size:11.5px;color:var(--dim);line-height:16px">{{l.b}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="background:var(--agent);color:var(--agent-fg);padding:10px 22px;display:flex;align-items:center;gap:12px">
+    <span style="font-weight:600;color:#fff;font-size:11.5px">Assistant</span>
+    <span style="font-size:11.5px;color:var(--agent-dim)">The keys print on a card under the counter glass. For the first fortnight every button also shows its key in small grey type, then the labels fade.</span>
+    <span style="display:flex;align-items:center;gap:5px;margin-left:auto"><span class="kb" style="border-color:#2c443a;background:#1c332b;color:var(--agent-dim)">F2</span><span style="font-size:10.5px;color:var(--agent-dim)">pull up</span></span>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{
+  "seat": {"editor":"enum","default":"registration","options":["registration","appointment","billing"],
+           "tsType":"string","section":"Tab order for"}
+}'>
+class Component extends DCLogic {
+  renderVals() {
+    const seat = this.props.seat ?? "registration";
+    const K = (t, cls, w) => ({ t, cls: cls ?? "", w: w ?? "38px" });
+
+    // Struck = the browser answers it first. Letters are struck because Ctrl+<letter> is a browser
+    // command; digits because Ctrl+<digit> switches tabs. Bare keys stay free and that is the point.
+    const ctrlTaken = "ADEFGHJKLNOPRSTUW".split("");
+    const letters = (s) => s.split("").map((c) => K(c, ctrlTaken.includes(c) ? "bad" : ""));
+
+    const rows = [
+      { keys: [K("Esc", "ours", "50px"), K("F1", "bad"), K("F2", "ours"), K("F3", "bad"), K("F4", "ours"),
+               K("F5", "bad"), K("F6", "bad"), K("F7", "ours"), K("F8", "ours"), K("F9", "ours"),
+               K("F10", "bad"), K("F11", "bad"), K("F12", "bad")] },
+      { keys: [K("`"), ...("1234567890".split("").map((d) => K(d, "bad"))), K("−"), K("="), K("⌫", "", "62px")] },
+      { keys: [K("Tab", "ours", "58px"), ...letters("QWERTYUIOP"), K("["), K("]")] },
+      { keys: [K("Caps", "", "68px"), ...letters("ASDFGHJKL"), K(";"), K("Enter", "ours", "72px")] },
+      { keys: [K("Shift", "", "84px"), ...letters("ZXCVBNM"), K(","), K("."), K("/", "ours"), K("Shift", "", "68px")] },
+      { keys: [K("Ctrl", "", "56px"), K("Win", "", "46px"), K("Alt", "", "46px"), K("Space", "", "300px"),
+               K("Alt", "", "46px"), K("Menu", "", "50px"), K("Ctrl", "", "56px")] },
+    ];
+
+    const map = [
+      { keys: ["Tab"], what: "The next field", why: "the instrument this desk is actually played on — Shift+Tab goes back" },
+      { keys: ["⏎"], what: "Do the obvious next thing", why: "seat the patient, take the hit, check them in — whatever the screen is asking" },
+      { keys: ["Ctrl", "⏎"], what: "Commit", why: "register, book, take the money. A chord, because it is the irreversible one" },
+      { keys: ["Esc"], what: "Back to the search box · let the patient go", why: "once returns to the field, twice clears the desk. Nothing bleeds into the next person" },
+      { keys: ["F2"], what: "The assistant", why: "your ruling, and one of five function keys no browser claims" },
+      { keys: ["F4"], what: "Register a new patient", why: "was Ctrl+N, which Chrome takes for a new window and never delivers" },
+      { keys: ["F7"], what: "The appointment book", why: "" },
+      { keys: ["F8"], what: "Take payment", why: "" },
+      { keys: ["F9"], what: "Reprint the last document", why: "the slip, the receipt or the card — whichever last left the printer" },
+      { keys: ["↑", "↓"], what: "Move down a list", why: "search hits, doctors in a department, free slots" },
+      { keys: ["1", "2", "3"], what: "Cash · UPI · Card", why: "bare digits, only when the cursor is not in a field" },
+    ];
+
+    const orders = {
+      registration: { title: "/registration · new patient", fields: [
+        { f: "Search — who is in front of you?", note: "focused on arrival" },
+        { f: "Name", note: "" }, { f: "Mobile", note: "" }, { f: "Age", note: "decides what comes next" },
+        { f: "Guardian's name", note: "only under 18", cond: true },
+        { f: "Relationship", note: "only under 18", cond: true },
+        { f: "Guardian's mobile", note: "only under 18", cond: true },
+        { f: "Sex", note: "" },
+        { f: "Doctor, or the complaint", note: "either door" },
+      ] },
+      appointment: { title: "/appointment · booking", fields: [
+        { f: "Search — which patient?", note: "focused on arrival" },
+        { f: "Doctor", note: "" }, { f: "Day", note: "" }, { f: "Slot grid", note: "↑↓ ←→ inside" },
+        { f: "Confirm the booking", note: "Ctrl+⏎" },
+      ] },
+      billing: { title: "/billing · taking money", fields: [
+        { f: "Search — who is paying?", note: "focused on arrival" },
+        { f: "Scheme rail", note: "attach before the money" },
+        { f: "Tender lane", note: "or bare 1 / 2 / 3" },
+        { f: "Tendered", note: "" }, { f: "Change handed back", note: "cash only" },
+        { f: "Take the payment", note: "Ctrl+⏎" },
+      ] },
+    }[seat];
+
+    const tabs = orders.fields.map((x, i) => ({
+      n: String(i + 1), f: x.f, note: x.note,
+      wt: x.cond ? "500" : "600",
+      ink: x.cond ? "#dd8f1c" : "#0e6b4e",
+      edge: x.cond ? "rgba(221,143,28,.45)" : "#dfe7e1",
+      bg: x.cond ? "rgba(221,143,28,.10)" : "#ffffff",
+    }));
+
+    return {
+      rows, map, tabs, tabTitle: orders.title,
+      laws: [
+        { t: "No chord the browser answers", b: "Ctrl and most letters belong to Chrome. Anything struck through on the board above is unavailable at any price — preventDefault cannot reach a keystroke the browser consumes." },
+        { t: "A key means one thing everywhere", b: "F8 takes payment on every seat that can take payment. A clerk who learns a key on one screen must not be surprised by it on the next." },
+        { t: "Bare keys only outside a field", b: "1, 2, 3 and / are characters when the cursor is in a box. They act only when it is not — otherwise a phone number becomes a tender lane." },
+        { t: "Nothing destructive on a bare key", b: "Register, book and settle are all Ctrl+⏎. The keys that stand alone move, find and print; the ones that commit money take two hands." },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

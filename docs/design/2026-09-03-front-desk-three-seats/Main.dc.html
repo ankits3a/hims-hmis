@@ -1,0 +1,235 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    :root{
+      --paper:#f4f7f4; --card:#ffffff; --ink:#132420; --line:#dfe7e1; --line2:#ecf1ed;
+      --dim:#5c6f66; --faint:#8ea69a; --wash:#eef3ef;
+      --green:#0e6b4e; --green-soft:rgba(14,107,78,.08); --green-line:rgba(14,107,78,.35);
+      --gold:#dd8f1c; --gold-soft:rgba(221,143,28,.10); --gold-line:rgba(221,143,28,.45);
+      --red:#b23a30; --agent:#132420; --agent-fg:#d9efe4; --agent-dim:#7fa392; --mint:#35c48f;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--paper);color:var(--ink);
+      font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:var(--green)} a:hover{color:#0a5039}
+    button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0;text-align:left}
+    .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+    .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;
+      letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+    .kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:20px;padding:0 5px;
+      border-radius:3px;border:1px solid var(--line);background:var(--card);font-family:"IBM Plex Mono",monospace;
+      font-size:9px;font-weight:600;color:var(--dim);flex-shrink:0}
+    .kb.dk{border-color:#2c443a;background:#1c332b;color:var(--agent-dim)}
+    .box{background:var(--card);border:1px solid var(--line);border-radius:8px}
+    .pill{display:inline-flex;align-items:center;gap:6px;height:23px;padding:0 9px;border-radius:4px;
+      font-size:10.5px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--dim);white-space:nowrap}
+    .pill.on{border-color:var(--green-line);background:var(--green-soft);color:var(--green)}
+    .pill.gd{border-color:var(--gold-line);background:var(--gold-soft);color:var(--gold)}
+    .sec{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 13px;
+      border-radius:6px;border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:500}
+    .sec:hover{border-color:var(--faint)}
+    .agchip{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border-radius:6px;
+      background:var(--agent);color:var(--agent-fg);font-size:11.5px;line-height:16px}
+    .agchip b{color:#fff;font-weight:600}
+    .agdo{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:5px;flex-shrink:0;
+      background:var(--mint);color:#0b2018;font-size:11px;font-weight:700}
+    .door{display:flex;flex-direction:column;gap:0;overflow:hidden}
+    .door .hd{display:flex;align-items:baseline;gap:10px;padding:14px 16px 11px}
+    .door .bd{padding:0 16px 14px;display:flex;flex-direction:column;gap:11px}
+    .fig{display:flex;align-items:baseline;gap:7px}
+    .fig .n{font-size:26px;line-height:26px;font-weight:600}
+    .row{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line2)}
+    .sch{display:flex;flex-direction:column;gap:7px;padding:12px 13px;min-width:0}
+    .locked{opacity:.42}
+  </style>
+</helmet>
+
+<div style="min-height:980px;display:flex;flex-direction:column;background:var(--paper)">
+
+  <!-- ═══ CHROME. Desk One's header, and the search button stays worn openly (owner ruling 31-Aug:
+       "KEEP the Ctrl+K command button in the header") — but WITHOUT the chord. Ctrl+K is Chrome's
+       address-bar search and the browser answers it first, so the button now carries Esc, which is
+       what returns the cursor to a search box that is already focused on arrival. The affordance the
+       owner kept is the button; the chord it advertised was never ours to give. ═══ -->
+  <div style="display:flex;align-items:center;gap:14px;padding:11px 22px;background:var(--card);border-bottom:1px solid var(--line)">
+    <span style="font-weight:700;letter-spacing:.02em">CRK</span>
+    <span style="color:var(--faint)">|</span>
+    <span style="font-weight:600">{{who}}</span>
+    <span class="pill on">{{seatLabel}}</span>
+    <span style="margin-left:auto;display:flex;align-items:center;gap:14px">
+      <span class="mo" style="font-size:11.5px;color:var(--dim)">Thu 03-Sep · 09:12</span>
+      <button class="sec" style="gap:9px"><span>Search — the cursor starts here</span><span class="kb">Esc</span></button>
+    </span>
+  </div>
+
+  <div style="flex-grow:1;padding:20px 22px 0;display:flex;flex-direction:column;gap:18px">
+
+    <!-- ═══ THE THREE DOORS.
+         This band is the answer to "a single dashboard, or one staff each?" — it is BOTH, from one
+         piece of code. Each door renders only when the signed-in person holds the permission behind
+         it; the `seat` tweak above the artboard switches whose screen you are looking at. A clerk
+         holding all three sees three doors, a cashier sees one, and nothing was designed twice. ═══ -->
+    <div>
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:9px">
+        <span class="tag">Your desk today</span>
+        <span style="font-size:11.5px;color:var(--faint)">{{deskNote}}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:14px">
+        <sc-for list="{{doors}}" as="d" hint-placeholder-count="3">
+          <div class="box door" style="border-color:{{d.edge}}">
+            <div class="hd">
+              <span style="font-size:15px;font-weight:600">{{d.title}}</span>
+              <span class="mo" style="margin-left:auto;font-size:10.5px;color:var(--faint)">{{d.path}}</span>
+            </div>
+            <div class="bd">
+              <div style="display:flex;gap:22px">
+                <sc-for list="{{d.figures}}" as="f" hint-placeholder-count="2">
+                  <div class="fig" style="flex-direction:column;align-items:flex-start;gap:2px">
+                    <span class="n mo">{{f.n}}</span>
+                    <span style="font-size:11px;color:var(--dim)">{{f.label}}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex;flex-direction:column">
+                <sc-for list="{{d.rows}}" as="r" hint-placeholder-count="2">
+                  <div class="row">
+                    <span style="width:5px;height:5px;border-radius:50%;background:{{r.dot}};flex-shrink:0"></span>
+                    <span style="font-size:12.5px">{{r.text}}</span>
+                    <span class="mo" style="margin-left:auto;font-size:11.5px;color:var(--dim)">{{r.n}}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <button class="sec" style="border-color:var(--green);color:var(--green);font-weight:600;justify-content:space-between">
+                <span>{{d.cta}}</span><span class="kb">{{d.key}}</span>
+              </button>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <!-- ═══ SCHEMES.
+         The owner asked for these on the dashboard, and they belong here rather than buried in the
+         bill for a reason a counter feels every day: a scheme is a thing a PATIENT arrives holding —
+         a card, a coupon, an employer, a camp slip — so the clerk needs to know it exists before the
+         money screen, not after. Every count below is a real server surface today; the tile is the
+         first consumer.
+
+         Each tile is a DOOR, not a statistic: it opens the attach panel for that scheme with the
+         patient in hand. A number nobody can open is decoration. ═══ -->
+    <div>
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:9px">
+        <span class="tag">Schemes in play</span>
+        <span style="font-size:11.5px;color:var(--faint)">what a patient can walk in holding — attach it before the bill, never after</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(5, minmax(0, 1fr));gap:12px">
+        <sc-for list="{{schemes}}" as="s" hint-placeholder-count="5">
+          <button class="box sch" style="text-align:left">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="color:{{s.ink}};display:flex" innerHTML="{{s.icon}}"></span>
+              <span style="font-size:12.5px;font-weight:600">{{s.name}}</span>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:6px">
+              <span class="mo" style="font-size:19px;font-weight:600">{{s.n}}</span>
+              <span style="font-size:10.5px;color:var(--dim);line-height:14px">{{s.unit}}</span>
+            </div>
+            <span style="font-size:10.5px;color:var(--faint);line-height:14px">{{s.note}}</span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+
+    <!-- ═══ CLOSE. Desk One ends a day the way it ends a patient: one line, printed. ═══ -->
+    <div style="display:flex;align-items:center;gap:14px;padding-bottom:14px">
+      <span class="tag">Close</span>
+      <a href="#" style="font-size:12.5px;font-weight:500">Your day — read it, print it, file it</a>
+      <span class="pill gd">drawer counted at close</span>
+    </div>
+  </div>
+
+  <!-- ═══ THE AGENT DOCK, minimized (owner ruling 31-Aug: "KEEP the minimized bottom agent bar").
+       It speaks on dark, carries a ticker and an ask box, and pulls up into a log. F2 is reserved
+       for it by the owner's ruling of 02-Sep — the only function key the product claims. ═══ -->
+  <div style="background:var(--agent);color:var(--agent-fg);padding:9px 22px;display:flex;align-items:center;gap:12px">
+    <span class="agchip" style="padding:0"><b>Assistant</b></span>
+    <span style="font-size:11.5px;color:var(--agent-dim)">{{tick}}</span>
+    <span class="agdo" style="margin-left:auto">Show me</span>
+    <span style="display:flex;align-items:center;gap:5px">
+      <span class="kb dk">F2</span>
+      <span style="font-size:10.5px;color:var(--agent-dim)">pull up</span>
+    </span>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{
+  "seat": {"editor":"enum","default":"all","options":["all","registration","appointment","billing"],
+           "tsType":"string","section":"Who is signed in"},
+  "schemesOn": {"editor":"boolean","default":true,"section":"Who is signed in"}
+}'>
+class Component extends DCLogic {
+  renderVals() {
+    const seat = this.props.seat ?? "all";
+    const green = "rgba(14,107,78,.35)", line = "#dfe7e1";
+    const ic = (d) => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+
+    const all = [
+      { id: "registration", title: "Registration", path: "/registration", cta: "Register a patient", key: "F4",
+        figures: [{ n: "38", label: "registered by you" }, { n: "3", label: "without a mobile" }],
+        rows: [{ text: "Duplicates you flagged", n: "2", dot: "#dd8f1c" },
+               { text: "Minors — guardian captured", n: "7", dot: "#0e6b4e" }] },
+      { id: "appointment", title: "Appointments", path: "/appointment", cta: "Open the book", key: "F7",
+        figures: [{ n: "64", label: "booked today" }, { n: "9", label: "still to arrive" }],
+        rows: [{ text: "Need rebooking — Dr Rao on leave", n: "5", dot: "#b23a30" },
+               { text: "Checked in, token issued", n: "55", dot: "#0e6b4e" }] },
+      { id: "billing", title: "Billing", path: "/billing", cta: "Take payment", key: "F8",
+        figures: [{ n: "₹18,400", label: "collected" }, { n: "52", label: "receipts" }],
+        rows: [{ text: "Unpaid, patient still here", n: "3", dot: "#dd8f1c" },
+               { text: "Drawer open since 08:55", n: "₹2,250", dot: "#0e6b4e" }] },
+    ];
+    const doors = (seat === "all" ? all : all.filter((d) => d.id === seat))
+      .map((d) => ({ ...d, edge: seat === "all" ? line : green }));
+
+    const who = { all: "Ramesh Kumar", registration: "Ramesh Kumar", appointment: "Sunita Devi", billing: "Manoj Bhat" }[seat];
+    const seatLabel = { all: "counter 3 · all three", registration: "registration only",
+                        appointment: "appointments only", billing: "cash counter only" }[seat];
+    const deskNote = seat === "all"
+      ? "one clerk holding all three grants — the same code, three doors"
+      : "this account holds one grant, so the desk is one door";
+
+    const schemes = (this.props.schemesOn ?? true) ? [
+      { name: "Membership", n: "4", unit: "cards seen today", ink: "#0e6b4e",
+        note: "look a card up, or enrol — never enrol to apply a benefit",
+        icon: ic('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>') },
+      { name: "Coupons", n: "2", unit: "presented", ink: "#dd8f1c",
+        note: "camp and referral slips; the code travels with the quote",
+        icon: ic('<path d="M4 8V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 8v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-8Z"/><path d="M12 6v12" stroke-dasharray="2 2"/>') },
+      { name: "Packages", n: "1", unit: "in progress", ink: "#0e6b4e",
+        note: "a paid bundle draws down; the bill shows what is left",
+        icon: ic('<path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/>') },
+      { name: "Corporate & TPA", n: "6", unit: "on a panel", ink: "#0e6b4e",
+        note: "self · tpa · pmjay · corporate — a panel payer collects nothing here",
+        icon: ic('<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/>') },
+      { name: "Channel partners", n: "3", unit: "attributed", ink: "#dd8f1c",
+        note: "who sent this patient — one slip per visit, commission accrues",
+        icon: ic('<circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="m8.7 10.7 6.6-3.4M8.7 13.3l6.6 3.4"/>') },
+    ] : [];
+
+    const tick = seat === "billing"
+      ? "Counter 3 has three patients priced and waiting on you."
+      : "Dr Rao is on leave from Monday — 5 of tomorrow's bookings need moving.";
+
+    return { doors, schemes, who, seatLabel, deskNote, tick };
+  }
+}
+</script>
+</body>
+</html>
