@@ -1,0 +1,353 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    :root{
+      --paper:#f4f7f4; --card:#ffffff; --ink:#132420; --line:#dfe7e1; --line2:#ecf1ed;
+      --dim:#5c6f66; --faint:#8ea69a; --wash:#eef3ef;
+      --green:#0e6b4e; --green-soft:rgba(14,107,78,.08); --green-line:rgba(14,107,78,.35);
+      --gold:#dd8f1c; --gold-soft:rgba(221,143,28,.10); --gold-line:rgba(221,143,28,.45);
+      --red:#b23a30; --red-soft:rgba(178,58,48,.09); --red-line:rgba(178,58,48,.35);
+      --agent:#132420; --agent-fg:#d9efe4; --agent-dim:#7fa392; --mint:#35c48f;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--paper);color:var(--ink);
+      font:13.5px/19px "IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    a{color:var(--green)} a:hover{color:#0a5039}
+    button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0;text-align:left}
+    input{font:inherit;color:inherit} input:focus{outline:none}
+    .mo{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+    .tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;
+      letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+    .kb{display:inline-flex;align-items:center;justify-content:center;height:16px;min-width:20px;padding:0 5px;
+      border-radius:3px;border:1px solid var(--line);background:var(--card);font-family:"IBM Plex Mono",monospace;
+      font-size:9px;font-weight:600;color:var(--dim);flex-shrink:0}
+    .kb.dk{border-color:#2c443a;background:#1c332b;color:var(--agent-dim)}
+    .box{background:var(--card);border:1px solid var(--line);border-radius:8px}
+    .in{height:40px;width:100%;border-radius:6px;border:1px solid var(--line);background:var(--card);padding:0 12px;font-size:14px}
+    .in:focus{border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+    .lbl{font-size:10.5px;font-weight:600;color:var(--dim);margin-bottom:5px;display:block}
+    .pri{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 18px;
+      border-radius:6px;background:var(--green);color:#f2faf6;font-size:13px;font-weight:600;border:1px solid var(--green)}
+    .pri:disabled{opacity:.35;cursor:not-allowed}
+    .sec{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 13px;
+      border-radius:6px;border:1px solid var(--line);background:var(--card);font-size:12.5px;font-weight:500}
+    .sec:hover{border-color:var(--faint)}
+    .pill{display:inline-flex;align-items:center;gap:6px;height:23px;padding:0 9px;border-radius:4px;
+      font-size:10.5px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--dim);white-space:nowrap}
+    .pill.on{border-color:var(--green-line);background:var(--green-soft);color:var(--green)}
+    .pill.gd{border-color:var(--gold-line);background:var(--gold-soft);color:var(--gold)}
+    .pill.rd{border-color:var(--red-line);background:var(--red-soft);color:var(--red)}
+    .stamp{display:inline-flex;padding:2px 10px;border-radius:4px;font-family:"IBM Plex Mono",monospace;
+      font-size:10.5px;font-weight:700;letter-spacing:.14em}
+    .stamp.un{border:2px solid var(--gold);color:var(--gold)}
+    .stamp.pd{border:2px solid var(--green);color:var(--green)}
+    .lrow{display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid var(--line2)}
+    .lane{display:flex;align-items:center;gap:9px;height:44px;padding:0 13px;border-radius:6px;
+      border:1px solid var(--line);background:var(--card);width:100%}
+    .lane.on{border-color:var(--green);background:var(--green-soft)}
+    .agchip{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border-radius:6px;
+      background:var(--agent);color:var(--agent-fg);font-size:11.5px;line-height:16px}
+    .agchip b{color:#fff;font-weight:600}
+    .agdo{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:5px;flex-shrink:0;
+      background:var(--mint);color:#0b2018;font-size:11px;font-weight:700}
+  </style>
+</helmet>
+
+<div style="min-height:980px;display:flex;flex-direction:column;background:var(--paper)">
+
+  <div style="display:flex;align-items:center;gap:14px;padding:11px 22px;background:var(--card);border-bottom:1px solid var(--line)">
+    <span style="font-weight:700">CRK</span><span style="color:var(--faint)">|</span>
+    <span style="font-weight:600">Billing</span>
+    <span class="mo" style="font-size:11px;color:var(--faint)">/billing</span>
+    <span style="margin-left:auto;display:flex;align-items:center;gap:14px">
+      <span class="pill on">drawer open · ₹2,250 float</span>
+      <button class="sec" style="gap:9px"><span>Search — the cursor starts here</span><span class="kb">Esc</span></button>
+    </span>
+  </div>
+
+  <div style="flex-grow:1;display:flex;gap:16px;padding:18px 22px">
+
+    <!-- ═══ THE RAIL — who is paying, what they owe, and the token that is riding on it ═══ -->
+    <div style="width:290px;flex-shrink:0;display:flex;flex-direction:column;gap:13px">
+      <div class="box" style="padding:14px">
+        <span class="tag">Paying</span>
+        <div style="margin-top:9px;display:flex;flex-direction:column;gap:3px">
+          <span style="font-size:16px;font-weight:600;line-height:20px">Ramesh Kumar</span>
+          <span class="mo" style="font-size:12.5px;color:var(--dim)">U00110012</span>
+          <span style="font-size:11.5px;color:var(--dim)">male · 41y</span>
+          <span class="mo" style="font-size:11px;color:var(--faint);margin-top:3px">V2609030004 · 03-Sep</span>
+        </div>
+        <div style="margin-top:12px;padding:11px 12px;border-radius:6px;background:var(--wash);
+                    display:flex;flex-direction:column;gap:2px">
+          <span class="tag">Token</span>
+          <span class="mo" style="font-size:30px;line-height:32px;font-weight:700">7</span>
+          <span style="margin-top:5px"><span class="stamp {{stampCls}}">{{stamp}}</span></span>
+        </div>
+      </div>
+
+      <div class="box" style="padding:14px;display:flex;flex-direction:column;gap:8px">
+        <span class="tag">On their account</span>
+        <div style="display:flex;align-items:baseline;gap:8px">
+          <span class="mo" style="font-size:19px;font-weight:600">₹0.00</span>
+          <span style="font-size:11.5px;color:var(--dim)">outstanding</span>
+        </div>
+        <p style="margin:0;font-size:11px;color:var(--faint);line-height:15px">
+          Nothing carried forward. Dues from an earlier visit would show here and travel onto this bill.
+        </p>
+      </div>
+    </div>
+
+    <!-- ═══ THE WORKSPACE — the bill, the schemes that change it, and the money ═══ -->
+    <div style="flex-grow:1;min-width:0;display:flex;gap:16px">
+
+      <div style="flex-grow:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+
+        <!-- THE BILL, ITEMISED. "₹300" with nothing under it is the first thing a patient queries
+             and the first thing a clerk cannot answer. -->
+        <div class="box" style="padding:15px 16px">
+          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:4px">
+            <span style="font-size:15px;font-weight:600">The bill</span>
+            <span style="font-size:11.5px;color:var(--faint)">every figure is the server's — nothing is added up on this screen</span>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:11px;padding:8px 0 6px">
+            <span class="tag" style="flex-grow:1">Service</span>
+            <span class="tag" style="width:38px;text-align:right">Qty</span>
+            <span class="tag" style="width:88px;text-align:right">Gross</span>
+            <span class="tag" style="width:88px;text-align:right">Benefit</span>
+            <span class="tag" style="width:88px;text-align:right">Net</span>
+          </div>
+          <sc-for list="{{lines}}" as="l" hint-placeholder-count="2">
+            <div class="lrow">
+              <span style="flex-grow:1;min-width:0;display:flex;flex-direction:column;gap:1px">
+                <span style="font-size:13px">{{l.name}}</span>
+                <span class="mo" style="font-size:10px;color:var(--faint)">{{l.sac}}</span>
+              </span>
+              <span class="mo" style="width:38px;text-align:right;font-size:12.5px">{{l.qty}}</span>
+              <span class="mo" style="width:88px;text-align:right;font-size:12.5px">{{l.gross}}</span>
+              <span class="mo" style="width:88px;text-align:right;font-size:12.5px;color:{{l.benInk}}">{{l.benefit}}</span>
+              <span class="mo" style="width:88px;text-align:right;font-size:12.5px;font-weight:600">{{l.net}}</span>
+            </div>
+          </sc-for>
+
+          <!-- WHY the number is the number. Desk One's live bill: the contest, not just the total. -->
+          <sc-if value="{{hasBenefit}}" hint-placeholder-val="{{ true }}">
+            <div style="margin-top:11px;padding:11px 12px;border-radius:6px;background:var(--green-soft);
+                        border:1px solid var(--green-line);display:flex;flex-direction:column;gap:6px">
+              <span class="tag" style="color:var(--green)">Why this price</span>
+              <sc-for list="{{contest}}" as="c" hint-placeholder-count="2">
+                <div style="display:flex;align-items:baseline;gap:9px">
+                  <span style="font-size:11.5px;color:{{c.ink}};{{c.strike}}">{{c.text}}</span>
+                  <span class="mo" style="margin-left:auto;font-size:11.5px;color:{{c.ink}};{{c.strike}}">{{c.amt}}</span>
+                </div>
+              </sc-for>
+              <p style="margin:2px 0 0;font-size:10.5px;color:var(--dim);line-height:14px">{{contestNote}}</p>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;align-items:baseline;gap:11px;border-top:1px solid var(--line);
+                      margin-top:11px;padding-top:11px">
+            <span style="font-size:14px;font-weight:600">Net payable</span>
+            <span style="font-size:11px;color:var(--faint)">GST exempt · healthcare services</span>
+            <span class="mo" style="margin-left:auto;font-size:22px;font-weight:700">{{payable}}</span>
+          </div>
+        </div>
+
+        <!-- THE MONEY. Three lanes on 1 / 2 / 3, Desk One's own keys. -->
+        <div class="box" style="padding:15px 16px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font-size:15px;font-weight:600">Take payment</span>
+            <span style="font-size:11.5px;color:var(--faint)">the keys are the lanes — 1 cash, 2 UPI, 3 card</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:10px">
+            <sc-for list="{{lanes}}" as="m" hint-placeholder-count="3">
+              <button class="lane {{m.cls}}" onClick="{{m.pick}}">
+                <span class="kb">{{m.key}}</span>
+                <span style="font-size:13px;font-weight:{{m.wt}}">{{m.name}}</span>
+                <span class="mo" style="margin-left:auto;font-size:12.5px;color:var(--dim)">{{m.amt}}</span>
+              </button>
+            </sc-for>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px">
+            <div><label class="lbl">Tendered</label><input class="in mo" value="{{tendered}}" /></div>
+            <div><label class="lbl">{{changeLabel}}</label><input class="in mo" value="{{change}}" /></div>
+          </div>
+          <sc-if value="{{surplus}}" hint-placeholder-val="{{ false }}">
+            <p style="margin:0;padding:9px 11px;border-radius:6px;background:var(--gold-soft);
+                      border:1px solid var(--gold-line);font-size:11.5px;color:var(--dim);line-height:16px">
+              Whatever is not handed back stays on the patient's account as an advance. Say which —
+              the drawer is counted on it.
+            </p>
+          </sc-if>
+          <div style="display:flex;align-items:center;gap:11px">
+            <button class="pri">Take {{payable}} <span class="kb" style="border-color:rgba(255,255,255,.3);background:transparent;color:#cfe8dc">Ctrl ⏎</span></button>
+            <button class="sec">Bill to account</button>
+            <span style="margin-left:auto;font-size:11.5px;color:var(--faint)">prints the receipt and stamps the token PAID</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ THE SCHEME RAIL.
+           Everything that can move this bill, in one column, attachable BEFORE the money. Each is a
+           real server surface; none of them had a screen. A scheme applied after settlement is a
+           refund, which is why they live beside the bill and not after it. ═══ -->
+      <div style="width:296px;flex-shrink:0;display:flex;flex-direction:column;gap:11px">
+        <div style="display:flex;align-items:baseline;gap:8px">
+          <span class="tag">Schemes</span>
+          <span style="font-size:10.5px;color:var(--faint)">attach before you take the money</span>
+        </div>
+        <sc-for list="{{schemes}}" as="s" hint-placeholder-count="5">
+          <button class="box" style="padding:12px 13px;display:flex;flex-direction:column;gap:7px;
+                                     border-color:{{s.edge}};text-align:left" onClick="{{s.toggle}}">
+            <div style="display:flex;align-items:center;gap:8px;width:100%">
+              <span style="color:{{s.ink}};display:flex" innerHTML="{{s.icon}}"></span>
+              <span style="font-size:12.5px;font-weight:600">{{s.name}}</span>
+              <span class="pill {{s.cls}}" style="margin-left:auto">{{s.state}}</span>
+            </div>
+            <span style="font-size:11px;color:var(--dim);line-height:15px">{{s.detail}}</span>
+            <sc-if value="{{s.money}}" hint-placeholder-val="{{ false }}">
+              <span class="mo" style="font-size:12.5px;font-weight:600;color:var(--green)">{{s.effect}}</span>
+            </sc-if>
+          </button>
+        </sc-for>
+        <p style="margin:2px 0 0;font-size:10.5px;color:var(--faint);line-height:15px">
+          Only the best single benefit applies — they do not stack. The contest is shown on the bill
+          so the clerk can say why, and the loser is named rather than hidden.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div style="background:var(--agent);color:var(--agent-fg);padding:9px 22px;display:flex;align-items:center;gap:12px">
+    <span class="agchip" style="padding:0"><b>Assistant</b></span>
+    <span style="font-size:11.5px;color:var(--agent-dim)">{{tick}}</span>
+    <span class="agdo" style="margin-left:auto">Apply it</span>
+    <span style="display:flex;align-items:center;gap:5px"><span class="kb dk">F2</span><span style="font-size:10.5px;color:var(--agent-dim)">pull up</span></span>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{
+  "scheme": {"editor":"enum","default":"membership",
+             "options":["none","membership","coupon","package","corporate"],
+             "tsType":"string","section":"Try it"},
+  "lane": {"editor":"enum","default":"cash","options":["cash","upi","card"],
+           "tsType":"string","section":"Try it"}
+}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { scheme: null, lane: null }; }
+
+  renderVals() {
+    const scheme = this.state.scheme ?? this.props.scheme ?? "membership";
+    const lane = this.state.lane ?? this.props.lane ?? "cash";
+    const ic = (d) => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+    const rs = (p) => "₹" + (p / 100).toFixed(2);
+
+    // One consult at ₹300 and one dressing at ₹150. The benefit is whatever the attached scheme
+    // wins — best single benefit, never a sum.
+    const grossFee = 30000, grossProc = 15000;
+    const table = {
+      none:       { fee: 0,    proc: 0,    label: "no scheme attached" },
+      membership: { fee: 6000, proc: 3000, label: "Sampoorna card · 20% on OPD" },
+      coupon:     { fee: 3000, proc: 0,    label: "camp slip HEALTH-CAMP-09 · 10% on the consult" },
+      package:    { fee: 30000, proc: 0,   label: "Maternity package · consult 3 of 8 drawn down" },
+      corporate:  { fee: 30000, proc: 15000, label: "East Central Railway · panel pays" },
+    };
+    const b = table[scheme];
+    const netFee = grossFee - b.fee, netProc = grossProc - b.proc;
+    const payablePaise = netFee + netProc;
+
+    const lines = [
+      { name: "OPD Consultation (New)", sac: "SAC 999312 · exempt", qty: "1",
+        gross: rs(grossFee), benefit: b.fee ? "−" + rs(b.fee) : "—", net: rs(netFee),
+        benInk: b.fee ? "#0e6b4e" : "#8ea69a" },
+      { name: "Dressing, small", sac: "SAC 999312 · exempt", qty: "1",
+        gross: rs(grossProc), benefit: b.proc ? "−" + rs(b.proc) : "—", net: rs(netProc),
+        benInk: b.proc ? "#0e6b4e" : "#8ea69a" },
+    ];
+
+    // The contest: what was offered, what won, and what lost — named, never hidden.
+    const contest = scheme === "membership"
+      ? [{ text: "Sampoorna membership · 20%", amt: "−₹90.00", ink: "#0e6b4e", strike: "" },
+         { text: "camp slip · 10% — a bigger benefit won", amt: "−₹30.00", ink: "#8ea69a", strike: "text-decoration:line-through" }]
+      : scheme === "coupon"
+      ? [{ text: "camp slip HEALTH-CAMP-09 · 10%", amt: "−₹30.00", ink: "#0e6b4e", strike: "" }]
+      : scheme === "package"
+      ? [{ text: "Maternity package · consult drawn down", amt: "−₹300.00", ink: "#0e6b4e", strike: "" }]
+      : scheme === "corporate"
+      ? [{ text: "East Central Railway · panel pays in full", amt: "−₹450.00", ink: "#0e6b4e", strike: "" }]
+      : [];
+
+    const schemes = [
+      { key: "membership", name: "Membership", state: scheme === "membership" ? "applied" : "card on file",
+        detail: "Sampoorna · valid to 31-Mar-27 · holder Ramesh Kumar",
+        effect: "−₹90.00 on this bill", ink: "#0e6b4e",
+        icon: ic('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>') },
+      { key: "coupon", name: "Coupon", state: scheme === "coupon" ? "applied" : "1 presented",
+        detail: "HEALTH-CAMP-09 · village camp, 28-Aug · one visit",
+        effect: "−₹30.00 on the consult", ink: "#dd8f1c",
+        icon: ic('<path d="M4 8V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 8v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-8Z"/>') },
+      { key: "package", name: "Package", state: scheme === "package" ? "applied" : "none",
+        detail: "no bundle running for this patient",
+        effect: "consult drawn from the bundle", ink: "#0e6b4e",
+        icon: ic('<path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/>') },
+      { key: "corporate", name: "Corporate / TPA", state: scheme === "corporate" ? "panel payer" : "self-pay",
+        detail: "East Central Railway · employee 41129 · pre-auth not needed under ₹5,000",
+        effect: "nothing to collect at this counter", ink: "#0e6b4e",
+        icon: ic('<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/>') },
+      { key: "partner", name: "Channel partner", state: "attributed",
+        detail: "Dr Ashok clinic, Mahnar · slip MHN-2209 · commission accrues on settlement",
+        effect: "", ink: "#dd8f1c",
+        icon: ic('<circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="m8.7 10.7 6.6-3.4M8.7 13.3l6.6 3.4"/>') },
+    ].map((s) => ({
+      ...s,
+      cls: s.key === scheme ? "on" : s.key === "partner" ? "gd" : "",
+      edge: s.key === scheme ? "rgba(14,107,78,.35)" : "#dfe7e1",
+      money: s.key === scheme && s.effect !== "",
+      toggle: () => this.setState({ scheme: this.state.scheme === s.key ? "none" : s.key }),
+    }));
+
+    const lanes = [
+      { key: "1", name: "Cash", id: "cash" },
+      { key: "2", name: "UPI", id: "upi" },
+      { key: "3", name: "Card", id: "card" },
+    ].map((m) => ({
+      ...m,
+      cls: m.id === lane ? "on" : "",
+      wt: m.id === lane ? "600" : "500",
+      amt: m.id === lane ? rs(payablePaise) : "—",
+      pick: () => this.setState({ lane: m.id }),
+    }));
+
+    const corporate = scheme === "corporate";
+    const tendered = corporate ? "—" : lane === "cash" ? "₹500.00" : rs(payablePaise);
+    const surplus = !corporate && lane === "cash";
+
+    return {
+      lines, contest, schemes, lanes, tendered, surplus,
+      hasBenefit: contest.length > 0,
+      contestNote: scheme === "membership"
+        ? "Best single benefit — they do not stack. The loser is shown so the clerk can answer “what about my camp slip?” without opening another screen."
+        : "One benefit applied. Anything else the patient is holding would contest here and the winner would be named.",
+      payable: corporate ? "₹0.00" : rs(payablePaise),
+      changeLabel: surplus ? "Change handed back" : "Change",
+      change: surplus ? "₹50.00" : "—",
+      stamp: corporate ? "PANEL" : "UNPAID",
+      stampCls: corporate ? "pd" : "un",
+      tick: corporate
+        ? "This patient is on the Railway panel — nothing is collected here, and the claim is raised at close."
+        : "Their membership beats the camp slip by ₹60. Both are on file; only the better one is applied.",
+    };
+  }
+}
+</script>
+</body>
+</html>
