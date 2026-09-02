@@ -1,5 +1,6 @@
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 import { patientSearchProvider } from "./search-provider";
+import { patientsDeskProvider } from "./desk-provider";
 
 export const patientsManifest: ModuleManifest = {
   key: "patients",
@@ -36,5 +37,8 @@ export const patientsManifest: ModuleManifest = {
   ],
   // PLAN 11h T2 — one array entry is the whole of "this module is searchable" (DD1).
   search: [patientSearchProvider],
+  // FD-1 T1 — the registration tile and "what came back" on the clerk's home. The kernel already
+  // declares `desk` optional; no index export changes.
+  desk: [patientsDeskProvider],
   subscriptions: [],
 };

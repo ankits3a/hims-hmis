@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { fetchDesk, todayIst } from "../lib/desk-api";
 import type { WireDeskCard, WireDeskRow, WireDeskStat } from "../lib/desk-api";
 import { useRealtime } from "../lib/realtime";
+import { useAuth } from "../lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 /**
@@ -154,7 +155,9 @@ export function Desk(): React.ReactElement {
    * person's own day for any other date is `/my-day`, which is built for exactly that and prints.
    */
   const date = todayIst();
-  const desk = useQuery({ queryKey: ["me", "desk", date], queryFn: () => fetchDesk(date) });
+  const { actor } = useAuth();
+  // FD-1 CLOSE pass 1 — the actor is in the key: the query client outlives a logout
+  const desk = useQuery({ queryKey: ["me", "desk", actor?.id ?? "", date], queryFn: () => fetchDesk(date), enabled: actor !== null });
 
   const cards = useMemo(() => desk.data?.cards ?? [], [desk.data]);
   /*

@@ -106,8 +106,8 @@ against seeded rows; two actors; `collectDeskProviders` passes; `desk.test.ts` c
 `opdAppointmentsDeskProvider`, key `opd.appointments`, permission `opd.appointments.read` (a separate
 provider so a clerk without `opd.queue.read` still gets it — S1). Card band *now*: due today,
 checked in, missed so far (S3), needs rebooking → `/opd/appointments`; rows: doctors with
-needs-rebooking counts (leave cascade), never patients. Topics: the day's doctor queue topics so
-check-ins flip live. **Done when:** unit-tested against seeded bookings across the three statuses;
+needs-rebooking counts (leave cascade), never patients. ~~Topics: the day's doctor queue topics so
+check-ins flip live.~~ (CLOSE pass 1: no topics — `queue:*` needs `opd.queue.read`.) **Done when:** unit-tested against seeded bookings across the three statuses;
 a doctor on leave produces a row; nobody else's bookings are counted.
 
 ### T3 — ROUTINE · the drawer on the billing card
@@ -140,6 +140,94 @@ pnpm --filter @hmis/web exec vitest run src/screens/desk.test.tsx src/screens/co
 ```
 `tools/lane.sh status` before any full core run. CI is the full-suite instrument. Close per method
 §5A: two passes, the revert on every guard, counts pasted.
+
+## 5A. CLOSE — 2026-09-02, T1–T5 done, code-complete, NOT deployed (review passes below when run)
+
+**PRs, one per task, stacked:** #21 T1 · #22 T2 · #23 T3 · #28 T4 · T5 (this commit). Zero migrations,
+zero permissions, zero kernel edits, zero index exports.
+
+### 5A.1 The Dashboard artboard, clause by clause, against the shipped screen
+
+| the artboard says | verdict |
+|---|---|
+| "CRK Registration · Ramesh Kumar · your figures" header, "Back to the counter · Esc" | **met** — the actor id, the date, Escape outside a field returns (T4) |
+| period bar Day / Week / Month / 3 months / 6 months, the range | **met** — `BriefPanel` re-read with `period=` |
+| "your week in sentences, not tiles — a median is a comparison and a comparison is a sentence" | **met** — the brief's `compared`/`drift`/`plain` clauses (07c) |
+| "a comparison needs a fortnight of history before it can be made honestly" | **met** — `brief.nothingToSay` |
+| "Median 1 m 24 s at the counter. The slow ones are almost all minors" | **NOT met, by decision (D6)** — no timing rail exists; nothing is estimated |
+| what came back: 3 duplicates → urgent merges, "all three already had that mobile on file", See all three | **met** as the three sentences from `patients.cameBack`; "already had that mobile on file" is NOT computed (it needs the merge snapshot's phone) — recorded |
+| 11 records with no mobile, six SMS bounced, four missed a follow-up | **met** for the count; SMS bounces and missed follow-ups are **NOT built** (no SMS rail) |
+| 8 amended within a week — "almost all a spelling, off an ID at the second visit" | **met** for the count (the `patient.updated` event inside seven days) |
+| "this is your own account and nobody else's; your supervisor sees the same counts under Staff reports" | **met** — self-scoped rails; `/staff` is 07c's |
+| today so far: 38 (median 31) registered, ₹1,900 · 38 receipts, 1 m 24 s median | **met** for registered and money (the day brief's `compared` clause and the collections card); timing omitted |
+| the drawer: opening float, cash / UPI / card, "cash the drawer should hold", "a variance is a conversation" | **met** — `liveExpectedCashPaise` (T3), the close's own formula; UPI/card by mode were 07c's |
+| "Your day — PROVISIONAL … Print · Download CSV", signature and received-by lines | **met** — one `.print-doc`, `/me/report` |
+
+### 5A.2 Evidence at T5
+| instrument | result |
+|---|---|
+| web full `vitest run` | **75 files / 562 tests, exit 0** (T4) · desk.test 7/7 with the three tiles (T5) |
+| core `jest -w 2`: patients/desk-provider, opd/desk-appointments, opd/desk-provider, billing/desk-provider, billing/sessions, kernel/desk, me.e2e, nav-parity, seed-roles, caddyfile-parity | green in every task's run; me.e2e **12/12** with the two FD-1 assemblies (a registration clerk's desk: five cards, no drawer; a cashier's: the drawer, no registration tile) |
+| `pnpm typecheck` · eslint | 0 · clean |
+| revert pairs | **R64–R81**: all red on first or second run; three needed fixture fixes to be falsifiable (R64 the merge winner another clerk's; R70 a last-week rebooking row; R76 an over-tender with change declared — receipts are append-only) |
+| assembly | `me.e2e` drives the REAL providers over the real roles; the web renders the server's cards through the unchanged home screen; the figures screen composes three rails with two clerks |
+
+### 5B. Pass 1 — two fresh reviewers over the green tree: 1 CRITICAL, 10 MAJOR — for the sixth phase running
+
+| # | finding | fix | revert pair |
+|---|---|---|---|
+| **C1** (B) | the query client outlives a logout and the keys carried only the date: the next clerk on the same counter tab read the last clerk's figures for up to five minutes and could print them over her own signature line | the ACTOR is in every `/me/*` key (figures, my-day, desk); a test with one client and two logins | R85 red |
+| M1 (A) | "amended within a week" counted photo attaches and QR reissues (both append `patient.updated`) | the predicate reads `changes[].field`; `recorded_at` bounded for partition pruning | R82 red |
+| M2 (A) | the appointments card named `queue:*` topics its own permission cannot subscribe to (silent refusal on the web); bookings are not realtime names anyway | no topics — the tile is as live as the poll, honestly | R84 red |
+| M3 (A) | the drawer moved three unindexed scans onto every home-screen load; past the 250 ms budget the whole collections card vanishes | `receipts(cashier_session_id)` and `refund_vouchers(cashier_session_id)` indexed — **migration 0055**, taken at rebase; the tile's three sums in one transaction | — (a budget pin is not written; recorded) |
+| M4 (B) | a failed `/me/report` printed as an honest empty day | said, never printed; print disabled until the report arrives; the brief says when it fails | R86 red |
+| M5 (B) | a missing came-back stat was spoken as "0 of your registrations…" (D6) | a sentence only for a figure the server gave | R87 red |
+| M6 (B) | a cleared date box sent `?date=` and 400'd three routes at once | the box asks nothing until it holds a date | R88 red |
+| M7 (B) | every door was a full page load, against the router's own rule | figures and the seat's door are client-side navigations handed in by the route wrappers; the anchor keeps its href | R89, R90 red |
+| M8 (B) | the round trip seat → figures → Escape → seat was untested | tested under the real router with the patient in hand | — |
+| M9 (B, inherited) | the print is one fixed page repeated for a long screen | **NOT fixed** — 07a's `.print-doc` model; the figures sections are `display:none` on print, so the page count is the document's; a 40-row day is the evidence to gather |
+| MINOR (A) | merged losers counted as "without a mobile"; the appointments card is hospital-wide (D8 unmet for it); the tile's reads were not one snapshot | excluded (R83 red); **DECIDED hospital-wide** and a second clerk asserted equal; one transaction |
+| MINOR (B) | Escape with the palette open navigated | the seat's F7 guard |
+
+**Assertions pass 1 named in-band, and the answer:** "not.toContain('Kamla')" and `rows === undefined` are D2 tripwires, kept; the 7-day and 30-day EDGES are still untested (2 d / 12 d and 16 d / 38 d) — recorded; the real-clock suite can flake at 00:00 IST — recorded; the cashier e2e's "float equals expected before any sale" is in-band under a formula ignoring tenders, and the billing unit test's over-tender is the discriminator.
+
+### 5C. Evidence after pass 1
+| instrument | result |
+|---|---|
+| web full `vitest run` | **75 files / 567 tests, exit 0** |
+| core `jest -w 2`: patients/desk-provider, opd/desk-appointments, billing/desk-provider, billing/sessions, me.e2e (over migration 0055) | **5 suites / 36 tests, exit 0** |
+| `pnpm lint` · `pnpm typecheck` | 0 errors (2 warnings in other lanes' kernel tests) · exit 0 |
+| revert pairs | **R64–R90**: 24 red on first or second run; three needed a fixture (R64, R70, R76) |
+| migrations · permissions · kernel · index exports | **1 (0055, two indexes)** · 0 · 0 · 0 |
+
+### 5D. Pass 2 — briefed at the fixes (one fresh reviewer, 102k): 7 CORRECT, 4 INCOMPLETE, NO WRONG
+
+| # | pass-2 finding | fix | revert pair |
+|---|---|---|---|
+| C1 INCOMPLETE | the ROOT was untouched: `logout()` never touched the query client, so every other per-person key (the seat's drawer line, `/billing/session`, the doctor's identity, alerts) still painted for the next login | `logout()` clears the query client — the class, not three consumers (`lib/auth.tsx`, a shared file: the one change outside this lane's screens, named here). A boot-time clear on a stale token was tried and REMOVED: screens fetch before `/auth/me` answers and three GRN tests proved it | R91 red |
+| M4 INCOMPLETE | a report that was there and then failed to refetch stayed printable under "nothing is printed" | the print doc and the button follow `!report.isError` too | R92 red |
+| M3 INCOMPLETE | "one snapshot" was READ COMMITTED with two extra round trips | the transaction is gone and the comment is honest: three reads, the close's transaction is the figure of record | — |
+| MINOR | "today so far" mixed my figures with everyone's bookings under one heading | the bookings are labelled "everyone's bookings" in their own scope | R93 red |
+| MINOR | the phase doc's T2 still promised live check-ins; a stray blank line in the schema | corrected |
+
+**No pass 3.** The two passes are run; what a third would look at is recorded: the fixed-page print model (07a's) with a forty-row day, and the 7-/30-day window edges.
+
+### 5E. Evidence after both passes
+| instrument | result |
+|---|---|
+| web full `vitest run` | **76 files / 570 tests, exit 0** |
+| core `jest -w 2`: patients/desk-provider, opd/desk-appointments, billing/desk-provider, billing/sessions, me.e2e over migration 0055 | **5 suites / 36, exit 0** (pass 1) · billing/desk-provider 7/7 (pass 2) |
+| `pnpm lint` · `pnpm typecheck` | 0 errors (2 warnings in other lanes' kernel tests) · exit 0 |
+| revert pairs, whole phase | **R64–R93**: 27 red; three needed a fixture to be falsifiable |
+| review cost | pass 1 A 124k + B 108k · pass 2 102k = **334k** against the 405k term |
+| migrations · permissions · kernel · index exports | **1 (0055, two indexes)** · 0 · 0 · 0 |
+
+## 7. Findings deliberately NOT fixed — each with its reason
+1. **The fixed-page print** (`styles.css` `.print-doc { position: fixed }`, 07a): a long screen prints its first page repeatedly; the figures sections are `display:none` on print so the page count is the document's, but a forty-row day is the evidence to gather on a real printer. A print-model change is every printable screen's, not this phase's.
+2. **The 7-day and 30-day window edges** are untested (2 d / 12 d and 16 d / 38 d only); the real-clock suite can flake across 00:00 IST.
+3. **"Already had that mobile on file"**, SMS bounces and missed follow-ups (the artboard's sentences) need rails that do not exist (the merge snapshot's phone; an SMS log).
+4. **Counter timing**: no rail; nothing is estimated (D6).
+5. **A provider budget pin** for the drawer under load: the indexes are there; an EXPLAIN pin is not.
 
 ## 6. Owner items
 None. (Deletions of `/counter` and `/opd/vitals`, and RC-5's money rulings, are in the lane scope doc.)
