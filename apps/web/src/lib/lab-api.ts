@@ -25,6 +25,8 @@ export type WireAnalyteRow = {
   refLow: string | null; refHigh: string | null; refText: string | null;
   verificationStatus: string | null; enteredById: string | null;
   pathologistReviewPending: boolean;
+  /** 17c T4 / D11 — the last VERIFIED value of this analyte on the canonical patient, or null. */
+  previous: { resultId: string; value: string; flag: string | null; at: string } | null;
 };
 
 export type WireWorklistRow = {
@@ -32,6 +34,8 @@ export type WireWorklistRow = {
   patientId: string; patientDisplay: string;
   serviceId: string; orderableCode: string; orderableName: string; discipline: string;
   priority: string; state: string; specimenNo: string | null; tatStartedAt: string | null;
+  /** 17c T4 — the orderable's target for this item's priority, in minutes. */
+  tatTargetMinutes: number;
   analytes: WireAnalyteRow[];
 };
 
