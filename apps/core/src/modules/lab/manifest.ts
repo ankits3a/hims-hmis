@@ -62,6 +62,8 @@ export const labManifest: ModuleManifest = {
     { label: "Collection", path: "/lab/collection", permission: "lab.collection.operate" },
     { label: "Bench", path: "/lab/bench", permission: "lab.accession.operate" },
     { label: "Verify & report", path: "/lab/verify", permission: "lab.results.verify" },
+    /** PLAN 17c T5 — the report centre: the counter's seat, on the counter's permission. */
+    { label: "Report centre", path: "/lab/reports", permission: "lab.reports.print" },
   ],
   permissions: [
     "lab.orders.place",

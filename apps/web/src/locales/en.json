@@ -57,7 +57,7 @@
     "radiologyReception": "Imaging reception",
     "radiologyWorklist": "Imaging worklist",
     "counterSeat": "Registration counter (new)",
-    "vitalsBay": "Vitals bay"
+    "labReports": "Report centre"
   },
   "palette": {
     "title": "Search",
@@ -442,10 +442,7 @@
     "transferred": "{{n}} moved",
     "pickDoctorFirst": "Choose a doctor on the board first",
     "takePayment": "Take payment →",
-    "noFeeToVitals": "No fee — send this follow-up to vitals",
-    "escalationFlash": "Token {{tokenNo}} — bumped to class 0 by the vitals bay. Escort coming.",
-    "escalationCancelled": "Token {{tokenNo}} — the class-0 bump was cancelled at the bay.",
-    "flashDismiss": "dismiss"
+    "noFeeToVitals": "No fee — send this follow-up to vitals"
   },
   "opdVitals": {
     "title": "Vitals desk",
@@ -2031,6 +2028,66 @@
     "seat": {
       "department": "Central lab",
       "stats": "Counts this seat watches"
+    },
+    "reports": {
+      "title": "Report centre",
+      "place": "Counter L-01",
+      "publishedStat": "published today",
+      "heldStat": "held for money",
+      "collectedStat": "collected here",
+      "register": "Published · how each one went out",
+      "registerEmpty": "Nothing published yet today.",
+      "registerUnavailable": "The register could not be loaded.",
+      "colPatient": "patient · tests",
+      "colDoctor": "doctor",
+      "colCopy": "patient copy",
+      "colSigned": "signed",
+      "doctorScreen": "on the doctor's screen",
+      "inPersonOnly": "in person only",
+      "held": "HELD",
+      "heldShort": "HELD · {{amount}}",
+      "printWaits": "print waits for the slip",
+      "notice_queued": "notice queued",
+      "notice_sent": "notice sent {{channel}}",
+      "notice_suppressed": "no notice (no number on file)",
+      "notice_expired": "notice expired",
+      "notice_undeliverable": "notice undeliverable",
+      "notice_none": "no notice",
+      "handed": "{{channel}} · {{who}}",
+      "registerNote": "The doctor's screen is never held and never waits. Only the patient's copy carries a channel, a collector, or a hold.",
+      "find": "Hand over at the counter · UHID, mobile or scan the card",
+      "pick": "Pick the patient to see their reports.",
+      "ready_one": "{{count}} report ready",
+      "ready_other": "{{count}} reports ready",
+      "pending_one": "{{count}} result still to come",
+      "pending_other": "{{count}} results still to come",
+      "restricted": "[restricted record]",
+      "report": "Laboratory report",
+      "partial": "PARTIAL",
+      "results_one": "{{count}} result",
+      "results_other": "{{count}} results",
+      "signedBy": "signed {{when}}",
+      "heldLine": "Held: ₹{{amount}} outstanding on {{count}} invoice(s). The print lights the moment billing settles it.",
+      "releaseHint": "If the patient cannot pay today, only the billing manager can release it — the dues stand.",
+      "requestRelease": "Ask the billing manager to release",
+      "releaseRequested": "Release requested — approval {{id}}. Enter it below when granted.",
+      "approvalId": "Approval id",
+      "release": "Release and hand over",
+      "collector": "Collected by (name and relation)",
+      "channel": "Hand over by",
+      "channel_print": "Printed copy",
+      "channel_in_person": "In person",
+      "channel_whatsapp": "WhatsApp (record only)",
+      "print": "Print & hand over",
+      "handedOver": "Handed over · copy {{count}}",
+      "sensitiveNote": "Sensitive tests are handed over in person only, to the patient with ID. No message goes out.",
+      "noticeLine": "Ready notice: {{state}}",
+      "noReports": "No published reports on file.",
+      "earlier": "earlier reports on file",
+      "live": "live",
+      "offline": "offline",
+      "channels": "How the patient's copy travels",
+      "channelsNote": "WhatsApp / SMS carry a values-free notice today; the counter is the door for the paper and for in-person-only tests."
     }
   },
   "radiology": {
@@ -2077,16 +2134,7 @@
       "acquired": "Record acquired",
       "ionising": "ionising",
       "badEvidence": "The evidence must be valid JSON.",
-      "openFormF": "Form F required — open it",
-      "imageSource": "Image source",
-      "sourcePacs": "PACS (DICOM images from the modality)",
-      "sourceNoImages": "No DICOM images",
-      "studyUid": "Study Instance UID",
-      "studyUidHint": "Pre-filled from the worklist. Type the machine's own UID only if it did not read the worklist.",
-      "studyUidRecorded": "Study Instance UID recorded",
-      "openImages": "Open images",
-      "imagesNeverOpened": "Images not opened yet",
-      "imagesOpened": "Opened {{count}}×, last by {{by}}"
+      "openFormF": "Form F required — open it"
     },
     "report": {
       "title": "Report",
@@ -2244,194 +2292,5 @@
       "closingCover": "Meanwhile a billing manager can cover this counter.",
       "forbidden": "This login cannot hold a cash drawer — a cashier role is needed to take payment here."
     }
-  },
-  "vitalsBay": {
-    "title": "Vitals bay",
-    "department": "Department",
-    "allDepartments": "All departments",
-    "clearDesk": "Clear desk",
-    "identify": {
-      "label": "Who is in front of you?",
-      "placeholder": "scan the slip, or type the token no. / UHID",
-      "hint": "Scan, token number or UHID — all three start the same lane. ⏎ to begin.",
-      "notOnBench": "{{who}} is not on this bench — check the slip, or send them to the front desk",
-      "unknownPatient": "This row has no patient record the bay can read",
-      "scanUnavailable": "The scanner check is unavailable — type the token number instead",
-      "scanFailed": {
-        "malformed": "That scan is not a patient card",
-        "invalid_signature": "That card did not verify — a copied or edited code",
-        "stale_version": "That card was reissued — ask for the new one",
-        "unknown_patient": "That card belongs to no patient on file"
-      },
-        "saving": "A save is still on its way — wait for the ✓ before taking the next person"
-    },
-    "valve": {
-      "bench": "bench {{count}}",
-      "callable": "callable {{count}}"
-    },
-    "bench": {
-      "title": "The bench",
-      "empty": "Bench clear — nobody waiting",
-      "failed": "The bench could not be read — the list may be stale",
-      "unknownPatient": "(no record)",
-      "restricted": "(restricted)",
-      "recallAt": "resting · recall {{time}}",
-      "state": {
-        "waiting": "waiting",
-        "resting": "resting",
-        "due": "recall due",
-        "away": "away — turn held",
-        "done": "✓ with doctor",
-        "escalated": "class 0 — escalated",
-        "recheck": "other arm, now"
-      }
-    },
-    "session": {
-      "empty": "Nobody in hand — scan, or type a token number or UHID",
-      "band": "Band",
-      "age": "{{years}} y",
-      "required": "Required",
-      "notRoutine": "Not routine",
-      "firstVisit": "No history — first visit",
-      "last": "Last chart {{date}}:",
-      "carry": "Carried forward, locked until a reason: {{vitals}}",
-      "expectedFlags": "{{count}} expected flag(s) from history",
-      "noHistory": "No history to show for this visit",
-        "sealed": "Confidential record — the band is known, the history is sealed at this desk"
-    },
-    "band": {
-      "infant": "Infant",
-      "child_1_5": "Child 1–5",
-      "child_6_12": "Child 6–12",
-      "adult": "Adult"
-    },
-    "vital": {
-      "heightCm": "Height",
-      "weightKg": "Weight",
-      "sbp": "SBP",
-      "dbp": "DBP",
-      "pulse": "Pulse",
-      "rr": "RR",
-      "spo2": "SpO₂",
-      "tempC": "Temp",
-      "muacCm": "MUAC"
-    },
-    "tile": {
-      "bp": "BP",
-      "pulse": "Pulse",
-      "spo2": "SpO₂",
-      "tempC": "Temp",
-      "rr": "RR",
-      "weightKg": "Weight",
-      "heightCm": "Height",
-      "muacCm": "MUAC"
-    },
-    "unit": {
-      "bp": "mmHg",
-      "pulse": "/min",
-      "spo2": "%",
-      "tempC": "°C",
-      "rr": "/min",
-      "weightKg": "kg",
-      "heightCm": "cm",
-      "muacCm": "cm"
-    },
-    "capture": {
-      "notRoutine": "not routine",
-      "fromDevice": "device",
-      "carriedLocked": "carried forward — locked until a reason",
-      "bpBoth": "BP needs both numbers — type it as 158/96",
-      "notANumber": "That is not a number",
-      "deviceSilent": "No reading from the device — type it",
-      "readDevice": "read device",
-      "held": "held out of the chart: {{values}}",
-      "missing": "Still needed: {{tiles}}",
-      "save": "Save & send",
-      "saveNow": "Save & send NOW (emergency)",
-      "keys": "{{typed}} keys · {{device}} device reads",
-      "tint": {
-        "danger": "outside band — danger",
-        "notice": "outside band — the doctor is told ahead of the call",
-        "sam": "SAM — severe; its own emergency lane",
-        "mam": "MAM — nutrition counter flagged"
-      },
-      "rrNudge": "RR {{value}} in under fifteen seconds? Charted — but count it:",
-      "rrCount": "count 15 s",
-      "rrCounting": "counting… {{seconds}} s — watch the chest",
-      "rrCounted": "fifteen seconds done — type the count"
-    },
-    "gate": {
-      "slippedDigit": "{{value}} kg on an adult — a slipped digit becomes a chart fact in one keystroke",
-      "shrinkingAdult": "height {{value}} against {{last}} — re-measure once before it becomes true",
-      "probeError": "SpO₂ read {{value}}% — held OUT of the chart. A talking patient at {{value}}% is a probe problem until proven otherwise; re-clip and take it again",
-      "fix": "It was {{value}}",
-      "retake": "Take it again",
-      "confirm": "It is real — chart it",
-        "confirmProbe": "It is real — the patient IS that low. Chart it and send"
-    },
-    "unlock": {
-      "label": "Reason to re-measure",
-      "pick": "re-measure? pick the reason",
-      "serverLocked": "The server holds this value locked — pick a reason to change it",
-      "was": "old value kept beside the new one: {{value}}",
-      "reason": {
-        "yearly_remeasure_due": "yearly re-measure due",
-        "patient_disputes_old_value": "patient disputes the old value",
-        "posture_or_device_changed": "posture / device changed",
-        "surgical_or_limb_change": "surgical or limb change"
-      }
-    },
-    "chips": {
-      "fasting": "khali pet?",
-      "bp_med_taken": "BP ki dawa li?",
-      "just_climbed_stairs": "abhi seedhi chadh kar aaye?",
-        "yes": "yes",
-        "no": "no"
-    },
-    "lane": {
-      "typing": "serial lane OFF · typing",
-      "serial": "SERIAL LANE ON",
-      "typingHint": "⏎ commits and jumps, 1–8 address a field, every key counted",
-      "serialHint": "devices capture, keys drop toward zero"
-    },
-    "saved": {
-      "title": "Saved {{who}} — sent to {{doctor}}'s board",
-      "amended": "Amended {{who}} — {{doctor}}'s board refreshed",
-      "danger": "DANGER flagged: {{vitals}}",
-      "notice": "Told the doctor ahead of the call: {{vitals}}",
-      "dismiss": "dismiss"
-    },
-    "protocol": {
-      "otherArm": "Danger reading — the OTHER ARM, now. Rest is refused at danger numbers.",
-      "calmed": "The other arm is inside the band — both readings go to the doctor as a pair, the board does not move.",
-      "escalated": "Went NOW as class 0 (was class {{from}}) — {{doctor}}'s screen flashed. Do not send them alone.",
-      "cancel": "CANCEL",
-      "committed": "cancel window closed — class 0 stands. Reversing now is a supervisor action, not a keystroke.",
-      "cancelled": "Cancelled — back to class {{from}}. The chart keeps the reading.",
-        "again": "Danger reading — take it AGAIN, now, before anything else. Rest is refused at danger numbers.",
-        "rerunAsk": "A cancelled bump is not re-run by the agent. This reading is danger again —",
-        "rerunGo": "run the protocol again"
-    },
-    "rest": {
-      "offer": "Elevated, not dangerous — {{minutes}} minutes on the rest chairs, no chai, no phone-pacing. Recall at {{time}}; the first reading is held.",
-      "go": "Rest {{minutes}} min",
-      "sent": "To the rest chairs: {{who}} — recall at {{time}}. The desk is clear.",
-      "heldFirst": "First reading held from the bench: {{value}} — take the second, both go as a pair."
-    },
-    "amend": {
-      "title": "Amend the chart saved at {{at}}",
-      "hint": "You are working on a copy — nothing changes until you save with a reason. Esc abandons and the saved chart stands untouched.",
-      "was": "was {{value}}",
-      "reason": "Reason for the amendment",
-      "reasonRequired": "An amendment needs a reason — it is the record",
-      "save": "Save amendment ({{count}} changed)",
-      "escHint": "Esc abandons",
-      "readFailed": "The saved chart could not be read",
-      "trail": "by {{by}} at {{at}} — the old value stays in the trail",
-        "carried": "carried forward",
-        "stale": "This chart was amended elsewhere while you were typing — re-open it from the bench to correct the current one"
-    },
-      "doctor": "Doctor",
-      "allDoctors": "All doctors on the bench"
   }
 }
