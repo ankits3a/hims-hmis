@@ -2182,6 +2182,84 @@
       "spo2": "SpO₂",
       "tempC": "Temp",
       "muacCm": "MUAC"
+    },
+    "tile": {
+      "bp": "BP",
+      "pulse": "Pulse",
+      "spo2": "SpO₂",
+      "tempC": "Temp",
+      "rr": "RR",
+      "weightKg": "Weight",
+      "heightCm": "Height",
+      "muacCm": "MUAC"
+    },
+    "unit": {
+      "bp": "mmHg",
+      "pulse": "/min",
+      "spo2": "%",
+      "tempC": "°C",
+      "rr": "/min",
+      "weightKg": "kg",
+      "heightCm": "cm",
+      "muacCm": "cm"
+    },
+    "capture": {
+      "notRoutine": "not routine",
+      "fromDevice": "device",
+      "carriedLocked": "carried forward — locked until a reason",
+      "bpBoth": "BP needs both numbers — type it as 158/96",
+      "notANumber": "That is not a number",
+      "deviceSilent": "No reading from the device — type it",
+      "readDevice": "read device",
+      "held": "held out of the chart: {{values}}",
+      "missing": "Still needed: {{tiles}}",
+      "save": "Save & send",
+      "saveNow": "Save & send NOW (emergency)",
+      "keys": "{{typed}} keys · {{device}} device reads",
+      "tint": {
+        "danger": "outside band — danger",
+        "notice": "outside band — the doctor is told ahead of the call",
+        "sam": "SAM — severe; its own emergency lane",
+        "mam": "MAM — nutrition counter flagged"
+      }
+    },
+    "gate": {
+      "slippedDigit": "{{value}} kg on an adult — a slipped digit becomes a chart fact in one keystroke",
+      "shrinkingAdult": "height {{value}} against {{last}} — re-measure once before it becomes true",
+      "probeError": "SpO₂ read {{value}}% — held OUT of the chart. A talking patient at {{value}}% is a probe problem until proven otherwise; re-clip and take it again",
+      "fix": "It was {{value}}",
+      "retake": "Take it again",
+      "confirm": "It is real — chart it"
+    },
+    "unlock": {
+      "label": "Reason to re-measure",
+      "pick": "re-measure? pick the reason",
+      "serverLocked": "The server holds this value locked — pick a reason to change it",
+      "was": "old value kept beside the new one: {{value}}",
+      "reason": {
+        "yearly_remeasure_due": "yearly re-measure due",
+        "patient_disputes_old_value": "patient disputes the old value",
+        "posture_or_device_changed": "posture / device changed",
+        "surgical_or_limb_change": "surgical or limb change"
+      }
+    },
+    "chips": {
+      "fasting": "khali pet?",
+      "bp_med_taken": "BP ki dawa li?",
+      "just_climbed_stairs": "abhi seedhi chadh kar aaye?"
+    },
+    "lane": {
+      "typing": "serial lane OFF · typing",
+      "serial": "SERIAL LANE ON",
+      "typingHint": "⏎ commits and jumps, 1–8 address a field, every key counted",
+      "serialHint": "devices capture, keys drop toward zero"
+    },
+    "saved": {
+      "title": "Saved {{who}} — sent to {{doctor}}'s board",
+      "amended": "Amended {{who}} — {{doctor}}'s board refreshed",
+      "danger": "DANGER flagged: {{vitals}}",
+      "notice": "Told the doctor ahead of the call: {{vitals}}",
+      "dismiss": "dismiss"
     }
   }
 }

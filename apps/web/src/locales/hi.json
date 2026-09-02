@@ -2182,6 +2182,84 @@
       "spo2": "SpO₂",
       "tempC": "तापमान",
       "muacCm": "MUAC"
+    },
+    "tile": {
+      "bp": "BP",
+      "pulse": "नाड़ी",
+      "spo2": "SpO₂",
+      "tempC": "तापमान",
+      "rr": "RR",
+      "weightKg": "वज़न",
+      "heightCm": "ऊँचाई",
+      "muacCm": "MUAC"
+    },
+    "unit": {
+      "bp": "mmHg",
+      "pulse": "/मिनट",
+      "spo2": "%",
+      "tempC": "°C",
+      "rr": "/मिनट",
+      "weightKg": "kg",
+      "heightCm": "cm",
+      "muacCm": "cm"
+    },
+    "capture": {
+      "notRoutine": "रूटीन नहीं",
+      "fromDevice": "डिवाइस",
+      "carriedLocked": "पिछला मान — कारण बताए बिना लॉक",
+      "bpBoth": "BP में दोनों संख्याएँ चाहिए — 158/96 की तरह लिखें",
+      "notANumber": "यह संख्या नहीं है",
+      "deviceSilent": "डिवाइस से रीडिंग नहीं आई — टाइप करें",
+      "readDevice": "डिवाइस से पढ़ें",
+      "held": "चार्ट से बाहर रखा: {{values}}",
+      "missing": "अभी चाहिए: {{tiles}}",
+      "save": "सेव करें और भेजें",
+      "saveNow": "अभी सेव करें और भेजें (आपात)",
+      "keys": "{{typed}} कुंजी · {{device}} डिवाइस रीड",
+      "tint": {
+        "danger": "बैंड से बाहर — ख़तरा",
+        "notice": "बैंड से बाहर — डॉक्टर को पहले बता दिया",
+        "sam": "SAM — गंभीर; अलग आपात लेन",
+        "mam": "MAM — पोषण काउंटर को फ़्लैग"
+      }
+    },
+    "gate": {
+      "slippedDigit": "वयस्क पर {{value}} kg — एक फिसली हुई कुंजी चार्ट का तथ्य बन जाती है",
+      "shrinkingAdult": "ऊँचाई {{value}}, पिछली {{last}} — सच मानने से पहले एक बार फिर नापें",
+      "probeError": "SpO₂ {{value}}% पढ़ा — चार्ट से बाहर रखा। बोलते मरीज़ पर {{value}}% प्रोब की समस्या है; फिर से क्लिप लगाकर लें",
+      "fix": "यह {{value}} था",
+      "retake": "फिर से लें",
+      "confirm": "सही है — चार्ट करें"
+    },
+    "unlock": {
+      "label": "फिर नापने का कारण",
+      "pick": "फिर नापें? कारण चुनें",
+      "serverLocked": "सर्वर ने यह मान लॉक रखा है — बदलने के लिए कारण चुनें",
+      "was": "पुराना मान नए के साथ रखा: {{value}}",
+      "reason": {
+        "yearly_remeasure_due": "सालाना नाप बाकी",
+        "patient_disputes_old_value": "मरीज़ पुराने मान से असहमत",
+        "posture_or_device_changed": "मुद्रा / डिवाइस बदला",
+        "surgical_or_limb_change": "सर्जरी या अंग में बदलाव"
+      }
+    },
+    "chips": {
+      "fasting": "खाली पेट?",
+      "bp_med_taken": "BP की दवा ली?",
+      "just_climbed_stairs": "अभी सीढ़ी चढ़कर आए?"
+    },
+    "lane": {
+      "typing": "सीरियल लेन बंद · टाइपिंग",
+      "serial": "सीरियल लेन चालू",
+      "typingHint": "⏎ दर्ज करके अगले पर जाता है, 1–8 से फ़ील्ड चुनें, हर कुंजी गिनी जाती है",
+      "serialHint": "डिवाइस पढ़ते हैं, कुंजियाँ शून्य की ओर"
+    },
+    "saved": {
+      "title": "{{who}} सेव — {{doctor}} के बोर्ड पर भेजा",
+      "amended": "{{who}} संशोधित — {{doctor}} का बोर्ड ताज़ा",
+      "danger": "ख़तरा फ़्लैग: {{vitals}}",
+      "notice": "डॉक्टर को पहले बताया: {{vitals}}",
+      "dismiss": "हटाएँ"
     }
   }
 }

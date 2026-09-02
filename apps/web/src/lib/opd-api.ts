@@ -519,3 +519,39 @@ export type WirePreStage = {
 export function fetchPreStage(encounterId: string): Promise<WirePreStage> {
   return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/prestage`);
 }
+
+// ——— VD-2 T2 — the capture body, the save result, and the danger-range config the tiles mirror ———
+export type WireRange = { min?: number; max?: number };
+export type WireBandConfig = {
+  key: WireBandKey; upToAgeYears: number | null;
+  required: WireVitalKey[]; notRoutine: WireVitalKey[];
+  ranges: Partial<Record<WireVitalKey, WireRange>>;
+  noticeRanges: Partial<Record<WireVitalKey, WireRange>>;
+};
+/** `GET /opd/config`'s `dangerRanges`, typed at last — the bay's client-side mirrors read it; the server stays the authority. */
+export type WireDangerRanges = {
+  weightRequiredUnderYears: number;
+  bands: WireBandConfig[];
+  gates: { adultWeightFloorKg: number; heightDeltaCm: number; spo2ProbeFloorPct: number };
+  muacBands: { samUnderCm: number; mamUnderCm: number };
+};
+export type WireReadingSource = "typed" | "device" | "counted";
+export type WireReading = { takes: number[]; source: WireReadingSource; held?: number[]; note?: string };
+export type WireBpReading = { takes: [number, number][]; source: WireReadingSource; held?: number[]; note?: string };
+export type WireReadings = Partial<Record<Exclude<WireVitalKey, "sbp" | "dbp">, WireReading>> & { bp?: WireBpReading };
+export const UNLOCK_REASONS = ["yearly_remeasure_due", "patient_disputes_old_value", "posture_or_device_changed", "surgical_or_limb_change"] as const;
+export type WireUnlockReason = (typeof UNLOCK_REASONS)[number];
+export type WireVitalsPostBody = Partial<Record<WireVitalKey, number | null>> & {
+  notes?: string | null;
+  readings?: WireReadings;
+  contextChips?: { key: string; question: string; answer: string }[];
+  carriedForward?: WireVitalKey[];
+  emergency?: boolean;
+  overrides?: Partial<Record<WireVitalKey, string>>;
+  unlockReasons?: Partial<Record<WireVitalKey, WireUnlockReason>>;
+};
+export type WireVitalsGate = { key: WireVitalKey; kind: "slipped_digit" | "shrinking_adult" | "probe_error"; value: number; suggestion?: number; message: string };
+export type WireVitalsSaveResult = { vitals: WireVitals; flags: WireDangerFlag[]; encounter: WireEncounter };
+export function postVitals(encounterId: string, body: WireVitalsPostBody): Promise<WireVitalsSaveResult> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/vitals`, body);
+}

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { fetchBench, fetchPreStage, listDepartments, todayIst } from "../lib/opd-api";
-import type { WireBenchRow, WireDoctorSummary, WirePreStage } from "../lib/opd-api";
+import { fetchBench, fetchPreStage, getOpdConfig, listDepartments, todayIst } from "../lib/opd-api";
+import type { WireBenchRow, WireDangerRanges, WireDoctorSummary, WirePreStage, WireVitalsSaveResult } from "../lib/opd-api";
+import { CaptureCore, SavedBannerView, readLane, writeLane } from "./vitals-bay-capture";
+import type { Lane, SavedBanner } from "./vitals-bay-capture";
 import { verifyQrScan } from "../lib/patients-api";
 import { api } from "../lib/api";
 import { usePatientInHand } from "../lib/patient-in-hand";
@@ -157,8 +159,8 @@ export function BenchRail({ rows, inHandEncounterId, onTake }: {
 
 const LAST_KEYS = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm"] as const;
 
-export function SessionColumn({ row, preStage, failed, pending }: {
-  row: WireBenchRow | null; preStage: WirePreStage | null; failed: boolean; pending: boolean;
+export function SessionColumn({ row, preStage, failed, pending, children }: {
+  row: WireBenchRow | null; preStage: WirePreStage | null; failed: boolean; pending: boolean; children?: React.ReactNode;
 }): React.ReactElement {
   const { t } = useTranslation();
   if (row === null) {
@@ -195,7 +197,22 @@ export function SessionColumn({ row, preStage, failed, pending }: {
           )}
         </div>
       )}
+      {children}
     </section>
+  );
+}
+
+/** VD-2 D4 — the serial lane is a fact about THIS bay's device rack: per-device state, shipped OFF, no migration. */
+export function LaneToggle({ lane, onChange }: { lane: Lane; onChange: (next: Lane) => void }): React.ReactElement {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button" role="switch" aria-checked={lane === "serial"} data-testid="lane-toggle" data-lane={lane}
+      className="rounded-full border border-border px-3 py-1 text-sm"
+      onClick={() => onChange(lane === "serial" ? "typing" : "serial")}
+    >
+      {t(lane === "serial" ? "vitalsBay.lane.serial" : "vitalsBay.lane.typing")}
+    </button>
   );
 }
 
@@ -232,6 +249,12 @@ export function VitalsBay(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deskGen, setDeskGen] = useState(0);
+  const [lane, setLane] = useState<Lane>(readLane);
+  const [banner, setBanner] = useState<SavedBanner | null>(null);
+  const [keys, setKeys] = useState({ typed: 0, device: 0 });
+  const config = useQuery({ queryKey: ["opd", "config"], queryFn: getOpdConfig });
+  const ranges = (config.data?.dangerRanges as WireDangerRanges | undefined) ?? null;
+  const qc = useQueryClient();
   const busyRef = useRef(false);
   busyRef.current = busy;
 
@@ -256,6 +279,22 @@ export function VitalsBay(): React.ReactElement {
     release();
     setDeskGen((g) => g + 1);
   }, [release]);
+
+  const onKeys = useCallback((typed: number, device: number) => setKeys({ typed, device }), []);
+
+  /**
+   * THE BOLD ✓ (owner ruling 6): names who was saved and which doctor's board they landed on, then
+   * the desk is cleared — the next person starts from nothing. The bench re-reads so the row wears
+   * the same tick; the push is a hint and the refetch is the truth.
+   */
+  const onSaved = useCallback((result: WireVitalsSaveResult, row: WireBenchRow) => {
+    const who = row.patient === null ? t("vitalsBay.bench.unknownPatient")
+      : row.patient.restricted ? (row.patient.alias ?? t("vitalsBay.bench.restricted")) : (row.patient.name ?? row.patient.uhid);
+    setBanner({ who, doctorName: row.doctorName, flags: result.flags, amended: false });
+    void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
+    void qc.invalidateQueries({ queryKey: ["vitals-bay", "summary"] });
+    clearDesk();
+  }, [qc, clearDesk, t]);
 
   const identify = useCallback(async (raw: string) => {
     const door = classifyDoor(raw);
@@ -305,6 +344,7 @@ export function VitalsBay(): React.ReactElement {
             {(departments.data?.items ?? []).filter((d) => d.active).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
           <ValvePill benchCount={rows.length} summaries={summaries} />
+          <LaneToggle lane={lane} onChange={(next) => { writeLane(next); setLane(next); }} />
           <button type="button" data-testid="clear-desk" onClick={clearDesk} className="rounded border border-border px-2 py-1 text-sm">
             {t("vitalsBay.clearDesk")} <kbd className="text-xs text-muted-foreground">Esc</kbd>
           </button>
@@ -317,11 +357,23 @@ export function VitalsBay(): React.ReactElement {
         </div>
         <main className="flex flex-1 flex-col gap-4">
           <IdentifyBox key={deskGen} onSubmit={(raw) => { void identify(raw); }} error={error} busy={busy} />
+          {banner !== null && <SavedBannerView banner={banner} onDismiss={() => setBanner(null)} />}
           <div className="rounded-lg border border-border bg-card p-4">
-            <SessionColumn row={rowInHand} preStage={preStage} failed={preFailed} pending={pending} />
+            <SessionColumn row={rowInHand} preStage={preStage} failed={preFailed} pending={pending}>
+              {rowInHand !== null && !pending && (
+                <CaptureCore
+                  key={`${deskGen}:${rowInHand.encounterId}`} resetKey={`${deskGen}:${rowInHand.encounterId}`}
+                  row={rowInHand} preStage={preStage} ranges={ranges} lane={lane}
+                  onSaved={(result) => onSaved(result, rowInHand)} onKeys={onKeys}
+                />
+              )}
+            </SessionColumn>
           </div>
         </main>
       </div>
+      <footer className="border-t border-border px-6 py-2 text-xs text-muted-foreground" data-testid="bay-footer">
+        {t("vitalsBay.capture.keys", { typed: keys.typed, device: keys.device })} · {t(lane === "serial" ? "vitalsBay.lane.serialHint" : "vitalsBay.lane.typingHint")}
+      </footer>
     </div>
   );
 }
