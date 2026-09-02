@@ -221,7 +221,10 @@ describe("VD-2 T1 — the road that does NOT pass clearDesk (RC-4 R26/R27's less
 describe("the alias layer and the route pin move with the screen", () => {
   it("styles.css scopes Bay One into the same block as the seat, not :root", () => {
     const css = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
-    expect(css).toMatch(/\[data-seat="registration-counter"\],\s*\[data-seat="vitals-bay"\]\s*\{/);
+    // FD-7 T2 — the appointment seat joined the same block between them, so the pin allows any
+    // seats declared in between while still asserting the two ends share ONE block and that neither
+    // has escaped to `:root`. The mutant it kills is unchanged: a seat given its own token copy.
+    expect(css).toMatch(/\[data-seat="registration-counter"\],(?:[^{]*?)\[data-seat="vitals-bay"\]\s*\{/);
   });
   /**
    * ═══ FD-5 / OWNER RULING 2026-09-02 — THE BAY *IS* `/opd/vitals` NOW ═══

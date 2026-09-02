@@ -21,6 +21,7 @@ import { StaffReports } from "./screens/staff-reports";
 import { RegistrationCounter } from "./screens/registration-counter";
 import { CounterFigures } from "./screens/counter-figures";
 import { RegistrationDesk } from "./screens/registration-desk";
+import { AppointmentSeat } from "./screens/appointment-seat";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
 import { ApprovalsInbox } from "./screens/approvals-inbox";
@@ -100,6 +101,9 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/merge", label: "nav.merge", permission: "patients.merge", group: "patients" },
   { to: "/approvals", label: "nav.approvals", permission: "approvals.requests.read", group: "admin" },
   { to: "/opd/admin", label: "nav.opdAdmin", permission: "opd.masters.manage", group: "opd" },
+  // FD-7 T2 — the appointment seat, beside the counter in the `desk` group: it is front-desk work,
+  // not the supervisor's book. Path and permission match `opdManifest.menu` exactly (nav-parity).
+  { to: "/appointment", label: "nav.appointmentSeat", permission: "opd.appointments.manage", group: "desk" },
   { to: "/opd/appointments", label: "nav.opdAppointments", permission: "opd.appointments.read", group: "opd" },
   { to: "/opd/desk", label: "nav.opdDesk", permission: "opd.visits.open", group: "opd" },
   // FD-5 / owner ruling 2026-09-02 — ONE vitals row, and it is Bay One's. The old `/opd/vitals`
@@ -467,6 +471,19 @@ const registrationRoute = createRoute({
   component: RegistrationDesk,
 });
 
+/**
+ * FD-7 T2 — THE APPOINTMENT SEAT, ON ITS OWN ROUTE.
+ *
+ * The owner's 03-Sep ruling: the appointment does not flow below the registration form. Registration
+ * ends at the UHID and hands over HERE, and only to a caller who holds `opd.appointments.manage` —
+ * which is why this is a route and not a section of another screen.
+ */
+const appointmentSeatRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/appointment",
+  component: AppointmentSeat,
+});
+
 const patientRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/patients/$patientId",
@@ -759,7 +776,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, counterDeskRoute, registrationRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, counterDeskRoute, registrationRoute, appointmentSeatRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,

@@ -59,7 +59,8 @@
     "vitalsBay": "वाइटल्स बे",
     "labReports": "रिपोर्ट केंद्र",
     "pharmacyCounter": "दवा वितरण काउंटर",
-    "pharmacyItems": "फ़ार्मेसी बिक्री वस्तुएँ"
+    "pharmacyItems": "फ़ार्मेसी बिक्री वस्तुएँ",
+    "appointmentSeat": "अपॉइंटमेंट"
   },
   "palette": {
     "title": "खोज",
@@ -2690,5 +2691,39 @@
     "directions": "निर्देश",
     "expiry": "समाप्ति",
     "substitutedFor": "{{brand}} के स्थान पर"
+  },
+  "appointmentSeat": {
+    "title": "अपॉइंटमेंट",
+    "mode": "वॉक-इन या आगे की तारीख",
+    "walkIn": "वॉक-इन (आज)",
+    "future": "आगे की अपॉइंटमेंट",
+    "department": "किस लिए आए हैं — विभाग",
+    "pickDepartment": "विभाग चुनें",
+    "doctor": "डॉक्टर, नाम से",
+    "byProposal": "डेस्क को सुझाव देने दें",
+    "board": "आज बैठे हैं",
+    "confirm": "{{doctor}} के पास भेजें",
+    "backToProposal": "सुझाव पर वापस",
+    "rule": {
+      "continuity": "पहले यहीं दिखाया है",
+      "shortestWait": "सबसे कम प्रतीक्षा",
+      "departmentQueue": "कोई डॉक्टर नहीं बैठे"
+    },
+    "seenOn": "पिछली बार {{date}} को दिखाया",
+    "anchorUnavailable": "{{doctor}} ने पहले इस मरीज़ को देखा है, पर आज बोर्ड पर नहीं हैं।",
+    "noDoctorToday": "आज इस विभाग में कोई नहीं बैठा है। आगे की तारीख की अपॉइंटमेंट बुक करें।",
+    "delay": "प्रतीक्षा {{minutes}} मिनट है — {{threshold}} से ज़्यादा।",
+    "alternative": "{{doctor}} लगभग {{minutes}} मिनट में खाली हैं।",
+    "takeAlternative": "यही डॉक्टर लें",
+    "noAlternative": "इस विभाग में अभी कोई जल्दी उपलब्ध नहीं है।",
+    "date": "तारीख",
+    "pickDoctorFirst": "खाली स्लॉट देखने के लिए डॉक्टर चुनें।",
+    "noSlots": "इस तारीख पर कोई खाली स्लॉट नहीं।",
+    "alreadyBooked": "इस मरीज़ की पहले से बुकिंग है।",
+    "checkIn": "आ गए हैं — चेक-इन करें",
+    "doneToken": "हो गया। टोकन {{token}}।",
+    "doneBooked": "{{at}} के लिए बुक।",
+    "next": "अगला मरीज़",
+    "forbidden": "यह खाता अपॉइंटमेंट बुक या रूट नहीं कर सकता।"
   }
 }

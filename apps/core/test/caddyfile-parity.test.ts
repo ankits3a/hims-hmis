@@ -349,8 +349,14 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // that superseded it: `/counter/seat` is gone because the seat serves `/counter`, and
     // `/opd/vitals/bay` is gone because Bay One serves `/opd/vitals`. "Keep the new design not the
     // old one." `/counter/seat/figures` also became `/counter/figures` — a rename, net zero.
+    // FD-7 T2 — 48 -> 49 with `/appointment`, the front desk's appointment SEAT. It is a NEW route
+    // rather than a section of `/registration` because the owner ruled the appointment out of the
+    // registration form (03-Sep): registration ends at the UHID and hands over here, by permission.
+    // The number was WATCHED FAILING — the run that added the route reported `Received length: 49`
+    // against the pinned 48 — and raised to what was measured, never predicted.
     // MEASURED against the tree rather than predicted, which is what pinning a count is for.
-    expect(routes).toHaveLength(48);
+    expect(routes).toHaveLength(49);
+    expect(routes).toContain("/appointment");
     expect(routes).toContain("/lab/reports");
     expect(routes).toContain("/counter/figures");
     expect(routes).not.toContain("/counter/seat");

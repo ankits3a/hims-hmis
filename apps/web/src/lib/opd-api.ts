@@ -1,5 +1,6 @@
 import { api, ApiError } from "./api";
 import type { WireMatchLane } from "./patients-api";
+import type { WireContinuityAnchor } from "./walk-in-routing";
 
 /**
  * The OPD wire contract, shared by all six Plan 07 screens (the plan's File Structure names this file
@@ -442,6 +443,40 @@ export type WireJoinQueueResult = {
   encounter: WireEncounter; queueEntry: WireQueueEntry; tokenNo: number; sessionId: string;
   roomId: string | null; alreadyJoined: boolean;
 };
+
+/* ── FD-7 T2 — the appointment seat's rails ─────────────────────────────────────────────────── */
+
+/**
+ * RULE 1's server answer. Both ids are required by the route, and that is the privacy design rather
+ * than an argument-order convenience: the clerk names the department they are routing INTO, and the
+ * server answers about that department only. It never enumerates where a patient has been.
+ */
+export function getContinuity(
+  patientId: string, departmentId: string,
+): Promise<{ anchor: WireContinuityAnchor | null }> {
+  return api("GET", `/opd/continuity?patientId=${encodeURIComponent(patientId)}&departmentId=${encodeURIComponent(departmentId)}`);
+}
+
+/** The future lane. `date` is an IST calendar date; the server refuses a slot it has already passed. */
+export function getSlots(doctorId: string, date: string): Promise<{ slots: WireSlot[] }> {
+  return api("GET", `/opd/slots?doctorId=${encodeURIComponent(doctorId)}&date=${encodeURIComponent(date)}`);
+}
+
+export function bookAppointment(
+  body: { patientId: string; doctorId: string; slotStart: string; note?: string },
+): Promise<{ appointment: WireAppointment }> {
+  return api("POST", "/opd/appointments", body);
+}
+
+/** What this patient already has booked — the seat's third door, and its duplicate-booking guard. */
+export function listPatientAppointments(patientId: string): Promise<{ items: WireAppointment[] }> {
+  return api("GET", `/opd/appointments?patientId=${encodeURIComponent(patientId)}&status=booked`);
+}
+
+/** An arrival: the booking becomes a visit. Same `OpenVisitResult` the walk-in returns. */
+export function checkInAppointment(appointmentId: string): Promise<WireOpenVisitResult> {
+  return api("POST", `/opd/appointments/${appointmentId}/check-in`);
+}
 
 export function joinQueue(encounterId: string): Promise<WireJoinQueueResult> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/join-queue`);

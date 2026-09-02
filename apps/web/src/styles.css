@@ -241,6 +241,9 @@
  */
 /* VD-2 T1 / D9 — Bay One opts into the same tokens; one block, two seats, no second palette. */
 [data-seat="registration-counter"],
+/* FD-7 T2 — the appointment seat is the registration counter's neighbour on the same desk and wears
+   the same paper-and-pine tokens. Opting in is the one attribute on its root, exactly as D9 intended. */
+[data-seat="appointment-seat"],
 [data-seat="vitals-bay"] {
   --background: #f4f7f4;          /* paper */
   --card: #ffffff;
