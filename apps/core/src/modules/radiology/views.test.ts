@@ -92,10 +92,11 @@ describe("the viewer door and image.viewed (18b T3)", () => {
     await syncPermissions(db, registry);
     await grantPermissionToRole(db, registry, "rad_reader", "radiology.worklist.read");
     const view = await studyView(db, reader, study.studyId);
-    expect(view!.views.map((v) => v.viewerId)).toEqual([reader.id]);
+    expect(view!.views.map((v) => [v.viewerId, v.viewerName])).toEqual([[reader.id, "reader.one"]]); // C6: a name, not a ULID
+    expect(view!.canOpenImages).toBe(true); // B4: the button follows the server
   });
 
-  it("refuses `no_images` for a study recorded without DICOM, and leaves NO row behind", async () => {
+  it("refuses `no_images` for a study recorded without DICOM (the transaction leaves no row)", async () => {
     await publishPacs({ viewer_url_template: TEMPLATE, enabled: true });
     const study = await acquired("no_pacs_images");
     await expect(withTx(db, (tx) => openImages(tx, reader, { studyId: study.studyId })))
@@ -114,7 +115,7 @@ describe("the viewer door and image.viewed (18b T3)", () => {
     expect(await db.select().from(imagingImageViews)).toHaveLength(0);
   });
 
-  it("refuses a reader without the permission, before touching anything", async () => {
+  it("refuses a reader without the permission (the transaction leaves no row)", async () => {
     await publishPacs({ viewer_url_template: TEMPLATE, enabled: true });
     const study = await acquired("pacs");
     await expect(withTx(db, (tx) => openImages(tx, nobody, { studyId: study.studyId })))
@@ -129,6 +130,9 @@ describe("the viewer door and image.viewed (18b T3)", () => {
       .toThrow(/placeholder|nothing else/);
     expect(() => parseDefinitionBody("pacs_settings", { viewer_url_template: "https://pacs/viewer", enabled: true }))
       .toThrow(/at least one/);
+    // Close review B5 — not a URL: refused at publish, not a 500 at the door.
+    expect(() => parseDefinitionBody("pacs_settings", { viewer_url_template: "https://pacs host/v?a={accessionNo}", enabled: true }))
+      .toThrow(/parse as a URL/);
     expect(parseDefinitionBody("pacs_settings", { viewer_url_template: TEMPLATE, enabled: true }).enabled).toBe(true);
   });
 });

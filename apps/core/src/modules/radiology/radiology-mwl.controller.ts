@@ -3,7 +3,7 @@ import { z } from "zod";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { istDayString } from "../../kernel/approvals/cumulative";
-import { MWL_READ, mwlExport, renderMwlDump } from "./mwl";
+import { MWL_READ, mwlExport, renderMwlDump, renderMwlDumpHeader } from "./mwl";
 import { idSchema, isoDateSchema, parsed, toHttp } from "./radiology-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -42,7 +42,8 @@ export class RadiologyMwlController {
       if (q.format === "dump") {
         res.type("text/plain");
         res.setHeader("X-Hmis-Mwl-Withheld", String(out.withheld));
-        return out.rows.map(renderMwlDump).join("\n");
+        res.setHeader("X-Hmis-Mwl-Malformed-Ae-Title", out.malformedAeTitle.join(","));
+        return renderMwlDumpHeader(out) + out.rows.map(renderMwlDump).join("\n");
       }
       return out;
     } catch (e) { toHttp(e); }

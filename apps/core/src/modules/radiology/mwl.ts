@@ -61,14 +61,23 @@ export const DICOM_MODALITY: Readonly<Record<string, string>> = {
  */
 const IST_OFFSET_MS = IST_UTC_OFFSET_MINUTES * 60_000;
 
+/**
+ * PS3.5 AE — 1–16 characters of the default repertoire, no backslash, no control characters, not
+ * only spaces. `]` is excluded too (pass 2 A2): the dump's value closer, which `v()` would rewrite
+ * to a space, so JSON and dump would name two different titles.
+ */
+export const AE_TITLE_RE = /^(?=.*[^ ])[\x20-\x5b\x5e-\x7e]{1,16}$/;
+
 export type MwlRow = {
   studyId: string;
+  patientId: string;
   accessionNo: string;
   studyInstanceUid: string;
   status: string;
   priority: "STAT" | "HIGH" | "ROUTINE";
   patient: { uhid: string; personName: string; birthDate: string | null; sex: "M" | "F" | "O" };
-  referringPhysician: string | null;
+  /** An id, not a name: `(0008,0090)` is left EMPTY on the dump (close review A4). */
+  orderingClinicianId: string | null;
   procedureCode: string;
   modality: string;
   deviceResourceId: string;
@@ -77,13 +86,24 @@ export type MwlRow = {
   scheduledTime: string;
 };
 
-export type MwlExport = { date: string; rows: MwlRow[]; withheld: number };
+export type MwlExport = {
+  date: string;
+  rows: MwlRow[];
+  /** Form F studies not offered because the device is on no active §19 registration (D2). */
+  withheld: number;
+  /** Devices whose `aeTitle` is not a legal AE title; their studies are absent, and this says why. */
+  malformedAeTitle: string[];
+};
 
 /** The IST calendar day `date` as a half-open UTC window. */
 export function istDayWindow(date: string): { start: Date; end: Date } {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  if (m === null) throw new RadiologyError("definition_invalid", `not a calendar day: ${date}`);
-  const start = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) - IST_OFFSET_MS);
+  const midnightUtc = m === null ? NaN : Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  // Close review A5 — `Date.UTC(2026, 1, 30)` rolls over to 2 March in silence; refuse the day that is not one.
+  if (m === null || new Date(midnightUtc).toISOString().slice(0, 10) !== date) {
+    throw new RadiologyError("invalid_date", `not a calendar day: ${date}`, { date });
+  }
+  const start = new Date(midnightUtc - IST_OFFSET_MS);
   return { start, end: new Date(start.getTime() + 86_400_000) };
 }
 
@@ -95,9 +115,11 @@ export function istDayWindow(date: string): { start: Date; end: Date } {
 export function toPersonName(name: string): string {
   const clean = name.replace(/[\u0000-\u001f^=\\]/g, " ").trim();
   const tokens = clean.split(/\s+/).filter((t) => t.length > 0);
-  if (tokens.length <= 1) return tokens[0] ?? "";
+  // PS3.5 PN — each component ≤ 64; a longer one is truncated rather than refused (close review A2).
+  const cap = (s: string) => s.slice(0, 64);
+  if (tokens.length <= 1) return cap(tokens[0] ?? "");
   const family = tokens[tokens.length - 1]!;
-  return `${family}^${tokens.slice(0, -1).join(" ")}`;
+  return `${cap(family)}^${cap(tokens.slice(0, -1).join(" "))}`;
 }
 
 function dicomSex(administrativeGender: string): "M" | "F" | "O" {
@@ -106,7 +128,16 @@ function dicomSex(administrativeGender: string): "M" | "F" | "O" {
   return "O";
 }
 
+/** A DATE column (DOB): the calendar day as stored, no zone. */
 function dicomDate(d: Date): string { return d.toISOString().slice(0, 10).replace(/-/g, ""); }
+/**
+ * ═══ CLOSE REVIEW A1 (CRITICAL) — THE SPS DATE AND TIME ARE THE SAME CLOCK ═══
+ * The first version rendered the date in UTC and the time in IST, so a 01:30 IST slot went out
+ * as yesterday's date with today's time and a modality filtering its C-FIND by today's date never
+ * saw it — 18a F52's window, on the export that exists for the night CT. Both are IST now, and the
+ * test pins the 01:30 slot by DATE.
+ */
+function dicomDateIst(d: Date): string { return new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10).replace(/-/g, ""); }
 function dicomTimeIst(d: Date): string {
   return new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(11, 19).replace(/:/g, "");
 }
@@ -138,7 +169,7 @@ export async function mwlExport(
       studyTypeCode: imagingStudies.studyTypeCode, scheduledAt: imagingStudies.scheduledAt,
       deviceResourceId: imagingStudies.deviceResourceId, formFRequired: imagingStudies.formFRequired,
       patientId: imagingStudies.patientId,
-      referringPhysician: orders.orderingClinicianId,
+      orderingClinicianId: orders.orderingClinicianId,
       uhid: patients.uhid, name: patients.name, alias: patients.alias,
       isConfidential: patients.isConfidential, dob: patients.dob,
       administrativeGender: patients.administrativeGender,
@@ -158,9 +189,12 @@ export async function mwlExport(
 
   const out: MwlRow[] = [];
   let withheld = 0;
+  const malformed = new Set<string>();
   for (const r of rows) {
     const aeTitle = r.attributes[DEVICE_AE_TITLE_ATTRIBUTE];
     if (typeof aeTitle !== "string" || aeTitle.length === 0) continue; // not a DICOM device: not an error
+    // Close review A2 — a 17-character or backslashed AE title matches no console; say so, never export it.
+    if (!AE_TITLE_RE.test(aeTitle)) { malformed.add(r.deviceResourceId!); continue; }
     // D2 — the same reader acquisition uses, before the row is offered.
     if (r.formFRequired && (await activeRegistrationFor(db, r.deviceResourceId!, opts.date)) === null) {
       withheld += 1;
@@ -168,7 +202,7 @@ export async function mwlExport(
     }
     const modalityAttr = r.attributes[DEVICE_MODALITY_ATTRIBUTE];
     out.push({
-      studyId: r.studyId, accessionNo: r.accessionNo,
+      studyId: r.studyId, patientId: r.patientId, accessionNo: r.accessionNo,
       studyInstanceUid: mintStudyInstanceUid(r.studyId),
       status: r.status, priority: priorityOf(r.priority),
       patient: {
@@ -179,20 +213,21 @@ export async function mwlExport(
         birthDate: r.dob === null ? null : dicomDate(r.dob),
         sex: dicomSex(r.administrativeGender),
       },
-      referringPhysician: r.referringPhysician,
-      procedureCode: r.studyTypeCode,
+      orderingClinicianId: r.orderingClinicianId,
+      procedureCode: r.studyTypeCode.slice(0, 64),
       modality: typeof modalityAttr === "string" ? (DICOM_MODALITY[modalityAttr] ?? "OT") : "OT",
       deviceResourceId: r.deviceResourceId!, aeTitle,
-      scheduledDate: dicomDate(r.scheduledAt!), scheduledTime: dicomTimeIst(r.scheduledAt!),
+      scheduledDate: dicomDateIst(r.scheduledAt!), scheduledTime: dicomTimeIst(r.scheduledAt!),
     });
   }
 
   const scope = opts.deviceResourceId === undefined ? "" : ` device ${opts.deviceResourceId}`;
+  // Close review A3 — one row per patient DISCLOSED: a withheld or AE-less study left the process as nothing.
   const reason = `modality worklist ${opts.date}${scope}, ${String(out.length)} rows`;
-  for (const patientId of new Set(rows.map((r) => r.patientId))) {
+  for (const patientId of new Set(out.map((r) => r.patientId))) {
     await recordPhiAccess(db, { actor, patientId, surface: "imaging.worklist", reason });
   }
-  return { date: opts.date, rows: out, withheld };
+  return { date: opts.date, rows: out, withheld, malformedAeTitle: [...malformed] };
 }
 
 /**
@@ -200,14 +235,22 @@ export async function mwlExport(
  * Scheduled Procedure Step sequence has exactly one item; the identifiers are the accession so a
  * DICOM study coming back from the modality carries the join key on its face.
  */
+/** Pass 2 A2 — the dump is what the bridge pulls, so the dump names the malformed devices too. */
+export function renderMwlDumpHeader(out: MwlExport): string {
+  return `# HMIS modality worklist ${out.date} — ${String(out.rows.length)} items, ${String(out.withheld)} withheld`
+    + (out.malformedAeTitle.length === 0 ? "" : `, malformed AE title on device(s): ${out.malformedAeTitle.join(",")}`)
+    + "\n";
+}
+
 export function renderMwlDump(row: MwlRow): string {
-  const v = (s: string | null): string => `[${(s ?? "").replace(/[\r\n\]]/g, " ")}]`;
+  // dump2dcm: `\` separates values and `]` closes one; neither may ride inside a value (close review A2).
+  const v = (s: string | null): string => `[${(s ?? "").replace(/[\u0000-\u001f\\\]]/g, " ")}]`;
   return [
     "# Dicom-File-Format",
     `# HMIS modality worklist item — study ${row.studyId}`,
     "(0008,0005) CS [ISO_IR 192]",
     `(0008,0050) SH ${v(row.accessionNo)}`,
-    `(0008,0090) PN ${v(row.referringPhysician)}`,
+    "(0008,0090) PN []",
     `(0010,0010) PN ${v(row.patient.personName)}`,
     `(0010,0020) LO ${v(row.patient.uhid)}`,
     `(0010,0030) DA ${v(row.patient.birthDate)}`,
