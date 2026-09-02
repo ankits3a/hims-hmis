@@ -9,7 +9,7 @@ import { api } from "../lib/api";
 import { CONFIDENTIAL_CAPTURE_ENABLED } from "../lib/confidential-capture";
 import { FormKit, TextField, SelectField, CheckboxField } from "../components/form-kit";
 import { SubmitButton } from "../components/submit-button";
-import { PatientPhoto } from "./registration-desk";
+import { PatientPhoto } from "../components/patient-photo";
 import { QrCard, type QrCardData } from "../components/qr-card";
 import { Button } from "@/components/ui/button";
 import { usePatientInHand } from "../lib/patient-in-hand";

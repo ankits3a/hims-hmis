@@ -252,3 +252,32 @@ untested**, with the measurement in the code, rather than counted as covered.
 
 **Mutants run at T2: 19, all dead** — 4 on the continuity query, 9 on the routing rules, 6 on the
 assembled seat.
+
+**T3 — DONE, AND T4 FOLDED INTO IT.** §5 made deleting the old screen its own task. That was wrong:
+`/registration` is one route, so a "new screen" and an "old screen" cannot both serve it — the delete
+and the rebuild are the same act. `registration-desk.tsx` → `registration-screen.tsx`, one file, one
+route, the old name gone (a second name for one screen is how the owner ended up on the wrong counter).
+
+**T3 was much smaller than §5 assumed, and measuring is why.** The old screen ALREADY had the right
+stages — search → form → card — and already ended at the UHID card. All four of §4a's carried things
+(guardian, photo + attach confirmation, ABHA fields, confidential/sensitive) were already there and
+are untouched. **The artboard was the thing that was wrong**, not the shipped screen: it drew the
+doctor and the complaint inside the form. So the real gap was one thing — **the card handed over to
+nothing**, dropping the clerk back into an empty search box having just created a patient. It now
+takes them in hand and navigates to `/appointment`, by permission.
+
+`PatientPhoto` moved to `components/patient-photo.tsx` (D5's precondition): three surfaces were
+importing a whole SCREEN, and its router hooks, to render one `<img>` — a coupling two test files
+already carried workarounds for. Both of those comments were corrected rather than left saying
+something no longer true.
+
+**R4's registration half is BLOCKED and is moved to T6, with the reason.** The partner slip cannot be
+captured here yet: `POST /patients` has no field for it, no route binds a slip code to a patient, and
+**nothing in the repository ever writes `attribution_ids.state = 'claimed'`** — the state exists in
+the schema and in `PRESENTABLE_STATES` and has no writer. `GET /partners/attributions/:code` also
+needs `partners.receivable.operate`, which the front desk does not hold. Shipping a field that
+silently persists nothing would be worse than not shipping it, so the capture is built in T6 **with
+the rail that stores it**, and added back to this screen there. The owner's ruling is unchanged; only
+the task it lands in has moved.
+
+**Mutants at T3: 3, all dead** (the permission gate, `takePatient`, the navigation target).

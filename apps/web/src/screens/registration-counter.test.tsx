@@ -601,7 +601,7 @@ describe("RC-3 T5 / D3 — the alias layer is scoped to the seat", () => {
     // FD-1 T4 / D4 — "your figures" is a screen OF the registration seat and carries its attribute.
     // PLAN 16c T3 / D11 — the dispense counter, on its own root element.
     // FD-7 T2 — the appointment seat, on its own root element, by the same one-attribute rule.
-    expect(carriers).toEqual(["screens/appointment-seat.tsx", "screens/counter-figures.tsx", "screens/lab-seat.tsx", "screens/pharmacy-counter.tsx", "screens/registration-counter.tsx", "screens/vitals-bay.tsx"]); // THE KILL
+    expect(carriers).toEqual(["screens/appointment-seat.tsx", "screens/counter-figures.tsx", "screens/lab-seat.tsx", "screens/pharmacy-counter.tsx", "screens/registration-counter.tsx", "screens/registration-screen.tsx", "screens/vitals-bay.tsx"]); // THE KILL
 
     renderWithProviders(<RegistrationCounter />);
     expect(screen.getByTestId("registration-counter").getAttribute("data-seat")).toBe("registration-counter");

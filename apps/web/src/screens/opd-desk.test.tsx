@@ -137,9 +137,9 @@ async function pickPatient(user: ReturnType<typeof userEvent.setup>): Promise<vo
 /**
  * PLAN 07b T2 — `useNavigate` is the one TanStack Router hook this screen calls (the token slip's
  * handoff to `/billing?encounterId=…`). Everything else in the module stays REAL, for the reason
- * `billing-counter.test.tsx` records: `PatientPicker` pulls in `registration-desk`, which imports
- * router hooks of its own, and a factory that dropped them would fail at access time rather than
- * tell us anything. A `<Link>` was tried first and cannot work here — it needs a `RouterProvider`
+ * `billing-counter.test.tsx` records: `PatientPicker` pulls in router hooks of its own, and a
+ * factory that dropped them would fail at access time rather than tell us anything. (FD-7 T3 cut the
+ * screen-for-a-component import that used to make this worse.) A `<Link>` was tried first and cannot work here — it needs a `RouterProvider`
  * this suite deliberately does not mount.
  */
 const navigate = vi.hoisted(() => vi.fn());

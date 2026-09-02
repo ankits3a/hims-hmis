@@ -20,7 +20,7 @@ import { MyDay } from "./screens/my-day";
 import { StaffReports } from "./screens/staff-reports";
 import { RegistrationCounter } from "./screens/registration-counter";
 import { CounterFigures } from "./screens/counter-figures";
-import { RegistrationDesk } from "./screens/registration-desk";
+import { RegistrationScreen } from "./screens/registration-screen";
 import { AppointmentSeat } from "./screens/appointment-seat";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
@@ -468,7 +468,7 @@ const registrationRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): { new?: boolean } => ({
     new: search.new === true ? true : undefined,
   }),
-  component: RegistrationDesk,
+  component: RegistrationScreen,
 });
 
 /**

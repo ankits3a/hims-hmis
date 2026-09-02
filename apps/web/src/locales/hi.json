@@ -137,7 +137,8 @@
     "consentNote": "सहमति नोट (DPDP)",
     "promotionalOptIn": "प्रचार संदेश: सहमति दी गई",
     "submit": "पंजीकृत करें (Alt+S)",
-    "registered": "पंजीकृत"
+    "registered": "पंजीकृत",
+    "bookAppointment": "अपॉइंटमेंट बुक करें"
   },
   "photo": {
     "title": "फ़ोटो",

@@ -3,8 +3,9 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { AuthProvider } from "../lib/auth";
+import { PatientInHandProvider } from "../lib/patient-in-hand";
 import { renderWithProviders, stubFetch } from "../test-utils";
-import { RegistrationDesk } from "./registration-desk";
+import { RegistrationScreen } from "./registration-screen";
 
 // The C-18 dialog navigates with TanStack Router's useNavigate, which throws outside a
 // <RouterProvider>. A component test mounts no router, so the module is mocked down to
@@ -42,7 +43,7 @@ async function openNewPatientForm(user: ReturnType<typeof userEvent.setup>): Pro
   await screen.findByRole("heading", { name: "New patient" });
 }
 
-describe("RegistrationDesk", () => {
+describe("RegistrationScreen", () => {
   beforeEach(() => {
     setToken(null);
     localStorage.clear();
@@ -56,7 +57,7 @@ describe("RegistrationDesk", () => {
 
   it("F2 (?new=true, keyboard.tsx): landing here from elsewhere in the app opens the new-patient form directly", async () => {
     routeSearch.current = { new: true };
-    renderWithProviders(<RegistrationDesk />);
+    renderWithProviders(<RegistrationScreen />);
 
     expect(await screen.findByRole("heading", { name: "New patient" })).toBeInTheDocument();
     // The flag is one-shot: consuming it clears the URL via a replace-navigate so a later F2
@@ -74,8 +75,15 @@ describe("RegistrationDesk", () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const renderTree = (): React.ReactElement => (
       <QueryClientProvider client={qc}>
+        {/* FD-7 T3 — `PatientInHandProvider` added: the card stage now takes the new patient IN HAND
+            before handing over to `/appointment`, and every authed screen renders inside this
+            provider in production (`router.tsx`'s Shell). The hand-built tree has to mirror that,
+            exactly as `renderWithProviders` does — a screen that passed its own suite while throwing
+            in the app is the trap 07b T1 wrote that provider's docstring about. */}
         <AuthProvider>
-          <RegistrationDesk />
+          <PatientInHandProvider>
+            <RegistrationScreen />
+          </PatientInHandProvider>
         </AuthProvider>
       </QueryClientProvider>
     );
@@ -83,7 +91,7 @@ describe("RegistrationDesk", () => {
     expect(screen.queryByRole("heading", { name: "New patient" })).toBeNull();
 
     // Simulates keyboard.tsx's navigate({ to: "/registration", search: { new: true } }) landing
-    // while RegistrationDesk is already mounted — this is exactly the bug reported ("F2 does
+    // while RegistrationScreen is already mounted — this is exactly the bug reported ("F2 does
     // nothing on this page").
     routeSearch.current = { new: true };
     rerender(renderTree());
@@ -96,7 +104,7 @@ describe("RegistrationDesk", () => {
       "GET /api/patients/search": { items: [HIT] },
       "GET /api/patients/p-1/photo": { mimeType: "image/jpeg", imageBase64: "QUFB" },
     });
-    renderWithProviders(<RegistrationDesk />);
+    renderWithProviders(<RegistrationScreen />);
     const user = userEvent.setup();
 
     await user.type(screen.getByPlaceholderText(SEARCH_PLACEHOLDER), "98765");
@@ -113,7 +121,7 @@ describe("RegistrationDesk", () => {
       "GET /api/patients/search": { items: [HIT] },
       "GET /api/patients/p-1/photo": { mimeType: "image/jpeg", imageBase64: "QUFB" },
     });
-    renderWithProviders(<RegistrationDesk />);
+    renderWithProviders(<RegistrationScreen />);
     const user = userEvent.setup();
 
     await user.type(screen.getByPlaceholderText(SEARCH_PLACEHOLDER), "98765");
@@ -135,7 +143,7 @@ describe("RegistrationDesk", () => {
       "GET /api/patients/search": { items: [HIT] },
       "GET /api/patients/p-1/photo": { mimeType: "image/jpeg", imageBase64: "QUFB" },
     });
-    renderWithProviders(<RegistrationDesk />);
+    renderWithProviders(<RegistrationScreen />);
     const user = userEvent.setup();
 
     await user.type(screen.getByPlaceholderText(SEARCH_PLACEHOLDER), "98765");
@@ -154,7 +162,7 @@ describe("RegistrationDesk", () => {
         payload: "1.p-new.3.6f2a9c", uhid: "HMS0000009998", name: "Bal Kumar", sex: "unknown", dob: null,
       },
     });
-    renderWithProviders(<RegistrationDesk />);
+    renderWithProviders(<RegistrationScreen />);
     const user = userEvent.setup();
     await openNewPatientForm(user);
 
@@ -195,7 +203,7 @@ describe("RegistrationDesk", () => {
         payload: "1.p-new.3.6f2a9c", uhid: "HMS0000009997", name: "Leela Bai", sex: "unknown", dob: null,
       },
     });
-    renderWithProviders(<RegistrationDesk />);
+    renderWithProviders(<RegistrationScreen />);
     const user = userEvent.setup();
     await openNewPatientForm(user);
 
@@ -218,7 +226,7 @@ describe("RegistrationDesk", () => {
         payload: "1.p-new.3.6f2a9c", uhid: "HMS0000009996", name: "Meena Rao", sex: "unknown", dob: null,
       },
     });
-    renderWithProviders(<RegistrationDesk />);
+    renderWithProviders(<RegistrationScreen />);
     const user = userEvent.setup();
     await openNewPatientForm(user);
 
@@ -232,6 +240,84 @@ describe("RegistrationDesk", () => {
     expect(body.promotionalOptIn).toBe(true);
   });
 
+  /* ══════════════════════════════════════════════════════════════════════════════════════════
+     FD-7 T3 — REGISTRATION ENDS AT THE UHID, AND HANDS OVER
+     ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+  /** The stubs a registration needs to reach the card, plus whatever `auth/me` should answer. */
+  function stubThroughToCard(me: unknown): void {
+    stubFetch({
+      "GET /api/auth/me": me,
+      "GET /api/patients/search": { items: [] },
+      "POST /api/patients": { patient: { id: "p-new" }, guardianId: null },
+      "GET /api/patients/p-new/qr": {
+        payload: "1.p-new.3.6f2a9c", uhid: "HMS0000009999", name: "Ravi Sharma", sex: "male", dob: "1988-02-11",
+      },
+    });
+  }
+
+  async function registerRavi(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await openNewPatientForm(user);
+    await user.type(screen.getByLabelText("Full name"), "Ravi Sharma");
+    await user.type(screen.getByLabelText("Mobile number"), "9876500011");
+    await user.type(screen.getByLabelText("Age (years)"), "37");
+    await user.click(screen.getByRole("button", { name: "Register (Alt+S)" }));
+    await screen.findByText("HMS0000009999");
+  }
+
+  const CAN_BOOK = { actor: { type: "user", id: "u-1" }, permissions: { hospital: ["patients.register", "opd.appointments.manage"], scoped: { department: {}, floor: {} } } };
+  const CANNOT_BOOK = { actor: { type: "user", id: "u-2" }, permissions: { hospital: ["patients.register"], scoped: { department: {}, floor: {} } } };
+
+  /**
+   * THE OWNER'S CORRECTION, ASSERTED. The registration form must not carry the appointment: no
+   * doctor, no complaint, and no button that opens a visit. This is the kill for the approved
+   * artboard's own shape — it drew "A doctor, by name" and "Or what brings them in" INSIDE this form
+   * under one button reading "Register and open the visit".
+   */
+  it("the registration form carries NO doctor field, NO complaint field and opens NO visit", async () => {
+    stubThroughToCard(CAN_BOOK);
+    setToken("t");
+    renderWithProviders(<RegistrationScreen />);
+    const user = userEvent.setup();
+    await openNewPatientForm(user);
+
+    expect(screen.queryByLabelText(/doctor/i)).toBeNull();
+    expect(screen.queryByLabelText(/complaint/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /open the visit|walk-?in/i })).toBeNull();
+    expect(fetchCalls().some((c) => c.url.includes("/opd/walk-in") || c.url.includes("/opd/visits"))).toBe(false);
+  });
+
+  /**
+   * THE HAND-OVER, and the reason `takePatient` is not optional: `/appointment` is a rendering of the
+   * patient in hand, so navigating without it lands the clerk on a seat with an empty search box and
+   * the patient they just created nowhere in sight.
+   */
+  it("a clerk who may book is handed over to /appointment with the new patient IN HAND", async () => {
+    stubThroughToCard(CAN_BOOK);
+    setToken("t");
+    renderWithProviders(<RegistrationScreen />);
+    const user = userEvent.setup();
+    await registerRavi(user);
+
+    await user.click(screen.getByTestId("reg-to-appointment"));
+    expect(navigate).toHaveBeenCalledWith({ to: "/appointment" });
+    expect(JSON.parse(sessionStorage.getItem("hmis.inHand") ?? "{}"))
+      .toEqual({ patientId: "p-new", encounterId: null });
+  });
+
+  /** D2 — the door is composed by PERMISSION. A clerk who may not book gets the card and is done. */
+  it("a clerk who may NOT book gets the card and no hand-over door", async () => {
+    stubThroughToCard(CANNOT_BOOK);
+    setToken("t");
+    renderWithProviders(<RegistrationScreen />);
+    const user = userEvent.setup();
+    await registerRavi(user);
+
+    expect(screen.queryByTestId("reg-to-appointment")).toBeNull();
+    expect(screen.getByTestId("reg-done")).toBeTruthy();
+    expect(navigate).not.toHaveBeenCalledWith({ to: "/appointment" });
+  });
+
   it("a valid submit posts /patients and advances to the printed card view", async () => {
     stubFetch({
       "POST /api/patients": { patient: { id: "p-new" }, guardianId: null },
@@ -243,7 +329,7 @@ describe("RegistrationDesk", () => {
         dob: "1988-02-11",
       },
     });
-    renderWithProviders(<RegistrationDesk />);
+    renderWithProviders(<RegistrationScreen />);
     const user = userEvent.setup();
     await openNewPatientForm(user);
 
@@ -275,7 +361,7 @@ describe("RegistrationDesk", () => {
    */
   it("DD5: the confidential checkbox and its alias field are off the desk while no role can read such a record", async () => {
     stubFetch({});
-    renderWithProviders(<RegistrationDesk />);
+    renderWithProviders(<RegistrationScreen />);
     const user = userEvent.setup();
     await openNewPatientForm(user);
 

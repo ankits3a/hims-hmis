@@ -6,8 +6,10 @@ import { BillingCounter } from "./billing-counter";
 /**
  * `useSearch({ strict: false })` is the one TanStack Router hook this screen calls (flag ⑧ — the
  * `/billing?encounterId=` deep link from the OPD desk). Everything else in the module stays REAL:
- * `PatientPicker` pulls in `registration-desk`, which imports `useNavigate`, and a factory that
- * dropped it would fail at access time rather than tell us anything.
+ * `PatientPicker` pulls in router hooks of its own, and a factory that dropped them would fail at
+ * access time rather than tell us anything. (FD-7 T3: it used to reach them by importing the whole
+ * registration SCREEN for one `<img>`; `PatientPhoto` now lives in `components/patient-photo.tsx`,
+ * so that particular edge is gone — the mock stays because `useSearch` is still called here.)
  */
 const searchState = vi.hoisted(() => ({ current: {} as { encounterId?: string } }));
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
