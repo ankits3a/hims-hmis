@@ -1,0 +1,257 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#fafafa;color:#0a0a0a;
+      font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+    .hi{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.55}
+    .card{background:#ffffff;border:1px solid #e5e5e5;border-radius:14px;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+    .n{width:26px;height:26px;border-radius:9999px;background:#171717;color:#fafafa;display:flex;
+       align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+    .h2{font-size:17px;font-weight:600;letter-spacing:-0.01em}
+    .sub{font-size:13px;color:#525252;line-height:19px}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .v{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:5px;
+       font-size:9.5px;font-weight:700;letter-spacing:0.05em;white-space:nowrap}
+    .vlay{background:#171717;color:#fafafa}
+    .vrule{background:rgba(203,136,46,0.12);color:#cb882e;border:1px solid rgba(203,136,46,0.35)}
+    .vpol{background:#f5f5f5;color:#737373;border:1px solid #e5e5e5}
+    .vopen{background:rgba(231,0,11,0.08);color:#e7000b;border:1px solid rgba(231,0,11,0.30)}
+    .r{display:grid;grid-template-columns:20px 1fr 76px 1.5fr;gap:12px;align-items:baseline;
+       padding:8px 14px;border-bottom:1px solid #f5f5f5}
+    .rc{font-size:12px;line-height:17px}
+    .rn{font-size:11px;color:#a1a1a1;font-variant-numeric:tabular-nums}
+    .rd{font-size:11.5px;line-height:16.5px;color:#525252}
+  </style>
+</helmet>
+
+<div style="width:1180px;background:#fafafa;padding:34px 38px 40px;display:flex;flex-direction:column;gap:18px">
+
+  <!-- HEAD -->
+  <div>
+    <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">
+      <h1 style="margin:0;font-size:27px;font-weight:600;letter-spacing:-0.02em">The edge-case pass</h1>
+      <span style="font-size:15px;color:#737373">run before the console was drawn, not after</span>
+    </div>
+    <p style="margin:8px 0 0;font-size:14px;color:#525252;max-width:900px;line-height:21px">
+      Thirty-four ways the seat goes wrong, sorted into the ones that <strong style="font-weight:600;color:#0a0a0a">moved the layout</strong>,
+      the ones that are a <strong style="font-weight:600;color:#0a0a0a">rule</strong> the screen enforces, the ones that are ordinary
+      <strong style="font-weight:600;color:#0a0a0a">policy</strong>, and the ones this design honestly
+      <strong style="font-weight:600;color:#e7000b">does not solve</strong>. Six changed the console, and one of them changed it more
+      than the whole question inventory did.
+    </p>
+    <div style="display:flex;gap:8px;margin-top:13px;flex-wrap:wrap">
+      <span class="v vlay">MOVED THE LAYOUT</span>
+      <span class="v vrule">A RULE THE SCREEN ENFORCES</span>
+      <span class="v vpol">POLICY, NOT PIXELS</span>
+      <span class="v vopen">NOT SOLVED</span>
+    </div>
+  </div>
+
+  <!-- THE SIX -->
+  <div class="card" style="padding:20px 22px">
+    <div style="display:flex;align-items:flex-start;gap:13px;margin-bottom:15px">
+      <div class="n">1</div>
+      <div>
+        <div class="h2">The six that changed the drawing</div>
+        <div class="sub">Everything else on the console follows from the question inventory. These came from asking what happens when the day is not ordinary.</div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:11px">
+
+      <div style="display:grid;grid-template-columns:210px 1fr;gap:16px;padding:13px 15px;border:2px solid #e7000b;border-radius:11px;background:rgba(231,0,11,0.04)">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#e7000b">Acidity and a heart attack say the same sentence</div>
+          <div class="rn" style="margin-top:5px">edge 18 &#183; the biggest one</div>
+        </div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px">
+          <span class="hi">पेट में जलन</span> with pain going down the left arm is not a stomach. A symptom router that answers with a
+          department is a router that sends an infarct to a General Medicine queue fourteen deep.
+          <strong style="font-weight:600;color:#0a0a0a">So the three red-flag questions sit ABOVE the department name, not below it</strong>, and
+          they are phrased as things she asks rather than things she decides. Any yes, or any doubt, goes to Emergency. She is never
+          placed where &#8220;it is probably nothing&#8221; is available to her.
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:210px 1fr;gap:16px;padding:13px 15px;border:1px solid #e5e5e5;border-radius:11px;background:#ffffff">
+        <div>
+          <div style="font-size:13px;font-weight:600">The right rail stopped changing</div>
+          <div class="rn" style="margin-top:5px">edges 1, 2, 21, 22, 32, 33</div>
+        </div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px">
+          The first draft varied the right column with the query. With eight people at the counter and no token to order them,
+          a rail that moves is a rail she has to re-read. It is now <strong style="font-weight:600;color:#0a0a0a">fixed standing
+          instruments</strong> &#8212; who is waiting, what is held, what she can do, the two panic keys &#8212; and every shape-specific
+          thing lives on the left. Predictability beats density when the interval between questions is forty seconds.
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:210px 1fr;gap:16px;padding:13px 15px;border:1px solid #e5e5e5;border-radius:11px;background:#ffffff">
+        <div>
+          <div style="font-size:13px;font-weight:600">&#8220;Away&#8221; became a first-class state</div>
+          <div class="rn" style="margin-top:5px">edges 3, 31</div>
+        </div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px">
+          One seat, twenty-four hours. She walks somebody to Emergency; she eats; she goes to the toilet. The line has to go
+          somewhere and the counter has to say something. A button that rolls the hotline to Counter 1 and puts a sign on the
+          desk costs one control and closes the most frequent unhandled minute of the day.
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:210px 1fr;gap:16px;padding:13px 15px;border:1px solid #e5e5e5;border-radius:11px;background:#ffffff">
+        <div>
+          <div style="font-size:13px;font-weight:600">Every live answer carries when it was true</div>
+          <div class="rn" style="margin-top:5px">edges 13, 15</div>
+        </div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px">
+          The doctor left twenty minutes ago and nobody closed the session; the roster says he is in. She tells four people he is
+          sitting and all four are angry with her, not with the roster. <strong style="font-weight:600;color:#0a0a0a">confirmed 11:04 &#183;
+          2 min ago</strong> is not decoration &#8212; it is the difference between a fact and a guess wearing a fact's clothes, and it lets
+          her soften the sentence herself when the stamp is old.
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:210px 1fr;gap:16px;padding:13px 15px;border:1px solid #e5e5e5;border-radius:11px;background:#ffffff">
+        <div>
+          <div style="font-size:13px;font-weight:600">The wall has to work with the power off</div>
+          <div class="rn" style="margin-top:5px">edges 12, 34</div>
+        </div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px">
+          Forty per cent of the day is answers that never change, so on the worst day of the year they are the only thing that still
+          works &#8212; if they are not trapped behind a login. That makes the wall <strong style="font-weight:600;color:#0a0a0a">a laminated
+          card on the desk as well as a strip on the screen</strong>, and it constrains what may go on it: ten items, no live numbers,
+          nothing that goes stale between reprints.
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:210px 1fr;gap:16px;padding:13px 15px;border:1px solid #171717;border-radius:11px;background:#ffffff">
+        <div>
+          <div style="font-size:13px;font-weight:600">Night is a replacement, not a dimming</div>
+          <div class="rn" style="margin-top:5px">edges 27&#8211;30</div>
+        </div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px">
+          At <span class="num">02:41</span> nothing about queues, symptoms or departments is true, and a white 1440-pixel screen is the
+          brightest object in a dark lobby. The night console keeps four things and drops the rest &#8212; and half its wall exists to say
+          what is <em>shut</em> and what stands in for it. It uses the dark tokens already in <span class="mono">styles.css</span>,
+          so this is a mode the design system anticipated rather than a new palette.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- THE FULL PASS -->
+  <div class="card" style="padding:20px 22px">
+    <div style="display:flex;align-items:flex-start;gap:13px;margin-bottom:14px">
+      <div class="n">2</div>
+      <div>
+        <div class="h2">All thirty-four</div>
+        <div class="sub">Kept in full, including the boring ones, because the value of a pass like this is that it is exhaustive rather than interesting.</div>
+      </div>
+    </div>
+
+    <div style="border:1px solid #e5e5e5;border-radius:10px;overflow:hidden;background:#ffffff">
+
+      <div style="padding:8px 14px;background:#f5f5f5;border-bottom:1px solid #e5e5e5"><span class="lbl">Two channels, one person</span></div>
+      <div class="r"><span class="rn">1</span><span class="rc">The phone rings while somebody is mid-sentence at the counter</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">Both channels always visible; the parked one shows how long it has been parked</span></div>
+      <div class="r"><span class="rn">2</span><span class="rc">A second call arrives while she is on the first</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">Line 2 has its own indicator. A hotline has more than one line and the first draft pretended it did not</span></div>
+      <div class="r"><span class="rn">3</span><span class="rc">She walks someone to Emergency and the desk is empty</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">Away rolls the line to Counter 1</span></div>
+      <div class="r"><span class="rn">4</span><span class="rc">Somebody collapses at the counter while she is on a call</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">Medical emergency is one key with no confirmation step; the call drops</span></div>
+      <div class="r"><span class="rn">5</span><span class="rc">Abusive or drunk caller, usually at night</span><span><span class="v vrule">RULE</span></span><span class="rd">End the call without explaining. Counted, so a pattern becomes visible</span></div>
+      <div class="r"><span class="rn">6</span><span class="rc">Caller hangs up mid-answer</span><span><span class="v vpol">POLICY</span></span><span class="rd">Nothing owed. No callback unless a held question was opened</span></div>
+
+      <div style="padding:8px 14px;background:#f5f5f5;border-bottom:1px solid #e5e5e5;border-top:1px solid #e5e5e5"><span class="lbl">Who is asking</span></div>
+      <div class="r"><span class="rn">7</span><span class="rc">The person has no ID of any kind &#8212; common</span><span><span class="v vrule">RULE</span></span><span class="rd">Never a refusal. Registration can identify them; she routes there</span></div>
+      <div class="r"><span class="rn">8</span><span class="rc">A son asking for his mother's UHID &#8212; a face, but the wrong face</span><span><span class="v vrule">RULE</span></span><span class="rd"><strong style="font-weight:600;color:#0a0a0a">The patient's own ID, or it is not a directory read.</strong> A third party is Counter 1</span></div>
+      <div class="r"><span class="rn">9</span><span class="rc">A confidential patient is searched for</span><span><span class="v vrule">RULE</span></span><span class="rd">Identical blank to a genuine miss &#8212; same words, same timing, no extra spinner</span></div>
+      <div class="r"><span class="rn">10</span><span class="rc">Six people share the name and the last four digits</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">Disambiguation by age and last-visit year only. She reads the ages back; the person picks their own</span></div>
+      <div class="r"><span class="rn">11</span><span class="rc">They give a mobile number that is not the one on file</span><span><span class="v vpol">POLICY</span></span><span class="rd">No match. Registration updates numbers, not this desk</span></div>
+
+      <div style="padding:8px 14px;background:#f5f5f5;border-bottom:1px solid #e5e5e5;border-top:1px solid #e5e5e5"><span class="lbl">The system, and what it is telling her</span></div>
+      <div class="r"><span class="rn">12</span><span class="rc">Everything is down</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">The wall is laminated on the desk. Forty per cent of the day survives</span></div>
+      <div class="r"><span class="rn">13</span><span class="rc">The doctor left twenty minutes ago; the session was never closed</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">Freshness stamp on every live answer</span></div>
+      <div class="r"><span class="rn">14</span><span class="rc">Nothing found, or she typed it wrong</span><span><span class="v vpol">POLICY</span></span><span class="rd">The wall is still on screen. A dead end at this desk is never a blank page</span></div>
+      <div class="r"><span class="rn">15</span><span class="rc">The roster and the building disagree</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">Same stamp. The screen states when it last knew, never that it knows now</span></div>
+
+      <div style="padding:8px 14px;background:#f5f5f5;border-bottom:1px solid #e5e5e5;border-top:1px solid #e5e5e5"><span class="lbl">The person in front of her</span></div>
+      <div class="r"><span class="rn">16</span><span class="rc">Maithili, Bengali, Nepali &#8212; not a language she has</span><span><span class="v vopen">NOT SOLVED</span></span><span class="rd">A point-to-say card is the obvious answer and is not designed yet</span></div>
+      <div class="r"><span class="rn">17</span><span class="rc">They cannot read at all</span><span><span class="v vrule">RULE</span></span><span class="rd">Already central: nothing is handed over, everything is spoken</span></div>
+      <div class="r"><span class="rn">18</span><span class="rc">A cardiac case describing indigestion</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">Red flags above the department. See block 1</span></div>
+      <div class="r"><span class="rn">19</span><span class="rc">A child alone at the counter</span><span><span class="v vrule">RULE</span></span><span class="rd">Security, and stay with the child. Never send a child anywhere</span></div>
+      <div class="r"><span class="rn">20</span><span class="rc">Someone abusive or drunk at the counter</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">Security key, no certainty required before pressing</span></div>
+      <div class="r"><span class="rn">21</span><span class="rc">Eight people at once and no token system at this desk</span><span><span class="v vopen">NOT SOLVED</span></span><span class="rd">The only answer a design has is speed &#8212; every answer under thirty seconds. It is not enough at peak</span></div>
+      <div class="r"><span class="rn">22</span><span class="rc">The same person asks &#8220;how long now?&#8221; four times</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">Prompts a floor note. Repeat asking is a display-board failure, not enquiry volume</span></div>
+      <div class="r"><span class="rn">23</span><span class="rc">&#8220;They sent me from there to here and back again&#8221;</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">Held question with a name on it; a second bounce files itself as a complaint</span></div>
+
+      <div style="padding:8px 14px;background:#f5f5f5;border-bottom:1px solid #e5e5e5;border-top:1px solid #e5e5e5"><span class="lbl">The college, and everyone who is not a patient</span></div>
+      <div class="r"><span class="rn">24</span><span class="rc">A pharma rep at 09:30, at the peak</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">Parked lane, drawn dashed and grey so it never looks like a patient</span></div>
+      <div class="r"><span class="rn">25</span><span class="rc">NEET season: two hundred admission calls a day in August</span><span><span class="v vopen">NOT SOLVED</span></span><span class="rd">A seasonal preset on the wall helps. A headcount problem is not fixable in a layout</span></div>
+      <div class="r"><span class="rn">26</span><span class="rc">Police, an employer, a journalist</span><span><span class="v vrule">RULE</span></span><span class="rd">One key: the Duty Manager. Never her decision, and the screen says so</span></div>
+
+      <div style="padding:8px 14px;background:#f5f5f5;border-bottom:1px solid #e5e5e5;border-top:1px solid #e5e5e5"><span class="lbl">Night</span></div>
+      <div class="r"><span class="rn">27</span><span class="rc">A family arrives at 02:00 because they were telephoned</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">A named path, a private room, one key, and deliberately no information on the screen at all</span></div>
+      <div class="r"><span class="rn">28</span><span class="rc">One person alone in a public lobby all night</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">Security key, no confirmation</span></div>
+      <div class="r"><span class="rn">29</span><span class="rc">An ambulance call with a village and no address</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">Capture order is fixed: a number that rings, then a landmark, then what happened</span></div>
+      <div class="r"><span class="rn">30</span><span class="rc">The on-call consultant does not answer</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">&#8220;Not answering&#8221; is a state on the roster, and it names the escalation</span></div>
+
+      <div style="padding:8px 14px;background:#f5f5f5;border-bottom:1px solid #e5e5e5;border-top:1px solid #e5e5e5"><span class="lbl">Running the seat</span></div>
+      <div class="r"><span class="rn">31</span><span class="rc">Meals and breaks on a single-staffed 24&#215;7 desk</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">Away, as edge 3</span></div>
+      <div class="r"><span class="rn">32</span><span class="rc">Three shift handovers a day</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">Held questions and expected arrivals carry across, with who they belong to</span></div>
+      <div class="r"><span class="rn">33</span><span class="rc">A held question is still open when the shift ends</span><span><span class="v vrule">RULE</span></span><span class="rd">It hands over. Nothing is closed by going home</span></div>
+      <div class="r" style="border-bottom:none"><span class="rn">34</span><span class="rc">Power cut, UPS runs out</span><span><span class="v vlay">LAYOUT</span></span><span class="rd">As edge 12. The laminated wall is the whole disaster plan for this seat</span></div>
+    </div>
+  </div>
+
+  <!-- WHAT THE PASS EXPOSED THAT IS NOT A DESIGN PROBLEM -->
+  <div style="border:2px solid #e7000b;border-radius:14px;background:rgba(231,0,11,0.04);padding:20px 24px">
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:12px">
+      <span style="font-size:16px;font-weight:700;letter-spacing:0.02em;color:#e7000b">THE ONE HOLE THE PASS FOUND &#8212; RULED BY THE OWNER, 30-AUG-2026</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:22px">
+      <div style="font-size:13.5px;color:#404040;line-height:20px">
+        <strong style="font-weight:600;color:#0a0a0a">The IPD counter closes at 20:00. This seat runs to 08:00.</strong>
+        Every &#8220;is my brother admitted&#8221;, every visitor pass, every attender arriving off a late bus from Chhapra between
+        eight at night and eight in the morning has nowhere to be sent &#8212; and that is exactly the window in which people
+        arrive frightened, having been telephoned, or off the last train.
+        <div style="margin-top:11px">
+          <strong style="font-weight:600;color:#0a0a0a">RULED: the ward desk absorbs it after 20:00.</strong> So the enquiry seat never
+          sends anybody to a dark counter after eight &#8212; it sends them <em>up</em>, with a ward name and a sister's name, and the wall
+          says so in the same cell that carries the daytime answer. The ward sister now owns identity checks and pass issuance overnight,
+          and that is a real load she should be told she is carrying.
+        </div>
+      </div>
+      <div style="background:#ffffff;border:1px solid #e5e5e5;border-radius:10px;padding:14px 16px">
+        <div class="lbl" style="margin-bottom:8px">Three ways out, and they cost different things</div>
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <div style="font-size:12px;color:#404040;line-height:17px"><strong style="font-weight:600;color:#318f5a">1 &#183; CHOSEN.</strong> The ward desk owns it after 20:00, formally &#8212; free, and the ward carries it</div>
+          <div style="font-size:12px;color:#404040;line-height:17px"><strong style="font-weight:600;color:#0a0a0a">2 &#183;</strong> This seat gets the pass book at night &#8212; one more thing on a person already alone</div>
+          <div style="font-size:12px;color:#404040;line-height:17px"><strong style="font-weight:600;color:#0a0a0a">3 &#183;</strong> The IPD counter runs to 22:00 and the gap shrinks to the quiet hours &#8212; costs a shift</div>
+        </div>
+        <div style="font-size:11.5px;color:#737373;line-height:16.5px;margin-top:11px;padding-top:10px;border-top:1px solid #e5e5e5">
+          Option 1 was chosen. It costs nothing and it is almost certainly what already happens &#8212; the value of the ruling is that
+          it is now written down, so the ward can staff for it and the console can say it out loud instead of leaving Ekta to improvise
+          at 21:30.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1180,"height":2280}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

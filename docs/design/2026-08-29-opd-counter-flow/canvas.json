@@ -1,0 +1,94 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Flow 1 · Front counters" },
+    { "id": "page-2", "name": "Clinical floor" },
+    { "id": "page-3", "name": "Paper" },
+    { "id": "page-4", "name": "Flow 2 · Admin" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html",              "page": "page-1", "x": 0,    "y": 0,    "w": 1440, "h": 900,  "title": "Appointment counter — Anshuman", "is_interactive": true },
+    { "file": "EnquiryConsole.dc.html",    "page": "page-1", "x": 1600, "y": 0,    "w": 1440, "h": 900,  "title": "Enquiry desk — Ekta (read only)" },
+    { "file": "RegistrationDesk.dc.html",  "page": "page-1", "x": 0,    "y": 1060, "w": 1440, "h": 900,  "title": "Registration — Ramesh (Flow 1A)" },
+    { "file": "BillingCounter.dc.html",    "page": "page-1", "x": 1600, "y": 1060, "w": 1440, "h": 900,  "title": "Billing counter — Bhuvan" },
+
+    { "file": "VitalsDesk.dc.html",        "page": "page-2", "x": 0,    "y": 0,    "w": 1440, "h": 900,  "title": "Vitals desk — Vineeta", "is_interactive": true },
+    { "file": "DoctorQueue.dc.html",       "page": "page-2", "x": 1600, "y": 0,    "w": 1440, "h": 900,  "title": "Consultation room — Dr Rao + attendant", "is_interactive": true },
+    { "file": "DisplayBoard.dc.html",      "page": "page-2", "x": 0,    "y": 1060, "w": 1920, "h": 1080, "title": "Waiting-hall display" },
+    { "file": "OrderEntryMobile.dc.html",  "page": "page-2", "x": 2200, "y": 1060, "w": 390,  "h": 1680, "title": "Order entry on a phone — Omkar" },
+    { "file": "RadiologyReception.dc.html","page": "page-2", "x": 0,    "y": 2300, "w": 1440, "h": 900,  "title": "Radiology reception — Rohan" },
+
+    { "file": "PrescriptionA4.dc.html",    "page": "page-3", "x": 0,    "y": 0,    "w": 794,  "h": 1123, "title": "OPD prescription · A4", "print": "fixed" },
+    { "file": "ReportA4.dc.html",          "page": "page-3", "x": 914,  "y": 0,    "w": 794,  "h": 1123, "title": "Test report · A4", "print": "fixed" },
+    { "file": "TokenSlip.dc.html",         "page": "page-3", "x": 1828, "y": 0,    "w": 302,  "h": 900,  "title": "Token slip · 80 mm", "print": "fixed" },
+
+    { "file": "FlowToggle.dc.html",        "page": "page-4", "x": 0,    "y": 0,    "w": 1440, "h": 900,  "title": "Counter sequence — the admin switch" },
+    { "file": "DepartmentReception.dc.html","page": "page-4","x": 1600, "y": 0,    "w": 1440, "h": 900,  "title": "Department reception — Gaurav (Flow 2)" }
+  ],
+  "annotations": [
+    {
+      "id": "n-counters",
+      "page": "page-1",
+      "x": 0,
+      "y": -190,
+      "w": 900,
+      "text": "FOUR DESKS, FOUR SCREENS.\nToday one role — front_office, \"registration / OPD desk\" — covers all of this, and counter-desk.tsx is one screen that finds, opens and bills. That is why nothing fits a real counter: the app's unit of work is a module, the counter's is one person from hello to goodbye.\n\nEach screen below is scoped to what that seat is allowed to do. Enquiry can read everything and write only two things."
+    },
+    {
+      "id": "n-symptom",
+      "page": "page-1",
+      "x": 0,
+      "y": 940,
+      "w": 700,
+      "text": "The appointment screen is the interactive one — type is fixed, but click a department or a doctor and the right-hand ladder re-computes.\n\nToggle Walk-in → Returned with results and watch Muskan move from 13th to 4th, behind Raju Singh. That ordering already exists server-side (opd.queueClass 0–4); no counter screen has ever shown it."
+    },
+    {
+      "id": "n-newmaster",
+      "page": "page-1",
+      "x": 1600,
+      "y": 940,
+      "w": 700,
+      "text": "NEW WORK THIS DESIGN IMPLIES\n· a symptom → department master (\"cough\" → General Medicine primary, Community Medicine secondary) — does not exist\n· an enquiry role with read-everywhere / write-nothing\n· bed availability readable from the enquiry desk\n· registration allowed to book without changing route"
+    },
+    {
+      "id": "n-vitals",
+      "page": "page-2",
+      "x": 0,
+      "y": -170,
+      "w": 860,
+      "text": "Two interactive artboards here.\n\nVITALS — click \"Change\" under the greyed height. Nothing unlocks until a reason is picked; the old value is kept beside the new one.\n\nQUEUE — drag a row, or use the arrows, then press Call next. The board panel on the right mirrors what the hall sees: token and room, never a name."
+    },
+    {
+      "id": "n-orderentry",
+      "page": "page-2",
+      "x": 2200,
+      "y": 890,
+      "w": 420,
+      "text": "This is a phone, in a corridor, held one-handed. Every target is at least 44 px and the whole page is shown unrolled so you can read it in one go.\n\nThe photograph is the load-bearing part: it is what lets Radiology catch the test Omkar missed."
+    },
+    {
+      "id": "n-paper",
+      "page": "page-3",
+      "x": 0,
+      "y": -230,
+      "w": 900,
+      "text": "Your field list, in the reference's three-column grammar, with CRK's own crest and palette — nothing of Medanta's identity is reproduced.\n\nTWO THINGS I CHANGED AND WHY:\n· Dates read 17-Apr-1998, not 170498. Six-digit dates are read wrong at counters, and the code already says so in token-slip.tsx.\n· \"Doctor ID (no name)\" is honoured in the header — but the prescriber's name and NMC registration number appear at the signature block, because an Indian prescription is required to carry them."
+    },
+    {
+      "id": "n-letterhead",
+      "page": "page-3",
+      "x": 940,
+      "y": -230,
+      "w": 760,
+      "text": "opd_config.letterhead currently holds { name, addressLines } and the seeded name is still \"Hospital (name pending — roadmap item #5)\".\n\nTo print any of this it needs: logo, hotline, emergency, email, website, CIN/registration, QR password, NABL number, and the printed-by/page-count line."
+    },
+    {
+      "id": "n-flow2",
+      "page": "page-4",
+      "x": 0,
+      "y": -210,
+      "w": 900,
+      "text": "The switch is not a preference — it moves where the token is issued, so it changes which role holds that permission.\n\nFlow 2 needs a department-reception seat that Flow 1 does not have, and it needs the two refusals on the right-hand screen: an invoice from yesterday, and a patient who paid but never came upstairs."
+    }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

@@ -1,0 +1,183 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#ffffff;color:#0a0a0a;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90;text-decoration:underline}
+    button{font:inherit;color:inherit;cursor:pointer}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .hi{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.55}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .card{border:1px solid #e5e5e5;border-radius:14px;background:#ffffff;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden">
+
+  <!-- CHROME -->
+  <div style="display:flex;align-items:center;gap:16px;height:52px;padding:0 20px;border-bottom:1px solid #e5e5e5;background:#fafafa;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:24px;height:24px;border-radius:6px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:-0.02em">CRK</div>
+      <span style="font-size:14px;font-weight:600">Enquiry</span>
+    </div>
+    <div style="width:1px;height:20px;background:#e5e5e5"></div>
+    <span style="font-size:13px;color:#525252">Main lobby · <span style="color:#0a0a0a;font-weight:500">Ekta Gandhi</span></span>
+    <div style="flex-grow:1"></div>
+    <span class="num" style="font-size:13px;color:#737373">Sat 29-Aug-2026 · 11:12</span>
+  </div>
+
+  <!-- ═══ THE ALERT. It arrives; she does not go looking for it. ═══ -->
+  <div style="display:flex;align-items:center;gap:15px;padding:13px 24px;background:rgba(231,0,11,0.07);border-bottom:1px solid rgba(231,0,11,0.30);flex-shrink:0">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e7000b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></svg>
+    <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+      <span style="font-size:15px;font-weight:600">Dr Anand Rao left Room 104 for Emergency &#8212; <span class="num">11:12</span>, forty seconds ago.</span>
+      <span class="num" style="font-size:13px;color:#404040"><strong style="font-weight:600">12 people</strong> are waiting on him and none of them know yet. No return time &#8212; Emergency does not give one.</span>
+    </div>
+    <span style="display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:9999px;background:#ffffff;border:1px solid rgba(231,0,11,0.35);font-size:12.5px;font-weight:600;color:#e7000b">
+      <span style="width:7px;height:7px;border-radius:9999px;background:#e7000b"></span>Session paused
+    </span>
+    <span style="font-size:12.5px;color:#525252">Duty Manager is on the queue rescue</span>
+  </div>
+
+  <!-- TITLE -->
+  <div style="padding:16px 24px 12px;flex-shrink:0">
+    <div style="display:flex;align-items:baseline;gap:13px">
+      <h1 style="margin:0;font-size:20px;font-weight:600;letter-spacing:-0.02em">She is the first person asked, and she is asked twelve times</h1>
+      <span class="hi" style="font-size:16px;color:#737373">जब कुछ बिगड़ जाए</span>
+    </div>
+    <div style="font-size:12.5px;color:#525252;margin-top:5px;max-width:1000px;line-height:18px">
+      The queue rescue &#8212; move them, hold them, refund them &#8212; belongs to the Duty Manager and is already drawn.
+      This seat has a smaller job and a harder one: twelve people are about to walk across the lobby, one at a time,
+      and every one of them gets the same true answer inside ten seconds. Today she finds out from the fourth of them.
+    </div>
+  </div>
+
+  <div style="flex-grow:1;min-height:0;display:flex;gap:16px;padding:0 24px 18px">
+
+    <!-- ══════════ WHAT SHE SAYS ══════════ -->
+    <div style="width:812px;display:flex;flex-direction:column;gap:12px;min-height:0">
+
+      <div class="lbl">Three people ask, and they are not asking the same question</div>
+
+      <!-- 1 · ALREADY WAITING -->
+      <div style="border:2px solid #171717;border-radius:14px;background:#ffffff;padding:14px 17px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px">
+          <span style="font-size:13.5px;font-weight:600">Already waiting upstairs, token 51 &#183; here since 09:20</span>
+          <span style="font-size:11.5px;color:#e7000b;font-weight:600">the angry one, and rightly</span>
+        </div>
+        <div class="hi" style="font-size:19px;font-weight:500">डॉक्टर राव को अभी इमरजेंसी में बुलाया गया है — कब लौटेंगे, यह अभी तय नहीं। डॉक्टर मान कक्ष <span class="num">106</span> में बैठे हैं और आपका नंबर वहाँ चल जाएगा। या आप रुक सकते हैं, पर मैं समय नहीं बता सकती।</div>
+        <div style="font-size:12px;color:#525252;margin-top:8px;line-height:17px">
+          &#8220;Dr Rao has been called to Emergency &#8212; there's no fixed time for his return. Dr Maan is in Room 106 and your token will carry across. Or you can wait, but I can't tell you how long.&#8221;
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:9px;margin-top:11px;padding-top:10px;border-top:1px solid #e5e5e5">
+          <span style="display:inline-flex;align-items:center;height:19px;padding:0 8px;border-radius:9999px;background:#171717;color:#fafafa;font-size:10px;font-weight:700;letter-spacing:0.06em;flex-shrink:0;margin-top:1px">WHY</span>
+          <span style="font-size:11.5px;color:#525252;line-height:16.5px">
+            The reason first, the option second, the honest uncertainty third &#8212; in that order. People accept &#8220;I don't know&#8221; when it
+            arrives after a reason and next to a choice. They do not accept it on its own, and &#8220;he'll be back soon&#8221; is the sentence
+            that becomes complaint 4471.
+          </span>
+        </div>
+      </div>
+
+      <!-- 2 · JUST ARRIVED -->
+      <div class="card" style="padding:14px 17px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px">
+          <span style="font-size:13.5px;font-weight:600">Just walked in for Dr Rao &#183; not yet registered</span>
+          <span style="font-size:11.5px;color:#318f5a;font-weight:600">the one she can still save</span>
+        </div>
+        <div class="hi" style="font-size:17px;font-weight:500">डॉक्टर राव अभी इमरजेंसी में हैं। पर्चा बनवाने से पहले सुन लीजिए — आज डॉक्टर मान उसी विभाग में हैं, कक्ष <span class="num">106</span>, वहाँ अभी सिर्फ़ <span class="num">3</span> लोग हैं।</div>
+        <div style="font-size:12px;color:#525252;margin-top:8px;line-height:17px">&#8220;Dr Rao is in Emergency. Before you pay for a slip &#8212; Dr Maan is in the same department today, Room 106, and there are only three people there.&#8221;</div>
+        <div style="font-size:11.5px;color:#525252;margin-top:9px;line-height:16.5px">
+          Caught here, this person never registers against a doctor who is not in the building &#8212; no refund, no token to transfer,
+          no argument at Billing. <strong style="font-weight:600;color:#0a0a0a">This is the highest-value sentence at the enquiry counter</strong>,
+          and it exists only because the alert reached her before the patient did.
+        </div>
+      </div>
+
+      <!-- 3 · CALLING -->
+      <div class="card" style="padding:14px 17px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px">
+          <span style="font-size:13.5px;font-weight:600">On the line, leaving home in Sonepur &#183; &#8220;is Dr Rao sitting today?&#8221;</span>
+          <span style="font-size:11.5px;color:#cb882e;font-weight:600">an hour of travel rides on this</span>
+        </div>
+        <div class="hi" style="font-size:17px;font-weight:500">इस समय वे इमरजेंसी में हैं, कब लौटेंगे कहा नहीं जा सकता। आप चलने से पहले एक बार फ़ोन कर लीजिए — या डॉक्टर मान से दिखा लीजिए, वे आज पूरे दिन बैठेंगे।</div>
+        <div style="font-size:12px;color:#525252;margin-top:8px;line-height:17px">&#8220;He's in Emergency right now and there's no saying when he'll be back. Ring once more before you set out &#8212; or see Dr Maan, who is sitting all day.&#8221;</div>
+        <div style="font-size:11.5px;color:#525252;margin-top:9px;line-height:16.5px">&#8220;Ring before you set out&#8221; is the only honest thing to say to somebody an hour away, and it costs the hotline one more call to save a wasted journey and a complaint.</div>
+      </div>
+    </div>
+
+    <!-- ══════════ WHEN SHE CANNOT ANSWER ══════════ -->
+    <div style="flex-grow:1;display:flex;flex-direction:column;gap:12px;min-height:0">
+
+      <div class="lbl">When the answer is not on the screen at all</div>
+
+      <div style="border:2px solid #171717;border-radius:14px;background:#ffffff;padding:15px 17px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:9px">She keeps the question. They keep walking.</div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px">
+          The failure at an enquiry desk is never &#8220;I don't know&#8221; &#8212; it is the patient sent to a counter that sends them back.
+          Two bounces and they stop asking anybody and stand in the longest queue they can see.
+        </div>
+        <div style="margin-top:13px;padding:12px 14px;border-radius:10px;background:#fafafa;border:1px solid #e5e5e5">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span class="lbl">Held question</span>
+            <span class="num" style="font-size:16px;font-weight:700">88</span>
+          </div>
+          <div style="font-size:12.5px;color:#0a0a0a;line-height:18px">&#8220;Can my mother's Ayushman card be used for the MRI, and does it need approval first?&#8221;</div>
+          <div style="display:flex;flex-direction:column;gap:5px;margin-top:10px;padding-top:9px;border-top:1px solid #e5e5e5">
+            <div style="display:flex;justify-content:space-between"><span style="font-size:11.5px;color:#737373">Owner</span><span style="font-size:11.5px;font-weight:600">Billing office &#183; Bhuvan</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="font-size:11.5px;color:#737373">Answer by</span><span class="num" style="font-size:11.5px;font-weight:600">11:45 today</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="font-size:11.5px;color:#737373">Ring back</span><span class="num" style="font-size:11.5px;font-weight:600">94310 27788</span></div>
+          </div>
+        </div>
+        <div class="hi" style="font-size:16px;font-weight:500;margin-top:12px;padding:11px 13px;border-radius:10px;background:#f5f5f5;border:1px solid #e5e5e5">
+          मैं पता करके आपको <span class="num">12</span> बजे तक फ़ोन कर दूँगी। आपका नंबर <span class="num">88</span> है — कहीं और चक्कर लगाने की ज़रूरत नहीं।
+        </div>
+        <div style="font-size:11.5px;color:#525252;margin-top:7px;line-height:16.5px">&#8220;I'll find out and ring you by twelve. Your number is 88 &#8212; you don't need to go anywhere else.&#8221;</div>
+      </div>
+
+      <div class="card" style="padding:15px 17px;flex-grow:1;min-height:0;display:flex;flex-direction:column">
+        <div style="font-size:14px;font-weight:600;margin-bottom:10px">Four rules for a handoff</div>
+        <div style="display:flex;flex-direction:column;gap:11px">
+          <div style="display:flex;gap:10px">
+            <span class="num" style="font-size:12px;font-weight:700;color:#a1a1a1;flex-shrink:0">01</span>
+            <div><div style="font-size:12.5px;font-weight:600">A named person, never a counter number</div><div style="font-size:11.5px;color:#525252;line-height:16.5px">&#8220;Ask Bhuvan at Billing&#8221; is followed. &#8220;Go to Billing&#8221; is where the bounce starts.</div></div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <span class="num" style="font-size:12px;font-weight:700;color:#a1a1a1;flex-shrink:0">02</span>
+            <div><div style="font-size:12.5px;font-weight:600">If she cannot name one, she keeps it</div><div style="font-size:11.5px;color:#525252;line-height:16.5px">A held question with an owner and a time beats a confident direction to the wrong desk.</div></div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <span class="num" style="font-size:12px;font-weight:700;color:#a1a1a1;flex-shrink:0">03</span>
+            <div><div style="font-size:12.5px;font-weight:600">The second bounce is a complaint, automatically</div><div style="font-size:11.5px;color:#525252;line-height:16.5px">A held question reopened twice files itself. Nobody has to be brave enough to complain about being sent in a circle.</div></div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <span class="num" style="font-size:12px;font-weight:700;color:#a1a1a1;flex-shrink:0">04</span>
+            <div><div style="font-size:12.5px;font-weight:600">Held questions are read at the end of the month</div><div style="font-size:11.5px;color:#525252;line-height:16.5px">They are a list of what the lobby cannot answer &#8212; which is the cheapest signage brief and training plan this hospital will ever get.</div></div>
+          </div>
+        </div>
+        <div style="flex-grow:1"></div>
+        <div style="display:flex;align-items:flex-start;gap:9px;padding-top:11px;border-top:1px solid #e5e5e5">
+          <svg style="margin-top:2px;flex-shrink:0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span style="font-size:11px;color:#737373;line-height:15.5px">A held question is the third write this seat needs, and it was not on anybody's list. It is also the only one that gives the hospital something back.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

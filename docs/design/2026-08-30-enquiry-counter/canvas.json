@@ -1,0 +1,199 @@
+{
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "What they ask"
+    },
+    {
+      "id": "page-2",
+      "name": "The seat"
+    },
+    {
+      "id": "page-3",
+      "name": "The boundary, and when it breaks"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "Questions.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 0,
+      "w": 1180,
+      "h": 2560,
+      "title": "What people actually ask — the inventory the console owes",
+      "print": "flow"
+    },
+    {
+      "file": "Main.dc.html",
+      "page": "page-2",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Ekta's console — at rest, and answering",
+      "is_interactive": true
+    },
+    {
+      "file": "NightConsole.dc.html",
+      "page": "page-2",
+      "x": 1600,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Night console — 21:00 to 08:00, and it is a different job"
+    },
+    {
+      "file": "WaitAnswer.dc.html",
+      "page": "page-2",
+      "x": 3200,
+      "y": 0,
+      "w": 1120,
+      "h": 1560,
+      "title": "“How long will I have to wait?”",
+      "print": "flow"
+    },
+    {
+      "file": "Wayfinding.dc.html",
+      "page": "page-2",
+      "x": 0,
+      "y": 1060,
+      "w": 1120,
+      "h": 1400,
+      "title": "“Where is Radiology?” — routes as speech",
+      "print": "flow"
+    },
+    {
+      "file": "PhiLine.dc.html",
+      "page": "page-3",
+      "x": 0,
+      "y": 0,
+      "w": 1120,
+      "h": 1760,
+      "title": "The line she cannot cross",
+      "print": "flow"
+    },
+    {
+      "file": "Grievance.dc.html",
+      "page": "page-3",
+      "x": 1280,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Record a complaint — the only unprompted thing the hospital hears"
+    },
+    {
+      "file": "WhenItBreaks.dc.html",
+      "page": "page-3",
+      "x": 1280,
+      "y": 1060,
+      "w": 1440,
+      "h": 900,
+      "title": "The doctor walked out, and she cannot answer"
+    },
+    {
+      "file": "EdgeCases.dc.html",
+      "page": "page-2",
+      "x": 1600,
+      "y": 1060,
+      "w": 1180,
+      "h": 2280,
+      "title": "The edge-case pass — thirty-four ways the seat goes wrong",
+      "print": "flow"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "n-ask",
+      "page": "page-1",
+      "x": 1340,
+      "y": 0,
+      "w": 900,
+      "text": "THIS SHEET CAME SECOND AND SHOULD HAVE COME FIRST.\n\nThe console on the next page was drawn around one question — is the doctor in — and everything else was inferred from it. This is the inventory it should have been built from, and three answers reshaped it:\n\n· THE HOTLINE LANDS HERE. She is holding two conversations and only one of them has a face.\n\n· NOTHING CAN BE HANDED OVER. No printer, no patient-facing screen — so every answer leaves as a spoken sentence, which is why the console's largest element is SAY THIS.\n\n· A SEPARATE IPD COUNTER EXISTS. That removes the sharpest edge from the screen: she never confirms anybody is admitted, she routes. The risk moves from disclosure to THE BOUNCE — if the IPD counter sends anyone back, she is the one who looks like a liar.\n\n· ALL COLLEGE AND NON-PATIENT TRAFFIC COMES HERE TOO. The busiest seat in the hospital is also the front door of a college, and it floods in NEET counselling season with nobody staffed for it.\n\n· 24×7, WITH A NIGHT SHIFT. Block 4 is the part nobody has designed anywhere, and the reason is that it is only four things — none of which the day screen shows.\n\nWHAT IS OWED NEXT: the console redrawn against this ranking rather than against one query. The wall of permanent answers that currently costs the same keystrokes as everything else; the institution lane parked out of the clinical one; and night as its own screen rather than a dimmed day."
+    },
+    {
+      "id": "n-seat",
+      "page": "page-2",
+      "x": 0,
+      "y": -300,
+      "w": 920,
+      "text": "THE HOME PAGE SHOWS ONLY WHAT SHE CANNOT ALREADY KNOW.\n\nThe previous draft carried a permanent wall of ten never-changing answers — timings, fees, where the pharmacy is. That was a mistake, and the owner's reason is the better one: SHE WILL HAVE MEMORISED ALL OF IT BY HER SECOND WEEK. Counting question volume is not the same as counting where she needs help. A wall of permanent facts is training material wearing a dashboard's clothes, and it was costing the screen its whole middle.\n\nSo the home page is now a BRIEFING, not a status board. Five lines, in the order she will be asked about them — not by severity. Dr Verma's leave will be asked thirty times today; the CT being down maybe three.\n\nAND ONLY EXCEPTIONS. A department running normally is not information — she knows Paediatrics is in Room 112. The only thing worth a line is when that stops being true. Eight department cards became five sentences.\n\nWHAT ELSE WENT:\n· The right rail, entirely. Single column, wide margins.\n· The ten-cell wall → the Reference menu, F1, six categories, type to filter.\n· The stat cards around the say-line → one strip, and the say-line grew to 26px.\n· The panic buttons → they are two red keys ON THE DESK, mirrored in the footer as a reminder. A panic button she has to be sitting at the keyboard to press is not a panic button.\n\nThe identity rule now appears ONLY when she is on the line, because that is the only time it bites.\n\n62 KB of markup became 38 KB, which is the honest measure of how much was furniture."
+    },
+    {
+      "id": "n-channel",
+      "page": "page-2",
+      "x": 1020,
+      "y": -300,
+      "w": 420,
+      "text": "INTERACTIVE — three things.\n\nREFERENCE (F1, top right) opens the menu: everything permanent that used to eat the bottom of the screen. Six categories, type to filter. Also printed on the laminated card, which is what she uses the day the system is down.\n\nTHE RECENT CHIPS switch the answer shape — watch the whole page change form. Esc returns to today.\n\nCOUNTER / LINE 1 switches channel, and it changes exactly ONE of the five answers plus one strip in the header. That is the point: the boundary is identity, not information."
+    },
+    {
+      "id": "n-wait",
+      "page": "page-2",
+      "x": 3200,
+      "y": -300,
+      "w": 900,
+      "text": "THE COMMONEST QUESTION, AND THE ONE THE OLD CONSOLE ANSWERED WORST.\n\n“About 55 minutes” was printed in the waiting colour as though it had been measured. Nothing in this codebase computes it — there is no ETA anywhere in apps/core, and summaryByDoctor returns a count and a token, not a duration.\n\nThe good news is on the sheet: opd_queue_entries has carried called_at and done_at on every row since go-live, so the estimator is one reader over data that already exists — no table, no column, no migration.\n\nDECIDED — until that reader is built the console shows four measured numbers and no duration at all. A blank is a smaller failure than a confident wrong number: the patient can hear the difference between “twelve ahead of you” and “fifty-five minutes”, and only one of them can be broken."
+    },
+    {
+      "id": "n-way",
+      "page": "page-2",
+      "x": 0,
+      "y": 2520,
+      "w": 920,
+      "text": "WITH NOTHING TO HAND OVER, A ROUTE IS A SENTENCE.\n\nThe resources registry can derive an address — floor, block, room — and an address is not what was asked for. “Block B, 2nd floor” is a letter on an English sign that a first-time visitor from Sonepur has never seen.\n\nThis is the cheapest item on the whole canvas: two strings and a number per resource, in the attributes jsonb column that already exists, about forty rows, written once by somebody who walks each one. Every route starts at this counter, so the first clause is a direction she can physically point in.\n\nDECIDED — Emergency is not a route. She walks them."
+    },
+    {
+      "id": "n-deps",
+      "page": "page-2",
+      "x": 0,
+      "y": 3400,
+      "w": 900,
+      "text": "WHAT THIS DESIGN NEEDS THAT DOES NOT EXIST — checked against the tree, not assumed.\n\n· AN ENQUIRY ROLE. OPD_ROLE_KEYS has ten entries and front_office covers registration, the OPD desk and this. A read-widely / write-three-things seat has no key.\n\n· A DIRECTORY READ, separately audited. This is the one that matters. careContextFor returns `none` for any patient with no live visit today — and a person at the enquiry desk has no live visit, which is why they are at the enquiry desk. Forty `none` rows an hour from one lobby terminal will out-produce the rest of the hospital and drown the access-review worklist in blameless noise. The file says outright that `none` is meant to stay rare. Give this seat its own PhiSurface — directory.lookup — returning name, age, sex, UHID and one boolean.\n\n· A WAIT ESTIMATOR. One reader, no schema change. See the sheet above.\n\n· ROUTE STRINGS on resources.attributes. Forty rows.\n\n· A GRIEVANCE MODULE. Zero hits for “grievance” anywhere in apps/. The hospital's only unsolicited feedback channel does not exist in software.\n\n· A HELD-QUESTION LIST. Not on anybody's list before this canvas; it is the third write, and the only one that gives the hospital something back.\n\n· BED OCCUPANCY. Correcting the brief: the registry is further along than “not built”. `ward` and `bed` are kernel-declared kinds with available/occupied/cleaning/blocked/retired, the occupancy triad, and an index whose own comment reads “the board: every bed that is free”. What is missing is rows, an admission writer, and a reader — not the model.\n\n  BUT the old card cannot be drawn as drawn: General / Semi-private / Private / ICU are TARIFF CLASSES, and the owner ruled on 2026-08-26 that class carries tariff, attendant policy and nursing ratio and belongs in tariff with the IPD cluster, explicitly not a column on resources. Drawn by WARD it is nearly free. Drawn by class it is blocked on a table nobody has designed."
+    },
+    {
+      "id": "n-phi",
+      "page": "page-3",
+      "x": 0,
+      "y": -300,
+      "w": 920,
+      "text": "THE OLD CONSOLE STATED THE RULE IN A BLUE BAND AND LEFT THE ENFORCEMENT TO EKTA'S JUDGEMENT, FORTY TIMES AN HOUR.\n\nOne rule replaces it: the boundary is identity, not information. Everything that belongs to the hospital goes to anyone; everything that names a person needs somebody she can identify.\n\nThree things on this sheet are corrections to the drawn design rather than additions:\n\n· The UHID card showed a full mobile number. The shipped search provider masks phones to the last four digits precisely because a counter screen faces a queue — and “mobile number in, name and permanent hospital ID out” is a re-identification primitive drawn as the friendliest control on the board.\n\n· “Next free about 16:00 — 2 discharges planned” is a promise the hospital did not make. A discharge is not a schedule. It is the same category of thing as a diagnosis.\n\n· A confidential patient is excluded from a non-holder IN THE WHERE CLAUSE, so from this desk they do not exist. The honest failure is not “shows an alias” — it is “no such patient” said to a relative at the counter, and Ekta must not be able to tell that from a genuine miss. Identical wording, identical timing, no extra spinner."
+    },
+    {
+      "id": "n-grv",
+      "page": "page-3",
+      "x": 1280,
+      "y": -300,
+      "w": 920,
+      "text": "NOBODY FILLS IN A FEEDBACK FORM.\n\nEverything this hospital ever learns unprompted is said out loud, to Ekta, by somebody already leaving — so the form has to be finished before they finish talking. Six fields, four optional, forty seconds.\n\nTHE NO-PRINTER ANSWER IS FOUR DIGITS. With nothing to hand over, the acknowledgement is spoken and has to survive the walk to the gate. Not a ULID, not a date-stamped reference — a four-digit number she says twice, plus an SMS where there is a mobile. The SMS is the paper.\n\nDECIDED, on Indian corporate-hospital practice: acknowledge immediately with a number; routine complaints answered within 7 working days; serious within 24 hours by the Duty Manager; anything involving harm stops being a complaint and becomes an incident for the Medical Superintendent, with the clock starting at once. Unanswered on day 7 it escalates itself, because a complaint nobody answered is the second complaint.\n\nAND THE SECOND WRITE IS A DIFFERENT ANIMAL. “Notify administration” is not a complaint — it is Ekta's own eyes on the lobby: an unmanned counter, a dead lift, a crowd building. Drawn as two buttons of equal weight these get confused and the fast one wins, so every real complaint gets filed as a floor note. One is the patient's voice, formal and clocked. The other is hers, and it should cost four seconds."
+    },
+    {
+      "id": "n-brk",
+      "page": "page-3",
+      "x": 1280,
+      "y": 2020,
+      "w": 920,
+      "text": "THE QUEUE RESCUE IS THE DUTY MANAGER'S AND IS ALREADY DRAWN (v2, page 3). This seat has a smaller job and a harder one.\n\nTwelve people are about to cross the lobby one at a time, and each gets the same true answer inside ten seconds. Today she finds out from the fourth of them — which is the whole argument for the alert arriving rather than being searched for.\n\nThe three askers are not asking the same question, and the second one is the money: somebody who has walked in but not yet registered can still be turned toward Dr Maan. No refund, no token transfer, no argument at Billing. That sentence exists only because the alert beat the patient across the floor.\n\nAND THE ESCALATION RULE: the failure at an enquiry desk is never “I don't know” — it is the patient sent to a counter that sends them back. So she keeps the question. A held question has an owner, a time and a callback number, and one reopened twice files itself as a complaint, because nobody should have to be brave enough to complain about being sent in a circle. Read at month end, that list is the cheapest signage brief and training plan this hospital will ever get."
+    },
+    {
+      "id": "n-night",
+      "page": "page-2",
+      "x": 1600,
+      "y": -300,
+      "w": 900,
+      "text": "AT 02:41 THE DAY SCREEN IS NOT IDLE, IT IS IN THE WAY.\n\nNothing about queues, symptoms or departments is true at this hour, and a white 1440-pixel screen is the brightest object in a dark lobby. So night is a REPLACEMENT, not a dimming — and it uses the dark tokens already sitting in styles.css, so this is a mode the design system anticipated.\n\nFour things survive:\n\n· WHO IS ON CALL — the night's commonest question, and nothing in the codebase can answer it. Tonight it is a paper list taped to the desk. The load-bearing cell is \"not answering\", because it is the only one that tells him to stop calling and escalate.\n\n· THE AMBULANCE, both directions, with the capture order fixed: a number that rings BEFORE anything else, because a frightened caller hangs up and a village name with no callback is a van driving in circles.\n\n· \"हमको फ़ोन आया था\" — they were telephoned and told to come. The screen shows him NOTHING about the patient on this path, deliberately. Knowing would put a twenty-four-year-old in the position of being asked directly by a mother at two in the morning and having to lie. \"Someone is coming to speak with you\" is the entire script, it is true, and it is enough.\n\n· HE IS ALONE. One press, no confirming.\n\nThe night wall was trimmed the same way the day one was: the only reference left on screen is WHAT IS SHUT RIGHT NOW, because that is the only part that changes with the clock. Everything permanent sits behind F1 here too."
+    },
+    {
+      "id": "n-edge",
+      "page": "page-2",
+      "x": 2860,
+      "y": 1700,
+      "w": 900,
+      "text": "THIRTY-FOUR CASES, RUN BEFORE THE CONSOLE WAS DRAWN.\n\nSix changed the layout and one changed it more than the entire question inventory did: acidity and a heart attack arrive at this counter saying the same sentence. A symptom router that answers with a department name is a router that sends an infarct into a General Medicine queue fourteen deep — so the three red-flag questions sit ABOVE the department, phrased as things she asks rather than things she decides.\n\nFour cases are marked NOT SOLVED and left that way on purpose: a language she does not speak, eight people at once with no token system, NEET-season volume, and a deaf visitor. Three of those are headcount or policy, and a layout that pretended to fix them would be lying.\n\nAND ONE OPERATIONAL HOLE THE PASS EXPOSED THAT NO SCREEN CAN CLOSE — the block at the bottom. The IPD counter shuts at 20:00 and this seat runs to 08:00, so for twelve hours every admitted-patient question has nowhere to be routed. That is exactly the window when people arrive off a late bus, frightened, having been telephoned. The design assumes the ward desk owns it after 20:00, because it costs nothing and it is almost certainly what happens today — but nobody has written it down and the ward sister has not agreed to it. RULED 30-AUG-2026: the ward desk absorbs it. Now written down, so the ward can staff for it and the console can say it out loud."
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-2"
+  }
+}

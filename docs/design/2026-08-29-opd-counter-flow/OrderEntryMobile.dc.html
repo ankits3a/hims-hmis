@@ -1,0 +1,302 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#f5f5f5;color:#0a0a0a;font-size:15px;line-height:21px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90;text-decoration:underline}
+    button{font:inherit;color:inherit;cursor:pointer;text-align:left}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .card{background:#ffffff;border:1px solid #e5e5e5;border-radius:14px}
+    .step{display:flex;align-items:center;gap:9px;padding:13px 16px;border-bottom:1px solid #e5e5e5}
+    .stepn{width:24px;height:24px;border-radius:9999px;background:#171717;color:#fafafa;display:flex;
+      align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0}
+    .stept{font-size:16px;font-weight:600;flex-grow:1}
+    .chip{display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:0 14px;border-radius:10px;
+      background:#f5f5f5;border:1px solid #e5e5e5;font-size:14px;font-weight:500}
+    .addbtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;
+      border-radius:10px;border:1px dashed #d4d4d4;background:#ffffff;font-size:14px;font-weight:500;color:#525252}
+    .param{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 2px}
+    .tick{width:20px;height:20px;border-radius:5px;background:#171717;display:flex;align-items:center;
+      justify-content:center;flex-shrink:0}
+    .untick{width:20px;height:20px;border-radius:5px;border:1px solid #d4d4d4;background:#ffffff;flex-shrink:0}
+  </style>
+</helmet>
+
+<div style="width:390px;background:#f5f5f5;display:flex;flex-direction:column">
+
+  <!-- HEADER -->
+  <div style="display:flex;align-items:center;gap:11px;padding:14px 16px;background:#171717;color:#fafafa">
+    <div style="width:26px;height:26px;border-radius:7px;background:#fafafa;color:#0a0a0a;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">CRK</div>
+    <div style="display:flex;flex-direction:column;gap:0;flex-grow:1">
+      <span style="font-size:15px;font-weight:600">Order entry</span>
+      <span style="font-size:12px;color:rgba(250,250,250,0.62)">Omkar Sachdeva · OPD exit</span>
+    </div>
+    <span style="display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:9999px;background:rgba(250,250,250,0.14);font-size:11px;font-weight:600">
+      <span style="width:6px;height:6px;border-radius:9999px;background:#6ac48c"></span>online
+    </span>
+  </div>
+
+  <!-- WHOSE PRESCRIPTION -->
+  <div style="padding:14px 16px;background:#ffffff;border-bottom:1px solid #e5e5e5">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#318f5a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      <span style="font-size:12px;font-weight:600;color:#318f5a">QR on the prescription footer scanned</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:11px">
+      <div style="width:40px;height:40px;border-radius:9999px;background:#f5f5f5;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#404040;flex-shrink:0">MA</div>
+      <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1;min-width:0">
+        <span style="font-size:16px;font-weight:600">Muskan Arora</span>
+        <span style="font-size:12px;color:#737373">28 y · F · token 53 · Dr Anand Rao</span>
+      </div>
+    </div>
+    <div class="mono num" style="font-size:11px;color:#a1a1a1;margin-top:8px">CRK0000184213 · V2608290047</div>
+  </div>
+
+  <div style="padding:14px 12px;display:flex;flex-direction:column;gap:14px">
+
+    <!-- 1 · PHOTOGRAPH THE PAPER -->
+    <div class="card">
+      <div class="step">
+        <div class="stepn">1</div><span class="stept">Photograph the prescription</span>
+        <span style="display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:9999px;background:rgba(49,143,90,0.10);color:#318f5a;font-size:11px;font-weight:700">DONE</span>
+      </div>
+      <div style="padding:14px 16px">
+        <div style="position:relative;border-radius:10px;overflow:hidden;border:1px solid #e5e5e5;background:#fafafa;height:196px;display:flex;flex-direction:column;padding:12px 14px;gap:5px">
+          <div style="display:flex;align-items:center;gap:6px;padding-bottom:6px;border-bottom:1px solid #d4d4d4">
+            <div style="width:16px;height:16px;border-radius:3px;background:#08985e;opacity:0.65"></div>
+            <div style="height:5px;width:74px;background:#a1a1a1;border-radius:2px"></div>
+            <div style="flex-grow:1"></div>
+            <div style="height:4px;width:44px;background:#d4d4d4;border-radius:2px"></div>
+          </div>
+          <div style="height:4px;width:120px;background:#d4d4d4;border-radius:2px;margin-top:4px"></div>
+          <div style="height:4px;width:168px;background:#d4d4d4;border-radius:2px"></div>
+          <div style="height:4px;width:96px;background:#d4d4d4;border-radius:2px"></div>
+          <div style="height:7px;width:60px;background:#737373;border-radius:2px;margin-top:8px"></div>
+          <div style="height:4px;width:180px;background:#d4d4d4;border-radius:2px"></div>
+          <div style="height:4px;width:152px;background:#d4d4d4;border-radius:2px"></div>
+          <div style="height:4px;width:174px;background:#d4d4d4;border-radius:2px"></div>
+          <div style="flex-grow:1"></div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="width:22px;height:22px;background:#0a0a0a;border-radius:2px;opacity:0.7"></div>
+            <div style="height:4px;width:90px;background:#d4d4d4;border-radius:2px"></div>
+          </div>
+          <!-- crop corners -->
+          <div style="position:absolute;left:8px;top:8px;width:20px;height:20px;border-left:2px solid #218cb5;border-top:2px solid #218cb5;border-radius:3px 0 0 0"></div>
+          <div style="position:absolute;right:8px;top:8px;width:20px;height:20px;border-right:2px solid #218cb5;border-top:2px solid #218cb5;border-radius:0 3px 0 0"></div>
+          <div style="position:absolute;left:8px;bottom:8px;width:20px;height:20px;border-left:2px solid #218cb5;border-bottom:2px solid #218cb5;border-radius:0 0 0 3px"></div>
+          <div style="position:absolute;right:8px;bottom:8px;width:20px;height:20px;border-right:2px solid #218cb5;border-bottom:2px solid #218cb5;border-radius:0 0 3px 0"></div>
+          <div style="position:absolute;left:0;right:0;bottom:0;padding:6px 10px;background:rgba(10,10,10,0.72);color:#fafafa;font-size:11px;font-weight:500;display:flex;align-items:center;gap:6px">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="2.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+            Edges found and straightened
+          </div>
+        </div>
+        <div style="display:flex;gap:9px;margin-top:12px">
+          <button style="flex-grow:1;min-height:48px;border-radius:10px;border:1px solid #e5e5e5;background:#ffffff;font-size:14px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:7px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            Retake
+          </button>
+          <button style="flex-grow:1;min-height:48px;border-radius:10px;border:none;background:#171717;color:#fafafa;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:7px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5M12 3v12"/></svg>
+            Upload
+          </button>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:8px;margin-top:11px">
+          <svg style="margin-top:3px;flex-shrink:0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span style="font-size:12px;color:#737373;line-height:17px">Radiology and the lab see this photo. It is how they catch anything you miss below.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2 · RADIOLOGY -->
+    <div class="card">
+      <div class="step">
+        <div class="stepn">2</div><span class="stept">Radiology</span>
+        <span class="num" style="font-size:12px;color:#737373">1 test</span>
+      </div>
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:9px">
+        <div style="display:flex;align-items:center;gap:10px;min-height:52px;padding:0 13px;border-radius:10px;background:#ffffff;border:1px solid #e5e5e5">
+          <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+            <span style="font-size:14px;font-weight:600">X-Ray Chest PA</span>
+            <span class="num" style="font-size:12px;color:#737373">RAD-XR-014 · ₹350</span>
+          </div>
+          <button style="width:32px;height:32px;border-radius:8px;border:none;background:#f5f5f5;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <button class="addbtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Add radiology test
+        </button>
+      </div>
+    </div>
+
+    <!-- 3 · LABORATORY -->
+    <div class="card">
+      <div class="step">
+        <div class="stepn">3</div><span class="stept">Laboratory</span>
+        <span class="num" style="font-size:12px;color:#737373">4 panels · 31 parameters</span>
+      </div>
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+
+        <!-- LFT — open -->
+        <div style="border-radius:10px;border:1px solid #171717;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;min-height:48px;padding:0 13px;background:#f5f5f5">
+            <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+              <span style="font-size:14px;font-weight:600">Liver Function Test</span>
+              <span class="num" style="font-size:12px;color:#737373">8 of 8 · ₹680</span>
+            </div>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round"><path d="m18 15-6-6-6 6"/></svg>
+          </div>
+          <div style="padding:9px 13px 12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px">
+            <div class="param"><div class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="3.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg></div><span style="font-size:13px">SGOT (AST)</span></div>
+            <div class="param"><div class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="3.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg></div><span style="font-size:13px">SGPT (ALT)</span></div>
+            <div class="param"><div class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="3.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg></div><span style="font-size:13px">Alk. phosphatase</span></div>
+            <div class="param"><div class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="3.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg></div><span style="font-size:13px">Bilirubin total</span></div>
+            <div class="param"><div class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="3.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg></div><span style="font-size:13px">Bilirubin direct</span></div>
+            <div class="param"><div class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="3.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg></div><span style="font-size:13px">Albumin</span></div>
+            <div class="param"><div class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="3.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg></div><span style="font-size:13px">Total protein</span></div>
+            <div class="param"><div class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="3.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg></div><span style="font-size:13px">A/G ratio</span></div>
+          </div>
+        </div>
+
+        <!-- KFT — open, partial -->
+        <div style="border-radius:10px;border:1px solid #171717;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;min-height:48px;padding:0 13px;background:#f5f5f5">
+            <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+              <span style="font-size:14px;font-weight:600">Kidney Function Test</span>
+              <span class="num" style="font-size:12px;color:#cb882e;font-weight:600">4 of 6 · ₹520</span>
+            </div>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round"><path d="m18 15-6-6-6 6"/></svg>
+          </div>
+          <div style="padding:9px 13px 12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px">
+            <div class="param"><div class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="3.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg></div><span style="font-size:13px">Urea</span></div>
+            <div class="param"><div class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="3.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg></div><span style="font-size:13px">Creatinine</span></div>
+            <div class="param"><div class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="3.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg></div><span style="font-size:13px">Uric acid</span></div>
+            <div class="param"><div class="tick"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="3.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg></div><span style="font-size:13px">eGFR</span></div>
+            <div class="param"><div class="untick"></div><span style="font-size:13px;color:#a1a1a1">Sodium</span></div>
+            <div class="param"><div class="untick"></div><span style="font-size:13px;color:#a1a1a1">Potassium</span></div>
+          </div>
+        </div>
+
+        <!-- collapsed -->
+        <div style="display:flex;align-items:center;gap:10px;min-height:52px;padding:0 13px;border-radius:10px;border:1px solid #e5e5e5;background:#ffffff">
+          <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+            <span style="font-size:14px;font-weight:600">Complete Blood Count</span>
+            <span class="num" style="font-size:12px;color:#737373">18 of 18 · ₹320</span>
+          </div>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;min-height:52px;padding:0 13px;border-radius:10px;border:1px solid #e5e5e5;background:#ffffff">
+          <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+            <span style="font-size:14px;font-weight:600">Urine Routine &amp; Microscopy</span>
+            <span class="num" style="font-size:12px;color:#737373">1 of 1 · ₹180</span>
+          </div>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+        </div>
+
+        <button class="addbtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Add panel or single test
+        </button>
+      </div>
+    </div>
+
+    <!-- 4 · PHARMACY -->
+    <div class="card">
+      <div class="step">
+        <div class="stepn">4</div><span class="stept">Pharmacy</span>
+        <span class="num" style="font-size:12px;color:#737373">2 drugs</span>
+      </div>
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:9px">
+
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border-radius:10px;border:1px solid #e5e5e5">
+          <div style="display:flex;flex-direction:column;gap:2px;flex-grow:1">
+            <span style="font-size:14px;font-weight:600">Paracetamol 650 mg</span>
+            <span style="font-size:12px;color:#737373">1 tab · TDS · after food · 3 days</span>
+          </div>
+          <button style="width:32px;height:32px;border-radius:8px;border:none;background:#f5f5f5;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <!-- type-ahead open -->
+        <div>
+          <div style="min-height:48px;border-radius:10px;border:1px solid #171717;background:#ffffff;box-shadow:0 0 0 3px rgba(161,161,161,0.35);display:flex;align-items:center;padding:0 13px;font-size:15px">
+            Azithro<span style="width:1px;height:19px;background:#0a0a0a;margin-left:1px"></span>
+          </div>
+          <div style="margin-top:6px;border-radius:10px;border:1px solid #e5e5e5;background:#ffffff;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.08)">
+            <div style="display:flex;align-items:center;gap:10px;min-height:48px;padding:0 13px;background:#f5f5f5;border-bottom:1px solid #e5e5e5">
+              <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+                <span style="font-size:14px;font-weight:600">Azithromycin 500 mg</span>
+                <span style="font-size:12px;color:#318f5a;font-weight:500">In stock · 240 strips</span>
+              </div>
+              <span style="font-size:11px;font-weight:700;color:#525252;letter-spacing:0.04em">FORMULARY</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;min-height:48px;padding:0 13px;border-bottom:1px solid #f5f5f5">
+              <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+                <span style="font-size:14px">Azithromycin 250 mg</span>
+                <span style="font-size:12px;color:#318f5a">In stock · 96 strips</span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;min-height:48px;padding:0 13px">
+              <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+                <span style="font-size:14px">Azithromycin susp. 200 mg/5 ml</span>
+                <span style="font-size:12px;color:#cb882e">Out of stock · substitute offered</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border-radius:10px;border:1px solid #e5e5e5">
+          <div style="display:flex;flex-direction:column;gap:2px;flex-grow:1">
+            <span style="font-size:14px;font-weight:600">Cetirizine 10 mg</span>
+            <span style="font-size:12px;color:#737373">1 tab · HS · 5 days</span>
+          </div>
+          <button style="width:32px;height:32px;border-radius:8px;border:none;background:#f5f5f5;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ALLERGY GUARD -->
+    <div style="border-radius:14px;border:1px solid rgba(231,0,11,0.30);background:rgba(231,0,11,0.05);padding:13px 15px;display:flex;align-items:flex-start;gap:10px">
+      <svg style="margin-top:2px;flex-shrink:0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e7000b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></svg>
+      <div>
+        <span style="font-size:13px;font-weight:600;display:block">Allergic to sulfa drugs</span>
+        <span style="font-size:12px;color:#525252;line-height:17px">Nothing you have added conflicts. The pharmacist is shown this too.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SAVE -->
+  <div style="padding:14px 16px 20px;background:#ffffff;border-top:1px solid #e5e5e5;display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:baseline;justify-content:space-between">
+      <span style="font-size:13px;color:#525252">Estimated total</span>
+      <span class="num" style="font-size:22px;font-weight:700;letter-spacing:-0.02em">₹2,050</span>
+    </div>
+    <button style="min-height:52px;border-radius:10px;border:none;background:#171717;color:#fafafa;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:9px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      Save and send on
+    </button>
+    <span style="font-size:12px;color:#737373;text-align:center;line-height:17px">
+      Pharmacy starts picking immediately. Radiology and the lab see the order and the photo at their own desks.
+    </span>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":390,"height":1660}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

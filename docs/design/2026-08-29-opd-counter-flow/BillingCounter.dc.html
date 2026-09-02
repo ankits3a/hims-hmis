@@ -1,0 +1,240 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#ffffff;color:#0a0a0a;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90;text-decoration:underline}
+    button{font:inherit;color:inherit;cursor:pointer}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .card{border:1px solid #e5e5e5;border-radius:14px;background:#ffffff;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden">
+
+  <!-- CHROME -->
+  <div style="display:flex;align-items:center;gap:16px;height:52px;padding:0 20px;border-bottom:1px solid #e5e5e5;background:#fafafa;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:24px;height:24px;border-radius:6px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:-0.02em">CRK</div>
+      <span style="font-size:14px;font-weight:600">Billing counter</span>
+    </div>
+    <div style="width:1px;height:20px;background:#e5e5e5"></div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#525252">
+      <span>Counter 5</span><span style="color:#d4d4d4">·</span>
+      <span style="color:#0a0a0a;font-weight:500">Bhuvan Pratap</span>
+    </div>
+    <div style="flex-grow:1"></div>
+    <div style="display:flex;align-items:center;gap:14px;font-size:13px;color:#737373">
+      <span class="num">Sat 29 Aug 2026 · 11:24</span>
+      <div style="width:26px;height:26px;border-radius:9999px;background:#e5e5e5;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#404040">BP</div>
+    </div>
+  </div>
+
+  <!-- DRAWER — the precondition, checked before anything else -->
+  <div style="display:flex;align-items:center;gap:12px;padding:9px 20px;background:rgba(49,143,90,0.07);border-bottom:1px solid rgba(49,143,90,0.25);flex-shrink:0">
+    <span style="width:8px;height:8px;border-radius:9999px;background:#318f5a;flex-shrink:0"></span>
+    <span style="font-size:13px;color:#0a0a0a"><strong style="font-weight:600">Drawer open</strong> since 09:00 · opening float <span class="num">₹2,000</span> · collected so far <span class="num">₹18,450</span> across 47 receipts</span>
+    <div style="flex-grow:1"></div>
+    <button style="height:28px;padding:0 11px;border-radius:8px;border:1px solid rgba(49,143,90,0.35);background:#ffffff;font-size:12px;font-weight:500;color:#0a0a0a">Cash count</button>
+    <button style="height:28px;padding:0 11px;border-radius:8px;border:1px solid rgba(49,143,90,0.35);background:#ffffff;font-size:12px;font-weight:500;color:#0a0a0a">Close drawer</button>
+  </div>
+
+  <div style="display:flex;flex-grow:1;min-height:0">
+
+    <!-- ── LEFT: TAKE THE MONEY ─────────────────────────────────────────── -->
+    <div style="width:900px;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:16px;border-right:1px solid #e5e5e5">
+
+      <!-- SCAN -->
+      <div style="display:flex;gap:14px;align-items:stretch">
+        <div style="flex-grow:1">
+          <span style="font-size:13px;font-weight:500;color:#404040;display:block;margin-bottom:6px">Scan the token slip, or type a token / UHID</span>
+          <div style="position:relative;display:flex;align-items:center">
+            <svg style="position:absolute;left:13px" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
+            <div style="height:46px;width:100%;border-radius:10px;border:1px solid #171717;background:#ffffff;box-shadow:0 0 0 3px rgba(161,161,161,0.35);display:flex;align-items:center;padding:0 14px 0 40px;font-size:16px">
+              <span class="mono num">V2608290047</span>
+              <span style="width:1px;height:20px;background:#0a0a0a;margin-left:2px"></span>
+              <div style="flex-grow:1"></div>
+              <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#318f5a;font-weight:500">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#318f5a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                scanned 11:23:58
+              </span>
+            </div>
+          </div>
+        </div>
+        <div style="width:150px;border:1px dashed #d4d4d4;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#a1a1a1;margin-top:24px">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><path d="M14 14h3v3h-3zM19 19h2M17 21h4"/></svg>
+          <span style="font-size:11px">QR reader ready</span>
+        </div>
+      </div>
+
+      <!-- WHO -->
+      <div class="card" style="padding:16px 20px">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="width:42px;height:42px;border-radius:9999px;background:#f5f5f5;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#404040;flex-shrink:0">MA</div>
+          <div style="display:flex;flex-direction:column;gap:2px;flex-grow:1">
+            <div style="display:flex;align-items:center;gap:9px">
+              <span style="font-size:16px;font-weight:600">Muskan Arora</span>
+              <span style="font-size:13px;color:#525252">28 y · F</span>
+            </div>
+            <span class="mono num" style="font-size:12px;color:#737373">CRK0000184213 · V2608290047 · booked 11:18 by Anshuman Prasad</span>
+          </div>
+          <div style="text-align:center;padding:0 16px;border-left:1px solid #e5e5e5">
+            <div class="lbl">Token</div>
+            <div class="num" style="font-size:30px;font-weight:700;letter-spacing:-0.02em;line-height:34px">53</div>
+          </div>
+          <div style="text-align:right;padding-left:16px;border-left:1px solid #e5e5e5;width:220px">
+            <div style="font-size:14px;font-weight:600">Dr Anand Rao</div>
+            <div style="font-size:12px;color:#737373">General Medicine · Room 104</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- WHAT -->
+      <div class="card" style="overflow:hidden">
+        <div style="display:flex;align-items:center;height:40px;padding:0 20px;border-bottom:1px solid #e5e5e5;background:#fafafa">
+          <span class="lbl" style="flex-grow:1">Charge</span>
+          <span class="lbl" style="width:90px;text-align:right">Amount</span>
+        </div>
+        <div style="display:flex;align-items:center;padding:13px 20px;border-bottom:1px solid #e5e5e5">
+          <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+            <span style="font-size:14px;font-weight:500">OPD consultation — General Medicine</span>
+            <span style="font-size:12px;color:#737373">New visit · Dr Anand Rao · tariff GEN-OPD-NEW</span>
+          </div>
+          <span class="num" style="width:90px;text-align:right;font-size:15px">₹300.00</span>
+        </div>
+        <div style="display:flex;align-items:center;padding:12px 20px;background:#fafafa">
+          <span style="flex-grow:1;font-size:15px;font-weight:600">Total payable</span>
+          <span class="num" style="width:90px;text-align:right;font-size:22px;font-weight:700;letter-spacing:-0.02em">₹300.00</span>
+        </div>
+      </div>
+
+      <!-- TENDER -->
+      <div class="card" style="padding:18px 20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <span style="font-size:15px;font-weight:600">How is she paying</span>
+          <button style="height:28px;padding:0 11px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12px;font-weight:500">Split across two</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <div style="flex-grow:1;height:56px;border-radius:10px;border:1px solid #171717;background:#171717;color:#fafafa;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+            <span style="font-size:12px;font-weight:600">Cash</span>
+          </div>
+          <div style="flex-grow:1;height:56px;border-radius:10px;border:1px solid #e5e5e5;background:#ffffff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg>
+            <span style="font-size:12px;font-weight:500">UPI</span>
+          </div>
+          <div style="flex-grow:1;height:56px;border-radius:10px;border:1px solid #e5e5e5;background:#ffffff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg>
+            <span style="font-size:12px;font-weight:500">Card</span>
+          </div>
+          <div style="flex-grow:1;height:56px;border-radius:10px;border:1px solid #e5e5e5;background:#ffffff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/></svg>
+            <span style="font-size:12px;font-weight:500">On credit</span>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:end">
+          <div>
+            <span style="font-size:13px;font-weight:500;color:#404040;display:block;margin-bottom:5px">Cash taken</span>
+            <div class="num" style="height:44px;border-radius:8px;border:1px solid #171717;background:#ffffff;box-shadow:0 0 0 3px rgba(161,161,161,0.35);display:flex;align-items:center;padding:0 12px;font-size:19px;font-weight:600">₹500</div>
+          </div>
+          <div>
+            <span style="font-size:13px;font-weight:500;color:#404040;display:block;margin-bottom:5px">Change handed back</span>
+            <div class="num" style="height:44px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;display:flex;align-items:center;padding:0 12px;font-size:19px;font-weight:600;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)">₹200</div>
+          </div>
+          <div style="padding-bottom:2px">
+            <label style="display:flex;align-items:flex-start;gap:9px;cursor:pointer">
+              <span style="width:16px;height:16px;border-radius:4px;border:1px solid #d4d4d4;background:#ffffff;flex-shrink:0;margin-top:1px"></span>
+              <span style="font-size:12px;color:#525252;line-height:16px">Keep <span class="num">₹200</span> as an advance on her account instead</span>
+            </label>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;margin-top:12px;padding:9px 12px;border-radius:8px;background:#f5f5f5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span style="font-size:12px;color:#404040">Change defaults to the whole surplus. Banking it as an advance is a deliberate tick — that is how phantom advances stopped appearing.</span>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="flex-grow:1;display:flex;align-items:center;gap:9px;font-size:13px;color:#525252">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#318f5a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          <span>Prints the invoice and stamps the token paid. She goes to <strong style="font-weight:600">Vitals, 1st floor</strong> next.</span>
+        </div>
+        <button style="height:44px;padding:0 22px;border-radius:8px;border:none;background:#171717;color:#fafafa;font-size:15px;font-weight:600;display:inline-flex;align-items:center;gap:9px">
+          Take ₹300 &amp; print
+        </button>
+      </div>
+    </div>
+
+    <!-- ── RIGHT: THE PAPER SHE WALKS AWAY WITH ─────────────────────────── -->
+    <div style="flex-grow:1;background:#f5f5f5;display:flex;flex-direction:column;min-height:0">
+      <div style="padding:16px 20px 12px;border-bottom:1px solid #e5e5e5;background:#fafafa;flex-shrink:0;display:flex;align-items:center;justify-content:between">
+        <div style="flex-grow:1">
+          <span style="font-size:14px;font-weight:600;display:block">What prints</span>
+          <span style="font-size:12px;color:#737373">One sheet — receipt and token together</span>
+        </div>
+      </div>
+      <div style="flex-grow:1;overflow-y:auto;padding:20px;display:flex;justify-content:center">
+        <div style="width:302px;background:#ffffff;border:1px solid #e5e5e5;border-radius:4px;padding:18px 16px;box-shadow:0 4px 12px rgba(0,0,0,0.06);font-size:12px">
+          <div style="text-align:center;border-bottom:1px dashed #d4d4d4;padding-bottom:10px">
+            <div style="font-size:13px;font-weight:700;letter-spacing:-0.01em">CRK MEDICAL COLLEGE &amp; HOSPITAL</div>
+            <div style="font-size:10px;color:#525252;margin-top:2px">Chaurasia Chowk, Hajipur — 844101</div>
+          </div>
+          <div style="text-align:center;padding:12px 0 10px;border-bottom:1px dashed #d4d4d4">
+            <div class="lbl" style="font-size:9px">Token</div>
+            <div class="num" style="font-size:44px;font-weight:700;line-height:46px;letter-spacing:-0.03em">53</div>
+            <div style="font-size:13px;font-weight:600;margin-top:4px">Dr Anand Rao</div>
+            <div style="font-size:11px;color:#525252">General Medicine · Room 104, 1st floor</div>
+          </div>
+          <div style="padding:10px 0;border-bottom:1px dashed #d4d4d4;display:flex;flex-direction:column;gap:3px">
+            <div style="display:flex;justify-content:space-between"><span style="color:#525252">Patient</span><span style="font-weight:600">Muskan Arora</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#525252">UHID</span><span class="mono num">CRK0000184213</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#525252">Visit</span><span class="mono num">V2608290047</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#525252">Date</span><span class="num">29-Aug-2026</span></div>
+          </div>
+          <div style="padding:10px 0;border-bottom:1px dashed #d4d4d4;display:flex;flex-direction:column;gap:3px">
+            <div style="display:flex;justify-content:space-between"><span style="color:#525252">Invoice</span><span class="mono num">INV-2608-04412</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#525252">Consultation</span><span class="num">₹300.00</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#525252">Cash / change</span><span class="num">₹500 / ₹200</span></div>
+            <div style="display:flex;justify-content:space-between;font-weight:700;font-size:13px;margin-top:3px"><span>PAID</span><span class="num">₹300.00</span></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:11px;padding:12px 0 8px">
+            <div style="width:66px;height:66px;flex-shrink:0;background:#0a0a0a;border-radius:2px;display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:repeat(7,1fr);padding:4px;gap:1px">
+              <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div>
+              <div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div>
+              <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div>
+              <div></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div>
+              <div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div>
+              <div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div>
+              <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div>
+            </div>
+            <div style="font-size:10px;color:#525252;line-height:15px">
+              The vitals desk and every counter after it scan this square. It carries the visit, not her name.
+            </div>
+          </div>
+          <div style="border-top:1px dashed #d4d4d4;padding-top:8px;text-align:center;font-size:10px;color:#525252">
+            Next: <strong style="font-weight:600;color:#0a0a0a">Vitals desk, 1st floor</strong><br>
+            Watch the display for token 53
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

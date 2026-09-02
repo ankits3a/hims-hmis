@@ -1,0 +1,146 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&amp;display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#ffffff;color:#000000;
+      font-family:"Helvetica Neue",Helvetica,Arial,"Liberation Sans",sans-serif;
+      font-size:13px;line-height:17px;-webkit-font-smoothing:antialiased}
+    a{color:#d92230;text-decoration:none}
+    .num{font-variant-numeric:tabular-nums}
+    .hi{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.55}
+    .lb{color:#333333;font-weight:400}
+    .vl{color:#000000;font-weight:700}
+    .hrow{display:flex;align-items:baseline;gap:5px;min-height:19px}
+    .hrowr{display:flex;align-items:baseline;gap:5px;min-height:19px;justify-content:flex-end}
+    .rule{height:1px;background:#000000}
+    .thin{height:1px;background:#9a9a9a}
+  </style>
+</helmet>
+
+<div style="width:794px;height:1123px;background:#ffffff;padding:26px 30px 20px;display:flex;flex-direction:column">
+
+  <!-- ══ HEADER — unchanged ═══════════════════════════════════════════════ -->
+  <div style="display:flex;gap:20px;flex-shrink:0">
+    <div style="width:150px;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-start">
+      <img src="crk-logo.png" alt="CRK Medical College and Hospital" style="width:78px;height:auto;display:block">
+      <div style="font-size:12px;font-weight:700;color:#55064f;margin-top:5px;line-height:14px">General Medicine</div>
+    </div>
+
+    <div style="width:298px;display:flex;flex-direction:column;gap:1px">
+      <div class="hrow"><span class="lb">Name:</span><span class="vl">Ms. Muskan Arora</span></div>
+      <div class="hrow"><span class="lb">UHID:</span><span class="vl num">CRK0000184213</span></div>
+      <div class="hrow"><span class="lb">Gender:</span><span class="vl">F</span></div>
+      <div class="hrow"><span class="lb">DOB:</span><span class="vl num">17-Apr-1998 (28 years)</span></div>
+      <div class="hrow"><span class="lb">Doctor ID:</span><span class="vl num">DR-0114</span></div>
+    </div>
+
+    <div style="flex-grow:1;display:flex;flex-direction:column;gap:1px">
+      <div class="hrowr"><span class="lb">Encounter ID:</span><span class="vl num">2608290047</span></div>
+      <div class="hrowr"><span class="lb">Encounter Type:</span><span class="vl">Outpatient</span></div>
+      <div class="hrowr"><span class="lb">Visit/Admn Date:</span><span class="vl num">29-Aug-2026</span></div>
+      <div class="hrowr"><span class="lb">Department:</span><span class="vl">General Medicine</span></div>
+      <div class="hrowr"><span class="lb">Speciality:</span><span class="vl">General Medicine</span></div>
+    </div>
+  </div>
+
+  <div class="rule" style="margin-top:10px;flex-shrink:0"></div>
+
+  <!-- ══ BODY — allergy, vitals, then the doctor's own hand ═══════════════ -->
+  <div style="flex-grow:1;padding-top:12px;display:flex;flex-direction:column;min-height:0">
+
+    <!-- allergy — pre-printed from the record -->
+    
+
+    <!-- vitals — printed empty, filled at the vitals desk -->
+    <div style="border-top:1px solid #9a9a9a;border-bottom:1px solid #9a9a9a;padding:7px 0;margin-top:11px;flex-shrink:0">
+      <div style="display:flex;align-items:baseline;gap:0">
+        <span class="lb" style="font-size:11px;width:52px;flex-shrink:0">Vitals</span>
+        <div style="display:flex;gap:12px;flex-grow:1">
+          <div style="display:flex;align-items:baseline;gap:4px;flex-grow:1"><span style="font-size:10.5px;color:#666">BP</span><span style="flex-grow:1;border-bottom:1px dotted #999;height:13px"></span><span style="font-size:9.5px;color:#999">mmHg</span></div>
+          <div style="display:flex;align-items:baseline;gap:4px;flex-grow:1"><span style="font-size:10.5px;color:#666">Pulse</span><span style="flex-grow:1;border-bottom:1px dotted #999;height:13px"></span><span style="font-size:9.5px;color:#999">/min</span></div>
+          <div style="display:flex;align-items:baseline;gap:4px;flex-grow:1"><span style="font-size:10.5px;color:#666">Temp</span><span style="flex-grow:1;border-bottom:1px dotted #999;height:13px"></span><span style="font-size:9.5px;color:#999">°C</span></div>
+          <div style="display:flex;align-items:baseline;gap:4px;flex-grow:1"><span style="font-size:10.5px;color:#666">SpO₂</span><span style="flex-grow:1;border-bottom:1px dotted #999;height:13px"></span><span style="font-size:9.5px;color:#999">%</span></div>
+          <div style="display:flex;align-items:baseline;gap:4px;flex-grow:1"><span style="font-size:10.5px;color:#666">Wt</span><span style="flex-grow:1;border-bottom:1px dotted #999;height:13px"></span><span style="font-size:9.5px;color:#999">kg</span></div>
+          <div style="display:flex;align-items:baseline;gap:4px;width:86px"><span style="font-size:10.5px;color:#666">Ht</span><span class="num" style="font-weight:700">163 cm</span></div>
+        </div>
+      </div>
+      
+    </div>
+
+    <!-- everything below this line is the doctor's, and the sheet says nothing at all -->
+    <div style="display:flex;align-items:center;gap:9px;border:1.5px solid #d92230;padding:5px 11px;flex-shrink:0">
+      <span style="font-size:10.5px;font-weight:700;letter-spacing:0.08em;color:#d92230">ALLERGY</span>
+      <span style="width:1px;height:12px;background:#d92230"></span>
+      <span style="font-size:13.5px;font-weight:700;color:#d92230">SULFA DRUGS</span>
+      <span style="font-size:11.5px;color:#333333">— rash, recorded 11-Mar-2024</span>
+      <div style="flex-grow:1"></div>
+      <span class="hi" style="font-size:11px;font-weight:600;color:#d92230">एलर्जी</span>
+    </div><div style="flex-grow:1"></div>
+
+    <div style="display:flex;justify-content:flex-end;flex-shrink:0">
+      <div style="width:280px">
+        <div class="thin"></div>
+        <div style="font-size:9.5px;color:#8a8a8a;margin-top:4px;text-align:right;letter-spacing:0.02em">Signature, name &amp; registration no. of the treating physician</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ FOOTER ═══════════════════════════════════════════════════════════ -->
+  <div style="flex-shrink:0;padding-top:12px">
+    <div class="rule"></div>
+    <div style="font-size:10.5px;padding:4px 0 5px">Letterhead is computer generated. The clinical entries above are written and signed by the treating physician.</div>
+    <div class="thin"></div>
+
+    <div style="display:flex;gap:14px;padding-top:6px">
+      <div style="flex-grow:1;display:flex;flex-direction:column;gap:3px">
+        <div style="font-size:11.5px"><span class="lb">Address:</span> <span class="vl">CRK Medical College &amp; Hospital,</span> Chaurasia Chowk, Hajipur — 844101, Bihar</div>
+        <div style="display:flex;gap:22px">
+          <div style="font-size:11.5px"><span class="lb">24×7 Hotline:</span> <span class="vl num">+91 77648 88189</span></div>
+          <div style="font-size:11.5px"><span class="lb">Emergency:</span> <span class="vl num">1068</span></div>
+          <div style="flex-grow:1"></div>
+          <div style="font-size:11.5px"><span class="lb">Password to access via QR code:</span> <span class="vl num">31610093</span></div>
+        </div>
+        <div style="display:flex;gap:22px">
+          <div style="font-size:11.5px"><span class="lb">Email:</span> <span class="vl">info@crkmch.com</span></div>
+          <div style="font-size:11.5px"><a href="https://www.crkmch.com" style="font-weight:700">www.crkmch.com</a></div>
+          <div style="flex-grow:1"></div>
+          <div style="font-size:11.5px"><span class="lb">Exit desk scans this QR to raise the orders</span></div>
+        </div>
+      </div>
+
+      <div style="width:62px;height:62px;flex-shrink:0;background:#000000;padding:3px;display:grid;grid-template-columns:repeat(9,1fr);grid-template-rows:repeat(9,1fr)">
+        <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div>
+        <div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div>
+        <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div>
+        <div></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div></div><div></div>
+        <div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div>
+        <div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div>
+        <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div>
+        <div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div>
+        <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div>
+      </div>
+    </div>
+
+    <div class="thin" style="margin-top:6px"></div>
+    <div style="display:flex;align-items:baseline;padding-top:4px">
+      <span class="num" style="font-size:10.5px;color:#333333">Printed by <strong>anshuman.prasad</strong> on 29-Aug-2026 at 11:18 · Counter 3</span>
+      <div style="flex-grow:1"></div>
+      <span class="num" style="font-size:10.5px;color:#333333">Page 1 of 1</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":794,"height":1123}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

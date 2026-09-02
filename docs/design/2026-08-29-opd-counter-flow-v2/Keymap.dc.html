@@ -1,0 +1,269 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#fafafa;color:#0a0a0a;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .card{border:1px solid #e5e5e5;border-radius:14px;background:#ffffff;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+    /* the keycap */
+    .k{height:38px;border-radius:7px;border:1px solid #d4d4d4;background:#ffffff;display:flex;align-items:center;
+       justify-content:center;font-size:11px;color:#a1a1a1;box-shadow:0 1px 0 0 #d4d4d4;flex-shrink:0}
+    .kon{border-color:#171717;background:#171717;color:#fafafa;box-shadow:0 1px 0 0 #000000;font-weight:600}
+    .kalt{border-color:#218cb5;background:rgba(33,140,181,0.10);color:#218cb5;box-shadow:0 1px 0 0 rgba(33,140,181,0.45);font-weight:600}
+    .krow{display:flex;gap:5px}
+    .cap{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;display:inline-flex;align-items:center;height:22px;
+         padding:0 8px;border-radius:6px;background:#f5f5f5;border:1px solid #e5e5e5;font-size:11.5px;
+         font-weight:600;color:#404040;flex-shrink:0}
+    .capD{background:#171717;border-color:#171717;color:#fafafa}
+    .step{display:flex;align-items:center;gap:8px}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#fafafa;overflow:hidden">
+
+  <!-- HEAD -->
+  <div style="padding:24px 30px 16px;flex-shrink:0">
+    <div style="display:flex;align-items:flex-end;gap:22px">
+      <div style="flex-grow:1">
+        <h1 style="margin:0;font-size:25px;font-weight:600;letter-spacing:-0.02em">The counter is a keyboard, not a mouse</h1>
+        <p style="margin:6px 0 0;font-size:14px;color:#525252;max-width:790px;line-height:21px">
+          A counter clerk types faster than they point, does the same nine things four hundred times a day, and never looks at the screen while a patient is talking.
+          Every action below has a key. The mouse still works — it is just no longer the fast path.
+        </p>
+      </div>
+      <div style="display:flex;gap:10px;flex-shrink:0">
+        <div class="card" style="padding:11px 15px;text-align:center;width:132px">
+          <div class="lbl" style="font-size:10px">Today, by mouse</div>
+          <div class="num" style="font-size:26px;font-weight:600;letter-spacing:-0.02em;line-height:29px;margin-top:2px">31</div>
+          <div style="font-size:11px;color:#737373">clicks + 3 scrolls</div>
+        </div>
+        <div class="card" style="padding:11px 15px;text-align:center;width:132px;border-color:#171717">
+          <div class="lbl" style="font-size:10px">By keyboard</div>
+          <div class="num" style="font-size:26px;font-weight:600;letter-spacing:-0.02em;line-height:29px;margin-top:2px">9</div>
+          <div style="font-size:11px;color:#318f5a;font-weight:500">no mouse at all</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex-grow:1;display:flex;gap:16px;padding:0 30px 26px;min-height:0">
+
+    <!-- ── LEFT: THE KEYBOARD ───────────────────────────────────────────── -->
+    <div style="width:822px;display:flex;flex-direction:column;gap:14px;min-height:0">
+
+      <div class="card" style="padding:20px 22px">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:15px">
+          <span style="font-size:15px;font-weight:600">What is bound</span>
+          <div style="flex-grow:1"></div>
+          <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#525252"><span style="width:11px;height:11px;border-radius:3px;background:#171717"></span>every counter</span>
+          <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#525252"><span style="width:11px;height:11px;border-radius:3px;background:rgba(33,140,181,0.30);border:1px solid #218cb5"></span>this counter only</span>
+        </div>
+
+        <!-- function row -->
+        <div class="krow" style="margin-bottom:9px">
+          <div class="k kon" style="width:50px">Esc</div>
+          <div style="width:16px"></div>
+          <div class="k kon" style="width:50px">F1</div>
+          <div class="k kon" style="width:50px">F2</div>
+          <div class="k kon" style="width:50px">F3</div>
+          <div class="k kon" style="width:50px">F4</div>
+          <div style="width:10px"></div>
+          <div class="k kalt" style="width:50px">F5</div>
+          <div class="k kalt" style="width:50px">F6</div>
+          <div class="k kalt" style="width:50px">F7</div>
+          <div class="k kon" style="width:50px">F8</div>
+          <div style="width:10px"></div>
+          <div class="k kon" style="width:50px">F9</div>
+          <div class="k kon" style="width:54px">F10</div>
+          <div class="k kon" style="width:54px">F11</div>
+          <div class="k" style="width:54px">F12</div>
+        </div>
+
+        <!-- number row -->
+        <div class="krow" style="margin-bottom:5px">
+          <div class="k" style="width:44px">`</div>
+          <div class="k kon" style="width:44px">1</div>
+          <div class="k kon" style="width:44px">2</div>
+          <div class="k kon" style="width:44px">3</div>
+          <div class="k kon" style="width:44px">4</div>
+          <div class="k kon" style="width:44px">5</div>
+          <div class="k kon" style="width:44px">6</div>
+          <div class="k" style="width:44px">7</div>
+          <div class="k" style="width:44px">8</div>
+          <div class="k" style="width:44px">9</div>
+          <div class="k" style="width:44px">0</div>
+          <div class="k" style="width:44px">−</div>
+          <div class="k" style="width:44px">=</div>
+          <div class="k" style="flex-grow:1">Backspace</div>
+        </div>
+
+        <div class="krow" style="margin-bottom:5px">
+          <div class="k" style="width:64px">Tab</div>
+          <div class="k" style="width:44px">Q</div>
+          <div class="k" style="width:44px">W</div>
+          <div class="k" style="width:44px">E</div>
+          <div class="k" style="width:44px">R</div>
+          <div class="k" style="width:44px">T</div>
+          <div class="k" style="width:44px">Y</div>
+          <div class="k" style="width:44px">U</div>
+          <div class="k" style="width:44px">I</div>
+          <div class="k" style="width:44px">O</div>
+          <div class="k" style="width:44px">P</div>
+          <div class="k" style="width:44px">[</div>
+          <div class="k" style="flex-grow:1">]</div>
+        </div>
+
+        <div class="krow" style="margin-bottom:5px">
+          <div class="k" style="width:76px">Caps</div>
+          <div class="k" style="width:44px">A</div>
+          <div class="k" style="width:44px">S</div>
+          <div class="k" style="width:44px">D</div>
+          <div class="k" style="width:44px">F</div>
+          <div class="k" style="width:44px">G</div>
+          <div class="k" style="width:44px">H</div>
+          <div class="k" style="width:44px">J</div>
+          <div class="k" style="width:44px">K</div>
+          <div class="k" style="width:44px">L</div>
+          <div class="k" style="width:44px">;</div>
+          <div class="k kon" style="flex-grow:1">Enter</div>
+        </div>
+
+        <div class="krow" style="margin-bottom:5px">
+          <div class="k" style="width:98px">Shift</div>
+          <div class="k" style="width:44px">Z</div>
+          <div class="k" style="width:44px">X</div>
+          <div class="k" style="width:44px">C</div>
+          <div class="k" style="width:44px">V</div>
+          <div class="k" style="width:44px">B</div>
+          <div class="k" style="width:44px">N</div>
+          <div class="k" style="width:44px">M</div>
+          <div class="k" style="width:44px">,</div>
+          <div class="k" style="width:44px">.</div>
+          <div class="k kon" style="width:44px">/</div>
+          <div class="k" style="flex-grow:1">Shift</div>
+        </div>
+
+        <div class="krow">
+          <div class="k kon" style="width:62px">Ctrl</div>
+          <div class="k" style="width:56px">Win</div>
+          <div class="k kon" style="width:56px">Alt</div>
+          <div class="k" style="flex-grow:1">Space</div>
+          <div class="k kon" style="width:56px">Alt</div>
+          <div class="k" style="width:56px">Menu</div>
+          <div class="k kon" style="width:62px">Ctrl</div>
+        </div>
+      </div>
+
+      <!-- legend -->
+      <div class="card" style="padding:16px 22px;flex-grow:1;min-height:0;overflow-y:auto">
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 30px">
+          <div class="step"><span class="cap capD">/</span><span style="font-size:13px">Jump to the search box, wherever you are</span></div>
+          <div class="step"><span class="cap capD">F8</span><span style="font-size:13px">Take payment</span></div>
+          <div class="step"><span class="cap capD">F1</span><span style="font-size:13px">This card, over whatever you are doing</span></div>
+          <div class="step"><span class="cap capD">F9</span><span style="font-size:13px">Reprint the last thing that printed</span></div>
+          <div class="step"><span class="cap capD">F2</span><span style="font-size:13px">Print the bundle · <span style="color:#737373">F2 F2</span> adds the Rx sheet</span></div>
+          <div class="step"><span class="cap capD">F10</span><span style="font-size:13px">Hand the counter over — locks and logs</span></div>
+          <div class="step"><span class="cap capD">F3</span><span style="font-size:13px">Find a patient by mobile or UHID</span></div>
+          <div class="step"><span class="cap capD">F11</span><span style="font-size:13px">Raise a grievance</span></div>
+          <div class="step"><span class="cap capD">F4</span><span style="font-size:13px">New registration</span></div>
+          <div class="step"><span class="cap capD">Esc</span><span style="font-size:13px">Let go of this patient</span></div>
+          <div class="step"><span class="cap" style="background:rgba(33,140,181,0.10);border-color:#218cb5;color:#218cb5">F5</span><span style="font-size:13px">Symptom search</span></div>
+          <div class="step"><span class="cap capD">Enter</span><span style="font-size:13px">Do the obvious next thing</span></div>
+          <div class="step"><span class="cap" style="background:rgba(33,140,181,0.10);border-color:#218cb5;color:#218cb5">F6</span><span style="font-size:13px">Into the doctor list · <span class="mono" style="font-size:11px">↑↓</span> to move</span></div>
+          <div class="step"><span class="cap capD">Alt</span><span class="cap capD" style="margin-left:-4px">1–6</span><span style="font-size:13px">Switch counter, if you hold two seats</span></div>
+          <div class="step"><span class="cap" style="background:rgba(33,140,181,0.10);border-color:#218cb5;color:#218cb5">F7</span><span style="font-size:13px">Cycle visit type</span></div>
+          <div class="step"><span class="cap capD">Ctrl</span><span class="cap capD" style="margin-left:-4px">Shift</span><span class="cap capD" style="margin-left:-4px">G</span><span style="font-size:13px">Break glass — deliberately awkward</span></div>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:9px;margin-top:15px;padding-top:14px;border-top:1px solid #e5e5e5">
+          <svg style="margin-top:2px;flex-shrink:0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span style="font-size:12px;color:#525252;line-height:17px">
+            <strong style="font-weight:600">F12 stays unbound on purpose.</strong> It is next to the power button on the counter's keyboards and it opens the browser's dev tools.
+            Nothing destructive lives on a bare function key either — the only irreversible action in the set is behind a three-key chord.
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RIGHT: THE THREE JOURNEYS ────────────────────────────────────── -->
+    <div style="flex-grow:1;display:flex;flex-direction:column;gap:12px;min-height:0;overflow-y:auto">
+
+      <div class="card" style="padding:16px 18px">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:4px">
+          <span style="font-size:14px;font-weight:600">Returning walk-in</span>
+          <div style="flex-grow:1"></div>
+          <span class="num" style="font-size:12px;font-weight:600;color:#318f5a">9 keys · 22 s</span>
+        </div>
+        <div style="font-size:12px;color:#737373;margin-bottom:11px">The commonest thing that happens at Counter 3, about 180 times a day.</div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <div class="step"><span class="cap capD">/</span><span style="font-size:12.5px;color:#404040">search box takes focus</span></div>
+          <div class="step"><span class="cap">98350 41772</span><span style="font-size:12.5px;color:#404040">her mobile</span></div>
+          <div class="step"><span class="cap capD">Enter</span><span style="font-size:12.5px;color:#404040">one hit — she is in hand</span></div>
+          <div class="step"><span class="cap capD">F5</span><span class="cap">cough</span><span style="font-size:12.5px;color:#404040">departments rank</span></div>
+          <div class="step"><span class="cap capD">↓</span><span class="cap capD">↓</span><span style="font-size:12.5px;color:#404040">down to Dr Rao</span></div>
+          <div class="step"><span class="cap capD">Enter</span><span style="font-size:12.5px;color:#404040">queued, token allotted</span></div>
+          <div class="step"><span class="cap capD">F2</span><span class="cap capD" style="margin-left:-4px">F2</span><span style="font-size:12.5px;color:#404040">token + prescription sheet</span></div>
+        </div>
+        <div style="margin-top:12px;padding:9px 11px;border-radius:9px;background:#f5f5f5;font-size:11.5px;color:#525252;line-height:16px">
+          Anshuman never looked down. He was talking to Muskan the whole time.
+        </div>
+      </div>
+
+      <div class="card" style="padding:16px 18px">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:4px">
+          <span style="font-size:14px;font-weight:600">Take the money</span>
+          <div style="flex-grow:1"></div>
+          <span class="num" style="font-size:12px;font-weight:600;color:#318f5a">4 keys · 11 s</span>
+        </div>
+        <div style="font-size:12px;color:#737373;margin-bottom:11px">Counter 5. The scan is not a keystroke — the reader types for you.</div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <div class="step"><span class="cap" style="background:#e5e5e5">scan</span><span style="font-size:12.5px;color:#404040">token QR — everything loads</span></div>
+          <div class="step"><span class="cap capD">F8</span><span style="font-size:12.5px;color:#404040">payment opens on cash</span></div>
+          <div class="step"><span class="cap">500</span><span style="font-size:12.5px;color:#404040">change computes itself</span></div>
+          <div class="step"><span class="cap capD">Enter</span><span style="font-size:12.5px;color:#404040">receipted and printed</span></div>
+        </div>
+      </div>
+
+      <div class="card" style="padding:16px 18px">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:4px">
+          <span style="font-size:14px;font-weight:600">New patient, registered and booked</span>
+          <div style="flex-grow:1"></div>
+          <span class="num" style="font-size:12px;font-weight:600;color:#cb882e">~40 keys · 95 s</span>
+        </div>
+        <div style="font-size:12px;color:#737373;margin-bottom:11px">Mostly typing her details, which no shortcut can shorten. What a shortcut removes is the tab change.</div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <div class="step"><span class="cap capD">F4</span><span style="font-size:12.5px;color:#404040">blank registration, cursor in Name</span></div>
+          <div class="step"><span class="cap capD">Tab</span><span style="font-size:12.5px;color:#404040">field to field, never a click</span></div>
+          <div class="step"><span class="cap capD">F5</span><span style="font-size:12.5px;color:#404040">book without leaving the form</span></div>
+          <div class="step"><span class="cap capD">F2</span><span style="font-size:12.5px;color:#404040">UHID issued, visit open, token out</span></div>
+        </div>
+      </div>
+
+      <div style="border:1px solid rgba(203,136,46,0.35);border-radius:14px;background:rgba(203,136,46,0.06);padding:14px 17px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px">Teach it in one sitting, not in a manual</div>
+        <div style="font-size:12px;color:#404040;line-height:18px">
+          The keys print on a card that sits under the counter glass, <span class="cap" style="height:19px;font-size:10.5px">F1</span> shows the same card on screen,
+          and for the first two weeks every button on every counter screen carries its key in small grey type beside the label.
+          Then the labels fade out. Nobody is asked to memorise anything.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>
