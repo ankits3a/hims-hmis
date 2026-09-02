@@ -12,6 +12,7 @@ export const PHARMACY_ERROR_CODES = [
   "unknown_sale_item",
   "sale_item_inactive",
   "price_unknown",
+  "gst_slab_unknown",
   // ── queue, claim, verify (T3) ──
   "unknown_dispense",
   "unknown_line",
@@ -56,6 +57,7 @@ const STATUS: Record<PharmacyErrorCode, number> = {
   unknown_sale_item: 404,
   sale_item_inactive: 409,
   price_unknown: 409,
+  gst_slab_unknown: 409,
   unknown_dispense: 404,
   unknown_line: 404,
   unknown_prescription: 404,

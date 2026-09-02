@@ -81,6 +81,36 @@ const GST_CATEGORIES = [
     specialRule: null,
     thresholdPaise: null,
   },
+  /**
+   * PLAN 16c T2 / S2 — the medicine GST slabs as CATEGORIES, because `computeGst` is keyed by
+   * category and takes no per-line rate. `pharmacy` above is the 12% slab; these three are nil, 5%
+   * and 18%. `registerSaleItem` picks one from `items.gst_rate_bps` (owner ruling R-2). All four
+   * begin `pharmacy` so the tariff engine's `batchUnitPaise` guard (16c T0b) admits them.
+   */
+  {
+    category: "pharmacy_exempt",
+    sacCode: "3004", // DEV PLACEHOLDER — CA sign-off required (§19)
+    exempt: true, // DEV PLACEHOLDER — CA sign-off required (§19)
+    rateBps: 0,
+    specialRule: null,
+    thresholdPaise: null,
+  },
+  {
+    category: "pharmacy_5",
+    sacCode: "3004", // DEV PLACEHOLDER — CA sign-off required (§19)
+    exempt: false, // DEV PLACEHOLDER — CA sign-off required (§19)
+    rateBps: 500, // DEV PLACEHOLDER — CA sign-off required (§19)
+    specialRule: null,
+    thresholdPaise: null,
+  },
+  {
+    category: "pharmacy_18",
+    sacCode: "3004", // DEV PLACEHOLDER — CA sign-off required (§19)
+    exempt: false, // DEV PLACEHOLDER — CA sign-off required (§19)
+    rateBps: 1800, // DEV PLACEHOLDER — CA sign-off required (§19)
+    specialRule: null,
+    thresholdPaise: null,
+  },
   {
     category: "device",
     sacCode: "9021", // DEV PLACEHOLDER — CA sign-off required (§19)

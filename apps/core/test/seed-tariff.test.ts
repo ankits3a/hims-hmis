@@ -40,7 +40,7 @@ describe("seed:tariff (Plan 11g / DD2)", () => {
 
     expect(report.settings).toBe("seeded");
     expect(report.categoriesSeeded.sort()).toEqual(
-      ["consultation", "device", "pharmacy", "procedure", "room_rent"],
+      ["consultation", "device", "pharmacy", "pharmacy_18", "pharmacy_5", "pharmacy_exempt", "procedure", "room_rent"], // 16c T2: +3 medicine slabs
     );
     expect(report.categoriesLeft).toEqual([]);
     expect(report.capsSeeded.sort()).toEqual(
@@ -49,7 +49,7 @@ describe("seed:tariff (Plan 11g / DD2)", () => {
 
     // The CONTROL for R1: the row cannot pass by writing nothing.
     expect(await db.select().from(gstSettings).where(eq(gstSettings.id, "main"))).toHaveLength(1);
-    expect(await listGstCategories(db)).toHaveLength(5);
+    expect(await listGstCategories(db)).toHaveLength(8); // 16c T2: +3 medicine slabs
     expect(await listAdjustmentRules(db)).toHaveLength(4);
   });
 
@@ -70,7 +70,7 @@ describe("seed:tariff (Plan 11g / DD2)", () => {
     expect(report.settings).toBe("left untouched");
     expect(report.categoriesSeeded).toEqual([]);
     expect(report.categoriesLeft.sort()).toEqual(
-      ["consultation", "device", "pharmacy", "procedure", "room_rent"],
+      ["consultation", "device", "pharmacy", "pharmacy_18", "pharmacy_5", "pharmacy_exempt", "procedure", "room_rent"], // 16c T2
     );
     expect(report.capsSeeded).toEqual([]);
 
@@ -79,7 +79,7 @@ describe("seed:tariff (Plan 11g / DD2)", () => {
     expect(consultation?.rateBps).toBe(500);
     expect(consultation?.exempt).toBe(false);
     // …and nothing was duplicated on the way.
-    expect(await listGstCategories(db)).toHaveLength(5);
+    expect(await listGstCategories(db)).toHaveLength(8); // 16c T2: +3 medicine slabs
   });
 
   it("R1 — a SECOND run over a CORRECTED discount cap leaves the correction alone", async () => {
