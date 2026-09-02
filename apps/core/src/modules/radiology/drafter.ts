@@ -1,5 +1,6 @@
 import { findLockoutHits } from "../pcpndt";
 import { templateFor, templateKeyFor } from "./templates";
+import type { LockoutTier } from "../pcpndt";
 import type { StudyType } from "./definitions";
 
 /**
@@ -57,8 +58,15 @@ const MODALITY_WORDS: Readonly<Record<string, string>> = {
   xray: "Plain radiograph", usg: "Ultrasound", ct: "CT", mri: "MRI", mammography: "Mammography",
 };
 
+/**
+ * Close review B6 — `body_part` is a label ("obstetric", "lower limb"), so the sentence names the
+ * study TYPE, which is a phrase the book wrote for humans: "Ultrasound: Obstetric anomaly scan".
+ * Close review B3 — DAP is NOT rendered: `dose_dap` has no house unit anywhere in the tree and a
+ * number under the wrong unit is a thousand-fold regulatory error under a signature. CTDIvol (mGy)
+ * and DLP (mGy·cm) have one unit each; fluoroscopy is seconds. DAP's unit belongs to 18c's register.
+ */
 function techniqueOf(f: DrafterFacts): string {
-  const parts = [`${MODALITY_WORDS[f.studyType.modality] ?? f.studyType.modality} of the ${f.studyType.body_part}`];
+  const parts = [`${MODALITY_WORDS[f.studyType.modality] ?? f.studyType.modality}: ${f.studyType.name}`];
   if (f.laterality !== "na") parts.push(`(${f.laterality})`);
   if (f.contrastGiven) {
     const agent = f.contrastAgent ?? "contrast";
@@ -71,7 +79,6 @@ function techniqueOf(f: DrafterFacts): string {
   const dose: string[] = [];
   if (f.dose.ctdivol !== null) dose.push(`CTDIvol ${f.dose.ctdivol} mGy`);
   if (f.dose.dlp !== null) dose.push(`DLP ${f.dose.dlp} mGy·cm`);
-  if (f.dose.dap !== null) dose.push(`DAP ${f.dose.dap} Gy·cm²`);
   if (f.dose.fluoroSeconds !== null) dose.push(`fluoroscopy ${String(f.dose.fluoroSeconds)} s`);
   if (dose.length > 0) parts.push(`Dose: ${dose.join(", ")}.`);
   return parts.join(" ");
@@ -107,10 +114,15 @@ let active: ReportDrafter = offlineTemplateDrafter;
 
 /** The seam. A later phase binds a model-backed drafter here after R4; nothing else changes. */
 export function activeDrafter(): ReportDrafter { return active; }
+/**
+ * Close review B11 — NOT exported from the module's `index.ts`: module-global mutable state that
+ * only a test (or the phase that binds a model after R4, in this file) may touch. Nothing in
+ * production calls it, and the row's `provenance.drafter` names whatever was bound.
+ */
 export function setActiveDrafter(drafter: ReportDrafter | null): void { active = drafter ?? offlineTemplateDrafter; }
 
 /** Every proposal goes through the lockout. A drafter that emits a §5(2) term is refused, not overridden. */
-export function proposalLockoutHits(p: DraftProposal): string[] {
+export function proposalLockoutHits(p: DraftProposal, tier: LockoutTier): string[] {
   const text = `${Object.values(p.body).join(" ")} ${p.impression ?? ""}`;
-  return findLockoutHits(text, "full").map((h) => h.term);
+  return findLockoutHits(text, tier).map((h) => h.term);
 }

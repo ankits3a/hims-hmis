@@ -70,6 +70,7 @@ import type { Actor } from "@hmis/contracts";
 
 const WORKLIST_READ = "radiology.worklist.read";
 const REPORT_READ = "radiology.reports.read";
+const IMAGES_READ = REPORT_READ;
 
 type Clearance = { canSeeConfidential: boolean; userId: string };
 
@@ -225,6 +226,8 @@ export type StudyView = WorklistRow & {
   mintedStudyInstanceUid: string;
   /** 18b T3 / D6 — who opened the images, latest first: the view table's consumer. */
   views: ImageViewRow[];
+  /** Close review B4 — the screen renders "Open images" because the SERVER says this reader may. */
+  canOpenImages: boolean;
   reports: { id: string; version: number; status: string; publishedAt: Date | null; machineDrafted: boolean }[];
 };
 
@@ -283,6 +286,7 @@ export async function studyView(db: Db, actor: Actor, studyId: string): Promise<
     studyInstanceUid: row.study.studyInstanceUid, imageSource: row.study.imageSource,
     mintedStudyInstanceUid: mintStudyInstanceUid(row.study.id),
     views: await studyImageViews(db, studyId),
+    canOpenImages: await hasPermission(db, actor.id, IMAGES_READ, "hospital"),
     reports,
   };
 }

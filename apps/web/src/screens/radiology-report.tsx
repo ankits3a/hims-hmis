@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useParams } from "@tanstack/react-router";
@@ -44,6 +44,27 @@ export function RadiologyReport(): React.ReactElement {
 
   const study = useQuery({ queryKey: ["radiology", "study", studyId], queryFn: () => fetchStudy(studyId) });
   const refresh = () => qc.invalidateQueries({ queryKey: ["radiology", "study", studyId] });
+  /**
+   * Close review C3 — the latest unsigned version is READ on load, so a reload (or a second sitting)
+   * starts from what was saved — the drafter's technique included — instead of from `{}`, which
+   * used to drop the machine's technique from the human's next save in silence.
+   */
+  const latestUnsignedId = study.data?.study?.reports.find((v) => v.status === "draft" || v.status === "prelim")?.id ?? null;
+  const latest = useQuery({
+    queryKey: ["radiology", "report", latestUnsignedId],
+    queryFn: () => fetchReport(latestUnsignedId!),
+    enabled: latestUnsignedId !== null,
+  });
+  const [seededFrom, setSeededFrom] = useState<string | null>(null);
+  useEffect(() => {
+    const r = latest.data?.report;
+    if (r === undefined || r === null || seededFrom === r.reportId) return;
+    setSeededFrom(r.reportId);
+    const { findings: savedFindings, ...rest } = r.body as Record<string, string>;
+    setSections((cur) => ({ ...rest, ...cur }));
+    setFindings((cur) => (cur === "" ? savedFindings ?? "" : cur));
+    setImpression((cur) => (cur === "" ? r.impression ?? "" : cur));
+  }, [latest.data, seededFrom]);
 
   /**
    * ═══ F73 (CLOSE REVIEW) — THE SCREEN NEVER SENT A SIDE, SO NO LATERALISED STUDY COULD BE SIGNED ═══
@@ -61,15 +82,19 @@ export function RadiologyReport(): React.ReactElement {
    * which is the whole defect E3 is about. The report carries the study's side, and `assertSignable`
    * still refuses a disagreement.
    */
+  /**
+   * Close review C2 (CRITICAL) — the first version WIPED whatever the radiologist had typed: the
+   * drafter's findings are always empty and the screen copied them over the textarea. A proposal
+   * fills the sections a human does not write (technique) and never touches what a human did.
+   * Close review C4 — one round trip: the answer carries the body.
+   */
   const propose = useMutation({
-    mutationFn: async () => {
-      const r = await proposeDraft(studyId);
-      const view = await fetchReport(r.reportId);
-      return { ...r, body: (view.report?.body ?? {}) as Record<string, string> };
-    },
+    mutationFn: () => proposeDraft(studyId),
     onSuccess: (r) => {
-      setError(null); setDraftId(r.reportId);
-      setSections(r.body); setFindings(r.body.findings ?? ""); setImpression("");
+      setError(null); setSeededFrom(r.reportId);
+      const { findings: _drafted, ...rest } = r.body;
+      void _drafted;
+      setSections((cur) => ({ ...rest, ...cur, technique: r.body.technique ?? cur.technique ?? "" }));
       setNote(t("radiology.report.proposed", { drafter: r.provenance.drafter }));
       void refresh();
     },

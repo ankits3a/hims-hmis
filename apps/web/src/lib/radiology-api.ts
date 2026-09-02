@@ -33,7 +33,9 @@ export type WireStudyView = WireWorklistRow & {
   /** 18b T2 — null until acquired; `mintedStudyInstanceUid` is what the console pre-fills (D3). */
   studyInstanceUid: string | null; imageSource: string | null; mintedStudyInstanceUid: string;
   /** 18b T3 — who opened the images, latest first. */
-  views: { id: string; viewerId: string; via: string; viewedAt: string }[];
+  views: { id: string; viewerId: string; viewerName: string; via: string; viewedAt: string }[];
+  /** Close review B4 — the console shows "Open images" because the server says this reader may. */
+  canOpenImages: boolean;
   /** 18b T4 — `machineDrafted` is true only on a version the drafter proposed (§6.8). */
   reports: { id: string; version: number; status: string; publishedAt: string | null; machineDrafted: boolean }[];
 };
@@ -132,9 +134,10 @@ export const openImages = (studyId: string) =>
 
 /** 18b T4 — the drafter proposes from the study's recorded facts; no body travels. */
 export const proposeDraft = (studyId: string) =>
-  api<{ reportId: string; version: number; templateKey: string; provenance: { drafter: string } }>(
-    "POST", `/radiology/studies/${studyId}/reports/propose`,
-  );
+  api<{
+    reportId: string; version: number; templateKey: string;
+    body: Record<string, string>; impression: string | null; provenance: { drafter: string };
+  }>("POST", `/radiology/studies/${studyId}/reports/propose`);
 
 export const draftReport = (studyId: string, body: Record<string, unknown>) =>
   api<{ reportId: string; version: number }>("POST", `/radiology/studies/${studyId}/reports/draft`, body);

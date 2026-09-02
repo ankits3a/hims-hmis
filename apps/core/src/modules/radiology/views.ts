@@ -4,6 +4,7 @@ import { recordPhiAccess } from "../../kernel/phi/audit";
 import { appendEvent } from "../../kernel/events/append";
 import { newId } from "@hmis/contracts";
 import { imagingImageViews, imagingStudies } from "../../kernel/db/schema/radiology";
+import { users } from "../../kernel/db/schema/auth";
 import { activeDefinitionRow, parseDefinitionBody } from "./definitions";
 import { RadiologyError } from "./errors";
 import { imagingImageViewed } from "./events";
@@ -35,7 +36,8 @@ export function renderViewerUrl(template: string, values: { accessionNo: string;
     .replaceAll("{studyInstanceUid}", encodeURIComponent(values.studyInstanceUid));
 }
 
-export type ImageViewRow = { id: string; viewerId: string; via: string; viewedAt: Date };
+/** Close review C6 — `viewerName` is what a screen shows; the id is a ULID nobody recognises. */
+export type ImageViewRow = { id: string; viewerId: string; viewerName: string; via: string; viewedAt: Date };
 
 export async function openImages(
   tx: Tx,
@@ -98,9 +100,11 @@ export async function studyImageViews(exec: Db | Tx, studyId: string): Promise<I
   return await (exec as Db)
     .select({
       id: imagingImageViews.id, viewerId: imagingImageViews.viewerId,
+      viewerName: users.fullName,
       via: imagingImageViews.via, viewedAt: imagingImageViews.viewedAt,
     })
     .from(imagingImageViews)
+    .innerJoin(users, eq(users.id, imagingImageViews.viewerId))
     .where(eq(imagingImageViews.studyId, studyId))
     .orderBy(desc(imagingImageViews.viewedAt));
 }

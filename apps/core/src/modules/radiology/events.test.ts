@@ -17,7 +17,7 @@ import { radiologyManifest } from "./manifest";
  * Both files shipped in `997ab18` asserted by nothing. These are their first tests.
  */
 describe("the radiology event catalogue (18a T2)", () => {
-  it("declares seven events, every one in the radiology module's namespace", () => {
+  it("declares eight events, every one in the radiology module's namespace", () => {
     expect(RADIOLOGY_EVENTS).toHaveLength(8); // 18b T3: +imaging.image_viewed
     for (const event of RADIOLOGY_EVENTS) {
       expect([event.name, event.module]).toEqual([event.name, "radiology"]);
