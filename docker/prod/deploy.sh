@@ -43,6 +43,23 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SRC_DIR="$REPO_DIR/docker/prod"
 DEPLOY_DIR="${HMIS_DEPLOY_DIR:-/opt/hmis-prod}"
 PROJECT="hmis-prod"
+
+# 2026-09-02: THE IMAGES ARE BUILT FROM THIS CHECKOUT, so the checkout must be exactly the commit
+# CI gated. Two refusals: a dirty tree (a peer lane's uncommitted file would ship inside the
+# image — it happened: 09a's "deploy" carried 16a) and a HEAD that is not origin/main (never
+# gated, or stale). `docs/` is exempt from the dirty check because design and plan drafts live
+# there and never reach an image. HMIS_DEPLOY_ALLOW_DIRTY=1 overrides for a rehearsal only.
+if [ "${HMIS_DEPLOY_ALLOW_DIRTY:-0}" != "1" ]; then
+  dirty="$(git -C "$REPO_DIR" status --porcelain | grep -vE '^\?\? docs/' || true)"
+  if [ -n "$dirty" ]; then
+    echo "deploy.sh: working tree is dirty — commit, stash by path, or HMIS_DEPLOY_ALLOW_DIRTY=1 for a rehearsal:" >&2
+    echo "$dirty" >&2; exit 1
+  fi
+  git -C "$REPO_DIR" fetch -q origin main
+  if [ "$(git -C "$REPO_DIR" rev-parse HEAD)" != "$(git -C "$REPO_DIR" rev-parse origin/main)" ]; then
+    echo "deploy.sh: HEAD is not origin/main — deploy only what CI gated (git pull --ff-only, or push first)" >&2; exit 1
+  fi
+fi
 SERVER_IMAGE="hmis-prod/server:latest"
 WEB_IMAGE="hmis-prod/web:latest"
 DB_IMAGE="hmis-prod/db:latest"

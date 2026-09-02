@@ -8,7 +8,20 @@
 // The only workspace that depends on @hmis/contracts is apps/core, so this is the only mapper
 // the repo needs.
 module.exports = {
-  preset: "ts-jest",
+  // 2026-09-02: `isolatedModules` makes ts-jest TRANSPILE each file instead of type-checking the
+  // whole program per test file. Measured on the build host, two DB-backed suites, cold cache:
+  // 20.5 s -> 3.8 s. Types are still checked — by `pnpm typecheck`, which `pnpm verify` and CI
+  // run first — so nothing is lost; jest just stops repeating that work 347 times.
+  // `module: commonjs` is forced here because tsconfig.base says NodeNext, under which TypeScript
+  // KEEPS a dynamic `import()` in CommonJS output — and jest's vm cannot run one without
+  // --experimental-vm-modules (CI shard 1 on this change: place.test.ts A5). Full ts-jest hid that
+  // by overriding module itself; the transpile-only path does not, so it is stated.
+  transform: {
+    "^.+\\.ts$": [
+      "ts-jest",
+      { isolatedModules: true, tsconfig: { module: "commonjs", moduleResolution: "node" } },
+    ],
+  },
   testEnvironment: "node",
   testMatch: ["**/test/**/*.test.ts", "**/src/**/*.test.ts"],
   testTimeout: 15000,
