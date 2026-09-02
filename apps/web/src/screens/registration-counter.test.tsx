@@ -526,7 +526,14 @@ describe("RC-3 T5 / D3 — the alias layer is scoped to the seat", () => {
    * and what the assertion book asks for.
    */
   it("MUTANT — no Desk One colour is declared in ANY block but the seat's", () => {
-    const others = blocks.filter((b) => !b.selector.includes('[data-seat="registration-counter"]'));
+    /**
+     * PLAN 17c T1 / D1 — a SECOND seat block, `[data-seat="lab"]`, legitimately carries the same
+     * hexes (the laboratory's five seats wear Desk One too; the values are copied, not shared
+     * through `:root`, for exactly the reason this test exists). The assertion's intent is
+     * unchanged: no Desk One colour in any UNSCOPED block. A seat is a scope.
+     */
+    const SEATS = ['[data-seat="registration-counter"]', '[data-seat="lab"]'];
+    const others = blocks.filter((b) => !SEATS.some((seat) => b.selector.includes(seat)));
     // The census, pinned before anything is compared: `:root`, `.dark`, `*` and `body` are the
     // four a global-token mutant would reach for, and all four must be in the list being checked.
     expect(others.length).toBeGreaterThanOrEqual(10);
@@ -586,7 +593,8 @@ describe("RC-3 T5 / D3 — the alias layer is scoped to the seat", () => {
       .filter((f) => f.endsWith(".tsx") || f.endsWith(".ts"))
       .filter((f) => !f.endsWith(".test.tsx") && !f.endsWith(".test.ts"))
       .filter((f) => readFileSync(resolve(__dirname, "..", f), "utf8").includes("data-seat"));
-    expect(carriers).toEqual(["screens/registration-counter.tsx"]); // THE KILL
+    /** PLAN 17c T1 / D1 — the laboratory's shared seat frame is the second carrier, on ITS root element. */
+    expect([...carriers].sort()).toEqual(["screens/lab-seat.tsx", "screens/registration-counter.tsx"]); // THE KILL
 
     renderWithProviders(<RegistrationCounter />);
     expect(screen.getByTestId("registration-counter").getAttribute("data-seat")).toBe("registration-counter");
