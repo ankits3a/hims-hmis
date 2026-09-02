@@ -43,10 +43,10 @@ function dispense(status: string, over: Partial<WireDispense> = {}): WireDispens
     lines: [
       { lineIdx: 0, rxLine: rx("Crocin 500", "m-croc"), status: "open", declinedReason: null, substitutionType: "none", qtyBase: 15, scheduleFlag: "OTC",
         orderedMedicine: CROCIN, dispensedMedicine: CROCIN, item: { id: "it-c", code: "CROC500", name: "Crocin 500 tablet", baseUom: "tablet", uoms: [] },
-        saleable: true, available: 40, batchId: null, reservationId: null, orderItemId: null, unitPaise: null, priceWinner: null },
+        saleable: true, available: 40, batchId: null, reservationId: null, ledgerEntryId: null, orderItemId: null, invoiceLineId: null, unitPaise: null, priceWinner: null, fefoOverride: false, pickNote: null },
       { lineIdx: 1, rxLine: rx("Azee 500", "m-azee"), status: "open", declinedReason: null, substitutionType: "none", qtyBase: null, scheduleFlag: "H1",
         orderedMedicine: AZEE, dispensedMedicine: AZEE, item: { id: "it-a", code: "AZEE500", name: "Azee 500 tablet", baseUom: "tablet", uoms: [] },
-        saleable: true, available: 6, batchId: null, reservationId: null, orderItemId: null, unitPaise: null, priceWinner: null },
+        saleable: true, available: 6, batchId: null, reservationId: null, ledgerEntryId: null, orderItemId: null, invoiceLineId: null, unitPaise: null, priceWinner: null, fefoOverride: false, pickNote: null },
     ],
     ...over,
   };
@@ -106,5 +106,33 @@ describe("PharmacyCounter (16c T3)", () => {
     await userEvent.type(await screen.findByRole("textbox", { name: "Qty 2" }), "3");
     await userEvent.click(screen.getByRole("button", { name: "Verify & place order" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Recorded allergy, not overridden by the prescriber");
+  });
+
+  it("T4 — pick, bill at the previewed payable, hand over with the token, and print labels", async () => {
+    let current = dispense("verified", { dispenseNo: "P2608170001", orderId: "o1" });
+    const draft = { lines: [{ lineId: "l1", serviceId: "s", serviceName: "Crocin 500 tablet", qty: 15, unitPaise: 1200, grossPaise: 18000, discountPaise: 0, netPaise: 20160, gst: { rateBps: 1200, exempt: false } }],
+      totals: { grossPaise: 18000, discountPaise: 0, cgstPaise: 1080, sgstPaise: 1080, rawTotalPaise: 20160, netPayablePaise: 20200, roundingPaise: 40 } };
+    mockRoutes({
+      "GET /api/pharmacy/queue": { status: 200, body: { items: [{ dispenseId: "d1", status: "verified", dispenseNo: "P2608170001", scheduled: true, lineCount: 2, createdAt: "2026-08-17T04:00:00.000Z", claimedAt: null, patient: PATIENT }] } },
+      "GET /api/pharmacy/dispenses/d1": () => ({ status: 200, body: current }),
+      "POST /api/pharmacy/dispenses/d1/pick": () => { current = dispense("picked", { dispenseNo: "P2608170001", orderId: "o1" }); return { status: 201, body: current }; },
+      "GET /api/pharmacy/dispenses/d1/bill/preview": { status: 200, body: draft },
+      "POST /api/pharmacy/dispenses/d1/bill": () => { current = dispense("billed", { dispenseNo: "P2608170001", orderId: "o1", invoiceId: "inv1" }); return { status: 201, body: current }; },
+      "POST /api/pharmacy/dispenses/d1/handover": () => { current = dispense("handed_over", { dispenseNo: "P2608170001", orderId: "o1", invoiceId: "inv1", identityConfirmedVia: "token" }); return { status: 201, body: current }; },
+      "GET /api/pharmacy/dispenses/d1/label": { status: 200, body: { dispenseNo: "P2608170001", status: "handed_over", patient: { display: "Sita Devi", uhid: PATIENT.uhid }, handedOverAt: "2026-08-17T04:40:00.000Z",
+        lines: [{ lineIdx: 0, drug: "Crocin 500", strength: "500 mg", form: "tablet", qtyBase: 20, unit: "tablet", packs: "2 strip", batchNo: "CR-EARLY", expiryDate: "2027-01-31", directions: "1 tab · TDS · 5 days", substitutedFor: null }] } },
+    });
+    renderWithProviders(<PharmacyCounter />);
+    await userEvent.click(await screen.findByText(/Sita Devi/));
+    await userEvent.click(await screen.findByRole("button", { name: "Pick from shelf" }));
+    await waitFor(() => expect(bodiesOf("POST", "/pharmacy/dispenses/d1/pick")).toEqual([{ lines: [] }]));
+    expect(await screen.findByTestId("payable")).toHaveTextContent("₹202.00");
+    await userEvent.click(screen.getByRole("button", { name: "Take payment & bill" }));
+    await waitFor(() => expect(bodiesOf("POST", "/pharmacy/dispenses/d1/bill")).toEqual([{ tenders: [{ mode: "cash", amountPaise: 20200 }] }]));
+    await userEvent.type(await screen.findByRole("textbox", { name: "Value" }), "14");
+    await userEvent.click(screen.getByRole("button", { name: "Hand over" }));
+    await waitFor(() => expect(bodiesOf("POST", "/pharmacy/dispenses/d1/handover")).toEqual([{ identity: { via: "token", value: "14" } }]));
+    expect(await screen.findByTestId("label-0")).toHaveTextContent("Crocin 500 500 mg tablet");
+    expect(screen.getByTestId("label-0")).toHaveTextContent("Batch CR-EARLY · Exp 2027-01-31");
   });
 });

@@ -67,8 +67,9 @@ export type WireDispenseLine = {
   qtyBase: number | null; scheduleFlag: string | null;
   orderedMedicine: WireMedicine | null; dispensedMedicine: WireMedicine | null;
   item: { id: string; code: string; name: string; baseUom: string; uoms: { uom: string; toBaseMultiplier: number }[] } | null;
-  saleable: boolean; available: number | null; batchId: string | null; reservationId: string | null; orderItemId: string | null;
-  unitPaise: number | null; priceWinner: string | null;
+  saleable: boolean; available: number | null; batchId: string | null; reservationId: string | null; ledgerEntryId: string | null;
+  orderItemId: string | null; invoiceLineId: string | null; unitPaise: number | null; priceWinner: string | null;
+  fefoOverride: boolean; pickNote: string | null;
 };
 export type WirePatientSummary = { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean };
 export type WireDispense = {
@@ -113,4 +114,29 @@ export async function declineLine(id: string, lineIdx: number, reason: string): 
 }
 export async function cancelDispense(id: string, reason: string): Promise<WireDispense> {
   return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/cancel`, { reason });
+}
+
+// ── T4 — pick, bill, hand over, the label ──
+export type PickLine = { lineIdx: number; qtyBase?: number; pickNote?: string; batchId?: string };
+export async function pickDispense(id: string, lines: PickLine[], idempotencyKey: string): Promise<WireDispense> {
+  return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/pick`, { lines }, idempotencyKey);
+}
+export type WirePricedLine = { lineId: string; serviceId: string; serviceName: string; qty: number; unitPaise: number; grossPaise: number; discountPaise: number; netPaise: number; gst: { rateBps: number; exempt: boolean } };
+export type WirePricedDraft = { lines: WirePricedLine[]; totals: { grossPaise: number; discountPaise: number; cgstPaise: number; sgstPaise: number; rawTotalPaise: number; netPayablePaise: number; roundingPaise: number } };
+export async function previewBill(id: string): Promise<WirePricedDraft> {
+  return api<WirePricedDraft>("GET", `/pharmacy/dispenses/${id}/bill/preview`);
+}
+export type Tender = { mode: "cash" | "upi" | "card"; amountPaise: number; refText?: string };
+export async function billDispense(id: string, input: { tenders: Tender[]; changeGivenPaise?: number }, idempotencyKey: string): Promise<WireDispense> {
+  return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/bill`, input, idempotencyKey);
+}
+export async function handOverDispense(id: string, identity: { via: "token" | "phone_last4"; value: string } | null, idempotencyKey: string): Promise<WireDispense> {
+  return api<WireDispense>("POST", `/pharmacy/dispenses/${id}/handover`, identity === null ? {} : { identity }, idempotencyKey);
+}
+export type WireLabel = {
+  dispenseNo: string | null; status: string; patient: { display: string; uhid: string }; handedOverAt: string | null;
+  lines: { lineIdx: number; drug: string; strength: string | null; form: string | null; qtyBase: number; unit: string; packs: string | null; batchNo: string; expiryDate: string | null; directions: string; substitutedFor: string | null }[];
+};
+export async function fetchLabel(id: string): Promise<WireLabel> {
+  return api<WireLabel>("GET", `/pharmacy/dispenses/${id}/label`);
 }

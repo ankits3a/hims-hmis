@@ -3,11 +3,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { newIdempotencyKey } from "../lib/api";
 import {
-  cancelDispense, claimDispense, declineLine, fetchAlternatives, fetchDispense, fetchQueue, findAtCounter, pharmacyErrorText,
-  verifyDispense,
+  billDispense, cancelDispense, claimDispense, declineLine, fetchAlternatives, fetchDispense, fetchLabel, fetchQueue, findAtCounter,
+  handOverDispense, pharmacyErrorText, pickDispense, previewBill, verifyDispense,
 } from "../lib/pharmacy-api";
+import { DispenseLabel } from "../components/dispense-label";
 import { Button } from "@/components/ui/button";
-import type { VerifyLine, WireAlternative, WireDispense, WireDispenseLine, WireFindResult } from "../lib/pharmacy-api";
+import type {
+  PickLine, VerifyLine, WireAlternative, WireDispense, WireDispenseLine, WireFindResult, WireLabel, WirePricedDraft,
+} from "../lib/pharmacy-api";
 
 /**
  * PLAN 16c T3 — THE DISPENSE COUNTER, first half: the portal list, the one field with three doors,
@@ -28,6 +31,14 @@ export function PharmacyCounter(): React.ReactElement {
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // T4 — the second half's state: partial picks, the priced draft, the tender, identity, the label
+  const [picks, setPicks] = useState<Record<number, { qtyBase: string; pickNote: string }>>({});
+  const [draft, setDraft] = useState<WirePricedDraft | null>(null);
+  const [tenderMode, setTenderMode] = useState<"cash" | "upi" | "card">("cash");
+  const [tenderAmount, setTenderAmount] = useState("");
+  const [identityVia, setIdentityVia] = useState<"token" | "phone_last4">("token");
+  const [identityValue, setIdentityValue] = useState("");
+  const [label, setLabel] = useState<WireLabel | null>(null);
 
   const queue = useQuery({ queryKey: ["pharmacy", "queue"], queryFn: fetchQueue, refetchInterval: 10_000 });
 
@@ -38,7 +49,24 @@ export function PharmacyCounter(): React.ReactElement {
     for (const l of d.lines) next[l.lineIdx] = { qtyBase: l.qtyBase === null ? "" : String(l.qtyBase), medicineId: l.dispensedMedicine?.id ?? "", consent: false };
     setEdits(next);
     setAlts({});
+    setPicks({});
+    setDraft(null);
+    setLabel(null);
   };
+
+  useEffect(() => {
+    if (inHand === null || inHand.status !== "picked") return;
+    let live = true;
+    void (async () => {
+      try {
+        const p = await previewBill(inHand.id);
+        if (!live) return;
+        setDraft(p);
+        setTenderAmount((p.totals.netPayablePaise / 100).toFixed(2));
+      } catch (e) { if (live) setError(pharmacyErrorText(e, t)); }
+    })();
+    return () => { live = false; };
+  }, [inHand, t]);
 
   useEffect(() => {
     if (inHand === null || inHand.status !== "claimed") return;
@@ -89,6 +117,38 @@ export function PharmacyCounter(): React.ReactElement {
     return d;
   });
 
+  useEffect(() => {
+    if (inHand === null || inHand.status !== "handed_over") return;
+    let live = true;
+    void fetchLabel(inHand.id).then((l) => { if (live) setLabel(l); }).catch((e: unknown) => { if (live) setError(pharmacyErrorText(e, t)); });
+    return () => { live = false; };
+  }, [inHand, t]);
+
+  const pick = (): Promise<void> => run(async () => {
+    if (inHand === null) return null;
+    const lines: PickLine[] = Object.entries(picks)
+      .filter(([, p]) => p.qtyBase.trim() !== "")
+      .map(([idx, p]) => ({ lineIdx: Number(idx), qtyBase: Number(p.qtyBase), ...(p.pickNote.trim() === "" ? {} : { pickNote: p.pickNote.trim() }) }));
+    return pickDispense(inHand.id, lines, newIdempotencyKey());
+  });
+
+  const bill = (): Promise<void> => run(async () => {
+    if (inHand === null) return null;
+    const paise = Math.round(Number(tenderAmount) * 100);
+    const d = await billDispense(inHand.id, { tenders: [{ mode: tenderMode, amountPaise: paise }] }, newIdempotencyKey());
+    setNote(t("pharmacyCounter.billed", { no: d.invoiceId ?? "" }));
+    return d;
+  });
+
+  const handOver = (): Promise<void> => run(async () => {
+    if (inHand === null) return null;
+    const identity = inHand.scheduled ? { via: identityVia, value: identityValue.trim() } : null;
+    const d = await handOverDispense(inHand.id, identity, newIdempotencyKey());
+    setNote(t("pharmacyCounter.handedOver"));
+    return d;
+  });
+
+  const rupees = (paise: number): string => `₹${(paise / 100).toFixed(2)}`;
   const patientName = (p: { name: string | null; alias: string | null; uhid: string }): string => p.alias ?? p.name ?? p.uhid;
   const statusLabel = (s: string): string => t(`pharmacyCounter.s_${s}`);
   const lineTitle = (l: WireDispenseLine): string => l.dispensedMedicine === null ? l.rxLine.drug : `${l.dispensedMedicine.brandName} · ${l.dispensedMedicine.form}`;
@@ -247,7 +307,73 @@ export function PharmacyCounter(): React.ReactElement {
                   <Button type="button" onClick={() => void verify()}>{t("pharmacyCounter.verify")}</Button>
                 </div>
               )}
-              {inHand.status === "verified" && <p className="text-sm text-muted-foreground">{t("pharmacyCounter.next")}</p>}
+              {inHand.status === "verified" && (
+                <div className="space-y-2">
+                  {inHand.lines.filter((l) => l.status === "open").map((l) => {
+                    const p = picks[l.lineIdx] ?? { qtyBase: "", pickNote: "" };
+                    return (
+                      <div key={l.lineIdx} className="flex flex-wrap items-end gap-2 text-sm">
+                        <span>{l.lineIdx + 1}. {lineTitle(l)} · {l.qtyBase} {l.item?.baseUom ?? ""}{l.available !== null ? ` · ${t("pharmacyCounter.available", { n: l.available })}` : ""}</span>
+                        <label>{t("pharmacyCounter.partialQty")}
+                          <input aria-label={`${t("pharmacyCounter.partialQty")} ${String(l.lineIdx + 1)}`} className="ml-1 w-20 rounded border px-2 py-1" inputMode="numeric" value={p.qtyBase}
+                            onChange={(ev) => setPicks({ ...picks, [l.lineIdx]: { ...p, qtyBase: ev.target.value } })} />
+                        </label>
+                        {p.qtyBase.trim() !== "" && (
+                          <label>{t("pharmacyCounter.partialReason")}
+                            <input aria-label={`${t("pharmacyCounter.partialReason")} ${String(l.lineIdx + 1)}`} className="ml-1 rounded border px-2 py-1" value={p.pickNote}
+                              onChange={(ev) => setPicks({ ...picks, [l.lineIdx]: { ...p, pickNote: ev.target.value } })} />
+                          </label>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <Button type="button" onClick={() => void pick()}>{t("pharmacyCounter.pick")}</Button>
+                </div>
+              )}
+              {inHand.status === "picked" && draft !== null && (
+                <div className="space-y-2 rounded border p-3">
+                  <h3 className="font-medium">{t("pharmacyCounter.preview")}</h3>
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {draft.lines.map((l) => (
+                        <tr key={l.lineId}><td>{l.serviceName} × {l.qty}</td><td className="text-right">{rupees(l.unitPaise)}</td><td className="text-right">{rupees(l.netPaise)}</td></tr>
+                      ))}
+                      <tr className="border-t font-medium"><td>{t("pharmacyCounter.payable")}</td><td></td><td className="text-right" data-testid="payable">{rupees(draft.totals.netPayablePaise)}</td></tr>
+                    </tbody>
+                  </table>
+                  <div className="flex flex-wrap items-end gap-2 text-sm">
+                    <label>{t("pharmacyCounter.tenderMode")}
+                      <select aria-label={t("pharmacyCounter.tenderMode")} className="ml-1 rounded border px-2 py-1" value={tenderMode} onChange={(ev) => setTenderMode(ev.target.value as "cash" | "upi" | "card")}>
+                        <option value="cash">{t("pharmacyCounter.cash")}</option><option value="upi">{t("pharmacyCounter.upi")}</option><option value="card">{t("pharmacyCounter.card")}</option>
+                      </select>
+                    </label>
+                    <label>{t("pharmacyCounter.amount")}
+                      <input aria-label={t("pharmacyCounter.amount")} className="ml-1 w-28 rounded border px-2 py-1" inputMode="decimal" value={tenderAmount} onChange={(ev) => setTenderAmount(ev.target.value)} />
+                    </label>
+                    <Button type="button" onClick={() => void bill()}>{t("pharmacyCounter.takePayment")}</Button>
+                  </div>
+                </div>
+              )}
+              {inHand.status === "billed" && (
+                <div className="flex flex-wrap items-end gap-2 text-sm">
+                  {inHand.scheduled && (
+                    <>
+                      <span>{t("pharmacyCounter.identity")}</span>
+                      <select aria-label={t("pharmacyCounter.identity")} className="rounded border px-2 py-1" value={identityVia} onChange={(ev) => setIdentityVia(ev.target.value as "token" | "phone_last4")}>
+                        <option value="token">{t("pharmacyCounter.identityToken")}</option><option value="phone_last4">{t("pharmacyCounter.identityPhone")}</option>
+                      </select>
+                      <input aria-label={t("pharmacyCounter.identityValue")} className="w-24 rounded border px-2 py-1" value={identityValue} onChange={(ev) => setIdentityValue(ev.target.value)} />
+                    </>
+                  )}
+                  <Button type="button" onClick={() => void handOver()}>{t("pharmacyCounter.handover")}</Button>
+                </div>
+              )}
+              {inHand.status === "handed_over" && (
+                <div className="space-y-2">
+                  <Button type="button" variant="outline" disabled={label === null} onClick={() => window.print()}>{t("pharmacyCounter.printLabel")}</Button>
+                  {label !== null && <DispenseLabel label={label} />}
+                </div>
+              )}
               {["queued", "claimed", "verified"].includes(inHand.status) && (
                 <form className="flex flex-wrap items-end gap-2" onSubmit={(ev) => { ev.preventDefault(); void run(() => cancelDispense(inHand.id, reason)); setReason(""); }}>
                   <label className="text-sm">
