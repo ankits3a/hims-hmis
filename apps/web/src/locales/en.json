@@ -74,8 +74,8 @@
   },
   "shortcuts": {
     "title": "Shortcuts",
-    "search": "/ Search",
-    "new": "F2 New patient",
+    "search": "Ctrl+K or / — Search",
+    "new": "Ctrl+N New patient (Alt+N)",
     "merge": "Alt+M Merge",
     "approvals": "Alt+A Approvals",
     "opdDesk": "Alt+D OPD desk",

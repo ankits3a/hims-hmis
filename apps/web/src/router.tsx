@@ -443,9 +443,10 @@ const counterFiguresRoute = createRoute({
 const registrationRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/registration",
-  // F2 (§15 keyboard-first, `lib/keyboard.tsx`) jumps straight to the new-patient form from
-  // anywhere in the app, including from this same route — the flag is one-shot: RegistrationDesk
-  // clears it via a replace-navigate once consumed, so a second F2 press can retrigger it.
+  // Ctrl+N / Alt+N (§15 keyboard-first, `lib/keyboard.tsx`) jump straight to the new-patient form
+  // from anywhere in the app, including from this same route — the flag is one-shot:
+  // RegistrationDesk clears it via a replace-navigate once consumed, so a second press retriggers
+  // it. (FD-3: this was F2 until the owner dedicated that key to the agent surface.)
   validateSearch: (search: Record<string, unknown>): { new?: boolean } => ({
     new: search.new === true ? true : undefined,
   }),

@@ -74,8 +74,8 @@
   },
   "shortcuts": {
     "title": "शॉर्टकट",
-    "search": "/ खोजें",
-    "new": "F2 नया मरीज़",
+    "search": "Ctrl+K या / — खोजें",
+    "new": "Ctrl+N नया मरीज़ (Alt+N)",
     "merge": "Alt+M मर्ज",
     "approvals": "Alt+A अनुमोदन",
     "opdDesk": "Alt+D OPD डेस्क",
