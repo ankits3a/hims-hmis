@@ -69,34 +69,39 @@ export const labTubeMismatchFlagged = defineEvent("lab.tube_mismatch_flagged", M
   orderGroupId: id, expectedUhid: id, scannedUhid: id, at: iso,
 }));
 
+/**
+ * PLAN 17c T3 / D8 — `orderGroupId` on the six events 17b F43 found unroutable: without it
+ * `labTopicsFor` returned `[]` and a bench could not see a tube arrive. The group is the clinical
+ * act (phase 0 DD2) and every emitter has it in hand.
+ */
 export const labSpecimenCollected = defineEvent("lab.specimen_collected", MODULE, z.object({
-  specimenId: id, specimenNo: id, patientId: id, collectedBy: id, at: iso,
+  specimenId: id, specimenNo: id, patientId: id, orderGroupId: id, collectedBy: id, at: iso,
   wristbandScanned: z.boolean(), collectionSite: z.string().min(1),
 }));
 
 /** **THE TAT CLOCK STARTS HERE** (T5 A7) — not at placement and not at collection. */
 export const labSpecimenReceived = defineEvent("lab.specimen_received", MODULE, z.object({
-  specimenId: id, specimenNo: id, itemIds: z.array(id), receivedBy: id, at: iso,
+  specimenId: id, specimenNo: id, orderGroupId: id, itemIds: z.array(id), receivedBy: id, at: iso,
 }));
 
 export const labSpecimenRejected = defineEvent("lab.specimen_rejected", MODULE, z.object({
-  specimenId: id, specimenNo: id, reason: z.string().min(1), attributableTo: z.string().min(1),
+  specimenId: id, specimenNo: id, orderGroupId: id, reason: z.string().min(1), attributableTo: z.string().min(1),
   rejectedBy: id, at: iso,
 }));
 
 export const labRecollectionRequested = defineEvent("lab.recollection_requested", MODULE, z.object({
-  priorSpecimenId: id, specimenId: id, specimenNo: id, itemIds: z.array(id).min(1), reason: z.string().min(1),
+  priorSpecimenId: id, specimenId: id, specimenNo: id, orderGroupId: id, itemIds: z.array(id).min(1), reason: z.string().min(1),
 }));
 
 /* ─────────────────────────────── Results (T6) ─────────────────────────────── */
 
 export const labResultEntered = defineEvent("lab.result_entered", MODULE, z.object({
-  resultId: id, orderItemId: id, analyteId: id, enteredBy: id,
+  resultId: id, orderItemId: id, orderGroupId: id, analyteId: id, enteredBy: id,
   flag: z.string().nullable(), entryMode: z.string().min(1), absurdOverridden: z.boolean(),
 }));
 
 export const labResultVerified = defineEvent("lab.result_verified", MODULE, z.object({
-  resultId: id, orderItemId: id, analyteId: id, verifiedBy: id,
+  resultId: id, orderItemId: id, orderGroupId: id, analyteId: id, verifiedBy: id,
   pathologistReviewPending: z.boolean(),
 }));
 

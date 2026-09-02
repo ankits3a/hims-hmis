@@ -8,7 +8,7 @@ import { withIdempotency } from "../billing";
 import { receive, reject } from "./accession";
 import { acknowledgeCritical, openCriticalCalls } from "./criticals";
 import { enterResult } from "./results";
-import { benchWorklist } from "./worklist";
+import { benchArrivals, benchWorklist } from "./worklist";
 import { idSchema, LAB_IDEMPOTENT_ROUTES, parsed, toHttp } from "./lab-http";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -141,6 +141,13 @@ export class LabBenchController {
   }
 
   /** The bench worklist: items the department has started and not yet resulted, oldest first. */
+  /** PLAN 17c T3 / D7 — the tubes drawn and not yet received, with the patient, for the scan. */
+  @Get("arrivals")
+  @RequirePermission("lab.accession.operate", "hospital")
+  async arrivals(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return await benchArrivals(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
   @Get("worklist")
   @RequirePermission("lab.worklist.read", "hospital")
   async worklist(@CurrentActor() actor: Actor): Promise<unknown> {

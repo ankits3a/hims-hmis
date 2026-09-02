@@ -239,7 +239,7 @@ async function verifyResultInTx(
     encounterId: ctx.encounterNo,
     correlationId: ctx.orderId,
     payload: {
-      resultId: input.resultId, orderItemId: ctx.orderItemId, analyteId: result.analyteId,
+      resultId: input.resultId, orderItemId: ctx.orderItemId, orderGroupId: ctx.orderGroupId, analyteId: result.analyteId,
       verifiedBy: actor.id, pathologistReviewPending,
     },
   }));

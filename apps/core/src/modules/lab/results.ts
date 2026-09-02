@@ -448,7 +448,7 @@ async function writeResult(
     encounterId: ctx.encounterNo,
     correlationId: ctx.orderId,
     payload: {
-      resultId, orderItemId: ctx.orderItemId, analyteId: analyte.id, enteredBy: actor.id,
+      resultId, orderItemId: ctx.orderItemId, orderGroupId: ctx.orderGroupId, analyteId: analyte.id, enteredBy: actor.id,
       flag, entryMode: input.entryMode, absurdOverridden: input.absurdOverriddenBy !== null,
     },
   }));
@@ -1052,7 +1052,7 @@ export async function amendResult(
     encounterId: row.encounterNo,
     correlationId: row.orderId,
     payload: {
-      resultId, orderItemId: prior.orderItemId, analyteId: prior.analyteId, enteredBy: actor.id,
+      resultId, orderItemId: prior.orderItemId, orderGroupId: row.orderGroupId, analyteId: prior.analyteId, enteredBy: actor.id,
       flag, entryMode: prior.entryMode, absurdOverridden: false,
     },
   }));
