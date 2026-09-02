@@ -106,7 +106,7 @@ describe("the radiology event catalogue (18a T2)", () => {
       payload: {
         studyId: "s1", accessionNo: "X2608300001", orderItemId: "oi1", serviceId: "svc1",
         contrastGiven: true, repeatOfStudyId: null, imageSource: "modality",
-        deviceResourceId: "dev1",
+        deviceResourceId: "dev1", studyInstanceUid: "2.25.1",
       },
     });
     expect(made.payload).toMatchObject({

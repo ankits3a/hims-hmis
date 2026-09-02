@@ -2044,7 +2044,13 @@
       "acquired": "अधिग्रहण दर्ज करें",
       "ionising": "आयनकारी",
       "badEvidence": "साक्ष्य मान्य JSON होना चाहिए।",
-      "openFormF": "फॉर्म एफ आवश्यक — खोलें"
+      "openFormF": "फॉर्म एफ आवश्यक — खोलें",
+      "imageSource": "छवि स्रोत",
+      "sourcePacs": "PACS (मशीन से DICOM छवियाँ)",
+      "sourceNoImages": "कोई DICOM छवि नहीं",
+      "studyUid": "Study Instance UID",
+      "studyUidHint": "वर्कलिस्ट से पहले से भरा है। मशीन का अपना UID तभी लिखें जब उसने वर्कलिस्ट न पढ़ी हो।",
+      "studyUidRecorded": "Study Instance UID दर्ज"
     },
     "report": {
       "title": "रिपोर्ट",

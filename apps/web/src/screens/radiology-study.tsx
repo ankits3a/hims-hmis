@@ -29,6 +29,14 @@ export function RadiologyStudy(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [evidence, setEvidence] = useState("{}");
   const [reason, setReason] = useState("");
+  /**
+   * 18b T2 / D8 — the console chooses the image source, and for `pacs` carries the Study Instance
+   * UID. The field is PRE-FILLED with the value the server minted (the one the worklist export
+   * offered the modality) and is editable only for a machine that did not read the worklist.
+   * `outside` is not offered here: it belongs to 18a-iii's outside-study register.
+   */
+  const [source, setSource] = useState<"pacs" | "no_pacs_images">("pacs");
+  const [typedUid, setTypedUid] = useState<string | null>(null);
 
   const study = useQuery({ queryKey: ["radiology", "study", studyId], queryFn: () => fetchStudy(studyId) });
   const gates = useQuery({ queryKey: ["radiology", "gates", studyId], queryFn: () => fetchReadiness(studyId) });
@@ -67,13 +75,17 @@ export function RadiologyStudy(): React.ReactElement {
    * decisive E1 scenario, hour for hour. The server derives its own IST day now.
    */
   const start = useMutation({ mutationFn: () => startAcquisition(studyId), onSuccess, onError });
-  const acquire = useMutation({
-    mutationFn: () => recordAcquired(studyId, { imageSource: "no_pacs_images" }),
-    onSuccess, onError,
-  });
-
   const s = study.data?.study ?? null;
   const r = gates.data;
+  const uid = typedUid ?? s?.mintedStudyInstanceUid ?? "";
+
+  const acquire = useMutation({
+    mutationFn: () => recordAcquired(
+      studyId,
+      source === "pacs" ? { imageSource: "pacs", studyInstanceUid: uid } : { imageSource: "no_pacs_images" },
+    ),
+    onSuccess, onError,
+  });
 
   return (
     <div className="p-4 space-y-4">
@@ -157,9 +169,44 @@ export function RadiologyStudy(): React.ReactElement {
         </ul>
       </section>
 
-      <section className="flex gap-2">
-        <Button onClick={() => { start.mutate(); }}>{t("radiology.study.start")}</Button>
-        <Button onClick={() => { acquire.mutate(); }}>{t("radiology.study.acquired")}</Button>
+      <section className="space-y-2">
+        {s === null
+          ? null
+          : s.studyInstanceUid !== null
+          ? (
+            <p className="text-sm" data-testid="study-uid-recorded">
+              {t("radiology.study.studyUidRecorded")}: <code>{s.studyInstanceUid}</code>
+            </p>
+          )
+          : (
+            <fieldset className="space-y-1 text-sm">
+              <legend className="font-semibold">{t("radiology.study.imageSource")}</legend>
+              <label className="flex items-center gap-2">
+                <input type="radio" name="imageSource" value="pacs" checked={source === "pacs"}
+                  onChange={() => { setSource("pacs"); }} />
+                {t("radiology.study.sourcePacs")}
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="radio" name="imageSource" value="no_pacs_images" checked={source === "no_pacs_images"}
+                  onChange={() => { setSource("no_pacs_images"); }} />
+                {t("radiology.study.sourceNoImages")}
+              </label>
+              {source === "pacs"
+                ? (
+                  <label className="flex flex-col">
+                    {t("radiology.study.studyUid")}
+                    <input className="border px-2 py-1 font-mono" value={uid} aria-describedby="study-uid-hint"
+                      onChange={(e) => { setTypedUid(e.target.value); }} />
+                    <span id="study-uid-hint" className="text-xs text-slate-600">{t("radiology.study.studyUidHint")}</span>
+                  </label>
+                )
+                : null}
+            </fieldset>
+          )}
+        <div className="flex gap-2">
+          <Button onClick={() => { start.mutate(); }}>{t("radiology.study.start")}</Button>
+          <Button onClick={() => { acquire.mutate(); }}>{t("radiology.study.acquired")}</Button>
+        </div>
       </section>
     </div>
   );

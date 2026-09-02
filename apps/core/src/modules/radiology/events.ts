@@ -67,6 +67,8 @@ export const imagingStudyAcquired = defineEvent("imaging.study_acquired", MODULE
   studyId: id, accessionNo: z.string().min(1), orderItemId: id, serviceId: id,
   contrastGiven: z.boolean(), repeatOfStudyId: z.string().nullable(),
   imageSource: z.string().min(1), deviceResourceId: id,
+  /** 18b T2 — the DICOM identity 18b-ii's reconciliation joins on; null when no DICOM study exists. */
+  studyInstanceUid: z.string().nullable(),
 }));
 
 /**
