@@ -8,6 +8,7 @@ import { istDayString } from "../../kernel/approvals/cumulative";
 import { appendEvent } from "../../kernel/events/append";
 import { assertFormFRecorded, assertMachineRegistered, assertPersonRegistered } from "../pcpndt";
 import { RADIOLOGY_RESOURCE_KINDS } from "./kinds";
+import { isValidDicomUid, mintStudyInstanceUid } from "./uid";
 import { RadiologyError } from "./errors";
 import { imagingStudyAcquired } from "./events";
 import { evaluateReadiness, isContrastAllergen, studyGates, IMAGING_TERMINAL_GATE_STATES } from "./gates";
@@ -198,6 +199,13 @@ export async function startAcquisition(
 export type RecordAcquiredInput = {
   studyId: string;
   imageSource: ImageSource;
+  /**
+   * 18b T2 / D3 — the DICOM Study Instance UID. For `pacs` it is REQUIRED and defaults to the one
+   * minted from the study id (the same value the worklist export carried), so an MWL-fed modality
+   * and the console agree without a lookup; a no-MWL machine's own UID is accepted if DICOM-valid.
+   * For `no_pacs_images` and `outside` a UID is refused — there is no DICOM study to name.
+   */
+  studyInstanceUid?: string | null;
   /** M4 — an IONISING study carries at least one of these. `doseManual` is provenance, not an excuse. */
   doseCtdivol?: number | null;
   doseDlp?: number | null;
@@ -218,6 +226,36 @@ export type RecordAcquiredInput = {
 export const LATE_ENTRY_MINUTES = 30;
 
 /**
+ * 18b T2 / D3 — which UID the row gets, or why none. Pure, so the controller's shape and the
+ * service's rule cannot drift: `pacs` → the caller's DICOM-valid UID or the minted one; anything
+ * else → null, and a caller who typed one is refused rather than silently dropped.
+ */
+export function resolveStudyInstanceUid(
+  studyId: string, input: Pick<RecordAcquiredInput, "imageSource" | "studyInstanceUid">,
+): string | null {
+  const typed = input.studyInstanceUid ?? null;
+  if (input.imageSource !== "pacs") {
+    if (typed !== null) {
+      throw new RadiologyError(
+        "invalid_study_instance_uid",
+        `image source ${input.imageSource} names no DICOM study, so a Study Instance UID cannot be recorded against it`,
+        { studyId, imageSource: input.imageSource, studyInstanceUid: typed },
+      );
+    }
+    return null;
+  }
+  if (typed === null) return mintStudyInstanceUid(studyId);
+  if (!isValidDicomUid(typed)) {
+    throw new RadiologyError(
+      "invalid_study_instance_uid",
+      `"${typed}" is not a DICOM UID (PS3.5 §9.1: numeric components, no leading zeros, at most 64 characters)`,
+      { studyId, studyInstanceUid: typed },
+    );
+  }
+  return typed;
+}
+
+/**
  * A2/A3/A5/A6/A7 — the images exist.
  *
  * The status compare-and-set at the end is what makes `imaging.study_acquired` fire EXACTLY ONCE
@@ -229,7 +267,7 @@ export async function recordAcquired(
   actor: Actor,
   decls: readonly OrderKindDecl[],
   input: RecordAcquiredInput,
-): Promise<{ studyId: string; accessionNo: string; billDecisionIds: string[] }> {
+): Promise<{ studyId: string; accessionNo: string; studyInstanceUid: string | null; billDecisionIds: string[] }> {
   const now = input.now ?? new Date();
   const study = await loadStudy(tx, input.studyId);
 
@@ -293,6 +331,7 @@ export async function recordAcquired(
    * a scan that turns out to need none is a gate the floor learns to click past. T5 recorded the
    * obligation: **T7 refuses `contrastGiven` on a study whose contrast gates are not terminal.**
    */
+  const studyInstanceUid = resolveStudyInstanceUid(study.id, input);
   const contrastGiven = input.contrastGiven ?? false;
   if (contrastGiven) {
     /**
@@ -388,10 +427,12 @@ export async function recordAcquired(
    * A6's CAS. Conditional on the status this call validated against, so two concurrent consoles
    * produce one winner and one `already_acquired` rather than two events and a doubled dose.
    */
-  const updated = await tx.update(imagingStudies)
+  let updated: { id: string }[];
+  try {
+    updated = await tx.update(imagingStudies)
     .set({
       status: "acquired", acquiredAt, acquiredBy: actor.id, lateEntry,
-      imageSource: input.imageSource, ionising,
+      imageSource: input.imageSource, ionising, studyInstanceUid,
       doseCtdivol: input.doseCtdivol?.toString() ?? null,
       doseDlp: input.doseDlp?.toString() ?? null,
       doseDap: input.doseDap?.toString() ?? null,
@@ -404,6 +445,18 @@ export async function recordAcquired(
     })
     .where(and(eq(imagingStudies.id, study.id), eq(imagingStudies.status, "in_acquisition")))
     .returning({ id: imagingStudies.id });
+  } catch (e) {
+    // 18b T2 — `imaging_studies_study_uid_ux`: one DICOM study is one HMIS study, never two.
+    if ((e as { code?: unknown }).code === "23505" && studyInstanceUid !== null) {
+      throw new RadiologyError(
+        "duplicate_study_instance_uid",
+        `Study Instance UID ${studyInstanceUid} already names another study — a console that typed `
+        + "a UID from the previous patient's screen, or the same DICOM study acquired twice",
+        { studyId: study.id, studyInstanceUid },
+      );
+    }
+    throw e;
+  }
   if (updated.length === 0) {
     throw new RadiologyError(
       "already_acquired",
@@ -436,6 +489,7 @@ export async function recordAcquired(
       studyId: study.id, accessionNo: study.accessionNo, orderItemId: study.orderItemId,
       serviceId: study.serviceId, contrastGiven, repeatOfStudyId: repeatOf,
       imageSource: input.imageSource, deviceResourceId: study.deviceResourceId!,
+      studyInstanceUid,
     },
   }));
 
@@ -465,7 +519,7 @@ export async function recordAcquired(
     await raise("acquired_unbilled", { authorisedBy: study.authorisedBy, priority: study.priority });
   }
 
-  return { studyId: study.id, accessionNo: study.accessionNo, billDecisionIds };
+  return { studyId: study.id, accessionNo: study.accessionNo, studyInstanceUid, billDecisionIds };
 }
 
 /**

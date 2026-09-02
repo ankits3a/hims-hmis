@@ -20,12 +20,15 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
  */
 type Reply = { status: number; body: unknown };
 const calls: string[] = [];
+/** 18b T2 — the bodies posted, keyed like `calls`, so a test can read what the console sent. */
+const bodies: Record<string, unknown[]> = {};
 
 function mockRoutes(handlers: Record<string, Reply>): void {
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const key = `${init?.method ?? "GET"} ${raw.split("?")[0]!}`;
     calls.push(key);
+    if (typeof init?.body === "string") (bodies[key] ??= []).push(JSON.parse(init.body));
     const reply = handlers[key];
     if (reply === undefined) return new Response("{}", { status: 404 });
     return new Response(JSON.stringify(reply.body), {
@@ -40,6 +43,7 @@ const STUDY = {
   encounterNo: "V2608310001", patientId: "P1", patientName: "Asha Devi",
   formFRequired: true, restricted: true, ionising: false, contrastGiven: false,
   acquiredAt: null, authorisedBy: null, reports: [],
+  studyInstanceUid: null, imageSource: null, mintedStudyInstanceUid: "2.25.42", views: [],
 };
 
 const READINESS = {
@@ -51,7 +55,7 @@ const READINESS = {
   open: ["chaperone_present", "form_f"],
 };
 
-beforeEach(() => { setToken("t"); calls.length = 0; });
+beforeEach(() => { setToken("t"); calls.length = 0; for (const k of Object.keys(bodies)) delete bodies[k]; });
 afterEach(() => { vi.unstubAllGlobals(); });
 
 it("renders a WAIVE control only where the SERVER said the gate is waivable", async () => {
@@ -120,4 +124,71 @@ it("says the study is ready when the server reports no open gates", async () => 
   });
   renderWithProviders(<RadiologyStudy />);
   expect(await screen.findByRole("status")).toHaveTextContent(/ready/i);
+});
+
+/**
+ * 18b T2 / D3 / D8 — the console sends the SERVER's minted UID for a PACS acquisition (the value
+ * the worklist offered the modality) and sends no UID at all when there are no DICOM images. A
+ * client that minted its own would hand the PACS a second identity for one study.
+ */
+it("18b T2: pre-fills the minted Study Instance UID for a PACS acquisition and omits it for no images", async () => {
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, status: "in_acquisition" } } },
+    "GET /api/radiology/studies/S1/readiness": { status: 200, body: { state: "in_acquisition", ready: true, gates: [], open: [] } },
+    "POST /api/radiology/studies/S1/acquisition/acquired": { status: 201, body: { studyId: "S1", accessionNo: "X2608310001", studyInstanceUid: "2.25.42", billDecisionIds: [] } },
+  });
+  renderWithProviders(<RadiologyStudy />);
+  const field = await screen.findByLabelText(/study instance uid/i);
+  expect(field).toHaveValue("2.25.42");
+  await userEvent.click(screen.getByRole("button", { name: /record acquired/i }));
+  expect(bodies["POST /api/radiology/studies/S1/acquisition/acquired"]?.[0])
+    .toEqual({ imageSource: "pacs", studyInstanceUid: "2.25.42" });
+
+  await userEvent.click(screen.getByLabelText(/no dicom images/i));
+  expect(screen.queryByLabelText(/study instance uid/i)).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: /record acquired/i }));
+  expect(bodies["POST /api/radiology/studies/S1/acquisition/acquired"]?.[1]).toEqual({ imageSource: "no_pacs_images" });
+});
+
+it("18b T2: once acquired, the recorded UID is shown and the source choice is gone", async () => {
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, status: "acquired", imageSource: "pacs", studyInstanceUid: "1.2.826.0.1.3680043.9.7.1" } } },
+    "GET /api/radiology/studies/S1/readiness": { status: 200, body: { state: "acquired", ready: true, gates: [], open: [] } },
+  });
+  renderWithProviders(<RadiologyStudy />);
+  expect(await screen.findByTestId("study-uid-recorded")).toHaveTextContent("1.2.826.0.1.3680043.9.7.1");
+  expect(screen.queryByLabelText(/study instance uid/i)).not.toBeInTheDocument();
+});
+
+/**
+ * 18b T3 / D6 — the console asks the SERVER for the viewer URL and opens what comes back; it never
+ * builds the link, because the row, the event and the PHI line are written on the way.
+ */
+it("18b T3: opening the images posts to the door and opens the URL the server returned, in a new tab", async () => {
+  const opened = vi.fn();
+  vi.stubGlobal("open", opened);
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, status: "acquired", imageSource: "pacs", studyInstanceUid: "2.25.42", views: [{ id: "v1", viewerId: "dr.rao", via: "external_pacs", viewedAt: "2026-08-31T09:00:00.000Z" }] } } },
+    "GET /api/radiology/studies/S1/readiness": { status: 200, body: { state: "acquired", ready: true, gates: [], open: [] } },
+    "POST /api/radiology/studies/S1/images/open": { status: 201, body: { url: "https://pacs.example.org/viewer?AccessionNumber=X2608310001", viewId: "v2", studyInstanceUid: "2.25.42" } },
+  });
+  renderWithProviders(<RadiologyStudy />);
+  expect(await screen.findByTestId("image-views")).toHaveTextContent(/1.*dr\.rao/);
+  await userEvent.click(screen.getByRole("button", { name: /open images/i }));
+  expect(calls).toContain("POST /api/radiology/studies/S1/images/open");
+  expect(opened).toHaveBeenCalledWith("https://pacs.example.org/viewer?AccessionNumber=X2608310001", "_blank", "noopener,noreferrer");
+});
+
+it("18b T3: a refusal from the door is shown with its code, and nothing opens", async () => {
+  const opened = vi.fn();
+  vi.stubGlobal("open", opened);
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, status: "acquired", imageSource: "pacs", studyInstanceUid: "2.25.42" } } },
+    "GET /api/radiology/studies/S1/readiness": { status: 200, body: { state: "acquired", ready: true, gates: [], open: [] } },
+    "POST /api/radiology/studies/S1/images/open": { status: 409, body: { statusCode: 409, code: "pacs_not_configured", message: "no viewer is published" } },
+  });
+  renderWithProviders(<RadiologyStudy />);
+  await userEvent.click(await screen.findByRole("button", { name: /open images/i }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(/no viewer is published.*pacs_not_configured/);
+  expect(opened).not.toHaveBeenCalled();
 });

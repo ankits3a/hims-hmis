@@ -156,6 +156,12 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
       },
     });
 
+    // 18b T3 / D5 — the viewer is a published book, not an environment variable.
+    await db.insert(imagingDefinitions).values({
+      id: "01DEF00000000000000000002", kind: "pacs_settings", version: 1, status: "active",
+      draftedBy: "e2e", publishedBy: "e2e", publishedAt: NOW,
+      body: { viewer_url_template: "https://pacs.example.org/viewer?AccessionNumber={accessionNo}", enabled: true },
+    });
     doctor = await staff(["orders.place", "radiology.orders.place", "radiology.reports.read"], "doc");
     radiographer = await staff([
       "radiology.schedule", "radiology.checkin", "radiology.gates.satisfy", "radiology.acquire",
@@ -309,6 +315,19 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
     expect(acquired.status).toBe(201);
 
     const [afterAcq] = await db.select().from(imagingStudies).where(eq(imagingStudies.id, study!.id));
+    /** 18b T2 — the UID acquisition wrote is the one the worklist offered the modality (D3). */
+    expect(afterAcq!.studyInstanceUid).toBe(mwl.body.rows[0].studyInstanceUid);
+    expect(acquired.body.studyInstanceUid).toBe(afterAcq!.studyInstanceUid);
+    /**
+     * 18b T3 — the referring doctor opens the images: the URL names the accession, a view row and
+     * an `imaging.image_viewed` event exist BEFORE the URL came back, and the study view lists it.
+     * The receptionist's counter role holds no `radiology.reports.read`, so the door is 403 to it.
+     */
+    const opened = await post(`/radiology/studies/${study!.id}/images/open`, doctor.token);
+    expect([opened.status, opened.body.url]).toEqual([201, `https://pacs.example.org/viewer?AccessionNumber=${study!.accessionNo}`]);
+    expect((await post(`/radiology/studies/${study!.id}/images/open`, counter.token)).status).toBe(403);
+    const viewed = await get(`/radiology/studies/${study!.id}`, radiologist.token);
+    expect(viewed.body.study.views.map((v: { viewerId: string }) => v.viewerId)).toEqual([doctor.id]);
     /** F18 — `ionising` is SNAPSHOTTED, which is what makes M4's dose CHECK mean anything. */
     expect([afterAcq!.status, afterAcq!.ionising, afterAcq!.contrastGiven]).toEqual(["acquired", true, true]);
 
