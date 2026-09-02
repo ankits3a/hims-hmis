@@ -639,6 +639,28 @@ export type CounterState = {
   tokenNo: number | null;
 };
 
+/**
+ * PLAN 16c T0a (part 2) — THE TOKEN DOOR, for a department counter that is handed a slip.
+ *
+ * "T-14" is what a patient says at the pharmacy window, and a token is a number on a QUEUE ENTRY,
+ * not on an encounter: the same number recurs every day and can recur within a day across
+ * sessions. So the read is scoped to the service date first (the visits of the day) and then to
+ * the entry, latest `seq` first, so a re-entered visit answers with its current token. No PHI is
+ * read here — the caller resolves the encounter through `getVisit`, which logs.
+ */
+export async function findVisitByToken(db: Db, filter: { serviceDate: string; tokenNo: number }): Promise<EncounterRow | null> {
+  const visits = await listVisits(db, { serviceDate: filter.serviceDate });
+  if (visits.length === 0) return null;
+  const byId = new Map(visits.map((v) => [v.id, v]));
+  const entries = await db.select({ encounterId: opdQueueEntries.encounterId, seq: opdQueueEntries.seq })
+    .from(opdQueueEntries)
+    .where(and(inArray(opdQueueEntries.encounterId, [...byId.keys()]), eq(opdQueueEntries.tokenNo, filter.tokenNo)))
+    .orderBy(desc(opdQueueEntries.seq))
+    .limit(1);
+  const hit = entries[0];
+  return hit === undefined ? null : (byId.get(hit.encounterId) ?? null);
+}
+
 export async function counterState(db: Db, encounterId: string): Promise<CounterState | null> {
   const encounter = await getEncounter(db, encounterId);
   if (!encounter) return null;
