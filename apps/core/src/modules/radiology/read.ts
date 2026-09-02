@@ -225,7 +225,7 @@ export type StudyView = WorklistRow & {
   mintedStudyInstanceUid: string;
   /** 18b T3 / D6 — who opened the images, latest first: the view table's consumer. */
   views: ImageViewRow[];
-  reports: { id: string; version: number; status: string; publishedAt: Date | null }[];
+  reports: { id: string; version: number; status: string; publishedAt: Date | null; machineDrafted: boolean }[];
 };
 
 /** One study, for the console. Same two rules; `imaging.study` is its own surface. */
@@ -261,10 +261,12 @@ export async function studyView(db: Db, actor: Actor, studyId: string): Promise<
     .select({
       id: imagingReports.id, version: imagingReports.version,
       status: imagingReports.status, publishedAt: imagingReports.publishedAt,
+      provenance: imagingReports.provenance,
     })
     .from(imagingReports)
     .where(eq(imagingReports.studyId, studyId))
-    .orderBy(desc(imagingReports.version));
+    .orderBy(desc(imagingReports.version))
+    .then((rows) => rows.map(({ provenance, ...r }) => ({ ...r, machineDrafted: provenance !== null })));
 
   return {
     studyId: row.study.id, accessionNo: row.study.accessionNo, status: row.study.status,
@@ -301,6 +303,8 @@ export type ReportView = {
   publishedAt: Date | null;
   amendmentReason: string | null;
   supersedesId: string | null;
+  /** 18b T4 / §6.8 — non-null only on a machine-proposed draft; a signed version carries none. */
+  provenance: unknown;
   patientName: string;
 };
 
@@ -363,6 +367,7 @@ export async function reportView(db: Db, actor: Actor, reportId: string): Promis
     criticalCategory: row.report.criticalCategory, signerId: row.report.signerId,
     signedAt: row.report.signedAt, publishedAt: row.report.publishedAt,
     amendmentReason: row.report.amendmentReason, supersedesId: row.report.supersedesId,
+    provenance: row.report.provenance,
     patientName: displayName(
       { name: row.name, alias: row.alias, isConfidential: row.isConfidential }, clearance.canSeeConfidential,
     ),

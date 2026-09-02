@@ -20,6 +20,7 @@ import {
   imagingCriticalAcknowledged, imagingCriticalFlagged, imagingReportPublished,
 } from "./events";
 import { requireStudyType } from "./study-types";
+import { activeDrafter, proposalLockoutHits } from "./drafter";
 import { PCPNDT_AGE_MAX_YEARS, PCPNDT_AGE_MIN_YEARS, ageInYearsOn } from "./applicability";
 import { patients } from "../../kernel/db/schema/patients";
 import { templateKeyFor } from "./templates";
@@ -120,6 +121,8 @@ async function insertVersion(
     lockoutOverride?: { approvedBy: string; reason: string } | null;
   },
   criticalCategory?: ImagingCriticalCategory | null,
+  /** 18b T4 / §6.8 — set ONLY by `proposeDraft`. Never copied forward: the signed document is a human's. */
+  provenance?: Record<string, unknown> | null,
 ): Promise<{ reportId: string; version: number }> {
   const version = await nextVersion(tx, study.id);
   const templateKey = content.templateKey ?? await defaultTemplateKey(tx, study.studyTypeCode);
@@ -141,6 +144,7 @@ async function insertVersion(
       amendmentReason: signer?.amendmentReason ?? null,
       supersedesId: signer?.supersedesId ?? null,
       lockoutOverride: signer?.lockoutOverride ?? null,
+      provenance: provenance ?? null,
     });
   } catch (e) {
     /**
@@ -182,6 +186,49 @@ export async function draftReport(
  * available to the ward — and it is deliberately NOT publishable (A6): a patient must never be
  * handed a report nobody has signed.
  */
+/**
+ * PLAN 18b T4 / D7 — **THE DRAFTER WRITES A `draft` VERSION AND SAYS SO.**
+ *
+ * The facts handed to the drafter are what the study RECORDED (type, side, contrast, dose) and
+ * nothing a human typed. The proposal goes through the lockout before it is stored: a machine
+ * that emitted a §5(2) term is refused with `lexical_lockout`, the same code a human gets, and
+ * there is no override lane for it. The row carries `provenance` — the column 18a reserved and
+ * nobody wrote — and `signReport` copies content, never provenance (§6.8).
+ */
+export async function proposeDraft(
+  tx: Tx, actor: Actor, input: { studyId: string; now?: Date },
+): Promise<{ reportId: string; version: number; templateKey: string; provenance: Record<string, unknown> }> {
+  void actor;
+  const now = input.now ?? new Date();
+  const study = await loadStudy(tx, input.studyId);
+  assertReportable(study.status, input.studyId);
+  const type = await requireStudyType(tx, study.studyTypeCode);
+  const proposal = await activeDrafter().draft({
+    studyId: study.id, accessionNo: study.accessionNo,
+    studyType: {
+      code: type.code, name: type.name, modality: type.modality, body_part: type.body_part,
+      contrast_option: type.contrast_option, ionising: type.ionising,
+    },
+    laterality: study.laterality, contrastGiven: study.contrastGiven,
+    contrastAgent: study.contrastAgent, contrastVolumeMl: study.contrastVolumeMl,
+    dose: { ctdivol: study.doseCtdivol, dlp: study.doseDlp, dap: study.doseDap, fluoroSeconds: study.fluoroSeconds },
+  }, now);
+  const terms = proposalLockoutHits(proposal);
+  if (terms.length > 0) {
+    throw new RadiologyError(
+      "lexical_lockout",
+      `the drafter "${proposal.provenance.drafter}" proposed text containing ${terms.map((t) => `"${t}"`).join(", ")} — `
+      + "a machine draft is refused under §5(2) exactly as a human's is, and nobody may override it",
+      { terms, drafter: proposal.provenance.drafter },
+    );
+  }
+  const created = await insertVersion(tx, study, "draft", {
+    templateKey: proposal.templateKey, body: proposal.body,
+    impression: proposal.impression, laterality: proposal.laterality,
+  }, undefined, null, proposal.provenance);
+  return { ...created, templateKey: proposal.templateKey, provenance: proposal.provenance };
+}
+
 export async function savePrelim(
   tx: Tx, actor: Actor, input: { studyId: string } & ReportContent,
 ): Promise<{ reportId: string; version: number }> {
