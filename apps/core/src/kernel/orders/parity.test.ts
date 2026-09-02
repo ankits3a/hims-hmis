@@ -42,10 +42,15 @@ describe("the order envelope's parity pins", () => {
    *
    * `medication` (Plan 16) and `package` (Plan 26) stay reserved and claimed by nobody.
    */
-  it("exactly two installed manifests claim an order kind today: the lab's and radiology's", () => {
+  /**
+   * PLAN 16c T1 — **THREE CLAIMED KINDS, and `medication` is the third.** The reservation DD9
+   * took out for Plan 16 is taken up: the pharmacy manifest claims it on the `pharmacy_dispense`
+   * (`P`) series. `package` (Plan 26) stays reserved and claimed by nobody.
+   */
+  it("exactly three installed manifests claim an order kind today: the lab's, radiology's and the pharmacy's", () => {
     const registry = new ModuleRegistry();
     for (const m of ALL_MANIFESTS) registry.install(m);
-    expect(collectOrderKinds(registry).map((d) => d.kind)).toEqual(["lab", "imaging"]);
+    expect(collectOrderKinds(registry).map((d) => d.kind)).toEqual(["lab", "imaging", "medication"]);
   });
 
   /**

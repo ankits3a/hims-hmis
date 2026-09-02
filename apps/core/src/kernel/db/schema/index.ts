@@ -75,3 +75,8 @@ export * from "./lab";
 // `pcpndt_form_f.study_id` is deliberately plain text for exactly that reason (§6.5).
 export * from "./radiology";
 export * from "./pcpndt";
+// PLAN 16c T1 — the OPD dispense counter. `pharmacy.ts` REFERENCES `items`, `stock_batches`,
+// `stock_ledger` and `stock_reservations` and writes none of them (Plan 14 §4A.2: one ledger, in
+// materials); it references `orders`/`order_items` (the `medication` kind's envelope), `opd_prescriptions`
+// (what is dispensed), `invoices`/`invoice_lines` (what it was billed as) and `services` (the bridge).
+export * from "./pharmacy";

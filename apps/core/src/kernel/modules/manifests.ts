@@ -19,6 +19,7 @@ import { otManifest } from "../../modules/ot";
 import { labManifest } from "../../modules/lab";
 import { pcpndtManifest } from "../../modules/pcpndt";
 import { radiologyManifest } from "../../modules/radiology";
+import { pharmacyManifest } from "../../modules/pharmacy";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -164,4 +165,7 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
    */
   pcpndtManifest,
   radiologyManifest,
+  // PLAN 16c T1 — appended, so the twenty above keep the order they were installed in. It claims
+  // the `medication` order kind (`parity.test.ts` grew by one) and, this task, no menu and no subscription.
+  pharmacyManifest,
 ];
