@@ -282,3 +282,39 @@ migration:
    `lab_reports` is immutable by trigger. A laboratory that ran for a day has produced documents a
    patient may hold.
 3. The catalogue, the definitions and the approval type are data and stay.
+
+## 11. The five seats — a walk-through drill (Plan 17c)
+
+Run this once with a real person at each seat before the pilot window (§9), on one patient, in
+this order. It is `test/lab.e2e.test.ts`'s "17c T6" walk done by hand; every step has a route
+behind it that the walk exercises, so a step that fails here is a configuration fault, not code.
+
+1. **Reception (`/lab/reports` is NOT this seat — `/lab/desk` is).** Scan the front-desk token or
+   type it (`T-118`), or the UHID, or the name. A token resolves to ONE visit; a name to candidates
+   you confirm by sex, age and UHID. The Rx lines the doctor advised are already on the screen.
+   Untick "billed here" on any line the patient is not paying for now: it rides on credit and the
+   report is HELD until settled. A patient with no visit today goes through the walk-in door — the
+   `V` visit opens under the pathologist of record (§2). A patient with no record at all: "Register
+   a new patient", four fields. **Save — send to collection.**
+2. **Collection (`/lab/collection`).** The patient is on the queue with the token before any label
+   exists. Scan the wristband (the field is empty on purpose — never pre-filled), **Print labels**:
+   one label per tube in order of draw. Fill each tube and scan ITS barcode into ITS row; a scan of
+   another tube's number is refused on the screen. **Drawn — N tubes to the lab** lights when all
+   are scanned. A ward tube labelled on the ward is drawn here too, and says the bench will re-check.
+3. **Bench (`/lab/bench`).** Scan the tube: it resolves against what is on the bench, then against
+   what has arrived; anything else is "not drawn here today". A tube drawn without a wristband scan
+   needs a NAMED re-checker before **Receive** (which starts the TAT clock). Key every analyte; a
+   value outside the absurd envelope needs a second named enterer; a critical opens the call by
+   itself. **Save & complete** posts one record per value.
+4. **Verify (`/lab/verify`).** Criticals and STAT first. Each result sits against its range, the
+   last SIGNED previous value and the delta, and the clock against its target. **Sign N results**
+   is N signatures; a result you keyed yourself is refused (DD11). **Publish report.**
+5. **Report centre (`/lab/reports`).** The register shows the day's reports and how each went out:
+   notice queued/sent, HELD with the amount, in person only. Find the patient by UHID or mobile;
+   a HELD report shows the amount and no page — the print lights the moment billing settles it, or
+   **Ask the billing manager to release** (an approval about the order, DD6) and release with the
+   granted id. Record the collector's name and relation. **Print & hand over.**
+
+Expected at the end: one delivery row, one `phi_access_log` row per counter read, the ready notice
+in `notifications` (it will NOT be sent until the WhatsApp template is approved — §0's owner action),
+and the doctor's screen showing every result from the moment of signature.

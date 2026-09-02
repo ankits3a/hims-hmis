@@ -18,7 +18,7 @@ import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import {
-  events, labAnalytes, labItems, labReportDeliveries, labReports, labResults, labSpecimens, opdEncounters,
+  events, labAnalytes, labItems, labReferenceRanges, labReportDeliveries, labReports, labResults, labSpecimens, opdEncounters,
   orderItems, orders,
 } from "../src/kernel/db/schema";
 import type { LabDeskFixture } from "./helpers/lab";
@@ -204,6 +204,148 @@ describe("the laboratory over HTTP (17b T8)", () => {
   });
 
   /* ══════════════════ THE WHOLE CHAIN, OVER THE WIRE, ROW BY ROW ══════════════════ */
+
+  /* ═══════════ PLAN 17c T6 — ONE PATIENT THROUGH FIVE SEATS, over the wire, every row read back ═══════════ */
+
+  it("17c T6 — reception → collection → bench → verify → delivery for one patient, on the five seats' own routes", async () => {
+    const op = await labOperator();
+    await openSessionFor(db, { id: op.id }, 0);
+    fx.unregister();
+    fx.unregister = registerEncounterResolver("V", async (exec, no) => {
+      const e = await getEncounter(exec, no);
+      return e ? { patientId: e.patientId, intendedPayer: e.intendedPayer } : null;
+    });
+    const uhid = await uhidOf(db, fx.patientId);
+    const today = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
+
+    /* ── 1. RECEPTION: the token door, the Rx lines, the tube plan, one line on credit ── */
+    const visit = await openOpdVisit(db, {
+      clerk: fx.desk.actor, patientId: fx.patientId, departmentId: fx.labDepartmentId, doctorId: fx.pathologist.doctorId,
+    }, new Date("2026-08-29T05:00:00Z"));
+    await db.update(opdEncounters).set({
+      advisedTests: [
+        { serviceId: serviceIdForLabCode("CBC"), code: "CBC", name: "Complete blood count", pricePaise: 30000 },
+        { serviceId: serviceIdForLabCode("LFT"), code: "LFT", name: "Liver function test", pricePaise: 30000 },
+      ],
+    }).where(eq(opdEncounters.id, visit.encounterId));
+    const found = await request(server()).get("/lab/desk/find?q=T-1&serviceDate=2026-08-29").set(...auth(op.token)).expect(200);
+    const hit = (found.body as { hits: { visit: { encounterNo: string; tokenNo: number; doctorUserId: string; advised: { serviceId: string }[] } }[] }).hits[0]!;
+    expect(hit.visit.advised.map((a) => a.serviceId)).toEqual([serviceIdForLabCode("CBC"), serviceIdForLabCode("LFT")]);
+    const preview = await request(server()).post("/lab/desk/preview").set(...auth(op.token))
+      .send({ patientId: fx.patientId, encounterNo: hit.visit.encounterNo, serviceIds: hit.visit.advised.map((a) => a.serviceId) })
+      .expect(201);
+    const tubes = (preview.body as { tubes: { container: string }[]; lines: { serviceId: string; netPaise: number }[] });
+    expect(tubes.tubes.map((t) => t.container)).toEqual(["sst", "edta"]);
+    const cbcNet = tubes.lines.find((l) => l.serviceId === serviceIdForLabCode("CBC"))!.netPaise;
+    const placed = await request(server()).post("/lab/desk/orders").set(...auth(op.token))
+      .set("Idempotency-Key", "e2e-five-1")
+      .send({
+        patientId: fx.patientId, encounterNo: hit.visit.encounterNo, serviceDate: fx.serviceDate,
+        orderingClinicianId: hit.visit.doctorUserId,
+        items: hit.visit.advised.map((a) => ({ serviceId: a.serviceId })),
+        /** CBC paid in cash; the LFT line rides on credit (D3) — the report will be HELD. */
+        receipt: { tenders: [{ mode: "cash", amountPaise: cbcNet }] },
+        credit: { reason: "rx_line_unpaid" },
+      })
+      .expect(201);
+    const order = placed.body as { orderId: string; orderGroupId: string; itemIds: string[]; invoice: { invoiceId: string; creditExtended: boolean } };
+    expect(order.invoice.creditExtended).toBe(true);
+
+    /* ── 2. COLLECTION: on the awaiting list with the token, then labels, then one scan per tube ── */
+    const awaiting = await request(server()).get(`/lab/collection/awaiting?serviceDate=${fx.serviceDate}`).set(...auth(op.token)).expect(200);
+    expect((awaiting.body as { orderGroupId: string; tokenNo: number }[]).map((r) => [r.orderGroupId, r.tokenNo])).toEqual([[order.orderGroupId, hit.visit.tokenNo]]);
+    const labels = await request(server()).post("/lab/collection/labels").set(...auth(op.token))
+      .set("Idempotency-Key", "e2e-five-labels").send({ orderGroupId: order.orderGroupId, scannedUhid: uhid }).expect(201);
+    const specimens = (labels.body as { specimens: { specimenId: string; specimenNo: string; container: string }[] }).specimens;
+    expect(specimens).toHaveLength(2);
+    const queue = await request(server()).get(`/lab/collection/queue?serviceDate=${fx.serviceDate}`).set(...auth(op.token)).expect(200);
+    expect((queue.body as { specimenNo: string; tokenNo: number; patientDisplay: string }[]).map((r) => [r.tokenNo, r.patientDisplay]))
+      .toEqual([[hit.visit.tokenNo, "Ram Kumar"], [hit.visit.tokenNo, "Ram Kumar"]]);
+    for (const [i, s] of specimens.entries()) {
+      await request(server()).post("/lab/collection/collect").set(...auth(op.token))
+        .set("Idempotency-Key", `e2e-five-collect-${String(i)}`).send({ specimenId: s.specimenId, wristbandScanned: true }).expect(201);
+    }
+
+    /* ── 3. BENCH: the tubes ARRIVE with the patient, are received, and every analyte is keyed ── */
+    const arrivals = await request(server()).get("/lab/bench/arrivals").set(...auth(op.token)).expect(200);
+    expect((arrivals.body as { specimenNo: string; patientDisplay: string; wristbandScanned: boolean }[]).map((a) => [a.patientDisplay, a.wristbandScanned]))
+      .toEqual([["Ram Kumar", true], ["Ram Kumar", true]]);
+    for (const [i, s] of specimens.entries()) {
+      await request(server()).post("/lab/bench/receive").set(...auth(op.token))
+        .set("Idempotency-Key", `e2e-five-receive-${String(i)}`).send({ specimenNo: s.specimenNo }).expect(201);
+    }
+    expect(await request(server()).get("/lab/bench/arrivals").set(...auth(op.token)).expect(200).then((r) => r.body)).toEqual([]);
+    const bench = await request(server()).get("/lab/bench/worklist").set(...auth(op.token)).expect(200);
+    const items = bench.body as { orderItemId: string; serviceId: string; analytes: { analyteId: string; resultType: string; refLow: string | null; refHigh: string | null }[] }[];
+    expect(items.map((i) => i.orderItemId).sort()).toEqual([...order.itemIds].sort());
+    let keyed = 0;
+    for (const item of items) {
+      for (const a of item.analytes) {
+        if (a.resultType === "formula") continue;
+        const ranges = await db.select({ low: labReferenceRanges.low, high: labReferenceRanges.high, absLow: labAnalytes.absurdLow, absHigh: labAnalytes.absurdHigh })
+          .from(labAnalytes).leftJoin(labReferenceRanges, eq(labReferenceRanges.analyteId, labAnalytes.id)).where(eq(labAnalytes.id, a.analyteId));
+        const band = ranges.find((r) => r.low !== null && r.high !== null);
+        const value = a.resultType !== "numeric" ? "Normal"
+          : band ? String((Number(band.low) + Number(band.high)) / 2)
+            : String(((Number(ranges[0]?.absLow ?? 0)) + Number(ranges[0]?.absHigh ?? 100)) / 2);
+        await request(server()).post("/lab/bench/results").set(...auth(op.token))
+          .set("Idempotency-Key", `e2e-five-result-${String(keyed)}`)
+          .send({ orderItemId: item.orderItemId, analyteId: a.analyteId, value, entryMode: "manual" }).expect(201);
+        keyed += 1;
+      }
+    }
+    expect(keyed).toBeGreaterThan(5);
+    expect(await request(server()).get("/lab/bench/worklist").set(...auth(op.token)).expect(200).then((r) => r.body)).toEqual([]);
+
+    /* ── 4. VERIFY: the pathologist sees the target and (no) previous, signs every result, publishes ── */
+    const path = await userWith([
+      "lab.results.verify", "lab.results.read", "lab.reports.publish", "lab.reports.print", "lab.worklist.read",
+      "lab.criticals.close", "orders.read", "billing.credit.extend", "billing.invoice.issue", "billing.invoice.read",
+      "orders.place", "lab.orders.place", "patients.read",
+    ], ["pathologist"]);
+    const verify = await request(server()).get("/lab/verify/worklist").set(...auth(path.token)).expect(200);
+    const rows = verify.body as { tatTargetMinutes: number; analytes: { resultId: string | null; verificationStatus: string | null; previous: unknown }[] }[];
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.tatTargetMinutes).toBeGreaterThan(0);
+      for (const a of row.analytes) {
+        expect(a.previous).toBeNull();
+        if (a.resultId !== null && a.verificationStatus === "unverified") {
+          await request(server()).post(`/lab/verify/results/${a.resultId}`).set(...auth(path.token))
+            .set("Idempotency-Key", `e2e-five-sign-${a.resultId}`).expect(201);
+        }
+      }
+    }
+    const publishable = await request(server()).get("/lab/reports/publishable").set(...auth(path.token)).expect(200);
+    expect((publishable.body as { orderId: string; complete: boolean }[]).find((o) => o.orderId === order.orderId)?.complete).toBe(true);
+    const published = await request(server()).post("/lab/reports").set(...auth(path.token))
+      .set("Idempotency-Key", "e2e-five-publish").send({ orderId: order.orderId }).expect(201);
+    const reportId = (published.body as { reportId: string }).reportId;
+
+    /* ── 5. DELIVERY: the register says HELD; the counter cannot see the page; the money clears; the paper goes out ── */
+    const counter = await userWith(["lab.reports.print", "patients.read"], ["lab_reception"]);
+    const register = await request(server()).get(`/lab/reports/register?serviceDate=${today}`).set(...auth(counter.token)).expect(200);
+    const reg = (register.body as { reportId: string; patientDisplay: string; delivery: { allowed: boolean }; notice: { status: string } | null; deliveries: unknown[] }[]);
+    expect(reg.map((r) => [r.reportId, r.patientDisplay, r.delivery.allowed, r.notice?.status, r.deliveries.length]))
+      .toEqual([[reportId, "Ram Kumar", false, "queued", 0]]);
+    const heldView = await request(server()).get(`/lab/reports/patient/${fx.patientId}`).set(...auth(counter.token)).expect(200);
+    const heldRow = (heldView.body as { reports: { reportId: string; snapshot: unknown; delivery: { allowed: boolean; outstandingPaise: number } }[] }).reports[0]!;
+    expect([heldRow.reportId, heldRow.snapshot, heldRow.delivery.allowed]).toEqual([reportId, null, false]);
+    await request(server()).post(`/lab/reports/${reportId}/print`).set(...auth(counter.token))
+      .send({ channel: "print", collectorIdentity: "the patient" }).expect(422);
+    await settleInvoice(db, { id: cashier.id, actor: { type: "user", id: cashier.id } }, fx.patientId, order.invoice.invoiceId, heldRow.delivery.outstandingPaise);
+    const openView = await request(server()).get(`/lab/reports/patient/${fx.patientId}`).set(...auth(counter.token)).expect(200);
+    const openRow = (openView.body as { reports: { snapshot: { patient: { name: string } } | null; delivery: { allowed: boolean } }[] }).reports[0]!;
+    expect([openRow.delivery.allowed, openRow.snapshot?.patient.name]).toEqual([true, "Ram Kumar"]);
+    await request(server()).post(`/lab/reports/${reportId}/print`).set(...auth(counter.token))
+      .set("Idempotency-Key", "e2e-five-print").send({ channel: "print", collectorIdentity: "Sunita Kumar (daughter), Aadhaar seen" }).expect(201);
+    const after = await request(server()).get(`/lab/reports/register?serviceDate=${today}`).set(...auth(counter.token)).expect(200);
+    expect((after.body as { deliveries: { channel: string; collectorIdentity: string }[] }[])[0]!.deliveries)
+      .toMatchObject([{ channel: "print", collectorIdentity: "Sunita Kumar (daughter), Aadhaar seen" }]);
+    /** The doctor's screen was never held — on the real visit, through the real resolver. */
+    const forDoctor = await request(server()).get(`/lab/results/encounter/${hit.visit.encounterNo}`).set(...auth(path.token)).expect(200);
+    expect((forDoctor.body as unknown[]).length).toBe(keyed + (items.flatMap((i) => i.analytes).length - keyed));
+  });
 
   /* ══════════════════ PLAN 17c T5 — the report centre's readers, over the wire ══════════════════ */
 
