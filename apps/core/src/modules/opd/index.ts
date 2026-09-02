@@ -17,6 +17,20 @@ export type { EncounterRow, QueueEntryRow, TimelineItem } from "./encounters";
 export { LAB_DEPARTMENT_CODE, joinQueue, openLabWalkin, openLabWalkinInTx, reviewAnchorFor } from "./encounters";
 export type { JoinQueueResult, OpenLabWalkinInput, OpenVisitResult, ReviewAnchor } from "./encounters";
 export type { AdvisedTest } from "./consultation";
+// ── PLAN 16c T0a — the prescription read surface the dispensing counter consumes (spec §4) ──
+// `getPrescription` and `listPrescriptions` walk the 07a read gate and log the PHI read;
+// `verifyPrescriptionQr` is the scanner's door; `runRxChecks` re-runs the issue-time checks on the
+// RESOLVED medicines at dispense time (16c D9) — it is bound to a patient, not to a consult.
+export { getPrescription, listPrescriptions, matchAllergies, runRxChecks, verifyPrescriptionQr } from "./prescriptions";
+export type {
+  AllergyMatch, AllergyOverride, RxCheckOutcome, RxNotice, RxOverride, RxVerifyReason, RxVerifyResult,
+} from "./prescriptions";
+export { findVisitByToken } from "./encounters";
+// PLAN 16c T4 — the prescriber on the Schedule H1 register (Rule 65(3): name and registration number).
+export { getDoctor } from "./masters";
+export type { DoctorRow } from "./masters";
+export type { PrescriptionRow } from "./encounters";
+export type { RxLine } from "./fhir";
 export { classifyVisit } from "./visit-type";
 export type { VisitType } from "./visit-type";
 export { loadOpdConfig } from "./config";
