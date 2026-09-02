@@ -38,6 +38,93 @@ describe("searchPatients", () => {
     return { ashaUhid: asha.patient.uhid };
   }
 
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════
+   * FD-6 — A SURNAME IS A NAME, AND THE COUNTER COULD NOT FIND ONE
+   * ═══════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * MEASURED ON 10,000 SEEDED PATIENTS, 2026-09-02: 668 of them carried "Kumar" in their name and
+   * `GET /patients/search?q=Kumar` returned `{"items":[]}`. The lane was anchored to the start of
+   * the WHOLE name, so it served only the case where the FIRST name was typed first. The command
+   * palette answered the same word with five people in the same second, because it orders by
+   * trigram similarity and the counter did not — one product, two search boxes, opposite answers.
+   *
+   * In Bihar the counter is full of Kumar, Devi, Singh, Sah and Prasad, and a patient asked their
+   * name commonly answers with one of them.
+   */
+  it("FD-6 — a query matches the start of ANY word in the name, not only the first", async () => {
+    await seedThree();
+    /*
+     * ═══ `matchedOn` IS THE ASSERTION, AND THE FIRST VERSION OF THIS TEST WAS WRONG ═══
+     *
+     * Asserting only the NAMES passed against the shipped defect — mutant M7, which re-anchored the
+     * lane to the whole name, was GREEN. The rows were still coming back, through the trigram
+     * FALLBACK: `similarity('kumar','ashok kumar')` clears the threshold, so the fallback quietly
+     * satisfied a test that claimed to be about the exact lane.
+     *
+     * `matchedOn` separates them, because it is computed from the EXACT lane's own SQL fragment
+     * evaluated per row (`laneFor("name")`). An exact word-start hit carries `["name"]`; a row that
+     * only the fallback found carries `[]`. So this now fails the moment the word-boundary lane
+     * stops doing the work, which is the whole point of the row.
+     */
+    const kumar = await searchPatients(db, clerk, "Kumar");
+    expect(kumar.map((r) => r.name)).toEqual(["Ashok Kumar"]);
+    expect(kumar[0]!.matchedOn).toEqual(["name"]); // THE KILL — `[]` here means the fallback did it
+
+    const devi = await searchPatients(db, clerk, "Devi");
+    expect(devi.map((r) => r.name)).toEqual(["Asha Devi"]);
+    expect(devi[0]!.matchedOn).toEqual(["name"]);
+
+    const singh = await searchPatients(db, clerk, "Singh");
+    expect(singh.map((r) => r.name)).toEqual(["Binod Singh"]);
+    expect(singh[0]!.matchedOn).toEqual(["name"]);
+
+    // The first name still works, unchanged — the old behaviour is a subset of the new one.
+    const ashok = await searchPatients(db, clerk, "Ashok");
+    expect(ashok.map((r) => r.name)).toEqual(["Ashok Kumar"]);
+    expect(ashok[0]!.matchedOn).toEqual(["name"]);
+  });
+
+  /**
+   * WORD-START, NOT `%needle%`, AND THIS ROW IS THE DIFFERENCE.
+   *
+   * An unanchored contains-match would also fire mid-word. On a duplicate-detection surface that is
+   * noise on every common surname, and noise is worse than a miss: a clerk who learns the list is
+   * padded stops reading it. `umar` is inside `Kumar` and must not match it.
+   */
+  it("FD-6 — a fragment INSIDE a word does not match: 'umar' is not 'Kumar'", async () => {
+    await seedThree();
+    // Same discipline as the row above: the FALLBACK may legitimately surface a near-spelling for
+    // these, so what is asserted is that no row matched the EXACT lane — nothing claims "umar" is
+    // a name match for "Kumar".
+    for (const fragment of ["umar", "ingh"]) {
+      const hits = await searchPatients(db, clerk, fragment);
+      expect({ fragment, exact: hits.filter((r) => r.matchedOn.includes("name")).map((r) => r.name) })
+        .toEqual({ fragment, exact: [] });
+    }
+  });
+
+  /**
+   * ═══ FD-6 — THE APPROXIMATE BRANCH FINALLY HAS A CONSUMER ═══
+   *
+   * `patientFuzzyCondition` was written for this, its docstring said "used only when the exact one
+   * found nobody", it was exported — and **nothing in the repository called it**. A rail with no
+   * consumer. It now runs, and only on the road it was written for: a NAME query that found nobody.
+   *
+   * Both halves are asserted, because "runs sometimes" is not the claim. A misspelling finds the
+   * patient; and an exact hit is NOT diluted by approximate ones, which is the property the
+   * docstring protects — burying an exact match among near-misses makes the common case worse.
+   */
+  it("FD-6 — a misspelt name falls back to similarity, and an exact hit never does", async () => {
+    await seedThree();
+    // Exact found nobody → the fallback fires and finds her anyway.
+    const misspelt = await searchPatients(db, clerk, "Ashaa");
+    expect(misspelt.map((r) => r.name)).toContain("Asha Devi");
+    // Exact found somebody → ONLY the exact rows come back. "Binod" must not drag in near-misses.
+    const exact = await searchPatients(db, clerk, "Binod");
+    expect(exact.map((r) => r.name)).toEqual(["Binod Singh"]);
+  });
+
   it("digit queries search phone AND alt-phone by prefix", async () => {
     await seedThree();
     const both = await searchPatients(db, clerk, "98765");

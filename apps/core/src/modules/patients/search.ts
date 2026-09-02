@@ -139,10 +139,41 @@ export function patientMatchLanes(query: string): { lane: MatchLane; condition: 
    */
   const folded = normalizeForSearch(query);
   const rawLower = query.trim().toLowerCase();
-  const foldedPrefix = `${escapeLike(folded)}%`;
-  if (folded === rawLower) return [{ lane: "name", condition: sql`lower(${patients.name}) like ${foldedPrefix}` }];
-  const rawPrefix = `${escapeLike(rawLower)}%`;
-  return [{ lane: "name", condition: sql`(lower(${patients.name}) like ${foldedPrefix} or lower(${patients.name}) like ${rawPrefix})` }];
+  if (folded === rawLower) return [{ lane: "name", condition: nameStartsAnyWord(folded) }];
+  return [{ lane: "name", condition: sql`(${nameStartsAnyWord(folded)} or ${nameStartsAnyWord(rawLower)})` }];
+}
+
+/**
+ * ═══ FD-6 — A NAME QUERY MATCHES THE START OF *ANY* WORD, NOT ONLY THE FIRST ═══
+ *
+ * MEASURED ON 10,000 PATIENTS, 2026-09-02. This lane was `lower(name) like 'kumar%'` — anchored to
+ * the start of the WHOLE name — so with 668 patients carrying "Kumar" in their name, typing
+ * `Kumar` at the counter returned **nothing at all**. The same word typed into the command palette
+ * returned five people, because the palette orders by trigram similarity and the counter does not.
+ * One product, two search boxes, opposite answers to the same word in the same second.
+ *
+ * It is not a rare shape. In Bihar the counter is full of Kumar, Devi, Singh, Sah and Prasad, a
+ * patient answers "Kumar" when asked their name, and a clerk types what they hear. The old lane
+ * served only the case where the patient's FIRST name was typed first and spelled correctly.
+ *
+ * ═══ WORD-START, NOT `%kumar%` — AND THE DIFFERENCE IS NOT PEDANTRY ═══
+ *
+ * An unanchored `%kumar%` also finds "Sukumaran" and "Kumari" mid-word. At a counter that is noise
+ * on every common surname, and noise on a duplicate-detection surface is worse than a miss: the
+ * clerk stops reading the list. `% kumar%` matches only at a word boundary, which is what a person
+ * means when they say a name.
+ *
+ * Both patterns are still LIKE against `lower(name)`, so `patients_name_trgm_idx` (the GIN
+ * trigram index from 0021) serves the leading-wildcard half — that index exists precisely because
+ * a btree cannot.
+ *
+ * ONE COPY, THREE READERS. This sits in `patientMatchLanes`, which the counter, the palette and
+ * the merge screen all build their predicate from, so the fix cannot land on one surface and miss
+ * the other two — which is the defect it is repairing, arriving from the other direction.
+ */
+function nameStartsAnyWord(needle: string): SQL {
+  const escaped = escapeLike(needle);
+  return sql`(lower(${patients.name}) like ${`${escaped}%`} or lower(${patients.name}) like ${`% ${escaped}%`})`;
 }
 
 /**
@@ -240,8 +271,22 @@ export async function searchPatients(
     return found === undefined ? sql<boolean>`false` : sql<boolean>`(${found.condition})`;
   };
 
-  const rows = await db
-    .select({
+  /**
+   * ═══ FD-6 — THE APPROXIMATE BRANCH FINALLY HAS A CONSUMER ═══
+   *
+   * `patientFuzzyCondition` was written for exactly this, its docstring says so in as many words
+   * ("used only when the exact one found nobody"), it is exported — and **nothing in the
+   * repository called it.** A rail with no consumer, which is the same finding as the counter's
+   * unmounted print components one module over.
+   *
+   * It runs ONLY on a name query that found nobody, and only then, for the reason the docstring
+   * gives: an exact hit is what the desk asked for and burying it among approximate matches makes
+   * the common case worse to serve the rare one. A misspelling ("Kavitha" for "Kavita") now finds
+   * the patient instead of offering to register a second record for her.
+   */
+  const nameOnly = lanes.length === 1 && lanes[0]!.lane === "name";
+
+  const select = {
       id: patients.id,
       uhid: patients.uhid,
       name: patients.name,
@@ -253,12 +298,24 @@ export async function searchPatients(
       mUhid: laneFor("uhid"),
       mMobile: laneFor("mobile"),
       mName: laneFor("name"),
-    })
-    .from(patients)
-    .leftJoin(patientPhotos, eq(patientPhotos.patientId, patients.id))
-    .where(and(...conditions))
-    .orderBy(asc(patients.name)) // D-37: ordering never touches the confidential flag
-    .limit(cap);
+  };
+
+  // Inference, not an assertion: the row type comes from `select` itself, so a column renamed in
+  // one place cannot be silently cast back into shape here.
+  const run = (where: SQL) =>
+    db
+      .select(select)
+      .from(patients)
+      .leftJoin(patientPhotos, eq(patientPhotos.patientId, patients.id))
+      .where(where)
+      .orderBy(asc(patients.name)) // D-37: ordering never touches the confidential flag
+      .limit(cap);
+
+  let rows = await run(and(...conditions)!);
+  if (rows.length === 0 && nameOnly) {
+    const base = conditions.slice(0, -1); // every gate EXCEPT the exact name predicate
+    rows = await run(and(...base, patientFuzzyCondition(query))!);
+  }
 
   return rows.map((r) => {
     const matchedOn: MatchLane[] = [];
