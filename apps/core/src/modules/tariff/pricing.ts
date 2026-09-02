@@ -14,13 +14,29 @@ function priceLine(ctx: PricingContext, line: InvoiceLineInput): PricedLine {
   const svc = ctx.services[line.serviceId];
   if (!svc) throw new TariffError("unknown_service", `line ${line.lineId}: service ${line.serviceId}`);
   if (!svc.active) throw new TariffError("service_inactive", `line ${line.lineId}: service ${line.serviceId}`);
-  const tariffPaise = ctx.tariff.items[line.serviceId];
-  if (tariffPaise === undefined) throw new TariffError("tariff_item_missing", `line ${line.lineId}: no price for ${line.serviceId} in version ${ctx.tariff.versionId}`);
+  // PLAN 16c T0b — a `pharmacy*` line may carry its batch MRP as the list price; any other category
+  // is refused before a price is even looked up (see `InvoiceLineInput.batchUnitPaise`).
+  if (line.batchUnitPaise !== undefined) {
+    if (!svc.category.startsWith("pharmacy")) {
+      throw new TariffError("batch_price_not_allowed", `line ${line.lineId}: ${line.serviceId} is "${svc.category}", and only a pharmacy line prices from a batch`);
+    }
+    assertPaise(line.batchUnitPaise, `line ${line.lineId}: batchUnitPaise`);
+  }
+  const versionPaise = ctx.tariff.items[line.serviceId];
+  if (versionPaise === undefined && line.batchUnitPaise === undefined) {
+    throw new TariffError("tariff_item_missing", `line ${line.lineId}: no price for ${line.serviceId} in version ${ctx.tariff.versionId}`);
+  }
+  // `tariffPaise` is what the clamp record calls the starting price: the version's, or the batch's when it stood in.
+  const tariffPaise = versionPaise ?? (line.batchUnitPaise as number);
   assertPaise(tariffPaise, "tariff price");
 
   // C-3: min(tariff, MRP, NPPA ceiling). The hard block IS the min — no path may exceed the ceiling.
   let unitPaise = tariffPaise;
   let regulatedClamp: RegulatedClamp | null = null;
+  if (line.batchUnitPaise !== undefined && (versionPaise === undefined || line.batchUnitPaise < versionPaise)) {
+    unitPaise = line.batchUnitPaise;
+    regulatedClamp = { boundApplied: "batch_mrp", tariffPaise, mrpPaise: null, ceilingPaise: null, batchUnitPaise: line.batchUnitPaise };
+  }
   if (svc.regulated) {
     const rp = ctx.regulatedPrices[line.serviceId];
     if (!rp) throw new TariffError("regulated_price_missing", `line ${line.lineId}: ${line.serviceId} is regulated but has no effective MRP/ceiling row`);
@@ -62,6 +78,7 @@ function priceLine(ctx: PricingContext, line: InvoiceLineInput): PricedLine {
         mrpPaise: regulatedClamp?.mrpPaise ?? null,
         ceilingPaise: regulatedClamp?.ceilingPaise ?? null,
         capUnitPaise: line.capUnitPaise,
+        ...(line.batchUnitPaise !== undefined ? { batchUnitPaise: line.batchUnitPaise } : {}),
       };
     } else if (regulatedClamp !== null) {
       regulatedClamp = { ...regulatedClamp, capUnitPaise: line.capUnitPaise };
