@@ -21,6 +21,7 @@ import {
 } from "./events";
 import { requireStudyType } from "./study-types";
 import { activeDrafter, proposalLockoutHits } from "./drafter";
+import { hasPermission } from "../../kernel/auth/permissions";
 import { PCPNDT_AGE_MAX_YEARS, PCPNDT_AGE_MIN_YEARS, ageInYearsOn } from "./applicability";
 import { patients } from "../../kernel/db/schema/patients";
 import { templateKeyFor } from "./templates";
@@ -197,23 +198,36 @@ export async function draftReport(
  */
 export async function proposeDraft(
   tx: Tx, actor: Actor, input: { studyId: string; now?: Date },
-): Promise<{ reportId: string; version: number; templateKey: string; provenance: Record<string, unknown> }> {
-  void actor;
+): Promise<{
+  reportId: string; version: number; templateKey: string;
+  body: Record<string, string>; impression: string | null; laterality: string | null;
+  provenance: Record<string, unknown>;
+}> {
+  // Close review B7 — the boundary names who asked, like `openImages`; the row records it in provenance.
+  if (actor.type !== "user") {
+    throw new RadiologyError("forbidden", `a ${actor.type} actor may not ask for a draft`);
+  }
+  if (!(await hasPermission(tx, actor.id, "radiology.reports.write", "hospital"))) {
+    throw new RadiologyError("forbidden", `${actor.id} does not hold radiology.reports.write`);
+  }
   const now = input.now ?? new Date();
   const study = await loadStudy(tx, input.studyId);
   assertReportable(study.status, input.studyId);
   const type = await requireStudyType(tx, study.studyTypeCode);
+  const tier = await lockoutTierFor(tx, study, now);
   const proposal = await activeDrafter().draft({
     studyId: study.id, accessionNo: study.accessionNo,
     studyType: {
       code: type.code, name: type.name, modality: type.modality, body_part: type.body_part,
       contrast_option: type.contrast_option, ionising: type.ionising,
     },
-    laterality: study.laterality, contrastGiven: study.contrastGiven,
+    laterality: study.laterality, lockoutTier: tier, contrastGiven: study.contrastGiven,
     contrastAgent: study.contrastAgent, contrastVolumeMl: study.contrastVolumeMl,
     dose: { ctdivol: study.doseCtdivol, dlp: study.doseDlp, dap: study.doseDap, fluoroSeconds: study.fluoroSeconds },
   }, now);
-  const terms = proposalLockoutHits(proposal);
+  // Close review B1 — the SAME tier a human's text gets (F66: the demographic terms only in an
+  // obstetric context), so "USG female pelvis" on a man's scan is not refused on the type's name.
+  const terms = proposalLockoutHits(proposal, tier);
   if (terms.length > 0) {
     throw new RadiologyError(
       "lexical_lockout",
@@ -222,11 +236,16 @@ export async function proposeDraft(
       { terms, drafter: proposal.provenance.drafter },
     );
   }
+  const provenance = { ...proposal.provenance, inputs: { ...proposal.provenance.inputs, requestedBy: actor.id } };
   const created = await insertVersion(tx, study, "draft", {
     templateKey: proposal.templateKey, body: proposal.body,
     impression: proposal.impression, laterality: proposal.laterality,
-  }, undefined, null, proposal.provenance);
-  return { ...created, templateKey: proposal.templateKey, provenance: proposal.provenance };
+  }, undefined, null, provenance);
+  // Close review C4 — the body rides back so the screen needs no second read (and no PHI row for it).
+  return {
+    ...created, templateKey: proposal.templateKey, body: proposal.body,
+    impression: proposal.impression, laterality: proposal.laterality, provenance,
+  };
 }
 
 export async function savePrelim(
@@ -321,6 +340,23 @@ export async function signReport(
   const source = rows[0];
   if (!source || source.studyId !== study.id) {
     throw new RadiologyError("unknown_study", `no report ${input.reportId} on study ${study.id}`);
+  }
+  /**
+   * ═══ CLOSE REVIEW B2 — A MACHINE'S DRAFT IS NOT SIGNABLE AS IT STANDS (§6.8) ═══
+   *
+   * The offline drafter leaves every clinical section empty by design, and `assertSignable` checks
+   * lockout, laterality and category — never that a finding exists. So "Start from template" then
+   * "Sign" would have produced a signed, publishable report with a technique line and nothing else,
+   * with `provenance` null, indistinguishable from a deliberate read. The rule that closes it is the
+   * contract's own sentence: the signed document is a HUMAN's. A version with provenance is a
+   * proposal; the human saves their own draft (which carries none) and signs that.
+   */
+  if (source.provenance !== null) {
+    throw new RadiologyError(
+      "machine_draft_not_signable",
+      `report ${input.reportId} is the drafter's proposal — save your own draft over it and sign that (§6.8)`,
+      { reportId: input.reportId, drafter: (source.provenance as { drafter?: unknown }).drafter ?? null },
+    );
   }
   if (!["draft", "prelim"].includes(source.status)) {
     throw new RadiologyError(
