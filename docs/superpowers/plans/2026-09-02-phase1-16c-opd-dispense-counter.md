@@ -7,11 +7,11 @@
 
 ## 1. Why this phase, and where it stops
 
-No pharmacy module exists. Formulary (16a) is live; materials (14) is code-complete with ONE stock ledger; OPD issues QR-signed prescriptions; billing carries a batch-grain cap only the OT uses. Doc 16 §14 gave 16c the batches and movements; Plan 14 §4A.2 ruled the ledger into materials and this document keeps it: **pharmacy consumes the ledger; `pharmacy_batches` does not exist.**
+No pharmacy module exists. Formulary (16a) is live; materials (14) is code-complete with ONE stock ledger; OPD issues QR-signed prescriptions; billing carries a batch-grain cap only the OT uses. Doc 16 §14 gave 16c the batches; Plan 14 §4A.2 ruled the ledger into materials and this document keeps it: **pharmacy consumes the ledger; `pharmacy_batches` does not exist.**
 
 **Finish line:** one patient end to end over HTTP (T5): e-Rx → scan or token → pharmacist verifies → FEFO pick from materials stock → invoice at `min(batch MRP, ceiling, tariff)` → hand over with the ledger debited through `materials/index.ts` and the `medication` kind claimed. No deploy: gated on 14's.
 
-## 2. Ground truth — measured 2026-09-02 at `5feef43`; re-measure at kickoff
+## 2. Ground truth — measured 2026-09-02 at `5feef43`; re-measured at kickoff
 
 | # | rail (where) | consumer | 16c |
 |---|---|---|---|
@@ -31,7 +31,7 @@ No pharmacy module exists. Formulary (16a) is live; materials (14) is code-compl
 - **S1** — does `consumeReservation` emit `material.consumed`? If not, T4 releases and posts via `postMovement` in the same tx.
 - **S2** — GST per line: `computeGst` is category-keyed. If it cannot take `items.gst_rate_bps`, the bridge maps slabs to data-only categories (`pharmacy`, `pharmacy_12`, `pharmacy_18`). Decides T0b's size.
 - **S3** — what `issueInvoice` demands of the actor (permission, cashier session, both); `pharmacy` receives what `lab_reception` holds, named in T1.
-- **S4** — `runRxChecks`' signature; if bound to the consult, T0a exports `matchAllergies` plus the formulary pair read instead.
+- **S4** — `runRxChecks`' signature; if bound to the consult, T0a exports `matchAllergies` and the formulary pair read instead.
 
 ## 4. Design decisions — DECIDED (money and law: §7)
 
