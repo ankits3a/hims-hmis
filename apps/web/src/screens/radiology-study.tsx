@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
-  fetchReadiness, fetchStudy, overrideGate, radiologyErrorText, recordAcquired, satisfyGate,
+  fetchReadiness, fetchStudy, openImages, overrideGate, radiologyErrorText, recordAcquired, satisfyGate,
   startAcquisition, waiveGate,
 } from "../lib/radiology-api";
 import { Button } from "@/components/ui/button";
@@ -79,6 +79,16 @@ export function RadiologyStudy(): React.ReactElement {
   const r = gates.data;
   const uid = typedUid ?? s?.mintedStudyInstanceUid ?? "";
 
+  /**
+   * 18b T3 / D6 — the server decides whether there are images and where the viewer is, records the
+   * view, and only then returns a URL; this screen opens it in a new tab. A link built here would
+   * open the images with nothing recorded.
+   */
+  const open = useMutation({
+    mutationFn: () => openImages(studyId),
+    onSuccess: (r) => { setError(null); window.open(r.url, "_blank", "noopener,noreferrer"); refresh(); },
+    onError,
+  });
   const acquire = useMutation({
     mutationFn: () => recordAcquired(
       studyId,
@@ -174,9 +184,17 @@ export function RadiologyStudy(): React.ReactElement {
           ? null
           : s.studyInstanceUid !== null
           ? (
-            <p className="text-sm" data-testid="study-uid-recorded">
-              {t("radiology.study.studyUidRecorded")}: <code>{s.studyInstanceUid}</code>
-            </p>
+            <div className="space-y-1 text-sm" data-testid="study-uid-recorded">
+              <p>{t("radiology.study.studyUidRecorded")}: <code>{s.studyInstanceUid}</code></p>
+              <p className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => { open.mutate(); }}>{t("radiology.study.openImages")}</Button>
+                <span data-testid="image-views">
+                  {s.views.length === 0
+                    ? t("radiology.study.imagesNeverOpened")
+                    : t("radiology.study.imagesOpened", { count: s.views.length, by: s.views[0]!.viewerId })}
+                </span>
+              </p>
+            </div>
           )
           : (
             <fieldset className="space-y-1 text-sm">

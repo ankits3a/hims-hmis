@@ -98,8 +98,8 @@ export const IMAGING_GATE_KIND_VALUES = [
   "mlc_check",
 ] as const;
 
-/** DD13 — the three governed definition kinds. */
-export const IMAGING_DEFINITION_KIND_VALUES = ["study_types", "pregnancy_policy", "critical_categories"] as const;
+/** DD13 — the three governed definition kinds, and 18b T3's fourth: where the images are viewed. */
+export const IMAGING_DEFINITION_KIND_VALUES = ["study_types", "pregnancy_policy", "critical_categories", "pacs_settings"] as const;
 
 /** DD15 — the report version chain's five states. `prelim` is O-11's UNVERIFIED draft. */
 export const IMAGING_REPORT_STATUSES = ["prelim", "draft", "signed", "amended", "superseded"] as const;
@@ -531,5 +531,38 @@ export const imagingBillDecisions = pgTable(
       "imaging_bill_decisions_resolution_ck",
       sql`(${t.resolvedAt} is null) = (${t.resolution} is null)`,
     ),
+  ],
+);
+
+/**
+ * ═══ PLAN 18b T3 — `imaging_image_views`: SOMEBODY LOOKED AT THE IMAGES (D6) ═══
+ *
+ * 18a §6.2 reserved `image.viewed` as "a NEW event on 18b's tables". This is the table. A row is
+ * written when a reader opens the study's images through the viewer door, BEFORE the URL is handed
+ * back, so the negative-space report brainstorm §14 names — "a radiologist shift with zero
+ * `image.viewed` events (reading outside the system or not at all)" — is one query here. The PHI
+ * disclosure itself is logged on `imaging.study` (the images are the study); this table answers
+ * WHO OPENED WHAT WHEN, which the PHI log answers only per surface.
+ *
+ * `url_host` is the viewer's host and never the full URL: the URL carries the accession number,
+ * and an audit table that stored it would be a second place a study identifier lives.
+ */
+export const IMAGE_VIEW_CHANNELS = ["external_pacs"] as const;
+export type ImageViewChannel = (typeof IMAGE_VIEW_CHANNELS)[number];
+
+export const imagingImageViews = pgTable(
+  "imaging_image_views",
+  {
+    id: text("id").primaryKey(), // ULID via newId()
+    studyId: text("study_id").notNull().references(() => imagingStudies.id),
+    viewerId: text("viewer_id").notNull(),
+    via: text("via").notNull(),
+    urlHost: text("url_host").notNull(),
+    viewedAt: timestamp("viewed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("imaging_image_views_study_idx").on(t.studyId, t.viewedAt),
+    index("imaging_image_views_viewer_idx").on(t.viewerId, t.viewedAt),
+    check("imaging_image_views_via_ck", inList(t.via, IMAGE_VIEW_CHANNELS)),
   ],
 );

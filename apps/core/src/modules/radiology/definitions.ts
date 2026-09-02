@@ -125,16 +125,36 @@ export const criticalCategoriesBodySchema = z.object({
   { message: "a criticality tier is defined twice" },
 );
 
+/**
+ * PLAN 18b T3 / D5 — where the images are viewed, as a GOVERNED definition rather than an
+ * environment variable. The template admits exactly two placeholders and must be `https://`: a
+ * viewer URL is a link every reader in the building will click, and the book that publishes it
+ * goes through the same draft → approval → publish as the study types.
+ */
+export const VIEWER_URL_PLACEHOLDERS = ["accessionNo", "studyInstanceUid"] as const;
+
+export const pacsSettingsBodySchema = z.object({
+  viewer_url_template: z.string().min(12).max(2000)
+    .refine((t) => t.startsWith("https://"), { message: "the viewer URL must be https://" })
+    .refine((t) => {
+      const names = [...t.matchAll(/\{([^}]*)\}/g)].map((m) => m[1] ?? "");
+      return names.length > 0 && names.every((n) => (VIEWER_URL_PLACEHOLDERS as readonly string[]).includes(n));
+    }, { message: `the template must name at least one of {${VIEWER_URL_PLACEHOLDERS.join("} {")}} and nothing else in braces` }),
+  enabled: z.boolean(),
+});
+
 const SCHEMA_BY_KIND = {
   study_types: studyTypesBodySchema,
   pregnancy_policy: pregnancyPolicyBodySchema,
   critical_categories: criticalCategoriesBodySchema,
+  pacs_settings: pacsSettingsBodySchema,
 } as const;
 
 export type StudyTypesBody = z.infer<typeof studyTypesBodySchema>;
 export type StudyType = z.infer<typeof studyTypeSchema>;
 export type PregnancyPolicyBody = z.infer<typeof pregnancyPolicyBodySchema>;
 export type CriticalCategoriesBody = z.infer<typeof criticalCategoriesBodySchema>;
+export type PacsSettingsBody = z.infer<typeof pacsSettingsBodySchema>;
 export type ImagingDefinitionRow = typeof imagingDefinitions.$inferSelect;
 
 export const IMAGING_DEFINITION_KINDS = IMAGING_DEFINITION_KIND_VALUES;
