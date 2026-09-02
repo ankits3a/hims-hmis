@@ -351,6 +351,22 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "materials.items.read",
       "materials.stock.read",
       "materials.grn.qc",
+      // PLAN 16c T1 — THE DISPENSING COUNTER, +11. The four `pharmacy.*` strings are the counter's
+      // own; `orders.place/read/cancel` because the claim PLACES the `medication` order (D1, the
+      // `lab_reception` shape); and the four billing strings `lab_reception` holds for the same
+      // reason — a department counter that bills at the window issues the invoice itself (S3).
+      // NOT `billing.credit.extend`: credit holds for IPD/TPA are 16d's.
+      "pharmacy.dispense.place",
+      "pharmacy.dispense.read",
+      "pharmacy.dispense.scheduled",
+      "pharmacy.sale_items.manage",
+      "orders.place",
+      "orders.read",
+      "orders.cancel",
+      "billing.invoice.issue",
+      "billing.invoice.read",
+      "billing.receipt.record",
+      "billing.session.own",
     ],
   },
   {
@@ -1105,6 +1121,24 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     roleKey: "modality_bridge",
     permissions: ["radiology.mwl.read"],
   },
+  /**
+   * PLAN 16c T1 — THE DISPENSING AIDE (doc 16 role 25c). May claim, verify-assist and pick; may
+   * read the patient and the formulary (stock is read for it by the counter's own routes, under the
+   * pharmacy permission). **Holds no `pharmacy.dispense.scheduled`**:
+   * the Pharmacy Act 1948 §42 reserves the completion of a Schedule H/H1 dispense to a registered
+   * pharmacist, and `handOver` refuses the transition rather than trusting a screen to hide it.
+   * Holds no billing string either — the aide picks, the pharmacist bills.
+   */
+  {
+    roleKey: "pharmacy_assistant",
+    permissions: [
+      "pharmacy.dispense.place",
+      "pharmacy.dispense.read",
+      "orders.read",
+      "patients.read",
+      "formulary.read",
+    ],
+  },
 ];
 
 /**
@@ -1341,6 +1375,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // PLAN 18b T1 — a machine account. The title says so, because a staffing card is where an
   // administrator would otherwise assign it to a person.
   modality_bridge: "Modality bridge (a MACHINE account: pulls the worklist export; holds nothing else)",
+  // PLAN 16c T1 — the aide's title names the one thing the role cannot do.
+  pharmacy_assistant: "Pharmacy Assistant (claims, picks and labels; completes NO Schedule H/H1 dispense)",
 };
 
 /** The title for a model role key. Throws rather than inventing one — an unresolved role is a defect. */
