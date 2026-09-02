@@ -61,6 +61,7 @@ import { PcpndtFormF } from "./screens/pcpndt-form-f";
 import { LabCollection } from "./screens/lab-collection";
 import { LabBench } from "./screens/lab-bench";
 import { LabVerify } from "./screens/lab-verify";
+import { LabReports } from "./screens/lab-reports";
 
 /**
  * PLAN 11h T6 — the shell's navigation, PAIRED WITH THE PERMISSION EACH SCREEN'S ROUTE ACTUALLY
@@ -197,6 +198,8 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/lab/collection", label: "nav.labCollection", permission: "lab.collection.operate", group: "opd" },
   { to: "/lab/bench", label: "nav.labBench", permission: "lab.accession.operate", group: "opd" },
   { to: "/lab/verify", label: "nav.labVerify", permission: "lab.results.verify", group: "opd" },
+  /** PLAN 17c T5 — the fifth lab seat, the report centre, on the counter's own permission. */
+  { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "opd" },
   // VD-2 T1 / D1 — Bay One beside `/opd/vitals`, the way `/counter/seat` sits beside `/counter`.
   { to: "/opd/vitals/bay", label: "nav.vitalsBay", permission: "opd.vitals.record", group: "opd" },
 ];
@@ -589,6 +592,12 @@ const labVerifyRoute = createRoute({
   path: "/lab/verify",
   component: LabVerify,
 });
+/** PLAN 17c T5 — the report centre. Path matches `labManifest.menu` exactly. */
+const labReportsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/reports",
+  component: LabReports,
+});
 
 const opdAppointmentsRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -756,6 +765,8 @@ export const router = createRouter({
       // `caddyfile-parity.test.ts` pins the count and joins this task's Files list, which is the
       // S11 rule this repository has now applied to itself six times.
       labDeskRoute, labCollectionRoute, labBenchRoute, labVerifyRoute,
+      // PLAN 17c T5 — the fifth lab seat, the report centre (+1).
+      labReportsRoute,
       // PLAN 18a T9 — 39 -> 44, imaging. FIVE routes and TWO nav links: the study console, the
       // report and the Form F are all reached from a study rather than browsed, and the Form F is
       // unlisted on purpose (see the route's own comment). `caddyfile-parity.test.ts` pins the

@@ -57,7 +57,8 @@
     "radiologyReception": "Imaging reception",
     "radiologyWorklist": "Imaging worklist",
     "counterSeat": "Registration counter (new)",
-    "vitalsBay": "Vitals bay"
+    "vitalsBay": "Vitals bay",
+    "labReports": "Report centre"
   },
   "palette": {
     "title": "Search",
@@ -1646,28 +1647,28 @@
       "collected": "Collected",
       "receipts": "Receipts",
       "cash": "Cash",
-        "noDrawer": "No drawer open",
-        "float": "Opening float",
-        "expectedCash": "Cash the drawer should hold"
+      "noDrawer": "No drawer open",
+      "float": "Opening float",
+      "expectedCash": "Cash the drawer should hold"
     },
-      "patients": {
-        "registration": "Registration",
-        "registered": "Registered by me",
-        "noMobile": "Without a mobile",
-        "duplicatesPending": "Duplicates flagged",
-        "cameBack": "What came back — last 30 days",
-        "duplicatesConfirmed": "Turned out to be duplicates",
-        "noMobileMonth": "Registered without a mobile",
-        "amendedWeek": "Amended within a week"
-      },
-      "appointments": {
-        "title": "Appointments",
-        "dueToday": "Due today",
-        "checkedIn": "Checked in",
-        "missed": "Missed so far",
-        "needsRebooking": "Need rebooking",
-        "rebookRow": "patients to rebook — doctor on leave"
-      }
+    "patients": {
+      "registration": "Registration",
+      "registered": "Registered by me",
+      "noMobile": "Without a mobile",
+      "duplicatesPending": "Duplicates flagged",
+      "cameBack": "What came back — last 30 days",
+      "duplicatesConfirmed": "Turned out to be duplicates",
+      "noMobileMonth": "Registered without a mobile",
+      "amendedWeek": "Amended within a week"
+    },
+    "appointments": {
+      "title": "Appointments",
+      "dueToday": "Due today",
+      "checkedIn": "Checked in",
+      "missed": "Missed so far",
+      "needsRebooking": "Need rebooking",
+      "rebookRow": "patients to rebook — doctor on leave"
+    }
   },
   "report": {
     "opd": {
@@ -1754,7 +1755,7 @@
       "compared": "{{total}} collected, against a median of {{median}}.",
       "drift": "{{total}} collected — {{first}} in the first half, {{second}} in the second."
     },
-      "failed": "The brief could not be read — try again, or ask an administrator."
+    "failed": "The brief could not be read — try again, or ask an administrator."
   },
   "staffReports": {
     "title": "Staff reports",
@@ -1850,7 +1851,8 @@
         "female": "Female",
         "other": "Other",
         "unknown": "Unknown"
-      }
+      },
+      "pathologistOfRecord": "Pathologist of record (walk-in)"
     },
     "collection": {
       "title": "Collection",
@@ -2053,6 +2055,68 @@
     "seat": {
       "department": "Central lab",
       "stats": "Counts this seat watches"
+    },
+    "reports": {
+      "title": "Report centre",
+      "place": "Counter L-01",
+      "publishedStat": "published today",
+      "heldStat": "held for money",
+      "collectedStat": "collected here",
+      "register": "Published · how each one went out",
+      "registerEmpty": "Nothing published yet today.",
+      "registerUnavailable": "The register could not be loaded.",
+      "colPatient": "patient · tests",
+      "colDoctor": "doctor",
+      "colCopy": "patient copy",
+      "colSigned": "signed",
+      "doctorScreen": "on the doctor's screen",
+      "inPersonOnly": "in person only",
+      "held": "HELD",
+      "heldShort": "HELD · {{amount}}",
+      "printWaits": "print waits for the slip",
+      "notice_queued": "notice queued",
+      "notice_sent": "notice sent {{channel}}",
+      "notice_suppressed": "no notice (no number on file)",
+      "notice_expired": "notice expired",
+      "notice_undeliverable": "notice undeliverable",
+      "notice_none": "no notice",
+      "handed": "{{channel}} · {{who}}",
+      "registerNote": "The doctor's screen is never held and never waits. Only the patient's copy carries a channel, a collector, or a hold.",
+      "find": "Hand over at the counter · UHID, mobile or scan the card",
+      "pick": "Pick the patient to see their reports.",
+      "ready_one": "{{count}} report ready",
+      "ready_other": "{{count}} reports ready",
+      "pending_one": "{{count}} result still to come",
+      "pending_other": "{{count}} results still to come",
+      "restricted": "[restricted record]",
+      "report": "Laboratory report",
+      "partial": "PARTIAL",
+      "results_one": "{{count}} result",
+      "results_other": "{{count}} results",
+      "signedBy": "signed {{when}}",
+      "heldLine": "Held: ₹{{amount}} outstanding on {{count}} invoice(s). The print lights the moment billing settles it.",
+      "releaseHint": "If the patient cannot pay today, only the billing manager can release it — the dues stand.",
+      "requestRelease": "Ask the billing manager to release",
+      "releaseRequested": "Release requested — approval {{id}}. Enter it below when granted.",
+      "approvalId": "Approval id",
+      "release": "Release and hand over",
+      "collector": "Collected by (name and relation)",
+      "channel": "Hand over by",
+      "channel_print": "Printed copy",
+      "channel_in_person": "In person",
+      "channel_whatsapp": "WhatsApp (record only)",
+      "print": "Print & hand over",
+      "handedOver": "Handed over · copy {{count}}",
+      "sensitiveNote": "Sensitive tests are handed over in person only, to the patient with ID. No message goes out.",
+      "noticeLine": "Ready notice: {{state}}",
+      "noReports": "No published reports on file.",
+      "earlier": "earlier reports on file",
+      "live": "live",
+      "offline": "offline",
+      "channels": "How the patient's copy travels",
+      "channelsNote": "WhatsApp / SMS carry a values-free notice today; the counter is the door for the paper and for in-person-only tests.",
+      "askElsewhere": "No role can raise this request yet (an owner action). When a billing manager grants a release, enter the approval id here.",
+      "printPaper": "Print the paper"
     }
   },
   "radiology": {
@@ -2270,28 +2334,28 @@
       "closingCover": "Meanwhile a billing manager can cover this counter.",
       "forbidden": "This login cannot hold a cash drawer — a cashier role is needed to take payment here."
     },
-      "figures": {
-        "door": "your figures",
-        "title": "Your figures",
-        "back": "Back to the counter",
-        "today": "Today so far",
-        "deskFailed": "Your desk could not be read — the figures below may be missing",
-        "cameBack": "What came back",
-        "cameBackHint": "the half of this job nobody measures, and the only half you can act on — last 30 days",
-        "duplicates_one": "{{count}} of your registrations turned out to be a duplicate — an urgent merge for somebody else, a four-hour clock, and a history split in half until it closed.",
-        "duplicates_other": "{{count}} of your registrations turned out to be duplicates — each an urgent merge for somebody else, a four-hour clock, and a history split in half until it closed.",
-        "seeMerges": "See them",
-        "noMobile_one": "{{count}} record you created has no mobile number — a follow-up SMS has nowhere to go. Fix it on the next visit.",
-        "noMobile_other": "{{count}} records you created have no mobile number — follow-up SMS have nowhere to go. Fix them on the next visit.",
-        "amended_one": "{{count}} was amended within a week — almost always a spelling, off an ID at the second visit. Reading the name back before Enter is the whole fix.",
-        "amended_other": "{{count}} were amended within a week — almost always a spelling, off an ID at the second visit. Reading the name back before Enter is the whole fix.",
-        "drawer": "The drawer",
-        "noDrawerRole": "This login holds no drawer — the billing counter collects.",
-        "varianceLine": "Counted at close, against this. A variance is a conversation, not an accusation — but it is always a conversation.",
-        "yourDay": "Your day",
-        "yourDayHint": "the signed document: what you registered, what you took, by tender. Provisional until the day is closed.",
-        "reportFailed": "Your day could not be read — nothing is printed until it can be.",
-        "everyone": "everyone's bookings —"
+    "figures": {
+      "door": "your figures",
+      "title": "Your figures",
+      "back": "Back to the counter",
+      "today": "Today so far",
+      "deskFailed": "Your desk could not be read — the figures below may be missing",
+      "cameBack": "What came back",
+      "cameBackHint": "the half of this job nobody measures, and the only half you can act on — last 30 days",
+      "duplicates_one": "{{count}} of your registrations turned out to be a duplicate — an urgent merge for somebody else, a four-hour clock, and a history split in half until it closed.",
+      "duplicates_other": "{{count}} of your registrations turned out to be duplicates — each an urgent merge for somebody else, a four-hour clock, and a history split in half until it closed.",
+      "seeMerges": "See them",
+      "noMobile_one": "{{count}} record you created has no mobile number — a follow-up SMS has nowhere to go. Fix it on the next visit.",
+      "noMobile_other": "{{count}} records you created have no mobile number — follow-up SMS have nowhere to go. Fix them on the next visit.",
+      "amended_one": "{{count}} was amended within a week — almost always a spelling, off an ID at the second visit. Reading the name back before Enter is the whole fix.",
+      "amended_other": "{{count}} were amended within a week — almost always a spelling, off an ID at the second visit. Reading the name back before Enter is the whole fix.",
+      "drawer": "The drawer",
+      "noDrawerRole": "This login holds no drawer — the billing counter collects.",
+      "varianceLine": "Counted at close, against this. A variance is a conversation, not an accusation — but it is always a conversation.",
+      "yourDay": "Your day",
+      "yourDayHint": "the signed document: what you registered, what you took, by tender. Provisional until the day is closed.",
+      "reportFailed": "Your day could not be read — nothing is printed until it can be.",
+      "everyone": "everyone's bookings —"
     }
   },
   "vitalsBay": {
@@ -2312,7 +2376,7 @@
         "stale_version": "That card was reissued — ask for the new one",
         "unknown_patient": "That card belongs to no patient on file"
       },
-        "saving": "A save is still on its way — wait for the ✓ before taking the next person"
+      "saving": "A save is still on its way — wait for the ✓ before taking the next person"
     },
     "valve": {
       "bench": "bench {{count}}",
@@ -2346,7 +2410,7 @@
       "carry": "Carried forward, locked until a reason: {{vitals}}",
       "expectedFlags": "{{count}} expected flag(s) from history",
       "noHistory": "No history to show for this visit",
-        "sealed": "Confidential record — the band is known, the history is sealed at this desk"
+      "sealed": "Confidential record — the band is known, the history is sealed at this desk"
     },
     "band": {
       "infant": "Infant",
@@ -2416,7 +2480,7 @@
       "fix": "It was {{value}}",
       "retake": "Take it again",
       "confirm": "It is real — chart it",
-        "confirmProbe": "It is real — the patient IS that low. Chart it and send"
+      "confirmProbe": "It is real — the patient IS that low. Chart it and send"
     },
     "unlock": {
       "label": "Reason to re-measure",
@@ -2434,8 +2498,8 @@
       "fasting": "khali pet?",
       "bp_med_taken": "BP ki dawa li?",
       "just_climbed_stairs": "abhi seedhi chadh kar aaye?",
-        "yes": "yes",
-        "no": "no"
+      "yes": "yes",
+      "no": "no"
     },
     "lane": {
       "typing": "serial lane OFF · typing",
@@ -2457,9 +2521,9 @@
       "cancel": "CANCEL",
       "committed": "cancel window closed — class 0 stands. Reversing now is a supervisor action, not a keystroke.",
       "cancelled": "Cancelled — back to class {{from}}. The chart keeps the reading.",
-        "again": "Danger reading — take it AGAIN, now, before anything else. Rest is refused at danger numbers.",
-        "rerunAsk": "A cancelled bump is not re-run by the agent. This reading is danger again —",
-        "rerunGo": "run the protocol again"
+      "again": "Danger reading — take it AGAIN, now, before anything else. Rest is refused at danger numbers.",
+      "rerunAsk": "A cancelled bump is not re-run by the agent. This reading is danger again —",
+      "rerunGo": "run the protocol again"
     },
     "rest": {
       "offer": "Elevated, not dangerous — {{minutes}} minutes on the rest chairs, no chai, no phone-pacing. Recall at {{time}}; the first reading is held.",
@@ -2477,10 +2541,10 @@
       "escHint": "Esc abandons",
       "readFailed": "The saved chart could not be read",
       "trail": "by {{by}} at {{at}} — the old value stays in the trail",
-        "carried": "carried forward",
-        "stale": "This chart was amended elsewhere while you were typing — re-open it from the bench to correct the current one"
+      "carried": "carried forward",
+      "stale": "This chart was amended elsewhere while you were typing — re-open it from the bench to correct the current one"
     },
-      "doctor": "Doctor",
-      "allDoctors": "All doctors on the bench"
+    "doctor": "Doctor",
+    "allDoctors": "All doctors on the bench"
   }
 }
