@@ -1,0 +1,248 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#ffffff;color:#000000;
+      font-family:"Helvetica Neue",Helvetica,Arial,"Liberation Sans",sans-serif;
+      font-size:13px;line-height:17px;-webkit-font-smoothing:antialiased}
+    a{color:#d92230;text-decoration:none} a:hover{text-decoration:underline}
+    .num{font-variant-numeric:tabular-nums}
+    .lb{color:#333333;font-weight:400}
+    .vl{color:#000000;font-weight:700}
+    .hrow{display:flex;align-items:baseline;gap:5px;min-height:19px}
+    .hrowr{display:flex;align-items:baseline;gap:5px;min-height:19px;justify-content:flex-end}
+    .rule{height:1px;background:#000000}
+    .thin{height:1px;background:#9a9a9a}
+    .th{text-align:center;padding:6px 8px;border:1px solid #9a9a9a;background:#f0f0f0;
+        font-size:11.5px;font-weight:700;line-height:14px}
+    .td{padding:7px 8px;border:1px solid #9a9a9a;font-size:13px}
+  </style>
+</helmet>
+
+<div style="width:794px;height:1123px;background:#ffffff;padding:26px 30px 20px;display:flex;flex-direction:column">
+
+  <!-- ══ HEADER ═══════════════════════════════════════════════════════════ -->
+  <div style="display:flex;gap:16px;flex-shrink:0">
+
+    <div style="width:140px;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-start">
+      <img src="crk-logo.png" alt="CRK Medical College and Hospital" style="width:78px;height:auto;display:block">
+      <div style="font-size:12px;font-weight:700;color:#55064f;margin-top:5px;line-height:14px">Laboratory Medicine</div>
+    </div>
+
+    <div style="width:268px;display:flex;flex-direction:column;gap:1px">
+      <div class="hrow"><span class="lb">Name:</span><span class="vl">Ms. Muskan Arora</span></div>
+      <div class="hrow"><span class="lb">UHID:</span><span class="vl num">CRK0000184213</span></div>
+      <div class="hrow"><span class="lb">Gender:</span><span class="vl">Female</span></div>
+      <div class="hrow"><span class="lb">DOB:</span><span class="vl num">17-Apr-1998 (28 years)</span></div>
+      <div class="hrow"><span class="lb">Doctor ID:</span><span class="vl num">DR-0114</span></div>
+    </div>
+
+    <div style="flex-grow:1;display:flex;flex-direction:column;gap:1px">
+      <div class="hrowr"><span class="lb">Ordered:</span><span class="vl num">29-Aug-2026 11:52</span></div>
+      <div class="hrowr"><span class="lb">Collected:</span><span class="vl num">29-Aug-2026 12:41</span></div>
+      <div class="hrowr"><span class="lb">Authorised:</span><span class="vl num">29-Aug-2026 15:28</span></div>
+      <div class="hrowr"><span class="lb">Specimen Type:</span><span class="vl">Serum</span></div>
+      <div class="hrowr"><span class="lb">Specimen No:</span><span class="vl num">21024119098</span></div>
+    </div>
+
+    <!-- accreditation -->
+    <div style="width:74px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px">
+      <div style="width:52px;height:52px;border-radius:9999px;border:2px solid #333333;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px">
+        <span style="font-size:11px;font-weight:700;letter-spacing:0.04em">NABL</span>
+        <span style="font-size:7px;color:#333333;letter-spacing:0.02em">ACCREDITED</span>
+      </div>
+      <span class="num" style="font-size:11px;font-weight:700">MC-6925</span>
+    </div>
+  </div>
+
+  <div class="rule" style="margin-top:10px;flex-shrink:0"></div>
+
+  <!-- department band -->
+  <div style="text-align:center;padding:6px 0;font-size:14px;font-weight:700;border-bottom:1px solid #000000;flex-shrink:0">
+    Department of Laboratory Medicine — Biochemistry
+  </div>
+
+  <!-- ══ BODY ═════════════════════════════════════════════════════════════ -->
+  <div style="flex-grow:1;padding-top:14px;display:flex;flex-direction:column;gap:16px;min-height:0">
+
+    <!-- panel title + legend -->
+    <div>
+      <div style="display:flex;align-items:flex-end;gap:14px">
+        <span style="font-size:19px;font-weight:700;color:#d92230;letter-spacing:-0.01em">Liver Function Test</span>
+        <div style="flex-grow:1"></div>
+        <div style="display:flex;align-items:flex-end;gap:14px">
+          <span style="font-size:11px;color:#333333;padding-bottom:2px">Colours indicate:</span>
+          <div style="text-align:center"><div style="font-size:11px">Abnormal</div><div style="height:3px;background:#d92230;margin-top:2px"></div></div>
+          <div style="text-align:center"><div style="font-size:11px">Borderline</div><div style="height:3px;background:#cb882e;margin-top:2px"></div></div>
+          <div style="text-align:center"><div style="font-size:11px">Normal</div><div style="height:3px;background:#08985e;margin-top:2px"></div></div>
+        </div>
+      </div>
+      <div style="height:2px;background:linear-gradient(to right,#d92230,#cb882e 45%,#08985e);margin-top:5px;opacity:0.55"></div>
+    </div>
+
+    <!-- results -->
+    <table style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr>
+          <th class="th" style="text-align:left;width:216px">Test name</th>
+          <th class="th" style="width:118px">29-Aug-2026</th>
+          <th class="th" style="width:74px">Unit</th>
+          <th class="th" style="width:100px">Flag</th>
+          <th class="th">Biological ref.<br>interval</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="td">SGOT (AST)</td>
+          <td class="td num" style="text-align:center;font-weight:700;background:rgba(8,152,94,0.12)">28</td>
+          <td class="td" style="text-align:center">U/L</td>
+          <td class="td" style="text-align:center;color:#08985e;font-weight:600">Normal</td>
+          <td class="td num" style="text-align:center">15 – 40</td>
+        </tr>
+        <tr>
+          <td class="td">SGPT (ALT)</td>
+          <td class="td num" style="text-align:center;font-weight:700;background:rgba(203,136,46,0.16)">54</td>
+          <td class="td" style="text-align:center">U/L</td>
+          <td class="td" style="text-align:center;color:#cb882e;font-weight:600">Borderline</td>
+          <td class="td num" style="text-align:center">10 – 49</td>
+        </tr>
+        <tr>
+          <td class="td">Alkaline phosphatase</td>
+          <td class="td num" style="text-align:center;font-weight:700;background:rgba(8,152,94,0.12)">92</td>
+          <td class="td" style="text-align:center">U/L</td>
+          <td class="td" style="text-align:center;color:#08985e;font-weight:600">Normal</td>
+          <td class="td num" style="text-align:center">30 – 120</td>
+        </tr>
+        <tr>
+          <td class="td">Bilirubin, total</td>
+          <td class="td num" style="text-align:center;font-weight:700;background:rgba(217,34,48,0.13)">1.9</td>
+          <td class="td" style="text-align:center">mg/dL</td>
+          <td class="td" style="text-align:center;color:#d92230;font-weight:700">High</td>
+          <td class="td num" style="text-align:center">0.3 – 1.2</td>
+        </tr>
+        <tr>
+          <td class="td">Bilirubin, direct</td>
+          <td class="td num" style="text-align:center;font-weight:700;background:rgba(8,152,94,0.12)">0.3</td>
+          <td class="td" style="text-align:center">mg/dL</td>
+          <td class="td" style="text-align:center;color:#08985e;font-weight:600">Normal</td>
+          <td class="td num" style="text-align:center">0.0 – 0.4</td>
+        </tr>
+        <tr>
+          <td class="td">Albumin</td>
+          <td class="td num" style="text-align:center;font-weight:700;background:rgba(8,152,94,0.12)">4.2</td>
+          <td class="td" style="text-align:center">g/dL</td>
+          <td class="td" style="text-align:center;color:#08985e;font-weight:600">Normal</td>
+          <td class="td num" style="text-align:center">3.5 – 5.2</td>
+        </tr>
+        <tr>
+          <td class="td">Total protein</td>
+          <td class="td num" style="text-align:center;font-weight:700;background:rgba(8,152,94,0.12)">7.1</td>
+          <td class="td" style="text-align:center">g/dL</td>
+          <td class="td" style="text-align:center;color:#08985e;font-weight:600">Normal</td>
+          <td class="td num" style="text-align:center">6.4 – 8.3</td>
+        </tr>
+        <tr>
+          <td class="td">A / G ratio</td>
+          <td class="td num" style="text-align:center;font-weight:700;background:rgba(8,152,94,0.12)">1.45</td>
+          <td class="td" style="text-align:center">—</td>
+          <td class="td" style="text-align:center;color:#08985e;font-weight:600">Normal</td>
+          <td class="td num" style="text-align:center">1.0 – 2.1</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="border:1px solid #9a9a9a;padding:8px 11px;font-size:12px;line-height:17px">
+      [Methodology] AST/ALT — IFCC without pyridoxal phosphate. ALP — p-Nitrophenyl phosphate, AMP buffer.
+      Bilirubin — Diazo, Jendrassik–Grof. Albumin — BCG. Total protein — Biuret.
+      Analyser: Beckman Coulter AU480, calibrated 29-Aug-2026 07:15.
+    </div>
+
+    <div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:5px">Please note</div>
+      <ol style="margin:0;padding-left:20px;font-size:12.5px;line-height:19px">
+        <li>Test results are to be clinically correlated.</li>
+        <li>A borderline or high value should be repeated before any change of treatment.</li>
+        <li>Specimens are stored and discarded as per the hospital's specimen retention policy.</li>
+        <li>Results are not valid for medico-legal purposes.</li>
+        <li>For any query about these results, contact the laboratory on <span class="num">+91 77648 88189</span>, extension 214.</li>
+      </ol>
+    </div>
+
+    <div style="flex-grow:1"></div>
+
+    <div style="display:flex;gap:60px;justify-content:center;padding-bottom:6px">
+      <div style="text-align:center;width:220px">
+        <div style="height:26px"></div>
+        <div class="thin"></div>
+        <div style="font-size:12px;color:#333333;margin-top:4px">Performed by</div>
+        <div style="font-size:13px;font-weight:700">Pravin Kumar Verma</div>
+        <div style="font-size:11px;color:#555555">Senior Lab Technologist</div>
+      </div>
+      <div style="text-align:center;width:220px">
+        <div style="height:26px"></div>
+        <div class="thin"></div>
+        <div style="font-size:12px;color:#333333;margin-top:4px">Authorised by</div>
+        <div style="font-size:13px;font-weight:700">Dr Manish Kumar</div>
+        <div class="num" style="font-size:11px;color:#555555">MD Biochemistry · NMC BMC/2011/22740</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ FOOTER ═══════════════════════════════════════════════════════════ -->
+  <div style="flex-shrink:0">
+    <div class="rule"></div>
+    <div style="font-size:11px;padding:4px 0 5px">This is a computer generated report. A handwritten signature is not required.</div>
+    <div class="thin"></div>
+
+    <div style="display:flex;gap:14px;padding-top:6px">
+      <div style="flex-grow:1;display:flex;flex-direction:column;gap:3px">
+        <div style="font-size:11.5px"><span class="lb">Address:</span> <span class="vl">CRK Medical College &amp; Hospital,</span> Chaurasia Chowk, Hajipur — 844101, Bihar</div>
+        <div style="display:flex;gap:22px">
+          <div style="font-size:11.5px"><span class="lb">24×7 Hotline:</span> <span class="vl num">+91 77648 88189</span></div>
+          <div style="font-size:11.5px"><span class="lb">Emergency:</span> <span class="vl num">1068</span></div>
+          <div style="flex-grow:1"></div>
+          <div style="font-size:11.5px"><span class="lb">Password to access via QR code:</span> <span class="vl num">85419073</span></div>
+        </div>
+        <div style="display:flex;gap:22px">
+          <div style="font-size:11.5px"><span class="lb">Email:</span> <span class="vl">info@crkmch.com</span></div>
+          <div style="font-size:11.5px"><a href="https://www.crkmch.com" style="font-weight:700">www.crkmch.com</a></div>
+          <div style="flex-grow:1"></div>
+          <div style="font-size:11.5px"><span class="lb">Reports online:</span> <span class="vl">crkmch.com/my</span></div>
+        </div>
+      </div>
+
+      <div style="width:62px;height:62px;flex-shrink:0;background:#000000;padding:3px;display:grid;grid-template-columns:repeat(9,1fr);grid-template-rows:repeat(9,1fr);gap:0">
+        <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div>
+        <div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div>
+        <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div>
+        <div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div></div><div></div><div></div>
+        <div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div>
+        <div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div><div></div>
+        <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div>
+        <div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div>
+        <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div>
+      </div>
+    </div>
+
+    <div class="thin" style="margin-top:6px"></div>
+    <div style="display:flex;align-items:baseline;padding-top:4px">
+      <span class="num" style="font-size:11px;color:#333333">Printed by <strong>rohan.sinha</strong> on 29-Aug-2026 at 17:12</span>
+      <div style="flex-grow:1"></div>
+      <span class="num" style="font-size:11px;color:#333333">Page 1 of 1</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":794,"height":1123}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

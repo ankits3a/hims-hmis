@@ -1,0 +1,295 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#ffffff;color:#0a0a0a;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90;text-decoration:underline}
+    button{font:inherit;color:inherit;cursor:pointer}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .hi{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.55}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .card{border:1px solid #e5e5e5;border-radius:14px;background:#ffffff;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+    .field{height:36px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;display:flex;align-items:center;
+      padding:0 11px;font-size:14px;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+    .chip{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:9999px;
+      border:1px solid #e5e5e5;background:#ffffff;font-size:12.5px;color:#404040}
+    .chipOn{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:9999px;
+      border:1px solid #171717;background:#171717;color:#fafafa;font-size:12.5px;font-weight:500}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden">
+
+  <!-- CHROME -->
+  <div style="display:flex;align-items:center;gap:16px;height:52px;padding:0 20px;border-bottom:1px solid #e5e5e5;background:#fafafa;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:24px;height:24px;border-radius:6px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:-0.02em">CRK</div>
+      <span style="font-size:14px;font-weight:600">Enquiry</span>
+    </div>
+    <div style="width:1px;height:20px;background:#e5e5e5"></div>
+    <span style="font-size:13px;color:#525252">Main lobby · <span style="color:#0a0a0a;font-weight:500">Ekta Gandhi</span></span>
+    <div style="flex-grow:1"></div>
+    <span class="num" style="font-size:13px;color:#737373">Sat 29-Aug-2026 · 11:14</span>
+  </div>
+
+  <!-- TITLE -->
+  <div style="padding:18px 24px 14px;flex-shrink:0;display:flex;align-items:flex-end;gap:16px;border-bottom:1px solid #e5e5e5">
+    <div>
+      <div style="display:flex;align-items:baseline;gap:12px">
+        <h1 style="margin:0;font-size:21px;font-weight:600;letter-spacing:-0.02em">Record a complaint</h1>
+        <span class="hi" style="font-size:17px;color:#737373">शिकायत दर्ज करें</span>
+      </div>
+      <div style="font-size:12.5px;color:#525252;margin-top:4px;max-width:700px;line-height:18px">
+        Nobody fills in a feedback form. Everything this hospital ever learns unprompted is said out loud, to Ekta, by somebody
+        who is already leaving &#8212; so the form has to be finished before they finish talking.
+      </div>
+    </div>
+    <div style="flex-grow:1"></div>
+    <div style="display:flex;align-items:center;gap:9px;padding:8px 13px;border-radius:10px;background:#f5f5f5;border:1px solid #e5e5e5">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      <span style="font-size:12.5px;color:#404040">Six fields, four of them optional. Target: <strong style="font-weight:600">under 40 seconds</strong>.</span>
+    </div>
+  </div>
+
+  <div style="flex-grow:1;min-height:0;display:flex;gap:16px;padding:16px 24px 18px">
+
+    <!-- ══════════ THE FORM ══════════ -->
+    <div style="width:812px;display:flex;flex-direction:column;gap:13px;min-height:0">
+
+      <!-- WHAT HAPPENED — first, because it is what they are already saying -->
+      <div class="card" style="padding:15px 18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <span style="font-size:14px;font-weight:600">What happened</span>
+          <span style="font-size:11.5px;color:#737373">tap the nearest one, then type what they actually said</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:11px">
+          <span class="chipOn">Waiting too long</span>
+          <span class="chip">Staff behaviour</span>
+          <span class="chip">Cleanliness</span>
+          <span class="chip">Billing</span>
+          <span class="chip">Doctor not available</span>
+          <span class="chip">Facility broken</span>
+          <span class="chip">Could not find anything</span>
+          <span class="chip">Something else</span>
+        </div>
+        <div style="border-radius:10px;border:1px solid #171717;background:#ffffff;box-shadow:0 0 0 3px rgba(161,161,161,0.35);padding:11px 13px;min-height:82px;font-size:14px;line-height:21px">
+          Waited from 8:40 for Dr Rao, token 38. At 10:30 was told he had gone to Emergency and nobody had said anything for two hours. Had come from Sonepur with her mother.<span style="width:1px;height:18px;background:#0a0a0a;display:inline-block;vertical-align:middle;margin-left:2px"></span>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:8px;margin-top:9px">
+          <svg style="margin-top:2px;flex-shrink:0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span style="font-size:11.5px;color:#737373;line-height:16.5px">In English, in Hindi, or in both &#8212; whatever she types fastest. Nobody paraphrases a complaint into house style; the words are the evidence.</span>
+        </div>
+      </div>
+
+      <!-- WHERE AND WHEN -->
+      <div class="card" style="padding:15px 18px">
+        <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:14px">
+          <div>
+            <div class="lbl" style="margin-bottom:7px">Where</div>
+            <div class="field"><span>General Medicine &#183; OPD 1st floor</span></div>
+            <div style="font-size:11px;color:#737373;margin-top:5px">Pre-filled from what she last looked up</div>
+          </div>
+          <div>
+            <div class="lbl" style="margin-bottom:7px">When</div>
+            <div class="field"><span class="num">Today, 08:40 – 10:30</span></div>
+            <div style="font-size:11px;color:#737373;margin-top:5px">Defaults to now; she widened it</div>
+          </div>
+          <div>
+            <div class="lbl" style="margin-bottom:7px">Who they saw <span style="font-weight:400;text-transform:none;letter-spacing:0">— optional</span></div>
+            <div class="field" style="color:#a1a1a1"><span>Nobody named</span></div>
+            <div style="font-size:11px;color:#737373;margin-top:5px">Never guessed for them</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- WHO -->
+      <div class="card" style="padding:15px 18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:11px">
+          <span style="font-size:14px;font-weight:600">Who is complaining <span style="font-weight:400;font-size:12.5px;color:#737373">— optional, and it must stay optional</span></span>
+          <span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:#404040">
+            <span style="width:34px;height:20px;border-radius:9999px;background:#e5e5e5;position:relative;display:inline-block"><span style="position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:9999px;background:#ffffff;box-shadow:0 1px 2px 0 rgba(0,0,0,0.15)"></span></span>
+            Record anonymously
+          </span>
+        </div>
+        <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:14px">
+          <div>
+            <div class="lbl" style="margin-bottom:7px">Name</div>
+            <div class="field"><span>Sunita Devi</span></div>
+          </div>
+          <div>
+            <div class="lbl" style="margin-bottom:7px">Mobile</div>
+            <div class="field"><span class="num">94310 27788</span></div>
+          </div>
+          <div>
+            <div class="lbl" style="margin-bottom:7px">UHID <span style="font-weight:400;text-transform:none;letter-spacing:0">— if they have one</span></div>
+            <div class="field" style="color:#a1a1a1"><span>—</span></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid #e5e5e5">
+          <svg style="margin-top:2px;flex-shrink:0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span style="font-size:11.5px;color:#737373;line-height:16.5px">
+            An anonymous complaint is worth more than no complaint, and the ones about staff behaviour are almost always anonymous.
+            With no mobile there is no SMS, so the number has to be said out loud and remembered &#8212; which is the whole reason it is four digits.
+          </span>
+        </div>
+      </div>
+
+      <!-- SEVERITY -->
+      <div class="card" style="padding:15px 18px;flex-grow:1;min-height:0">
+        <div style="font-size:14px;font-weight:600;margin-bottom:11px">How bad is it</div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px">
+          <div style="border:1px solid #171717;border-radius:10px;padding:12px 14px;background:#fafafa">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span style="width:9px;height:9px;border-radius:9999px;background:#cb882e"></span>
+              <span style="font-size:13px;font-weight:600">Routine</span>
+            </div>
+            <div style="font-size:11.5px;color:#525252;line-height:16.5px">Department head answers. Substantive reply within <strong style="font-weight:600">7 working days</strong>.</div>
+          </div>
+          <div style="border:1px solid #e5e5e5;border-radius:10px;padding:12px 14px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span style="width:9px;height:9px;border-radius:9999px;background:#e7000b"></span>
+              <span style="font-size:13px;font-weight:600">Serious</span>
+            </div>
+            <div style="font-size:11.5px;color:#525252;line-height:16.5px">Duty Manager is notified now and must respond <strong style="font-weight:600">within 24 hours</strong>.</div>
+          </div>
+          <div style="border:1px solid rgba(231,0,11,0.35);border-radius:10px;padding:12px 14px;background:rgba(231,0,11,0.04)">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e7000b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></svg>
+              <span style="font-size:13px;font-weight:600;color:#e7000b">Somebody was harmed</span>
+            </div>
+            <div style="font-size:11.5px;color:#404040;line-height:16.5px">This stops being a complaint. It becomes an <strong style="font-weight:600">incident</strong>, goes to the Medical Superintendent, and the clock starts immediately.</div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button style="flex-grow:1;height:44px;border-radius:10px;border:1px solid #171717;background:#171717;color:#fafafa;font-size:14px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:9px">
+            Record it
+            <span class="num" style="font-size:12px;color:#a1a1a1;font-weight:400">Ctrl + Enter</span>
+          </button>
+          <button style="width:150px;height:44px;border-radius:10px;border:1px solid #e5e5e5;background:#ffffff;font-size:14px;font-weight:500;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ WHAT HAPPENS NEXT ══════════ -->
+    <div style="flex-grow:1;display:flex;flex-direction:column;gap:13px;min-height:0">
+
+      <!-- THE ACKNOWLEDGEMENT — with nothing to hand over, this is the whole receipt -->
+      <div style="border:2px solid #171717;border-radius:14px;background:#ffffff;padding:16px 18px">
+        <div class="lbl" style="margin-bottom:11px">She reads this back</div>
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="border:2px solid #171717;border-radius:12px;padding:9px 18px;text-align:center">
+            <div class="num" style="font-size:34px;font-weight:700;letter-spacing:0.02em;line-height:38px">4471</div>
+          </div>
+          <div style="font-size:12px;color:#525252;line-height:17px">
+            Four digits, said aloud and remembered. <strong style="font-weight:600;color:#0a0a0a">Not a ULID and not a date-stamped
+            reference</strong> &#8212; with no printer at this desk, anything longer is lost before they reach the gate.
+          </div>
+        </div>
+        <div class="hi" style="font-size:17px;font-weight:500;margin-top:14px;padding:12px 14px;border-radius:10px;background:#fafafa;border:1px solid #e5e5e5">
+          आपकी शिकायत दर्ज हो गई है। नंबर है <span class="num" style="font-weight:700">4471</span> — लिख लीजिए। <span class="num">7</span> दिन में जवाब आएगा, और आपके नंबर पर SMS भी भेज रही हूँ।
+        </div>
+        <div style="font-size:11.5px;color:#525252;margin-top:8px;line-height:16.5px">
+          &#8220;Your complaint is recorded. The number is 4471 &#8212; write it down. You'll have an answer within seven days, and I'm sending an SMS to your number as well.&#8221;
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;margin-top:12px;padding-top:11px;border-top:1px solid #e5e5e5">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#218cb5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/></svg>
+          <span style="font-size:12px;color:#404040;line-height:17px">The SMS <strong style="font-weight:600">is the paper</strong>. It carries the number, the date and the hotline &#8212; and it is the only thing they leave with.</span>
+        </div>
+      </div>
+
+      <!-- THE CLOCK -->
+      <div class="card" style="padding:15px 18px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:11px">Then the clock runs without her</div>
+        <div style="display:flex;flex-direction:column;gap:0">
+          <div style="display:flex;gap:12px">
+            <div style="display:flex;flex-direction:column;align-items:center;width:16px;flex-shrink:0">
+              <span style="width:9px;height:9px;border-radius:9999px;background:#318f5a;margin-top:5px"></span>
+              <span style="width:1px;flex-grow:1;background:#e5e5e5"></span>
+            </div>
+            <div style="padding-bottom:13px">
+              <div style="font-size:12.5px;font-weight:600">Now &#183; recorded</div>
+              <div style="font-size:11.5px;color:#737373;line-height:16px">Ekta is finished. Nothing else is hers.</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:12px">
+            <div style="display:flex;flex-direction:column;align-items:center;width:16px;flex-shrink:0">
+              <span style="width:9px;height:9px;border-radius:9999px;background:#cb882e;margin-top:5px"></span>
+              <span style="width:1px;flex-grow:1;background:#e5e5e5"></span>
+            </div>
+            <div style="padding-bottom:13px">
+              <div style="font-size:12.5px;font-weight:600">Same day &#183; the department head sees it</div>
+              <div style="font-size:11.5px;color:#737373;line-height:16px">On their own dashboard, not in an inbox they can archive.</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:12px">
+            <div style="display:flex;flex-direction:column;align-items:center;width:16px;flex-shrink:0">
+              <span style="width:9px;height:9px;border-radius:9999px;background:#cb882e;margin-top:5px"></span>
+              <span style="width:1px;flex-grow:1;background:#e5e5e5"></span>
+            </div>
+            <div style="padding-bottom:13px">
+              <div style="font-size:12.5px;font-weight:600">Day 7 &#183; a reply, or it escalates itself</div>
+              <div style="font-size:11.5px;color:#737373;line-height:16px">Unanswered on day 7 it moves to the Medical Superintendent automatically. A complaint nobody answered is the second complaint.</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:12px">
+            <div style="display:flex;flex-direction:column;align-items:center;width:16px;flex-shrink:0">
+              <span style="width:9px;height:9px;border-radius:9999px;background:#218cb5;margin-top:5px"></span>
+            </div>
+            <div>
+              <div style="font-size:12.5px;font-weight:600">Monthly &#183; counted, by category and by department</div>
+              <div style="font-size:11.5px;color:#737373;line-height:16px">Nine &#8220;waited too long&#8221; against General Medicine in a month is an operational fact, not nine bad days.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- THE OTHER WRITE — hers, not the patient's -->
+      <div class="card" style="padding:15px 18px;flex-grow:1;min-height:0;display:flex;flex-direction:column">
+        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:9px">
+          <span style="font-size:14px;font-weight:600">The other write is hers</span>
+          <span class="num" style="font-size:11.5px;color:#a1a1a1">F10</span>
+        </div>
+        <div style="font-size:12px;color:#525252;line-height:17px">
+          &#8220;Notify administration&#8221; is a different thing wearing the same button. A complaint is the patient's voice and it is
+          formal, clocked and answerable. This is <strong style="font-weight:600;color:#0a0a0a">Ekta's own eyes</strong> &#8212; and from a chair in
+          the main lobby she sees things no dashboard reports.
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:12px">
+          <span class="chip">Counter unmanned</span>
+          <span class="chip">Lift out</span>
+          <span class="chip">Crowd building</span>
+          <span class="chip">Nobody at a desk</span>
+          <span class="chip">Ambulance arriving</span>
+          <span class="chip">Something spilled</span>
+        </div>
+        <div style="margin-top:12px;padding:11px 13px;border-radius:10px;background:#f5f5f5;border:1px solid #e5e5e5">
+          <div class="num" style="font-size:12.5px;font-weight:600">Counter 2 unmanned since 10:35 &#183; about 14 people</div>
+          <div style="font-size:11.5px;color:#737373;margin-top:4px;line-height:16px">Two taps and it is on the Duty Manager's floor board. No number, no reply, no clock &#8212; it is a signal, not a case, and it should cost her four seconds.</div>
+        </div>
+        <div style="flex-grow:1"></div>
+        <div style="display:flex;align-items:flex-start;gap:9px;padding-top:11px;border-top:1px solid #e5e5e5">
+          <svg style="margin-top:2px;flex-shrink:0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span style="font-size:11px;color:#737373;line-height:15.5px">Drawn as two buttons of equal weight, these two get confused, and the fast one wins &#8212; every genuine complaint gets filed as a floor note because that is the one that does not ask questions.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

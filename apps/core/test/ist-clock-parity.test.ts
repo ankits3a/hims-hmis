@@ -110,6 +110,13 @@ const SITES: { file: string; expr: string }[] = [
   // whole reason not to do it: a reader asking "where does the laboratory decide what time it is"
   // must find this line. One mechanism, counted in one place, argued for in writing.
   { file: "src/modules/lab/verify.ts", expr: "5.5 * 60 * 60 * 1000" },
+  // PLAN 18b T1 — THE THIRTEENTH, caught by this census on the task's first CI run (the module's
+  // own suite was green; this file runs only in the workspace run — the same sentence as the two
+  // above, a third time). `mwl.ts` renders the DICOM modality worklist's Scheduled Procedure Step
+  // DATE and TIME, and both must be the hospital's clock: a 01:30 IST slot rendered on the UTC day
+  // is yesterday's item, invisible to a modality filtering by today (18a F52's window; 18b close
+  // review A1 found exactly that). Derived from the kernel's export, declared here, one place.
+  { file: "src/modules/radiology/mwl.ts", expr: "IST_UTC_OFFSET_MINUTES * 60_000" },
 ];
 
 /** A product of number literals, with `IST_UTC_OFFSET_MINUTES` resolved. No eval, no Function. */
@@ -155,7 +162,7 @@ describe("the IST clock is the same clock everywhere (09a close, ledger §2.105)
       .toEqual({ sitesWhoseExpressionMoved: [] });
   });
 
-  it("the census is pinned — a TWELFTH copy of the hospital clock is a deliberate change", () => {
+  it("the census is pinned — a THIRTEENTH copy of the hospital clock is a deliberate change", () => {
     const carrying = new Set<string>();
     for (const file of sourceFiles(join(CORE, "src"))) {
       for (const line of readFileSync(file, "utf8").split("\n")) {

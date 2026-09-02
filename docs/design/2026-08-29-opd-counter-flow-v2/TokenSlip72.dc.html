@@ -1,0 +1,154 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&amp;display=swap">
+  <style>
+    *{box-sizing:border-box}
+    /* 80 mm roll · 72 mm PRINTABLE width = 576 dots at 203 dpi = 272 px at 96 px/inch.
+       80 mm is the paper; 72 mm is what the head can actually reach. Same thing. */
+    body{margin:0;background:#ffffff;color:#000000;
+      font-family:"Helvetica Neue",Helvetica,Arial,"Liberation Sans",sans-serif;
+      font-size:11px;line-height:15px;font-weight:400;-webkit-font-smoothing:antialiased}
+    a{color:#000000;text-decoration:none}
+    .num{font-variant-numeric:tabular-nums}
+    /* Devanagari never below 11 pt (≈14 px here) — see the Devanagari rules sheet */
+    .hi{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.55}
+    .dash{height:1px;background:repeating-linear-gradient(to right,#000 0 3px,transparent 3px 6px);opacity:0.5}
+    .kv{display:flex;justify-content:space-between;gap:8px;line-height:16px}
+    .k{color:#3a3a3a}
+    /*
+      INK BUDGET — the saving comes from how MANY things are bold, not from
+      thinning all of them. Three bold zones on this slip and no more:
+      the token number, the amount due, and the UNPAID box. Everything else
+      sits at 400, and 600 is used only where an 8-10 px glyph would otherwise
+      break up on a worn 203 dpi head.
+    */
+    /* Values stay at 600 against 400 labels. On screen the grey `.k` separates
+       them; on a monochrome thermal print there is no grey, so WEIGHT is the
+       only thing left telling a label apart from its value. */
+    .v{font-weight:600;text-align:right}
+    .cap{font-size:8.5px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:#4a4a4a}
+    .sep{color:#8a8a8a;font-weight:400}
+    .bar{background:#000000}
+  </style>
+</helmet>
+
+<div style="width:272px;background:#ffffff;padding:12px 10px 13px;display:flex;flex-direction:column">
+
+  <!-- ── LETTERHEAD ────────────────────────────────────────────────────── -->
+  <div style="text-align:center">
+    <div style="font-size:12px;font-weight:600;letter-spacing:-0.01em;line-height:14px">CRK MEDICAL COLLEGE &amp; HOSPITAL</div>
+    <div style="font-size:9px;color:#3a3a3a;line-height:12px;margin-top:2px">Chaurasia Chowk, Hajipur — 844101, Bihar</div>
+    <div class="num" style="font-size:9px;color:#3a3a3a;line-height:12px">Hotline +91 77648 88189 · Emergency 1068</div>
+  </div>
+
+  <!-- ── BARCODE, DIRECTLY BELOW THE ADDRESS ───────────────────────────── -->
+  <div style="display:flex;flex-direction:column;align-items:center;margin-top:9px">
+    <div style="display:flex;align-items:stretch;gap:0;height:36px">
+      <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:3px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:2px"></div><div class="bar" style="width:2px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:3px"></div><div class="bar" style="width:3px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:1px"></div><div class="bar" style="width:2px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:3px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:3px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:2px"></div><div class="bar" style="width:2px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:1px"></div><div class="bar" style="width:3px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:3px"></div><div style="width:2px"></div><div class="bar" style="width:2px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:2px"></div><div class="bar" style="width:1px"></div><div style="width:3px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:3px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:1px"></div><div class="bar" style="width:2px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:3px"></div><div style="width:1px"></div><div class="bar" style="width:2px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:2px"></div><div class="bar" style="width:3px"></div><div style="width:1px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:3px"></div><div style="width:2px"></div>
+      <div class="bar" style="width:1px"></div><div style="width:1px"></div><div class="bar" style="width:2px"></div>
+    </div>
+    <div class="num" style="font-size:9.5px;letter-spacing:0.16em;margin-top:3px">2608290047</div>
+  </div>
+
+  <div class="dash" style="margin-top:9px"></div>
+
+  <!-- ── TOKEN · bold zone 1 · the one glyph read across a hall ────────── -->
+  <div style="text-align:center;padding:9px 0 8px">
+    <div class="cap">Token</div>
+    <div class="num" style="font-size:62px;font-weight:700;line-height:60px;letter-spacing:-0.04em">53</div>
+    <div style="font-size:14px;font-weight:600;margin-top:5px;line-height:17px">Dr Anand Rao</div>
+    <div style="font-size:10px;color:#3a3a3a;line-height:13px">General Medicine</div>
+    <div style="display:inline-flex;align-items:baseline;gap:6px;margin-top:6px;border:1.5px solid #000000;padding:3px 11px">
+      <span class="cap" style="letter-spacing:0.10em">Room</span>
+      <span class="num" style="font-size:17px;font-weight:600;line-height:18px">104</span>
+      <span class="sep" style="font-size:11px">·</span>
+      <span style="font-size:9.5px;color:#3a3a3a">1st floor</span>
+    </div>
+  </div>
+
+  <div class="dash"></div>
+
+  <!-- ── PATIENT · four lines, nothing more ────────────────────────────── -->
+  <div style="padding:9px 0">
+    <div class="kv"><span class="k">Patient</span><span class="v">Muskan Arora</span></div>
+    <div class="kv"><span class="k">Age / Sex</span><span class="v num">28 y / F</span></div>
+    <div class="kv"><span class="k">UHID</span><span class="v num">CRK0000184213</span></div>
+    <div class="kv"><span class="k">Encounter ID</span><span class="v num">2608290047</span></div><div class="kv"><span class="k">Date</span><span class="v num">29-Aug-2026</span></div>
+  </div>
+
+  <div class="dash"></div>
+
+  <!-- ── MONEY · bold zone 2 ───────────────────────────────────────────── -->
+  <div style="padding:9px 0 8px">
+    <div class="kv"><span class="k">OPD consultation</span><span class="v num">₹300.00</span></div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:5px;padding-top:5px;border-top:1px solid #b5b5b5">
+      <span style="font-size:12px;font-weight:600">TOTAL DUE</span>
+      <span class="num" style="font-size:19px;font-weight:700;letter-spacing:-0.02em">₹300.00</span>
+    </div>
+  </div>
+
+  <!--
+    ── UNPAID · bold zone 3 ──
+    Outlined rather than a filled block: a full-width black flood is heat,
+    head wear and curl on a cheap roll. The 1.5 px rule plus bold type inside
+    carries the same emphasis for a fraction of the ink.
+  -->
+  <div style="padding:6px 8px;text-align:center;background-color:#ffffff;border:1.5px solid #000000">
+    <div style="font-size:15px;font-weight:700;letter-spacing:0.10em;color:#000000;line-height:17px">UNPAID</div>
+    <div class="hi" style="font-size:14px;font-weight:700;color:#000000">भुगतान शेष — काउंटर 5</div>
+  </div>
+
+  <div style="font-size:9.5px;color:#3a3a3a;line-height:13px;text-align:center;padding:6px 0 0">
+    Slip lapses at <span class="num" style="font-weight:600">11:48</span> if unpaid. Your place is held until then.
+  </div>
+
+  <div class="dash" style="margin-top:8px"></div>
+
+  <!-- ── NEXT ──────────────────────────────────────────────────────────── -->
+  <div style="padding:9px 0 0;text-align:center">
+    <div class="cap" style="margin-bottom:5px">Go next to</div>
+    <div style="font-size:12px;line-height:15px"><span style="font-weight:600">1</span> <span class="sep">·</span> Billing, Counter 5 — ground floor</div>
+    <div class="hi" style="font-size:14px;color:#1a1a1a">बिलिंग काउंटर 5, भूतल</div>
+    <div style="font-size:12px;line-height:15px;margin-top:5px"><span style="font-weight:600">2</span> <span class="sep">·</span> Vitals desk — 1st floor</div>
+    <div class="hi" style="font-size:14px;color:#1a1a1a">प्राथमिक जाँच डेस्क, प्रथम तल</div>
+  </div>
+
+  <div class="dash" style="margin-top:9px"></div>
+
+  <!-- ── FOOT ──────────────────────────────────────────────────────────── -->
+  <div class="num" style="padding-top:8px;text-align:center;font-size:9px;color:#3a3a3a;line-height:12px">
+    Printed by anshuman.prasad on 29-Aug-2026 11:18
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":272,"height":700}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

@@ -1,0 +1,341 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#ffffff;color:#0a0a0a;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90;text-decoration:underline}
+    button{font:inherit;color:inherit;cursor:pointer;text-align:left}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .card{border:1px solid #e5e5e5;border-radius:14px;background:#ffffff;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+    .qrow{cursor:grab}
+    .qrow:active{cursor:grabbing}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden">
+
+  <!-- CHROME -->
+  <div style="display:flex;align-items:center;gap:16px;height:52px;padding:0 20px;border-bottom:1px solid #e5e5e5;background:#fafafa;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:24px;height:24px;border-radius:6px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:-0.02em">CRK</div>
+      <span style="font-size:14px;font-weight:600">Consultation room 104</span>
+    </div>
+    <div style="width:1px;height:20px;background:#e5e5e5"></div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#525252">
+      <span style="color:#0a0a0a;font-weight:500">Dr Anand Rao</span>
+      <span style="color:#d4d4d4">·</span>
+      <span>attendant <strong style="color:#0a0a0a;font-weight:500">Suresh Yadav</strong> also signed in</span>
+    </div>
+    <div style="flex-grow:1"></div>
+    <div style="display:flex;align-items:center;gap:14px;font-size:13px;color:#737373">
+      <span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:9999px;background:rgba(49,143,90,0.10);font-size:12px;font-weight:600;color:#318f5a">
+        <span style="width:6px;height:6px;border-radius:9999px;background:#318f5a"></span>Session in · 09:00–17:00
+      </span>
+      <span class="num">Sat 29 Aug 2026 · 11:32</span>
+      <div style="width:26px;height:26px;border-radius:9999px;background:#e5e5e5;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#404040">AR</div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-grow:1;min-height:0">
+
+    <!-- ── LEFT: WHO IS IN THE ROOM ─────────────────────────────────────── -->
+    <div style="width:322px;border-right:1px solid #e5e5e5;background:#fafafa;display:flex;flex-direction:column;min-height:0;padding:18px">
+      <div class="lbl" style="margin-bottom:9px">In the room now</div>
+      <div class="card" style="padding:16px 18px">
+        <sc-if value="{{hasNow}}" hint-placeholder-val="{{true}}">
+          <div>
+            <div style="display:flex;align-items:baseline;gap:10px">
+              <span class="num" style="font-size:34px;font-weight:700;letter-spacing:-0.03em;line-height:36px">{{now.token}}</span>
+              <span style="font-size:12px;color:#737373" class="num">{{now.since}}</span>
+            </div>
+            <div style="font-size:16px;font-weight:600;margin-top:6px">{{now.name}}</div>
+            <div style="font-size:13px;color:#525252">{{now.who}}</div>
+            <div class="num" style="font-size:12px;color:#737373;margin-top:9px;padding-top:9px;border-top:1px solid #e5e5e5">{{now.vitals}}</div>
+            <div style="font-size:13px;margin-top:9px;color:#404040">{{now.complaint}}</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{noNow}}" hint-placeholder-val="{{false}}">
+          <div style="text-align:center;padding:22px 0;color:#a1a1a1">
+            <div style="font-size:14px;font-weight:500">Room empty</div>
+            <div style="font-size:12px;margin-top:3px">Press Call next when you are ready</div>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px">
+        <div class="card" style="padding:12px 14px">
+          <div class="lbl">Seen today</div>
+          <div class="num" style="font-size:24px;font-weight:600;letter-spacing:-0.02em;margin-top:2px">{{seen}}</div>
+        </div>
+        <div class="card" style="padding:12px 14px">
+          <div class="lbl">Average</div>
+          <div class="num" style="font-size:24px;font-weight:600;letter-spacing:-0.02em;margin-top:2px">6.4<span style="font-size:13px;font-weight:400;color:#737373"> min</span></div>
+        </div>
+      </div>
+
+      <div class="card" style="padding:14px 16px;margin-top:14px">
+        <div class="lbl" style="margin-bottom:9px">Priority ladder</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#525252"><span style="width:8px;height:8px;border-radius:2px;background:#e7000b;flex-shrink:0"></span>Danger vitals</div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#525252"><span style="width:8px;height:8px;border-radius:2px;background:#218cb5;flex-shrink:0"></span>Returned with results</div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#525252"><span style="width:8px;height:8px;border-radius:2px;background:#cb882e;flex-shrink:0"></span>Appointment due</div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#525252"><span style="width:8px;height:8px;border-radius:2px;background:#a1a1a1;flex-shrink:0"></span>Walk-in</div>
+        </div>
+        <div style="font-size:11px;color:#737373;line-height:16px;margin-top:11px;padding-top:11px;border-top:1px solid #e5e5e5">
+          The ladder is the default order. Drag a row to override it — the board updates the moment you let go, and the move is written down with your name.
+        </div>
+      </div>
+
+      <div style="flex-grow:1"></div>
+
+      <div style="padding:12px 14px;border-radius:12px;background:#ffffff;border:1px solid #e5e5e5">
+        <div class="lbl" style="margin-bottom:7px">Who can reorder</div>
+        <div style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:#404040">
+          <div style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:9999px;background:#318f5a"></span>You</div>
+          <div style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:9999px;background:#318f5a"></span>Suresh Yadav, attendant</div>
+          <div style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:9999px;background:#a1a1a1"></span>Duty manager, on request</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CENTRE: THE QUEUE ────────────────────────────────────────────── -->
+    <div style="flex-grow:1;display:flex;flex-direction:column;min-height:0">
+      <div style="display:flex;align-items:baseline;gap:12px;padding:16px 22px 12px;flex-shrink:0">
+        <span style="font-size:16px;font-weight:600">Ready to be called</span>
+        <span class="num" style="font-size:13px;color:#737373">{{count}} with vitals done</span>
+        <div style="flex-grow:1"></div>
+        <span style="font-size:12px;color:#737373">{{moveNote}}</span>
+      </div>
+
+      <div style="flex-grow:1;overflow-y:auto;padding:0 22px 16px;display:flex;flex-direction:column;gap:7px">
+        <sc-for list="{{queue}}" as="p" hint-placeholder-count="7">
+          <div draggable="true" class="qrow"
+               onDragStart="{{ p.grab }}" onDragOver="{{ p.over }}" onDrop="{{ p.drop }}" onDragEnd="{{ p.end }}"
+               style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;border:{{p.border}};background:{{p.bg}};opacity:{{p.opacity}};box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)">
+
+            <div style="width:3px;height:38px;border-radius:2px;background:{{p.class_colour}};flex-shrink:0"></div>
+
+            <svg width="14" height="16" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="9" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="18" r="1"/></svg>
+
+            <span class="num" style="width:34px;font-size:19px;font-weight:700;letter-spacing:-0.02em;color:{{p.tokenFg}}">{{p.token}}</span>
+
+            <div style="display:flex;flex-direction:column;gap:1px;width:186px;min-width:0">
+              <span style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{p.name}}</span>
+              <span style="font-size:12px;color:#737373">{{p.who}}</span>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:1px;width:172px">
+              <span class="num" style="font-size:12px;color:{{p.vitalsFg}};font-weight:{{p.vitalsWeight}}">{{p.vitals}}</span>
+              <span style="font-size:11px;color:#a1a1a1">vitals {{p.vitalsAt}}</span>
+            </div>
+
+            <span style="flex-grow:1;font-size:13px;color:#404040;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{p.complaint}}</span>
+
+            <span style="display:inline-flex;align-items:center;height:21px;padding:0 9px;border-radius:9999px;background:{{p.tagBg}};color:{{p.tagFg}};font-size:11px;font-weight:600;flex-shrink:0">{{p.tag}}</span>
+
+            <span class="num" style="width:58px;text-align:right;font-size:12px;color:#737373">{{p.waited}}</span>
+
+            <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0">
+              <button onClick="{{ p.up }}" style="width:22px;height:17px;border-radius:5px;border:1px solid #e5e5e5;background:#ffffff;display:flex;align-items:center;justify-content:center;padding:0">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="3" stroke-linecap="round"><path d="m18 15-6-6-6 6"/></svg>
+              </button>
+              <button onClick="{{ p.down }}" style="width:22px;height:17px;border-radius:5px;border:1px solid #e5e5e5;background:#ffffff;display:flex;align-items:center;justify-content:center;padding:0">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="3" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+            </div>
+          </div>
+        </sc-for>
+
+        <!-- NOT CALLABLE YET -->
+        <div style="margin-top:12px;padding:13px 15px;border-radius:12px;border:1px dashed #d4d4d4;background:#fafafa">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:9px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <span class="lbl">Booked, but not callable — vitals not done</span>
+            <div style="flex-grow:1"></div>
+            <span class="num" style="font-size:12px;color:#737373">4 patients</span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:7px">
+            <span class="num" style="display:inline-flex;align-items:center;height:26px;padding:0 11px;border-radius:9999px;background:#ffffff;border:1px solid #e5e5e5;font-size:12px;color:#525252">46 · Asha Devi</span>
+            <span class="num" style="display:inline-flex;align-items:center;height:26px;padding:0 11px;border-radius:9999px;background:#ffffff;border:1px solid #e5e5e5;font-size:12px;color:#525252">48 · Imran Sheikh</span>
+            <span class="num" style="display:inline-flex;align-items:center;height:26px;padding:0 11px;border-radius:9999px;background:#ffffff;border:1px solid #e5e5e5;font-size:12px;color:#525252">49 · Md. Sabir</span>
+            <span class="num" style="display:inline-flex;align-items:center;height:26px;padding:0 11px;border-radius:9999px;background:#ffffff;border:1px solid #e5e5e5;font-size:12px;color:#525252">50 · Preeti Ranjan</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RIGHT: CALL NEXT + THE BOARD ─────────────────────────────────── -->
+    <div style="width:296px;border-left:1px solid #e5e5e5;background:#fafafa;display:flex;flex-direction:column;min-height:0;padding:18px">
+
+      <button onClick="{{ callNext }}" style="height:96px;border-radius:14px;border:none;background:#171717;color:#fafafa;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;box-shadow:0 1px 3px 0 rgba(0,0,0,0.15)">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+        <span style="font-size:17px;font-weight:600">Call next</span>
+        <span class="num" style="font-size:12px;opacity:0.7">{{nextLabel}}</span>
+      </button>
+
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button style="flex-grow:1;height:34px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12px;font-weight:500;display:flex;align-items:center;justify-content:center">Recall</button>
+        <button style="flex-grow:1;height:34px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12px;font-weight:500;display:flex;align-items:center;justify-content:center">Mark absent</button>
+      </div>
+      <button style="height:34px;margin-top:8px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12px;font-weight:500;display:flex;align-items:center;justify-content:center">Finish and free the room</button>
+
+      <!-- BOARD MIRROR -->
+      <div style="margin-top:18px;border-radius:14px;overflow:hidden;border:1px solid #e5e5e5">
+        <div style="display:flex;align-items:center;gap:7px;padding:9px 13px;background:#ffffff;border-bottom:1px solid #e5e5e5">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          <span class="lbl">What the hall sees</span>
+        </div>
+        <div style="background:#0a0a0a;padding:14px 13px">
+          <div style="text-align:center;padding-bottom:11px;border-bottom:1px solid rgba(255,255,255,0.14)">
+            <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.5)">Now serving</div>
+            <div class="num" style="font-size:38px;font-weight:700;color:#ffffff;line-height:42px;letter-spacing:-0.02em">{{boardNow}}</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.65)">Room 104</div>
+          </div>
+          <div style="padding-top:10px;display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.5);margin-bottom:1px">Next</div>
+            <sc-for list="{{board}}" as="b" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:9px">
+                <span class="num" style="font-size:16px;font-weight:600;color:#ffffff;width:26px">{{b.token}}</span>
+                <span style="font-size:12px;color:rgba(255,255,255,0.72);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{b.name}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex-grow:1"></div>
+
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:11px 12px;border-radius:10px;background:#ffffff;border:1px solid #e5e5e5">
+        <svg style="margin-top:2px;flex-shrink:0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <span style="font-size:11px;color:#737373;line-height:16px">The board only ever shows a token and a room. Names stay on this screen.</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  seed() {
+    return {
+      order: ["p41", "p38", "p43", "p44", "p45", "p47", "p53"],
+      now: "p39",
+      seen: 8,
+      drag: null,
+      moved: 0
+    };
+  }
+  cur() { return this.state || this.seed(); }
+  put(p) { this.setState(Object.assign({}, this.cur(), p)); }
+
+  people() {
+    return {
+      p39: { token: "39", name: "Ramesh Kumar",  who: "49 y · M", vitals: "BP 132/86 · P 74 · 36.9 °C", vitalsAt: "11:14", complaint: "Follow-up, hypertension", cls: "walkin",  waited: "18 min", since: "in the room 6 min" },
+      p41: { token: "41", name: "Sunil Mahto",   who: "62 y · M", vitals: "BP 178/104 · P 102",          vitalsAt: "10:52", complaint: "Chest tightness since morning", cls: "danger",  waited: "40 min" },
+      p38: { token: "38", name: "Raju Singh",    who: "45 y · M", vitals: "BP 128/84 · P 78",            vitalsAt: "10:41", complaint: "Back with X-ray and CBC",       cls: "results", waited: "51 min" },
+      p43: { token: "43", name: "Nisha Kumari",  who: "31 y · F", vitals: "BP 118/72 · P 84",            vitalsAt: "11:09", complaint: "Back with LFT",                 cls: "results", waited: "23 min" },
+      p44: { token: "44", name: "P. Venkatesan", who: "58 y · M", vitals: "BP 138/88 · P 72",            vitalsAt: "11:12", complaint: "Diabetes review · 11:15 slot",  cls: "appt",    waited: "20 min" },
+      p45: { token: "45", name: "Kamlesh Yadav", who: "36 y · M", vitals: "BP 124/80 · P 88 · 37.4 °C",  vitalsAt: "11:18", complaint: "Fever, three days",             cls: "walkin",  waited: "14 min" },
+      p47: { token: "47", name: "Rekha Sharma",  who: "52 y · F", vitals: "BP 142/90 · P 76",            vitalsAt: "11:22", complaint: "Joint pain, both knees",        cls: "walkin",  waited: "10 min" },
+      p53: { token: "53", name: "Muskan Arora",  who: "28 y · F", vitals: "BP 118/76 · P 96 · 38.2 °C",  vitalsAt: "11:32", complaint: "Cough and fever",               cls: "walkin",  waited: "1 min" }
+    };
+  }
+
+  meta() {
+    return {
+      danger:  { colour: "#e7000b", tag: "DANGER",   tagBg: "rgba(231,0,11,0.10)",  tagFg: "#e7000b" },
+      results: { colour: "#218cb5", tag: "RESULTS",  tagBg: "rgba(33,140,181,0.10)", tagFg: "#218cb5" },
+      appt:    { colour: "#cb882e", tag: "11:15",    tagBg: "rgba(203,136,46,0.12)", tagFg: "#cb882e" },
+      walkin:  { colour: "#a1a1a1", tag: "WALK-IN",  tagBg: "#f5f5f5",               tagFg: "#525252" }
+    };
+  }
+
+  reorder(from, to) {
+    const s = this.cur();
+    const list = s.order.slice();
+    const i = list.indexOf(from);
+    const j = list.indexOf(to);
+    if (i < 0 || j < 0 || i === j) return;
+    list.splice(i, 1);
+    list.splice(j, 0, from);
+    this.put({ order: list, drag: null, moved: s.moved + 1 });
+  }
+
+  nudge(id, delta) {
+    const s = this.cur();
+    const list = s.order.slice();
+    const i = list.indexOf(id);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= list.length) return;
+    const tmp = list[j]; list[j] = list[i]; list[i] = tmp;
+    this.put({ order: list, moved: s.moved + 1 });
+  }
+
+  renderVals() {
+    const self = this;
+    const s = this.cur();
+    const who = this.people();
+    const meta = this.meta();
+
+    const queue = s.order.map(function (id) {
+      const p = who[id];
+      const m = meta[p.cls];
+      const dragging = s.drag === id;
+      const danger = p.cls === "danger";
+      return {
+        token: p.token, name: p.name, who: p.who, vitals: p.vitals, vitalsAt: p.vitalsAt,
+        complaint: p.complaint, waited: p.waited,
+        class_colour: m.colour, tag: m.tag, tagBg: m.tagBg, tagFg: m.tagFg,
+        tokenFg: danger ? "#e7000b" : "#0a0a0a",
+        vitalsFg: danger ? "#e7000b" : "#525252",
+        vitalsWeight: danger ? "600" : "400",
+        bg: dragging ? "#f5f5f5" : "#ffffff",
+        border: dragging ? "1px dashed #171717" : (danger ? "1px solid rgba(231,0,11,0.30)" : "1px solid #e5e5e5"),
+        opacity: dragging ? "0.55" : "1",
+        grab: function () { self.put({ drag: id }); },
+        over: function (e) { if (e && e.preventDefault) e.preventDefault(); },
+        drop: function (e) { if (e && e.preventDefault) e.preventDefault(); if (s.drag) self.reorder(s.drag, id); },
+        end:  function () { self.put({ drag: null }); },
+        up:   function () { self.nudge(id, -1); },
+        down: function () { self.nudge(id, 1); }
+      };
+    });
+
+    const nowP = s.now ? who[s.now] : null;
+    const head = s.order.length > 0 ? who[s.order[0]] : null;
+
+    return {
+      queue: queue,
+      count: String(s.order.length),
+      seen: String(s.seen),
+      hasNow: nowP !== null,
+      noNow: nowP === null,
+      now: nowP || { token: "", name: "", who: "", vitals: "", complaint: "", since: "" },
+      nextLabel: head ? "token " + head.token + " · " + head.name : "queue empty",
+      boardNow: nowP ? nowP.token : "—",
+      board: s.order.slice(0, 4).map(function (id) { return { token: who[id].token, name: who[id].name }; }),
+      moveNote: s.moved === 0
+        ? "Drag a row, or use the arrows"
+        : (s.moved === 1 ? "1 manual move today — logged" : s.moved + " manual moves today — logged"),
+      callNext: function () {
+        const st = self.cur();
+        if (st.order.length === 0) return;
+        const rest = st.order.slice(1);
+        self.put({ now: st.order[0], order: rest, seen: st.seen + 1 });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

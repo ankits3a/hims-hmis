@@ -1,0 +1,355 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#ffffff;color:#0a0a0a;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90;text-decoration:underline}
+    button{font:inherit;color:inherit;cursor:pointer;text-align:left}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .hi{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.55}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .card{border:1px solid #e5e5e5;border-radius:14px;background:#ffffff;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+    .seg{height:26px;padding:0 10px;border-radius:7px;font-size:11.5px;font-weight:600;border:1px solid transparent;
+         display:inline-flex;align-items:center;justify-content:center}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden">
+
+  <!-- CHROME -->
+  <div style="display:flex;align-items:center;gap:16px;height:52px;padding:0 20px;border-bottom:1px solid #e5e5e5;background:#fafafa;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:24px;height:24px;border-radius:6px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:-0.02em">CRK</div>
+      <span style="font-size:14px;font-weight:600">Queue rescue</span>
+    </div>
+    <div style="width:1px;height:20px;background:#e5e5e5"></div>
+    <span style="font-size:13px;color:#525252">General Medicine · <span style="color:#0a0a0a;font-weight:500">Suresh Yadav</span>, attendant</span>
+    <div style="flex-grow:1"></div>
+    <div style="display:flex;align-items:center;gap:14px;font-size:13px;color:#737373">
+      <span class="num">Sat 29 Aug 2026 · 11:43</span>
+      <div style="width:26px;height:26px;border-radius:9999px;background:#e5e5e5;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#404040">SY</div>
+    </div>
+  </div>
+
+  <!-- THE EVENT -->
+  <div style="display:flex;align-items:center;gap:14px;padding:12px 20px;background:rgba(231,0,11,0.07);border-bottom:1px solid rgba(231,0,11,0.28);flex-shrink:0">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#e7000b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></svg>
+    <div style="flex-grow:1">
+      <span style="font-size:14px;font-weight:600;display:block">Dr Anand Rao left Room 104 for Emergency at 11:40 — he expects to be back by 12:30</span>
+      <span style="font-size:12.5px;color:#404040">Twelve people are waiting for him, nine of them have already paid, and every minute you spend deciding is a minute they spend not being told.</span>
+    </div>
+    <div style="text-align:right;padding-left:16px;border-left:1px solid rgba(231,0,11,0.25)">
+      <div class="lbl" style="color:#e7000b">Waiting</div>
+      <div class="num" style="font-size:26px;font-weight:700;line-height:28px;letter-spacing:-0.02em;color:#e7000b">12</div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-grow:1;min-height:0">
+
+    <!-- ── LEFT: DECIDE FOR EACH ────────────────────────────────────────── -->
+    <div style="width:952px;border-right:1px solid #e5e5e5;display:flex;flex-direction:column;min-height:0">
+
+      <!-- BULK -->
+      <div style="display:flex;align-items:center;gap:9px;padding:12px 20px;border-bottom:1px solid #e5e5e5;flex-shrink:0">
+        <span style="font-size:12.5px;font-weight:500;color:#404040;margin-right:3px">Do it in one go:</span>
+        <button onClick="{{ bulkWalkins }}" style="height:30px;padding:0 12px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12.5px;font-weight:500;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)">Move walk-ins to Dr Maan</button>
+        <button onClick="{{ bulkHoldAppts }}" style="height:30px;padding:0 12px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12.5px;font-weight:500;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)">Hold the booked ones</button>
+        <button onClick="{{ bulkAllMove }}" style="height:30px;padding:0 12px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12.5px;font-weight:500;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)">Move everyone</button>
+        <div style="flex-grow:1"></div>
+        <button onClick="{{ reset }}" style="height:30px;padding:0 12px;border-radius:8px;border:none;background:transparent;font-size:12.5px;color:#737373">Start over</button>
+      </div>
+
+      <!-- ROWS -->
+      <div style="flex-grow:1;overflow-y:auto;padding:12px 20px 16px;display:flex;flex-direction:column;gap:6px">
+        <sc-for list="{{rows}}" as="p" hint-placeholder-count="12">
+          <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:11px;border:{{p.border}};background:{{p.bg}}">
+            <div style="width:3px;height:32px;border-radius:2px;background:{{p.cls}};flex-shrink:0"></div>
+            <span class="num" style="width:30px;font-size:17px;font-weight:700;letter-spacing:-0.02em;color:{{p.tokenFg}}">{{p.token}}</span>
+
+            <div style="display:flex;flex-direction:column;gap:0;width:150px;min-width:0">
+              <span style="font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{p.name}}</span>
+              <span style="font-size:11px;color:#737373">{{p.who}}</span>
+            </div>
+
+            <span style="width:126px;font-size:11.5px;color:#525252;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{p.tag}}</span>
+
+            <span class="num" style="width:64px;font-size:11.5px;color:#737373">{{p.waited}}</span>
+
+            <span class="num" style="width:78px;font-size:12px;font-weight:{{p.paidWeight}};color:{{p.paidFg}}">{{p.paid}}</span>
+
+            <div style="flex-grow:1"></div>
+
+            <div style="display:flex;gap:3px;padding:2px;border-radius:9px;background:#f5f5f5;flex-shrink:0">
+              <button onClick="{{ p.setMove }}"   class="seg" style="background:{{p.mBg}};color:{{p.mFg}};border-color:{{p.mBd}}">Dr Maan</button>
+              <button onClick="{{ p.setHold }}"   class="seg" style="background:{{p.hBg}};color:{{p.hFg}};border-color:{{p.hBd}}">Wait for Rao</button>
+              <button onClick="{{ p.setRefund }}" class="seg" style="background:{{p.rBg}};color:{{p.rFg}};border-color:{{p.rBd}}">Refund</button>
+            </div>
+
+            <span style="width:112px;font-size:11px;color:#737373;text-align:right;line-height:14px">{{p.note}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <!-- ── RIGHT: WHAT IT COSTS, WHAT THEY HEAR ─────────────────────────── -->
+    <div style="flex-grow:1;background:#fafafa;display:flex;flex-direction:column;min-height:0">
+
+      <div style="padding:14px 18px 12px;border-bottom:1px solid #e5e5e5;flex-shrink:0">
+        <span style="font-size:14px;font-weight:600">Consequences, live</span>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:11px">
+          <div class="card" style="padding:9px 11px">
+            <div class="lbl" style="font-size:10px">To Dr Maan</div>
+            <div class="num" style="font-size:21px;font-weight:700;letter-spacing:-0.02em;line-height:24px">{{nMove}}</div>
+          </div>
+          <div class="card" style="padding:9px 11px">
+            <div class="lbl" style="font-size:10px">Holding</div>
+            <div class="num" style="font-size:21px;font-weight:700;letter-spacing:-0.02em;line-height:24px;color:#cb882e">{{nHold}}</div>
+          </div>
+          <div class="card" style="padding:9px 11px">
+            <div class="lbl" style="font-size:10px">Refund</div>
+            <div class="num" style="font-size:21px;font-weight:700;letter-spacing:-0.02em;line-height:24px;color:#e7000b">{{nRefund}}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex-grow:1;overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:12px">
+
+        <!-- CAPACITY -->
+        <div style="border-radius:12px;border:{{capBorder}};background:{{capBg}};padding:12px 14px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="font-size:12.5px;font-weight:600;color:{{capFg}}">Dr Gurdas Maan's load</span>
+            <div style="flex-grow:1"></div>
+            <span class="num" style="font-size:12.5px;font-weight:700;color:{{capFg}}">{{maanTotal}} / 24</span>
+          </div>
+          <div style="height:8px;border-radius:9999px;background:#e5e5e5;overflow:hidden;display:flex">
+            <div style="width:{{maanOwnPct}};background:#a1a1a1"></div>
+            <div style="width:{{maanNewPct}};background:{{capFg}}"></div>
+          </div>
+          <div style="display:flex;gap:14px;margin-top:8px;font-size:11px;color:#525252">
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:#a1a1a1"></span>his own <span class="num">10</span></span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:{{capFg}}"></span>moved <span class="num">{{nMove}}</span></span>
+          </div>
+          <div style="font-size:11.5px;color:{{capFg}};margin-top:8px;font-weight:{{capWeight}};line-height:16px">{{capMsg}}</div>
+        </div>
+
+        <!-- MONEY -->
+        <div class="card" style="padding:12px 14px">
+          <div class="lbl" style="margin-bottom:9px">Money</div>
+          <div style="display:flex;flex-direction:column;gap:6px;font-size:12.5px">
+            <div style="display:flex;justify-content:space-between"><span style="color:#525252">Moved — same fee, no adjustment</span><span class="num" style="font-weight:600">₹0</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#525252">Held — nothing changes</span><span class="num" style="font-weight:600">₹0</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:#525252">To refund at Counter 5</span><span class="num" style="font-weight:700;color:#e7000b">{{refundAmt}}</span></div>
+            <div style="display:flex;justify-content:space-between;padding-top:7px;border-top:1px solid #e5e5e5"><span style="color:#525252">Free revisit vouchers issued</span><span class="num" style="font-weight:600">{{nRefund}}</span></div>
+          </div>
+          <div style="font-size:11px;color:#737373;line-height:16px;margin-top:9px">
+            A refund needs the Duty Manager's approval. The voucher does not — anyone sent home by us comes back free, and that decision should never wait for a signature.
+          </div>
+        </div>
+
+        <!-- SMS -->
+        <div class="card" style="padding:12px 14px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
+            <span class="lbl">What they get on their phone</span>
+            <div style="flex-grow:1"></div>
+            <span class="num" style="font-size:11px;color:#737373">{{smsCount}} messages</span>
+          </div>
+          <div style="border-radius:10px;background:#f5f5f5;padding:10px 12px">
+            <div class="hi" style="font-size:12px;color:#0a0a0a">{{smsHi}}</div>
+            <div style="font-size:11px;color:#525252;line-height:16px;margin-top:6px">{{smsEn}}</div>
+          </div>
+          <div style="font-size:11px;color:#737373;margin-top:8px;line-height:16px">Sent in Hindi first. Nobody is told a doctor "is unavailable" — they are told what to do next.</div>
+        </div>
+
+        <!-- BOARD -->
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="padding:9px 14px;border-bottom:1px solid #e5e5e5">
+            <span class="lbl">What the hall sees, right now</span>
+          </div>
+          <div style="background:#0a0a0a;padding:13px 14px">
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 11px;border-radius:9px;background:rgba(243,174,88,0.16);border:1px solid rgba(243,174,88,0.42)">
+              <span style="width:8px;height:8px;border-radius:9999px;background:#f3ae58;flex-shrink:0"></span>
+              <div>
+                <div class="hi" style="font-size:13px;font-weight:600;color:#f3ae58">कक्ष 104 — डॉ. राव आपात सेवा में</div>
+                <div style="font-size:10.5px;color:rgba(250,250,250,0.62);letter-spacing:0.03em;margin-top:1px">ROOM 104 — DR RAO IN EMERGENCY · BACK <span class="num">12:30</span></div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:8px;padding:0 3px">
+              <span class="num" style="font-size:24px;font-weight:700;color:#ffffff;width:38px">28</span>
+              <div>
+                <div class="hi" style="font-size:12px;color:rgba(255,255,255,0.82)">कक्ष 106 · डॉ. गुरदास मान</div>
+                <div style="font-size:10px;color:rgba(250,250,250,0.42);letter-spacing:0.04em">NOW SERVING</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex-shrink:0;border-top:1px solid #e5e5e5;background:#ffffff;padding:13px 18px;display:flex;flex-direction:column;gap:8px">
+        <button style="height:44px;border-radius:8px;border:none;background:#171717;color:#fafafa;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px">
+          Apply — {{applyLabel}}
+        </button>
+        <span style="font-size:11px;color:#737373;text-align:center;line-height:16px">One action: queues move, the board changes, the messages go, the refunds queue at Counter 5.</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  people() {
+    return [
+      { id: "p41", token: "41", name: "Sunil Mahto",   who: "62 y · M", cls: "danger",  tag: "Danger vitals",  waited: "51 min", paid: true,  note: "" },
+      { id: "p38", token: "38", name: "Raju Singh",    who: "45 y · M", cls: "results", tag: "With results",   waited: "63 min", paid: true,  note: "" },
+      { id: "p43", token: "43", name: "Nisha Kumari",  who: "31 y · F", cls: "results", tag: "With results",   waited: "34 min", paid: true,  note: "" },
+      { id: "p44", token: "44", name: "P. Venkatesan", who: "58 y · M", cls: "appt",    tag: "Booked 11:15",   waited: "28 min", paid: true,  note: "" },
+      { id: "p46", token: "46", name: "Asha Devi",     who: "40 y · F", cls: "appt",    tag: "Booked 11:30",   waited: "13 min", paid: true,  note: "" },
+      { id: "p48", token: "48", name: "Imran Sheikh",  who: "27 y · M", cls: "appt",    tag: "Booked 11:45",   waited: "—",      paid: true,  note: "" },
+      { id: "p45", token: "45", name: "Kamlesh Yadav", who: "36 y · M", cls: "walkin",  tag: "Walk-in",        waited: "25 min", paid: true,  note: "" },
+      { id: "p47", token: "47", name: "Rekha Sharma",  who: "52 y · F", cls: "walkin",  tag: "Walk-in",        waited: "21 min", paid: true,  note: "" },
+      { id: "p49", token: "49", name: "Md. Sabir",     who: "23 y · M", cls: "walkin",  tag: "Walk-in",        waited: "18 min", paid: true,  note: "" },
+      { id: "p50", token: "50", name: "Preeti Ranjan", who: "34 y · F", cls: "walkin",  tag: "Walk-in",        waited: "15 min", paid: false, note: "" },
+      { id: "p51", token: "51", name: "Bhola Paswan",  who: "61 y · M", cls: "walkin",  tag: "Walk-in",        waited: "12 min", paid: false, note: "" },
+      { id: "p53", token: "53", name: "Muskan Arora",  who: "28 y · F", cls: "walkin",  tag: "Walk-in",        waited: "9 min",  paid: false, note: "" }
+    ];
+  }
+
+  seed() {
+    const d = {};
+    this.people().forEach(function (p) {
+      d[p.id] = (p.cls === "danger" || p.cls === "results") ? "move" : "hold";
+    });
+    return { d: d };
+  }
+  cur() { return this.state || this.seed(); }
+  set(id, v) {
+    const s = this.cur();
+    const d = Object.assign({}, s.d);
+    d[id] = v;
+    this.setState({ d: d });
+  }
+  bulk(pred, v) {
+    const s = this.cur();
+    const d = Object.assign({}, s.d);
+    this.people().forEach(function (p) { if (pred(p)) d[p.id] = v; });
+    this.setState({ d: d });
+  }
+
+  renderVals() {
+    const self = this;
+    const s = this.cur();
+    const clsColour = { danger: "#e7000b", results: "#218cb5", appt: "#cb882e", walkin: "#a1a1a1" };
+
+    const noteFor = {
+      move:   "moves to Room 106",
+      hold:   "stays, told to wait",
+      refund: "money back + free revisit"
+    };
+
+    let nMove = 0, nHold = 0, nRefund = 0, refundPaise = 0;
+    const rows = this.people().map(function (p) {
+      const v = s.d[p.id] || "hold";
+      if (v === "move") nMove += 1;
+      if (v === "hold") nHold += 1;
+      if (v === "refund") { nRefund += 1; if (p.paid) refundPaise += 300; }
+
+      const on = function (k, c) {
+        return v === k
+          ? { bg: c, fg: "#ffffff", bd: c }
+          : { bg: "transparent", fg: "#525252", bd: "transparent" };
+      };
+      const m = on("move", "#171717");
+      const h = on("hold", "#cb882e");
+      const r = on("refund", "#e7000b");
+
+      return {
+        token: p.token, name: p.name, who: p.who, tag: p.tag, waited: p.waited,
+        cls: clsColour[p.cls],
+        tokenFg: p.cls === "danger" ? "#e7000b" : "#0a0a0a",
+        paid: p.paid ? "Paid ₹300" : "Unpaid",
+        paidFg: p.paid ? "#318f5a" : "#cb882e",
+        paidWeight: p.paid ? "500" : "600",
+        bg: v === "refund" ? "rgba(231,0,11,0.04)" : "#ffffff",
+        border: p.cls === "danger" ? "1px solid rgba(231,0,11,0.30)" : "1px solid #e5e5e5",
+        note: noteFor[v],
+        mBg: m.bg, mFg: m.fg, mBd: m.bd,
+        hBg: h.bg, hFg: h.fg, hBd: h.bd,
+        rBg: r.bg, rFg: r.fg, rBd: r.bd,
+        setMove:   function () { self.set(p.id, "move"); },
+        setHold:   function () { self.set(p.id, "hold"); },
+        setRefund: function () { self.set(p.id, "refund"); }
+      };
+    });
+
+    const maanTotal = 10 + nMove;
+    const over = maanTotal > 24;
+    const tight = maanTotal > 19 && !over;
+    const capFg = over ? "#e7000b" : (tight ? "#cb882e" : "#318f5a");
+
+    let capMsg;
+    if (over) {
+      capMsg = "Over his session. He finishes at 17:00 and this needs about " +
+               Math.round(maanTotal * 6.4) + " minutes. Refund or hold " + (maanTotal - 24) + " of them, or ask the Duty Manager for a third consultant.";
+    } else if (tight) {
+      capMsg = "He can take these, but his last patient is seen around " +
+               (maanTotal > 21 ? "16:40" : "16:15") + ". Tell the ones at the back honestly.";
+    } else {
+      capMsg = "Comfortably inside his session. His own queue slips by about " + (nMove * 6) + " minutes.";
+    }
+
+    const smsHi = nRefund > 0
+      ? "डॉ. आनंद राव आपात सेवा में हैं। आपका ₹300 काउंटर 5 पर वापस मिलेगा और अगली बार परामर्श निःशुल्क रहेगा। असुविधा के लिए खेद है। — सीआरके अस्पताल"
+      : (nMove > 0
+        ? "डॉ. आनंद राव आपात सेवा में हैं। आपको डॉ. गुरदास मान, कक्ष 106 में देखा जाएगा। आपका टोकन वही रहेगा। — सीआरके अस्पताल"
+        : "डॉ. आनंद राव आपात सेवा में हैं, दोपहर 12:30 तक लौटेंगे। आपकी बारी सुरक्षित है, कृपया प्रतीक्षा करें। — सीआरके अस्पताल");
+
+    const smsEn = nRefund > 0
+      ? "Dr Anand Rao is in Emergency. Collect your ₹300 at Counter 5; your next consultation is free."
+      : (nMove > 0
+        ? "Dr Anand Rao is in Emergency. Dr Gurdas Maan will see you in Room 106. Your token stays the same."
+        : "Dr Anand Rao is in Emergency, back by 12:30. Your place is held.");
+
+    const parts = [];
+    if (nMove > 0) parts.push(nMove + " moved");
+    if (nHold > 0) parts.push(nHold + " held");
+    if (nRefund > 0) parts.push(nRefund + " refunded");
+
+    return {
+      rows: rows,
+      nMove: String(nMove),
+      nHold: String(nHold),
+      nRefund: String(nRefund),
+      refundAmt: "₹" + refundPaise,
+      smsCount: String(nMove + nHold + nRefund),
+      smsHi: smsHi,
+      smsEn: smsEn,
+      maanTotal: String(maanTotal),
+      maanOwnPct: Math.round((10 / 24) * 100) + "%",
+      maanNewPct: Math.min(Math.round((nMove / 24) * 100), 100 - Math.round((10 / 24) * 100)) + "%",
+      capFg: capFg,
+      capBg: over ? "rgba(231,0,11,0.05)" : (tight ? "rgba(203,136,46,0.06)" : "rgba(49,143,90,0.05)"),
+      capBorder: "1px solid " + (over ? "rgba(231,0,11,0.35)" : (tight ? "rgba(203,136,46,0.35)" : "rgba(49,143,90,0.30)")),
+      capWeight: over ? "600" : "400",
+      capMsg: capMsg,
+      applyLabel: parts.length === 0 ? "nothing selected" : parts.join(", "),
+
+      bulkWalkins:   function () { self.bulk(function (p) { return p.cls === "walkin"; }, "move"); },
+      bulkHoldAppts: function () { self.bulk(function (p) { return p.cls === "appt"; }, "hold"); },
+      bulkAllMove:   function () { self.bulk(function () { return true; }, "move"); },
+      reset:         function () { self.setState(self.seed()); }
+    };
+  }
+}
+</script>
+</body>
+</html>

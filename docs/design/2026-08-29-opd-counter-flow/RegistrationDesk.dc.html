@@ -1,0 +1,288 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#ffffff;color:#0a0a0a;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90;text-decoration:underline}
+    button{font:inherit;color:inherit;cursor:pointer}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .fl{font-size:13px;font-weight:500;color:#404040;margin-bottom:5px;display:block}
+    .in{height:36px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;display:flex;align-items:center;
+        padding:0 11px;font-size:14px;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+    .ph{color:#a1a1a1}
+    .req{color:#e7000b;font-weight:600}
+    .sect{border:1px solid #e5e5e5;border-radius:14px;background:#ffffff;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden">
+
+  <!-- CHROME -->
+  <div style="display:flex;align-items:center;gap:16px;height:52px;padding:0 20px;border-bottom:1px solid #e5e5e5;background:#fafafa;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:24px;height:24px;border-radius:6px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:-0.02em">CRK</div>
+      <span style="font-size:14px;font-weight:600">Registration counter</span>
+    </div>
+    <div style="width:1px;height:20px;background:#e5e5e5"></div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#525252">
+      <span>Counter 1</span><span style="color:#d4d4d4">·</span>
+      <span style="color:#0a0a0a;font-weight:500">Ramesh Chaudhary</span>
+      <span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:9999px;background:#ffffff;border:1px solid #e5e5e5;font-size:12px;font-weight:500;color:#525252">
+        <span style="width:6px;height:6px;border-radius:9999px;background:#318f5a"></span>May also book
+      </span>
+    </div>
+    <div style="flex-grow:1"></div>
+    <div style="display:flex;align-items:center;gap:14px;font-size:13px;color:#737373">
+      <span class="num">Sat 29 Aug 2026 · 09:41</span>
+      <div style="width:26px;height:26px;border-radius:9999px;background:#e5e5e5;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#404040">RC</div>
+    </div>
+  </div>
+
+  <!-- STEP RAIL — the whole visit on one screen, no tabs -->
+  <div style="display:flex;align-items:center;gap:0;padding:11px 24px;border-bottom:1px solid #e5e5e5;background:#ffffff;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:22px;height:22px;border-radius:9999px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">1</div>
+      <span style="font-size:13px;font-weight:600">Register</span>
+    </div>
+    <div style="width:44px;height:1px;background:#e5e5e5;margin:0 12px"></div>
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:22px;height:22px;border-radius:9999px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">2</div>
+      <span style="font-size:13px;font-weight:600">Book the visit</span>
+    </div>
+    <div style="width:44px;height:1px;background:#e5e5e5;margin:0 12px"></div>
+    <div style="display:flex;align-items:center;gap:9px">
+      <div style="width:22px;height:22px;border-radius:9999px;background:#ffffff;border:1px solid #d4d4d4;color:#a1a1a1;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">3</div>
+      <span style="font-size:13px;color:#a1a1a1">Send to billing</span>
+    </div>
+    <div style="flex-grow:1"></div>
+    <span style="font-size:12px;color:#737373">Steps 1 and 2 are the same screen — this counter never changes tab to book.</span>
+  </div>
+
+  <div style="display:flex;flex-grow:1;min-height:0">
+
+    <!-- ── LEFT: REGISTRATION FORM ──────────────────────────────────────── -->
+    <div style="width:900px;overflow-y:auto;padding:18px 24px 24px;display:flex;flex-direction:column;gap:14px;border-right:1px solid #e5e5e5">
+
+      <!-- IDENTITY -->
+      <div class="sect" style="padding:18px 20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:15px">
+          <span style="font-size:15px;font-weight:600">Who is she</span>
+          <span style="font-size:12px;color:#737373"><span class="req">*</span> required to issue a UHID</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px">
+          <div style="grid-column:span 2">
+            <span class="fl">Full name <span class="req">*</span></span>
+            <div class="in" style="border-color:#171717;box-shadow:0 0 0 3px rgba(161,161,161,0.35)">Yukti Yadav<span style="width:1px;height:18px;background:#0a0a0a;margin-left:1px"></span></div>
+          </div>
+          <div>
+            <span class="fl">Mobile <span class="req">*</span></span>
+            <div class="in num">+91 70123 55804</div>
+          </div>
+
+          <div>
+            <span class="fl">Date of birth <span class="req">*</span></span>
+            <div class="in num">14-02-1994</div>
+            <span style="font-size:11px;color:#737373;margin-top:4px;display:block">32 y 6 m — computed, never typed</span>
+          </div>
+          <div>
+            <span class="fl">Gender (administrative) <span class="req">*</span></span>
+            <div class="in" style="justify-content:space-between">Female
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+            <span style="font-size:11px;color:#737373;margin-top:4px;display:block">What she is called on paper</span>
+          </div>
+          <div>
+            <span class="fl">Sex (clinical)</span>
+            <div class="in" style="justify-content:space-between;background:#fafafa;color:#525252">Same as above
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+            <span style="font-size:11px;color:#737373;margin-top:4px;display:block">Drives reference ranges. Change only if they differ.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ABHA -->
+      <div class="sect" style="padding:18px 20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <span style="font-size:15px;font-weight:600">ABHA</span>
+          <span style="font-size:12px;color:#737373">Ayushman Bharat Health Account</span>
+        </div>
+        <div style="display:flex;gap:11px;align-items:flex-end">
+          <div style="flex-grow:1">
+            <span class="fl">ABHA number or address</span>
+            <div class="in ph">14 digits, or name@abdm</div>
+          </div>
+          <button style="height:36px;padding:0 15px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:13px;font-weight:500;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)">Verify</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;margin-top:13px;padding:11px 13px;border-radius:10px;background:rgba(33,140,181,0.06);border:1px solid rgba(33,140,181,0.25)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#218cb5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M12 5v14M5 12h14"/></svg>
+          <span style="font-size:13px;color:#0a0a0a;flex-grow:1">She has no ABHA. Create one for her before you finish — it takes about a minute.</span>
+          <button style="height:30px;padding:0 12px;border-radius:8px;border:none;background:#218cb5;color:#ffffff;font-size:12px;font-weight:600">Open ABHA portal</button>
+        </div>
+        <label style="display:flex;align-items:center;gap:9px;margin-top:11px;cursor:pointer">
+          <span style="width:16px;height:16px;border-radius:4px;border:1px solid #d4d4d4;background:#ffffff;flex-shrink:0"></span>
+          <span style="font-size:13px;color:#404040">Offered and declined — register without ABHA</span>
+        </label>
+      </div>
+
+      <!-- CONTACT + GUARDIAN -->
+      <div class="sect" style="padding:18px 20px">
+        <span style="font-size:15px;font-weight:600;display:block;margin-bottom:15px">Where she lives, and who to call</span>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px">
+          <div style="grid-column:span 2">
+            <span class="fl">Address</span>
+            <div class="in">Ward 7, Rampur Ratnakar, Hajipur</div>
+          </div>
+          <div>
+            <span class="fl">PIN</span>
+            <div class="in num">844101</div>
+          </div>
+          <div>
+            <span class="fl">Emergency / guardian name <span class="req">*</span></span>
+            <div class="in">Sudhir Yadav</div>
+          </div>
+          <div>
+            <span class="fl">Relationship <span class="req">*</span></span>
+            <div class="in" style="justify-content:space-between">Husband
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+          </div>
+          <div>
+            <span class="fl">Emergency mobile <span class="req">*</span></span>
+            <div class="in num">+91 70123 55801</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIP -->
+      <div class="sect" style="padding:16px 20px">
+        <div style="display:flex;align-items:flex-start;gap:14px">
+          <div style="display:flex;flex-direction:column;gap:3px;flex-grow:1">
+            <span style="font-size:15px;font-weight:600">Confidential patient</span>
+            <span style="font-size:13px;color:#525252;line-height:19px">Hides her name, phone and every clinical detail behind an alias on all counters, queues, boards and reports. Only staff with break-glass can see through it, and every look is logged and shown to the Medical Superintendent next morning.</span>
+            <span style="font-size:12px;color:#737373;margin-top:3px">Yukti is not a public figure — leave this off.</span>
+          </div>
+          <div style="width:40px;height:22px;border-radius:9999px;background:#e5e5e5;position:relative;flex-shrink:0;margin-top:2px;cursor:pointer">
+            <div style="position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:9999px;background:#ffffff;box-shadow:0 1px 2px 0 rgba(0,0,0,0.15)"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DUPLICATES -->
+      <div style="border:1px solid rgba(203,136,46,0.35);border-radius:14px;background:rgba(203,136,46,0.06);padding:14px 18px">
+        <div style="display:flex;align-items:flex-start;gap:11px">
+          <svg style="margin-top:2px;flex-shrink:0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cb882e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></svg>
+          <div style="flex-grow:1">
+            <span style="font-size:14px;font-weight:600;color:#0a0a0a;display:block">One person on this mobile number already</span>
+            <div style="display:flex;align-items:center;gap:11px;margin-top:9px;padding:9px 11px;border-radius:8px;background:#ffffff;border:1px solid #e5e5e5">
+              <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+                <span style="font-size:13px;font-weight:500">Yukti Devi · 32 y · F</span>
+                <span class="mono num" style="font-size:11px;color:#737373">CRK0000171904 · registered 02-Jan-2025 · 1 visit</span>
+              </div>
+              <button style="height:30px;padding:0 11px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12px;font-weight:500">Open instead</button>
+            </div>
+            <span style="font-size:12px;color:#525252;display:block;margin-top:9px">Same surname family members often share one number. If this is a different person, carry on — you will be asked to say so once.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RIGHT: BOOK IT HERE, NO TAB CHANGE ───────────────────────────── -->
+    <div style="flex-grow:1;display:flex;flex-direction:column;min-height:0;background:#fafafa">
+      <div style="padding:16px 20px 12px;border-bottom:1px solid #e5e5e5;flex-shrink:0">
+        <span style="font-size:14px;font-weight:600;display:block">Book her visit</span>
+        <span style="font-size:12px;color:#737373">The same picker the appointment counter uses</span>
+      </div>
+
+      <div style="flex-grow:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:14px">
+        <div>
+          <span class="fl">Complaint or department</span>
+          <div class="in" style="border-color:#171717;box-shadow:0 0 0 3px rgba(161,161,161,0.35)">back pain</div>
+        </div>
+
+        <div style="border:1px solid #171717;border-radius:12px;background:#ffffff;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 13px;background:#f5f5f5;border-bottom:1px solid #e5e5e5">
+            <div style="width:14px;height:14px;border-radius:9999px;border:4px solid #171717;flex-shrink:0"></div>
+            <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+              <div style="display:flex;align-items:center;gap:7px">
+                <span style="font-size:14px;font-weight:600">Orthopaedics</span>
+                <span style="display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:9999px;background:#171717;color:#fafafa;font-size:10px;font-weight:600">BEST FIT</span>
+              </div>
+              <span style="font-size:11px;color:#737373">2nd floor · Block A</span>
+            </div>
+            <div style="text-align:right">
+              <div class="num" style="font-size:18px;font-weight:600">8</div>
+              <div style="font-size:10px;color:#737373">in department</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 13px 10px 34px;border-bottom:1px solid #f5f5f5">
+            <div style="width:12px;height:12px;border-radius:9999px;border:1px solid #d4d4d4;flex-shrink:0"></div>
+            <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+              <span style="font-size:13px;font-weight:500">Dr Kiran Devgan</span>
+              <span style="font-size:11px;color:#737373">Room 205 · In</span>
+            </div>
+            <div class="num" style="font-size:15px;font-weight:600">5</div>
+            <span class="num" style="font-size:11px;color:#cb882e;width:52px;text-align:right">~24 min</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 13px 10px 34px">
+            <div style="width:12px;height:12px;border-radius:9999px;border:1px solid #d4d4d4;flex-shrink:0"></div>
+            <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+              <span style="font-size:13px;font-weight:500">Dr Latika Bose</span>
+              <span style="font-size:11px;color:#737373">Room 207 · In</span>
+            </div>
+            <div class="num" style="font-size:15px;font-weight:600">3</div>
+            <span class="num" style="font-size:11px;color:#cb882e;width:52px;text-align:right">~15 min</span>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border-radius:10px;background:#f5f5f5;border:1px solid #e5e5e5">
+          <svg style="margin-top:2px;flex-shrink:0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <span style="font-size:12px;color:#404040;line-height:18px">Department picked → the system takes <strong style="font-weight:600">Dr Latika Bose</strong>, shortest queue. Tap a doctor to pin one instead.</span>
+        </div>
+
+        <div>
+          <span class="fl">Visit type</span>
+          <div style="display:flex;gap:6px">
+            <span style="display:inline-flex;align-items:center;height:30px;padding:0 13px;border-radius:8px;background:#171717;color:#fafafa;font-size:12px;font-weight:500">New</span>
+            <span style="display:inline-flex;align-items:center;height:30px;padding:0 13px;border-radius:8px;background:#ffffff;border:1px solid #e5e5e5;font-size:12px;font-weight:500">Returned with results</span>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid #e5e5e5;padding-top:13px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:13px;color:#525252">Consultation fee</span>
+            <span class="num" style="font-size:19px;font-weight:600;letter-spacing:-0.02em">₹300</span>
+          </div>
+          <span style="font-size:12px;color:#737373;display:block;margin-top:3px">Collected at billing, Counter 5</span>
+        </div>
+      </div>
+
+      <div style="flex-shrink:0;border-top:1px solid #e5e5e5;background:#ffffff;padding:14px 20px;display:flex;flex-direction:column;gap:9px">
+        <button style="height:42px;border-radius:8px;border:none;background:#171717;color:#fafafa;font-size:14px;font-weight:500;display:inline-flex;align-items:center;justify-content:center;gap:8px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3h12v6M6 14h12v8H6z"/></svg>
+          Register, book &amp; print token
+        </button>
+        <button style="height:34px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:13px;font-weight:500">Register only — she will book later</button>
+        <span style="font-size:11px;color:#737373;text-align:center">One click issues the UHID, opens the visit and prints the token.</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

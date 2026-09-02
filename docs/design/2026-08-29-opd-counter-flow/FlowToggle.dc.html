@@ -1,0 +1,217 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#ffffff;color:#0a0a0a;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90;text-decoration:underline}
+    button{font:inherit;color:inherit;cursor:pointer;text-align:left}
+    .num{font-variant-numeric:tabular-nums}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .card{border:1px solid #e5e5e5;border-radius:14px;background:#ffffff;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+    .node{display:flex;flex-direction:column;align-items:center;gap:5px;width:104px;text-align:center}
+    .box{width:100%;height:52px;border-radius:10px;display:flex;flex-direction:column;align-items:center;
+      justify-content:center;gap:1px;font-size:12px;font-weight:600;line-height:15px}
+    .arr{flex-grow:1;height:1px;background:#d4d4d4;position:relative;min-width:16px;margin-top:-24px}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden">
+
+  <!-- CHROME -->
+  <div style="display:flex;align-items:center;gap:16px;height:52px;padding:0 20px;border-bottom:1px solid #e5e5e5;background:#fafafa;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:24px;height:24px;border-radius:6px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:-0.02em">CRK</div>
+      <span style="font-size:14px;font-weight:600">OPD settings</span>
+    </div>
+    <div style="width:1px;height:20px;background:#e5e5e5"></div>
+    <span style="font-size:13px;color:#525252">Counter sequence</span>
+    <div style="flex-grow:1"></div>
+    <div style="display:flex;align-items:center;gap:14px;font-size:13px;color:#737373">
+      <span>Duty Manager · Ashok Verma</span>
+      <div style="width:26px;height:26px;border-radius:9999px;background:#e5e5e5;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#404040">AV</div>
+    </div>
+  </div>
+
+  <div style="flex-grow:1;overflow-y:auto;padding:26px 40px 32px">
+    <div style="max-width:1160px;margin:0 auto">
+
+      <div style="margin-bottom:22px">
+        <h1 style="margin:0;font-size:24px;font-weight:600;letter-spacing:-0.02em">Which order do the counters run in?</h1>
+        <p style="margin:6px 0 0;font-size:14px;color:#525252;max-width:760px">
+          This is the only switch in the app that changes where a patient walks. It changes the screens the staff see, what the token slip says, and which counter is allowed to put someone in a queue.
+        </p>
+      </div>
+
+      <!-- ── FLOW 1 ───────────────────────────────────────────────────────── -->
+      <div style="border:2px solid #171717;border-radius:16px;background:#ffffff;overflow:hidden;box-shadow:0 1px 3px 0 rgba(0,0,0,0.10)">
+        <div style="display:flex;align-items:flex-start;gap:14px;padding:18px 22px 16px">
+          <div style="width:18px;height:18px;border-radius:9999px;border:5px solid #171717;flex-shrink:0;margin-top:2px"></div>
+          <div style="flex-grow:1">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:17px;font-weight:600">Queue first, bill after</span>
+              <span style="display:inline-flex;align-items:center;height:21px;padding:0 9px;border-radius:9999px;background:#171717;color:#fafafa;font-size:11px;font-weight:700;letter-spacing:0.03em">IN USE</span>
+            </div>
+            <p style="margin:4px 0 0;font-size:13px;color:#525252;max-width:840px">
+              The appointment counter picks the doctor and issues the token, then the patient pays. The fee can differ by department, by doctor and by visit type — a follow-up inside the window is free.
+            </p>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div class="lbl">Since</div>
+            <div class="num" style="font-size:13px;font-weight:500">14-Jun-2026</div>
+          </div>
+        </div>
+
+        <div style="padding:6px 22px 20px">
+          <div style="display:flex;align-items:flex-start;gap:0">
+            <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Registration<span style="font-weight:400;color:#737373;font-size:11px">Counter 1</span></div><span style="font-size:11px;color:#a1a1a1">new patients only</span></div>
+            <div class="arr"></div>
+            <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Enquiry<span style="font-weight:400;color:#737373;font-size:11px">Lobby</span></div><span style="font-size:11px;color:#a1a1a1">answers, no writes</span></div>
+            <div class="arr"></div>
+            <div class="node"><div class="box" style="background:#171717;color:#fafafa">Appointment<span style="font-weight:400;opacity:0.7;font-size:11px">Counter 3</span></div><span style="font-size:11px;color:#0a0a0a;font-weight:600">token issued here</span></div>
+            <div class="arr"></div>
+            <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Billing<span style="font-weight:400;color:#737373;font-size:11px">Counter 5</span></div><span class="num" style="font-size:11px;color:#a1a1a1">fee varies</span></div>
+            <div class="arr"></div>
+            <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Vitals<span style="font-weight:400;color:#737373;font-size:11px">1st floor</span></div><span style="font-size:11px;color:#a1a1a1">scan the token</span></div>
+            <div class="arr"></div>
+            <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Consultation<span style="font-weight:400;color:#737373;font-size:11px">Room 104</span></div><span style="font-size:11px;color:#a1a1a1">doctor calls</span></div>
+          </div>
+        </div>
+
+        <div style="display:flex;border-top:1px solid #e5e5e5;background:#fafafa">
+          <div style="flex-grow:1;padding:13px 22px;border-right:1px solid #e5e5e5">
+            <div style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:#318f5a;margin-bottom:4px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#318f5a" stroke-width="2.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg>Suits you when
+            </div>
+            <span style="font-size:12px;color:#525252;line-height:17px">Fees differ by consultant, follow-ups are free, and you want the queue position fixed before money changes hands.</span>
+          </div>
+          <div style="flex-grow:1;padding:13px 22px">
+            <div style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:#cb882e;margin-bottom:4px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#cb882e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></svg>Costs you
+            </div>
+            <span style="font-size:12px;color:#525252;line-height:17px">A patient can hold a queue slot and never pay. The billing counter has to be able to refuse and release the slot.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── FLOW 2 ───────────────────────────────────────────────────────── -->
+      <div style="border:1px solid #e5e5e5;border-radius:16px;background:#ffffff;overflow:hidden;margin-top:16px;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)">
+        <div style="display:flex;align-items:flex-start;gap:14px;padding:18px 22px 16px">
+          <div style="width:18px;height:18px;border-radius:9999px;border:1px solid #d4d4d4;flex-shrink:0;margin-top:2px"></div>
+          <div style="flex-grow:1">
+            <span style="font-size:17px;font-weight:600">Bill first, queue at the department</span>
+            <p style="margin:4px 0 0;font-size:13px;color:#525252;max-width:840px">
+              One flat consultation fee for every department and every doctor, taken before anyone picks a consultant. The department's own reception scans the paid invoice and puts the patient in a queue.
+            </p>
+          </div>
+        </div>
+
+        <div style="padding:6px 22px 20px">
+          <div style="display:flex;align-items:flex-start;gap:0">
+            <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Registration<span style="font-weight:400;color:#737373;font-size:11px">Counter 1</span></div><span style="font-size:11px;color:#a1a1a1">new patients only</span></div>
+            <div class="arr"></div>
+            <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Billing<span style="font-weight:400;color:#737373;font-size:11px">Counter 5</span></div><span class="num" style="font-size:11px;color:#0a0a0a;font-weight:600">flat ₹300</span></div>
+            <div class="arr"></div>
+            <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Enquiry<span style="font-weight:400;color:#737373;font-size:11px">Lobby</span></div><span style="font-size:11px;color:#a1a1a1">points to a floor</span></div>
+            <div class="arr"></div>
+            <div class="node"><div class="box" style="background:#171717;color:#fafafa">Dept reception<span style="font-weight:400;opacity:0.7;font-size:11px">1st floor</span></div><span style="font-size:11px;color:#0a0a0a;font-weight:600">token issued here</span></div>
+            <div class="arr"></div>
+            <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Vitals<span style="font-weight:400;color:#737373;font-size:11px">1st floor</span></div><span style="font-size:11px;color:#a1a1a1">scan the token</span></div>
+            <div class="arr"></div>
+            <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Consultation<span style="font-weight:400;color:#737373;font-size:11px">Room 104</span></div><span style="font-size:11px;color:#a1a1a1">doctor calls</span></div>
+          </div>
+        </div>
+
+        <div style="display:flex;border-top:1px solid #e5e5e5;background:#fafafa">
+          <div style="flex-grow:1;padding:13px 22px;border-right:1px solid #e5e5e5">
+            <div style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:#318f5a;margin-bottom:4px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#318f5a" stroke-width="2.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg>Suits you when
+            </div>
+            <span style="font-size:12px;color:#525252;line-height:17px">The lobby is crowded, one price fits everything, and you want the money in before anyone climbs the stairs.</span>
+          </div>
+          <div style="flex-grow:1;padding:13px 22px">
+            <div style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:#cb882e;margin-bottom:4px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#cb882e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></svg>Costs you
+            </div>
+            <span style="font-size:12px;color:#525252;line-height:17px">Someone who pays and then finds the department full needs a refund lane. Every department needs a staffed reception desk.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- FLOW 2 CONFIG -->
+      <div class="card" style="padding:18px 22px;margin-top:16px;opacity:0.55">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px">
+          <span style="font-size:15px;font-weight:600">Flow 2 settings</span>
+          <span style="font-size:12px;color:#737373">— editable once Flow 2 is selected</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px">
+          <div>
+            <span style="font-size:13px;font-weight:500;color:#404040;display:block;margin-bottom:6px">Flat consultation fee</span>
+            <div class="num" style="height:38px;border-radius:8px;border:1px solid #e5e5e5;background:#fafafa;display:flex;align-items:center;padding:0 12px;font-size:16px;font-weight:600">₹300</div>
+            <span style="font-size:11px;color:#737373;margin-top:5px;display:block">Every department, every doctor</span>
+          </div>
+          <div>
+            <span style="font-size:13px;font-weight:500;color:#404040;display:block;margin-bottom:6px">Invoice valid for</span>
+            <div style="height:38px;border-radius:8px;border:1px solid #e5e5e5;background:#fafafa;display:flex;align-items:center;padding:0 12px;font-size:14px;color:#525252">Same calendar day</div>
+            <span style="font-size:11px;color:#737373;margin-top:5px;display:block">After that the reception refuses it</span>
+          </div>
+          <div>
+            <span style="font-size:13px;font-weight:500;color:#404040;display:block;margin-bottom:6px">If the department is wrong</span>
+            <div style="height:38px;border-radius:8px;border:1px solid #e5e5e5;background:#fafafa;display:flex;align-items:center;padding:0 12px;font-size:14px;color:#525252">Redirect, keep the payment</div>
+            <span style="font-size:11px;color:#737373;margin-top:5px;display:block">The flat fee is not department-specific</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- WHAT HAPPENS WHEN YOU SWITCH -->
+      <div style="border:1px solid rgba(203,136,46,0.40);border-radius:14px;background:rgba(203,136,46,0.07);padding:16px 20px;margin-top:16px">
+        <div style="display:flex;align-items:flex-start;gap:12px">
+          <svg style="margin-top:2px;flex-shrink:0" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#cb882e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></svg>
+          <div style="flex-grow:1">
+            <span style="font-size:14px;font-weight:600;display:block;margin-bottom:8px">Switching changes eight things the same morning</span>
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 26px;font-size:13px;color:#404040">
+              <div>· Counter 3 loses the queue picker</div>
+              <div>· Department receptions gain it</div>
+              <div>· Billing takes one price, not a tariff lookup</div>
+              <div>· The token slip prints PAID, not TO PAY</div>
+              <div>· Registration can no longer book</div>
+              <div>· Free follow-ups stop being free</div>
+              <div>· Enquiry starts naming floors, not counters</div>
+              <div>· Every open unpaid token must be settled first</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ACTION -->
+      <div style="display:flex;align-items:center;gap:16px;margin-top:20px">
+        <div style="flex-grow:1">
+          <div style="display:flex;align-items:center;gap:9px">
+            <span style="font-size:13px;font-weight:500;color:#404040">Takes effect</span>
+            <div style="display:flex;gap:6px">
+              <span style="display:inline-flex;align-items:center;height:32px;padding:0 13px;border-radius:8px;background:#171717;color:#fafafa;font-size:13px;font-weight:500">Tomorrow, 06:00</span>
+              <span style="display:inline-flex;align-items:center;height:32px;padding:0 13px;border-radius:8px;background:#ffffff;border:1px solid #e5e5e5;font-size:13px;font-weight:500">Immediately</span>
+            </div>
+          </div>
+          <span style="font-size:12px;color:#737373;display:block;margin-top:7px">Overnight is the safe choice — <span class="num">14 tokens</span> are open right now and every one of them would need settling before the change lands.</span>
+        </div>
+        <button style="height:36px;padding:0 16px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:13px;font-weight:500">Discard</button>
+        <button style="height:40px;padding:0 20px;border-radius:8px;border:none;background:#171717;color:#fafafa;font-size:14px;font-weight:600">Save counter sequence</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

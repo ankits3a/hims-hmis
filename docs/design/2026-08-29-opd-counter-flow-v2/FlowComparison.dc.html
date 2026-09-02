@@ -1,0 +1,248 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#fafafa;color:#0a0a0a;
+      font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90}
+    .num{font-variant-numeric:tabular-nums}
+    .card{background:#ffffff;border:1px solid #e5e5e5;border-radius:14px;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .row{display:flex;align-items:stretch;border-bottom:1px solid #f0f0f0}
+    .cell{padding:13px 16px;font-size:12.5px;line-height:18px}
+    .chip{display:inline-flex;align-items:center;height:21px;padding:0 9px;border-radius:9999px;
+          font-size:10.5px;font-weight:700;letter-spacing:0.03em;white-space:nowrap}
+    .same{background:#f5f5f5;color:#525252}
+    .plus{background:rgba(49,143,90,0.12);color:#318f5a}
+    .diff{background:rgba(33,140,181,0.12);color:#218cb5}
+    .adopt{background:#171717;color:#fafafa}
+    .later{background:rgba(203,136,46,0.14);color:#cb882e}
+    .node{display:flex;flex-direction:column;align-items:center;gap:5px;width:112px;text-align:center}
+    .box{width:100%;height:50px;border-radius:10px;display:flex;flex-direction:column;align-items:center;
+      justify-content:center;gap:1px;font-size:11.5px;font-weight:600;line-height:14px}
+    .arr{flex-grow:1;height:1px;background:#d4d4d4;min-width:14px;margin-top:-22px}
+  </style>
+</helmet>
+
+<div style="width:1600px;background:#fafafa;padding:32px 34px 38px;display:flex;flex-direction:column;gap:18px">
+
+  <!-- HEAD -->
+  <div>
+    <h1 style="margin:0;font-size:26px;font-weight:600;letter-spacing:-0.02em">The Medanta walkthrough, against ours</h1>
+    <p style="margin:8px 0 0;font-size:14px;color:#525252;max-width:960px;line-height:21px">
+      Line by line against the walkthrough you pasted. Most of it we already match. Two things are worth taking.
+      One thing we do differently on purpose, and I would keep it that way.
+    </p>
+    <div style="display:flex;align-items:flex-start;gap:9px;margin-top:11px;padding:10px 13px;border-radius:10px;background:#ffffff;border:1px dashed #d4d4d4;max-width:960px">
+      <svg style="margin-top:2px;flex-shrink:0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg>
+      <span style="font-size:12px;color:#525252;line-height:17px">
+        That walkthrough is an AI summary and carries its own "may include mistakes" note. The <em>shape</em> of the flow is standard and safe to reason from;
+        the specifics in it — the ₹250 fee, the chamber counts, the phone numbers — are not worth benchmarking against without checking. Nothing below leans on them.
+      </span>
+    </div>
+  </div>
+
+  <!-- THE COMPARISON -->
+  <div class="card" style="overflow:hidden">
+    <div style="display:flex;align-items:stretch;background:#f5f5f5;border-bottom:1px solid #e5e5e5">
+      <div class="cell lbl" style="width:520px">Medanta, as described</div>
+      <div class="cell lbl" style="width:640px;border-left:1px solid #e5e5e5">What we have designed</div>
+      <div class="cell lbl" style="flex-grow:1;border-left:1px solid #e5e5e5">Call</div>
+    </div>
+
+    <div class="row">
+      <div class="cell" style="width:520px"><strong>Photo ID at the registration or help desk</strong> creates or pulls up the UHID.</div>
+      <div class="cell" style="width:640px;border-left:1px solid #f0f0f0">Same, plus ABHA, guardian contact and the confidential-patient flag — and seven exception paths, because the clean case is about three walk-ins in ten.</div>
+      <div class="cell" style="flex-grow:1;border-left:1px solid #f0f0f0"><span class="chip plus">SAME, DEEPER</span></div>
+    </div>
+
+    <div class="row">
+      <div class="cell" style="width:520px">Confirm the appointment, or <strong>book a slot for your chosen specialty</strong>.</div>
+      <div class="cell" style="width:640px;border-left:1px solid #f0f0f0">Symptom-first. Anshuman types <em>cough</em> and gets departments ranked by fit and doctors ranked by queue. The patient never has to name a specialty.</div>
+      <div class="cell" style="flex-grow:1;border-left:1px solid #f0f0f0"><span class="chip diff">OURS IS BETTER HERE</span><div style="color:#525252;margin-top:5px;font-size:11.5px">"Choose your specialty" assumes a patient who knows what a nephrologist is.</div></div>
+    </div>
+
+    <div class="row" style="background:rgba(23,23,23,0.03)">
+      <div class="cell" style="width:520px"><strong>Pay at the billing counter or kiosk and receive the receipt AND the token.</strong> One stop.</div>
+      <div class="cell" style="width:640px;border-left:1px solid #f0f0f0">We split it. Flow 1 issues the token at Counter 3 and bills after; Flow 2 bills first and the department reception issues the token. Neither does both at one desk.</div>
+      <div class="cell" style="flex-grow:1;border-left:1px solid #f0f0f0"><span class="chip adopt">ADOPT — AS A THIRD FLOW</span><div style="color:#525252;margin-top:5px;font-size:11.5px">See the diagram below.</div></div>
+    </div>
+
+    <div class="row">
+      <div class="cell" style="width:520px">Walk to the OPD zone for that specialty; the <strong>nursing station records BP, pulse, weight, temperature</strong>.</div>
+      <div class="cell" style="width:640px;border-left:1px solid #f0f0f0">Vitals desk scans the token barcode; height carries forward and only unlocks against a stated reason; danger ranges flag straight to the doctor's list.</div>
+      <div class="cell" style="flex-grow:1;border-left:1px solid #f0f0f0"><span class="chip plus">SAME, TIGHTER</span></div>
+    </div>
+
+    <div class="row">
+      <div class="cell" style="width:520px"><strong>Localised waiting outside each department</strong> rather than one crowded central hall.</div>
+      <div class="cell" style="width:640px;border-left:1px solid #f0f0f0">Already the design — the board is per department, showing that department's rooms only, and it never shows a name.</div>
+      <div class="cell" style="flex-grow:1;border-left:1px solid #f0f0f0"><span class="chip same">SAME</span></div>
+    </div>
+
+    <div class="row">
+      <div class="cell" style="width:520px">Watch the screen for your token, go in, hand over past reports.</div>
+      <div class="cell" style="width:640px;border-left:1px solid #f0f0f0">Same, plus the priority ladder (danger → returned with results → appointment → walk-in) and the rescue screen for when the doctor is called away mid-session.</div>
+      <div class="cell" style="flex-grow:1;border-left:1px solid #f0f0f0"><span class="chip plus">SAME, DEEPER</span></div>
+    </div>
+
+    <div class="row" style="background:rgba(33,140,181,0.04)">
+      <div class="cell" style="width:520px"><strong>Take the prescription BACK to the billing counter or lab reception</strong> to get tests billed, then go to pathology or radiology.</div>
+      <div class="cell" style="width:640px;border-left:1px solid #f0f0f0">The exit desk scans the QR in the prescription footer and raises the order there and then. The patient walks <strong>forward</strong> to radiology reception, which already has the order and the photo of the paper.</div>
+      <div class="cell" style="flex-grow:1;border-left:1px solid #f0f0f0"><span class="chip diff">WE DIFFER — KEEP IT</span><div style="color:#525252;margin-top:5px;font-size:11.5px">Saves a lap back across the building, and it is where the missed test gets caught.</div></div>
+    </div>
+
+    <div class="row">
+      <div class="cell" style="width:520px">Collect medicines at the OPD pharmacy using your receipt.</div>
+      <div class="cell" style="width:640px;border-left:1px solid #f0f0f0">Same counter — but the pharmacy already has the prescription from the exit desk, so picking starts before she reaches the window.</div>
+      <div class="cell" style="flex-grow:1;border-left:1px solid #f0f0f0"><span class="chip plus">SAME, FASTER</span></div>
+    </div>
+
+    <div class="row" style="background:rgba(23,23,23,0.03)">
+      <div class="cell" style="width:520px"><strong>Book the next visit at the help desk before leaving.</strong></div>
+      <div class="cell" style="width:640px;border-left:1px solid #f0f0f0">We print <em>Review on ___</em> with tick boxes on the prescription — and then nobody books it. The patient leaves holding a date and no appointment.</div>
+      <div class="cell" style="flex-grow:1;border-left:1px solid #f0f0f0"><span class="chip adopt">ADOPT — GAP IN OURS</span></div>
+    </div>
+
+    <div class="row">
+      <div class="cell" style="width:520px">A <strong>Platinum Desk</strong> in the lobby for corporate and premium members, for expedited billing.</div>
+      <div class="cell" style="width:640px;border-left:1px solid #f0f0f0">You already have corporate partners in the system — there are partner P&amp;L and receivables screens — but no fast lane at the counter for them.</div>
+      <div class="cell" style="flex-grow:1;border-left:1px solid #f0f0f0"><span class="chip later">WORTH A LOOK</span></div>
+    </div>
+
+    <div class="row" style="border-bottom:none">
+      <div class="cell" style="width:520px"><strong>Self-service billing kiosks</strong> alongside the cashier counters.</div>
+      <div class="cell" style="width:640px;border-left:1px solid #f0f0f0">Pays off where most patients are repeat, urban and carrying a smartphone. A first-time walk-in who cannot read the screen turns a kiosk into a queue with an extra step in it.</div>
+      <div class="cell" style="flex-grow:1;border-left:1px solid #f0f0f0"><span class="chip later">NOT YET</span></div>
+    </div>
+  </div>
+
+  <!-- THE THREE SEQUENCES -->
+  <div class="card" style="padding:20px 22px">
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:16px">
+      <span style="font-size:16px;font-weight:600">Three sequences now, not two</span>
+      <span style="font-size:12.5px;color:#737373">the third is what the walkthrough actually describes</span>
+    </div>
+
+    <!-- FLOW 1 -->
+    <div style="display:flex;align-items:flex-start;gap:18px;padding-bottom:16px;border-bottom:1px solid #f0f0f0">
+      <div style="width:172px;flex-shrink:0;padding-top:2px">
+        <div style="font-size:13.5px;font-weight:600">Flow 1 · Queue first</div>
+        <div style="font-size:11.5px;color:#737373;line-height:16px;margin-top:2px">Fees differ by doctor. Follow-ups can be free.</div>
+      </div>
+      <div style="display:flex;align-items:flex-start;flex-grow:1">
+        <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Registration</div></div>
+        <div class="arr"></div>
+        <div class="node"><div class="box" style="background:#171717;color:#fafafa">Appointment<span style="font-weight:400;opacity:0.7;font-size:10px">token here</span></div></div>
+        <div class="arr"></div>
+        <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Billing</div></div>
+        <div class="arr"></div>
+        <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Vitals</div></div>
+        <div class="arr"></div>
+        <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Consult</div></div>
+      </div>
+      <div style="width:190px;flex-shrink:0;font-size:11.5px;color:#525252;line-height:16px;padding-top:2px">Slip is stamped UNPAID and lapses in 30 min.</div>
+    </div>
+
+    <!-- FLOW 2 -->
+    <div style="display:flex;align-items:flex-start;gap:18px;padding:16px 0;border-bottom:1px solid #f0f0f0">
+      <div style="width:172px;flex-shrink:0;padding-top:2px">
+        <div style="font-size:13.5px;font-weight:600">Flow 2 · Bill first</div>
+        <div style="font-size:11.5px;color:#737373;line-height:16px;margin-top:2px">One flat fee. Every department needs a staffed reception.</div>
+      </div>
+      <div style="display:flex;align-items:flex-start;flex-grow:1">
+        <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Registration</div></div>
+        <div class="arr"></div>
+        <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Billing</div></div>
+        <div class="arr"></div>
+        <div class="node"><div class="box" style="background:#171717;color:#fafafa">Dept reception<span style="font-weight:400;opacity:0.7;font-size:10px">token here</span></div></div>
+        <div class="arr"></div>
+        <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Vitals</div></div>
+        <div class="arr"></div>
+        <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Consult</div></div>
+      </div>
+      <div style="width:190px;flex-shrink:0;font-size:11.5px;color:#525252;line-height:16px;padding-top:2px">Receipt says loudly that it is not a token.</div>
+    </div>
+
+    <!-- FLOW 3 — THE NEW ONE -->
+    <div style="display:flex;align-items:flex-start;gap:18px;padding-top:16px">
+      <div style="width:172px;flex-shrink:0;padding-top:2px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:13.5px;font-weight:600">Flow 3 · Single window</span>
+        </div>
+        <span class="chip adopt" style="margin-top:5px">NEW</span>
+        <div style="font-size:11.5px;color:#737373;line-height:16px;margin-top:6px">Register, pay and get the token at one desk.</div>
+      </div>
+      <div style="display:flex;align-items:flex-start;flex-grow:1">
+        <div class="node" style="width:172px"><div class="box" style="background:#171717;color:#fafafa;height:50px">Front desk<span style="font-weight:400;opacity:0.7;font-size:10px">UHID + fee + token</span></div></div>
+        <div class="arr"></div>
+        <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Vitals<span style="font-weight:400;color:#737373;font-size:10px">at the dept</span></div></div>
+        <div class="arr"></div>
+        <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Consult</div></div>
+        <div class="arr"></div>
+        <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Exit desk<span style="font-weight:400;color:#737373;font-size:10px">orders</span></div></div>
+        <div class="arr"></div>
+        <div class="node"><div class="box" style="background:#f5f5f5;border:1px solid #e5e5e5">Pharmacy</div></div>
+      </div>
+      <div style="width:190px;flex-shrink:0;font-size:11.5px;color:#525252;line-height:16px;padding-top:2px">One slip does both jobs — receipt and token on the same 80 mm print.</div>
+    </div>
+
+    <div style="display:flex;gap:16px;margin-top:18px;padding-top:16px;border-top:1px solid #e5e5e5">
+      <div style="flex-grow:1;padding:12px 14px;border-radius:10px;background:rgba(49,143,90,0.06);border:1px solid rgba(49,143,90,0.28)">
+        <div style="font-size:12.5px;font-weight:600;margin-bottom:4px;color:#0a0a0a">Why Flow 3 probably suits you</div>
+        <div style="font-size:12px;color:#404040;line-height:17px">Two counter crossings instead of four. One paper instead of two. No unpaid slip to chase and no receipt that has to explain it is not a token. At around 300 OPD a day you may not need three separate front counters at all.</div>
+      </div>
+      <div style="flex-grow:1;padding:12px 14px;border-radius:10px;background:rgba(203,136,46,0.07);border:1px solid rgba(203,136,46,0.30)">
+        <div style="font-size:12.5px;font-weight:600;margin-bottom:4px;color:#0a0a0a">What it costs you</div>
+        <div style="font-size:12px;color:#404040;line-height:17px">One clerk now holds registration, doctor choice <em>and</em> cash. That is a real separation-of-duties loss — the drawer and the queue are in the same pair of hands. It needs a blind cash count and a daily concession report to stay honest.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- THE TWO TO ADOPT -->
+  <div style="border:2px solid #171717;border-radius:14px;background:#ffffff;padding:20px 22px">
+    <div class="lbl" style="margin-bottom:13px">Two things to take from it</div>
+    <div style="display:flex;gap:22px">
+      <div style="flex-grow:1">
+        <div style="display:flex;align-items:baseline;gap:9px">
+          <span class="num" style="font-size:20px;font-weight:700;letter-spacing:-0.02em">1</span>
+          <div>
+            <div style="font-size:14.5px;font-weight:600">Add Flow 3 as a third counter sequence</div>
+            <div style="font-size:12.5px;color:#525252;line-height:18px;margin-top:3px">
+              The appointment screen already switches behaviour on a sequence setting. A third mode adds a payment block to that screen and prints one combined slip.
+              Say the word and I will wire it up — the screen and the slip both already exist, they just need joining.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="width:1px;background:#e5e5e5"></div>
+      <div style="flex-grow:1">
+        <div style="display:flex;align-items:baseline;gap:9px">
+          <span class="num" style="font-size:20px;font-weight:700;letter-spacing:-0.02em">2</span>
+          <div>
+            <div style="font-size:14.5px;font-weight:600">Book the follow-up before she leaves</div>
+            <div style="font-size:12.5px;color:#525252;line-height:18px;margin-top:3px">
+              The doctor already ticks <em>Review in 5 days</em>. The exit desk is scanning that prescription anyway — it should offer the date and print the next token there,
+              instead of leaving her to come back and queue at registration a second time.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1600,"height":1500}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

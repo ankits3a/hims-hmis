@@ -1,0 +1,247 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#ffffff;color:#0a0a0a;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90;text-decoration:underline}
+    button{font:inherit;color:inherit;cursor:pointer;text-align:left}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .card{border:1px solid #e5e5e5;border-radius:14px;background:#ffffff;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden">
+
+  <!-- CHROME -->
+  <div style="display:flex;align-items:center;gap:16px;height:52px;padding:0 20px;border-bottom:1px solid #e5e5e5;background:#fafafa;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:24px;height:24px;border-radius:6px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:-0.02em">CRK</div>
+      <span style="font-size:14px;font-weight:600">General Medicine reception</span>
+    </div>
+    <div style="width:1px;height:20px;background:#e5e5e5"></div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#525252">
+      <span>1st floor · Block A</span><span style="color:#d4d4d4">·</span>
+      <span style="color:#0a0a0a;font-weight:500">Gaurav Saxena</span>
+    </div>
+    <span style="display:inline-flex;align-items:center;gap:6px;height:23px;padding:0 10px;border-radius:9999px;background:#171717;color:#fafafa;font-size:11px;font-weight:700;letter-spacing:0.03em">FLOW 2 · BILL FIRST</span>
+    <div style="flex-grow:1"></div>
+    <div style="display:flex;align-items:center;gap:14px;font-size:13px;color:#737373">
+      <span class="num">Sat 29 Aug 2026 · 10:22</span>
+      <div style="width:26px;height:26px;border-radius:9999px;background:#e5e5e5;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#404040">GS</div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-grow:1;min-height:0">
+
+    <!-- ── LEFT ─────────────────────────────────────────────────────────── -->
+    <div style="width:900px;border-right:1px solid #e5e5e5;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:16px">
+
+      <!-- SCAN -->
+      <div>
+        <span style="font-size:13px;font-weight:500;color:#404040;display:block;margin-bottom:7px">Scan the paid invoice, or type the UHID</span>
+        <div style="display:flex;gap:14px">
+          <div style="position:relative;display:flex;align-items:center;flex-grow:1">
+            <svg style="position:absolute;left:14px" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
+            <div style="height:52px;width:100%;border-radius:10px;border:1px solid #171717;background:#ffffff;box-shadow:0 0 0 3px rgba(161,161,161,0.35);display:flex;align-items:center;padding:0 16px 0 42px;font-size:17px">
+              <span class="mono num">INV-2608-04387</span>
+              <span style="width:1px;height:22px;background:#0a0a0a;margin-left:2px"></span>
+            </div>
+          </div>
+          <div style="width:160px;height:52px;border:1px dashed #d4d4d4;border-radius:10px;display:flex;align-items:center;justify-content:center;gap:8px;color:#a1a1a1">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><path d="M14 14h3v3h-3zM19 19h2M17 21h4"/></svg>
+            <span style="font-size:12px">Reader ready</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAID + WHO -->
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 20px;background:rgba(49,143,90,0.09);border-bottom:1px solid rgba(49,143,90,0.25)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#318f5a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          <span style="font-size:13px;font-weight:600;color:#318f5a">Paid <span class="num">₹300</span> at 10:14, Counter 5 — valid today</span>
+          <div style="flex-grow:1"></div>
+          <span class="mono num" style="font-size:12px;color:#525252">INV-2608-04387</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;padding:16px 20px">
+          <div style="width:42px;height:42px;border-radius:9999px;background:#f5f5f5;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#404040;flex-shrink:0">UR</div>
+          <div style="display:flex;flex-direction:column;gap:2px;flex-grow:1">
+            <div style="display:flex;align-items:center;gap:9px">
+              <span style="font-size:16px;font-weight:600">Urvashi Rathod</span>
+              <span style="font-size:13px;color:#525252">34 y · F</span>
+              <span style="display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:9999px;background:#f5f5f5;font-size:11px;font-weight:600;color:#525252">NEW TODAY</span>
+            </div>
+            <span class="mono num" style="font-size:12px;color:#737373">CRK0000184220 · +91 91234 70055 · registered 09:58</span>
+          </div>
+          <div style="text-align:right;padding-left:16px;border-left:1px solid #e5e5e5;width:210px">
+            <div class="lbl">Told us</div>
+            <div style="font-size:13px;font-weight:500;margin-top:1px">Cough and fever</div>
+            <div style="font-size:12px;color:#737373">sent up by Enquiry</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PICK A DOCTOR — this department only -->
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:10px;padding:11px 20px;background:#fafafa;border-bottom:1px solid #e5e5e5">
+          <span class="lbl" style="flex-grow:1">Put her with</span>
+          <span style="font-size:12px;color:#737373">General Medicine only — this desk cannot queue for another department</span>
+        </div>
+
+        <div style="padding:14px 20px;display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;align-items:center;gap:12px;padding:13px 15px;border-radius:12px;border:1px solid #e5e5e5;background:#ffffff;cursor:pointer">
+            <div style="width:16px;height:16px;border-radius:9999px;border:1px solid #d4d4d4;flex-shrink:0"></div>
+            <div style="display:flex;flex-direction:column;gap:1px;width:230px">
+              <span style="font-size:15px;font-weight:500">Dr Anand Rao</span>
+              <span style="font-size:12px;color:#737373">Room 104 · MD General Medicine</span>
+            </div>
+            <span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:9999px;background:rgba(49,143,90,0.10);font-size:12px;font-weight:500;color:#318f5a">
+              <span style="width:6px;height:6px;border-radius:9999px;background:#318f5a"></span>In
+            </span>
+            <div style="flex-grow:1"></div>
+            <div style="display:flex;align-items:baseline;gap:5px"><span class="num" style="font-size:19px;font-weight:600">12</span><span style="font-size:12px;color:#737373">waiting</span></div>
+            <span class="num" style="font-size:13px;font-weight:500;color:#cb882e;width:82px;text-align:right">~55 min</span>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:12px;padding:13px 15px;border-radius:12px;border:1px solid #171717;background:#f5f5f5;cursor:pointer">
+            <div style="width:16px;height:16px;border-radius:9999px;border:5px solid #171717;flex-shrink:0"></div>
+            <div style="display:flex;flex-direction:column;gap:1px;width:230px">
+              <span style="font-size:15px;font-weight:600">Dr Gurdas Maan</span>
+              <span style="font-size:12px;color:#737373">Room 106 · MD General Medicine</span>
+            </div>
+            <span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:9999px;background:rgba(49,143,90,0.10);font-size:12px;font-weight:500;color:#318f5a">
+              <span style="width:6px;height:6px;border-radius:9999px;background:#318f5a"></span>In
+            </span>
+            <div style="flex-grow:1"></div>
+            <div style="display:flex;align-items:baseline;gap:5px"><span class="num" style="font-size:19px;font-weight:600">10</span><span style="font-size:12px;color:#737373">waiting</span></div>
+            <span class="num" style="font-size:13px;font-weight:500;color:#cb882e;width:82px;text-align:right">~42 min</span>
+          </div>
+
+          <div style="display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border-radius:10px;background:#f5f5f5;border:1px solid #e5e5e5">
+            <svg style="margin-top:2px;flex-shrink:0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <span style="font-size:13px;color:#404040;line-height:19px">She did not ask for anyone by name, so the shorter queue is preselected. Change it only if she asks.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ACTION -->
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="flex-grow:1;display:flex;align-items:center;gap:9px;font-size:13px;color:#525252">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#318f5a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          <span>Prints a token marked <strong style="font-weight:600">PAID</strong>. She goes straight to vitals, three doors along.</span>
+        </div>
+        <button style="height:44px;padding:0 22px;border-radius:8px;border:none;background:#171717;color:#fafafa;font-size:15px;font-weight:600;display:inline-flex;align-items:center;gap:9px">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3h12v6M6 14h12v8H6z"/></svg>
+          Add to queue &amp; print token
+        </button>
+      </div>
+
+      <!-- THE REFUSAL -->
+      <div style="border:1px solid rgba(231,0,11,0.32);border-radius:14px;background:rgba(231,0,11,0.05);overflow:hidden;margin-top:6px">
+        <div style="display:flex;align-items:center;gap:9px;padding:9px 18px;border-bottom:1px solid rgba(231,0,11,0.22)">
+          <span class="lbl" style="color:#e7000b">What the desk does when the invoice is not for you</span>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 18px">
+          <svg style="margin-top:2px;flex-shrink:0" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#e7000b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+          <div style="flex-grow:1">
+            <span style="font-size:14px;font-weight:600;display:block">Yesterday's invoice — <span class="mono num" style="font-weight:700">INV-2608-04102</span></span>
+            <span style="font-size:13px;color:#404040;line-height:19px;display:block;margin-top:3px">
+              Dated 28-Aug-2026. A flat-fee invoice is good for the calendar day it was paid on and no longer. Send her back to Counter 5 — the screen prints a redirect slip so she is not sent up and down twice.
+            </span>
+            <div style="display:flex;gap:8px;margin-top:11px">
+              <button style="height:32px;padding:0 13px;border-radius:8px;border:1px solid rgba(231,0,11,0.30);background:#ffffff;font-size:12px;font-weight:500">Print redirect slip</button>
+              <button style="height:32px;padding:0 13px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:12px;font-weight:500">Ask billing to honour it</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RIGHT: THE DEPARTMENT'S DAY ──────────────────────────────────── -->
+    <div style="flex-grow:1;background:#fafafa;display:flex;flex-direction:column;min-height:0">
+      <div style="padding:16px 20px 12px;border-bottom:1px solid #e5e5e5;flex-shrink:0">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:14px;font-weight:600">General Medicine today</span>
+          <span class="num" style="font-size:12px;color:#737373">10:22</span>
+        </div>
+      </div>
+
+      <div style="padding:16px 20px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;flex-shrink:0">
+        <div class="card" style="padding:12px 14px">
+          <div class="lbl">In the queue</div>
+          <div class="num" style="font-size:26px;font-weight:600;letter-spacing:-0.02em;margin-top:2px">22</div>
+        </div>
+        <div class="card" style="padding:12px 14px">
+          <div class="lbl">Seen so far</div>
+          <div class="num" style="font-size:26px;font-weight:600;letter-spacing:-0.02em;margin-top:2px">31</div>
+        </div>
+        <div class="card" style="padding:12px 14px">
+          <div class="lbl">Longest wait</div>
+          <div class="num" style="font-size:26px;font-weight:600;letter-spacing:-0.02em;margin-top:2px;color:#cb882e">58<span style="font-size:13px;font-weight:400;color:#737373"> min</span></div>
+        </div>
+        <div class="card" style="padding:12px 14px">
+          <div class="lbl">Paid, not queued</div>
+          <div class="num" style="font-size:26px;font-weight:600;letter-spacing:-0.02em;margin-top:2px;color:#e7000b">3</div>
+        </div>
+      </div>
+
+      <div style="padding:0 20px 12px;flex-shrink:0">
+        <div style="border:1px solid rgba(231,0,11,0.28);border-radius:12px;background:rgba(231,0,11,0.05);padding:12px 14px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e7000b" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <span style="font-size:12px;font-weight:600;color:#e7000b">Paid over 20 minutes ago and still not here</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <div style="display:flex;align-items:center;gap:8px;font-size:12px"><span class="mono num" style="color:#525252">…04361</span><span style="flex-grow:1">Ram Naresh Yadav</span><span class="num" style="color:#e7000b;font-weight:600">38 min</span></div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:12px"><span class="mono num" style="color:#525252">…04370</span><span style="flex-grow:1">Sabina Khatoon</span><span class="num" style="color:#e7000b;font-weight:600">27 min</span></div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:12px"><span class="mono num" style="color:#525252">…04379</span><span style="flex-grow:1">Dilip Kumar Ram</span><span class="num" style="color:#cb882e;font-weight:600">21 min</span></div>
+          </div>
+          <div style="font-size:11px;color:#525252;line-height:16px;margin-top:9px">They paid downstairs and never arrived. Someone should look for them in the lobby — or they went home.</div>
+        </div>
+      </div>
+
+      <div style="flex-grow:1;overflow-y:auto;padding:4px 20px 16px">
+        <div class="lbl" style="margin-bottom:9px">Just queued here</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;background:#ffffff;border:1px solid #e5e5e5">
+            <span class="num" style="width:30px;font-size:15px;font-weight:600">61</span>
+            <div style="display:flex;flex-direction:column;gap:0;flex-grow:1;min-width:0">
+              <span style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Shanti Devi</span>
+              <span style="font-size:11px;color:#737373">Dr Maan · 10:19</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;background:#ffffff;border:1px solid #e5e5e5">
+            <span class="num" style="width:30px;font-size:15px;font-weight:600">60</span>
+            <div style="display:flex;flex-direction:column;gap:0;flex-grow:1;min-width:0">
+              <span style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Arvind Paswan</span>
+              <span style="font-size:11px;color:#737373">Dr Rao · 10:16</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;background:#ffffff;border:1px solid #e5e5e5">
+            <span class="num" style="width:30px;font-size:15px;font-weight:600">59</span>
+            <div style="display:flex;flex-direction:column;gap:0;flex-grow:1;min-width:0">
+              <span style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Kumari Bharti</span>
+              <span style="font-size:11px;color:#737373">Dr Maan · 10:11</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

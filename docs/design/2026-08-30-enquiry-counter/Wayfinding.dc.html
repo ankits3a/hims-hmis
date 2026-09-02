@@ -1,0 +1,203 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#fafafa;color:#0a0a0a;
+      font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+    .hi{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.55}
+    .card{background:#ffffff;border:1px solid #e5e5e5;border-radius:14px;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+    .n{width:26px;height:26px;border-radius:9999px;background:#171717;color:#fafafa;display:flex;
+       align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+    .h2{font-size:17px;font-weight:600;letter-spacing:-0.01em}
+    .sub{font-size:13px;color:#525252;line-height:19px}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .bad{border:1px solid rgba(231,0,11,0.35);background:rgba(231,0,11,0.04);border-radius:10px;padding:13px 15px}
+    .good{border:1px solid rgba(49,143,90,0.35);background:rgba(49,143,90,0.05);border-radius:10px;padding:13px 15px}
+    .tag{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:9999px;
+         font-size:10px;font-weight:700;letter-spacing:0.06em}
+  </style>
+</helmet>
+
+<div style="width:1120px;background:#fafafa;padding:34px 38px 40px;display:flex;flex-direction:column;gap:18px">
+
+  <div>
+    <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">
+      <h1 style="margin:0;font-size:27px;font-weight:600;letter-spacing:-0.02em">&#8220;Where is Radiology?&#8221;</h1>
+      <span class="hi" style="font-size:21px;color:#737373">एक्स-रे कहाँ है?</span>
+    </div>
+    <p style="margin:8px 0 0;font-size:14px;color:#525252;max-width:880px;line-height:21px">
+      There is no floor plan anywhere in this hospital's software, and with no printer at this desk there is nothing to draw one on.
+      So a route is not a map — <strong style="font-weight:600;color:#0a0a0a">it is a sentence she says while pointing</strong>, and it has to
+      survive being repeated by a person who was half-listening, is anxious, and cannot read the signs on the way.
+      Which makes this the cheapest thing on the whole canvas to build and the easiest to build badly.
+    </p>
+  </div>
+
+  <!-- 1 · A LOCATION IS NOT A ROUTE -->
+  <div class="card" style="padding:20px 22px">
+    <div style="display:flex;align-items:flex-start;gap:13px;margin-bottom:15px">
+      <div class="n">1</div>
+      <div>
+        <div class="h2">The registry knows where things are. It does not know how to get there.</div>
+        <div class="sub"><span class="mono">resources</span> holds a floor &#8594; ward &#8594; room tree with <span class="mono">attributes.floor</span>, so an address is derivable. An address is not what was asked for.</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">
+      <div class="bad">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px"><span class="tag" style="background:#e7000b;color:#fff">DERIVED FROM THE TREE</span></div>
+        <div style="font-size:16px;font-weight:600">Radiology &#183; Block B &#183; 2nd floor &#183; Room 214</div>
+        <div class="hi" style="font-size:15px;color:#525252;margin-top:6px">रेडियोलॉजी &#183; ब्लॉक बी &#183; दूसरी मंज़िल</div>
+        <div style="font-size:11.5px;color:#525252;margin-top:11px;line-height:16.5px">
+          Correct, and useless. &#8220;Block B&#8221; is a letter on an English sign that a first-time visitor has never seen and cannot
+          find. The lift she needs is not in this sentence. Neither is the fact that the second-floor corridor is reached
+          through the first-floor waiting hall, which is the part everybody gets wrong.
+        </div>
+      </div>
+      <div class="good">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px"><span class="tag" style="background:#318f5a;color:#fff">WRITTEN BY SOMEBODY WHO WALKED IT</span></div>
+        <div class="hi" style="font-size:18px;font-weight:500">मेरे पीछे वाले गलियारे से सीधे जाइए, दवा की दुकान के आगे लिफ़्ट है। दूसरी मंज़िल पर उतरकर बाएँ — नीले दरवाज़े।</div>
+        <div style="font-size:12px;color:#525252;margin-top:9px;line-height:17px">
+          &#8220;Straight down the corridor behind me, the lift is past the medicine shop. Second floor, turn left when you get out — the blue doors.&#8221;
+        </div>
+        <div style="font-size:11.5px;color:#525252;margin-top:10px;line-height:16.5px">
+          Four landmarks, no letters, no room number until the end. She can point at the first one from her chair.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2 · THE FIVE RULES -->
+  <div class="card" style="padding:20px 22px">
+    <div style="display:flex;align-items:flex-start;gap:13px;margin-bottom:15px">
+      <div class="n">2</div>
+      <div>
+        <div class="h2">Five rules, and they all come from her having no paper</div>
+        <div class="sub">Every one of these is a consequence of the answer being spoken once and then walked from memory.</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 26px">
+      <div style="display:flex;gap:11px"><span class="num" style="font-size:13px;font-weight:700;color:#a1a1a1">01</span><div><div style="font-size:13px;font-weight:600">Every route starts at this counter, not at the gate.</div><div style="font-size:12px;color:#525252;line-height:17px;margin-top:2px">One origin means one string per destination. It also means the first clause can be a direction she physically points in.</div></div></div>
+      <div style="display:flex;gap:11px"><span class="num" style="font-size:13px;font-weight:700;color:#a1a1a1">02</span><div><div style="font-size:13px;font-weight:600">Landmarks people already name, not signage.</div><div style="font-size:12px;color:#525252;line-height:17px;margin-top:2px">The medicine shop, the tea stall, the big staircase, the Hanuman shrine at the gate. Signage is in English and half of it is missing.</div></div></div>
+      <div style="display:flex;gap:11px"><span class="num" style="font-size:13px;font-weight:700;color:#a1a1a1">03</span><div><div style="font-size:13px;font-weight:600">Three turns maximum, then a person to ask.</div><div style="font-size:12px;color:#525252;line-height:17px;margin-top:2px">Nobody retains four. Anything further ends &#8220;&#8230;and ask at the desk there&#8221; &#8212; a handoff to a human is a legitimate last step.</div></div></div>
+      <div style="display:flex;gap:11px"><span class="num" style="font-size:13px;font-weight:700;color:#a1a1a1">04</span><div><div style="font-size:13px;font-weight:600">Room number last, never first.</div><div style="font-size:12px;color:#525252;line-height:17px;margin-top:2px">It is the confirmation that they arrived, not the instruction that gets them there. Leading with it is how people end up on the wrong floor reading door numbers.</div></div></div>
+      <div style="display:flex;gap:11px"><span class="num" style="font-size:13px;font-weight:700;color:#a1a1a1">05</span><div><div style="font-size:13px;font-weight:600">Stairs and lift are different routes, and the screen holds both.</div><div style="font-size:12px;color:#525252;line-height:17px;margin-top:2px">An 80-year-old with a stick and a young man in a hurry are not given the same sentence, and she should not have to compose the second one herself.</div></div></div>
+      <div style="display:flex;gap:11px"><span class="num" style="font-size:13px;font-weight:700;color:#a1a1a1">06</span><div><div style="font-size:13px;font-weight:600">Distance in minutes of walking, not metres.</div><div style="font-size:12px;color:#525252;line-height:17px;margin-top:2px">&#8220;Two minutes&#8221; sets an expectation that stops somebody turning back after thirty seconds thinking they have gone wrong.</div></div></div>
+    </div>
+  </div>
+
+  <!-- 3 · THE PINNED FEW -->
+  <div class="card" style="padding:20px 22px">
+    <div style="display:flex;align-items:flex-start;gap:13px;margin-bottom:15px">
+      <div class="n">3</div>
+      <div>
+        <div class="h2">Six of these are ninety per cent of the day</div>
+        <div class="sub">Pinned on the console, one keystroke each, never searched for. The long tail gets the search box; these never should.</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px">
+
+      <div style="border:1px solid #e5e5e5;border-radius:10px;background:#ffffff;padding:12px 14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
+          <span style="font-size:13px;font-weight:600">Registration</span><span class="num" style="font-size:11px;color:#a1a1a1">F1</span>
+        </div>
+        <div class="hi" style="font-size:14px">बाईं तरफ़, पहला काउंटर।</div>
+        <div class="num" style="font-size:11px;color:#737373;margin-top:6px">Counter 1 &#183; she points</div>
+      </div>
+
+      <div style="border:1px solid #e5e5e5;border-radius:10px;background:#ffffff;padding:12px 14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
+          <span style="font-size:13px;font-weight:600">Pharmacy</span><span class="num" style="font-size:11px;color:#a1a1a1">F2</span>
+        </div>
+        <div class="hi" style="font-size:14px">गलियारे से सीधे, दाईं ओर — शीशे वाली दुकान।</div>
+        <div class="num" style="font-size:11px;color:#737373;margin-top:6px">Ground &#183; 1 min</div>
+      </div>
+
+      <div style="border:1px solid #e5e5e5;border-radius:10px;background:#ffffff;padding:12px 14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
+          <span style="font-size:13px;font-weight:600">Lab &#183; sample collection</span><span class="num" style="font-size:11px;color:#a1a1a1">F3</span>
+        </div>
+        <div class="hi" style="font-size:14px">दवा की दुकान से पहले बाएँ मुड़िए, दूसरा कमरा।</div>
+        <div class="num" style="font-size:11px;color:#737373;margin-top:6px">Ground &#183; 1 min</div>
+      </div>
+
+      <div style="border:1px solid #e5e5e5;border-radius:10px;background:#ffffff;padding:12px 14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
+          <span style="font-size:13px;font-weight:600">Radiology &#183; X-ray</span><span class="num" style="font-size:11px;color:#a1a1a1">F4</span>
+        </div>
+        <div class="hi" style="font-size:14px">लिफ़्ट से दूसरी मंज़िल, उतरकर बाएँ — नीले दरवाज़े।</div>
+        <div class="num" style="font-size:11px;color:#737373;margin-top:6px">2nd &#183; 3 min &#183; lift or 42 steps</div>
+      </div>
+
+      <div style="border:1px solid #e5e5e5;border-radius:10px;background:#ffffff;padding:12px 14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
+          <span style="font-size:13px;font-weight:600">Vitals desk</span><span class="num" style="font-size:11px;color:#a1a1a1">F5</span>
+        </div>
+        <div class="hi" style="font-size:14px">सीढ़ी से पहली मंज़िल, ऊपर पहुँचते ही सामने।</div>
+        <div class="num" style="font-size:11px;color:#737373;margin-top:6px">1st &#183; 2 min</div>
+      </div>
+
+      <div style="border:1px solid rgba(231,0,11,0.30);border-radius:10px;background:rgba(231,0,11,0.04);padding:12px 14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
+          <span style="font-size:13px;font-weight:600;color:#e7000b">Emergency</span><span class="num" style="font-size:11px;color:#e7000b">F6</span>
+        </div>
+        <div class="hi" style="font-size:14px;font-weight:600">मेरे साथ आइए।</div>
+        <div style="font-size:11px;color:#e7000b;margin-top:6px;line-height:15px">She walks them. Never a direction &#8212; the one route on this list that is not a sentence.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4 · WHAT IT NEEDS -->
+  <div style="border:2px solid #171717;border-radius:14px;background:#ffffff;padding:20px 24px">
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:12px">
+      <span style="font-size:16px;font-weight:700;letter-spacing:0.02em">WHAT IT NEEDS</span>
+      <span style="font-size:13px;color:#737373">the smallest new thing on this canvas, and the only one nobody has to design a table for</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:22px">
+      <div style="font-size:13px;color:#404040;line-height:19px">
+        Two strings and a number, on the resource row, in <span class="mono">attributes</span> &#8212; which is already a
+        <span class="mono">jsonb</span> column with no schema to change:
+        <div style="display:flex;flex-direction:column;gap:7px;margin-top:11px">
+          <div style="display:flex;gap:10px;align-items:baseline"><span class="mono" style="color:#0a0a0a;font-weight:600">routeHi</span><span style="font-size:12.5px;color:#525252">the spoken route in Devanagari, from this counter</span></div>
+          <div style="display:flex;gap:10px;align-items:baseline"><span class="mono" style="color:#0a0a0a;font-weight:600">routeEn</span><span style="font-size:12.5px;color:#525252">the same, so she can check what she is saying</span></div>
+          <div style="display:flex;gap:10px;align-items:baseline"><span class="mono" style="color:#0a0a0a;font-weight:600">routeStairs</span><span style="font-size:12.5px;color:#525252">null on the ground floor; the step count where it is not</span></div>
+          <div style="display:flex;gap:10px;align-items:baseline"><span class="mono" style="color:#0a0a0a;font-weight:600">walkMinutes</span><span style="font-size:12.5px;color:#525252">one integer, rounded up</span></div>
+        </div>
+        <div style="margin-top:13px;padding-top:12px;border-top:1px solid #e5e5e5;font-size:12.5px;color:#525252;line-height:18px">
+          About forty rows &#8212; every department, every counter, the lab, radiology, the wards, the pharmacy, the billing office,
+          the toilets and the canteen. <strong style="font-weight:600;color:#0a0a0a">Written once, by somebody who walks each one</strong>, and
+          edited from the same admin screen that already edits rooms.
+        </div>
+      </div>
+      <div style="background:#f5f5f5;border:1px solid #e5e5e5;border-radius:10px;padding:14px 16px">
+        <div class="lbl" style="margin-bottom:9px">The failure this prevents</div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px">
+          Without it every one of these sentences is composed fresh, by whoever is on the desk, from an address.
+          Two people give two different routes to the same room; the wrong one becomes the story the patient tells
+          their family; and the day Ekta is on leave the answers get measurably worse with nobody able to say why.
+        </div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px;margin-top:10px">
+          The building does not change. The sentence should not either.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1120,"height":1400}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

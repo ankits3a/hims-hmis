@@ -1,0 +1,254 @@
+{
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Sequence & the paper it makes"
+    },
+    {
+      "id": "page-2",
+      "name": "Hindi in print"
+    },
+    {
+      "id": "page-3",
+      "name": "When it goes wrong"
+    },
+    {
+      "id": "page-4",
+      "name": "Speed"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Appointment counter — sequence-aware",
+      "is_interactive": true
+    },
+    {
+      "file": "TokenSlip72.dc.html",
+      "page": "page-1",
+      "x": 1600,
+      "y": 0,
+      "w": 272,
+      "h": 700,
+      "title": "Token slip · 80 mm thermal",
+      "print": "fixed"
+    },
+    {
+      "file": "RxPageBlank.dc.html",
+      "page": "page-1",
+      "x": 1952,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "title": "OPD prescription sheet · A4",
+      "print": "fixed"
+    },
+    {
+      "file": "PaymentReceipt.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 1280,
+      "w": 272,
+      "h": 920,
+      "title": "OPD payment receipt · 80 mm thermal · bill-first",
+      "print": "fixed"
+    },
+    {
+      "file": "TokenSlipHindi.dc.html",
+      "page": "page-2",
+      "x": 0,
+      "y": 0,
+      "w": 272,
+      "h": 800,
+      "title": "Token slip · 80 mm · Hindi first",
+      "print": "fixed"
+    },
+    {
+      "file": "DevanagariSpec.dc.html",
+      "page": "page-2",
+      "x": 432,
+      "y": 0,
+      "w": 1100,
+      "h": 1920,
+      "title": "Setting Devanagari — the eight rules",
+      "print": "flow"
+    },
+    {
+      "file": "DisplayBoardHindi.dc.html",
+      "page": "page-2",
+      "x": 0,
+      "y": 2080,
+      "w": 1920,
+      "h": 1080,
+      "title": "Waiting-hall board · bilingual"
+    },
+    {
+      "file": "RegistrationEdge.dc.html",
+      "page": "page-3",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Registration — the unknown patient, and six more"
+    },
+    {
+      "file": "QueueDisruption.dc.html",
+      "page": "page-3",
+      "x": 1600,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "The doctor walked out — queue rescue",
+      "is_interactive": true
+    },
+    {
+      "file": "BillingEdge.dc.html",
+      "page": "page-3",
+      "x": 0,
+      "y": 1060,
+      "w": 1440,
+      "h": 900,
+      "title": "Billing — she is ₹50 short"
+    },
+    {
+      "file": "FloorBoard.dc.html",
+      "page": "page-4",
+      "x": 0,
+      "y": 0,
+      "w": 1600,
+      "h": 1000,
+      "title": "Duty Manager's floor board"
+    },
+    {
+      "file": "Keymap.dc.html",
+      "page": "page-4",
+      "x": 1760,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "The counter is a keyboard"
+    },
+    {
+      "file": "DowntimeMode.dc.html",
+      "page": "page-4",
+      "x": 0,
+      "y": 1160,
+      "w": 1440,
+      "h": 900,
+      "title": "Offline — keep working"
+    },
+    {
+      "file": "PrinterChoice.dc.html",
+      "page": "page-1",
+      "x": 432,
+      "y": 1280,
+      "w": 1120,
+      "h": 1420,
+      "title": "Which printer for which piece of paper",
+      "print": "flow"
+    },
+    {
+      "file": "PharmacyInvoice.dc.html",
+      "page": "page-1",
+      "x": 1712,
+      "y": 1280,
+      "w": 980,
+      "h": 1020,
+      "title": "Pharmacy invoice · dot matrix · 2-part",
+      "print": "flow"
+    },
+    {
+      "file": "FlowComparison.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 2860,
+      "w": 1600,
+      "h": 1540,
+      "title": "The Medanta walkthrough, against ours",
+      "print": "flow"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "v2-seq",
+      "page": "page-1",
+      "x": 0,
+      "y": -250,
+      "w": 940,
+      "text": "TWO PRINT OPTIONS, AND THE SEQUENCE DECIDES THE REST.\n\nUse the Sequence chip above this artboard to switch between the two orders. The same screen changes what it may print, what the black band says, where the slip sends her next, and whether Anshuman may issue anything at all.\n\nQueue-first: he issues the token, both sheets carry the UNPAID band, and it lapses at 30 minutes.\nBill-first: nothing prints until the receipt barcode is scanned. No override.\n\nThe barcode-label option is gone. Sample tubes get their labels at the collection desk, where the tube actually is."
+    },
+    {
+      "id": "v2-slip",
+      "page": "page-1",
+      "x": 1600,
+      "y": -250,
+      "w": 620,
+      "text": "72 mm printable = 576 dots at 203 dpi, drawn here at actual size. About 165 mm of paper instead of the 290 mm the first version ate — roughly a 43% cut in roll cost per patient.\n\nBarcode sits directly under the address and is the only machine-readable mark; the QR and its password are gone, and the foot carries the printed-by line instead.\n\nThe rubber stamp became an OUTLINED BOX with bold type. A full-width black flood is heat, head wear and curl on a cheap roll; a 1.5 px rule carries the same emphasis for a fraction of the ink. Same reasoning sets the weights: three bold zones per slip — the token number, the amount, the UNPAID box — and 400 everywhere else."
+    },
+    {
+      "id": "v2-rx",
+      "page": "page-1",
+      "x": 1952,
+      "y": -250,
+      "w": 700,
+      "text": "Header unchanged. Everything clinical is gone — no complaints, no examination, no diagnosis, no drug grid, no tick-list, no UNPAID stamp.\n\nWhat is left is what the counter actually knows: who she is, what she is allergic to, and an empty vitals line for the vitals desk.\n\nThe prescriber's name, degree and NMC number are gone from the foot too, because in a teaching hospital the signer varies by the hour — consultant, senior resident, junior resident. A pre-printed name would be wrong more often than right, so the rule stays and whoever signs writes and stamps their own."
+    },
+    {
+      "id": "v2-receipt",
+      "page": "page-1",
+      "x": 0,
+      "y": 1090,
+      "w": 1120,
+      "text": "THE FORMAT WAS THE PROBLEM, NOT THE CONTENT.\n\nA 4 × 6 label is die-cut — fixed height, so something has to go. A 72 mm roll is continuous: as long as the job needs. So the receipt moves onto the SAME printer and the SAME roll as the token slip, and Next Steps survives intact.\n\nBeside it: the pharmacy invoice on 2-part dot-matrix stationery, which is the right call for a taxable supply that needs a carbon copy and has to stay legible for years — and the sheet that works out which document belongs on which machine, with indicative costs."
+    },
+    {
+      "id": "v2-hindi",
+      "page": "page-2",
+      "x": 0,
+      "y": -280,
+      "w": 940,
+      "text": "THE HINDI SLIP COSTS MORE PAPER, AND THAT IS NOT A DESIGN FAULT.\n\nRule 6 on the specimen sheet puts an 11 pt floor under Devanagari on a 203 dpi head — below that, क्ष त्र ज्ञ smear into a grey mark. Rule 1 puts 1.55 leading under it. Together they make every Hindi line about 40% taller than the English equivalent, so the Hindi-first slip runs roughly 20 mm longer than the English one beside it on page 1.\n\nThat is the real trade, and it is worth knowing before the roll order: lead in Hindi where the patient must not misread (the band, the next steps, the department), and let English carry the rest."
+    },
+    {
+      "id": "v2-board",
+      "page": "page-2",
+      "x": 0,
+      "y": 1990,
+      "w": 900,
+      "text": "On the board, Hindi leads at 1.4× the English size and English survives as a small caps gloss — a hierarchy, not a duplicate. Tokens and room numbers stay numeric, so they need no language at all.\n\nThe notice ticker alternates every 8 seconds; everything else is fixed in both scripts, because a patient who looks up at the wrong moment must not miss their number."
+    },
+    {
+      "id": "v2-edge",
+      "page": "page-3",
+      "x": 0,
+      "y": -230,
+      "w": 940,
+      "text": "THE CLEAN CASE IS THE RARE CASE.\n\nRegistration: seven exceptions that together are about seven walk-ins in ten. The screen shown is the hardest — an unconscious man, no documents, brought by police — and the principle is that a UHID takes nine seconds and everything else is deferred and chased.\n\nQueue rescue is interactive: set each of Dr Rao's twelve patients to Dr Maan / hold / refund and watch Maan's capacity bar, the refund total, the Hindi SMS and the board copy all change. Move everyone and it goes over his session — that warning is the point.\n\nBilling: four lawful ways out of a ₹50 shortfall, each with who must approve it. There is no fifth, and no way to close the window."
+    },
+    {
+      "id": "v2-speed",
+      "page": "page-4",
+      "x": 0,
+      "y": -230,
+      "w": 940,
+      "text": "SPEED IS THREE THINGS, AND ONLY ONE OF THEM IS THE SCREEN.\n\nThe floor board gives the Duty Manager one place where every counter, every queue and every dead end is visible — the unmanned Counter 2 with fourteen people at it is found in a second instead of a phone call.\n\nThe keyboard map is the counter's real speed: 31 clicks become 9 keystrokes for the commonest walk-in, and the clerk never looks down while the patient is talking.\n\nOffline mode is Bihar reality. Reserved UHID and token blocks per counter mean an offline registration produces a real, permanent, non-colliding number — nothing temporary, nothing re-printed later. The app already ships a downtime kit; this is what it should look like at the counter."
+    },
+    {
+      "id": "v2-benchmark",
+      "page": "page-1",
+      "x": 0,
+      "y": 2690,
+      "w": 1100,
+      "text": "80 mm is the ROLL; 72 mm is what the head can print on it. The slips and the receipt were already drawn at exactly that — so \"80 mm thermal for the paid bill\" is what is on the canvas, and 4 × 6 is off the list entirely.\n\nBelow: the walkthrough you pasted, line by line against ours. Two things worth taking, one worth keeping different, and a third counter sequence that neither of our two current flows covers."
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-1"
+  }
+}

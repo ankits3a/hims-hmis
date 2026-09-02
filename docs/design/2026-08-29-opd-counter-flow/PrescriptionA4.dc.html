@@ -1,0 +1,246 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#ffffff;color:#000000;
+      font-family:"Helvetica Neue",Helvetica,Arial,"Liberation Sans",sans-serif;
+      font-size:13px;line-height:17px;-webkit-font-smoothing:antialiased}
+    a{color:#d92230;text-decoration:none} a:hover{text-decoration:underline}
+    .num{font-variant-numeric:tabular-nums}
+    /* header/footer grammar: light label, bold value, on one line */
+    .lb{color:#333333;font-weight:400}
+    .vl{color:#000000;font-weight:700}
+    .hrow{display:flex;align-items:baseline;gap:5px;min-height:19px}
+    .hrowr{display:flex;align-items:baseline;gap:5px;min-height:19px;justify-content:flex-end}
+    .rule{height:1px;background:#000000}
+    .thin{height:1px;background:#9a9a9a}
+    .sechd{font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#55064f}
+  </style>
+</helmet>
+
+<div style="width:794px;height:1123px;background:#ffffff;padding:26px 30px 20px;display:flex;flex-direction:column">
+
+  <!-- ══ HEADER ═══════════════════════════════════════════════════════════ -->
+  <div style="display:flex;gap:20px;flex-shrink:0">
+
+    <!-- logo + speciality, as on the reference -->
+    <div style="width:150px;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-start">
+      <img src="crk-logo.png" alt="CRK Medical College and Hospital" style="width:78px;height:auto;display:block">
+      <div style="font-size:12px;font-weight:700;color:#55064f;margin-top:5px;line-height:14px">General Medicine</div>
+    </div>
+
+    <!-- patient identity -->
+    <div style="width:298px;display:flex;flex-direction:column;gap:1px">
+      <div class="hrow"><span class="lb">Name:</span><span class="vl">Ms. Muskan Arora</span></div>
+      <div class="hrow"><span class="lb">UHID:</span><span class="vl num">CRK0000184213</span></div>
+      <div class="hrow"><span class="lb">Gender:</span><span class="vl">F</span></div>
+      <div class="hrow"><span class="lb">DOB:</span><span class="vl num">17-Apr-1998 (28 years)</span></div>
+      <div class="hrow"><span class="lb">Doctor ID:</span><span class="vl num">DR-0114</span></div>
+    </div>
+
+    <!-- encounter -->
+    <div style="flex-grow:1;display:flex;flex-direction:column;gap:1px">
+      <div class="hrowr"><span class="lb">Encounter ID:</span><span class="vl num">2608290047</span></div>
+      <div class="hrowr"><span class="lb">Encounter Type:</span><span class="vl">Outpatient</span></div>
+      <div class="hrowr"><span class="lb">Visit/Admn Date:</span><span class="vl num">29-Aug-2026</span></div>
+      <div class="hrowr"><span class="lb">Department:</span><span class="vl">General Medicine</span></div>
+      <div class="hrowr"><span class="lb">Speciality:</span><span class="vl">General Medicine</span></div>
+    </div>
+  </div>
+
+  <div class="rule" style="margin-top:10px;flex-shrink:0"></div>
+
+  <!-- ══ BODY ═════════════════════════════════════════════════════════════ -->
+  <div style="flex-grow:1;padding-top:14px;display:flex;flex-direction:column;gap:13px;min-height:0">
+
+    <!-- allergy — the one thing that must never be missed -->
+    <div style="display:flex;align-items:center;gap:9px;border:1.5px solid #d92230;padding:6px 11px">
+      <span style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:#d92230">ALLERGY</span>
+      <span style="width:1px;height:13px;background:#d92230"></span>
+      <span style="font-size:14px;font-weight:700;color:#d92230">SULFA DRUGS</span>
+      <span style="font-size:12px;color:#333333">— rash, recorded 11-Mar-2024</span>
+    </div>
+
+    <!-- vitals strip -->
+    <div style="display:flex;align-items:baseline;gap:0;border-top:1px solid #9a9a9a;border-bottom:1px solid #9a9a9a;padding:6px 0">
+      <span class="lb" style="font-size:12px;width:74px">Vitals:</span>
+      <span class="num" style="font-size:12.5px">BP 118/76 mmHg · Pulse 96/min · Temp 38.2 °C · SpO₂ 97% · Wt 58.4 kg · Ht 163 cm</span>
+      <div style="flex-grow:1"></div>
+      <span class="num" style="font-size:11px;color:#555555">taken 11:32 by Vitals Desk</span>
+    </div>
+
+    <div>
+      <div class="sechd">Chief complaints</div>
+      <div style="font-size:14px;line-height:20px;margin-top:4px">
+        Cough with expectoration — 5 days. Fever with chills — 3 days. No breathlessness, no chest pain, no haemoptysis.
+      </div>
+    </div>
+
+    <div>
+      <div class="sechd">On examination</div>
+      <div style="font-size:14px;line-height:20px;margin-top:4px">
+        Conscious, oriented, febrile. Throat congested. Chest — bilateral scattered rhonchi, no crepitations.
+        No pallor, no icterus, no pedal oedema. CVS — S1 S2 normal. P/A — soft, non-tender.
+      </div>
+    </div>
+
+    <div>
+      <div class="sechd">Provisional diagnosis</div>
+      <div style="font-size:14px;font-weight:700;line-height:20px;margin-top:4px">
+        Acute bronchitis with febrile illness <span class="num" style="font-weight:400;color:#333333">(ICD-10 J20.9)</span>
+      </div>
+    </div>
+
+    <!-- Rx -->
+    <div>
+      <div style="display:flex;align-items:baseline;gap:9px">
+        <span style="font-family:Georgia,'Times New Roman',serif;font-size:26px;font-weight:700;line-height:26px;color:#55064f">℞</span>
+        <span class="sechd">Medication</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:13px">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:5px 8px;border:1px solid #9a9a9a;background:#f0f0f0;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;width:26px">#</th>
+            <th style="text-align:left;padding:5px 8px;border:1px solid #9a9a9a;background:#f0f0f0;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase">Drug</th>
+            <th style="text-align:left;padding:5px 8px;border:1px solid #9a9a9a;background:#f0f0f0;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;width:78px">Dose</th>
+            <th style="text-align:left;padding:5px 8px;border:1px solid #9a9a9a;background:#f0f0f0;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;width:76px">Frequency</th>
+            <th style="text-align:left;padding:5px 8px;border:1px solid #9a9a9a;background:#f0f0f0;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;width:58px">Route</th>
+            <th style="text-align:left;padding:5px 8px;border:1px solid #9a9a9a;background:#f0f0f0;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;width:62px">Duration</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="num" style="padding:6px 8px;border:1px solid #9a9a9a">1</td>
+            <td style="padding:6px 8px;border:1px solid #9a9a9a"><strong>Tab. Azithromycin</strong> 500 mg<div style="font-size:11px;color:#555555">After food</div></td>
+            <td class="num" style="padding:6px 8px;border:1px solid #9a9a9a">1 tab</td>
+            <td style="padding:6px 8px;border:1px solid #9a9a9a">OD</td>
+            <td style="padding:6px 8px;border:1px solid #9a9a9a">Oral</td>
+            <td class="num" style="padding:6px 8px;border:1px solid #9a9a9a">3 days</td>
+          </tr>
+          <tr>
+            <td class="num" style="padding:6px 8px;border:1px solid #9a9a9a">2</td>
+            <td style="padding:6px 8px;border:1px solid #9a9a9a"><strong>Tab. Paracetamol</strong> 650 mg<div style="font-size:11px;color:#555555">Only if temperature above 100 °F</div></td>
+            <td class="num" style="padding:6px 8px;border:1px solid #9a9a9a">1 tab</td>
+            <td style="padding:6px 8px;border:1px solid #9a9a9a">TDS / SOS</td>
+            <td style="padding:6px 8px;border:1px solid #9a9a9a">Oral</td>
+            <td class="num" style="padding:6px 8px;border:1px solid #9a9a9a">3 days</td>
+          </tr>
+          <tr>
+            <td class="num" style="padding:6px 8px;border:1px solid #9a9a9a">3</td>
+            <td style="padding:6px 8px;border:1px solid #9a9a9a"><strong>Tab. Cetirizine</strong> 10 mg<div style="font-size:11px;color:#555555">At bedtime — may cause drowsiness</div></td>
+            <td class="num" style="padding:6px 8px;border:1px solid #9a9a9a">1 tab</td>
+            <td style="padding:6px 8px;border:1px solid #9a9a9a">HS</td>
+            <td style="padding:6px 8px;border:1px solid #9a9a9a">Oral</td>
+            <td class="num" style="padding:6px 8px;border:1px solid #9a9a9a">5 days</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div>
+      <div class="sechd">Investigations advised</div>
+      <div style="display:flex;gap:26px;margin-top:5px">
+        <div style="width:300px">
+          <div style="font-size:11px;font-weight:700;color:#555555;letter-spacing:0.04em">RADIOLOGY</div>
+          <div style="font-size:13.5px;line-height:19px;margin-top:2px">1.&nbsp; X-Ray Chest PA view</div>
+        </div>
+        <div style="flex-grow:1">
+          <div style="font-size:11px;font-weight:700;color:#555555;letter-spacing:0.04em">LABORATORY</div>
+          <div style="font-size:13.5px;line-height:19px;margin-top:2px">
+            1.&nbsp; Complete Blood Count &nbsp;&nbsp; 2.&nbsp; Liver Function Test<br>
+            3.&nbsp; Kidney Function Test &nbsp;&nbsp; 4.&nbsp; Urine Routine &amp; Microscopy
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="sechd">Advice</div>
+      <div style="font-size:14px;line-height:20px;margin-top:4px">
+        Steam inhalation twice daily. Plenty of warm fluids. Avoid cold drinks and dust.
+        Return at once if breathless, or if fever persists beyond three days.
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:baseline;gap:8px">
+      <span class="sechd">Review on</span>
+      <span class="num" style="font-size:14px;font-weight:700">03-Sep-2026</span>
+      <span style="font-size:13px;color:#333333">(5 days) — bring all reports</span>
+    </div>
+
+    <div style="flex-grow:1"></div>
+
+    <!-- prescriber, named where the law wants it -->
+    <div style="display:flex;justify-content:flex-end;padding-top:8px">
+      <div style="width:290px;text-align:right">
+        <div style="height:30px"></div>
+        <div class="thin"></div>
+        <div style="font-size:14px;font-weight:700;margin-top:5px">Dr Anand Rao</div>
+        <div style="font-size:12px;color:#333333">MD (General Medicine)</div>
+        <div class="num" style="font-size:12px;color:#333333">NMC Reg. No. BMC/2008/41127</div>
+        <div class="num" style="font-size:11px;color:#555555;margin-top:3px">Signed electronically 12:04, 29-Aug-2026</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ FOOTER ═══════════════════════════════════════════════════════════ -->
+  <div style="flex-shrink:0">
+    <div class="rule"></div>
+    <div style="font-size:11px;padding:4px 0 5px">This is a computer generated prescription. A handwritten signature is not required.</div>
+    <div class="thin"></div>
+
+    <div style="display:flex;gap:14px;padding-top:6px">
+      <div style="flex-grow:1;display:flex;flex-direction:column;gap:3px">
+        <div style="font-size:11.5px"><span class="lb">Address:</span> <span class="vl">CRK Medical College &amp; Hospital,</span> Chaurasia Chowk, Hajipur — 844101, Bihar</div>
+
+        <div style="display:flex;gap:22px">
+          <div style="font-size:11.5px"><span class="lb">24×7 Hotline:</span> <span class="vl num">+91 77648 88189</span></div>
+          <div style="font-size:11.5px"><span class="lb">Emergency:</span> <span class="vl num">1068</span></div>
+          <div style="flex-grow:1"></div>
+          <div style="font-size:11.5px"><span class="lb">Password to access via QR code:</span> <span class="vl num">31610093</span></div>
+        </div>
+
+        <div style="display:flex;gap:22px">
+          <div style="font-size:11.5px"><span class="lb">Email:</span> <span class="vl">info@crkmch.com</span></div>
+          <div style="font-size:11.5px"><a href="https://www.crkmch.com" style="font-weight:700">www.crkmch.com</a></div>
+          <div style="flex-grow:1"></div>
+          <div style="font-size:11.5px"><span class="lb">Reports and this prescription online:</span> <span class="vl">crkmch.com/my</span></div>
+        </div>
+      </div>
+
+      <!-- QR -->
+      <div style="width:62px;height:62px;flex-shrink:0;background:#000000;padding:3px;display:grid;grid-template-columns:repeat(9,1fr);grid-template-rows:repeat(9,1fr);gap:0">
+        <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div>
+        <div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div>
+        <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div>
+        <div></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div></div><div></div>
+        <div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div>
+        <div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div>
+        <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div>
+        <div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div>
+        <div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div></div><div style="background:#fff"></div><div style="background:#fff"></div><div style="background:#fff"></div>
+      </div>
+    </div>
+
+    <div class="thin" style="margin-top:6px"></div>
+    <div style="display:flex;align-items:baseline;padding-top:4px">
+      <span class="num" style="font-size:11px;color:#333333">Printed by <strong>anshuman.prasad</strong> on 29-Aug-2026 at 12:05</span>
+      <div style="flex-grow:1"></div>
+      <span class="num" style="font-size:11px;color:#333333">Page 1 of 1</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":794,"height":1123}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

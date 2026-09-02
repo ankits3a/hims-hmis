@@ -1,0 +1,143 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#e8e6e1;color:#1a1a1a;
+      font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      font-size:13px;-webkit-font-smoothing:antialiased}
+    a{color:#1a1a1a;text-decoration:none}
+    /*
+      A 24-pin impact printer has one font and no graphics worth using.
+      Everything below is monospace, every rule is a row of = or - characters,
+      and the columns line up because the character cell is fixed. That IS the
+      medium — drawing it any other way would misrepresent what comes out.
+    */
+    .dm{font-family:"Courier New",Courier,"Liberation Mono",monospace;
+        font-size:12.5px;line-height:15.5px;white-space:pre;color:#141414;
+        letter-spacing:0.02em}
+    .sprocket{width:44px;background:#f4f2ee;border-right:1px dashed #b8b4ac;
+              display:flex;flex-direction:column;align-items:center;justify-content:space-around;
+              padding:9px 0;flex-shrink:0}
+    .sprocketR{border-right:none;border-left:1px dashed #b8b4ac}
+    .hole{width:11px;height:11px;border-radius:9999px;background:#dedad2;
+          box-shadow:inset 0 1px 1px rgba(0,0,0,0.16)}
+  </style>
+</helmet>
+
+<div style="width:980px;padding:22px 20px 26px;background:#e8e6e1;position:relative">
+
+  <!-- ── the carbon copy behind, offset like real multi-part stationery ── -->
+  <div style="position:absolute;left:34px;top:36px;width:912px;height:528px;background:#f0ede6;
+              border:1px solid #cfcac1;box-shadow:0 2px 6px rgba(0,0,0,0.10)"></div>
+  <div style="position:absolute;left:26px;top:29px;width:912px;height:528px;background:#f6f3ed;
+              border:1px solid #d4cfc6;box-shadow:0 2px 6px rgba(0,0,0,0.10)"></div>
+
+  <!-- ══ THE ORIGINAL ═════════════════════════════════════════════════════ -->
+  <div style="position:relative;width:912px;height:528px;background:#fffdf8;border:1px solid #cfcac1;
+              display:flex;box-shadow:0 3px 10px rgba(0,0,0,0.12)">
+
+    <div class="sprocket">
+      <div class="hole"></div><div class="hole"></div><div class="hole"></div><div class="hole"></div>
+      <div class="hole"></div><div class="hole"></div><div class="hole"></div><div class="hole"></div>
+      <div class="hole"></div><div class="hole"></div><div class="hole"></div>
+    </div>
+
+    <div style="flex-grow:1;padding:11px 10px;overflow:hidden">
+      <div class="dm">================================================================================================
+                        CRK MEDICAL COLLEGE &amp; HOSPITAL  --  PHARMACY
+                       Chaurasia Chowk, Hajipur - 844101, Bihar
+      GSTIN 10AABCC1234D1Z5     DL BR-VAI-20B-4417 / 21B-4418     Ph 077648 88189
+================================================================================================
+ TAX INVOICE                                                       ORIGINAL FOR RECIPIENT
+ Invoice No  PH/2026-27/004412                   Date  29-Aug-2026  18:42
+ Patient     Muskan Arora                        UHID  CRK0000184213
+ Encounter   2608290047                          Age/Sex  28 Y / F
+ Prescriber  DR-0114                             Counter  Pharmacy-1  (kavita.joshi)
+------------------------------------------------------------------------------------------------
+ #  ITEM                        BATCH    EXPY   HSN        QTY    MRP    RATE  GST%     AMOUNT
+------------------------------------------------------------------------------------------------
+ 1  AZITHROMYCIN 500MG TAB      AZ4471   06/28  30042099     3  45.00   40.18    12     120.54
+ 2  PARACETAMOL 650MG TAB       PC8823   11/27  30049099     9   2.20    1.96    12      17.64
+ 3  CETIRIZINE 10MG TAB         CT1190   03/28  30049099     5   1.80    1.61    12       8.05
+ 4  COUGH SYRUP 100ML BOTTLE    CS0447   09/27  30049011     1  98.00   87.50    12      87.50
+------------------------------------------------------------------------------------------------
+                                                     TAXABLE VALUE             233.73
+                                                     CGST   6%                  14.02
+                                                     SGST   6%                  14.02
+                                                     ROUNDING                   -0.77
+                                                     ==================================
+                                                     NET PAYABLE                261.00
+------------------------------------------------------------------------------------------------
+ Rupees Two Hundred Sixty One Only
+ Paid CASH 300.00     Change 39.00                   Substitution offered: none
+------------------------------------------------------------------------------------------------
+ * Medicines once sold are not taken back except for a quality defect.
+ * Store below 25 C, away from sunlight.  Keep out of reach of children.
+ * Subject to Hajipur jurisdiction.        E.&amp;O.E.
+================================================================================================</div>
+    </div>
+
+    <div class="sprocket sprocketR">
+      <div class="hole"></div><div class="hole"></div><div class="hole"></div><div class="hole"></div>
+      <div class="hole"></div><div class="hole"></div><div class="hole"></div><div class="hole"></div>
+      <div class="hole"></div><div class="hole"></div><div class="hole"></div>
+    </div>
+  </div>
+
+  <!-- ── perforation between forms ─────────────────────────────────────── -->
+  <div style="position:relative;width:912px;margin-top:6px;display:flex;align-items:center;gap:11px">
+    <div style="flex-grow:1;height:1px;background:repeating-linear-gradient(to right,#a8a49c 0 5px,transparent 5px 10px)"></div>
+    <span style="font-size:10.5px;color:#7a766e;letter-spacing:0.08em">TEAR HERE — NEXT FORM</span>
+    <div style="flex-grow:1;height:1px;background:repeating-linear-gradient(to right,#a8a49c 0 5px,transparent 5px 10px)"></div>
+  </div>
+
+  <!-- ── what the carbon copies say ────────────────────────────────────── -->
+  <div style="position:relative;width:912px;margin-top:16px;display:flex;gap:11px">
+    <div style="flex-grow:1;background:#fffdf8;border:1px solid #cfcac1;padding:11px 14px">
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:#3a3a3a;margin-bottom:5px">PART 1 — WHITE</div>
+      <div style="font-size:12.5px;font-weight:600">ORIGINAL FOR RECIPIENT</div>
+      <div style="font-size:11.5px;color:#4a4a4a;line-height:16px;margin-top:3px">Handed to the patient with the medicines.</div>
+    </div>
+    <div style="flex-grow:1;background:#f8f4e8;border:1px solid #cfcac1;padding:11px 14px">
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:#3a3a3a;margin-bottom:5px">PART 2 — YELLOW</div>
+      <div style="font-size:12.5px;font-weight:600">DUPLICATE FOR SUPPLIER</div>
+      <div style="font-size:11.5px;color:#4a4a4a;line-height:16px;margin-top:3px">Stays in the pharmacy day-book. Never re-printed, never re-keyed.</div>
+    </div>
+    <div style="flex-grow:1;background:#f2f4f0;border:1px solid #cfcac1;padding:11px 14px">
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:#3a3a3a;margin-bottom:5px">PART 3 — GREEN (optional)</div>
+      <div style="font-size:12.5px;font-weight:600">ACCOUNTS COPY</div>
+      <div style="font-size:11.5px;color:#4a4a4a;line-height:16px;margin-top:3px">Only if your CA wants paper. Two-part is usually enough.</div>
+    </div>
+  </div>
+
+  <!-- ── why this printer, in one line each ────────────────────────────── -->
+  <div style="position:relative;width:912px;margin-top:16px;border:1.5px solid #1a1a1a;background:#fffdf8;padding:14px 16px">
+    <div style="font-size:13px;font-weight:700;letter-spacing:0.03em;margin-bottom:10px">WHY IMPACT, HERE AND NOWHERE ELSE</div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 26px">
+      <div style="font-size:12px;line-height:17px"><strong>Carbon, not a second print.</strong> One pass gives the patient and the day-book a copy. Thermal would mean printing twice and hoping both match.</div>
+      <div style="font-size:12px;line-height:17px"><strong>It does not fade.</strong> Thermal goes blank in a drawer in a Bihar summer. A GST invoice has to be legible for years, not months.</div>
+      <div style="font-size:12px;line-height:17px"><strong>Any number of lines.</strong> One item or thirty — the form just runs on. A die-cut label cannot do that.</div>
+      <div style="font-size:12px;line-height:17px"><strong>Ribbon, not rolls.</strong> One ribbon runs for millions of characters and survives dust, heat and bad mains.</div>
+    </div>
+    <div style="height:1px;background:#cfcac1;margin:12px 0"></div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px 26px">
+      <div style="font-size:12px;line-height:17px;color:#4a4a4a"><strong style="color:#1a1a1a">Slow and loud.</strong> ~15 s and about 60 dB for this bill. Fine at a pharmacy hatch, wrong at an OPD counter with a queue.</div>
+      <div style="font-size:12px;line-height:17px;color:#4a4a4a"><strong style="color:#1a1a1a">No usable barcode.</strong> Impact bars scan badly. Print the invoice number in plain digits and let the counter type it.</div>
+      <div style="font-size:12px;line-height:17px;color:#4a4a4a"><strong style="color:#1a1a1a">No Hindi at all.</strong> Code pages only, and graphics mode is unusably slow. This form stays English.</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":980,"height":1000}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

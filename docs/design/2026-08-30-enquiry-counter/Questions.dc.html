@@ -1,0 +1,446 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#fafafa;color:#0a0a0a;
+      font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+    .hi{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.55}
+    .card{background:#ffffff;border:1px solid #e5e5e5;border-radius:14px;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+    .n{width:26px;height:26px;border-radius:9999px;background:#171717;color:#fafafa;display:flex;
+       align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+    .h2{font-size:17px;font-weight:600;letter-spacing:-0.01em}
+    .sub{font-size:13px;color:#525252;line-height:19px}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .sh{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:5px;
+        font-size:9.5px;font-weight:700;letter-spacing:0.05em;white-space:nowrap}
+    .wall{background:#f5f5f5;color:#525252;border:1px solid #e5e5e5}
+    .live{background:rgba(33,140,181,0.10);color:#218cb5;border:1px solid rgba(33,140,181,0.30)}
+    .judge{background:rgba(203,136,46,0.12);color:#cb882e;border:1px solid rgba(203,136,46,0.35)}
+    .route{background:#ffffff;color:#404040;border:1px solid #a1a1a1}
+    .refuse{background:rgba(231,0,11,0.08);color:#e7000b;border:1px solid rgba(231,0,11,0.30)}
+    .row{display:grid;grid-template-columns:26px 1fr 62px 74px 150px;gap:12px;align-items:center;
+         padding:8px 14px;border-bottom:1px solid #f5f5f5}
+    .q{font-size:12.5px;line-height:17px}
+    .qh{font-size:12.5px;line-height:17px;font-weight:600}
+    .ch{display:flex;gap:3px}
+    .dot{width:26px;height:16px;border-radius:4px;font-size:8.5px;font-weight:700;letter-spacing:0.04em;
+         display:flex;align-items:center;justify-content:center}
+    .on{background:#171717;color:#fafafa}
+    .off{background:#f5f5f5;color:#c4c4c4}
+    .src{font-size:11px;line-height:15px;color:#737373}
+  </style>
+</helmet>
+
+<div style="width:1180px;background:#fafafa;padding:34px 38px 40px;display:flex;flex-direction:column;gap:18px">
+
+  <!-- HEAD -->
+  <div>
+    <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">
+      <h1 style="margin:0;font-size:27px;font-weight:600;letter-spacing:-0.02em">What people actually ask</h1>
+      <span class="hi" style="font-size:21px;color:#737373">पूछताछ काउंटर पर क्या पूछा जाता है</span>
+    </div>
+    <p style="margin:8px 0 0;font-size:14px;color:#525252;max-width:900px;line-height:21px">
+      The console on the next page was drawn around one question — <em>is the doctor in</em> — and everything else was inferred.
+      This sheet is the inventory it should have been built from. It is a reconstruction, not a measurement:
+      the ranking is argued, not counted, and the last block says how to settle it for the price of a clipboard.
+    </p>
+    <div style="display:flex;gap:10px;margin-top:13px;flex-wrap:wrap">
+      <span style="display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:9999px;background:#ffffff;border:1px solid #e5e5e5;font-size:12px;color:#404040">Main lobby &#183; one seat &#183; <strong style="font-weight:600">24&#215;7</strong></span>
+      <span style="display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:9999px;background:#ffffff;border:1px solid #e5e5e5;font-size:12px;color:#404040">counter <strong style="font-weight:600">and</strong> the hotline</span>
+      <span style="display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:9999px;background:#ffffff;border:1px solid #e5e5e5;font-size:12px;color:#404040">patients <strong style="font-weight:600">and</strong> the college</span>
+      <span style="display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:9999px;background:#ffffff;border:1px solid #e5e5e5;font-size:12px;color:#404040">a separate IPD counter exists &#8212; she routes, never confirms</span>
+    </div>
+  </div>
+
+  <!-- 1 · THE FIVE SHAPES -->
+  <div class="card" style="padding:20px 22px">
+    <div style="display:flex;align-items:flex-start;gap:13px;margin-bottom:15px">
+      <div class="n">1</div>
+      <div>
+        <div class="h2">Five different things are all called &#8220;an enquiry&#8221;, and only one of them is a search</div>
+        <div class="sub">The current console gives all five the same treatment: type, read a card, translate it into a sentence. That is why the commonest question costs the same effort as the rarest.</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:11px">
+      <div style="border:1px solid #e5e5e5;border-radius:10px;padding:13px 14px;background:#ffffff">
+        <span class="sh wall">WALL</span>
+        <div style="font-size:12.5px;font-weight:600;margin-top:9px">The answer never changes</div>
+        <div style="font-size:11.5px;color:#525252;line-height:16.5px;margin-top:5px">Timings, fees, do you do dialysis, visiting hours, where is the pharmacy.</div>
+        <div style="font-size:11px;color:#0a0a0a;font-weight:600;margin-top:8px">Zero keystrokes. It is a wall, not a query.</div>
+      </div>
+      <div style="border:1px solid rgba(33,140,181,0.30);border-radius:10px;padding:13px 14px;background:#ffffff">
+        <span class="sh live">LIVE</span>
+        <div style="font-size:12.5px;font-weight:600;margin-top:9px">True only today</div>
+        <div style="font-size:11.5px;color:#525252;line-height:16.5px;margin-top:5px">Is Dr Rao in, how long, which beds are free, is the CT working.</div>
+        <div style="font-size:11px;color:#0a0a0a;font-weight:600;margin-top:8px">The only shape the console currently serves.</div>
+      </div>
+      <div style="border:1px solid rgba(203,136,46,0.35);border-radius:10px;padding:13px 14px;background:#ffffff">
+        <span class="sh judge">JUDGE</span>
+        <div style="font-size:12.5px;font-weight:600;margin-top:9px">Needs a decision, not a fact</div>
+        <div style="font-size:11.5px;color:#525252;line-height:16.5px;margin-top:5px">Which doctor for this problem, will Ayushman cover it, what will it all cost.</div>
+        <div style="font-size:11px;color:#e7000b;font-weight:600;margin-top:8px">Slowest, most often wrong, costs a whole day.</div>
+      </div>
+      <div style="border:1px solid #a1a1a1;border-radius:10px;padding:13px 14px;background:#ffffff">
+        <span class="sh route">ROUTE</span>
+        <div style="font-size:12.5px;font-weight:600;margin-top:9px">Somebody else's to answer</div>
+        <div style="font-size:11.5px;color:#525252;line-height:16.5px;margin-top:5px">Admitted patients, certificates, college admission, jobs, blood.</div>
+        <div style="font-size:11px;color:#0a0a0a;font-weight:600;margin-top:8px">A named person, never a counter number.</div>
+      </div>
+      <div style="border:1px solid rgba(231,0,11,0.30);border-radius:10px;padding:13px 14px;background:#ffffff">
+        <span class="sh refuse">REFUSE</span>
+        <div style="font-size:12.5px;font-weight:600;margin-top:9px">There is no version she may answer</div>
+        <div style="font-size:11.5px;color:#525252;line-height:16.5px;margin-top:5px">Diagnoses, results, is-he-alive, sex determination, clinical advice.</div>
+        <div style="font-size:11px;color:#0a0a0a;font-weight:600;margin-top:8px">Scripted, so she is never caught composing one.</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:10px;margin-top:14px;padding:11px 14px;border-radius:10px;background:#f5f5f5;border:1px solid #e5e5e5">
+      <svg style="margin-top:2px;flex-shrink:0" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <div style="font-size:12.5px;color:#404040;line-height:18px">
+        <strong style="font-weight:600">And a sixth thing that is not a question at all.</strong> A complaint, a man who cannot find his son,
+        a woman crying at the counter, somebody who has been sent in a circle three times. The screen owes these a response,
+        not a lookup &#8212; and they are the ones a search box makes worse.
+      </div>
+    </div>
+  </div>
+
+  <!-- 2 · THE RANKED LIST -->
+  <div class="card" style="padding:20px 22px">
+    <div style="display:flex;align-items:flex-start;gap:13px;margin-bottom:14px">
+      <div class="n">2</div>
+      <div>
+        <div class="h2">The twenty that are most of the day</div>
+        <div class="sub">Ranked by argued volume across both channels. <strong style="font-weight:600">C</strong> = counter, <strong style="font-weight:600">P</strong> = phone; filled where that channel dominates.</div>
+      </div>
+    </div>
+
+    <div style="border:1px solid #e5e5e5;border-radius:10px;overflow:hidden;background:#ffffff">
+      <div class="row" style="background:#f5f5f5;border-bottom:1px solid #e5e5e5">
+        <span class="lbl">#</span><span class="lbl">Asked as</span><span class="lbl">Where</span><span class="lbl">Shape</span><span class="lbl">Backed by</span>
+      </div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">1</span>
+        <div><div class="qh">&#8220;X kidhar hai?&#8221; &#8212; where is the lab, X-ray, pharmacy, billing, toilet, canteen</div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot off">P</span></div>
+        <div><span class="sh wall">WALL</span></div>
+        <div class="src">Route strings &#8212; <strong style="font-weight:600;color:#e7000b">not built</strong></div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">2</span>
+        <div><div class="qh">&#8220;Kaun se doctor ko dikhayen?&#8221; &#8212; asked as symptoms, never as a department</div>
+          <div class="hi" style="font-size:12px;color:#737373">पेट में जलन &#183; साँस फूलती है &#183; बच्चे को बुखार &#183; कमर दर्द</div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot off">P</span></div>
+        <div><span class="sh judge">JUDGE</span></div>
+        <div class="src">Symptom &#8594; department master &#8212; <strong style="font-weight:600;color:#e7000b">not built</strong></div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">3</span>
+        <div><div class="qh">&#8220;Dr X aaj baithe hain?&#8221; &#8212; is the doctor sitting today</div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot on">P</span></div>
+        <div><span class="sh live">LIVE</span></div>
+        <div class="src">Schedules + leaves &#8212; <strong style="font-weight:600;color:#318f5a">shipped</strong></div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">4</span>
+        <div><div class="qh">&#8220;OPD kitne baje se hai?&#8221; &#8212; timings, which days, Sunday</div></div>
+        <div class="ch"><span class="dot off">C</span><span class="dot on">P</span></div>
+        <div><span class="sh wall">WALL</span></div>
+        <div class="src">One permanent answer</div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">5</span>
+        <div><div class="qh">&#8220;Kitni der lagegi?&#8221; &#8212; how long, and really: <em>will I be seen at all today</em></div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot off">P</span></div>
+        <div><span class="sh live">LIVE</span></div>
+        <div class="src">Wait estimator &#8212; <strong style="font-weight:600;color:#e7000b">not built</strong></div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">6</span>
+        <div><div class="qh">&#8220;Parcha kahan banta hai, kitna lagta hai?&#8221; &#8212; where to register and what it costs</div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot off">P</span></div>
+        <div><span class="sh wall">WALL</span></div>
+        <div class="src">Tariff &#8212; <strong style="font-weight:600;color:#318f5a">shipped</strong></div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">7</span>
+        <div><div class="qh">&#8220;Ayushman card chalega?&#8221; &#8212; and for which treatments</div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot on">P</span></div>
+        <div><span class="sh judge">JUDGE</span></div>
+        <div class="src">Scheme coverage &#8212; <strong style="font-weight:600;color:#e7000b">not built</strong></div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">8</span>
+        <div><div class="qh">&#8220;Report aa gayi?&#8221; &#8212; is it ready, where do I collect it</div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot on">P</span></div>
+        <div><span class="sh live">LIVE</span> <span class="sh refuse">P</span></div>
+        <div class="src">Counter only &#8212; a caller has no identity</div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">9</span>
+        <div><div class="qh">&#8220;Card kho gaya&#8221; &#8212; I lost my slip, what is my number</div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot off">P</span></div>
+        <div><span class="sh live">LIVE</span></div>
+        <div class="src">Directory read &#8212; <strong style="font-weight:600;color:#e7000b">own surface owed</strong></div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">10</span>
+        <div><div class="qh">&#8220;Bhai bharti hain kya, kaun se ward mein?&#8221; &#8212; is my relative admitted</div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot on">P</span></div>
+        <div><span class="sh route">ROUTE</span></div>
+        <div class="src">IPD counter, with an ID. Never confirmed here.</div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">11</span>
+        <div><div class="qh">&#8220;Milne ka time kya hai?&#8221; &#8212; visiting hours and passes</div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot on">P</span></div>
+        <div><span class="sh wall">WALL</span></div>
+        <div class="src">A rule, not a person &#8212; she answers it</div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">12</span>
+        <div><div class="qh">&#8220;Poora kitna kharcha aayega?&#8221; &#8212; total cost of a delivery, an operation, a CT</div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot on">P</span></div>
+        <div><span class="sh judge">JUDGE</span></div>
+        <div class="src">Package estimates &#8212; <strong style="font-weight:600;color:#e7000b">not built</strong></div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">13</span>
+        <div><div class="qh">&#8220;Yahan [dialysis / delivery / CT / operation] hota hai?&#8221; &#8212; do you do it at all</div></div>
+        <div class="ch"><span class="dot off">C</span><span class="dot on">P</span></div>
+        <div><span class="sh wall">WALL</span></div>
+        <div class="src">Service catalogue &#8212; partly in tariff</div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">14</span>
+        <div><div class="qh">&#8220;Bed khali hai? Ek din ka kitna?&#8221; &#8212; is a bed free, what does it cost</div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot on">P</span></div>
+        <div><span class="sh live">LIVE</span></div>
+        <div class="src">Registry has the model, not the reader</div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">15</span>
+        <div><div class="qh">&#8220;Emergency kidhar hai?&#8221; &#8212; frequently while carrying somebody</div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot off">P</span></div>
+        <div><span class="sh wall">WALL</span></div>
+        <div class="src">She walks them. Never a direction.</div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">16</span>
+        <div><div class="qh">&#8220;Khaali pet aana hai?&#8221; &#8212; fasting, preparation, how long for the report</div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot on">P</span></div>
+        <div><span class="sh wall">WALL</span></div>
+        <div class="src">Test prep notes &#8212; <strong style="font-weight:600;color:#e7000b">not built</strong></div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">17</span>
+        <div><div class="qh">&#8220;MBBS / nursing mein admission kaise hoga?&#8221; &#8212; courses, fees, hostel</div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot on">P</span></div>
+        <div><span class="sh route">ROUTE</span></div>
+        <div class="src">College office. <strong style="font-weight:600">Floods Jul&#8211;Sep.</strong></div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">18</span>
+        <div><div class="qh">Certificates &#8212; birth, death, fitness, disability, sick leave, insurance forms</div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot off">P</span></div>
+        <div><span class="sh route">ROUTE</span></div>
+        <div class="src">Records office &#8212; named person</div></div>
+
+      <div class="row"><span class="num" style="font-size:11.5px;color:#a1a1a1">19</span>
+        <div><div class="qh">&#8220;Ambulance bhej dijiye&#8221; &#183; &#8220;B-negative hai kya?&#8221; &#183; &#8220;Nurse ki vacancy hai?&#8221;</div></div>
+        <div class="ch"><span class="dot off">C</span><span class="dot on">P</span></div>
+        <div><span class="sh route">ROUTE</span></div>
+        <div class="src">Dispatch &#183; blood bank &#183; HR</div></div>
+
+      <div class="row" style="border-bottom:none"><span class="num" style="font-size:11.5px;color:#a1a1a1">20</span>
+        <div><div class="qh">&#8220;Subah aath baje se baithe hain&#8221; &#8212; a complaint, arriving as a question</div></div>
+        <div class="ch"><span class="dot on">C</span><span class="dot off">P</span></div>
+        <div><span class="sh refuse" style="background:#171717;color:#fafafa;border-color:#171717">NOT A QUESTION</span></div>
+        <div class="src">Grievance &#8212; <strong style="font-weight:600;color:#e7000b">not built</strong></div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:14px">
+      <div style="border:1px solid #e5e5e5;border-radius:10px;padding:12px 14px;background:#ffffff">
+        <div class="lbl" style="margin-bottom:6px">The tail</div>
+        <div style="font-size:11.5px;color:#525252;line-height:16.5px">Wheelchair, water, ATM, parking, temple, can two of us go in, can I bring food, my medicine is finished, referred from the PHC, can I meet Dr X (a rep), where is the Superintendent.</div>
+      </div>
+      <div style="border:1px solid #e5e5e5;border-radius:10px;padding:12px 14px;background:#ffffff">
+        <div class="lbl" style="margin-bottom:6px">Repeat asks are a different bug</div>
+        <div style="font-size:11.5px;color:#525252;line-height:16.5px">The same person asking &#8220;how long now?&#8221; three times is a display-board failure, not enquiry volume. Counted separately it is the cheapest evidence that the hall board is not working.</div>
+      </div>
+      <div style="border:1px solid #e5e5e5;border-radius:10px;padding:12px 14px;background:#ffffff">
+        <div class="lbl" style="margin-bottom:6px">Some questions are signage bugs</div>
+        <div style="font-size:11.5px;color:#525252;line-height:16.5px">Two hundred people a day asking where the pharmacy is means a sign to install, not a person to hire. The desk should be the instrument that proves it.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3 · THE DAY HAS A SHAPE -->
+  <div class="card" style="padding:20px 22px">
+    <div style="display:flex;align-items:flex-start;gap:13px;margin-bottom:15px">
+      <div class="n">3</div>
+      <div>
+        <div class="h2">One seat, 24&#215;7 &#8212; and three genuinely different jobs</div>
+        <div class="sub">The mix rotates through the day. At 3 a.m. the day screen is not merely idle, it is in the way: the four things that matter are buried under a dark OPD ladder.</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px">
+
+      <div style="border:1px solid #171717;border-radius:10px;background:#ffffff;overflow:hidden">
+        <div style="padding:10px 15px;background:#171717;color:#fafafa">
+          <div class="num" style="font-size:13px;font-weight:700">06:00 &#8211; 17:00 &#183; OPD</div>
+          <div style="font-size:11px;color:#a1a1a1">the volume, and the peak is 08:00&#8211;11:00</div>
+        </div>
+        <div style="padding:13px 15px;font-size:12px;color:#404040;line-height:18px">
+          Registration, which doctor, where do I go, what is my token, how long, is Ayushman accepted, is the report ready.
+          Plus the entire college lane &#8212; admissions, reps, vendors, job seekers &#8212; on top of it.
+        </div>
+        <div style="padding:0 15px 13px;font-size:11.5px;color:#525252;line-height:16.5px">
+          <strong style="font-weight:600;color:#0a0a0a">Design problem:</strong> a pharma rep and a man carrying his father are both &#8220;the next person&#8221;. The institution lane has to be parkable and visibly not clinical.
+        </div>
+      </div>
+
+      <div style="border:1px solid #e5e5e5;border-radius:10px;background:#ffffff;overflow:hidden">
+        <div style="padding:10px 15px;background:#f5f5f5;border-bottom:1px solid #e5e5e5">
+          <div class="num" style="font-size:13px;font-weight:700">17:00 &#8211; 21:00 &#183; Visiting</div>
+          <div style="font-size:11px;color:#737373">the traffic turns around and walks upstairs</div>
+        </div>
+        <div style="padding:13px 15px;font-size:12px;color:#404040;line-height:18px">
+          Visiting hours, passes, which ward, where do I wait, can I stay the night, evening casualty, reports collected late,
+          and the first wave of &#8220;nobody has told us anything all day&#8221;.
+        </div>
+        <div style="padding:0 15px 13px;font-size:11.5px;color:#525252;line-height:16.5px">
+          <strong style="font-weight:600;color:#0a0a0a">Design problem:</strong> almost every question is now about an admitted person and belongs at the IPD counter. She is a router for four hours, and the bounce is the whole risk.
+        </div>
+      </div>
+
+      <div style="border:1px solid rgba(231,0,11,0.30);border-radius:10px;background:#ffffff;overflow:hidden">
+        <div style="padding:10px 15px;background:rgba(231,0,11,0.06);border-bottom:1px solid rgba(231,0,11,0.25)">
+          <div class="num" style="font-size:13px;font-weight:700;color:#e7000b">21:00 &#8211; 06:00 &#183; Night</div>
+          <div style="font-size:11px;color:#525252">small volume, inverted stakes, undesigned everywhere</div>
+        </div>
+        <div style="padding:13px 15px;font-size:12px;color:#404040;line-height:18px">
+          Emergency, ambulance in and out, &#8220;is there a doctor?&#8221;, blood, police, relatives arriving at 2 a.m. because they were telephoned,
+          staff calls, and the drunk-caller traffic every hotline gets.
+        </div>
+        <div style="padding:0 15px 13px;font-size:11.5px;color:#525252;line-height:16.5px">
+          <strong style="font-weight:600;color:#0a0a0a">Design problem:</strong> the day screen is actively harmful here. Night is a different screen, not a dimmed one.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4 · THE NIGHT DESK -->
+  <div style="border:2px solid #171717;border-radius:14px;background:#ffffff;padding:20px 24px">
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:6px">
+      <span style="font-size:16px;font-weight:700;letter-spacing:0.02em">THE FOUR THINGS A NIGHT SCREEN IS FOR</span>
+      <span style="font-size:13px;color:#737373">everything else can be a single key away</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px">
+
+      <div style="border:1px solid #e5e5e5;border-radius:10px;padding:14px 16px;background:#fafafa">
+        <div style="font-size:13px;font-weight:600;margin-bottom:7px">1 &#183; Who is on call, right now</div>
+        <div style="font-size:12px;color:#404040;line-height:17.5px">
+          &#8220;Doctor hain kya?&#8221; is the night's commonest question and the system cannot answer it &#8212;
+          there is no on-call roster anywhere in the codebase. Tonight she answers it from a paper list taped to the desk,
+          and when it is wrong somebody drives forty kilometres for nothing.
+        </div>
+      </div>
+
+      <div style="border:1px solid #e5e5e5;border-radius:10px;padding:14px 16px;background:#fafafa">
+        <div style="font-size:13px;font-weight:600;margin-bottom:7px">2 &#183; The ambulance, both directions</div>
+        <div style="font-size:12px;color:#404040;line-height:17.5px">
+          Requested in by a family at 1 a.m., and sent out by the hospital. She needs to see whether it is at the hospital or on a run,
+          and to take an address without asking a frightened caller to repeat it four times.
+        </div>
+      </div>
+
+      <div style="border:1px solid rgba(231,0,11,0.30);border-radius:10px;padding:14px 16px;background:rgba(231,0,11,0.04)">
+        <div style="font-size:13px;font-weight:600;margin-bottom:7px;color:#e7000b">3 &#183; &#8220;Humko phone aaya tha&#8221; &#8212; we were told to come now</div>
+        <div style="font-size:12px;color:#404040;line-height:17.5px">
+          A family arrives at 2 a.m. having been telephoned, and the first person they meet is Ekta.
+          She may know what has happened before they do. <strong style="font-weight:600;color:#0a0a0a">She must not be the one to tell them,
+          she must not lie, and she must get them to the right person inside a minute.</strong>
+          That is a designed path with a named person at the end of it &#8212; not something a twenty-three-year-old improvises at two in the morning.
+        </div>
+      </div>
+
+      <div style="border:1px solid rgba(231,0,11,0.30);border-radius:10px;padding:14px 16px;background:rgba(231,0,11,0.04)">
+        <div style="font-size:13px;font-weight:600;margin-bottom:7px;color:#e7000b">4 &#183; She is alone in a lobby</div>
+        <div style="font-size:12px;color:#404040;line-height:17.5px">
+          One person, one desk, a public entrance, all night. Security is one key and it does not ask her to be certain first &#8212;
+          a false alarm costs nothing and hesitating costs everything. This is infrastructure, not a flourish.
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:10px;margin-top:15px;padding-top:13px;border-top:1px solid #e5e5e5">
+      <span style="display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:9999px;background:#171717;color:#fafafa;font-size:10px;font-weight:700;letter-spacing:0.06em;flex-shrink:0;margin-top:1px">DECIDED</span>
+      <div style="font-size:12.5px;color:#404040;line-height:18px">
+        <strong style="font-weight:600;color:#0a0a0a">Any call that sounds clinical resolves to &#8220;come in&#8221; or &#8220;call the ambulance&#8221; &#8212; never to reassurance.</strong>
+        She cannot triage and must never be placed where she could discourage somebody from coming. There is no version of this screen
+        on which &#8220;it is probably nothing&#8221; is available to her.
+      </div>
+    </div>
+  </div>
+
+  <!-- 5 · REFUSALS -->
+  <div style="border:1px solid rgba(231,0,11,0.35);border-radius:14px;background:rgba(231,0,11,0.04);padding:20px 24px">
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:13px">
+      <span style="font-size:16px;font-weight:700;letter-spacing:0.02em;color:#e7000b">ASKED HERE, ANSWERED NOWHERE</span>
+      <span style="font-size:12.5px;color:#525252">each needs a scripted sentence, because a refusal composed on the spot comes out as either a lie or an insult</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 26px">
+      <div style="font-size:12.5px;color:#404040;line-height:18px"><strong style="font-weight:600">A diagnosis or a result</strong> &#8212; including &#8220;is it serious?&#8221; and &#8220;what does this report mean?&#8221;</div>
+      <div style="font-size:12.5px;color:#404040;line-height:18px"><strong style="font-weight:600">Whether a named person is here</strong> &#8212; routed to the IPD counter, never confirmed or denied</div>
+      <div style="font-size:12.5px;color:#404040;line-height:18px"><strong style="font-weight:600">&#8220;Should I bring him in?&#8221;</strong> &#8212; she cannot triage. The answer is always yes, or the ambulance.</div>
+      <div style="font-size:12.5px;color:#404040;line-height:18px"><strong style="font-weight:600">Whether somebody is alive</strong> &#8212; the 2 a.m. question, and the reason path 3 above exists</div>
+      <div style="font-size:12.5px;color:#404040;line-height:18px"><strong style="font-weight:600">Whether a doctor is any good</strong> &#8212; asked constantly, and always about a colleague</div>
+      <div style="font-size:12.5px;color:#404040;line-height:18px"><strong style="font-weight:600">Police, employers, journalists</strong> &#8212; one button: the Duty Manager. Never her decision.</div>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:11px;margin-top:15px;padding:13px 15px;border-radius:10px;background:#ffffff;border:1px solid rgba(231,0,11,0.30)">
+      <svg style="margin-top:2px;flex-shrink:0" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#e7000b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></svg>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#0a0a0a">Sex determination &#8212; and it will be asked obliquely, here first.</div>
+        <div style="font-size:12.5px;color:#404040;line-height:18px;margin-top:5px">
+          The enquiry counter is the least official-feeling desk in the building, which is exactly why the question gets tested here
+          before anybody asks it in Radiology. The refusal is mandated by law, the PCPNDT declaration is already being built,
+          and this desk needs the same scripted line and the same poster &#8212; so it never depends on Ekta being quick enough to catch
+          what is actually being asked.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6 · MEASURE IT -->
+  <div class="card" style="padding:20px 22px">
+    <div style="display:flex;align-items:flex-start;gap:13px;margin-bottom:14px">
+      <div class="n">6</div>
+      <div>
+        <div class="h2">Everything above is argued. Settling it costs a clipboard and one week.</div>
+        <div class="sub">Thirty tick-boxes, counter and phone in separate columns, one blank line for anything that does not fit. About four seconds of Ekta's day.</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px">
+      <div style="border:1px solid #e5e5e5;border-radius:10px;padding:13px 15px;background:#ffffff">
+        <div style="font-size:12.5px;font-weight:600;margin-bottom:6px">What it settles for good</div>
+        <div style="font-size:11.5px;color:#525252;line-height:16.5px">Which six questions deserve to be a permanent wall instead of a search result, and in what order. That is the whole layout argument, decided by counting instead of by taste.</div>
+      </div>
+      <div style="border:1px solid #e5e5e5;border-radius:10px;padding:13px 15px;background:#ffffff">
+        <div style="font-size:12.5px;font-weight:600;margin-bottom:6px">Run it over one full week</div>
+        <div style="font-size:11.5px;color:#525252;line-height:16.5px">Monday and Saturday are different hospitals, and the night shift has to be tallied by whoever is actually on it. A three-day sample will lie about the two categories that matter most.</div>
+      </div>
+      <div style="border:1px solid #e5e5e5;border-radius:10px;padding:13px 15px;background:#ffffff">
+        <div style="font-size:12.5px;font-weight:600;margin-bottom:6px">The blank line is the valuable column</div>
+        <div style="font-size:11.5px;color:#525252;line-height:16.5px">Everything nobody predicted lands there, and after a week it is the shortest, truest list of what this hospital does not tell people.</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:10px;margin-top:14px;padding:12px 15px;border-radius:10px;background:#f5f5f5;border:1px solid #e5e5e5">
+      <svg style="margin-top:2px;flex-shrink:0" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <div style="font-size:12.5px;color:#404040;line-height:18px">
+        Design from this sheet now &#8212; the shapes and the refusals will not move, whatever the counting says, and those are what the
+        layout hangs on. Let the tally correct the <em>ranking</em> in v2. The one thing it is likely to overturn is the position of
+        cost-and-scheme questions, which every hospital under-counts because they are asked at the counter and answered nowhere.
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1180,"height":2560}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

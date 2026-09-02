@@ -1,0 +1,555 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&amp;display=swap">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      background:#ffffff;color:#0a0a0a;font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90;text-decoration:underline}
+    button{font:inherit;color:inherit;cursor:pointer;text-align:left}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .hi{font-family:"Noto Sans Devanagari","Nirmala UI",Mangal,sans-serif;line-height:1.55}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    .card{border:1px solid #e5e5e5;border-radius:14px;background:#ffffff;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+    .dash{height:1px;background:repeating-linear-gradient(to right,#000 0 3px,transparent 3px 6px);opacity:0.45}
+    .bar{background:#000000}
+    .tender{flex-grow:1;height:52px;border-radius:10px;display:flex;flex-direction:column;
+            align-items:center;justify-content:center;gap:3px;cursor:pointer}
+    .srow{display:flex;justify-content:space-between}
+    .sk{color:#3a3a3a}
+    .sv{font-weight:600}
+  </style>
+</helmet>
+
+<div style="width:1440px;height:900px;display:flex;flex-direction:column;background:#ffffff;overflow:hidden">
+
+  <!-- CHROME -->
+  <div style="display:flex;align-items:center;gap:16px;height:52px;padding:0 20px;border-bottom:1px solid #e5e5e5;background:#fafafa;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:24px;height:24px;border-radius:6px;background:#171717;color:#fafafa;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:-0.02em">CRK</div>
+      <span style="font-size:14px;font-weight:600">{{deskName}}</span>
+    </div>
+    <div style="width:1px;height:20px;background:#e5e5e5"></div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#525252">
+      <span>{{deskCounter}}</span><span style="color:#d4d4d4">·</span>
+      <span style="color:#0a0a0a;font-weight:500">Anshuman Prasad</span>
+    </div>
+    <div style="flex-grow:1"></div>
+    <div style="display:flex;align-items:center;gap:14px;font-size:13px;color:#737373">
+      <span class="num">Sat 29 Aug 2026 · 11:18</span>
+      <div style="width:26px;height:26px;border-radius:9999px;background:#e5e5e5;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#404040">AP</div>
+    </div>
+  </div>
+
+  <!-- SEQUENCE BANNER -->
+  <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;background:{{seqBg}};border-bottom:1px solid {{seqBorder}};flex-shrink:0">
+    <span style="display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:9999px;background:{{seqTagBg}};color:#ffffff;font-size:11px;font-weight:700;letter-spacing:0.03em">{{seqTag}}</span>
+    <span style="font-size:13px;color:#0a0a0a">{{seqLine}}</span>
+    <div style="flex-grow:1"></div>
+    <span style="font-size:12px;color:#525252">Set by the Duty Manager · OPD settings</span>
+  </div>
+
+  <!-- DRAWER — exists only when this desk holds cash -->
+  <sc-if value="{{seqC}}" hint-placeholder-val="{{false}}">
+    <div style="display:flex;align-items:center;gap:12px;padding:8px 20px;background:rgba(49,143,90,0.07);border-bottom:1px solid rgba(49,143,90,0.25);flex-shrink:0">
+      <span style="width:8px;height:8px;border-radius:9999px;background:#318f5a;flex-shrink:0"></span>
+      <span style="font-size:12.5px;color:#0a0a0a"><strong style="font-weight:600">Drawer open</strong> since 09:00 · float <span class="num">₹2,000</span> · taken so far <span class="num">₹11,700</span> across 39 patients</span>
+      <div style="flex-grow:1"></div>
+      <span style="font-size:11.5px;color:#525252">This desk holds the cash as well as the queue — the blind count at 17:30 is what keeps that honest.</span>
+      <button style="height:26px;padding:0 10px;border-radius:7px;border:1px solid rgba(49,143,90,0.35);background:#ffffff;font-size:11.5px;font-weight:500">Cash count</button>
+    </div>
+  </sc-if>
+
+  <div style="display:flex;flex-grow:1;min-height:0">
+
+    <!-- ── LEFT ─────────────────────────────────────────────────────────── -->
+    <div style="width:830px;border-right:1px solid #e5e5e5;overflow-y:auto;padding:16px 20px 20px;display:flex;flex-direction:column;gap:13px">
+
+      <!-- PATIENT -->
+      <div style="display:flex;align-items:center;gap:13px;padding:11px 14px;border-radius:12px;background:#f5f5f5;border:1px solid #e5e5e5">
+        <div style="width:34px;height:34px;border-radius:9999px;background:#ffffff;border:1px solid #e5e5e5;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#404040">MA</div>
+        <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:15px;font-weight:600">Muskan Arora</span>
+            <span style="font-size:13px;color:#525252">28 y · F</span>
+          </div>
+          <span class="mono num" style="font-size:11px;color:#737373">CRK0000184213 · Dr Anand Rao · Room 104 · walk-in</span>
+        </div>
+        <div style="text-align:right">
+          <div class="lbl">Token</div>
+          <div class="num" style="font-size:22px;font-weight:700;line-height:24px;letter-spacing:-0.02em">53</div>
+        </div>
+      </div>
+
+      <!-- ══ FLOW 1 · she has not paid yet ═════════════════════════════════ -->
+      <sc-if value="{{seqA}}" hint-placeholder-val="{{true}}">
+        <div style="border:1px solid rgba(203,136,46,0.42);border-radius:14px;background:rgba(203,136,46,0.07);padding:14px 17px">
+          <div style="display:flex;align-items:center;gap:11px">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#cb882e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
+            <div style="flex-grow:1">
+              <span style="font-size:14px;font-weight:600;display:block">She has not paid yet — that is correct in this sequence</span>
+              <span style="font-size:13px;color:#404040">Her place is held, and both sheets carry the <strong style="font-weight:700">UNPAID</strong> box until Counter 5 takes the money.</span>
+            </div>
+            <div style="text-align:right;padding-left:14px;border-left:1px solid rgba(203,136,46,0.35)">
+              <div class="lbl" style="color:#cb882e">To collect</div>
+              <div class="num" style="font-size:22px;font-weight:700;letter-spacing:-0.02em;color:#cb882e">₹300</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:11px;padding-top:11px;border-top:1px solid rgba(203,136,46,0.28)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg>
+            <span style="font-size:12px;color:#404040">The vitals desk refuses an unpaid slip after <strong style="font-weight:600">30 minutes</strong>. That is the leak the box closes.</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ══ FLOW 2 · already paid downstairs ══════════════════════════════ -->
+      <sc-if value="{{seqB}}" hint-placeholder-val="{{false}}">
+        <div style="border:1px solid rgba(49,143,90,0.35);border-radius:14px;background:rgba(49,143,90,0.07);padding:14px 17px">
+          <div style="display:flex;align-items:center;gap:11px">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#318f5a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M20 6 9 17l-5-5"></path></svg>
+            <div style="flex-grow:1">
+              <span style="font-size:14px;font-weight:600;display:block">Receipt barcode scanned — <span class="mono num">RCP-2608-04387</span>, paid 11:04</span>
+              <span style="font-size:13px;color:#404040">The money was taken at Counter 5. You choose the doctor and take nothing.</span>
+            </div>
+            <div style="text-align:right;padding-left:14px;border-left:1px solid rgba(49,143,90,0.30)">
+              <div class="lbl" style="color:#318f5a">Paid</div>
+              <div class="num" style="font-size:22px;font-weight:700;letter-spacing:-0.02em;color:#318f5a">₹300</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:11px;padding-top:11px;border-top:1px solid rgba(49,143,90,0.25)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg>
+            <span style="font-size:12px;color:#404040">No receipt, no token. There is no "add anyway" on this screen — that is what makes bill-first actually bill-first.</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ══ FLOW 3 · take the money right here ════════════════════════════ -->
+      <sc-if value="{{seqC}}" hint-placeholder-val="{{false}}">
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:11px 17px;background:#fafafa;border-bottom:1px solid #e5e5e5">
+            <span class="lbl" style="flex-grow:1">Take the consultation fee</span>
+            <span style="font-size:11px;color:#737373">the third thing this desk does — registered, doctor chosen, now paid</span>
+          </div>
+
+          <div style="padding:14px 17px">
+            <div style="display:flex;gap:8px;margin-bottom:14px">
+              <sc-for list="{{tenders}}" as="t" hint-placeholder-count="4">
+                <div onClick="{{ t.pick }}" class="tender" style="border:1px solid {{t.border}};background:{{t.bg}};color:{{t.fg}}">
+                  <span style="font-size:12.5px;font-weight:{{t.weight}}">{{t.label}}</span>
+                  <span style="font-size:10.5px;opacity:0.72">{{t.hint}}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:end">
+              <div>
+                <span style="font-size:12.5px;font-weight:500;color:#404040;display:block;margin-bottom:5px">{{takenLabel}}</span>
+                <div class="num" style="height:42px;border-radius:8px;border:1px solid #171717;background:#ffffff;box-shadow:0 0 0 3px rgba(161,161,161,0.35);display:flex;align-items:center;padding:0 12px;font-size:18px;font-weight:600">{{taken}}</div>
+              </div>
+              <div>
+                <span style="font-size:12.5px;font-weight:500;color:#404040;display:block;margin-bottom:5px">{{changeLabel}}</span>
+                <div class="num" style="height:42px;border-radius:8px;border:1px solid #e5e5e5;background:{{changeBg}};display:flex;align-items:center;padding:0 12px;font-size:18px;font-weight:600;color:{{changeFg}}">{{change}}</div>
+              </div>
+              <div style="padding-bottom:3px">
+                <div style="display:flex;align-items:baseline;justify-content:space-between">
+                  <span style="font-size:12.5px;color:#525252">{{feeWord}}</span>
+                  <span class="num" style="font-size:20px;font-weight:700;letter-spacing:-0.02em;color:{{feeFg}}">{{feeAmt}}</span>
+                </div>
+                <div style="font-size:11px;color:#737373;margin-top:2px">{{feeNote}}</div>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:flex-start;gap:9px;margin-top:13px;padding:9px 12px;border-radius:9px;background:#f5f5f5">
+              <svg style="margin-top:3px;flex-shrink:0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg>
+              <span style="font-size:12px;color:#404040;line-height:17px">{{tenderNote}}</span>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- PRINT BUNDLE -->
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:10px;padding:11px 17px;background:#fafafa;border-bottom:1px solid #e5e5e5">
+          <span class="lbl" style="flex-grow:1">What comes out of the printer</span>
+          <span style="font-size:11px;color:#737373">80 mm thermal · A4 laser</span>
+        </div>
+        <div style="padding:13px 17px;display:flex;flex-direction:column;gap:9px">
+          <sc-for list="{{bundles}}" as="b" hint-placeholder-count="2">
+            <div onClick="{{ b.pick }}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:11px;border:{{b.border}};background:{{b.bg}};cursor:pointer">
+              <div style="width:16px;height:16px;border-radius:9999px;border:{{b.dot}};flex-shrink:0"></div>
+              <div style="display:flex;flex-direction:column;gap:1px;flex-grow:1">
+                <span style="font-size:14.5px;font-weight:{{b.weight}}">{{b.label}}</span>
+                <span style="font-size:12px;color:#737373">{{b.sub}}</span>
+              </div>
+              <span class="mono" style="display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;background:#f5f5f5;border:1px solid #e5e5e5;font-size:11px;font-weight:600;color:#525252">{{b.key}}</span>
+              <span style="font-size:12px;color:#737373;width:110px;text-align:right">{{b.sheets}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- WHY -->
+      <div style="display:flex;align-items:flex-start;gap:11px;padding:12px 15px;border-radius:12px;background:#f5f5f5;border:1px solid #e5e5e5">
+        <svg style="margin-top:2px;flex-shrink:0" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"></path><path d="M14 2v5h5"></path></svg>
+        <div>
+          <span style="font-size:13px;font-weight:600;display:block">{{whyTitle}}</span>
+          <span style="font-size:12.5px;color:#404040;line-height:18px">{{whyBody}}</span>
+        </div>
+      </div>
+
+      <div style="flex-grow:1"></div>
+
+      <!-- ACTION -->
+      <div style="display:flex;align-items:center;gap:12px;padding-top:4px">
+        <div style="flex-grow:1;display:flex;align-items:center;gap:9px;font-size:13px;color:#525252">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#318f5a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+          <span>{{nextStep}}</span>
+        </div>
+        <button style="height:34px;padding:0 14px;border-radius:8px;border:1px solid #e5e5e5;background:#ffffff;font-size:13px;font-weight:500">Reprint <span class="mono" style="font-size:11px;color:#737373">F9</span></button>
+        <button style="height:44px;padding:0 22px;border-radius:8px;border:none;background:#171717;color:#fafafa;font-size:15px;font-weight:600;display:inline-flex;align-items:center;gap:9px">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fafafa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><path d="M6 9V3h12v6M6 14h12v8H6z"></path></svg>
+          {{cta}}
+          <span class="mono" style="font-size:11px;opacity:0.6;font-weight:500">F2</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── RIGHT: THE PAPER ─────────────────────────────────────────────── -->
+    <div style="flex-grow:1;background:#f5f5f5;display:flex;flex-direction:column;min-height:0">
+      <div style="padding:14px 20px 11px;border-bottom:1px solid #e5e5e5;background:#fafafa;flex-shrink:0;display:flex;align-items:center">
+        <div style="flex-grow:1">
+          <span style="font-size:14px;font-weight:600;display:block">{{previewTitle}}</span>
+          <span style="font-size:12px;color:#737373">{{previewSub}}</span>
+        </div>
+        <span class="num" style="font-size:12px;color:#737373">{{sheetCount}}</span>
+      </div>
+
+      <div style="flex-grow:1;overflow-y:auto;padding:16px 18px 22px;display:flex;gap:14px;justify-content:center;align-items:flex-start">
+
+        <!-- ── 80 mm SLIP, at actual print width ────────────────────────── -->
+        <div style="width:272px;flex-shrink:0;background:#ffffff;border:1px solid #d4d4d4;padding:11px 9px 12px;box-shadow:0 4px 14px rgba(0,0,0,0.08)">
+          <div style="text-align:center">
+            <div style="font-size:11px;font-weight:600;line-height:13px">CRK MEDICAL COLLEGE &amp; HOSPITAL</div>
+            <div style="font-size:8.5px;color:#3a3a3a;line-height:11px;margin-top:1px">Chaurasia Chowk, Hajipur — 844101, Bihar</div>
+            <div class="num" style="font-size:8.5px;color:#3a3a3a;line-height:11px">Hotline +91 77648 88189 · Emergency 1068</div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;align-items:center;margin-top:8px">
+            <div style="display:flex;align-items:stretch;height:30px">
+              <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:2px"></div>
+              <div class="bar" style="width:3px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:1px"></div>
+              <div class="bar" style="width:2px"></div><div style="width:2px"></div><div class="bar" style="width:2px"></div><div style="width:1px"></div>
+              <div class="bar" style="width:1px"></div><div style="width:3px"></div><div class="bar" style="width:3px"></div><div style="width:1px"></div>
+              <div class="bar" style="width:1px"></div><div style="width:1px"></div><div class="bar" style="width:2px"></div><div style="width:2px"></div>
+              <div class="bar" style="width:3px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:2px"></div>
+              <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:3px"></div><div style="width:1px"></div>
+              <div class="bar" style="width:1px"></div><div style="width:2px"></div><div class="bar" style="width:2px"></div><div style="width:2px"></div>
+              <div class="bar" style="width:1px"></div><div style="width:1px"></div><div class="bar" style="width:3px"></div><div style="width:2px"></div>
+              <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:1px"></div>
+              <div class="bar" style="width:3px"></div><div style="width:2px"></div><div class="bar" style="width:2px"></div><div style="width:1px"></div>
+              <div class="bar" style="width:1px"></div><div style="width:2px"></div><div class="bar" style="width:1px"></div><div style="width:3px"></div>
+              <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:3px"></div><div style="width:1px"></div>
+              <div class="bar" style="width:1px"></div><div style="width:1px"></div><div class="bar" style="width:2px"></div><div style="width:2px"></div>
+              <div class="bar" style="width:2px"></div><div style="width:1px"></div><div class="bar" style="width:1px"></div><div style="width:2px"></div>
+              <div class="bar" style="width:3px"></div><div style="width:1px"></div><div class="bar" style="width:2px"></div>
+            </div>
+            <div class="num" style="font-size:8.5px;letter-spacing:0.15em;margin-top:2px">2608290047</div>
+          </div>
+
+          <div class="dash" style="margin-top:8px"></div>
+
+          <div style="text-align:center;padding:8px 0 7px">
+            <div style="font-size:8px;font-weight:600;letter-spacing:0.14em;color:#4a4a4a">TOKEN</div>
+            <div class="num" style="font-size:54px;font-weight:700;line-height:53px;letter-spacing:-0.04em">53</div>
+            <div style="font-size:13px;font-weight:600;margin-top:4px">Dr Anand Rao</div>
+            <div style="font-size:9.5px;color:#3a3a3a">General Medicine</div>
+            <div style="display:inline-flex;align-items:baseline;gap:6px;margin-top:5px;border:1.5px solid #000;padding:2px 10px">
+              <span style="font-size:8px;font-weight:600;letter-spacing:0.10em;color:#4a4a4a">ROOM</span>
+              <span class="num" style="font-size:15px;font-weight:600">104</span>
+              <span style="color:#8a8a8a">·</span>
+              <span style="font-size:9px;color:#3a3a3a">1st floor</span>
+            </div>
+          </div>
+
+          <div class="dash"></div>
+
+          <div style="padding:8px 0;font-size:10px;line-height:15px">
+            <div class="srow"><span class="sk">Patient</span><span class="sv">Muskan Arora</span></div>
+            <div class="srow"><span class="sk">Age / Sex</span><span class="sv num">28 y / F</span></div>
+            <div class="srow"><span class="sk">UHID</span><span class="sv num">CRK0000184213</span></div>
+            <div class="srow"><span class="sk">Encounter ID</span><span class="sv num">2608290047</span></div>
+            <div class="srow"><span class="sk">Date</span><span class="sv num">29-Aug-2026</span></div>
+          </div>
+
+          <div class="dash"></div>
+
+          <div style="padding:8px 0 7px;font-size:10px">
+            <div class="srow"><span class="sk">OPD consultation</span><span class="sv num">{{slipFee}}</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px;padding-top:4px;border-top:1px solid #b5b5b5">
+              <span style="font-size:11px;font-weight:600">{{slipTotalWord}}</span>
+              <span class="num" style="font-size:17px;font-weight:700;letter-spacing:-0.02em">{{slipFee}}</span>
+            </div>
+          </div>
+
+          <!-- outlined box, never a flood fill -->
+          <div style="padding:5px 7px;text-align:center;background-color:#ffffff;border:1.5px solid #000000">
+            <div style="font-size:13px;font-weight:700;letter-spacing:0.10em;color:#000000;line-height:15px">{{bandEn}}</div>
+            <div class="hi" style="font-size:14px;font-weight:700;color:#000000">{{bandHi}}</div>
+          </div>
+
+          <!-- FLOW 3 · the receipt half, on the same piece of paper -->
+          <sc-if value="{{seqC}}" hint-placeholder-val="{{false}}">
+            <div>
+              <div class="dash" style="margin-top:8px"></div>
+              <div style="padding:8px 0 0;font-size:10px;line-height:15px">
+                <div style="font-size:8px;font-weight:600;letter-spacing:0.14em;color:#4a4a4a;margin-bottom:3px">RECEIPT</div>
+                <div class="srow"><span class="sk">Receipt no.</span><span class="sv num">RCP-2608-04412</span></div>
+                <div class="srow"><span class="sk">Paid by</span><span class="sv">{{slipTender}}</span></div>
+                <div class="srow"><span class="sk">{{slipTakenLabel}}</span><span class="sv num">{{slipTaken}}</span></div>
+                <div class="srow"><span class="sk">Change</span><span class="sv num">{{slipChange}}</span></div>
+                <div class="srow"><span class="sk">Cashier</span><span class="sv">anshuman.prasad</span></div>
+              </div>
+            </div>
+          </sc-if>
+
+          <div class="dash" style="margin-top:8px"></div>
+
+          <div style="padding:8px 0 0;text-align:center">
+            <div style="font-size:8px;font-weight:600;letter-spacing:0.14em;color:#4a4a4a;margin-bottom:4px">GO NEXT TO</div>
+            <div style="font-size:11px;font-weight:600;line-height:14px">{{slipNext}}</div>
+            <div class="hi" style="font-size:14px;color:#1a1a1a">{{slipNextHi}}</div>
+          </div>
+
+          <div class="dash" style="margin-top:8px"></div>
+          <div class="num" style="padding-top:7px;text-align:center;font-size:8.5px;color:#3a3a3a;line-height:11px">
+            Printed by anshuman.prasad on 29-Aug-2026 11:18
+          </div>
+        </div>
+
+        <!-- ── Rx SHEET THUMBNAIL ───────────────────────────────────────── -->
+        <sc-if value="{{withRx}}" hint-placeholder-val="{{true}}">
+          <div style="width:214px;flex-shrink:0">
+            <div style="background:#ffffff;border:1px solid #d4d4d4;box-shadow:0 4px 14px rgba(0,0,0,0.08);padding:10px 11px;height:303px;display:flex;flex-direction:column;font-size:6px;line-height:8px">
+              <div style="display:flex;gap:7px">
+                <div style="width:38px;flex-shrink:0">
+                  <img src="crk-logo.png" alt="CRK" style="width:24px;height:auto;display:block">
+                  <div style="font-size:5px;font-weight:700;color:#55064f;margin-top:2px">General Medicine</div>
+                </div>
+                <div style="width:74px;display:flex;flex-direction:column;gap:1px">
+                  <div><span style="color:#666">Name:</span> <strong>Ms. Muskan Arora</strong></div>
+                  <div><span style="color:#666">UHID:</span> <strong>CRK0000184213</strong></div>
+                  <div><span style="color:#666">Gender:</span> <strong>F</strong></div>
+                  <div><span style="color:#666">DOB:</span> <strong>17-Apr-1998 (28 y)</strong></div>
+                  <div><span style="color:#666">Doctor ID:</span> <strong>DR-0114</strong></div>
+                </div>
+                <div style="flex-grow:1;display:flex;flex-direction:column;gap:1px;text-align:right">
+                  <div><span style="color:#666">Encounter ID:</span> <strong>2608290047</strong></div>
+                  <div><span style="color:#666">Type:</span> <strong>Outpatient</strong></div>
+                  <div><span style="color:#666">Visit Date:</span> <strong>29-Aug-2026</strong></div>
+                  <div><span style="color:#666">Department:</span> <strong>Gen. Medicine</strong></div>
+                  <div><span style="color:#666">Speciality:</span> <strong>Gen. Medicine</strong></div>
+                </div>
+              </div>
+              <div style="height:1px;background:#000;margin-top:5px"></div>
+
+              <div style="display:flex;gap:4px;border-top:1px solid #999;border-bottom:1px solid #999;margin-top:6px;padding:3px 0;color:#888">
+                <span style="width:22px">Vitals</span>
+                <span style="flex-grow:1;border-bottom:1px dotted #bbb"></span>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:4px;border:1px solid #d92230;padding:2px 4px;margin-top:6px">
+                <span style="font-size:5px;font-weight:700;color:#d92230;letter-spacing:0.06em">ALLERGY</span>
+                <span style="font-size:6.5px;font-weight:700;color:#d92230">SULFA DRUGS</span>
+              </div>
+
+              <div style="flex-grow:1"></div>
+
+              <div style="display:flex;justify-content:flex-end">
+                <div style="width:88px">
+                  <div style="height:1px;background:#999"></div>
+                  <div style="font-size:4.5px;color:#aaa;text-align:right;margin-top:2px">Signature, name &amp; reg. no.</div>
+                </div>
+              </div>
+
+              <div style="height:1px;background:#000;margin-top:6px"></div>
+              <div style="display:flex;align-items:flex-end;gap:5px;padding-top:3px">
+                <div style="flex-grow:1;color:#666;font-size:5px;line-height:7px">
+                  CRK Medical College &amp; Hospital, Chaurasia Chowk, Hajipur — 844101, Bihar<br>
+                  24×7 Hotline +91 77648 88189 · Emergency 1068 · info@crkmch.com<br>
+                  <strong>Password to access via QR code: 31610093</strong>
+                </div>
+                <div style="width:26px;height:26px;background:#000;flex-shrink:0"></div>
+              </div>
+            </div>
+            <div style="text-align:center;font-size:11px;color:#525252;margin-top:9px;line-height:16px">
+              <strong style="font-weight:600;color:#0a0a0a">OPD prescription sheet · A4</strong><br>
+              Header, allergy and vitals. The rest is the doctor's pen.
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"sequence":{"editor":"enum","options":["Register → Appointment → Billing","Register → Billing → Appointment","Single window — one desk does all three"],"default":"Register → Appointment → Billing","section":"Hospital"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  cur() { return this.state || { bundle: "rx", tender: "cash" }; }
+  put(p) { this.setState(Object.assign({}, this.cur(), p)); }
+
+  renderVals() {
+    const self = this;
+    const s = this.cur();
+    const seq = this.props.sequence || "Register → Appointment → Billing";
+
+    const seqC = seq.indexOf("Single window") >= 0;
+    const seqA = !seqC && seq.indexOf("Appointment → Billing") >= 0;
+    const seqB = !seqC && !seqA;
+
+    /* ── the print bundle ─────────────────────────────────────────────── */
+    const opts = [
+      { id: "token",
+        label: seqC ? "Combined slip — token + receipt" : "Token slip only",
+        sub:   seqC ? "One 80 mm print does both jobs"  : "80 mm thermal — the fastest exit",
+        key: "F2", sheets: "1 slip" },
+      { id: "rx",
+        label: (seqC ? "Combined slip" : "Token slip") + " + OPD prescription sheet",
+        sub: "What she carries into the consultation room",
+        key: "F2 F2", sheets: "1 slip · 1 × A4" }
+    ];
+    const bundles = opts.map(function (o) {
+      const sel = s.bundle === o.id;
+      return {
+        label: o.label, sub: o.sub, key: o.key, sheets: o.sheets,
+        border: sel ? "1px solid #171717" : "1px solid #e5e5e5",
+        bg: sel ? "#f5f5f5" : "#ffffff",
+        dot: sel ? "5px solid #171717" : "1px solid #d4d4d4",
+        weight: sel ? "600" : "500",
+        pick: function () { self.put({ bundle: o.id }); }
+      };
+    });
+    const withRx = s.bundle === "rx";
+
+    /* ── tender, Flow 3 only ──────────────────────────────────────────── */
+    const tenderDefs = [
+      { id: "cash",   label: "Cash",     hint: "₹500 given" },
+      { id: "upi",    label: "UPI",      hint: "counter QR" },
+      { id: "card",   label: "Card",     hint: "swipe" },
+      { id: "exempt", label: "Ayushman", hint: "collect ₹0" }
+    ];
+    const tenders = tenderDefs.map(function (t) {
+      const sel = s.tender === t.id;
+      return {
+        label: t.label, hint: t.hint,
+        bg: sel ? "#171717" : "#ffffff",
+        fg: sel ? "#fafafa" : "#0a0a0a",
+        border: sel ? "#171717" : "#e5e5e5",
+        weight: sel ? "600" : "500",
+        pick: function () { self.put({ tender: t.id }); }
+      };
+    });
+
+    const cash   = s.tender === "cash";
+    const exempt = s.tender === "exempt";
+
+    let takenLabel, taken, changeLabel, change, changeFg, changeBg, tenderNote, slipTender, slipTakenLabel;
+    if (exempt) {
+      takenLabel = "Collected";        taken  = "₹0";
+      changeLabel = "Card verified";   change = "PMJAY-04471";
+      changeFg = "#318f5a";            changeBg = "rgba(49,143,90,0.08)";
+      tenderNote = "The screen says ₹0 — do not collect, in words rather than as an empty total. An empty total is what gets a cardholder charged by mistake.";
+      slipTender = "Ayushman";         slipTakenLabel = "Collected";
+    } else if (cash) {
+      takenLabel = "Cash taken";       taken  = "₹500";
+      changeLabel = "Change handed back"; change = "₹200";
+      changeFg = "#0a0a0a";            changeBg = "#ffffff";
+      tenderNote = "Change defaults to the whole surplus. Banking it as an advance takes a deliberate tick — that is how the phantom advances stopped appearing.";
+      slipTender = "Cash";             slipTakenLabel = "Tendered";
+    } else {
+      const upi = s.tender === "upi";
+      takenLabel = upi ? "UPI reference" : "Card approval";
+      taken      = upi ? "4287 1190 5563" : "AP 550194";
+      changeLabel = "Change";          change = "—";
+      changeFg = "#a1a1a1";            changeBg = "#fafafa";
+      tenderNote = "Look at her debit before you print. If her bank says paid and the gateway says pending, receipt it on her evidence — the reconciliation is tomorrow's problem, not hers.";
+      slipTender = upi ? "UPI" : "Card";
+      slipTakenLabel = "Reference";
+    }
+
+    /* ── the banner, per sequence ─────────────────────────────────────── */
+    const banner = {
+      A: { tag: "QUEUE FIRST",   bg: "rgba(203,136,46,0.08)", border: "rgba(203,136,46,0.28)", chip: "#cb882e",
+           line: "Registration → Appointment → Billing. You issue the token; Counter 5 takes the money afterwards." },
+      B: { tag: "BILL FIRST",    bg: "rgba(49,143,90,0.08)",  border: "rgba(49,143,90,0.28)",  chip: "#318f5a",
+           line: "Registration → Billing → Appointment. Counter 5 has already taken the money; you only choose the doctor." },
+      C: { tag: "SINGLE WINDOW", bg: "rgba(33,140,181,0.08)", border: "rgba(33,140,181,0.30)", chip: "#218cb5",
+           line: "One desk does all three — she was registered here, the doctor was chosen here, and the fee is taken here." }
+    };
+    const b = seqC ? banner.C : (seqA ? banner.A : banner.B);
+
+    return {
+      seqA: seqA, seqB: seqB, seqC: seqC,
+      bundles: bundles, withRx: withRx,
+      tenders: tenders,
+      takenLabel: takenLabel, taken: taken,
+      changeLabel: changeLabel, change: change, changeFg: changeFg, changeBg: changeBg,
+      tenderNote: tenderNote,
+      slipTender: slipTender, slipTakenLabel: slipTakenLabel,
+      slipTaken: exempt ? "₹0" : (cash ? "₹500" : taken),
+      slipChange: (exempt || !cash) ? "—" : "₹200",
+
+      feeWord: "Consultation",
+      feeAmt:  exempt ? "₹0" : "₹300",
+      feeFg:   exempt ? "#318f5a" : "#0a0a0a",
+      feeNote: exempt ? "Ayushman Bharat — do not collect" : "Flat — any department, any doctor",
+
+      deskName: seqC ? "Front desk" : "Appointment counter",
+      deskCounter: seqC ? "Counter 1" : "Counter 3",
+
+      seqTag: b.tag, seqTagBg: b.chip, seqBg: b.bg, seqBorder: b.border, seqLine: b.line,
+
+      sheetCount: withRx ? "2 sheets" : "1 sheet",
+      slipFee: (seqC && exempt) ? "₹0.00" : "₹300.00",
+      slipTotalWord: seqA ? "TOTAL DUE" : "TOTAL PAID",
+      bandEn: seqA ? "UNPAID" : "PAID",
+      bandHi: seqA ? "भुगतान शेष — काउंटर 5" : "भुगतान प्राप्त",
+
+      slipNext:   seqA ? "1 · Billing, Counter 5 — ground floor" : "Vitals desk — 1st floor",
+      slipNextHi: seqA ? "बिलिंग काउंटर 5, भूतल" : "प्राथमिक जाँच डेस्क, प्रथम तल",
+
+      whyTitle: seqC
+        ? "One slip, both jobs — and one crossing instead of three"
+        : "The prescription sheet is printed empty, here, on purpose",
+      whyBody: seqC
+        ? "She was registered, given a doctor and billed without moving. The slip beside this is her token and her receipt on the same 80 mm print, so there is no unpaid slip to chase and no receipt that has to explain it is not a token."
+        : "It leaves your counter carrying her identity, her allergy, an empty vitals line and the footer QR. The doctor writes the rest by hand; the exit desk scans that QR and the paper becomes an order. Printing it later would mean printing it twice.",
+
+      nextStep: seqC
+        ? (exempt ? "Nothing to collect. Tell her: straight up to the vitals desk, 1st floor."
+                  : "Tell her: straight up to the vitals desk, 1st floor. Nothing more to pay.")
+        : (seqA ? "Tell her: pay at Counter 5 first, then the vitals desk. The box says so in Hindi too."
+                : "Tell her: straight to the vitals desk on the 1st floor. Nothing more to pay."),
+
+      cta: seqC ? (exempt ? "Issue token · ₹0" : "Take ₹300 and issue token")
+                : (seqA ? "Issue UNPAID token" : "Issue token"),
+
+      previewTitle: seqC ? "Printed now — token and receipt in one"
+                         : (seqA ? "Printed now — marked UNPAID" : "Printed now — marked PAID"),
+      previewSub: seqC ? "Two documents collapsed onto one 80 mm print"
+                       : (seqA ? "An outlined box, not a flood fill — the ink a thermal head can actually afford"
+                               : "Cleared at Counter 5 before she reached you")
+    };
+  }
+}
+</script>
+</body>
+</html>

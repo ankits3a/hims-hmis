@@ -1,0 +1,260 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#fafafa;color:#0a0a0a;
+      font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:#218cb5;text-decoration:none} a:hover{color:#1a6f90}
+    .num{font-variant-numeric:tabular-nums}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .card{background:#ffffff;border:1px solid #e5e5e5;border-radius:14px;box-shadow:0 1px 2px 0 rgba(0,0,0,0.05)}
+    .lbl{font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#737373}
+    th{text-align:left;padding:9px 11px;background:#f5f5f5;border-bottom:1px solid #e5e5e5;
+       font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#525252}
+    td{padding:11px;border-bottom:1px solid #f0f0f0;font-size:12.5px;line-height:17px;vertical-align:top}
+    .pill{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:9999px;
+          font-size:11px;font-weight:700;letter-spacing:0.02em;white-space:nowrap}
+    .th{background:#171717;color:#fafafa}
+    .dm{background:#cb882e;color:#ffffff}
+    .la{background:#218cb5;color:#ffffff}
+    .lb2{background:#f5f5f5;color:#525252}
+  </style>
+</helmet>
+
+<div style="width:1120px;background:#fafafa;padding:32px 34px 38px;display:flex;flex-direction:column;gap:18px">
+
+  <!-- HEAD -->
+  <div>
+    <h1 style="margin:0;font-size:26px;font-weight:600;letter-spacing:-0.02em">Which printer for which piece of paper</h1>
+    <p style="margin:8px 0 0;font-size:14px;color:#525252;max-width:830px;line-height:21px">
+      The receipt is fighting you because of its <em>format</em>, not its content. A 4 × 6 label is die-cut — fixed height, take it or leave it.
+      An 80 mm roll (72 mm printable) is continuous: it is as long as the job needs. That single difference is why Next Steps has to be sacrificed on one and fits comfortably on the other.
+    </p>
+  </div>
+
+  <!-- THE ANSWER, UP FRONT -->
+  <div style="border:2px solid #171717;border-radius:14px;background:#ffffff;padding:18px 22px">
+    <div class="lbl" style="margin-bottom:11px">The short answer — three printers, not one</div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px">
+      <div>
+        <span class="pill th">80 mm THERMAL</span>
+        <div style="font-size:14px;font-weight:600;margin-top:9px">Token slip · OPD payment receipt</div>
+        <div style="font-size:12.5px;color:#525252;line-height:18px;margin-top:4px">
+          The same printer and the same roll for both. One machine at the counter, one paper stock, one spare — and no reason to buy a label printer for the billing desk at all.
+        </div>
+      </div>
+      <div>
+        <span class="pill dm">24-PIN DOT MATRIX</span>
+        <div style="font-size:14px;font-weight:600;margin-top:9px">Pharmacy · lab · radiology invoices</div>
+        <div style="font-size:12.5px;color:#525252;line-height:18px;margin-top:4px">
+          Two-part carbon stationery. Your instinct was right — this is what pharmacy shops use, and the reason is the carbon copy and the fact that it does not fade.
+        </div>
+      </div>
+      <div>
+        <span class="pill la">A4 LASER</span>
+        <div style="font-size:14px;font-weight:600;margin-top:9px">Prescription · reports · IPD final bill</div>
+        <div style="font-size:12.5px;color:#525252;line-height:18px;margin-top:4px">
+          Anything that runs to pages, carries a logo, or leaves the building for an insurer or a TPA.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- THE MATRIX -->
+  <div class="card" style="overflow:hidden">
+    <div style="padding:14px 18px;border-bottom:1px solid #e5e5e5;display:flex;align-items:baseline;gap:12px">
+      <span style="font-size:15px;font-weight:600">Document by document</span>
+      <span style="font-size:12px;color:#737373">the one factor in bold is the one that decides it</span>
+    </div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr>
+          <th style="width:186px">Document</th>
+          <th style="width:96px">Lives for</th>
+          <th style="width:78px">Copies</th>
+          <th style="width:82px">Lines</th>
+          <th style="width:96px">Barcode / Hindi</th>
+          <th>Verdict</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>OPD token slip</strong><div style="color:#737373;font-size:11.5px">72 × ~165 mm</div></td>
+          <td>2 hours</td>
+          <td>1</td>
+          <td>Fixed</td>
+          <td><strong>Both</strong></td>
+          <td><span class="pill th">80 mm thermal</span><div style="color:#525252;margin-top:5px">Needs a crisp barcode and Devanagari. Fading is irrelevant — it is in the bin by evening.</div></td>
+        </tr>
+        <tr>
+          <td><strong>OPD payment receipt</strong><div style="color:#737373;font-size:11.5px">bill-first mode</div></td>
+          <td>1 day</td>
+          <td>1</td>
+          <td>1–2</td>
+          <td>Both</td>
+          <td><span class="pill th">80 mm thermal</span><div style="color:#525252;margin-top:5px"><strong>Same printer as the token.</strong> Consultation is GST-exempt, so this is a receipt, not a tax invoice — nothing has to survive an audit.</div></td>
+        </tr>
+        <tr>
+          <td><strong>Pharmacy invoice</strong><div style="color:#737373;font-size:11.5px">also lab, radiology</div></td>
+          <td><strong>8 years</strong></td>
+          <td><strong>2</strong></td>
+          <td><strong>1–30</strong></td>
+          <td>Neither</td>
+          <td><span class="pill dm">24-pin dot matrix</span><div style="color:#525252;margin-top:5px">Taxable goods, so a real GST invoice with HSN and tax breakup. Carbon copy in one pass, permanent ink, any number of lines.</div></td>
+        </tr>
+        <tr>
+          <td><strong>IPD final bill</strong></td>
+          <td><strong>8 years</strong></td>
+          <td>2–3</td>
+          <td><strong>50+</strong></td>
+          <td>Neither</td>
+          <td><span class="pill la">A4 laser</span><div style="color:#525252;margin-top:5px">Runs to several pages and goes to a TPA or insurer, who will not accept a till roll.</div></td>
+        </tr>
+        <tr>
+          <td><strong>Prescription sheet</strong><div style="color:#737373;font-size:11.5px">and lab reports</div></td>
+          <td>Years</td>
+          <td>1</td>
+          <td>Fixed</td>
+          <td><strong>Both</strong></td>
+          <td><span class="pill la">A4 laser</span><div style="color:#525252;margin-top:5px">Carries the crest and the footer QR the exit desk scans. Neither survives an impact head.</div></td>
+        </tr>
+        <tr>
+          <td><strong>Sample tube · film jacket · wristband</strong></td>
+          <td>Days</td>
+          <td>1</td>
+          <td>Fixed</td>
+          <td><strong>Barcode</strong></td>
+          <td><span class="pill lb2">Thermal label</span><div style="color:#525252;margin-top:5px">This is what a 4 × 6 label printer is for. Buy one for the collection desk, not for billing.</div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="display:flex;gap:16px">
+
+    <!-- WHAT WE ARE NOT BUYING -->
+    <div class="card" style="width:540px;padding:18px 20px">
+      <div style="font-size:15px;font-weight:600;margin-bottom:4px">Not buying, and what would change that</div>
+      <div style="font-size:12.5px;color:#525252;line-height:18px;margin-bottom:14px">
+        4 × 6 is off the list entirely. Two other tempting purchases are off it too — for now.
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="padding-bottom:12px;border-bottom:1px solid #f0f0f0">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:4px">
+            <span class="pill lb2">4 × 6 LABEL PRINTER</span>
+            <div style="flex-grow:1"></div>
+            <span style="font-size:11px;font-weight:600;color:#cb882e">DEFERRED</span>
+          </div>
+          <div style="font-size:12.5px;color:#404040;line-height:18px">
+            Sample tubes and film jackets will need barcode labels one day. There is no lab module yet, so there is nothing to label.
+            <strong>Buy it the week the lab goes live</strong>, not before — and buy it for the collection desk, never for billing.
+          </div>
+        </div>
+
+        <div style="padding-bottom:12px;border-bottom:1px solid #f0f0f0">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:4px">
+            <span class="pill lb2">SELF-SERVICE BILLING KIOSK</span>
+            <div style="flex-grow:1"></div>
+            <span style="font-size:11px;font-weight:600;color:#cb882e">DEFERRED</span>
+          </div>
+          <div style="font-size:12.5px;color:#404040;line-height:18px">
+            Medanta Patna runs them. They pay off where most patients are repeat, urban and carrying a smartphone.
+            A first-time walk-in from a village who cannot read the screen turns a kiosk into a queue with an extra step in it —
+            <strong>revisit once repeat visits are the majority</strong>, and measure that before spending.
+          </div>
+        </div>
+
+        <div>
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:4px">
+            <span class="pill lb2">THIRD CARBON PART</span>
+            <div style="flex-grow:1"></div>
+            <span style="font-size:11px;font-weight:600;color:#737373">ASK THE CA</span>
+          </div>
+          <div style="font-size:12.5px;color:#404040;line-height:18px">
+            Two-part covers the patient and the day-book. A green accounts copy is only worth the extra cost per set if your CA actually wants paper.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HARDWARE -->
+    <div class="card" style="flex-grow:1;padding:18px 20px">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:13px">
+        <span style="font-size:15px;font-weight:600">What to buy</span>
+        <div style="flex-grow:1"></div>
+        <span style="font-size:11px;color:#737373">indicative street prices — get local quotes</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:11px">
+        <div style="display:flex;align-items:flex-start;gap:11px;padding-bottom:11px;border-bottom:1px solid #f0f0f0">
+          <span class="pill th" style="margin-top:2px">80 mm</span>
+          <div style="flex-grow:1">
+            <div style="font-size:13px;font-weight:600">Thermal receipt printer, 80 mm, USB + LAN, auto-cutter</div>
+            <div style="font-size:11.5px;color:#737373;line-height:16px">One per counter: Registration, Appointment, Billing, each department reception</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div class="num" style="font-size:13px;font-weight:600">₹8k – 14k</div>
+            <div class="num" style="font-size:11px;color:#737373">≈ ₹0.12 / slip</div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;gap:11px;padding-bottom:11px;border-bottom:1px solid #f0f0f0">
+          <span class="pill dm" style="margin-top:2px">24-pin</span>
+          <div style="flex-grow:1">
+            <div style="font-size:13px;font-weight:600">Dot matrix, 80-column, with 2-part 9.5 × 5.5 in stationery</div>
+            <div style="font-size:11.5px;color:#737373;line-height:16px">One at Pharmacy, one shared by Lab and Radiology billing</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div class="num" style="font-size:13px;font-weight:600">₹14k – 22k</div>
+            <div class="num" style="font-size:11px;color:#737373">≈ ₹1.40 / set</div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;gap:11px;padding-bottom:11px;border-bottom:1px solid #f0f0f0">
+          <span class="pill la" style="margin-top:2px">A4</span>
+          <div style="flex-grow:1">
+            <div style="font-size:13px;font-weight:600">Mono laser, network, duplex</div>
+            <div style="font-size:11.5px;color:#737373;line-height:16px">One per OPD floor, one in the lab, one in IPD billing</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div class="num" style="font-size:13px;font-weight:600">₹18k – 30k</div>
+            <div class="num" style="font-size:11px;color:#737373">≈ ₹1.20 / page</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:15px;padding:12px 14px;border-radius:10px;background:rgba(49,143,90,0.06);border:1px solid rgba(49,143,90,0.28)">
+        <div style="font-size:12.5px;color:#0a0a0a;line-height:18px">
+          <strong style="font-weight:600">One machine at the billing counter, not two.</strong>
+          At roughly <span class="num">300</span> OPD receipts a day the 80 mm roll costs about <span class="num">₹36</span>, against roughly <span class="num">₹450</span> a day in 4 × 6 labels — before the second printer, its spares and a separate consumable to keep in stock.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CAVEAT -->
+  <div style="display:flex;align-items:flex-start;gap:11px;padding:14px 18px;border-radius:12px;background:#ffffff;border:1px dashed #d4d4d4">
+    <svg style="margin-top:2px;flex-shrink:0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg>
+    <div style="font-size:12.5px;color:#404040;line-height:18px">
+      <strong style="font-weight:600">Two things to confirm before you order.</strong>
+      Prices are indicative ranges for planning, not quotes — ask two local vendors and check what ribbon and stationery actually cost in Hajipur, because consumable supply matters more than the machine.
+      And put the GST treatment past your CA: consultation as an exempt healthcare service versus pharmacy as a taxable supply of goods is what decides whether a document is a receipt or a tax invoice — and that, not the printer, is what sets the retention rule.
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1120,"height":1400}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>
