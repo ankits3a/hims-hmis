@@ -4,7 +4,7 @@ import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { withIdempotency } from "../billing";
-import { collect, collectionQueue } from "./collection";
+import { awaitingLabels, collect, collectionQueue } from "./collection";
 import { getSpecimenByNo, printLabels } from "./specimens";
 import { idSchema, isoDateSchema, LAB_IDEMPOTENT_ROUTES, parsed, toHttp } from "./lab-http";
 import type { Actor } from "@hmis/contracts";
@@ -51,6 +51,14 @@ export class LabCollectionController {
   }
 
   /** One tube by its `S` number — what a scanner at the bench door resolves. */
+  /** PLAN 17c T2 — the patients waiting for a LABEL, which the tube queue cannot show. */
+  @Get("awaiting")
+  @RequirePermission("lab.collection.operate", "hospital")
+  async awaiting(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<unknown> {
+    const filter = parsed(z.object({ serviceDate: isoDateSchema }), query);
+    try { return await awaitingLabels(this.db, actor, filter); } catch (e) { toHttp(e); }
+  }
+
   @Get("specimen/:specimenNo")
   @RequirePermission("lab.collection.operate", "hospital")
   async specimen(@Param("specimenNo") specimenNo: string): Promise<unknown> {
