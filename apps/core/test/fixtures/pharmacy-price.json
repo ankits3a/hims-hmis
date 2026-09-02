@@ -1,0 +1,76 @@
+{
+  "_": "PLAN 16c T2 golden fixtures for priceForBatch (owner ruling R-1). uoms are the item's pack ladder; paise are integers; 'expect' is the full BatchPrice or an error code.",
+  "cases": [
+    {
+      "name": "MRP wins — no ceiling: a strip of 10 at ₹120 is ₹12 a tablet, and the bound is the MRP itself",
+      "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }, { "uom": "strip", "toBaseMultiplier": 10 }],
+      "batch": { "mrpPaise": 12000, "mrpUom": "strip" },
+      "regulation": null,
+      "expect": { "batchUnitPaise": 1200, "capUnitPaise": 1200, "winner": "batch_mrp", "mrpPaisePerBase": 1200, "ceilingPaisePerBase": null }
+    },
+    {
+      "name": "MRP wins — a ceiling ABOVE the MRP changes nothing",
+      "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }, { "uom": "strip", "toBaseMultiplier": 10 }],
+      "batch": { "mrpPaise": 12000, "mrpUom": "strip" },
+      "regulation": { "ceilingPaise": 15000, "mrpUom": "strip" },
+      "expect": { "batchUnitPaise": 1200, "capUnitPaise": 1200, "winner": "batch_mrp", "mrpPaisePerBase": 1200, "ceilingPaisePerBase": 1500 }
+    },
+    {
+      "name": "CEILING wins — the printed MRP exceeds the NPPA ceiling: the list price is still the MRP, the bound is the ceiling",
+      "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }, { "uom": "strip", "toBaseMultiplier": 10 }],
+      "batch": { "mrpPaise": 12000, "mrpUom": "strip" },
+      "regulation": { "ceilingPaise": 8000, "mrpUom": "strip" },
+      "expect": { "batchUnitPaise": 1200, "capUnitPaise": 800, "winner": "ceiling", "mrpPaisePerBase": 1200, "ceilingPaisePerBase": 800 }
+    },
+    {
+      "name": "ceiling EQUAL to MRP — the MRP is the winner (nothing capped it)",
+      "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }],
+      "batch": { "mrpPaise": 500, "mrpUom": "tablet" },
+      "regulation": { "ceilingPaise": 500, "mrpUom": "tablet" },
+      "expect": { "batchUnitPaise": 500, "capUnitPaise": 500, "winner": "batch_mrp", "mrpPaisePerBase": 500, "ceilingPaisePerBase": 500 }
+    },
+    {
+      "name": "ceiling ONLY — a batch with no printed MRP sells at the ceiling",
+      "uoms": [{ "uom": "ml", "toBaseMultiplier": 1 }, { "uom": "bottle", "toBaseMultiplier": 100 }],
+      "batch": { "mrpPaise": null, "mrpUom": null },
+      "regulation": { "ceilingPaise": 9000, "mrpUom": "bottle" },
+      "expect": { "batchUnitPaise": 90, "capUnitPaise": 90, "winner": "ceiling", "mrpPaisePerBase": null, "ceilingPaisePerBase": 90 }
+    },
+    {
+      "name": "an MRP that does not divide into the base unit is UNUSABLE, and the ceiling stands in",
+      "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }, { "uom": "strip", "toBaseMultiplier": 15 }],
+      "batch": { "mrpPaise": 10000, "mrpUom": "strip" },
+      "regulation": { "ceilingPaise": 9000, "mrpUom": "strip" },
+      "expect": { "batchUnitPaise": 600, "capUnitPaise": 600, "winner": "ceiling", "mrpPaisePerBase": null, "ceilingPaisePerBase": 600 }
+    },
+    {
+      "name": "no MRP and no ceiling — UNSALEABLE",
+      "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }],
+      "batch": { "mrpPaise": null, "mrpUom": null },
+      "regulation": null,
+      "expect": { "error": "price_unknown" }
+    },
+    {
+      "name": "an undividable MRP and no ceiling — UNSALEABLE, not rounded",
+      "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }, { "uom": "strip", "toBaseMultiplier": 15 }],
+      "batch": { "mrpPaise": 10000, "mrpUom": "strip" },
+      "regulation": null,
+      "expect": { "error": "price_unknown" }
+    },
+    {
+      "name": "a ceiling in an unknown pack is ignored, the MRP stands",
+      "uoms": [{ "uom": "tablet", "toBaseMultiplier": 1 }],
+      "batch": { "mrpPaise": 700, "mrpUom": "tablet" },
+      "regulation": { "ceilingPaise": 5000, "mrpUom": "carton" },
+      "expect": { "batchUnitPaise": 700, "capUnitPaise": 700, "winner": "batch_mrp", "mrpPaisePerBase": 700, "ceilingPaisePerBase": null }
+    }
+  ],
+  "gst": [
+    { "gstRateBps": null, "category": "pharmacy_exempt" },
+    { "gstRateBps": 0, "category": "pharmacy_exempt" },
+    { "gstRateBps": 500, "category": "pharmacy_5" },
+    { "gstRateBps": 1200, "category": "pharmacy" },
+    { "gstRateBps": 1800, "category": "pharmacy_18" },
+    { "gstRateBps": 2800, "error": "gst_slab_unknown" }
+  ]
+}

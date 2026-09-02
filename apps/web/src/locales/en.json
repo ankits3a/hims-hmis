@@ -2546,5 +2546,38 @@
     },
     "doctor": "Doctor",
     "allDoctors": "All doctors on the bench"
+  },
+  "pharmacyItems": {
+    "title": "Pharmacy sale items",
+    "intro": "A drug becomes saleable at the counter when it is bridged to a tariff service. The service is created here, in the GST slab the item master names; the price comes from the batch at the bill.",
+    "registered": "Registered",
+    "candidates": "Drugs not yet registered",
+    "search": "Search by code or name",
+    "code": "Code",
+    "name": "Name",
+    "baseUom": "Base unit",
+    "gst": "GST",
+    "service": "Service",
+    "category": "Category",
+    "status": "Status",
+    "active": "For sale",
+    "inactive": "Withdrawn",
+    "register": "Register for sale",
+    "withdraw": "Withdraw",
+    "reinstate": "Reinstate",
+    "registeredAs": "{{code}} registered as {{service}}",
+    "nil": "nil",
+    "noneRegistered": "No sale items yet.",
+    "noCandidates": "Every active drug is registered."
+  },
+  "pharmacyErrors": {
+    "permission_denied": "You are not allowed to do that",
+    "unknown_item": "No such item",
+    "not_a_drug": "Only a medicine can be sold at the counter",
+    "sale_item_exists": "This item is already registered for sale",
+    "unknown_sale_item": "This item is not registered for sale",
+    "sale_item_inactive": "This item has been withdrawn from sale",
+    "price_unknown": "This batch has no usable MRP and no notified ceiling — it cannot be sold",
+    "gst_slab_unknown": "The item’s GST rate is not a medicine slab (nil, 5%, 12% or 18%)"
   }
 }
