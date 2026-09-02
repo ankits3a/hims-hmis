@@ -18,7 +18,7 @@ import { radiologyManifest } from "./manifest";
  */
 describe("the radiology event catalogue (18a T2)", () => {
   it("declares seven events, every one in the radiology module's namespace", () => {
-    expect(RADIOLOGY_EVENTS).toHaveLength(7);
+    expect(RADIOLOGY_EVENTS).toHaveLength(8); // 18b T3: +imaging.image_viewed
     for (const event of RADIOLOGY_EVENTS) {
       expect([event.name, event.module]).toEqual([event.name, "radiology"]);
       expect(event.version).toBe(1);
@@ -49,6 +49,7 @@ describe("the radiology event catalogue (18a T2)", () => {
       "imaging.critical_acknowledged",
       "imaging.critical_flagged",
       "imaging.gate_evaluated",
+      "imaging.image_viewed",
       "imaging.report_published",
       "imaging.study_acquired",
       "imaging.study_scheduled",

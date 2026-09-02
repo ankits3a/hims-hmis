@@ -35,11 +35,11 @@ export type {
   PlaceImagingItemInput, PlaceImagingOrderInput, PlaceImagingOrderResult,
 } from "./place";
 export {
-  IMAGING_DEFINITION_KINDS, activateSeededDefinition, activeDefinition, activeDefinitionRow, draftDefinition,
+  IMAGING_DEFINITION_KINDS, VIEWER_URL_PLACEHOLDERS, activateSeededDefinition, activeDefinition, activeDefinitionRow, draftDefinition,
   parseDefinitionBody, publishDefinition, requestDefinitionPublish,
 } from "./definitions";
 export type {
-  CriticalCategoriesBody, ImagingDefinitionRow, PregnancyPolicyBody, StudyType, StudyTypesBody,
+  CriticalCategoriesBody, ImagingDefinitionRow, PacsSettingsBody, PregnancyPolicyBody, StudyType, StudyTypesBody,
 } from "./definitions";
 export {
   STUDY_TYPE_SEEDS, activeStudyTypes, requireStudyType, studyTypeByService, studyTypeFor,
@@ -86,6 +86,8 @@ export {
   renderMwlDump, toPersonName,
 } from "./mwl";
 export type { MwlExport, MwlRow } from "./mwl";
+export { IMAGES_READ, openImages, renderViewerUrl, studyImageViews } from "./views";
+export type { ImageViewRow } from "./views";
 export type { ReportView, StudyView, WorklistRow, WorklistView } from "./read";
 export type {
   PcpndtApplicability, PcpndtPatientFacts, PcpndtStudyTypeFacts,

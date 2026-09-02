@@ -97,6 +97,15 @@ export const imagingBillDecisionRaised = defineEvent("imaging.bill_decision_rais
   studyId: id, kind: z.string().min(1), detail: z.record(z.string(), z.unknown()).nullable(),
 }));
 
+/**
+ * 18b T3 / D6 — somebody opened the images. `viewerId` and `via` travel; the URL does not (it
+ * carries the accession number). 18a §6.2 reserved this name as 18b's; the row is
+ * `imaging_image_views`, written before the event.
+ */
+export const imagingImageViewed = defineEvent("imaging.image_viewed", MODULE, z.object({
+  studyId: id, viewerId: id, via: z.string().min(1),
+}));
+
 /** Every event this module declares, for the catalogue parity test. */
 export const RADIOLOGY_EVENTS = [
   imagingStudyScheduled,
@@ -106,4 +115,5 @@ export const RADIOLOGY_EVENTS = [
   imagingCriticalFlagged,
   imagingCriticalAcknowledged,
   imagingBillDecisionRaised,
+  imagingImageViewed,
 ] as const;

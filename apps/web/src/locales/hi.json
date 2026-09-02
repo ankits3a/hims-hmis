@@ -2024,7 +2024,10 @@
       "sourceNoImages": "कोई DICOM छवि नहीं",
       "studyUid": "Study Instance UID",
       "studyUidHint": "वर्कलिस्ट से पहले से भरा है। मशीन का अपना UID तभी लिखें जब उसने वर्कलिस्ट न पढ़ी हो।",
-      "studyUidRecorded": "Study Instance UID दर्ज"
+      "studyUidRecorded": "Study Instance UID दर्ज",
+      "openImages": "छवियाँ खोलें",
+      "imagesNeverOpened": "छवियाँ अभी तक नहीं खोली गईं",
+      "imagesOpened": "{{count}} बार खोली गईं, अंतिम {{by}} द्वारा"
     },
     "report": {
       "title": "रिपोर्ट",

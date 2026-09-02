@@ -43,7 +43,7 @@ const STUDY = {
   encounterNo: "V2608310001", patientId: "P1", patientName: "Asha Devi",
   formFRequired: true, restricted: true, ionising: false, contrastGiven: false,
   acquiredAt: null, authorisedBy: null, reports: [],
-  studyInstanceUid: null, imageSource: null, mintedStudyInstanceUid: "2.25.42",
+  studyInstanceUid: null, imageSource: null, mintedStudyInstanceUid: "2.25.42", views: [],
 };
 
 const READINESS = {
@@ -158,4 +158,37 @@ it("18b T2: once acquired, the recorded UID is shown and the source choice is go
   renderWithProviders(<RadiologyStudy />);
   expect(await screen.findByTestId("study-uid-recorded")).toHaveTextContent("1.2.826.0.1.3680043.9.7.1");
   expect(screen.queryByLabelText(/study instance uid/i)).not.toBeInTheDocument();
+});
+
+/**
+ * 18b T3 / D6 — the console asks the SERVER for the viewer URL and opens what comes back; it never
+ * builds the link, because the row, the event and the PHI line are written on the way.
+ */
+it("18b T3: opening the images posts to the door and opens the URL the server returned, in a new tab", async () => {
+  const opened = vi.fn();
+  vi.stubGlobal("open", opened);
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, status: "acquired", imageSource: "pacs", studyInstanceUid: "2.25.42", views: [{ id: "v1", viewerId: "dr.rao", via: "external_pacs", viewedAt: "2026-08-31T09:00:00.000Z" }] } } },
+    "GET /api/radiology/studies/S1/readiness": { status: 200, body: { state: "acquired", ready: true, gates: [], open: [] } },
+    "POST /api/radiology/studies/S1/images/open": { status: 201, body: { url: "https://pacs.example.org/viewer?AccessionNumber=X2608310001", viewId: "v2", studyInstanceUid: "2.25.42" } },
+  });
+  renderWithProviders(<RadiologyStudy />);
+  expect(await screen.findByTestId("image-views")).toHaveTextContent(/1.*dr\.rao/);
+  await userEvent.click(screen.getByRole("button", { name: /open images/i }));
+  expect(calls).toContain("POST /api/radiology/studies/S1/images/open");
+  expect(opened).toHaveBeenCalledWith("https://pacs.example.org/viewer?AccessionNumber=X2608310001", "_blank", "noopener,noreferrer");
+});
+
+it("18b T3: a refusal from the door is shown with its code, and nothing opens", async () => {
+  const opened = vi.fn();
+  vi.stubGlobal("open", opened);
+  mockRoutes({
+    "GET /api/radiology/studies/S1": { status: 200, body: { study: { ...STUDY, status: "acquired", imageSource: "pacs", studyInstanceUid: "2.25.42" } } },
+    "GET /api/radiology/studies/S1/readiness": { status: 200, body: { state: "acquired", ready: true, gates: [], open: [] } },
+    "POST /api/radiology/studies/S1/images/open": { status: 409, body: { statusCode: 409, code: "pacs_not_configured", message: "no viewer is published" } },
+  });
+  renderWithProviders(<RadiologyStudy />);
+  await userEvent.click(await screen.findByRole("button", { name: /open images/i }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(/no viewer is published.*pacs_not_configured/);
+  expect(opened).not.toHaveBeenCalled();
 });
