@@ -27,7 +27,8 @@
  */
 .d1,
 .lg,
-.dash {
+.dash,
+.shell {
   --paper: #f4f7f4;
   --card: #ffffff;
   --ink: #132420;

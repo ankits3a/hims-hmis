@@ -330,3 +330,67 @@ describe("FD-11 — the cash drawer is counted before the first patient", () => 
     expect(screen.getByTestId("cta-patients.registration")).not.toBeDisabled();
   });
 });
+
+/**
+ * FD-11 — THE SCHEME TILES CARRY THE SERVER'S COUNTS, AND A BLANK IS NOT A ZERO.
+ *
+ * The tiles shipped without numbers first, deliberately: the artboard shows a count on each and
+ * this codebase's rule is that a plausible number at a cash counter is the worst kind. The owner
+ * then asked for the real ones, and three modules now emit them — membership (cards, coupons,
+ * packages), billing (panels), partners (attribution) — each behind its own permission.
+ *
+ * Which makes the important assertion the ABSENT one: a person who does not hold partners sees a
+ * partners tile with NOTHING where the number goes, not a zero. "0 attributed today" is a claim
+ * about a module they cannot see, and it is a claim this screen has no standing to make.
+ */
+const SCHEME_CARDS = [
+  {
+    key: "membership.schemes", band: "today", titleKey: "desk.schemes.title",
+    stats: [
+      { key: "desk.schemes.membership.n", value: "4", href: "/counter" },
+      { key: "desk.schemes.coupons.n", value: "0", href: "/counter" },
+      { key: "desk.schemes.packages.n", value: "1", href: "/counter" },
+    ],
+  },
+  {
+    key: "billing.panels", band: "today", titleKey: "desk.schemes.title",
+    stats: [{ key: "desk.schemes.panels.n", value: "6", href: "/billing/dues" }],
+  },
+];
+
+describe("FD-11 — schemes in play", () => {
+  it("shows the server's count on each tile, and a tile with no provider shows no number at all", async () => {
+    renderAt("/", [REGISTRATION, ...SCHEME_CARDS], ["opd.queue.read", "opd.visits.open"]);
+
+    /*
+      Wait for the COUNT and not the tile. The schemes band does not depend on `/me/desk`, so the
+      tiles are on screen before the figures arrive — waiting on the tile is waiting for nothing and
+      asserted an empty count every time.
+    */
+    expect(await screen.findByTestId("scheme-n-membership")).toHaveTextContent("4");
+    // A REAL ZERO IS A FACT and is shown as one: nobody presented a coupon today.
+    expect(screen.getByTestId("scheme-n-coupons")).toHaveTextContent("0");
+    expect(screen.getByTestId("scheme-n-packages")).toHaveTextContent("1");
+    expect(screen.getByTestId("scheme-n-panels")).toHaveTextContent("6");
+
+    // …and the one nobody sent a card for is blank, not zero. The tile is still a door.
+    expect(screen.getByTestId("scheme-partners")).toBeInTheDocument();
+    expect(screen.queryByTestId("scheme-n-partners")).not.toBeInTheDocument();
+  });
+
+  it("the tiles go where the SERVER said, and the scheme cards never appear as doors", async () => {
+    renderAt("/", [REGISTRATION, ...SCHEME_CARDS], ["opd.queue.read", "opd.visits.open"]);
+
+    await screen.findByTestId("scheme-n-panels");
+    expect(screen.getByTestId("scheme-panels")).toHaveAttribute("href", "/billing/dues");
+    expect(screen.getByTestId("scheme-membership")).toHaveAttribute("href", "/counter");
+    /*
+      They are ordinary desk cards on the wire, so without the filter they would ALSO render as two
+      more door tiles in the Today band — the same three numbers twice, once as a door and once as a
+      scheme.
+    */
+    expect(screen.queryByTestId("door-membership.schemes")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("door-billing.panels")).not.toBeInTheDocument();
+    expect(screen.getByTestId("door-patients.registration")).toBeInTheDocument();
+  });
+});

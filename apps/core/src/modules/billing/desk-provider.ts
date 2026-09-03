@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray, ne } from "drizzle-orm";
 import { cashierSessions, invoices, receiptTenders, receipts } from "../../kernel/db/schema";
 import { enteredInErrorDocIds } from "./daily-close";
 import { liveExpectedCashPaise } from "./sessions";
@@ -161,5 +161,36 @@ export const billingDeskProvider: DeskProvider = {
       "billing.invoicesIssued": d.invoicesIssued,
       "billing.invoicedPaise": d.invoicedPaise,
     };
+  },
+};
+
+/**
+ * ═══ FD-11 — "ON A PANEL", THE FOURTH SCHEME TILE ═══
+ *
+ * A SECOND provider rather than a fourth stat on the one above, because the two answer to different
+ * permissions and the kernel gates a card, not a stat. `billing.desk` is a cashier's OWN drawer on
+ * `billing.session.own`; this is the building's panel work on `billing.invoice.read`, which is what
+ * "may look at invoices that are not mine" means. Folding it into the collections card would hand a
+ * hospital-wide figure to the narrower grant.
+ *
+ * `intended_payer != 'self'` IS the definition of a panel patient — TPA, PMJAY, corporate. It is
+ * cut on `service_day`, the stored IST day, for the reason the header of this file already gives:
+ * an `issued_at BETWEEN` window is a second and subtly different definition of the day, and it is
+ * the one that goes wrong at 23:55.
+ */
+export const billingPanelsDeskProvider: DeskProvider = {
+  key: "billing.panels",
+  permission: "billing.invoice.read",
+  load: async (ctx) => {
+    const rows = await ctx.db
+      .select({ n: count() })
+      .from(invoices)
+      .where(and(eq(invoices.serviceDay, ctx.date), ne(invoices.intendedPayer, "self")));
+    return [{
+      key: "billing.panels",
+      band: "today",
+      titleKey: "desk.schemes.title",
+      stats: [{ key: "desk.schemes.panels.n", value: String(rows[0]?.n ?? 0), href: "/billing/dues" }],
+    }];
   },
 };

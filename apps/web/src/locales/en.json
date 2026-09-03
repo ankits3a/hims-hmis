@@ -9,7 +9,8 @@
     "loading": "Loading…",
     "theme": "Theme",
     "themeDark": "Dark",
-    "themeLight": "Light"
+    "themeLight": "Light",
+    "search": "Search — the cursor starts here"
   },
   "nav": {
     "formularyAdmin": "Formulary",
@@ -1712,23 +1713,28 @@
       "note": "what a patient can walk in holding — attach it before the bill, never after",
       "membership": {
         "name": "Membership",
-        "note": "look a card up, or enrol — never enrol just to apply a benefit"
+        "note": "look a card up, or enrol — never enrol just to apply a benefit",
+        "unit": "cards in force"
       },
       "coupons": {
         "name": "Coupons",
-        "note": "camp and referral slips; the code travels with the quote"
+        "note": "camp and referral slips; the code travels with the quote",
+        "unit": "presented today"
       },
       "packages": {
         "name": "Packages",
-        "note": "a paid bundle draws down; the bill shows what is left"
+        "note": "a paid bundle draws down; the bill shows what is left",
+        "unit": "in force"
       },
       "panels": {
         "name": "Corporate & TPA",
-        "note": "self · tpa · pmjay · corporate — a panel payer collects nothing here"
+        "note": "self · tpa · pmjay · corporate — a panel payer collects nothing here",
+        "unit": "on a panel today"
       },
       "partners": {
         "name": "Channel partners",
-        "note": "who sent this patient — one slip per visit, commission accrues"
+        "note": "who sent this patient — one slip per visit, commission accrues",
+        "unit": "attributed today"
       }
     }
   },

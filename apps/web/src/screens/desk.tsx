@@ -78,13 +78,27 @@ const DOOR_CTA: Record<string, { key: string; to: string; cap?: string }> = {
  * card, a coupon, an employer, a camp slip — so the clerk needs to know it exists before the money
  * screen, not after."* The counts are a follow-up, not an invention.
  */
-const SCHEMES: { id: string; icon: string; to: string }[] = [
-  { id: "membership", to: "/counter", icon: "M2 5h20v14H2zM2 10h20" },
-  { id: "coupons", to: "/counter", icon: "M4 8V6h16v2a2 2 0 0 0 0 8v2H4v-2a2 2 0 0 0 0-8M12 6v12" },
-  { id: "packages", to: "/counter", icon: "M21 8 12 3 3 8l9 5 9-5ZM3 8v8l9 5 9-5V8" },
-  { id: "panels", to: "/counter", icon: "M3 21h18M5 21V7l7-4 7 4v14M9 21v-5h6v5" },
-  { id: "partners", to: "/counter", icon: "M6 12h.01M18 6h.01M18 18h.01M8.7 10.7l6.6-3.4M8.7 13.3l6.6 3.4" },
+const SCHEMES: { id: string; icon: string }[] = [
+  { id: "membership", icon: "M2 5h20v14H2zM2 10h20" },
+  { id: "coupons", icon: "M4 8V6h16v2a2 2 0 0 0 0 8v2H4v-2a2 2 0 0 0 0-8M12 6v12" },
+  { id: "packages", icon: "M21 8 12 3 3 8l9 5 9-5ZM3 8v8l9 5 9-5V8" },
+  { id: "panels", icon: "M3 21h18M5 21V7l7-4 7 4v14M9 21v-5h6v5" },
+  { id: "partners", icon: "M6 12h.01M18 6h.01M18 18h.01M8.7 10.7l6.6-3.4M8.7 13.3l6.6 3.4" },
 ];
+
+/**
+ * The scheme cards are ordinary desk cards and are pulled OUT of the door grid, because they are a
+ * different kind of thing: a door is a place to go, a scheme tile is something a patient is holding.
+ * Three modules emit them — membership (cards, coupons, packages), billing (panels) and partners
+ * (attribution) — each gated on its own permission, so a person sees exactly the tiles their grants
+ * justify and a tile with no provider behind it shows no number rather than a zero.
+ *
+ * A ZERO AND A BLANK ARE DIFFERENT ANSWERS, and that distinction is the whole reason this is a
+ * lookup rather than a default. "0 coupons presented today" is a fact. A tile with nothing where the
+ * number goes says "you do not hold the permission that counts these" — and rendering that as 0
+ * would be inventing a fact about a module the reader cannot see.
+ */
+const SCHEME_CARD_KEYS = new Set(["membership.schemes", "billing.panels", "partners.attribution"]);
 
 function StatFigure({ stat, label }: { stat: WireDeskStat; label: string }): React.ReactElement {
   const body = (
@@ -261,7 +275,17 @@ export function Desk(): React.ReactElement {
     enabled: actor !== null && holdsDrawer,
   });
 
-  const cards = useMemo(() => desk.data?.cards ?? [], [desk.data]);
+  const allCards = useMemo(() => desk.data?.cards ?? [], [desk.data]);
+  const cards = useMemo(() => allCards.filter((c) => !SCHEME_CARD_KEYS.has(c.key)), [allCards]);
+  /** `desk.schemes.<id>.n` → the server's figure, from whichever module was allowed to send it. */
+  const schemeStats = useMemo(() => {
+    const out = new Map<string, WireDeskStat>();
+    for (const c of allCards) {
+      if (!SCHEME_CARD_KEYS.has(c.key)) continue;
+      for (const st of c.stats ?? []) out.set(st.key, st);
+    }
+    return out;
+  }, [allCards]);
   /*
    * The union of every card's declared topics, sorted and de-duplicated so the subscription key is
    * stable across renders — `useRealtime` re-subscribes whenever the joined string changes, and an
@@ -344,19 +368,28 @@ export function Desk(): React.ReactElement {
             <span className="bandnote">{t("desk.schemes.note")}</span>
           </div>
           <div className="schemes">
-            {SCHEMES.map((s) => (
-              <Link key={s.id} to={s.to as never} className="box sch" data-testid={`scheme-${s.id}`}>
-                <span className="nm">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                       strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
-                       style={{ color: "var(--green)", flexShrink: 0 }}>
-                    <path d={s.icon} />
-                  </svg>
-                  {t(`desk.schemes.${s.id}.name`)}
-                </span>
-                <span className="note">{t(`desk.schemes.${s.id}.note`)}</span>
-              </Link>
-            ))}
+            {SCHEMES.map((s) => {
+              const stat = schemeStats.get(`desk.schemes.${s.id}.n`);
+              return (
+                <Link key={s.id} to={(stat?.href ?? "/counter") as never} className="box sch" data-testid={`scheme-${s.id}`}>
+                  <span className="nm">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+                         style={{ color: "var(--green)", flexShrink: 0 }}>
+                      <path d={s.icon} />
+                    </svg>
+                    {t(`desk.schemes.${s.id}.name`)}
+                  </span>
+                  {stat === undefined ? null : (
+                    <span className="cnt" data-testid={`scheme-n-${s.id}`}>
+                      <span className="n mo">{stat.value}</span>
+                      <span className="u">{t(`desk.schemes.${s.id}.unit`)}</span>
+                    </span>
+                  )}
+                  <span className="note">{t(`desk.schemes.${s.id}.note`)}</span>
+                </Link>
+              );
+            })}
           </div>
         </div>
       )}

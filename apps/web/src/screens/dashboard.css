@@ -107,6 +107,9 @@
 }
 .dash .sch:hover { border-color: var(--faint); }
 .dash .sch .nm { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; }
+.dash .sch .cnt { display: flex; align-items: baseline; gap: 6px; }
+.dash .sch .cnt .n { font-size: 19px; font-weight: 600; line-height: 22px; }
+.dash .sch .cnt .u { font-size: 10.5px; color: var(--dim); line-height: 14px; }
 .dash .sch .note { font-size: 10.5px; color: var(--faint); line-height: 14px; }
 
 /* ══════════ the drawer ══════════ */

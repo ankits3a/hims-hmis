@@ -6,13 +6,16 @@ import { useTranslation } from "react-i18next";
 import { getToken } from "./lib/api";
 import { useAuth } from "./lib/auth";
 import { KeyboardProvider, ShortcutLegend } from "./lib/keyboard";
-import { PaletteProvider } from "./components/command-palette";
+import { PaletteProvider, usePalette } from "./components/command-palette";
 import { switchLanguage } from "./lib/i18n";
 import { applyTheme, setTheme, storedTheme } from "./lib/theme";
+import { istClock, istDateLabel } from "./screens/desk-one/model";
 import i18next from "./lib/i18n";
 import { AlertsBell } from "./components/alerts-bell";
 import { ModeBanner } from "./components/mode-banner";
 import { LoginScreen } from "./screens/login";
+import "./styles/paper-pine.css";
+import "./styles/shell.css";
 import { PatientInHandProvider } from "./lib/patient-in-hand";
 import { PatientStrip } from "./components/patient-strip";
 import { Desk } from "./screens/desk";
@@ -235,17 +238,138 @@ declare module "@tanstack/react-router" {
   }
 }
 
-function Shell(): React.ReactElement {
+/**
+ * The chrome, as its own component — because it calls `usePalette()` and `Shell` is the component
+ * that RENDERS `PaletteProvider`. A hook cannot read a context its own caller provides.
+ */
+function ShellChrome(): React.ReactElement {
   const { t } = useTranslation();
-  const { logout, can } = useAuth();
+  const { username, can, logout } = useAuth();
   const navigate = useNavigate();
+  const palette = usePalette();
+  const pathname = useRouterState({ select: (st) => st.location.pathname });
   /*
-   * PLAN 07c T7 — the dark theme, finally driven. It is applied on mount as well as on click,
-   * because the class lives on `<html>` and a full page load starts without it: without this effect
-   * a person who chose dark would get one white flash of the whole application on every reload.
+   * PLAN 07c T7 — the dark theme, applied on mount as well as on click, because the class lives on
+   * `<html>` and a full page load starts without it: without this a person who chose dark would get
+   * one white flash of the whole application on every reload.
    */
   const [theme, setThemeState] = useState(storedTheme);
   useEffect(() => { applyTheme(theme); }, [theme]);
+  /* The clock ticks in IST — a hospital clock in the browser's zone is a clock nobody can act on. */
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 20_000);
+    return () => clearInterval(id);
+  }, []);
+
+  /*
+  ═══ FD-11 — THE CHROME, REBUILT. Owner: "the current topbar with menu is taken from the
+  oldest design. It's looking pathetic." ═══
+
+  It was the last surface in the application still on the scaffolded shadcn defaults, while
+  every screen underneath it had moved to paper and pine — so a clerk was looking at two
+  products stacked on each other. This is the artboard's identity row, plus the one thing an
+  artboard does not have to carry: navigation to twenty-odd permissioned screens.
+
+  Row one is WHO and the tools that are not places. Row two is the places.
+
+  */
+  return (
+    <header className="shell no-print">
+      <div className="top">
+        {/*
+          PLAN 07c T4 — THE TITLE IS THE WAY HOME. `/` carries no permission and belongs to no
+          module, so it cannot live in `NAV` (every row there is a `path`+`permission` pair that
+          `nav-parity.test.ts` compares against a module manifest). The universal affordance for
+          "take me to the front page" is the product name in the corner, and it is now that.
+        */}
+        <Link to="/" className="brand" style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <span className="mark" />
+          {t("app.title")}
+        </Link>
+        {username === null ? null : (
+          <>
+            <span className="sep">|</span>
+            <span className="who">{username}</span>
+          </>
+        )}
+        <div className="right">
+          <span className="mo clock">{istDateLabel()} · {istClock()} IST</span>
+          {/*
+            The search button the owner ruled stays in the header. It advertises F8 and not
+            Ctrl+K: Chrome answers Ctrl+K with its own address bar first, which FD-9 measured.
+          */}
+          <button type="button" className="find" onClick={() => { palette.open(); }}>
+            <span>{t("app.search")}</span>
+            <span className="kb">F8</span>
+          </button>
+          <AlertsBell />
+          <button type="button" className="util" onClick={() => switchLanguage(i18next.language === "hi" ? "en" : "hi")}>
+            {t("app.language")}
+          </button>
+          <button
+            type="button"
+            className="util"
+            aria-label={t("app.theme")}
+            onClick={() => {
+              const next = theme === "dark" ? "light" : "dark";
+              setTheme(next);
+              setThemeState(next);
+            }}
+          >
+            {theme === "dark" ? t("app.themeLight") : t("app.themeDark")}
+          </button>
+          <button type="button" className="util" onClick={() => { void logout().then(() => navigate({ to: "/login" })); }}>
+            {t("app.logout")}
+          </button>
+        </div>
+      </div>
+
+      {/*
+        PLAN 11g / DD1 — `<Link>`, NOT `<a href>`. A raw anchor is a full browser page load; the
+        `/api/*` split is what fixed the dead links, and `<Link>` is the UX half. Delete every
+        one of these and the parity test that guards D1 still passes; restore the old edge
+        matcher and it fails. The two are deliberately independent.
+      */}
+      <nav className="nav">
+        {NAV_GROUPS.map((group) => {
+          const entries = NAV.filter((e) => e.group === group && can(e.permission));
+          if (entries.length === 0) return null;
+          return (
+            <span key={group} className="grp">
+              <span className="tag">{t(`nav.group.${group}`)}</span>
+              {entries.map((entry) => (
+                <Link
+                  key={entry.to}
+                  to={entry.to}
+                  className={pathname === entry.to ? "here" : undefined}
+                >
+                  {t(entry.label)}
+                </Link>
+              ))}
+            </span>
+          );
+        })}
+        {NAV.every((entry) => !can(entry.permission)) ? (
+          /*
+           * PLAN 11h T6 — AN EMPTY NAV IS A SENTENCE, NOT A BLANK BAR. A person whose role holds
+           * none of these was shown sixteen links and refused by every one. Showing nothing at
+           * all would be correct and unusable — they would report "the app is broken" rather
+           * than "my account has no access", and those go to different people.
+           */
+          <span className="none">{t("nav.noneAvailable")}</span>
+        ) : null}
+      </nav>
+    </header>
+  );
+}
+
+/*
+ * `Shell` is now the LAYOUT and nothing else: the providers, the chrome, the outlet, the legend.
+ * Everything that needs a hook — the palette, the clock, the theme toggle, who is signed in — moved
+ * into `ShellChrome`, which is the component that can actually read the contexts this one provides.
+ */
+function Shell(): React.ReactElement {
   /*
     Read off the ACTIVE MATCHES rather than the pathname, so a child route of a full-viewport screen
     inherits the answer without anybody remembering to add it. `/counter/figures` is deliberately
@@ -261,78 +385,7 @@ function Shell(): React.ReactElement {
   */
   const body = fullViewport ? <Outlet /> : (
       <div className="flex min-h-screen flex-col">
-        <header className="no-print flex items-center gap-6 border-b px-4 py-2">
-          {/*
-            PLAN 07c T4 — THE TITLE IS THE WAY HOME. `/` carries no permission and belongs to no
-            module, so it cannot live in `NAV` (every row there is a `path`+`permission` pair that
-            `nav-parity.test.ts` compares against a module manifest). The universal affordance for
-            "take me to the front page" is the product name in the corner, and it is now that.
-          */}
-          <Link to="/" className="font-semibold hover:underline">{t("app.title")}</Link>
-          {/*
-            PLAN 11g / DD1 — `<Link>`, NOT `<a href>`, AND THIS IS THE UX HALF RATHER THAN THE FIX.
-            A raw anchor is a full browser page load. Before the `/api/*` split that meant every
-            one of these sixteen links went to the edge and came back as the API's JSON — 14 of
-            them dead, with no in-app escape hatch from Registration and Merge. The SPLIT is what
-            fixed that, and a raw anchor would be CORRECT again today: it would simply reload the
-            whole bundle on every click, all day, on a desk machine. `<Link>` is client-side
-            navigation. Delete every one of these and the parity test that guards D1 still passes;
-            restore the old edge matcher and it fails. The two are deliberately independent.
-          */}
-          <nav className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
-            {NAV_GROUPS.map((group) => {
-              const entries = NAV.filter((e) => e.group === group && can(e.permission));
-              if (entries.length === 0) return null;
-              return (
-                <span key={group} className="flex items-baseline gap-2">
-                  <span className="text-[10px] uppercase tracking-wider text-neutral-400">
-                    {t(`nav.group.${group}`)}
-                  </span>
-                  {entries.map((entry) => (
-                    <Link key={entry.to} to={entry.to} className="hover:underline">{t(entry.label)}</Link>
-                  ))}
-                </span>
-              );
-            })}
-            {NAV.every((entry) => !can(entry.permission)) ? (
-              /*
-               * PLAN 11h T6 — AN EMPTY NAV IS A SENTENCE, NOT A BLANK BAR.
-               *
-               * A person whose role holds none of these permissions is the "dark screens" case the
-               * smoke test found, seen from the other side: before this commit they were shown
-               * sixteen links and every one of them refused. Showing nothing at all would be
-               * correct and unusable — they would report "the app is broken" rather than "my
-               * account has no access", and those two go to different people.
-               */
-              <span className="text-neutral-500">{t("nav.noneAvailable")}</span>
-            ) : null}
-          </nav>
-          <div className="ml-auto flex items-center gap-3 text-sm">
-            <AlertsBell />
-            <button type="button" onClick={() => switchLanguage(i18next.language === "hi" ? "en" : "hi")}>
-              {t("app.language")}
-            </button>
-            <button
-              type="button"
-              aria-label={t("app.theme")}
-              onClick={() => {
-                const next = theme === "dark" ? "light" : "dark";
-                setTheme(next);
-                setThemeState(next);
-              }}
-            >
-              {theme === "dark" ? t("app.themeLight") : t("app.themeDark")}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void logout().then(() => navigate({ to: "/login" }));
-              }}
-            >
-              {t("app.logout")}
-            </button>
-          </div>
-        </header>
+      <ShellChrome />
         <ModeBanner />
         {/*
           PLAN 07b T1 — the patient in hand, directly under the chrome and above every screen, so a

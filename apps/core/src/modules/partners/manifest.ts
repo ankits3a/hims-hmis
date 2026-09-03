@@ -1,3 +1,4 @@
+import { partnersAttributionDeskProvider } from "./desk-provider";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 import { PARTNERS_ACCRUAL_CONSUMER } from "./consumer";
 
@@ -53,6 +54,8 @@ export const partnersManifest: ModuleManifest = {
     // on a lane that also ships behind RECEIVABLE_COMMISSION_ENABLED, exactly as ruled.
     { label: "Partner receivables", path: "/partners/receivables", permission: "partners.receivable.operate" },
   ],
+  /* FD-11 — the attribution count on the dashboard's "Schemes in play" band. */
+  desk: [partnersAttributionDeskProvider],
   permissions: [
     "partners.counterparty.manage",
     "partners.agreement.manage",
