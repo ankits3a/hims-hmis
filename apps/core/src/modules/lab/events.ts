@@ -89,6 +89,21 @@ export const labSpecimenRejected = defineEvent("lab.specimen_rejected", MODULE, 
   rejectedBy: id, at: iso,
 }));
 
+/**
+ * 17d T2 — **THE RE-LABEL**, design board EdgeCases #12. A tube identified by a typed number rather
+ * than by its barcode is a tube whose label could not be read, and it leaves the bench wearing a new
+ * one. NABL asks how many of those there were and whose hands were on them, so it is its own fact
+ * with both names on it — not a boolean buried in the accession's payload, which is not a number
+ * anybody can count.
+ *
+ * No specimen NUMBER on the payload: this rides the same departmental topic as its neighbours and
+ * the ids are enough to find the row (17c F4's rule, kept).
+ */
+export const labSpecimenRelabelled = defineEvent("lab.specimen_relabelled", MODULE, z.object({
+  specimenId: id, orderGroupId: id, relabelledBy: id, witnessedBy: id,
+  reason: z.string().min(1), at: iso,
+}));
+
 export const labRecollectionRequested = defineEvent("lab.recollection_requested", MODULE, z.object({
   priorSpecimenId: id, specimenId: id, specimenNo: id, orderGroupId: id, itemIds: z.array(id).min(1), reason: z.string().min(1),
 }));
@@ -217,7 +232,7 @@ export const labNotifiableFlagged = defineEvent("lab.notifiable_flagged", MODULE
 export const LAB_EVENTS = [
   labOrderDesked, labAttributionUnverifiedFlagged,
   labLabelPrinted, labTubeMismatchFlagged, labSpecimenCollected, labSpecimenReceived,
-  labSpecimenRejected, labRecollectionRequested,
+  labSpecimenRejected, labSpecimenRelabelled, labRecollectionRequested,
   labResultEntered, labResultVerified, labTubeSwapSuspected, labResultCriticalFlagged, labCriticalAcknowledged,
   labResultDeltaFlagged, labReflexAdded, labSodViolationBlocked,
   labReportPublished, labReportPrintBlocked, labReportReleasedUnpaid, labReportPrinted,

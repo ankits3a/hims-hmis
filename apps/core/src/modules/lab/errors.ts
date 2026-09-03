@@ -76,6 +76,9 @@ export const LAB_ERROR_CODES = [
   "unknown_specimen",
   "specimen_not_receivable",
   "no_active_order",
+  // ── 17d T2 — the typed tube number is a re-label, and a re-label is witnessed ──
+  "relabel_witness_required",
+  "relabel_witness_same_actor",
   // ── results (T6) ──
   "absurd_value",
   "absurd_override_same_actor",
@@ -149,6 +152,10 @@ const STATUS: Record<LabErrorCode, number> = {
   unknown_specimen: 404,
   specimen_not_receivable: 409,
   no_active_order: 409,
+  /** 422 with `identity_recheck_required`: a clinical hard stop the screen must name. */
+  relabel_witness_required: 422,
+  /** 403 with `absurd_override_same_actor`: it is about WHO is acting, not about the body. */
+  relabel_witness_same_actor: 403,
 
   absurd_value: 422,
   absurd_override_same_actor: 403,

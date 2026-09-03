@@ -1,5 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
+import { hasPermission } from "../../kernel/auth/permissions";
 import {
   labItems, labOrderables, labSpecimenItems, labSpecimens, orderItems,
 } from "../../kernel/db/schema";
@@ -9,9 +10,14 @@ import { advanceOrderItem } from "../../kernel/orders/advance";
 import { LIVE_ITEM_STATUSES } from "../../kernel/orders/transitions";
 import { transition } from "../../kernel/workflow/instances";
 import { LabError } from "./errors";
-import { labRecollectionRequested, labSpecimenReceived, labSpecimenRejected } from "./events";
+import {
+  labRecollectionRequested, labSpecimenReceived, labSpecimenRejected, labSpecimenRelabelled,
+} from "./events";
 import type { Actor } from "@hmis/contracts";
-import type { Tx } from "../../kernel/db/client";
+import type { Db, Tx } from "../../kernel/db/client";
+
+/** The permission a re-label's WITNESS must hold — the same one the receiver came through. */
+export const LAB_ACCESSION_OPERATE = "lab.accession.operate";
 import type { OrderKindDecl } from "../../kernel/orders/kinds";
 
 /**
@@ -49,6 +55,27 @@ export type ReceiveInput = {
   identityRecheckBy?: string;
   /** E20 — the downtime kit's serial, mapped to the tube at accession. */
   downtimeKitSerial?: string;
+  /**
+   * ═══ 17d T2 — HOW THE BENCH LEARNED WHICH TUBE THIS IS (design EdgeCases #12) ═══
+   *
+   * `"scan"` is a barcode the reader resolved. `"typed"` means a human read the label with their
+   * eyes and keyed it, which in a laboratory is what happens when the label is smudged, frozen over
+   * or torn in the ice box — and the tube is then RE-LABELLED. That act is the one this field
+   * exists to make visible.
+   *
+   * **The service cannot observe the difference and the screen can**, so this is declared at the
+   * boundary rather than inferred: `receiveBody` REQUIRES it, and `receive`'s own default is
+   * `"scan"` only so that twenty-three internal fixtures that genuinely scan are not rewritten to
+   * say so. `accession.test.ts` pins the wire schema, which is the door a person actually comes
+   * through.
+   */
+  identifiedBy?: "scan" | "typed";
+  /**
+   * The SECOND person who watched the re-label, and why. Required when `identifiedBy` is `"typed"`,
+   * shaped like 02 H1's absurd override and refused on the same terms: a `users.id` that is not the
+   * receiver. A mislabel one person can make silently is the failure this control exists for.
+   */
+  relabel?: { witnessedBy: string; reason: string };
 };
 
 export type ReceiveResult = {
@@ -97,6 +124,41 @@ export async function receive(
       `specimen ${input.specimenNo} was drawn without a wristband scan — accessioning it requires ` +
         "a named identity re-check at the bench",
     );
+  }
+
+  /**
+   * ═══ 17d T2 — A TYPED TUBE NUMBER IS A RE-LABEL, AND A RE-LABEL IS WITNESSED ═══
+   *
+   * Design board EdgeCases #12: *"Label smudged in the ice box; the bench scanner cannot read it."*
+   * Typing the number stays ALLOWED — a laboratory that refused the tube would be discarding a
+   * patient's blood over a printer — but the tube is about to carry a new label, and a mislabel made
+   * silently by one person is exactly the event that puts one patient's result on another's report.
+   *
+   * Checked here, beside the wristband re-check above, because both are questions about IDENTITY and
+   * both must be answered before the CAS makes the tube the bench's.
+   */
+  if (input.identifiedBy === "typed") {
+    if (!input.relabel || input.relabel.witnessedBy === "" || input.relabel.reason.trim() === "") {
+      throw new LabError(
+        "relabel_witness_required",
+        `specimen ${input.specimenNo} was identified by hand rather than by its barcode — ` +
+          "re-labelling it is a witnessed act: name the second person and say why the label could " +
+          "not be read",
+      );
+    }
+    if (input.relabel.witnessedBy === actor.id) {
+      throw new LabError(
+        "relabel_witness_same_actor",
+        "a re-label names a SECOND person — the technologist who keyed the number cannot be the " +
+          "witness to their own re-labelling",
+      );
+    }
+    if (!(await hasPermission(tx as Db, input.relabel.witnessedBy, LAB_ACCESSION_OPERATE, "hospital"))) {
+      throw new LabError(
+        "permission_denied",
+        `the named witness ${input.relabel.witnessedBy} does not hold ${LAB_ACCESSION_OPERATE}`,
+      );
+    }
   }
 
   /** 02 G8 — the container the bench sees must be the container the catalogue asked for. */
@@ -230,6 +292,28 @@ export async function receive(
       receivedBy: actor.id, at: now.toISOString(),
     },
   }));
+
+  /**
+   * 17d T2 — the re-label, recorded as its OWN fact rather than as a field on the accession. NABL
+   * asks how many tubes were re-labelled and by whose hand; a flag inside another event's payload
+   * is not a number anybody can count, and this one is written only when it happened.
+   *
+   * On the SAME transaction, deliberately, and the contrast with `lab.tube_swap_suspected` (T1) is
+   * the point: that one rides a refusal and must outlive the rollback, this one rides a SUCCESS and
+   * must vanish with it. A re-label recorded for a tube that was never received is a false record.
+   */
+  if (input.identifiedBy === "typed" && input.relabel) {
+    await appendEvent(tx, labSpecimenRelabelled.make({
+      actor,
+      patientId: specimen.patientId,
+      correlationId: specimen.orderGroupId,
+      payload: {
+        specimenId: specimen.id, orderGroupId: specimen.orderGroupId,
+        relabelledBy: actor.id, witnessedBy: input.relabel.witnessedBy,
+        reason: input.relabel.reason.trim(), at: now.toISOString(),
+      },
+    }));
+  }
 
   return { specimenId: specimen.id, specimenNo: specimen.specimenNo, itemIds: liveIds, tatStartedAt: now };
 }
