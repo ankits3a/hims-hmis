@@ -254,7 +254,7 @@ const DOCTOR = {
 function summary(over: Partial<WireDoctorSummary> = {}): WireDoctorSummary {
   return {
     doctor: DOCTOR, sessionId: "sess-1", status: "in", waitingCount: 4, waitingVitalsCount: 0,
-    nowServing: 7, scheduledToday: true, roomCode: "12", avgConsultMinutes: 12, ...over,
+    nowServing: 7, scheduledToday: true, roomCode: "12", avgConsultMinutes: 12, onLeaveToday: false, ...over,
   };
 }
 

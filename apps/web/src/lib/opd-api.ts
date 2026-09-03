@@ -231,6 +231,13 @@ export type WireDoctorSummary = {
    * the fallback in a second place.
    */
   avgConsultMinutes: number;
+  /**
+   * FD-7 T8 — WHY a doctor is not on today's board. `scheduledToday` now means "working today" and
+   * is false for a doctor on approved leave; this says whether leave is the reason, because "not
+   * scheduled" and "away today" are different sentences to say to a patient who asked for him by
+   * name. Before T8 the server never consulted `opd_doctor_leaves` on the queue side at all.
+   */
+  onLeaveToday: boolean;
 };
 
 /** The public board (§11.5): token, room and doctor ONLY — no patient identity ever reaches this shape. */

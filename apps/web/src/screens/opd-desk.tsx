@@ -570,7 +570,26 @@ export function OpdDesk(): React.ReactElement {
                     {t("opdDesk.openVisit")}
                   </Button>
                 </div>
-                {!s.scheduledToday && (
+                {/*
+                  ═══ FD-7 T8 — "NOT SCHEDULED TODAY" WAS THE WRONG SENTENCE FOR A DOCTOR ON LEAVE ═══
+
+                  Until T8 the summary never consulted `opd_doctor_leaves`, so a doctor on approved
+                  leave read as SCHEDULED and this line never appeared at all. Now `scheduledToday`
+                  means "working today", and without the split below every absent doctor would read
+                  "not scheduled today" — which is a shrug, where "on leave today" is an answer a
+                  clerk can give the patient standing in front of them.
+
+                  And when he has people already waiting, the count is the whole point: those
+                  patients are in the building holding a token, and in a bill-first hospital they
+                  have paid. The transfer control that re-seats them is on this same screen.
+                */}
+                {s.onLeaveToday ? (
+                  <p data-testid={`on-leave-${s.doctor.id}`} className="pt-1 text-xs text-amber-700">
+                    {s.waitingCount > 0
+                      ? t("opdDesk.onLeaveWithWaiting", { count: s.waitingCount })
+                      : t("opdDesk.onLeaveToday")}
+                  </p>
+                ) : !s.scheduledToday && (
                   <p className="pt-1 text-xs text-amber-700">{t("opdDesk.notScheduledToday")}</p>
                 )}
               </div>

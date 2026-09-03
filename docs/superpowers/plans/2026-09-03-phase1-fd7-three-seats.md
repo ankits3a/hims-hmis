@@ -312,4 +312,43 @@ has to say out loud that they were overturned.
 - **T5 (ABDM)** — code not started; blocked on §7's four owner deliverables.
 - **T6 (`/billing` + the scheme rail)** — not started. It also now carries R4's registration capture
   and the `attribution_ids` claim rail (see T3), and `F8`/`F9` (see T7).
-- **Rule 3's server limit** — a doctor-less department queue would need a schema change. Owner's call.
+- ~~**Rule 3's server limit**~~ — **RULED AND CLOSED at T8**: the department queue *is* the
+  shortest-wait assignment, so there is no doctor-less queue to build and no schema change. See §10.
+
+## 10. T8 — the department queue auto-assigns (owner ruling, 2026-09-03)
+
+> "when the user joins patient to the department queue, then system would automatically assigns the
+> patient to the doctor which has least waiting time (with some edge case exception like, what will
+> happen if the doctor goes on leave in between his duty). sort this out"
+
+**This ruling COLLAPSES rule 3 rather than needing the schema change T2 flagged.** There is no
+doctor-less department queue: the department door *is* the shortest-wait assignment, which
+`proposeWalkIn` rule 2 already does. The only case left for the third branch is a department where
+genuinely nobody is working, and there the seat offers the future lane — the honest answer.
+
+**The edge case turned out to be a live defect, and worse than described.** `summaryByDoctor` derived
+`scheduledToday` from `opd_doctor_schedules` **alone and never consulted `opd_doctor_leaves`**.
+`availableSlots` and `bookAppointment` have checked leave since Plan 07; the queue side never did. So:
+
+- a doctor on approved leave sat on the board all day reading "scheduled, 0 waiting";
+- the desk's "session not opened" alert nagged about someone who was away;
+- and — the one that reaches a patient — **an empty queue is the shortest queue.** Under this very
+  ruling the absent doctor would win the auto-assign comparison every time, so the router would have
+  sent every arriving patient to the one person in the building guaranteed not to see them.
+
+`scheduledToday` now means *working today*, which is what all five of its readers already assumed, and
+`onLeaveToday` says why somebody is not — "not scheduled today" is a shrug where "on leave today" is
+an answer a clerk can give the patient in front of them.
+
+**The mid-duty leave: reported, not cascaded, and that is a decision.** `scheduleDoctorLeave` now
+returns `strandedEntryIds` — the live queue entries inside the leave window. It does **not** move
+them. Moving a patient to a different doctor without asking is exactly what `transferQueue`'s consent
+guard (E2) exists to prevent, and a leave is not a reason to weaken a guard: the patient chose that
+doctor, and the choice in front of them is another doctor or coming back tomorrow. So the server
+reports, `/opd/desk` shows "on leave today — N still waiting; transfer them", and the existing
+transfer — consent and reason included — re-seats them with **their original eligibility preserved**,
+so nobody loses their place in the line.
+
+**Mutants at T8: 9, all dead** — 5 on the server (leave ignored, cancelled leave counted, the window
+opened, the stranded scope, the live-status filter) and 4 on the web (the two desk sentences merged,
+the count dropped, the availability filter, the on-leave reason).

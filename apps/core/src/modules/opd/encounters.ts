@@ -29,7 +29,7 @@ export type VitalsRow = typeof opdVitals.$inferSelect;
 export type PrescriptionRow = typeof opdPrescriptions.$inferSelect;
 
 /** Queue-entry statuses a live encounter can be sitting in. */
-const LIVE_ENTRY_STATUSES = ["waiting_vitals", "waiting", "called"] as const;
+export const LIVE_ENTRY_STATUSES = ["waiting_vitals", "waiting", "called"] as const;
 /** Encounter states an abandon may leave from (the definition's three abandon transitions). */
 const ABANDONABLE: readonly string[] = ["registered", "waiting", "awaiting_results"];
 

@@ -14,7 +14,7 @@ const GM = "dept-gm";
 
 function doc(over: {
   id: string; name?: string; departmentId?: string; waitingCount?: number; avgConsultMinutes?: number;
-  scheduledToday?: boolean; active?: boolean;
+  scheduledToday?: boolean; active?: boolean; onLeaveToday?: boolean;
 }): WireDoctorSummary {
   return {
     doctor: {
@@ -24,11 +24,12 @@ function doc(over: {
     },
     sessionId: "s-1", status: "in", waitingCount: over.waitingCount ?? 1, waitingVitalsCount: 0,
     nowServing: 1, scheduledToday: over.scheduledToday ?? true, roomCode: "12",
-    avgConsultMinutes: over.avgConsultMinutes ?? 10,
+    avgConsultMinutes: over.avgConsultMinutes ?? 10, onLeaveToday: over.onLeaveToday ?? false,
   };
 }
 
 const ANCHOR = { doctorId: "d-long", doctorName: "Dr Long", seenOn: "2026-07-12" };
+const ANCHOR_LONG = ANCHOR;
 
 describe("walk-in routing (FD-7 T2)", () => {
   /** RULE 1, and the hard part of it: the familiar doctor wins even though his line is LONGER. */
@@ -75,6 +76,57 @@ describe("walk-in routing (FD-7 T2)", () => {
     expect(p.doctor!.doctor.id).toBe("d-quick");
     expect(p.anchorUnavailable).toBe(true);
     expect(p.anchor).toEqual(ANCHOR);      // still carried — the card can say WHY it moved on
+  });
+
+  /**
+   * ═══ FD-7 T8 / OWNER RULING 2026-09-03 — THE EDGE CASE, AND WHY IT IS THE DANGEROUS ONE ═══
+   *
+   *   > "the system would automatically assign the patient to the doctor which has least waiting
+   *   >  time (with some edge case exception like, what will happen if the doctor goes on leave in
+   *   >  between his duty)"
+   *
+   * A doctor on leave has an empty queue, and **an empty queue is the shortest queue**. So under the
+   * auto-assign rule the absent doctor wins every comparison — the router would send every arriving
+   * patient to the one person guaranteed not to see them. The guard is server-side (`summaryByDoctor`
+   * now reads `opd_doctor_leaves`, which it never did before T8) and it arrives here as
+   * `scheduledToday: false`; this row is what stops the filter being dropped from this end.
+   */
+  it("a doctor on leave is never auto-assigned, even with the emptiest queue in the department", () => {
+    const p = proposeWalkIn(GM, [
+      doc({ id: "d-away", waitingCount: 0, scheduledToday: false, onLeaveToday: true }), // 0 minutes!
+      doc({ id: "d-here", waitingCount: 4 }),                                            // 40 minutes
+    ], null);
+    expect(p.rule).toBe("shortest_wait");
+    expect(p.doctor!.doctor.id).toBe("d-here");   // THE KILL
+    expect(p.waitMinutes).toBe(40);
+  });
+
+  it("and is never named as the quicker ALTERNATIVE either", () => {
+    const p = proposeWalkIn(GM, [
+      doc({ id: "d-away", waitingCount: 0, scheduledToday: false, onLeaveToday: true }),
+      doc({ id: "d-long", waitingCount: 6 }),
+    ], ANCHOR_LONG);
+    expect(p.delayed).toBe(true);                 // 60 minutes, over the threshold
+    expect(p.alternative).toBeNull();             // THE KILL — the empty queue must not be offered
+  });
+
+  /** The clerk has to say the true thing out loud to a patient who asked for that doctor by name. */
+  it("an anchor doctor on leave is reported AS on leave, not merely as unavailable", () => {
+    const p = proposeWalkIn(GM, [
+      doc({ id: "d-long", waitingCount: 0, scheduledToday: false, onLeaveToday: true }),
+      doc({ id: "d-quick", waitingCount: 1 }),
+    ], ANCHOR_LONG);
+    expect({ unavailable: p.anchorUnavailable, onLeave: p.anchorOnLeave })
+      .toEqual({ unavailable: true, onLeave: true });
+  });
+
+  it("an anchor doctor merely off the roster is unavailable but NOT on leave", () => {
+    const p = proposeWalkIn(GM, [
+      doc({ id: "d-long", waitingCount: 0, scheduledToday: false, onLeaveToday: false }),
+      doc({ id: "d-quick", waitingCount: 1 }),
+    ], ANCHOR_LONG);
+    expect({ unavailable: p.anchorUnavailable, onLeave: p.anchorOnLeave })
+      .toEqual({ unavailable: true, onLeave: false });
   });
 
   it("an inactive doctor is not a candidate", () => {

@@ -60,12 +60,17 @@ function doctor(id: string, displayName: string): Record<string, unknown> {
   };
 }
 
-/** The four session states the plan names: in · out · not started · none (the last with no session row). */
+/**
+ * The four session states the plan names: in · out · not started · none (the last with no session
+ * row). FD-7 T8 adds `onLeaveToday` to every row — the summary now consults `opd_doctor_leaves`,
+ * which it never did before, so the field is required rather than optional and a fixture without it
+ * would be a shape the server cannot send.
+ */
 const SUMMARY = [
-  { doctor: doctor("doc-1", "Dr Meera Rao"), sessionId: "sess-1", status: "in", waitingCount: 4, waitingVitalsCount: 1, nowServing: 3, scheduledToday: true, roomCode: "12" },
-  { doctor: doctor("doc-2", "Dr Anil Verma"), sessionId: "sess-2", status: "out", waitingCount: 2, waitingVitalsCount: 0, nowServing: 7, scheduledToday: true, roomCode: "14" },
-  { doctor: doctor("doc-3", "Dr Kavita Nair"), sessionId: "sess-3", status: "not_started", waitingCount: 0, waitingVitalsCount: 0, nowServing: null, scheduledToday: true, roomCode: "14" },
-  { doctor: doctor("doc-4", "Dr Sameer Bose"), sessionId: null, status: "none", waitingCount: 0, waitingVitalsCount: 0, nowServing: null, scheduledToday: false, roomCode: null },
+  { doctor: doctor("doc-1", "Dr Meera Rao"), sessionId: "sess-1", status: "in", waitingCount: 4, waitingVitalsCount: 1, nowServing: 3, scheduledToday: true, roomCode: "12", onLeaveToday: false },
+  { doctor: doctor("doc-2", "Dr Anil Verma"), sessionId: "sess-2", status: "out", waitingCount: 2, waitingVitalsCount: 0, nowServing: 7, scheduledToday: true, roomCode: "14", onLeaveToday: false },
+  { doctor: doctor("doc-3", "Dr Kavita Nair"), sessionId: "sess-3", status: "not_started", waitingCount: 0, waitingVitalsCount: 0, nowServing: null, scheduledToday: true, roomCode: "14", onLeaveToday: false },
+  { doctor: doctor("doc-4", "Dr Sameer Bose"), sessionId: null, status: "none", waitingCount: 0, waitingVitalsCount: 0, nowServing: null, scheduledToday: false, roomCode: null, onLeaveToday: false },
 ];
 
 const SEARCH_HIT = {
@@ -162,6 +167,38 @@ describe("OpdDesk", () => {
     vi.useRealTimers();
     setToken(null);
     localStorage.clear();
+  });
+
+  /**
+   * ═══ FD-7 T8 — "NOT SCHEDULED TODAY" IS THE WRONG SENTENCE FOR A DOCTOR ON LEAVE ═══
+   *
+   * Two things were wrong before T8 and they compound. The summary never consulted
+   * `opd_doctor_leaves`, so a doctor on approved leave read as SCHEDULED and this board said nothing
+   * at all. Once the server was taught about leave, every absent doctor would have collapsed into
+   * one message — and "not scheduled today" is a shrug, where "on leave today" is an answer a clerk
+   * can give the patient in front of them.
+   *
+   * The count is the point of the second row: those patients are in the building holding a token and,
+   * in a bill-first hospital, have already paid. The transfer control that re-seats them — with the
+   * consent E2 requires — is on this same screen.
+   */
+  it("FD-7 T8: a doctor on leave says SO, with the number still waiting, and is not merely 'not scheduled'", async () => {
+    const onLeaveWithQueue = { ...SUMMARY[0]!, doctor: doctor("doc-9", "Dr Away"), sessionId: "sess-9", waitingCount: 3, scheduledToday: false, onLeaveToday: true };
+    const onLeaveEmpty = { ...SUMMARY[3]!, doctor: doctor("doc-8", "Dr Gone"), waitingCount: 0, scheduledToday: false, onLeaveToday: true };
+    stubFetch({
+      "GET /api/opd/departments": { items: DEPARTMENTS },
+      "GET /api/opd/rooms": { items: ROOMS },
+      "GET /api/opd/queues/summary": { items: [...SUMMARY, onLeaveWithQueue, onLeaveEmpty] },
+    });
+    renderWithProviders(<OpdDesk />);
+    await pickDepartment(userEvent.setup());
+
+    const stranded = await screen.findByTestId("on-leave-doc-9");
+    expect(stranded.textContent).toContain("3");                       // the people still waiting
+    expect(stranded.textContent).not.toContain("Not scheduled");       // THE KILL for the shrug
+    expect(screen.getByTestId("on-leave-doc-8").textContent).toBe("On leave today");
+    // And a doctor who is simply off the roster keeps the OLD sentence — the two are not merged.
+    expect(screen.queryByTestId("on-leave-doc-4")).toBeNull();
   });
 
   it("the doctor board renders GET /opd/queues/summary rows with room, status badge, waiting count, and the not-scheduled warning only where scheduledToday is false", async () => {

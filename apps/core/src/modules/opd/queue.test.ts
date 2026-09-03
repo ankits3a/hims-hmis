@@ -4,6 +4,7 @@ import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, s
 import { withTx } from "../../kernel/db/client";
 import { events, opdConfig, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
 import { openVisit } from "./encounters";
+import { cancelDoctorLeave, scheduleDoctorLeave } from "./leaves";
 import { setSessionStatus } from "./sessions";
 import { boardSnapshot, callNext, listQueue, markDone, markInConsult, skipCalled, summaryByDoctor } from "./queue";
 import type { OpenVisitResult } from "./encounters";
@@ -263,6 +264,101 @@ describe("opd queue (list / call / skip / in-consult / board / desk summary)", (
       await withTx(db, (tx) => markDone(tx, encounter!.id, TUE));
     }
     expect(plain).toEqual([a2.tokenNo, b2.tokenNo, f2.tokenNo]);
+  });
+
+  /* ══════════════════════════════════════════════════════════════════════════════════════════
+     FD-7 T8 — THE BOARD DID NOT KNOW ABOUT LEAVE
+     ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+  /**
+   * `scheduledToday` was read off `opd_doctor_schedules` alone. `availableSlots` and
+   * `bookAppointment` have consulted `opd_doctor_leaves` since Plan 07; the QUEUE side never did, so
+   * a doctor on approved leave sat on the board all day reading "scheduled, 0 waiting".
+   *
+   * THE REASON THAT REACHES A PATIENT: an empty queue is the SHORTEST queue. Under the owner's
+   * 03-Sep ruling that the department queue auto-assigns to the least-waiting doctor, the doctor on
+   * leave wins that comparison every single time — the router would have sent every arriving patient
+   * to the one person in the building guaranteed not to see them.
+   */
+  it("FD-7 T8: a doctor on leave today is NOT scheduled today, and says why", async () => {
+    await scheduleDoctorLeave(db, clerk.actor, { doctorId: dra.doctorId, fromDate: MON, toDate: MON, reason: "fever" }, NOW);
+    const summary = await summaryByDoctor(db, deptId, MON, NOW);
+    const away = summary.find((s) => s.doctor.id === dra.doctorId)!;
+    const here = summary.find((s) => s.doctor.id === drb.doctorId)!;
+
+    expect(away.scheduledToday).toBe(false);   // THE KILL for the auto-assign sending patients to an empty room
+    expect(away.onLeaveToday).toBe(true);      // and the clerk is told WHY, not merely that he is absent
+    expect(here.scheduledToday).toBe(true);
+    expect(here.onLeaveToday).toBe(false);
+  });
+
+  it("FD-7 T8: leave on ANOTHER day leaves today's board alone", async () => {
+    await scheduleDoctorLeave(db, clerk.actor, { doctorId: dra.doctorId, fromDate: "2026-08-18", toDate: "2026-08-20", reason: "wedding" }, NOW);
+    const away = (await summaryByDoctor(db, deptId, MON, NOW)).find((s) => s.doctor.id === dra.doctorId)!;
+    expect({ scheduledToday: away.scheduledToday, onLeaveToday: away.onLeaveToday })
+      .toEqual({ scheduledToday: true, onLeaveToday: false });
+  });
+
+  /** Both ends inclusive — the same predicate the appointment book uses, so the two cannot disagree. */
+  it("FD-7 T8: the leave window is inclusive at both ends", async () => {
+    await scheduleDoctorLeave(db, clerk.actor, { doctorId: dra.doctorId, fromDate: MON, toDate: "2026-08-19", reason: "leave" }, NOW);
+    for (const day of [MON, "2026-08-18", "2026-08-19"]) {
+      const row = (await summaryByDoctor(db, deptId, day, onDay(day, "10:00"))).find((s) => s.doctor.id === dra.doctorId)!;
+      expect({ day, onLeave: row.onLeaveToday }).toEqual({ day, onLeave: true });
+    }
+    const after = (await summaryByDoctor(db, deptId, "2026-08-20", onDay("2026-08-20", "10:00"))).find((s) => s.doctor.id === dra.doctorId)!;
+    expect(after.onLeaveToday).toBe(false);
+  });
+
+  /** A CANCELLED leave is not a leave — the doctor comes back onto the board. */
+  it("FD-7 T8: cancelling the leave puts the doctor back on the board", async () => {
+    const { leaveId } = await scheduleDoctorLeave(db, clerk.actor, { doctorId: dra.doctorId, fromDate: MON, toDate: MON, reason: "fever" }, NOW);
+    await cancelDoctorLeave(db, clerk.actor, leaveId, NOW);
+    const back = (await summaryByDoctor(db, deptId, MON, NOW)).find((s) => s.doctor.id === dra.doctorId)!;
+    expect({ scheduledToday: back.scheduledToday, onLeaveToday: back.onLeaveToday })
+      .toEqual({ scheduledToday: true, onLeaveToday: false });
+  });
+
+  /**
+   * ═══ THE OWNER'S EDGE CASE — A DOCTOR GOES ON LEAVE MID-DUTY ═══
+   *
+   * The cascade has always handled appointments and never looked at the queue. The people it strands
+   * are physically in the building holding a printed token, and in a bill-first hospital they have
+   * already paid. The leave now REPORTS them — it does not move them, because moving a patient to a
+   * different doctor without asking is what `transferQueue`'s consent guard exists to prevent, and a
+   * leave is not a reason to weaken a guard.
+   */
+  it("FD-7 T8: scheduling a mid-duty leave reports the patients it strands", async () => {
+    const opened = await open(dra);
+    await open(drb);   // another doctor's patient, in the same department — must NOT be reported
+
+    const { strandedEntryIds } = await scheduleDoctorLeave(
+      db, clerk.actor, { doctorId: dra.doctorId, fromDate: MON, toDate: MON, reason: "family emergency" }, NOW,
+    );
+
+    expect(strandedEntryIds).toHaveLength(1);                       // dra's patient, and ONLY dra's
+    expect(strandedEntryIds[0]).toBe(opened.queueEntry.id);
+  });
+
+  it("FD-7 T8: a doctor with nobody waiting strands nobody", async () => {
+    const { strandedEntryIds } = await scheduleDoctorLeave(
+      db, clerk.actor, { doctorId: dra.doctorId, fromDate: MON, toDate: MON, reason: "fever" }, NOW,
+    );
+    expect(strandedEntryIds).toEqual([]);
+  });
+
+  /** A finished patient is not stranded — they have already been seen. */
+  it("FD-7 T8: a patient already marked done is not reported as stranded", async () => {
+    const opened = await open(dra);
+    await shape(opened.queueEntry.id, { eligibleAt: T("09:00") });
+    await callNext(db, dra.actor, opened.queueEntry.sessionId, NOW);
+    await withTx(db, (tx) => markInConsult(tx, opened.encounter.id, NOW));
+    await withTx(db, (tx) => markDone(tx, opened.encounter.id, NOW));
+
+    const { strandedEntryIds } = await scheduleDoctorLeave(
+      db, clerk.actor, { doctorId: dra.doctorId, fromDate: MON, toDate: MON, reason: "fever" }, NOW,
+    );
+    expect(strandedEntryIds).toEqual([]);
   });
 
   it("boardSnapshot is a public surface — exactly the documented keys, token/room/doctor only; summaryByDoctor lists the department's desks", async () => {

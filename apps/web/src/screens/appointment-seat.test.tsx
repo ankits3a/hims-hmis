@@ -23,7 +23,8 @@ const CAN = { actor: { type: "user", id: "u-fd7" }, permissions: { hospital: ["o
 const CANNOT = { actor: { type: "user", id: "u-no" }, permissions: { hospital: ["opd.visits.open"], scoped: { department: {}, floor: {} } } };
 
 function doc(over: {
-  id: string; name: string; departmentId?: string; waitingCount?: number; avgConsultMinutes?: number; scheduledToday?: boolean;
+  id: string; name: string; departmentId?: string; waitingCount?: number; avgConsultMinutes?: number;
+  scheduledToday?: boolean; onLeaveToday?: boolean;
 }): WireDoctorSummary {
   return {
     doctor: {
@@ -33,7 +34,7 @@ function doc(over: {
     },
     sessionId: "s-1", status: "in", waitingCount: over.waitingCount ?? 1, waitingVitalsCount: 0,
     nowServing: 1, scheduledToday: over.scheduledToday ?? true, roomCode: "12",
-    avgConsultMinutes: over.avgConsultMinutes ?? 10,
+    avgConsultMinutes: over.avgConsultMinutes ?? 10, onLeaveToday: over.onLeaveToday ?? false,
   };
 }
 
@@ -185,6 +186,28 @@ describe("FD-7 T2 — the appointment seat", () => {
     expect((await screen.findByTestId("appt-proposal-rule")).textContent).toBe("Shortest wait");
     expect(screen.getByTestId("appt-proposal-doctor").textContent).toBe("Dr Quick");
     expect(screen.getByTestId("appt-anchor-unavailable").textContent).toContain("Dr Long");
+  });
+
+  /**
+   * FD-7 T8 — the owner's edge case, on the assembled screen. The clerk must be able to say the true
+   * sentence to a patient who asked for that doctor by name, and the absent doctor — whose queue is
+   * EMPTY, and therefore shortest — must not be the one the desk proposes.
+   */
+  it("a doctor on leave is not proposed despite the emptiest queue, and the card says he is on leave", async () => {
+    mockRoutes({
+      "GET /api/opd/queues/summary": { status: 200, body: { items: [
+        doc({ id: "d-long", name: "Dr Long", waitingCount: 0, scheduledToday: false, onLeaveToday: true }),
+        DR_QUICK,
+      ] } },
+      "GET /api/opd/continuity": { status: 200, body: { anchor: { doctorId: "d-long", doctorName: "Dr Long", seenOn: "2026-07-12" } } },
+    });
+    inHand("p-1");
+    renderWithProviders(<AppointmentSeat now={NOW} />);
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+
+    expect((await screen.findByTestId("appt-proposal-doctor")).textContent).toBe("Dr Quick");
+    expect(screen.getByTestId("appt-anchor-unavailable").textContent).toContain("on leave today");
   });
 
   /* ── the future lane — the owner's other correction ──────────────────────────────────────── */

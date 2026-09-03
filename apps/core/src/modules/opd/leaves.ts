@@ -1,9 +1,10 @@
-import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
-import { opdAppointments, opdDoctorLeaves, opdDoctors } from "../../kernel/db/schema";
+import { opdAppointments, opdDoctorLeaves, opdDoctors, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
+import { LIVE_ENTRY_STATUSES } from "./encounters";
 import { OpdError } from "./errors";
 import { doctorLeaveScheduled } from "./events";
 import { istDate } from "./time";
@@ -14,13 +15,27 @@ export type LeaveRow = typeof opdDoctorLeaves.$inferSelect;
 /**
  * §11.5 cascade: marks BOOKED appointments inside [fromDate, toDate] needs_rebooking in the SAME transaction as the
  * leave row, so a reader never observes a leave without its cascade applied. Cancelling the leave restores them.
+ *
+ * ═══ FD-7 T8 — AND IT REPORTS THE PEOPLE ALREADY SITTING IN THE WAITING ROOM ═══
+ *
+ * The cascade has always handled APPOINTMENTS and has never looked at the QUEUE. A doctor who goes
+ * on leave in the middle of their duty — the owner's own edge case, 03-Sep — leaves behind live
+ * `opd_queue_entries`: people who are physically in the building, hold a printed token, and in a
+ * bill-first hospital have already paid. Nothing told anybody they were stranded.
+ *
+ * `strandedEntryIds` is a REPORT, not a cascade, and the difference is deliberate. Moving a patient
+ * to a different doctor without asking them is precisely what `transferQueue`'s consent guard (E2)
+ * exists to prevent, and a leave is not a reason to weaken it — the patient chose that doctor, and
+ * the choice in front of them is another doctor or coming back tomorrow. So this hands the desk the
+ * list, the desk proposes the shortest line, and the clerk asks. The re-seating itself goes through
+ * `transferQueue` exactly as a supervisor's transfer does, consent and reason included.
  */
 export async function scheduleDoctorLeave(
   db: Db,
   actor: Actor,
   input: { doctorId: string; fromDate: string; toDate: string; reason: string },
   now: Date = new Date(),
-): Promise<{ leaveId: string; affectedAppointmentIds: string[] }> {
+): Promise<{ leaveId: string; affectedAppointmentIds: string[]; strandedEntryIds: string[] }> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
   if (input.reason.trim() === "") throw new OpdError("reason_required", "a doctor leave records why");
   if (input.fromDate > input.toDate) throw new OpdError("invalid_leave_range", "fromDate must be <= toDate");
@@ -45,6 +60,26 @@ export async function scheduleDoctorLeave(
       .returning({ id: opdAppointments.id });
 
     const affectedAppointmentIds = affected.map((a) => a.id).sort();
+
+    /*
+     * The live queue inside the leave window. Read INSIDE the same transaction as the leave row, so
+     * a caller can never observe the leave without also being able to see who it stranded — the same
+     * reason the appointment cascade is in here.
+     *
+     * `LIVE_ENTRY_STATUSES` is `transferQueue`'s own set, imported rather than re-listed: a queue
+     * entry this reports and that refuses to move would be worse than not reporting it.
+     */
+    const stranded = await tx
+      .select({ id: opdQueueEntries.id })
+      .from(opdQueueEntries)
+      .innerJoin(opdQueueSessions, eq(opdQueueSessions.id, opdQueueEntries.sessionId))
+      .where(and(
+        eq(opdQueueSessions.doctorId, input.doctorId),
+        gte(opdQueueSessions.serviceDate, input.fromDate), lte(opdQueueSessions.serviceDate, input.toDate),
+        inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES]),
+      ));
+    const strandedEntryIds = stranded.map((e) => e.id).sort();
+
     await appendEvent(tx, doctorLeaveScheduled.make({
       actor,
       payload: {
@@ -52,7 +87,7 @@ export async function scheduleDoctorLeave(
         affectedAppointmentIds,
       },
     }));
-    return { leaveId, affectedAppointmentIds };
+    return { leaveId, affectedAppointmentIds, strandedEntryIds };
   });
 }
 
