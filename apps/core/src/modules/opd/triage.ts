@@ -23,6 +23,9 @@
  * exactly as `proposeWalkIn` proposes and never applies.
  */
 
+import { defaultTriageCache, triageCacheKey } from "./triage-cache";
+import type { TriageCache } from "./triage-cache";
+
 /** A department as the hospital actually has it. The model sees these and nothing else. */
 export type TriageDepartment = { id: string; name: string };
 
@@ -149,12 +152,54 @@ export async function suggestDepartments(
   departments: TriageDepartment[],
   config: TriageConfig,
   fetchImpl: typeof fetch = fetch,
+  cache: TriageCache = defaultTriageCache,
 ): Promise<TriageResult> {
   const keywords = keywordRank(text, departments);
   if (config.baseUrl === null || config.apiKey === null || text.trim() === "" || departments.length === 0) {
     return { suggestions: keywords, source: "keywords" };
   }
 
+  /*
+   * ═══ FD-11 — THE SAME QUESTION IS NOT PAID FOR TWICE ═══
+   *
+   * The owner asked for this by name. Two savings, and both are exact: an answer already given for
+   * this complaint and this department list is returned unchanged, and two clerks who ask the same
+   * thing while the first request is still on the wire become ONE upstream call rather than two.
+   *
+   * Neither trades anything away. `triage-cache.ts` carries the reasoning for what is NOT done —
+   * short-circuiting the model on a keyword hit was measured and is wrong — and for the rule that
+   * a keyword fallback is never stored, so a transient 429 cannot pin the degraded answer.
+   */
+  const key = triageCacheKey(text, departments);
+  const cached = cache.get(key);
+  if (cached !== undefined) return cached;
+
+  const already = cache.inflight.get(key);
+  if (already !== undefined) {
+    cache.stats.coalesced += 1;
+    return already;
+  }
+
+  const pending = askModel(text, departments, { ...config, baseUrl: config.baseUrl, apiKey: config.apiKey }, fetchImpl, keywords);
+  cache.inflight.set(key, pending);
+  try {
+    const result = await pending;
+    cache.set(key, result); // stores only when `source === "model"`
+    return result;
+  } finally {
+    cache.inflight.delete(key);
+  }
+}
+
+/** The call itself. Split out so `suggestDepartments` reads as the caching policy it now is. */
+async function askModel(
+  text: string,
+  departments: TriageDepartment[],
+  // Narrowed: `suggestDepartments` has already refused the unconfigured case above.
+  config: TriageConfig & { baseUrl: string; apiKey: string },
+  fetchImpl: typeof fetch,
+  keywords: TriageSuggestion[],
+): Promise<TriageResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.timeoutMs);
   try {

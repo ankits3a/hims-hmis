@@ -76,22 +76,29 @@ const configSchema = z.object({
    * while the model was never once consulted. A default that is wrong everywhere except one vendor
    * is worse than no default.
    *
-   * `openai/gpt-oss-20b` is MEASURED, not chosen from the docs — and the docs would have been
+   * `openai/gpt-oss-120b` is MEASURED, not chosen from the docs — and the docs would have been
    * wrong: Groq's published production list leads with `llama-3.3-70b-versatile`, which this
-   * account does not offer at all (`GET /models` returns 14 models and no llama chat model). On
-   * the real triage prompt over five Hinglish complaints:
+   * account does not offer at all (`GET /models` returns 14 models and no llama chat model).
    *
-   *     openai/gpt-oss-20b     5/5 parsed   median 478 ms   max  488 ms   ← default
-   *     openai/gpt-oss-120b    5/5 parsed   median 598 ms   max  793 ms
-   *     groq/compound-mini     5/5 parsed   median 849 ms   max  978 ms
-   *     qwen/qwen3.6-27b       0/5 parsed   median 2869 ms            (echoes the template back)
+   * Scored on the real triage prompt over twelve Hinglish complaints against the hospital's own
+   * twelve departments, each case marked with the department a clerk would call correct:
    *
-   * The 20b is the smallest thing that got every routing right, and it is the one a counter can
-   * afford to wait for.
+   *     groq   openai/gpt-oss-120b    12/12 top-1   median 620 ms   ← default
+   *     groq   openai/gpt-oss-20b     11/12 top-1   median 469 ms   ("gala kharab hai" -> Orthopaedics)
+   *     nvidia openai/gpt-oss-20b     11/12 top-1   median 6210 ms, p90 300 s
+   *     nvidia nemotron-70b-instruct   HTTP 404 — listed by /models, not served on the key
+   *
+   * The 20b was the first default and it is wrong about a sore throat, sending it to Orthopaedics
+   * instead of ENT. 150 ms is a cheap price for that, and with `triage-cache.ts` in front it is
+   * paid once per distinct complaint rather than once per patient.
+   *
+   * NVIDIA (build.nvidia.com) is FREE and cannot serve this path: same model, same answers, but a
+   * 6.2 s median and a 300 s p90 against a 6 s budget means it would time out into the keyword
+   * table more often than not. Its only honest use here is off the counter's critical path.
    */
   TRIAGE_BASE_URL: z.string().url().optional(),
   TRIAGE_API_KEY: z.string().min(1).optional(),
-  TRIAGE_MODEL: z.string().min(1).default("openai/gpt-oss-20b"),
+  TRIAGE_MODEL: z.string().min(1).default("openai/gpt-oss-120b"),
   /*
    * Omniroute measured 22-34 s and often over 40, which is what put this timeout here: a counter
    * cannot wait, so the budget is short and a timeout is an ORDINARY outcome — the keyword table
