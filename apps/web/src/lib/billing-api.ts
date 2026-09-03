@@ -318,3 +318,35 @@ export function billingPatientLabel(
   if (!p) return "—";
   return p.restricted ? (p.alias ?? "—") : (p.name ?? p.alias ?? "—");
 }
+
+/* ── FD-9 — the drawer, as a precondition the counter wears ──────────────────────────────────── */
+
+/**
+ * `GET /billing/sessions/current` — the caller's OWN open drawer, or null. Self-scoped by the route
+ * rather than by an argument: there is no `userId` in the path, so one cashier cannot read another's
+ * float (`billing.session.own`).
+ *
+ * Desk One's header pill renders this as a live PRECONDITION, not decoration: `POST /receipts`
+ * refuses cash with no open session (`requireOpenSession`), so the tender keys at the bill stage
+ * are disabled while this is null and the pill says why. A screen that offers CASH and then shows
+ * a refusal has already wasted the patient's turn at the counter.
+ */
+export type WireCashSession = {
+  id: string;
+  cashierUserId: string;
+  status: "open" | "closing" | "closed";
+  openedAt: string;
+  openingFloatPaise: number;
+  countedCashPaise: number | null;
+  expectedCashPaise: number | null;
+  variancePaise: number | null;
+  closedAt: string | null;
+};
+
+export function fetchCurrentSession(): Promise<{ session: WireCashSession | null }> {
+  return api("GET", "/billing/sessions/current");
+}
+
+export function openCashSession(floatPaise: number): Promise<WireCashSession> {
+  return api("POST", "/billing/sessions", { floatPaise });
+}

@@ -111,8 +111,15 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }): R
          *
          * `Ctrl+N` and `Alt+N` are BOTH gone. A named test stops either growing back.
          */
+        /*
+          FD-9 — the DESTINATION changed, the key did not. `/registration` is deleted; Desk One at
+          `/counter` is where a patient is registered, and `?new=true` is how this key keeps its
+          meaning across the change: the desk opens with the enrolment form already up rather than
+          on its search stage. Pressed while already on the desk, the desk's own F4 handles it and
+          this navigation is a no-op to the same route.
+        */
         e.preventDefault();
-        void navigate({ to: "/registration", search: { new: true } });
+        void navigate({ to: "/counter", search: { new: true } });
       } else if (e.key === "F7") {
         /**
          * `F7` — THE BOOK. §4d's own assignment, and the first of the parked navigation chords to

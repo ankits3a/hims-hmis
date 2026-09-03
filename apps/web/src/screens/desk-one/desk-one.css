@@ -1,0 +1,144 @@
+/*
+ * ═══ DESK ONE — THE DESIGN SYSTEM, TRANSCRIBED FROM THE OWNER'S ARTIFACT ═══
+ *
+ * Artifact: claude.ai/code/artifact/80a2bb44-fea9-4e0e-b4f5-aadfcf55ad0e ("Desk One"), whose own
+ * §1–§5 legend states the rules this file encodes. Every token below is the artifact's value, not
+ * an interpretation of it: paper #f4f7f4, pine ink #132420, hospital green #0e6b4e, marigold
+ * #dd8f1c, mint #35c48f, brick #b23a30.
+ *
+ * ═══ WHY THIS IS PLAIN CSS AND NOT TAILWIND ═══
+ *
+ * The rest of the application is Tailwind v4 + shadcn/neutral, and the owner has now ruled twice
+ * that the shipped counter's LOOK is the defect ("all five defects were the SCREEN, not the
+ * server"). Desk One is a different visual system — a green-biased ground, one type family in
+ * three voices, and a rule that the machine only ever speaks on dark. Expressing that as utility
+ * classes would spread six literal hex values across forty files and make the "speaks-on-dark"
+ * rule unenforceable. Here it is one file, and the palette can be read in one screen.
+ *
+ * EVERY selector is nested under `.d1`. Desk One renders full-viewport with no application chrome,
+ * but a stray global `button{...}` would still reach the login screen through the shared bundle.
+ */
+
+.d1 {
+  --paper: #f4f7f4; --card: #ffffff; --ink: #132420; --line: #dfe7e1; --line2: #ecf1ed;
+  --dim: #5c6f66; --faint: #8ea69a; --wash: #eef3ef;
+  --green: #0e6b4e; --green-soft: rgba(14, 107, 78, .08); --green-line: rgba(14, 107, 78, .35);
+  --gold: #dd8f1c; --gold-soft: rgba(221, 143, 28, .10); --gold-line: rgba(221, 143, 28, .45);
+  --red: #b23a30; --red-soft: rgba(178, 58, 48, .08); --red-line: rgba(178, 58, 48, .4);
+  --agent: #132420; --agent-fg: #d9efe4; --agent-dim: #7fa392; --mint: #35c48f;
+
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  color: var(--ink);
+  font: 13.5px/19px "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: auto;
+}
+
+.d1 *{ box-sizing: border-box; }
+.d1 button { font: inherit; color: inherit; cursor: pointer; background: none; border: none; padding: 0; text-align: left; }
+.d1 button:disabled { cursor: not-allowed; }
+.d1 input, .d1 textarea, .d1 select { font: inherit; color: inherit; }
+.d1 input:focus, .d1 textarea:focus { outline: none; }
+.d1 button:focus-visible, .d1 input:focus-visible, .d1 textarea:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+/* ── §2 · type — one family, three voices ── */
+.d1 .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+.d1 .dev { font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, sans-serif; line-height: 1.6; }
+.d1 .tag {
+  font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 9.5px; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--faint);
+}
+
+/* ── keycaps ── */
+.d1 .kb {
+  display: inline-flex; align-items: center; justify-content: center; height: 16px; min-width: 20px;
+  padding: 0 5px; border-radius: 3px; border: 1px solid var(--line); background: var(--card);
+  font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 600; color: var(--dim); flex-shrink: 0;
+}
+.d1 .kb.dk { border-color: #2c443a; background: #1c332b; color: var(--agent-dim); }
+
+/* ── buttons ── */
+.d1 .pri {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 18px;
+  border-radius: 6px; background: var(--green); color: #f2faf6; font-size: 13px; font-weight: 600;
+  border: 1px solid var(--green);
+}
+.d1 .pri:disabled { opacity: .35; }
+.d1 .sec {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 13px;
+  border-radius: 6px; border: 1px solid var(--line); background: var(--card); font-size: 12.5px; font-weight: 500;
+}
+.d1 .sec:hover:not(:disabled) { border-color: var(--faint); }
+.d1 .sec:disabled { opacity: .4; }
+.d1 .sec.grn { border-color: var(--green); color: var(--green); font-weight: 600; }
+
+.d1 .box { background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+.d1 .in {
+  height: 40px; width: 100%; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--card); padding: 0 12px; font-size: 14px;
+}
+.d1 .in:focus { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+
+/* ── pills and stamps ── */
+.d1 .pill {
+  display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 9px; border-radius: 4px;
+  font-size: 10.5px; font-weight: 600; border: 1px solid var(--line); background: var(--card);
+  color: var(--dim); white-space: nowrap;
+}
+.d1 .pill.on { border-color: var(--green-line); background: var(--green-soft); color: var(--green); }
+.d1 .pill.gd { border-color: var(--gold-line); background: var(--gold-soft); color: var(--gold); }
+.d1 .pill.rd { border-color: var(--red-line); background: var(--red-soft); color: var(--red); }
+
+/*
+ * §3 — "Stamps — outlined, never filled: thermal heads wear, paper curls, and a hollow stamp
+ * survives both." The artifact's own words; the border-only rule is the design, not a style choice.
+ */
+.d1 .stamp {
+  display: inline-flex; padding: 2px 10px; border-radius: 4px; font-family: "IBM Plex Mono", monospace;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .14em;
+}
+.d1 .stamp.un { border: 2px solid var(--gold); color: var(--gold); }
+.d1 .stamp.pd { border: 2px solid var(--green); color: var(--green); }
+
+/*
+ * §3 — THE SPEAKS-ON-DARK RULE. "anything the AI says or does sits on pine ink. No legend needed to
+ * know what the machine touched." Which is why there is no light variant of this chip and must not
+ * be one: a suggestion rendered on paper is indistinguishable from a fact the hospital recorded.
+ */
+.d1 .agchip {
+  display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 7px 11px; border-radius: 6px;
+  background: var(--agent); color: var(--agent-fg); font-size: 11.5px; line-height: 16px;
+}
+.d1 .agchip b { color: #fff; font-weight: 600; }
+.d1 .agdo {
+  display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 5px; flex-shrink: 0;
+  background: var(--mint); color: #0b2018; font-size: 11px; font-weight: 700;
+}
+.d1 .agdo:hover { background: #4fd6a3; }
+.d1 .agdo:disabled { opacity: .5; }
+
+/* ── overlays ── */
+.d1 .ovl {
+  position: fixed; inset: 0; background: rgba(19, 36, 32, .5); display: flex; align-items: flex-start;
+  justify-content: center; padding-top: 8vh; z-index: 60;
+}
+.d1 .pi { display: flex; align-items: center; gap: 12px; padding: 10px 13px; border-radius: 6px; font-size: 13px; cursor: pointer; width: 100%; }
+.d1 .pi.sel { background: var(--wash); }
+.d1 .drow { display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-top: 1px solid var(--line2); }
+.d1 .drow:hover { background: var(--wash); }
+.d1 .lock { width: 11px; height: 11px; flex-shrink: 0; }
+.d1 .sw { width: 38px; height: 38px; border-radius: 6px; border: 1px solid var(--line); flex-shrink: 0; }
+
+.d1 .frame { min-width: 1220px; flex-grow: 1; display: flex; flex-direction: column; min-height: 0; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .d1 .agchip { animation: d1up .16s ease-out; }
+  @keyframes d1up { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+  .d1 .spin { animation: d1spin 1s linear infinite; }
+  @keyframes d1spin { to { transform: rotate(360deg); } }
+}

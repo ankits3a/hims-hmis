@@ -27,7 +27,14 @@ function renderShell(hospital: string[]): void {
   render(
     <QueryClientProvider client={qc}>
       <AuthProvider>
-        <RouterProvider router={router} history={createMemoryHistory({ initialEntries: ["/registration"] })} />
+        {/*
+          FD-9 — `/merge` and NOT `/registration`: that route is deleted with the old front-desk
+          design. The route this mounts on is incidental to every assertion in this file — they are
+          all about what the SHELL offers — but it has to be a route that exists, or the router
+          renders `Not Found` and the nav under test is never drawn at all. `/merge` is chosen for
+          being inert on mount: it fetches nothing until somebody types.
+        */}
+        <RouterProvider router={router} history={createMemoryHistory({ initialEntries: ["/merge"] })} />
       </AuthProvider>
     </QueryClientProvider>,
   );
@@ -36,10 +43,26 @@ function renderShell(hospital: string[]): void {
 afterEach(() => { setToken(null); });
 
 it("offers only the screens the signed-in person holds a permission for", async () => {
+  /*
+    ═══ FD-9 — THE SAME GRANT, AND ONE FEWER LINK, WHICH IS THE FINDING RATHER THAN A FIXTURE EDIT ═══
+
+    The grant is unchanged: `patients.register` + `billing.invoice.issue`. What changed is that
+    `patients.register` now opens NO NAV ROW. `/registration` is deleted, and the front-desk row
+    that replaced it — `{ to: "/counter", permission: "opd.visits.open" }`, matching
+    `opdManifest.menu`, which `nav-parity.test.ts` compares — rides the VISIT permission, because
+    the desk it points at opens visits.
+
+    `front_office` holds both, so the counter clerk this suite describes is unaffected. Two roles
+    are: `lab_reception` and `radiology_receptionist` hold `patients.register` WITHOUT
+    `opd.visits.open`, and their nav no longer carries a registration door. Their door is the
+    command palette's `/counter` command, which is declared on `patients.register` for exactly that
+    reason (`components/command-palette.tsx`). Asserted below so the gap is a recorded decision
+    rather than something a later reader has to rediscover.
+  */
   renderShell(["patients.register", "billing.invoice.issue"]);
 
-  await waitFor(() => expect(screen.getByRole("link", { name: "Registration" })).toBeInTheDocument());
-  expect(screen.getByRole("link", { name: "Counter" })).toBeInTheDocument();
+  // The billing counter (`nav.billing` = "Counter") is this person's one screen.
+  await waitFor(() => expect(screen.getByRole("link", { name: "Counter" })).toBeInTheDocument());
 
   // The fourteen that would have answered 403 are simply not offered.
   expect(screen.queryByRole("link", { name: "Users" })).not.toBeInTheDocument();
@@ -49,6 +72,21 @@ it("offers only the screens the signed-in person holds a permission for", async 
   // clerk with a counter permission is not offered it, which is also why the link is invisible on
   // the live deployment today: that role exists and has no holders.
   expect(screen.queryByRole("link", { name: "Formulary" })).not.toBeInTheDocument();
+  // FD-9 — and the deleted routes are offered by nobody, under any grant.
+  expect(screen.queryByRole("link", { name: "Registration" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Appointment" })).not.toBeInTheDocument();
+  // `patients.register` alone does not reach the desk row — `opd.visits.open` is what does.
+  expect(screen.queryByRole("link", { name: "Desk One" })).not.toBeInTheDocument();
+});
+
+/** FD-9 — and the counter clerk, who holds the visit permission, IS offered the one front desk. */
+it("FD-9: a counter clerk is offered Desk One, and it is the only front-desk row in the nav", async () => {
+  renderShell(["opd.visits.open", "patients.register", "billing.invoice.issue"]);
+  await waitFor(() => expect(screen.getByRole("link", { name: "Desk One" })).toBeInTheDocument());
+  const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
+  expect(hrefs.filter((h) => h === "/counter")).toHaveLength(1);
+  expect(hrefs).not.toContain("/registration");
+  expect(hrefs).not.toContain("/appointment");
 });
 
 /**
@@ -76,7 +114,7 @@ it("16a: the formulary desk appears for the permission that guards it, and for n
   renderShell(["formulary.manage"]);
   await waitFor(() => expect(screen.getByRole("link", { name: "Formulary" })).toBeInTheDocument());
   // `formulary.read` is a PRESCRIBER's permission (the consult autocomplete) and opens no desk.
-  expect(screen.queryByRole("link", { name: "Registration" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Desk One" })).not.toBeInTheDocument();
 });
 
 it("a person whose role holds nothing is TOLD SO rather than shown a blank bar", async () => {
@@ -87,7 +125,7 @@ it("a person whose role holds nothing is TOLD SO rather than shown a blank bar",
   await waitFor(() =>
     expect(screen.getByText(/No screens are available to your role/i)).toBeInTheDocument(),
   );
-  expect(screen.queryByRole("link", { name: "Registration" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Desk One" })).not.toBeInTheDocument();
 });
 
 /**
@@ -99,8 +137,21 @@ it("a person whose role holds nothing is TOLD SO rather than shown a blank bar",
  * where a one-person desk actually works.
  */
 it("07b T8: the nav is grouped, and a counter clerk's Desk group comes before the rest", async () => {
-  renderShell(["opd.visits.open", "patients.register", "billing.invoice.issue"]);
-  await waitFor(() => { expect(screen.getByText("Registration")).toBeInTheDocument(); });
+  /*
+    FD-9 — THE GRANT LIST GREW BY ONE AND THE ASSERTION MOVED WITH IT.
+
+    It used to grant exactly the counter clerk's three (`opd.visits.open`, `patients.register`,
+    `billing.invoice.issue`) and then assert that `/counter` came before `/registration`. The
+    owner's 03-Sep ruling DELETED `/registration` — Desk One at `/counter` registers, seats and
+    bills as three stages of one session — which left `patients.register` with no nav row at all
+    and this test asserting an order between one link and nothing.
+
+    `patients.merge` is added so the Patients group has a member to be ordered AFTER, and the claim
+    the test exists to make is unchanged: the desk group leads the row, because the counter is where
+    a one-person desk works and it must not be the ninth similar-looking word.
+  */
+  renderShell(["opd.visits.open", "patients.register", "patients.merge", "billing.invoice.issue"]);
+  await waitFor(() => { expect(screen.getByText("Merge review")).toBeInTheDocument(); });
 
   const nav = screen.getByRole("navigation");
   expect(nav).toHaveTextContent("Desk");
@@ -112,31 +163,38 @@ it("07b T8: the nav is grouped, and a counter clerk's Desk group comes before th
   expect(text.indexOf("Desk")).toBeLessThan(text.indexOf("Patients"));
 
   /**
-   * ═══ FD-2 — THIS ASSERTION IS NOW ABOUT LINK ORDER, NOT SUBSTRING POSITIONS ═══
+   * ═══ FD-2 — THIS ASSERTION IS ABOUT LINK ORDER, NOT SUBSTRING POSITIONS ═══
    *
    * It used to read `text.indexOf("Counter") < text.indexOf("Registration")` over the nav's whole
    * `textContent`, and that only worked while the desk link was called "Counter" and nothing else
-   * in the row contained the word "Registration". FD-2 renamed the desk link to **"Registration
-   * counter"** (the seat replaced `counter-desk.tsx` and took its path), and the old form promptly
-   * asserted something it never meant: `indexOf("Registration")` found the DESK link at 4 and
-   * `indexOf("Counter")` found the BILLING group's link at 62, so the desk leading the row made the
-   * assertion FAIL.
-   *
-   * The claim the test exists to make is about ORDER OF LINKS, so it is now made against the links
-   * themselves. This is immune to any future rename, which is the point: a label is a product
+   * in the row contained the word "Registration". FD-2 renamed the desk link and the old form
+   * promptly asserted something it never meant. The claim is about ORDER OF LINKS, so it is made
+   * against the links themselves — immune to a rename, which is the point: a label is a product
    * decision and should not be able to break a structural test.
    */
   const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
   expect(hrefs.indexOf("/counter")).toBeGreaterThanOrEqual(0);
-  expect(hrefs.indexOf("/counter")).toBeLessThan(hrefs.indexOf("/registration"));
+  expect(hrefs.indexOf("/counter")).toBeLessThan(hrefs.indexOf("/merge"));
+  // And the deleted route is not offered by any group: one door to the front desk, not three.
+  expect(hrefs).not.toContain("/registration");
+  expect(hrefs).not.toContain("/appointment");
 });
 
 /** A group with nothing in it must not render its label — an empty heading is furniture. */
 it("07b T8: a group the person holds nothing in does not render at all", async () => {
-  renderShell(["patients.register"]);
-  await waitFor(() => { expect(screen.getByText("Registration")).toBeInTheDocument(); });
+  /*
+    FD-9 — `patients.merge` replaces `patients.register` as the one grant here. The claim is about
+    EMPTY GROUPS, and it needs a person who holds something in exactly one group: after the deletion
+    of `/registration`, `patients.register` opens no nav row at all, so the old fixture would have
+    tested the "no screens available" sentence instead. `patients.merge` keeps the Patients group
+    populated with one row — and now the DESK group is the empty one, which is a stronger version of
+    the same assertion than the original could make.
+  */
+  renderShell(["patients.merge"]);
+  await waitFor(() => { expect(screen.getByText("Merge review")).toBeInTheDocument(); });
   const nav = screen.getByRole("navigation");
   expect(nav).toHaveTextContent("Patients");
+  expect(nav).not.toHaveTextContent("Desk");
   expect(nav).not.toHaveTextContent("Stores");
   expect(nav).not.toHaveTextContent("Billing");
 });

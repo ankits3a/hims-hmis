@@ -58,7 +58,13 @@ export function PaletteProvider({ children }: { children: React.ReactNode }): Re
 type Command = { to: string; label: string; permission: string };
 
 const COMMANDS: readonly Command[] = [
-  { to: "/registration", label: "nav.registration", permission: "patients.register" },
+  /*
+    FD-9 — `/registration` was DELETED with the old front-desk design; Desk One at `/counter` is
+    where a patient is registered now, and `nav.counterDesk` is its label. The permission stays
+    `patients.register`: this row exists so somebody holding registration rights can reach the desk
+    by name from anywhere in the app, and that grant is the one that makes the reach meaningful.
+  */
+  { to: "/counter", label: "nav.counterDesk", permission: "patients.register" },
   { to: "/merge", label: "nav.merge", permission: "patients.merge" },
   { to: "/approvals", label: "nav.approvals", permission: "approvals.requests.read" },
   { to: "/opd/appointments", label: "nav.opdAppointments", permission: "opd.appointments.read" },

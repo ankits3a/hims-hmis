@@ -13,7 +13,6 @@
   },
   "nav": {
     "formularyAdmin": "Formulary",
-    "registration": "Registration",
     "merge": "Merge review",
     "approvals": "Approvals",
     "opdAdmin": "OPD admin",
@@ -40,7 +39,7 @@
     "otList": "Theatre list",
     "otBook": "Book day-care case",
     "otRecovery": "Recovery",
-    "counterDesk": "Registration counter",
+    "counterDesk": "Desk One",
     "group": {
       "desk": "Desk",
       "patients": "Patients",
@@ -59,8 +58,7 @@
     "vitalsBay": "Vitals bay",
     "labReports": "Report centre",
     "pharmacyCounter": "Dispense counter",
-    "pharmacyItems": "Pharmacy sale items",
-    "appointmentSeat": "Appointment"
+    "pharmacyItems": "Pharmacy sale items"
   },
   "palette": {
     "title": "Search",

@@ -18,10 +18,8 @@ import { PatientStrip } from "./components/patient-strip";
 import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
 import { StaffReports } from "./screens/staff-reports";
-import { RegistrationCounter } from "./screens/registration-counter";
+import { DeskOne } from "./screens/desk-one/desk-one";
 import { CounterFigures } from "./screens/counter-figures";
-import { RegistrationScreen } from "./screens/registration-screen";
-import { AppointmentSeat } from "./screens/appointment-seat";
 import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
 import { ApprovalsInbox } from "./screens/approvals-inbox";
@@ -97,13 +95,9 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   // links reading "Counter" and "Registration counter (new)" for one job is how the owner ended up
   // on the wrong one — a nav is a list of places, and a place should appear in it once.
   { to: "/counter", label: "nav.counterDesk", permission: "opd.visits.open", group: "desk" },
-  { to: "/registration", label: "nav.registration", permission: "patients.register", group: "patients" },
   { to: "/merge", label: "nav.merge", permission: "patients.merge", group: "patients" },
   { to: "/approvals", label: "nav.approvals", permission: "approvals.requests.read", group: "admin" },
   { to: "/opd/admin", label: "nav.opdAdmin", permission: "opd.masters.manage", group: "opd" },
-  // FD-7 T2 — the appointment seat, beside the counter in the `desk` group: it is front-desk work,
-  // not the supervisor's book. Path and permission match `opdManifest.menu` exactly (nav-parity).
-  { to: "/appointment", label: "nav.appointmentSeat", permission: "opd.appointments.manage", group: "desk" },
   { to: "/opd/appointments", label: "nav.opdAppointments", permission: "opd.appointments.read", group: "opd" },
   { to: "/opd/desk", label: "nav.opdDesk", permission: "opd.visits.open", group: "opd" },
   // FD-5 / owner ruling 2026-09-02 — ONE vitals row, and it is Bay One's. The old `/opd/vitals`
@@ -385,37 +379,54 @@ const staffReportsRoute = createRoute({
 });
 
 /**
- * ═══ FD-2 / THE OWNER'S RULING, 2026-09-02 — THE SEAT *IS* `/counter` NOW ═══
+ * ═══ FD-9 / THE OWNER'S RULING, 2026-09-03 — DESK ONE *IS* `/counter`, AND IT IS THE ONLY DOOR ═══
  *
- * D1 mounted Desk One at `/counter/seat` BESIDE the shipped `counter-desk.tsx` on purpose: a proven
- * money path and an unproven layout should never be in one diff, and a reviewer had to be able to
- * tell which half a defect came from. RC-4 §6 left "which of the two survives" as an owner ruling,
- * and it stayed open through RC-4 and FD-1 — so the deploy that reached production carried BOTH,
- * and the nav read *Counter · Registration counter (new)*, two links to the same work, and the
- * owner used the wrong one and reported the right one as broken.
+ * *"LOOK CLAUDE, remove the old design.. let's start from fresh because things are not landing what
+ * I am looking for. Let's only focus on one user right now. This user has access to registration,
+ * appointment and billing."*
  *
- * The owner has now ruled: *"you can remove your old design and keep the new design. no need to
- * keep the old design just for the sake of keeping it."* So `counter-desk.tsx` and its suite are
- * DELETED and the seat takes the path — not a redirect. A redirect would leave a second name for
- * one screen in the router, in the manifest, in every bookmark a clerk made this week and in the
- * caddyfile census, which is the same two-doors problem one layer down.
+ * So the three front-desk routes are ONE route. What was here before:
  *
- * WHAT SURVIVES THE DELETION, deliberately:
- *   · `components/counter-slip.tsx` — the old screen's best idea (token and receipt on ONE piece of
- *     paper, because two `.print-doc` nodes overprint), now mounted by the seat instead.
- *   · `opdManifest.menu`'s `{ path: "/counter", permission: "opd.visits.open" }` — unchanged, which
- *     is why `nav-parity.test.ts` still passes: the path and the permission are what it compares,
- *     and the seat has always required the same grant as the screen it replaces.
+ *   `/counter`      the registration seat, which had grown an appointment panel inside its
+ *                   registration form — the thing the owner rejected by name ("the appointment is a
+ *                   STAGE, not a field"), and which still carried a doctor dropdown at FD-8's close.
+ *   `/registration` a second, older registration desk on its own route.
+ *   `/appointment`  FD-7 T2's appointment seat, a third route for the middle of the same job.
+ *
+ * One person holding `patients.register` + `opd.appointments.manage` + `billing.invoice.issue` had
+ * to walk between all three to serve one walk-in, losing the patient in hand at every hop — FD-2's
+ * diagnosis measured three route changes per patient. `DeskOne` is one screen with five stages and
+ * a dossier column that holds the person across all of them.
+ *
+ * ═══ WHY THE OTHER TWO ARE DELETED RATHER THAN REDIRECTED ═══
+ *
+ * A redirect leaves a second name for one screen — in the router, in the module manifest, in every
+ * bookmark, and in the caddyfile census. That is exactly the two-doors problem that put the owner
+ * on the wrong counter in FD-1 and had them report the right screen as broken. The precedent is
+ * this file's own, one phase old: `counter-desk.tsx` and `opd-vitals.tsx` were deleted, not aliased.
+ *
+ * ═══ IT MOUNTS INSIDE THE SHELL AND COVERS IT, AND THAT IS DELIBERATE ═══
+ *
+ * The design has its own header, its own command key and its own dock; the application's nav bar
+ * above it would be a second, competing set of doors. `.d1` is `position: fixed; inset: 0`, so the
+ * desk owns the viewport while it is mounted — and it stays a CHILD of `authedRoute`, so it keeps
+ * the token guard, the query client and the providers every other screen has, and `<Link>`
+ * navigation out of it (the palette's "my figures") still works. Signing out lives in the dock.
  */
 const counterDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/counter",
-  // FD-1 T4 — the door to "your figures" is a client-side navigation handed in from here; the seat
-  // itself mounts without a router in its suite.
-  component: function RegistrationCounterRoute() {
-    const navigate = useNavigate();
-    return <RegistrationCounter onFigures={() => { void navigate({ to: "/counter/figures" }); }} />;
-  },
+  /*
+    `?new=true` is the one search parameter this screen takes, and it exists for exactly one caller:
+    the global F4 chord (`lib/keyboard.tsx`), which means "a new patient is in front of me" from
+    anywhere in the app. It lands the desk on its enrolment stage instead of its search stage. It is
+    one-shot — the desk consumes it with a replace-navigate — so a second press retriggers it, which
+    is the discipline `/registration` used before it was deleted.
+  */
+  validateSearch: (search: Record<string, unknown>): { new?: boolean } => ({
+    new: search.new === true || search.new === "true" ? true : undefined,
+  }),
+  component: DeskOne,
 });
 
 /**
@@ -456,32 +467,6 @@ const counterFiguresRoute = createRoute({
       />
     );
   },
-});
-
-const registrationRoute = createRoute({
-  getParentRoute: () => authedRoute,
-  path: "/registration",
-  // Ctrl+N / Alt+N (§15 keyboard-first, `lib/keyboard.tsx`) jump straight to the new-patient form
-  // from anywhere in the app, including from this same route — the flag is one-shot:
-  // RegistrationDesk clears it via a replace-navigate once consumed, so a second press retriggers
-  // it. (FD-3: this was F2 until the owner dedicated that key to the agent surface.)
-  validateSearch: (search: Record<string, unknown>): { new?: boolean } => ({
-    new: search.new === true ? true : undefined,
-  }),
-  component: RegistrationScreen,
-});
-
-/**
- * FD-7 T2 — THE APPOINTMENT SEAT, ON ITS OWN ROUTE.
- *
- * The owner's 03-Sep ruling: the appointment does not flow below the registration form. Registration
- * ends at the UHID and hands over HERE, and only to a caller who holds `opd.appointments.manage` —
- * which is why this is a route and not a section of another screen.
- */
-const appointmentSeatRoute = createRoute({
-  getParentRoute: () => authedRoute,
-  path: "/appointment",
-  component: AppointmentSeat,
 });
 
 const patientRoute = createRoute({
@@ -776,7 +761,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, counterDeskRoute, registrationRoute, appointmentSeatRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,

@@ -354,9 +354,18 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // registration form (03-Sep): registration ends at the UHID and hands over here, by permission.
     // The number was WATCHED FAILING — the run that added the route reported `Received length: 49`
     // against the pinned 48 — and raised to what was measured, never predicted.
+    // FD-9 / THE OWNER'S RULING, 2026-09-03 — 49 -> 47. TWO ROUTES DELETED AND NONE ADDED, which is
+    // the first time this number has gone DOWN for a reason other than a screen being superseded by
+    // its own replacement. `/registration` and `/appointment` are gone because the three front-desk
+    // routes were one person's one job: *"remove the old design.. Let's only focus on one user right
+    // now. This user has access to registration, appointment and billing."* Desk One serves
+    // `/counter` with all three as STAGES of one session. Deleted rather than redirected — a second
+    // name for one screen is what put the owner on the wrong counter in FD-1.
     // MEASURED against the tree rather than predicted, which is what pinning a count is for.
-    expect(routes).toHaveLength(49);
-    expect(routes).toContain("/appointment");
+    expect(routes).toHaveLength(47);
+    expect(routes).not.toContain("/appointment");
+    expect(routes).not.toContain("/registration");
+    expect(routes).toContain("/counter");
     expect(routes).toContain("/lab/reports");
     expect(routes).toContain("/counter/figures");
     expect(routes).not.toContain("/counter/seat");

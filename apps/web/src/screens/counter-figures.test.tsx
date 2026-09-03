@@ -5,7 +5,6 @@ import { PatientInHandProvider } from "../lib/patient-in-hand";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { router } from "../router";
 import { CounterFigures } from "./counter-figures";
-import { RegistrationCounter } from "./registration-counter";
 import { renderWithProviders } from "../test-utils";
 import { setToken } from "../lib/api";
 import type { WireDeskCard, WireReport } from "../lib/desk-api";
@@ -17,9 +16,9 @@ import type { WireDeskCard, WireReport } from "../lib/desk-api";
  */
 const cardsA: WireDeskCard[] = [
   { key: "patients.registration", band: "today", titleKey: "desk.patients.registration", stats: [
-    { key: "desk.patients.registered", value: "38", href: "/registration" }, { key: "desk.patients.noMobile", value: "2", href: "/registration" }, { key: "desk.patients.duplicatesPending", value: "1", href: "/merge" } ] },
+    { key: "desk.patients.registered", value: "38", href: "/counter" }, { key: "desk.patients.noMobile", value: "2", href: "/counter" }, { key: "desk.patients.duplicatesPending", value: "1", href: "/merge" } ] },
   { key: "patients.cameBack", band: "today", titleKey: "desk.patients.cameBack", stats: [
-    { key: "desk.patients.duplicatesConfirmed", value: "3", href: "/merge" }, { key: "desk.patients.noMobileMonth", value: "11", href: "/registration" }, { key: "desk.patients.amendedWeek", value: "8", href: "/registration" } ] },
+    { key: "desk.patients.duplicatesConfirmed", value: "3", href: "/merge" }, { key: "desk.patients.noMobileMonth", value: "11", href: "/counter" }, { key: "desk.patients.amendedWeek", value: "8", href: "/counter" } ] },
   { key: "opd.appointments", band: "now", titleKey: "desk.appointments.title", stats: [
     { key: "desk.appointments.dueToday", value: "12", href: "/opd/appointments" }, { key: "desk.appointments.checkedIn", value: "7", href: "/opd/appointments" }, { key: "desk.appointments.missed", value: "1", href: "/opd/appointments" }, { key: "desk.appointments.needsRebooking", value: "2", href: "/opd/appointments" } ] },
   { key: "billing.myCollections", band: "today", titleKey: "desk.billing.myCollections", stats: [
@@ -28,9 +27,9 @@ const cardsA: WireDeskCard[] = [
 ];
 const cardsB: WireDeskCard[] = [
   { key: "patients.registration", band: "today", titleKey: "desk.patients.registration", stats: [
-    { key: "desk.patients.registered", value: "5", href: "/registration" }, { key: "desk.patients.noMobile", value: "0", href: "/registration" }, { key: "desk.patients.duplicatesPending", value: "0", href: "/merge" } ] },
+    { key: "desk.patients.registered", value: "5", href: "/counter" }, { key: "desk.patients.noMobile", value: "0", href: "/counter" }, { key: "desk.patients.duplicatesPending", value: "0", href: "/merge" } ] },
   { key: "patients.cameBack", band: "today", titleKey: "desk.patients.cameBack", stats: [
-    { key: "desk.patients.duplicatesConfirmed", value: "0", href: "/merge" }, { key: "desk.patients.noMobileMonth", value: "1", href: "/registration" }, { key: "desk.patients.amendedWeek", value: "0", href: "/registration" } ] },
+    { key: "desk.patients.duplicatesConfirmed", value: "0", href: "/merge" }, { key: "desk.patients.noMobileMonth", value: "1", href: "/counter" }, { key: "desk.patients.amendedWeek", value: "0", href: "/counter" } ] },
 ];
 const reportA: WireReport = { date: "2026-09-02", provisional: true, sections: [
   { key: "opd.myVisits", titleKey: "report.opd.myVisits", columnKeys: ["report.col.time", "report.col.uhid"], rows: [["09:12", "UH-23-04417"]], totals: ["", "1"] } ] };
@@ -68,7 +67,7 @@ describe("FD-1 T4 — your figures", () => {
     await waitFor(() => expect(screen.getByTestId("figure-desk.patients.registered").textContent).toContain("38"));
     expect(screen.getByTestId("figure-desk.appointments.dueToday").textContent).toContain("12");
     expect(screen.getByTestId("figure-desk.billing.collected").textContent).toContain("₹1,900.00");
-    expect(screen.getByTestId("figure-desk.patients.registered").querySelector("a")!.getAttribute("href")).toBe("/registration");   // every figure is a door
+    expect(screen.getByTestId("figure-desk.patients.registered").querySelector("a")!.getAttribute("href")).toBe("/counter");   // every figure is a door
     expect(screen.getByTestId("sentence-duplicates").textContent).toContain("3 of your registrations turned out to be duplicates");
     expect(screen.getByTestId("sentence-noMobile").textContent).toContain("11 records");
     expect(screen.getByTestId("sentence-amended").textContent).toContain("8 were amended within a week");
@@ -212,22 +211,24 @@ describe("FD-1 T4 — your figures", () => {
     renderWithProviders(<CounterFigures onBack={() => {}} onGo={onGo} />);
     await waitFor(() => expect(screen.getByTestId("figure-desk.patients.registered")).toBeInTheDocument());
     const a = screen.getByTestId("figure-desk.patients.registered").querySelector("a")!;
-    expect(a.getAttribute("href")).toBe("/registration");
+    expect(a.getAttribute("href")).toBe("/counter");
     const ev = fireEvent.click(a);
     expect(ev).toBe(false);                     // default prevented: no reload
-    expect(onGo).toHaveBeenCalledWith("/registration");
+    expect(onGo).toHaveBeenCalledWith("/counter");
   });
 
-  it("the seat wears the door", async () => {
-    const seen: string[] = [];
-    stubFigures("A", seen);
-    const onFigures = vi.fn();
-    renderWithProviders(<RegistrationCounter onFigures={onFigures} />);
-    await waitFor(() => expect(screen.getByTestId("figures-door")).toBeInTheDocument());
-    expect(screen.getByTestId("figures-door").getAttribute("href")).toBe("/counter/figures");
-    expect(fireEvent.click(screen.getByTestId("figures-door"))).toBe(false);   // handed to the router, no reload
-    expect(onFigures).toHaveBeenCalledTimes(1);
-  });
+  /*
+    FD-9 — "the seat wears the door" IS DELETED WITH THE SEAT, and this note is what replaces it.
+
+    The test rendered `RegistrationCounter` and asserted its header carried an anchor to
+    `/counter/figures`. Desk One has no header of that kind — the design's header is the counter's
+    own strip (drawer, lane, clock, queue count, command key) — so the door moved into the command
+    palette, where every other "leave the desk" action lives. There is nothing left on the desk's
+    surface for this test to point at, and asserting a palette row here would be asserting Desk
+    One's palette from `counter-figures`'s own suite. The route is still reachable and the leg that
+    carries risk — Escape lands back on the desk with the patient in hand intact — is asserted in
+    the describe below, under the real router.
+  */
 });
 
 describe("FD-1 T5 (pass 1) — the round trip: figures → Escape → the seat, with the patient in hand untouched", () => {
@@ -243,11 +244,10 @@ describe("FD-1 T5 (pass 1) — the round trip: figures → Escape → the seat, 
     );
     await waitFor(() => expect(screen.getByTestId("counter-figures")).toBeInTheDocument());
     fireEvent.keyDown(window, { key: "Escape" });
-    await waitFor(() => expect(screen.getByTestId("registration-counter")).toBeInTheDocument());
+    // FD-9 — `/counter` is DESK ONE now; the seat this leg was written against is deleted, and the
+    // property under test is unchanged: Escape lands on the counter, whatever the counter is.
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
     expect(screen.queryByTestId("counter-figures")).not.toBeInTheDocument();
     expect(sessionStorage.getItem("hmis.inHand")).toContain("P-A");     // the session survived the trip
-    // and the door goes back without a reload
-    expect(fireEvent.click(screen.getByTestId("figures-door"))).toBe(false);
-    await waitFor(() => expect(screen.getByTestId("counter-figures")).toBeInTheDocument());
   });
 });

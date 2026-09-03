@@ -679,3 +679,21 @@ export type WireVitalsAmendResult = { vitals: WireVitals; flags: WireDangerFlag[
 export function amendVitals(vitalsId: string, body: WireVitalsAmendBody): Promise<WireVitalsAmendResult> {
   return api("POST", `/opd/vitals/${encodeURIComponent(vitalsId)}/amend`, body);
 }
+
+/* ── FD-9 — the queue read Desk One's board and its lock pill both work from ─────────────────── */
+
+/**
+ * `GET /opd/queues/summary` had NO client in this file: the shipped counter declared its own
+ * `api<{ items: WireDoctorSummary[] }>(…)` inside the screen, which is how the URL and the
+ * `serviceDate` default ended up living in a component. It belongs here beside every other OPD
+ * read — the type has been in this file since RC-3 and only the fetcher was missing.
+ *
+ * `serviceDate` is REQUIRED of the caller rather than defaulted here. The server defaults it to
+ * IST today, and a client-side default would be a second opinion about what "today" is, computed
+ * in the browser's zone — the class of bug 18b shipped (an MWL date in UTC beside an IST time).
+ */
+export function listQueueSummary(serviceDate: string, departmentId?: string): Promise<{ items: WireDoctorSummary[] }> {
+  const params = new URLSearchParams({ serviceDate });
+  if (departmentId !== undefined && departmentId !== "") params.set("departmentId", departmentId);
+  return api("GET", `/opd/queues/summary?${params.toString()}`);
+}

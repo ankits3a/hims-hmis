@@ -139,7 +139,17 @@ describe("patients lifecycle e2e (registration → merge → unmerge → sweep)"
 
     const regB = await request(app.getHttpServer())
       .post("/patients").set(...auth(clerkToken))
-      .send({ name: "Asha Debi", sex: "female", phone: "9876543210", language: "hi" })
+      /*
+        FD-8 CARRY-OVER — the acknowledgement, and here it is the STORY rather than a fixture detail.
+
+        This registration is a DELIBERATE near-duplicate: same phone, one letter apart from Asha
+        Devi above, and the whole point of the suite is what happens to it afterwards (detect →
+        merge under SoD → resolve the chain → unmerge). `POST /patients` began refusing it in FD-8
+        (`1095d16`) with 409 `duplicate_suspected` — correctly, because that is precisely what it
+        is. A clerk facing that warning and creating the record anyway is step one of this story, so
+        the flag is not a workaround: it is the act the rest of the test then cleans up.
+      */
+      .send({ name: "Asha Debi", sex: "female", phone: "9876543210", language: "hi", acknowledgedDuplicates: true })
       .expect(201);
     const loserId = regB.body.patient.id as string;
     expect(regB.body.patient.uhid).toMatch(/^HMS\d{8}$/);

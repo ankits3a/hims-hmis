@@ -14,11 +14,13 @@ export const opdManifest: ModuleManifest = {
     // PLAN 07b T3 — the counter comes FIRST because it is where a one-person desk actually works:
     // find, open, collect, hand on. The module screens below it stay for the supervisor and for the
     // multi-counter model Plan 22 brings (07b DD11).
+    //
+    // FD-9 — it is now the ONLY front-desk row. `/appointment` (FD-7 T2's seat) and `/registration`
+    // (patients') were the other two thirds of one person's one job, and the owner ruled the three
+    // into one screen: *"remove the old design.. let's only focus on one user."* Desk One serves
+    // this path with registration, appointment and billing as STAGES of one session, so a clerk
+    // needs no second row and a second row would be a second way to lose the patient in hand.
     { label: "Counter", path: "/counter", permission: "opd.visits.open" },
-    // FD-7 T2 — the front desk's own appointment SEAT, on the WRITE permission. `/opd/appointments`
-    // below is the supervisor's book (read); this is the one screen a clerk routes a walk-in from,
-    // and it exists because the owner ruled the appointment out of the registration form.
-    { label: "Appointment", path: "/appointment", permission: "opd.appointments.manage" },
     { label: "Appointments", path: "/opd/appointments", permission: "opd.appointments.read" },
     { label: "OPD desk", path: "/opd/desk", permission: "opd.visits.open" },
     { label: "Vitals", path: "/opd/vitals", permission: "opd.vitals.record" },

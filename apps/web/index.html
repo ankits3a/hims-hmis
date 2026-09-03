@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HMIS</title>
+    <!--
+      Desk One's type system (screens/desk-one/desk-one.css §2): IBM Plex Sans for everything human,
+      IBM Plex Mono for what a clerk compares digit by digit, IBM Plex Sans Devanagari for the
+      sentence the clerk says out loud. `display=swap` so a slow font never blanks a counter screen —
+      the fallback stacks in the CSS are real, and the desk stays legible before these land.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans+Devanagari:wght@400;600&display=swap"
+    />
   </head>
   <body>
     <div id="root"></div>

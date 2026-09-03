@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, ApiError } from "./api";
 
 /**
  * RC-3 T4 — THE WEB'S DECLARATION OF `GET /patients/search`, AND THE FIRST ONE TO CARRY `matchedOn`.
@@ -92,4 +92,57 @@ export type WireQrVerifyResult =
   | { ok: false; reason: "malformed" | "invalid_signature" | "stale_version" | "unknown_patient" };
 export function verifyQrScan(payload: string): Promise<WireQrVerifyResult> {
   return api("POST", "/patients/qr/verify", { payload });
+}
+
+/* ── FD-9 — registration, as a counter act ───────────────────────────────────────────────────── */
+
+/**
+ * REGISTRATION ENDS AT THE UHID (the FD-8 ruling), which makes `POST /patients` the route the front
+ * desk creates patients through — not `POST /opd/walk-in`'s embedded `register`, whose body also
+ * demands a department and a doctor and so forced the appointment decision into the enrolment form.
+ *
+ * `sex` and not `administrativeGender`: the counter captures ONE of the two, and the server defaults
+ * the legal marker from it (22c-A DD4). A client that sent both would be inventing an answer to a
+ * question nobody at the desk was asked.
+ */
+export type WireRegisterBody = {
+  name: string;
+  sex: "male" | "female" | "other" | "unknown";
+  phone?: string;
+  ageYears?: number;
+  dob?: string;
+  addressLine?: string;
+  /**
+   * DD8 — the clerk SAW the near matches and is registering anyway. Sent only after the warning has
+   * been rendered; sending it unconditionally would delete the check while leaving its code in place.
+   */
+  acknowledgedDuplicates?: boolean;
+};
+
+/**
+ * The row the server allocated, as `PatientRow`. Only the fields the desk shows are declared.
+ *
+ * `dob` is among them because the server DERIVES it: a counter sends `ageYears` (nobody at a window
+ * knows their date of birth), and `registration.ts:87` turns that into a dob marked estimated. A
+ * client that did not read it back would show the person it had just registered with no age at all,
+ * which is what the first version of Desk One did — measured on the running preview.
+ */
+export type WireRegisterResult = {
+  patient: { id: string; uhid: string; name: string; dob: string | null; phone: string | null; addressLine: string | null };
+};
+
+export function registerPatient(body: WireRegisterBody): Promise<WireRegisterResult> {
+  return api("POST", "/patients", body);
+}
+
+/**
+ * The near-matches a refused registration carries, under `detail.candidates`. Same shape and the
+ * same `matchReasonKeys` the search row renders, so a candidate says WHY it is one.
+ */
+export function duplicateCandidates(e: unknown): WirePatientHit[] | null {
+  if (!(e instanceof ApiError)) return null;
+  const body = e.body as { code?: string; detail?: { candidates?: unknown } } | null;
+  if (body?.code !== "duplicate_suspected") return null;
+  const candidates = body.detail?.candidates;
+  return Array.isArray(candidates) ? (candidates as WirePatientHit[]) : null;
 }

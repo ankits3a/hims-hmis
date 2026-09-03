@@ -106,11 +106,11 @@ afterEach(() => { setToken(null); vi.unstubAllGlobals(); });
 
 const REGISTRATION = {
   key: "patients.registration", band: "today", titleKey: "desk.patients.registration",
-  stats: [{ key: "desk.patients.registered", value: "38", href: "/registration" }, { key: "desk.patients.noMobile", value: "2", href: "/registration" }, { key: "desk.patients.duplicatesPending", value: "1", href: "/merge" }],
+  stats: [{ key: "desk.patients.registered", value: "38", href: "/counter" }, { key: "desk.patients.noMobile", value: "2", href: "/counter" }, { key: "desk.patients.duplicatesPending", value: "1", href: "/merge" }],
 };
 const CAME_BACK = {
   key: "patients.cameBack", band: "today", titleKey: "desk.patients.cameBack",
-  stats: [{ key: "desk.patients.duplicatesConfirmed", value: "3", href: "/merge" }, { key: "desk.patients.noMobileMonth", value: "11", href: "/registration" }, { key: "desk.patients.amendedWeek", value: "8", href: "/registration" }],
+  stats: [{ key: "desk.patients.duplicatesConfirmed", value: "3", href: "/merge" }, { key: "desk.patients.noMobileMonth", value: "11", href: "/counter" }, { key: "desk.patients.amendedWeek", value: "8", href: "/counter" }],
 };
 const APPOINTMENTS = {
   key: "opd.appointments", band: "now", titleKey: "desk.appointments.title", topics: ["queue:doc-1:2026-08-29"],
@@ -126,7 +126,7 @@ describe("FD-1 T5 — the three tiles on the front door, rendered by the home sc
     expect(screen.getByText("Appointments")).toBeInTheDocument();
     // a stat with an href renders as a LINK (A2), so the figure is found by its words
     const figure = (card: string, value: string): HTMLElement => within(screen.getByTestId(`stats-${card}`)).getByText(value);
-    expect(figure("patients.registration", "38").closest("a")?.getAttribute("href")).toBe("/registration");
+    expect(figure("patients.registration", "38").closest("a")?.getAttribute("href")).toBe("/counter");
     expect(figure("patients.cameBack", "3").closest("a")?.getAttribute("href")).toBe("/merge");
     expect(figure("opd.appointments", "12").closest("a")?.getAttribute("href")).toBe("/opd/appointments");
     expect(screen.getByText("Turned out to be duplicates")).toBeInTheDocument();
