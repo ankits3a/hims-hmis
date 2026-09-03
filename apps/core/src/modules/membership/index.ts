@@ -63,7 +63,7 @@ export { INSTRUMENT_SEARCH_PROVIDER_KEY, instrumentSearchProvider } from "./sear
  */
 export {
   consumeEntitlements, counterForWinner, counterLiveAt, entitlementCountersOf, entitlementMovementsOf,
-  narrowToUsableEntitlements, restoreEntitlements,
+  clampValueEntitlementsToBalance, narrowToUsableEntitlements, restoreEntitlements,
 } from "./entitlements";
 export type {
   EntitlementConsume, EntitlementCounterState, EntitlementRestore,

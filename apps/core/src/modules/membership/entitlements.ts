@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { percentAmount } from "../tariff";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { entitlementCounters, entitlementMovements } from "../../kernel/db/schema";
@@ -51,6 +52,12 @@ export type EntitlementCounterState = {
   counterId: string;
   instanceId: string;
   benefitKey: string;
+  /**
+   * FD-7 T6 / R3 — `'count'` or `'paise'`. Every quantity on this type is IN THIS UNIT: a count
+   * counter's `remainingQty` is whole visits, a paise counter's is money. The two are never mixed in
+   * one counter, so no conversion exists anywhere and none is wanted.
+   */
+  unit: string;
   grantedQty: number;
   /** Σ of every signed delta — negative while units are out, back to 0 when all are restored. */
   movedQty: number;
@@ -66,6 +73,15 @@ export type EntitlementConsume = {
   instanceId: string;
   benefitKey: string;
   invoiceLineId: string;
+  /**
+   * FD-7 T6 / R3 — WHAT THE WINNING BENEFIT ACTUALLY TOOK OFF THIS LINE, in paise.
+   *
+   * A COUNT counter ignores it: one line is one unit, and that has not changed. A PAISE counter
+   * decrements by exactly this, because the thing being drawn down IS the money. The caller already
+   * had it — `invoices.ts` reads `winner.amountPaise` two lines away to build the coupon redemption
+   * — so nothing new is computed and, as everywhere else in this file, nothing is divided.
+   */
+  amountPaise: number;
 };
 
 export type EntitlementRestore = {
@@ -117,6 +133,7 @@ export async function entitlementCountersOf(
       counterId: c.id,
       instanceId: c.instanceId,
       benefitKey: c.benefitKey,
+      unit: c.unit,
       grantedQty: c.grantedQty,
       movedQty,
       remainingQty: c.grantedQty + movedQty,
@@ -160,19 +177,86 @@ export function narrowToUsableEntitlements(
   at: Date,
 ): ResolvedInstruments {
   if (counters.length === 0) return resolved;
-  const usable = new Map<string, boolean>();
+  const live = new Map<string, EntitlementCounterState>();
   for (const counter of counters) {
-    usable.set(
-      counterKey(counter.instanceId, counter.benefitKey),
-      counterLiveAt(counter, at) && counter.remainingQty > 0,
-    );
+    if (counterLiveAt(counter, at) && counter.remainingQty > 0) {
+      live.set(counterKey(counter.instanceId, counter.benefitKey), counter);
+    } else {
+      live.delete(counterKey(counter.instanceId, counter.benefitKey));
+    }
   }
+  const seen = new Set(counters.map((c) => counterKey(c.instanceId, c.benefitKey)));
+
   const memberships = resolved.memberships.map((instrument): ResolvedMembership => {
-    const benefits = instrument.benefits.filter((term: BenefitTerm) => {
-      const known = usable.get(counterKey(instrument.instanceId, term.benefitKey));
-      return known === undefined || known;
+    const benefits: BenefitTerm[] = [];
+    for (const term of instrument.benefits) {
+      const key = counterKey(instrument.instanceId, term.benefitKey);
+      // A term naming NO counter is an unlimited percentage benefit — untouched, as before.
+      if (!seen.has(key)) { benefits.push(term); continue; }
+      if (!live.has(key)) continue;   // exhausted, lapsed or void — dropped, in EITHER unit
+      benefits.push(term);
+    }
+    return benefits.length === instrument.benefits.length
+      && benefits.every((b, i) => b === instrument.benefits[i])
+      ? instrument
+      : { ...instrument, benefits };
+  });
+  return { ...resolved, memberships };
+}
+
+/**
+ * ═══ CLOSE REVIEW / CRITICAL — A BALANCE IS NOT A CAP, AND THE DIFFERENCE COST THE PATIENT ═══
+ *
+ * T6 shipped R3's value lane by narrowing the benefit term's `capPaise` to the counter's remaining
+ * balance. That is wrong, and silently so: `benefitCandidate` **REJECTS an over-cap ask rather than
+ * clamping it** — a deliberate, documented rule (B4/K3), because a cap is a CONTROL and clamping
+ * would turn every misconfigured coupon into a quiet payout at its cap.
+ *
+ * So a package with ₹40 left against a ₹100 benefit produced NO DISCOUNT AT ALL. The patient paid in
+ * full and their balance sat unused — the exact opposite of T6's own promise that "it is a benefit
+ * worth exactly ₹4,200 today, and the patient pays the rest". Every T6 test asserted the narrowed
+ * CAP and none asserted the resulting MONEY, which is why a green suite shipped it.
+ *
+ * THE FIX IS TO CLAMP THE VALUE, NOT THE CAP. A term whose ask exceeds the balance becomes a
+ * `flat_paise` term worth exactly the balance — an honest, smaller benefit rather than a capped one
+ * that gets refused. `benefitCandidate` then finds `raw === value <= cap` and applies it, and it
+ * still clamps to the line's gross on its own (`Math.min(raw, grossPaise)`), so a ₹4,200 balance
+ * against a ₹500 line gives ₹500 rather than ₹4,200.
+ *
+ * IT RUNS WHERE THE GROSS IS KNOWN, which is why it is a second pass rather than part of the
+ * narrowing above: "does the ask exceed the balance" is unanswerable for a percentage until the bill
+ * has been priced once.
+ *
+ * NOT ADDRESSED HERE, because it is not new and not this lane's: a MULTI-LINE bill can have one
+ * benefit win on several lines and together ask for more than the counter holds, and
+ * `consumeEntitlements` then refuses the invoice. **The count lane has behaved exactly this way
+ * since Plan 09** — two lines against a one-visit counter refuse identically — so it is a
+ * pre-existing property of a per-line benefit sharing one counter, and it fails SAFE (a loud
+ * refusal, never an over-draw).
+ */
+export function clampValueEntitlementsToBalance(
+  resolved: ResolvedInstruments,
+  counters: EntitlementCounterState[],
+  billGrossPaise: number,
+): ResolvedInstruments {
+  const paise = new Map<string, number>();
+  for (const counter of counters) {
+    if (counter.unit === "paise") paise.set(counterKey(counter.instanceId, counter.benefitKey), counter.remainingQty);
+  }
+  if (paise.size === 0) return resolved;
+
+  const memberships = resolved.memberships.map((instrument): ResolvedMembership => {
+    let changed = false;
+    const benefits = instrument.benefits.map((term): BenefitTerm => {
+      const remaining = paise.get(counterKey(instrument.instanceId, term.benefitKey));
+      if (remaining === undefined) return term;
+      const ask = term.kind === "percent_bps" ? percentAmount(billGrossPaise, term.value) : term.value;
+      if (ask <= remaining) return term;   // the balance covers it — the plan's own terms stand
+      changed = true;
+      // The plan's OWN cap still binds: a benefit worth "up to ₹150" never becomes worth more.
+      return { ...term, kind: "flat_paise", value: Math.min(remaining, term.capPaise ?? remaining) };
     });
-    return benefits.length === instrument.benefits.length ? instrument : { ...instrument, benefits };
+    return changed ? { ...instrument, benefits } : instrument;
   });
   return { ...resolved, memberships };
 }
@@ -238,12 +322,19 @@ export async function consumeEntitlements(
   const counterOf = new Map(wanted.map((c) => [counterKey(c.instanceId, c.benefitKey), c] as const));
 
   const needed = new Map<string, number>();
-  const consumeRows: { counterId: string; consume: EntitlementConsume }[] = [];
+  const consumeRows: { counterId: string; consume: EntitlementConsume; ask: number }[] = [];
   for (const consume of input.consumes) {
     const counter = counterOf.get(counterKey(consume.instanceId, consume.benefitKey));
     if (counter === undefined) continue; // an unlimited benefit — nothing to decrement
-    needed.set(counter.id, (needed.get(counter.id) ?? 0) + 1);
-    consumeRows.push({ counterId: counter.id, consume });
+    /*
+     * FD-7 T6 / R3 — how much of the counter this line asks for, IN THE COUNTER'S OWN UNIT.
+     * A count counter asks for one visit, exactly as it always has. A paise counter asks for the
+     * money the benefit actually took off this line, which the caller already had in hand.
+     */
+    const ask = counter.unit === "paise" ? consume.amountPaise : 1;
+    if (ask <= 0) continue; // a benefit that took nothing off draws nothing down
+    needed.set(counter.id, (needed.get(counter.id) ?? 0) + ask);
+    consumeRows.push({ counterId: counter.id, consume, ask });
   }
   if (consumeRows.length === 0) return { movementIds: [], byCounter };
 
@@ -285,7 +376,13 @@ export async function consumeEntitlements(
     await tx.insert(entitlementMovements).values({
       id,
       counterId: row.counterId,
-      delta: -1, // one line, one unit — a counter unit is not divisible
+      /*
+       * FD-7 T6 / R3 — `-row.ask`, which is `-1` for a count counter (one line, one visit, exactly
+       * as before) and the negated money for a paise counter. The log stays a log of signed
+       * integers in the counter's own unit, which is why `restoreEntitlements` — negating
+       * `-movement.delta` — needed NO CHANGE AT ALL to reverse a value draw-down correctly.
+       */
+      delta: -row.ask,
       kind: "consume",
       invoiceId: input.invoiceId,
       invoiceLineId: row.consume.invoiceLineId,
@@ -296,7 +393,7 @@ export async function consumeEntitlements(
       at: input.at,
     });
     movementIds.push(id);
-    byCounter.set(row.counterId, (byCounter.get(row.counterId) ?? 0) + 1);
+    byCounter.set(row.counterId, (byCounter.get(row.counterId) ?? 0) + row.ask);
   }
   return { movementIds, byCounter };
 }

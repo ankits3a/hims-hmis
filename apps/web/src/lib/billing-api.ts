@@ -65,6 +65,20 @@ export type WirePricedLine = {
   netPaise: number;
 };
 
+/**
+ * FD-7 T6 — WHAT IS LEFT ON THE PATIENT'S PACKAGE, so the cashier can answer the question the
+ * patient actually asks. A NARROW projection by construction: no card code, no plan id, no instance
+ * id — a balance is not an identity, and the priced lines already name the benefit that won.
+ */
+export type WireBenefitBalance = {
+  benefitKey: string;
+  title: string;
+  /** `'count'` — whole visits, read as "3 of 8" — or `'paise'`, read as money (R3). */
+  unit: string;
+  grantedQty: number;
+  remainingQty: number;
+};
+
 export type WirePricedDraft = {
   tariffVersionId: string; intendedPayer: string;
   lines: WirePricedLine[]; totals: WireInvoiceTotals;
@@ -267,7 +281,7 @@ export function previewInvoice(body: {
   encounterId?: string; lines: WireInvoiceLineInput[];
   // Same terms the invoice is issued in, so a preview and the bill behind it cannot disagree.
   couponCodes?: string[]; attributionCode?: string;
-}): Promise<WirePricedDraft> {
+}): Promise<WirePricedDraft & { balances: WireBenefitBalance[] }> {
   return api("POST", "/billing/invoices/preview", body);
 }
 

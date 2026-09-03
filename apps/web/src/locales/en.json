@@ -101,7 +101,7 @@
     "placeholder": "Phone number, UHID, or name…",
     "hint": "Phone-first: type digits",
     "none": "No matching patients",
-    "newPatient": "New patient (F2)"
+    "newPatient": "New patient (F4)"
   },
   "register": {
     "title": "New patient",
@@ -707,7 +707,13 @@
       "issue": "Issue invoice",
       "issued": "Issued {{invoiceNo}}",
       "unallocated": "Change due / banked as advance: {{amount}}",
-      "nextBill": "Next bill"
+      "nextBill": "Next bill",
+      "schemes": "Schemes",
+      "coupons": "Coupon codes",
+      "couponsHint": "As printed — separate several with a comma",
+      "partnerSlip": "Partner slip code",
+      "balanceCount": "{{left}} of {{granted}} left",
+      "balanceMoney": "{{left}} of {{granted}} left"
     },
     "money": {
       "paiseOnly": "Amounts go to paise — at most two decimals"

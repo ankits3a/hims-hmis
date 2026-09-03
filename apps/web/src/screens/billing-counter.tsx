@@ -102,6 +102,22 @@ export function BillingCounter(): React.ReactElement {
   const [creditApprovalId, setCreditApprovalId] = useState("");
   const [creditApprovalRequired, setCreditApprovalRequired] = useState(false);
   const [draftId, setDraftId] = useState(newDraftId);
+  /*
+   * ═══ FD-7 T6 — THE SCHEME RAIL FINALLY HAS A CASHIER ═══
+   *
+   * `couponCodes` and `attributionCode` have been on `WireIssueInvoiceBody` and on the preview
+   * helper since RC-2, and on the server since T2 — and NOTHING ON THIS SCREEN COULD SET EITHER.
+   * A coupon the patient handed over could not be typed in, and the partner slip they carried in
+   * could not be recorded. The whole benefit engine underneath — memberships, coupon rules,
+   * entitlement counters, redemptions and their reversal — has been reachable only by a caller
+   * writing JSON by hand.
+   *
+   * They are held as ONE text field each and split on commit rather than as chips: a cashier types
+   * what is printed on the paper, and a coupon that fails its rule must fail visibly (the server
+   * names the rule) rather than be silently dropped by a parser on this side.
+   */
+  const [couponText, setCouponText] = useState("");
+  const [attributionCode, setAttributionCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [issued, setIssued] = useState<WireIssueInvoiceResult | null>(null);
@@ -139,22 +155,37 @@ export function BillingCounter(): React.ReactElement {
   });
 
   const lineInputs = lines.map(toLineInput);
+  /** Comma- or space-separated, trimmed, blanks dropped, order preserved — what the paper says. */
+  const couponCodes = couponText.split(/[,\s]+/).map((c) => c.trim()).filter((c) => c !== "");
+  const referral = attributionCode.trim();
   /**
    * The preview is priced by the SERVER on the debounced draft, and the request is built from the
    * debounced key itself — not from `lines` — so the body can never be one keystroke ahead of the
    * key it is cached under (an `enabled` that flipped on the live lines would fire the first
    * request with the previous, empty draft).
    */
-  const previewKey = useDebounced(JSON.stringify({ encounterId: encounterId.trim(), lines: lineInputs }), PREVIEW_DEBOUNCE_MS);
-  const previewBody = JSON.parse(previewKey) as { encounterId: string; lines: WireInvoiceLineInput[] };
+  /*
+   * FD-7 T6 — THE CODES ARE PART OF THE KEY, and that is the whole guard against the defect RC-2's
+   * own review named: "a seat that quoted ₹450 through `fetchFeeQuote(id, codes)` would still have
+   * issued at ₹500". The preview and the invoice must be asked in the SAME terms or the money
+   * disagrees, so the coupon text and the slip travel inside the debounced key rather than beside it.
+   */
+  const previewKey = useDebounced(
+    JSON.stringify({ encounterId: encounterId.trim(), lines: lineInputs, couponCodes, referral }),
+    PREVIEW_DEBOUNCE_MS,
+  );
+  const previewBody = JSON.parse(previewKey) as {
+    encounterId: string; lines: WireInvoiceLineInput[]; couponCodes: string[]; referral: string;
+  };
   const preview = useQuery({
     queryKey: ["billing", "preview", previewKey],
     queryFn: () =>
-      previewInvoice(
-        previewBody.encounterId === ""
-          ? { lines: previewBody.lines }
-          : { encounterId: previewBody.encounterId, lines: previewBody.lines },
-      ),
+      previewInvoice({
+        ...(previewBody.encounterId === "" ? {} : { encounterId: previewBody.encounterId }),
+        lines: previewBody.lines,
+        ...(previewBody.couponCodes.length > 0 ? { couponCodes: previewBody.couponCodes } : {}),
+        ...(previewBody.referral === "" ? {} : { attributionCode: previewBody.referral }),
+      }),
     enabled: previewBody.lines.length > 0,
   });
 
@@ -236,6 +267,9 @@ export function BillingCounter(): React.ReactElement {
       Object.entries(discountApprovals).filter(([, id]) => id.trim() !== "").map(([lineId, id]) => [lineId, id.trim()]),
     );
     if (Object.keys(approvals).length > 0) body.discountApprovals = approvals;
+    // The SAME terms the preview above was priced with — see the preview key's comment.
+    if (couponCodes.length > 0) body.couponCodes = couponCodes;
+    if (referral !== "") body.attributionCode = referral;
 
     try {
       setIssued(await issueInvoice(body, idemKey));
@@ -371,6 +405,65 @@ export function BillingCounter(): React.ReactElement {
 
         {/* (b) the lines and the server-priced preview */}
         <div className="space-y-3">
+          {/*
+            ═══ FD-7 T6 — THE SCHEMES, AT THE ONE DESK THAT COLLECTS THE MONEY ═══
+
+            Both fields feed the SAME preview the bill is issued from (see the preview key), so what
+            the cashier reads on screen is what the invoice will say. A coupon that fails its rule
+            comes back as the server's own refusal naming the rule — it is never dropped quietly here.
+          */}
+          <h2 className="text-sm font-semibold">{t("billing.counter.schemes")}</h2>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium" htmlFor="counter-coupons">
+                {t("billing.counter.coupons")}
+              </label>
+              <input
+                id="counter-coupons" data-testid="counter-coupons"
+                value={couponText} onChange={(e) => setCouponText(e.target.value)}
+                placeholder={t("billing.counter.couponsHint")}
+                className="w-full rounded border px-2 py-1"
+              />
+            </div>
+            <div>
+              {/*
+                D7 / R4 — the partner slip. The owner ruled it is captured at REGISTRATION and stays
+                editable here; the registration half needs a rail that does not exist yet (nothing in
+                the repository writes `attribution_ids.state = 'claimed'`), so this is the half that
+                can be built honestly today, and it is the one that reaches the money.
+              */}
+              <label className="block text-sm font-medium" htmlFor="counter-referral">
+                {t("billing.counter.partnerSlip")}
+              </label>
+              <input
+                id="counter-referral" data-testid="counter-referral"
+                value={attributionCode} onChange={(e) => setAttributionCode(e.target.value)}
+                className="w-full rounded border px-2 py-1 font-mono"
+              />
+            </div>
+          </div>
+
+          {/*
+            WHAT IS LEFT ON THE PATIENT'S PACKAGE — the question a patient actually asks at the
+            counter, which this screen could not answer at all. `balances` is the server's narrow
+            projection: no card code, no plan id. R3's two lanes read differently on purpose, because
+            "3 of 8" and "₹4,200 of ₹10,000 left" are different promises.
+          */}
+          {(preview.data?.balances ?? []).length > 0 && (
+            <ul data-testid="counter-balances" className="space-y-1 rounded border border-dashed p-2">
+              {(preview.data?.balances ?? []).map((b) => (
+                <li key={b.benefitKey} data-testid={`balance-${b.benefitKey}`} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                  <span className="font-medium">{b.title}</span>
+                  <span data-testid={`balance-left-${b.benefitKey}`} className="tabular-nums text-neutral-600">
+                    {b.unit === "paise"
+                      ? t("billing.counter.balanceMoney", { left: fmtPaise(b.remainingQty), granted: fmtPaise(b.grantedQty) })
+                      : t("billing.counter.balanceCount", { left: b.remainingQty, granted: b.grantedQty })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
           <h2 className="text-sm font-semibold">{t("billing.counter.lines")}</h2>
           <label className="block text-sm font-medium" htmlFor="counter-service-search">
             {t("billing.counter.addService")}

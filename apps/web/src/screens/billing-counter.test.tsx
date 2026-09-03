@@ -286,6 +286,109 @@ describe("BillingCounter", () => {
     expect(screen.getByLabelText("Approval id", { selector: "#discount-approval-line-1" })).toBeInTheDocument();
   });
 
+  /* ══════════════════════════════════════════════════════════════════════════════════════════
+     FD-7 T6 — THE SCHEME RAIL FINALLY HAS A CASHIER
+     ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+  /**
+   * `couponCodes` and `attributionCode` have been on the issue body and the preview helper since
+   * RC-2, and on the server since T2 — and NOTHING ON THIS SCREEN COULD SET EITHER. The whole
+   * benefit engine underneath (memberships, coupon rules, entitlement counters, redemptions and
+   * their reversal) was reachable only by a caller writing JSON by hand.
+   *
+   * THE KEY ASSERTION IS THAT BOTH TRAVEL ON THE PREVIEW *AND* THE INVOICE. RC-2's own review named
+   * the failure mode: "a seat that quoted ₹450 would still have issued at ₹500". A coupon that
+   * changes the preview and not the bill is worse than one that does nothing.
+   */
+  it("FD-7 T6: the coupon and the partner slip travel on the PREVIEW and on the INVOICE, in the same terms", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "POST /api/billing/invoices/preview": { status: 200, body: FEE_DRAFT },
+      "POST /api/billing/invoices": { status: 201, body: ISSUED },
+      "GET /api/billing/invoices/inv-1/print": { status: 200, body: PRINT },
+    });
+    renderWithProviders(<BillingCounter />);
+    const user = userEvent.setup();
+    await pickPatient(user);
+    await screen.findByTestId("line-row-fee");
+    await waitFor(() => expect(screen.getByTestId("preview-net")).toHaveTextContent("₹560.00"));
+
+    await user.type(screen.getByTestId("counter-coupons"), "DIWALI20, STAFF5");
+    await user.type(screen.getByTestId("counter-referral"), "PTR-9911");
+    await user.type(screen.getByLabelText("Amount", { selector: "#tender-amount-0" }), "560");
+
+    await waitFor(() => {
+      const bodies = bodiesOf("POST", "/api/billing/invoices/preview");
+      expect(bodies[bodies.length - 1]).toMatchObject({
+        couponCodes: ["DIWALI20", "STAFF5"],   // split on the comma, trimmed, order kept
+        attributionCode: "PTR-9911",
+      });
+    });
+
+    await user.click(screen.getByTestId("submit-invoice"));
+    await waitFor(() => expect(bodiesOf("POST", "/api/billing/invoices")).toHaveLength(1));
+    expect(bodiesOf("POST", "/api/billing/invoices")[0]).toMatchObject({
+      couponCodes: ["DIWALI20", "STAFF5"],
+      attributionCode: "PTR-9911",
+    });
+  });
+
+  /** Empty fields must send NOTHING — an empty string is not a coupon, and `""` would be a lookup. */
+  it("FD-7 T6: blank scheme fields send no keys at all", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({ ...BASE_ROUTES, "POST /api/billing/invoices/preview": { status: 200, body: FEE_DRAFT } });
+    renderWithProviders(<BillingCounter />);
+    await screen.findByTestId("line-row-fee");
+
+    await waitFor(() => expect(bodiesOf("POST", "/api/billing/invoices/preview").length).toBeGreaterThan(0));
+    const body = bodiesOf("POST", "/api/billing/invoices/preview")[0]!;
+    expect(body).not.toHaveProperty("couponCodes");
+    expect(body).not.toHaveProperty("attributionCode");
+  });
+
+  /**
+   * ═══ R3's TWO LANES READ DIFFERENTLY, ON PURPOSE ═══
+   *
+   * "consult 3 of 8" and "₹4,200 of ₹10,000 left" are different promises to make to a patient, and
+   * the owner ruled that a package may be either. The screen could answer neither: `balances` is a
+   * new, deliberately narrow projection — key, title, unit, granted, remaining, and no card code.
+   */
+  it("FD-7 T6: a count package reads as visits and a value package reads as money", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({
+      ...BASE_ROUTES,
+      "POST /api/billing/invoices/preview": {
+        status: 200,
+        body: {
+          ...FEE_DRAFT,
+          balances: [
+            { benefitKey: "consults", title: "Consultations", unit: "count", grantedQty: 8, remainingQty: 3 },
+            { benefitKey: "wallet", title: "Health wallet", unit: "paise", grantedQty: 1_000_000, remainingQty: 420_000 },
+          ],
+        },
+      },
+    });
+    renderWithProviders(<BillingCounter />);
+    await screen.findByTestId("line-row-fee");
+
+    const visits = await screen.findByTestId("balance-left-consults");
+    expect(visits.textContent).toBe("3 of 8 left");                 // whole visits, no rupee sign
+    const wallet = screen.getByTestId("balance-left-wallet");
+    expect(wallet.textContent).toContain("4,200");                  // THE KILL — money, not "420000"
+    expect(wallet.textContent).toContain("10,000");
+    expect(wallet.textContent).not.toBe(visits.textContent);
+  });
+
+  /** No package, no panel — an empty dashed box beside a bill is furniture, not information. */
+  it("FD-7 T6: a patient with no package gets no balances panel", async () => {
+    searchState.current = { encounterId: "enc-1" };
+    mockRoutes({ ...BASE_ROUTES, "POST /api/billing/invoices/preview": { status: 200, body: { ...FEE_DRAFT, balances: [] } } });
+    renderWithProviders(<BillingCounter />);
+    await screen.findByTestId("line-row-fee");
+    expect(screen.queryByTestId("counter-balances")).toBeNull();
+  });
+
   it("K39: the dues sidebar polls on refetchInterval 15_000 — a SECOND GET arrives after 15 s of fake time", async () => {
     vi.useFakeTimers();
     mockRoutes({
