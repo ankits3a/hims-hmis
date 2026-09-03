@@ -59,6 +59,19 @@ const configSchema = z.object({
   // require a value or a new .env entry anywhere (server or CI).
   WORKER_NOTIFY_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
   NOTIFY_PROVIDER: notifyProviderSchema.default("console"),
+  /*
+   * FD-8 — the triage advisor's gateway. ALL OPTIONAL and unset by default: with no key the desk
+   * routes on its own keyword table and never makes a network call, which is the shipped behaviour
+   * and the one every existing test sees. `OMNIROUTE_API_KEY` is a SECRET and belongs in `.env`
+   * (gitignored) or the deploy environment — never in source, never in the browser bundle. The call
+   * is made server-side for exactly that reason.
+   */
+  TRIAGE_BASE_URL: z.string().url().optional(),
+  TRIAGE_API_KEY: z.string().min(1).optional(),
+  TRIAGE_MODEL: z.string().min(1).default("auto/best-fast"),
+  /* MEASURED 2026-09-04 against the real gateway: 22-34 s, and often over 40. A counter cannot wait,
+   * so the default is short and a timeout is an ordinary outcome — the keyword table answers. */
+  TRIAGE_TIMEOUT_MS: z.coerce.number().int().positive().default(6000),
   NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
   // Plan 11a D6/D7 (retention). All three defaulted, same B1 scar as the block above: no .env
   // entry is required anywhere, on the server or in CI.
@@ -175,6 +188,8 @@ export type AppConfig = {
   workerDailyTickMs: number;
   workerNotifyIntervalMs: number;
   notifyProvider: NotifyProvider;
+  /** FD-8 — the triage advisor. `baseUrl`/`apiKey` null ⇒ the desk uses its own keyword table only. */
+  triage: { baseUrl: string | null; apiKey: string | null; model: string; timeoutMs: number };
   notifyStuckAfterMs: number;
   // Plan 11a D6/D7. `retentionEnabled` is FALSE unless an operator says otherwise, in as many
   // letters; `worker/jobs.ts` threads all three into `retentionSweep` through the registration,
@@ -222,6 +237,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     workerDailyTickMs: parsed.WORKER_DAILY_TICK_MS,
     workerNotifyIntervalMs: parsed.WORKER_NOTIFY_INTERVAL_MS,
     notifyProvider: parsed.NOTIFY_PROVIDER,
+    triage: {
+      baseUrl: parsed.TRIAGE_BASE_URL ?? null,
+      apiKey: parsed.TRIAGE_API_KEY ?? null,
+      model: parsed.TRIAGE_MODEL,
+      timeoutMs: parsed.TRIAGE_TIMEOUT_MS,
+    },
     notifyStuckAfterMs: parsed.NOTIFY_STUCK_AFTER_MS,
     retentionEnabled: parsed.RETENTION_ENABLED,
     retentionEventsMonths: parsed.RETENTION_EVENTS_MONTHS,

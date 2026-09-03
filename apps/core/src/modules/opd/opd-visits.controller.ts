@@ -1,17 +1,21 @@
-import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Query } from "@nestjs/common";
 import { asc, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
-import { DB } from "../../kernel/tokens";
+import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
 import { abandonVisit, counterState, getVisit, joinQueue, listVisits, openVisit, patientTimeline, reEnterVisit } from "./encounters";
 import { patientRxHistory, patientVitalsHistory } from "./history";
+import { listDepartments } from "./masters";
 import type { RxHistoryItem, VitalsHistoryItem } from "./history";
+import type { AppConfig } from "../../kernel/config";
 import { walkIn } from "./walk-in";
 import { continuityDoctorFor } from "./continuity";
+import { suggestDepartments } from "./triage";
+import type { TriageResult } from "./triage";
 import type { ContinuityAnchor } from "./continuity";
 import type { WalkInDeferredResult, WalkInInput, WalkInResult } from "./walk-in";
 import { OpdError } from "./errors";
@@ -38,6 +42,8 @@ const slotsQuery = z.object({ doctorId: z.string().min(1), date: z.string().max(
  * FD-7 T2 — both ids are REQUIRED. A continuity read without a department would be "list the places
  * this patient has been", which is the diagnosis-shaped read this route exists not to be.
  */
+const triageBody = z.object({ text: z.string().min(1).max(400) });
+
 const continuityQuery = z.object({
   patientId: z.string().min(1),
   departmentId: z.string().min(1),
@@ -184,7 +190,10 @@ type VisitDetail = NonNullable<Awaited<ReturnType<typeof getVisit>>> & { patient
 
 @Controller("opd")
 export class OpdVisitsController {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(
+    @Inject(DB) private readonly db: Db,
+    @Inject(CONFIG) private readonly config: AppConfig,
+  ) {}
 
   // ——— slots and appointments ———
 
@@ -204,6 +213,29 @@ export class OpdVisitsController {
    * because routing an arriving patient is a visit act; `opd.appointments.manage` is what the seat's
    * NAV row needs, and a clerk who may open a visit but not book one still has to route the walk-in.
    */
+  /**
+   * FD-8 — THE COMPLAINT, IN THE PATIENT'S OWN WORDS. Desk One's appointment stage asks "what brings
+   * them in?" and ranks the hospital's departments from the answer; this is the server side of that.
+   *
+   * On `opd.visits.open` — the front desk's own key — because routing an arriving patient is a visit
+   * act, and a clerk who may open a visit must be able to work out where to send them.
+   *
+   * The MODEL CALL IS SERVER-SIDE and that is not incidental: the gateway key must never reach a
+   * browser bundle, where every user of the hospital could read it.
+   */
+  @RequirePermission("opd.visits.open", "hospital")
+  @Post("triage")
+  @HttpCode(200) // a suggestion is an answer, not a created thing
+  async triage(@Body() body: unknown): Promise<TriageResult> {
+    const b = parsed(triageBody, body);
+    const departments = await listDepartments(this.db, { activeOnly: true });
+    return suggestDepartments(
+      b.text,
+      departments.map((d) => ({ id: d.id, name: d.name })),
+      this.config.triage,
+    );
+  }
+
   @RequirePermission("opd.visits.open", "hospital")
   @Get("continuity")
   async continuity(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ anchor: ContinuityAnchor | null }> {
