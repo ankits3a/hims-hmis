@@ -61,3 +61,14 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @hmis/web test
+      # THE WEB APP WAS NEVER BUILT IN CI, AND THAT IS HOW A BROKEN `styles.css` REACHED `main`.
+      #
+      # `vitest` does not compile CSS: it resolves `import "./styles.css"` to a stub, so an
+      # unterminated comment in that file is invisible to every one of the 649 web tests. PLAN 16c
+      # lost one line (`}` plus the `/**` opening the next comment) and shipped green; the front
+      # desk's own token block never closed, and the app could not paint AT ALL until it was found
+      # by hand in a browser two days later.
+      #
+      # `vite build` is the cheapest thing that would have caught it — it runs Tailwind for real,
+      # resolves every import and type-checks nothing that `tsc` already covers. ~10s.
+      - run: pnpm --filter @hmis/web run build

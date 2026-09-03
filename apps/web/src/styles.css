@@ -310,7 +310,9 @@
 
   /* Seat-local: the second, lighter weight of `--dim` that the registry has no slot for. */
   --seat-faint: #8ea69a;
+}
 
+/**
  * PLAN 16c D11 — THE DISPENSE COUNTER IS A SEAT (Desk One), and it opts in the way the registration
  * counter does: a `data-seat` on its root, token VALUES copied rather than shared through `:root`
  * (RC-3's own mutant — a shared root would restyle every screen that never asked). Same paper, ink,
