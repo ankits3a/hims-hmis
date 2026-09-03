@@ -101,7 +101,7 @@
     "placeholder": "Phone number, UHID, or name…",
     "hint": "Phone-first: type digits",
     "none": "No matching patients",
-    "newPatient": "New patient (F2)"
+    "newPatient": "New patient (F4)"
   },
   "register": {
     "title": "New patient",

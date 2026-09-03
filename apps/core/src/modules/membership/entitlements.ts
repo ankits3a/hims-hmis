@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { percentAmount } from "../tariff";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { entitlementCounters, entitlementMovements } from "../../kernel/db/schema";
@@ -192,30 +193,70 @@ export function narrowToUsableEntitlements(
       const key = counterKey(instrument.instanceId, term.benefitKey);
       // A term naming NO counter is an unlimited percentage benefit — untouched, as before.
       if (!seen.has(key)) { benefits.push(term); continue; }
-      const counter = live.get(key);
-      if (counter === undefined) continue;               // exhausted, lapsed or void — dropped, as before
-      if (counter.unit !== "paise") { benefits.push(term); continue; }
-      /*
-       * ═══ FD-7 T6 / R3 — THE VALUE LANE NARROWS THE CAP INSTEAD OF ONLY OPENING A GATE ═══
-       *
-       * A count counter answers one question — is there another visit left — and a boolean is the
-       * whole of it. A money balance is different: ₹4,200 left against a benefit that would take
-       * ₹5,000 off is not "exhausted", and it is not "available in full" either. It is a benefit
-       * worth exactly ₹4,200 today, and the patient pays the rest.
-       *
-       * `capPaise` is where that already lives. The plan's own benefit terms carry a cap
-       * (`instruments.ts:62`), the pricing engine already honours it, and the contest already
-       * explains a capped win in its reason — so the balance is expressed in the vocabulary the
-       * money path already speaks rather than as a second mechanism beside it. NOTHING here divides,
-       * which is the property this file's header asks every change to preserve.
-       */
-      const capped = Math.min(term.capPaise ?? counter.remainingQty, counter.remainingQty);
-      benefits.push(capped === term.capPaise ? term : { ...term, capPaise: capped });
+      if (!live.has(key)) continue;   // exhausted, lapsed or void — dropped, in EITHER unit
+      benefits.push(term);
     }
     return benefits.length === instrument.benefits.length
       && benefits.every((b, i) => b === instrument.benefits[i])
       ? instrument
       : { ...instrument, benefits };
+  });
+  return { ...resolved, memberships };
+}
+
+/**
+ * ═══ CLOSE REVIEW / CRITICAL — A BALANCE IS NOT A CAP, AND THE DIFFERENCE COST THE PATIENT ═══
+ *
+ * T6 shipped R3's value lane by narrowing the benefit term's `capPaise` to the counter's remaining
+ * balance. That is wrong, and silently so: `benefitCandidate` **REJECTS an over-cap ask rather than
+ * clamping it** — a deliberate, documented rule (B4/K3), because a cap is a CONTROL and clamping
+ * would turn every misconfigured coupon into a quiet payout at its cap.
+ *
+ * So a package with ₹40 left against a ₹100 benefit produced NO DISCOUNT AT ALL. The patient paid in
+ * full and their balance sat unused — the exact opposite of T6's own promise that "it is a benefit
+ * worth exactly ₹4,200 today, and the patient pays the rest". Every T6 test asserted the narrowed
+ * CAP and none asserted the resulting MONEY, which is why a green suite shipped it.
+ *
+ * THE FIX IS TO CLAMP THE VALUE, NOT THE CAP. A term whose ask exceeds the balance becomes a
+ * `flat_paise` term worth exactly the balance — an honest, smaller benefit rather than a capped one
+ * that gets refused. `benefitCandidate` then finds `raw === value <= cap` and applies it, and it
+ * still clamps to the line's gross on its own (`Math.min(raw, grossPaise)`), so a ₹4,200 balance
+ * against a ₹500 line gives ₹500 rather than ₹4,200.
+ *
+ * IT RUNS WHERE THE GROSS IS KNOWN, which is why it is a second pass rather than part of the
+ * narrowing above: "does the ask exceed the balance" is unanswerable for a percentage until the bill
+ * has been priced once.
+ *
+ * NOT ADDRESSED HERE, because it is not new and not this lane's: a MULTI-LINE bill can have one
+ * benefit win on several lines and together ask for more than the counter holds, and
+ * `consumeEntitlements` then refuses the invoice. **The count lane has behaved exactly this way
+ * since Plan 09** — two lines against a one-visit counter refuse identically — so it is a
+ * pre-existing property of a per-line benefit sharing one counter, and it fails SAFE (a loud
+ * refusal, never an over-draw).
+ */
+export function clampValueEntitlementsToBalance(
+  resolved: ResolvedInstruments,
+  counters: EntitlementCounterState[],
+  billGrossPaise: number,
+): ResolvedInstruments {
+  const paise = new Map<string, number>();
+  for (const counter of counters) {
+    if (counter.unit === "paise") paise.set(counterKey(counter.instanceId, counter.benefitKey), counter.remainingQty);
+  }
+  if (paise.size === 0) return resolved;
+
+  const memberships = resolved.memberships.map((instrument): ResolvedMembership => {
+    let changed = false;
+    const benefits = instrument.benefits.map((term): BenefitTerm => {
+      const remaining = paise.get(counterKey(instrument.instanceId, term.benefitKey));
+      if (remaining === undefined) return term;
+      const ask = term.kind === "percent_bps" ? percentAmount(billGrossPaise, term.value) : term.value;
+      if (ask <= remaining) return term;   // the balance covers it — the plan's own terms stand
+      changed = true;
+      // The plan's OWN cap still binds: a benefit worth "up to ₹150" never becomes worth more.
+      return { ...term, kind: "flat_paise", value: Math.min(remaining, term.capPaise ?? remaining) };
+    });
+    return changed ? { ...instrument, benefits } : instrument;
   });
   return { ...resolved, memberships };
 }

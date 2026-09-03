@@ -13,8 +13,8 @@ import {
 import { registerPatient } from "../patients";
 import { issueCreditNote, issueInvoice, memberBenefitsEnabled, previewInvoice } from "../billing";
 import {
-  consumeEntitlements, entitlementCountersOf, entitlementMovementsOf, narrowToUsableEntitlements,
-  restoreEntitlements,
+  clampValueEntitlementsToBalance, consumeEntitlements, entitlementCountersOf, entitlementMovementsOf,
+  narrowToUsableEntitlements, restoreEntitlements,
 } from "./entitlements";
 import type { EntitlementCounterState } from "./entitlements";
 import type { ResolvedInstruments } from "./instruments";
@@ -364,7 +364,15 @@ describe("entitlements: consume, restore, and the flag that arms them", () => {
    * `capPaise` is where that already lives, so the balance is expressed in the vocabulary the money
    * path already speaks rather than as a second mechanism beside it — and nothing divides.
    */
-  it("FD-7 T6: a paise counter NARROWS the benefit's cap to its remaining balance", () => {
+  /**
+   * ═══ REWRITTEN BY THE CLOSE REVIEW — THIS TEST USED TO ASSERT THE DEFECT ═══
+   *
+   * It read `expect(narrowed[0]!.capPaise).toBe(420_000)` and passed, because T6 expressed the
+   * balance as a CAP. `benefitCandidate` REJECTS an over-cap ask instead of clamping it (B4/K3), so
+   * that produced NO DISCOUNT AT ALL on any bill the balance could not cover in full — the opposite
+   * of what the lane promises. The mechanism is now a VALUE clamp, and the assertion is the money.
+   */
+  it("CLOSE REVIEW: a partial balance clamps the benefit's VALUE, never its cap", () => {
     const resolved: ResolvedInstruments = {
       patientId: "p1",
       memberships: [{
@@ -382,17 +390,42 @@ describe("entitlements: consume, restore, and the flag that arms them", () => {
       validFrom: VALID_FROM, validTo: VALID_TO, state: "active", ...over,
     });
 
-    const narrowed = narrowToUsableEntitlements(resolved, [paise()], NOW).memberships[0]!.benefits;
-    expect(narrowed).toHaveLength(1);                    // NOT dropped — there is money left
-    expect(narrowed[0]!.capPaise).toBe(420_000);         // ₹4,200, and no more
+    // A 100% benefit on a 500 000p bill asks 500 000 and the balance is 420 000: it becomes a FLAT
+    // benefit worth exactly the balance, which `benefitCandidate` applies instead of refusing.
+    const short = clampValueEntitlementsToBalance(resolved, [paise()], 500_000).memberships[0]!.benefits[0]!;
+    expect({ kind: short.kind, value: short.value, capPaise: short.capPaise })
+      .toEqual({ kind: "flat_paise", value: 420_000, capPaise: null });
 
-    // A cap the PLAN already set lower wins: the balance can only ever narrow, never widen.
-    const tighter = { ...resolved, memberships: [{ ...resolved.memberships[0]!, benefits: [{ ...resolved.memberships[0]!.benefits[0]!, capPaise: 50_000 }] }] };
-    expect(narrowToUsableEntitlements(tighter, [paise()], NOW).memberships[0]!.benefits[0]!.capPaise).toBe(50_000);
+    // When the balance COVERS the ask the plan's own terms stand, untouched and by identity.
+    const fits = clampValueEntitlementsToBalance(resolved, [paise()], 100_000).memberships[0];
+    expect(fits).toBe(resolved.memberships[0]);
 
-    // And an EMPTY balance is exhausted, exactly as a spent count counter is.
-    expect(narrowToUsableEntitlements(resolved, [paise({ remainingQty: 0, movedQty: -1_000_000 })], NOW).memberships[0]!.benefits)
-      .toEqual([]);
+    // The plan's OWN cap still binds — a benefit written "up to ₹1,000" never becomes worth more.
+    const capped = { ...resolved, memberships: [{ ...resolved.memberships[0]!, benefits: [{ ...resolved.memberships[0]!.benefits[0]!, capPaise: 100_000 }] }] };
+    expect(clampValueEntitlementsToBalance(capped, [paise()], 500_000).memberships[0]!.benefits[0]!.value)
+      .toBe(100_000);
+
+    // A COUNT counter is not money and is never clamped.
+    const counted = clampValueEntitlementsToBalance(resolved, [paise({ unit: "count", remainingQty: 3 })], 500_000);
+    expect(counted.memberships[0]).toBe(resolved.memberships[0]);
+  });
+
+  it("CLOSE REVIEW: an exhausted paise counter is still DROPPED by the narrowing", () => {
+    const resolved: ResolvedInstruments = {
+      patientId: "p1",
+      memberships: [{
+        instanceId: INSTANCE_ID, planId: PLAN_ID, planTitle: "Prepaid package", cardCode: "PKG-1",
+        status: "active", validFrom: VALID_FROM, validTo: VALID_TO,
+        benefits: [{ benefitKey: BENEFIT_KEY, title: "package money", kind: "percent_bps", value: 10_000, capPaise: null, scope: { serviceCategories: null, serviceIds: null } }],
+      }],
+      coupons: [], billGrossPaise: 0,
+    };
+    const spent: EntitlementCounterState = {
+      counterId: COUNTER_ID, instanceId: INSTANCE_ID, benefitKey: BENEFIT_KEY, unit: "paise",
+      grantedQty: 1_000_000, movedQty: -1_000_000, remainingQty: 0,
+      validFrom: VALID_FROM, validTo: VALID_TO, state: "active",
+    };
+    expect(narrowToUsableEntitlements(resolved, [spent], NOW).memberships[0]!.benefits).toEqual([]);
   });
 
   /** The count lane must be untouched by all of this — the regression that would cost the most. */
@@ -413,6 +446,28 @@ describe("entitlements: consume, restore, and the flag that arms them", () => {
     const out = narrowToUsableEntitlements(resolved, [counted], NOW);
     expect(out.memberships[0]!.benefits[0]!.capPaise).toBeNull();   // THE KILL for capping a count counter
     expect(out.memberships[0]).toBe(resolved.memberships[0]);       // and not even a copy was made
+  });
+
+  /**
+   * ═══ CLOSE REVIEW — DOES THE VALUE LANE ACTUALLY DISCOUNT? ═══
+   *
+   * T6's own comment promises: "₹4,200 against a ₹5,000 benefit is neither exhausted nor available
+   * in full. It is a benefit worth exactly ₹4,200 today, and the patient pays the rest." Every T6
+   * test asserted the NARROWED CAP and none of them asserted the resulting MONEY.
+   *
+   * The fixture: OPD-CONSULT-NEW is 50 000p and the plan benefit is 20%, so the ask is 10 000p.
+   * The counter below has 4 000p left. The promise says the bill drops by 4 000 to 46 000.
+   */
+  it("CLOSE REVIEW: a partial balance discounts by the balance", async () => {
+    process.env[FLAG] = "true";
+    await db.insert(entitlementCounters).values({
+      id: COUNTER_ID, instanceId: INSTANCE_ID, benefitKey: BENEFIT_KEY, unit: "paise",
+      grantedQty: 4_000, validFrom: VALID_FROM, validTo: VALID_TO,
+    });
+    const draft = await previewInvoice(db, {
+      patientId, lines: [{ lineId: "l1", serviceId: base.consultNewServiceId, qty: 1 }],
+    }, NOW);
+    expect(draft.totals.netPayablePaise).toBe(46_000);
   });
 
   // ── the write ────────────────────────────────────────────────────────────────────────────────

@@ -453,3 +453,65 @@ benefit-source provider, without which a referral silently prices as no discount
 survived a later round for the same reason and got its own row. **One guard is recorded as UNTESTED**:
 the "do not re-seed the SAME encounter" half of the pre-fill, because the suite cannot make the quote
 refetch. The encounter KEY is tested; the refetch guard is documented in the code rather than counted.
+
+## 13. CLOSE REVIEW — pass 1 (author's own; NOT the two fresh passes §8 asks for)
+
+**Stated plainly: this is a self-review.** §8 calls for two passes by fresh readers, and this project's
+own record says a pass by the author is the weaker instrument. It was pointed where the CRITICALs have
+actually been found in this codebase — **the assembly and the seams between tasks**, not the components.
+
+### CRITICAL — the value lane did not discount at all (T6)
+
+**A balance is not a cap, and the difference cost the patient the whole benefit.**
+
+T6 implemented R3's value draw-down by narrowing the benefit term's `capPaise` to the counter's
+remaining balance. `benefitCandidate` **REJECTS an over-cap ask rather than clamping it** — a
+deliberate, documented rule (B4/K3), because a cap is a *control* and clamping would turn every
+misconfigured coupon into a quiet payout at its cap.
+
+So a package with ₹40 left against a ₹100 benefit produced **no discount at all**: the patient paid in
+full and their balance sat unused. Proved before it was claimed — expected 46 000p, received 50 000p.
+
+**Why a green suite shipped it: every T6 test asserted the narrowed CAP and none asserted the MONEY.**
+That is the identical weakness T9's mutants had caught two tasks earlier (`no_fallback` and
+`opts_ignored` survived for exactly the same reason) — and it was not generalised. It should have been.
+
+**The fix** clamps the benefit's **value**, not its cap: a term whose ask exceeds the balance becomes a
+`flat_paise` term worth exactly the balance, which the engine applies instead of refusing, and still
+clamps to the line's own gross. It runs where the bill's gross is known, because "does the ask exceed
+the balance" is unanswerable for a percentage before the bill has been priced once. The plan's own cap
+still binds. **5 mutants, all dead**, including `cap_as_value` (the original defect) and `not_wired`
+(proving the clamp is reached from the invoice path). The test that asserted the defect is rewritten.
+
+**Not fixed, because it is neither new nor this lane's:** a multi-line bill can have one benefit win on
+several lines and together ask for more than the counter holds; `consumeEntitlements` then refuses the
+invoice. **The count lane has behaved exactly this way since Plan 09** — it is a property of a per-line
+benefit sharing one counter, and it fails safe (a loud refusal, never an over-draw).
+
+### MINOR — a button advertising a key that does nothing (T7)
+
+`search.newPatient` read **"New patient (F2)"**. T7 unbound `F2` (reserved for the agent) and moved the
+chord to `F4`, and this label survived — advertising a keystroke that does nothing, which is the exact
+mistake T7's own reasoning argues against. Fixed in both locales and in the test that asserted it.
+`registration-screen.tsx`'s three "F2 press" comments were stale for the same reason and now read F4.
+
+### Seams checked and found sound
+
+- **T7 → T3**: `F4` navigates to `/registration?new=true` and the renamed screen still consumes it.
+- **T6 → `/billing`**: `balances` absent (older server, or an errored preview) is guarded by `?? []`.
+- **T8 → `desk-provider`**: the "session not opened" alert now correctly stops nagging about a doctor
+  on leave — a beneficial consequence of `scheduledToday` becoming leave-aware.
+- **T9 → T6**: the slip pre-fill and the coupon field share one preview key, so quote and invoice
+  cannot disagree.
+
+### Flagged, NOT fixed — pre-existing and outside this phase
+
+`opdDesk.shortcuts` advertises *"Alt+N call next · Alt+K skip · Alt+S start / issue · Alt+Enter
+complete"* and `opd-desk.tsx` binds **no keyboard handler at all**. Four advertised chords, none bound.
+That predates FD-7 and belongs to whoever owns that screen; it is recorded here so it is not lost.
+
+### What a fresh pass should still be pointed at
+
+The assembly of `/appointment` → walk-in → `/billing` end to end against a real database, and the
+multi-line entitlement refusal above — both are places where a component-level green suite has already
+been shown, twice in this phase, not to mean the screen works.
