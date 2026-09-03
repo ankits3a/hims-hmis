@@ -85,6 +85,8 @@ import { MembershipError, membershipHttpStatus } from "../membership";
 import { BillingError, billingHttpStatus } from "./errors";
 import { withIdempotency } from "./idempotency";
 import { getInvoice, invoiceSettlement, issueInvoice, listInvoices, previewInvoiceWithBalances } from "./invoices";
+import { collectionWorklist } from "./worklist";
+import type { CollectionRow } from "./worklist";
 import type { BenefitBalance } from "./invoices";
 import {
   allocateReceipt, listDues, markEnteredInError, patientBalance, recordReceipt, reverseAllocation,
@@ -281,6 +283,15 @@ const issueInvoiceBody = z.object({
   couponCodes: z.array(z.string().min(1).max(64)).max(10).optional(),
   attributionCode: z.string().min(1).max(64).optional(),
 });
+/**
+ * `serviceDate` is REQUIRED rather than defaulted server-side. "Today" is an IST calendar day and
+ * `istDate` lives behind `opd`'s module boundary (imports cross only through `index.ts`, lint-
+ * enforced); duplicating the rule here is how two definitions of "today" drift apart at midnight,
+ * which this lane has already been bitten by twice. The caller knows the date — `todayIst()` on the
+ * web — so it says which day it means.
+ */
+const worklistQuery = z.object({ serviceDate: z.string().min(10).max(10) });
+
 const previewInvoiceBody = z.object({
   encounterId: z.string().min(1).optional(),
   lines: z.array(invoiceLineSchema).min(1),
@@ -480,6 +491,21 @@ export class BillingController {
     } catch (e) {
       toHttp(e);
     }
+  }
+
+  /**
+   * FD-8 — THE CASHIER'S DOOR. Every other route this role may call needs an id it cannot obtain
+   * (it holds no `patients.read`), so user 3 could not start their own day without a deep link from
+   * somebody else's screen. `billing.invoice.read` is the right key: knowing who owes money is the
+   * same authority as reading the invoice that says so.
+   */
+  @RequirePermission("billing.invoice.read", "hospital")
+  @Get("worklist")
+  async worklist(
+    @CurrentActor() actor: Actor, @Query() query: unknown,
+  ): Promise<{ items: CollectionRow[] }> {
+    const q = parsed(worklistQuery, query);
+    return { items: await collectionWorklist(this.db, actor, q.serviceDate) };
   }
 
   @RequirePermission("billing.invoice.read", "hospital")
