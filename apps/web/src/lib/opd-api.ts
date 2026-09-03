@@ -470,6 +470,22 @@ export function getContinuity(
   return api("GET", `/opd/continuity?patientId=${encodeURIComponent(patientId)}&departmentId=${encodeURIComponent(departmentId)}`);
 }
 
+/**
+ * FD-8 — THE COMPLAINT, IN THE PATIENT'S OWN WORDS. The clerk types what they were told — Hindi,
+ * English or Hinglish — and the server ranks the hospital's OWN departments from it.
+ *
+ * The model call is SERVER-SIDE and this is why the browser has no key: the gateway credential must
+ * never reach a bundle every user of the hospital can read. `source` says whether the answer came
+ * from the model or the deterministic keyword table, because advice whose origin is hidden gets
+ * trusted too much.
+ */
+export type WireTriageSuggestion = { departmentId: string; reason: string };
+export type WireTriage = { suggestions: WireTriageSuggestion[]; source: "model" | "keywords" };
+
+export function triage(text: string): Promise<WireTriage> {
+  return api("POST", "/opd/triage", { text });
+}
+
 /** The future lane. `date` is an IST calendar date; the server refuses a slot it has already passed. */
 export function getSlots(doctorId: string, date: string): Promise<{ slots: WireSlot[] }> {
   return api("GET", `/opd/slots?doctorId=${encodeURIComponent(doctorId)}&date=${encodeURIComponent(date)}`);

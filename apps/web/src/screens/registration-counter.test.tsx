@@ -4,7 +4,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   Dossier, FindPanel, QueuesOverlay, QuotePanel, RegistrationCounter, SEAT_TENDER_ORDER, WaitLine,
-  FLOW_POLL_MS, counterExit, seatKey, shouldJoinNow, tokenToShow, useQuote, waitEstimate, walkInBodyFor,
+  FLOW_POLL_MS, counterExit, seatKey, shouldJoinNow, tokenToShow, useQuote, waitEstimate,
 } from "./registration-counter";
 import type { SeatVisit } from "./registration-counter";
 import { COUNTER_SEQUENCES, TOKEN_LANES } from "../lib/opd-api";
@@ -718,6 +718,7 @@ describe("RC-3 CLOSE — the contract pass's two findings", () => {
     setToken("test-token");
     stubFetch({
       "GET /api/auth/me": { actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+      "GET /api/opd/departments": { items: [{ id: "dept-gm", name: "General Medicine" }] },
       "GET /api/opd/queues/summary": { items: [] },
       "GET /api/billing/visits/E1/fee-quote": QUOTE,
       "GET /api/patients/search": { items: [] },
@@ -771,6 +772,7 @@ describe("RC-3 T5 — the queues overlay", () => {
     setToken("test-token");
     stubFetch({
       "GET /api/auth/me": { actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+      "GET /api/opd/departments": { items: [{ id: "dept-gm", name: "General Medicine" }] },
       "GET /api/opd/queues/summary": { items: [summary(), summary({ doctor: { ...DOCTOR, id: "d-2", displayName: "Dr Rao" }, waitingCount: 2, avgConsultMinutes: 8, roomCode: "7" })] },
       "GET /api/patients/search": { items: [] },
     });
@@ -851,6 +853,7 @@ describe("RC-3 close review — F1 (CRITICAL): a quote cannot outlive the encoun
   it("patient B never sees patient A's bill, A's benefit chips or A's review-window reason", async () => {
     stubFetch({
       "GET /api/auth/me": { actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+      "GET /api/opd/departments": { items: [{ id: "dept-gm", name: "General Medicine" }] },
       "GET /api/opd/queues/summary": { items: [] },
       "GET /api/patients/search": { items: [{ ...HIT_ASHA, id: "P-B", name: "Binod Sah", matchedOn: ["mobile"] }] },
       "GET /api/billing/visits/E1/fee-quote": {
@@ -969,6 +972,7 @@ describe("RC-3 close review — F4 (CRITICAL): the seat prices, it does not inst
     setToken("test-token");
     stubFetch({
       "GET /api/auth/me": { actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+      "GET /api/opd/departments": { items: [{ id: "dept-gm", name: "General Medicine" }] },
       "GET /api/opd/queues/summary": { items: [] },
       "GET /api/patients/search": { items: [] },
       "GET /api/billing/visits/E1/fee-quote": quoteWith(),
@@ -1093,6 +1097,7 @@ describe("RC-3 close review — F16/F19: 'start again' means the search box too"
     setToken("test-token");
     stubFetch({
       "GET /api/auth/me": { actor: { type: "user", id: "u-rc3" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } },
+      "GET /api/opd/departments": { items: [{ id: "dept-gm", name: "General Medicine" }] },
       "GET /api/opd/queues/summary": { items: [] },
       "GET /api/patients/search": { items: [] },
     });
@@ -1133,61 +1138,11 @@ describe("RC-3 close review — F16/F19: 'start again' means the search box too"
    ════════════════════════════════════════════════════════════════════════════════════════════ */
 
 const DOC_A = summary();
-const DOC_B = summary({ doctor: { ...DOCTOR, id: "d-2", displayName: "Dr Rao", departmentId: "dept-ortho" }, waitingCount: 2 });
 
 /** RC-4 T2 — the flow, as `GET /opd/config` returns it. Only the two flow keys matter to the seat. */
 const QUEUE_FIRST = { counterSequence: "queue_first", tokenLane: "token_first" };
 const BILL_FIRST = { counterSequence: "bill_first", tokenLane: "token_first" };
 const DRAWER_OPEN = { session: { id: "cs-1", status: "open" } };
-
-describe("RC-4 T1 — the walk-in body, as a pure function", () => {
-  /**
-   * THE THREE FIELD RULES, ASSERTED EXHAUSTIVELY WITH `toEqual` rather than by `toMatchObject`.
-   * A partial match would pass over an extra key — and an extra key is exactly how the
-   * `administrativeGender` defect worked in Plan 22c-A's C1: zod strips what it does not declare,
-   * so a wrongly-named field vanishes silently and the route answers 200 with nothing written.
-   */
-  it("sends the design's four fields, and OMITS the two that are blank", () => {
-    expect(walkInBodyFor(
-      { fields: { name: "  Asha Devi  ", phone: " 9876500000 ", ageYears: " 34 ", sex: "female" } },
-      DOC_A, false,
-    )).toEqual({
-      patient: { register: { name: "Asha Devi", sex: "female", phone: "9876500000", ageYears: 34 } },
-      departmentId: "dept-gm", doctorId: "d-1",
-    });
-  });
-
-  /**
-   * THE MUTANT THAT MATTERS MOST HERE, and it is a patient-safety one rather than a money one:
-   * `ageYears: Number("")` is `0`, and `0` is a value the schema ACCEPTS (`int 0..130`). A blank
-   * age box would register every adult as a newborn — and a newborn is the band that drives
-   * paediatric dosing and the danger-flag thresholds VD-1 shipped. An absent age is recoverable;
-   * a confidently wrong one is not.
-   */
-  it("MUTANT — a blank age would register a NEWBORN; it must be omitted, not sent as 0", () => {
-    expect(Number("")).toBe(0); // what the mutant would send, evaluated rather than asserted about
-    const body = walkInBodyFor(
-      { fields: { name: "No Age", phone: "", ageYears: "", sex: "unknown" } }, DOC_A, false,
-    );
-    const register = (body.patient as { register: Record<string, unknown> }).register;
-    expect(register).toEqual({ name: "No Age", sex: "unknown" }); // THE KILL — no ageYears, no phone
-    expect("ageYears" in register).toBe(false);
-    expect("phone" in register).toBe(false);
-  });
-
-  it("an existing patient sends an id and no register block at all, and the doctor sets the department", () => {
-    expect(walkInBodyFor({ existingId: "p-1" }, DOC_B, true)).toEqual({
-      patient: { existingId: "p-1" },
-      departmentId: "dept-ortho", doctorId: "d-2",
-      acknowledgedDuplicates: true,
-    });
-  });
-
-  it("MUTANT — `acknowledgedDuplicates: false` sent as a key; it must be ABSENT until the clerk says so", () => {
-    const body = walkInBodyFor({ existingId: "p-1" }, DOC_A, false);
-    expect("acknowledgedDuplicates" in body).toBe(false); // THE KILL
-  });
-});
 
 describe("RC-4 T1 — registering in place, and the duplicate that must not be a dead end", () => {
   beforeEach(() => {
@@ -1200,6 +1155,7 @@ describe("RC-4 T1 — registering in place, and the duplicate that must not be a
   it("the Register-new door opens the panel IN PLACE — the seat never navigates away (D1)", async () => {
     stubFetch({
       "GET /api/auth/me": ME,
+      "GET /api/opd/departments": { items: [{ id: "dept-gm", name: "General Medicine" }] },
       "GET /api/opd/queues/summary": { items: [DOC_A] },
       "GET /api/patients/search": { items: [] },
     });
@@ -1222,12 +1178,18 @@ describe("RC-4 T1 — registering in place, and the duplicate that must not be a
    */
   it("registering opens a visit, takes the patient in hand, and the dossier fills", async () => {
     let sent: Record<string, unknown> | null = null;
+    let registered: Record<string, unknown> | null = null;
     stubFetch({
       "GET /api/auth/me": ME,
+      "GET /api/opd/departments": { items: [{ id: "dept-gm", name: "General Medicine" }] },
       "GET /api/opd/queues/summary": { items: [DOC_A] },
       "GET /api/patients/search": { items: [] },
       // RC-4 T2 — the seat reads the flow AT OPEN; without this route it refuses to open at all.
       "GET /api/opd/config": QUEUE_FIRST,
+      "POST /api/patients": (init?: RequestInit) => {
+        registered = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return { patient: { id: "P-NEW" } };
+      },
       "POST /api/opd/walk-in": (init?: RequestInit) => {
         sent = JSON.parse(String(init?.body)) as Record<string, unknown>;
         return { patientId: "P-NEW", registered: true, encounter: { id: "E-NEW" }, tokenNo: 7, sessionId: "s-1" };
@@ -1240,15 +1202,26 @@ describe("RC-4 T1 — registering in place, and the duplicate that must not be a
     await user.click(await screen.findByTestId("find-register-new"));
     await user.type(screen.getByTestId("reg-name"), "Deepak Munda");
     await user.type(screen.getByTestId("reg-age"), "26");
-    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
     await user.click(screen.getByTestId("reg-submit"));
+    // FD-8 — registration ENDS AT THE UHID; the doctor is chosen on the appointment stage.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
+    await user.click(await screen.findByTestId("appt-confirm"));
 
     expect((await screen.findByTestId("dossier-patient")).textContent).toBe("P-NEW");
     expect(JSON.parse(sessionStorage.getItem("hmis.inHand") ?? "{}"))
       .toEqual({ patientId: "P-NEW", encounterId: "E-NEW" });
-    // `toEqual`, so a `join` key can only be here if the flow put it here — under queue_first there is none.
+    /*
+     * FD-8 — TWO ACTS, AND BOTH ARE ASSERTED. Registration ends at the UHID (`POST /patients`
+     * carries the fields, trimmed, with the blanks omitted — the rule `walkInBodyFor` used to hold),
+     * and the appointment stage opens the visit for a patient who by then already exists.
+     *
+     * `toEqual` on both, so an extra key cannot slip through: zod strips what it does not declare,
+     * which is how Plan 22c-A's C1 defect answered 200 with nothing written.
+     */
+    expect(registered).toEqual({ name: "Deepak Munda", sex: "unknown", ageYears: 26 });
     expect(sent).toEqual({
-      patient: { register: { name: "Deepak Munda", sex: "unknown", ageYears: 26 } },
+      patient: { existingId: "P-NEW" },
       departmentId: "dept-gm", doctorId: "d-1",
     });
   });
@@ -1266,9 +1239,11 @@ describe("RC-4 T1 — registering in place, and the duplicate that must not be a
     let calls = 0;
     stubFetch({
       "GET /api/auth/me": ME,
+      "GET /api/opd/departments": { items: [{ id: "dept-gm", name: "General Medicine" }] },
       "GET /api/opd/queues/summary": { items: [DOC_A] },
       "GET /api/patients/search": { items: [] },
       "GET /api/opd/config": QUEUE_FIRST,
+      "POST /api/patients": { patient: { id: "P-NEW" } },
       "POST /api/opd/walk-in": (init?: RequestInit) => {
         calls += 1;
         const body = JSON.parse(String(init?.body)) as { acknowledgedDuplicates?: boolean };
@@ -1282,12 +1257,17 @@ describe("RC-4 T1 — registering in place, and the duplicate that must not be a
     await user.type(screen.getByTestId("find-input"), "zzzz");
     await user.click(await screen.findByTestId("find-register-new"));
     await user.type(screen.getByTestId("reg-name"), "Asha Devi");
-    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
     await user.click(screen.getByTestId("reg-submit"));
-
-    // A thrown fetch is NOT an ApiError 409, so this asserts the error lane rather than the
-    // duplicate lane — and the clerk still gets a message rather than silence.
-    expect(await screen.findByTestId("reg-error")).toBeTruthy();
+    /*
+     * FD-8 — THE SUBJECT MOVED WITH THE ACT. This drove the walk-in from the register panel, which
+     * no longer calls it: registration ends at the UHID, so a thrown walk-in now surfaces on the
+     * APPOINTMENT stage. A thrown fetch is NOT an `ApiError` 409, so this still asserts the error
+     * lane rather than the duplicate lane — and the clerk still gets a message rather than silence.
+     */
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
+    await user.click(await screen.findByTestId("appt-confirm"));
+    expect(await screen.findByTestId("appt-error")).toBeTruthy();
     expect(acknowledged).toBeUndefined();
   });
 });
@@ -1306,6 +1286,82 @@ describe("RC-4 T1 — registering in place, and the duplicate that must not be a
  * `stubFetch` always answers 200, so this stubs `fetch` directly: the panel's duplicate branch is
  * reached only by a real 409 whose body carries `detail.candidates`.
  */
+describe("FD-8 — Desk One's flow, and the dropdown that must not grow back", () => {
+  beforeEach(() => { sessionStorage.clear(); setToken("test-token"); });
+
+  const ME8 = { actor: { type: "user", id: "u-fd8" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } };
+
+  /**
+   * ═══ THE OWNER'S OBJECTION, AS AN ASSERTION ═══
+   *
+   *   > "don't put appointment screen just below registration form"
+   *
+   * `reg-doctor` used to render directly beneath the four registration fields, and OUTSIDE the
+   * new-patient guard, so it appeared for a patient already on file too. It was the objection in one
+   * control. Desk One's registration stage is "Four fields, one UHID" and nothing else; the doctor
+   * belongs to the appointment stage, beside the complaint that decides the department.
+   */
+  it("the registration form has NO doctor field and opens NO visit", async () => {
+    let opened = 0;
+    stubFetch({
+      "GET /api/auth/me": ME8,
+      "GET /api/opd/departments": { items: [{ id: "dept-gm", name: "General Medicine" }] },
+      "GET /api/opd/queues/summary": { items: [DOC_A] },
+      "GET /api/patients/search": { items: [] },
+      "GET /api/opd/config": QUEUE_FIRST,
+      "POST /api/patients": { patient: { id: "P-FD8" } },
+      "POST /api/opd/walk-in": () => { opened += 1; return { patientId: "P-FD8", registered: false, encounter: { id: "E-FD8" }, tokenNo: 3, sessionId: "s-1" }; },
+    });
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("find-input"), "zzzz");
+    await user.click(await screen.findByTestId("find-register-new"));
+
+    // THE KILL. Four fields, and not a doctor among them.
+    expect(screen.getByTestId("reg-name")).toBeTruthy();
+    expect(screen.queryByTestId("reg-doctor")).toBeNull();
+
+    await user.type(screen.getByTestId("reg-name"), "Deepak Munda");
+    await user.click(screen.getByTestId("reg-submit"));
+
+    // The UHID exists and the registration work ENDED THERE: submitting opened no visit.
+    expect(await screen.findByTestId("appointment-workspace")).toBeTruthy();
+    expect(screen.queryByTestId("register-panel")).toBeNull();
+    expect(opened).toBe(0);
+  });
+
+  /** Desk One asks what brings them in — a department dropdown alone is not that question. */
+  it("the appointment stage asks for the complaint and ranks departments from it", async () => {
+    stubFetch({
+      "GET /api/auth/me": ME8,
+      "GET /api/opd/departments": { items: [{ id: "dept-gm", name: "General Medicine" }, { id: "dept-card", name: "Cardiology" }] },
+      "GET /api/opd/queues/summary": { items: [DOC_A] },
+      "GET /api/patients/search": { items: [] },
+      "GET /api/opd/config": QUEUE_FIRST,
+      "POST /api/patients": { patient: { id: "P-FD8" } },
+      // The server ranks; the seat renders what it returns and SAYS where it came from.
+      "POST /api/opd/triage": { suggestions: [{ departmentId: "dept-card", reason: "chest discomfort" }], source: "keywords" },
+    });
+    renderWithProviders(<RegistrationCounter />);
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("find-input"), "zzzz");
+    await user.click(await screen.findByTestId("find-register-new"));
+    await user.type(screen.getByTestId("reg-name"), "Ramesh Kale");
+    await user.click(screen.getByTestId("reg-submit"));
+
+    await screen.findByTestId("appt-complaint");
+    await user.type(screen.getByTestId("appt-complaint"), "seene mein dard");
+
+    const chip = await screen.findByTestId("appt-suggest-dept-card");
+    expect(chip.textContent).toContain("Cardiology");
+    expect(chip.textContent).toContain("chest discomfort");
+    expect(screen.getByTestId("appt-suggest-source").textContent).toBe("matched on keywords");
+
+    await user.click(chip);
+    expect((screen.getByTestId("appt-department") as HTMLSelectElement).value).toBe("dept-card");
+  });
+});
+
 describe("FD-7 T1 — five rows reading the same name, told apart", () => {
   beforeEach(() => {
     sessionStorage.clear();
@@ -1333,7 +1389,7 @@ describe("FD-7 T1 — five rows reading the same name, told apart", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = typeof input === "string" ? input : input instanceof URL ? input.pathname : input.url;
       const key = `${init?.method ?? "GET"} ${path.split("?")[0]}`;
-      if (key === "POST /api/opd/walk-in") {
+      if (key === "POST /api/patients") {
         return new Response(
           JSON.stringify({ code: "duplicate_suspected", detail: { candidates: CANDIDATES } }),
           { status: 409, headers: { "Content-Type": "application/json" } },
@@ -1341,7 +1397,8 @@ describe("FD-7 T1 — five rows reading the same name, told apart", () => {
       }
       const table: Record<string, unknown> = {
         "GET /api/auth/me": ME,
-        "GET /api/opd/queues/summary": { items: [DOC_A] },
+        "GET /api/opd/departments": { items: [{ id: "dept-gm", name: "General Medicine" }] },
+      "GET /api/opd/queues/summary": { items: [DOC_A] },
         "GET /api/patients/search": { items: [] },
         "GET /api/opd/config": QUEUE_FIRST,
       };
@@ -1357,7 +1414,12 @@ describe("FD-7 T1 — five rows reading the same name, told apart", () => {
     await user.type(screen.getByTestId("find-input"), "zzzz");
     await user.click(await screen.findByTestId("find-register-new"));
     await user.type(screen.getByTestId("reg-name"), "Ramesh Kale");
-    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
+    /*
+     * FD-8 — the duplicate warning is a REGISTRATION refusal, so the desk never reaches the
+     * appointment stage: `POST /patients` answers 409 and no patient exists to seat. The warning
+     * now comes from that route rather than from the walk-in (FD-8's groundwork moved the probe),
+     * which is why this stub refuses `/api/patients`.
+     */
     await user.click(screen.getByTestId("reg-submit"));
     await screen.findByTestId("reg-duplicates");
   }
@@ -1440,6 +1502,10 @@ describe("RC-4 T3 — the token the clerk reads out loud", () => {
         new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path === "/api/auth/me") return json({ actor: { type: "user", id: "u-rc4" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
       if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      // FD-8 — the appointment stage reads the hospital's departments and creates the patient.
+      if (path === "/api/opd/departments") return json({ items: [{ id: "dept-gm", name: "General Medicine" }] });
+      // FD-8 — registration is its own act now; it must mint the SAME id the walk-in below seats.
+      if (path === "/api/patients" && init?.method === "POST") return json({ patient: { id: "P-T" } });
       if (path === "/api/opd/config") return json(QUEUE_FIRST);
       if (path === "/api/patients/search") {
         return json({ items: url.includes("zzzz") ? [] : [{ ...HIT_ASHA, id: "P-B", name: "Binod Sah", matchedOn: ["mobile"] }] });
@@ -1455,8 +1521,11 @@ describe("RC-4 T3 — the token the clerk reads out loud", () => {
     await user.type(screen.getByTestId("find-input"), "zzzz"); // finds nobody -> the door opens
     await user.click(await screen.findByTestId("find-register-new"));
     await user.type(screen.getByTestId("reg-name"), "Token Patient");
-    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
     await user.click(screen.getByTestId("reg-submit"));
+    // FD-8 — registration ENDS AT THE UHID; the doctor is chosen on the appointment stage.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
+    await user.click(await screen.findByTestId("appt-confirm"));
 
     expect((await screen.findByTestId("dossier-token")).textContent).toContain("42");
 
@@ -1611,6 +1680,7 @@ describe("RC-4 T2 — bill-first through the ASSEMBLED seat, two patients (metho
     const model: ServerModel = { joined: {}, invoiced: {}, status: {}, ...over.seed };
     const log: Log & { model: ServerModel } = Object.assign([], { model });
     let opened = 0;
+    let registered = 0; // FD-8 — registrations are their own act and mint their own ids
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(typeof input === "string" ? input : (input as Request).url);
       const path = url.split("?")[0]!;
@@ -1620,6 +1690,17 @@ describe("RC-4 T2 — bill-first through the ASSEMBLED seat, two patients (metho
       if (method !== "GET") log.push({ method, path, body: init?.body === undefined ? undefined : JSON.parse(String(init.body)) });
       if (path === "/api/auth/me") return json(ME);
       if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      // FD-8 — the appointment stage reads the hospital's departments and creates the patient.
+      if (path === "/api/opd/departments") return json({ items: [{ id: "dept-gm", name: "General Medicine" }] });
+      /*
+       * FD-8 — registration is its own act, so this stub mints the id and the walk-in below then
+       * seats THAT patient. The sequence mirrors the walk-in's own A/B allocation, because the two
+       * patients this suite drives are the whole point of it (RC-3's F1 was invisible with one).
+       */
+      if (path === "/api/patients" && method === "POST") {
+        registered += 1;
+        return json({ patient: { id: registered === 1 ? "P-A" : "P-B" } });
+      }
       if (path === "/api/opd/config") return json(over.config ?? BILL_FIRST);
       if (path === "/api/billing/sessions/current") return json(over.drawer ?? DRAWER_OPEN);
       if (path === "/api/patients/search") {
@@ -1677,8 +1758,11 @@ describe("RC-4 T2 — bill-first through the ASSEMBLED seat, two patients (metho
     await user.type(await screen.findByTestId("find-input"), "zzzz");
     await user.click(await screen.findByTestId("find-register-new"));
     await user.type(screen.getByTestId("reg-name"), name);
-    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
     await user.click(screen.getByTestId("reg-submit"));
+    // FD-8 — registration ENDS AT THE UHID; the doctor is chosen on the appointment stage.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
+    await user.click(await screen.findByTestId("appt-confirm"));
   }
 
   /**
@@ -1695,7 +1779,13 @@ describe("RC-4 T2 — bill-first through the ASSEMBLED seat, two patients (metho
     expect((await screen.findByTestId("dossier-patient")).textContent).toBe("P-A");
 
     // 1. The walk-in went out with `join: "defer"` — the first time anything on the web has sent it.
-    expect(log[0]).toMatchObject({ method: "POST", path: "/api/opd/walk-in", body: { join: "defer" } });
+    /*
+     * FD-8 — TWO WRITES NOW, AND THEIR ORDER IS THE FLOW: registration allocates the UHID first,
+     * then the appointment stage opens the visit. Pinned as a pair, because a build that opened the
+     * visit first would have put the appointment back inside registration.
+     */
+    expect(log[0]).toMatchObject({ method: "POST", path: "/api/patients" });
+    expect(log[1]).toMatchObject({ method: "POST", path: "/api/opd/walk-in", body: { join: "defer" } });
     // 2. No token yet, and the dossier says the number is OWED rather than showing a blank.
     expect(screen.queryByTestId("dossier-token")).toBeNull();
     expect(await screen.findByTestId("dossier-token-afterPayment")).toBeTruthy();
@@ -1730,10 +1820,17 @@ describe("RC-4 T2 — bill-first through the ASSEMBLED seat, two patients (metho
     expect(screen.queryByTestId("exit-settled")).toBeNull();
     expect(screen.queryByTestId("collect")).toBeNull();
 
-    // 7. The EXISTING patient's door: the four fields fold away, the doctor is asked, the visit opens deferred.
+    /*
+     * 7. THE EXISTING PATIENT'S DOOR, as Desk One draws it: a patient found in the search goes
+     * STRAIGHT to the appointment stage — `grab()` in the prototype skips registration entirely,
+     * because somebody already on file has nothing to register. The register panel is absent, not
+     * folded: there are no four fields AND no doctor dropdown to fold away.
+     */
     expect(screen.queryByTestId("reg-name")).toBeNull();
-    await user.selectOptions(await screen.findByTestId("reg-doctor"), "d-1");
-    await user.click(screen.getByTestId("reg-submit"));
+    expect(screen.queryByTestId("register-panel")).toBeNull();
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
+    await user.click(await screen.findByTestId("appt-confirm"));
     await screen.findByTestId("dossier-token-afterPayment");
     expect(log.filter((w) => w.path === "/api/opd/walk-in")[1]).toMatchObject({ body: { patient: { existingId: "P-B" }, join: "defer" } });
     // Nothing of A: no token 42, no settled exit, one join in the whole log so far — B's is still owed.
@@ -1794,7 +1891,7 @@ describe("RC-4 T2 — bill-first through the ASSEMBLED seat, two patients (metho
     expect((await screen.findByTestId("dossier-token")).textContent).toContain("42");
     expect(screen.getByTestId("exit-free")).toBeTruthy();
     expect(screen.queryByTestId("collect-panel")).toBeNull();
-    expect(log.map((w) => w.path)).toEqual(["/api/opd/walk-in", "/api/opd/visits/E-A/join-queue"]);
+    expect(log.map((w) => w.path)).toEqual(["/api/patients", "/api/opd/walk-in", "/api/opd/visits/E-A/join-queue"]);
   });
 
   /**
@@ -1809,9 +1906,24 @@ describe("RC-4 T2 — bill-first through the ASSEMBLED seat, two patients (metho
     const user = userEvent.setup();
     await registerNew(user, "No Drawer");
 
-    expect((await screen.findByTestId("reg-error")).textContent).toContain("drawer");
-    expect(log).toHaveLength(0); // THE KILL: no walk-in, no deferred visit stranded
-    expect(screen.getByTestId("dossier-empty")).toBeTruthy();
+    /*
+     * ═══ FD-8 — THE GUARD STILL HOLDS, AND ITS SCOPE CHANGED HONESTLY ═══
+     *
+     * The refusal now comes from the APPOINTMENT stage, because that is the act that opens the visit
+     * — the flow read and the drawer check moved there with it.
+     *
+     * AND THE CONSEQUENCE OF SPLITTING THE ACT IS STATED HERE RATHER THAN HIDDEN: the patient IS
+     * registered before the drawer is checked, so the log holds the registration. That is the
+     * ruling working as intended — "once the UHID is allocated the registration work ends there",
+     * and it is complete in itself. What must never happen is a VISIT nobody can take money for,
+     * and that is what this still kills: no walk-in on the wire, nothing deferred and stranded.
+     * The patient keeps their UHID and is seated the moment the drawer opens.
+     */
+    expect((await screen.findByTestId("appt-error")).textContent).toContain("drawer");
+    expect(log.filter((w) => w.path === "/api/opd/walk-in")).toHaveLength(0); // THE KILL
+    expect(log.map((w) => w.path)).toEqual(["/api/patients"]);
+    // The patient is in hand — registered, not seated — so the dossier is filled, not empty.
+    expect(screen.queryByTestId("dossier-empty")).toBeNull();
   });
 
   it("queue_first + token_on_payment: the number is held back until the money, then read out", async () => {
@@ -1822,7 +1934,8 @@ describe("RC-4 T2 — bill-first through the ASSEMBLED seat, two patients (metho
 
     await screen.findByTestId("dossier-token-afterPayment");
     expect(screen.queryByTestId("dossier-token")).toBeNull();
-    expect(log[0]!.body).not.toHaveProperty("join"); // queue_first: the walk-in joined already
+    // FD-8 — log[0] is the registration; the walk-in is next, and under queue_first it joins already.
+    expect(log.filter((w) => w.path === "/api/opd/walk-in")[0]!.body).not.toHaveProperty("join");
     await screen.findByTestId("collect-panel");
     await user.type(screen.getByLabelText("Amount"), "400");
     await user.click(screen.getByTestId("settle"));
@@ -1891,6 +2004,10 @@ describe("RC-4 T4 — the flow pill shows the server's sequence, and only the pe
       if (method !== "GET") log.push({ method, path, body: init?.body === undefined ? undefined : JSON.parse(String(init.body)) });
       if (path === "/api/auth/me") return json(me(hospital));
       if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      // FD-8 — the appointment stage reads the hospital's departments and creates the patient.
+      if (path === "/api/opd/departments") return json({ items: [{ id: "dept-gm", name: "General Medicine" }] });
+      // FD-8 — registration is its own act now; it must mint the SAME id the walk-in below seats.
+      if (path === "/api/patients" && init?.method === "POST") return json({ patient: { id: "P-NEW" } });
       if (path === "/api/billing/sessions/current") return json(DRAWER_OPEN);
       if (path === "/api/patients/search") return json({ items: [] });
       if (path === "/api/opd/config" && method === "GET") return json(config);
@@ -1981,6 +2098,7 @@ describe("RC-4 T4 — the flow pill shows the server's sequence, and only the pe
   it("when the config cannot be read the pill says so rather than showing a default sequence", async () => {
     stubFetch({
       "GET /api/auth/me": me([]),
+      "GET /api/opd/departments": { items: [{ id: "dept-gm", name: "General Medicine" }] },
       "GET /api/opd/queues/summary": { items: [DOC_A] },
       "GET /api/patients/search": { items: [] },
       // no /api/opd/config → 404 → the query errors
@@ -2014,6 +2132,10 @@ describe("RC-4 close review — F1 (CRITICAL): a deferred visit's join must surv
         new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
       if (path === "/api/auth/me") return json(ME);
       if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      // FD-8 — the appointment stage reads the hospital's departments and creates the patient.
+      if (path === "/api/opd/departments") return json({ items: [{ id: "dept-gm", name: "General Medicine" }] });
+      // FD-8 — registration is its own act now; it must mint the SAME id the walk-in below seats.
+      if (path === "/api/patients" && init?.method === "POST") return json({ patient: { id: "P-NEW" } });
       if (path === "/api/opd/config") return json(BILL_FIRST);
       if (path === "/api/billing/sessions/current") return json(over.drawer ?? DRAWER_OPEN);
       if (path === "/api/patients/search") return json({ items: [] });
@@ -2111,6 +2233,10 @@ describe("RC-4 close review — F2/F4: the seat's memory is not the truth about 
         const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
         if (path === "/api/auth/me") return json({ actor: { type: "user", id: "u" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
         if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      // FD-8 — the appointment stage reads the hospital's departments and creates the patient.
+      if (path === "/api/opd/departments") return json({ items: [{ id: "dept-gm", name: "General Medicine" }] });
+      // FD-8 — registration is its own act now; it must mint the SAME id the walk-in below seats.
+      if (path === "/api/patients") return json({ patient: { id: "P-A" } });
         if (path === "/api/opd/config") return json(QUEUE_FIRST);
         if (path === "/api/billing/sessions/current") return json(DRAWER_OPEN);
         if (path === "/api/patients/search") return json({ items: [] });
@@ -2124,8 +2250,13 @@ describe("RC-4 close review — F2/F4: the seat's memory is not the truth about 
       await user.type(await screen.findByTestId("find-input"), "zzzz");
       await user.click(await screen.findByTestId("find-register-new"));
       await user.type(screen.getByTestId("reg-name"), "Interrupted");
-      await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
       await user.click(screen.getByTestId("reg-submit"));
+      // FD-8 — registration ENDS AT THE UHID; the doctor is chosen on the appointment stage.
+      // The select renders with only its placeholder until the department list lands, so the wait
+      // is for the OPTION rather than the element.
+      await screen.findByRole("option", { name: "General Medicine" });
+      await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
+      await user.click(await screen.findByTestId("appt-confirm"));
       await screen.findByTestId("collect-panel");
 
       model.invoiced = true; // billed at /billing while the clerk was away
@@ -2151,6 +2282,10 @@ describe("RC-4 close review — F2/F4: the seat's memory is not the truth about 
       const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
       if (path === "/api/auth/me") return json({ actor: { type: "user", id: "u" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
       if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      // FD-8 — the appointment stage reads the hospital's departments and creates the patient.
+      if (path === "/api/opd/departments") return json({ items: [{ id: "dept-gm", name: "General Medicine" }] });
+      // FD-8 — registration is its own act now; it must mint the SAME id the walk-in below seats.
+      if (path === "/api/patients" && init?.method === "POST") return json({ patient: { id: "P-A" } });
       if (path === "/api/opd/config") return json(QUEUE_FIRST);
       if (path === "/api/billing/sessions/current") return json(DRAWER_OPEN);
       if (path === "/api/patients/search") return json({ items: [] });
@@ -2164,8 +2299,11 @@ describe("RC-4 close review — F2/F4: the seat's memory is not the truth about 
     await user.type(await screen.findByTestId("find-input"), "zzzz");
     await user.click(await screen.findByTestId("find-register-new"));
     await user.type(screen.getByTestId("reg-name"), "Unknown State");
-    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
     await user.click(screen.getByTestId("reg-submit"));
+    // FD-8 — registration ENDS AT THE UHID; the doctor is chosen on the appointment stage.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
+    await user.click(await screen.findByTestId("appt-confirm"));
     expect((await screen.findByTestId("dossier-token")).textContent).toContain("9"); // the seat's own visit IS in hand
     await screen.findByTestId("priced-elsewhere");
     expect(screen.queryByTestId("collect-panel")).toBeNull(); // THE KILL
@@ -2186,6 +2324,10 @@ describe("RC-4 close review — F2/F4: the seat's memory is not the truth about 
         const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
         if (path === "/api/auth/me") return json({ actor: { type: "user", id: "u" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
         if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      // FD-8 — the appointment stage reads the hospital's departments and creates the patient.
+      if (path === "/api/opd/departments") return json({ items: [{ id: "dept-gm", name: "General Medicine" }] });
+      // FD-8 — registration is its own act now; it must mint the SAME id the walk-in below seats.
+      if (path === "/api/patients") return json({ patient: { id: "P-A" } });
         if (path === "/api/opd/config") return json(QUEUE_FIRST);
         if (path === "/api/billing/sessions/current") return json(DRAWER_OPEN);
         if (path === "/api/patients/search") return json({ items: [] });
@@ -2199,8 +2341,13 @@ describe("RC-4 close review — F2/F4: the seat's memory is not the truth about 
       await user.type(await screen.findByTestId("find-input"), "zzzz");
       await user.click(await screen.findByTestId("find-register-new"));
       await user.type(screen.getByTestId("reg-name"), "Voided Later");
-      await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
       await user.click(screen.getByTestId("reg-submit"));
+      // FD-8 — registration ENDS AT THE UHID; the doctor is chosen on the appointment stage.
+      // The select renders with only its placeholder until the department list lands, so the wait
+      // is for the OPTION rather than the element.
+      await screen.findByRole("option", { name: "General Medicine" });
+      await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
+      await user.click(await screen.findByTestId("appt-confirm"));
       await screen.findByTestId("covered-elsewhere");          // settled at /billing already: no collect, and it says PAID not "take payment"
       expect(screen.queryByTestId("collect-panel")).toBeNull();
 
@@ -2227,6 +2374,10 @@ describe("RC-4 close review — pass 2 F1(a)/F7(A): today's visit is resumed, no
       const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path === "/api/auth/me") return json({ actor: { type: "user", id: "u" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
       if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      // FD-8 — the appointment stage reads the hospital's departments and creates the patient.
+      if (path === "/api/opd/departments") return json({ items: [{ id: "dept-gm", name: "General Medicine" }] });
+      // FD-8 — registration is its own act now; it must mint the SAME id the walk-in below seats.
+      if (path === "/api/patients" && init?.method === "POST") return json({ patient: { id: "P-B" } });
       if (path === "/api/opd/config") return json(BILL_FIRST);
       if (path === "/api/billing/sessions/current") return json(DRAWER_OPEN);
       if (path === "/api/patients/search") return json({ items: [{ ...HIT_ASHA, id: "P-B", name: "Binod Sah", matchedOn: ["mobile"] }] });
@@ -2260,7 +2411,13 @@ describe("RC-4 close review — pass 2 F1(a)/F7(A): today's visit is resumed, no
     const user = userEvent.setup();
     await user.type(await screen.findByTestId("find-input"), "98765");
     await user.click(await screen.findByTestId("find-hit-P-B"));
-    expect(await screen.findByTestId("register-panel")).toBeTruthy();
+    /*
+     * FD-8 — the door to a NEW visit is the APPOINTMENT stage, not the register panel: this patient
+     * is already on file, so there is nothing to register (Desk One's `grab()` skips it). Their
+     * completed visit is not resumable, so they are offered a fresh one.
+     */
+    expect(await screen.findByTestId("appointment-workspace")).toBeTruthy();
+    expect(screen.queryByTestId("register-panel")).toBeNull();
     expect(screen.queryByTestId("todays-visit")).toBeNull();
   });
 });
@@ -2278,6 +2435,10 @@ describe("RC-4 close review — F3(A): a quote that failed is said, not swallowe
       const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
       if (path === "/api/auth/me") return json({ actor: { type: "user", id: "u" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
       if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      // FD-8 — the appointment stage reads the hospital's departments and creates the patient.
+      if (path === "/api/opd/departments") return json({ items: [{ id: "dept-gm", name: "General Medicine" }] });
+      // FD-8 — registration is its own act now; it must mint the SAME id the walk-in below seats.
+      if (path === "/api/patients" && init?.method === "POST") return json({ patient: { id: "P-NEW" } });
       if (path === "/api/billing/sessions/current") return json(DRAWER_OPEN);
       if (path === "/api/billing/visits/E-A/fee-quote") { quoteCalls += 1; return quoteCalls === 1 ? json({ statusCode: 403, message: "no billing.invoice.read" }, 403) : json(quoteWith({ encounterId: "E-A" })); }
       if (path === "/api/opd/visits/E-A/counter-state") return json({ encounterId: "E-A", status: "registered", serviceDate: "2026-09-01", feeStatus: "unsettled", everJoined: false, tokenNo: null });
@@ -2310,6 +2471,10 @@ describe("RC-4 close review — F4(A)/F3(B)/F8(A): the drawer, read live and nam
       const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
       if (path === "/api/auth/me") return json(ME);
       if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      // FD-8 — the appointment stage reads the hospital's departments and creates the patient.
+      if (path === "/api/opd/departments") return json({ items: [{ id: "dept-gm", name: "General Medicine" }] });
+      // FD-8 — registration is its own act now; it must mint the SAME id the walk-in below seats.
+      if (path === "/api/patients" && init?.method === "POST") return json({ patient: { id: "P-A" } });
       if (path === "/api/opd/config") return json(config);
       if (path === "/api/patients/search") return json({ items: [] });
       if (path === "/api/billing/sessions/current") {
@@ -2332,10 +2497,13 @@ describe("RC-4 close review — F4(A)/F3(B)/F8(A): the drawer, read live and nam
     await user.type(await screen.findByTestId("find-input"), "zzzz");
     await user.click(await screen.findByTestId("find-register-new"));
     await user.type(screen.getByTestId("reg-name"), "Late Close");
-    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
     await user.click(screen.getByTestId("reg-submit"));
+    // FD-8 — registration ENDS AT THE UHID; the doctor is chosen on the appointment stage.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
+    await user.click(await screen.findByTestId("appt-confirm"));
 
-    expect((await screen.findByTestId("reg-error")).textContent).toContain("not open");
+    expect((await screen.findByTestId("appt-error")).textContent).toContain("not open");
     expect(c.walkIns).toBe(0); // THE KILL
     expect(c.drawerReads).toBeGreaterThanOrEqual(2); // mount + the live read at open
   });
@@ -2367,9 +2535,12 @@ describe("RC-4 close review — F4(A)/F3(B)/F8(A): the drawer, read live and nam
     await user.type(await screen.findByTestId("find-input"), "zzzz");
     await user.click(await screen.findByTestId("find-register-new"));
     await user.type(screen.getByTestId("reg-name"), "No Role");
-    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
     await user.click(screen.getByTestId("reg-submit"));
-    expect((await screen.findByTestId("reg-error")).textContent).toContain("cashier role");
+    // FD-8 — registration ENDS AT THE UHID; the doctor is chosen on the appointment stage.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
+    await user.click(await screen.findByTestId("appt-confirm"));
+    expect((await screen.findByTestId("appt-error")).textContent).toContain("cashier role");
     expect(c.walkIns).toBe(0);
   });
 });
@@ -2390,6 +2561,10 @@ describe("RC-4 close review — F6(A)/F2(B): Escape and Next agree while a join 
       const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path === "/api/auth/me") return json({ actor: { type: "user", id: "u" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
       if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      // FD-8 — the appointment stage reads the hospital's departments and creates the patient.
+      if (path === "/api/opd/departments") return json({ items: [{ id: "dept-gm", name: "General Medicine" }] });
+      // FD-8 — registration is its own act now; it must mint the SAME id the walk-in below seats.
+      if (path === "/api/patients" && init?.method === "POST") return json({ patient: { id: "P-A" } });
       if (path === "/api/opd/config") return json(BILL_FIRST);
       if (path === "/api/billing/sessions/current") return json(DRAWER_OPEN);
       if (path === "/api/patients/search") return json({ items: [] });
@@ -2405,8 +2580,11 @@ describe("RC-4 close review — F6(A)/F2(B): Escape and Next agree while a join 
     await user.type(await screen.findByTestId("find-input"), "zzzz");
     await user.click(await screen.findByTestId("find-register-new"));
     await user.type(screen.getByTestId("reg-name"), "Esc Habit");
-    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
     await user.click(screen.getByTestId("reg-submit"));
+    // FD-8 — registration ENDS AT THE UHID; the doctor is chosen on the appointment stage.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
+    await user.click(await screen.findByTestId("appt-confirm"));
     await screen.findByTestId("collect-panel");
     await user.type(screen.getByLabelText("Amount"), "400");
     await user.click(screen.getByTestId("settle"));
@@ -2438,6 +2616,10 @@ describe("RC-4 close review — F7(B): the change lane, asserted through the ass
       const json = (b: unknown): Response => new Response(JSON.stringify(b), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path === "/api/auth/me") return json({ actor: { type: "user", id: "u" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
       if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      // FD-8 — the appointment stage reads the hospital's departments and creates the patient.
+      if (path === "/api/opd/departments") return json({ items: [{ id: "dept-gm", name: "General Medicine" }] });
+      // FD-8 — registration is its own act now; it must mint the SAME id the walk-in below seats.
+      if (path === "/api/patients" && init?.method === "POST") return json({ patient: { id: "P-A" } });
       if (path === "/api/opd/config") return json(QUEUE_FIRST);
       if (path === "/api/billing/sessions/current") return json(DRAWER_OPEN);
       if (path === "/api/patients/search") return json({ items: [] });
@@ -2454,8 +2636,11 @@ describe("RC-4 close review — F7(B): the change lane, asserted through the ass
     await user.type(await screen.findByTestId("find-input"), "zzzz");
     await user.click(await screen.findByTestId("find-register-new"));
     await user.type(screen.getByTestId("reg-name"), "Change Lane");
-    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
     await user.click(screen.getByTestId("reg-submit"));
+    // FD-8 — registration ENDS AT THE UHID; the doctor is chosen on the appointment stage.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
+    await user.click(await screen.findByTestId("appt-confirm"));
     await screen.findByTestId("collect-panel");
   }
 
@@ -2524,6 +2709,10 @@ describe("RC-4 close review — pass 2 N5/N4: a failed re-read is UNKNOWN, and t
       const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
       if (path === "/api/auth/me") return json({ actor: { type: "user", id: "u" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
       if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      // FD-8 — the appointment stage reads the hospital's departments and creates the patient.
+      if (path === "/api/opd/departments") return json({ items: [{ id: "dept-gm", name: "General Medicine" }] });
+      // FD-8 — registration is its own act now; it must mint the SAME id the walk-in below seats.
+      if (path === "/api/patients" && init?.method === "POST") return json({ patient: { id: "P-A" } });
       if (path === "/api/opd/config") return json(QUEUE_FIRST);
       if (path === "/api/billing/sessions/current") return json(DRAWER_OPEN);
       if (path === "/api/patients/search") return json({ items: [] });
@@ -2542,8 +2731,11 @@ describe("RC-4 close review — pass 2 N5/N4: a failed re-read is UNKNOWN, and t
     await user.type(await screen.findByTestId("find-input"), "zzzz");
     await user.click(await screen.findByTestId("find-register-new"));
     await user.type(screen.getByTestId("reg-name"), "Lost Response");
-    await user.selectOptions(screen.getByTestId("reg-doctor"), "d-1");
     await user.click(screen.getByTestId("reg-submit"));
+    // FD-8 — registration ENDS AT THE UHID; the doctor is chosen on the appointment stage.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
+    await user.click(await screen.findByTestId("appt-confirm"));
     await screen.findByTestId("collect-panel");
     await user.type(screen.getByLabelText("Amount"), "400");
     await user.click(screen.getByTestId("settle"));
@@ -2563,6 +2755,10 @@ describe("RC-4 close review — pass 2 N5/N4: a failed re-read is UNKNOWN, and t
         const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
         if (path === "/api/auth/me") return json({ actor: { type: "user", id: "u" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } });
         if (path === "/api/opd/queues/summary") return json({ items: [DOC_A] });
+      // FD-8 — the appointment stage reads the hospital's departments and creates the patient.
+      if (path === "/api/opd/departments") return json({ items: [{ id: "dept-gm", name: "General Medicine" }] });
+      // FD-8 — registration is its own act now; it must mint the SAME id the walk-in below seats.
+      if (path === "/api/patients") return json({ patient: { id: "P-NEW" } });
         if (path === "/api/opd/config") return json({ counterSequence: "queue_first", tokenLane: "token_on_payment" });
         if (path === "/api/billing/sessions/current") return json(DRAWER_OPEN);
         if (path === "/api/billing/visits/E-A/fee-quote") return json(quoteWith({ encounterId: "E-A" }));

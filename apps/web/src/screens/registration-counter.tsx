@@ -7,14 +7,15 @@ import type {
   TenderMode, WireAdjustmentCandidate, WireFeeQuote, WireInvoicePrint, WireIssueInvoiceResult, WirePricedLine, WireTender,
 } from "../lib/billing-api";
 import { fmtIst, useDebounced } from "../lib/format";
-import { COUNTER_SEQUENCES, TOKEN_LANES, getOpdConfig, joinQueue, opdErrorMessage, putCounterFlow, todayIst, walkIn } from "../lib/opd-api";
+import { COUNTER_SEQUENCES, TOKEN_LANES, getOpdConfig, joinQueue, opdErrorMessage, putCounterFlow, todayIst } from "../lib/opd-api";
 import type {
-  CounterSequence, TokenLane, WireCounterFlow, WireDoctorSummary, WireDuplicateCandidate, WireOpdConfig, WireWalkInBody,
+  CounterSequence, TokenLane, WireCounterFlow, WireDoctorSummary, WireDuplicateCandidate, WireOpdConfig,
 } from "../lib/opd-api";
 import { SubmitButton } from "../components/submit-button";
 import { TenderEditor } from "../components/tender-editor";
 import { MoneyInput } from "../components/money-input";
 import { CounterSlip } from "../components/counter-slip";
+import { AppointmentWorkspace } from "../components/appointment-workspace";
 import { InvoicePrint } from "../components/invoice-print";
 import { usePaletteOptional } from "../components/command-palette";
 import { useAuth } from "../lib/auth";
@@ -996,16 +997,12 @@ export function RegistrationCounter({ onFigures }: { onFigures?: () => void } = 
    * and the fee, and refusing to print one because a masters read was refused would trade the whole
    * document for one line of it.
    */
-  const departments = useQuery({
-    queryKey: ["opd", "departments"],
-    queryFn: () => api<{ items: { id: string; name: string }[] }>("GET", "/opd/departments"),
-    staleTime: 5 * 60_000,
-    retry: false,
-  });
-  const departmentName = useCallback(
-    (departmentId: string): string => departments.data?.items.find((d) => d.id === departmentId)?.name ?? "",
-    [departments.data],
-  );
+  /*
+   * FD-8 — the department list and its name lookup moved to `AppointmentWorkspace`, which is the
+   * stage that now chooses a department and prints the slip's line. The seat no longer needs them:
+   * the slip's `departmentName` is captured onto `SeatVisit.slip` at the moment the visit opens
+   * (`SeatVisit.slip`'s own docstring says why it is remembered rather than looked up at print).
+   */
   const hereVisit = visit !== null && visit.encounterId === encounterId ? visit : null;
   const issued = issuedFor !== null && issuedFor.encounterId === encounterId ? issuedFor.result : null;
 
@@ -1361,8 +1358,11 @@ export function RegistrationCounter({ onFigures }: { onFigures?: () => void } = 
         </div>
         <div className="min-w-0 flex-1 rounded-lg border border-border bg-card p-4">
           {inHand === null && (registering
-            ? <RegisterPanel doctors={summaries} departmentName={departmentName} onCancel={() => setRegistering(false)}
-                onOpened={(o) => { setVisit(o); setRegistering(false); }} />
+            ? <RegisterPanel
+                onCancel={() => setRegistering(false)}
+                // FD-8 — the UHID exists, the patient is in hand, and the desk advances to the
+                // APPOINTMENT stage on its own: the guard below is "in hand, no encounter".
+                onRegistered={() => setRegistering(false)} />
             : <FindPanel key={deskGen} onRegisterNew={() => setRegistering(true)} />)}
           {/*
             RC-4 T2 — THE EXISTING PATIENT'S DOOR. `takePatient` puts a found patient in hand with
@@ -1379,9 +1379,46 @@ export function RegistrationCounter({ onFigures }: { onFigures?: () => void } = 
               </Button>
             </div>
           )}
+          {/*
+            ═══ FD-8 — THE APPOINTMENT STAGE, WHICH THIS DESK DID NOT HAVE ═══
+
+            Desk One's flow is `find → reg → appt → bill`, and the appointment is its OWN stage: a
+            patient in hand with no visit yet is at the appointment, whether they were just
+            registered or found in the search. `grab()` in the prototype sends a FOUND patient
+            straight here, skipping registration entirely, which is what the guard below does.
+            
+            Until now this branch rendered `RegisterPanel` with its four fields folded away, leaving
+            a lone DOCTOR DROPDOWN — the appointment sitting inside the registration form, which is
+            the exact thing the owner objected to twice. The panel no longer asks for a doctor at
+            all (registration ends at the UHID) and the stage below asks the question Desk One
+            actually asks: what brings them in?
+
+            `AppointmentWorkspace` is shared with `/appointment` (user 1) rather than copied: the
+            three routing rules and the 20-minute rule are money-and-safety behaviour, and two
+            copies of them would drift.
+          */}
           {inHand !== null && inHand.encounterId === null && todays === null && (
-            <RegisterPanel doctors={summaries} existingId={inHand.patientId} departmentName={departmentName}
-              onOpened={(o) => setVisit(o)} />
+            <AppointmentWorkspace
+              patientId={inHand.patientId}
+              // `label` is the display name the dossier already resolved — restricted records show their
+              // placeholder rather than a name, which is exactly what should appear in the question too.
+              patientName={identity?.restricted === true ? null : identity?.label ?? null}
+              onOutcome={(o) => {
+                if (o.kind === "booked") { clearDesk(); return; }
+                /*
+                 * A walk-in or an arrival opens a visit, and the seat needs BOTH halves: the patient
+                 * in hand carries the encounter (which is what makes the bill stage render), and
+                 * `SeatVisit` carries the flow, the token and the slip's facts — captured at the
+                 * moment they are true rather than looked up again at print time.
+                 */
+                setVisit({
+                  encounterId: o.encounterId, patientId: o.patientId, tokenNo: o.tokenNo,
+                  flow: o.flow as WireCounterFlow,
+                  draftId: newDraftId(), joining: false, joinError: null, slip: o.slip,
+                });
+                takeEncounter(o.encounterId);
+              }}
+            />
           )}
 
           {/*
@@ -1998,28 +2035,20 @@ export const EMPTY_REGISTER: SeatRegisterFields = { name: "", phone: "", ageYear
  *    found as its C1, where a PATCH carrying `administrativeGender` returned HTTP 200 with nothing
  *    written. The wrong field name here fails the same way: quietly, with a success code.
  */
-export function walkInBodyFor(
-  patient: { existingId: string } | { fields: SeatRegisterFields },
-  doctor: WireDoctorSummary,
-  acknowledgeDuplicates: boolean,
-): WireWalkInBody {
-  const identity: WireWalkInBody["patient"] = "existingId" in patient
-    ? { existingId: patient.existingId }
-    : {
-        register: {
-          name: patient.fields.name.trim(),
-          sex: patient.fields.sex,
-          ...(patient.fields.phone.trim() === "" ? {} : { phone: patient.fields.phone.trim() }),
-          ...(patient.fields.ageYears.trim() === "" ? {} : { ageYears: Number(patient.fields.ageYears) }),
-        },
-      };
-  return {
-    patient: identity,
-    departmentId: doctor.doctor.departmentId,
-    doctorId: doctor.doctor.id,
-    ...(acknowledgeDuplicates ? { acknowledgedDuplicates: true } : {}),
-  };
-}
+/*
+ * ═══ FD-8 — `walkInBodyFor` IS DELETED, AND ITS ABSENCE IS THE POINT ═══
+ *
+ * It built a one-shot `{register: {...}, doctorId}` body: register the patient AND open the visit in
+ * a single call. That is the act the owner's ruling splits in two, so its `register` branch became
+ * unreachable — and its `existingId` branch is now built inline by `AppointmentWorkspace`, which
+ * also has to carry the partner slip the old signature had no room for.
+ *
+ * Left in place it would have been an exported, unit-tested function with NO production consumer —
+ * this codebase's characteristic defect, which §1 of the phase doc names and which this phase has
+ * already found three times. The field rules it carried (trim; omit a blank phone or age) did not
+ * disappear with it: they moved to `RegisterPanel`'s `POST /patients` body, where registration now
+ * happens, and the assertion moved with them.
+ */
 
 /**
  * T1 — REGISTER IN PLACE. THE SEAT NO LONGER NAVIGATES AWAY (D1).
@@ -2036,94 +2065,71 @@ export function walkInBodyFor(
  * is worse than the duplicate it was trying to prevent.
  */
 export function RegisterPanel({
-  doctors, existingId, onCancel, onOpened, departmentName,
+  onCancel, onRegistered,
 }: {
-  doctors: WireDoctorSummary[];
-  /** RC-4 T2 — a patient already on file: the four fields fold away and only the doctor is asked. */
-  existingId?: string;
   onCancel?: () => void;
-  onOpened?: (opened: SeatVisit) => void;
   /**
-   * FD-2 — the printed slip names a DEPARTMENT, and `WireDoctor` carries only `departmentId`. The
-   * seat holds the department list (one read, cached) and hands the lookup down rather than making
-   * this panel fetch masters of its own. Absent in the panel's own suites, where the slip is not
-   * the subject; the slip then prints an empty department rather than the wrong one.
+   * FD-8 — the UHID exists and that is the whole of this panel's job. It emits the new patient's id
+   * and stops; the appointment is the next STAGE, not a field on this form.
+   *
+   * `doctors`, `existingId` and `departmentName` are gone. The first two went with the doctor
+   * dropdown (registration no longer opens a visit, and a patient already on file skips this panel
+   * entirely — the counter sends them straight to the appointment stage, as Desk One's `grab()`
+   * does). `departmentName` only ever fed the printed slip, which the appointment stage now owns.
    */
-  departmentName?: (departmentId: string) => string;
+  onRegistered?: (patientId: string) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
-  const { takePatient, takeEncounter } = usePatientInHand();
+  const { takePatient } = usePatientInHand();
   const [fields, setFields] = useState<SeatRegisterFields>(EMPTY_REGISTER);
-  const [doctorId, setDoctorId] = useState("");
   const [duplicates, setDuplicates] = useState<WireDuplicateCandidate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const doctor = doctors.find((d) => d.doctor.id === doctorId) ?? null;
-  const ready = (existingId !== undefined || fields.name.trim() !== "") && doctor !== null;
+  /** Four fields, one UHID (Desk One's own words). A name is the only one the server insists on. */
+  const ready = fields.name.trim() !== "";
 
   const set = (k: keyof SeatRegisterFields) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>): void => {
     setFields((f) => ({ ...f, [k]: e.target.value }));
   };
 
-  async function open(acknowledgeDuplicates: boolean, idempotencyKey: string): Promise<void> {
-    if (doctor === null) return;
+  /**
+   * ═══ FD-8 — REGISTRATION ENDS AT THE UHID ═══
+   *
+   *   > "Once the user is allocated an UHID, the registration page work should end there."
+   *
+   * It used to open the visit too, in one act, which is why this panel had a doctor dropdown — and
+   * that dropdown WAS the appointment sitting inside the registration form, twice objected to.
+   * Desk One's `enrol()` does exactly what this now does: allocate the UHID, and advance. The
+   * appointment is the next STAGE, and it is where the doctor is chosen.
+   *
+   * `POST /patients` rather than `POST /opd/walk-in`, because a walk-in requires a `doctorId` the
+   * clerk has not been asked for yet. The near-match warning came with it: that route had none, and
+   * FD-8's groundwork commit added it, so this move costs nothing in duplicate protection.
+   *
+   * No flow read and no drawer check any more: neither is a REGISTRATION question. Both belong to
+   * the act that opens the visit, which is the appointment stage's `walkIn` call.
+   */
+  async function open(acknowledgeDuplicates: boolean): Promise<void> {
     setError(null);
     setDuplicates(null);
     try {
-      /*
-        RC-4 T2 — THE FLOW IS READ AT THE MOMENT OF OPENING, not from a cache. `counter_sequence`
-        is hospital-wide and a supervisor can flip it from another counter; a seat that opened on
-        a cached value would send a queue-first walk-in under bill-first — a token before the
-        money, in the lane whose purpose is that there is none. One GET per registration is the
-        price, and it is the same route the pill reads.
-      */
-      const config = await getOpdConfig();
-      const flow: WireCounterFlow = { counterSequence: config.counterSequence, tokenLane: config.tokenLane };
-      /*
-        CLOSE REVIEW F4(A) — the bill-first door is shut without a drawer, and the DRAWER IS READ
-        LIVE HERE, beside the flow, for the same reason the flow is: a session closed from another
-        screen at 13:00 is invisible to a cache filled at 09:00 in a tab that never lost focus. A
-        deferred visit opened on that stale answer has no money possible from here. The two halves
-        of one guard now use one truth. The message names which of the not-open states it is.
-      */
-      if (flow.counterSequence === "bill_first") {
-        const drawer = await fetchDrawerState();
-        if (drawer !== "open") {
-          setError(t(`registrationCounter.drawer.${drawer === "pending" ? "closed" : drawer}`));
-          return;
-        }
-      }
-      const body = walkInBodyFor(existingId === undefined ? { fields } : { existingId }, doctor, acknowledgeDuplicates);
-      const result = flow.counterSequence === "bill_first"
-        ? await walkIn({ ...body, join: "defer" }, idempotencyKey)
-        : await walkIn(body, idempotencyKey);
-      takePatient(result.patientId);
-      takeEncounter(result.encounter.id);
-      /*
-        FD-2 — the slip's facts, taken from the response that already carried them and from the
-        summary row the clerk just chose. See `SeatVisit.slip` for why the doctor is remembered
-        rather than looked up again at print time.
-      */
-      const slip = {
-        visitNo: result.encounter.visitNo,
-        serviceDate: result.encounter.serviceDate,
-        visitType: result.visitType,
-        doctorName: doctor.doctor.displayName,
-        departmentName: departmentName?.(doctor.doctor.departmentId) ?? "",
-        roomCode: doctor.roomCode,
+      const body: Record<string, unknown> = {
+        name: fields.name.trim(),
+        sex: fields.sex,
+        ...(fields.phone.trim() === "" ? {} : { phone: fields.phone.trim() }),
+        ...(fields.ageYears.trim() === "" ? {} : { ageYears: Number(fields.ageYears) }),
+        ...(acknowledgeDuplicates ? { acknowledgedDuplicates: true } : {}),
       };
+      const res = await api<{ patient: { id: string } }>("POST", "/patients", body);
       /*
-        RC-4 T3 / D2's "token" noun — and it costs NO extra fetch. `WireWalkInResult` extends
-        `WireOpenVisitResult`, which has carried `tokenNo` since 07b; the seat was throwing it
-        away. Under `bill_first` it is NULL here by the wire's own shape (`WireWalkInDeferredResult`)
-        and `joinQueue` fills it after the money. The PAID stamp itself lives on the BOARD (D7).
+        The patient goes IN HAND and nothing else happens. The counter's own guard — patient in hand,
+        no encounter — then renders the appointment stage, so the advance is a consequence of the
+        registration rather than a navigation this panel performs.
       */
-      onOpened?.({
-        encounterId: result.encounter.id, patientId: result.patientId, tokenNo: result.tokenNo,
-        flow, draftId: newDraftId(), joining: false, joinError: null, slip,
-      });
+      takePatient(res.patient.id);
+      onRegistered?.(res.patient.id);
     } catch (e) {
-      // LIFTED VERBATIM: a 409 carrying candidates is a QUESTION, not a failure.
+      // A 409 carrying candidates is a QUESTION, not a failure — the same shape the walk-in used.
       if (e instanceof ApiError && e.status === 409) {
         const detail = (e.body as { detail?: { candidates?: WireDuplicateCandidate[] } } | undefined)?.detail;
         if (detail?.candidates !== undefined) { setDuplicates(detail.candidates); return; }
@@ -2133,10 +2139,8 @@ export function RegisterPanel({
   }
 
   return (
-    <section aria-label={t(existingId === undefined ? "registrationCounter.register.title" : "registrationCounter.register.existingTitle")} data-testid="register-panel" className="text-sm">
-      <h2 className="text-base font-semibold">
-        {t(existingId === undefined ? "registrationCounter.register.title" : "registrationCounter.register.existingTitle")}
-      </h2>
+    <section aria-label={t("registrationCounter.register.title")} data-testid="register-panel" className="text-sm">
+      <h2 className="text-base font-semibold">{t("registrationCounter.register.title")}</h2>
 
       {/*
         FD-2 — the four fields sit on a GRID rather than in one 1440px-wide column. A name box the
@@ -2144,7 +2148,6 @@ export function RegisterPanel({
         out, and it costs the clerk a full head-sweep per field. Two columns at counter width, one
         on a narrow terminal.
       */}
-      {existingId === undefined && (
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label htmlFor="rc-reg-name" className="text-xs font-medium text-muted-foreground">{t("registrationCounter.register.name")}</label>
@@ -2175,20 +2178,21 @@ export function RegisterPanel({
           </select>
         </div>
       </div>
-      )}
 
-      <div className="mt-3">
-        <label htmlFor="rc-reg-doctor" className="text-xs font-medium text-muted-foreground">{t("registrationCounter.register.doctor")}</label>
-        <select id="rc-reg-doctor" data-testid="reg-doctor" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}
-          className="mt-1 h-11 w-full rounded-md border border-input bg-background px-3 text-base outline-none focus:ring-2 focus:ring-ring">
-          <option value="">{t("registrationCounter.register.pickDoctor")}</option>
-          {doctors.map((d) => (
-            <option key={d.doctor.id} value={d.doctor.id}>
-              {d.doctor.displayName} · {t("registrationCounter.wait.ahead", { count: d.waitingCount })}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/*
+        ═══ FD-8 — THE DOCTOR DROPDOWN THAT USED TO SIT HERE IS GONE ═══
+        
+        This was the defect, in one control. `reg-doctor` rendered directly beneath the four
+        registration fields — and OUTSIDE the new-patient guard, so it appeared for a patient already
+        on file too. It is exactly what the owner described and rejected twice: "don't put appointment
+        screen just below registration form".
+        
+        Desk One never had it. Its registration stage is "Four fields, one UHID" and its `enrol()`
+        allocates the number and ADVANCES; choosing a doctor is the appointment stage's work, next to
+        the complaint that decides which department the doctor should be in.
+        
+        A named test asserts `reg-doctor` is absent, so it cannot grow back.
+      */}
 
       {duplicates !== null && (
         <div
@@ -2255,7 +2259,7 @@ export function RegisterPanel({
             it — the clerk can neither proceed nor explain why. The acknowledgement is the clerk's
             judgement, recorded, which is what `acknowledgedDuplicates` is for.
           */}
-          <SubmitButton data-testid="reg-acknowledge" onClick={(k) => open(true, k)}>
+          <SubmitButton data-testid="reg-acknowledge" onClick={() => open(true)}>
             {t("registrationCounter.register.registerAnyway")}
           </SubmitButton>
         </div>
@@ -2271,8 +2275,8 @@ export function RegisterPanel({
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <SubmitButton data-testid="reg-submit" disabled={!ready} onClick={(k) => open(false, k)}>
-          {t(existingId === undefined ? "registrationCounter.register.submit" : "registrationCounter.register.openVisit")}
+        <SubmitButton data-testid="reg-submit" disabled={!ready} onClick={() => open(false)}>
+          {t("registrationCounter.register.submit")}
         </SubmitButton>
         {onCancel !== undefined && (
           <Button type="button" variant="ghost" data-testid="reg-cancel" onClick={onCancel}>

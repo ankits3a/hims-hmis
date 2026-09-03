@@ -52,6 +52,13 @@ function mockRoutes(over: Record<string, Reply | ((init?: RequestInit) => Reply)
     "GET /api/opd/continuity": { status: 200, body: { anchor: null } },
     "GET /api/opd/appointments": { status: 200, body: { items: [] } },
     "GET /api/patients/search": { status: 200, body: { items: [] } },
+    /*
+     * FD-8 — the appointment stage reads the counter flow LIVE before opening a visit, and checks
+     * the drawer under bill-first. Those preconditions moved here from the register panel when
+     * registration stopped opening visits, so every seat that confirms a walk-in needs this route.
+     */
+    "GET /api/opd/config": { status: 200, body: { counterSequence: "queue_first", tokenLane: "token_first" } },
+    "GET /api/billing/sessions/current": { status: 200, body: { session: { id: "cs-1", status: "open" } } },
   };
   const table = { ...base, ...over };
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -96,7 +103,10 @@ describe("FD-7 T2 — the appointment seat", () => {
     inHand("p-1");
     renderWithProviders(<AppointmentSeat now={NOW} />);
     const user = userEvent.setup();
-    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    // The select renders with only its placeholder until the department list lands, so the wait
+    // is for the OPTION rather than the element.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
 
     const card = await screen.findByTestId("appt-proposal");
     expect(within(card).getByTestId("appt-proposal-rule").textContent).toBe("Seen here before");
@@ -113,7 +123,10 @@ describe("FD-7 T2 — the appointment seat", () => {
     inHand("p-1");
     renderWithProviders(<AppointmentSeat now={NOW} />);
     const user = userEvent.setup();
-    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    // The select renders with only its placeholder until the department list lands, so the wait
+    // is for the OPTION rather than the element.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
 
     await screen.findByTestId("appt-proposal");
     expect(screen.getByTestId("appt-wait-ahead").textContent).toContain("1");
@@ -131,7 +144,10 @@ describe("FD-7 T2 — the appointment seat", () => {
     inHand("p-1");
     renderWithProviders(<AppointmentSeat now={NOW} />);
     const user = userEvent.setup();
-    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    // The select renders with only its placeholder until the department list lands, so the wait
+    // is for the OPTION rather than the element.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
 
     const delay = await screen.findByTestId("appt-delay");
     expect(delay.textContent).toContain("60");
@@ -149,7 +165,10 @@ describe("FD-7 T2 — the appointment seat", () => {
     inHand("p-1");
     renderWithProviders(<AppointmentSeat now={NOW} />);
     const user = userEvent.setup();
-    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    // The select renders with only its placeholder until the department list lands, so the wait
+    // is for the OPTION rather than the element.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
     await user.click(await screen.findByTestId("appt-take-alternative"));
 
     expect(screen.getByTestId("appt-confirm").textContent).toContain("Dr Quick");
@@ -165,7 +184,10 @@ describe("FD-7 T2 — the appointment seat", () => {
     inHand("p-1");
     renderWithProviders(<AppointmentSeat now={NOW} />);
     const user = userEvent.setup();
-    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    // The select renders with only its placeholder until the department list lands, so the wait
+    // is for the OPTION rather than the element.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
 
     expect(await screen.findByTestId("appt-no-doctor")).toBeTruthy();
     expect(screen.getByTestId("appt-proposal-rule").textContent).toBe("No doctor is sitting");
@@ -181,7 +203,10 @@ describe("FD-7 T2 — the appointment seat", () => {
     inHand("p-1");
     renderWithProviders(<AppointmentSeat now={NOW} />);
     const user = userEvent.setup();
-    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    // The select renders with only its placeholder until the department list lands, so the wait
+    // is for the OPTION rather than the element.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
 
     expect((await screen.findByTestId("appt-proposal-rule")).textContent).toBe("Shortest wait");
     expect(screen.getByTestId("appt-proposal-doctor").textContent).toBe("Dr Quick");
@@ -204,7 +229,10 @@ describe("FD-7 T2 — the appointment seat", () => {
     inHand("p-1");
     renderWithProviders(<AppointmentSeat now={NOW} />);
     const user = userEvent.setup();
-    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    // The select renders with only its placeholder until the department list lands, so the wait
+    // is for the OPTION rather than the element.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
 
     expect((await screen.findByTestId("appt-proposal-doctor")).textContent).toBe("Dr Quick");
     expect(screen.getByTestId("appt-anchor-unavailable").textContent).toContain("on leave today");
@@ -229,7 +257,10 @@ describe("FD-7 T2 — the appointment seat", () => {
     inHand("p-1");
     renderWithProviders(<AppointmentSeat now={NOW} />);
     const user = userEvent.setup();
-    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    // The select renders with only its placeholder until the department list lands, so the wait
+    // is for the OPTION rather than the element.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
     await user.click(screen.getByTestId("appt-mode-future"));
     await user.selectOptions(screen.getByTestId("appt-doctor"), "d-quick");
     await user.click(await screen.findByTestId(`appt-slot-${slotStart}`));
@@ -248,7 +279,10 @@ describe("FD-7 T2 — the appointment seat", () => {
     inHand("p-1");
     renderWithProviders(<AppointmentSeat now={NOW} />);
     const user = userEvent.setup();
-    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    // The select renders with only its placeholder until the department list lands, so the wait
+    // is for the OPTION rather than the element.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
     await user.click(screen.getByTestId("appt-mode-future"));
     await user.selectOptions(screen.getByTestId("appt-doctor"), "d-quick");
 
@@ -277,7 +311,10 @@ describe("FD-7 T2 — the appointment seat", () => {
     inHand("p-1");
     renderWithProviders(<AppointmentSeat now={NOW} />);
     const user = userEvent.setup();
-    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    // The select renders with only its placeholder until the department list lands, so the wait
+    // is for the OPTION rather than the element.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
     await user.type(screen.getByTestId("appt-slip"), "PTR-9911");
     await user.click(await screen.findByTestId("appt-confirm"));
 
@@ -294,7 +331,10 @@ describe("FD-7 T2 — the appointment seat", () => {
     inHand("p-1");
     renderWithProviders(<AppointmentSeat now={NOW} />);
     const user = userEvent.setup();
-    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    // The select renders with only its placeholder until the department list lands, so the wait
+    // is for the OPTION rather than the element.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
     await user.click(await screen.findByTestId("appt-confirm"));
 
     await screen.findByTestId("appt-done");
@@ -306,14 +346,20 @@ describe("FD-7 T2 — the appointment seat", () => {
     inHand("p-1");
     renderWithProviders(<AppointmentSeat now={NOW} />);
     const user = userEvent.setup();
-    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    // The select renders with only its placeholder until the department list lands, so the wait
+    // is for the OPTION rather than the element.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
     await user.type(screen.getByTestId("appt-slip"), "PTR-9911");
     await user.click(await screen.findByTestId("appt-confirm"));
     await screen.findByTestId("appt-done");
 
     await user.click(screen.getByTestId("appt-next"));
     await waitFor(() => expect(screen.queryByTestId("appt-done")).toBeNull());
-    expect((screen.getByTestId("appt-slip") as HTMLInputElement).value).toBe("");  // THE KILL
+    // THE KILL, and stronger than before: the slip cannot be inherited because the workspace that
+    // held it is gone — the patient was released with it.
+    expect(await screen.findByTestId("find-panel")).toBeTruthy();
+    expect(screen.queryByTestId("appt-slip")).toBeNull();
   });
 
   /* ── D8: two patients, and nothing of the first survives into the second ─────────────────── */
@@ -325,17 +371,24 @@ describe("FD-7 T2 — the appointment seat", () => {
     inHand("p-1");
     renderWithProviders(<AppointmentSeat now={NOW} />);
     const user = userEvent.setup();
-    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    // The select renders with only its placeholder until the department list lands, so the wait
+    // is for the OPTION rather than the element.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
     await user.click(await screen.findByTestId("appt-confirm"));
     await screen.findByTestId("appt-done");
 
     await user.click(screen.getByTestId("appt-next"));
     await waitFor(() => expect(screen.queryByTestId("appt-done")).toBeNull());
-    // THE KILL for a desk that carries the last patient's choices into the next one.
-    expect((screen.getByTestId("appt-department") as HTMLSelectElement).value).toBe("");
-    expect((screen.getByTestId("appt-doctor") as HTMLSelectElement).value).toBe("");
-    expect(screen.queryByTestId("appt-proposal")).toBeNull();
-    expect(screen.getByTestId("appt-mode-walkin").getAttribute("aria-pressed")).toBe("true");
+    /*
+     * FD-8 — "Next patient" RELEASES the patient and the seat returns to its search, which is Desk
+     * One's own `clearDesk`: "nothing carries to the next person". That is a stronger guarantee than
+     * the field-by-field reset this used to assert — there is no per-patient state left to inherit,
+     * because the whole workspace is unmounted.
+     */
+    expect(await screen.findByTestId("find-panel")).toBeTruthy();
+    expect(screen.queryByTestId("appointment-workspace")).toBeNull();
+    expect(sessionStorage.getItem("hmis.inHand")).toBeNull();
   });
 
   /** A refused walk-in is SAID, never swallowed — the clerk has a queue behind them. */
@@ -346,7 +399,10 @@ describe("FD-7 T2 — the appointment seat", () => {
     inHand("p-1");
     renderWithProviders(<AppointmentSeat now={NOW} />);
     const user = userEvent.setup();
-    await user.selectOptions(await screen.findByTestId("appt-department"), "dept-gm");
+    // The select renders with only its placeholder until the department list lands, so the wait
+    // is for the OPTION rather than the element.
+    await screen.findByRole("option", { name: "General Medicine" });
+    await user.selectOptions(screen.getByTestId("appt-department"), "dept-gm");
     await user.click(await screen.findByTestId("appt-confirm"));
     expect(await screen.findByTestId("appt-error")).toBeTruthy();
     expect(screen.queryByTestId("appt-done")).toBeNull();

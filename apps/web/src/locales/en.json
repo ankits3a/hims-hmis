@@ -2736,6 +2736,11 @@
     "next": "Next patient",
     "forbidden": "This account may not book or route appointments.",
     "anchorOnLeave": "{{doctor}} has seen this patient before but is on leave today.",
-    "partnerSlip": "Partner slip code (if they brought one)"
+    "partnerSlip": "Partner slip code (if they brought one)",
+    "complaintTitle": "What brings {{name}} in?",
+    "complaintHint": "In their own words — seene mein dard · bukhar · ghutne mein dard",
+    "themDefault": "them",
+    "bySuggestion": "suggested from the complaint",
+    "byKeyword": "matched on keywords"
   }
 }
