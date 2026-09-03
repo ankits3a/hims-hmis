@@ -102,6 +102,9 @@ export function BillingSession(): React.ReactElement {
   const [counts, setCounts] = useState<Record<number, string>>({});
   const [note, setNote] = useState("");
   const [closeError, setCloseError] = useState<string | null>(null);
+  /* FD-11 — the re-count is opt-in: a button, then a reason, then the withdrawal. Never one click. */
+  const [recounting, setRecounting] = useState(false);
+  const [reason, setReason] = useState("");
   /** The finished drawer, held from the close response — `sessions/current` will not serve it. */
   const [closed, setClosed] = useState<WireCashierSession | null>(null);
 
@@ -167,6 +170,38 @@ export function BillingSession(): React.ReactElement {
     if (note.trim() !== "") body.note = note.trim();
     try {
       const row = await api<WireCashierSession>("POST", `/billing/sessions/${encodeURIComponent(live.id)}/close`, body);
+      await land(row);
+    } catch (e) {
+      setCloseError(billingErrorMessage(e));
+    }
+  };
+
+  /**
+   * ═══ FD-11 — WITHDRAW A MISTYPED COUNT AND COUNT AGAIN ═══
+   *
+   * Owner, on the preview: *"I wrongly typed the closing amount. Now I can't undo it and so I can't
+   * close the drawer properly and hence can't proceed on to the dashboard."* Every exit from a typo
+   * needed a second human — in a hospital with one supervisor.
+   *
+   * It is NOT an undo and the copy on the button must not suggest one. The retracted figure is
+   * written to the event log before the drawer reopens, and the server files an approval on the
+   * next close even if the arithmetic then agrees — so a corrected count still meets a supervisor.
+   * What this removes is the dead end, not the second pair of eyes.
+   *
+   * The reason is REQUIRED and the server refuses a blank one, so it is asked for here rather than
+   * posted empty and bounced.
+   */
+  const recount = async (): Promise<void> => {
+    if (live === null) return;
+    const why = reason.trim();
+    if (why === "") { setCloseError(t("billingSession.recount.reasonRequired")); return; }
+    setCloseError(null);
+    try {
+      const row = await api<WireCashierSession>(
+        "POST", `/billing/sessions/${encodeURIComponent(live.id)}/recount`, { reason: why },
+      );
+      setReason("");
+      setRecounting(false);
       await land(row);
     } catch (e) {
       setCloseError(billingErrorMessage(e));
@@ -326,6 +361,47 @@ export function BillingSession(): React.ReactElement {
             <span data-testid="closing-expected" className="tabular-nums">{fmtPaise(live.expectedCashPaise ?? 0)}</span>
           </p>
           {varianceBlock(live.variancePaise ?? 0, "variance-figure")}
+
+          {/*
+            BESIDE THE COUNT, which is where the owner asked for it and where it belongs: the figure
+            somebody is staring at when they realise it is wrong is the figure they should be able
+            to act on. It sits ABOVE the lockout banner, so the way out is read before the wall.
+          */}
+          {!recounting ? (
+            <button
+              type="button"
+              data-testid="recount-open"
+              className="text-sm underline"
+              onClick={() => { setRecounting(true); setCloseError(null); }}
+            >
+              {t("billingSession.recount.open")}
+            </button>
+          ) : (
+            <div data-testid="recount-form" className="space-y-2 rounded border border-neutral-300 p-2">
+              <p className="text-sm text-neutral-700">{t("billingSession.recount.explain")}</p>
+              <label className="block text-sm" htmlFor="recount-reason">{t("billingSession.recount.reason")}</label>
+              <input
+                id="recount-reason"
+                data-testid="recount-reason"
+                className="w-full rounded border px-2 py-1 text-sm"
+                value={reason}
+                onChange={(e) => { setReason(e.target.value); }}
+              />
+              <div className="flex gap-2">
+                <SubmitButton data-testid="recount-submit" onClick={() => recount()}>
+                  {t("billingSession.recount.submit")}
+                </SubmitButton>
+                <button
+                  type="button"
+                  data-testid="recount-cancel"
+                  className="text-sm underline"
+                  onClick={() => { setRecounting(false); setReason(""); setCloseError(null); }}
+                >
+                  {t("billingSession.recount.cancel")}
+                </button>
+              </div>
+            </div>
+          )}
           {live.varianceApprovalId !== null && (
             <p role="status" data-testid="approval-pending" className="text-sm text-amber-800">
               {t("billingSession.approvalPending", { approvalId: live.varianceApprovalId })}

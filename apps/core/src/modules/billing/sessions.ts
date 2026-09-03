@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
-import { cashierSessions, receipts, receiptTenders, refundVouchers } from "../../kernel/db/schema";
+import { cashierSessions, events, receipts, receiptTenders, refundVouchers } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
 import { requestApproval } from "../../kernel/approvals/requests";
@@ -9,7 +9,7 @@ import { getApproval } from "../../kernel/approvals/worklist";
 import { assertPaise } from "../tariff";
 import { BillingError } from "./errors";
 import { expectedCash, sumDenominations } from "./cash-math";
-import { cashierSessionClosed, cashierSessionOpened, varianceFlagged } from "./events";
+import { cashierSessionClosed, cashierSessionOpened, cashierSessionRecounted, varianceFlagged } from "./events";
 import type { Db, Tx } from "../../kernel/db/client";
 
 export type CashierSessionRow = typeof cashierSessions.$inferSelect;
@@ -164,6 +164,25 @@ export async function liveExpectedCashPaise(exec: Db | Tx, session: Pick<Cashier
   return expectedCash(session.openingFloatPaise, cashTenders, cashVouchers, changeGiven);
 }
 
+/**
+ * Has this drawer's count already been retracted once?
+ *
+ * Read from the EVENT LOG rather than a column on the session, and that is the point rather than a
+ * shortcut: a re-count's whole value is the permanent record it leaves, so the record is also what
+ * the rule reads. A boolean on the row could be cleared by the next write; an event cannot.
+ */
+export async function wasRecounted(exec: Db | Tx, sessionId: string): Promise<boolean> {
+  const rows = await exec
+    .select({ seq: events.seq })
+    .from(events)
+    .where(and(
+      eq(events.name, cashierSessionRecounted.name),
+      sql`${events.payload}->>'sessionId' = ${sessionId}`,
+    ))
+    .limit(1);
+  return rows.length > 0;
+}
+
 export async function beginClose(
   db: Db,
   actor: Actor,
@@ -184,7 +203,21 @@ export async function beginClose(
     const counted = sumDenominations(input.denominations);
     const expected = await liveExpectedCashPaise(tx, session);
     const variancePaise = counted - expected;
-    const closed = variancePaise === 0;
+    /*
+      ═══ FD-11 — A RE-COUNTED DRAWER ALWAYS MEETS A SUPERVISOR, EVEN AT ZERO VARIANCE ═══
+
+      This is the whole safety of the re-count path and it is the one line that carries it. Without
+      it the correction is a hole big enough to drive the control through: count short, read the
+      expected figure off the variance the screen just showed you, retract, re-enter that figure
+      exactly, and the session closes clean with nobody the wiser and the difference in your pocket.
+
+      So a session that has been retracted once files an approval on its NEXT close whatever the
+      arithmetic says. The typo still costs one supervisor tap — the same cost as today — but the
+      cashier is no longer stuck, and the number that ends up in the ledger is the right one instead
+      of a wrong one somebody approved to get the desk moving again.
+    */
+    const retracted = await wasRecounted(tx, session.id);
+    const closed = variancePaise === 0 && !retracted;
 
     let varianceApprovalId: string | null = null;
     if (!closed) {
@@ -198,7 +231,9 @@ export async function beginClose(
       const filed = await requestApproval(tx, actor, {
         typeKey: "billing_variance",
         subject: { type: "cashier_session", id: session.id },
-        requestNote: `session ${session.id}: counted ${String(counted)} vs expected ${String(expected)} (variance ${String(variancePaise)} paise)`,
+        requestNote: retracted && variancePaise === 0
+          ? `session ${session.id}: counted ${String(counted)} and it MATCHES the expected ${String(expected)}, but this drawer's count was retracted and re-entered — a corrected count is confirmed by a second person`
+          : `session ${session.id}: counted ${String(counted)} vs expected ${String(expected)} (variance ${String(variancePaise)} paise)`,
       });
       varianceApprovalId = filed.approvalId;
     }
@@ -226,6 +261,113 @@ export async function beginClose(
         tx,
         cashierSessionClosed.make({ actor, payload: { sessionId: session.id, cashierUserId: actor.id, variancePaise } }),
       );
+    }
+    return updated[0]!;
+  });
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-11 — THE AUDITED RE-COUNT, AND WHY IT DOES NOT WEAKEN THE CONTROL IT REACHES INTO
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, on the preview: *"I wrongly typed the closing amount. Now I can't undo it and so I can't
+ * close the drawer properly and hence can't proceed on to the dashboard."* — followed by the
+ * ruling: add the audited re-count path.
+ *
+ * The trap was real. A count that misses the till files a `billing_variance` approval and parks the
+ * session in `closing`; the cashier filed it so the kernel refuses their own grant; and they cannot
+ * open a second drawer while that one is live. Every exit needed a second human, including the exit
+ * from a typo — in a hospital that has one supervisor and, right now, one full admin.
+ *
+ * ═══ WHAT MAKES THIS SAFE ═══
+ *
+ * A re-count that simply let a cashier try again would be worse than the trap. The obvious attack
+ * writes itself: count short, read the expected figure off the variance the screen just showed you,
+ * retract, type that figure exactly, close clean, keep the difference. Three things stop it, and all
+ * three are load-bearing:
+ *
+ *   1. THE RETRACTED COUNT IS WRITTEN DOWN FIRST. `cashier_session.recounted` carries the figure
+ *      being withdrawn, the expected, the variance and a mandatory reason, and it is appended before
+ *      the session reopens. A correction becomes a thing that HAPPENED rather than one that
+ *      un-happened, and "counted 0, retracted, then counted 4,020" is a different story from
+ *      "counted 4,020".
+ *   2. THE NEXT CLOSE ALWAYS MEETS A SUPERVISOR. `beginClose` reads that event and files an approval
+ *      even when the arithmetic agrees. The typo still costs one supervisor tap; what changes is
+ *      that the number reaching the ledger is the RIGHT one, instead of a wrong one somebody
+ *      approved to get the desk moving.
+ *   3. ONLY THE CASHIER WHOSE DRAWER IT IS, and only from `closing`. Not a supervisor acting on
+ *      somebody else's till, and never on a session already finalised.
+ *
+ * ═══ THE STALE APPROVAL, STATED RATHER THAN HIDDEN ═══
+ *
+ * The approval filed against the retracted count stays `pending`: the kernel's statuses are
+ * `pending | granted | rejected`, there is no cancel, and `rejectRequest` runs the same
+ * requester≠approver check that stopped the cashier in the first place. Adding a status is a change
+ * to the shared approvals kernel and is not made in passing here.
+ *
+ * It is inert, not dangerous. `confirmClose` reads the session's CURRENT `varianceApprovalId`, which
+ * this clears — so granting the stale request finalises nothing. Its id travels in the event and in
+ * the next approval's note, so the chain is readable from either end. Tidying it up is a kernel
+ * change and belongs with the owner's ruling on approval lifecycle, not with this fix.
+ */
+export async function recountSession(
+  db: Db,
+  actor: Actor,
+  sessionId: string,
+  input: { reason: string },
+): Promise<CashierSessionRow> {
+  const reason = input.reason.trim();
+  if (reason === "") {
+    throw new BillingError("recount_reason_required", "a re-count must say why the previous count is being withdrawn");
+  }
+
+  return withTx(db, async (tx) => {
+    const rows = await tx.select().from(cashierSessions).where(eq(cashierSessions.id, sessionId));
+    const session = rows[0];
+    if (!session) throw new BillingError("unknown_session", `session ${sessionId} does not exist`);
+    if (session.cashierUserId !== actor.id) {
+      // A drawer is one person's. Somebody else re-counting it would be exactly the un-owned
+      // correction this whole mechanism exists to make impossible.
+      throw new BillingError("not_your_session", `session ${sessionId} belongs to another cashier`);
+    }
+    if (session.status !== "closing") {
+      throw new BillingError("session_state_conflict", `session ${sessionId} is ${session.status}, not awaiting a close`);
+    }
+
+    /* Written BEFORE the reopen, so the retracted figure survives even if the update below fails. */
+    await appendEvent(
+      tx,
+      cashierSessionRecounted.make({
+        actor,
+        payload: {
+          sessionId: session.id,
+          cashierUserId: session.cashierUserId,
+          retractedCountedPaise: session.countedCashPaise ?? 0,
+          retractedExpectedPaise: session.expectedCashPaise ?? 0,
+          retractedVariancePaise: session.variancePaise ?? 0,
+          retractedApprovalId: session.varianceApprovalId,
+          reason,
+        },
+      }),
+    );
+
+    const updated = await tx
+      .update(cashierSessions)
+      .set({
+        status: "open",
+        denominations: {},
+        countedCashPaise: null,
+        expectedCashPaise: null,
+        variancePaise: null,
+        closeNote: null,
+        varianceApprovalId: null,
+        closedAt: null,
+      })
+      .where(and(eq(cashierSessions.id, sessionId), eq(cashierSessions.status, "closing")))
+      .returning();
+    if (updated.length === 0) {
+      throw new BillingError("session_state_conflict", `session ${sessionId} moved concurrently`);
     }
     return updated[0]!;
   });

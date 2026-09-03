@@ -93,7 +93,7 @@ import {
 } from "./receipts";
 import { issueRefundVoucher, payRefundVoucher, requestRefund } from "./refunds";
 import { listMismatches, setDegraded, uploadSettlement } from "./recon";
-import { beginClose, confirmClose, listSessions, openSession } from "./sessions";
+import { beginClose, confirmClose, listSessions, openSession, recountSession } from "./sessions";
 import { istDay } from "./time";
 import type { FeeQuote } from "./charge-rules";
 import type { BillingConfig } from "./config";
@@ -385,6 +385,11 @@ const beginCloseBody = z.object({
 const sessionsQuery = z.object({
   cashierUserId: z.string().min(1).optional(),
   status: z.enum(["open", "closing", "closed"]).optional(),
+});
+
+/* FD-11 — a re-count says WHY, in the cashier's own words; the log is worthless without it. */
+const recountBody = z.object({
+  reason: z.string().min(1).max(400),
 });
 
 const reconUploadBody = z.object({ csv: z.string(), source: z.enum(["upi", "card"]) });
@@ -851,6 +856,27 @@ export class BillingController {
   async sessionCurrent(@CurrentActor() actor: Actor): Promise<{ session: CashierSessionRow | null }> {
     const own = await listSessions(this.db, { cashierUserId: actor.id });
     return { session: own.find((s) => s.status === "open" || s.status === "closing") ?? null };
+  }
+
+  /**
+   * FD-11 — WITHDRAW A MISTYPED CLOSING COUNT AND COUNT AGAIN.
+   *
+   * On the cashier's OWN drawer permission, because it is their own drawer and `recountSession`
+   * refuses anybody else's. It is not a way around the variance control: the retracted figure is
+   * written to the event log first, and `beginClose` then files an approval on the next close even
+   * if the arithmetic agrees. What it removes is the dead end, not the second pair of eyes.
+   */
+  @RequirePermission("billing.session.own", "hospital")
+  @Post("sessions/:id/recount")
+  async sessionRecount(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<CashierSessionRow> {
+    const b = parsed(recountBody, body);
+    try {
+      return await recountSession(this.db, actor, id, { reason: b.reason });
+    } catch (e) {
+      throw toHttp(e);
+    }
   }
 
   @RequirePermission("billing.session.own", "hospital")

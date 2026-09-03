@@ -463,4 +463,77 @@ describe("BillingSession", () => {
     expect(await screen.findByTestId("open-error")).toHaveAttribute("role", "alert");
     expect(callsTo("POST", "/api/billing/sessions")).toHaveLength(0);
   });
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-11 — WITHDRAWING A MISTYPED COUNT, FROM THE SCREEN THE CASHIER IS ALREADY STARING AT
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Owner, on the preview: *"I wrongly typed the closing amount. Now I can't undo it and so I can't
+ * close the drawer properly and hence can't proceed on to the dashboard."* — and then, on where the
+ * control belongs: *"on /billing/session beside the count."*
+ *
+ * The screen must not oversell it. The server writes the retracted figure to the log and files an
+ * approval on the next close even at zero variance, so this is a correction with a record and a
+ * second pair of eyes — not an undo. What is asserted here is the WIRE: a reason travels, and a
+ * blank one never leaves the browser.
+ */
+/**
+ * A drawer already parked in `closing` — the state the owner was stuck in. `onPost` sees every
+ * write so a test can assert what left the browser, and the recount route hands back an `open` row
+ * so the screen's own `land` runs for real rather than being stubbed around.
+ */
+function renderClosing(onPost?: (path: string, init?: RequestInit) => void): void {
+  let current: SessionRow | null = CLOSING;
+  mockRoutes({
+    "GET /api/billing/sessions/current": () => ({ status: 200, body: { session: current } }),
+    "POST /api/billing/sessions/cs-1/recount": (init) => {
+      onPost?.("/billing/sessions/cs-1/recount", init);
+      const reopened = session({ status: "open", countedCashPaise: null, expectedCashPaise: null, variancePaise: null, varianceApprovalId: null });
+      current = reopened;
+      return { status: 200, body: reopened };
+    },
+  });
+  renderWithProviders(<BillingSession />);
+}
+
+describe("FD-11: withdrawing a mistyped closing count", () => {
+  it("posts the reason to the recount route and lands the reopened drawer", async () => {
+    const posted: { path: string; body: string }[] = [];
+    renderClosing((path, init) => { posted.push({ path, body: String(init?.body ?? "") }); });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByTestId("recount-open"));
+    await user.type(screen.getByTestId("recount-reason"), "typed 2,710 instead of 2,720");
+    await user.click(screen.getByTestId("recount-submit"));
+
+    await waitFor(() => expect(posted.some((p) => p.path.includes("/recount"))).toBe(true));
+    const call = posted.find((p) => p.path.includes("/recount"))!;
+    expect(call.body).toContain("typed 2,710 instead of 2,720");
+    // the drawer is live again, so the closing panel is gone
+    await waitFor(() => expect(screen.queryByTestId("confirm-close")).not.toBeInTheDocument());
+  });
+
+  it("refuses to post a blank reason — a record with no reason is worthless six months later", async () => {
+    const posted: string[] = [];
+    renderClosing((path) => { posted.push(path); });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByTestId("recount-open"));
+    await user.type(screen.getByTestId("recount-reason"), "   ");
+    await user.click(screen.getByTestId("recount-submit"));
+
+    expect(await screen.findByTestId("close-error")).toBeInTheDocument();
+    expect(posted.some((p) => p.includes("/recount"))).toBe(false);
+  });
+
+  it("is offered beside the count and above the lockout, and does not replace confirm-close", async () => {
+    renderClosing();
+    expect(await screen.findByTestId("recount-open")).toBeInTheDocument();
+    expect(screen.getByTestId("closing-counted")).toBeInTheDocument();
+    // the supervisor path is still there — a re-count is the OTHER option, not the only one
+    expect(screen.getByTestId("confirm-close")).toBeInTheDocument();
+    expect(screen.getByTestId("lockout-banner")).toBeInTheDocument();
+  });
+});
 });

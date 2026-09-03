@@ -13,7 +13,9 @@ export type BillingErrorCode =
   | "approval_not_granted" | "unknown_series" | "eie_already_marked" | "eie_advance_refunded"
   | "recon_parse_failed"
   | "idempotency_key_reused" | "idempotency_key_in_progress"
-  | "unknown_encounter" | "fee_not_applicable" | "duplicate_ref";
+  | "unknown_encounter" | "fee_not_applicable" | "duplicate_ref"
+  // FD-11 — the audited re-count of a mistyped closing count.
+  | "unknown_session" | "not_your_session" | "recount_reason_required";
 
 export class BillingError extends Error {
   constructor(
@@ -46,12 +48,13 @@ export class BillingError extends Error {
  */
 const NOT_FOUND_CODES = new Set<BillingErrorCode>([
   "unknown_invoice", "unknown_receipt", "unknown_line", "unknown_encounter", "unknown_series",
+  "unknown_session",
 ]);
-const FORBIDDEN_CODES = new Set<BillingErrorCode>(["credit_permission_required"]);
+const FORBIDDEN_CODES = new Set<BillingErrorCode>(["credit_permission_required", "not_your_session"]);
 /** Client-input refusals. Everything else is a state/ledger conflict and answers 409. */
 const VALIDATION_CODES = new Set<BillingErrorCode>([
   "invalid_paise", "pan_required", "tender_ref_required", "bank_transfer_required",
-  "recon_parse_failed", "duplicate_ref",
+  "recon_parse_failed", "duplicate_ref", "recount_reason_required",
 ]);
 
 export function billingHttpStatus(code: BillingErrorCode): number {

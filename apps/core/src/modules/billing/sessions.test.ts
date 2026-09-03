@@ -13,7 +13,7 @@ import { registerPatient } from "../patients";
 import { dayBook } from "./daily-close";
 import { markEnteredInError, recordReceipt } from "./receipts";
 import { istDay } from "./time";
-import { beginClose, confirmClose, openSession, requireOpenSession } from "./sessions";
+import { beginClose, confirmClose, openSession, recountSession, requireOpenSession, wasRecounted } from "./sessions";
 import type { CashierSessionRow } from "./sessions";
 import type { Db } from "../../kernel/db/client";
 
@@ -274,5 +274,113 @@ describe("sessions: openSession / requireOpenSession / beginClose / confirmClose
 
     expect(await db.select().from(approvals).where(eq(approvals.typeKey, "billing_variance"))).toHaveLength(0);
     expect(await db.select().from(events).where(eq(events.name, "variance.flagged"))).toHaveLength(0);
+  });
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-11 — THE AUDITED RE-COUNT, AND THE HOLE IT WOULD HAVE OPENED IF IT WERE JUST AN UNDO
+   * ═══════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner, on the preview: *"I wrongly typed the closing amount. Now I can't undo it and so I can't
+   * close the drawer properly and hence can't proceed on to the dashboard."*
+   *
+   * The trap was real — every exit from a mistyped count needed a second human, in a hospital with
+   * one supervisor. The fix must not become the bigger problem, so most of what follows asserts the
+   * ATTACK is still refused rather than that the happy path works.
+   */
+  describe("FD-11: re-counting a mistyped close", () => {
+    test("withdraws the count, writes the retracted figure to the log first, and reopens the drawer", async () => {
+      const { cashier, session, result } = await driveToClosingVariance("cashier-recount-1");
+      expect(result.status).toBe("closing");
+      expect(result.variancePaise).toBe(-1000);
+      const filedApprovalId = result.varianceApprovalId;
+      expect(filedApprovalId).not.toBeNull();
+
+      const reopened = await recountSession(db, cashier.actor, session.id, { reason: "typed 2,710 instead of 2,720" });
+
+      expect(reopened.status).toBe("open");
+      // the retracted numbers are OFF the row — the row is a live drawer again, not a half-closed one
+      expect(reopened.countedCashPaise).toBeNull();
+      expect(reopened.variancePaise).toBeNull();
+      expect(reopened.varianceApprovalId).toBeNull();
+      expect(reopened.closedAt).toBeNull();
+
+      /*
+        …and ON the log, which is the whole point. A correction is a thing that HAPPENED. The count a
+        cashier first wrote down is the one piece of evidence an undo would destroy and the one piece
+        an audit wants.
+      */
+      const logged = await db.select().from(events).where(eq(events.name, "cashier_session.recounted"));
+      expect(logged).toHaveLength(1);
+      const payload = logged[0]!.payload as Record<string, unknown>;
+      expect(payload["sessionId"]).toBe(session.id);
+      expect(payload["retractedCountedPaise"]).toBe(271_000);
+      expect(payload["retractedExpectedPaise"]).toBe(272_000);
+      expect(payload["retractedVariancePaise"]).toBe(-1000);
+      expect(payload["retractedApprovalId"]).toBe(filedApprovalId);
+      expect(payload["reason"]).toBe("typed 2,710 instead of 2,720");
+    });
+
+    /**
+     * THE ATTACK, AND THE LINE THAT STOPS IT.
+     *
+     * Count short. Read the expected figure off the variance the screen just showed you. Retract.
+     * Type that figure exactly. Without the rule this test pins, the session closes CLEAN — no
+     * variance, no approval, no supervisor — and the difference stays in the cashier's pocket.
+     *
+     * So a drawer that has been retracted once files an approval on its next close whatever the
+     * arithmetic says. The typo still costs one supervisor tap; what changes is that the number
+     * reaching the ledger is the right one.
+     */
+    test("a re-counted drawer NEVER closes silently, even when the second count matches exactly", async () => {
+      const { cashier, session } = await driveToClosingVariance("cashier-recount-attack");
+      await recountSession(db, cashier.actor, session.id, { reason: "miscounted the 500s" });
+
+      // 272000 exactly — the expected figure, which the cashier can read off their own screen
+      const second = await beginClose(db, cashier.actor, { denominations: { "50000": 5, "20000": 1, "2000": 1 } });
+
+      expect(second.countedCashPaise).toBe(272_000);
+      expect(second.variancePaise).toBe(0);
+      // a zero variance that would have auto-closed on a virgin drawer
+      expect(second.status).toBe("closing");
+      expect(second.closedAt).toBeNull();
+      expect(second.varianceApprovalId).not.toBeNull();
+
+      const filed = await db.select().from(approvals).where(eq(approvals.id, second.varianceApprovalId!));
+      expect(filed[0]!.requestNote).toContain("retracted and re-entered");
+    });
+
+    test("a drawer that was never re-counted still closes clean on an exact count", async () => {
+      const { cashier } = await openWithShapedReceipt("cashier-recount-clean");
+      const closed = await beginClose(db, cashier.actor, { denominations: { "50000": 5, "20000": 1, "2000": 1 } });
+      expect(closed.variancePaise).toBe(0);
+      expect(closed.status).toBe("closed");
+      expect(closed.varianceApprovalId).toBeNull();
+    });
+
+    test("only the cashier whose drawer it is may re-count it", async () => {
+      const { session } = await driveToClosingVariance("cashier-recount-owner");
+      const other = await mkCashier(db, "cashier-recount-stranger");
+      await expect(recountSession(db, other.actor, session.id, { reason: "helping out" }))
+        .rejects.toMatchObject({ code: "not_your_session" });
+    });
+
+    test("refuses a drawer that is not awaiting a close, and one that does not exist", async () => {
+      const { cashier, session } = await openWithShapedReceipt("cashier-recount-open");
+      // still `open` — there is no count to withdraw
+      await expect(recountSession(db, cashier.actor, session.id, { reason: "nothing to undo" }))
+        .rejects.toMatchObject({ code: "session_state_conflict" });
+      await expect(recountSession(db, cashier.actor, "no-such-session", { reason: "x" }))
+        .rejects.toMatchObject({ code: "unknown_session" });
+    });
+
+    /* A log entry with no reason is a log entry nobody can act on six months later. */
+    test("a re-count must say why", async () => {
+      const { cashier, session } = await driveToClosingVariance("cashier-recount-noreason");
+      await expect(recountSession(db, cashier.actor, session.id, { reason: "   " }))
+        .rejects.toMatchObject({ code: "recount_reason_required" });
+      // and the drawer is untouched by the refusal
+      expect(await wasRecounted(db, session.id)).toBe(false);
+    });
   });
 });

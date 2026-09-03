@@ -8,8 +8,8 @@ import { SubmitButton } from "./submit-button";
 /**
  * THIS FILE OWNS THE SINGLE-SUBMIT PROPERTY, with teeth (EXECUTION-LESSONS §3.34).
  *
- * The convention "a money write cannot be fired twice" is honoured by thirteen buttons across four
- * billing screens. Repeating it in thirteen places would produce thirteen implementations and zero
+ * The convention "a money write cannot be fired twice" is honoured by fourteen buttons across four
+ * billing screens. Repeating it in fourteen places would produce fourteen implementations and zero
  * tests — which is exactly how the 15 s polling convention ended up unprotected on the back office.
  * So the guard lives in ONE component and its discrimination is proved HERE, once.
  *
@@ -156,7 +156,7 @@ describe("SubmitButton", () => {
  * out of coverage one screen at a time. A source sweep is the artefact this convention was missing
  * — the `billing-purity.test.ts` precedent in `apps/core`, applied to a UI idiom.
  *
- * THE CENSUS IS PART OF THE ASSERTION (EXECUTION-LESSONS §2.37(b)): thirteen write lanes existed
+ * THE CENSUS IS PART OF THE ASSERTION (EXECUTION-LESSONS §2.37(b)): fourteen write lanes existed
  * when the guard landed, and they are pinned per screen below. A new money lane must update this
  * number deliberately — which is the point, not an inconvenience. The pair of checks is what makes
  * it discriminate: `offenders` alone would be satisfied by deleting every button, and the counts
@@ -165,7 +165,10 @@ describe("SubmitButton", () => {
 const WRITE_LANES: Record<string, number> = {
   "screens/billing-counter": 1, // submit-invoice
   "screens/billing-dues": 4, // clear-submit, clearance-submit, apply-submit, take-advance-submit
-  "screens/billing-session": 3, // open-submit, close-submit, confirm-close
+  // FD-11 — a FOURTH lane on this screen: `recount-submit` withdraws a mistyped closing count.
+  // A write that reopens a drawer and writes a retraction to the audit log is exactly a lane that
+  // must not double-post, so it mounts SubmitButton like the other three.
+  "screens/billing-session": 4, // open-submit, close-submit, confirm-close, recount-submit
   "screens/billing-office": 5, // refund-request-submit, issue-submit, pay-submit, recon-submit, eie-confirm-submit
   "components/alerts-bell": 1, // mark-read — Plan 08.5 T5 / D11: the bell mounts SubmitButton prospectively
 };
@@ -215,7 +218,7 @@ describe("the single-submit convention across the billing screens", () => {
     expect(counted).toEqual(KEYED_WRITES);
   });
 
-  it("every one of the thirteen write lanes mounts a SubmitButton — the sweep above cannot be satisfied by deleting the buttons", () => {
+  it("every one of the fourteen write lanes mounts a SubmitButton — the sweep above cannot be satisfied by deleting the buttons", () => {
     const counted: Record<string, number> = {};
     for (const name of Object.keys(WRITE_LANES)) {
       const src = screenSource(name);

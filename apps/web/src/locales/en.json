@@ -890,6 +890,14 @@
     },
     "summary": {
       "title": "Day summary"
+    },
+    "recount": {
+      "open": "Wrong amount? Withdraw this count and count again",
+      "explain": "This does not erase anything. The count above is written to the record with your reason, and a supervisor still confirms the corrected close — you just do not have to wait for one to fix a typo.",
+      "reason": "Why is this count being withdrawn?",
+      "reasonRequired": "Say why the count is being withdrawn — the record is worthless without it.",
+      "submit": "Withdraw and reopen the drawer",
+      "cancel": "Keep this count"
     }
   },
   "billingOffice": {
