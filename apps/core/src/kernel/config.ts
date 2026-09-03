@@ -171,6 +171,26 @@ const configSchema = z.object({
   SPEECH_ACCOUNT_ID: z.string().default(""),
   SPEECH_API_TOKEN: z.string().default(""),
   /**
+   * ═══ FD-12 — THE ABDM (ABHA) GATEWAY SEAM ═══
+   *
+   * All three default to EMPTY and the ABHA creation/verification path is INERT unless all three
+   * are set — the same B1 discipline as the block above, and for the same reason: this schema is
+   * parsed through the whole environment by every caller of `loadConfig()`, so a key that demanded
+   * a value would break every deployment and every CI job at once. **CI must never contact ABDM.**
+   *
+   * WHAT IS AND IS NOT GATED BY THESE. Recording an ABHA number the patient reads off their phone
+   * needs no gateway and works today at `self_declared` — that is ordinary data capture and it is
+   * the common case at an Indian counter. What needs ABDM is CREATING an ABHA and VERIFYING one by
+   * OTP, because only the gateway can do either. The screen asks `GET /patients/abha/capability`
+   * and says plainly which of the two it is offering, rather than showing a button that fails.
+   *
+   * These are unset everywhere today: obtaining them is an ABDM registration the hospital must
+   * make (owner/procurement), not something this lane can decide.
+   */
+  ABDM_BASE_URL: z.string().default(""),
+  ABDM_CLIENT_ID: z.string().default(""),
+  ABDM_CLIENT_SECRET: z.string().default(""),
+  /**
    * PLAN 09 / DD14 — THE FIVE STRUCTURAL-OFF FLAGS. Every one DEFAULTED, every one a two-string
    * enum, and neither of those is a style choice.
    *
@@ -242,6 +262,13 @@ export type AppConfig = {
   speechAccountId: string;
   speechApiToken: string;
   /**
+   * FD-12 — the ABDM (ABHA) gateway. Shaped like `triage` above because it is the same kind of
+   * thing: an external provider whose absence is a NORMAL state, not a misconfiguration. All three
+   * null ⇒ the counter can still RECORD an ABHA the patient reads out, and cannot create or verify
+   * one. `modules/patients/abdm.ts` is the only reader.
+   */
+  abdm: { baseUrl: string | null; clientId: string | null; clientSecret: string | null };
+  /**
    * Plan 09 / DD14. All five FALSE unless an operator says otherwise, in as many letters. Where
    * each one takes effect is its own task's business — `priceDraft` for benefits (T4), the accrual
    * handler for the two commission flags (T6/T7) — and that is where the take-effect legs live,
@@ -286,6 +313,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     workerLabSweepIntervalMs: parsed.WORKER_LAB_SWEEP_INTERVAL_MS,
     searchRateLimit: parsed.SEARCH_RATE_LIMIT,
     searchRateWindowSec: parsed.SEARCH_RATE_WINDOW_SEC,
+    abdm: {
+      baseUrl: parsed.ABDM_BASE_URL === "" ? null : parsed.ABDM_BASE_URL,
+      clientId: parsed.ABDM_CLIENT_ID === "" ? null : parsed.ABDM_CLIENT_ID,
+      clientSecret: parsed.ABDM_CLIENT_SECRET === "" ? null : parsed.ABDM_CLIENT_SECRET,
+    },
     speechProvider: parsed.SPEECH_PROVIDER,
     speechAccountId: parsed.SPEECH_ACCOUNT_ID,
     speechApiToken: parsed.SPEECH_API_TOKEN,

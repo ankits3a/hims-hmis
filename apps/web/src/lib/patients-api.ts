@@ -146,7 +146,70 @@ export type WireRegisterBody = {
    * been rendered; sending it unconditionally would delete the check while leaving its code in place.
    */
   acknowledgedDuplicates?: boolean;
+  /* ═══ FD-12 — the rest of the record, every field optional so the fast path is unchanged ═══ */
+  altPhone?: string;
+  title?: string;
+  fatherHusbandName?: string;
+  maritalStatus?: string;
+  bloodGroup?: string;
+  language?: "hi" | "en";
+  district?: string;
+  stateName?: string;
+  pincode?: string;
+  abhaNumber?: string;
+  abhaAddress?: string;
+  abhaVerificationStatus?: "none" | "self_declared" | "verified";
+  nationality?: string;
+  nationalIdType?: string;
+  /** The clerk types what is printed on the card; the server keeps only the last four digits. */
+  nationalIdMasked?: string;
+  religion?: string;
+  occupation?: string;
+  monthlyIncomePaise?: number;
+  legacyUhid?: string;
+  isConfidential?: boolean;
+  promotionalOptIn?: boolean;
+  referredBySource?: string;
+  referredByName?: string;
+  referredByPhone?: string;
+  referredBySpeciality?: string;
+  guardian?: {
+    name: string;
+    relationship: "father" | "mother" | "spouse" | "sibling" | "legal_guardian" | "other";
+    phone?: string;
+    idType?: "aadhaar" | "pan" | "voter_id" | "other";
+    idNumberMasked?: string;
+  };
+  coverages?: {
+    kind: "pmjay" | "insurance" | "tpa" | "corporate" | "cghs" | "esic" | "other";
+    payerName?: string;
+    tpaName?: string;
+    policyNumber?: string;
+    cardNumber?: string;
+    beneficiaryId?: string;
+    employeeId?: string;
+    planClass?: string;
+    validFrom?: string;
+    validTo?: string;
+    verificationStatus?: "self_declared" | "card_seen" | "verified";
+  }[];
 };
+
+/**
+ * FD-12 — what this hospital can honestly offer for ABHA right now. Asked once, before the buttons
+ * are drawn, so the counter never shows a live-looking control that only fails when pressed.
+ */
+export type WireAbhaCapability = {
+  configured: boolean;
+  canRecord: boolean;
+  canCreate: boolean;
+  canVerify: boolean;
+  reason: string;
+};
+
+export function abhaCapability(): Promise<WireAbhaCapability> {
+  return api("GET", "/patients/abha/capability");
+}
 
 /**
  * The row the server allocated, as `PatientRow`. Only the fields the desk shows are declared.

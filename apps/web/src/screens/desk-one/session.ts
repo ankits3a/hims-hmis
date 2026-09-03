@@ -53,15 +53,108 @@ export type FutureHold = {
 
 export type Overlay = "palette" | "flow" | "queues" | "edit" | "schema" | null;
 
+/**
+ * FD-12 — one entitlement the patient produced at the desk. Kept as STRINGS like the rest of this
+ * form: a half-typed policy number is a normal intermediate state at a counter, and a form that
+ * refuses to hold one makes the clerk fight it.
+ */
+export type CoverageDraft = {
+  kind: "pmjay" | "insurance" | "tpa" | "corporate" | "cghs" | "esic" | "other";
+  payerName: string;
+  tpaName: string;
+  policyNumber: string;
+  cardNumber: string;
+  beneficiaryId: string;
+  employeeId: string;
+  planClass: string;
+  validFrom: string;
+  validTo: string;
+  verificationStatus: "self_declared" | "card_seen" | "verified";
+};
+
+export const EMPTY_COVERAGE: CoverageDraft = {
+  kind: "pmjay", payerName: "", tpaName: "", policyNumber: "", cardNumber: "",
+  beneficiaryId: "", employeeId: "", planClass: "", validFrom: "", validTo: "",
+  verificationStatus: "self_declared",
+};
+
+/**
+ * ═══ FD-12 — THE FORM GREW, AND THE FOUR FIELDS DID NOT MOVE ═══
+ *
+ * Owner ruling 2026-09-04: the four-field form "lacks many fields" beside a competitor's. Every
+ * field below the first four is OPTIONAL and every one of them is behind a fold, because the two
+ * demands are both real and they are opposite: a queue of walk-ins needs a name and a sex, and a
+ * planned admission needs the whole record. A form that answers only one of them is wrong twice.
+ *
+ * `guardianName`/`guardianRelationship` are the exception that is not optional — see `StageRegister`.
+ * The server has always refused a known minor without a guardian, so a paediatric walk-in could not
+ * be registered from this desk at all until these existed.
+ */
 export type Form = {
+  // the four that were always here, and still the only ones the fast path fills
   name: string;
   phone: string;
   age: string;
   sex: "" | "male" | "female" | "other";
   address: string;
+  // identity
+  title: string;
+  fatherHusbandName: string;
+  dob: string;
+  /** "age" | "dob" — which one the clerk is entering. The server refuses both together. */
+  ageMode: "age" | "dob";
+  maritalStatus: string;
+  bloodGroup: string;
+  altPhone: string;
+  language: "" | "hi" | "en";
+  // where they live
+  area: string;
+  district: string;
+  stateName: string;
+  pincode: string;
+  // ABHA
+  abhaNumber: string;
+  abhaAddress: string;
+  // documents
+  nationality: string;
+  nationalIdType: string;
+  nationalIdNumber: string;
+  // who sent them
+  referredBySource: string;
+  referredByName: string;
+  referredByPhone: string;
+  referredBySpeciality: string;
+  // the rest of the record
+  religion: string;
+  occupation: string;
+  monthlyIncome: string;
+  legacyUhid: string;
+  isConfidential: boolean;
+  promotionalOptIn: boolean;
+  // the guardian — REQUIRED for a minor, which is why it is not merely another optional block
+  guardianName: string;
+  guardianRelationship: "" | "father" | "mother" | "spouse" | "sibling" | "legal_guardian" | "other";
+  guardianPhone: string;
+  guardianIdType: string;
+  guardianIdNumber: string;
+  // how it gets paid for
+  coverages: CoverageDraft[];
 };
 
-export const EMPTY_FORM: Form = { name: "", phone: "", age: "", sex: "", address: "" };
+export const EMPTY_FORM: Form = {
+  name: "", phone: "", age: "", sex: "", address: "",
+  title: "", fatherHusbandName: "", dob: "", ageMode: "age", maritalStatus: "", bloodGroup: "",
+  altPhone: "", language: "",
+  area: "", district: "", stateName: "", pincode: "",
+  abhaNumber: "", abhaAddress: "",
+  nationality: "", nationalIdType: "", nationalIdNumber: "",
+  referredBySource: "", referredByName: "", referredByPhone: "", referredBySpeciality: "",
+  religion: "", occupation: "", monthlyIncome: "", legacyUhid: "",
+  isConfidential: false, promotionalOptIn: false,
+  guardianName: "", guardianRelationship: "", guardianPhone: "",
+  guardianIdType: "", guardianIdNumber: "",
+  coverages: [],
+};
 
 export type Session = {
   stage: Stage;
@@ -180,4 +273,35 @@ export function useDesk(): DeskApi {
   const ctx = useContext(DeskContext);
   if (ctx === null) throw new Error("useDesk outside DeskProvider");
   return ctx;
+}
+
+/**
+ * ═══ FD-12 — HOW OLD IS THIS PERSON, from whichever of the two boxes the clerk used ═══
+ *
+ * One function because the answer drives something that must not be got twice-differently: whether
+ * the guardian block is required. Returns null when the clerk has told us nothing, and null is NOT
+ * treated as a minor — the server takes the same position (its rule "binds only on data it has"),
+ * and a desk that demanded a guardian for every unknown age would be unusable for the adults who
+ * cannot recall a birth year.
+ */
+export function formAgeYears(f: Pick<Form, "age" | "dob" | "ageMode">): number | null {
+  if (f.ageMode === "age") {
+    const n = Number.parseInt(f.age, 10);
+    return Number.isFinite(n) && n >= 0 && n <= 130 ? n : null;
+  }
+  const d = new Date(f.dob);
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  let years = now.getUTCFullYear() - d.getUTCFullYear();
+  const monthDiff = now.getUTCMonth() - d.getUTCMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && now.getUTCDate() < d.getUTCDate())) years -= 1;
+  return years >= 0 && years <= 130 ? years : null;
+}
+
+/** MAJORITY_AGE_YEARS on the server. A known minor needs a guardian; an unknown age does not. */
+export const MAJORITY_AGE = 18;
+
+export function formNeedsGuardian(f: Pick<Form, "age" | "dob" | "ageMode">): boolean {
+  const years = formAgeYears(f);
+  return years !== null && years < MAJORITY_AGE;
 }

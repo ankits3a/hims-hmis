@@ -279,12 +279,95 @@ export function DeskOne(): React.ReactElement {
     const { registerPatient, duplicateCandidates } = await import("../../lib/patients-api");
     try {
       const age = Number.parseInt(f.age, 10);
+      /*
+        FD-12 — A BLANK BOX IS AN OMITTED KEY, NEVER AN EMPTY STRING.
+
+        Every optional field is spread in only when it has a value. Posting `""` would be a
+        different claim from saying nothing: zod's `.max()` accepts it, the column would hold an
+        empty string, and "the clerk left this blank" and "the clerk answered nothing" would stop
+        being distinguishable in the master forever after.
+      */
+      const t = (v: string): string => v.trim();
+      const opt = (key: string, v: string): Record<string, string> => (t(v) === "" ? {} : { [key]: t(v) });
+      const income = Number.parseInt(f.monthlyIncome, 10);
       const res = await registerPatient({
         name: f.name.trim(),
         sex: f.sex,
         ...(f.phone.replace(/\s/g, "") === "" ? {} : { phone: f.phone.replace(/\s/g, "") }),
-        ...(Number.isFinite(age) && age >= 0 && age <= 130 ? { ageYears: age } : {}),
+        /*
+          ONE OF THE TWO, NEVER BOTH — the server refuses `dob_or_age` outright. `ageMode` is what
+          the clerk picked, so it is what decides, rather than "whichever box happens to be filled".
+        */
+        ...(f.ageMode === "dob"
+          ? opt("dob", f.dob)
+          : (Number.isFinite(age) && age >= 0 && age <= 130 ? { ageYears: age } : {})),
         ...(f.address.trim() === "" ? {} : { addressLine: f.address.trim() }),
+        ...(f.altPhone.replace(/\s/g, "") === "" ? {} : { altPhone: f.altPhone.replace(/\s/g, "") }),
+        ...opt("title", f.title),
+        ...opt("fatherHusbandName", f.fatherHusbandName),
+        ...opt("maritalStatus", f.maritalStatus),
+        ...opt("bloodGroup", f.bloodGroup),
+        ...(f.language === "" ? {} : { language: f.language }),
+        ...opt("district", f.district),
+        ...opt("stateName", f.stateName),
+        ...opt("pincode", f.pincode),
+        /*
+          A RECORDED ABHA IS `self_declared` AND THE SCREEN CANNOT SAY OTHERWISE. Only ABDM answering
+          may move it to `verified`, and this hospital is not connected to ABDM.
+        */
+        ...(t(f.abhaNumber) === "" && t(f.abhaAddress) === ""
+          ? {}
+          : {
+            ...opt("abhaNumber", f.abhaNumber),
+            ...opt("abhaAddress", f.abhaAddress),
+            abhaVerificationStatus: "self_declared" as const,
+          }),
+        ...opt("nationality", f.nationality),
+        ...opt("nationalIdType", f.nationalIdType),
+        ...opt("nationalIdMasked", f.nationalIdNumber),
+        ...opt("religion", f.religion),
+        ...opt("occupation", f.occupation),
+        ...(Number.isFinite(income) && income >= 0 ? { monthlyIncomePaise: income * 100 } : {}),
+        ...opt("legacyUhid", f.legacyUhid),
+        ...(f.isConfidential ? { isConfidential: true } : {}),
+        ...(f.promotionalOptIn ? { promotionalOptIn: true } : {}),
+        ...opt("referredBySource", f.referredBySource),
+        ...opt("referredByName", f.referredByName),
+        ...(f.referredByPhone.replace(/\s/g, "") === "" ? {} : { referredByPhone: f.referredByPhone.replace(/\s/g, "") }),
+        ...opt("referredBySpeciality", f.referredBySpeciality),
+        ...(t(f.guardianName) === "" || f.guardianRelationship === ""
+          ? {}
+          : {
+            guardian: {
+              name: t(f.guardianName),
+              relationship: f.guardianRelationship,
+              ...(f.guardianPhone.replace(/\s/g, "") === "" ? {} : { phone: f.guardianPhone.replace(/\s/g, "") }),
+              ...(f.guardianIdType === "" ? {} : { idType: f.guardianIdType as "aadhaar" | "pan" | "voter_id" | "other" }),
+              // last-4 only, and the server truncates whatever arrives regardless
+              ...(t(f.guardianIdNumber) === "" ? {} : { idNumberMasked: t(f.guardianIdNumber).replace(/\D/g, "").slice(-4) }),
+            },
+          }),
+        /* Only coverages the clerk actually filled in — an untouched blank row is not an entitlement. */
+        ...(() => {
+          const filled = f.coverages.filter((c) =>
+            t(c.payerName) !== "" || t(c.policyNumber) !== "" || t(c.cardNumber) !== ""
+            || t(c.beneficiaryId) !== "" || t(c.employeeId) !== "" || t(c.tpaName) !== "");
+          return filled.length === 0 ? {} : {
+            coverages: filled.map((c) => ({
+              kind: c.kind,
+              verificationStatus: c.verificationStatus,
+              ...opt("payerName", c.payerName),
+              ...opt("tpaName", c.tpaName),
+              ...opt("policyNumber", c.policyNumber),
+              ...opt("cardNumber", c.cardNumber),
+              ...opt("beneficiaryId", c.beneficiaryId),
+              ...opt("employeeId", c.employeeId),
+              ...opt("planClass", c.planClass),
+              ...opt("validFrom", c.validFrom),
+              ...opt("validTo", c.validTo),
+            })),
+          };
+        })(),
         ...(acknowledgeDuplicates ? { acknowledgedDuplicates: true } : {}),
       });
       setS((prev) => ({

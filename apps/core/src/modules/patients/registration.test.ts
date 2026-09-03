@@ -1,12 +1,13 @@
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { events, patientGuardians, patients, registrationConfig, users } from "../../kernel/db/schema";
+import { events, patientCoverages, patientGuardians, patients, registrationConfig, users } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { createUser } from "../../kernel/auth/identity";
 import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { patientsManifest } from "./manifest";
-import { getPatient, getPatientSummaries, listMergedLoserIds, registerPatient, resolvePatientId, updatePatient } from "./registration";
+import { getPatient, getPatientSummaries, listMergedLoserIds, normaliseIdTail, registerPatient, resolvePatientId, updatePatient } from "./registration";
+import { normaliseAbhaNumber } from "./abdm";
 import { isValidUhid } from "./uhid";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -287,5 +288,161 @@ describe("Plan 07 read helpers: summaries + merged losers", () => {
     const { patient } = await withTx(db, (tx) => registerPatient(tx, clerk, { ...baseInput }));
     const s = await getPatientSummaries(db, clerk, [patient.id, patient.id, "01NOSUCH00000000000000000"]);
     expect(s).toHaveLength(1);
+  });
+
+  /**
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   * FD-12 — THE FIELDS A REAL INDIAN REGISTRATION COUNTER TAKES
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Owner ruling 2026-09-04, holding a competitor's registration screen beside ours: the four-field
+   * form "lacks many fields". These tests pin what the master can now hold — and, more importantly,
+   * the three places where holding it MUST NOT mean holding it naively.
+   */
+  describe("FD-12: the counter's full record", () => {
+    test("takes every new demographic, and a blank is stored as NULL rather than as an empty string", async () => {
+      const { patient } = await withTx(db, (tx) => registerPatient(tx, clerk, {
+        ...baseInput,
+        title: "Smt",
+        fatherHusbandName: "Ram Prasad",
+        maritalStatus: "married",
+        nationality: "Indian",
+        nationalIdType: "aadhaar",
+        religion: "Hindu",
+        occupation: "Anganwadi worker",
+        monthlyIncomePaise: 1_200_000,
+        referredBySource: "camp",
+        referredByName: "Block health camp, Piprai",
+        referredBySpeciality: "   ",
+      }));
+
+      expect(patient.title).toBe("Smt");
+      expect(patient.fatherHusbandName).toBe("Ram Prasad");
+      expect(patient.maritalStatus).toBe("married");
+      expect(patient.nationality).toBe("Indian");
+      expect(patient.religion).toBe("Hindu");
+      expect(patient.occupation).toBe("Anganwadi worker");
+      expect(patient.monthlyIncomePaise).toBe(1_200_000);
+      expect(patient.referredBySource).toBe("camp");
+      expect(patient.referredByName).toBe("Block health camp, Piprai");
+      // whitespace is not an answer — a field the clerk skipped reads as unknown, not as ""
+      expect(patient.referredBySpeciality).toBeNull();
+    });
+
+    /**
+     * THE ONE THAT MATTERS. `national_id_masked` is a column whose NAME is a privacy promise, and a
+     * name is not an enforcement. A clerk types the whole Aadhaar off the card — which is exactly
+     * what a clerk does — and only the tail may reach the database.
+     */
+    test("a full Aadhaar typed at the counter is stored as its last four digits, never in full", async () => {
+      const full = "234512347890";
+      const { patient } = await withTx(db, (tx) => registerPatient(tx, clerk, {
+        ...baseInput, nationalIdType: "aadhaar", nationalIdMasked: full,
+      }));
+      expect(patient.nationalIdMasked).toBe("7890");
+      expect(patient.nationalIdMasked).not.toBe(full);
+      expect(patient.nationalIdMasked!.length).toBe(4);
+    });
+
+    test("the last-4 rule binds on the EDIT path too — amending is not the open door to the same column", async () => {
+      const { patient } = await withTx(db, (tx) => registerPatient(tx, clerk, baseInput));
+      const { patient: edited } = await withTx(db, (tx) => updatePatient(tx, clerk, patient.id, {
+        nationalIdMasked: "987654321012",
+      }));
+      expect(edited.nationalIdMasked).toBe("1012");
+    });
+
+    test("normaliseIdTail: hyphens and spaces are digits' punctuation, and nothing is not a tail", () => {
+      expect(normaliseIdTail("2345 1234 7890")).toBe("7890");
+      expect(normaliseIdTail("ABCD")).toBeNull();
+      expect(normaliseIdTail(undefined)).toBeNull();
+      expect(normaliseIdTail("12")).toBe("12"); // shorter than four is stored as given, not padded
+    });
+
+    /* An ABHA number is a MATCH KEY; two spellings of one number are two patients to every lookup. */
+    test("an ABHA number is normalised to its printed form however the clerk types it", async () => {
+      const { patient: bare } = await withTx(db, (tx) => registerPatient(tx, clerk, {
+        ...baseInput, abhaNumber: "12345678901234",
+      }));
+      const { patient: spaced } = await withTx(db, (tx) => registerPatient(tx, clerk, {
+        name: "Second Person", sex: "male", abhaNumber: "12 3456 7890 1234",
+      }));
+      expect(bare.abhaNumber).toBe("12-3456-7890-1234");
+      expect(spaced.abhaNumber).toBe(bare.abhaNumber);
+      expect(normaliseAbhaNumber("not-a-number")).toBe("not-a-number");
+    });
+
+    test("records several coverages at once — an Ayushman card AND a mediclaim is the normal case", async () => {
+      const { patient } = await withTx(db, (tx) => registerPatient(tx, clerk, {
+        ...baseInput,
+        coverages: [
+          { kind: "pmjay", beneficiaryId: "PMJAY-77120", cardNumber: "1111 2222 3333", verificationStatus: "card_seen" },
+          { kind: "insurance", payerName: "Star Health", policyNumber: "P/551/9921", sumInsuredPaise: 50_000_000 },
+        ],
+      }));
+
+      const rows = await db.select().from(patientCoverages).where(eq(patientCoverages.patientId, patient.id));
+      expect(rows).toHaveLength(2);
+      const pmjay = rows.find((r) => r.kind === "pmjay")!;
+      expect(pmjay.beneficiaryId).toBe("PMJAY-77120");
+      expect(pmjay.verificationStatus).toBe("card_seen");
+      const policy = rows.find((r) => r.kind === "insurance")!;
+      expect(policy.payerName).toBe("Star Health");
+      expect(policy.sumInsuredPaise).toBe(50_000_000);
+      // unstated assurance is the honest default, never the flattering one
+      expect(policy.verificationStatus).toBe("self_declared");
+    });
+
+    /*
+      A coverage row whose patient failed to insert is an orphan pointing at nothing. The clerk
+      performed ONE act; it succeeds or fails as one.
+    */
+    test("a refused registration writes no coverage rows", async () => {
+      await expect(withTx(db, (tx) => registerPatient(tx, clerk, {
+        name: "Child Patient", sex: "male", ageYears: 6, // a minor with no guardian — refused
+        coverages: [{ kind: "pmjay", beneficiaryId: "PMJAY-ORPHAN" }],
+      }))).rejects.toMatchObject({ code: "minor_needs_guardian" });
+
+      expect(await db.select().from(patientCoverages)).toHaveLength(0);
+    });
+
+    /**
+     * THE DEFECT THE OWNER'S REVIEW EXPOSED, PINNED SO IT CANNOT COME BACK.
+     *
+     * The server has always refused a known minor without a guardian, and the desk form had no
+     * guardian fields at all — so a paediatric walk-in could not be registered by the front desk
+     * AT ALL. Proved against the running preview before it was fixed: age 5 came back 400, age 35
+     * registered. This is the server half of that fix staying honest.
+     */
+    test("a child registers when the guardian the desk now collects travels with them", async () => {
+      const { patient, guardianId } = await withTx(db, (tx) => registerPatient(tx, clerk, {
+        name: "Chhotu Kumar", sex: "male", ageYears: 5,
+        guardian: { name: "Ram Prasad", relationship: "father", phone: "9876500011" },
+      }));
+      expect(isValidUhid(patient.uhid)).toBe(true);
+      expect(guardianId).not.toBeNull();
+      const g = await db.select().from(patientGuardians).where(eq(patientGuardians.patientId, patient.id));
+      expect(g[0]!.relationship).toBe("father");
+    });
+
+    /* The guardian's document has always claimed "last-4 only" in its schema comment. Now it is true. */
+    test("a guardian's ID is truncated to its tail by the same rule as the patient's", async () => {
+      const { patient } = await withTx(db, (tx) => registerPatient(tx, clerk, {
+        name: "Chhoti Kumari", sex: "female", ageYears: 4,
+        guardian: { name: "Sita Devi", relationship: "mother", idType: "aadhaar", idNumberMasked: "556677889900" },
+      }));
+      const g = await db.select().from(patientGuardians).where(eq(patientGuardians.patientId, patient.id));
+      expect(g[0]!.idNumberMasked).toBe("9900");
+    });
+
+    /* The fast walk-in path is not being traded away for any of the above. */
+    test("a name and a sex still register somebody, with every new field left null", async () => {
+      const { patient } = await withTx(db, (tx) => registerPatient(tx, clerk, { name: "Walk In", sex: "unknown" }));
+      expect(isValidUhid(patient.uhid)).toBe(true);
+      expect(patient.title).toBeNull();
+      expect(patient.fatherHusbandName).toBeNull();
+      expect(patient.nationalIdMasked).toBeNull();
+      expect(await db.select().from(patientCoverages)).toHaveLength(0);
+    });
   });
 });

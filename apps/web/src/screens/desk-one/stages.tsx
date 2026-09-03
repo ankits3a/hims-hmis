@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { matchReasonKeys, matchReasonsDiscriminate, searchPatients } from "../../lib/patients-api";
+import { abhaCapability, matchReasonKeys, matchReasonsDiscriminate, searchPatients } from "../../lib/patients-api";
 import type { WirePatientHit } from "../../lib/patients-api";
 import { getSlots, opdErrorMessage } from "../../lib/opd-api";
 import type { WireDoctorSummary, WireSlot } from "../../lib/opd-api";
@@ -10,8 +10,8 @@ import {
 } from "./model";
 import type { DeptQueue } from "./model";
 import { monthYearIst } from "../../lib/format";
-import { useDesk } from "./session";
-import type { Person } from "./session";
+import { EMPTY_COVERAGE, formNeedsGuardian, useDesk } from "./session";
+import type { CoverageDraft, Person } from "./session";
 
 /**
  * ═══ THE FIVE STAGES OF ONE SESSION ═══
@@ -233,42 +233,216 @@ function StageFind(): React.ReactElement {
    2 · REGISTER — "Four fields, one UHID"
    ══════════════════════════════════════════════════════════════════════════════════════════════ */
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-12 — SMALL FIELD PRIMITIVES, so twenty-five inputs do not become twenty-five bespoke layouts
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+
+function Field(
+  { label, value, onChange, mono, placeholder, type, testId, width }: {
+    label: string; value: string; onChange: (v: string) => void;
+    mono?: boolean; placeholder?: string; type?: string; testId: string; width?: number;
+  },
+): React.ReactElement {
+  return (
+    <div style={width === undefined ? undefined : { width }}>
+      <div className="tag" style={{ marginBottom: 5 }}>{label}</div>
+      <input
+        className={mono === true ? "in mo" : "in"}
+        data-testid={testId}
+        type={type ?? "text"}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => { onChange(e.target.value); }}
+      />
+    </div>
+  );
+}
+
+function Picker(
+  { label, value, onChange, options, testId }: {
+    label: string; value: string; onChange: (v: string) => void;
+    options: readonly (readonly [string, string])[]; testId: string;
+  },
+): React.ReactElement {
+  return (
+    <div>
+      <div className="tag" style={{ marginBottom: 5 }}>{label}</div>
+      <select
+        className="in"
+        data-testid={testId}
+        value={value}
+        onChange={(e) => { onChange(e.target.value); }}
+        style={{ height: 40 }}
+      >
+        <option value="">—</option>
+        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+    </div>
+  );
+}
+
+/**
+ * A FOLD, AND WHY EVERY EXTRA FIELD IS BEHIND ONE.
+ *
+ * The two demands on this screen are real and opposite: a queue of walk-ins needs a name and a sex,
+ * and a planned admission needs the whole record. Answering only the second is how a registration
+ * screen becomes the thing clerks route around. So the fast path is four fields and untouched, and
+ * everything the owner asked for opens on request — closed by default, and never in the tab order
+ * until it is open.
+ */
+function Fold(
+  { title, hint, open, onToggle, testId, children, accent }: {
+    title: string; hint?: string; open: boolean; onToggle: () => void;
+    testId: string; children: React.ReactNode; accent?: boolean;
+  },
+): React.ReactElement {
+  return (
+    <div
+      className="box"
+      style={{
+        marginTop: 9, overflow: "hidden",
+        borderColor: accent === true ? "var(--gold-line)" : undefined,
+        background: accent === true ? "var(--gold-soft)" : undefined,
+      }}
+    >
+      <button
+        type="button"
+        data-testid={testId}
+        onClick={onToggle}
+        aria-expanded={open}
+        style={{
+          display: "flex", alignItems: "center", gap: 9, width: "100%",
+          padding: "9px 13px", background: "none", border: 0, textAlign: "left", cursor: "pointer",
+        }}
+      >
+        <span className="mo" style={{ fontSize: 11, color: "var(--dim)", width: 10 }}>{open ? "\u2212" : "+"}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 700 }}>{title}</span>
+        {hint === undefined ? null : (
+          <span style={{ fontSize: 11, color: "var(--dim)" }}>{hint}</span>
+        )}
+      </button>
+      {open ? (
+        <div style={{ padding: "3px 13px 13px", borderTop: "1px solid var(--line2)" }}>{children}</div>
+      ) : null}
+    </div>
+  );
+}
+
+const GRID3 = { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 11, marginTop: 11 } as const;
+const GRID4 = { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 11, marginTop: 11 } as const;
+
 function StageRegister(): React.ReactElement {
   const d = useDesk();
   const { t } = useTranslation();
   const { s } = d;
   const f = s.form;
-  const ready = f.name.trim() !== "" && f.sex !== "";
   const set = (next: Partial<typeof f>): void => d.patch({ form: { ...f, ...next }, duplicates: null });
 
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const toggle = (k: string): void => { setOpen((p) => ({ ...p, [k]: p[k] !== true })); };
+
+  /**
+   * ═══ THE PAEDIATRIC WALK-IN THAT COULD NOT BE REGISTERED AT ALL ═══
+   *
+   * `registerPatient` has always refused a known minor with no guardian (D-31, DPDP §9) and this
+   * form had no guardian fields — so every child arriving at this desk came back a 400. Proved
+   * against the running preview before it was fixed: age 5 refused, age 35 registered.
+   *
+   * So the block is not merely another optional fold. It OPENS ITSELF the moment the entered age
+   * says minor, and `ready` will not let the clerk submit into a refusal the screen could see
+   * coming. An unknown age is deliberately not a minor — the server takes the same position, and
+   * demanding a guardian from every adult who cannot recall a birth year would be its own trap.
+   */
+  const needsGuardian = formNeedsGuardian(f);
+  const guardianReady = f.guardianName.trim() !== "" && f.guardianRelationship !== "";
+  const ready = f.name.trim() !== "" && f.sex !== "" && (!needsGuardian || guardianReady);
+  useEffect(() => {
+    if (needsGuardian) setOpen((p) => (p["guardian"] === true ? p : { ...p, guardian: true }));
+  }, [needsGuardian]);
+
+  /* Asked once, before the ABHA buttons are drawn — never discovered from a failed request. */
+  const abha = useQuery({
+    queryKey: ["abha-capability"],
+    queryFn: abhaCapability,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
+  const addCoverage = (): void => { set({ coverages: [...f.coverages, { ...EMPTY_COVERAGE }] }); };
+  const setCoverage = (i: number, next: Partial<CoverageDraft>): void => {
+    set({ coverages: f.coverages.map((c, idx) => (idx === i ? { ...c, ...next } : c)) });
+  };
+
   return (
-    <div style={{ maxWidth: 860 }}>
+    <div style={{ maxWidth: 980 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 11 }}>
-        <span style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }}>Four fields, one UHID</span>
+        <span style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }}>
+          {t("registrationCounter.register.heading")}
+        </span>
         <span style={{ fontSize: 12, color: "var(--dim)" }}>
-          registration ends here — the department is the next stage, not a field on this form
+          {t("registrationCounter.register.subheading")}
         </span>
       </div>
 
+      {/* ═══ THE FOUR FIELDS. UNCHANGED, AND STILL THE ONLY ONES THE FAST PATH FILLS. ═══ */}
       <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1.1fr .7fr 1fr", gap: 11, marginTop: 15 }}>
         <div>
-          <div className="tag" style={{ marginBottom: 5 }}>full name</div>
-          <input autoFocus className="in" value={f.name} onChange={(e) => set({ name: e.target.value })} />
+          <div className="tag" style={{ marginBottom: 5 }}>{t("registrationCounter.register.fullName")}</div>
+          <input autoFocus className="in" data-testid="reg-name" value={f.name} onChange={(e) => set({ name: e.target.value })} />
         </div>
         <div>
-          <div className="tag" style={{ marginBottom: 5 }}>mobile</div>
-          <input className="in mo" inputMode="numeric" value={f.phone} onChange={(e) => set({ phone: e.target.value })} />
+          <div className="tag" style={{ marginBottom: 5 }}>{t("registrationCounter.register.mobile")}</div>
+          <input className="in mo" data-testid="reg-phone" inputMode="numeric" value={f.phone} onChange={(e) => set({ phone: e.target.value })} />
         </div>
         <div>
-          <div className="tag" style={{ marginBottom: 5 }}>age</div>
-          <input className="in mo" inputMode="numeric" value={f.age} onChange={(e) => set({ age: e.target.value })} />
+          {/*
+            AGE OR DATE OF BIRTH, and the toggle decides which travels. Nobody at a window knows
+            their date of birth and the counter has always taken an age; a planned admission has the
+            card in hand and can give the date. The server refuses BOTH together (`dob_or_age`), so
+            the screen must pick one rather than send whatever is filled in.
+          */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 5, alignItems: "baseline" }}>
+            {(["age", "dob"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                data-testid={`reg-agemode-${mode}`}
+                onClick={() => { set({ ageMode: mode }); }}
+                className="tag"
+                style={{
+                  background: "none", border: 0, cursor: "pointer", padding: 0,
+                  color: f.ageMode === mode ? "var(--green)" : "var(--faint)",
+                  fontWeight: f.ageMode === mode ? 700 : 400,
+                }}
+              >
+                {t(mode === "age" ? "registrationCounter.register.age" : "registrationCounter.register.dob")}
+              </button>
+            ))}
+          </div>
+          {/*
+            KEYED, AND THE KEY IS LOAD-BEARING. Both branches render an `<input className="in mo">`
+            in the same slot, so React reconciles them as the SAME element and only patches the
+            attributes that changed — which leaves the DOM node's own value untouched. Without the
+            keys a clerk types an age, switches to date of birth, and finds "40" still sitting in
+            the date box; the first version of this did exactly that and a test caught it posting
+            `dob: "401986-03-14"`. Distinct keys force a fresh node, so the box the clerk switched
+            away from cannot leak into the one they switched to.
+          */}
+          {f.ageMode === "age" ? (
+            <input key="age" className="in mo" data-testid="reg-age" inputMode="numeric" value={f.age} onChange={(e) => set({ age: e.target.value })} />
+          ) : (
+            <input key="dob" className="in mo" data-testid="reg-dob" type="date" value={f.dob} onChange={(e) => set({ dob: e.target.value })} />
+          )}
         </div>
         <div>
-          <div className="tag" style={{ marginBottom: 5 }}>sex</div>
+          <div className="tag" style={{ marginBottom: 5 }}>{t("registrationCounter.register.sex")}</div>
           <div style={{ display: "flex", gap: 5, height: 40 }}>
             {([["male", "M"], ["female", "F"], ["other", "O"]] as const).map(([value, letter]) => (
               <button
                 key={value}
+                data-testid={`reg-sex-${value}`}
                 onClick={() => set({ sex: value })}
                 style={{
                   flexGrow: 1, borderRadius: 6,
@@ -286,15 +460,334 @@ function StageRegister(): React.ReactElement {
       </div>
 
       <div className="box" style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12, padding: "10px 13px", background: "var(--wash)" }}>
-        <span className="tag" style={{ flexShrink: 0 }}>address</span>
+        <span className="tag" style={{ flexShrink: 0 }}>{t("registrationCounter.register.address")}</span>
         <input
           className="in"
+          data-testid="reg-address"
           style={{ height: 32, background: "var(--card)" }}
-          placeholder="street, area, district — the field 11 files a night are missing"
+          placeholder={t("registrationCounter.register.addressHint")}
           value={f.address}
           onChange={(e) => set({ address: e.target.value })}
         />
       </div>
+
+      {/* ═══ THE GUARDIAN — opened by the age, not by the clerk remembering ═══ */}
+      <Fold
+        title={t("registrationCounter.register.guardian.title")}
+        hint={needsGuardian ? t("registrationCounter.register.guardian.required") : t("registrationCounter.register.optional")}
+        open={open["guardian"] === true}
+        onToggle={() => { toggle("guardian"); }}
+        testId="fold-guardian"
+        accent={needsGuardian && !guardianReady}
+      >
+        {needsGuardian ? (
+          <p data-testid="guardian-why" style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: "16px", margin: "8px 0 0" }}>
+            {t("registrationCounter.register.guardian.why")}
+          </p>
+        ) : null}
+        <div style={GRID4}>
+          <Field label={t("registrationCounter.register.guardian.name")} testId="guardian-name" value={f.guardianName} onChange={(v) => set({ guardianName: v })} />
+          <Picker
+            label={t("registrationCounter.register.guardian.relationship")}
+            testId="guardian-relationship"
+            value={f.guardianRelationship}
+            onChange={(v) => set({ guardianRelationship: v as typeof f.guardianRelationship })}
+            options={[
+              ["father", t("registrationCounter.register.guardian.father")],
+              ["mother", t("registrationCounter.register.guardian.mother")],
+              ["spouse", t("registrationCounter.register.guardian.spouse")],
+              ["sibling", t("registrationCounter.register.guardian.sibling")],
+              ["legal_guardian", t("registrationCounter.register.guardian.legal")],
+              ["other", t("registrationCounter.register.guardian.other")],
+            ]}
+          />
+          <Field label={t("registrationCounter.register.mobile")} testId="guardian-phone" mono value={f.guardianPhone} onChange={(v) => set({ guardianPhone: v })} />
+          <Field label={t("registrationCounter.register.guardian.idNumber")} testId="guardian-id" mono value={f.guardianIdNumber} onChange={(v) => set({ guardianIdNumber: v })} />
+        </div>
+      </Fold>
+
+      {/* ═══ ABHA ═══ */}
+      <Fold
+        title={t("registrationCounter.register.abha.title")}
+        hint={t("registrationCounter.register.abha.hint")}
+        open={open["abha"] === true}
+        onToggle={() => { toggle("abha"); }}
+        testId="fold-abha"
+      >
+        <div style={GRID3}>
+          <Field label={t("registrationCounter.register.abha.number")} testId="abha-number" mono placeholder="12-3456-7890-1234" value={f.abhaNumber} onChange={(v) => set({ abhaNumber: v })} />
+          <Field label={t("registrationCounter.register.abha.address")} testId="abha-address" mono placeholder="name@abdm" value={f.abhaAddress} onChange={(v) => set({ abhaAddress: v })} />
+        </div>
+        {/*
+          THE BUTTONS SAY WHAT THIS HOSPITAL CAN ACTUALLY DO, and the capability call is what decides.
+          Recording a number the patient reads off their phone needs no gateway and works today.
+          CREATING an ABHA, or VERIFYING one, is ABDM's to answer and nobody else's — so those two are
+          disabled with the reason in plain words rather than shown live and failing in a clerk's face
+          with a patient waiting. Nothing here may ever stamp `verified` locally: that is a claim about
+          a national registry, and `abha_number` is a field a re-rendered document reprints.
+        */}
+        <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 12, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="sec"
+            data-testid="abha-link"
+            onClick={() => { toggle("abha"); }}
+            disabled={f.abhaNumber.trim() === "" && f.abhaAddress.trim() === ""}
+          >
+            {t("registrationCounter.register.abha.link")}
+          </button>
+          <button type="button" className="sec" data-testid="abha-create" disabled={abha.data?.canCreate !== true}>
+            {t("registrationCounter.register.abha.create")}
+          </button>
+          <button type="button" className="sec" data-testid="abha-verify" disabled={abha.data?.canVerify !== true}>
+            {t("registrationCounter.register.abha.verify")}
+          </button>
+        </div>
+        {abha.data !== undefined && !abha.data.configured ? (
+          <p data-testid="abha-not-configured" style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: "16px", marginTop: 9 }}>
+            {t("registrationCounter.register.abha.notConfigured")}
+          </p>
+        ) : null}
+      </Fold>
+
+      {/* ═══ THE REST OF THE PERSON ═══ */}
+      <Fold
+        title={t("registrationCounter.register.more.title")}
+        hint={t("registrationCounter.register.optional")}
+        open={open["more"] === true}
+        onToggle={() => { toggle("more"); }}
+        testId="fold-more"
+      >
+        <div style={GRID4}>
+          <Field label={t("registrationCounter.register.more.title_")} testId="reg-title" value={f.title} onChange={(v) => set({ title: v })} />
+          <Field label={t("registrationCounter.register.more.fatherHusband")} testId="reg-father" value={f.fatherHusbandName} onChange={(v) => set({ fatherHusbandName: v })} />
+          <Picker
+            label={t("registrationCounter.register.more.marital")}
+            testId="reg-marital"
+            value={f.maritalStatus}
+            onChange={(v) => set({ maritalStatus: v })}
+            options={[
+              ["single", t("registrationCounter.register.more.single")],
+              ["married", t("registrationCounter.register.more.married")],
+              ["widowed", t("registrationCounter.register.more.widowed")],
+              ["divorced", t("registrationCounter.register.more.divorced")],
+              ["separated", t("registrationCounter.register.more.separated")],
+            ]}
+          />
+          <Picker
+            label={t("registrationCounter.register.more.bloodGroup")}
+            testId="reg-blood"
+            value={f.bloodGroup}
+            onChange={(v) => set({ bloodGroup: v })}
+            options={(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"] as const).map((g) => [g, g] as const)}
+          />
+        </div>
+        <div style={GRID4}>
+          <Field label={t("registrationCounter.register.more.altPhone")} testId="reg-altphone" mono value={f.altPhone} onChange={(v) => set({ altPhone: v })} />
+          <Field label={t("registrationCounter.register.more.religion")} testId="reg-religion" value={f.religion} onChange={(v) => set({ religion: v })} />
+          <Field label={t("registrationCounter.register.more.occupation")} testId="reg-occupation" value={f.occupation} onChange={(v) => set({ occupation: v })} />
+          <Field label={t("registrationCounter.register.more.income")} testId="reg-income" mono value={f.monthlyIncome} onChange={(v) => set({ monthlyIncome: v })} />
+        </div>
+      </Fold>
+
+      {/* ═══ WHERE THEY LIVE ═══ */}
+      <Fold
+        title={t("registrationCounter.register.where.title")}
+        hint={t("registrationCounter.register.optional")}
+        open={open["where"] === true}
+        onToggle={() => { toggle("where"); }}
+        testId="fold-where"
+      >
+        <div style={GRID4}>
+          <Field label={t("registrationCounter.register.where.area")} testId="reg-area" value={f.area} onChange={(v) => set({ area: v })} />
+          <Field label={t("registrationCounter.register.where.district")} testId="reg-district" value={f.district} onChange={(v) => set({ district: v })} />
+          <Field label={t("registrationCounter.register.where.state")} testId="reg-state" value={f.stateName} onChange={(v) => set({ stateName: v })} />
+          <Field label={t("registrationCounter.register.where.pincode")} testId="reg-pincode" mono value={f.pincode} onChange={(v) => set({ pincode: v })} />
+        </div>
+      </Fold>
+
+      {/* ═══ THE DOCUMENT THE CLERK WAS HANDED ═══ */}
+      <Fold
+        title={t("registrationCounter.register.id.title")}
+        hint={t("registrationCounter.register.id.hint")}
+        open={open["id"] === true}
+        onToggle={() => { toggle("id"); }}
+        testId="fold-id"
+      >
+        <div style={GRID3}>
+          <Field label={t("registrationCounter.register.id.nationality")} testId="reg-nationality" value={f.nationality} onChange={(v) => set({ nationality: v })} />
+          <Picker
+            label={t("registrationCounter.register.id.type")}
+            testId="reg-idtype"
+            value={f.nationalIdType}
+            onChange={(v) => set({ nationalIdType: v })}
+            options={[
+              ["aadhaar", t("registrationCounter.register.id.aadhaar")],
+              ["pan", "PAN"],
+              ["voter_id", t("registrationCounter.register.id.voter")],
+              ["passport", t("registrationCounter.register.id.passport")],
+              ["driving_licence", t("registrationCounter.register.id.dl")],
+              ["other", t("registrationCounter.register.id.other")],
+            ]}
+          />
+          <Field label={t("registrationCounter.register.id.number")} testId="reg-idnumber" mono value={f.nationalIdNumber} onChange={(v) => set({ nationalIdNumber: v })} />
+        </div>
+        {/* Said out loud, because a clerk typing a full Aadhaar deserves to know what is kept. */}
+        <p style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: "16px", marginTop: 9 }}>
+          {t("registrationCounter.register.id.lastFour")}
+        </p>
+      </Fold>
+
+      {/* ═══ HOW IT GETS PAID FOR ═══ */}
+      <Fold
+        title={t("registrationCounter.register.cover.title")}
+        hint={f.coverages.length === 0 ? t("registrationCounter.register.optional") : String(f.coverages.length)}
+        open={open["cover"] === true}
+        onToggle={() => { toggle("cover"); }}
+        testId="fold-cover"
+      >
+        {f.coverages.map((c, i) => (
+          <div key={i} className="box" style={{ marginTop: 11, padding: "10px 12px", background: "var(--wash)" }}>
+            <div style={GRID4}>
+              <Picker
+                label={t("registrationCounter.register.cover.kind")}
+                testId={`cover-kind-${String(i)}`}
+                value={c.kind}
+                onChange={(v) => { setCoverage(i, { kind: v as CoverageDraft["kind"] }); }}
+                options={[
+                  ["pmjay", t("registrationCounter.register.cover.pmjay")],
+                  ["insurance", t("registrationCounter.register.cover.insurance")],
+                  ["tpa", t("registrationCounter.register.cover.tpa")],
+                  ["corporate", t("registrationCounter.register.cover.corporate")],
+                  ["cghs", "CGHS"],
+                  ["esic", "ESIC"],
+                  ["other", t("registrationCounter.register.cover.other")],
+                ]}
+              />
+              <Field label={t("registrationCounter.register.cover.payer")} testId={`cover-payer-${String(i)}`} value={c.payerName} onChange={(v) => { setCoverage(i, { payerName: v }); }} />
+              <Field label={t("registrationCounter.register.cover.tpaName")} testId={`cover-tpa-${String(i)}`} value={c.tpaName} onChange={(v) => { setCoverage(i, { tpaName: v }); }} />
+              <Field label={t("registrationCounter.register.cover.plan")} testId={`cover-plan-${String(i)}`} value={c.planClass} onChange={(v) => { setCoverage(i, { planClass: v }); }} />
+            </div>
+            <div style={GRID4}>
+              <Field label={t("registrationCounter.register.cover.policy")} testId={`cover-policy-${String(i)}`} mono value={c.policyNumber} onChange={(v) => { setCoverage(i, { policyNumber: v }); }} />
+              <Field label={t("registrationCounter.register.cover.card")} testId={`cover-card-${String(i)}`} mono value={c.cardNumber} onChange={(v) => { setCoverage(i, { cardNumber: v }); }} />
+              <Field label={t("registrationCounter.register.cover.beneficiary")} testId={`cover-beneficiary-${String(i)}`} mono value={c.beneficiaryId} onChange={(v) => { setCoverage(i, { beneficiaryId: v }); }} />
+              <Field label={t("registrationCounter.register.cover.employee")} testId={`cover-employee-${String(i)}`} mono value={c.employeeId} onChange={(v) => { setCoverage(i, { employeeId: v }); }} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 10 }}>
+              {/*
+                WAS THE CARD ACTUALLY SEEN? A coverage the hospital may extend credit against must
+                never be indistinguishable from one somebody mentioned in passing.
+              */}
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--dim)" }}>
+                <input
+                  type="checkbox"
+                  data-testid={`cover-seen-${String(i)}`}
+                  checked={c.verificationStatus === "card_seen"}
+                  onChange={(e) => { setCoverage(i, { verificationStatus: e.target.checked ? "card_seen" : "self_declared" }); }}
+                />
+                {t("registrationCounter.register.cover.cardSeen")}
+              </label>
+              <button
+                type="button"
+                className="sec"
+                data-testid={`cover-remove-${String(i)}`}
+                onClick={() => { set({ coverages: f.coverages.filter((_, idx) => idx !== i) }); }}
+              >
+                {t("registrationCounter.register.cover.remove")}
+              </button>
+            </div>
+          </div>
+        ))}
+        <button type="button" className="sec" data-testid="cover-add" style={{ marginTop: 11 }} onClick={addCoverage}>
+          {t("registrationCounter.register.cover.add")}
+        </button>
+      </Fold>
+
+      {/* ═══ WHO SENT THEM ═══ */}
+      <Fold
+        title={t("registrationCounter.register.ref.title")}
+        hint={t("registrationCounter.register.optional")}
+        open={open["ref"] === true}
+        onToggle={() => { toggle("ref"); }}
+        testId="fold-ref"
+      >
+        <div style={GRID4}>
+          <Picker
+            label={t("registrationCounter.register.ref.source")}
+            testId="reg-refsource"
+            value={f.referredBySource}
+            onChange={(v) => set({ referredBySource: v })}
+            options={[
+              ["self", t("registrationCounter.register.ref.self")],
+              ["doctor", t("registrationCounter.register.ref.doctor")],
+              ["hospital", t("registrationCounter.register.ref.hospital")],
+              ["camp", t("registrationCounter.register.ref.camp")],
+              ["employer", t("registrationCounter.register.ref.employer")],
+              ["online", t("registrationCounter.register.ref.online")],
+              ["partner", t("registrationCounter.register.ref.partner")],
+              ["other", t("registrationCounter.register.ref.other")],
+            ]}
+          />
+          <Field label={t("registrationCounter.register.ref.name")} testId="reg-refname" value={f.referredByName} onChange={(v) => set({ referredByName: v })} />
+          <Field label={t("registrationCounter.register.ref.speciality")} testId="reg-refspeciality" value={f.referredBySpeciality} onChange={(v) => set({ referredBySpeciality: v })} />
+          <Field label={t("registrationCounter.register.mobile")} testId="reg-refphone" mono value={f.referredByPhone} onChange={(v) => set({ referredByPhone: v })} />
+        </div>
+      </Fold>
+
+      {/* ═══ THE TWO FLAGS THAT ARE DECISIONS, NOT DATA ═══ */}
+      <Fold
+        title={t("registrationCounter.register.flags.title")}
+        hint={t("registrationCounter.register.optional")}
+        open={open["flags"] === true}
+        onToggle={() => { toggle("flags"); }}
+        testId="fold-flags"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 11 }}>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12 }}>
+            <input
+              type="checkbox"
+              data-testid="reg-confidential"
+              checked={f.isConfidential}
+              onChange={(e) => set({ isConfidential: e.target.checked })}
+            />
+            <span>
+              {t("registrationCounter.register.flags.confidential")}
+              <span style={{ display: "block", fontSize: 11, color: "var(--dim)" }}>
+                {t("registrationCounter.register.flags.confidentialWhy")}
+              </span>
+            </span>
+          </label>
+          {/*
+            DPDP D9 — OPT-IN MEANS THE PATIENT ACTED. Never pre-checked, and the label says what is
+            being consented to rather than "promotional messages?" with a box beside it.
+          */}
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12 }}>
+            <input
+              type="checkbox"
+              data-testid="reg-promotional"
+              checked={f.promotionalOptIn}
+              onChange={(e) => set({ promotionalOptIn: e.target.checked })}
+            />
+            <span>
+              {t("registrationCounter.register.flags.promotional")}
+              <span style={{ display: "block", fontSize: 11, color: "var(--dim)" }}>
+                {t("registrationCounter.register.flags.promotionalWhy")}
+              </span>
+            </span>
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11 }}>
+            <Field label={t("registrationCounter.register.flags.legacyUhid")} testId="reg-legacy" mono value={f.legacyUhid} onChange={(v) => set({ legacyUhid: v })} />
+            <Picker
+              label={t("registrationCounter.register.flags.language")}
+              testId="reg-language"
+              value={f.language}
+              onChange={(v) => set({ language: v as typeof f.language })}
+              options={[["hi", "हिन्दी"], ["en", "English"]]}
+            />
+          </div>
+        </div>
+      </Fold>
 
       {/*
         ═══ THE DUPLICATE WARNING — A WARNING A HUMAN MAY OVERRIDE, NEVER A GATE ═══
@@ -337,7 +830,7 @@ function StageRegister(): React.ReactElement {
       )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 13, marginTop: 22, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
-        <button className="pri" onClick={() => void d.enrol(false)} disabled={!ready || s.busy === "enrol"}>
+        <button className="pri" data-testid="reg-submit" onClick={() => void d.enrol(false)} disabled={!ready || s.busy === "enrol"}>
           {s.busy === "enrol" ? "allocating a UHID…" : "register → appointment"}
           <span className="kb dk">⏎</span>
         </button>
@@ -345,6 +838,14 @@ function StageRegister(): React.ReactElement {
           The UHID is allocated and the person stays in the left column — the session never drops between stages.
         </span>
       </div>
+
+      {/*
+        THE REFUSAL THE SCREEN CAN SEE COMING, SAID BEFORE THE SERVER SAYS IT. Without this the
+        clerk presses register with a child in front of them and gets a 400 they cannot act on.
+      */}
+      {needsGuardian && !guardianReady ? (
+        <AgentLine>{t("registrationCounter.register.guardian.blocked")}</AgentLine>
+      ) : null}
 
       {f.phone.replace(/\s/g, "").length > 0 && f.phone.replace(/\s/g, "").length < 10 ? (
         <AgentLine>That mobile is {f.phone.replace(/\s/g, "").length} digits. The server wants a full one, or none at all — a half number is worse than blank.</AgentLine>

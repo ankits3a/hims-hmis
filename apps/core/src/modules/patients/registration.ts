@@ -8,8 +8,9 @@ import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { activeBreakGlass } from "../../kernel/auth/break-glass";
-import { patientGuardians, patients } from "../../kernel/db/schema";
+import { patientCoverages, patientGuardians, patients } from "../../kernel/db/schema";
 import { allocateUhid, PatientError } from "./uhid";
+import { normaliseAbhaNumber } from "./abdm";
 import type { PatientErrorCode } from "./uhid";
 import {
   guardianLinked, identityAssuranceChanged, identityVersionMinted, patientRegistered, patientUpdated,
@@ -34,6 +35,29 @@ export type GuardianInput = {
   authorityDsr?: boolean;
   authorityBills?: boolean;
   consentNote?: string;
+};
+
+/**
+ * FD-12 — one entitlement the patient holds. Everything is optional but `kind`, because a clerk
+ * who has been handed an Ayushman card and nothing else must still be able to record that it
+ * exists; demanding a policy number would turn "the card is in the drawer at home" into "the
+ * hospital has no idea this patient is covered".
+ */
+export type CoverageInput = {
+  kind: "pmjay" | "insurance" | "tpa" | "corporate" | "cghs" | "esic" | "other";
+  payerName?: string;
+  tpaName?: string;
+  policyNumber?: string;
+  cardNumber?: string;
+  beneficiaryId?: string;
+  employeeId?: string;
+  planClass?: string;
+  sumInsuredPaise?: number;
+  validFrom?: Date;
+  validTo?: Date;
+  claimId?: string;
+  verificationStatus?: "self_declared" | "card_seen" | "verified";
+  note?: string;
 };
 
 export type RegisterPatientInput = {
@@ -64,9 +88,50 @@ export type RegisterPatientInput = {
   abhaNumber?: string;
   abhaVerificationStatus?: AbhaVerificationStatus;
   legacyUhid?: string;
+  /* ═══ FD-12 — the demographics a real Indian counter takes. All optional; the fast path ignores them. ═══ */
+  title?: string;
+  fatherHusbandName?: string;
+  maritalStatus?: string;
+  nationality?: string;
+  nationalIdType?: string;
+  /** LAST FOUR DIGITS ONLY. `normaliseIdTail` enforces it rather than trusting the caller. */
+  nationalIdMasked?: string;
+  religion?: string;
+  occupation?: string;
+  monthlyIncomePaise?: number;
+  referredBySource?: string;
+  referredByName?: string;
+  referredByPhone?: string;
+  referredBySpeciality?: string;
+  /** FD-12 — PM-JAY, insurance, TPA, employer. Several at once is the normal case, not the edge. */
+  coverages?: CoverageInput[];
   guardian?: GuardianInput;
   promotionalOptIn?: boolean; // D9: DPDP consent, captured at registration — default false (opt-IN means the patient acted)
 };
+
+/** Empty and whitespace-only both mean "the clerk did not fill this in", and both store as NULL. */
+function blankToNull(v: string | undefined): string | null {
+  const t = (v ?? "").trim();
+  return t === "" ? null : t;
+}
+
+/**
+ * ═══ FD-12 — THE LAST-4 RULE IS ENFORCED HERE, NOT TRUSTED FROM THE WIRE ═══
+ *
+ * `patient_guardians.id_number_masked` has said since it was written that this schema "never holds
+ * the full document number", and the patient's own document is not a weaker case. But a comment and
+ * a wire field named `nationalIdMasked` are both just NAMES: the day a caller posts a full
+ * twelve-digit Aadhaar into a column called "masked", the column holds a full Aadhaar and every
+ * reader downstream believes it does not.
+ *
+ * So the rule is executed rather than documented. Whatever arrives, only its last four digits are
+ * kept. A clerk who types the whole card gets the tail stored, which is what they meant and what
+ * the counter can actually use — matching the card in the patient's hand.
+ */
+export function normaliseIdTail(v: string | undefined): string | null {
+  const digits = (v ?? "").replace(/\D/g, "");
+  return digits === "" ? null : digits.slice(-4);
+}
 
 /** Registers a patient on the caller's transaction. Rules in order, each separately tested. */
 export async function registerPatient(
@@ -168,9 +233,29 @@ export async function registerPatient(
       alias: input.alias ?? null,
       sensitiveContext: input.sensitiveContext ?? false,
       abhaAddress: input.abhaAddress ?? null,
-      abhaNumber: input.abhaNumber ?? null,
+      /*
+        FD-12 — normalised, because this column is a MATCH KEY and nothing else. A patient reads
+        "12-3456-7890-1234" off their phone and a clerk types it bare; two spellings of one number
+        are two patients to every lookup that follows.
+      */
+      abhaNumber: input.abhaNumber === undefined ? null : normaliseAbhaNumber(input.abhaNumber),
       abhaVerificationStatus: input.abhaVerificationStatus ?? "none",
       legacyUhid: input.legacyUhid ?? null,
+      /* ═══ FD-12 — the demographics the counter now takes ═══ */
+      title: blankToNull(input.title),
+      fatherHusbandName: blankToNull(input.fatherHusbandName),
+      maritalStatus: blankToNull(input.maritalStatus),
+      nationality: blankToNull(input.nationality),
+      nationalIdType: blankToNull(input.nationalIdType),
+      // Enforced here rather than trusted from the wire — see `normaliseIdTail`.
+      nationalIdMasked: normaliseIdTail(input.nationalIdMasked),
+      religion: blankToNull(input.religion),
+      occupation: blankToNull(input.occupation),
+      monthlyIncomePaise: input.monthlyIncomePaise ?? null,
+      referredBySource: blankToNull(input.referredBySource),
+      referredByName: blankToNull(input.referredByName),
+      referredByPhone: blankToNull(input.referredByPhone),
+      referredBySpeciality: blankToNull(input.referredBySpeciality),
       promotionalOptIn: input.promotionalOptIn ?? false,
       createdBy: actor.id,
       updatedBy: actor.id,
@@ -218,13 +303,42 @@ export async function registerPatient(
       phone: g.phone ?? null,
       relationship: g.relationship,
       idType: g.idType ?? null,
-      idNumberMasked: g.idNumberMasked ?? null,
+      // FD-12 — the same enforcement the patient's own document gets. This column has always
+      // promised "last-4 only" in its schema comment and has always taken whatever it was handed.
+      idNumberMasked: normaliseIdTail(g.idNumberMasked),
       idVerified: g.idVerified ?? false,
       authorityMessages: g.authorityMessages ?? true,
       authorityConsents: g.authorityConsents ?? true,
       authorityDsr: g.authorityDsr ?? false,
       authorityBills: g.authorityBills ?? true,
       consentNote: g.consentNote ?? null,
+      createdBy: actor.id,
+    });
+  }
+
+  /*
+    FD-12 — the entitlements the patient produced at the desk. Written in the SAME transaction as
+    the patient, because a coverage row whose patient failed to insert is not a lesser record, it is
+    a orphan pointing at nothing; and because the clerk performed one act and it should succeed or
+    fail as one.
+  */
+  for (const c of input.coverages ?? []) {
+    await tx.insert(patientCoverages).values({
+      id: newId(),
+      patientId,
+      kind: c.kind,
+      payerName: blankToNull(c.payerName),
+      tpaName: blankToNull(c.tpaName),
+      policyNumber: blankToNull(c.policyNumber),
+      cardNumber: blankToNull(c.cardNumber),
+      beneficiaryId: blankToNull(c.beneficiaryId),
+      employeeId: blankToNull(c.employeeId),
+      planClass: blankToNull(c.planClass),
+      sumInsuredPaise: c.sumInsuredPaise ?? null,
+      validFrom: c.validFrom ?? null,
+      validTo: c.validTo ?? null,
+      claimId: blankToNull(c.claimId),
+      verificationStatus: c.verificationStatus ?? "self_declared",
       createdBy: actor.id,
     });
   }
@@ -286,13 +400,35 @@ export type PatientPatch = Partial<{
   legacyUhid: string | null;
   promotionalOptIn: boolean; // D9: revocable on the patient record — this PATCH is the revocation path
   deceasedAt: string | null; // D10 (D-33): ISO datetime; the hard stop the notifications gateway reads at send time
+  /* ═══ FD-12 — the counter's new demographics are amendable, or taking them would be a one-way write ═══ */
+  title: string | null;
+  fatherHusbandName: string | null;
+  maritalStatus: string | null;
+  nationality: string | null;
+  nationalIdType: string | null;
+  nationalIdMasked: string | null;
+  religion: string | null;
+  occupation: string | null;
+  monthlyIncomePaise: number | null;
+  referredBySource: string | null;
+  referredByName: string | null;
+  referredByPhone: string | null;
+  referredBySpeciality: string | null;
 }>;
 
+/**
+ * THE ALLOWLIST IS THE PATCH SURFACE, so a field missing here parses off the wire and is then
+ * silently discarded — the quietest kind of broken. Every FD-12 column is listed for that reason:
+ * a demographic the counter can write once and never correct is worse than one it cannot take.
+ */
 const PATCHABLE = [
   "name", "phone", "altPhone", "dob", "dobEstimated", "sex", "administrativeGender", "addressLine", "district",
   "stateName", "pincode", "language", "bloodGroup", "isConfidential", "alias",
   "sensitiveContext", "abhaAddress", "abhaNumber", "abhaVerificationStatus",
   "abhaLinkToken", "legacyUhid", "promotionalOptIn", "deceasedAt",
+  "title", "fatherHusbandName", "maritalStatus", "nationality", "nationalIdType",
+  "nationalIdMasked", "religion", "occupation", "monthlyIncomePaise",
+  "referredBySource", "referredByName", "referredByPhone", "referredBySpeciality",
 ] as const;
 
 function asAuditString(v: unknown): string | null {
@@ -365,6 +501,12 @@ export async function updatePatient(
     // deceasedAt arrives as a validated ISO string (patients.controller.ts's z.string().datetime());
     // the column is a real Date, so it is converted here — once — before diffing and before the set.
     if (field === "deceasedAt" && typeof next === "string") next = new Date(next);
+    /*
+      FD-12 — the last-4 rule binds on the EDIT path too. Enforcing it only at registration would
+      leave the amend surface as the open door to the same column, and a full Aadhaar is no less a
+      full Aadhaar for having arrived by PATCH.
+    */
+    if (field === "nationalIdMasked" && typeof next === "string") next = normaliseIdTail(next);
     const prev = (current as Record<string, unknown>)[field];
     const prevS = field === "deceasedAt" ? asAuditTimestamp(prev) : asAuditString(prev);
     const nextS = field === "deceasedAt" ? asAuditTimestamp(next) : asAuditString(next);
