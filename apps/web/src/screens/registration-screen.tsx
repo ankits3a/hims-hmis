@@ -289,9 +289,9 @@ export function RegistrationScreen(): React.ReactElement {
     routeSearch.new === true ? { kind: "new", prefillPhone: "" } : { kind: "search" },
   );
 
-  // F2 (keyboard.tsx) always navigates here with ?new=true, even when already on this route — the
-  // initial useState above only fires on mount, so this effect is what makes a same-page F2 press
-  // (search view -> new-patient form) work. Clearing the flag afterward lets a second F2 press
+  // F4 (keyboard.tsx) always navigates here with ?new=true, even when already on this route — the
+  // initial useState above only fires on mount, so this effect is what makes a same-page F4 press
+  // (search view -> new-patient form) work. Clearing the flag afterward lets a second F4 press
   // (undefined -> true again) retrigger it, resetting an in-progress draft.
   useEffect(() => {
     if (routeSearch.new === true) {

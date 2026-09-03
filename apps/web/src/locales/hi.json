@@ -101,7 +101,7 @@
     "placeholder": "फ़ोन नंबर, UHID या नाम…",
     "hint": "पहले फ़ोन: अंक लिखें",
     "none": "कोई मिलान नहीं",
-    "newPatient": "नया मरीज़ (F2)"
+    "newPatient": "नया मरीज़ (F4)"
   },
   "register": {
     "title": "नया मरीज़",

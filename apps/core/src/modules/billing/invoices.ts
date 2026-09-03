@@ -13,7 +13,7 @@ import { getApproval } from "../../kernel/approvals/worklist";
 import { getEncounter } from "../opd";
 import { resolveEncounterByPrefix } from "../../kernel/episodes/encounter-resolvers";
 import {
-  consumeEntitlements, counterForWinner, couponRedemptionStates, couponSource, COUPON_SOURCE_KEY,
+  clampValueEntitlementsToBalance, consumeEntitlements, counterForWinner, couponRedemptionStates, couponSource, COUPON_SOURCE_KEY,
   entitlementCountersOf, membershipSource, MEMBERSHIP_SOURCE_KEY, narrowToRedeemableCoupons,
   narrowToUsableEntitlements, redeemCoupons, resolveInstruments,
 } from "../membership";
@@ -504,7 +504,16 @@ async function composeBenefits(
 
   // Pass one: the draft's own gross, before any adjustment. Pure and synchronous.
   const grossPaise = priceInvoiceLines(ctx, args.lines).reduce((total, line) => total + line.grossPaise, 0);
-  const resolved: ResolvedInstruments = { ...usable, billGrossPaise: grossPaise };
+  /*
+   * CLOSE REVIEW / CRITICAL — the value lane's balance is applied HERE, not in the narrowing, because
+   * "does this benefit's ask exceed the balance" cannot be answered for a percentage until the bill
+   * has been priced once. T6 expressed the balance as `capPaise` instead, and an over-cap ask is
+   * REJECTED rather than clamped (B4/K3) — so a partial balance produced no discount at all.
+   */
+  const resolved: ResolvedInstruments = {
+    ...clampValueEntitlementsToBalance(usable, counters, grossPaise),
+    billGrossPaise: grossPaise,
+  };
 
   return {
     // Registered sources come LAST: `runContest` uses this array's index for exact ties only, and on

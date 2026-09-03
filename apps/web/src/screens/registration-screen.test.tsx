@@ -39,7 +39,7 @@ function fetchCalls(): { url: string; method: string; body: string }[] {
 }
 
 async function openNewPatientForm(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-  await user.click(screen.getByRole("button", { name: "New patient (F2)" }));
+  await user.click(screen.getByRole("button", { name: "New patient (F4)" }));
   await screen.findByRole("heading", { name: "New patient" });
 }
 
