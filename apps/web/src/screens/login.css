@@ -131,13 +131,28 @@
 }
 
 /*
- * The meaning: Hinglish in Latin letters on the English screen, Devanagari on the Hindi one. The
- * measures step DOWN from the shloka's, so the three lines read as one descending block rather than
- * three paragraphs of equal weight — `ch` is deliberately not used, because it is measured in the
- * root's Latin font and would size a Devanagari column by Latin metrics.
+ * ═══ THE TRANSLATION AND THE MEANING — DEVANAGARI IN EVERY LANGUAGE, LIKE THE SHLOKA ═══
+ *
+ * The owner's ruling: *"No english, just hindi devnagri."* So these two lines stopped being a
+ * Hinglish transliteration and an English gloss, and became what `.shloka` and `.cite` already were
+ * — Devanagari regardless of which language the interface is in. That makes their type rules
+ * UNCONDITIONAL. They cannot live under `.lg[data-lang="hi"]`, because on the English screen that
+ * selector does not match and the whole panel would render in a face with no Devanagari coverage,
+ * falling back per character to whatever the terminal happens to have.
+ *
+ * The leading is Devanagari leading (1.62 and 1.6), not the 1.5 a Latin paragraph would take: the
+ * matras above the shirorekha and below the baseline need the room. The measures step DOWN from the
+ * shloka's so the three lines read as one descending block — and `ch` is deliberately not used, as
+ * it is measured in the root's Latin font and would size a Devanagari column by Latin metrics.
  */
-.lg .mean { font-size: 16px; line-height: 26px; color: var(--agent-fg); max-width: 390px; margin: 22px 0 0; }
-.lg .gloss { font-size: 13px; line-height: 20px; color: var(--agent-dim); max-width: 370px; margin: 9px 0 0; }
+.lg .mean, .lg .gloss {
+  font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, "IBM Plex Sans", sans-serif;
+  letter-spacing: 0;
+  /* Devanagari sentences end in a danda; without this the meaning stranded "है।" on a line alone. */
+  text-wrap: pretty;
+}
+.lg .mean { font-size: 16px; line-height: 1.62; color: var(--agent-fg); max-width: 400px; margin: 22px 0 0; }
+.lg .gloss { font-size: 13.5px; line-height: 1.6; color: var(--agent-dim); max-width: 430px; margin: 11px 0 0; }
 
 /* The live pulse — the same signal the desk dock wears, so the two read as one system. */
 .lg .pulse { position: relative; width: 9px; height: 9px; flex-shrink: 0; }
@@ -227,8 +242,13 @@
   .lg .verse { max-width: none; }
   .lg .cite { margin-bottom: 10px; }
   .lg .shloka { font-size: 21px; }
-  .lg .mean { font-size: 14px; line-height: 23px; margin-top: 14px; }
-  .lg .gloss { display: none; }
+  /*
+    The meaning STAYS on a narrow screen. It was hidden when it was an English gloss repeating the
+    line above it; it is the owner's second Devanagari line now and dropping it would be dropping
+    content, not trimming a duplicate.
+  */
+  .lg .mean { font-size: 14.5px; margin-top: 14px; }
+  .lg .gloss { font-size: 12.5px; margin-top: 8px; }
   .lg .paper { padding: 32px 28px 44px; align-items: flex-start; }
 }
 
@@ -266,8 +286,7 @@
   font-size: 11.5px;
   font-weight: 600;
 }
-/* The Devanagari meaning wants the same headroom the shloka takes; the shloka needs no override. */
-.lg[data-lang="hi"] .mean { line-height: 29px; }
+/* `.mean` and `.gloss` need NO override here: they are Devanagari in both languages already. */
 .lg[data-lang="hi"] .pw button {
   font-family: "IBM Plex Sans Devanagari", "Nirmala UI", Mangal, sans-serif;
   letter-spacing: 0; font-size: 12px;

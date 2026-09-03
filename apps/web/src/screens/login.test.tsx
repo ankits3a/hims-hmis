@@ -257,10 +257,15 @@ describe("LoginScreen", () => {
     const shloka = screen.getByText("स्वकर्मणा तमभ्यर्च्य सिद्धिं विन्दति मानवः");
     expect(shloka).toHaveAttribute("lang", "sa");
     expect(screen.getByText("गीता 18.46")).toBeInTheDocument();
-    // Hinglish is Hindi in Latin letters, which is what `hi-Latn` is for — it is not English.
-    const meaning = screen.getByText("Apne kaam se hi uski puja — wahi siddhi hai.");
-    expect(meaning).toHaveAttribute("lang", "hi-Latn");
-    expect(screen.getByText(/that is how a person is perfected/)).toHaveAttribute("lang", "en");
+    /*
+      The owner's ruling — "No english, just hindi devnagri". Both lines under the verse are
+      Devanagari Hindi, tagged `hi` and not `sa`: they are a different language in the same script,
+      and a screen reader that knows the difference should be told.
+    */
+    expect(screen.getByText("अपने कर्म से उसकी पूजा करके मनुष्य सिद्धि पा लेता है।"))
+      .toHaveAttribute("lang", "hi");
+    expect(screen.getByText("जो काम तुम्हारे हिस्से आया है, उसे मन लगाकर करना ही सबसे बड़ी पूजा है।"))
+      .toHaveAttribute("lang", "hi");
   });
 
   /**
@@ -294,13 +299,16 @@ describe("LoginScreen", () => {
 
     await user.click(screen.getByRole("button", { name: "हिन्दी" }));
 
-    await waitFor(() => expect(screen.getByText("अपने काम से ही उसकी पूजा — वही सिद्धि है।")).toBeInTheDocument());
-    // The Sanskrit is Devanagari in both languages, and it is the SAME verse the English screen had.
+    await waitFor(() => expect(screen.getByRole("button", { name: "English" })).toBeInTheDocument());
+    /*
+      The panel does NOT change with the language toggle, and that is the point: it is Devanagari in
+      both. What this pins is that the same verse survives the switch — the pick is not rerolled —
+      and that no Latin transliteration or English gloss reappears on either screen.
+    */
     expect(screen.getByText("स्वकर्मणा तमभ्यर्च्य सिद्धिं विन्दति मानवः")).toBeInTheDocument();
     expect(screen.getByText("गीता 18.46")).toBeInTheDocument();
-    // Hindi carries no Latin gloss — the meaning above it is already in the reader's script.
-    expect(screen.queryByText(/that is how a person is perfected/)).not.toBeInTheDocument();
-    expect(screen.queryByText("Apne kaam se hi uski puja — wahi siddhi hai.")).not.toBeInTheDocument();
+    expect(screen.getByText("अपने कर्म से उसकी पूजा करके मनुष्य सिद्धि पा लेता है।")).toBeInTheDocument();
+    expect(screen.queryByText(/Apne kaam|Worship Him|perfected/)).not.toBeInTheDocument();
   });
 
   /**
@@ -315,7 +323,7 @@ describe("LoginScreen", () => {
     renderWithProviders(<LoginScreen />);
 
     expect(screen.getByText("सेवा ही परम धर्म है")).toBeInTheDocument();
-    expect(screen.getByText("कहावत · a saying, not a verse")).toBeInTheDocument();
+    expect(screen.getByText("कहावत · श्लोक नहीं")).toBeInTheDocument();
     expect(screen.queryByText(/^गीता \d/)).not.toBeInTheDocument();
   });
 

@@ -95,46 +95,6 @@
     "submit": "Sign in",
     "failed": "Sign-in failed — check the username and password",
     "product": "Hospital Operating System",
-    "verse": {
-      "book": "गीता",
-      "proverbLabel": "कहावत · a saying, not a verse",
-      "g1846": {
-        "meaning": "Apne kaam se hi uski puja — wahi siddhi hai.",
-        "gloss": "Worship Him through your own work — that is how a person is perfected."
-      },
-      "g0525": {
-        "meaning": "Shak mite, mann tike, aur lage rahe sab ke bhale mein.",
-        "gloss": "Doubts cut away, the mind steady, devoted to the good of all beings."
-      },
-      "g0632": {
-        "meaning": "Har kisi ko apne hi jaisa samjho.",
-        "gloss": "See everyone by the same measure you use for yourself."
-      },
-      "g1213": {
-        "meaning": "Kisi se bair nahin — sab se maitri, sab par karuna.",
-        "gloss": "No malice toward any being — friendly to all, compassionate to all."
-      },
-      "g0247": {
-        "meaning": "Haq sirf kaam par hai, phal par kabhi nahin.",
-        "gloss": "Your right is to the work alone, never to its fruits."
-      },
-      "g0250": {
-        "meaning": "Kaam ko saleeqe se karna — yahi yog hai.",
-        "gloss": "Skill in action — that is yoga."
-      },
-      "g0319": {
-        "meaning": "Bina lagav ke, jo karna hai wo karte raho.",
-        "gloss": "Unattached, keep doing the work that must be done."
-      },
-      "g1720": {
-        "meaning": "Wo daan jo isliye diya jaye ki dena chahiye — us ko, jo lauta na sake.",
-        "gloss": "The gift given because it ought to be given — to one who cannot repay."
-      },
-      "seva": {
-        "meaning": "Seva hi param dharm hai.",
-        "gloss": "Service is the highest duty."
-      }
-    },
     "welcome": "Sign in to your seat",
     "issued": "Accounts are issued by the hospital administrator.",
     "reveal": "SHOW",

@@ -1,4 +1,4 @@
-import { DESK_LINES, pickLine } from "./login-verses";
+import { DESK_LINES, GITA, PROVERB_LABEL, pickLine } from "./login-verses";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -40,16 +40,24 @@ describe("the lines on the sign-in panel", () => {
     expect(new Set(DESK_LINES.map((l) => l.id)).size).toBe(DESK_LINES.length);
   });
 
-  /*
-    The Sanskrit is Devanagari in every UI language, so it is the one string on the screen that can
-    never be Latin. A line pasted back in transliteration would render in a Latin face under
-    `.shloka`'s Devanagari stack and look merely ugly rather than wrong.
-  */
-  it("prints every line in Devanagari", () => {
+  /**
+   * THE OWNER'S RULING, PINNED: *"No english, just hindi devnagri."* All three lines — the verse,
+   * its translation and its meaning — are Devanagari, on the English screen as much as the Hindi
+   * one. A Latin character anywhere in this table is a regression toward the Hinglish draft the
+   * owner threw out, and it would render in a face that has no Devanagari coverage besides.
+   */
+  it("prints every line in Devanagari, with no Latin anywhere", () => {
     for (const line of DESK_LINES) {
-      expect(line.shloka, line.id).toMatch(/[ऀ-ॿ]/);
-      expect(line.shloka, `${line.id} must not be transliterated`).not.toMatch(/[A-Za-z]/);
+      for (const [field, value] of [["shloka", line.shloka], ["anuvad", line.anuvad], ["arth", line.arth]] as const) {
+        expect(value, `${line.id}.${field}`).toMatch(/[ऀ-ॿ]/);
+        expect(value, `${line.id}.${field} must not be transliterated`).not.toMatch(/[A-Za-z]/);
+        expect(value.trim(), `${line.id}.${field} must not be blank`).not.toBe("");
+      }
+      // The translation and the meaning say different things — one is not a copy of the other.
+      expect(line.anuvad, line.id).not.toBe(line.arth);
     }
+    expect(PROVERB_LABEL).not.toMatch(/[A-Za-z]/);
+    expect(GITA).not.toMatch(/[A-Za-z]/);
   });
 
   it("pins a line by index, so a screen test can assert on a known verse", () => {

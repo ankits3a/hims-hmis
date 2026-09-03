@@ -9,7 +9,7 @@ import { isPasswordChangeRequired } from "../lib/admin-api";
 import i18next from "../lib/i18n";
 import { switchLanguage } from "../lib/i18n";
 import { istClock, istDateLabel } from "./desk-one/model";
-import { pickLine } from "./login-verses";
+import { GITA, PROVERB_LABEL, pickLine } from "./login-verses";
 import "../styles/paper-pine.css";
 import "./login.css";
 
@@ -143,9 +143,7 @@ export function LoginScreen(): React.ReactElement {
     `cite` is `null` for exactly those, so there is no path on which a proverb acquires a chapter and
     verse — the type makes the mistake unrepresentable rather than merely unlikely.
   */
-  const attribution = line.cite === null ? t("login.verse.proverbLabel") : `${t("login.verse.book")} ${line.cite}`;
-  const meaning = t(`login.verse.${line.id}.meaning`);
-  const gloss = t(`login.verse.${line.id}.gloss`);
+  const attribution = line.cite === null ? PROVERB_LABEL : `${GITA} ${line.cite}`;
 
   /*
     The language reaches the STYLESHEET, not just the strings. `.tag`'s uppercase and letter-spacing
@@ -180,23 +178,18 @@ export function LoginScreen(): React.ReactElement {
           optical centre of the panel. Dead centre would put it level with the sign-in button on the
           other half and the two would read as a pair of competing headlines.
 
-          `lang` is set on each line and it is not decoration. The Sanskrit is Devanagari in EVERY UI
-          language, so `lang="sa"` is the only thing that stops a screen reader pronouncing a shloka
-          with an English voice; the Hinglish meaning is Hindi written in Latin letters, which is
-          exactly what `hi-Latn` exists for; the gloss is the one line that really is English.
+          `lang` is set on each line and it is not decoration. All three are Devanagari in EVERY UI
+          language, so without it a screen reader pronounces a shloka and its meaning with an English
+          voice. `sa` for the verse and `hi` for the two lines under it: they are different languages
+          in the same script, and a reader that knows the difference should be told.
         */}
         <div style={{ flexGrow: 1, minHeight: 28 }} />
 
         <div className="verse rise">
           <div className="cite">{attribution}</div>
           <p className="shloka" lang="sa">{line.shloka}</p>
-          <p className="mean" lang={hindi ? "hi" : "hi-Latn"}>{meaning}</p>
-          {/*
-            Hindi carries no gloss — the meaning above it is already Devanagari and a second line
-            would only repeat it in another script. The key exists in `hi.json` as an empty string
-            because `lib/i18n.test.ts` pins the two locale files key-for-key.
-          */}
-          {gloss === "" ? null : <p className="gloss" lang="en">{gloss}</p>}
+          <p className="mean" lang="hi">{line.anuvad}</p>
+          <p className="gloss" lang="hi">{line.arth}</p>
         </div>
 
         <div style={{ flexGrow: 1.25, minHeight: 28 }} />
