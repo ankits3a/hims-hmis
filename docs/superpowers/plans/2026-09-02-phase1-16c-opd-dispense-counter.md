@@ -204,11 +204,18 @@ here, each RED first — C1 "Received promise resolved instead of rejected", C2 
 in the alternatives array, C3 the identity box holding `"14"`). web `pharmacy-counter`: **4/4**.
 `pnpm typecheck` 0 errors; `pnpm lint` 0 errors, the same 2 pre-existing warnings §8.4 recorded.
 
-**Full web suite: 78 files / 595 pass, 1 FAIL — `lab-reports.test.tsx` D9, which fails identically
-with this lane's work stashed.** It is red on `origin/main`, from `4938a70` (the 17c close-review
-remediation): the report centre renders "0 reports ready" where a settled report should count 1.
-Not this lane's file and not this lane's to fix — but per CLAUDE.md a red main freezes merges, so it
-gates this PR's CI too. **The LIMS lane owns it.**
+**Full web suite: 78 files / 595 pass, 1 FAIL — `lab-reports.test.tsx` D9.** CORRECTED: this was
+first written up here as a red `origin/main`. **It is not.** It is a FLAKE on a loaded build host.
+
+The record, because the first reading was wrong and the evidence is what settles it: D9 failed three
+times consecutively between 23:16 and 23:23 UTC — including once with this lane's work stashed, which
+is what made "red main" look right — and **passed on this box at 23:32 UTC** with the work restored,
+and the `web` job is **green in CI on this branch's exact SHA `9cad87c`**. The failure is
+`todays.length === 0` where the fixture is dated today, so the tempting reading is the FD-6 date bomb
+in that file's own header comment. **That reading was tested and disproved:** inside jsdom the
+screen's `istToday()` (`Intl`, `Asia/Kolkata`) and the fixture's `IST_TODAY` (arithmetic) both return
+`2026-09-04` and compare equal. Cause not identified; four lanes were running suites at the time.
+**Do not search a pharmacy diff for it, and do not report a frozen main on it — re-run it.**
 
 ### 8.6 Actuals
 One authoring-plus-execution session; token count not readable by the session about itself (the 11e precedent). Stop-loss 2,120,000 not breached by the visible token meter.
