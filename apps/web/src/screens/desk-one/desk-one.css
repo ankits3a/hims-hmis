@@ -6,6 +6,10 @@
  * an interpretation of it: paper #f4f7f4, pine ink #132420, hospital green #0e6b4e, marigold
  * #dd8f1c, mint #35c48f, brick #b23a30.
  *
+ * The six palette values live in `styles/paper-pine.css`, which `.d1` and the sign-in screen's
+ * `.lg` both wear — one definition, so the marigold cannot come to mean two different shades of
+ * "needs attention" on two screens. Everything below is Desk One's own.
+ *
  * ═══ WHY THIS IS PLAIN CSS AND NOT TAILWIND ═══
  *
  * The rest of the application is Tailwind v4 + shadcn/neutral, and the owner has now ruled twice
@@ -20,13 +24,6 @@
  */
 
 .d1 {
-  --paper: #f4f7f4; --card: #ffffff; --ink: #132420; --line: #dfe7e1; --line2: #ecf1ed;
-  --dim: #5c6f66; --faint: #8ea69a; --wash: #eef3ef;
-  --green: #0e6b4e; --green-soft: rgba(14, 107, 78, .08); --green-line: rgba(14, 107, 78, .35);
-  --gold: #dd8f1c; --gold-soft: rgba(221, 143, 28, .10); --gold-line: rgba(221, 143, 28, .45);
-  --red: #b23a30; --red-soft: rgba(178, 58, 48, .08); --red-line: rgba(178, 58, 48, .4);
-  --agent: #132420; --agent-fg: #d9efe4; --agent-dim: #7fa392; --mint: #35c48f;
-
   position: fixed;
   inset: 0;
   z-index: 40;

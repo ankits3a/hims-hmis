@@ -93,7 +93,31 @@
     "username": "Username",
     "password": "Password",
     "submit": "Sign in",
-    "failed": "Sign-in failed — check the username and password"
+    "failed": "Sign-in failed — check the username and password",
+    "product": "Hospital Operating System",
+    "lede": "Your desk, with a colleague who never looks away.",
+    "sub": "An agent sits at every seat in this hospital — reading the complaint, pricing the visit, watching every queue — so the person at your counter gets your eyes instead of your screen.",
+    "cap": {
+      "counterTitle": "At the counter",
+      "counter": "Type the complaint the way it was said — Hindi, English, both. The department is ranked and the shortest open line is named.",
+      "tillTitle": "At the till",
+      "till": "The bill prices itself as a card, a coupon or a panel attaches. Nobody at the desk does arithmetic.",
+      "floorTitle": "On the floor",
+      "floor": "Every queue in the building is watched, and the wait comes back in minutes and in clock time — because patients ask “kitne baje?”.",
+      "recordTitle": "On the record",
+      "record": "Everything the agent does lands in a log with the time it happened, and it always says where its answer came from."
+    },
+    "creed": "मरीज़ पहले। मशीन बाद में।",
+    "creedGloss": "The patient first. The machine after.",
+    "welcome": "Sign in to your seat",
+    "issued": "Accounts are issued by the hospital administrator.",
+    "reveal": "SHOW",
+    "hide": "HIDE",
+    "signingIn": "Signing you in…",
+    "capsLock": "Caps Lock is on.",
+    "shared": "This is a shared counter. Sign out when you step away — the desk clears with you.",
+    "helpTitle": "Cannot get in?",
+    "help": "Ask the administrator to reset it. Never sign in on somebody else's name — every act at a counter is recorded against the person who did it."
   },
   "search": {
     "placeholder": "Phone number, UHID, or name…",

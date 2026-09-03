@@ -23,6 +23,7 @@ import { Dossier } from "./dossier";
 import { Dock } from "./dock";
 import { Overlays } from "./overlays";
 import { Stage } from "./stages";
+import "../../styles/paper-pine.css";
 import "./desk-one.css";
 
 /**
