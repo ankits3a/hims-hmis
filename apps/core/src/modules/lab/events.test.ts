@@ -10,8 +10,8 @@ import { labManifest } from "./manifest";
  * `materials`, `membership`, `formulary` and `ot` convention, unchanged.
  */
 describe("the lab's event catalogue (Plan 17 T2)", () => {
-  it("declares twenty-two events, every one `lab.*`, in the lab's module namespace", () => {
-    expect(LAB_EVENTS).toHaveLength(22);
+  it("declares twenty-three events, every one `lab.*`, in the lab's module namespace", () => {
+    expect(LAB_EVENTS).toHaveLength(23); // 17d T1 added `lab.tube_swap_suspected`
     for (const event of LAB_EVENTS) {
       expect([event.name, event.module]).toEqual([event.name, "lab"]);
       expect(event.name.startsWith("lab.")).toBe(true);
@@ -49,6 +49,8 @@ describe("the lab's event catalogue (Plan 17 T2)", () => {
       "lab.specimen_received",
       "lab.specimen_rejected",
       "lab.tube_mismatch_flagged",
+      /** 17d T1 — the near-miss the applicability rule exists to record (design EdgeCases #15). */
+      "lab.tube_swap_suspected",
     ]);
   });
 

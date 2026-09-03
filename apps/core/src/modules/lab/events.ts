@@ -105,6 +105,34 @@ export const labResultEntered = defineEvent("lab.result_entered", MODULE, z.obje
   entryMode: z.string().min(1), absurdOverridden: z.boolean(),
 }));
 
+/**
+ * 17d T1 / D3 — **THE SWAP, SUSPECTED**, appended on its OWN transaction before the entry is
+ * refused (`printLabels`'s F20 shape). A near-miss nobody logged is a near-miss nobody learns from,
+ * and NABL asks for the count; an audit row written on the transaction that is about to roll back
+ * is an audit row that never existed.
+ *
+ * **Structural ids only, and 17c F4 is why.** This rides `lab:bench`, a topic held by reception and
+ * the phlebotomist as well as the bench. `breach` says WHICH rule fired and nothing more — the
+ * patient's sex, the patient's age and the value that triggered it are all readable from the rows
+ * by somebody holding `lab.results.read`, and none of them belongs on a departmental feed.
+ *
+ * `siblingSpecimenIds` is the point of the event rather than a detail of it: the tube in the hand is
+ * only half of a swap, and the other half is on the same order group with a collection time in the
+ * same minute.
+ */
+export const labTubeSwapSuspected = defineEvent("lab.tube_swap_suspected", MODULE, z.object({
+  orderItemId: id, orderGroupId: id, analyteId: id, specimenId: id,
+  siblingSpecimenIds: z.array(id),
+  breach: z.enum(["sex", "age"]),
+  /**
+   * `raisedBy` and never `flaggedBy`: `realtime.test.ts` censuses this topic's payload keys for
+   * anything matching `/value|flag|…/`, and a field whose name borrows the word a RESULT FLAG owns
+   * would have had to weaken that census to ship. The census is right and the name was wrong.
+   */
+  raisedBy: id,
+  overridden: z.boolean(),
+}));
+
 export const labResultVerified = defineEvent("lab.result_verified", MODULE, z.object({
   resultId: id, orderItemId: id, orderGroupId: id, analyteId: id, verifiedBy: id,
 }));
@@ -190,7 +218,7 @@ export const LAB_EVENTS = [
   labOrderDesked, labAttributionUnverifiedFlagged,
   labLabelPrinted, labTubeMismatchFlagged, labSpecimenCollected, labSpecimenReceived,
   labSpecimenRejected, labRecollectionRequested,
-  labResultEntered, labResultVerified, labResultCriticalFlagged, labCriticalAcknowledged,
+  labResultEntered, labResultVerified, labTubeSwapSuspected, labResultCriticalFlagged, labCriticalAcknowledged,
   labResultDeltaFlagged, labReflexAdded, labSodViolationBlocked,
   labReportPublished, labReportPrintBlocked, labReportReleasedUnpaid, labReportPrinted,
   labReportAmended,

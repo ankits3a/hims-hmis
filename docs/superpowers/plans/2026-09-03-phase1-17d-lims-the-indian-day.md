@@ -176,3 +176,65 @@ phase**: the five seats already wear Desk One through `data-seat="lab"` (17c T1)
 board that does not.
 
 ## 8. CLOSE — filled at execution
+
+### 8.0 Kickoff — §2 re-measured (2026-09-03)
+
+`origin/main` at `81aadf7`; 59 migrations, next free **0059**. The old `lane/lims` branch was 15
+pre-squash 17c commits already in main and 34 behind, so the lane was cut fresh from `origin/main`
+as `lane/lims-17d` rather than merged or rebased (§CLAUDE.md: never rewrite pushed history).
+
+**Two of §2's rows were already answered and are struck from the phase:**
+- **#3, walk-in with no UHID — SHIPPED in 17c T1.** `lab-desk.tsx` carries `EMPTY_REGISTER` and the
+  four-field register-in-place; the memory note saying otherwise was stale.
+- **#1's lab half — HOLDS.** `deskFind` matches on `mobile` and returns hits the clerk confirms by
+  NAME (`matchedOn`, `desk.ts:648`). Only the registration half is open, and it is another lane's.
+
+Also struck: the recorded open ruling *"do the back-office boards adopt Desk One or stay greyscale"*
+does not gate this phase — the five seats already wear Desk One via `data-seat="lab"` (17c T1).
+
+### 8.1 T1 — The value that is impossible for this patient (executed 2026-09-03)
+
+**Migration 0059** adds `lab_analytes.applies_to_sex` / `applies_min_age_days` /
+`applies_max_age_days` and `lab_results.impossible_overridden_by`, all nullable, plus two CHECKs.
+NULL = applies to everybody, so the migration changes no behaviour on its own.
+
+- **`applicabilityBreach` (ranges.ts)** — pure, and the two silences are deliberate and tested: a
+  patient of `other`/`unknown` gender is never refused by the sex rule, and a patient with no
+  recorded DOB is never refused by the age rule. Both would withhold a result over a registration
+  default, and neither is evidence of a swap.
+- **`enterResult` flipped to `Db`-FIRST.** Its old header said it was `Tx`-first *because "every
+  refusal here writes nothing"* — 17d makes one refusal a suspected tube swap, so that stopped being
+  true. It now matches `printLabels` and `verifyResult` exactly (F20/F27, met a third time).
+- **`lab.tube_swap_suspected`** is appended on its OWN transaction and names every SIBLING tube of
+  the order group drawn within ±60 s — the other half of the swap, by barcode. Routed onto
+  `lab:bench` (`LAB_REALTIME_NAMES` 16 → 17).
+- **The refusal is a second pair of hands, not a rejection**, and `impossibleOverride` is SEPARATE
+  from `absurdOverride` (D2): a beta-hCG genuinely is ordered for men as a germ-cell tumour marker,
+  and a decimal-point waiver must not be able to excuse a swapped tube.
+- **The catalogue was curated, not just the mechanism shipped** (17c's rail-without-a-consumer rule):
+  `UPT` is declared female-only and `PSA` male-only in `lab-catalogue.json`. That made
+  `verify.concurrency.test.ts`'s A2 round refuse its UPT leg on the male fixture patient — the rule
+  working — so the round swapped `UPT` for `ESR`, the remaining analyte-disjoint priced orderable.
+- **Two guards were obeyed rather than weakened.** The bench payload census refused `flaggedBy`
+  (it matches `/flag/`); the field was renamed `raisedBy`. The 403 and event censuses were re-pinned
+  with the new codes and the 23rd event, not relaxed.
+- **Carried, unasked:** `lab.test.ts` minted `specimenNo` from `Math.random()` over 90 values for a
+  UNIQUE column and collided with itself ~1 run in 90 (it failed the radiology lane's doc-only CI run
+  33617478294). Replaced with a per-suite counter.
+
+**Mutants, each applied and each red, then reverted:**
+
+| # | mutant | killed by |
+|---|---|---|
+| 1 | drop the `male`/`female` guard on the sex rule | `other`/`unknown`/null refused — 1 failed |
+| 2 | inclusive upper age bound (`days > max`) | the 29th day applicable — 1 failed |
+| 3 | append the swap flag on the caller's `tx` | **events 1 → 0**, 2 failed — the F20 shape, proved |
+| 4 | web: the vouch rides `absurdOverride` | `impossibleOverride` undefined — 1 failed |
+| 5 | web: banner without the barcodes | the tube numbers absent from the alert — 1 failed |
+
+**Evidence (2026-09-03, lane `lims`, no peer runner — `tools/lane.sh status` clean):**
+`pnpm typecheck` 0 errors; `pnpm lint` 0 errors (2 pre-existing warnings in `kernel/`).
+Core lab surface — `src/modules/lab` + `schema/lab.test.ts` + `seed-lab-catalogue.test.ts` +
+`test/lab.e2e.test.ts`: **27 suites, 241 tests, all passing** (then 26/26 after the two schema
+constraint tests landed). Web — `src/screens/lab-*` + `src/lib`: **14 files, 90 tests, all passing**,
+i18n parity included.

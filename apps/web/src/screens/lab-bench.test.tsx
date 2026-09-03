@@ -152,6 +152,49 @@ it("02 H1 — an absurd value is refused, and the override asks for a PERSON rat
   await waitFor(() => expect(screen.getByRole("status")).toBeInTheDocument());
 });
 
+/**
+ * 17d T1 — THE SUSPECTED SWAP, on the screen. The two assertions that matter are the ones a green
+ * suite would otherwise miss: the OTHER tube's barcode is on the page (a refusal saying "check the
+ * other tube" without its number sends a technologist to a rack of forty), and the second person is
+ * sent as `impossibleOverride` and NOT as `absurdOverride` — D2's whole point is that a
+ * decimal-point waiver must not excuse a swapped tube.
+ */
+it("17d T1 — an impossible value names the other tube drawn in that minute, and vouches separately", async () => {
+  let calls = 0;
+  const seen = mockRoutes({
+    "GET /api/lab/bench/worklist": { status: 200, body: WORKLIST },
+    "GET /api/lab/bench/arrivals": { status: 200, body: [] },
+    "GET /api/lab/bench/criticals": { status: 200, body: [] },
+    "POST /api/lab/bench/results": () => {
+      calls += 1;
+      return calls === 1
+        ? { status: 422, body: {
+            statusCode: 422, code: "analyte_not_applicable",
+            message: "UPT is reported only for female patients and this record reads male — check the tube against the patient before the number goes in",
+            detail: { analyteCode: "UPT", breach: "sex", suspectSpecimenNos: ["S2608300002", "S2608300003"] },
+          } }
+        : { status: 201, body: { resultId: "r-2", flag: null, deltaFlagged: false, criticalCallId: null } };
+    },
+  });
+  renderWithProviders(<LabBench />);
+  await waitFor(() => expect(screen.getByLabelText("GLUF GLUF")).toBeInTheDocument());
+  await userEvent.type(screen.getByLabelText("GLUF GLUF"), "90");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(/Check the tube before this value goes in/);
+  expect(alert).toHaveTextContent(/reported only for female patients/);
+  // THE KILL: a banner without the barcodes is a banner nobody can act on.
+  expect(alert).toHaveTextContent(/S2608300002, S2608300003/);
+
+  await userEvent.type(screen.getByLabelText("Confirmed by (second person’s login)"), "01BENCH2");
+  await userEvent.click(screen.getByRole("button", { name: "Vouch & save" }));
+  await waitFor(() => expect(seen.filter((c) => c.path === "/api/lab/bench/results")).toHaveLength(2));
+  const second = seen.filter((c) => c.path === "/api/lab/bench/results")[1]!.body as Record<string, unknown>;
+  expect(second.impossibleOverride).toEqual({ by: "01BENCH2" });
+  expect(second.absurdOverride).toBeUndefined(); // THE KILL: the two waivers are not interchangeable
+});
+
 it("DD12 — a critical value says so the moment it is keyed, before anything is verified", async () => {
   mockRoutes({
     "GET /api/lab/bench/worklist": { status: 200, body: WORKLIST },

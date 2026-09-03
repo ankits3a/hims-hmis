@@ -46,6 +46,8 @@ const resultBody = z.object({
   entryMode: z.enum(["manual", "manual_from_printout"]),
   remarks: z.string().max(500).nullish(),
   absurdOverride: z.object({ by: idSchema }).optional(),
+  /** 17d T1 — the same shape, and never a boolean, for the same reason the header above gives. */
+  impossibleOverride: z.object({ by: idSchema }).optional(),
 });
 const ackBody = z.object({
   attempt: z.object({
@@ -115,7 +117,8 @@ export class LabBenchController {
         this.db,
         { actorId: actor.id, route: LAB_IDEMPOTENT_ROUTES.enterResult, key },
         input,
-        () => withTx(this.db, (tx) => enterResult(tx, actor, input)),
+        /** 17d T1 — `enterResult` is `Db`-FIRST: its swap flag is written outside the rollback. */
+        () => enterResult(this.db, actor, input),
       );
     } catch (e) { toHttp(e); }
   }

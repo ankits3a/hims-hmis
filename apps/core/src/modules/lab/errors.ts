@@ -79,6 +79,9 @@ export const LAB_ERROR_CODES = [
   // ── results (T6) ──
   "absurd_value",
   "absurd_override_same_actor",
+  // ── 17d T1 — the value that is impossible for THIS patient ──
+  "analyte_not_applicable",
+  "impossible_override_same_actor",
   "sod_violation",
   "already_verified",
   "user_actor_required",
@@ -149,6 +152,10 @@ const STATUS: Record<LabErrorCode, number> = {
 
   absurd_value: 422,
   absurd_override_same_actor: 403,
+  /** 422 with `absurd_value`: a clinical hard stop the screen must name, not a bad request. */
+  analyte_not_applicable: 422,
+  /** 403 with `absurd_override_same_actor`, and for the same reason: it is about WHO is acting. */
+  impossible_override_same_actor: 403,
   sod_violation: 403,
   already_verified: 409,
   user_actor_required: 403,

@@ -275,7 +275,31 @@ export type EnterResultRequest = {
    * It is a `users.id`, which is why the screen asks for a login rather than a name.
    */
   absurdOverride?: { by: string };
+  /**
+   * 17d T1 / D2 — its twin, and SEPARATE on purpose: this one vouches that a value impossible for
+   * the patient's sex or age is nonetheless theirs. One field covering both would let a
+   * decimal-point waiver excuse a swapped tube, which is the one thing the rule exists to catch.
+   */
+  impossibleOverride?: { by: string };
 };
+
+/**
+ * 17d T1 — what a refused entry carries back. `analyte_not_applicable` names the OTHER tubes drawn
+ * from this order group in the same minute; the screen puts those numbers in front of the
+ * technologist, because "check the other tube" is only actionable with the barcode on it.
+ */
+export type LabRefusal = { code: string | null; message: string; suspectSpecimenNos: string[] };
+
+export function labRefusal(e: unknown): LabRefusal {
+  const body = e instanceof ApiError ? (e.body as { code?: unknown; detail?: unknown } | null) : null;
+  const detail = (body?.detail ?? null) as { suspectSpecimenNos?: unknown } | null;
+  const nos = Array.isArray(detail?.suspectSpecimenNos) ? detail.suspectSpecimenNos.filter((n): n is string => typeof n === "string") : [];
+  return {
+    code: typeof body?.code === "string" ? body.code : null,
+    message: labErrorText(e),
+    suspectSpecimenNos: nos,
+  };
+}
 
 export const enterResult = (body: EnterResultRequest, key: string): Promise<{
   resultId: string; flag: string | null; deltaFlagged: boolean; criticalCallId: string | null;

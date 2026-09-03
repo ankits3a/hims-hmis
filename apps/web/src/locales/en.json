@@ -1972,7 +1972,11 @@
       "live": "live",
       "offline": "offline",
       "min": "min",
-      "inTransit": "in transit"
+      "inTransit": "in transit",
+      "swapSuspected": "Check the tube before this value goes in",
+      "swapCheckTubes": "Also drawn in that minute: {{nos}}",
+      "vouchBy": "Confirmed by (second person’s login)",
+      "vouchSave": "Vouch & save"
     },
     "verify": {
       "title": "Verify & report",

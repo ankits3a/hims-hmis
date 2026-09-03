@@ -51,6 +51,12 @@ export const LAB_TOPIC_SPACES: TopicSpace[] = [
 export const LAB_BENCH_NAMES = [
   "lab.specimen_collected", "lab.specimen_received", "lab.specimen_rejected",
   "lab.recollection_requested", "lab.result_entered", "lab.result_verified",
+  /**
+   * 17d T1 — a suspected swap is the one tube event the bench must see WITHOUT being asked. The
+   * other half of the pair is in somebody else's hand at the same moment, and a flag that waits for
+   * a refresh is a flag that arrives after the second tube has gone on the analyser.
+   */
+  "lab.tube_swap_suspected",
 ] as const;
 
 /**

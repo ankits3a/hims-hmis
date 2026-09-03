@@ -70,10 +70,22 @@ describe("the lab core schema (Plan 17 T1, migration 0046)", () => {
     await db.insert(orderItems).values({ id: itemId, orderId, serviceId: CBC_SERVICE });
   });
 
+  /**
+   * ═══ THE `S` NUMBER IS A COUNTER, NOT A DIE ROLL ═══
+   *
+   * It used to be `Math.floor(Math.random() * 90) + 10` — 90 possible values for a UNIQUE column,
+   * so a test minting two specimens collided with ITSELF about once in ninety runs. It did, on the
+   * radiology lane's doc-only commit (CI run 33617478294, 2026-09-02): "refuses a second ACTIVE
+   * tube" failed on `lab_specimens_specimen_no_unique` at the fixture's own insert, and the diff
+   * under test had touched no code at all. A random first-of-sequence number is not unique by
+   * construction; a counter is.
+   */
+  let specimenSeq = 0;
   async function specimen(overrides: Partial<typeof labSpecimens.$inferInsert> = {}): Promise<string> {
     const id = newId();
+    specimenSeq += 1;
     await db.insert(labSpecimens).values({
-      id, specimenNo: `S26082900${String(Math.floor(Math.random() * 90) + 10)}`, orderGroupId: orderId,
+      id, specimenNo: `S26082900${String(specimenSeq).padStart(4, "0")}`, orderGroupId: orderId,
       patientId: PATIENT, specimenType: "whole_blood", container: "edta", serviceDate: DAY, ...overrides,
     });
     return id;
@@ -110,6 +122,30 @@ describe("the lab core schema (Plan 17 T1, migration 0046)", () => {
         specimenType: "serum", container: "sst", tatMinutesRoutine: 60, reportsFoetalSex: true,
         createdBy: ACTOR, updatedBy: ACTOR,
       })).rejects.toThrow(/lab_orderables_no_foetal_sex_ck/);
+    });
+
+    /**
+     * 17d T1 — applicability is refused IN THE DATABASE, like the PCPNDT rule above and for the same
+     * reason: `upsertAnalyte` also refuses these, and a curator with a psql prompt is not a curator
+     * with a different rule book.
+     */
+    it("refuses an applicable-sex outside male/female — `unknown` is a patient's state, not a test's", async () => {
+      await expect(db.insert(labAnalytes).values({
+        id: newId(), code: "BHCG", nameEn: "Beta hCG", resultType: "numeric", appliesToSex: "unknown",
+        createdBy: ACTOR, updatedBy: ACTOR,
+      })).rejects.toThrow(/lab_analytes_applies_sex_ck/);
+    });
+
+    it("refuses an inverted applicable-age band, and accepts an open-ended one", async () => {
+      await expect(db.insert(labAnalytes).values({
+        id: newId(), code: "NEO", nameEn: "Neonatal something", resultType: "numeric",
+        appliesMinAgeDays: 29, appliesMaxAgeDays: 0, createdBy: ACTOR, updatedBy: ACTOR,
+      })).rejects.toThrow(/lab_analytes_applies_age_ck/);
+      /** One end null is a half-open band and legal: "from 18 years, no upper limit". */
+      await db.insert(labAnalytes).values({
+        id: newId(), code: "ADULTONLY", nameEn: "Adults only", resultType: "numeric",
+        appliesMinAgeDays: 6570, createdBy: ACTOR, updatedBy: ACTOR,
+      });
     });
 
     it("refuses a result type outside the four, and a formula analyte with no formula", async () => {
