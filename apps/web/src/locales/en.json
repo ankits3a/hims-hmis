@@ -60,7 +60,8 @@
     "labReports": "Report centre",
     "pharmacyCounter": "Dispense counter",
     "pharmacyItems": "Pharmacy sale items",
-    "appointmentSeat": "Appointment"
+    "appointmentSeat": "Appointment",
+    "radiationSafety": "Radiation safety"
   },
   "palette": {
     "title": "Search",
@@ -2736,5 +2737,53 @@
     "next": "Next patient",
     "forbidden": "This account may not book or route appointments.",
     "anchorOnLeave": "{{doctor}} has seen this patient before but is on leave today."
+  },
+  "aerb": {
+    "title": "Radiation safety (AERB)",
+    "tabsLabel": "Registers",
+    "notYet": "This register arrives with a later task of Plan 18c.",
+    "tab": {
+      "licences": "Licences",
+      "people": "RSO & physicist",
+      "qa": "Quality assurance",
+      "dose": "Patient dose",
+      "badges": "TLD badges",
+      "calendar": "Calendar"
+    },
+    "licenceType": {
+      "licence": "Licence",
+      "registration": "Registration"
+    },
+    "status": {
+      "active": "Active",
+      "suspended": "Suspended",
+      "surrendered": "Surrendered"
+    },
+    "personRole": {
+      "rso": "Radiological Safety Officer",
+      "physicist": "Medical physicist"
+    },
+    "gaps": {
+      "title": "Machines emitting with no licence on file ({{date}})"
+    },
+    "licences": {
+      "includeInactive": "Show suspended and surrendered licences",
+      "empty": "No AERB licence has been filed yet.",
+      "device": "Machine",
+      "no": "Licence no.",
+      "type": "Type",
+      "validity": "Valid",
+      "rso": "RSO",
+      "status": "Status",
+      "noRso": "not named"
+    },
+    "people": {
+      "empty": "No RSO or medical physicist has been appointed yet.",
+      "role": "Role",
+      "name": "Name",
+      "qualification": "Qualification",
+      "approval": "AERB approval",
+      "openEnded": "open-ended"
+    }
   }
 }

@@ -22,6 +22,7 @@ import {
   activateDefinition, approveDefinition, createDraft,
 } from "../src/kernel/workflow/definitions";
 import { createResource } from "../src/kernel/resources/registry";
+import { aerbManifest, fileLicence } from "../src/modules/aerb";
 import { recordSecondFactor } from "../src/kernel/auth/totp";
 import {
   events, imagingDefinitions, imagingStudies, opdEncounters, orderItems, orders, patients,
@@ -208,6 +209,22 @@ describe("radiology, end to end, through the real manifest (18a T9)", () => {
       }));
       devices[modality] = resourceId;
     }
+
+    /**
+     * ═══ PLAN 18c T1 / D3 — THE CT'S AERB LICENCE, AND THE WALK NEEDS IT ═══
+     *
+     * STUDY ONE is an ionising examination, so from this phase forward it cannot be acquired — nor
+     * even offered on the modality worklist — on a machine with no active AERB licence. Filing one
+     * here is not a workaround: it is what the walk is now supposed to prove, and a hospital
+     * running a CT without this row is a hospital that must be stopped. The ultrasound gets none,
+     * because AERB licences no ultrasound machine and STUDY TWO must pass without one.
+     */
+    const rso = await staff([...aerbManifest.permissions], "rso");
+    await withTx(db, (tx) => fileLicence(tx, { type: "user", id: rso.id }, {
+      deviceResourceId: devices.ct!, licenceType: "licence", licenceNo: "AERB/CT/2026/E2E",
+      eloraRef: "ELORA-E2E", validFrom: "2020-01-01", validTo: "2099-12-31",
+      rsoUserId: rso.id,
+    }));
   }, 120_000);
 
   /**

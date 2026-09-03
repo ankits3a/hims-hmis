@@ -414,6 +414,13 @@
       "when": 1788370828794,
       "tag": "0058_entitlement_counter_unit",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1788477756953,
+      "tag": "0059_aerb_licences",
+      "breakpoints": true
     }
   ]
 }

@@ -355,7 +355,12 @@ describe("Caddyfile / vite dev-proxy parity (Plan 11a D14)", () => {
     // The number was WATCHED FAILING — the run that added the route reported `Received length: 49`
     // against the pinned 48 — and raised to what was measured, never predicted.
     // MEASURED against the tree rather than predicted, which is what pinning a count is for.
-    expect(routes).toHaveLength(49);
+    // PLAN 18c T1 — 49 -> 50 with `/radiology/radiation-safety`, the AERB register. ONE route for
+    // five registers (D11): the inspector asks for the licences, the QA records, the dose register,
+    // the badge readings and what is overdue, and they are five tabs of one screen because they are
+    // one file. MEASURED against the tree, raised to what the run reported, never predicted.
+    expect(routes).toHaveLength(50);
+    expect(routes).toContain("/radiology/radiation-safety");
     expect(routes).toContain("/appointment");
     expect(routes).toContain("/lab/reports");
     expect(routes).toContain("/counter/figures");

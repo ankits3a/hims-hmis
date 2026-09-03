@@ -1042,6 +1042,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pcpndt.form_f.write",
       "pcpndt.registrations.read",
       "orders.read",
+      /** PLAN 18c T1 / D2 — the cumulative-dose nudge at protocolling (O4). Reads doses, not the file. */
+      "aerb.doses.read",
     ],
   },
   {
@@ -1067,6 +1069,13 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "orders.read",
       // PLAN 18b T1 — the worklist export, so a radiographer can check what the console will show.
       "radiology.mwl.read",
+      /**
+       * PLAN 18c T1 / D2 — the patient's twelve-month cumulative dose, which is the nudge the
+       * console shows before a repeat CT (O4). **`aerb.doses.read` and NOT `aerb.registers.read`**:
+       * the licence file, the QA book and the badge register are the RSO's, and a radiographer has
+       * no business in any of them.
+       */
+      "aerb.doses.read",
     ],
   },
   {
@@ -1119,6 +1128,29 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pcpndt.registrations.read",
       "pcpndt.form_f.read",
       "pcpndt.form_f.verify",
+    ],
+  },
+  {
+    /**
+     * PLAN 18c T1 / D2 — **THE RADIOLOGICAL SAFETY OFFICER, the other statutory officer, and the
+     * role the Rules require by name.**
+     *
+     * AERB approves an RSO for the institution; the appointment is a row in `aerb_persons` and this
+     * is the login that goes with it. The RSO files the equipment licences, records the quality-
+     * assurance results (and thereby blocks a machine that failed one), issues the TLD badges and
+     * enters the readings that come back from the laboratory.
+     *
+     * **Holds no clinical string at all** — not `radiology.acquire`, not `radiology.reports.sign`.
+     * The recommended appointee is a senior radiographer (O-13) who will ALSO hold `radiographer`,
+     * and the separation that matters survives that: the QA record blocks the device through the
+     * registry, so an RSO cannot both fail a machine and quietly scan on it, whichever hat they are
+     * wearing.
+     */
+    roleKey: "radiation_safety_officer",
+    permissions: [
+      "aerb.registers.manage",
+      "aerb.registers.read",
+      "aerb.doses.read",
     ],
   },
   {
@@ -1379,6 +1411,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // person sign a report?" is the question the card has to answer without reading the code.
   radiologist: "Radiologist (reports, signs, amends; overrides a gate with a reason; writes Form F)",
   radiographer: "Radiographer (checks in, satisfies the safety gates, acquires; signs no report)",
+  radiation_safety_officer:
+    "Radiological Safety Officer (AERB licences, QA records and the machine block, TLD badges; no clinical act)",
   radiology_receptionist: "Imaging Reception (orders, schedules, bills; satisfies no safety gate)",
   pcpndt_incharge: "PCPNDT In-charge (registration, machines, persons; VERIFIES Form F, writes none)",
   // PLAN 18b T1 — a machine account. The title says so, because a staffing card is where an

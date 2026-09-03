@@ -1160,29 +1160,42 @@ self-verify a statutory declaration is a single point of failure with a criminal
 it is a different decision — DD7 makes the radiologist the second clinical opinion on a gate the
 floor raised, and the override demands a reason and is evented.
 
-| Permission | radiologist | radiographer | radiology_receptionist | pcpndt_incharge | modality_bridge |
-|---|---|---|---|---|---|
-| `radiology.orders.place` | | | ✓ | | |
-| `radiology.worklist.read` | ✓ | ✓ | ✓ | | |
-| `radiology.schedule` | | | ✓ | | |
-| `radiology.checkin` | | ✓ | | | |
-| `radiology.gates.satisfy` | | ✓ | | | |
-| `radiology.gates.override` | ✓ | | | | |
-| `radiology.acquire` | ✓ | ✓ | | | |
-| `radiology.reports.write` | ✓ | | | | |
-| `radiology.reports.sign` | ✓ | | | | |
-| `radiology.reports.amend` | ✓ | | | | |
-| `radiology.reports.read` | ✓ | ✓ | | | |
-| `radiology.definitions.read` | ✓ | ✓ | ✓ | | |
-| `radiology.definitions.manage` | ✓ | | | | |
-| `radiology.bill_decisions.manage` | | | ✓ | | |
-| `radiology.criticals.ack` | ✓ | | | | |
-| `radiology.mwl.read` | | ✓ | | | ✓ |
-| `pcpndt.registrations.manage` | | | | ✓ | |
-| `pcpndt.registrations.read` | ✓ | | | ✓ | |
-| `pcpndt.form_f.write` | ✓ | | | | |
-| `pcpndt.form_f.read` | ✓ | ✓ | | ✓ | |
-| `pcpndt.form_f.verify` | | | | ✓ | |
+| Permission | radiologist | radiographer | radiology_receptionist | pcpndt_incharge | modality_bridge | radiation_safety_officer |
+|---|---|---|---|---|---|---|
+| `radiology.orders.place` | | | ✓ | | | |
+| `radiology.worklist.read` | ✓ | ✓ | ✓ | | | |
+| `radiology.schedule` | | | ✓ | | | |
+| `radiology.checkin` | | ✓ | | | | |
+| `radiology.gates.satisfy` | | ✓ | | | | |
+| `radiology.gates.override` | ✓ | | | | | |
+| `radiology.acquire` | ✓ | ✓ | | | | |
+| `radiology.reports.write` | ✓ | | | | | |
+| `radiology.reports.sign` | ✓ | | | | | |
+| `radiology.reports.amend` | ✓ | | | | | |
+| `radiology.reports.read` | ✓ | ✓ | | | | |
+| `radiology.definitions.read` | ✓ | ✓ | ✓ | | | |
+| `radiology.definitions.manage` | ✓ | | | | | |
+| `radiology.bill_decisions.manage` | | | ✓ | | | |
+| `radiology.criticals.ack` | ✓ | | | | | |
+| `radiology.mwl.read` | | ✓ | | | ✓ | |
+| `pcpndt.registrations.manage` | | | | ✓ | | |
+| `pcpndt.registrations.read` | ✓ | | | ✓ | | |
+| `pcpndt.form_f.write` | ✓ | | | | | |
+| `pcpndt.form_f.read` | ✓ | ✓ | | ✓ | | |
+| `pcpndt.form_f.verify` | | | | ✓ | | |
+| `aerb.registers.manage` | | | | | | ✓ |
+| `aerb.registers.read` | | | | | | ✓ |
+| `aerb.doses.read` | ✓ | ✓ | | | | ✓ |
+
+**Plan 18c T1 adds the sixth column and the last three rows.** The AERB registers are their own
+module (`aerb`) for the reason `pcpndt` is: the cath lab and radiation oncology owe an equipment
+licence and a dose row to the same file, and neither should have to install a department to write
+one. `radiation_safety_officer` is a statutory seat and holds **no clinical string at all** — the
+recommended appointee is a senior radiographer who will also hold `radiographer`, and the separation
+survives that because a QA failure blocks the machine through the resource registry rather than
+through whichever hat the person is wearing. `aerb.doses.read` is deliberately a THIRD permission
+rather than part of `.read`: the twelve-month cumulative-dose nudge belongs on a radiologist's study
+screen, and the licence file, the QA book and the badge register do not.
 
 Thirteen grants are held outside that table. **`doctor` gains `radiology.orders.place` and
 `radiology.reports.read`** — the referring clinician orders the scan and reads the REPORT, and not

@@ -14,6 +14,7 @@ import {
   RADIOLOGY_RESOURCE_KINDS, RADIOLOGY_WORKFLOW_DEFINITIONS, handleOrderPlaced, placeImagingOrder,
 } from "../../src/modules/radiology";
 import { ensureRole, mkUser } from "./opd";
+import { AERB_LICENSABLE_MODALITIES, aerbManifest, fileLicence } from "../../src/modules/aerb";
 import { imagingStudies } from "../../src/kernel/db/schema";
 import { eq } from "drizzle-orm";
 import { checkIn } from "../../src/modules/radiology/checkin";
@@ -98,6 +99,8 @@ export type RadiologyFixture = {
   radiographer: Actor;
   /** 18a T5 — the override lane's only holder, and `prior_contrast_reaction`'s named decider. */
   radiologist: Actor;
+  /** PLAN 18c T1 — files the AERB licences; holds `aerb.registers.manage` and no clinical string. */
+  rso: Actor;
   patientId: string;
   visitNo: string;
   serviceDate: string;
@@ -116,7 +119,7 @@ export const radiologyDecl: OrderKindDecl = {
 
 export async function setupRadiologyFixture(
   db: Db,
-  opts: { serviceDate: string; now: Date; types?: StudyType[] },
+  opts: { serviceDate: string; now: Date; types?: StudyType[]; unlicensedModalities?: string[] },
 ): Promise<RadiologyFixture> {
   await db.insert(registrationConfig)
     .values({ id: "main", uhidPrefix: "HMS", updatedBy: "t" }).onConflictDoNothing();
@@ -173,6 +176,18 @@ export async function setupRadiologyFixture(
   const { actor: owner } = await mkUser(db, "owner.one", ["owner"]);
   const { actor: ms } = await mkUser(db, "ms.iyer", ["medical_superintendent"]);
   const { actor: drafter } = await mkUser(db, "rad.drafter", ["owner"]);
+  /**
+   * PLAN 18c T1 — the RSO, who files the equipment licences below. The AERB manifest is installed
+   * here rather than in each suite for the reason the pcpndt helper gives: building it four times
+   * is four chances to build it differently.
+   */
+  registry.install(aerbManifest);
+  await syncPermissions(db, registry);
+  await ensureRole(db, "radiation_safety_officer");
+  for (const p of aerbManifest.permissions) {
+    await grantPermissionToRole(db, registry, "radiation_safety_officer", p);
+  }
+  const { actor: rso } = await mkUser(db, "rso.bhat", ["radiation_safety_officer"]);
 
   await seedSodPairs(db);
   /**
@@ -201,8 +216,36 @@ export async function setupRadiologyFixture(
     devices[modality] = resourceId;
   }
 
+  /**
+   * ═══ PLAN 18c T1 — THE AERB LICENCE, AND WHY THE FIXTURE HAS TO FILE ONE ═══
+   *
+   * 18c's D3 refuses to start an ionising acquisition on a machine with no active AERB licence.
+   * That is a real change to what a working hospital looks like, and this fixture models a working
+   * hospital: the X-ray and CT units carry a licence covering the fixture's own service date, and
+   * the ultrasound and MRI units carry none because AERB licences neither.
+   *
+   * `opts.unlicensedModalities` is the negative. A suite proving the refusal passes the modality it
+   * wants dark rather than deleting rows afterwards — the licence is then MISSING rather than
+   * revoked, which is the state a hospital that never filed is actually in.
+   */
+  const dark = new Set(opts.unlicensedModalities ?? []);
+  const licenceWindow = { from: "2020-01-01", to: "2099-12-31" };
+  for (const [, , modality] of serviceSpecs) {
+    if (!AERB_LICENSABLE_MODALITIES.includes(modality)) continue;
+    if (dark.has(modality)) continue;
+    const deviceResourceId = devices[modality];
+    if (deviceResourceId === undefined) continue;
+    await withTx(db, (tx) => fileLicence(tx, rso, {
+      deviceResourceId,
+      licenceType: modality === "ct" ? "licence" : "registration",
+      licenceNo: `AERB/${modality.toUpperCase()}/FIXTURE/1`,
+      validFrom: licenceWindow.from, validTo: licenceWindow.to,
+      rsoUserId: rso.id,
+    }));
+  }
+
   return {
-    doctor, radiographer, radiologist, patientId, visitNo: "V2608310001",
+    doctor, radiographer, radiologist, rso, patientId, visitNo: "V2608310001",
     serviceDate: opts.serviceDate, services, devices, decls: [radiologyDecl], unregister,
   };
 }

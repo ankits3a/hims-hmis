@@ -7,6 +7,7 @@ import { transition } from "../../kernel/workflow/instances";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { appendEvent } from "../../kernel/events/append";
 import { assertFormFRecorded, assertMachineRegistered, assertPersonRegistered } from "../pcpndt";
+import { assertDeviceLicensed } from "../aerb";
 import { RADIOLOGY_RESOURCE_KINDS } from "./kinds";
 import { isValidDicomUid, mintStudyInstanceUid } from "./uid";
 import { RadiologyError } from "./errors";
@@ -156,6 +157,28 @@ export async function startAcquisition(
     const onDate = istDayString(now);
     const { registrationId } = await assertMachineRegistered(tx, study.deviceResourceId, onDate);
     await assertPersonRegistered(tx, actor.id, registrationId);
+  }
+
+  /**
+   * ═══ (3a) PLAN 18c T1 / D3 — THE OTHER STATUTE: AERB LICENCES THE MACHINE ═══
+   *
+   * An examination that uses ionising radiation happens on equipment AERB has licensed, or it does
+   * not happen. It sits HERE, beside the Act's own gate and before `assignResource`, for the reason
+   * the paragraph above gives: a refusal that arrives after the machine is occupied and the images
+   * exist is not a refusal, it is a record of an offence.
+   *
+   * **The date is the server's IST day, never the caller's** — F52's whole lesson, and it applies
+   * with identical force to a licence window: a technologist refused `device_not_licensed` must not
+   * be able to retry with last year's date, and the browser's UTC day is yesterday between 00:00
+   * and 05:30 IST.
+   *
+   * `ionising` comes from the STUDY TYPE, which is the one place that knows whether this
+   * examination emits (F18's finding, and `recordAcquired` reads the same source for the dose
+   * CHECK). Ultrasound and MRI never reach this line, because AERB licences neither.
+   */
+  const acqStudyType = await requireStudyType(tx, study.studyTypeCode);
+  if (acqStudyType.ionising) {
+    await assertDeviceLicensed(tx, study.deviceResourceId, istDayString(now));
   }
 
   /**
