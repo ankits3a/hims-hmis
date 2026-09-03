@@ -56,7 +56,17 @@ Session draw-down is built. **Value draw-down is not** — it needs the discrimi
 phase's second migration.
 
 **S3 — no ABDM anything exists.** `grep -ril abdm apps/core/src` → 0. ABHA is three free-text columns
-plus `identityAssurance: "abha_verified"`, which **any clerk can assert today** with no evidence.
+plus `identityAssurance: "abha_verified"`.
+
+> **CORRECTED 2026-09-03 (T9's measurement).** S3 originally added "which **any clerk can assert
+> today with no evidence**". That is WRONG and it is worth striking out rather than quietly editing,
+> because it appears in T2's merged commit message and PR too. `upgradeAssurance`
+> (`patients/identity.ts:208`) already refuses non-user actors, refuses any non-increasing move, and
+> **requires an `evidenceRef` for `id_verified` and above — which includes `abha_verified`** — with a
+> close review having added the `"upgrade"` event so the ladder is audited. The residual risk is only
+> that the evidence reference is unverified text, which is the ordinary trade in a staff-operated
+> system. **Deferring the ABDM integration therefore leaves no open hole**, which is what the owner
+> needed to know when they deferred it on 03-Sep.
 
 **S4 — to measure at T5, not assume:** whether `checkInAppointment` opens the visit through the same
 `openVisitInTx` the walk-in uses (it returns `OpenVisitResult`, so probably yes) — if it does, the
@@ -272,13 +282,18 @@ already carried workarounds for. Both of those comments were corrected rather th
 something no longer true.
 
 **R4's registration half is BLOCKED and is moved to T6, with the reason.** The partner slip cannot be
-captured here yet: `POST /patients` has no field for it, no route binds a slip code to a patient, and
-**nothing in the repository ever writes `attribution_ids.state = 'claimed'`** — the state exists in
-the schema and in `PRESENTABLE_STATES` and has no writer. `GET /partners/attributions/:code` also
-needs `partners.receivable.operate`, which the front desk does not hold. Shipping a field that
-silently persists nothing would be worse than not shipping it, so the capture is built in T6 **with
-the rail that stores it**, and added back to this screen there. The owner's ruling is unchanged; only
-the task it lands in has moved.
+captured here yet: `POST /patients` has no field for it, and **nothing in the repository ever writes
+`attribution_ids.state = 'claimed'`** — the state exists in the schema and in `PRESENTABLE_STATES`
+and has no writer. `GET /partners/attributions/:code` also needs `partners.receivable.operate`, which
+the front desk does not hold. Shipping a field that silently persists nothing would be worse than not
+shipping it.
+
+> **CORRECTED at T9.** This paragraph also said "no route binds a slip code to a patient". That is
+> WRONG: `attribution_ids.patient_id` is populated by `issueAttribution` at ISSUE time and RC-2's
+> review MAJOR 5 already added the binding check — one slip used to discount unlimited bills for
+> unlimited patients, and does not any more. What is actually missing is different and narrower, and
+> T9 states it properly: `attributionCode` is a **per-request parameter with no durable home**, so a
+> code captured before billing has nowhere to live between the two screens.
 
 **Mutants at T3: 3, all dead** (the permission gate, `takePatient`, the navigation target).
 
