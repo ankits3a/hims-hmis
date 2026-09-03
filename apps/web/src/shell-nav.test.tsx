@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { AuthProvider } from "./lib/auth";
@@ -21,6 +21,9 @@ function renderShell(hospital: string[]): void {
     "GET /api/ops/mode": { mode: "commissioning" },
     "GET /api/alerts": { items: [] },
     "GET /api/patients/search": { items: [] },
+    "GET /api/opd/summary": { departments: [] },
+    "GET /api/billing/session/current": { session: null },
+    "GET /api/me/figures": { registered: 0, visits: 0, collected: 0, waiting: 0 },
   });
   setToken("t-1");
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -197,4 +200,51 @@ it("07b T8: a group the person holds nothing in does not render at all", async (
   expect(nav).not.toHaveTextContent("Desk");
   expect(nav).not.toHaveTextContent("Stores");
   expect(nav).not.toHaveTextContent("Billing");
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-11 — DESK ONE OWNS THE VIEWPORT, AND "COVERED" IS NOT "GONE"
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Found by driving the real screen and reading the DOM, not by a failing test. `.d1` is
+ * `position: fixed; inset: 0; z-index: 40` over an opaque ground, and the shell was still rendering
+ * its header, its sixteen nav links, the bell, language, theme and log out UNDERNEATH it. Measured:
+ * `elementFromPoint()` at the "Counter" link's centre returned the desk's cash-float pill, and Tab
+ * from the desk walked into eight links whose focus ring is painted under an opaque layer.
+ *
+ * Every assertion here is a ROLE and not a class, because the defect was never visual — the pixels
+ * were always right. It was a landmark and a tab stop that a sighted mouse user could not reach and
+ * a keyboard or screen-reader user could not escape.
+ */
+it("FD-11: the shell renders no chrome under Desk One — not hidden, not present", async () => {
+  renderShell(["opd.visits.open", "patients.register", "billing.invoice.issue"]);
+  /*
+    `router` is a MODULE SINGLETON and `RouterProvider`'s `history` only takes on the first mount in
+    a file, so a test that merely asks to start at `/counter` silently renders whatever the previous
+    test left behind — which is how this assertion passed alone and failed in the suite. Navigate.
+  */
+  await act(async () => { await router.navigate({ to: "/counter" }); });
+  await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+
+  expect(screen.queryByRole("banner")).not.toBeInTheDocument();
+  expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+  expect(screen.queryByRole("contentinfo")).not.toBeInTheDocument();
+  // The doors FD-9 deleted were still being offered by the covered nav.
+  expect(screen.queryByRole("link", { name: "Desk One" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Log out" })).not.toBeInTheDocument();
+});
+
+/**
+ * The other half of the same ruling: suppressing the chrome must be scoped to routes that ASK for
+ * it. A ternary is trivially invertible and every assertion above would still pass if it were —
+ * they would pass on every screen in the application.
+ */
+it("FD-11: an ordinary route still gets the whole shell", async () => {
+  renderShell(["opd.visits.open", "patients.register", "billing.invoice.issue"]);
+  await act(async () => { await router.navigate({ to: "/merge" }); });
+
+  await waitFor(() => expect(screen.getByRole("banner")).toBeInTheDocument());
+  expect(screen.getByRole("navigation")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
 });

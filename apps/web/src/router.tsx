@@ -1,5 +1,5 @@
 import {
-  Link, Outlet, createRootRoute, createRoute, createRouter, redirect, useNavigate,
+  Link, Outlet, createRootRoute, createRoute, createRouter, redirect, useNavigate, useRouterState,
 } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -200,6 +200,41 @@ const NAV: readonly { to: string; label: string; permission: string; group: NavG
   { to: "/pharmacy/items", label: "nav.pharmacyItems", permission: "pharmacy.sale_items.manage", group: "stores" },
 ];
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * `fullViewport` — A ROUTE SAYS IT OWNS THE SCREEN, AND THE SHELL BELIEVES IT
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * FOUND BY LOOKING, NOT BY TESTING, 2026-09-03. Desk One's `.d1` is `position: fixed; inset: 0;
+ * z-index: 40` with an opaque background, and the application shell was still being RENDERED
+ * underneath it — header, sixteen nav links, the bell, language, theme and log out, all in normal
+ * flow at the top of the document and all covered by an opaque layer. `elementFromPoint()` at the
+ * "Counter" link's own centre returned the desk's cash-float pill.
+ *
+ * Covered is not gone. The measured consequences:
+ *
+ *   · A clerk who Tabs off the desk walks into eight links they cannot see, with the focus ring
+ *     drawn UNDER the opaque layer, so focus simply vanishes. There is no visible way back.
+ *   · A screen reader announces a `banner` and a `navigation` landmark on a screen whose entire
+ *     design is that it has no navigation — the desk IS the application while it is mounted.
+ *   · Those hidden links still advertised `Counter`, `Appointments` and `OPD desk`: the three-screen
+ *     front desk FD-9 deleted. The nav was offering doors that no longer exist.
+ *
+ * The fix is declarative rather than a pathname list in `Shell`, because a list drifts the moment
+ * somebody adds a second full-viewport screen and does not think to update it. The ROUTE says it
+ * owns the viewport and the shell reads that off the active matches — the two cannot disagree.
+ *
+ * Note this suppresses the chrome, it does not hide it: the header, `ModeBanner`, `PatientStrip`
+ * and `ShortcutLegend` are not in the DOM at all on such a route. Nothing a person could previously
+ * SEE is lost, because all four were already behind an opaque layer.
+ */
+declare module "@tanstack/react-router" {
+  interface StaticDataRouteOption {
+    /** The screen renders its own full-viewport chrome; the shell must render none of its own. */
+    fullViewport?: boolean;
+  }
+}
+
 function Shell(): React.ReactElement {
   const { t } = useTranslation();
   const { logout, can } = useAuth();
@@ -211,10 +246,20 @@ function Shell(): React.ReactElement {
    */
   const [theme, setThemeState] = useState(storedTheme);
   useEffect(() => { applyTheme(theme); }, [theme]);
-  return (
-    <PatientInHandProvider>
-      <PaletteProvider>
-      <KeyboardProvider>
+  /*
+    Read off the ACTIVE MATCHES rather than the pathname, so a child route of a full-viewport screen
+    inherits the answer without anybody remembering to add it. `/counter/figures` is deliberately
+    NOT one — it is an ordinary screen and wants the ordinary chrome.
+  */
+  const fullViewport = useRouterState({
+    select: (s) => s.matches.some((m) => m.staticData.fullViewport === true),
+  });
+
+  /*
+    The chrome is built inside the ternary and not above it, so a route that owns the viewport never
+    even walks `NAV` to decide which links a person may see.
+  */
+  const body = fullViewport ? <Outlet /> : (
       <div className="flex min-h-screen flex-col">
         <header className="no-print flex items-center gap-6 border-b px-4 py-2">
           {/*
@@ -299,6 +344,19 @@ function Shell(): React.ReactElement {
         </div>
         <ShortcutLegend />
       </div>
+  );
+
+  /*
+    The providers wrap BOTH branches and are never conditional. Desk One is still a child of
+    `authedRoute` for exactly this reason: it keeps the token guard, the query client, the patient
+    in hand, the command palette and the global keyboard chords. What it stops inheriting is the
+    visual chrome.
+  */
+  return (
+    <PatientInHandProvider>
+      <PaletteProvider>
+      <KeyboardProvider>
+      {body}
       </KeyboardProvider>
     </PaletteProvider>
     </PatientInHandProvider>
@@ -426,6 +484,12 @@ const counterDeskRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): { new?: boolean } => ({
     new: search.new === true || search.new === "true" ? true : undefined,
   }),
+  /*
+    `.d1` is `position: fixed; inset: 0` with an opaque ground, so the desk owns the viewport while
+    it is mounted. Without this the shell rendered its header and sixteen nav links UNDERNEATH it —
+    invisible, unclickable, and still in the tab order. See `StaticDataRouteOption` above.
+  */
+  staticData: { fullViewport: true },
   component: DeskOne,
 });
 
